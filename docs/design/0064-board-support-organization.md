@@ -1355,7 +1355,7 @@ shared helpers take `NUTTX_CROSS`, `NUTTX_ARCH_CFLAGS`, `NUTTX_LIBGCC_FLAGS`,
 `NUTTX_DIR`, and the staging link list is **discovered by scanning
 `$NUTTX_DIR/staging` for `lib*.a`** rather than hardcoded per board. Both board
 crates' `build.rs` bodies are the same four calls. Yet 1059 lines are
-byte-identical duplicates (`c/nuttx_run_tiers.c` 587, `src/config.rs` 261,
+byte-identical duplicates (`c/nuttx_run_sched_tasks.c` 587, `src/config.rs` 261,
 `src/node.rs` 133, `src/entry.rs` 43, `c/nuttx_builtins_stub.c` 35), and the
 crate to hold them (`nros-board-nuttx`) exists with both boards already depending
 on it. A move, not a design change — phase-322 W1.a.
@@ -1475,7 +1475,7 @@ image under both GNU ld and rust-lld.
 
 **The shadow copy is gone.** `startup.c` (727 lines) is deleted. Both lanes now
 compile one set of sources: the family's `freertos_hooks.c` + `network_glue.c` +
-`freertos_run_tiers.c` and the board's `board_mps2.c`, plus a new
+`freertos_run_sched_tasks.c` and the board's `board_mps2.c`, plus a new
 `freertos_c_entry.c` that carries the ~150 lines that were genuinely
 C-lane-only (semihosting stdio, the log writer, task creation, `main`). The
 drift the split was hiding was real and is recorded in that file's header: the

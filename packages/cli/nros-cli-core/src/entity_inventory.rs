@@ -836,7 +836,7 @@ pub struct EntityInventory {
     /// phase-462 W6c -- the tightest authored tier's slack, the second
     /// RFC-0074 constraint's right-hand side. `None` when no tier states a
     /// deadline or a period.
-    tightest_tier: Option<TierSlack>,
+    tightest_sched_task: Option<SchedTaskSlack>,
     /// phase-462 W6c -- the board's `[board.rx]` fact, set by the road that
     /// knows the board ([`Self::set_board_rx_cost`]). `None` keeps `c = 0`
     /// and the derivation byte-identical to W6b.
@@ -1005,7 +1005,7 @@ pub struct ImageFrame {
     monitor_rows: Option<(usize, usize)>,
     rx_task_budget: Option<RxTaskBudget>,
     rx_arrival: Vec<DeclaredArrivalCurve>,
-    tightest_tier: Option<TierSlack>,
+    tightest_sched_task: Option<SchedTaskSlack>,
     launched: std::collections::BTreeSet<String>,
     /// Issue 2076 -- the bringup's `[[bridge]]`s (overlay), whose nodes and
     /// endpoints the runtime creates and no component describes.
@@ -1225,7 +1225,7 @@ pub struct RxFrameCost {
 /// Only the portable head is read: a platform sub-table may tighten the
 /// deadline, and the slack is then over-stated the same way.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TierSlack {
+pub struct SchedTaskSlack {
     pub tier: String,
     /// `D`, in microseconds.
     pub deadline_us: u64,
@@ -1235,7 +1235,7 @@ pub struct TierSlack {
     pub slack_us: u64,
 }
 
-impl TierSlack {
+impl SchedTaskSlack {
     /// The tightest authored tier of a model, `None` when no tier states a
     /// deadline or a period. Every tier counts as sharing the read task's
     /// core: the model places no tier on a core, so this is the stricter
@@ -1297,7 +1297,7 @@ pub enum RxArrivalCheck {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlackVerdict {
     /// The occupancy fits the tightest tier's slack.
-    Within(TierSlack),
+    Within(SchedTaskSlack),
     /// The slack is not computable for this image -- STATED, never silent.
     NotChecked(String),
 }
@@ -1358,7 +1358,7 @@ impl RxArrivalCheck {
 pub fn check_rx_arrival(
     arrival: &[DeclaredArrivalCurve],
     cost: Option<RxFrameCost>,
-    tightest: Option<&TierSlack>,
+    tightest: Option<&SchedTaskSlack>,
 ) -> Result<RxArrivalCheck, String> {
     let Some(cost) = cost else {
         return Ok(RxArrivalCheck::NoBoardCost);
@@ -1477,7 +1477,7 @@ impl ImageFrame {
             // phase-462 W6c -- what that budget came from, and the slack the
             // second RFC-0074 constraint is checked against.
             rx_arrival: DeclaredArrivalCurve::from_model(model),
-            tightest_tier: TierSlack::tightest(model),
+            tightest_sched_task: SchedTaskSlack::tightest(model),
             // Issue 1694 -- what the launch tree STARTS, described or not. Both
             // spellings of a node, because the two declaration-side producers
             // key differently: `from_model` and the probe road key by node
@@ -2021,7 +2021,7 @@ pub struct DerivedEntityKnobs {
     /// SCHEDULE. Measured over the tree, there are exactly two producers, and
     /// they disagree about how many slots a tier costs:
     ///
-    /// * the RUST runtime creates **none**. `apply_tier_sched_policy` ends in
+    /// * the RUST runtime creates **none**. `apply_sched_task_sched_policy` ends in
     ///   `set_default_sched_context`, which MUTATES slot 0 -- so a tiered Rust
     ///   boot, which opens one executor per tier, spends one reserved slot per
     ///   executor and no table entry at all.
@@ -2039,7 +2039,7 @@ pub struct DerivedEntityKnobs {
     ///
     /// The second term is bounded by `max(authored tiers, nodes)`, not by the
     /// authored tier count alone, because a bringup that authors NO tiers does
-    /// not thereby have one: `derive_tiers_from_contracts` synthesises a
+    /// not thereby have one: `derive_sched_tasks_from_contracts` synthesises a
     /// `derived-<node>` tier per schedulable node, so a model with an empty
     /// `[tasks.*]` can still resolve to one tier per node. Taking the larger
     /// of the two covers both shapes and over-counts for the Rust one, which
@@ -3266,7 +3266,7 @@ impl EntityInventory {
             monitor_rows: None,
             rx_task_budget: None,
             rx_arrival: Vec::new(),
-            tightest_tier: None,
+            tightest_sched_task: None,
             rx_cost: None,
             launched: None,
             image_views: Vec::new(),
@@ -3331,7 +3331,7 @@ impl EntityInventory {
 
     /// Issue 1198 -- state the authored tier count for an inventory whose
     /// bringup facts arrive by some road other than [`Self::from_model`].
-    pub fn set_tiers(&mut self, tiers: usize) {
+    pub fn set_sched_tasks(&mut self, tiers: usize) {
         self.tiers = tiers;
     }
 
@@ -3370,8 +3370,10 @@ impl EntityInventory {
         self.rx_arrival = DeclaredArrivalCurve::union(&self.rx_arrival, &model.rx_arrival);
         // RFC-0074's second check reads the tightest tier's slack beside the
         // declarations, so it travels with them.
-        self.tightest_tier =
-            TierSlack::tighter(self.tightest_tier.clone(), model.tightest_tier.clone());
+        self.tightest_sched_task = SchedTaskSlack::tighter(
+            self.tightest_sched_task.clone(),
+            model.tightest_sched_task.clone(),
+        );
     }
 
     /// phase-462 W6b -- state the read-task budget for an inventory whose
@@ -3435,7 +3437,11 @@ impl EntityInventory {
             view.check_rx_arrival()
                 .map_err(|e| format!("image `{src}`: {e}"))?;
         }
-        check_rx_arrival(&self.rx_arrival, self.rx_cost, self.tightest_tier.as_ref())
+        check_rx_arrival(
+            &self.rx_arrival,
+            self.rx_cost,
+            self.tightest_sched_task.as_ref(),
+        )
     }
 
     /// Issue 1676 -- the `/diagnostics` publishers a contracted image's
@@ -3449,7 +3455,7 @@ impl EntityInventory {
     /// Issue 1729 -- "every tier" is [`Self::executor_bound`], NOT the
     /// AUTHORED tier count. This read `self.tiers.max(1)`, and a bringup that
     /// authors no `[tasks.*]` still runs one executor per `derived-<node>`
-    /// tier (`derive_tiers_from_contracts`): `realtime-rust`'s `derived_bringup`
+    /// tier (`derive_sched_tasks_from_contracts`): `realtime-rust`'s `derived_bringup`
     /// derived ONE reporter for its two derived tiers, so the boot tier's
     /// reporter and `/telem` plus the second tier's reporter filled the three
     /// publisher slots and `ctrl_pkg`'s `/ctrl` failed
@@ -4114,8 +4120,10 @@ impl EntityInventory {
                     inv.bridges = union_bridges(&inv.bridges, &f.bridges);
                     // phase-462 W6c -- its tiers share the runtime's one read
                     // task, so the tighter slack binds.
-                    inv.tightest_tier =
-                        TierSlack::tighter(inv.tightest_tier.clone(), f.tightest_tier.clone());
+                    inv.tightest_sched_task = SchedTaskSlack::tighter(
+                        inv.tightest_sched_task.clone(),
+                        f.tightest_sched_task.clone(),
+                    );
                 }
             }
         }
@@ -4156,7 +4164,7 @@ impl EntityInventory {
         self.monitor_rows = f.monitor_rows;
         self.rx_task_budget = f.rx_task_budget;
         self.rx_arrival = f.rx_arrival.clone();
-        self.tightest_tier = f.tightest_tier.clone();
+        self.tightest_sched_task = f.tightest_sched_task.clone();
         self.launched = Some(f.launched.clone());
         self.bridges = f.bridges.clone();
     }
@@ -4389,8 +4397,10 @@ impl EntityInventory {
         // task drains both sides' subscribers), the tighter slack, and the
         // board fact from whichever side was handed one.
         out.rx_arrival = DeclaredArrivalCurve::union(&self.rx_arrival, &model.rx_arrival);
-        out.tightest_tier =
-            TierSlack::tighter(self.tightest_tier.clone(), model.tightest_tier.clone());
+        out.tightest_sched_task = SchedTaskSlack::tighter(
+            self.tightest_sched_task.clone(),
+            model.tightest_sched_task.clone(),
+        );
         out.rx_cost = self.rx_cost.or(model.rx_cost);
         // Issue 1694 -- the launch tree's own answer, from whichever side saw a
         // model (both, in a several-image fold).
@@ -6163,7 +6173,7 @@ impl EntityInventory {
                 // creates; the Rust runtime creates none (it mutates slot 0),
                 // the C/C++ entry pack creates one per tier.
                 s.push_str(
-                    "# Scheduling-context slots: slot 0 is the reserved default Fifo\n                     # context, plus one per tier the schedule can create. A bringup\n                     # that authors no tiers can still resolve one per node\n                     # (derive_tiers_from_contracts), so the second term is the LARGER\n                     # of the authored tier count and the node count.\n",
+                    "# Scheduling-context slots: slot 0 is the reserved default Fifo\n                     # context, plus one per tier the schedule can create. A bringup\n                     # that authors no tiers can still resolve one per node\n                     # (derive_sched_tasks_from_contracts), so the second term is the LARGER\n                     # of the authored tier count and the node count.\n",
                 );
                 s.push_str(&format!("set(NROS_DERIVED_EXECUTOR_MAX_SC {})\n", k.max_sc));
                 // phase-496 W1 -- the contract-monitor tables, only when a model
@@ -7075,7 +7085,7 @@ mod tests {
     /// (zero) said one reporter, the pool was sized three, and the second
     /// tier's `/ctrl` failed `PublisherCreationFailed` at boot.
     #[test]
-    fn an_untiered_multi_node_contract_counts_a_reporter_per_derivable_tier() {
+    fn a_single_executor_multi_node_contract_counts_a_reporter_per_derivable_sched_task() {
         use ros_launch_manifest_model::{PubContract, SystemModel, TopicWiring};
         let mut m = SystemModel::default();
         for (node, topic) in [("control_node", "ctrl"), ("telem_node", "telem")] {
@@ -7529,15 +7539,15 @@ contracts:
     /// tier, its deadline and budget, the occupancy and the largest burst that
     /// fits -- with its negative control one floor smaller.
     #[test]
-    fn a_burst_longer_than_the_tightest_tier_slack_is_refused() {
+    fn a_burst_longer_than_the_tightest_sched_task_slack_is_refused() {
         // `ctrl`: 10 ms period, 2 ms budget, so 8000 us of slack; `slow` is
         // looser and does not bind.
         let tiers = "execution:\n  tasks:\n    ctrl: { period: 10ms, budget: 2ms }\n    \
                      slow: { period: 100ms, budget: 5ms }\n";
         let mut inv = arrival_model(tiers);
         assert_eq!(
-            inv.tightest_tier,
-            Some(TierSlack {
+            inv.tightest_sched_task,
+            Some(SchedTaskSlack {
                 tier: "ctrl".into(),
                 deadline_us: 10_000,
                 budget_us: Some(2_000),
@@ -7596,9 +7606,9 @@ contracts:
     /// prints), never a guessed slack and never silence; the rate check still
     /// runs.
     #[test]
-    fn the_slack_check_is_stated_as_not_checked_without_tier_timing() {
+    fn the_slack_check_is_stated_as_not_checked_without_sched_task_timing() {
         let mut inv = arrival_model("");
-        assert_eq!(inv.tightest_tier, None);
+        assert_eq!(inv.tightest_sched_task, None);
         inv.set_board_rx_cost(cost(940, Some(11_000)));
         let check = inv.check_rx_arrival().expect("the rates fit 1063.8 msg/s");
         let RxArrivalCheck::Checked {
@@ -7616,7 +7626,7 @@ contracts:
         assert!(line.contains("NOT CHECKED"), "{line}");
         // A tier with neither deadline nor period has no slack either.
         let classless = arrival_model("execution:\n  tasks:\n    ctrl: { class: best_effort }\n");
-        assert_eq!(classless.tightest_tier, None);
+        assert_eq!(classless.tightest_sched_task, None);
     }
 
     /// Issue 1198 — the executor's two FIXED TABLES follow the declaration.
@@ -7651,14 +7661,14 @@ contracts:
         let mut tiered = EntityInventory::new("test");
         tiered.insert(stated("a", "one", &["timer"]));
         tiered.insert(stated("b", "two", &["timer"]));
-        tiered.set_tiers(5);
+        tiered.set_sched_tasks(5);
         assert_eq!(
             tiered.derive().knobs().expect("derived").max_sc,
             6,
             "five tiers is five contexts, plus the reserved slot 0"
         );
         // ... and never LOWERS it: a bringup that authors no tiers can still
-        // resolve one per node (`derive_tiers_from_contracts`).
+        // resolve one per node (`derive_sched_tasks_from_contracts`).
         assert_eq!(
             tiered.derive().knobs().expect("derived").max_nodes,
             2,

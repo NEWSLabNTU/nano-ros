@@ -369,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn fallback_applies_where_the_authoritative_tier_has_no_rule() {
+    fn fallback_applies_where_the_authoritative_sched_task_has_no_rule() {
         let launch = [("/b", "/from_launch")];
         let argv = [("/a", "/from_argv")];
         assert_eq!(

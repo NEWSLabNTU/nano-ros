@@ -244,9 +244,9 @@ target_dir = "target-fixtures"
 
 # phase-263 B2 (Track D) — the real-time multi-tier workspace. Pure-cargo
 # `nros::main!(launch = "demo_bringup")` resolves the 2-tier table ([tasks.high] +
-# [tasks.low]) and emits the multi-tier `run_tiers` entry. The high-tier control
+# [tasks.low]) and emits the multi-tier `run_sched_tasks` entry. The high-tier control
 # node publishes `/ctrl` every 10 ms, the low-tier telemetry node `/telem` every
-# 100 ms. Consumed by tests/realtime_tiers_e2e.rs: subscribe both, assert the
+# 100 ms. Consumed by tests/realtime_sched_tasks_e2e.rs: subscribe both, assert the
 # high-tier publishes ~10× the low-tier (both tiers scheduled). 2 nodes × 1 timer =
 # 2 callback entries, under the default MAX_CBS (cf. issue 0095).
 [[workspace_fixture]]
@@ -264,7 +264,7 @@ target_dir = "target-fixtures"
 # authored tier, so `nros::main!` derives `derived-control_node` and
 # `derived-telem_node` from the contract. Each tier arms a `/diagnostics`
 # reporter; the derived publisher pool counted one, so the control tier lost
-# `/ctrl` at setup on every boot. Consumed by tests/realtime_tiers_e2e.rs
+# `/ctrl` at setup on every boot. Consumed by tests/realtime_sched_tasks_e2e.rs
 # (native/rust-derived): the same `/ctrl` vs `/telem` counter proof as the
 # authored row, which a lost control tier fails with `/ctrl` silent.
 [[workspace_fixture]]
@@ -434,24 +434,24 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 # phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-tier RT-tiers Rust NuttX (QEMU
 # arm-virt) Entry (`realtime-rust/src/nuttx_entry`): `system.toml` declares two
 # `[tasks.*]` with `[tasks.*.nuttx]` priorities, so the macro's generic OwnedSpin
-# arm emits `<QemuArmVirt>::run_tiers` — one `std::thread` per tier over ONE shared
+# arm emits `<QemuArmVirt>::run_sched_tasks` — one `std::thread` per tier over ONE shared
 # session (NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`); ctrl (10 ms,
 # high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the
 # cargo lane at the `release` profile (177.8.c CGU-miscompile dodge); the connect
 # locator (`tcp/10.0.2.2:8291`, dialed through the QEMU slirp gateway) is baked via
 # the per-row `NROS_LOCATOR`. `skip_probe` — the stale probe cannot replicate the
 # nightly + build-std + NUTTX_DIR recipe env. Consumed by
-# tests/realtime_tiers_rust_nuttx_e2e.rs. Closes the LAST matrix cell (rust×nuttx).
+# tests/realtime_sched_tasks_rust_nuttx_e2e.rs. Closes the LAST matrix cell (rust×nuttx).
 # phase-285 W5 (RFC-0015 Model 1, issue #165) — the rv-virt (riscv32) sibling of the
 # arm row above: `realtime-rust/src/riscv_nuttx_entry`, deploy = "nuttx-riscv" →
-# `<QemuRvVirt>::run_tiers`. Built at `--release` (same 177.8.c-class opt-level dodge
+# `<QemuRvVirt>::run_sched_tasks`. Built at `--release` (same 177.8.c-class opt-level dodge
 # as arm until proven otherwise). phase-445 — the target spec, `json-target-spec`,
 # the image link group and the NUTTX_* image-link env all come from the
 # nuttx-riscv board descriptor through the image's `nros-cargo.toml`; `target`
 # below is only the locator's `<target_dir>/<triple>/` component (the spec's
 # file stem, which is how cargo names the directory).
 # Locator port 8691 (arm uses 8291). `skip_probe` — same nightly+build-std env
-# reasoning as the arm row. Consumed by tests/realtime_tiers_riscv_nuttx_e2e.rs.
+# reasoning as the arm row. Consumed by tests/realtime_sched_tasks_riscv_nuttx_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-rust-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
@@ -483,17 +483,17 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 # phase-297 W5 (RFC-0053) — the 2-tier RT-tiers Rust ThreadX-Linux Entry
 # (`realtime-rust/src/threadx_entry`): the model's
 # `execution.tiers.*.threadx` sub-tables route the macro onto
-# `<ThreadxLinux>::run_tiers` — one ThreadX thread (pthread-backed) per tier
+# `<ThreadxLinux>::run_sched_tasks` — one ThreadX thread (pthread-backed) per tier
 # over ONE shared zenoh session, stacks from the shared byte pool
 # (`nros_threadx_create_task`). Hosted simulation, host x86_64 + NSOS host
 # sockets — no QEMU, dials loopback directly (no slirp). Locator port 9091 =
-# `alloc::port_of(ThreadxLinux, Rust, RealtimeTiers)` (phase-295 W4 SSoT),
+# `alloc::port_of(ThreadxLinux, Rust, RealtimeSchedTasks)` (phase-295 W4 SSoT),
 # stated as the bringup's `[image.threadx] locator` — the threadx-linux board
 # reads no `NROS_LOCATOR`, so the `env` here used to carry one that reached
 # nothing (issue 1581; `check-image-locator-bake`).
 # Built by the cargo lane (`workspace-fixtures-build.sh threadx-linux rust`;
 # needs THREADX_DIR from activate.sh). Consumed by
-# tests/realtime_tiers_e2e.rs (`threadx_linux_rust` case, CounterRatio3x).
+# tests/realtime_sched_tasks_e2e.rs (`threadx_linux_rust` case, CounterRatio3x).
 [[workspace_fixture]]
 id = "workspace-rust-threadx-linux-realtime"
 platform = "threadx-linux"
@@ -819,12 +819,12 @@ cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_E
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
 # (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
-# shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one pthread per tier). The FIRST
-# full nuttx link + runtime proof of the W3(nuttx) run_tiers seam (commit 37cfaf728) — the C++
+# shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1, one pthread per tier). The FIRST
+# full nuttx link + runtime proof of the W3(nuttx) run_sched_tasks seam (commit 37cfaf728) — the C++
 # sibling of both workspace-c-nuttx and the Zephyr workspace-realtime-entry-cpp. Kernel-linked
 # via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the baked
 # port. Own build_subdir (one board per CMake configure). Consumed by
-# tests/realtime_tiers_cpp_nuttx_e2e.rs (port 8491).
+# tests/realtime_sched_tasks_cpp_nuttx_e2e.rs (port 8491).
 [[workspace_fixture]]
 id = "workspace-cpp-nuttx-realtime"
 platform = "nuttx"
@@ -839,7 +839,7 @@ cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_E
 # #199 follow-up — the rv-virt (riscv32) C++ RT-TIERS workspace entry: the
 # riscv sibling of workspace-cpp-nuttx-realtime (same demo_bringup 2-tier
 # plan). Built by `just nuttx build-riscv-c-workspaces`. Consumed by
-# tests/realtime_tiers_cpp_riscv_nuttx_e2e.rs (port 8891).
+# tests/realtime_sched_tasks_cpp_riscv_nuttx_e2e.rs (port 8891).
 [[workspace_fixture]]
 id = "workspace-cpp-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
@@ -853,11 +853,11 @@ cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "rv-virt-nuttx", NROS_ENTRY
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
 # (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
-# shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one pthread per tier). The C
+# shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1, one pthread per tier). The C
 # sibling of workspace-cpp-nuttx-realtime and of the pure-C workspace-c-nuttx. Kernel-linked
 # via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the
 # baked port. Own build_subdir (one board per CMake configure). Consumed by
-# tests/realtime_tiers_c_nuttx_e2e.rs (port 8391).
+# tests/realtime_sched_tasks_c_nuttx_e2e.rs (port 8391).
 [[workspace_fixture]]
 id = "workspace-c-nuttx-realtime"
 platform = "nuttx"
@@ -874,7 +874,7 @@ cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_E
 # `[tasks.*.nuttx]` table keys on the RTOS). Built by `just nuttx
 # build-riscv-c-workspaces` (provisions the rv-virt kernel; the recipe exports
 # NUTTX_DIR + the riscv CC). Own build_subdir (one board per CMake configure).
-# Consumed by tests/realtime_tiers_c_riscv_nuttx_e2e.rs (port 8791).
+# Consumed by tests/realtime_sched_tasks_c_riscv_nuttx_e2e.rs (port 8791).
 [[workspace_fixture]]
 id = "workspace-c-nuttx-riscv-realtime"
 platform = "nuttx-riscv"
@@ -987,7 +987,7 @@ build_subdir = "build/posix-zenoh-linux/cmake"
 # Phase 269 W4 — 2-tier sched-context C++ workspace. [tasks.high]/[tasks.low] + [[node_overrides]]
 # bake nros_cpp_create_sched_context + NodeBuilder::sched() calls into the generated entry;
 # ctrl_node binds to the high-priority sched context (10 ms), telem_node to the low-priority
-# sched context (100 ms). Consumed by tests/realtime_tiers_cpp_e2e.rs.
+# sched context (100 ms). Consumed by tests/realtime_sched_tasks_cpp_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-realtime"
 platform = "linux"
@@ -999,21 +999,21 @@ image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
-# Issue 1733 — the NATIVE derived-tier C++ image: `derived-tiers-cpp`'s four
+# Issue 1733 — the NATIVE derived-tier C++ image: `derived-sched-tasks-cpp`'s four
 # components, no authored `[tasks.*]`, a contract, so the C++ entry derives one
-# tier per node and `nros_board_native_run_tiers_in` spawns three of them over
+# tier per node and `nros_board_native_run_sched_tasks_in` spawns three of them over
 # the boot executor's session. Every tier arms its own `/diagnostics` reporter,
 # and the derived `ZPICO_MAX_PUBLISHERS` counted one for the image (4 + 1 for
 # 4 + 4 creates), so 2-3 tiers lost their publisher at setup on EVERY boot and
-# the image ran on without them. Consumed by `tests/realtime_tiers_e2e.rs`
+# the image ran on without them. Consumed by `tests/realtime_sched_tasks_e2e.rs`
 # (native/cpp-derived), which asserts all four nodes tick and no tier setup
-# failed. The native sibling of `workspace-zephyr-cpp-derived-tiers`.
+# failed. The native sibling of `workspace-zephyr-cpp-derived-sched-tasks`.
 [[workspace_fixture]]
-id = "workspace-cpp-native-derived-tiers"
+id = "workspace-cpp-native-derived-sched-tasks"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/derived-tiers-cpp"
+dir = "examples/workspaces/derived-sched-tasks-cpp"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
@@ -1022,7 +1022,7 @@ build_subdir = "build/posix-zenoh-linux/cmake"
 # phase-509 P10 -- the THREE-LEVEL C++ image on the HOST (levels-cpp's linux
 # image): the derivation gives three levels and `nros_board_native_run_levels_in`
 # runs them as worker threads over one executor. Consumed by
-# `tests/realtime_tiers_e2e.rs` (native/cpp-levels): every level's node runs and
+# `tests/realtime_sched_tasks_e2e.rs` (native/cpp-levels): every level's node runs and
 # reads its own launch parameter, and no level fails the boot. The native
 # sibling of `workspace-zephyr-cpp-levels`.
 [[workspace_fixture]]
@@ -1085,7 +1085,7 @@ build_subdir = "build/posix-zenoh-linux/cmake"
 # Same 2-tier scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
 # components are IS-A-node ComponentNode subclasses (SHAPE rclcpp). The bind_node_name_sched
 # table (W1+W2) covers the rclcpp ctor path without NodeHandle change.
-# Consumed by tests/realtime_tiers_cpp_rclcpp_e2e.rs.
+# Consumed by tests/realtime_sched_tasks_cpp_rclcpp_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-cpp-native-realtime-rclcpp"
 platform = "linux"
@@ -1131,16 +1131,16 @@ build_subdir = "build/posix-zenoh-linux/cmake"
 
 # Phase 274.W3 (RFC-0015 Model 1 embedded) — 2-tier C++ realtime workspace on
 # FreeRTOS/mps2-an385 (QEMU). The codegen gate (board_is_freertos_embedded) emits
-# per-tier setup functions + NativeTierSpec array + nros_app_main calling
-# FreertosBoard::run_tiers, which delegates to nros_board_freertos_run_tiers
+# per-tier setup functions + NativeSchedTaskSpec array + nros_app_main calling
+# FreertosBoard::run_sched_tasks, which delegates to nros_board_freertos_run_sched_tasks
 # (nros-board-freertos glue): one RTOS task per tier over one shared session.
 # ctrl (high tier, prio=5, 10 ms) + telem (low tier, prio=2, 100 ms).
-# Consumed by tests/realtime_tiers_cpp_freertos_e2e.rs.
+# Consumed by tests/realtime_sched_tasks_cpp_freertos_e2e.rs.
 # issue 0636 gap 2 — the RUST 2-tier realtime workspace on FreeRTOS/mps2-an385
 # (QEMU), sibling of workspace-{c,cpp}-freertos-realtime.
 #
-# The Rust FreeRTOS multi-tier path (`Mps2An385Freertos::run_tiers` →
-# `nros-board-freertos`'s `run_tiers_entry`) was exported, reachable from the
+# The Rust FreeRTOS multi-tier path (`Mps2An385Freertos::run_sched_tasks` →
+# `nros-board-freertos`'s `run_sched_tasks_entry`) was exported, reachable from the
 # `nros::main!` macro, and called by NOTHING: every FreeRTOS realtime fixture
 # was C or C++, and the one Rust FreeRTOS entry (`workspaces/rust`) is
 # single-tier `run_entry`. So #0636's boot-tier fix landed on this arm by
@@ -1155,9 +1155,9 @@ build_subdir = "build/posix-zenoh-linux/cmake"
 # the only carrier this board reads (issue 1581) — is the SLIRP host 10.0.2.2:
 # every FreeRTOS QEMU image now sits on QEMU's own network (RFC-0103 D10), where
 # before this one ran a 192.0.3.0/24 plan the pubsub Rust entry did not. Port 7891
-# is `port_of(FreertosMps2, Rust, RealtimeTiers)`, never hand-picked.
+# is `port_of(FreertosMps2, Rust, RealtimeSchedTasks)`, never hand-picked.
 #
-# Consumed by tests/realtime_tiers_e2e.rs (`Proof::SerialDispatch`).
+# Consumed by tests/realtime_sched_tasks_e2e.rs (`Proof::SerialDispatch`).
 [[workspace_fixture]]
 id = "workspace-rust-freertos-realtime"
 platform = "freertos"
@@ -1202,7 +1202,7 @@ cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", N
 # property the native `-portable` row exists to prove, re-measured against a
 # cross toolchain instead of a second tier vocabulary.
 #
-# A node whose callback GROUPS span two tiers cannot take `run_tiers` — per-tier
+# A node whose callback GROUPS span two tiers cannot take `run_sched_tasks` — per-tier
 # setup functions construct whole NODES (`Plan::executor_shape` →
 # `ExecutorShape::SchedContexts`), so this entry is `FreertosBoard::run_components`
 # plus `nros_cpp_create_sched_context_from_policy` / `nros_cpp_bind_group_sched`,
@@ -1232,11 +1232,11 @@ cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", N
 # phase-281 W2 (RFC-0015 Model 1 embedded) — 2-tier C realtime workspace on
 # FreeRTOS/mps2-an385 (QEMU), the C sibling of workspace-cpp-freertos-realtime.
 # The codegen routes embedded-C through the C++ emitter, so the same
-# board_is_freertos_embedded gate emits per-tier setup fns + NativeTierSpec array +
-# nros_app_main calling FreertosBoard::run_tiers → nros_board_freertos_run_tiers
+# board_is_freertos_embedded gate emits per-tier setup fns + NativeSchedTaskSpec array +
+# nros_app_main calling FreertosBoard::run_sched_tasks → nros_board_freertos_run_sched_tasks
 # (the shared C glue), driving C *nodes*: ctrl (high tier, prio=5, 10 ms) + telem
 # (low tier, prio=2, 100 ms). This closes the C × freertos matrix cell.
-# Consumed by tests/realtime_tiers_c_freertos_e2e.rs.
+# Consumed by tests/realtime_sched_tasks_c_freertos_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-freertos-realtime"
 platform = "freertos"
@@ -4088,15 +4088,15 @@ output = "nros_rmw_cyclonedds_ros2_pub"
 
 # --- cargo-build: the binary is the point; tests run it.
 [[compile_check_fixture]]
-id = "orch_tiers_multi"
+id = "orch_sched_tasks_multi"
 builder = "cargo-build"
-dir = "packages/testing/nros-tests/fixtures/orchestration_tiers_native"
+dir = "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native"
 output = "target/debug/demo_entry"
 
 [[compile_check_fixture]]
-id = "orch_tiers_single"
+id = "orch_sched_tasks_single"
 builder = "cargo-build"
-dir = "packages/testing/nros-tests/fixtures/orchestration_tiers_native"
+dir = "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_native"
 output = "target/debug/demo_entry"
 
 [[compile_check_fixture]]
@@ -4265,9 +4265,9 @@ target = "thumbv7m-none-eabi"
 output = "target/thumbv7m-none-eabi/debug/firmware"
 
 [[compile_check_fixture]]
-id = "orch_tiers_freertos"
+id = "orch_sched_tasks_freertos"
 builder = "cross-build"
-dir = "packages/testing/nros-tests/fixtures/orchestration_tiers_freertos"
+dir = "packages/testing/nros-tests/fixtures/orchestration_sched_tasks_freertos"
 manifest_dir = "."
 pkg = "demo_entry"
 target = "thumbv7m-none-eabi"
@@ -5684,7 +5684,7 @@ west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
 conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../packages/boards/nros-board-mps2-an385-zephyr/prj.conf", "../../../../cmake/zephyr/mps2-an385-serial.conf"]
 
 # Issue 2084 -- CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM must move the tier stack pool
-# (`nros_tier_stacks`) as well as the task stacks. The image spawns one level
+# (`nros_sched_task_stacks`) as well as the task stacks. The image spawns one level
 # on the pool (that is what keeps the pool in the link) on an mps2_an385 whose
 # devicetree gains a "DTCM" region from the fixture's app.overlay. A LINK
 # witness: `tests/zephyr_link_layout.rs` reads the ELF and requires both stack
@@ -5735,10 +5735,10 @@ platform = "zephyr-cortex-m"
 lang = "c"
 rmw = "zenoh"
 builder = "west"
-dir = "packages/testing/nros-tests/bins/tier-stacks-dtcm-zephyr-mps2"
+dir = "packages/testing/nros-tests/bins/sched-task-stacks-dtcm-zephyr-mps2"
 board = "mps2/an385"
-west_role = "tier-stacks-dtcm"
-west_build_name = "build-cortex-m-c-tier-stacks-dtcm-zenoh"
+west_role = "sched-task-stacks-dtcm"
+west_build_name = "build-cortex-m-c-sched-task-stacks-dtcm-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10700"
 conf_files = ["prj.conf"]
 
@@ -5945,10 +5945,10 @@ skip_probe = true
 
 # phase-276 W2 / issue #128 half 2 — the RT-TIERS Rust workspace Entry: the
 # tiers-on-embedded coverage cell. system.toml declares two [tasks.*] with
-# [tasks.*.zephyr] priorities, so the macro emits ZephyrBoard::run_tiers —
+# [tasks.*.zephyr] priorities, so the macro emits ZephyrBoard::run_sched_tasks —
 # one k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10
 # ms) + telem (100 ms) publish /ctrl + /telem. Distinct zenohd port (7491).
-# Consumed by tests/realtime_tiers_e2e.rs (zephyr_rust cell).
+# Consumed by tests/realtime_sched_tasks_e2e.rs (zephyr_rust cell).
 #
 # phase-470 W5.b2 (issue 1288) — MIGRATED, and this is the row that needed the
 # board-crate features DERIVED: its hand-written entry was the tree's only one
@@ -5985,12 +5985,12 @@ skip_probe = true
 # projection (pool [5, 14]). On a default-band image the two agree, so a
 # regression back to the projection would pass there. On this one the
 # projection puts the tiers at 5 / 6, inside the transport, and the Zephyr boot
-# report (`nros_zephyr_report_tier_vs_transport`) fires — measured, with the
+# report (`nros_zephyr_report_sched_task_vs_transport`) fires — measured, with the
 # macro reverted. Consumed by `sched_dims_applied_e2e`
-# (`SchedDim::DerivedTierBelowTransport`), which asserts the report is SILENT
+# (`SchedDim::DerivedSchedTaskBelowTransport`), which asserts the report is SILENT
 # and that the built `.config` really carries the lowered band.
 #
-# 7491 is `port_of(ZephyrNativeSim, Rust, RealtimeTiers)`, shared with the row
+# 7491 is `port_of(ZephyrNativeSim, Rust, RealtimeSchedTasks)`, shared with the row
 # above for the reason the SMP row shares 7591 with the C one.
 [[workspace_fixture]]
 id = "workspace-zephyr-rs-realtime-derived"
@@ -6012,14 +6012,14 @@ skip_probe = true
 # examples/workspaces/realtime-cpp; its application is GENERATED since
 # phase-470 W5.b3, issue 1288, and carries `PANIC platform` from the image):
 # the FIRST full west
-# link + runtime proof of the W3a ZephyrBoard::run_tiers seam. The C++
+# link + runtime proof of the W3a ZephyrBoard::run_sched_tasks seam. The C++
 # sibling of the rust realtime entry above; demo_bringup/system.toml
 # declares two [tasks.*] with [tasks.*.zephyr] priorities, so the C++
-# codegen emits a plain int main(void) calling ZephyrBoard::run_tiers
-# (nros_board_zephyr_run_tiers) — one k_thread per tier over ONE shared
+# codegen emits a plain int main(void) calling ZephyrBoard::run_sched_tasks
+# (nros_board_zephyr_run_sched_tasks) — one k_thread per tier over ONE shared
 # session (RFC-0015 Model 1); ctrl (10 ms, high) publishes /ctrl, telem (100
 # ms, low) publishes /telem. CONFIG_NROS_CPP_API (prj.conf) compiles the W3a
-# seam. Distinct zenohd port (7691). Consumed by tests/realtime_tiers_e2e.rs
+# seam. Distinct zenohd port (7691). Consumed by tests/realtime_sched_tasks_e2e.rs
 # (zephyr_cpp cell).
 [[workspace_fixture]]
 id = "workspace-zephyr-cpp-realtime"
@@ -6045,7 +6045,7 @@ west_zenoh_locator = "tcp/127.0.0.1:7691"
 skip_probe = true
 
 # issue 1575 — the DERIVED-tier C++ Zephyr image
-# (examples/workspaces/derived-tiers-cpp/src/zephyr_entry): four components,
+# (examples/workspaces/derived-sched-tasks-cpp/src/zephyr_entry): four components,
 # no authored `[tasks.*]`, a contract; `codegen entry` derives one tier per
 # node from it. It is the image issue 1551 ran the platform heap dry on, and
 # until this row no lane booted it, so that regression could come back unseen.
@@ -6054,24 +6054,24 @@ skip_probe = true
 # The model is a `nros configure` artifact: `just zephyr build-fixtures` syncs this
 # workspace in its workspace-entry prep, and an unsynced configure now REFUSES
 # (issue 1575) instead of deriving zero tiers and booting single-executor.
-# Consumed by `tests/realtime_tiers_e2e.rs` (zephyr/cpp-derived), which asserts
+# Consumed by `tests/realtime_sched_tasks_e2e.rs` (zephyr/cpp-derived), which asserts
 # all four nodes tick on the console under a router.
 #
-# 7691 is `port_of(ZephyrNativeSim, Cpp, RealtimeTiers)`, shared with the
+# 7691 is `port_of(ZephyrNativeSim, Cpp, RealtimeSchedTasks)`, shared with the
 # authored row above for the reason the SMP row shares 7591 with the C one:
 # one cell, two images, run one after the other.
 [[workspace_fixture]]
-id = "workspace-zephyr-cpp-derived-tiers"
+id = "workspace-zephyr-cpp-derived-sched-tasks"
 platform = "zephyr"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/workspaces/derived-tiers-cpp"
+dir = "examples/workspaces/derived-sched-tasks-cpp"
 bringup = "src/demo_bringup"
 image = "zephyr"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
-west_build_name = "build-ws-cpp-derived-tiers-entry-zenoh"
-west_id = "zephyr/native_sim/native/64/workspace-derived-tiers-entry-cpp"
+west_build_name = "build-ws-cpp-derived-sched-tasks-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-derived-sched-tasks-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7691"
 skip_probe = true
 
@@ -6079,7 +6079,7 @@ skip_probe = true
 # three components at 50, 20 and 5 Hz, no authored tiers, so the derivation
 # gives three preemption levels and the runner spawns one worker per level
 # over the core's scheduler. The two less urgent callbacks run 15 and 60 ms
-# with `k_busy_wait`. Consumed by `tests/realtime_tiers_e2e.rs`
+# with `k_busy_wait`. Consumed by `tests/realtime_sched_tasks_e2e.rs`
 # (zephyr/cpp-levels), which reads the preemption ORDER off the console (a
 # more urgent level's marker inside a less urgent callback's begin/end pair,
 # never the reverse) and checks each spawned level's stack is the derived one.
@@ -6129,15 +6129,15 @@ skip_probe = true
 # phase-281 W3c — the RT-TIERS C workspace Entry (`[image.zephyr]` of
 # examples/workspaces/realtime-c's demo_bringup; its application is GENERATED
 # since phase-477 W1, issue 1288): the FIRST full west
-# link + runtime proof of the W3a ZephyrBoard::run_tiers seam for a C node
+# link + runtime proof of the W3a ZephyrBoard::run_sched_tasks seam for a C node
 # (the C sibling of the wscpprt cpp realtime entry above; closes the
 # c×zephyr cell). demo_bringup/system.toml declares two [tasks.*] with
 # [tasks.*.zephyr] priorities, so the C codegen emits a plain int main(void)
-# calling ZephyrBoard::run_tiers (nros_board_zephyr_run_tiers) — one
+# calling ZephyrBoard::run_sched_tasks (nros_board_zephyr_run_sched_tasks) — one
 # k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10 ms,
 # high) publishes /ctrl, telem (100 ms, low) publishes /telem.
 # CONFIG_NROS_C_API (prj.conf) compiles the W3a seam. Distinct zenohd port
-# (7591). Consumed by tests/realtime_tiers_e2e.rs (zephyr_c cell).
+# (7591). Consumed by tests/realtime_sched_tasks_e2e.rs (zephyr_c cell).
 [[workspace_fixture]]
 id = "workspace-zephyr-c-realtime"
 platform = "zephyr"
@@ -6188,7 +6188,7 @@ image = "zephyr_smp"
 board = "qemu_cortex_a53/qemu_cortex_a53/smp"
 west_build_name = "build-ws-c-realtime-entry-smp"
 west_id = "zephyr/qemu_cortex_a53/smp/workspace-realtime-entry-c"
-# 7591 is `port_of(ZephyrNativeSim, C, RealtimeTiers)` — the SAME number the
+# 7591 is `port_of(ZephyrNativeSim, C, RealtimeSchedTasks)` — the SAME number the
 # native_sim C row bakes, deliberately: the harness computes the router port
 # from the cell's (platform, lang, workload) and starts one router per cell, so
 # the value must be the allocator's, not a free-hand pick. 10.0.2.2 is the

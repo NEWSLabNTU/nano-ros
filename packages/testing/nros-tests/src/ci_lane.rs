@@ -500,7 +500,7 @@ fn config_platform_pairs(c: &Cell) -> Vec<Req> {
 }
 
 /// phase-466 W5 — every realtime-tiers cell is its OWN requirement in the
-/// nightly cover. Phase-330 handed over "a verdict from `realtime_tiers_e2e` on
+/// nightly cover. Phase-330 handed over "a verdict from `realtime_sched_tasks_e2e` on
 /// every RTOS cell", which is a promise per CELL, and a pairwise cover makes no
 /// promise about any one cell: it picked `zephyr,cpp,xrce` and
 /// `freertos,cpp,cyclonedds` for the Zephyr and FreeRTOS C++ pairs, so the four
@@ -509,8 +509,8 @@ fn config_platform_pairs(c: &Cell) -> Vec<Req> {
 /// (read off nightlies 40833557587 and 41018247377). Keyed on the consumer, not
 /// the workload, so the FVP cell — its own lane, phase-477 — stays out.
 fn realtime_cell_reqs(c: &Cell) -> Vec<Req> {
-    if crate::matrix::consumer_of(c) == Some(crate::matrix::Consumer::RealtimeTiers) {
-        vec![format!("3|RealtimeTiers={c:?}")]
+    if crate::matrix::consumer_of(c) == Some(crate::matrix::Consumer::RealtimeSchedTasks) {
+        vec![format!("3|RealtimeSchedTasks={c:?}")]
     } else {
         Vec::new()
     }
@@ -1095,11 +1095,11 @@ _tier-build:
     /// whatever else the greedy cover picks. Negative control: without
     /// `realtime_cell_reqs` the Zephyr and FreeRTOS C++ cells are missing.
     #[test]
-    fn the_nightly_selects_every_realtime_tiers_cell() {
+    fn the_nightly_selects_every_realtime_sched_tasks_cell() {
         let chosen = cells(CiLane::Tier2Nightly);
         let missing: Vec<String> = all_runtime_cells()
             .filter(|c| {
-                crate::matrix::consumer_of(c) == Some(crate::matrix::Consumer::RealtimeTiers)
+                crate::matrix::consumer_of(c) == Some(crate::matrix::Consumer::RealtimeSchedTasks)
             })
             .filter(|c| !chosen.iter().any(|k| std::ptr::eq(*k, *c)))
             .map(|c| format!("{c:?}"))
@@ -1366,7 +1366,7 @@ _tier-build:
         }
 
         // The unit-test exemption. Without it the lane drops host-only tests
-        // whose names merely mention a platform — `board::tier::tests::
+        // whose names merely mention a platform — `board::sched_task::tests::
         // threadx_inverts_scale`, `qemu::tests::test_parse_results`, and
         // `zephyr::tests::content_aware_staleness_ignores_mtime_only_bumps`, a
         // phase-318 test. Those need no fixture and no toolchain, so excluding

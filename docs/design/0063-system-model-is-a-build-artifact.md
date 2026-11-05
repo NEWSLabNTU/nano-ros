@@ -138,7 +138,7 @@ read the marker.
   `nros_orchestration_ir` schema or beside it.
   *Answered (phase-330 W1):* in `system.toml`'s `[tasks.<name>.<rtos>]`
   tables, the `nros_orchestration_ir` schema. The resolver already parsed them
-  into rlm's `TierPlatformSpec`, so the gap was nano-ros's narrower mirror and
+  into rlm's `SchedTaskPlatformSpec`, so the gap was nano-ros's narrower mirror and
   needed no fork change.
 - **Build location.** `build/<pkg>/system_model.yaml` mirrors colcon most
   closely; the alternative is a single workspace-level `build/nros/`.

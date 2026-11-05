@@ -9,7 +9,7 @@ publish = false
 # Host-only crate. A hosted Unix target lives under `std`, so no
 # `no_std` attribute and no per-target gating on `target_os` — the
 # whole point of this crate is to be the family driver for hosted
-# Unix targets. Its REACH is `linux`, not `posix`: `apply_tier_affinity`
+# Unix targets. Its REACH is `linux`, not `posix`: `apply_sched_task_affinity`
 # calls `sched_setaffinity` with `cpu_set_t` / `CPU_SET`, which libc does
 # not define for apple, so this crate does not build on macOS.
 
@@ -46,7 +46,7 @@ nros-platform = { version = "0.6.0", path = "../../platform/nros-platform", defa
 # issue 0710 — the platform-ABI log sink moved to `nros_platform_cffi::log`, so
 # the boot funnel that installs it names the crate that owns the ABI. The
 # umbrella above already PULLS this crate (see the note); naming it directly is
-# what lets this board's `run`/`run_tiers` call `log::init_default()`.
+# what lets this board's `run`/`run_sched_tasks` call `log::init_default()`.
 nros-platform-cffi = { version = "0.6.0", path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 # Phase 212.N.7 step-3.5 — Executor + ExecutorComponentRuntime so
 # `BoardEntry::run` installs a live component runtime sink on the

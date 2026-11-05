@@ -81,7 +81,7 @@ pub enum ModeError {
     /// phase-462 W4c -- the mode's derived schedule has a different set of
     /// tiers from the base's. Tier threads are created once at boot, so a
     /// mode may change a tier's deadline but not which tiers exist.
-    TierSetChanged {
+    SchedTaskSetChanged {
         mode: String,
         added: Vec<String>,
         removed: Vec<String>,
@@ -144,7 +144,7 @@ impl fmt::Display for ModeError {
                 removed.join(", ")
             ),
             ModeError::Rows { mode, reason } => write!(f, "mode `{mode}`: {reason}"),
-            ModeError::TierSetChanged {
+            ModeError::SchedTaskSetChanged {
                 mode,
                 added,
                 removed,
@@ -500,15 +500,15 @@ pub fn render_mode_tables_rs(
 /// latency does not move. So a model whose placement is authored derives
 /// nothing here, and its modes bake no deadline rows.
 #[must_use]
-pub fn derived_tier_deadlines(
+pub fn derived_sched_task_deadlines(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
-) -> BTreeMap<String, TierTiming> {
+) -> BTreeMap<String, SchedTaskTiming> {
     if !crate::derive::placement_is_unauthored(model, target_rtos, callback_groups) {
         return BTreeMap::new();
     }
-    crate::derive::derive_tiers_from_contracts(model, target_rtos, callback_groups)
+    crate::derive::derive_sched_tasks_from_contracts(model, target_rtos, callback_groups)
         .tiers
         .into_iter()
         .map(|(name, def)| {
@@ -523,7 +523,7 @@ pub fn derived_tier_deadlines(
             let priority = spec.map(|p| p.priority);
             (
                 name,
-                TierTiming {
+                SchedTaskTiming {
                     deadline_us: def.deadline_us.unwrap_or(0),
                     period_us: def.period_us.unwrap_or(0),
                     budget_us: def.budget_us.unwrap_or(0),
@@ -536,7 +536,7 @@ pub fn derived_tier_deadlines(
 
 /// phase-462 W4c -- one derived tier's timing, as a mode compares it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TierTiming {
+pub struct SchedTaskTiming {
     /// µs; 0 = none.
     pub deadline_us: u64,
     /// µs; 0 = none.
@@ -550,7 +550,7 @@ pub struct TierTiming {
 /// phase-462 W4c -- each mode's derived tier deadlines, and the tiers whose
 /// deadline differs in ANY mode.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ModeTierDeadlines {
+pub struct ModeSchedTaskDeadlines {
     /// The tiers a mode moves, in name order. A mode table carries one row per
     /// tier here, the base included, so switching back restores the base.
     pub tiers: Vec<String>,
@@ -573,28 +573,28 @@ pub struct ModeTierDeadlines {
 ///
 /// # Errors
 ///
-/// [`ModeError::TierSetChanged`] for the first mode that adds or removes a
+/// [`ModeError::SchedTaskSetChanged`] for the first mode that adds or removes a
 /// derived tier; any [`apply_mode`] refusal.
-pub fn mode_tier_deadlines(
+pub fn mode_sched_task_deadlines(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
-) -> Result<ModeTierDeadlines, ModeError> {
+) -> Result<ModeSchedTaskDeadlines, ModeError> {
     let names = mode_names(model);
-    let base = derived_tier_deadlines(model, target_rtos, callback_groups);
+    let base = derived_sched_task_deadlines(model, target_rtos, callback_groups);
     if names.is_empty() || base.is_empty() {
-        return Ok(ModeTierDeadlines::default());
+        return Ok(ModeSchedTaskDeadlines::default());
     }
     let mut per_mode = Vec::with_capacity(names.len());
     let mut not_lowered = Vec::new();
     for m in &names {
         let v = apply_mode(model, m)?;
-        let t = derived_tier_deadlines(&v.model, target_rtos, callback_groups);
+        let t = derived_sched_task_deadlines(&v.model, target_rtos, callback_groups);
         let bk: Vec<String> = base.keys().cloned().collect();
         let vk: Vec<String> = t.keys().cloned().collect();
         if bk != vk {
             let (added, removed) = diff(&bk, &vk);
-            return Err(ModeError::TierSetChanged {
+            return Err(ModeError::SchedTaskSetChanged {
                 mode: m.clone(),
                 added,
                 removed,
@@ -641,12 +641,12 @@ pub fn mode_tier_deadlines(
         })
         .map(|(name, _)| name.clone())
         .collect();
-    let row = |t: &BTreeMap<String, TierTiming>| -> Vec<u64> {
+    let row = |t: &BTreeMap<String, SchedTaskTiming>| -> Vec<u64> {
         tiers.iter().map(|n| t[n].deadline_us).collect()
     };
     let mut deadlines = vec![row(&base)];
     deadlines.extend(per_mode.iter().map(row));
-    Ok(ModeTierDeadlines {
+    Ok(ModeSchedTaskDeadlines {
         tiers,
         deadlines,
         not_lowered,
@@ -737,12 +737,12 @@ pub fn mode_switch_rows(model: &SystemModel) -> Vec<(u32, String)> {
         .collect()
 }
 
-/// phase-462 W4c -- [`ModeTierDeadlines`] as one executor's deadline rows:
+/// phase-462 W4c -- [`ModeSchedTaskDeadlines`] as one executor's deadline rows:
 /// `sc_of(tier)` names the context a tier runs under on this executor, or
 /// `None` when the tier is not this executor's (its rows are skipped).
 #[must_use]
 pub fn deadline_rows(
-    d: &ModeTierDeadlines,
+    d: &ModeSchedTaskDeadlines,
     sc_of: impl Fn(&str) -> Option<u8>,
 ) -> Vec<Vec<(u8, u32)>> {
     let mine: Vec<(usize, u8)> = d
@@ -869,7 +869,7 @@ contracts:
     /// deadline, and only that tier carries rows -- the base's value first,
     /// so switching back restores it.
     #[test]
-    fn a_mode_moves_the_derived_deadline_of_the_tier_it_tightens() {
+    fn a_mode_moves_the_derived_deadline_of_the_sched_task_it_tightens() {
         let m = tiered(
             &format!(
                 "    tight:\n      overrides:\n{}",
@@ -877,7 +877,7 @@ contracts:
             ),
             "",
         );
-        let d = mode_tier_deadlines(&m, "posix", &groups()).expect("lowers");
+        let d = mode_sched_task_deadlines(&m, "posix", &groups()).expect("lowers");
         assert_eq!(d.tiers, ["derived-control_node"]);
         assert_eq!(d.deadlines, [vec![5_000], vec![2_000]]);
     }
@@ -888,8 +888,8 @@ contracts:
     fn no_mode_or_no_moved_deadline_means_no_rows() {
         let none = tiered("    {}", "");
         assert_eq!(
-            mode_tier_deadlines(&none, "posix", &groups()).unwrap(),
-            ModeTierDeadlines::default()
+            mode_sched_task_deadlines(&none, "posix", &groups()).unwrap(),
+            ModeSchedTaskDeadlines::default()
         );
         let rate_only = tiered(
             &format!(
@@ -904,7 +904,7 @@ contracts:
             ),
             "",
         );
-        let d = mode_tier_deadlines(&rate_only, "posix", &groups()).unwrap();
+        let d = mode_sched_task_deadlines(&rate_only, "posix", &groups()).unwrap();
         assert!(d.tiers.is_empty(), "{d:?}");
     }
 
@@ -928,7 +928,7 @@ contracts:
         ] {
             assert!(text.contains(want), "missing `{want}` in:\n{text}");
         }
-        let d = ModeTierDeadlines {
+        let d = ModeSchedTaskDeadlines {
             tiers: vec!["a".into(), "b".into()],
             deadlines: vec![vec![1, 2], vec![3, 4]],
             not_lowered: Vec::new(),

@@ -25,7 +25,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 ```
 
 (Fixture lane: `just linux build-workspace-fixtures`; e2e
-`realtime_tiers_cpp_e2e` asserts the ~10× cadence ratio.)
+`realtime_sched_tasks_cpp_e2e` asserts the ~10× cadence ratio.)
 
 ## Expected output
 

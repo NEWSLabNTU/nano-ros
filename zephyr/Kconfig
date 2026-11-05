@@ -488,7 +488,7 @@ config NROS_ZEPHYR_STACKS_IN_DTCM
       tasks) in the SoC's data tightly-coupled memory instead of SRAM, using
       the linker region the devicetree's `zephyr,memory-region = "DTCM"`
       generates. The tier/level stacks follow by default through
-      NROS_ZEPHYR_TIER_STACKS_IN_DTCM.
+      NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM.
 
       Off by default because a DTCM is a property of the part, not of Zephyr:
       a SoC without one, or one whose DTCM another component already claims,
@@ -509,15 +509,24 @@ config NROS_ZEPHYR_STACKS_IN_DTCM
       Cortex-M7 the TCMs hang off the CPU's private bus and typically are not.
 
 config NROS_ZEPHYR_TIER_STACKS_IN_DTCM
-    bool "Place nano-ros tier (level) stacks in DTCM"
+    bool "DEPRECATED: renamed NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM"
     default NROS_ZEPHYR_STACKS_IN_DTCM
     help
+      Deprecated (phase 536): the old name of
+      NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM, kept for one release. Its value
+      is the new symbol's default, and the configure warns when a .conf file
+      sets it. State NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM instead.
+
+config NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
+    bool "Place nano-ros sched task (level) stacks in DTCM"
+    default NROS_ZEPHYR_TIER_STACKS_IN_DTCM
+    help
       Put the tier/level thread stacks in DTCM, beside the task stacks: the
-      shim's pool (`nros_tier_stacks`, NROS_ZEPHYR_MAX_TIERS slots of
-      NROS_ZEPHYR_TIER_STACK_SIZE, used by a level whose entry declares no
+      shim's pool (`nros_sched_task_stacks`, NROS_ZEPHYR_MAX_SCHED_TASKS slots of
+      NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, used by a level whose entry declares no
       stack, as every Rust `nros::main!` derived level does) and a generated
       C/C++ entry's per-level `K_THREAD_STACK_DEFINE` statics
-      (<rclc/detail/tier_task_memory_zephyr.h>).
+      (<rclc/detail/sched_task_memory_zephyr.h>).
 
       Defaults to NROS_ZEPHYR_STACKS_IN_DTCM, so "stacks in DTCM" means all of
       nano-ros's stacks (issue 2084: with only the task stacks moved, the
@@ -526,7 +535,7 @@ config NROS_ZEPHYR_TIER_STACKS_IN_DTCM
       keep level stacks in SRAM when DTCM is already claimed (a trace buffer,
       relocated .bss) and the level slots would not fit there.
 
-      A Rust entry's own `TierTaskMemory` statics (a level that declares
+      A Rust entry's own `SchedTaskMemory` statics (a level that declares
       `stack_bytes` on the Rust road) are not placed by this knob; they stay
       in the default section.
 
@@ -555,21 +564,32 @@ config NROS_ZEPHYR_TASK_SLOTS
       NROS_ZENOH_TX_BATCH is on, and the Zephyr road compiles zenoh-pico with
       one session (`ZPICO_MAX_SESSIONS` 1). So 2 with batching and 1 without.
       Tier tasks do not count: they have their own pool
-      (NROS_ZEPHYR_MAX_TIERS). What does count and is not derived: one slot
+      (NROS_ZEPHYR_MAX_SCHED_TASKS). What does count and is not derived: one slot
       per `Executor::open_threaded` the application calls. State the knob to
       cover those. Other backends keep 4: no measurement says what they
       spawn through this pool.
 
 config NROS_ZEPHYR_MAX_TIERS
-    int "nano-ros Zephyr RT-tier thread slots"
+    int "DEPRECATED: renamed NROS_ZEPHYR_MAX_SCHED_TASKS (0 = unset)"
+    default 0
+    range 0 64
+    help
+      Deprecated (phase 536): the old name of NROS_ZEPHYR_MAX_SCHED_TASKS,
+      kept for one release. A non-zero value is the new symbol's default,
+      and the configure warns when a .conf file sets it. State
+      NROS_ZEPHYR_MAX_SCHED_TASKS instead.
+
+config NROS_ZEPHYR_MAX_SCHED_TASKS
+    int "nano-ros Zephyr sched task thread slots"
+    default NROS_ZEPHYR_MAX_TIERS if NROS_ZEPHYR_MAX_TIERS != 0
     default 4
     range 1 64
     help
-      NROS_ZEPHYR_MAX_TIERS in zephyr/nros_platform_zephyr_shims.c — how many
-      `[tasks.*]` threads `nros_zephyr_tier_task_create` can spawn from its
+      NROS_ZEPHYR_MAX_SCHED_TASKS in zephyr/nros_platform_zephyr_shims.c — how many
+      `[tasks.*]` threads `nros_zephyr_sched_task_create` can spawn from its
       static pool. A tier past the pool fails to spawn and the image logs
-      "pool exhausted? CONFIG_NROS_ZEPHYR_MAX_TIERS". Total cost is
-      NROS_ZEPHYR_MAX_TIERS x NROS_ZEPHYR_TIER_STACK_SIZE, paid only by an
+      "pool exhausted? CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS". Total cost is
+      NROS_ZEPHYR_MAX_SCHED_TASKS x NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, paid only by an
       image that declares a tier: --gc-sections drops the pool from every
       tierless image (issue 1131 measured 87 of 91 images carrying none).
 
@@ -579,7 +599,18 @@ config NROS_ZEPHYR_MAX_TIERS
       (phase-412).
 
 config NROS_ZEPHYR_TIER_STACK_SIZE
+    int "DEPRECATED: renamed NROS_ZEPHYR_SCHED_TASK_STACK_SIZE (0 = unset)"
+    default 0
+    range 0 16777216
+    help
+      Deprecated (phase 536): the old name of
+      NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, kept for one release. A non-zero
+      value is the new symbol's default, and the configure warns when a
+      .conf file sets it. State NROS_ZEPHYR_SCHED_TASK_STACK_SIZE instead.
+
+config NROS_ZEPHYR_SCHED_TASK_STACK_SIZE
     int "nano-ros Zephyr level thread stack size when no member states one (bytes)"
+    default NROS_ZEPHYR_TIER_STACK_SIZE if NROS_ZEPHYR_TIER_STACK_SIZE != 0
     default 16384
     range 512 16777216
     help
@@ -591,7 +622,7 @@ config NROS_ZEPHYR_TIER_STACK_SIZE
       the per-callback default, which is this value minus the worker frame,
       so an image whose members state nothing keeps exactly this stack per
       level. The entry declares each stack as a static
-      (tier_task_memory_zephyr.h); the shim's fixed pool slots of this size
+      (sched_task_memory_zephyr.h); the shim's fixed pool slots of this size
       serve only an entry generated before issue 1232.
 
 config NROS_ZEPHYR_LEVEL_WORKER_FRAME
@@ -622,7 +653,7 @@ config NROS_ZEPHYR_LEVEL_WORKER_FRAME
       (issue 2065, mps2/an385 under QEMU, setup peak 50,968 B debug,
       47,456 B release; steady 5,952 B / 5,816 B).
 
-      It must stay below NROS_ZEPHYR_TIER_STACK_SIZE, whose difference
+      It must stay below NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, whose difference
       with it is the per-callback default.
 
 config NROS_EXECUTOR_MAX_LEVELS
@@ -1524,7 +1555,7 @@ config NROS_EXECUTOR_MAX_SC
       issue 1198 -- `-1` DERIVES this from the image's entity inventory:
       slot 0 is the reserved default Fifo context (create_sched_context
       searches 1..MAX_SC), plus one per scheduling context the schedule can
-      create. The Rust runtime creates NONE -- apply_tier_sched_policy ends
+      create. The Rust runtime creates NONE -- apply_sched_task_sched_policy ends
       in set_default_sched_context, which mutates slot 0 -- while the C/C++
       entry pack creates one per tier. A stated number wins, in both
       directions. The old default was 8 for every image whatever it

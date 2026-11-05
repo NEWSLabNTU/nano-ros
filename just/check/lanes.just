@@ -700,7 +700,7 @@ c: c-fmt
     ./tmp/context_less_subscription
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
-    # `run_tiers.c` call `extern`. Its weak default used to live in
+    # `run_sched_tasks.c` call `extern`. Its weak default used to live in
     # `<rclcpp/detail/main.hpp>`, so it reached an image only through the generated
     # `.cpp` entry: a pure C entry compiled and then failed at LINK. This is a
     # LINK probe because that is the only stage where the bug is visible —
@@ -3025,6 +3025,31 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/action_callback_tier.cpp
+    # phase 536 W2 (RFC-0052 "Names") -- a scheduling tier is a sched task.
+    # Both spellings build: the new one clean, the old one through the
+    # one-release aliases, each use warning with the new name. The grep pins
+    # the warnings, so an alias that stopped warning (or vanished) is red.
+    echo "  - sched task names + deprecated tier aliases, C and C++ (phase 536)"
+    cc -fsyntax-only -std=c11 -Wall -Werror -DNROS_NO_DEPRECATED_TIER_NAMES \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/sched_task_tier_aliases.c
+    _w="$(cc -fsyntax-only -std=c11 \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/sched_task_tier_aliases.c 2>&1)"
+    test "$(grep -c 'renamed nros_board_.*_run_sched_tasks' <<<"$_w")" -eq 6 \
+        || { printf '%s\n' "$_w" >&2; echo "ERROR: the C tier aliases do not warn once per call" >&2; exit 1; }
+    _w="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/sched_task_tier_aliases.cpp 2>&1)"
+    grep -q 'renamed run_sched_tasks' <<<"$_w" \
+        && grep -q 'renamed NativeSchedTaskSpec' <<<"$_w" \
+        || { printf '%s\n' "$_w" >&2; echo "ERROR: the C++ tier aliases do not warn" >&2; exit 1; }
     # phase-379 W5 — the QoS surface under its rclcpp names. The policy enums
     # are namespace-scope and public, the getters return them instead of `int`,
     # and the three time windows take/return `nros::Duration`. This TU asserts
@@ -4615,7 +4640,7 @@ staticlib-symbols:
 # Compile the TEST targets. Buildless gates never touch `#[cfg(test)]` code, and
 # neither does `check-workspace`'s clippy (no `--all-targets`), so a field added
 # to a shared struct can leave every test initializer broken while `check-fast`
-# stays green. That happened twice in one session — `TierRtosSpec` gained four
+# stays green. That happened twice in one session — `SchedTaskRtosSpec` gained four
 # fields (phase-330 W1.a) and `ComponentConfig` gained `class` (issue 0392 B) —
 # and both landed green with seven initializers unbuildable.
 #

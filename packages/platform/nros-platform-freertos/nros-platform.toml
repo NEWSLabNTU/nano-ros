@@ -50,7 +50,7 @@ required_env = [
 
 # RFC-0079 — the PORT's priority address plan.
 #
-# `tier_key` is the key a `[tasks.<name>.<key>]` pin is written under. FreeRTOS
+# `sched_task_key` is the key a `[tasks.<name>.<key>]` pin is written under. FreeRTOS
 # matched its platform name by coincidence; the loader's own comment says that
 # is not a thing to build on, so it is stated.
 #
@@ -70,7 +70,7 @@ required_env = [
 # split held. The plan lives with the rest of this platform's facts now, and
 # that script searches both roots.
 [priority_plan]
-tier_key = "freertos"
+sched_task_key = "freertos"
 direction = "bigger-is-urgent"
 range = [1, 7]
 reserved.transport = [4, 4]

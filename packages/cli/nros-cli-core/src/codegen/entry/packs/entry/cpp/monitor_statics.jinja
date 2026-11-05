@@ -124,7 +124,7 @@ static const ::nros_cpp_mode_age_row_t __nros_mode_ages_{{ mi }}[{{ md.ages | le
 {%- if m.base_deadlines %}
 /* phase-462 W4c -- the sched-context deadlines the modes move on this
  * executor: table 0 the base's, table k mode k's, each naming the same
- * contexts{% if m.deadline_sc_is_tier %} by tier index into __nros_sc_ids{% endif %}. */
+ * contexts{% if m.deadline_sc_is_sched_task %} by tier index into __nros_sc_ids{% endif %}. */
 static const ::nros_cpp_mode_deadline_t __nros_mode_deadlines_0[{{ m.base_deadlines | length }}] = {
 {%- for d in m.base_deadlines %}
     { {{ d.sc }}u, {{ d.deadline_us }}u },

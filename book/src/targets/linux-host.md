@@ -9,7 +9,7 @@ embedded targets.
 
 The host board is named `linux` (`[image.<id>] board = "linux"`) because
 that is all it supports: the platform layer (`nros-platform-posix`) is
-POSIX, but the host board crate's `apply_tier_affinity` calls
+POSIX, but the host board crate's `apply_sched_task_affinity` calls
 `sched_setaffinity` with `cpu_set_t`, which libc does not define for
 macOS, Windows or FreeBSD. **Only Linux is supported.** Neither `native` (every general-purpose host) nor
 `posix` (the platform) names a board: `board = "…"`, `nros setup`,

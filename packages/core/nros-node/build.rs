@@ -20,7 +20,7 @@ use sub_arena::{
 // `tests/arena_floor.rs` checks the rule this build runs.
 #[path = "build/arena_floor.rs"]
 mod arena_floor;
-use arena_floor::{ARENA_FLOOR, arena_for_demand, tier_arena};
+use arena_floor::{ARENA_FLOOR, arena_for_demand, sched_task_arena};
 
 // Issue 1982 -- extra sessions sized from the backends the image registers,
 // in its own file so `tests/extra_sessions.rs` checks the rule this build runs.
@@ -1215,10 +1215,10 @@ fn main() {
     // the tiers would otherwise derive: a stated `MAX_CBS` / `MAX_NODES` /
     // arena is the author's number for the image's one executor, and a tier
     // derived beside it would be smaller than what the author asked for.
-    let tier_sizings = tier_sizings(
+    let sched_task_sizings = sched_task_sizings(
         sizing.as_ref(),
         // Issue 1971 -- a tier's arena is its own model, unfloored.
-        &|counts, rows, topics| tier_arena(arena_required(counts, rows, Some(topics))),
+        &|counts, rows, topics| sched_task_arena(arena_required(counts, rows, Some(topics))),
         rx_buf_size,
         rx_recv_size,
         &[
@@ -1241,7 +1241,7 @@ fn main() {
             ("NROS_EXECUTOR_ARENA_SIZE", Some(derived_arena)),
         ],
     );
-    let tier_sizings_src = tier_sizings_literal(&tier_sizings);
+    let sched_task_sizings_src = sched_task_sizings_literal(&sched_task_sizings);
 
     let contents = format!(
         "/// Maximum number of executor callback slots \
@@ -1256,7 +1256,7 @@ fn main() {
          descriptor's `[[tier]]` rows. Empty when the image is not tiered, \
          or a tier did not compose, or a rung states an executor size: every \
          executor is then the image's, carved inline.\n\
-         pub const TIER_SIZINGS: &[TierSizing] = {tier_sizings_src};\n\
+         pub const SCHED_TASK_SIZINGS: &[SchedTaskSizing] = {sched_task_sizings_src};\n\
          \n\
          /// Contract-monitor RATE/LATENCY rows one executor can watch \
          (set via NROS_EXECUTOR_MAX_MONITORS, derived from the contract's \
@@ -2201,11 +2201,11 @@ fn declared_fact(key: &str) -> Option<String> {
 
 /// Issue 1970 -- the image's arena arithmetic, handed a tier's counts, its
 /// subscriptions' descriptor rows and their topics.
-type TierArena<'a> =
+type SchedTaskArena<'a> =
     dyn Fn([Option<usize>; 7], Option<&[SubEndpoint]>, &[String]) -> Option<usize> + 'a;
 
 /// Issue 1970 -- one tier's derived executor sizing, as `build.rs` states it.
-struct TierSizingRow {
+struct SchedTaskSizingRow {
     name: String,
     cbs: usize,
     arena: usize,
@@ -2224,13 +2224,13 @@ struct TierSizingRow {
 /// `arena` is the image's own arithmetic over the tier's counts and the rows of
 /// the subscriptions its members register (the caller's closure). It is the
 /// tier's model, unfloored: a tier's demand is derived (issue 1971).
-fn tier_sizings(
+fn sched_task_sizings(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
-    arena: &TierArena<'_>,
+    arena: &SchedTaskArena<'_>,
     rx_buf_size: usize,
     rx_recv_size: usize,
     derived: &[(&str, Option<usize>)],
-) -> Vec<TierSizingRow> {
+) -> Vec<SchedTaskSizingRow> {
     let Some(desc) = desc else {
         return Vec::new();
     };
@@ -2288,7 +2288,7 @@ fn tier_sizings(
             );
             return Vec::new();
         };
-        out.push(TierSizingRow {
+        out.push(SchedTaskSizingRow {
             name: t.name.clone(),
             cbs,
             arena,
@@ -2299,8 +2299,8 @@ fn tier_sizings(
     out
 }
 
-/// The Rust literal `TIER_SIZINGS` is written from.
-fn tier_sizings_literal(rows: &[TierSizingRow]) -> String {
+/// The Rust literal `SCHED_TASK_SIZINGS` is written from.
+fn sched_task_sizings_literal(rows: &[SchedTaskSizingRow]) -> String {
     if rows.is_empty() {
         return "&[]".to_string();
     }
@@ -2308,7 +2308,7 @@ fn tier_sizings_literal(rows: &[TierSizingRow]) -> String {
         .iter()
         .map(|r| {
             format!(
-                "TierSizing {{ name: {:?}, cbs: {}, arena: {}, nodes: {}, \
+                "SchedTaskSizing {{ name: {:?}, cbs: {}, arena: {}, nodes: {}, \
                  params: {:?} }}",
                 r.name, r.cbs, r.arena, r.nodes, r.params
             )

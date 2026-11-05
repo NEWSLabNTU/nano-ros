@@ -938,7 +938,7 @@ comment = '''
 // phase-511 B2 — that workspace entry, the two-tier realtime-cpp image,
 // answered by `fvp_runtime_ws`.
 '''
-at = ["Fvp", "Cpp", "Cyclonedds", "RealtimeTiers", "Workspace"]
+at = ["Fvp", "Cpp", "Cyclonedds", "RealtimeSchedTasks", "Workspace"]
 status = '''
 Gated("`just zephyr verify-fvp-runtime` — no CI runner provisions the FVP model \
                 (`nros setup --tool arm-fvp`, x86_64 Linux only)")'''
@@ -1308,85 +1308,85 @@ comment = '''
 
 // Realtime tiers + multihost.
 '''
-at = ["Linux", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["Linux", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["Linux", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["Linux", "C", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["Linux", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["Linux", "Cpp", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["ZephyrNativeSim", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["ZephyrNativeSim", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["ZephyrNativeSim", "C", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["ZephyrNativeSim", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["ZephyrNativeSim", "Cpp", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
 comment = '''
-// Corrected during the phase-295 W4 re-bake: the realtime_tiers_e2e
+// Corrected during the phase-295 W4 re-bake: the realtime_sched_tasks_e2e
 // consumer has ALWAYS run nuttx-arm {c,rust}, nuttx-riscv {rust,c} and
 // freertos c cells (fixtures.toml rows existed for each), but the seed
 // table only modeled the cpp rows — the (platform, lang) coverage gate
 // was satisfied by other workspace rows and masked the gap. Modeled so
 // the allocator derives every baked realtime port.
 '''
-at = ["NuttxArm", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["NuttxArm", "Cpp", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["NuttxArm", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["NuttxArm", "C", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["NuttxArm", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["NuttxArm", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["NuttxRiscv", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["NuttxRiscv", "Cpp", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["NuttxRiscv", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["NuttxRiscv", "C", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["NuttxRiscv", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["NuttxRiscv", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
 comment = '''
-// issue 0636 gap 2 — the Rust arm. `run_tiers_entry` was exported and
+// issue 0636 gap 2 — the Rust arm. `run_sched_tasks_entry` was exported and
 // reachable and called by nothing, so the boot-tier fix on this board was
 // reasoned onto Rust rather than measured. This cell measures it.
 '''
-at = ["FreertosMps2", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["FreertosMps2", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["FreertosMps2", "Cpp", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["FreertosMps2", "Cpp", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
-at = ["FreertosMps2", "C", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["FreertosMps2", "C", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]
 comment = '''
-// phase-297 W5 (RFC-0053) — ThreadX multi-tier run_tiers acceptance:
+// phase-297 W5 (RFC-0053) — ThreadX multi-tier run_sched_tasks acceptance:
 // hosted simulation (pthread-backed ThreadX, host binary + NSOS host
-// sockets), port 9091 = port_of(ThreadxLinux, Rust, RealtimeTiers).
+// sockets), port 9091 = port_of(ThreadxLinux, Rust, RealtimeSchedTasks).
 '''
-at = ["ThreadxLinux", "Rust", "Zenoh", "RealtimeTiers", "Workspace"]
+at = ["ThreadxLinux", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
 
 [[cell]]

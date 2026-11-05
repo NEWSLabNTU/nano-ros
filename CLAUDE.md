@@ -58,7 +58,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
   - **linux** — Linux specifically.
 
   Name a thing by what it actually supports. The host BOARD is **`linux`**:
-  `nros-board-linux::apply_tier_affinity` uses `cpu_set_t`/`sched_setaffinity`,
+  `nros-board-linux::apply_sched_task_affinity` uses `cpu_set_t`/`sched_setaffinity`,
   which fails on darwin, windows and freebsd (measured), so `native` and `posix`
   are refused as board/lane/scope words with a hint naming `linux` — no alias
   maps them (phase-500 W5). The PLATFORM stays **`posix`** (`nros-platform-posix`
@@ -956,7 +956,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   convenience constructor that `Box::leak`ed it — **invisible to `mem-report`, which
   reads symbols**. The Rust arm is a named `.bss` static now
   (`nros_node::executor::backing::EXECUTOR_BACKING`, RFC-0002 § 4.4b); a tiered boot's
-  SPAWNED tiers take slots of the entry's `.bss` `TierExecutorBacking` (issue 1571), so
+  SPAWNED tiers take slots of the entry's `.bss` `SchedTaskExecutorBacking` (issue 1571), so
   the heap arm survives only for an ad-hoc second `Executor::open` and an entry sized
   past the default.
   It is a MOVE, not a saving — the same bytes leave the allocator arena
@@ -998,7 +998,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   supplying normalised values, and nothing in the default path calls it. Do NOT "just
   lower the read task below the tiers": that is the config that starved the RX drain and
   froze `rt-eval`'s island 1–3 s on lwIP retransmission. Both orderings are legitimate;
-  choosing by accident is not. Boot prints `report_tiers_above_transport` when a tier meets
+  choosing by accident is not. Boot prints `report_sched_tasks_above_transport` when a tier meets
   the band floor (`min(read, poll)`; no lease task since zenoh-pico 1.10, RFC-0110 D2). Same defect phase-364 W5 fixed one layer down
   in the platform ABI.
 - **AUTHORED-vs-DERIVED precedence is per FACT, never per TABLE, and it has ONE
@@ -1014,7 +1014,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   (`DerivedSchedule::shadowed` → stderr + `nros-plan.json`); a tier with **no platform
   sub-table at all** is an ALLOCATION REQUEST (RFC-0079 — that is also how a
   `group_tasks` binding gets a name to reference without a new `[tasks.*]` key, which
-  rlm's `deny_unknown_fields` `TierDef` would refuse); sub-tables for OTHER boards and
+  rlm's `deny_unknown_fields` `SchedTaskDef` would refuse); sub-tables for OTHER boards and
   not this one stay a refusal; an unbound group gets `derived-<node>`. A named tier gets
   ONE priority (most urgent member) plus a `Degradation` when members disagree.
 - **Zephyr POSIX:** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (zenoh-pico needs ~8+; default 5 fails
@@ -1145,7 +1145,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   and 1033's C measurement does not carry to a C++ pool. A guard is only safe
   when it forecloses nothing: here the polling-only image already has
   `NROS_RMW_UORB_BUILD_PX4_GLUE=OFF`, which removes the pool rather than
-  emptying it. `NROS_ZEPHYR_MAX_TIERS` has NO such refusal from the language —
+  emptying it. `NROS_ZEPHYR_MAX_SCHED_TASKS` has NO such refusal from the language —
   GCC's zero-length-array extension compiles
   `K_THREAD_STACK_ARRAY_DEFINE(x, 0, N)` clean, size 0, no diagnostic — so only
   a guard stands between a `-D` and an image whose every tier spawn fails. Its

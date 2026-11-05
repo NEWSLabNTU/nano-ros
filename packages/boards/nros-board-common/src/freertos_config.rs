@@ -208,8 +208,8 @@ pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 /// 1197's whole subject). A TIERED boot opens one executor per tier, and
 /// `backing::take` is a latch — the second and later ones fell through to
 /// `Box::leak` out of this heap. **Neither in-tree tier road does any more**:
-/// the C/C++ runners take the entry's `__nros_tier_executor_storage` (issue
-/// 1568) and the Rust `run_tiers` the entry's `TierExecutorBacking` (issue
+/// the C/C++ runners take the entry's `__nros_sched_task_executor_storage` (issue
+/// 1568) and the Rust `run_sched_tasks` the entry's `SchedTaskExecutorBacking` (issue
 /// 1571), both `.bss`. What still reaches this term is an older C/C++ entry
 /// TU calling the `_ns` runner, an ad-hoc second `Executor::open`, and an
 /// entry sized past the reservation — so the term is kept, and the MEASUREMENT

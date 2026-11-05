@@ -33,10 +33,10 @@ use std::{
 
 use eyre::{Result, WrapErr, bail};
 use nros_orchestration_ir::{
-    CallbackGroupDecl, ResolvedTierTable, TierResolveError, resolve_tiers,
+    CallbackGroupDecl, ResolvedSchedTaskTable, SchedTaskResolveError, resolve_sched_tasks,
 };
 
-use crate::orchestration::cargo_metadata_schema::{NodeOverride, TierDef};
+use crate::orchestration::cargo_metadata_schema::{NodeOverride, SchedTaskDef};
 
 /// phase-494 — the ONE renderer for every `LoweredEntry` pack. `emit_c.rs`
 /// and `emit_cpp.rs` were the two per-language emitters it replaced.
@@ -100,13 +100,13 @@ pub struct Plan {
     /// `[safety]` (or `features=["safety"]`) enabled. (#118)
     pub safety: Option<bool>,
     /// Raw `[tasks.*]` for the W4 tier resolver. Empty ⇒ single-tier. (#119)
-    pub tiers: BTreeMap<String, TierDef>,
+    pub tiers: BTreeMap<String, SchedTaskDef>,
     /// Raw `[[node_overrides]]` for the W4 tier resolver. (#119)
     pub node_overrides: Vec<NodeOverride>,
     /// Phase 269 (W4) — resolved tier table (populated by [`resolve_plan_sched`]).
     /// `None` until the caller invokes the resolver. Emitters check this to gate
-    /// sched-context wiring: `None` or `is_single_tier()` → byte-identical output.
-    pub resolved_tiers: Option<ResolvedTierTable>,
+    /// sched-context wiring: `None` or `is_single_sched_task()` → byte-identical output.
+    pub resolved_sched_tasks: Option<ResolvedSchedTaskTable>,
     /// Issue 0794 — the image's RFC-0045 baked SESSION rung, folded from the
     /// model's per-node `execution.deploy` entries by [`baked_session`].
     /// `Default` (everything `None`) for a plan whose model declares none,
@@ -223,9 +223,9 @@ impl PlanNode {
 /// take, decided once.
 ///
 /// issue 1283 — the C and C++ packs each derived this, and differently. C
-/// asked `!tiers.is_empty()`, C++ asked `!is_single_tier()`; `resolve_tiers`
+/// asked `!tiers.is_empty()`, C++ asked `!is_single_sched_task()`; `resolve_sched_tasks`
 /// synthesises one `default` tier whenever a node declares callback groups
-/// without a `[tiers]` table, so for that plan C called `run_tiers` with one
+/// without a `[tiers]` table, so for that plan C called `run_sched_tasks` with one
 /// tier while C++ called `run_components`. And C had no [`Self::SchedContexts`]
 /// arm at all, so a group-split plan fell through to [`Self::Single`] and every
 /// group ran at the executor's default scheduling, with nothing reporting it.
@@ -236,38 +236,38 @@ pub enum ExecutorShape {
     /// `default` one.
     Single,
     /// One executor, with one sched context per tier bound by node name and by
-    /// callback group (RFC-0047). The multi-tier plans `run_tiers` cannot
+    /// callback group (RFC-0047). The multi-tier plans `run_sched_tasks` cannot
     /// express: a node whose groups span tiers (its per-tier setups construct
-    /// whole NODES), or a board with no `run_tiers`.
+    /// whole NODES), or a board with no `run_sched_tasks`.
     SchedContexts,
-    /// One executor per tier, through the board's `run_tiers`.
+    /// One executor per tier, through the board's `run_sched_tasks`.
     Tiers,
 }
 
 impl Plan {
     /// Whether the resolved table has real tiers, i.e. is anything but the
     /// single synthesised `default` tier (see [`ExecutorShape`], issue 1283).
-    pub fn is_multi_tier(&self) -> bool {
-        self.resolved_tiers
+    pub fn is_multi_sched_task(&self) -> bool {
+        self.resolved_sched_tasks
             .as_ref()
-            .is_some_and(|t| !t.is_single_tier())
+            .is_some_and(|t| !t.is_single_sched_task())
     }
 
     /// The executor branch every entry pack takes for this plan. The packs
     /// consume it; none re-derives it (issue 1283).
     ///
     /// A metadata probe is the one caller-side refinement, and it is C++-only:
-    /// a probe never takes `run_tiers` (see `lower::lower_image`), so it maps
+    /// a probe never takes `run_sched_tasks` (see `lower::lower_image`), so it maps
     /// [`ExecutorShape::Tiers`] to [`ExecutorShape::SchedContexts`].
     pub fn executor_shape(&self) -> ExecutorShape {
         let Some(tiers) = self
-            .resolved_tiers
+            .resolved_sched_tasks
             .as_ref()
-            .filter(|_| self.is_multi_tier())
+            .filter(|_| self.is_multi_sched_task())
         else {
             return ExecutorShape::Single;
         };
-        if tiers.has_group_split_node() || !board_has_run_tiers(&self.board) {
+        if tiers.has_group_split_node() || !board_has_run_sched_tasks(&self.board) {
             ExecutorShape::SchedContexts
         } else {
             ExecutorShape::Tiers
@@ -275,27 +275,27 @@ impl Plan {
     }
 }
 
-/// Whether the board family has a `run_tiers` runner. ThreadX does not, so a
+/// Whether the board family has a `run_sched_tasks` runner. ThreadX does not, so a
 /// tiered ThreadX plan takes the sched-context path in BOTH packs.
 ///
-/// Issue 1285: this reads the `run_tiers` half of
+/// Issue 1285: this reads the `run_sched_tasks` half of
 /// `BoardFamily::c_abi_runners`, the one record of which runners each family
 /// exports, and it names no board. Issue 1286 gave ThreadX a
-/// `run_components` and no `run_tiers`, and this stayed `false` for it
-/// without an edit. Both packs' `run_tiers` sit on those C-ABI symbols.
+/// `run_components` and no `run_sched_tasks`, and this stayed `false` for it
+/// without an edit. Both packs' `run_sched_tasks` sit on those C-ABI symbols.
 ///
 /// An unknown key answers `false` here rather than guessing a family. Every
 /// emitter refuses such a key, naming the known ones, before it renders
 /// anything, so this answer is never used.
-fn board_has_run_tiers(board: &str) -> bool {
+fn board_has_run_sched_tasks(board: &str) -> bool {
     nros_entry_lower::board_family(board)
         .ok()
         .and_then(nros_entry_lower::BoardFamily::c_abi_runners)
-        .is_some_and(|r| r.run_tiers.is_some())
+        .is_some_and(|r| r.run_sched_tasks.is_some())
 }
 
 // phase-494 W2 — the view structs that lived here (~~`ServicesView`~~,
-// ~~`DeclsView`~~, ~~`QosRowView`~~, ~~`TierView`~~, ~~`SchedView`~~, ~~`BootConfigView`~~) and
+// ~~`DeclsView`~~, ~~`QosRowView`~~, ~~`SchedTaskView`~~, ~~`SchedView`~~, ~~`BootConfigView`~~) and
 // their builders are `nros_entry_lower`'s `LoweredEntry` image types now, built
 // by `lower.rs`. They were the shared half of a projection each emitter also
 // made privately; the projection is one function, and the packs render its
@@ -437,7 +437,7 @@ fn non_qos_params(params: &[(String, String)]) -> Vec<(String, String)> {
 /// — the embedded image has no record.json), execution supplies tiers,
 /// group bindings, capability features, and per-node deploy facts.
 ///
-/// `board` picks the tier sub-table (`nros_entry_lower::tier_rtos_key_for`);
+/// `board` picks the tier sub-table (`nros_entry_lower::sched_task_rtos_key_for`);
 /// which nodes this image runs is PLACEMENT (phase-486 W3), never the board.
 pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan> {
     use crate::orchestration::model_ingest;
@@ -487,16 +487,16 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // name a family) and `nros build`'s Rust entry generation, where the key is
     // any Rust board — `esp32-c3-baremetal`, an out-of-tree board — and only
     // the node list is read. So an unknown key is NOT refused here; its tiers
-    // are resolved from their platform-neutral head (`TierDef::platform("")`
+    // are resolved from their platform-neutral head (`SchedTaskDef::platform("")`
     // selects no sub-table) rather than from `posix`'s, which the old substring
     // fallback silently picked. Every consumer that needs the family asks
     // `board_family`/`board_to_rtos` itself and refuses the key there.
     //
-    // The lenient rule is one function, `tier_rtos_key_for`, shared with the
+    // The lenient rule is one function, `sched_task_rtos_key_for`, shared with the
     // `nros::main!` proc-macro, which answers the same Rust keys (issue 1285
     // follow-up). It used to be spelled `unwrap_or("")` here and `"posix"`
     // there.
-    let target_rtos = nros_entry_lower::tier_rtos_key_for(&board);
+    let target_rtos = nros_entry_lower::sched_task_rtos_key_for(&board);
 
     // phase-486 W3 — PLACEMENT only, no board slice. A node absent from a
     // non-empty `execution.deploy` was placed on another machine (`[host.*]`
@@ -600,25 +600,25 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // question any more. A cmake image authors no `[tasks.*]` and states its
     // callback groups in the registration instead; the entry derives its own
     // rate-monotonic table from the model's contract layer in
-    // [`derive_entry_tiers`], which runs after [`metadata::enrich_plan`] has
+    // [`derive_entry_sched_tasks`], which runs after [`metadata::enrich_plan`] has
     // put those groups on the plan. It cannot run here: the groups are not on
     // the plan yet, and the SystemModel carries none.
-    let mut tiers: BTreeMap<String, TierDef> = model
+    let mut tiers: BTreeMap<String, SchedTaskDef> = model
         .execution
         .tasks
         .iter()
         .map(|(name, t)| {
             (
                 name.clone(),
-                crate::orchestration::model_ingest::tier_from_model(t, target_rtos),
+                crate::orchestration::model_ingest::sched_task_from_model(t, target_rtos),
             )
         })
         .collect();
     // phase-462 W2 -- the contract is the SOURCE of `deadline_policy`, and
     // this is where it becomes one. From here the word rides the ordinary
-    // tier road: `resolve_tiers` -> `ResolvedTier::deadline_policy` ->
-    // `lower_tiers`/`lower_sched` (`lower.rs`) -> the baked entry ->
-    // `SchedContext::from_tier_policy` -> `DeadlineAction`. Agreement with an
+    // tier road: `resolve_sched_tasks` -> `ResolvedSchedTask::deadline_policy` ->
+    // `lower_sched_tasks`/`lower_sched` (`lower.rs`) -> the baked entry ->
+    // `SchedContext::from_sched_task_policy` -> `DeadlineAction`. Agreement with an
     // authored string was already checked above, so an insert here either
     // supplies what the tier table omitted or restates what it agreed to.
     //
@@ -665,12 +665,12 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         safety,
         tiers,
         node_overrides: Vec::new(),
-        resolved_tiers: None,
+        resolved_sched_tasks: None,
         session: baked_session(&deploy_facts),
     })
 }
 
-/// Phase 269 (W4): the RTOS key [`resolve_tiers`] recognises, derived from a
+/// Phase 269 (W4): the RTOS key [`resolve_sched_tasks`] recognises, derived from a
 /// board deploy key. It is the key `rtos_spec` in `nros-orchestration-ir`
 /// reads (`"posix"`, `"freertos"`, …).
 ///
@@ -680,7 +680,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
 /// all silently got the POSIX tier sub-table. An unknown key is now an error
 /// naming the known ones.
 pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::UnknownBoard> {
-    nros_entry_lower::board_family(board).map(nros_entry_lower::BoardFamily::tier_rtos_key)
+    nros_entry_lower::board_family(board).map(nros_entry_lower::BoardFamily::sched_task_rtos_key)
 }
 
 /// phase-459 W2 (issue 1426) - THE ENTRY DERIVES ITS OWN SCHEDULE.
@@ -692,7 +692,7 @@ pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::Unkn
 /// bake, so it cannot read what the bake derived: it would be a file
 /// dependency between two generators, i.e. a second, ordered reading of one
 /// fact. The entry therefore runs the SAME
-/// [`nros_orchestration_ir::derive::derive_tiers_from_contracts`] over the
+/// [`nros_orchestration_ir::derive::derive_sched_tasks_from_contracts`] over the
 /// SAME model with the same target RTOS key, so `codegen entry --board zephyr`
 /// and `codegen-system --for-entry zephyr_entry` cannot disagree.
 ///
@@ -728,9 +728,9 @@ pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::Unkn
 /// re-read from `plan.launch_file` here instead: one extra parse of a file
 /// this bake has already validated, against two readers of one fact.
 /// issue 1426 — `callback_groups` is the map [`resolve_plan_sched`] built for
-/// the resolver, so this reads the SAME bindings `resolve_tiers` will: a group
+/// the resolver, so this reads the SAME bindings `resolve_sched_tasks` will: a group
 /// bound by `group_tasks` names its tier, and one that only the cmake keyword
-/// declares names [`DEFAULT_TIER`]. Building a private map here (which is what
+/// declares names [`DEFAULT_SCHED_TASK`]. Building a private map here (which is what
 /// this did) made every `group_tasks`-bound group look unbound to the
 /// derivation while the resolver saw the binding — two readings of one fact.
 ///
@@ -740,8 +740,8 @@ pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::Unkn
 /// group ids `group_tasks` names, in the resolver's own order. A group bound to
 /// a tier the model does not declare reaches the derivation as rule 4 (see
 /// `placement_is_unauthored`), exactly as it did when this map bound every
-/// such group to [`DEFAULT_TIER`].
-fn derive_entry_tiers(
+/// such group to [`DEFAULT_SCHED_TASK`].
+fn derive_entry_sched_tasks(
     plan: &mut Plan,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
@@ -777,13 +777,13 @@ fn derive_entry_tiers(
     // Issue 1508 - the image's own plan when the caller read its `.config`
     // (`codegen entry --dotconfig`), the tier key's projection otherwise.
     let derived = match priority_plan {
-        Some(pp) => nros_orchestration_ir::derive::derive_tiers_in_plan(
+        Some(pp) => nros_orchestration_ir::derive::derive_sched_tasks_in_plan(
             &model,
             target_rtos,
             callback_groups,
             pp,
         ),
-        None => nros_orchestration_ir::derive::derive_tiers_from_contracts(
+        None => nros_orchestration_ir::derive::derive_sched_tasks_from_contracts(
             &model,
             target_rtos,
             callback_groups,
@@ -816,8 +816,8 @@ fn derive_entry_tiers(
         );
     }
     let record = EntryDerivation {
-        derived_tiers: derived.tiers.keys().cloned().collect(),
-        allocated_tiers: derived.placements.keys().cloned().collect(),
+        derived_sched_tasks: derived.tiers.keys().cloned().collect(),
+        allocated_sched_tasks: derived.placements.keys().cloned().collect(),
         realized: derived.realized.clone(),
         above_transport: derived.above_transport.clone(),
         supervisor_priority: derived.supervisor_priority,
@@ -838,7 +838,7 @@ fn derive_entry_tiers(
             .collect(),
         // phase-462 W4c -- each mode's deadlines for the tiers derived above,
         // refused here when a mode would change which tiers exist.
-        mode_deadlines: nros_orchestration_ir::mode_variants::mode_tier_deadlines(
+        mode_deadlines: nros_orchestration_ir::mode_variants::mode_sched_task_deadlines(
             &model,
             target_rtos,
             callback_groups,
@@ -866,9 +866,9 @@ fn derive_entry_tiers(
 #[derive(Clone, Debug, Default)]
 pub struct EntryDerivation {
     /// `derived-<node>` tiers (rule 4).
-    pub derived_tiers: Vec<String>,
+    pub derived_sched_tasks: Vec<String>,
     /// Authored, unplaced tiers whose priority was allocated (rule 2).
-    pub allocated_tiers: Vec<String>,
+    pub allocated_sched_tasks: Vec<String>,
     /// Every ranked node as the realizer placed it.
     pub realized: Vec<nros_orchestration_ir::rtos_realizer::RealizedNode>,
     /// RFC-0079 section 6 - the nodes allocated above the transport band
@@ -883,7 +883,7 @@ pub struct EntryDerivation {
     pub shadowed: Vec<String>,
     /// phase-462 W4c -- each contract mode's deadline for the derived tiers a
     /// mode moves (empty without modes).
-    pub mode_deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines,
+    pub mode_deadlines: nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines,
     /// phase-509 P5 (RFC-0108 D4) -- the preemption levels the derivation
     /// banded, one plan per core (issue 0259), for the record's `levels`.
     pub levels: Vec<nros_orchestration_ir::levels::LevelPlan>,
@@ -910,7 +910,7 @@ impl EntryDerivation {
 }
 
 /// Phase 269 (W4) — resolve `[tasks.*]` + `[[node_overrides]]` + per-node
-/// `callback_groups` (from cmake metadata) into a [`ResolvedTierTable`] and
+/// `callback_groups` (from cmake metadata) into a [`ResolvedSchedTaskTable`] and
 /// stamp each [`PlanNode::sched_context`] with its 0-based tier index
 /// (highest-priority-first order from the resolver).
 ///
@@ -924,7 +924,7 @@ impl EntryDerivation {
 ///
 /// phase-459 W2 (issue 1426) - when the model authored NO tiers and the
 /// nodes DO carry groups, this is also where the entry derives its own
-/// schedule ([`derive_entry_tiers`]), so a cmake image runs `run_tiers` over
+/// schedule ([`derive_entry_sched_tasks`]), so a cmake image runs `run_sched_tasks` over
 /// the derived table instead of `run_components`.
 pub fn resolve_plan_sched(plan: &mut Plan, target_rtos: &str) -> Result<()> {
     resolve_plan_sched_in(plan, target_rtos, None)
@@ -961,18 +961,18 @@ pub fn resolve_plan_sched_recorded(
     // Per-node callback group declarations. Phase 273 (W2): when the node carries
     // `group_tasks` from system.toml [[component]], use those tiers directly instead
     // of defaulting to "default" (which required [[node_overrides]] to reassign).
-    // Fallback: group ID with DEFAULT_TIER (old path, [[node_overrides]] still work).
+    // Fallback: group ID with DEFAULT_SCHED_TASK (old path, [[node_overrides]] still work).
     // If callback_groups is empty but group_tiers is set, synthesize from group_tiers.
     //
     // issue 1426 — built BEFORE the derivation, and handed to it, so the
-    // derivation and `resolve_tiers` read one map. `groups_at_default_tier` is
+    // derivation and `resolve_sched_tasks` read one map. `groups_at_default_sched_task` is
     // the shared spelling of the unbound case.
     let mut callback_groups_map: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     for n in &plan.nodes {
         let node_name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
         let decls: Vec<CallbackGroupDecl> = if !n.callback_groups.is_empty() {
             // cmake-declared groups (via enrich_plan): look up tier from group_tiers.
-            nros_orchestration_ir::groups_at_default_tier(&n.callback_groups)
+            nros_orchestration_ir::groups_at_default_sched_task(&n.callback_groups)
                 .into_iter()
                 .map(|mut d| {
                     if let Some(tier) = n.group_tiers.get(&d.id) {
@@ -999,7 +999,7 @@ pub fn resolve_plan_sched_recorded(
         }
     }
 
-    let record = derive_entry_tiers(plan, target_rtos, &callback_groups_map, priority_plan)?;
+    let record = derive_entry_sched_tasks(plan, target_rtos, &callback_groups_map, priority_plan)?;
 
     // Component instance names from the launch (match [[node_overrides]].name).
     // AFTER the derivation, which takes `plan` mutably.
@@ -1009,36 +1009,36 @@ pub fn resolve_plan_sched_recorded(
         .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
         .collect();
 
-    let mut table = resolve_tiers(
+    let mut table = resolve_sched_tasks(
         &plan.tiers,
         &plan.node_overrides,
         &component_names,
         &callback_groups_map,
         target_rtos,
     )
-    .map_err(|e: TierResolveError| eyre::eyre!("tier resolution failed: {e}"))?;
+    .map_err(|e: SchedTaskResolveError| eyre::eyre!("tier resolution failed: {e}"))?;
 
     // RFC-0079's table - each tier's spin period from its members' releases.
-    derive_tier_spin_periods(plan, &mut table)?;
+    derive_sched_task_spin_periods(plan, &mut table)?;
     // phase-509 P8 (RFC-0108 D8.3) -- until P9 a level is a tier.
     check_blocking_calls(plan, Some(&table), target_rtos)?;
 
     // Stamp PlanNode.sched_context with the 0-based index into the ordered tier list
     // (highest-priority-first). Nodes not assigned to any tier keep `sched_context = None`.
-    let mut tier_map: HashMap<String, u8> = HashMap::new();
+    let mut sched_task_map: HashMap<String, u8> = HashMap::new();
     for (i, tier) in table.tiers.iter().enumerate() {
         for (node_name, _group) in &tier.members {
-            tier_map.insert(node_name.clone(), i as u8);
+            sched_task_map.insert(node_name.clone(), i as u8);
         }
     }
     for n in &mut plan.nodes {
         let node_name = n.name.as_deref().unwrap_or(n.exec.as_str());
-        if let Some(&idx) = tier_map.get(node_name) {
+        if let Some(&idx) = sched_task_map.get(node_name) {
             n.sched_context = Some(idx);
         }
     }
 
-    plan.resolved_tiers = Some(table);
+    plan.resolved_sched_tasks = Some(table);
     Ok(record)
 }
 
@@ -1051,7 +1051,7 @@ pub fn resolve_plan_sched_recorded(
 /// from. A plan with no model (`bringup` other than `system-model`: the cmake
 /// registered-node road, hand-built test plans) has no releases to derive
 /// from and keeps its table as resolved.
-fn derive_tier_spin_periods(plan: &Plan, table: &mut ResolvedTierTable) -> Result<()> {
+fn derive_sched_task_spin_periods(plan: &Plan, table: &mut ResolvedSchedTaskTable) -> Result<()> {
     if plan.bringup != "system-model" {
         return Ok(());
     }
@@ -1072,11 +1072,11 @@ fn derive_tier_spin_periods(plan: &Plan, table: &mut ResolvedTierTable) -> Resul
 /// ([`nros_orchestration_ir::blocking_calls`]). Until P9 a level is a tier
 /// of `table`; `None` is a tierless image, one level.
 ///
-/// Like [`derive_tier_spin_periods`], a plan with no model (`bringup` other
+/// Like [`derive_sched_task_spin_periods`], a plan with no model (`bringup` other
 /// than `system-model`) names no clients and is not checked.
 fn check_blocking_calls(
     plan: &Plan,
-    table: Option<&ResolvedTierTable>,
+    table: Option<&ResolvedSchedTaskTable>,
     target_rtos: &str,
 ) -> Result<()> {
     use nros_orchestration_ir::blocking_calls::{ImageLevels, check_model};
@@ -1089,7 +1089,7 @@ fn check_blocking_calls(
         .iter()
         .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()));
     let levels = match table {
-        Some(t) => ImageLevels::from_tiers(
+        Some(t) => ImageLevels::from_sched_tasks(
             t,
             nros_orchestration_ir::rtos_realizer::sched_caps_for(target_rtos).low_number_is_high,
             members,
@@ -1396,7 +1396,7 @@ contracts: {}
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
-            resolved_tiers: None,
+            resolved_sched_tasks: None,
             session: Default::default(),
         }
     }
@@ -1481,13 +1481,13 @@ contracts: {}
     #[test]
     fn resolve_plan_sched_stamps_sched_context_indices() {
         use crate::orchestration::cargo_metadata_schema::{
-            CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
+            CallbackGroupOverride, NodeOverride, SchedTaskDef, SchedTaskRtosSpec,
         };
         use std::path::PathBuf;
 
-        let high_tier = TierDef {
+        let high_sched_task = SchedTaskDef {
             spin_period_us: Some(10_000),
-            posix: Some(TierRtosSpec {
+            posix: Some(SchedTaskRtosSpec {
                 priority: 80,
                 stack_bytes: None,
                 preempt_threshold: None,
@@ -1500,9 +1500,9 @@ contracts: {}
             }),
             ..Default::default()
         };
-        let low_tier = TierDef {
+        let low_sched_task = SchedTaskDef {
             spin_period_us: Some(100_000),
-            posix: Some(TierRtosSpec {
+            posix: Some(SchedTaskRtosSpec {
                 priority: 10,
                 stack_bytes: None,
                 preempt_threshold: None,
@@ -1516,8 +1516,8 @@ contracts: {}
             ..Default::default()
         };
         let mut tiers = std::collections::BTreeMap::new();
-        tiers.insert("high".to_string(), high_tier);
-        tiers.insert("low".to_string(), low_tier);
+        tiers.insert("high".to_string(), high_sched_task);
+        tiers.insert("low".to_string(), low_sched_task);
 
         let node_overrides = vec![
             NodeOverride {
@@ -1582,17 +1582,20 @@ contracts: {}
             safety: None,
             tiers,
             node_overrides,
-            resolved_tiers: None,
+            resolved_sched_tasks: None,
             session: Default::default(),
         };
 
         resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched should succeed");
 
-        // resolved_tiers populated.
-        assert!(plan.resolved_tiers.is_some(), "resolved_tiers must be set");
-        let table = plan.resolved_tiers.as_ref().unwrap();
+        // resolved_sched_tasks populated.
         assert!(
-            !table.is_single_tier(),
+            plan.resolved_sched_tasks.is_some(),
+            "resolved_sched_tasks must be set"
+        );
+        let table = plan.resolved_sched_tasks.as_ref().unwrap();
+        assert!(
+            !table.is_single_sched_task(),
             "two-tier plan must not be single-tier"
         );
         // highest-priority-first: high (80) = idx 0, low (10) = idx 1.
@@ -1616,16 +1619,16 @@ contracts: {}
     /// [[node_overrides]]. A 2-tier plan with group_tiers set on each node
     /// yields the same sched_context stamping as the node_overrides path.
     #[test]
-    fn resolve_plan_sched_uses_group_tiers_directly() {
-        use crate::orchestration::cargo_metadata_schema::{TierDef, TierRtosSpec};
+    fn resolve_plan_sched_uses_group_sched_tasks_directly() {
+        use crate::orchestration::cargo_metadata_schema::{SchedTaskDef, SchedTaskRtosSpec};
         use std::path::PathBuf;
 
         let mut tiers = BTreeMap::new();
         tiers.insert(
             "high".to_string(),
-            TierDef {
+            SchedTaskDef {
                 spin_period_us: Some(10_000),
-                posix: Some(TierRtosSpec {
+                posix: Some(SchedTaskRtosSpec {
                     priority: 80,
                     stack_bytes: None,
                     preempt_threshold: None,
@@ -1641,9 +1644,9 @@ contracts: {}
         );
         tiers.insert(
             "low".to_string(),
-            TierDef {
+            SchedTaskDef {
                 spin_period_us: Some(100_000),
-                posix: Some(TierRtosSpec {
+                posix: Some(SchedTaskRtosSpec {
                     priority: 10,
                     stack_bytes: None,
                     preempt_threshold: None,
@@ -1709,17 +1712,17 @@ contracts: {}
             safety: None,
             tiers,
             node_overrides: Vec::new(), // no [[node_overrides]] needed
-            resolved_tiers: None,
+            resolved_sched_tasks: None,
             session: Default::default(),
         };
 
         resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched should succeed");
 
         let table = plan
-            .resolved_tiers
+            .resolved_sched_tasks
             .as_ref()
-            .expect("resolved_tiers must be set");
-        assert!(!table.is_single_tier());
+            .expect("resolved_sched_tasks must be set");
+        assert!(!table.is_single_sched_task());
         assert_eq!(table.tiers[0].name, "high");
         assert_eq!(table.tiers[1].name, "low");
         // group_tiers drives the tier assignment directly.
@@ -1749,7 +1752,7 @@ contracts: {}
     }
 
     /// Phase 269 (W4) — resolve_plan_sched on a plan with no tiers, no overrides,
-    /// and no callback groups is a no-op (resolved_tiers stays None).
+    /// and no callback groups is a no-op (resolved_sched_tasks stays None).
     /// issue 0794 — the emitter set `NROS_BOOT_SET_NODE_NAME` and nothing else,
     /// so a launch-declared namespace never reached the image while the field,
     /// the bit, the packer and the READER all existed and worked. This asserts
@@ -1785,7 +1788,7 @@ contracts: {}
                 safety: None,
                 tiers: Default::default(),
                 node_overrides: Vec::new(),
-                resolved_tiers: None,
+                resolved_sched_tasks: None,
                 session: Default::default(),
             }
         }
@@ -1979,7 +1982,7 @@ contracts: {}
     }
 
     #[test]
-    fn resolve_plan_sched_no_tiers_is_noop() {
+    fn resolve_plan_sched_no_sched_tasks_is_noop() {
         use std::path::PathBuf;
         let mut plan = Plan {
             board: "linux".into(),
@@ -2008,13 +2011,13 @@ contracts: {}
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
-            resolved_tiers: None,
+            resolved_sched_tasks: None,
             session: Default::default(),
         };
         resolve_plan_sched(&mut plan, "posix").expect("no-op should succeed");
         assert!(
-            plan.resolved_tiers.is_none(),
-            "no-tier plan must leave resolved_tiers as None"
+            plan.resolved_sched_tasks.is_none(),
+            "no-tier plan must leave resolved_sched_tasks as None"
         );
         assert!(
             plan.nodes[0].sched_context.is_none(),
@@ -2034,15 +2037,15 @@ contracts: {}
     /// The assertions are about the OUTCOME, not the rule: every tier that
     /// names a group gets a non-empty array, and the two tiers' keys differ.
     #[test]
-    fn one_group_id_on_two_nodes_is_two_keys_and_neither_tier_is_wildcarded() {
+    fn one_group_id_on_two_nodes_is_two_keys_and_neither_sched_task_is_wildcarded() {
         use crate::orchestration::cargo_metadata_schema::{
-            CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
+            CallbackGroupOverride, NodeOverride, SchedTaskDef, SchedTaskRtosSpec,
         };
         use std::path::PathBuf;
 
-        let tier_def = |priority: i64| TierDef {
+        let sched_task_def = |priority: i64| SchedTaskDef {
             spin_period_us: Some(10_000),
-            posix: Some(TierRtosSpec {
+            posix: Some(SchedTaskRtosSpec {
                 priority,
                 stack_bytes: None,
                 preempt_threshold: None,
@@ -2056,8 +2059,8 @@ contracts: {}
             ..Default::default()
         };
         let mut tiers = BTreeMap::new();
-        tiers.insert("high".to_string(), tier_def(80));
-        tiers.insert("low".to_string(), tier_def(10));
+        tiers.insert("high".to_string(), sched_task_def(80));
+        tiers.insert("low".to_string(), sched_task_def(10));
 
         // Both nodes call their group `ctrl`; they sit on different tiers, and
         // one is namespaced, so name alone is not a key either.
@@ -2105,17 +2108,20 @@ contracts: {}
                     }],
                 },
             ],
-            resolved_tiers: None,
+            resolved_sched_tasks: None,
             session: Default::default(),
         };
         resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched");
-        let table = plan.resolved_tiers.clone().expect("resolved_tiers");
+        let table = plan
+            .resolved_sched_tasks
+            .clone()
+            .expect("resolved_sched_tasks");
         assert_eq!(table.tiers.len(), 2, "two tiers");
 
-        let keys = super::lower::tier_group_keys(&table, &plan);
-        for (ti, tier_keys) in keys.iter().enumerate() {
+        let keys = super::lower::sched_task_group_keys(&table, &plan);
+        for (ti, sched_task_keys) in keys.iter().enumerate() {
             assert!(
-                !tier_keys.is_empty(),
+                !sched_task_keys.is_empty(),
                 "tier {ti} names a group, so its array must not be empty — an \
                  empty array is the WILDCARD and would run every callback in \
                  the image at this tier's priority"

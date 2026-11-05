@@ -51,7 +51,7 @@ void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer,
 
 /* ---- Family console hook ----
  *
- * phase-370 — `nros-board-freertos/c/freertos_run_tiers.c` reports the
+ * phase-370 — `nros-board-freertos/c/freertos_run_sched_tasks.c` reports the
  * placement-dim note through this. On the Cortex-M boards it forwards to ARM
  * semihosting; here it is `stderr`, for the same reason the entry TU's log
  * writer uses stderr: stdout carries the application's own output, which is

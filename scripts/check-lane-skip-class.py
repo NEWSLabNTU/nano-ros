@@ -24,7 +24,7 @@ FAILURE: in scope and unmet) and `nros_tests::lane_skip!` (out of scope), so an
 deselection into a red.
 
 DELIBERATELY NARROW. Only the unambiguous phrasing is matched. Two aggregators
-(`realtime_tiers`, `sched_dims_applied`) report "N skipped, M out of lane" from
+(`realtime_sched_tasks`, `sched_dims_applied`) report "N skipped, M out of lane" from
 a mix of BOTH kinds; no single class is right for those, and forcing one would
 trade a small miscount for a confident wrong answer. They keep the
 `capability` default, which is the safe side.

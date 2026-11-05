@@ -1,10 +1,10 @@
 //! The tally a consolidated matrix test keeps over its cells — issue 2171.
 //!
 //! Five tests run a whole matrix inside one `#[test]` (`entry_e2e`,
-//! `multihost_e2e`, `realtime_tiers_e2e`, `roundtrip_xprocess_e2e`,
+//! `multihost_e2e`, `realtime_sched_tasks_e2e`, `roundtrip_xprocess_e2e`,
 //! `sched_dims_applied_e2e`) and each wrote its own count. Two of them counted
 //! a row as RAN before it ran, so a lane skip raised inside the row was "ran"
-//! and "skipped" at once: tier 2 printed `realtime_tiers: 22 row(s) ran` for
+//! and "skipped" at once: tier 2 printed `realtime_sched_tasks: 22 row(s) ran` for
 //! four. And every one of them filed that skip under `skipped`, because their
 //! `out of lane` column was filled only when the whole PLATFORM was out of
 //! lane. Tier 1 and tier 2 narrow by COORDINATE, so an admitted platform's
@@ -55,7 +55,7 @@ pub struct Tally {
 }
 
 impl Tally {
-    /// `name` prefixes every line (`realtime_tiers`); `unit` is what a cell is
+    /// `name` prefixes every line (`realtime_sched_tasks`); `unit` is what a cell is
     /// called in the summary (`row`, `cell`).
     pub fn new(name: &'static str, unit: &'static str) -> Self {
         Self {

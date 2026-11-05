@@ -10,7 +10,7 @@ such gate passes a file in which one item is right and the next is wrong:
   FIRST `#define NROS_CODEGEN_VERSION`; the compiler keeps the LAST (issue 1540);
 * `check-board-cargo-config-shape` read the first `cargo_config` blob of a
   descriptor that has two;
-* `check-tier-spin-gap` accepted a file-level `extern` prototype of the gap
+* `check-sched-task-spin-gap` accepted a file-level `extern` prototype of the gap
   helper as the gap of every loop in the file;
 * `check-literal-domain-id` truncated at the first `mod tests` SUBSTRING — so a
   `mod tests;` declaration hid the 57 lines of shipped code after it.

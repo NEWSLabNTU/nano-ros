@@ -152,7 +152,7 @@ pub(crate) struct SubscriptionOpen {
 // Phase 8 — callback registration event (paired stubs)
 // ============================================================================
 //
-// `docs/design/callback_tracing.rst`. Paired stubs (the `entry_tiers.rs`
+// `docs/design/callback_tracing.rst`. Paired stubs (the `entry_sched_tasks.rs`
 // idiom) so `emplace_entry` reads identically whether or not the feature is
 // on, and the `#[cfg]` lives in exactly one place.
 
@@ -187,7 +187,7 @@ fn trace_register(_slot: usize, _kind: EntryKind, _name: TraceName<'_>) {}
 /// degraded: a SECOND executor opened through an `alloc` convenience
 /// constructor, and an entry sized past the build-time default. A tiered boot's
 /// spawned tiers are NOT that second executor any more: they open over the
-/// entry's `TierExecutorBacking` slots (`open_with_session_slot`, issue 1571). Neither is an error, so neither
+/// entry's `SchedTaskExecutorBacking` slots (`open_with_session_slot`, issue 1571). Neither is an error, so neither
 /// warns — `report_arena_headroom` is where an over-provisioned executor gets
 /// told about itself, and a duplicate line here would just be noise.
 ///
@@ -3012,8 +3012,8 @@ impl<'s> Executor<'s> {
     }
 
     /// issue 1571 — a SPAWNED tier's executor over its slot of the entry's
-    /// [`TierExecutorBacking`](super::TierExecutorBacking) — the road every
-    /// board's `run_tiers` takes for each tier but the boot one.
+    /// [`SchedTaskExecutorBacking`](super::SchedTaskExecutorBacking) — the road every
+    /// board's `run_sched_tasks` takes for each tier but the boot one.
     ///
     /// The slot's TYPE is the size: it is `ExecutorSizing::DEFAULT.u64_len()`
     /// words and this opens with `ExecutorSizing::DEFAULT`, so the pairing is
@@ -3026,7 +3026,7 @@ impl<'s> Executor<'s> {
     #[cfg(feature = "alloc")]
     pub(crate) unsafe fn open_with_session_slot(
         session: *mut session::ConcreteSession,
-        slot: &'s mut super::TierExecutorBackingSlot,
+        slot: &'s mut super::SchedTaskExecutorBackingSlot,
     ) -> Self {
         unsafe {
             Self::open_with_session_in(
@@ -3045,7 +3045,7 @@ impl<'s> Executor<'s> {
     #[cfg(feature = "alloc")]
     pub(crate) unsafe fn open_with_session_handle_slot(
         handle: SessionHandle,
-        slot: &'s mut super::TierExecutorBackingSlot,
+        slot: &'s mut super::SchedTaskExecutorBackingSlot,
     ) -> Self {
         unsafe { Self::open_with_session_slot(handle.0, slot) }
     }
@@ -4114,7 +4114,7 @@ impl<'s> Executor<'s> {
 
     /// Issue 2018 (RFC-0108 As-built) -- give the registering level its own
     /// scheduling context: the one its tier's policy lowers to
-    /// ([`SchedContext::from_tier_policy`](super::sched_context::SchedContext::from_tier_policy)).
+    /// ([`SchedContext::from_sched_task_policy`](super::sched_context::SchedContext::from_sched_task_policy)).
     /// Callbacks registered from now on, until the registering level
     /// changes, bind to it unless a node or callback-group binding names
     /// another. A level's budget is then charged to that level alone, never
@@ -5561,7 +5561,7 @@ impl<'s> Executor<'s> {
     /// RFC-0052 / phase-296 W3a — replace the DEFAULT scheduling context
     /// (slot 0, the SC every unbound callback dispatches through).
     ///
-    /// The run_tiers model runs one Executor per tier, so a tier-wide
+    /// The run_sched_tasks model runs one Executor per tier, so a tier-wide
     /// scheduling policy (`[tasks.<t>] class/budget_us/period_us` and the
     /// TT window) is exactly "this executor's default SC". Boards call
     /// this once, before entity creation; explicit per-handle/per-group
@@ -16917,7 +16917,7 @@ impl<'s> Drop for Executor<'s> {
 /// Uses `MockSession`; gated `not(feature = "rmw-cffi")` because the mock
 /// session exists only there.
 #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
-mod p274_w1_tier_executor_tests {
+mod p274_w1_sched_task_executor_tests {
     use super::Executor;
     use crate::mock::MockSession;
 

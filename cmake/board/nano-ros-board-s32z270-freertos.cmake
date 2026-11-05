@@ -39,7 +39,7 @@ set(_NROS_FREERTOS_SHARED_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_hooks.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/network_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
-    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_tiers.c"
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_sched_tasks.c"
     # phase-432 W3.1 — the C-ABI single-executor runner, beside the tiers one.
     # SHARED by every RTOS board (`nros_board_rtos_run_components`), which is
     # why it comes from the common dir rather than the family one. The CMake

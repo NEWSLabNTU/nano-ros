@@ -8,7 +8,7 @@
 #
 # The derivation ranks by `trigger.timer.rate_hz` alone. `min_rate_hz` is a
 # publication floor for the runtime monitor, never a schedule input (issue
-# 1372); here it happens to equal the timer. derived-tiers-cpp's contract makes
+# 1372); here it happens to equal the timer. derived-sched-tasks-cpp's contract makes
 # the two differ, and its bake test is what proves the trigger is the one read.
 
 version: 1

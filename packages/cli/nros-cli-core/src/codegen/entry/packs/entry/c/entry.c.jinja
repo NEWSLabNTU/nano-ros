@@ -8,11 +8,11 @@
   Two mutually exclusive bodies, chosen by `Plan::executor_shape` — the SAME
   branch the C++ pack takes (issue 1283):
     * tiers    — one setup function per tier, a groups array per tier, and the
-                 `nros_native_tier_spec_t` table `run_tiers` walks.
+                 `nros_native_sched_task_spec_t` table `run_sched_tasks` walks.
     * setup    — a single `__nros_entry_setup`. When `sched` is set it first
                  creates one sched context per tier and binds nodes and
                  callback groups to them (a group-split plan, or a board with
-                 no `run_tiers`); otherwise it is the plain single-tier case.
+                 no `run_sched_tasks`); otherwise it is the plain single-tier case.
 
   What arrives, and in what form (RFC-0091 §8b):
 
@@ -59,12 +59,12 @@
 *
 * DO NOT EDIT — regenerated at configure time. Routes each launch node
 * to the real executor via its `RCLC_C_COMPONENT` factory/configure seam
-* (no synthesizing interpreter); `{{ (boot.runners.run_levels or boot.runners.run_tiers) if boot.tiers else boot.runners.run_components }}`
+* (no synthesizing interpreter); `{{ (boot.runners.run_levels or boot.runners.run_sched_tasks) if boot.tiers else boot.runners.run_components }}`
 * owns init/spin/shutdown.
 */
 
 #include <rclc/detail/boot_config.h>  /* nros_baked_boot_config + the nros_boot_config_* readers */
-#include <rclc/detail/main.h>         /* the board's C-ABI run_components / run_tiers */
+#include <rclc/detail/main.h>         /* the board's C-ABI run_components / run_sched_tasks */
 {%- if boot_shape == "app" %}
 #include <rclc/detail/app_main.h>    /* NROS_APP_MAIN_REGISTER_VOID (app boot shape) */
 {%- endif %}
@@ -201,7 +201,7 @@ static const nros_cpp_mode_age_row_t __nros_mode_ages_{{ mi }}[{{ md.ages | leng
 {%- if m.base_deadlines %}
 /* phase-462 W4c -- the sched-context deadlines the modes move on this
  * executor: table 0 the base's, table k mode k's, each naming the same
- * contexts{% if m.deadline_sc_is_tier %} by tier index into __nros_sc_ids{% endif %}. */
+ * contexts{% if m.deadline_sc_is_sched_task %} by tier index into __nros_sc_ids{% endif %}. */
 static const nros_cpp_mode_deadline_t __nros_mode_deadlines_0[{{ m.base_deadlines | length }}] = {
 {%- for d in m.base_deadlines %}
     { {{ d.sc }}u, {{ d.deadline_us }}u },
@@ -227,7 +227,7 @@ static uint64_t __nros_mode_storage[(({{ m.modes | length }}u + 1u) * (NROS_CPP_
 /* Phase 274.W2 — per-tier setup functions (one per tier). */
 {% for t in tiers.setups -%}
 /* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
-static int32_t __nros_entry_setup_tier_{{ t.index }}_nodes(void* executor, const char** __nros_at) {
+static int32_t __nros_entry_setup_sched_task_{{ t.index }}_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
 {%- if t.monitors %}
 {%- with m = t.monitors, mexec = "executor" %}
@@ -251,9 +251,9 @@ static int32_t __nros_entry_setup_tier_{{ t.index }}_nodes(void* executor, const
 
 /* phase-509 P9b -- a failed setup names its tier and node before the runner
  * fails the boot with its code. */
-static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
+static int32_t __nros_entry_setup_sched_task_{{ t.index }}(void* executor) {
     const char* __nros_at = NULL;
-    const int32_t rc = __nros_entry_setup_tier_{{ t.index }}_nodes(executor, &__nros_at);
+    const int32_t rc = __nros_entry_setup_sched_task_{{ t.index }}_nodes(executor, &__nros_at);
     if (rc != 0) nros_cpp_report_setup_failure("{{ t.name|c_str }}", __nros_at, rc);
     return rc;
 }
@@ -268,22 +268,22 @@ static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
  * that names groups must never render an empty one. */
 {%- for t in tiers.rows %}
 {%- if t.groups %}
-static const char* __nros_tier_{{ t.index }}_groups[] = {{ '{' }}{% for g in t.groups %}"{{ g[0]|c_str }}", "{{ g[1]|c_str }}", "{{ g[2]|c_str }}", {% endfor %}};
+static const char* __nros_sched_task_{{ t.index }}_groups[] = {{ '{' }}{% for g in t.groups %}"{{ g[0]|c_str }}", "{{ g[1]|c_str }}", "{{ g[2]|c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
-static const nros_native_tier_spec_t __nros_tiers[{{ tiers.n }}] = {
+static const nros_native_sched_task_spec_t __nros_sched_tasks[{{ tiers.n }}] = {
 {%- for t in tiers.rows %}
     {
         .name = "{{ t.name|c_str }}",
-        .groups = {% if t.groups %}__nros_tier_{{ t.index }}_groups{% else %}NULL{% endif %},
+        .groups = {% if t.groups %}__nros_sched_task_{{ t.index }}_groups{% else %}NULL{% endif %},
         .n_groups = {% if t.groups %}{{ t.groups|length }}u{% else %}0u{% endif %},
         .priority = {{ t.priority }}LL,
         .stack_bytes = {{ t.stack_bytes }}u,
         .spin_period_us = {{ t.spin_period_us }}ull,
-        .setup = &__nros_entry_setup_tier_{{ t.index }},
+        .setup = &__nros_entry_setup_sched_task_{{ t.index }},
         .core_plus1 = {{ t.core_plus1 }}u,
         .preempt_threshold = {{ t.preempt_threshold }}LL,
-        .tier_class = {% if t.class is none %}NULL{% else %}"{{ t.class|c_str }}"{% endif %},
+        .sched_task_class = {% if t.class is none %}NULL{% else %}"{{ t.class|c_str }}"{% endif %},
         .period_us = {{ t.period_us }}ull,
         .budget_us = {{ t.budget_us }}ull,
         .deadline_us = {{ t.deadline_us }}ull,
@@ -326,7 +326,7 @@ static int32_t __nros_entry_setup(void* executor) {
 {%- endfor %}
 {%- for b in sched.group_binds %}
     {
-        nros_cpp_ret_t brc = nros_cpp_bind_group_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", "{{ b.group|c_str }}", __nros_sc_ids[{{ b.tier_index }}]);
+        nros_cpp_ret_t brc = nros_cpp_bind_group_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", "{{ b.group|c_str }}", __nros_sc_ids[{{ b.sched_task_index }}]);
         if (brc != NROS_CPP_RET_OK) return (int32_t)brc;
     }
 {%- endfor %}

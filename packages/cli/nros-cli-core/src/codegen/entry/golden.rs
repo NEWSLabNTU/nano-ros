@@ -112,7 +112,7 @@ fn plan(board: &str, nodes: Vec<PlanNode>) -> Plan {
         safety: None,
         tiers: Default::default(),
         node_overrides: Vec::new(),
-        resolved_tiers: None,
+        resolved_sched_tasks: None,
         session: Default::default(),
     }
 }
@@ -131,28 +131,29 @@ fn typed_node(pkg: &str, exec: &str) -> PlanNode {
     node(pkg, exec, Some((&class, &header)))
 }
 
-/// A two-tier C plan — the `run_tiers` path, which no other row reaches.
+/// A two-tier C plan — the `run_sched_tasks` path, which no other row reaches.
 ///
 /// A tier's members are `(node_name, callback_group)`, and the lowering filters
 /// nodes into tiers BY NODE NAME, so the names here must match the execs.
-fn c_tiered_plan(board: &str) -> Plan {
-    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
-    let tier = |name: &str, priority: i64, period: u64, member: &str, grp: &str| ResolvedTier {
-        name: name.into(),
-        priority,
-        stack_bytes: None,
-        spin_period_us: Some(period),
-        preempt_threshold: None,
-        time_slice_us: None,
-        sched_class: None,
-        class: None,
-        period_us: None,
-        budget_us: None,
-        deadline_us: None,
-        deadline_policy: None,
-        core: None,
-        members: vec![(member.into(), grp.into())],
-    };
+fn c_sched_task_plan(board: &str) -> Plan {
+    use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
+    let tier =
+        |name: &str, priority: i64, period: u64, member: &str, grp: &str| ResolvedSchedTask {
+            name: name.into(),
+            priority,
+            stack_bytes: None,
+            spin_period_us: Some(period),
+            preempt_threshold: None,
+            time_slice_us: None,
+            sched_class: None,
+            class: None,
+            period_us: None,
+            budget_us: None,
+            deadline_us: None,
+            deadline_policy: None,
+            core: None,
+            members: vec![(member.into(), grp.into())],
+        };
     let mut ctrl = c_node("ctrl_pkg", "ctrl");
     ctrl.callback_groups = vec!["ctrl_grp".into()];
     ctrl.sched_context = Some(0);
@@ -160,7 +161,7 @@ fn c_tiered_plan(board: &str) -> Plan {
     telem.callback_groups = vec!["telem_grp".into()];
     telem.sched_context = Some(1);
     let mut p = plan(board, vec![ctrl, telem]);
-    p.resolved_tiers = Some(ResolvedTierTable {
+    p.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
         tiers: vec![
             tier("high", 80, 10_000, "ctrl", "ctrl_grp"),
             tier("low", 10, 100_000, "telem", "telem_grp"),
@@ -170,7 +171,7 @@ fn c_tiered_plan(board: &str) -> Plan {
 }
 
 /// RFC-0047 sub-node split of a two-tier plan: `ctrl` gains a second callback
-/// group on the LOW tier, so one node's groups span two tiers. `run_tiers`
+/// group on the LOW tier, so one node's groups span two tiers. `run_sched_tasks`
 /// cannot express it (its per-tier setups construct whole nodes), so the plan
 /// takes the sched-context path — on native too.
 fn group_split(mut p: Plan) -> Plan {
@@ -178,7 +179,7 @@ fn group_split(mut p: Plan) -> Plan {
         ("ctrl_grp".to_string(), "high".to_string()),
         ("telem_grp".to_string(), "low".to_string()),
     ]);
-    if let Some(t) = p.resolved_tiers.as_mut() {
+    if let Some(t) = p.resolved_sched_tasks.as_mut() {
         t.tiers[1].members.push(("ctrl".into(), "telem_grp".into()));
     }
     p
@@ -187,8 +188,8 @@ fn group_split(mut p: Plan) -> Plan {
 /// Callback groups declared, NO `[tiers]` table — resolved through the real
 /// `resolve_plan_sched`, which synthesises ONE `default` tier holding every
 /// group. That is a single-executor plan (issue 1283): the C pack used to see
-/// a non-empty tier list and call `run_tiers` with it.
-fn c_default_tier_plan(board: &str) -> Plan {
+/// a non-empty tier list and call `run_sched_tasks` with it.
+fn c_default_sched_task_plan(board: &str) -> Plan {
     let mut ctrl = c_node("ctrl_pkg", "ctrl");
     ctrl.callback_groups = vec!["ctrl_grp".into()];
     let mut telem = c_node("telem_pkg", "telem");
@@ -199,9 +200,9 @@ fn c_default_tier_plan(board: &str) -> Plan {
         .to_string();
     super::resolve_plan_sched(&mut p, &rtos).expect("default-tier resolution");
     assert!(
-        p.resolved_tiers
+        p.resolved_sched_tasks
             .as_ref()
-            .is_some_and(|t| t.is_single_tier()),
+            .is_some_and(|t| t.is_single_sched_task()),
         "precondition: callback groups with no [tiers] resolve to ONE default tier"
     );
     p
@@ -235,11 +236,11 @@ fn cpp_rclcpp_node(pkg: &str, exec: &str) -> PlanNode {
     n
 }
 
-/// A two-tier C++ plan — the `run_tiers` path.
+/// A two-tier C++ plan — the `run_sched_tasks` path.
 ///
 /// Tier members are matched BY NODE NAME against each node's name-or-exec, so
 /// the member strings must equal the execs.
-pub(super) fn cpp_tiered_plan(board: &str) -> Plan {
+pub(super) fn cpp_sched_task_plan(board: &str) -> Plan {
     let mut ctrl = typed_node("ctrl_pkg", "ctrl");
     ctrl.callback_groups = vec!["ctrl_grp".into()];
     ctrl.sched_context = Some(0);
@@ -247,10 +248,10 @@ pub(super) fn cpp_tiered_plan(board: &str) -> Plan {
     telem.callback_groups = vec!["telem_grp".into()];
     telem.sched_context = Some(1);
     let mut p = plan(board, vec![ctrl, telem]);
-    p.resolved_tiers = Some(nros_orchestration_ir::ResolvedTierTable {
+    p.resolved_sched_tasks = Some(nros_orchestration_ir::ResolvedSchedTaskTable {
         tiers: vec![
-            tier_spec("high", 80, 10_000, vec![("ctrl", "ctrl_grp")]),
-            tier_spec("low", 10, 100_000, vec![("telem", "telem_grp")]),
+            sched_task_spec("high", 80, 10_000, vec![("ctrl", "ctrl_grp")]),
+            sched_task_spec("low", 10, 100_000, vec![("telem", "telem_grp")]),
         ],
     });
     p
@@ -258,13 +259,13 @@ pub(super) fn cpp_tiered_plan(board: &str) -> Plan {
 
 /// One resolved tier. Shared by the C++ tiered plans below; the C ones keep
 /// their own closure because they set a different subset.
-fn tier_spec(
+fn sched_task_spec(
     name: &str,
     priority: i64,
     period: u64,
     members: Vec<(&str, &str)>,
-) -> nros_orchestration_ir::ResolvedTier {
-    nros_orchestration_ir::ResolvedTier {
+) -> nros_orchestration_ir::ResolvedSchedTask {
+    nros_orchestration_ir::ResolvedSchedTask {
         name: name.into(),
         priority,
         stack_bytes: None,
@@ -318,7 +319,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     }
 
     // The C rows above are one node with nothing set, which reaches neither
-    // the per-package dedup, the multi-node storage, nor the `run_tiers` path
+    // the per-package dedup, the multi-node storage, nor the `run_sched_tasks` path
     // — most of `emit_c`. These three do.
     let mut c_rich = c_node("c_talker_pkg", "talker");
     c_rich.name = Some("renamed_talker".into());
@@ -371,50 +372,74 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     c_svc.lifecycle = Some("active".into());
     out.push(("c_native_services", c_svc, Emitter::C));
 
-    let mut c_tier_svc = c_tiered_plan("linux");
-    c_tier_svc.param_services = true;
-    c_tier_svc.lifecycle = Some("configure".into());
-    out.push(("c_native_tiers_services", c_tier_svc, Emitter::C));
+    let mut c_sched_task_svc = c_sched_task_plan("linux");
+    c_sched_task_svc.param_services = true;
+    c_sched_task_svc.lifecycle = Some("configure".into());
+    out.push((
+        "c_native_sched_tasks_services",
+        c_sched_task_svc,
+        Emitter::C,
+    ));
 
-    out.push(("c_native_tiers", c_tiered_plan("linux"), Emitter::C));
-    out.push(("c_nuttx_tiers", c_tiered_plan("nuttx"), Emitter::C));
+    out.push((
+        "c_native_sched_tasks",
+        c_sched_task_plan("linux"),
+        Emitter::C,
+    ));
+    out.push((
+        "c_nuttx_sched_tasks",
+        c_sched_task_plan("nuttx"),
+        Emitter::C,
+    ));
     // issue 1551 — Zephyr's runner takes the tiers' executor storage, so this
     // is the row that pins the emitted `.bss` static and the `_in` call.
-    out.push(("c_zephyr_tiers", c_tiered_plan("zephyr"), Emitter::C));
+    out.push((
+        "c_zephyr_sched_tasks",
+        c_sched_task_plan("zephyr"),
+        Emitter::C,
+    ));
     // phase-509 P9b -- a level image (Zephyr, one executor per core) whose
     // nodes on every level carry launch parameters: each seed names its node
     // (`nros_cpp_declare_node_param`), never a per-tier index, which named
     // node 0 on every level and failed the second level's setup.
-    let mut c_levels_params = c_tiered_plan("zephyr");
+    let mut c_levels_params = c_sched_task_plan("zephyr");
     for (i, n) in c_levels_params.nodes.iter_mut().enumerate() {
         n.params = vec![("level_tag".into(), i.to_string())];
     }
     out.push(("c_zephyr_levels_params", c_levels_params, Emitter::C));
-    // issue 1568 — FreeRTOS joined it (and NuttX, pinned by `c_nuttx_tiers`);
+    // issue 1568 — FreeRTOS joined it (and NuttX, pinned by `c_nuttx_sched_tasks`);
     // no C FreeRTOS tiered golden existed, so its `.bss` static and `_in`
     // call had nothing pinning them.
-    out.push(("c_freertos_tiers", c_tiered_plan("freertos"), Emitter::C));
+    out.push((
+        "c_freertos_sched_tasks",
+        c_sched_task_plan("freertos"),
+        Emitter::C,
+    ));
 
-    // issue 1286 — ThreadX has a C `run_components` and NO `run_tiers`, so a
+    // issue 1286 — ThreadX has a C `run_components` and NO `run_sched_tasks`, so a
     // two-tier C plan takes the single-executor sched-context path: the three
     // sched calls plus `nros_board_rtos_run_components`. The C twin of
-    // `cpp_threadx_tiers`.
-    out.push(("c_threadx_tiers", c_tiered_plan("threadx"), Emitter::C));
+    // `cpp_threadx_sched_tasks`.
+    out.push((
+        "c_threadx_sched_tasks",
+        c_sched_task_plan("threadx"),
+        Emitter::C,
+    ));
 
     // issue 1283 — the two C shapes that had no golden, and were wrong. A
     // group-split plan emits the three sched calls (it used to emit none, and
     // every group ran at the default scheduling); callback groups with no
-    // `[tiers]` call `run_components` (they used to call `run_tiers` with one
+    // `[tiers]` call `run_components` (they used to call `run_sched_tasks` with one
     // synthesised tier). The C twins of `cpp_native_group_split` and of the
     // C++ pack's single-executor rows.
     out.push((
         "c_native_group_split",
-        group_split(c_tiered_plan("linux")),
+        group_split(c_sched_task_plan("linux")),
         Emitter::C,
     ));
     out.push((
-        "c_native_groups_default_tier",
-        c_default_tier_plan("linux"),
+        "c_native_groups_default_sched_task",
+        c_default_sched_task_plan("linux"),
         Emitter::C,
     ));
 
@@ -433,8 +458,8 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     };
     out.push(("c_native_monitors", monitored_pair(), Emitter::CMonitored));
     out.push((
-        "c_native_tiers_monitors",
-        c_tiered_plan("linux"),
+        "c_native_sched_tasks_monitors",
+        c_sched_task_plan("linux"),
         Emitter::CMonitored,
     ));
     out.push((
@@ -513,7 +538,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // ------------------------------------------------------------------
     // The C++ rows above are one or two bare `configure`-shape nodes on the
     // single-executor path. That is a small fraction of `emit_cpp`: it reaches
-    // neither `run_tiers`, nor the sched-context wiring, nor three of the four
+    // neither `run_sched_tasks`, nor the sched-context wiring, nor three of the four
     // node shapes, nor the service trailer, nor the probe tail. The rows below
     // are the rest of the emitter, added BEFORE it moves onto a template —
     // a harness written afterwards can only confirm whatever the new code
@@ -598,47 +623,63 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     cpp_svc.lifecycle = Some("active".into());
     out.push(("cpp_native_services", cpp_svc, Emitter::Cpp));
 
-    let mut cpp_tier_svc = cpp_tiered_plan("linux");
-    cpp_tier_svc.param_services = true;
-    cpp_tier_svc.lifecycle = Some("configure".into());
-    out.push(("cpp_native_tiers_services", cpp_tier_svc, Emitter::Cpp));
+    let mut cpp_sched_task_svc = cpp_sched_task_plan("linux");
+    cpp_sched_task_svc.param_services = true;
+    cpp_sched_task_svc.lifecycle = Some("configure".into());
+    out.push((
+        "cpp_native_sched_tasks_services",
+        cpp_sched_task_svc,
+        Emitter::Cpp,
+    ));
 
-    // `run_tiers` is reached on native and on the three embedded boards that
+    // `run_sched_tasks` is reached on native and on the three embedded boards that
     // declare it. ThreadX is deliberately absent here and present below: it
-    // has no `run_tiers`, so a tiered ThreadX plan takes the single-executor
+    // has no `run_sched_tasks`, so a tiered ThreadX plan takes the single-executor
     // sched-context path instead, and that divergence is the thing worth
     // pinning.
-    out.push(("cpp_native_tiers", cpp_tiered_plan("linux"), Emitter::Cpp));
-    out.push(("cpp_zephyr_tiers", cpp_tiered_plan("zephyr"), Emitter::Cpp));
+    out.push((
+        "cpp_native_sched_tasks",
+        cpp_sched_task_plan("linux"),
+        Emitter::Cpp,
+    ));
+    out.push((
+        "cpp_zephyr_sched_tasks",
+        cpp_sched_task_plan("zephyr"),
+        Emitter::Cpp,
+    ));
     // phase-509 P9b -- the C++ twin of `c_zephyr_levels_params`.
-    let mut cpp_levels_params = cpp_tiered_plan("zephyr");
+    let mut cpp_levels_params = cpp_sched_task_plan("zephyr");
     for (i, n) in cpp_levels_params.nodes.iter_mut().enumerate() {
         n.params = vec![("level_tag".into(), i.to_string())];
     }
     out.push(("cpp_zephyr_levels_params", cpp_levels_params, Emitter::Cpp));
-    out.push(("cpp_nuttx_tiers", cpp_tiered_plan("nuttx"), Emitter::Cpp));
     out.push((
-        "cpp_freertos_tiers",
-        cpp_tiered_plan("freertos"),
+        "cpp_nuttx_sched_tasks",
+        cpp_sched_task_plan("nuttx"),
+        Emitter::Cpp,
+    ));
+    out.push((
+        "cpp_freertos_sched_tasks",
+        cpp_sched_task_plan("freertos"),
         Emitter::Cpp,
     ));
 
-    // ThreadX: tiers declared, `run_tiers` unavailable — the sched-context
+    // ThreadX: tiers declared, `run_sched_tasks` unavailable — the sched-context
     // wiring (`nros_cpp_create_sched_context_from_policy`, `bind_node_name_sched`,
     // `bind_group_sched`) that no other row emits.
     out.push((
-        "cpp_threadx_tiers",
-        cpp_tiered_plan("threadx"),
+        "cpp_threadx_sched_tasks",
+        cpp_sched_task_plan("threadx"),
         Emitter::Cpp,
     ));
 
     // RFC-0047 sub-node split: one node with callback groups on two tiers.
-    // `run_tiers` cannot express it (its per-tier setups construct whole
+    // `run_sched_tasks` cannot express it (its per-tier setups construct whole
     // nodes), so the plan falls back to the sched-context path ON NATIVE —
-    // the one row where a native tiered plan does NOT take `run_tiers`.
+    // the one row where a native tiered plan does NOT take `run_sched_tasks`.
     out.push((
         "cpp_native_group_split",
-        group_split(cpp_tiered_plan("linux")),
+        group_split(cpp_sched_task_plan("linux")),
         Emitter::Cpp,
     ));
 
@@ -653,8 +694,8 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // #0266 — `time_slice_us` has no C++ tier-ABI field, so the emitter
     // REFUSES rather than dropping a declared value. The harness records a
     // refusal as its golden, so this row pins the refusal itself.
-    let mut ts = cpp_tiered_plan("linux");
-    if let Some(t) = ts.resolved_tiers.as_mut() {
+    let mut ts = cpp_sched_task_plan("linux");
+    if let Some(t) = ts.resolved_sched_tasks.as_mut() {
         t.tiers[0].time_slice_us = Some(2_000);
     }
     out.push(("cpp_native_time_slice_refused", ts, Emitter::Cpp));
@@ -725,7 +766,7 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // phase-521 W8 (b) -- the PX4 module entry: a two-tier bringup (one work
     // item per tier, each on the queue its rank picks) and a plan with no
     // tier table (one `default` work item holding every node).
-    out.push(("px4_tiers", cpp_tiered_plan("px4"), Emitter::Px4));
+    out.push(("px4_sched_tasks", cpp_sched_task_plan("px4"), Emitter::Px4));
     out.push((
         "px4_one",
         plan(
@@ -780,7 +821,7 @@ fn render(p: &Plan, emitter: Emitter) -> Result<String, String> {
                 &[],
                 None,
                 &[],
-                &super::emit::ModeTier::default(),
+                &super::emit::ModeSchedTask::default(),
                 &golden_node_ranks(),
             )
             .map(|(src, _)| src)
@@ -856,12 +897,12 @@ fn golden_monitor_rows() -> (
 /// `__nros_sc_ids`, a tier executor at its default context 0 (only on the
 /// moved tier's table), with the switch budget on every mode.
 #[test]
-fn a_mode_tier_deadline_lowers_onto_each_executor_shape() {
-    use super::emit::{ModeTier, emit_typed_monitored_lowered};
+fn a_mode_sched_task_deadline_lowers_onto_each_executor_shape() {
+    use super::emit::{ModeSchedTask, emit_typed_monitored_lowered};
     let (rows, ages) = golden_monitor_rows();
     let modes = vec![("tight".to_string(), rows.clone(), ages.clone())];
-    let tier = ModeTier {
-        deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines {
+    let tier = ModeSchedTask {
+        deadlines: nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines {
             tiers: vec!["high".to_string()],
             deadlines: vec![vec![5_000], vec![2_000]],
             not_lowered: Vec::new(),
@@ -875,7 +916,7 @@ fn a_mode_tier_deadline_lowers_onto_each_executor_shape() {
     };
 
     // The sched-context shape: one executor, the tier's index translated.
-    let sched = emit(Lang::C, &group_split(c_tiered_plan("linux")));
+    let sched = emit(Lang::C, &group_split(c_sched_task_plan("linux")));
     for want in [
         "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_0[1] = {\n    { 0u, 5000u },",
         "static const nros_cpp_mode_deadline_t __nros_mode_deadlines_1[1] = {\n    { 0u, 2000u },",
@@ -889,8 +930,8 @@ fn a_mode_tier_deadline_lowers_onto_each_executor_shape() {
     // The level shape: the image's one table carries the moved tier's row,
     // at the shared context 0, and no second table exists (issue 2021).
     for (lang, p) in [
-        (Lang::C, c_tiered_plan("linux")),
-        (Lang::Cpp, cpp_tiered_plan("linux")),
+        (Lang::C, c_sched_task_plan("linux")),
+        (Lang::Cpp, cpp_sched_task_plan("linux")),
     ] {
         let src = emit(lang, &p);
         assert!(
@@ -907,12 +948,12 @@ fn a_mode_tier_deadline_lowers_onto_each_executor_shape() {
     // The negative control: no mode moves a deadline, so no row and no sc_ids.
     let none = emit_typed_monitored_lowered(
         Lang::C,
-        &group_split(c_tiered_plan("linux")),
+        &group_split(c_sched_task_plan("linux")),
         &rows,
         &ages,
         None,
         &modes,
-        &ModeTier::default(),
+        &ModeSchedTask::default(),
     )
     .expect("emit")
     .0;
@@ -1040,22 +1081,22 @@ fn branch_of(src: &str) -> super::ExecutorShape {
     // every one is the bare name plus an identifier-shaped suffix: native C's
     // `run_components` carries `_named` from its two-overload history, issue
     // 1434 added `_ns` to both C-ABI `run_components`, and issue 1442 added it
-    // to all four `run_tiers`. Neither branch may enumerate — the
+    // to all four `run_sched_tasks`. Neither branch may enumerate — the
     // `run_components` half already learned that (the list was two long and
     // reported "no recognisable branch" for all four of 1434's spellings, a
     // failure about this test's vocabulary rather than about the branch it
-    // exists to check) and the `run_tiers` half was still an exact
-    // `contains("run_tiers(")` that 1442 would have broken the same way.
+    // exists to check) and the `run_sched_tasks` half was still an exact
+    // `contains("run_sched_tasks(")` that 1442 would have broken the same way.
     // phase-509 P9 -- the Zephyr runner spawns LEVELS (`run_levels`): the
     // same multi-thread branch under the levels name.
-    let tiers = calls_runner(src, "run_tiers") || calls_runner(src, "run_levels");
+    let tiers = calls_runner(src, "run_sched_tasks") || calls_runner(src, "run_levels");
     let components = calls_runner(src, "run_components");
     match (tiers, sched, any_sched, components) {
         (true, false, false, false) => ExecutorShape::Tiers,
         (false, true, true, true) => ExecutorShape::SchedContexts,
         (false, false, false, true) => ExecutorShape::Single,
         _ => panic!(
-            "entry took no recognisable branch (run_tiers={tiers}, full sched \
+            "entry took no recognisable branch (run_sched_tasks={tiers}, full sched \
              block={sched}, any sched call={any_sched}, run_components={components}):\n{src}"
         ),
     }
@@ -1065,34 +1106,38 @@ fn branch_of(src: &str) -> super::ExecutorShape {
 /// that branch is the plan's own `executor_shape()`.
 ///
 /// Before the fix the packs disagreed on two of these four plans: C asked
-/// `!tiers.is_empty()` where C++ asked `!is_single_tier()` (so callback groups
-/// with no `[tiers]` were `run_tiers` in C, `run_components` in C++), and C
+/// `!tiers.is_empty()` where C++ asked `!is_single_sched_task()` (so callback groups
+/// with no `[tiers]` were `run_sched_tasks` in C, `run_components` in C++), and C
 /// had no sched-context arm (so a group split was plain single-executor in C,
 /// sched contexts in C++).
 ///
 /// Boards: every family the C pack renders for. That includes ThreadX since
-/// issue 1286. ThreadX has no `run_tiers`, so its multi-tier row takes
-/// sched contexts in both packs rather than `run_tiers`.
+/// issue 1286. ThreadX has no `run_sched_tasks`, so its multi-tier row takes
+/// sched contexts in both packs rather than `run_sched_tasks`.
 #[test]
 fn both_entry_packs_take_the_plans_executor_branch() {
     use super::ExecutorShape::{SchedContexts, Single, Tiers};
     let mut checked = 0usize;
     for board in ["linux", "zephyr", "nuttx", "freertos", "threadx"] {
-        // Written out, not derived from `board_has_run_tiers`: this test
+        // Written out, not derived from `board_has_run_sched_tasks`: this test
         // checks that predicate too.
-        let multi_tier = if board == "threadx" {
+        let multi_sched_task = if board == "threadx" {
             SchedContexts
         } else {
             Tiers
         };
         let rows = [
-            ("multi-tier", c_tiered_plan(board), multi_tier),
+            ("multi-tier", c_sched_task_plan(board), multi_sched_task),
             (
                 "group split",
-                group_split(c_tiered_plan(board)),
+                group_split(c_sched_task_plan(board)),
                 SchedContexts,
             ),
-            ("groups, no [tiers]", c_default_tier_plan(board), Single),
+            (
+                "groups, no [tiers]",
+                c_default_sched_task_plan(board),
+                Single,
+            ),
             (
                 "no tiers",
                 plan(board, vec![c_node("c_talker_pkg", "talker")]),
@@ -1176,14 +1221,14 @@ fn sched_call_checks(src: &str) -> ([usize; 3], Vec<String>) {
 /// default sched context, silently — issue 1172's class, one level up from
 /// where 1172 fixed it. Plans: the group split (every board) and, on ThreadX,
 /// the multi-tier plan, which takes the same branch because ThreadX has no
-/// `run_tiers`.
+/// `run_sched_tasks`.
 #[test]
 fn both_entry_packs_check_every_sched_binding() {
     let mut rendered = 0usize;
     for board in ["linux", "zephyr", "nuttx", "freertos", "threadx"] {
-        let mut plans = vec![("group split", group_split(c_tiered_plan(board)))];
+        let mut plans = vec![("group split", group_split(c_sched_task_plan(board)))];
         if board == "threadx" {
-            plans.push(("multi-tier", c_tiered_plan(board)));
+            plans.push(("multi-tier", c_sched_task_plan(board)));
         }
         for (what, p) in plans {
             assert_eq!(
@@ -1244,7 +1289,7 @@ fn a_zenoh_rmw_file_bakes_its_session_properties_and_no_locator() {
             &[],
             None,
             &[],
-            &super::emit::ModeTier::default(),
+            &super::emit::ModeSchedTask::default(),
             &[],
             &props,
         )
@@ -1272,7 +1317,7 @@ fn a_zenoh_rmw_file_bakes_its_session_properties_and_no_locator() {
             &[],
             None,
             &[],
-            &super::emit::ModeTier::default(),
+            &super::emit::ModeSchedTask::default(),
             &[],
             &[],
         )

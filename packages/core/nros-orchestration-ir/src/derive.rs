@@ -6,7 +6,7 @@
 //! synthesizes into ordinary `[tasks.*]` (`derived-<node>`) + `[[node_overrides]]`
 //! rows. Both consumers call this ONE core so the derivation never drifts:
 //! - the CLI's `codegen-system` (wraps it with `SystemToml` mutation), and
-//! - the `nros::main!` proc-macro (feeds the tiers straight into `resolve_tiers`).
+//! - the `nros::main!` proc-macro (feeds the tiers straight into `resolve_sched_tasks`).
 //!
 //! The core is side-effect free: it RETURNS the degradations + groupless notes
 //! rather than printing them, so each caller surfaces them in its own channel
@@ -18,7 +18,7 @@ use ros_launch_manifest_model::SystemModel;
 use ros_launch_manifest_sched::chain_aware_rank;
 
 use crate::{
-    CallbackGroupDecl, CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
+    CallbackGroupDecl, CallbackGroupOverride, NodeOverride, SchedTaskDef, SchedTaskRtosSpec,
     mapper_input::mapper_input_from_model,
     priority_plan::PriorityPlan,
     rtos_realizer::{Degradation, SchedCaps, realize_rtos, sched_caps_for},
@@ -32,7 +32,7 @@ pub struct DerivedSchedule {
     /// nodes; phase-509 P5). These are NEW
     /// tiers, for nodes whose groups name no tier at all; the caller MERGES
     /// them into whatever the model authored (see [`DerivedSchedule`]).
-    pub tiers: BTreeMap<String, TierDef>,
+    pub tiers: BTreeMap<String, SchedTaskDef>,
     /// One override per derived node, binding its callback groups to its
     /// level's tier.
     pub overrides: Vec<NodeOverride>,
@@ -42,9 +42,9 @@ pub struct DerivedSchedule {
     /// The caller installs each on the `[tasks.<name>]` it already built from
     /// the model, so the head facts (`class`, `period_us`, `deadline_us`, …)
     /// stay AUTHORED and only the address is allocated. It is a separate field
-    /// from [`Self::tiers`] for exactly that reason: a whole `TierDef` here
+    /// from [`Self::tiers`] for exactly that reason: a whole `SchedTaskDef` here
     /// would be this function re-deciding facts it was not asked about.
-    pub placements: BTreeMap<String, TierRtosSpec>,
+    pub placements: BTreeMap<String, SchedTaskRtosSpec>,
     /// Every guarantee weakening the realizer recorded (fail-loud — the caller
     /// MUST surface these).
     pub degradations: Vec<Degradation>,
@@ -103,7 +103,7 @@ pub fn supervised_nodes(model: &SystemModel) -> std::collections::BTreeSet<Strin
 /// RFC-0079 section 6: does this authored tier NAME the transport band
 /// (`[tasks.<name>] above = "transport"`)?
 ///
-/// Issue 1967. The key is rlm's `TierDef::above` (`ReservedBand`, a closed
+/// Issue 1967. The key is rlm's `SchedTaskDef::above` (`ReservedBand`, a closed
 /// set whose one member is `transport`; rlm v0.1.67). rlm refuses a misspelt
 /// band at parse, so a tier that reaches this either named the transport or
 /// named nothing.
@@ -116,7 +116,7 @@ fn names_the_transport(t: &ros_launch_manifest_sched::TaskDef) -> bool {
 /// all). A tier with an authored priority keeps it (rule 1, `above` does
 /// not move a number the author wrote); one placed for other boards only is
 /// rule 3's error, not a request.
-pub fn tiers_named_above_transport(
+pub fn sched_tasks_named_above_transport(
     model: &SystemModel,
     target_rtos: &str,
 ) -> std::collections::BTreeSet<String> {
@@ -139,7 +139,7 @@ pub fn tiers_named_above_transport(
 ///
 /// `lift` is the set of nodes to allocate ABOVE the reserved transport band
 /// (the most urgent members of the tiers that name it, see
-/// [`derive_tiers_with_named`]). They keep their relative rank: the least
+/// [`derive_sched_tasks_with_named`]). They keep their relative rank: the least
 /// urgent takes the priority adjacent to the transport, each more urgent
 /// rank the next one out ([`PriorityPlan::slots_above_transport`]); equal
 /// ranks share. No room for the ranks: nothing is lifted, and a degradation
@@ -276,7 +276,7 @@ pub struct ShadowedPlacement {
 /// runs, in one spelling.
 ///
 /// Before this, three sites asked `model.execution.tasks.is_empty()` instead —
-/// `cmd::codegen_system`, `codegen::entry::derive_entry_tiers` and the
+/// `cmd::codegen_system`, `codegen::entry::derive_entry_sched_tasks` and the
 /// `nros::main!` macro — and that question is about the TABLE where the rule is
 /// about a FACT. Precedence, stated once and per fact:
 ///
@@ -291,15 +291,15 @@ pub struct ShadowedPlacement {
 ///    is also why this needs no new key in the `[tasks.*]` schema.
 /// 3. `[tasks.<name>]` authored with sub-tables for OTHER targets and not this
 ///    one ⇒ neither. The author did place it, for a different board, and
-///    `resolve_tiers` raises `MissingRtosSpec` exactly as before. Reading that
+///    `resolve_sched_tasks` raises `MissingRtosSpec` exactly as before. Reading that
 ///    as a request would silence a real mistake.
-/// 4. the group names no tier (`DEFAULT_TIER`) ⇒ **ALLOCATED** on a derived
+/// 4. the group names no tier (`DEFAULT_SCHED_TASK`) ⇒ **ALLOCATED** on a derived
 ///    level ([`DerivedSchedule::tiers`]): phase-509 P5 bands these nodes into
 ///    preemption levels (RFC-0108 D4, [`crate::levels`]), one derived tier per
 ///    level, `derived-<node>` for a level of one node.
 ///
 /// Rule 4 is what the old table-shaped guard got wrong. A group at
-/// `DEFAULT_TIER` is a node the author wrote nothing about, and whether it gets
+/// `DEFAULT_SCHED_TASK` is a node the author wrote nothing about, and whether it gets
 /// a derived placement cannot depend on whether some OTHER node's tier was
 /// authored — which is what `tiers.is_empty()` made it depend on. Measured on
 /// the phase-459 W0 fixture: one component binding to one authored
@@ -327,7 +327,7 @@ pub fn placement_is_unauthored(
 /// unplaced tier gets: `(node FQN, allocated priority)`.
 ///
 /// A tier is one thread, so several of these compete and the most urgent wins
-/// (see the loop at the end of [`derive_tiers_from_contracts`]). Named because
+/// (see the loop at the end of [`derive_sched_tasks_from_contracts`]). Named because
 /// the tuple is the whole reason clippy calls the map's type complex, and a
 /// name is the answer it asks for.
 type AllocationCandidate<'a> = (&'a str, i64);
@@ -358,12 +358,12 @@ fn bare(fqn: &str) -> &str {
 /// function's doc for the precedence; the three outputs it decides between are
 /// [`DerivedSchedule::tiers`] (rule 4), [`DerivedSchedule::placements`]
 /// (rule 2) and [`DerivedSchedule::shadowed`] (rule 1).
-pub fn derive_tiers_from_contracts(
+pub fn derive_sched_tasks_from_contracts(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
 ) -> DerivedSchedule {
-    derive_tiers_in_plan(
+    derive_sched_tasks_in_plan(
         model,
         target_rtos,
         callback_groups,
@@ -371,7 +371,7 @@ pub fn derive_tiers_from_contracts(
     )
 }
 
-/// [`derive_tiers_from_contracts`], allocating out of a plan the CALLER
+/// [`derive_sched_tasks_from_contracts`], allocating out of a plan the CALLER
 /// resolved rather than the one [`PriorityPlan::for_target`] projects from a
 /// tier key.
 ///
@@ -385,35 +385,35 @@ pub fn derive_tiers_from_contracts(
 /// `.config` in hand (the C/C++ entry and the Zephyr module bake both run at
 /// cmake configure time, after Kconfig) resolves the image's own plan with
 /// [`PriorityPlan::from_zephyr_dotconfig`] and passes it here.
-pub fn derive_tiers_in_plan(
+pub fn derive_sched_tasks_in_plan(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
     priority_plan: &PriorityPlan,
 ) -> DerivedSchedule {
-    derive_tiers_with_named(
+    derive_sched_tasks_with_named(
         model,
         target_rtos,
         callback_groups,
         priority_plan,
-        &tiers_named_above_transport(model, target_rtos),
+        &sched_tasks_named_above_transport(model, target_rtos),
     )
 }
 
-/// [`derive_tiers_in_plan`] with the tiers that name the transport band
-/// given (issue 1967; [`tiers_named_above_transport`] reads them off the
+/// [`derive_sched_tasks_in_plan`] with the tiers that name the transport band
+/// given (issue 1967; [`sched_tasks_named_above_transport`] reads them off the
 /// model). A tier is one thread at one priority, its most urgent member's
 /// (issue 1426 rule 2), so it is that member's rank that is lifted: every
 /// member at the tier's most urgent rank joins [`lift_above_transport`]'s
 /// set, and the others keep their pool ranks, which no thread runs at.
-pub fn derive_tiers_with_named(
+pub fn derive_sched_tasks_with_named(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
     priority_plan: &PriorityPlan,
     named_above_transport: &std::collections::BTreeSet<String>,
 ) -> DerivedSchedule {
-    derive_tiers_with_wcet(
+    derive_sched_tasks_with_wcet(
         model,
         target_rtos,
         callback_groups,
@@ -423,12 +423,12 @@ pub fn derive_tiers_with_named(
     )
 }
 
-/// [`derive_tiers_with_named`] with an RFC-0078 measurement profile: the task
+/// [`derive_sched_tasks_with_named`] with an RFC-0078 measurement profile: the task
 /// records carry C where it declares a bound, and the level derivation's
 /// analysed merge (RFC-0108 D4 rule 2) engages when every derived callback
 /// has one. The bake roads select no profile yet, so they pass `None` and the
 /// levels come from rules 1 and 3.
-pub fn derive_tiers_with_wcet(
+pub fn derive_sched_tasks_with_wcet(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
@@ -436,7 +436,7 @@ pub fn derive_tiers_with_wcet(
     named_above_transport: &std::collections::BTreeSet<String>,
     wcet: Option<&crate::wcet::WcetProfile>,
 ) -> DerivedSchedule {
-    derive_tiers_with_caps(
+    derive_sched_tasks_with_caps(
         model,
         target_rtos,
         callback_groups,
@@ -448,14 +448,14 @@ pub fn derive_tiers_with_wcet(
     )
 }
 
-/// [`derive_tiers_with_wcet`] over a stated mapper input and board
+/// [`derive_sched_tasks_with_wcet`] over a stated mapper input and board
 /// capabilities. Every entry point passes `mapper_input_from_model(model)`,
 /// which carries no execution time, and `sched_caps_for(target_rtos)`, whose
 /// `n_cores` is `None` since issue 0951 removed the only input that set it.
 /// So the realizer's core placement, which needs both, fires on no entry
 /// point today; a test states them here to reach it (issue 0259).
 #[allow(clippy::too_many_arguments)]
-fn derive_tiers_with_caps(
+fn derive_sched_tasks_with_caps(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
@@ -504,10 +504,10 @@ fn derive_tiers_with_caps(
     // an AUTHORING path first (a real table with a real reader), not this
     // plumbing — which is why deleting it is the honest move: keeping it made
     // a knob that does nothing look supported. So `caps.n_cores` is `None`
-    // on every entry point (see `derive_tiers_with_caps`).
+    // on every entry point (see `derive_sched_tasks_with_caps`).
     // phase-459 W4 (issue 1427) - the priority is ALLOCATED out of the board's
     // address plan, not read off the rank. Issue 1508 - the plan is the
-    // caller's: `derive_tiers_from_contracts` passes the tier key's projection,
+    // caller's: `derive_sched_tasks_from_contracts` passes the tier key's projection,
     // a road holding the image's `.config` passes the image's own.
     let mut plan = realize_rtos(&ranked, input, caps, priority_plan);
     // RFC-0079 section 6 - a tier that names the transport band is
@@ -600,7 +600,7 @@ fn derive_tiers_with_caps(
         let mut unbound: Vec<&CallbackGroupDecl> = Vec::new();
         for g in groups.iter() {
             match model.execution.tasks.get(&g.tier) {
-                // Rule 4 — the group names no tier (`DEFAULT_TIER`), or names
+                // Rule 4 — the group names no tier (`DEFAULT_SCHED_TASK`), or names
                 // one `apply_model_execution` will refuse as undeclared.
                 None => unbound.push(g),
                 Some(t) => {
@@ -621,7 +621,7 @@ fn derive_tiers_with_caps(
                             pin.2.push(n);
                         }
                     } else if authors_any_placement(t) {
-                        // Rule 3 — placed, for another board. `resolve_tiers`
+                        // Rule 3 — placed, for another board. `resolve_sched_tasks`
                         // raises `MissingRtosSpec`; silencing it here would
                         // turn a real mistake into a derived number.
                     } else {
@@ -646,7 +646,7 @@ fn derive_tiers_with_caps(
     }
 
     // Issue 1285 follow-up. `target_rtos` is a tier KEY (the output of
-    // `tier_rtos_key`, or `""` for a board with no RTOS), so it is matched
+    // `sched_task_rtos_key`, or `""` for a board with no RTOS), so it is matched
     // EXACTLY. For a no-RTOS board a derived level has no
     // `[tasks.<name>.<rtos>]` sub-table to live in: such a node stays on the
     // default tier, and the degradation record says so.
@@ -772,7 +772,7 @@ fn derive_tiers_with_caps(
             }
             // D4 rule 8 put these nodes on an authored tier's level: bind
             // their groups to that tier.
-            let tier_name = match level.tiers.first() {
+            let sched_task_name = match level.tiers.first() {
                 Some(t) => t.clone(),
                 None => {
                     let name = match (members.as_slice(), core) {
@@ -784,7 +784,7 @@ fn derive_tiers_with_caps(
                     };
                     out.tiers.insert(
                         name.clone(),
-                        level_tier(&members, core, target_rtos, &mut out.degradations),
+                        level_sched_task(&members, core, target_rtos, &mut out.degradations),
                     );
                     name
                 }
@@ -796,7 +796,7 @@ fn derive_tiers_with_caps(
                         .iter()
                         .map(|g| CallbackGroupOverride {
                             id: g.id.clone(),
-                            tier: tier_name.clone(),
+                            tier: sched_task_name.clone(),
                         })
                         .collect(),
                 });
@@ -854,14 +854,14 @@ fn derive_tiers_with_caps(
                 reason: format!(
                     "the target (tier key {target_rtos:?}) has no RTOS family, so the \
                      unplaced `[tasks.{tier}]` has no `[tasks.{tier}.<rtos>]` sub-table \
-                     to allocate a priority into; `resolve_tiers` will refuse it"
+                     to allocate a priority into; `resolve_sched_tasks` will refuse it"
                 ),
             });
             continue;
         }
         out.placements.insert(
             tier,
-            TierRtosSpec {
+            SchedTaskRtosSpec {
                 priority,
                 // A kernel threshold is authored, never allocated: RFC-0108
                 // derives thresholds per level (`levels.rs`), not per tier.
@@ -889,12 +889,12 @@ fn derive_tiers_with_caps(
 /// takes the tightest period and deadline among them; a per-node sporadic
 /// budget cannot be enforced on a shared thread, so it is dropped with a
 /// `budget` degradation naming the node.
-fn level_tier(
+fn level_sched_task(
     members: &[&(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)],
     core: Option<u32>,
     target_rtos: &str,
     degradations: &mut Vec<Degradation>,
-) -> TierDef {
+) -> SchedTaskDef {
     let lead = members[0].0;
     let one = members.len() == 1;
     let min_of = |f: &dyn Fn(&crate::rtos_realizer::RealizedNode) -> Option<u64>| {
@@ -920,7 +920,7 @@ fn level_tier(
         }
         None
     };
-    let spec = TierRtosSpec {
+    let spec = SchedTaskRtosSpec {
         priority: lead.priority,
         stack_bytes: None,
         // RFC-0108's threshold is the level's (`Level::threshold`); a kernel
@@ -943,7 +943,7 @@ fn level_tier(
         // ("edf"/"sporadic") is not the sub-table's POSIX-class vocab.
         sched_class: None,
     };
-    let mut def = TierDef {
+    let mut def = SchedTaskDef {
         class: Some(
             if deadline_us.is_some() || budget_us.is_some() {
                 "real_time"
@@ -991,7 +991,7 @@ mod tests {
     use ros_launch_manifest_sched::EffectiveTrigger;
 
     use super::*;
-    use crate::{CallbackGroupDecl, resolve_tiers};
+    use crate::{CallbackGroupDecl, resolve_sched_tasks};
 
     /// A contract-only model: control is a tight 5 ms / 100 Hz loop, telem a
     /// slack 100 ms / 10 Hz loop, NO `execution.tasks`.
@@ -1075,7 +1075,7 @@ mod tests {
     }
 
     /// The EXACT sequence `nros::main!` runs for a tier-less model: derive →
-    /// resolve_tiers(derived.tiers, derived.overrides, …). The authored group
+    /// resolve_sched_tasks(derived.tiers, derived.overrides, …). The authored group
     /// tiers ("high"/"low") do NOT exist in the derived table, so this also
     /// proves the overrides fully REBIND groups onto the `derived-<node>` tiers.
     #[test]
@@ -1085,12 +1085,12 @@ mod tests {
         groups.insert("control_node".into(), vec![cbg("ctrl", "high")]);
         groups.insert("telem_node".into(), vec![cbg("telem", "low")]);
 
-        let derived = derive_tiers_from_contracts(&model, "posix", &groups);
+        let derived = derive_sched_tasks_from_contracts(&model, "posix", &groups);
         assert!(derived.tiers.contains_key("derived-control_node"));
         assert!(derived.tiers.contains_key("derived-telem_node"));
 
         let component_names: BTreeSet<&str> = ["control_node", "telem_node"].into_iter().collect();
-        let table = resolve_tiers(
+        let table = resolve_sched_tasks(
             &derived.tiers,
             &derived.overrides,
             &component_names,
@@ -1122,14 +1122,14 @@ mod tests {
     /// substring match wrote the POSIX sub-table for `""` and read
     /// `mps2-an385-freertos` as FreeRTOS.
     #[test]
-    fn a_target_with_no_rtos_derives_no_tier_and_says_why() {
+    fn a_target_with_no_rtos_derives_no_sched_task_and_says_why() {
         let model = contract_model();
         let mut groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
         groups.insert("control_node".into(), vec![cbg("ctrl", "high")]);
         groups.insert("telem_node".into(), vec![cbg("telem", "low")]);
 
         for target in ["", "mps2-an385-freertos", "zephyr-zenoh"] {
-            let derived = derive_tiers_from_contracts(&model, target, &groups);
+            let derived = derive_sched_tasks_from_contracts(&model, target, &groups);
             assert!(derived.tiers.is_empty(), "{target:?}: {:?}", derived.tiers);
             assert!(derived.overrides.is_empty(), "{target:?}");
             let notes = derived
@@ -1141,7 +1141,7 @@ mod tests {
         }
 
         // A real key still lands in its own sub-table, and only there.
-        let z = derive_tiers_from_contracts(&model, "zephyr", &groups);
+        let z = derive_sched_tasks_from_contracts(&model, "zephyr", &groups);
         let ctrl = &z.tiers["derived-control_node"];
         assert!(ctrl.zephyr.is_some() && ctrl.posix.is_none() && ctrl.freertos.is_none());
 
@@ -1150,16 +1150,20 @@ mod tests {
         // advise adding a sub-table that does not exist. A real key with no
         // sub-table keeps the old error.
         let component_names: BTreeSet<&str> = ["control_node", "telem_node"].into_iter().collect();
-        let no_rtos = resolve_tiers(&z.tiers, &z.overrides, &component_names, &groups, "")
+        let no_rtos = resolve_sched_tasks(&z.tiers, &z.overrides, &component_names, &groups, "")
             .expect_err("an authored tier on a no-RTOS board");
         assert!(
-            matches!(no_rtos, crate::TierResolveError::NoRtosFamily { .. }),
+            matches!(no_rtos, crate::SchedTaskResolveError::NoRtosFamily { .. }),
             "{no_rtos:?}"
         );
-        let missing = resolve_tiers(&z.tiers, &z.overrides, &component_names, &groups, "posix")
-            .expect_err("a zephyr-only tier resolved for posix");
+        let missing =
+            resolve_sched_tasks(&z.tiers, &z.overrides, &component_names, &groups, "posix")
+                .expect_err("a zephyr-only tier resolved for posix");
         assert!(
-            matches!(missing, crate::TierResolveError::MissingRtosSpec { .. }),
+            matches!(
+                missing,
+                crate::SchedTaskResolveError::MissingRtosSpec { .. }
+            ),
             "{missing:?}"
         );
     }
@@ -1190,7 +1194,9 @@ mod tests {
         groups.insert("telem_node".into(), vec![cbg("telem", "low")]);
 
         // The measured defect: the projection's numbers, whatever the image.
-        let projected = zephyr_priorities(&derive_tiers_from_contracts(&model, "zephyr", &groups));
+        let projected = zephyr_priorities(&derive_sched_tasks_from_contracts(
+            &model, "zephyr", &groups,
+        ));
         assert_eq!(projected["derived-control_node"], 5, "{projected:?}");
         assert_eq!(projected["derived-telem_node"], 6, "{projected:?}");
 
@@ -1209,7 +1215,9 @@ mod tests {
                 projected["derived-control_node"] <= transport.hi,
                 "{label}: the shape no longer reproduces issue 1508"
             );
-            let got = zephyr_priorities(&derive_tiers_in_plan(&model, "zephyr", &groups, &plan));
+            let got = zephyr_priorities(&derive_sched_tasks_in_plan(
+                &model, "zephyr", &groups, &plan,
+            ));
             assert_eq!(
                 [got["derived-control_node"], got["derived-telem_node"]],
                 want,
@@ -1237,8 +1245,8 @@ mod tests {
         let cfg = "CONFIG_NUM_PREEMPT_PRIORITIES=15\nCONFIG_NUM_COOP_PRIORITIES=16\n\
                    CONFIG_POSIX_PRIORITY_SCHEDULING=y\nCONFIG_PREEMPT_ENABLED=y\n";
         let plan = PriorityPlan::from_zephyr_dotconfig(cfg, &[200, 200]).expect("resolves");
-        let image = derive_tiers_in_plan(&model, "zephyr", &groups, &plan);
-        let projected = derive_tiers_from_contracts(&model, "zephyr", &groups);
+        let image = derive_sched_tasks_in_plan(&model, "zephyr", &groups, &plan);
+        let projected = derive_sched_tasks_from_contracts(&model, "zephyr", &groups);
         assert_eq!(zephyr_priorities(&image), zephyr_priorities(&projected));
         assert_eq!(
             format!("{:?}", image.tiers),
@@ -1251,7 +1259,7 @@ mod tests {
     #[test]
     fn no_contracts_derives_nothing() {
         let derived =
-            derive_tiers_from_contracts(&SystemModel::default(), "posix", &BTreeMap::new());
+            derive_sched_tasks_from_contracts(&SystemModel::default(), "posix", &BTreeMap::new());
         assert!(derived.tiers.is_empty());
         assert!(derived.overrides.is_empty());
     }
@@ -1289,16 +1297,19 @@ mod tests {
         let mut g = BTreeMap::new();
         g.insert(
             "control_node".into(),
-            vec![cbg("main", crate::DEFAULT_TIER)],
+            vec![cbg("main", crate::DEFAULT_SCHED_TASK)],
         );
-        g.insert("telem_node".into(), vec![cbg("main", crate::DEFAULT_TIER)]);
+        g.insert(
+            "telem_node".into(),
+            vec![cbg("main", crate::DEFAULT_SCHED_TASK)],
+        );
         g
     }
 
     /// No `supervise:`: both nodes stay in pool.app, below the transport.
     #[test]
     fn without_supervision_every_rank_stays_below_the_transport() {
-        let d = derive_tiers_in_plan(&contract_model(), "zephyr", &groups(), &island_plan());
+        let d = derive_sched_tasks_in_plan(&contract_model(), "zephyr", &groups(), &island_plan());
         assert_eq!(prio(&d, "/control_node"), 5);
         assert_eq!(prio(&d, "/telem_node"), 6);
         assert!(d.above_transport.is_empty());
@@ -1314,10 +1325,10 @@ mod tests {
     /// in a note; the supervisor still gets the priority adjacent to the
     /// transport, above it.
     #[test]
-    fn a_supervised_node_stays_below_the_transport_unless_its_tier_names_it() {
+    fn a_supervised_node_stays_below_the_transport_unless_its_sched_task_names_it() {
         let mut m = contract_model();
         supervise(&mut m, "/telem_node/loop");
-        let d = derive_tiers_in_plan(&m, "zephyr", &groups(), &island_plan());
+        let d = derive_sched_tasks_in_plan(&m, "zephyr", &groups(), &island_plan());
         assert_eq!(prio(&d, "/telem_node"), 6, "pool.app, not moved");
         assert_eq!(prio(&d, "/control_node"), 5);
         assert!(d.above_transport.is_empty());
@@ -1342,7 +1353,7 @@ mod tests {
     /// supervisor goes one beyond it (2), the numbers #2312's implicit lift
     /// gave.
     #[test]
-    fn a_tier_that_names_the_transport_is_lifted_with_its_leader_only() {
+    fn a_sched_task_that_names_the_transport_is_lifted_with_its_leader_only() {
         let mut m = contract_model();
         supervise(&mut m, "/control_node/loop");
         m.execution.tasks.insert("mrm".into(), Default::default());
@@ -1350,12 +1361,12 @@ mod tests {
         g.insert("control_node".into(), vec![cbg("main", "mrm")]);
         g.insert("telem_node".into(), vec![cbg("main", "mrm")]);
 
-        let below = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
+        let below = derive_sched_tasks_in_plan(&m, "zephyr", &g, &island_plan());
         assert_eq!(below.placements["mrm"].priority, 5);
         assert_eq!(below.supervisor_priority, Some(3));
         assert!(below.above_transport.is_empty());
 
-        let above = derive_tiers_with_named(&m, "zephyr", &g, &island_plan(), &set(&["mrm"]));
+        let above = derive_sched_tasks_with_named(&m, "zephyr", &g, &island_plan(), &set(&["mrm"]));
         assert_eq!(above.placements["mrm"].priority, 3);
         assert_eq!(above.above_transport, vec!["/control_node".to_string()]);
         assert_eq!(prio(&above, "/telem_node"), 6, "not the leader: not lifted");
@@ -1454,7 +1465,10 @@ mod tests {
             m.contracts
                 .pub_endpoints
                 .insert(out, PubContract::default());
-            g.insert(name.to_string(), vec![cbg("main", crate::DEFAULT_TIER)]);
+            g.insert(
+                name.to_string(),
+                vec![cbg("main", crate::DEFAULT_SCHED_TASK)],
+            );
         }
         // The stated execution times: no entry point carries one today.
         let mut input = mapper_input_from_model(&m);
@@ -1475,7 +1489,7 @@ mod tests {
         };
         let mut plan = island_plan();
         plan.max_levels = Some(1);
-        let d = derive_tiers_with_caps(
+        let d = derive_sched_tasks_with_caps(
             &m,
             "zephyr",
             &g,
@@ -1545,7 +1559,7 @@ mod tests {
         for node in ["control_node", "telem_node", "slow_node"] {
             g.insert(node.to_string(), vec![cbg("main", "default")]);
         }
-        let d = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
+        let d = derive_sched_tasks_in_plan(&m, "zephyr", &g, &island_plan());
         let [levels] = d.levels.as_slice() else {
             panic!("one plan, nothing placed: {:?}", d.levels)
         };
@@ -1562,7 +1576,7 @@ mod tests {
 
         let mut capped = island_plan();
         capped.max_levels = Some(2);
-        let d = derive_tiers_in_plan(&m, "zephyr", &g, &capped);
+        let d = derive_sched_tasks_in_plan(&m, "zephyr", &g, &capped);
         let [levels] = d.levels.as_slice() else {
             panic!("one plan, nothing placed: {:?}", d.levels)
         };
@@ -1626,7 +1640,7 @@ mod tests {
             );
         }
 
-        let d = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
+        let d = derive_sched_tasks_in_plan(&m, "zephyr", &g, &island_plan());
         let ranks: Vec<i64> = ["/control_node", "/telem_node", "/slow_node"]
             .iter()
             .map(|n| prio(&d, n))
@@ -1674,7 +1688,7 @@ mod tests {
     /// A tier may name the transport with nothing supervised: it is lifted,
     /// and no supervisor priority is reserved.
     #[test]
-    fn a_named_tier_without_supervision_is_lifted_and_reserves_no_supervisor() {
+    fn a_named_sched_task_without_supervision_is_lifted_and_reserves_no_supervisor() {
         let m = {
             let mut m = contract_model();
             m.execution.tasks.insert("fast".into(), Default::default());
@@ -1682,7 +1696,7 @@ mod tests {
         };
         let mut g = groups();
         g.insert("telem_node".into(), vec![cbg("main", "fast")]);
-        let d = derive_tiers_with_named(&m, "zephyr", &g, &island_plan(), &set(&["fast"]));
+        let d = derive_sched_tasks_with_named(&m, "zephyr", &g, &island_plan(), &set(&["fast"]));
         assert_eq!(d.placements["fast"].priority, 3);
         assert_eq!(prio(&d, "/control_node"), 5);
         assert_eq!(d.supervisor_priority, None);
@@ -1698,7 +1712,7 @@ mod tests {
         g.insert("telem_node".into(), vec![cbg("main", "fast")]);
         let mut plan = island_plan();
         plan.reserved.remove("transport");
-        let d = derive_tiers_with_named(&m, "zephyr", &g, &plan, &set(&["fast"]));
+        let d = derive_sched_tasks_with_named(&m, "zephyr", &g, &plan, &set(&["fast"]));
         assert!(d.above_transport.is_empty());
         assert!(
             d.degradations

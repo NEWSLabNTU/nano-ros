@@ -91,7 +91,7 @@ shape after the quick run already harvested this surface's P1s (#321–#324).
   return (signalled wake condvar) exits the loop long before `duration_ms` of wall time.
   Two copies of one budget, one carrying a known-fixed bug. **Appended to #329** rather
   than filed: #329's fix (one CFFI spin entry point) subsumes it.
-- **E9** · `tests/orchestration_tiers_freertos.rs:68` · Hand-rolls
+- **E9** · `tests/orchestration_sched_tasks_freertos.rs:68` · Hand-rolls
   `Command::new("timeout").args(["10","qemu-system-arm",…])` outside the `qemu.rs`
   interpreter with no sanctioned-bypass rationale — while the **next test in the same
   file** uses `QemuProcess::start_mps2_an385_networked`, proving the interpreter covers the

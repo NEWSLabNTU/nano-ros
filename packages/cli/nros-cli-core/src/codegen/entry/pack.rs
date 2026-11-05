@@ -374,7 +374,7 @@ mod tests {
     /// DELIBERATE edit here rather than a silent change of what ships.
     ///
     /// Issue 1286 moved ThreadX, the last family routed to C++. It has the
-    /// shared `run_components` and no `run_tiers`, so a tiered ThreadX C plan
+    /// shared `run_components` and no `run_sched_tasks`, so a tiered ThreadX C plan
     /// takes the sched-context path rather than being refused.
     #[test]
     fn the_c_board_surface_is_where_this_phase_left_it() {

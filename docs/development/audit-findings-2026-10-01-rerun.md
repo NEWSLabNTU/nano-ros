@@ -37,7 +37,7 @@ The 2026-09-28 standard, applied mechanically:
 | fixed by this re-run's own PR (proved by the same mutation) | 3 |
 | **still PASS: surviving holes** | **70** |
 | N/A: gate deleted (`board-manifest-drift`, `nested-workspace-excludes`, `profile-board-mirror`) | 3 |
-| N/A: needs artifacts this host lacks (`nextest-test-filters`: compiled nextest binaries; `tier-priority-plan-image`: built Zephyr images) | 2 |
+| N/A: needs artifacts this host lacks (`nextest-test-filters`: compiled nextest binaries; `sched-task-priority-plan-image`: built Zephyr images) | 2 |
 
 New audits (the W5 "triaged, not audited" `cmake/` gates): 17 gates. 13 are clean,
 2 have holes (`no-allow-multiple-def`, `zenoh-feature-off-compile`) and 2 are N/A
@@ -126,7 +126,7 @@ run's.
 |  | `check-build-tool-verbs-exempt.py` · zephyr-ws | `zephyr/cmake/nros_generate_interfaces.cmake` += execute_process(COMMAND "${_NROS_CLI}" ws rerun-sub) | 0 | 0 | **HOLE** (W5, #1614); control rc 1 |
 | DEAD | `check-board-manifest-drift.sh` | — (gate deleted since the audit) | 0 | — | N/A |
 | P1 | `check-test-precondition-guards.py` | `packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs` += fn rerun_router() -> Option<u16> { | 0 | 1 | fails now |
-| P2 | `check-tier-spin-gap.py` | `packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c`: (void)gap_state;; `packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c`: (void)gap_state; | 0 | 1 | fails now |
+| P2 | `check-sched-task-spin-gap.py` | `packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c`: (void)gap_state;; `packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c`: (void)gap_state; | 0 | 1 | fails now |
 | P2 | `check-wait-evidence-discarded.py` · or_else-chain | `packages/testing/nros-tests/tests/qos.rs` += fn rerun_discard(p: &mut nros_tests::process::ManagedProcess) -> Strin | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
 |  | `check-wait-evidence-discarded.py` · baseline-forced-down | `packages/testing/nros-tests/tests/services.rs`: .expect("x"); | 0 | 1 | fails now |
 | P2 | `check-zenohd-router-skips.py` | `packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs` += fn rerun_r() { | 0 | 1 | fails now |
@@ -139,7 +139,7 @@ run's.
 | P2 | `check-third-party-is-submodules.sh` | `zephyr/CMakeLists.txt` += set(_rerun_tp "${NROS_REPO_DIR}/third-party/ninja") | 0 | 1 | fails now |
 | P2 | `check-test-domain-assignment.sh` | `packages/testing/nros-tests/tests/qos.rs` += const RERUN_DOMAIN: &str = "export ROS_DOMAIN_ID=117 && ros2 topic ech | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
 | P2 | `check-zenohd-flag-invocations.py` | `book/src/start/introduction.md` += Run `a rmw_zenohd router started with a listen flag` first. | 0 | 0 | **HOLE** → fixed here (rc 1 after fix); control rc 1 |
-| P2 | `check-tier-priority-plan-image.py` | — | 0 | — | N/A — needs built Zephyr images (build-*/zephyr/.config) — none on this host |
+| P2 | `check-sched-task-priority-plan-image.py` | — | 0 | — | N/A — needs built Zephyr images (build-*/zephyr/.config) — none on this host |
 | P2 | `check-zephyr-module-binding.py` | `justfile` += # rerun probe | 0 | 1 | fails now |
 | P3 | `check-workflow-setup-spelling.py` | `.github/actions/setup-nros-cli/action.yml` += the module spelling of the zephyr setup recipe | 0 | 1 | fails now |
 | P3 | `check-zenohd-spawn-sites.sh` | `packages/testing/nros-tests/tests/qos.rs` += fn rerun_spawn() { | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |
@@ -152,9 +152,9 @@ run's.
 | P2 | `check-no-vacuous-tests.py` · src-unit | `packages/testing/nros-tests/src/lib.rs` += mod rerun_vacuous { | 0 | 1 | fails now |
 |  | `check-no-vacuous-tests.py` · return-as-effect | `packages/testing/nros-tests/tests/qos.rs` += fn rerun_prints_and_returns() { | 0 | 0 | **HOLE** (W3, #1617); control rc 1 |
 | P2 | `check-ps-zombie-blind.sh` | `packages/testing/nros-tests/tests/qos.rs` += fn rerun_ps() { | 0 | 1 | fails now |
-| P2 | `check-no-unbounded-condvar-wait.sh` | `packages/boards/nros-board-freertos/c/freertos_run_tiers.c` += static void rerun_wait(void *c, void *m) { (void)nros_platform_condvar | 0 | 1 | fails now |
-| P2 | `check-no-direct-kernel-alloc.sh` · define | `packages/boards/nros-board-freertos/c/freertos_run_tiers.c` += #define RERUN_ALLOC(n) pvPortMalloc(n) | 0 | 0 | **HOLE** (W7, #1616); control rc 1,1 |
-|  | `check-no-direct-kernel-alloc.sh` · k_calloc | `packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c` += void *rerun_kc(void) { return k_calloc(1, 8); } | 0 | 0 | **HOLE** (W7, #1616); control rc 1,1 |
+| P2 | `check-no-unbounded-condvar-wait.sh` | `packages/boards/nros-board-freertos/c/freertos_run_sched_tasks.c` += static void rerun_wait(void *c, void *m) { (void)nros_platform_condvar | 0 | 1 | fails now |
+| P2 | `check-no-direct-kernel-alloc.sh` · define | `packages/boards/nros-board-freertos/c/freertos_run_sched_tasks.c` += #define RERUN_ALLOC(n) pvPortMalloc(n) | 0 | 0 | **HOLE** (W7, #1616); control rc 1,1 |
+|  | `check-no-direct-kernel-alloc.sh` · k_calloc | `packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c` += void *rerun_kc(void) { return k_calloc(1, 8); } | 0 | 0 | **HOLE** (W7, #1616); control rc 1,1 |
 | P2 | `check-no-alloc-image.py` · k_realloc | new `tmp/rerun/ka.marker` | 0 | 0 | **HOLE** (W7, #1616) |
 |  | `check-no-alloc-image.py` · control-k_malloc | new `tmp/rerun/kb.marker` | 0 | 1 | fails now |
 | P2 | `check-named-lane-fails.py` · rule4-comment | `justfile`: run_stage "$platform" just "$platform" build-fixtures; `justfile`: run_stage zephyr just zephyr build-fixtures | 0 | 1 | fails now |
@@ -182,7 +182,7 @@ run's.
 | P2 | `check-sdk-store-not-enumerated.py` | `scripts/build/riscv64-toolchain.sh` += _rerun_newest() { ls -d "$HOME/.nros/sdk/riscv-none-elf-gcc"/* \| sort  | 0 | 1 | fails now |
 | P2 | `check-rmw-slot-producers.py` · test-only-reader | `packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs` += fn rerun_reader(vtable: &nros_rmw_cffi::NrosRmwVtable) -> bool { | 0 | 1 | **HOLE** (W8, #1617): expected rc 0 (the slot stays inert); rc 1 is the stale-family error — the test-only reader made `feature_supported` count as reachable |
 | P2 | `check-rmw-doc-slot-names.py` | `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h`: /* see `rerun_slot_name` */; `packages/core/nros-rmw/src/lib.rs` += // rerun_slot_name is only named in this comment | 0 | 1 | fails now |
-| P2 | `check-rmw-ret-sign.py` | `packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c` += static int rerun_sign(void *s) { | 0 | 1 | fails now |
+| P2 | `check-rmw-ret-sign.py` | `packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c` += static int rerun_sign(void *s) { | 0 | 1 | fails now |
 | P2 | `check-qos-profile-ssot.py` · rule6-outside-traits | `packages/api/nros/src/lib.rs` += pub const QOS_PROFILE_RERUN: QoSProfile = QoSProfile { history: QoSHis | 0 | 0 | **HOLE** (W5, #1614); control rc 1 |
 | P2 | `check-required-contexts-reportable.py` · paths-filter | `.github/workflows/gate.yml`: paths: ["docs/**"] | 0 | 1 | fails now |
 | P2 | `check-release-manifest.py` · exit2 | `.github/workflows/release-nros.yml`: if [ "$(cat VERSION)" != "$(git describe --tags)" ]; then | 0 | 0 | **HOLE** (W6, #1615); control rc 1 |

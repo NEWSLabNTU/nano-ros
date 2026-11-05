@@ -180,7 +180,7 @@ def classify(known, framework, values):
     The image rule (issue 1519) reads the TABLE from that label, so a
     `[deploy.*]` naming a framework id passes while an `[image.*]` or
     `[image_defaults]` naming the same string does not — the same split
-    `image::refuse_framework_board` and `tier_resolver` make.
+    `image::refuse_framework_board` and `sched_task_resolver` make.
     """
     unknown, ambiguous, on_image = [], [], []
     for value, wheres in sorted(values.items()):

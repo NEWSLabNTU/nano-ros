@@ -252,7 +252,7 @@ schedulability. Research shows it can reduce RAM requirements by 30–50%
 compared to pure FPP, because fewer threads need independent stacks for
 preemption frames.
 
-**nano-ros on ThreadX**: multi-tier `run_tiers` is real — one executor per tier over one shared session, with
+**nano-ros on ThreadX**: multi-tier `run_sched_tasks` is real — one executor per tier over one shared session, with
 per-tier stacks allocated from the ThreadX byte pool via
 `nros_threadx_create_task`. The tier's `preempt_threshold` is passed
 natively at `tx_thread_create` (a `-1` sentinel means "use the

@@ -384,9 +384,9 @@ build-fixtures:
     # issue 1575 — the derived-tier C++ workspace's Zephyr Entry. Its tier table
     # is DERIVED from the SystemModel only `nros configure` writes; no native row
     # syncs this workspace as a side effect, and an unsynced configure refuses.
-    if [ -d examples/workspaces/derived-tiers-cpp ]; then
-        echo "  → derived-tiers-cpp workspace-entry prep (nros configure)"
-        ( cd examples/workspaces/derived-tiers-cpp
+    if [ -d examples/workspaces/derived-sched-tasks-cpp ]; then
+        echo "  → derived-sched-tasks-cpp workspace-entry prep (nros configure)"
+        ( cd examples/workspaces/derived-sched-tasks-cpp
           "$nros_cli" configure >/dev/null )
     fi
     # phase-509 P9 -- the three-level workspace, derived the same way.
@@ -486,7 +486,7 @@ build-fixtures:
     # night of 2026-09-27/28) the gate was placed and never produced a verdict
     # — the derived-tier red below sat behind it unseen.
     driver_rc=0
-    leaf_joblog="$log_dir/tier-priority-joblog-$$.tsv"
+    leaf_joblog="$log_dir/sched-task-priority-joblog-$$.tsv"
     if [ "$normal_records" = "1" ]; then
         echo "  → Zephyr fixture make scheduler"
         NROS_ZEPHYR_WORKSPACE="$workspace" \
@@ -512,7 +512,7 @@ build-fixtures:
         exit 1
     fi
     # RFC-0079 §4.1 / issue 0766 — now that `.config` files exist, finish the
-    # check `check::tier-priority-plan` DEFERS. Zephyr's reserved transport band
+    # check `check::sched-task-priority-plan` DEFERS. Zephyr's reserved transport band
     # is derived per image, so this is the only place it CAN be judged, and a
     # deferral nobody discharges is just an unchecked pin with better wording.
     #
@@ -536,7 +536,7 @@ build-fixtures:
     # images built this run are listed, so `--images-from`'s strict rules still
     # hold for every image it reads. Every status is collected and the recipe
     # fails with the first non-zero one, so no red hides another.
-    images_list="$log_dir/tier-priority-images-$$.txt"
+    images_list="$log_dir/sched-task-priority-images-$$.txt"
     if [ "$driver_rc" -ne 0 ]; then
         awk -F '\t' 'NR == FNR { if (FNR > 1 && $3 == "ok") ok[$2] = 1; next }
                       NF >= 12 && $12 != "" && ($2 in ok) { print $12 }' \
@@ -554,13 +554,13 @@ build-fixtures:
     # configure lines, so a failing lane's `tail -40` showed only "see its
     # verdict above" and the verdict itself was in a log no job uploads
     # (tier-1 nightly 38213993313: stopped in the build, no reason given).
-    gate_out="$log_dir/tier-priority-verdict-$$.txt"
+    gate_out="$log_dir/sched-task-priority-verdict-$$.txt"
     if [ -s "$images_list" ]; then
-        python3 scripts/check-tier-priority-plan-image.py --images-from "$images_list" \
+        python3 scripts/check-sched-task-priority-plan-image.py --images-from "$images_list" \
             >"$gate_out" 2>&1 || gate_rc=$?
         cat "$gate_out"
     else
-        echo "    (no leaf built — tier-priority-plan-image has no image to judge this run)"
+        echo "    (no leaf built — sched-task-priority-plan-image has no image to judge this run)"
     fi
     rm -f "$images_list" "$probe_records" "$leaf_joblog"
     if [ "$driver_rc" -ne 0 ]; then
@@ -592,7 +592,7 @@ build-fixtures:
         west_rc=0
     fi
     if [ "$gate_rc" -ne 0 ]; then
-        echo "  ✗ tier-priority-plan-image FAILED (exit $gate_rc). Its verdict, less the [ok] images:"
+        echo "  ✗ sched-task-priority-plan-image FAILED (exit $gate_rc). Its verdict, less the [ok] images:"
         { grep -v '^  \[ok\]' "$gate_out" || true; } | sed 's/^/    /'
         exit "$gate_rc"
     fi

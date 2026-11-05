@@ -1066,9 +1066,9 @@ impl ExecutorNodeRuntime {
     /// per tier means "the tier's policy" == "this executor's default SC";
     /// per-group/per-handle bindings still take precedence.
     ///
-    /// **Portable** across every board — call from each board's `run_tiers`
+    /// **Portable** across every board — call from each board's `run_sched_tasks`
     /// after building the runtime. Takes the tier fields as primitives (not a
-    /// `TierSpec`) so `nros` needs no board/platform dependency; a board passes
+    /// `SchedTaskSpec`) so `nros` needs no board/platform dependency; a board passes
     /// `tier.class`, `tier.period_us`, … straight through.
     ///
     /// `real_time` + `budget_us` + `period_us` → [`SchedClass::Sporadic`](crate::SchedClass::Sporadic);
@@ -1077,7 +1077,7 @@ impl ExecutorNodeRuntime {
     /// `budget_us` or the whole frame); `deadline_us` sets the SC deadline and
     /// `deadline_policy` its action. A tier with no class/budget/deadline
     /// leaves the default `Fifo` SC untouched (byte-identical pre-W3 behavior).
-    pub fn apply_tier_sched_policy(
+    pub fn apply_sched_task_sched_policy(
         &mut self,
         class: Option<&str>,
         period_us: Option<u64>,
@@ -1087,10 +1087,10 @@ impl ExecutorNodeRuntime {
     ) {
         use crate::SchedContext;
         // Common backend (RFC-0052): the tier→SchedContext lowering lives ONCE
-        // in `SchedContext::from_tier_policy`, shared with the C / C++ entries
+        // in `SchedContext::from_sched_task_policy`, shared with the C / C++ entries
         // (`nros_{c,cpp}_create_sched_context_from_policy`) so the mapping never
         // drifts between languages. `None` → keep the default `Fifo` SC.
-        let Some((sc, tt_frame)) = SchedContext::from_tier_policy(
+        let Some((sc, tt_frame)) = SchedContext::from_sched_task_policy(
             class,
             period_us,
             budget_us,
@@ -1108,7 +1108,7 @@ impl ExecutorNodeRuntime {
 
     /// Issue 2018 (RFC-0108 As-built) -- lower a LEVEL's policy onto its own
     /// scheduling context, the level-runner twin of
-    /// [`apply_tier_sched_policy`](Self::apply_tier_sched_policy). Call it on
+    /// [`apply_sched_task_sched_policy`](Self::apply_sched_task_sched_policy). Call it on
     /// the registering level (after the runner opened or adopted it), before
     /// its setup: what the setup registers then binds to the level's context
     /// instead of the executor's default, which every level on the core
@@ -1132,7 +1132,7 @@ impl ExecutorNodeRuntime {
         kernel_enforces_budget: bool,
     ) -> Option<crate::SchedContextId> {
         use crate::SchedContext;
-        let (sc, tt_frame) = SchedContext::from_tier_policy(
+        let (sc, tt_frame) = SchedContext::from_sched_task_policy(
             class,
             period_us,
             budget_us,

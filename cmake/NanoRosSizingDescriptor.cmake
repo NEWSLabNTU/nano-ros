@@ -235,7 +235,7 @@ endfunction()
 #   cross one (phase-457 W4); a cross configure with no resolvable triple gets a
 #   REFUSED `[target]`, naming the board rule (RFC-0100 D1), and says so.
 function(nros_sizing_descriptor_from_model _out_var)
-    cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW;METADATA;WORKSPACE;TIER_RECORD" "" ${ARGN})
+    cmake_parse_arguments(_nsw "" "CLI;MODEL;ENTRY;BUILD_DIR;RMW;METADATA;WORKSPACE;SCHED_TASK_RECORD" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
 
     set(_build_dir "${_nsw_BUILD_DIR}")
@@ -331,9 +331,9 @@ function(nros_sizing_descriptor_from_model _out_var)
     # own members, the CLI states one `[[tier]]` row per tier. Rewritten by
     # every `codegen entry`, so it is current whenever this configure ran the
     # codegen; absent (no entry codegen yet) passes nothing.
-    set(_tier_arg "")
-    if(_nsw_TIER_RECORD AND EXISTS "${_nsw_TIER_RECORD}")
-        set(_tier_arg --tier-record "${_nsw_TIER_RECORD}")
+    set(_sched_task_arg "")
+    if(_nsw_SCHED_TASK_RECORD AND EXISTS "${_nsw_SCHED_TASK_RECORD}")
+        set(_sched_task_arg --sched-task-record "${_nsw_SCHED_TASK_RECORD}")
     endif()
 
     execute_process(
@@ -343,7 +343,7 @@ function(nros_sizing_descriptor_from_model _out_var)
                 --entry "${_nsw_ENTRY}"
                 --road "a cmake entry"
                 ${_host_arg} ${_heap_args} ${_rx_args} ${_rmw_arg} ${_meta_arg} ${_ws_arg} ${_bound_args}
-                ${_tier_arg}
+                ${_sched_task_arg}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc

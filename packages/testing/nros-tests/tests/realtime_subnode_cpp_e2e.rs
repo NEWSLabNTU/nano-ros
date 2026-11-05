@@ -48,7 +48,7 @@ use std::{process::Command, time::Duration};
 /// (low-tier, 100 ms) in the same observation window. This confirms per-group binding
 /// — both callbacks of ONE node run at their declared cadences on distinct tiers.
 #[rstest]
-fn realtime_subnode_cpp_two_groups_on_two_tiers(zenohd_unique: ZenohRouter) {
+fn realtime_subnode_cpp_two_groups_on_two_sched_tasks(zenohd_unique: ZenohRouter) {
     require_zenohd();
     let entry = build_native_workspace_cpp_subnode_realtime_entry()
         .map(|p| p.to_path_buf())

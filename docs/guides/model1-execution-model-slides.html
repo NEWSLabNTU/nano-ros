@@ -255,8 +255,8 @@
         </div>
       </div>
       <div class="demo-map mt">
-        <div class="maprow"><span class="step"><b>on_ctrl</b> <span class="sep">∈</span> group <b>"ctrl"</b> <span class="sep">→</span> tier <span class="t">high</span> <span class="sep">→</span> <span class="t">task_tier_high</span> (prio 80, 10 ms)</span></div>
-        <div class="maprow"><span class="step"><b>on_telem</b> <span class="sep">∈</span> group <b>"telem"</b> <span class="sep">→</span> tier <span class="t">low</span> <span class="sep">→</span> <span class="t">task_tier_low</span> (prio 10, 100 ms)</span></div>
+        <div class="maprow"><span class="step"><b>on_ctrl</b> <span class="sep">∈</span> group <b>"ctrl"</b> <span class="sep">→</span> tier <span class="t">high</span> <span class="sep">→</span> <span class="t">task_sched_task_high</span> (prio 80, 10 ms)</span></div>
+        <div class="maprow"><span class="step"><b>on_telem</b> <span class="sep">∈</span> group <b>"telem"</b> <span class="sep">→</span> tier <span class="t">low</span> <span class="sep">→</span> <span class="t">task_sched_task_low</span> (prio 10, 100 ms)</span></div>
       </div>
       <div class="note amber"><span class="tag">why not 1 thread per callback</span><div>That would burn one OS priority slot per callback — Cortex-M0+ has ~4 total. Model 1 bundles callbacks by priority need into <strong>one thread per tier</strong>; the thread cooperatively runs all its callbacks. Kernel preempts <em>between</em> tiers, executor schedules <em>within</em>.</div></div>
     </div>
@@ -340,7 +340,7 @@ spin_period_us = <span class="lit">10000</span>
     <div class="inner">
       <div class="eyebrow">step 3 — entry</div>
       <h2 class="mt">The binary entry is one line</h2>
-      <p class="sub">Codegen reads the manifest, resolves the tier table, and emits <code>run_tiers</code>. The author writes only the launch reference.</p>
+      <p class="sub">Codegen reads the manifest, resolves the tier table, and emits <code>run_sched_tasks</code>. The author writes only the launch reference.</p>
       <div class="grid2 mt">
         <div class="panel">
           <div class="cap"><span>linux_entry/src/main.rs</span><span class="lang">rust</span></div>
@@ -354,7 +354,7 @@ spin_period_us = <span class="lit">10000</span>
           <span class="lit">"demo_bringup:system.launch.xml"</span>);</pre>
         </div>
       </div>
-      <div class="note"><span class="tag">what it expands to</span><div>Both macros resolve the 2-tier table and emit the multi-tier <code>run_tiers</code> entry — <strong>one priority task per tier</strong> — instead of the single-tier <code>run</code>. All-default-tier collapses back to one task = the shipped simple case.</div></div>
+      <div class="note"><span class="tag">what it expands to</span><div>Both macros resolve the 2-tier table and emit the multi-tier <code>run_sched_tasks</code> entry — <strong>one priority task per tier</strong> — instead of the single-tier <code>run</code>. All-default-tier collapses back to one task = the shipped simple case.</div></div>
     </div>
   </section>
 
@@ -362,11 +362,11 @@ spin_period_us = <span class="lit">10000</span>
   <section class="slide">
     <div class="inner">
       <div class="eyebrow">under the macro</div>
-      <h2 class="mt">Each tier is a TierSpec + a spin loop</h2>
+      <h2 class="mt">Each tier is a SchedTaskSpec + a spin loop</h2>
       <div class="grid2 mt">
         <div class="panel">
-          <div class="cap"><span>nros-platform · board/tier.rs</span><span class="lang">real struct</span></div>
-<pre><span class="kw">pub struct</span> TierSpec&lt;<span class="lit">'a</span>&gt; {
+          <div class="cap"><span>nros-platform · board/sched_task.rs</span><span class="lang">real struct</span></div>
+<pre><span class="kw">pub struct</span> SchedTaskSpec&lt;<span class="lit">'a</span>&gt; {
     <span class="kw">pub</span> name: &amp;<span class="lit">'a</span> str,        <span class="cmt">// [tasks.&lt;name&gt;]</span>
     <span class="kw">pub</span> groups: &amp;<span class="lit">'a</span> [&amp;<span class="lit">'a</span> str], <span class="cmt">// active_groups; [] = wildcard</span>
     <span class="kw">pub</span> priority: i64,          <span class="cmt">// raw per-RTOS spawn value</span>
@@ -376,7 +376,7 @@ spin_period_us = <span class="lit">10000</span>
         </div>
         <div class="panel">
           <div class="cap"><span>emitted per-tier task body</span><span class="lang">shape</span></div>
-<pre><span class="fn">run_tiers</span>(TIERS, setup) {
+<pre><span class="fn">run_sched_tasks</span>(TIERS, setup) {
   <span class="kw">let</span> shared = open_shared_session();   <span class="cmt">// once</span>
   <span class="kw">for</span> tier <span class="kw">in</span> TIERS {
     spawn(tier.priority, tier.stack, || {
@@ -461,10 +461,10 @@ spin_period_us = <span class="lit">10000</span>
         <div class="panel">
           <div class="cap"><span>packages/core · the engine</span><span class="lang">real crates</span></div>
 <pre class="tree"><span class="d">nros-macros/</span>
-└─ main_macro.rs   <span class="c"># nros::main! → run_tiers</span>
+└─ main_macro.rs   <span class="c"># nros::main! → run_sched_tasks</span>
 <span class="d">nros-platform/</span>
-└─ board/<span class="a">tier.rs</span>    <span class="c"># TierSpec + prio mappers</span>
-   board/runtime.rs <span class="c"># run_tiers, spawn/yield</span>
+└─ board/<span class="a">tier.rs</span>    <span class="c"># SchedTaskSpec + prio mappers</span>
+   board/runtime.rs <span class="c"># run_sched_tasks, spawn/yield</span>
 <span class="d">nros-node/</span>
 └─ executor/
    ├─ <span class="t">spin.rs</span>        <span class="c"># spin_once, shared session</span>

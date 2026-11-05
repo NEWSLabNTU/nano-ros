@@ -126,7 +126,7 @@ pub struct RtosPlan {
 /// The board seam (W5.3): the per-platform [`SchedCaps`] the realizer targets.
 /// Grounded in the platform scheduler survey (RFC-0052 §"Scheduling model
 /// evolution"). `target` is a TIER KEY: `posix` (or `native`), `freertos`,
-/// `zephyr`, `threadx` or `nuttx`. That is `BoardFamily::tier_rtos_key`'s
+/// `zephyr`, `threadx` or `nuttx`. That is `BoardFamily::sched_task_rtos_key`'s
 /// output, and it is matched EXACTLY. Anything else, including `""` (a board
 /// with no RTOS family), gets the bare-metal caps. Kept consistent with W2's
 /// applicability table (e.g. preemption-threshold is ThreadX-only).
@@ -801,13 +801,16 @@ pub fn realize_rtos(
 
 /// W5.4 — wire the realization into the existing bake: convert an [`RtosPlan`]
 /// into the [`ResolvedTaskTable`] the `codegen-system` plan emitter + the
-/// `run_tiers` const table already consume (one tier per realized node; the
+/// `run_sched_tasks` const table already consume (one tier per realized node; the
 /// executor lowers `class`/`period_us`/`budget_us`/`deadline_us` into its
 /// `SchedContext` — Sporadic budget / EDF / TT — per W3a). `low_number_is_high`
 /// (from [`SchedCaps`]) is needed to order the table by URGENCY (the table is
 /// "most urgent first"; the realized priority is already board-direction-
 /// normalized, so the numeric sort flips with the platform).
-pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> ResolvedTaskTable {
+pub fn rtos_plan_to_sched_task_table(
+    plan: &RtosPlan,
+    low_number_is_high: bool,
+) -> ResolvedTaskTable {
     let mut tiers: Vec<ResolvedTask> = plan
         .nodes
         .iter()
@@ -1024,7 +1027,7 @@ mod tests {
     /// out-of-tree `my-freertos-board` as FreeRTOS. Board keys are resolved to
     /// a tier key upstream, by the one lookup per namespace.
     #[test]
-    fn a_board_key_is_not_a_tier_key() {
+    fn a_board_key_is_not_a_sched_task_key() {
         let bare = sched_caps_for("");
         for key in [
             "mps2-an385-freertos",
@@ -1070,14 +1073,14 @@ mod tests {
     }
 
     #[test]
-    fn wires_into_tier_table() {
+    fn wires_into_sched_task_table() {
         // W5.4: RtosPlan → ResolvedTaskTable the existing bake consumes. Six-dim
         // fields ride through; ordering is most-urgent-first per direction.
         let input = input_two();
         let ranked = chain_aware_rank(&input);
         let caps = sched_caps_for("zephyr"); // edf, low_number_is_high
         let plan = realize_rtos(&ranked, &input, &caps, &plan_for(&caps));
-        let table = rtos_plan_to_tier_table(&plan, caps.low_number_is_high);
+        let table = rtos_plan_to_sched_task_table(&plan, caps.low_number_is_high);
 
         assert_eq!(table.tasks.len(), 2, "one tier per node");
         // /hi is most urgent → first (zephyr low=high → smaller number first).
@@ -1182,7 +1185,7 @@ mod tests {
     /// address here, so no tier is derived and the reason says which band ate
     /// the pool.
     #[test]
-    fn an_empty_application_pool_derives_no_tier_rather_than_a_reserved_one() {
+    fn an_empty_application_pool_derives_no_sched_task_rather_than_a_reserved_one() {
         let input = input_two();
         let ranked = chain_aware_rank(&input);
         let caps = sched_caps_for("zephyr");
@@ -1220,7 +1223,11 @@ mod tests {
         }
         // The tier table the rest of the pipeline consumes is empty too, so a
         // consumer that reads only `nodes` cannot pick the refused number up.
-        assert!(rtos_plan_to_tier_table(&realized, true).tasks.is_empty());
+        assert!(
+            rtos_plan_to_sched_task_table(&realized, true)
+                .tasks
+                .is_empty()
+        );
     }
 
     /// issue 1427, the class rather than the case: over every plan this tree
@@ -1799,7 +1806,7 @@ mod tests {
     /// a hand-set `deadline_us`: the claim is about the CONTRACT field, and a
     /// hand-set field would pin the plumbing rather than the fold.
     #[test]
-    fn a_service_response_bound_reaches_the_tier_deadline() {
+    fn a_service_response_bound_reaches_the_sched_task_deadline() {
         use ros_launch_manifest_model::{
             Contracts, NodeInstance, PathContract, SrvContract, Structure, SystemModel,
         };
@@ -1909,7 +1916,7 @@ mod tests {
     /// the same reason as the deadline case above: the claim is about the
     /// CONTRACT field.
     #[test]
-    fn the_timer_trigger_rate_is_the_tier_period_whatever_the_outputs_promise() {
+    fn the_timer_trigger_rate_is_the_sched_task_period_whatever_the_outputs_promise() {
         use ros_launch_manifest_model::{
             Contracts, NodeInstance, PathContract, PubContract, Structure, SystemModel,
         };

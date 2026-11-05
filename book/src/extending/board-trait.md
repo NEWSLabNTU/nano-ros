@@ -181,7 +181,7 @@ See the [Role reference](../build/roles.md) for the Entry-pkg surface.
 
 The family crate is where the `BoardEntry::run` *body* actually lives. The kernel families with a driver crate:
 
-- `nros-board-linux` — native host; the reach is `linux`, not `posix` — `apply_tier_affinity` calls `sched_setaffinity` with `cpu_set_t`, which libc does not define for macOS. `init_transport`/`wait_link_up` no-ops.
+- `nros-board-linux` — native host; the reach is `linux`, not `posix` — `apply_sched_task_affinity` calls `sched_setaffinity` with `cpu_set_t`, which libc does not define for macOS. `init_transport`/`wait_link_up` no-ops.
 - `nros-board-freertos` — FreeRTOS-Kernel + lwIP; `run` spawns the executor task, hands DHCP to lwIP's hook.
 - `nros-board-threadx` — ThreadX + NetX BSD; same shape over NetX.
 - `nros-board-nuttx` — NuttX POSIX layer; `init_transport` shells `ifup`-style logic.

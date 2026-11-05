@@ -647,14 +647,14 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
     #[cfg(feature = "alloc")]
     unsafe fn open_with_session_slot(
         session: *mut session::ConcreteSession,
-        slot: &'s mut super::TierExecutorBackingSlot,
+        slot: &'s mut super::SchedTaskExecutorBackingSlot,
     ) -> Self;
 
     /// The FFI entry point; see `Executor::open_with_session_handle_slot` in `spin.rs`.
     #[cfg(feature = "alloc")]
     unsafe fn open_with_session_handle_slot(
         handle: SessionHandle,
-        slot: &'s mut super::TierExecutorBackingSlot,
+        slot: &'s mut super::SchedTaskExecutorBackingSlot,
     ) -> Self;
 
     /// The FFI entry point; see `Executor::detach_action_client_raw` in `action.rs`.
@@ -1641,7 +1641,7 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
     #[inline]
     unsafe fn open_with_session_slot(
         session: *mut session::ConcreteSession,
-        slot: &'s mut super::TierExecutorBackingSlot,
+        slot: &'s mut super::SchedTaskExecutorBackingSlot,
     ) -> Self {
         unsafe { Executor::open_with_session_slot(session, slot) }
     }
@@ -1650,7 +1650,7 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
     #[inline]
     unsafe fn open_with_session_handle_slot(
         handle: SessionHandle,
-        slot: &'s mut super::TierExecutorBackingSlot,
+        slot: &'s mut super::SchedTaskExecutorBackingSlot,
     ) -> Self {
         unsafe { Executor::open_with_session_handle_slot(handle, slot) }
     }

@@ -139,25 +139,25 @@ impl nros_platform::BoardEntry for NuttxQemu {
 
 /// phase-281 W3-nuttx (RFC-0015 Model 1) — the multi-tier inherent entry the
 /// `nros::main!` generic OwnedSpin arm targets. For a multi-tier plan the macro
-/// emits `<NuttxQemu>::run_tiers(&deploy, TIERS, TIER_BACKING, closure)` (exactly as it does
-/// `LinuxBoard::run_tiers` for native); this merges the deploy overlay (the
+/// emits `<NuttxQemu>::run_sched_tasks(&deploy, TIERS, SCHED_TASK_BACKING, closure)` (exactly as it does
+/// `LinuxBoard::run_sched_tasks` for native); this merges the deploy overlay (the
 /// same [`entry_net_init`] the single-tier `run{,_with_deploy}` paths use) and
 /// then delegates to the NuttX family driver's
-/// [`nros_board_nuttx::run_tiers`], which opens the ONE session and runs one
+/// [`nros_board_nuttx::run_sched_tasks`], which opens the ONE session and runs one
 /// executor per tier over it (a `std::thread` per tier — NuttX is `std` +
 /// zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`).
 ///
 /// Gated `target_os = "nuttx"` for the same reason as the [`nros_platform::BoardEntry`]
-/// impl below: `entry_net_init` + `nros_board_nuttx::run_tiers` are NuttX-only,
+/// impl below: `entry_net_init` + `nros_board_nuttx::run_sched_tasks` are NuttX-only,
 /// and the multi-tier entry is reachable only in a real NuttX build.
 #[cfg(target_os = "nuttx")]
 impl NuttxQemu {
-    pub fn run_tiers<F, E>(
+    pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
-        tiers: &[nros_platform::TierSpec<'_>],
+        tiers: &[nros_platform::SchedTaskSpec<'_>],
         // issue 1571 — the spawned tiers' executor backing: the entry's
-        // `.bss` `TierExecutorBacking`, emitted by `nros::main!`.
-        tier_backing: &'static mut [nros_board_nuttx::TierExecutorBackingSlot],
+        // `.bss` `SchedTaskExecutorBacking`, emitted by `nros::main!`.
+        sched_task_backing: &'static mut [nros_board_nuttx::SchedTaskExecutorBackingSlot],
         setup: F,
     ) -> Result<(), E>
     where
@@ -165,12 +165,12 @@ impl NuttxQemu {
         E: core::fmt::Debug,
     {
         let cfg = entry_net_init(Some(deploy));
-        nros_board_nuttx::run_tiers::<Self, F, E>(
+        nros_board_nuttx::run_sched_tasks::<Self, F, E>(
             deploy.boot_config,
             cfg.locator(),
             cfg.domain_id(),
             tiers,
-            tier_backing,
+            sched_task_backing,
             setup,
         )
     }

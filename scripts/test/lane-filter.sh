@@ -140,7 +140,7 @@ tokens="$(
 #     (test(~tests::) or (not test(~a) and not test(~A) and ...))
 #
 # Without the exemption this lane drops host-only UNIT tests whose names merely
-# mention a platform — `board::tier::tests::threadx_inverts_scale`,
+# mention a platform — `board::sched_task::tests::threadx_inverts_scale`,
 # `qemu::tests::test_parse_results`, and (with some irony)
 # `zephyr::tests::content_aware_staleness_ignores_mtime_only_bumps`, a phase-318
 # test. Those need no fixture and no toolchain; dropping them trades one coverage

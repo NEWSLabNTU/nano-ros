@@ -1216,7 +1216,7 @@ fn test_rtos_pubsub_e2e(
     // TALKER_PAYLOAD_PREFIX, not TALKER_LOG_PREFIX: only the opening payload
     // quote separates a real publish line from setup prose containing the word
     // "Publishing" (phase-295 W2).
-    // Issue 2067 -- the negative control for `realtime_tiers_e2e`'s OFF check:
+    // Issue 2067 -- the negative control for `realtime_sched_tasks_e2e`'s OFF check:
     // these single-executor FreeRTOS images are not level images, so their
     // kernel keeps time slicing. Their runner prints no slicing line; one that
     // does must read ON, never OFF.

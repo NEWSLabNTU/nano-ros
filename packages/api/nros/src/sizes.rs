@@ -128,19 +128,19 @@ mod rmw_sizes {
     export_size!(pub EXECUTOR_SIZE       = nros_node::ExecutorInlineStorage);
 
     // Issue 1970 -- each executor tier's own backing, in the tier table's order
-    // (`nros_node::config::TIER_SIZINGS`), zero past the last tier and on an
+    // (`nros_node::config::SCHED_TASK_SIZINGS`), zero past the last tier and on an
     // image sized as one executor. Eight is the most a per-tier image carries:
     // the CLI's descriptor states no tier beyond it. The C/C++ header publishes
-    // them as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which size the generated
+    // them as `NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>`, which size the generated
     // entry's per-tier backing statics.
-    export_bytes!(pub TIER_BACKING_SIZE_0 = nros_node::tier_backing_bytes(0));
-    export_bytes!(pub TIER_BACKING_SIZE_1 = nros_node::tier_backing_bytes(1));
-    export_bytes!(pub TIER_BACKING_SIZE_2 = nros_node::tier_backing_bytes(2));
-    export_bytes!(pub TIER_BACKING_SIZE_3 = nros_node::tier_backing_bytes(3));
-    export_bytes!(pub TIER_BACKING_SIZE_4 = nros_node::tier_backing_bytes(4));
-    export_bytes!(pub TIER_BACKING_SIZE_5 = nros_node::tier_backing_bytes(5));
-    export_bytes!(pub TIER_BACKING_SIZE_6 = nros_node::tier_backing_bytes(6));
-    export_bytes!(pub TIER_BACKING_SIZE_7 = nros_node::tier_backing_bytes(7));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_0 = nros_node::sched_task_backing_bytes(0));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_1 = nros_node::sched_task_backing_bytes(1));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_2 = nros_node::sched_task_backing_bytes(2));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_3 = nros_node::sched_task_backing_bytes(3));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_4 = nros_node::sched_task_backing_bytes(4));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_5 = nros_node::sched_task_backing_bytes(5));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_6 = nros_node::sched_task_backing_bytes(6));
+    export_bytes!(pub SCHED_TASK_BACKING_SIZE_7 = nros_node::sched_task_backing_bytes(7));
 
     // phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- the ONE executor
     // backing a level runner opens per core: every tier's (level's) members,

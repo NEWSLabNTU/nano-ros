@@ -9,7 +9,7 @@
 //! | `libfreertos.a`          | kernel core + port + heap_4                       |
 //! | `liblwip.a`              | core + IPv4 + API + netif + ethernet + sys_arch   |
 //! | `libnros_platform_freertos.a` | C port providing the `nros_platform_*` ABI   |
-//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c` + `c/freertos_task_glue.c` + `c/freertos_run_tiers.c` + `../nros-board-common/c/nros_rtos_run_components.c` |
+//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c` + `c/freertos_task_glue.c` + `c/freertos_run_sched_tasks.c` + `../nros-board-common/c/nros_rtos_run_components.c` |
 //!
 //! `c/freertos_c_entry.c` is deliberately NOT in that list: it is the C/C++
 //! lane's boot path (`main`), and on the cargo lane `main` is the Rust entry.
@@ -356,13 +356,13 @@ fn main() {
     nros_cc_flags::header_deps::track_header_deps(&mut platform);
     platform.compile("nros_platform_freertos");
 
-    // --- Generic glue (freertos_hooks + network_glue + freertos_run_tiers) ---
+    // --- Generic glue (freertos_hooks + network_glue + freertos_run_sched_tasks) ---
     // `c/freertos_hooks.c` provides the FreeRTOS task hooks +
     // semihosting helpers. `c/network_glue.c` provides the lwIP
     // init + FFI surface Rust calls; both invoke
     // `nros_board_*` weak hooks the overlay implements (152.1.B.2).
-    // `c/freertos_run_tiers.c` (Phase 274.W3) implements
-    // `nros_board_freertos_run_tiers` for embedded C/C++ multi-tier entries
+    // `c/freertos_run_sched_tasks.c` (Phase 274.W3) implements
+    // `nros_board_freertos_run_sched_tasks` for embedded C/C++ multi-tier entries
     // (RFC-0015 Model 1): one FreeRTOS task per tier over one shared session.
     // nros-cpp C FFI symbols are forward-declared and resolved at link time.
     let mut glue = cc::Build::new();
@@ -375,7 +375,7 @@ fn main() {
     // phase-370 W1 — the kernel-only half of what `network_glue.c` used to be.
     // Split out so a board with no lwIP can compile it; this lane compiles both.
     glue.file(manifest_dir.join("c/freertos_task_glue.c"));
-    glue.file(manifest_dir.join("c/freertos_run_tiers.c"));
+    glue.file(manifest_dir.join("c/freertos_run_sched_tasks.c"));
     // phase-432 W3.1 — the C-ABI single-executor entry, the C twin of
     // `FreertosBoard::run_components`. SHARED with every other RTOS board
     // (`nros_board_rtos_run_components`): the single-executor path differs only

@@ -12,7 +12,7 @@ path = "src/lib.rs"
 # `node.callback_group("ctrl")`; WHICH tier that group runs on is deployment
 # policy, bound in the bringup's `system.toml` (`[[component]] group_tasks`,
 # RFC-0047), which `nros::main!()` resolves against `[tasks.<tier>]` to emit
-# `run_tiers` (RFC-0015 / RFC-0032).
+# `run_sched_tasks` (RFC-0015 / RFC-0032).
 [package.metadata.nros.node]
 class = "ctrl_pkg::Control"
 name = "control_node"

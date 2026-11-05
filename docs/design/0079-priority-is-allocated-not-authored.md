@@ -170,13 +170,13 @@ once, in a place that cannot see what it depends on.
 So a plan declares one of two kinds of band:
 
 * **STATIC** — `reserved.transport = [4, 4]`, plus the source it was read from.
-  Checkable by `check-tier-priority-plan` with nothing but the repo.
+  Checkable by `check-sched-task-priority-plan` with nothing but the repo.
 * **DERIVED** — no numbers at all. The descriptor names what the band depends
   on and who resolves it:
 
 ```toml
 [board.priority_plan]
-tier_key  = "zephyr"
+sched_task_key  = "zephyr"
 direction = "smaller-is-urgent"
 derived   = "zephyr"
 resolver  = "scripts/lib/priority_plan.py:resolve_zephyr_plan"
@@ -197,10 +197,10 @@ Two rules make the derived kind honest rather than an excuse:
    number — the same rule as "absent is not a budget", and the state NuttX was
    in before issue 0736.
 
-`check-tier-priority-plan-image.py <build>/zephyr/.config` resolves and judges.
+`check-sched-task-priority-plan-image.py <build>/zephyr/.config` resolves and judges.
 Against an image with `NUM_PREEMPT_PRIORITIES=15`, both gates on and the two
 bands at their current defaults - the Autoware Safety Island's configuration,
-and the fixture `examples/workspaces/derived-tiers-cpp` mirrors it:
+and the fixture `examples/workspaces/derived-sched-tasks-cpp` mirrors it:
 
 ```
 lease  band 200 -> posix  10 -> k_thread   4
@@ -231,7 +231,7 @@ and it finds four real violations — `tiers.high.zephyr = 5` outranks the
 transport in every bringup that has it, undeclared, exactly as every other port
 did before its plan landed.
 
-**The pins are not moved yet, deliberately.** `realtime_tiers`' `zephyr/rust`
+**The pins are not moved yet, deliberately.** `realtime_sched_tasks`' `zephyr/rust`
 row fails for an unrelated, pre-existing reason ("low-tier /telem never reached
 5 deliveries — the low tier was not scheduled"), so the one cell that could
 validate a move cannot show green either way. Moving them would be a change
@@ -295,10 +295,10 @@ all is REFUSED (the amendment below). The phase's spread-with-headroom half is
 not implemented, so consecutive ranks are consecutive priorities.
 
 The end-to-end half of the acceptance is
-`derived_tiers_bake::the_derived_table_lands_below_the_transport_band`
+`derived_sched_tasks_bake::the_derived_table_lands_below_the_transport_band`
 (`packages/cli/nros-cli-core/tests/`): a bake of the W0 fixture through the real
 road — launch file, resolved model, callback groups,
-`derive_tiers_from_contracts` — yields 5 for the 30 Hz pair and 6 for the 10 Hz
+`derive_sched_tasks_from_contracts` — yields 5 for the 30 Hz pair and 6 for the 10 Hz
 pair, inside the pool the island's `.config` resolves and below the `[0, 4]` its
 transport threads occupy. Reverted to the pre-W4 whole-range plan, that same
 test measures 0 and 1, which is issue 1427's report reproduced end to end.
@@ -311,7 +311,7 @@ projection, right only for images on Zephyr's defaults: an image with
 above or inside their transport. The C/C++ entry (`nros dev codegen entry`) and the
 module bake (`nros dev codegen system`) run at cmake configure time AFTER Kconfig,
 so they take `--dotconfig ${DOTCONFIG}` and allocate from the image's own plan
-(`derive_tiers_in_plan`): 8 / 9 and 10 / 11 on those two images, measured on
+(`derive_sched_tasks_in_plan`): 8 / 9 and 10 / 11 on those two images, measured on
 built native_sim images, and 5 / 6 unchanged on the default one. An image whose
 Kconfig applies no transport priority (rule 2 of §4.1) keeps the projection and
 is reported as not judged. The `nros::main!` road reads the same `.config`
@@ -320,8 +320,8 @@ environment, with the same two calls (issue 1537): 8 / 9, 10 / 11 and 5 / 6 on
 built Rust images, and a Kconfig edit re-expands incrementally because the macro
 tracks the file. Whatever road baked a table, a Zephyr tier image now also says
 so at BOOT when a tier meets or outranks the transport priorities the kernel
-actually gave it (`nros_zephyr_report_tier_vs_transport`, the twin of
-FreeRTOS's `report_tiers_above_transport`) — the one check that sees authored
+actually gave it (`nros_zephyr_report_sched_task_vs_transport`, the twin of
+FreeRTOS's `report_sched_tasks_above_transport`) — the one check that sees authored
 pins on the image.
 
 **Implemented 2026-10-16 - the record.** "The result lands in a build
@@ -334,7 +334,7 @@ node's priority, period and deadline; the degradations) and
 `nros_priority_plan.h` (the same plan and the tier priorities as macros, so a
 thread the application creates outside the tier table is placed from the
 plan instead of from a second hand-written number). The build prints the
-plan, one line per tier and per rank. `check-tier-priority-plan-image.py
+plan, one line per tier and per rank. `check-sched-task-priority-plan-image.py
 --derived-plan <json> <.config> [<entry TU>]` holds a record to its image:
 the bands this checker resolves, every allocated or derived tier in
 `pool.app` and on no reserved band, and the generated entry running the
@@ -364,7 +364,7 @@ implicitly. That is withdrawn. `above = "transport"` on the tier is the only
 way a tier goes above the transport band; a supervised deadline is not a
 name for the crossing, it is a reason an author may write one.
 
-* The key is rlm's `TierDef::above` (`ReservedBand`, a closed set whose one
+* The key is rlm's `SchedTaskDef::above` (`ReservedBand`, a closed set whose one
   member is `transport`; rlm v0.1.67). An unknown band is a parse error;
   the key is refused in a platform sub-table, because it states a system
   fact, not one kernel's number. `derive::names_the_transport` reads it.
@@ -388,7 +388,7 @@ name for the crossing, it is a reason an author may write one.
   No priority left for it: a degradation. A supervised node whose tier does
   not name the transport stays below it, and the derivation records a note
   that its supervised budget includes whatever the transport runs meanwhile.
-* `check-tier-priority-plan-image.py --derived-plan` holds a named tier
+* `check-sched-task-priority-plan-image.py --derived-plan` holds a named tier
   above the transport, every other derived or allocated tier in `pool.app`,
   and the supervisor above the transport and above every tier.
 
@@ -522,11 +522,11 @@ Four of five ports are allocated and enforced:
 
 Zephyr's four `tiers.high.zephyr = 5` violations are closed: moved to 9, inside
 the resolved pool and below the transport, in all four bringups.
-`check-tier-priority-plan-image` reports 8 of 8 clean against the realtime
+`check-sched-task-priority-plan-image` reports 8 of 8 clean against the realtime
 image's own `.config`.
 
 Measured with every realtime fixture rebuilt — the fullest coverage this work
-has had: **`realtime_tiers` 17 rows ran, 4 skipped, 1 failed.** The three Zephyr
+has had: **`realtime_sched_tasks` 17 rows ran, 4 skipped, 1 failed.** The three Zephyr
 rows (rust, c, cpp) all pass, as do all three FreeRTOS, NuttX-arm c and cpp,
 ThreadX and the three native rows. The four skips want tooling this host lacks
 (`native/cpp-rclcpp` needs ROS, `nuttx-riscv/*` need `qemu-system-riscv32`); the
@@ -535,7 +535,7 @@ and known flaky.
 
 **Both defect columns are closed on the two ports that can describe
 themselves.** FreeRTOS and NuttX declare `[board.priority_plan]`;
-`check-tier-priority-plan` fails a pin that lands on a reserved band, and fails
+`check-sched-task-priority-plan` fails a pin that lands on a reserved band, and fails
 one that outranks a band without saying so. All 12 offending pins were moved
 into their port's `pool.app` rather than grandfathered:
 
@@ -545,9 +545,9 @@ into their port's `pool.app` rather than grandfathered:
 | NuttX (pool 1–99, transport 100) | high 110, low 100 | high 99, low 98 |
 
 Order is preserved throughout, and every tier now sits below the link it
-publishes over. Measured after the move: all four `TierPriority` arms report
+publishes over. Measured after the move: all four `SchedTaskPriority` arms report
 every tier ACCEPT (`freertos cpp` 3/3, `freertos c` 2/2, `nuttx cpp` 2/2,
-`nuttx rust` 2/2), and `realtime_tiers` is 16 of 17 rows — the one red is issue
+`nuttx rust` 2/2), and `realtime_sched_tasks` is 16 of 17 rows — the one red is issue
 0736's, unmoved at 49 vs 25 inside its usual range. That is now the THIRD
 independent check that 0736's publish failures are not about priority ordering.
 
@@ -574,12 +574,12 @@ are mostly wrong or unverifiable:
   tier and the transport shared one priority and round-robinned against each
   other. Nobody wrote that down; it fell out of two defaults meeting. FIXED —
   moved to 99, which keeps the tier order and vacates the band. The
-  `[nuttx cpp|rust TierPriority]` cells confirm 2/2 tiers ACCEPT at the new
+  `[nuttx cpp|rust SchedTaskPriority]` cells confirm 2/2 tiers ACCEPT at the new
   value, and issue 0736's cell is unmoved (68 vs 30, inside its usual range),
   consistent with the separate finding there that transport PRIORITY is not
   what makes its publishes fail.
 * **`tiers.high.freertos = 5` preempts the transport band in 4 bringups.** This
-  is exactly what `report_tiers_above_transport` warns about at boot — "tier
+  is exactly what `report_sched_tasks_above_transport` warns about at boot — "tier
   `high` at 5 >= 4 — this tier PREEMPTS transport I/O". The diagnostic exists to
   make that a CHOICE. The count says the choice was never made: it is 4 for 4,
   in every bringup that targets FreeRTOS.
@@ -594,7 +594,7 @@ is the migration cost, and it is concentrated: all in this repo's own bringups.
 > **Correction, made while implementing §4.** The first run of this report also
 > counted `app` (FreeRTOS priority 3) as a reserved band, giving a fifth
 > COLLIDES for `tiers.mid.freertos = 3`. That was wrong: `app_priority` is the
-> priority `app_task` is CREATED at, and `run_tiers` immediately replaces it
+> priority `app_task` is CREATED at, and `run_sched_tasks` immediately replaces it
 > with the boot tier's own. A starting value is not a standing occupant, so 3
 > belongs to the pool. Recorded rather than silently fixed — requiring a cited
 > source per band is what made it checkable, and the first thing that citation
@@ -734,7 +734,7 @@ play_launch schedules processes from outside. Same target, different problem
   elsewhere.** `scripts/dev/priority-thread-probe.py <pid>` enumerates a live
   image's threads from `/proc/<pid>/task/*/stat` and classifies each against
   its port's plan. Run on the native realtime entry it finds FOUR threads, all
-  ours — the boot tier on the main thread, `nros-tier-high`, and zenoh-pico's
+  ours — the boot tier on the main thread, `nros-sched-task-high`, and zenoh-pico's
   read and lease tasks — and nothing else holding a real-time priority. So
   POSIX's `reserved.foreign` is EMPTY, and the plan now says so as
   `reserved.foreign = []`.

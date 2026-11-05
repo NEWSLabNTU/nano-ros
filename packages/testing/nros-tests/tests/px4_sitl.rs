@@ -99,7 +99,7 @@ fn field(line: &str, key: &str) -> u64 {
 
 /// Every tier's `runs=` summed, and the largest `wake_max_us=`, from the
 /// module's `status` output.
-fn tier_status(sitl: &Px4Sitl) -> (u64, u64) {
+fn sched_task_status(sitl: &Px4Sitl) -> (u64, u64) {
     let out = sitl.shell(&format!("{MODULE} status"));
     let lines: Vec<&str> = out.lines().filter(|l| l.contains(" runs=")).collect();
     assert!(
@@ -131,7 +131,7 @@ fn tier_status(sitl: &Px4Sitl) -> (u64, u64) {
 /// publish-to-dispatch delta measured on it is 0 by construction, and the tick
 /// jitter it reports is one lockstep step.
 #[test]
-fn work_queue_tier_wakes_only_for_deadlines_and_arrivals() {
+fn work_queue_sched_task_wakes_only_for_deadlines_and_arrivals() {
     require_platform_in_lane(&[PlatformId::Px4], "the PX4 SITL uORB example");
     let build_dir = prebuilt_sitl_dir(MODULE, "just px4 build-sitl-example");
     let sitl = Px4Sitl::boot_in(&build_dir);
@@ -141,7 +141,7 @@ fn work_queue_tier_wakes_only_for_deadlines_and_arrivals() {
         let lines = sitl
             .wait_for_log_count("stats: ticks=", n, STATS_TIMEOUT)
             .unwrap_or_else(|e| panic!("{e}\n=== SITL log ===\n{}", sitl.log_snapshot()));
-        let (runs, wake) = tier_status(&sitl);
+        let (runs, wake) = sched_task_status(&sitl);
         (lines[n - 1].clone(), runs, wake)
     };
     let (a, runs_a, _) = window(1);

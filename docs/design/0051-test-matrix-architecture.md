@@ -16,7 +16,7 @@ superseded-by: null
 The test system has grown a split personality. `rtos_e2e.rs` proved the right
 shape — 33 (platform × language × variant) cells from THREE `#[rstest]`
 functions — but around it sit ~55 hand-written per-cell files
-(`*_entry_e2e`, `realtime_tiers_*` ×15, `*_workspace_e2e` ×12,
+(`*_entry_e2e`, `realtime_sched_tasks_*` ×15, `*_workspace_e2e` ×12,
 `*_roundtrip_xprocess_e2e` ×8, `multihost*` ×6) that each re-implement the
 same spawn → wait-for-ready → count-deliveries checker inline; 22 files
 hardcode the `"Received:"` literal that `nros_tests::output` already names;
@@ -66,7 +66,7 @@ pub struct Cell {
     pub lang: Lang,              // Rust, C, Cpp  (workspaces add Mixed)
     pub rmw: Rmw,                // Zenoh, Cyclonedds, Xrce
     pub workload: Workload,      // Pubsub, Service, Action, Params,
-                                 // Lifecycle, Qos, RealtimeTiers, Multihost
+                                 // Lifecycle, Qos, RealtimeSchedTasks, Multihost
     pub kind: Kind,              // Example | Workspace | Interop
     pub tier: Tier,              // Runtime | BuildOnly | CarveOut(&'static str)
 }
@@ -166,7 +166,7 @@ framework's, not ours:
 
 ### 5. Micro-test budget
 
-- Phase-probe one-offs (`w1d_native_tier_generation_probe`,
+- Phase-probe one-offs (`w1d_native_sched_task_generation_probe`,
   `w1_zephyr_tx_throughput_measure`, `phase_118_collapse`,
   `native_entry_poc_boot`, CLI `phase_212_f_bringup` — E3 violations by
   name alone) are retired or renamed+promoted into matrix cells.
@@ -186,12 +186,12 @@ first-class tables so they stop being implicit matrices hand-listed per file:
 **6a. Realtime-dim matrix — `matrix::sched_dims::CELLS`.** The scheduler-dim
 "applied" family (`*_core_pin_applied` ×5, `zephyr_edf_deadline_applied`,
 `threadx_{preempt_threshold,time_slice}_applied`,
-`nuttx_{sporadic_budget,tier_priority}_applied` — 10 files, one boot each) is a
+`nuttx_{sporadic_budget,sched_task_priority}_applied` — 10 files, one boot each) is a
 `dim × platform × lang` matrix with no table. Declared as:
 
 ```rust
 pub enum SchedDim {            // the RT knob whose honoring is asserted
-    CorePin, EdfDeadline, PreemptThreshold, TimeSlice, SporadicBudget, TierPriority,
+    CorePin, EdfDeadline, PreemptThreshold, TimeSlice, SporadicBudget, SchedTaskPriority,
 }
 pub struct SchedCell {
     pub dim: SchedDim,
@@ -228,7 +228,7 @@ the build stage, record its exit status and stderr, and succeed whatever it
 said; the test asserts the verdict through `require_compile_verdict`.
 `linux_main_macro_misuse`, `cmake_platform_matrix`, `cmake_node_register_misuse`
 and `diagnostic_verbatim` moved that way (and `native_orchestration_misuse` was
-deleted as a duplicate of the `orch_tiers_multi` build). A configure verdict's
+deleted as a duplicate of the `orch_sched_tasks_multi` build). A configure verdict's
 dependency closure comes from cmake's own `--trace-format=json-v1` record,
 because a FAILED configure writes neither `Makefile.cmake` nor `build.ninja`.
 What remains registered states what ELSE keeps it at run time.

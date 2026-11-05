@@ -434,7 +434,7 @@ Every workspace has its own README; one line each. Recount with
 | `realtime-cpp/` | the C++ base of the same two-tier scheduling differentiator (RFC-0015 §4.2) |
 | `realtime-cpp-subnode-portable/` | the identical `SubNode` under tiers renamed `fast`/`bulk` — tier names are deployment-owned |
 | `realtime-rust/` | the Rust projection of the scheduling-tiers differentiator |
-| `derived-tiers-cpp/` | four C++ components and **no authored tiers** — the Safety-Island-shaped sizing fixture |
+| `derived-sched-tasks-cpp/` | four C++ components and **no authored tiers** — the Safety-Island-shaped sizing fixture |
 | `sizing/` | a node the SystemModel cannot count (six timers, no subscription) — the executor-sizing showcase |
 
 ### `templates/` — multi-platform copy-out recipes

@@ -33,6 +33,6 @@ pub(crate) fn arena_for_demand(model: Option<usize>, unknown_budget: usize) -> u
 /// unfloored. `None` -- the tier's counts are not all declared -- is not
 /// floored into a guess; the caller leaves the whole image on the inline
 /// executor instead, sized as the image.
-pub(crate) fn tier_arena(model: Option<usize>) -> Option<usize> {
+pub(crate) fn sched_task_arena(model: Option<usize>) -> Option<usize> {
     model.map(|required| arena_for_demand(Some(required), 0))
 }

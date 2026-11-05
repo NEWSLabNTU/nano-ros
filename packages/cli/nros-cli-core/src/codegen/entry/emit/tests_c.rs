@@ -42,7 +42,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
         safety: None,
         tiers: Default::default(),
         node_overrides: Vec::new(),
-        resolved_tiers: None,
+        resolved_sched_tasks: None,
         session: Default::default(),
     }
 }
@@ -218,8 +218,8 @@ fn typed_emit_remaps_are_one_flash_table() {
 }
 
 #[test]
-fn typed_emit_tiered_remaps_are_installed_before_every_tier_setup() {
-    let mut plan = fixture_plan_with_tiers();
+fn typed_emit_sched_task_remaps_are_installed_before_every_sched_task_setup() {
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].remaps = vec![("a".into(), "/x".into())];
     plan.nodes[1].remaps = vec![("b".into(), "/y".into())];
     let src = emit_typed(&plan).expect("typed C tier emit ok");
@@ -305,7 +305,7 @@ fn typed_emit_param_services_registration_is_non_fatal_both_paths() {
             "param_talker",
             fixture_plan(&[("param_talker_pkg", "param_talker")]),
         ),
-        ("tiered", "ctrl", fixture_plan_with_tiers()),
+        ("tiered", "ctrl", fixture_plan_with_sched_tasks()),
     ] {
         plan.param_services = true;
         plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
@@ -436,12 +436,12 @@ fn typed_emit_lifecycle_after_param_block() {
 // Phase 269 (W4) — sched-context wiring tests
 // -------------------------------------------------------------------------
 
-fn fixture_plan_with_tiers() -> Plan {
+fn fixture_plan_with_sched_tasks() -> Plan {
     use crate::codegen::entry::PlanNode;
-    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
+    use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
     use std::path::PathBuf;
     // Two-tier plan: high (idx 0) and low (idx 1), each with one C node.
-    let high_tier = ResolvedTier {
+    let high_sched_task = ResolvedSchedTask {
         name: "high".into(),
         priority: 80,
         stack_bytes: None,
@@ -457,7 +457,7 @@ fn fixture_plan_with_tiers() -> Plan {
         core: None,
         members: vec![("ctrl".into(), "ctrl_grp".into())],
     };
-    let low_tier = ResolvedTier {
+    let low_sched_task = ResolvedSchedTask {
         name: "low".into(),
         priority: 10,
         stack_bytes: None,
@@ -519,8 +519,8 @@ fn fixture_plan_with_tiers() -> Plan {
         safety: None,
         tiers: Default::default(),
         node_overrides: Vec::new(),
-        resolved_tiers: Some(ResolvedTierTable {
-            tiers: vec![high_tier, low_tier],
+        resolved_sched_tasks: Some(ResolvedSchedTaskTable {
+            tiers: vec![high_sched_task, low_sched_task],
         }),
         session: Default::default(),
     }
@@ -557,8 +557,8 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
 /// builds on the same executor, so no build-time index is right for both. The
 /// shim resolves the index from the executor it seeds.
 #[test]
-fn typed_emit_tier_seeds_name_their_node() {
-    let mut plan = fixture_plan_with_tiers();
+fn typed_emit_sched_task_seeds_name_their_node() {
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].params = vec![("period".into(), "10".into())];
     plan.nodes[1].params = vec![("period".into(), "100".into())];
     let src = emit_typed(&plan).expect("typed C tier emit ok");
@@ -578,19 +578,19 @@ fn typed_emit_tier_seeds_name_their_node() {
 }
 
 #[test]
-fn typed_emit_tiers_uses_run_tiers_path() {
-    // Phase 274.W2 — multi-tier C plan emits per-tier setup functions + run_tiers
+fn typed_emit_sched_tasks_uses_run_sched_tasks_path() {
+    // Phase 274.W2 — multi-tier C plan emits per-tier setup functions + run_sched_tasks
     // call instead of the old sched-context wiring.
-    let plan = fixture_plan_with_tiers();
+    let plan = fixture_plan_with_sched_tasks();
     let src = emit_typed(&plan).expect("typed C tier emit ok");
 
     // Per-tier setup functions present.
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier 0 setup fn; got:\n{src}"
     );
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
         "expected tier 1 setup fn; got:\n{src}"
     );
     // Each setup fn creates only its tier's nodes (ctrl in tier 0, telem in tier 1).
@@ -604,7 +604,7 @@ fn typed_emit_tiers_uses_run_tiers_path() {
     );
     // Tier spec table emitted.
     assert!(
-        src.contains("static const nros_native_tier_spec_t __nros_tiers[2]"),
+        src.contains("static const nros_native_sched_task_spec_t __nros_sched_tasks[2]"),
         "expected 2-element tier spec table; src:\n{src}"
     );
     assert!(
@@ -624,13 +624,13 @@ fn typed_emit_tiers_uses_run_tiers_path() {
     assert!(
         src.contains("nros_board_native_run_levels_in(")
             && src.contains(
-                "__nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), \
+                "__nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), \
                  NROS_ENTRY_LEVEL_BACKINGS, NULL, __nros_scheduler_0"
             ),
         "main must call nros_board_native_run_levels_in over the entry's storage; src:\n{src}"
     );
     assert!(
-        src.contains("static uint64_t __nros_tier_executor_storage[1]["),
+        src.contains("static uint64_t __nros_sched_task_executor_storage[1]["),
         "a level image owns ONE executor block; src:\n{src}"
     );
     assert!(
@@ -657,8 +657,8 @@ fn typed_emit_tiers_uses_run_tiers_path() {
 }
 
 #[test]
-fn typed_emit_no_tiers_uses_plain_node_create() {
-    // Guard: empty resolved_tiers keeps byte-identical plain create (no seed, no sched).
+fn typed_emit_no_sched_tasks_uses_plain_node_create() {
+    // Guard: empty resolved_sched_tasks keeps byte-identical plain create (no seed, no sched).
     let plan = fixture_plan(&[("talker_pkg", "talker")]);
     let src = emit_typed(&plan).expect("typed C no-tier emit ok");
     // Must NOT contain sched block artifacts.
@@ -891,7 +891,7 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
         &ages,
         Some(&model),
         &[],
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("hazard emit ok");
     assert!(
@@ -933,7 +933,7 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
         &ages,
         Some(&model),
         &[],
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("hazard emit ok");
     assert!(
@@ -977,7 +977,7 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
         &ages,
         None,
         &modes,
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("mode emit ok");
     assert!(src.contains("#define NROS_MODE_DEGRADED_SAFE 1u"), "{src}");
@@ -1007,7 +1007,7 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
         &ages,
         None,
         &[],
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("plain emit ok");
     assert!(
@@ -1039,7 +1039,7 @@ fn typed_emit_aliases_a_mode_equal_to_the_base() {
         &ages,
         None,
         &modes,
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("mode emit ok");
     assert!(src.contains("#define NROS_MODE_SAME 2u"), "{src}");

@@ -51,7 +51,7 @@ pub mod network;
 pub mod print;
 pub mod rtic_entry;
 pub mod runtime;
-pub mod tier;
+pub mod sched_task;
 
 pub use config::BoardConfig;
 pub use dispatch::DispatchStrategy;
@@ -63,9 +63,9 @@ pub use rtic_entry::RticBoardEntry;
 pub use runtime::{
     NodeDispatchRuntime, NullNodeRuntime, RuntimeCtx, RuntimeError, SignaledCallback,
 };
-pub use tier::{
-    PriorityDirection, TierSpec, TierSpinGap, boot_tier_index, freertos_priority_for,
-    posix_nice_for, threadx_priority_for,
+pub use sched_task::{
+    PriorityDirection, SchedTaskSpec, SchedTaskSpinGap, boot_sched_task_index,
+    freertos_priority_for, posix_nice_for, threadx_priority_for,
 };
 
 // Phase 313 W1 (issue #0243) — the phase-214.K.1 `NodeRuntime` →

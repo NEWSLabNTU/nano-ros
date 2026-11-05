@@ -12105,7 +12105,7 @@ fn an_undeclared_cadence_falls_back_to_the_timeout() {
     );
 }
 
-private_test_clock!(tier_slower_cadence_clock);
+private_test_clock!(sched_task_slower_cadence_clock);
 
 /// The bug this fixes, end to end: a 1 kHz tier that actually wakes every
 /// 10 ms is nine periods late every time, and against the old 10 ms yardstick
@@ -12116,14 +12116,14 @@ private_test_clock!(tier_slower_cadence_clock);
 /// real sleep, which only ever made the numbers larger; the bounds held, but
 /// as "at least" where they can now be "exactly".
 #[test]
-fn a_tier_slower_than_its_declared_cadence_is_late() {
-    tier_slower_cadence_clock::claim_at_us(1_000_000);
+fn a_sched_task_slower_than_its_declared_cadence_is_late() {
+    sched_task_slower_cadence_clock::claim_at_us(1_000_000);
     let mut executor: Executor =
-        executor_with_clock_fn(MockSession::new(), tier_slower_cadence_clock::now_us);
+        executor_with_clock_fn(MockSession::new(), sched_task_slower_cadence_clock::now_us);
     executor.set_spin_nominal_us(1_000);
     for _ in 0..3 {
         executor.spin_once(core::time::Duration::ZERO);
-        tier_slower_cadence_clock::advance_ms(10);
+        sched_task_slower_cadence_clock::advance_ms(10);
     }
     executor.spin_once(core::time::Duration::ZERO);
 
@@ -17539,7 +17539,7 @@ private_test_clock!(mode_deadline_clock);
 /// have waited longer than the mode's budget is reported as
 /// `mode-switch-runtime`, measured as the gap since the previous check.
 #[test]
-fn a_mode_switch_moves_the_tier_deadline_and_judges_its_latency() {
+fn a_mode_switch_moves_the_sched_task_deadline_and_judges_its_latency() {
     use super::{
         monitor::{ModeDeadline, ModeTables, request_mode},
         sched_context::{OptUs, SchedContext, SchedContextId},

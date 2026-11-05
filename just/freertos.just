@@ -356,18 +356,18 @@ test verbose="": build-fixtures
     # platform's cells out of `rtos_e2e` instead. `test(Freertos)` selects 9 —
     # action / pubsub / service, each in Rust, C and C++.
     #
-    # Issue 1658 — and `realtime_tiers_e2e`, whose FreeRTOS rows are the cells
+    # Issue 1658 — and `realtime_sched_tasks_e2e`, whose FreeRTOS rows are the cells
     # that boot the cmake-built WORKSPACE entries (`workspace-{c,cpp}-freertos-
     # realtime`, built above by `build-examples`) and assert every tier ticks on
     # the serial console. That is the road issue 1657 broke: those images opened
-    # a zenoh session and then deadlocked, and `realtime_tiers` names it in 8 s
+    # a zenoh session and then deadlocked, and `realtime_sched_tasks` names it in 8 s
     # ("tier `ctrl` never published"). Nothing that runs on a schedule selected
     # the target, so it sat on main until a hand reproduction. It is ONE test
     # iterating every platform's rows, so no name filter can narrow it; a row
     # whose fixture this job did not build reports itself as skipped in the
     # test's own summary, and a FreeRTOS row that boots and does not tick fails
     # the job.
-    just _nextest-platform 'rtos_e2e realtime_tiers_e2e' '{{verbose}}' '' 'test(Freertos) | binary(=realtime_tiers_e2e)'
+    just _nextest-platform 'rtos_e2e realtime_sched_tasks_e2e' '{{verbose}}' '' 'test(Freertos) | binary(=realtime_sched_tasks_e2e)'
 
 # Run all FreeRTOS tests including networked E2E
 [group("full-matrix")]

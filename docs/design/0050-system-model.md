@@ -216,7 +216,7 @@ structure* (chains + per-path ranks) into the model. That is **reverted**
   reusable value is the *algorithm*: split `chain_aware_mapper` into (a) a
   platform-agnostic **core** (feasibility + clock-segmentation + a priorityless
   chain/segment **ranking**) and (b) the Linux **realizer** (`rt_priority_band`
-  → `ResolvedTierTable`). Both runtimes call (a); each applies its own realizer
+  → `ResolvedSchedTaskTable`). Both runtimes call (a); each applies its own realizer
   ((b) for play_launch's Linux runtime; an RTOS realizer for nano-ros, RFC-0052).
   **Derivation stays per-consumer**, sharing the `MapperInput` type — play_launch
   derives it from its `LaunchDump` (`sched_derive`, parser-coupled); nano-ros

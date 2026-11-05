@@ -36,7 +36,7 @@ use std::{
 };
 
 use nros_entry_lower::{LoweredNode, NodeIdentity, QosOverride};
-use nros_orchestration_ir::{CallbackGroupDecl, ResolvedTierTable, resolve_tiers};
+use nros_orchestration_ir::{CallbackGroupDecl, ResolvedSchedTaskTable, resolve_sched_tasks};
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
@@ -775,7 +775,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // Populated only in the launch arm (where bringup_dir + node pkgs are in
     // scope). `node_groups` maps a node *instance* name → its declared callback
     // groups; `node_instances` is every launch node name (for the
-    // instance-identity check vs `[[component]]`). `resolved_tiers` stays `None`
+    // instance-identity check vs `[[component]]`). `resolved_sched_tasks` stays `None`
     // unless `system.toml` declares `[tasks.*]`.
     let mut node_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     // issue 1172 — bare name -> namespace, for the tier filter's node key. Built
@@ -800,12 +800,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // monitor-table emitter lowers onto the rows above.
     let mut hazard_model: Option<ros_launch_manifest_model::SystemModel> = None;
     // phase-462 W4c -- each mode's derived tier deadlines and switch budget.
-    let mut mode_tier = nros_orchestration_ir::mode_variants::ModeTierDeadlines::default();
+    let mut mode_sched_task =
+        nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines::default();
     let mut mode_switch: Vec<(u32, String)> = Vec::new();
-    let mut resolved_tiers: Option<ResolvedTierTable> = None;
+    let mut resolved_sched_tasks: Option<ResolvedSchedTaskTable> = None;
     // issue 0438 — the tier names the SYSTEM declared, as opposed to the ones
     // that survived membership resolution. Empty when the schedule is derived.
-    let mut authored_tier_names: Vec<String> = Vec::new();
+    let mut authored_sched_task_names: Vec<String> = Vec::new();
     // Phase 264 W2 — `[lifecycle]` boot autostart from `system.toml` (launch arm only).
     let mut lifecycle_code: Option<u8> = None;
     // Phase 264 W4b — the `param_services` capability (launch arm: the overlay) →
@@ -1143,7 +1144,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     });
                 } else if key == fqn {
                     decls.push(CallbackGroupDecl {
-                        id: nros_orchestration_ir::DEFAULT_TIER.to_string(),
+                        id: nros_orchestration_ir::DEFAULT_SCHED_TASK.to_string(),
                         r#type: "MutuallyExclusive".to_string(),
                         tier: tier.clone(),
                     });
@@ -1251,20 +1252,20 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // same thing wrong: a model that authored one tier derived nothing for
         // any other node, however much contract those nodes carried. Rules and
         // the shared predicate: `derive::placement_is_unauthored`.
-        let mut tiers: BTreeMap<String, nros_orchestration_ir::TierDef> = model
+        let mut tiers: BTreeMap<String, nros_orchestration_ir::SchedTaskDef> = model
             .execution
             .tasks
             .iter()
             .map(|(name, t)| {
                 (
                     name.clone(),
-                    nros_orchestration_ir::tier_from_model(t, &rtos),
+                    nros_orchestration_ir::sched_task_from_model(t, &rtos),
                 )
             })
             .collect();
         // issue 0438 — remember that tiers were AUTHORED, so a collapse to the
         // degenerate default below can be reported instead of taken.
-        authored_tier_names = model.execution.tasks.keys().cloned().collect();
+        authored_sched_task_names = model.execution.tasks.keys().cloned().collect();
         let mut overrides: Vec<nros_orchestration_ir::NodeOverride> = Vec::new();
 
         if nros_orchestration_ir::derive::placement_is_unauthored(&model, &rtos, &node_groups) {
@@ -1273,12 +1274,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // codegen-system uses (`nros-orchestration-ir::derive`), so a
             // pure-cargo Rust entry gets an identical table. A contract-less
             // model derives nothing and stays as it was.
-            let mut derived = nros_orchestration_ir::derive::derive_tiers_from_contracts(
+            let mut derived = nros_orchestration_ir::derive::derive_sched_tasks_from_contracts(
                 &model,
                 &rtos,
                 &node_groups,
             );
-            // Issue 1537 - `derive_tiers_from_contracts` allocates out of the
+            // Issue 1537 - `derive_sched_tasks_from_contracts` allocates out of the
             // tier key's projection, which for Zephyr is the Kconfig DEFAULTS
             // (pool.app [5, 14]). An image with a different band gets a table
             // above or inside its own transport (issue 0623's inversion), so a
@@ -1295,7 +1296,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     &mut tracked,
                     &mut track_dotconfig_env,
                 )? {
-                    derived = nros_orchestration_ir::derive::derive_tiers_in_plan(
+                    derived = nros_orchestration_ir::derive::derive_sched_tasks_in_plan(
                         &model,
                         &rtos,
                         &node_groups,
@@ -1360,14 +1361,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             let component_names: BTreeSet<&str> =
                 node_instances.iter().map(String::as_str).collect();
             let mut table =
-                resolve_tiers(&tiers, &overrides, &component_names, &node_groups, &rtos).map_err(
-                    |e| {
+                resolve_sched_tasks(&tiers, &overrides, &component_names, &node_groups, &rtos)
+                    .map_err(|e| {
                         syn::Error::new(
                             model_lit.span(),
                             format!("nros::main!: tier resolution: {e}"),
                         )
-                    },
-                )?;
+                    })?;
             // Issue 2019 -- a level that authors no stack takes its largest
             // member's (`[[component]] stack_bytes`, from the overlay beside
             // the model) plus the port's worker frame, the C headers'
@@ -1377,7 +1377,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 &model.overlay.component_stacks,
                 &rtos,
             );
-            nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
+            nros_orchestration_ir::validate_sched_task_platform_applicability(&table, &rtos)
                 .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
             // phase-462 W4c -- a mode moves its derived tiers' deadlines, and
             // its switch must fit its reaction budget at the slowest tier's
@@ -1389,7 +1389,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         format!("nros::main!: model `{}`: {e}", model_path.display()),
                     )
                 };
-                mode_tier = nros_orchestration_ir::mode_variants::mode_tier_deadlines(
+                mode_sched_task = nros_orchestration_ir::mode_variants::mode_sched_task_deadlines(
                     &model,
                     &rtos,
                     &node_groups,
@@ -1409,7 +1409,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     .map_err(mode_err)?;
                 mode_switch = nros_orchestration_ir::mode_variants::mode_switch_rows(&model);
             }
-            resolved_tiers = Some(table);
+            resolved_sched_tasks = Some(table);
         }
 
         // phase-509 P8 (RFC-0108 D8.3) -- refuse a blocking call whose server
@@ -1419,8 +1419,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         {
             use nros_orchestration_ir::blocking_calls::{ImageLevels, check_model};
             let members = node_instances.iter().map(String::as_str);
-            let levels = match &resolved_tiers {
-                Some(t) => ImageLevels::from_tiers(
+            let levels = match &resolved_sched_tasks {
+                Some(t) => ImageLevels::from_sched_tasks(
                     t,
                     nros_orchestration_ir::rtos_realizer::sched_caps_for(&rtos).low_number_is_high,
                     members,
@@ -1766,7 +1766,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
 
     // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
     // (`[tasks.*]` present, more than the synthesized `default` tier) emits
-    // `<Board>::run_tiers(TIERS, TIER_BACKING, register-only-closure)`; the board owns the
+    // `<Board>::run_sched_tasks(TIERS, SCHED_TASK_BACKING, register-only-closure)`; the board owns the
     // per-tier spin. Single-tier / no tiers keeps the unchanged
     // `BoardEntry::run` path (`setup` owns the bounded hosted spin) — so the
     // emitted TU is byte-identical to pre-228 for every current example.
@@ -1943,7 +1943,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // group to any of them resolves to the degenerate single synthesized
     // `default` tier, and the macro then emits the SINGLE-tier path. That is a
     // declaration being discarded, and it used to happen in silence: the
-    // orchestration_tiers_native fixture declared `[tasks.high]`/`[tasks.low]`
+    // orchestration_sched_tasks_native fixture declared `[tasks.high]`/`[tasks.low]`
     // for months, emitted a single-tier binary, and the only visible symptom
     // was an E2E three layers away reporting a missing boot marker — which sent
     // the investigation to the board's print statements instead of here.
@@ -1954,8 +1954,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // tiers had no members. By this point the board slice is known non-empty —
     // an empty one already errored above — so authored-but-unbound really does
     // mean the tiers are dead declarations rather than sliced away.
-    if !authored_tier_names.is_empty()
-        && resolved_tiers.as_ref().is_some_and(|t| t.is_single_tier())
+    if !authored_sched_task_names.is_empty()
+        && resolved_sched_tasks
+            .as_ref()
+            .is_some_and(|t| t.is_single_sched_task())
     {
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
@@ -1967,11 +1969,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                  in `system.toml` (phase-273 W2 / RFC-0047 — `callback_groups` in a node \
                  package's Cargo.toml is the retired form and is not read).\n  \
                  If the tiers are genuinely unused, delete them. issue 0438",
-                authored_tier_names.join(", ")
+                authored_sched_task_names.join(", ")
             ),
         ));
     }
-    let multi_tier = resolved_tiers.as_ref().filter(|t| !t.is_single_tier());
+    let multi_sched_task = resolved_sched_tasks
+        .as_ref()
+        .filter(|t| !t.is_single_sched_task());
     // Issue 1943 -- the tiered closure runs once per tier executor, and each
     // register call installs its component into a per-class store of
     // `NROS_RUNTIME_MAX_CLASS_INSTANCES` slots. Run unguarded, every tier
@@ -1980,8 +1984,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // not run was still created there. A tier now registers a node only when it
     // admits one of the node's groups -- the rule the C/C++ packs already apply
     // by building each tier's setup from the nodes it names.
-    let tiered_register_calls: Vec<proc_macro2::TokenStream> = match multi_tier {
-        Some(table) => tier_guarded_register_calls(&entry_nodes, &register_calls, table),
+    let sched_task_register_calls: Vec<proc_macro2::TokenStream> = match multi_sched_task {
+        Some(table) => sched_task_guarded_register_calls(&entry_nodes, &register_calls, table),
         None => register_calls.clone(),
     };
     // issue 1676 — install the contract's monitor tables (and arm the
@@ -1990,24 +1994,24 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     let (contract_items_ts, contract_monitors_call) = contract_monitor_tokens(
         &contract_rows,
         &mode_rows,
-        multi_tier,
+        multi_sched_task,
         &node_namespaces,
         hazard_model.as_ref(),
         &ModeTokens {
-            tier: &mode_tier,
+            tier: &mode_sched_task,
             switch: &mode_switch,
-            single_tier: resolved_tiers
+            single_sched_task: resolved_sched_tasks
                 .as_ref()
-                .filter(|t| t.is_single_tier())
+                .filter(|t| t.is_single_sched_task())
                 .and_then(|t| t.tiers.first())
                 .map(|t| t.name.as_str()),
         },
     );
     // phase-302 W4 (issue 0265) — reject multi-tier systems on targets with
-    // no `run_tiers` EARLY with a real diagnostic. Previously the deploy fell
+    // no `run_sched_tasks` EARLY with a real diagnostic. Previously the deploy fell
     // back to the posix tier rules and died later with a misleading
     // `MissingRtosSpec("posix")` or a raw missing-method compile error.
-    if multi_tier.is_some()
+    if multi_sched_task.is_some()
         && let Some(d) = deploy_for_framework.as_deref()
         && ["rtic", "baremetal", "bare-metal", "orin"]
             .iter()
@@ -2016,33 +2020,33 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             format!(
-                "target `{d}` does not support multi-tier execution (no run_tiers): \
+                "target `{d}` does not support multi-tier execution (no run_sched_tasks): \
                  collapse the system to a single tier or pick a tiered board \
                  (posix/zephyr/freertos/nuttx/threadx families). issue 0265"
             ),
         ));
     }
-    let entry_call: proc_macro2::TokenStream = match multi_tier {
+    let entry_call: proc_macro2::TokenStream = match multi_sched_task {
         Some(table) => {
-            let tiers_ts = tier_specs_tokens(table, &node_namespaces);
-            let tier_backing_ts = tier_executor_backing_tokens(table);
+            let sched_tasks_ts = sched_task_specs_tokens(table, &node_namespaces);
+            let sched_task_backing_ts = sched_task_executor_backing_tokens(table);
             // issue 1598 — a board whose tier runner takes each spawned tier's
             // task memory (FreeRTOS) gets it as `.bss` statics too, through the
-            // `_with_task_memory` twin; every other board keeps `run_tiers`.
-            let (run_tiers_fn, task_memory_ts) =
-                match tier_task_memory_tokens(table, deploy_for_framework.as_deref()) {
-                    Some(ts) => (quote! { run_tiers_with_task_memory }, quote! { #ts, }),
-                    None => (quote! { run_tiers }, quote! {}),
+            // `_with_task_memory` twin; every other board keeps `run_sched_tasks`.
+            let (run_sched_tasks_fn, task_memory_ts) =
+                match sched_task_memory_tokens(table, deploy_for_framework.as_deref()) {
+                    Some(ts) => (quote! { run_sched_tasks_with_task_memory }, quote! { #ts, }),
+                    None => (quote! { run_sched_tasks }, quote! {}),
                 };
             quote! {
-                <#board_path>::#run_tiers_fn(
+                <#board_path>::#run_sched_tasks_fn(
                     // Issue #48 cause 1 — thread the deploy overlay into the
                     // multi-tier path too (firmware boards apply it to their boot
                     // `Config`; hosted boards ignore it).
                     &#deploy_overlay_ts,
-                    #tiers_ts,
+                    #sched_tasks_ts,
                     // issue 1571 — the spawned tiers' executor backing, `.bss`.
-                    #tier_backing_ts,
+                    #sched_task_backing_ts,
                     #task_memory_ts
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
@@ -2055,7 +2059,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // W4c — param services BEFORE the node registers, so the store
                         // exists when each cell captures it (cell → `ctx.parameter`).
                         #contract_monitors_call #declared_params_call #param_services_call
-                        #( #tiered_register_calls )*
+                        #( #sched_task_register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
                     },
@@ -2208,24 +2212,24 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `RticBoardEntry::init_hardware` from the framework-generated
     // `#[init]` body.
     // issue #128 (half 2) — the Zephyr arm's spin-or-tiers tail. Multi-tier
-    // systems route through `ZephyrBoard::run_tiers` (one k_thread per tier
+    // systems route through `ZephyrBoard::run_sched_tasks` (one k_thread per tier
     // over the one shared session, RFC-0015 Model 1); single-tier keeps the
     // plain register+spin scaffold, byte-identical to pre-#128-half-2.
-    let zephyr_body_tail: proc_macro2::TokenStream = match multi_tier {
+    let zephyr_body_tail: proc_macro2::TokenStream = match multi_sched_task {
         Some(table) => {
-            let tiers_ts = tier_specs_tokens(table, &node_namespaces);
-            let tier_backing_ts = tier_executor_backing_tokens(table);
+            let sched_tasks_ts = sched_task_specs_tokens(table, &node_namespaces);
+            let sched_task_backing_ts = sched_task_executor_backing_tokens(table);
             // issue 1232 — a declared tier stack reaches its k_thread: the
             // entry owns the stack, sized from `stack_bytes`. The Zephyr arm is
             // Zephyr whatever the deploy key spells, so the family is fixed.
             let task_memory_ts =
-                tier_task_memory_tokens(table, Some("zephyr")).unwrap_or_else(|| quote! { &[] });
+                sched_task_memory_tokens(table, Some("zephyr")).unwrap_or_else(|| quote! { &[] });
             quote! {
-                return ::nros_board_zephyr::ZephyrBoard::run_tiers_with_task_memory(
+                return ::nros_board_zephyr::ZephyrBoard::run_sched_tasks_with_task_memory(
                     &config,
-                    #tiers_ts,
+                    #sched_tasks_ts,
                     // issue 1571 — the spawned tiers' executor backing, `.bss`.
-                    #tier_backing_ts,
+                    #sched_task_backing_ts,
                     #task_memory_ts,
                     |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
                         -> ::core::result::Result<
@@ -2239,7 +2243,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // captures it), lifecycle AFTER; the board sets each
                         // tier's `active_groups` filter and owns the spin.
                         #contract_monitors_call #declared_params_call #param_services_call
-                        #( #tiered_register_calls )*
+                        #( #sched_task_register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
                     },
@@ -2404,7 +2408,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // fallback on purpose, and a pure-Rust Zephyr image has no
                 // `libnros_c.a` (issue 0163) to run `rclc_log_emit`'s lazy
                 // `ensure_default_sinks()`. `nros-board-zephyr` covers only
-                // `run_tiers`, so a single-tier image reached no funnel at all.
+                // `run_sched_tasks`, so a single-tier image reached no funnel at all.
                 //
                 // Reached through `nros_platform` (which re-exports
                 // `nros_platform_cffi::log`) because that is the crate the
@@ -2525,7 +2529,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 };
                 let config = ctx.config(::core::env!("CARGO_PKG_NAME"));
                 // issue #128 (half 2) — spin-or-tiers tail: multi-tier
-                // systems route through `ZephyrBoard::run_tiers`; single-tier
+                // systems route through `ZephyrBoard::run_sched_tasks`; single-tier
                 // keeps the plain single-executor register+spin body.
                 #zephyr_body_tail
             }
@@ -4189,7 +4193,7 @@ mod image_plan_tests {
     }
 }
 
-/// The RTOS key `resolve_tiers` expects, which picks the
+/// The RTOS key `resolve_sched_tasks` expects, which picks the
 /// `[tasks.<name>.<rtos>]` sub-table, for the board this entry resolved.
 ///
 /// Issue 1285 follow-up. This was a SUBSTRING match on the deploy key with a
@@ -4199,13 +4203,13 @@ mod image_plan_tests {
 /// - `Some(key)`: the entry named its board by key. The key has already passed
 ///   `board_path_for`, since an unknown key is a compile error above, so it is
 ///   a row of the Rust pack's table. Its RTOS comes from
-///   `nros_entry_lower::BOARD_KEYS` through `tier_rtos_key_for`. That is the
+///   `nros_entry_lower::BOARD_KEYS` through `sched_task_rtos_key_for`. That is the
 ///   lookup the CLI's `plan_from_model` uses for the same Rust keys, so the two
 ///   Rust producers now agree.
 ///
-///   A Rust key with NO RTOS family (`rtic-mps2-an385`, `mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
+///   A Rust key with NO RTOS family (`rtic-mps2-an385`, `mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_SCHED_TASK_KEY`, which selects no sub-table. The
 ///   substring match gave those keys the host's sub-table. An authored tier on
-///   such a board is now refused by `resolve_tiers`, and no in-tree leaf
+///   such a board is now refused by `resolve_sched_tasks`, and no in-tree leaf
 ///   authors one.
 /// - `None`: an explicit `board = X`. There is no key to look up, and the ZST
 ///   may be an out-of-tree board this macro has never seen. It keeps the
@@ -4214,8 +4218,8 @@ mod image_plan_tests {
 ///   explicit-`LinuxBoard` entry that authors host tiers.
 fn derive_target_rtos(deploy: Option<&str>) -> String {
     match deploy {
-        Some(key) => nros_entry_lower::tier_rtos_key_for(key),
-        None => nros_entry_lower::BoardFamily::Linux.tier_rtos_key(),
+        Some(key) => nros_entry_lower::sched_task_rtos_key_for(key),
+        None => nros_entry_lower::BoardFamily::Linux.sched_task_rtos_key(),
     }
     .to_string()
 }
@@ -4230,8 +4234,8 @@ mod target_rtos_tests {
     fn every_rust_pack_key_answers_from_the_family_table() {
         for key in nros_orchestration_ir::board_path_keys() {
             let want = nros_entry_lower::board_family(key).map_or(
-                nros_entry_lower::NO_RTOS_TIER_KEY,
-                nros_entry_lower::BoardFamily::tier_rtos_key,
+                nros_entry_lower::NO_RTOS_SCHED_TASK_KEY,
+                nros_entry_lower::BoardFamily::sched_task_rtos_key,
             );
             assert_eq!(derive_target_rtos(Some(key)), want, "`{key}`");
         }
@@ -4245,7 +4249,7 @@ mod target_rtos_tests {
         for key in ["rtic-mps2-an385", "mps2-an385-baremetal", "mps2-an385"] {
             assert_eq!(
                 derive_target_rtos(Some(key)),
-                nros_entry_lower::NO_RTOS_TIER_KEY,
+                nros_entry_lower::NO_RTOS_SCHED_TASK_KEY,
                 "`{key}`"
             );
         }
@@ -4286,7 +4290,7 @@ mod target_rtos_tests {
         ] {
             assert_eq!(
                 derive_target_rtos(Some(key)),
-                nros_entry_lower::NO_RTOS_TIER_KEY,
+                nros_entry_lower::NO_RTOS_SCHED_TASK_KEY,
                 "`{key}`"
             );
         }
@@ -4302,38 +4306,38 @@ mod target_rtos_tests {
 /// ENTRY owns: `tiers - 1` slots (the boot tier takes the `EXECUTOR_BACKING`
 /// road through `Executor::open`), each exactly one default executor's worth.
 ///
-/// The C/C++ method (issue 1568's `__nros_tier_executor_storage`), not a second
+/// The C/C++ method (issue 1568's `__nros_sched_task_executor_storage`), not a second
 /// one: the tier count is known HERE, at expansion time, so the reservation is
 /// sized and placed by the entry and the board only hands out slots. Before
 /// this every spawned Rust tier `Box::leak`ed its backing — the right size, but
 /// on the heap, where `mem-report` cannot see it and the link does not price it.
 ///
 /// Emitted as a block EXPRESSION so both multi-tier arms (OwnedSpin and Zephyr)
-/// splice it straight into their `run_tiers(…)` argument list.
-fn tier_executor_backing_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
+/// splice it straight into their `run_sched_tasks(…)` argument list.
+fn sched_task_executor_backing_tokens(table: &ResolvedSchedTaskTable) -> proc_macro2::TokenStream {
     let spawned = table.tiers.len().saturating_sub(1);
     quote! {
         {
-            static __NROS_TIER_EXECUTOR_BACKING: ::nros::TierExecutorBacking<#spawned> =
-                ::nros::TierExecutorBacking::new();
-            __NROS_TIER_EXECUTOR_BACKING.take()
+            static __NROS_SCHED_TASK_EXECUTOR_BACKING: ::nros::SchedTaskExecutorBacking<#spawned> =
+                ::nros::SchedTaskExecutorBacking::new();
+            __NROS_SCHED_TASK_EXECUTOR_BACKING.take()
         }
     }
 }
 
 /// issue 1598 — each spawned tier's TASK memory (stack + control block) as
 /// statics the ENTRY owns, for a board family whose tier runner takes it
-/// (`nros_entry_lower::CAbiRunners::tier_task_memory`) and has a Rust twin
-/// (`run_tiers_with_task_memory`) — FreeRTOS. `None` for every other board,
+/// (`nros_entry_lower::CAbiRunners::sched_task_memory`) and has a Rust twin
+/// (`run_sched_tasks_with_task_memory`) — FreeRTOS. `None` for every other board,
 /// and for an explicit `board = X` (no deploy key, so no family to ask).
 ///
 /// The sizes come from the SAME lowering the C/C++ packs read
-/// (`TierTaskMemory::stacks`): a tier's declared `stack_bytes`, or the
+/// (`SchedTaskMemory::stacks`): a tier's declared `stack_bytes`, or the
 /// family's stated default, with the boot tier — which runs on the boot task —
 /// left out. The rows are in spawn order, which for a last-boots family is
 /// tier order minus the last; the board refuses a table that boots elsewhere.
-fn tier_task_memory_tokens(
-    table: &ResolvedTierTable,
+fn sched_task_memory_tokens(
+    table: &ResolvedSchedTaskTable,
     deploy: Option<&str>,
 ) -> Option<proc_macro2::TokenStream> {
     use nros_entry_lower::BoardFamily;
@@ -4342,11 +4346,11 @@ fn tier_task_memory_tokens(
     // stated bound); Zephyr keeps `struct k_thread` in its pool (issue 1232 —
     // a Rust entry cannot size it), so its region is empty.
     let tcb_u64s = match family {
-        BoardFamily::Freertos => quote! { ::nros::TIER_TASK_TCB_U64S },
+        BoardFamily::Freertos => quote! { ::nros::SCHED_TASK_TCB_U64S },
         BoardFamily::Zephyr => quote! { 0 },
         _ => return None,
     };
-    let mem = family.c_abi_runners()?.tier_task_memory?;
+    let mem = family.c_abi_runners()?.sched_task_memory?;
     let declared: Vec<Option<u64>> = table
         .tiers
         .iter()
@@ -4361,36 +4365,36 @@ fn tier_task_memory_tokens(
     let mut rows = Vec::new();
     for (i, bytes) in stacks.iter().enumerate() {
         if *bytes == 0 {
-            rows.push(quote! { ::nros::TierTaskMemoryRaw::NONE });
+            rows.push(quote! { ::nros::SchedTaskMemoryRaw::NONE });
             continue;
         }
-        let ident = quote::format_ident!("__NROS_TIER_TASK_MEMORY_{}", i);
+        let ident = quote::format_ident!("__NROS_SCHED_TASK_MEMORY_{}", i);
         let words = (*bytes as usize).div_ceil(8);
         statics.push(quote! {
-            static #ident: ::nros::TierTaskMemory<#words, { #tcb_u64s }> =
-                ::nros::TierTaskMemory::new();
+            static #ident: ::nros::SchedTaskMemory<#words, { #tcb_u64s }> =
+                ::nros::SchedTaskMemory::new();
         });
         rows.push(quote! { #ident.raw() });
     }
     Some(quote! {
         {
             #( #statics )*
-            static __NROS_TIER_TASK_MEMORY: ::nros::TierTaskMemorySet<#n> =
-                ::nros::TierTaskMemorySet::new([ #( #rows ),* ]);
-            __NROS_TIER_TASK_MEMORY.take()
+            static __NROS_SCHED_TASK_MEMORY: ::nros::SchedTaskMemorySet<#n> =
+                ::nros::SchedTaskMemorySet::new([ #( #rows ),* ]);
+            __NROS_SCHED_TASK_MEMORY.take()
         }
     })
 }
 
-/// Emit a `&[TierSpec]` literal from the resolved tier table (Phase 228.G,
+/// Emit a `&[SchedTaskSpec]` literal from the resolved tier table (Phase 228.G,
 /// RFC-0032 §5). `priority` is the raw per-RTOS value; `groups` is the tier's
 /// distinct callback-group ids (the executor's `active_groups` filter).
 /// phase-462 W4c -- what each executor's mode tables carry beyond the rows.
 struct ModeTokens<'a> {
-    tier: &'a nros_orchestration_ir::mode_variants::ModeTierDeadlines,
+    tier: &'a nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines,
     switch: &'a [(u32, String)],
     /// The one tier of a single-tier entry, whose executor is the one table.
-    single_tier: Option<&'a str>,
+    single_sched_task: Option<&'a str>,
 }
 
 /// Issue 1676 — the contract-monitor tables a Rust entry bakes, and the call
@@ -4423,7 +4427,7 @@ fn contract_monitor_tokens(
         Vec<nros_orchestration_ir::contract_monitors::MonitorRow>,
         Vec<nros_orchestration_ir::contract_monitors::AgeRow>,
     )],
-    multi_tier: Option<&ResolvedTierTable>,
+    multi_sched_task: Option<&ResolvedSchedTaskTable>,
     node_namespaces: &BTreeMap<String, String>,
     // phase-462 W3b -- the model whose hazards the tables may observe; `None`
     // on a road that resolved no model (no hazards, as before).
@@ -4445,11 +4449,11 @@ fn contract_monitor_tokens(
     )>;
     // phase-462 W4c -- each table's tier name, for its deadline rows: a tier
     // executor's tier runs under that executor's DEFAULT sched context (id 0).
-    let mut tier_of: Vec<Option<String>> = Vec::new();
+    let mut sched_task_of: Vec<Option<String>> = Vec::new();
     let mut tables: Vec<(Member, Vec<_>, Vec<_>, ModeSlice)> = Vec::new();
-    match multi_tier {
+    match multi_sched_task {
         None => {
-            tier_of.push(modes_extra.single_tier.map(str::to_string));
+            sched_task_of.push(modes_extra.single_sched_task.map(str::to_string));
             tables.push((
                 None,
                 mons.clone(),
@@ -4515,7 +4519,7 @@ fn contract_monitor_tokens(
                 // A tier with no members admits every group (the wildcard), so
                 // it cannot be told apart by asking; it has no nodes, so no
                 // rows either, and was skipped above.
-                tier_of.push(Some(t.name.clone()));
+                sched_task_of.push(Some(t.name.clone()));
                 tables.push((members.into_iter().next(), t_mons, t_ages, t_modes));
             }
         }
@@ -4532,7 +4536,7 @@ fn contract_monitor_tokens(
             .iter()
             .map(|(r, a)| (r.as_slice(), a.as_slice()))
             .collect();
-        let tier = tier_of[k].as_deref();
+        let tier = sched_task_of[k].as_deref();
         let extras = nros_orchestration_ir::mode_variants::ModeExtras {
             deadlines: nros_orchestration_ir::mode_variants::deadline_rows(modes_extra.tier, |t| {
                 (Some(t) == tier).then_some(0)
@@ -4602,7 +4606,7 @@ fn contract_monitor_tokens(
         };
         installs.push((member.clone(), install));
     }
-    let dispatch = match multi_tier {
+    let dispatch = match multi_sched_task {
         None => {
             let (_, install) = &installs[0];
             quote! { #install }
@@ -4655,8 +4659,8 @@ fn contract_monitor_tokens(
     (quote! { #( #items )* #( #mode_consts )* }, call)
 }
 
-fn tier_specs_tokens(
-    table: &ResolvedTierTable,
+fn sched_task_specs_tokens(
+    table: &ResolvedSchedTaskTable,
     node_namespaces: &BTreeMap<String, String>,
 ) -> proc_macro2::TokenStream {
     let entries = table.tiers.iter().map(|t| {
@@ -4716,7 +4720,7 @@ fn tier_specs_tokens(
         let deadline_us = opt_u64(t.deadline_us);
         let deadline_policy = opt_str(t.deadline_policy.as_deref());
         quote! {
-            ::nros::__macro_support::nros_platform::TierSpec {
+            ::nros::__macro_support::nros_platform::SchedTaskSpec {
                 name: #name,
                 groups: &[ #(#groups),* ],
                 priority: #priority,
@@ -4835,7 +4839,7 @@ fn hosted_std_scaffold_ts(links_std: bool) -> proc_macro2::TokenStream {
         return quote! {};
     }
     quote! {
-        // `#[allow(dead_code)]` — the multi-tier `run_tiers` entry path
+        // `#[allow(dead_code)]` — the multi-tier `run_sched_tasks` entry path
         // (Phase 228.G) owns its own spin and never calls these, so they
         // are unused in that emit; harmless in the single-tier path.
         #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
@@ -5178,10 +5182,10 @@ fn pkg_to_crate_ident(pkg: &str) -> String {
 ///
 /// A node the table names no group for is registered on every tier, as
 /// before: its entities carry no group, so every tier's filter admits them.
-pub(crate) fn tier_guarded_register_calls(
+pub(crate) fn sched_task_guarded_register_calls(
     nodes: &[LoweredNode],
     calls: &[proc_macro2::TokenStream],
-    table: &ResolvedTierTable,
+    table: &ResolvedSchedTaskTable,
 ) -> Vec<proc_macro2::TokenStream> {
     nodes
         .iter()
@@ -5209,11 +5213,11 @@ pub(crate) fn tier_guarded_register_calls(
             let gs = groups.iter().map(|g| LitStr::new(g, Span::call_site()));
             quote! {
                 if {
-                    let __nros_tier_exec = unsafe {
+                    let __nros_sched_task_exec = unsafe {
                         &*(runtime.runtime.executor_handle()
                             as *const ::nros::Executor<'static>)
                     };
-                    false #( || __nros_tier_exec.group_active(#name, #ns, #gs) )*
+                    false #( || __nros_sched_task_exec.group_active(#name, #ns, #gs) )*
                 } {
                     #call
                 }
@@ -5909,7 +5913,7 @@ mod framework_ssot_tests {
 mod contract_monitor_tests {
     use super::*;
     use nros_orchestration_ir::{
-        ResolvedTier,
+        ResolvedSchedTask,
         contract_monitors::{AgeRow, MonitorRow},
     };
 
@@ -5928,8 +5932,8 @@ mod contract_monitor_tests {
         }
     }
 
-    fn tier(name: &str, members: &[(&str, &str)]) -> ResolvedTier {
-        ResolvedTier {
+    fn tier(name: &str, members: &[(&str, &str)]) -> ResolvedSchedTask {
+        ResolvedSchedTask {
             name: name.into(),
             priority: 1,
             stack_bytes: None,
@@ -5955,7 +5959,7 @@ mod contract_monitor_tests {
     /// times; a node the table names no group for keeps registering on every
     /// tier (the negative control).
     #[test]
-    fn a_tier_registers_only_the_nodes_whose_groups_it_runs() {
+    fn a_sched_task_registers_only_the_nodes_whose_groups_it_runs() {
         // The Rust road's shape: the name rides the launch identity only.
         let node = |name: &str| LoweredNode {
             identity: Some(nros_entry_lower::NodeIdentity::new(name, "/")),
@@ -5969,13 +5973,13 @@ mod contract_monitor_tests {
                 quote! { #id(); }
             })
             .collect();
-        let table = ResolvedTierTable {
+        let table = ResolvedSchedTaskTable {
             tiers: vec![
                 tier("high", &[("ctrl", "c")]),
                 tier("low", &[("telem", "t"), ("telem", "t2")]),
             ],
         };
-        let out: Vec<String> = tier_guarded_register_calls(&nodes, &calls, &table)
+        let out: Vec<String> = sched_task_guarded_register_calls(&nodes, &calls, &table)
             .iter()
             .map(ToString::to_string)
             .collect();
@@ -5996,16 +6000,16 @@ mod contract_monitor_tests {
     /// Issue 1676 — an uncontracted image carries none of it: both streams
     /// empty, so its expansion is byte-identical to before.
     /// phase-462 W4c -- no mode deadlines, no switch budget.
-    static NO_MODE_TIERS: nros_orchestration_ir::mode_variants::ModeTierDeadlines =
-        nros_orchestration_ir::mode_variants::ModeTierDeadlines {
+    static NO_MODE_SCHED_TASKS: nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines =
+        nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines {
             tiers: Vec::new(),
             deadlines: Vec::new(),
             not_lowered: Vec::new(),
         };
     static NO_MODES: ModeTokens<'static> = ModeTokens {
-        tier: &NO_MODE_TIERS,
+        tier: &NO_MODE_SCHED_TASKS,
         switch: &[],
-        single_tier: None,
+        single_sched_task: None,
     };
 
     #[test]
@@ -6054,11 +6058,11 @@ mod contract_monitor_tests {
     /// tables at the DEFAULT sched context, the base's value in table 0, with
     /// each mode's switch budget; another executor's tier bakes none.
     #[test]
-    fn a_mode_that_moves_a_tier_deadline_bakes_it_on_that_executor() {
+    fn a_mode_that_moves_a_sched_task_deadline_bakes_it_on_that_executor() {
         let base = vec![row("/talker/chatter", "/chatter")];
         let rows = (base.clone(), Vec::<AgeRow>::new());
         let modes = vec![("tight".to_string(), base, Vec::<AgeRow>::new())];
-        let tier = nros_orchestration_ir::mode_variants::ModeTierDeadlines {
+        let tier = nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines {
             tiers: vec!["derived-talker".to_string()],
             deadlines: vec![vec![5_000], vec![2_000]],
             not_lowered: Vec::new(),
@@ -6067,7 +6071,7 @@ mod contract_monitor_tests {
         let extra = |single: Option<&'static str>| ModeTokens {
             tier: &tier,
             switch: &switch,
-            single_tier: single,
+            single_sched_task: single,
         };
         let (items, _) = contract_monitor_tokens(
             &rows,
@@ -6159,7 +6163,7 @@ mod contract_monitor_tests {
     /// rule) and picks its table at run time by a member only that tier's
     /// executor admits; a tier whose nodes carry no contract gets no table.
     #[test]
-    fn a_tiered_entry_installs_each_tiers_own_rows() {
+    fn a_sched_task_entry_installs_each_sched_tasks_own_rows() {
         let rows = (
             vec![
                 row("/ctrl/cmd", "/cmd"),
@@ -6167,7 +6171,7 @@ mod contract_monitor_tests {
             ],
             Vec::<AgeRow>::new(),
         );
-        let table = ResolvedTierTable {
+        let table = ResolvedSchedTaskTable {
             tiers: vec![
                 tier("fast", &[("ctrl", "g")]),
                 tier("slow", &[("telem", "g")]),

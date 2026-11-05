@@ -549,7 +549,7 @@ pub fn config_header(
     // pub→sub AND client query→queryable — depends on these flags. With them 0 the
     // loopback path (src/session/loopback.c) is compiled out and same-session callbacks
     // never fire. Enabled on EVERY target, embedded included: the multi-tier entries
-    // (FreeRTOS `run_tiers_entry`, Zephyr `run_tiers`) put all nodes of a launch on one
+    // (FreeRTOS `run_sched_tasks_entry`, Zephyr `run_sched_tasks`) put all nodes of a launch on one
     // shared session, so intra-image pub→sub is the norm on embedded, not a host-only
     // convenience — and a vanilla zenohd never echoes a put back to the session it came
     // from (issue 0317), so with the flag 0 NO same-session route can deliver, over any

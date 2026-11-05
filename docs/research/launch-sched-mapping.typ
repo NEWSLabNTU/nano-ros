@@ -329,10 +329,10 @@ missed its deadline". nano-ros implements those *in software*, inside its execut
 `spin_once` loop, checking budget and deadline between callbacks and voluntarily
 skipping — hence *cooperative*. It backfills what the kernel lacks.]
 
-*Build-time wiring.* Codegen bakes a `&[TierSpec]` slice — `class`, `period_us`,
+*Build-time wiring.* Codegen bakes a `&[SchedTaskSpec]` slice — `class`, `period_us`,
 `budget_us`, `deadline_us`, `deadline_policy`, `priority`, `preempt_threshold`,
-`core` — into the image. `nros::main!` calls `Board::run_tiers`, which spawns one
-task per tier and splits each `TierSpec`:
+`core` — into the image. `nros::main!` calls `Board::run_sched_tasks`, which spawns one
+task per tier and splits each `SchedTaskSpec`:
 
 #grid(columns: (1fr, 1fr), gutter: 8pt,
   bx(c_nr)[*(a) priority → kernel.* The tier's `priority` is handed to the native
@@ -340,7 +340,7 @@ task per tier and splits each `TierSpec`:
     and the priority is the actual scheduling priority (ThreadX also carries a
     *preemption threshold*). The value is the *raw* per-kernel number — the author
     writes it directly.],
-  bx(c_nr)[*(b) budget/deadline/timing → executor.* `SchedContext::from_tier_policy`
+  bx(c_nr)[*(b) budget/deadline/timing → executor.* `SchedContext::from_sched_task_policy`
     classifies once (shared by the Rust runtime and the C++ FFI): `real_time`+budget+period
     → *sporadic*; `best_effort` → best-effort; `time_triggered`+period → a
     time-triggered *frame*; `deadline_us` → a deadline monitor with action
@@ -401,9 +401,9 @@ concurrency follow *Casini et al.* (ECRTS '19), which also underlies the crate's
 #linebreak()
 *Sources.* `chain_aware_mapper.rs`, `chain.rs`, `mapper.rs`, `resolve.rs`,
 `platform.rs`, `docs/scheduling.md` (ros-launch-manifest); `sched_context.rs`,
-`spin.rs`, `node_runtime.rs`, `board/tier.rs`, `nros-board-{threadx,freertos,zephyr,
+`spin.rs`, `node_runtime.rs`, `board/sched_task.rs`, `nros-board-{threadx,freertos,zephyr,
 nuttx,posix}`, `nros-platform-*` (nano-ros); RFC-0047, RFC-0050, RFC-0052.
-*Implemented:* the `chain_aware_rank`/`realize_posix` split, `TierSpec` →
+*Implemented:* the `chain_aware_rank`/`realize_posix` split, `SchedTaskSpec` →
 `SchedContext` + cooperative `spin_once` enforcement, native task priority on
 ThreadX/FreeRTOS/Zephyr. *Designed (RFC-0052 Draft):* the six-dim RTOS realizer /
 L1–L3 stack; priority normalization and native-Linux RT syscalls are unwired.

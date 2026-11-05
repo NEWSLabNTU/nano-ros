@@ -767,7 +767,7 @@ int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), vo
      * This is issue 0852 one field over. The ABI defines `name` as "Task name
      * for the kernel's own tables and crash dumps", every caller already
      * supplies one -- `PlatformTask::spawn_with` fills `attr.name`, and the
-     * C++ tier spawn builds "nros-tier-<tier>" for it -- and the FreeRTOS port
+     * C++ tier spawn builds "nros-sched-task-<tier>" for it -- and the FreeRTOS port
      * passes it straight to `xTaskCreate`. Only this port dropped it, and
      * Zephyr is not a kernel with no name concept: CONFIG_THREAD_NAME and
      * `k_thread_name_set` have been there all along.
@@ -776,7 +776,7 @@ int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), vo
      * an FVP the nano-ros threads appear as `unknown (0x00281cc0)` and can
      * only be told apart by stack base -- one of them holding 13.7% of the
      * core with nothing to say what it was -- while the identical code on
-     * FreeRTOS traces as `nros_app` and `nros_tier@1`. */
+     * FreeRTOS traces as `nros_app` and `nros_sched_task@1`. */
     const char* name = (a != NULL) ? a->name : NULL;
 
     return nros_zephyr_task_create_prio((pthread_t*)task, entry, arg, native, name) == 0

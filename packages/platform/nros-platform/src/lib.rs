@@ -38,8 +38,8 @@ mod resolve;
 pub use board::{
     Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, DeployOverlay,
     DispatchStrategy, LinkKind, NodeDispatchRuntime, NullNodeRuntime, PriorityDirection,
-    RticBoardEntry, RuntimeCtx, RuntimeError, SignaledCallback, TierSpec, TierSpinGap,
-    boot_tier_index, freertos_priority_for, posix_nice_for, threadx_priority_for,
+    RticBoardEntry, RuntimeCtx, RuntimeError, SchedTaskSpec, SchedTaskSpinGap, SignaledCallback,
+    boot_sched_task_index, freertos_priority_for, posix_nice_for, threadx_priority_for,
 };
 // Phase 313 W1 (issue #0243) — the deprecated `NodeRuntime` crate-root alias is
 // removed; consumers use `NodeDispatchRuntime`.
@@ -190,7 +190,7 @@ pub mod sched {
     unsafe extern "C" {
         fn nros_posix_apply_current_deadline(
             name: *const c_char,
-            tier_class: *const c_char,
+            sched_task_class: *const c_char,
             budget_us: u64,
             period_us: u64,
             deadline_us: u64,
@@ -205,10 +205,10 @@ pub mod sched {
     ///
     /// # Safety
     ///
-    /// `name` and `tier_class` are NUL-terminated strings or null.
+    /// `name` and `sched_task_class` are NUL-terminated strings or null.
     pub unsafe fn apply_current_deadline(
         name: *const c_char,
-        tier_class: *const c_char,
+        sched_task_class: *const c_char,
         budget_us: u64,
         period_us: u64,
         deadline_us: u64,
@@ -219,7 +219,7 @@ pub mod sched {
             unsafe {
                 nros_posix_apply_current_deadline(
                     name,
-                    tier_class,
+                    sched_task_class,
                     budget_us,
                     period_us,
                     deadline_us,
@@ -228,7 +228,7 @@ pub mod sched {
         }
         #[cfg(not(feature = "platform-posix"))]
         {
-            let _ = (name, tier_class, budget_us, period_us, deadline_us);
+            let _ = (name, sched_task_class, budget_us, period_us, deadline_us);
             false
         }
     }

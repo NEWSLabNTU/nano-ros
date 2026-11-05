@@ -36,7 +36,7 @@ spin_period = "10000us"
 priority = 80
 # phase-281 W3c — RAW Zephyr priority (preemptive; lower number = higher priority).
 # Consumed by the zephyr_entry projection: [tasks.*.zephyr] flips the C codegen onto
-# ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
+# ZephyrBoard::run_sched_tasks (RFC-0015 Model 1), one k_thread per tier.
 [tasks.high.zephyr]
 # RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
 # than the transport band. Zephyr's band is not a literal: the zenoh read/lease
@@ -46,14 +46,14 @@ priority = 80
 # of THIS bringup's images and is judged only against them; a lowered-band
 # image such as derived_bringup's (transport [4, 9]) is a different image.
 # 5 outranked the transport, undeclared. Resolve for any image:
-#   python3 scripts/check-tier-priority-plan-image.py <build>/zephyr/.config
+#   python3 scripts/check-sched-task-priority-plan-image.py <build>/zephyr/.config
 priority = 9
 # ZEPHYR-SCOPED: kernel EDF here (k_thread_deadline_set); lowers to None (Fifo)
 # on posix/nuttx, so the other bakes are byte-identical.
 deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority; verbatim into pthread_attr_setschedparam). `[tasks.*.nuttx]` flips the
-# C codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
+# C codegen onto NuttxBoard::run_sched_tasks (RFC-0015 Model 1), one pthread per tier.
 # phase-331 W6 / issue 0395 — RAW FreeRTOS priority, restored with the C arm's
 # freertos bake (same consolidation dropped it here).
 [tasks.high.freertos]
@@ -86,7 +86,7 @@ priority = 10
 # publishes over — and equal-priority SCHED_FIFO threads round-robin, which is
 # not an ordering. One step below keeps the tier order (high 110 > low 99)
 # and vacates the band. Declared in the port's [board.priority_plan];
-# `check-tier-priority-plan` rejects a pin that lands on it.
+# `check-sched-task-priority-plan` rejects a pin that lands on it.
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs

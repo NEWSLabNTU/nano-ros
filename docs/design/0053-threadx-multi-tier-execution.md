@@ -26,8 +26,8 @@ primitive rather than emulated.
 - `nros-board-threadx` today is **single-executor**: `run_entry` /
   `run_app_thread` sets ThreadX config + one app callback, calls
   `tx_kernel_enter()`, and one app thread drives one `Executor` forever. No
-  `TierSpec` is threaded through; there is no `run_tiers`.
-- The other embedded boards are **multi-thread**: `run_tiers(tiers)` runs one
+  `SchedTaskSpec` is threaded through; there is no `run_sched_tasks`.
+- The other embedded boards are **multi-thread**: `run_sched_tasks(tiers)` runs one
   `Executor` per tier over one shared session, spawning threads via an OS
   create-shim (FreeRTOS `nros_freertos_create_task`, Zephyr `k_thread` FFI,
   NuttX `pthread`). The boot tier declares first (issue #144 discovery race),
@@ -35,7 +35,7 @@ primitive rather than emulated.
 - **ThreadX has no default heap.** `tx_thread_create` requires a
   caller-provided stack buffer — unlike FreeRTOS's `xTaskCreate` (heap) or
   NuttX's `pthread`. So ThreadX multi-tier needs an explicit stack strategy.
-- W5.4 already landed the **portable** `ExecutorNodeRuntime::apply_tier_sched_policy`
+- W5.4 already landed the **portable** `ExecutorNodeRuntime::apply_sched_task_sched_policy`
   (the tier→`SchedContext` lowering) that every board calls; ThreadX will call
   it per tier once it has the per-tier executors.
 
@@ -73,14 +73,14 @@ Implementation revised this to **B (byte pool)**. The table's "Consistency"
 row was **wrong**: it claimed A "matches freertos/zephyr per-tier codegen", but
 neither board bakes per-tier static stacks — FreeRTOS spawns on its **heap**
 (`xTaskCreate`, dynamic) and Zephyr on a **static `k_thread` pool** bounded by
-`NROS_ZEPHYR_MAX_TIERS` (a C shim), not codegen-baked arrays. So A was
+`NROS_ZEPHYR_MAX_SCHED_TASKS` (a C shim), not codegen-baked arrays. So A was
 consistent with nothing that actually ships.
 
 Decisive: nano-ros's own `threadx_hooks.c` **already** allocates the boot app
 thread's stack from a 4 MB `TX_BYTE_POOL` via `tx_byte_allocate`. Allocating
 each tier's stack the same way is consistent with ThreadX's OWN app thread,
 adds **no** new static RAM (a tier executor stack is hundreds of KB — a fixed
-static pool would cost `MAX_TIERS ×` that in BSS, and exact codegen arrays are
+static pool would cost `MAX_SCHED_TASKS ×` that in BSS, and exact codegen arrays are
 still `Σ stack_bytes` of BSS), and its one downside — runtime-alloc failure —
 is handled (`nros_threadx_create_task` returns `-1` → the tier does not spawn).
 The small fixed-size `TX_THREAD` control blocks live in a bounded static array
@@ -96,7 +96,7 @@ QEMU RAM). The rest of this doc reads "static stack" as "byte-pool stack".
 ```
 codegen (host)                          runtime (ThreadX, no_std + C shim)
 ──────────────                          ─────────────────────────────────
-TierSpec per tier i:                    run_tiers(tiers):
+SchedTaskSpec per tier i:                    run_sched_tasks(tiers):
   priority, preempt_threshold,            boot tier declares FIRST (issue #144)
   stack_bytes (0 = overlay default)       for tier in rest:
                                             nros_threadx_create_task(
@@ -107,7 +107,7 @@ TierSpec per tier i:                    run_tiers(tiers):
                                                  threshold, ...)
                                           each spawned thread:
                                             Executor over shared session
-                                            + apply_tier_sched_policy (W5.4)
+                                            + apply_sched_task_sched_policy (W5.4)
 ```
 
 - **C-side FFI shim** `nros_threadx_create_task(name, entry, arg,
@@ -123,14 +123,14 @@ TierSpec per tier i:                    run_tiers(tiers):
   falls back to `nros_board_app_stack_size()`; allocation failure returns
   `-1` and the tier does not spawn. Exact per-tier static stacks (A) remain
   a future RAM optimization for constrained MCU targets.
-- **`run_tiers` (Rust):** boot tier declares first, then each remaining tier
+- **`run_sched_tasks` (Rust):** boot tier declares first, then each remaining tier
   spawns via the shim, running one `Executor` + `setup` over the shared RMW
-  session, calling `apply_tier_sched_policy(tier.class, tier.period_us,
+  session, calling `apply_sched_task_sched_policy(tier.class, tier.period_us,
   tier.budget_us, tier.deadline_us, tier.deadline_policy)` (W5.4) on its
   executor. Shared-session-across-threads follows the other boards' model.
 - **`preempt_threshold` → `tx_thread_preemption_change`:** the native
   realization of `non_preempt_scope`. An authored
-  `[tasks.<name>.threadx] preempt_threshold` flows through `TierSpec`
+  `[tasks.<name>.threadx] preempt_threshold` flows through `SchedTaskSpec`
   (bake-validated ThreadX-only) into the shim. (The realizer's
   `RealizedNode.preempt_threshold` was always `None` and was deleted
   2026-10-24, issue 0259; a derived threshold is RFC-0108's per-level one,
@@ -139,11 +139,11 @@ TierSpec per tier i:                    run_tiers(tiers):
 ## Migration ladder
 
 1. **v0 (stepping stone):** keep the single executor but pass the boot tier so
-   the one executor gets `apply_tier_sched_policy` + the app thread gets the
+   the one executor gets `apply_sched_task_sched_policy` + the app thread gets the
    tier's priority / `preempt_threshold`. Unlocks the SchedContext lowering +
    native preempt-threshold immediately (the degenerate single-tier case), no
    new stack machinery.
-2. **End state (as landed):** multi-tier `run_tiers` with byte-pool stacks
+2. **End state (as landed):** multi-tier `run_sched_tasks` with byte-pool stacks
    (Option B — see the Revision above; the original plan here said "A
    (codegen static stacks) + B explicitly not taken", which the phase-297 W4
    implementation reversed).
@@ -163,9 +163,9 @@ TierSpec per tier i:                    run_tiers(tiers):
 ## References
 
 - RFC-0052 (SystemModel → RTOS primitives; the six-dim realizer +
-  `apply_tier_sched_policy`), phase-296 W5.
+  `apply_sched_task_sched_policy`), phase-296 W5.
 - Work breakdown: phase-297.
-- FreeRTOS reference: `nros-board-freertos/c/freertos_run_tiers.c`
-  (`xTaskCreate` + `stack_bytes`); NuttX/Zephyr `run_tiers`.
+- FreeRTOS reference: `nros-board-freertos/c/freertos_run_sched_tasks.c`
+  (`xTaskCreate` + `stack_bytes`); NuttX/Zephyr `run_sched_tasks`.
 - ThreadX static-stack vs byte-pool idioms; Zephyr `K_THREAD_STACK_DEFINE`;
   FreeRTOS `xTaskCreateStatic` (design exploration 2026-07-21).

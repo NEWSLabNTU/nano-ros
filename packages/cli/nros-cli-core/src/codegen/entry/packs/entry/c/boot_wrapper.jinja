@@ -31,7 +31,7 @@
   Before that the namespace was baked and read by nothing: the blob stated it,
   `nros_boot_config_namespace()` could return it, and no call site asked.
 
-  Issue 1442 — and so does the `run_tiers` call. That took the `_ns` twin of
+  Issue 1442 — and so does the `run_sched_tasks` call. That took the `_ns` twin of
   four more C-ABI symbols (native plus the three per-RTOS tier runners), which
   is why 1434 carved it out; the runner names come from
   `BoardFamily::c_abi_runners`, so this template does not name either spelling.
@@ -45,7 +45,7 @@
   (issue 1172) and are unaffected either way.
 
   Issue 1551 — when the runner takes the tiers' executor storage
-  (`boot.tier_storage`, i.e. `CAbiRunners::tiers_take_static_storage`), the
+  (`boot.sched_task_storage`, i.e. `CAbiRunners::sched_tasks_take_static_storage`), the
   wrapper emits it here as a file-scope static and passes it with its per-tier
   stride. The runner then allocates no executor from the platform heap.
 
@@ -55,7 +55,7 @@
   refusal (the linked library's `nros_cpp_executor_storage_check`). Issue 1597
   — and the host board too, so both host calls pass it as well.
 -#}
-{%- if boot.tier_storage -%}
+{%- if boot.sched_task_storage -%}
 /* Issues 1551 + 1568 — every tier's executor storage, one block per tier, as a
  * file-scope static the linker places and `mem-report` names. The runner used
  * to take each block out of the platform heap, and nothing multiplied the
@@ -67,9 +67,9 @@
 {% if boot.runners.run_levels -%}
 /* phase-509 P9b (RFC-0108 "As built in P9b") — a level runner opens ONE
  * executor per core, so ONE block: every level works on it. */
-static uint64_t __nros_tier_executor_storage[1][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+static uint64_t __nros_sched_task_executor_storage[1][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 {%- else -%}
-static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+static uint64_t __nros_sched_task_executor_storage[{{ boot.n_sched_tasks }}][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 {%- endif %}
 
 {% if boot.task_memory -%}
@@ -79,25 +79,25 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
  * tier's `stack_bytes` (or the stated default) and raised to the port's floor
  * by the header's macro. The boot tier runs on the caller's task and has none. */
 #include <{{ boot.task_memory.header }}>
-{% for r in boot.task_memory.rows %}{% if r.spawned %}NROS_TIER_TASK_MEMORY_DEFINE({{ r.index }}, {% if r.derived %}NROS_LEVEL_STACK_BYTES({{ r.member_bytes }}u){% else %}{{ r.bytes }}u{% endif %});
-{% endif %}{% endfor %}static const nros_tier_task_memory_t __nros_tier_task_memory[{{ boot.n_tiers }}] = {
-{% for r in boot.task_memory.rows %}    {% if r.spawned %}NROS_TIER_TASK_MEMORY({{ r.index }}){% else %}NROS_TIER_TASK_MEMORY_NONE{% endif %},
+{% for r in boot.task_memory.rows %}{% if r.spawned %}NROS_SCHED_TASK_MEMORY_DEFINE({{ r.index }}, {% if r.derived %}NROS_LEVEL_STACK_BYTES({{ r.member_bytes }}u){% else %}{{ r.bytes }}u{% endif %});
+{% endif %}{% endfor %}static const nros_sched_task_memory_t __nros_sched_task_memory[{{ boot.n_sched_tasks }}] = {
+{% for r in boot.task_memory.rows %}    {% if r.spawned %}NROS_SCHED_TASK_MEMORY({{ r.index }}){% else %}NROS_SCHED_TASK_MEMORY_NONE{% endif %},
 {% endfor %}};
 
-{% if boot.runners.run_tiers_backed and not boot.runners.run_levels -%}
+{% if boot.runners.run_sched_tasks_backed and not boot.runners.run_levels -%}
 /* Issue 1970 — each tier's OWN executor backing, when this build sizes its
- * executors per tier: the per-build header then publishes NROS_CPP_TIER_COUNT
- * and one NROS_CPP_TIER_BACKING_SIZE_<i> per tier (tier-table order), the
+ * executors per tier: the per-build header then publishes NROS_CPP_SCHED_TASK_COUNT
+ * and one NROS_CPP_SCHED_TASK_BACKING_SIZE_<i> per tier (tier-table order), the
  * contexts above carry no inline backing, and the runner hands tier i's
- * executor `__nros_tier_backing_<i>`. A build that sizes no tier (or a tier
+ * executor `__nros_sched_task_backing_<i>`. A build that sizes no tier (or a tier
  * table other than this entry's) publishes no matching count, and the entry
  * keeps the whole-image executor per tier. The library refuses a backing short
  * of its tier's layout before that tier opens. */
-#if defined(NROS_CPP_TIER_COUNT) && NROS_CPP_TIER_COUNT == {{ boot.n_tiers }}
-#define NROS_ENTRY_TIERS_BACKED 1
-{% for r in boot.task_memory.rows %}static uint64_t __nros_tier_backing_{{ r.index }}[NROS_CPP_TIER_BACKING_SIZE_{{ r.index }} / 8u];
-{% endfor %}static const nros_tier_backing_t __nros_tier_backings[{{ boot.n_tiers }}] = {
-{% for r in boot.task_memory.rows %}    {__nros_tier_backing_{{ r.index }}, sizeof(__nros_tier_backing_{{ r.index }})},
+#if defined(NROS_CPP_SCHED_TASK_COUNT) && NROS_CPP_SCHED_TASK_COUNT == {{ boot.n_sched_tasks }}
+#define NROS_ENTRY_SCHED_TASKS_BACKED 1
+{% for r in boot.task_memory.rows %}static uint64_t __nros_sched_task_backing_{{ r.index }}[NROS_CPP_SCHED_TASK_BACKING_SIZE_{{ r.index }} / 8u];
+{% endfor %}static const nros_sched_task_backing_t __nros_sched_task_backings[{{ boot.n_sched_tasks }}] = {
+{% for r in boot.task_memory.rows %}    {__nros_sched_task_backing_{{ r.index }}, sizeof(__nros_sched_task_backing_{{ r.index }})},
 {% endfor %}};
 #endif
 
@@ -108,7 +108,7 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
  * level shares and one seat per level, in a static the linker places and the
  * cost report (`mem-report --levels`) names. Each row of the table above is one
  * level; the runner spawns one worker per level over it. */
-#define NROS_CPP_SCHEDULER_BACKING_SIZE_0 NROS_CPP_SCHEDULER_BACKING_SIZE({{ boot.n_tiers }}u)
+#define NROS_CPP_SCHEDULER_BACKING_SIZE_0 NROS_CPP_SCHEDULER_BACKING_SIZE({{ boot.n_sched_tasks }}u)
 static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
 /* phase-509 P9b (RFC-0108 "As built in P9b") — the core's ONE executor
  * backing, when this build sizes its levels: every level's members, summed
@@ -118,7 +118,7 @@ static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
  * opens. */
 #if defined(NROS_CPP_LEVELS_BACKING_SIZE)
 static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
-static const nros_tier_backing_t __nros_level_backings[1] = {
+static const nros_sched_task_backing_t __nros_level_backings[1] = {
     {__nros_levels_backing, sizeof(__nros_levels_backing)},
 };
 #define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
@@ -144,9 +144,9 @@ static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 
 {%- set call -%}
 {%- if boot.tiers -%}
 {%- if boot_shape == "host" -%}
-{{ boot.runners.run_tiers }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %})
+{{ boot.runners.run_sched_tasks }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u{% if boot.sched_task_storage %}, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]){% endif %})
 {%- else -%}
-{{ boot.runners.run_tiers }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u{% if boot.tier_storage %}, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]){% endif %}{% if boot.task_memory %}, __nros_tier_task_memory{% endif %})
+{{ boot.runners.run_sched_tasks }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u{% if boot.sched_task_storage %}, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]){% endif %}{% if boot.task_memory %}, __nros_sched_task_memory{% endif %})
 {%- endif -%}
 {%- elif boot_shape == "host" -%}
 {{ boot.runners.run_components }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
@@ -154,22 +154,22 @@ static uint64_t __nros_executor_storage[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 
 {{ boot.runners.run_components }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup{% if boot.component_storage %}, __nros_executor_storage, sizeof(__nros_executor_storage){% endif %})
 {%- endif -%}
 {%- endset -%}
-{%- set levels = boot.tiers and boot.tier_storage and boot.runners.run_levels -%}
+{%- set levels = boot.tiers and boot.sched_task_storage and boot.runners.run_levels -%}
 {%- if levels -%}
 {%- set call -%}
-{{ boot.runners.run_levels }}({% if boot_shape != "host" %}NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, {% endif %}nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), NROS_ENTRY_LEVEL_BACKINGS, {% if boot.task_memory %}__nros_tier_task_memory{% else %}NULL{% endif %}, __nros_scheduler_0, sizeof(__nros_scheduler_0))
+{{ boot.runners.run_levels }}({% if boot_shape != "host" %}NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, {% endif %}nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), NROS_ENTRY_LEVEL_BACKINGS, {% if boot.task_memory %}__nros_sched_task_memory{% else %}NULL{% endif %}, __nros_scheduler_0, sizeof(__nros_scheduler_0))
 {%- endset -%}
 {%- endif -%}
-{%- set backed = not levels and boot.tiers and boot.tier_storage and boot.task_memory and boot.runners.run_tiers_backed -%}
+{%- set backed = not levels and boot.tiers and boot.sched_task_storage and boot.task_memory and boot.runners.run_sched_tasks_backed -%}
 {%- set backed_call -%}
-{{ boot.runners.run_tiers_backed }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), __nros_tier_backings, __nros_tier_task_memory)
+{{ boot.runners.run_sched_tasks_backed }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), __nros_sched_task_backings, __nros_sched_task_memory)
 {%- endset -%}
 {%- if boot_shape == "kernel" -%}
 int main(void) {
 {%- include "launch_remap_install.jinja" %}
 {%- include "session_properties_install.jinja" %}
 {%- if backed %}
-#if defined(NROS_ENTRY_TIERS_BACKED)
+#if defined(NROS_ENTRY_SCHED_TASKS_BACKED)
     return (int){{ backed_call }};
 #else
     return (int){{ call }};
@@ -185,7 +185,7 @@ int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
 {%- if backed %}
-#if defined(NROS_ENTRY_TIERS_BACKED)
+#if defined(NROS_ENTRY_SCHED_TASKS_BACKED)
     return {{ backed_call }};
 #else
     return {{ call }};

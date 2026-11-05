@@ -19,7 +19,7 @@
 //!
 //! Two consumers need it — `nuttx_ffi_build` (the kernel link) and
 //! `nuttx_image_link` (the bootable image). A second spelling of "where is the
-//! kernel" is how the two `TierRtosSpec` mirrors drifted, so the resolution
+//! kernel" is how the two `SchedTaskRtosSpec` mirrors drifted, so the resolution
 //! lives here once.
 
 use std::path::{Path, PathBuf};

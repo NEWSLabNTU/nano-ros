@@ -1676,7 +1676,7 @@ fn refused_service_takes_name_the_size_they_needed() {
 /// two threads declaring at once took the same slot: one's failure path freed
 /// the keyexpr the other had just allocated there, which ASan reported as a
 /// heap-use-after-free and a plain build as a SIGSEGV in `malloc`, about one
-/// boot in four on `derived-tiers-cpp`.
+/// boot in four on `derived-sched-tasks-cpp`.
 ///
 /// Four threads declare two publishers each, released together by a barrier,
 /// for 20 rounds. Every handle in a round must be distinct.

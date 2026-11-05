@@ -85,7 +85,7 @@ test FILES **2 → 0**.
 - **E1** · `packages/testing/nros-tests/src/fixtures/binaries/mod.rs:2380` · P2 · **new** · ~30 resolvers still use existence-only `require_prebuilt_binary` on cargo-built artifacts that *have* a sibling `.d` — the museum-binary trap #222 closed for the four RTOS resolvers was never propagated here. Highest-value sites: `:2380` (all qemu-arm-baremetal shared fixtures), `:3040`, `:4195`, `:4434`, `zephyr.rs:899,:961`.
 - **E4** · `packages/cli/rosidl-codegen/tests/heap_compile_check.rs:14` · P2 · **new** · **24 `#[ignore]` tests are permanently unreachable** — nothing in `just/`, `justfile`, `.github/workflows/` or `.config/nextest.toml` passes `--ignored`/`run-ignored`. That includes the 8 rosidl-codegen compile-checks that are the only gate on heap/borrowed storage-mode codegen.
 - **E7** · `packages/testing/nros-tests/tests/output_marker_gate.rs:16` · P2 · **new** · The gate hardcodes its own 9-entry `MARKERS` table instead of consuming `src/output.rs` (~30 markers) — it enforces an SSoT using a second copy of the data it guards. `xrce_ros2_interop.rs:390` uses marker-ish strings absent from the table, so the gap is already live.
-- **E8** · `packages/testing/nros-tests/src/ros_env.rs:59,638,946` and `tests/orchestration_tiers_freertos.rs:116` · P2 · **new** · The **zenoh** ros-editions cell (specifically — the cyclone block legitimately isolates via `unique_ros_domain_id()`) pins a fixed `tcp/127.0.0.1:7447` + hardcoded `domain = 0` for six tests, with isolation resting entirely on `--test-threads=1` buried in `just/ros-editions.just:147`; the code comment asserts "the lane is serial anyway" with nothing enforcing it. Separately, `start_slirp(7447)` is the only bare port literal among 14 call sites, landing inside the allocator's own 7400–7799 window.
+- **E8** · `packages/testing/nros-tests/src/ros_env.rs:59,638,946` and `tests/orchestration_sched_tasks_freertos.rs:116` · P2 · **new** · The **zenoh** ros-editions cell (specifically — the cyclone block legitimately isolates via `unique_ros_domain_id()`) pins a fixed `tcp/127.0.0.1:7447` + hardcoded `domain = 0` for six tests, with isolation resting entirely on `--test-threads=1` buried in `just/ros-editions.just:147`; the code comment asserts "the lane is serial anyway" with nothing enforcing it. Separately, `start_slirp(7447)` is the only bare port literal among 14 call sites, landing inside the allocator's own 7400–7799 window.
 
 ### API / layering
 
@@ -173,7 +173,7 @@ another manual sweep.
   two spot checks); `nros-node/src/{lifecycle,lifecycle_services,executor/handles,
   executor/handoff}.rs` `let _` sites; `nros-cpp/src/lib.rs` + `nros-c/src/*.rs`
   in depth (~15k lines of CFFI); RFC-0049's board/platform TOML resolver
-  implementation; per-cell `realtime_tiers_*_e2e.rs` / `*_entry_e2e.rs` (~40
+  implementation; per-cell `realtime_sched_tasks_*_e2e.rs` / `*_entry_e2e.rs` (~40
   files, pre-existing debt phase-295 W3 is still migrating — deliberately not
   filed); each of the ~28 `examples/README.md` matrix cells against a live lane;
   no clean-system bootstrap run (issue #204, out of scope).

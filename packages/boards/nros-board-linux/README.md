@@ -9,7 +9,7 @@ the `Board` trait surface that lives in [`nros-platform::board`]
 uses (`nros-board-freertos`, `nros-board-threadx`, …).
 
 This crate is LINUX-only, and the board is selected as `linux`
-(phase-500): `apply_tier_affinity` calls `sched_setaffinity` with
+(phase-500): `apply_sched_task_affinity` calls `sched_setaffinity` with
 `cpu_set_t` / `CPU_SET`, ungated by `cfg(target_os)`, which libc does not
 define for apple, windows or freebsd (FreeBSD's type is `cpuset_t`). The
 PLATFORM beneath it (`nros-platform-posix`) is POSIX; the two layers are

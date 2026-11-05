@@ -1,0 +1,5 @@
+{
+  "key": "rust:SchedTaskSetupGate::new",
+  "verdict": "extension",
+  "why": "See `rust:SchedTaskSetupGate`. `const`, so a runner can keep it in its never-returning frame or a `static`."
+}

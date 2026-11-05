@@ -1949,7 +1949,7 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * it actively harmful rather than merely dead: a second normalised scale in the
  * same scheduler is issue 0623 verbatim, and
  * `scripts/lib/priority_plan.py:resolve_zephyr_plan` MODELLED THIS FUNCTION —
- * so `check-tier-priority-plan-image` certified a band no image ever had while
+ * so `check-sched-task-priority-plan-image` certified a band no image ever had while
  * `realtime-c`'s `system.toml` authored tier values against that fiction.
  * The band now has exactly one spelling: `NROS_PLATFORM_PRIORITY_MAX`, mapped
  * by `nros_zephyr_native_priority`. */
@@ -2834,7 +2834,7 @@ void zpico_close(zpico_session_t* session) {
 // Every declare used to FIND a free slot (`!active`), declare into it, and only
 // then set `active = true`. With one zenoh session shared by several tier
 // threads (RFC-0015 Model 1), two concurrent declares found the SAME slot and
-// both wrote into it: measured under ASan on `derived-tiers-cpp`, one thread's
+// both wrote into it: measured under ASan on `derived-sched-tasks-cpp`, one thread's
 // failure path (`_z_undeclare_publisher`) freed the keyexpr string the other
 // thread's declaration had just allocated in that slot, while the other was
 // still comparing against it -- a heap-use-after-free that surfaced as a

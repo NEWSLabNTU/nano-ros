@@ -43,9 +43,9 @@ The `RAM by owner` table puts every byte under the owner you would name:
 ```
 
 * `[executor storage]` — the executor's backing, whichever language placed it:
-  the C/C++ entry's `__nros_executor_storage` / `__nros_tier_executor_storage`,
+  the C/C++ entry's `__nros_executor_storage` / `__nros_sched_task_executor_storage`,
   the C++ boot storage `Node::GlobalStorageHolder<0>::storage`, and the Rust
-  `EXECUTOR_BACKING` / `__NROS_TIER_EXECUTOR_BACKING`. In a tiered image this
+  `EXECUTOR_BACKING` / `__NROS_SCHED_TASK_EXECUTOR_BACKING`. In a tiered image this
   is usually the largest single owner.
 * `[component storage]` — the generated per-component storage
   (`__nros_comp_buf_N` for C++, `__NROS_COMPONENT_<pkg>_SLOT_STORE` for Rust).
@@ -57,7 +57,7 @@ For the C and C++ executor storage, the report also reads the build's own sizes
 header and tells you how many executors' worth the image reserved:
 
 ```
-        95,904  executor storage   __nros_tier_executor_storage
+        95,904  executor storage   __nros_sched_task_executor_storage
                                    = 4 x 23,976 (NROS_CPP_EXECUTOR_STORAGE_SIZE = 23,976)
 ```
 
@@ -75,7 +75,7 @@ story:
 ## top 5 RAM symbols
 
        131,072   25.3%  nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS
-        88,560   17.1%  linux_entry::__nros_entry_run::__NROS_TIER_EXECUTOR_BACKING
+        88,560   17.1%  linux_entry::__nros_entry_run::__NROS_SCHED_TASK_EXECUTOR_BACKING
         88,552   17.1%  nros_node::executor::backing::EXECUTOR_BACKING
         87,072   16.8%  g_sessions
         33,536    6.5%  nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX

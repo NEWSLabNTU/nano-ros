@@ -1809,21 +1809,21 @@ nros_cpp_ret_t nros_cpp_init_rmw(const char *rmw,
  * the image derived for the tier named `tier`, instead of from the context's
  * inline tail (which such an image does not carry). Refused -- before a
  * session opens -- for a tier the image sizes nothing for, or a backing below
- * the tier's layout ([`nros_cpp_tier_backing_size`] says how many bytes).
+ * the tier's layout ([`nros_cpp_sched_task_backing_size`] says how many bytes).
  *
  * # Safety
  * As [`nros_cpp_init`], plus: `tier` is a valid NUL-terminated string and
  * `backing` points at `backing_bytes` writable, 8-aligned bytes that outlive
  * the executor and are not otherwise accessed.
  */
-nros_cpp_ret_t nros_cpp_init_tier(const char *locator,
-                                  uint8_t domain_id,
-                                  const char *node_name,
-                                  const char *namespace_,
-                                  void *storage,
-                                  const char *tier,
-                                  void *backing,
-                                  size_t backing_bytes);
+nros_cpp_ret_t nros_cpp_init_sched_task(const char *locator,
+                                        uint8_t domain_id,
+                                        const char *node_name,
+                                        const char *namespace_,
+                                        void *storage,
+                                        const char *tier,
+                                        void *backing,
+                                        size_t backing_bytes);
 
 /**
  * phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- [`nros_cpp_init`]
@@ -1834,7 +1834,7 @@ nros_cpp_ret_t nros_cpp_init_tier(const char *locator,
  * below [`nros_cpp_levels_backing_size`].
  *
  * # Safety
- * As [`nros_cpp_init_tier`], without the tier name.
+ * As [`nros_cpp_init_sched_task`], without the tier name.
  */
 nros_cpp_ret_t nros_cpp_init_levels(const char *locator,
                                     uint8_t domain_id,
@@ -1858,7 +1858,7 @@ size_t nros_cpp_levels_backing_size(void);
  * # Safety
  * `tier` is NULL or a valid NUL-terminated string.
  */
-size_t nros_cpp_tier_backing_size(const char *tier);
+size_t nros_cpp_sched_task_backing_size(const char *tier);
 
 /**
  * Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
@@ -1906,7 +1906,7 @@ nros_cpp_ret_t nros_cpp_init_multi(const struct NrosCppSessionSpec *specs,
  * The state was also duplicated. The tag below already says whether the
  * storage holds a live `CppContext`; the C++ flag was a second answer,
  * maintained by hand at four sites, and the two could disagree — a `fini`
- * called directly (as `run_tiers.c` does) tore the context down without
+ * called directly (as `run_sched_tasks.c` does) tore the context down without
  * touching the flag, so `ok()` kept saying yes.
  *
  * So the tag IS the flag now, and it has one owner: `nros_cpp_init*` stamps
@@ -2675,10 +2675,10 @@ nros_cpp_ret_t nros_cpp_create_sched_context(void *handle,
 
 /**
  * RFC-0052 — create a scheduling context from a RAW tier policy, routing
- * through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_tier_policy`]
+ * through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_sched_task_policy`]
  * so the C++ entry codegen never re-derives the class/budget/period/deadline
  * mapping. This is the single-source-of-truth shared with the Rust runtime
- * (`ExecutorNodeRuntime::apply_tier_sched_policy`) — the C++ single-executor
+ * (`ExecutorNodeRuntime::apply_sched_task_sched_policy`) — the C++ single-executor
  * entry path emits a call to THIS instead of building an
  * `nros_cpp_sched_context_t` field-by-field, so a `real_time` tier lowers to
  * the same Sporadic SC on every language.
@@ -3104,19 +3104,19 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session(void *session_handle,
  * Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one TIER of a
  * per-tier-sized image: the borrowed executor is carved from `backing` at the
  * sizing the image derived for the tier named `tier` (see
- * [`nros_cpp_init_tier`] for what is refused).
+ * [`nros_cpp_init_sched_task`] for what is refused).
  *
  * # Safety
- * As [`nros_cpp_executor_open_over_session`], plus [`nros_cpp_init_tier`]'s
+ * As [`nros_cpp_executor_open_over_session`], plus [`nros_cpp_init_sched_task`]'s
  * contract on `tier` and `backing`.
  */
-nros_cpp_ret_t nros_cpp_executor_open_over_session_tier(void *session_handle,
-                                                        const char *node_name,
-                                                        uint32_t domain_id,
-                                                        void *out_storage,
-                                                        const char *tier,
-                                                        void *backing,
-                                                        size_t backing_bytes);
+nros_cpp_ret_t nros_cpp_executor_open_over_session_sched_task(void *session_handle,
+                                                              const char *node_name,
+                                                              uint32_t domain_id,
+                                                              void *out_storage,
+                                                              const char *tier,
+                                                              void *backing,
+                                                              size_t backing_bytes);
 
 /**
  * Phase 274.W1 (RFC-0015 Model 1) — gate this executor to a set of named callback groups.
@@ -3170,7 +3170,7 @@ nros_cpp_ret_t nros_cpp_executor_level(void *handle, uint8_t *out_level);
  * phase-509 P7 — place this executor at `level` (0 the most urgent), so
  * [`nros_cpp_executor_level`] answers it and its spins check in as it. A
  * runner calls it once per level before the level spins, with the index
- * [`nros_cpp_tier_level`] gives its tier. `INVALID_ARGUMENT` at or past
+ * [`nros_cpp_sched_task_level`] gives its tier. `INVALID_ARGUMENT` at or past
  * `NROS_CPP_MAX_LEVELS`.
  *
  * # Safety
@@ -3227,11 +3227,11 @@ nros_cpp_ret_t nros_cpp_executor_set_thread_id(void *handle, size_t (*thread_id)
  * `first_priority` must point at the `priority` field of the first of `n`
  * array elements `stride` bytes apart, or be NULL.
  */
-int32_t nros_cpp_tier_level(const int64_t *first_priority,
-                            size_t stride,
-                            size_t n,
-                            size_t index,
-                            bool smaller_is_urgent);
+int32_t nros_cpp_sched_task_level(const int64_t *first_priority,
+                                  size_t stride,
+                                  size_t n,
+                                  size_t index,
+                                  bool smaller_is_urgent);
 
 /**
  * phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs. A
@@ -3371,7 +3371,7 @@ nros_cpp_ret_t nros_cpp_scheduler_set_registering_level(void *scheduler, uint8_t
 /**
  * Issue 2018 (RFC-0108 As-built) -- give the registering level its own
  * scheduling context, lowered from its tier's policy by the common backend
- * (`SchedContext::from_tier_policy`): what the level's setup registers from
+ * (`SchedContext::from_sched_task_policy`): what the level's setup registers from
  * now on binds to it rather than to the executor's default, which every
  * level on the core shares (`Executor::set_level_sched_context`). Call it
  * after [`nros_cpp_level_open`] / [`nros_cpp_level_adopt`] and before the

@@ -5,7 +5,7 @@ THE DEFECT
 
 `nros_tests::skip!` emits `[SKIPPED] …`; `skip_class!` (issue 0584) emits
 `[SKIPPED:<class>] …`. Five matrix aggregators — `entry_matrix`, `multihost`,
-`realtime_tiers`, `roundtrip_xprocess`, `sched_dims_applied` — each
+`realtime_sched_tasks`, `roundtrip_xprocess`, `sched_dims_applied` — each
 independently wrote
 
     if msg.contains("[SKIPPED]") { skipped.push(…) } else { failed.push(…) }

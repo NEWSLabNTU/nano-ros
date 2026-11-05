@@ -4,7 +4,7 @@
 //! threads, and a tier's wait is a work item's schedule. So the entry is a PX4
 //! module — `ModuleBase<>` boilerplate plus one `px4::ScheduledWorkItem`
 //! subclass per tier — rather than a `Board::run_*` call. The work item's
-//! runtime half is `integrations/px4/include/nros_px4/tier_work_item.hpp`.
+//! runtime half is `integrations/px4/include/nros_px4/sched_task_work_item.hpp`.
 //!
 //! What is shared with the C++ entry, and what is not:
 //!
@@ -43,7 +43,7 @@ const TEMPLATE: &str = "entry_px4.cpp";
 
 /// One tier's work item.
 #[derive(Debug, Serialize)]
-struct Px4Tier {
+struct Px4SchedTask {
     /// Position in the tier table, which is also the open order.
     index: usize,
     name: String,
@@ -66,7 +66,7 @@ struct Px4View {
     /// The PX4 `MAIN` of the module: the shell command, and the
     /// `<main>_main` symbol PX4's module registration calls.
     main: String,
-    tiers: Vec<Px4Tier>,
+    tiers: Vec<Px4SchedTask>,
 }
 
 #[derive(Serialize)]
@@ -110,12 +110,12 @@ pub fn emit_px4_lowered(
     let mut lowered = admit_and_lower(NODE_PACK, manifest, &all, &lowering, opts)?;
     lowered.board = plan.board.clone();
 
-    let mut tiers: Vec<Px4Tier> = match &lowered.tiers {
+    let mut tiers: Vec<Px4SchedTask> = match &lowered.tiers {
         Some(t) => t
             .rows
             .iter()
             .zip(&t.setups)
-            .map(|(row, setup)| Px4Tier {
+            .map(|(row, setup)| Px4SchedTask {
                 index: row.index,
                 name: row.name.clone(),
                 queue: "",
@@ -126,7 +126,7 @@ pub fn emit_px4_lowered(
                 monitors: setup.monitors.clone(),
             })
             .collect(),
-        None => vec![Px4Tier {
+        None => vec![Px4SchedTask {
             index: 0,
             name: "default".into(),
             queue: "",
@@ -182,8 +182,8 @@ mod tests {
     use super::*;
 
     fn tiered(n: usize) -> Plan {
-        let mut p = super::super::golden::cpp_tiered_plan("px4");
-        if let Some(t) = p.resolved_tiers.as_mut() {
+        let mut p = super::super::golden::cpp_sched_task_plan("px4");
+        if let Some(t) = p.resolved_sched_tasks.as_mut() {
             let proto = t.tiers[1].clone();
             for i in 2..n {
                 let mut extra = proto.clone();
@@ -199,16 +199,16 @@ mod tests {
     /// RFC-0113 D9 -- each tier takes the queue its rank picks, and the rank
     /// is its priority, not its position in the table.
     #[test]
-    fn each_tier_runs_on_the_queue_its_rank_picks() {
+    fn each_sched_task_runs_on_the_queue_its_rank_picks() {
         let mut p = tiered(2);
         // List the less urgent tier FIRST: the queue must follow the priority.
-        p.resolved_tiers.as_mut().unwrap().tiers.reverse();
+        p.resolved_sched_tasks.as_mut().unwrap().tiers.reverse();
         let src = emit_px4(&p, "nros_demo", &LowerOptions::default()).unwrap();
         let high = src
-            .find("class NrosTier_high ")
+            .find("class NrosSchedTask_high ")
             .expect("one work item class per tier");
         let low = src
-            .find("class NrosTier_low ")
+            .find("class NrosSchedTask_low ")
             .expect("one work item class per tier");
         let rate = src[high..]
             .find("px4::wq_configurations::rate_ctrl")
@@ -218,12 +218,16 @@ mod tests {
             .unwrap();
         assert!(rate < src[high..].find('}').unwrap(), "{src}");
         assert!(hp < src[low..].find('}').unwrap(), "{src}");
-        assert_eq!(src.matches(": public ::nros_px4::TierWorkItem").count(), 2);
+        assert_eq!(
+            src.matches(": public ::nros_px4::SchedTaskWorkItem")
+                .count(),
+            2
+        );
     }
 
     /// More tiers than PX4 has queues is refused at generation, naming them.
     #[test]
-    fn more_tiers_than_queues_is_refused() {
+    fn more_sched_tasks_than_queues_is_refused() {
         let p = tiered(nros_orchestration_ir::px4::PX4_WORK_QUEUES.len() + 1);
         let err = emit_px4(&p, "nros_demo", &LowerOptions::default()).unwrap_err();
         assert!(err.contains("high") && err.contains("extra4"), "{err}");
@@ -237,7 +241,7 @@ mod tests {
             ("ctrl_grp".to_string(), "high".to_string()),
             ("telem_grp".to_string(), "low".to_string()),
         ]);
-        p.resolved_tiers.as_mut().unwrap().tiers[1]
+        p.resolved_sched_tasks.as_mut().unwrap().tiers[1]
             .members
             .push(("ctrl".into(), "telem_grp".into()));
         let err = emit_px4(&p, "nros_demo", &LowerOptions::default()).unwrap_err();

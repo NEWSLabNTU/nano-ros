@@ -177,7 +177,7 @@ fn both_readers_mean_the_same_by_every_shared_key() {
         files.len()
     );
     let mut compared = 0usize;
-    let mut with_tiers = 0usize;
+    let mut with_sched_tasks = 0usize;
     let mut with_components = 0usize;
     let mut disagreements = Vec::new();
     for f in &files {
@@ -196,7 +196,7 @@ fn both_readers_mean_the_same_by_every_shared_key() {
             }
         };
         compared += 1;
-        with_tiers += usize::from(!nros.tiers.is_empty());
+        with_sched_tasks += usize::from(!nros.tiers.is_empty());
         with_components += usize::from(!nros.components.is_empty());
         if nros != rlm {
             disagreements.push(format!("{rel}:\n  nano-ros {nros:?}\n  rlm      {rlm:?}"));
@@ -209,7 +209,10 @@ fn both_readers_mean_the_same_by_every_shared_key() {
     );
     // Not a comparison of empty sets: the tree exercises the tables compared.
     assert!(compared > 100, "compared only {compared} files");
-    assert!(with_tiers >= 5, "only {with_tiers} files declare tiers");
+    assert!(
+        with_sched_tasks >= 5,
+        "only {with_sched_tasks} files declare tiers"
+    );
     assert!(
         with_components >= 50,
         "only {with_components} files declare components"

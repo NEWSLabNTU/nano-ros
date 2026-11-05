@@ -123,7 +123,7 @@ retired: [ESP32 — retired](../migrating/esp32.md).
 
 `posix` there is the *platform* layer, which is genuinely POSIX-clean. The
 host *board* is named `linux`, and that is the narrower claim: only Linux is
-tested, and `nros-board-linux::apply_tier_affinity` calls `sched_setaffinity`
+tested, and `nros-board-linux::apply_sched_task_affinity` calls `sched_setaffinity`
 with `cpu_set_t`, which libc does not define for macOS. **macOS is not
 supported**.
 

@@ -18,7 +18,7 @@ domain_id = 0
 # group gets no derived tier (it stays on the default executor, and nothing is
 # derived at all). The tier it binds, `derived`, is declared nowhere; the
 # derivation replaces it with one `derived-<node>` tier per node. (A C++ node
-# states its groups with `CALLBACK_GROUPS` instead — derived-tiers-cpp.)
+# states its groups with `CALLBACK_GROUPS` instead — derived-sched-tasks-cpp.)
 #
 # Why a second BRINGUP and not a second workspace (RFC-0066): what differs is
 # configuration — how the schedule is stated, and the image's Kconfig — not
@@ -45,11 +45,11 @@ rmw = "zenoh"
 # a default-band image the two agree and a regression back to the projection
 # would be invisible; here it is 5 / 6 inside the transport vs 10 / 11 below
 # it, and the Zephyr boot report is what tells them apart at runtime.
-# `sched_dims_applied_e2e` (`DerivedTierBelowTransport`) asserts it is silent.
+# `sched_dims_applied_e2e` (`DerivedSchedTaskBelowTransport`) asserts it is silent.
 #
 # Its entry and west application are GENERATED (phase-470 W5, issue 1288), as
 # for demo_bringup's `[image.zephyr]`. The locator's port is
-# `port_of(ZephyrNativeSim, Rust, RealtimeTiers)` — the same router port the
+# `port_of(ZephyrNativeSim, Rust, RealtimeSchedTasks)` — the same router port the
 # realtime Zephyr Rust cells use, as the SMP row shares the C one's.
 #
 # `zephyr_derived`, NOT `zephyr` (issue 1582). A generated entry is keyed on the

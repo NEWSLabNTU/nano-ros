@@ -103,7 +103,7 @@ DERIVED_PAIRS = {
     # phase-448 W6. It sat on a plain `_nros_resolve_knob` with a Kconfig
     # default of 8, so every Zephyr image carried 8 scheduling-context slots
     # whatever its schedule created -- and the Rust runtime creates NONE of
-    # them (`apply_tier_sched_policy` mutates the reserved slot 0).
+    # them (`apply_sched_task_sched_policy` mutates the reserved slot 0).
     "NROS_DERIVED_EXECUTOR_MAX_SC": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_SC",),
     # phase-496 W1 (issue 1471) -- the contract-monitor tables, which had no
     # rung at all: `MAX_MONITORS` was a source literal of 8.

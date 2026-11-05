@@ -32,8 +32,8 @@ convention:
     or `derived`; `infra` names are paths/flags an operator sets by hand), and
   * a Zephyr-module C `#ifndef NAME / #define NAME <default>` — on Zephyr the
     producer of a C define is Kconfig, and a header-level `-D` hook no app
-    passes is exactly how `NROS_ZEPHYR_MAX_TIERS` and
-    `NROS_ZEPHYR_TIER_STACK_SIZE` came to be named by diagnostics nobody could
+    passes is exactly how `NROS_ZEPHYR_MAX_SCHED_TASKS` and
+    `NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` came to be named by diagnostics nobody could
     act on.
 
 Header `-D` hooks elsewhere (`NROS_COMPONENT_MAX_TIMERS`, the uORB pools, ...)

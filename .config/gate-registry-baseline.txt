@@ -310,8 +310,8 @@ test-targets
 tests-can-fail
 third-party-is-submodules
 tier-has-ci-owner
-tier-priority-plan
-tier-spin-gap
+sched-task-priority-plan
+sched-task-spin-gap
 vendor-fetch-pinned
 version-lockstep
 wait-evidence-discarded

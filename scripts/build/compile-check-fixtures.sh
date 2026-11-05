@@ -713,7 +713,7 @@ build_cmake_fixture() {
 # fixture that names `debug,release` stages ONCE and builds both profiles into the
 # same tree, so a test can boot the -O0 debug ELF (fast link) OR the -O3 release
 # ELF (needed when a -O0 zenoh-pico is too slow to finish a session handshake in
-# budget — phase-281 W1 / the connected orch_tiers_freertos test).
+# budget — phase-281 W1 / the connected orch_sched_tasks_freertos test).
 
 stage_and_cross_build() {
     local id="$1" src="$2" subdir="$3" pkg="$4" target="$5" profiles="${6:-debug}"

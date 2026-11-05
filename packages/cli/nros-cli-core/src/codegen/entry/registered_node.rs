@@ -133,7 +133,7 @@ impl RegisteredNode {
             safety: None,
             tiers: Default::default(),
             node_overrides: Vec::new(),
-            resolved_tiers: None,
+            resolved_sched_tasks: None,
             // Issue 0794 — `nano_ros_node_register` has no syntax for a domain,
             // a locator or an RMW selector either, so the baked session rung is
             // empty here for the same reason the rest of this plan is. Such an

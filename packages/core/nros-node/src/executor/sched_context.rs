@@ -201,7 +201,7 @@ impl DeadlineAction {
     /// resolve-time refusal naming both. So these four variants are what the
     /// contract's safety vocabulary reaches the target AS: the word in the
     /// YAML file becomes something the executor does.
-    pub fn from_tier_str(s: &str) -> Self {
+    pub fn from_sched_task_str(s: &str) -> Self {
         match s {
             "warn" => Self::Warn,
             "skip" => Self::Skip,
@@ -211,14 +211,14 @@ impl DeadlineAction {
     }
 
     /// The tier-table spelling of this action -- the inverse of
-    /// [`from_tier_str`](Self::from_tier_str).
+    /// [`from_sched_task_str`](Self::from_sched_task_str).
     ///
     /// The bake and the runtime share no type (this crate is `no_std` and
     /// knows nothing of the model), so the STRING is the interface between
-    /// `ViolationAction::as_tier_str` on the bake side and this. Spelling it
+    /// `ViolationAction::as_sched_task_str` on the bake side and this. Spelling it
     /// here rather than only on the bake side is what lets both sides pin the
     /// same four words in a test.
-    pub const fn as_tier_str(self) -> &'static str {
+    pub const fn as_sched_task_str(self) -> &'static str {
         match self {
             Self::Ignore => "ignore",
             Self::Warn => "warn",
@@ -607,7 +607,7 @@ impl SchedContext {
     /// RFC-0052 — the **common backend** that lowers an RTOS-agnostic tier
     /// policy (`[tasks.<t>]` class / budget / period / deadline) to a
     /// [`SchedContext`]. ONE implementation shared by every language: the Rust
-    /// runtime (`ExecutorNodeRuntime::apply_tier_sched_policy`)
+    /// runtime (`ExecutorNodeRuntime::apply_sched_task_sched_policy`)
     /// and the C / C++ entries (`nros_{c,cpp}_create_sched_context_from_policy`)
     /// all call this, so the mapping can never drift between codegen paths.
     ///
@@ -627,7 +627,7 @@ impl SchedContext {
     /// `os_pri` is intentionally NOT set here (it is an orthogonal per-callback
     /// OS-priority knob the caller applies); this fn covers only the
     /// RTOS-agnostic real-time policy.
-    pub fn from_tier_policy(
+    pub fn from_sched_task_policy(
         class: Option<&str>,
         period_us: Option<u64>,
         budget_us: Option<u64>,
@@ -658,7 +658,7 @@ impl SchedContext {
             sc.deadline_us = OptUs::from_us(clamp(d));
         }
         if let Some(action) = deadline_policy {
-            sc.deadline_action = DeadlineAction::from_tier_str(action);
+            sc.deadline_action = DeadlineAction::from_sched_task_str(action);
         }
         Some((sc, tt_frame))
     }
@@ -802,12 +802,12 @@ mod tests {
     }
 
     // RFC-0052 — the common-backend tier→SchedContext lowering, shared by the
-    // Rust runtime (`apply_tier_sched_policy`) and the C/C++ FFI
+    // Rust runtime (`apply_sched_task_sched_policy`) and the C/C++ FFI
     // (`nros_{c,cpp}_create_sched_context_from_policy`). One place, one test.
 
     #[test]
-    fn from_tier_policy_real_time_lowers_to_sporadic() {
-        let (sc, tt) = SchedContext::from_tier_policy(
+    fn from_sched_task_policy_real_time_lowers_to_sporadic() {
+        let (sc, tt) = SchedContext::from_sched_task_policy(
             Some("real_time"),
             Some(20_000),
             Some(3_000),
@@ -824,27 +824,29 @@ mod tests {
     }
 
     #[test]
-    fn from_tier_policy_real_time_without_budget_or_period_is_not_sporadic() {
+    fn from_sched_task_policy_real_time_without_budget_or_period_is_not_sporadic() {
         // `real_time` needs BOTH budget and period to be a sporadic server; a
         // bare `real_time` with neither (and no deadline) declares no policy.
         assert!(
-            SchedContext::from_tier_policy(Some("real_time"), None, None, None, None).is_none()
+            SchedContext::from_sched_task_policy(Some("real_time"), None, None, None, None)
+                .is_none()
         );
     }
 
     #[test]
-    fn from_tier_policy_best_effort() {
-        let (sc, tt) = SchedContext::from_tier_policy(Some("best_effort"), None, None, None, None)
-            .expect("best_effort is a policy");
+    fn from_sched_task_policy_best_effort() {
+        let (sc, tt) =
+            SchedContext::from_sched_task_policy(Some("best_effort"), None, None, None, None)
+                .expect("best_effort is a policy");
         assert_eq!(sc.class, SchedClass::BestEffort);
         assert_eq!(tt, None);
     }
 
     #[test]
-    fn from_tier_policy_time_triggered_returns_major_frame() {
+    fn from_sched_task_policy_time_triggered_returns_major_frame() {
         // TT stays Fifo-class (110.G) but returns the major frame to register
         // and sets the window duration (budget → window, else whole frame).
-        let (sc, tt) = SchedContext::from_tier_policy(
+        let (sc, tt) = SchedContext::from_sched_task_policy(
             Some("time_triggered"),
             Some(10_000),
             Some(4_000),
@@ -858,41 +860,49 @@ mod tests {
     }
 
     #[test]
-    fn from_tier_policy_deadline_only() {
+    fn from_sched_task_policy_deadline_only() {
         // A deadline with no RT class still yields a policy (Fifo + deadline).
-        let (sc, _tt) = SchedContext::from_tier_policy(None, None, None, Some(8_000), Some("warn"))
-            .expect("a deadline is a policy");
+        let (sc, _tt) =
+            SchedContext::from_sched_task_policy(None, None, None, Some(8_000), Some("warn"))
+                .expect("a deadline is a policy");
         assert_eq!(sc.class, SchedClass::Fifo);
         assert_eq!(sc.deadline_us.raw(), 8_000);
         assert_eq!(sc.deadline_action, DeadlineAction::Warn);
     }
 
     #[test]
-    fn from_tier_policy_none_when_no_policy() {
+    fn from_sched_task_policy_none_when_no_policy() {
         // No class, no deadline → None → caller keeps the default Fifo SC.
-        assert!(SchedContext::from_tier_policy(None, Some(1_000), None, None, None).is_none());
-        assert!(SchedContext::from_tier_policy(Some("default"), None, None, None, None).is_none());
+        assert!(
+            SchedContext::from_sched_task_policy(None, Some(1_000), None, None, None).is_none()
+        );
+        assert!(
+            SchedContext::from_sched_task_policy(Some("default"), None, None, None, None).is_none()
+        );
     }
 
     /// phase-462 W2 -- the four words are the interface between the bake and
     /// this crate. `nros-orchestration-ir`'s `violation_agreement` pins the
-    /// same three non-default ones in `the_tier_spelling_round_trips`; if
+    /// same three non-default ones in `the_sched_task_spelling_round_trips`; if
     /// either side renames one, the contract's `on_violation` silently lowers
     /// to `Ignore` and the image stops reacting.
     #[test]
-    fn the_contract_vocabulary_is_the_tier_vocabulary() {
+    fn the_contract_vocabulary_is_the_sched_task_vocabulary() {
         for a in [
             DeadlineAction::Ignore,
             DeadlineAction::Warn,
             DeadlineAction::Skip,
             DeadlineAction::Fault,
         ] {
-            assert_eq!(DeadlineAction::from_tier_str(a.as_tier_str()), a);
+            assert_eq!(
+                DeadlineAction::from_sched_task_str(a.as_sched_task_str()),
+                a
+            );
         }
-        assert_eq!(DeadlineAction::Fault.as_tier_str(), "fault");
+        assert_eq!(DeadlineAction::Fault.as_sched_task_str(), "fault");
         // An unreadable word is the default, not a boot panic.
         assert_eq!(
-            DeadlineAction::from_tier_str("abort"),
+            DeadlineAction::from_sched_task_str("abort"),
             DeadlineAction::Ignore
         );
     }

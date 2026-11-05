@@ -48,7 +48,7 @@
 //!   give this: a polymorphic class still emits a vtable;
 //! * the three sched-context ABI entrypoints — a node whose groups span tiers
 //!   takes `ExecutorShape::SchedContexts`, so these are the seam this image
-//!   uses instead of `run_tiers`. If they were dropped, the image would link
+//!   uses instead of `run_sched_tasks`. If they were dropped, the image would link
 //!   and bind nothing.
 
 use nros_tests::{TestResult, fixtures::build_freertos_workspace_cpp_subnode_portable_entry};
@@ -180,7 +180,7 @@ fn the_group_split_entry_links_the_sched_context_abi() -> TestResult<()> {
         panic!("arm-none-eabi-nm failed on {}", binary.display());
     };
 
-    // A node whose groups span tiers cannot take `run_tiers` (per-tier setup
+    // A node whose groups span tiers cannot take `run_sched_tasks` (per-tier setup
     // functions construct whole NODES), so `Plan::executor_shape` picks
     // `SchedContexts` and the entry binds through these three.
     for sym in [

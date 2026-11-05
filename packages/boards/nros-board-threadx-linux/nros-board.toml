@@ -60,7 +60,7 @@ threads = true
 
 # RFC-0079 — the PORT's priority address plan.
 #
-# `tier_key` because the pin key and the board platform differ here: bringups
+# `sched_task_key` because the pin key and the board platform differ here: bringups
 # write `[tasks.<name>.threadx]` while this board's platform is
 # `threadx-linux`. FreeRTOS and NuttX happened to match; stating it is cheaper
 # than relying on that.
@@ -73,7 +73,7 @@ threads = true
 # (`_z_task_threadx_priority`) only apply to a caller that configures one, and
 # today nobody does.
 [board.priority_plan]
-tier_key = "threadx"
+sched_task_key = "threadx"
 # ThreadX documents priority as "0 through (TX_MAX_PRIORITIES-1), where a value
 # of 0 represents the highest priority" — the OPPOSITE direction to FreeRTOS
 # and NuttX, which is exactly why a plan has to state it rather than assume.

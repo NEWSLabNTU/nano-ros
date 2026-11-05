@@ -18,7 +18,7 @@ publish = false
 name = "nros_board_zephyr"
 
 [features]
-# issue #128 (half 2) — `ZephyrBoard::run_tiers` (per-tier k_thread entry).
+# issue #128 (half 2) — `ZephyrBoard::run_sched_tasks` (per-tier k_thread entry).
 # Off by default: link-up-gate-only consumers keep the tiny dep graph; the
 # `nros::main!` Zephyr arm's multi-tier emit needs an entry crate that
 # enables this on its `nros-board-zephyr` dep.
@@ -31,7 +31,7 @@ zephyr-edf = []
 [dependencies]
 nros-platform = { path = "../../platform/nros-platform", default-features = false }
 nros = { path = "../../api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"], optional = true }
-# run_tiers wires the nros_log dispatcher to the platform console at boot
+# run_sched_tasks wires the nros_log dispatcher to the platform console at boot
 # (mirrors nros-board-linux); without it a Node pkg's `log_info!` on a
 # Zephyr multi-tier entry produced no output at all.
 nros-log = { path = "../../core/nros-log", default-features = false, optional = true }

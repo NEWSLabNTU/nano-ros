@@ -45,7 +45,7 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
             output::LISTENER_LOG_PREFIX
         }
         // Remap: the external int32-sink on the REMAPPED topic proves delivery.
-        Workload::RealtimeTiers | Workload::Qos | Workload::Remap => {
+        Workload::RealtimeSchedTasks | Workload::Qos | Workload::Remap => {
             output::INT32_LISTENER_LOG_PREFIX
         }
         Workload::Service => output::SERVICE_RESULT_PREFIX,

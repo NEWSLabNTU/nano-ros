@@ -265,7 +265,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
 
     /* phase-364 W3 — `attr` is read now rather than ignored. This port used to
      * do `(void) attr;`, which is why a caller could not ask for a stack size
-     * and why phase-359 W7 wrote ~~`nros_nuttx_spawn_tier`~~ in C to get one: NuttX
+     * and why phase-359 W7 wrote ~~`nros_nuttx_spawn_sched_task`~~ in C to get one: NuttX
      * runs this very port, so the shim existed to reach `pthread_attr_t` from a
      * caller the ABI gave no way to express it. */
     const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
@@ -1136,7 +1136,7 @@ static pthread_mutex_t s_log_mutex = PTHREAD_MUTEX_INITIALIZER;
  * thread, and SAY what happened.
  *
  * The sibling of `nros_nuttx_apply_current_priority` and
- * `freertos_apply_tier_priority`: one implementation per port, one marker, and
+ * `freertos_apply_sched_task_priority`: one implementation per port, one marker, and
  * a refusal that is reported rather than absorbed. It exists because the Linux
  * board spawns its tiers with `std::thread::scope`, which never reaches this
  * file's `task_init` — so the attribute path that gives NuttX its priorities
@@ -1211,13 +1211,13 @@ int nros_posix_apply_current_priority(const char *name, uint32_t priority) {
  * budget and a period, budget <= period, budget >= 1024 ns, the kernel's
  * floor), 0 otherwise. Pure: the arithmetic the runner applies, testable
  * without the privilege the call needs. */
-int nros_posix_deadline_attr(const char *tier_class, uint64_t budget_us, uint64_t period_us,
+int nros_posix_deadline_attr(const char *sched_task_class, uint64_t budget_us, uint64_t period_us,
                              uint64_t deadline_us, uint64_t *runtime_ns, uint64_t *deadline_ns,
                              uint64_t *period_ns);
-int nros_posix_deadline_attr(const char *tier_class, uint64_t budget_us, uint64_t period_us,
+int nros_posix_deadline_attr(const char *sched_task_class, uint64_t budget_us, uint64_t period_us,
                              uint64_t deadline_us, uint64_t *runtime_ns, uint64_t *deadline_ns,
                              uint64_t *period_ns) {
-    if (tier_class == NULL || strcmp(tier_class, "real_time") != 0 || budget_us == 0u ||
+    if (sched_task_class == NULL || strcmp(sched_task_class, "real_time") != 0 || budget_us == 0u ||
         period_us == 0u || budget_us > period_us) {
         return 0;
     }
@@ -1255,17 +1255,17 @@ int nros_posix_deadline_attr(const char *tier_class, uint64_t budget_us, uint64_
  * above: an unprivileged host (no CAP_SYS_NICE) is the common case, and the
  * operator gets one line naming the fix, plus a per-level line. Marker:
  * `nros: deadline budget set tier=...`. Linux only; elsewhere it says so. */
-int nros_posix_apply_current_deadline(const char *name, const char *tier_class,
+int nros_posix_apply_current_deadline(const char *name, const char *sched_task_class,
                                       uint64_t budget_us, uint64_t period_us,
                                       uint64_t deadline_us);
-int nros_posix_apply_current_deadline(const char *name, const char *tier_class,
+int nros_posix_apply_current_deadline(const char *name, const char *sched_task_class,
                                       uint64_t budget_us, uint64_t period_us,
                                       uint64_t deadline_us) {
     const char *tname = (name != NULL) ? name : "?";
     uint64_t rt = 0;
     uint64_t dl = 0;
     uint64_t pd = 0;
-    if (!nros_posix_deadline_attr(tier_class, budget_us, period_us, deadline_us, &rt, &dl,
+    if (!nros_posix_deadline_attr(sched_task_class, budget_us, period_us, deadline_us, &rt, &dl,
                                   &pd)) {
         return 0;
     }

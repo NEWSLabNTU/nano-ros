@@ -246,7 +246,7 @@ fn every_declared_component_language_has_a_producer() {
 /// phase-459 W0 - the derived-tiers fixture is what every later wave's gate
 /// runs against, so this pins the two inputs those gates assume it carries.
 ///
-/// `examples/workspaces/derived-tiers-cpp` mirrors the Autoware Safety Island:
+/// `examples/workspaces/derived-sched-tasks-cpp` mirrors the Autoware Safety Island:
 /// four `SHAPE rclcpp` C++ components, one wall timer each, two at 30 Hz and
 /// two at 10 Hz, `CALLBACK_GROUPS main` on every registration, and NO
 /// `[tasks.*]` or `group_tasks` in its `system.toml`. Issue 1426 measured that
@@ -267,12 +267,12 @@ fn every_declared_component_language_has_a_producer() {
 /// 2. The launch file and its `system.contract.yaml` sidecar resolve through
 ///    the pinned resolver into a model with four nodes, four timer-driven
 ///    paths (empty `input`) whose `trigger.timer.rate_hz` is the 30/10 Hz the
-///    ranker orders by, and no execution tiers - the input shape `derive_tiers_from_contracts`
+///    ranker orders by, and no execution tiers - the input shape `derive_sched_tasks_from_contracts`
 ///    keys on.
 #[test]
-fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
+fn derived_sched_tasks_cpp_fixture_declares_four_groupful_components_and_resolves() {
     let root = repo_root();
-    let ws = root.join("examples/workspaces/derived-tiers-cpp");
+    let ws = root.join("examples/workspaces/derived-sched-tasks-cpp");
     // (package, node name, published endpoint, rate in Hz)
     const EXPECTED: [(&str, &str, &str, f64); 4] = [
         (
@@ -390,7 +390,7 @@ fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
             contract.min_rate_hz.is_some_and(|promise| promise < rate),
             "{ep}: the fixture's publication floor sits BELOW the trigger on \
              purpose, so a derivation reading the promise instead of the trigger \
-             is caught by `derived_tiers_bake` (issue 1372); got {:?}",
+             is caught by `derived_sched_tasks_bake` (issue 1372); got {:?}",
             contract.min_rate_hz
         );
     }
@@ -403,7 +403,7 @@ fn resolve_through_pinned_resolver(repo: &Path, bringup: &Path, stem: &str) -> S
     let stamp = common::unique_stamp();
     // Repo rule: temp files live in `$project/tmp/`, not the system temp dir.
     let out = repo.join("tmp").join(format!(
-        "derived-tiers-cpp-{stem}-{}-{stamp}",
+        "derived-sched-tasks-cpp-{stem}-{}-{stamp}",
         std::process::id()
     ));
     fs::create_dir_all(&out).expect("create model out dir");

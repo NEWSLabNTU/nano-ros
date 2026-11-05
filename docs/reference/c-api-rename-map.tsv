@@ -224,6 +224,7 @@ NROS_NODE_STATE_SHUTDOWN	RCLC_NODE_STATE_SHUTDOWN	ours	API constant with no upst
 NROS_NODE_STATE_UNINITIALIZED	RCLC_NODE_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
 NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	build	build or configuration fact
 NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS	NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS	build	build or configuration fact
+NROS_NO_DEPRECATED_TIER_NAMES	NROS_NO_DEPRECATED_TIER_NAMES	build	build or configuration fact
 NROS_NUTTX_EXTERNAL_APP	NROS_NUTTX_EXTERNAL_APP	hook	defined by the application or entry, called by startup code
 NROS_NUTTX_LEVEL_STACK_DEFAULT	NROS_NUTTX_LEVEL_STACK_DEFAULT	hook	defined by the application or entry, called by startup code
 NROS_NUTTX_LEVEL_WORKER_FRAME	NROS_NUTTX_LEVEL_WORKER_FRAME	hook	defined by the application or entry, called by startup code
@@ -291,6 +292,16 @@ NROS_SCHED_CONTEXT_H	NROS_SCHED_CONTEXT_H	build	build or configuration fact
 NROS_SCHED_PRIORITY_BEST_EFFORT	RCLC_SCHED_PRIORITY_BEST_EFFORT	ours	API constant with no upstream spelling
 NROS_SCHED_PRIORITY_CRITICAL	RCLC_SCHED_PRIORITY_CRITICAL	ours	API constant with no upstream spelling
 NROS_SCHED_PRIORITY_NORMAL	RCLC_SCHED_PRIORITY_NORMAL	ours	API constant with no upstream spelling
+NROS_SCHED_TASK_MEMORY	NROS_SCHED_TASK_MEMORY	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_MEMORY_DEFINE	NROS_SCHED_TASK_MEMORY_DEFINE	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_MEMORY_FREERTOS_H	NROS_SCHED_TASK_MEMORY_FREERTOS_H	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_MEMORY_NONE	NROS_SCHED_TASK_MEMORY_NONE	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_MEMORY_NUTTX_H	NROS_SCHED_TASK_MEMORY_NUTTX_H	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_MEMORY_ZEPHYR_H	NROS_SCHED_TASK_MEMORY_ZEPHYR_H	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_STACK_BYTES_	NROS_SCHED_TASK_STACK_BYTES_	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_STACK_DEFAULT_	NROS_SCHED_TASK_STACK_DEFAULT_	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_STACK_DEFINE_	NROS_SCHED_TASK_STACK_DEFINE_	hook	defined by the application or entry, called by startup code
+NROS_SCHED_TASK_STACK_WORDS_	NROS_SCHED_TASK_STACK_WORDS_	hook	defined by the application or entry, called by startup code
 NROS_SEMANTICS_LOGICAL_EXECUTION_TIME	LET	adopt	upstream `rclc_executor_semantics_t` value, same number (phase-492 follow-up)
 NROS_SEMANTICS_RCLCPP_EXECUTOR	RCLCPP_EXECUTOR	adopt	upstream `rclc_executor_semantics_t` value, same number (phase-492 follow-up)
 NROS_SERIALIZATION_FORMAT	NROS_SERIALIZATION_FORMAT	build	build or configuration fact
@@ -325,6 +336,8 @@ NROS_SUBSCRIPTION_STATE_UNINITIALIZED	RCLC_SUBSCRIPTION_STATE_UNINITIALIZED	ours
 NROS_SUPPORT_STATE_INITIALIZED	RCLC_SUPPORT_STATE_INITIALIZED	ours	API constant with no upstream spelling
 NROS_SUPPORT_STATE_SHUTDOWN	RCLC_SUPPORT_STATE_SHUTDOWN	ours	API constant with no upstream spelling
 NROS_SUPPORT_STATE_UNINITIALIZED	RCLC_SUPPORT_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
+NROS_TIER_DEPRECATED_TYPE_	NROS_TIER_DEPRECATED_TYPE_	build	build or configuration fact
+NROS_TIER_RENAMED_	NROS_TIER_RENAMED_	build	build or configuration fact
 NROS_TIER_TASK_MEMORY	NROS_TIER_TASK_MEMORY	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_MEMORY_DEFINE	NROS_TIER_TASK_MEMORY_DEFINE	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_MEMORY_FREERTOS_H	NROS_TIER_TASK_MEMORY_FREERTOS_H	hook	defined by the application or entry, called by startup code
@@ -437,6 +450,10 @@ nros_app_main_returned	nros_app_main_returned	hook	defined by the application or
 nros_b	rclc_b	ours	ours-only
 nros_baked_boot_config	nros_baked_boot_config	hook	defined by the application or entry, called by startup code
 nros_board_freertos_run_levels_in	nros_board_freertos_run_levels_in	seam	declared by a port seam or the C++ FFI
+nros_board_freertos_run_sched_tasks	nros_board_freertos_run_sched_tasks	seam	declared by a port seam or the C++ FFI
+nros_board_freertos_run_sched_tasks_in	nros_board_freertos_run_sched_tasks_in	seam	declared by a port seam or the C++ FFI
+nros_board_freertos_run_sched_tasks_memory_in	nros_board_freertos_run_sched_tasks_memory_in	seam	declared by a port seam or the C++ FFI
+nros_board_freertos_run_sched_tasks_ns	nros_board_freertos_run_sched_tasks_ns	seam	declared by a port seam or the C++ FFI
 nros_board_freertos_run_tiers	nros_board_freertos_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_freertos_run_tiers_in	nros_board_freertos_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_freertos_run_tiers_ns	nros_board_freertos_run_tiers_ns	seam	declared by a port seam or the C++ FFI
@@ -446,11 +463,17 @@ nros_board_native_run_components_named	nros_board_native_run_components_named	se
 nros_board_native_run_components_named_in	nros_board_native_run_components_named_in	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_components_named_ns	nros_board_native_run_components_named_ns	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_levels_in	nros_board_native_run_levels_in	seam	declared by a port seam or the C++ FFI
+nros_board_native_run_sched_tasks	nros_board_native_run_sched_tasks	seam	declared by a port seam or the C++ FFI
+nros_board_native_run_sched_tasks_in	nros_board_native_run_sched_tasks_in	seam	declared by a port seam or the C++ FFI
+nros_board_native_run_sched_tasks_ns	nros_board_native_run_sched_tasks_ns	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_tiers	nros_board_native_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_tiers_in	nros_board_native_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_tiers_ns	nros_board_native_run_tiers_ns	seam	declared by a port seam or the C++ FFI
 nros_board_network_wait	nros_board_network_wait	seam	declared by a port seam or the C++ FFI
 nros_board_nuttx_run_levels_in	nros_board_nuttx_run_levels_in	seam	declared by a port seam or the C++ FFI
+nros_board_nuttx_run_sched_tasks	nros_board_nuttx_run_sched_tasks	seam	declared by a port seam or the C++ FFI
+nros_board_nuttx_run_sched_tasks_in	nros_board_nuttx_run_sched_tasks_in	seam	declared by a port seam or the C++ FFI
+nros_board_nuttx_run_sched_tasks_ns	nros_board_nuttx_run_sched_tasks_ns	seam	declared by a port seam or the C++ FFI
 nros_board_nuttx_run_tiers	nros_board_nuttx_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_nuttx_run_tiers_in	nros_board_nuttx_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_nuttx_run_tiers_ns	nros_board_nuttx_run_tiers_ns	seam	declared by a port seam or the C++ FFI
@@ -458,6 +481,11 @@ nros_board_rtos_run_components	nros_board_rtos_run_components	seam	declared by a
 nros_board_rtos_run_components_in	nros_board_rtos_run_components_in	seam	declared by a port seam or the C++ FFI
 nros_board_rtos_run_components_ns	nros_board_rtos_run_components_ns	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_levels_in	nros_board_zephyr_run_levels_in	seam	declared by a port seam or the C++ FFI
+nros_board_zephyr_run_sched_tasks	nros_board_zephyr_run_sched_tasks	seam	declared by a port seam or the C++ FFI
+nros_board_zephyr_run_sched_tasks_backed_in	nros_board_zephyr_run_sched_tasks_backed_in	seam	declared by a port seam or the C++ FFI
+nros_board_zephyr_run_sched_tasks_in	nros_board_zephyr_run_sched_tasks_in	seam	declared by a port seam or the C++ FFI
+nros_board_zephyr_run_sched_tasks_memory_in	nros_board_zephyr_run_sched_tasks_memory_in	seam	declared by a port seam or the C++ FFI
+nros_board_zephyr_run_sched_tasks_ns	nros_board_zephyr_run_sched_tasks_ns	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers	nros_board_zephyr_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers_backed_in	nros_board_zephyr_run_tiers_backed_in	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers_in	nros_board_zephyr_run_tiers_in	seam	declared by a port seam or the C++ FFI
@@ -760,6 +788,7 @@ nros_message_type_t	rclc_message_type_t	ours	ours-only
 nros_monitors_arm	rclc_monitors_arm	ours	ours-only
 nros_name	rclc_name	ours	ours-only
 nros_names_and_types_visit_fn	rclc_names_and_types_visit_fn	ours	ours-only
+nros_native_sched_task_spec_t	nros_native_sched_task_spec_t	hook	defined by the application or entry, called by startup code
 nros_native_tier_spec_t	nros_native_tier_spec_t	hook	defined by the application or entry, called by startup code
 nros_node_create_guard_condition	rclc_node_create_guard_condition	ours	ours-only
 nros_node_get_domain_id	rcl_node_get_domain_id	adopt	given upstream `rcl_node_get_domain_id`'s signature and adopted (measured, phase-492 W1.b)
@@ -886,6 +915,8 @@ nros_sched_class_t	rclc_sched_class_t	ours	ours-only
 nros_sched_context_id_t	rclc_sched_context_id_t	ours	ours-only
 nros_sched_context_t	rclc_sched_context_t	ours	ours-only
 nros_sched_priority_t	rclc_sched_priority_t	ours	ours-only
+nros_sched_task_backing_t	nros_sched_task_backing_t	hook	defined by the application or entry, called by startup code
+nros_sched_task_memory_t	nros_sched_task_memory_t	hook	defined by the application or entry, called by startup code
 nros_service_callback_t	rclc_service_raw_callback_t	ours	differs from `rclc_service_callback_t`: CDR bytes + context (phase-492 W1.b)
 nros_service_fini	rcl_service_fini	adopt	given upstream `rcl_service_fini`'s signature and adopted (measured, phase-492 W1.b)
 nros_service_init_with_options	rclc_service_init_with_options	ours	ours-only

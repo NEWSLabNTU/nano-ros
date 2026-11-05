@@ -49,7 +49,7 @@ pub fn emit_typed_monitored(
         ages,
         None,
         &[],
-        &ModeTier::default(),
+        &ModeSchedTask::default(),
     )
     .map(|(src, _)| src)
 }
@@ -65,7 +65,7 @@ pub fn emit_typed_monitored_lowered(
     ages: &[AgeRow],
     hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
     modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
-    mode_tier: &ModeTier,
+    mode_sched_task: &ModeSchedTask,
 ) -> Result<(String, LoweredEntry), String> {
     emit_typed_ranked_lowered(
         language,
@@ -74,7 +74,7 @@ pub fn emit_typed_monitored_lowered(
         ages,
         hazard_model,
         modes,
-        mode_tier,
+        mode_sched_task,
         &[],
     )
 }
@@ -90,7 +90,7 @@ pub fn emit_typed_ranked_lowered(
     ages: &[AgeRow],
     hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
     modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
-    mode_tier: &ModeTier,
+    mode_sched_task: &ModeSchedTask,
     node_ranks: &[(String, u8)],
 ) -> Result<(String, LoweredEntry), String> {
     emit_typed_image_lowered(
@@ -100,7 +100,7 @@ pub fn emit_typed_ranked_lowered(
         ages,
         hazard_model,
         modes,
-        mode_tier,
+        mode_sched_task,
         node_ranks,
         &[],
     )
@@ -116,7 +116,7 @@ pub fn emit_typed_image_lowered(
     ages: &[AgeRow],
     hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
     modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
-    mode_tier: &ModeTier,
+    mode_sched_task: &ModeSchedTask,
     node_ranks: &[(String, u8)],
     session_properties: &[(String, String)],
 ) -> Result<(String, LoweredEntry), String> {
@@ -128,8 +128,8 @@ pub fn emit_typed_image_lowered(
             ages,
             hazard_model,
             modes,
-            mode_deadlines: Some(&mode_tier.deadlines),
-            mode_switch: &mode_tier.switch,
+            mode_deadlines: Some(&mode_sched_task.deadlines),
+            mode_switch: &mode_sched_task.switch,
             probe: None,
             node_ranks,
             session_properties,
@@ -140,8 +140,8 @@ pub fn emit_typed_image_lowered(
 /// phase-462 W4c -- what a contract's modes do to the tiers: each mode's
 /// derived tier deadlines and its switch budget.
 #[derive(Debug, Clone, Default)]
-pub struct ModeTier {
-    pub deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines,
+pub struct ModeSchedTask {
+    pub deadlines: nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines,
     pub switch: Vec<(u32, String)>,
 }
 
@@ -300,11 +300,11 @@ pub(crate) fn admit_and_lower(
         && lowered
             .boot
             .as_ref()
-            .is_some_and(|b| b.runners.run_tiers.is_none())
+            .is_some_and(|b| b.runners.run_sched_tasks.is_none())
     {
         return Err(format!(
             "typed entry emit (`{pack}` pack): board `{}` has a C-ABI `run_components` \
-             but no C-ABI `run_tiers`, so a tiered entry has no runner to call",
+             but no C-ABI `run_sched_tasks`, so a tiered entry has no runner to call",
             plan.board
         ));
     }

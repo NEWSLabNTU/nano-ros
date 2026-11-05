@@ -202,7 +202,7 @@ pub struct SizingDescriptorArgs {
     /// nothing is added.
     // Issue 1970.
     #[arg(long, value_name = "PATH", requires = "from_model")]
-    pub tier_record: Option<PathBuf>,
+    pub sched_task_record: Option<PathBuf>,
 }
 
 /// `--road`'s default for `--from-model`.
@@ -409,8 +409,8 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     // `write_for_model` checks the declared arrival curve against.
     let mut inventory = inventory;
     inventory.set_board_rx_cost(board_rx_cost(args));
-    let tiers = tier_rows_for(args, &inventory);
-    let written = crate::sizing_descriptor::write_for_model_with_tiers(
+    let tiers = sched_task_rows_for(args, &inventory);
+    let written = crate::sizing_descriptor::write_for_model_with_sched_tasks(
         &crate::sizing_descriptor::ModelImage {
             build_dir,
             entry,
@@ -436,25 +436,25 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
 
 /// phase-462 W6c -- `[board.rx]` as the configure handed it
 /// (`--board-rx-frame-cost-us` / `--board-rx-floor-us`).
-/// Issue 1970 -- each tier's own `[[tier]]` row, when `--tier-record` names a
+/// Issue 1970 -- each tier's own `[[tier]]` row, when `--sched-task-record` names a
 /// per-tier-sized tier table. A tier table the inventory cannot describe tier
 /// by tier yields no row, says why, and leaves every tier on the image's
 /// executor size.
-fn tier_rows_for(
+fn sched_task_rows_for(
     args: &SizingDescriptorArgs,
     inventory: &crate::entity_inventory::EntityInventory,
 ) -> Vec<nros_sizing_descriptor::Tier> {
     let Some(text) = args
-        .tier_record
+        .sched_task_record
         .as_ref()
         .and_then(|p| std::fs::read_to_string(p).ok())
     else {
         return Vec::new();
     };
-    let Some(tiers) = crate::sizing_descriptor::tiers_from_priority_record(&text) else {
+    let Some(tiers) = crate::sizing_descriptor::sched_tasks_from_priority_record(&text) else {
         return Vec::new();
     };
-    match crate::sizing_descriptor::tier_rows(inventory, &tiers) {
+    match crate::sizing_descriptor::sched_task_rows(inventory, &tiers) {
         Ok(rows) => rows,
         Err(why) => {
             eprintln!(
@@ -1150,7 +1150,7 @@ mod tests {
             // phase-457 W0.b — `None`, so every case exercises the PER-MODE default
             // the cmake callers rely on rather than overriding it.
             road: None,
-            tier_record: None,
+            sched_task_record: None,
             from_leaf: None,
             // phase-457-payload W2 -- no tables: the payload class refuses,
             // naming the missing registration (issue 1393 closed the road).

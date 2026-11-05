@@ -11,7 +11,7 @@ build, on a false preflight refusal (fixed in PR #3153).**
     PASS (6.3 s), in its scheduled lane.
   - **Issue 2004 resolved:** the job log prints `realtime_tiers: 4 row(s)
     executed (4 passed …)` and `sched_dims: 1 cell(s) executed (1 passed …)`.
-  - **W5 read (tier 2, 1-wise):** realtime_tiers 4 passed / 18 out of lane,
+  - **W5 read (tier 2, 1-wise):** realtime_sched_tasks 4 passed / 18 out of lane,
     sched_dims 1 passed / 16 out of lane. `CorePinPlacement/zephyr/c` is out of
     the 1-wise lane, so issue 2113 still waits on the pairwise nightly.
 - Same run, tier 1: one real failure, phase-535's new C++ Fibonacci action
@@ -104,9 +104,9 @@ lane; what W5 still waits on is the runner image (issue 2113) and one nightly.**
   requirement (RFC-0061 amendment 2026-10-31, `ci_lane::realtime_cell_reqs`):
   37 / 35 -> 45 / 39 cells / coordinates, adding `freertos,cpp,zenoh`,
   `zephyr,cpp,zenoh`, `linux,c,zenoh` and `linux,cpp,zenoh`. That brings in the
-  four uncovered `realtime_tiers` C++ rows, the Linux C/C++ rows, and the three
+  four uncovered `realtime_sched_tasks` C++ rows, the Linux C/C++ rows, and the three
   `sched_dims` C++ cells on the same workspace fixtures. Pinned by
-  `the_nightly_selects_every_realtime_tiers_cell` (fails without the rule).
+  `the_nightly_selects_every_realtime_sched_tasks_cell` (fails without the rule).
 - W5 (a): issue 2113's code half is on `main` (prereq row, image generator,
   `unmet!` precondition); the runner image must be rebuilt by its operator
   (`scripts/ci/runner-container.sh --build`, then `--run`). Operator-side,
@@ -138,7 +138,7 @@ run; W5 is READ, and it is not yet a verdict on every RTOS cell.**
   only 4 realtime rows and 1 sched-dims cell, so W5 cannot come from it.
   The tier-2 NIGHTLY (pairwise; 41018247377 on 10-30, 40833557587 on 10-29,
   identical both nights) executes:
-  - `realtime_tiers` PASS over 13 rows: `zephyr/rust`, `zephyr/c`,
+  - `realtime_sched_tasks` PASS over 13 rows: `zephyr/rust`, `zephyr/c`,
     `nuttx-arm/{c,cpp,rust}`, `nuttx-riscv/{c,cpp,rust}`,
     `freertos/{c,rust}`, `threadx-linux/rust` and the two native Rust rows.
     Not executed (out of the pairwise lane): `zephyr/{cpp,cpp-derived,cpp-levels}`,
@@ -207,7 +207,7 @@ already fixed.** The 2026-10-12 nightly (run 38213993313, `3df774a34c`) reached
 the build in both matrix lanes and stopped there. Tier 2's `freertos` and
 `threadx_linux` stops were phase-484 W3c readers of `FREERTOS_DIR`/`THREADX_DIR`
 that no longer had them exported. 6c98b7510f and 97d38d46e7 fixed both, after
-that run's checkout. Tier 1's stop was the `tier-priority-plan-image` gate
+that run's checkout. Tier 1's stop was the `sched-task-priority-plan-image` gate
 calling `build-ws-rs-realtime-derived-entry-zenoh` STALE. The image is current:
 its `CONFIG_NROS_ZENOH_READ_PRIORITY=100` is stated by `derived_bringup`'s
 `system.toml`, which phase-484 W5b renders as a `default` in
@@ -339,7 +339,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | `phase-466-W2` | LANDED (#1209). Not `probe.yml` -- the narrow fix was already on main. The class gate `check-workflow-just-provisioning` plus the sweep of every workflow and composite action that invokes `just` | done |
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
 | `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
-| `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | READ 2026-10-31 from the tier-2 nightly junit: 13 realtime rows and 14 sched-dims cells executed on Zephyr, NuttX, FreeRTOS and threadx-linux; one cell red on a missing `qemu-system-aarch64` (issue 2113), seven C++ cells selected by no scheduled lane. See the 2026-10-31 status |
+| `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_sched_tasks_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | READ 2026-10-31 from the tier-2 nightly junit: 13 realtime rows and 14 sched-dims cells executed on Zephyr, NuttX, FreeRTOS and threadx-linux; one cell red on a missing `qemu-system-aarch64` (issue 2113), seven C++ cells selected by no scheduled lane. See the 2026-10-31 status |
 | `phase-466-W6` | DONE (opened 2026-11-04, handed over by phase-524 W4c, maintainer ruling). The Nucleo-F767ZI Renode twin cell's first green run in its SCHEDULED lane: one Runtime cell `(ZephyrNucleoF767zi, C, Zenoh, Pubsub, Example)`, test `tests/zephyr_renode_twin.rs`, west row `build-nucleo-f767zi-c-talker-serial` (`examples/zephyr/c/talker`, image `nucleo_serial`), lanes tier 2 and tier-2 nightly (not merge-gating). Renode reaches the runner through `just zephyr setup` -> `nros setup --tool renode` (store, not image). Passed locally in 7.8 s (#3079). First scheduled attempt (41784686434) stopped in the build on issue 2249; Renode itself provisioned | MET 2026-11-05: PASS (6.3 s) in run-matrix 41979554190, tier 2 |
 
 W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
@@ -389,13 +389,13 @@ exit 78 before reaching anything else. Nobody has claimed it.
 Phase-330 (the SystemModel as a build artifact, RFC-0063) closed with its
 native half measured: on 2026-10-14 a fresh worktree built every native
 realtime row with `just build-test-fixtures lane=native`, and the native realtime
-e2e family passed against generated models. That covered `native_orchestration_tiers`
+e2e family passed against generated models. That covered `native_orchestration_sched_tasks`
 (6/6), `realtime_subnode_cpp_e2e`, `realtime_subnode_cpp_portable_e2e`,
-`sched_dims_model_coverage`, the 6 native rows of `realtime_tiers_e2e` and the
+`sched_dims_model_coverage`, the 6 native rows of `realtime_sched_tasks_e2e` and the
 `linux rust CorePin` cell of `sched_dims_applied_e2e`.
 
 Every other cell of those two tests was `[UNMET PRECONDITION] fixture not
-built`. These are 14 of the 20 `realtime_tiers` rows and 16 of the 17
+built`. These are 14 of the 20 `realtime_sched_tasks` rows and 16 of the 17
 `sched_dims_applied` cells, on Zephyr, NuttX (arm and riscv), FreeRTOS and
 ThreadX-linux. Those fixtures are built only by the scheduled tier-2 lanes,
 which is this phase's subject, so their verdict is homed here:
@@ -405,10 +405,10 @@ which is this phase's subject, so their verdict is homed here:
   `workspace-rust-threadx-linux-realtime`, `workspace-rust-freertos-realtime`
   (plus the FreeRTOS C/C++ entries the tests resolve), and the Zephyr west
   leaves `build-ws-{rs,c,cpp}-realtime-entry-zenoh`,
-  `build-ws-cpp-derived-tiers-entry-zenoh`,
+  `build-ws-cpp-derived-sched-tasks-entry-zenoh`,
   `build-ws-rs-realtime-derived-entry-zenoh` and
   `build-ws-c-realtime-entry-smp`;
-- the tests: `realtime_tiers_e2e` and `sched_dims_applied_e2e`.
+- the tests: `realtime_sched_tasks_e2e` and `sched_dims_applied_e2e`.
 
 Done when one scheduled run builds those rows and both tests report a verdict
 on every RTOS cell: green, or red for a reason about the code under test. An
@@ -416,7 +416,7 @@ on every RTOS cell: green, or red for a reason about the code under test. An
 issue; it does not reopen phase-330.
 
 **2026-10-23.** The tier-2 nightly of 2026-10-22 (run 39739466151) built its
-fixtures and ran 3190 tests, and both tests PASSED: `realtime_tiers` in 119 s,
+fixtures and ran 3190 tests, and both tests PASSED: `realtime_sched_tasks` in 119 s,
 `sched_dims_applied` in 23 s. Since issue 1758, an unmet precondition inside
 either test is a failure, so a PASS means no in-scope cell was missing its
 fixture. It does not say which cells were in scope. A cell outside the run's
@@ -492,7 +492,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#2128](../issues/archived/2128-params-nightly-clippy-nonminimal-bool.md) | **Resolved** 2026-10-29 (PR #2802). A lint only the pinned nightly reports (`nonminimal_bool` in nros-params) failed the scheduled feature sweep; host-tests 40810937288's per-feature clippy passed. The gap is not fixed. |
 | [#2129](../issues/archived/2129-sdk-source-fetch-no-retry.md) | **Resolved** 2026-10-30 (PR #2805). One DNS failure during the Corrosion source fetch stopped `host-tests`' rt-sched job. Store fetches now retry a network failure up to 3 times. Closed by maintainer decision on two green rt-sched nights (40810937288, 40996190687); no CI run has yet exercised the retry. |
 | [#2130](../issues/archived/2130-live-peer-host-job-disk-exhausted.md) | **Resolved** 2026-10-29 (PR #2805). `live-peer`'s host job ran out of disk; it now releases compile intermediates after each fixture build, and live-peer 40816464981 passed. |
-| [#2171](../issues/archived/2171-matrix-summary-counts-skipped-rows-as-ran.md) | **Resolved** 2026-10-31. `realtime_tiers` and `sched_dims` counted a lane-skipped row as one that ran and filed it under `skipped`, so tier 2 printed "22 row(s) ran" for 4. All five consolidated matrix tests now share `nros_tests::matrix_tally::Tally`, which counts executed cells only and files every lane skip as out of lane. |
+| [#2171](../issues/archived/2171-matrix-summary-counts-skipped-rows-as-ran.md) | **Resolved** 2026-10-31. `realtime_sched_tasks` and `sched_dims` counted a lane-skipped row as one that ran and filed it under `skipped`, so tier 2 printed "22 row(s) ran" for 4. All five consolidated matrix tests now share `nros_tests::matrix_tally::Tally`, which counts executed cells only and files every lane skip as out of lane. |
 | [#2113](../issues/2113-zephyr-a53-smp-cell-no-qemu-system-aarch64.md) | Homed 2026-11-02 (already tracked in W5). The Zephyr a53 SMP core-pin cell is the one realtime cell the tier-2 nightly reaches and cannot boot: the runner image has no `qemu-system-aarch64`. |
 | [#2190](../issues/2190-tier1-time-budget-reds-on-runner-241.md) | Homed 2026-11-02. Tier 1 reaches its cells again, and its five real failures on runner 241 are all time budgets, so the verdict is red for a reason about the runner, not the code. |
 | [#2193](../issues/2193-tier2-nightly-zephyr-fixture-leg-error-unsurfaced.md) | Homed 2026-11-02. The tier-2 nightly's Zephyr fixture leg fails, and the job log names neither the image nor the error, so the lane's red cannot be attributed. |

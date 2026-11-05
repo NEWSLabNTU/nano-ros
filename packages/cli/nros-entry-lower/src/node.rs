@@ -191,7 +191,7 @@ pub struct LoweredEntry {
     pub headers: Vec<String>,
     /// `Some` when the plan runs one executor per tier.
     #[serde(default)]
-    pub tiers: Option<crate::LoweredTiers>,
+    pub tiers: Option<crate::LoweredSchedTasks>,
     /// `Some` when one executor carries a sched context per tier.
     #[serde(default)]
     pub sched: Option<crate::LoweredSched>,
