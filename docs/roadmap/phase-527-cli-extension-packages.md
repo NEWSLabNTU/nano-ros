@@ -627,7 +627,7 @@ Status: **DONE, in review** (2026-11-05, #3122).
   After rebasing onto the phase-530 W1 merges (2026-11-05) the track stops
   earlier, in the chapter's own step 50, before any W6 check runs: the
   implicit configure refuses an unset `AMENT_PREFIX_PATH`
-  ([issue 2275](../issues/2275-installed-probe-configure-needs-ament.md)).
+  ([issue 2275](../issues/archived/2275-installed-probe-configure-needs-ament.md)).
   The branch touches neither the chapter nor configure.
 - Tests: `release_packages` unit tests (a runner and a command staged, source
   removed, an announcement-free package kept, an unbuilt exe refused, `bin`
