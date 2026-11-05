@@ -247,5 +247,5 @@ batch). See also `book-internals/src/platform/implementation-notes.md`.
   platform/backend split.
 - RFC-0049 (`docs/design/0049-hierarchical-platform-board-config.md`) — the
   platform and board files and their ladder.
-- `book/src/concepts/platform-model.md` — boards vs platforms.
+- `book/src/extending/platform-model.md` — boards vs platforms.
 - `book-internals/src/rmw/backend-host-language-policy.md` — RMW host-language policy.

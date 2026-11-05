@@ -129,7 +129,7 @@ These serve as reference when writing a new port.
 - [Platform API Reference](../reference/platform-api.md) -- complete trait signatures and method documentation
 - [RMW API Reference](../reference/rmw-api.md) -- RMW trait hierarchy and backend details
 - [Architecture Overview](../background/architecture.md) -- concise layer map
-- [Platform Model](../concepts/platform-model.md) -- conceptual overview of the three feature axes
+- [Platform Model](platform-model.md) -- conceptual overview of the three feature axes
 
 ## Design background
 

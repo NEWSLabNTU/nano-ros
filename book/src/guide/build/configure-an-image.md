@@ -593,7 +593,7 @@ zenoh-pico's `SUBSCRIBER_BUFFERS` + alloc-based session are what keep this row's
 Features select the **linked** RMW backend, platform, and ROS edition. The
 `system.toml` `rmw` (`[image.<id>]`, else `[system]`) picks which *linked*
 backend is *active* — the two are different layers (link vs run). Matrix +
-mutual-exclusion rules: [Platform Model](../../concepts/platform-model.md).
+mutual-exclusion rules: [Platform Model](../../extending/platform-model.md).
 
 ```toml
 [dependencies]
