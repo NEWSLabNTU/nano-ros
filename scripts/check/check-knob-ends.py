@@ -70,6 +70,8 @@ CLAIM_DOCS = (
     # copies are moved-stubs and claim nothing.
     "book/src/guide/rmw/tune-throughput-and-latency.md",
     "book/src/guide/contracts/measure-static-memory.md",
+    # phase-537 W7: the derived-knob table moved here from measure-static-memory.
+    "book/src/guide/contracts/size-an-image-from-its-contract.md",
     ".env.example",
 )
 CLAIM_DOC_GLOBS = (

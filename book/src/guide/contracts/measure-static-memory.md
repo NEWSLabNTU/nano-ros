@@ -1,6 +1,8 @@
-# Measuring Static Memory
+# Measure static memory
 
 <!-- type: how-to · level: 3 -->
+
+**Needs first:** [Size an image from its contract](size-an-image-from-its-contract.md)
 
 The [Static Pool Inventory](../../reference/static-pool-inventory.md) tells you
 which knobs exist and what each one costs: a byte figure at its default where
@@ -96,10 +98,12 @@ what your node actually does: a publisher-only node still reserves the service
 and large-payload pools in full. If your image looks far larger than the entities
 you created would suggest, that is expected rather than a misconfiguration on
 your side. Turning the corresponding knobs down is the current remedy (see
-[Sizing the pools](#sizing-the-pools) for which knobs the build already
-derives).
+[Which knobs the build derives](size-an-image-from-its-contract.md#which-knobs-the-build-derives)).
 
 ### The three service inboxes (zenoh)
+
+> Why these rings are fixed and how their slots are chosen is background: see
+> [Static memory and pools](../../background/static-memory-and-pools.md).
 
 Every service server is a zenoh queryable, and each queryable owns one inbox
 ring: requests wait there between the read task and the executor's spin. The
@@ -159,60 +163,6 @@ marks it incomplete and will not call a symbol "new" on its evidence.
 This is also how a change to nano-ros itself should report a memory saving: as
 a measured difference between two named images, not as an estimate.
 
-## Sizing the pools
-
-Before you turn a knob down, know which pools you size and which the build
-sizes for you. The pools that dominate static RAM are **derived per image**
-from what the image's components declare, and the build writes the answers
-into its generated cargo `[env]` table (on Zephyr, into the Kconfig defaults).
-Stating one of them by hand is an override, not a requirement.
-
-| Knob | Derived from |
-| --- | --- |
-| `NROS_ZENOH_MAX_PUBLISHERS`, `NROS_ZENOH_MAX_SUBSCRIBERS` | the declared entity inventory, floored at 1: each sizes a fixed C array, where zero is not a smaller pool |
-| `NROS_ZENOH_MAX_QUERYABLES` | the declared service servers, plus the parameter and lifecycle services the image's nodes register; with no readable declaration it stays at its undeclared budget (8 embedded, 32 hosted) |
-| `NROS_ZENOH_MAX_LIVELINESS` | one per node name plus the session's own, one per publisher, subscriber, service server and client, and the parameter and lifecycle families' entities |
-| `NROS_EXECUTOR_MAX_CBS`, `NROS_EXECUTOR_ACTION_CLIENTS`, `NROS_RMW_SUBSCRIBER_SLOTS` | the declared entity inventory |
-| `NROS_SUBSCRIBER_BUFFER_SIZE` | the largest *small*-class message type the image subscribes to |
-| `NROS_ZENOH_SUBSCRIBER_LARGE_SIZE` | the largest *large*-class type; stated only when the large count is non-zero |
-| `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS` | how many subscribed types fall in the large class. Zero is an answer, not a floor: the pool becomes zero bytes |
-| `NROS_SUBSCRIPTION_BUFFER_SIZE` | the executor's take buffer, from the same message bounds |
-| `NROS_EXECUTOR_ARENA_SIZE` | the same inventory, in the executor's own build; the variable is the override |
-
-The transport's wire buffers (`NROS_ZENOH_FRAG_MAX_SIZE`, the batch sizes,
-`NROS_ZENOH_SERVICE_BUFFER_SIZE`, `NROS_ZENOH_GET_REPLY_BUF_SIZE`,
-`NROS_ZENOH_MAX_PENDING_GETS`), the smoltcp socket pools and the parameter
-store limits are not derived: they are yours. They are covered in
-[Tune throughput and latency](../rmw/tune-throughput-and-latency.md#set-the-wire-buffers)
-and listed in the [Environment variables reference](../../reference/environment-variables.md#buffer-tuning).
-
-**Precedence.** A value you state wins over a derived one: an exported
-environment variable first, then the image's `[image.<id>.knobs]`, then the
-board descriptor's `[knobs]`. The derived value comes next, and the crate's
-own default applies only when nothing is stated and nothing can be derived.
-`nros config explain` shows which rung answered for each knob.
-
-Two properties of the message-bound sizes (`NROS_SUBSCRIBER_BUFFER_SIZE`, the
-large class, `NROS_SUBSCRIPTION_BUFFER_SIZE`) are worth knowing:
-
-- **The derived number is an upper bound.** The bounds come from every type in
-  the interface closure the image links, not only the types it subscribes to,
-  so the size is never too small but can be larger than you need. The build
-  names the type that set it. When that type is not one of yours, state your
-  own value or trim the package's `<depend>` list.
-- **One unbounded type refuses the whole derivation.** Nothing is derived, the
-  stated or default values stand, and the build names every offending type
-  and the member that makes it unbounded. Bound the field in the `.msg`
-  (`string<=64`) or cap it `inline` in `nros-codegen.toml`; one cap on a
-  declaring type such as `"std_msgs/Header.frame_id"` reaches every message
-  that nests it.
-
-Every slot of a fixed pool costs its bytes whether or not an entity uses it,
-so an over-provisioned count is wasted RAM and an under-provisioned one is a
-create that fails at run time. The [Static Pool Inventory](../../reference/static-pool-inventory.md)
-gives each pool's cost at its defaults; the memory report above gives what
-your image actually reserved.
-
 ## Cross-compiled images
 
 The tool prefers `llvm-nm`, which reads ELF files for any target; your host's
@@ -230,3 +180,12 @@ rustup component add llvm-tools
 
 `llvm-cxxfilt` (from a system LLVM) is used when present to demangle; without
 it the tool falls back to `nm -C`.
+
+## See also
+
+- [Size an image from its contract](size-an-image-from-its-contract.md): the
+  pools the build sizes for you, and how to override one.
+- [Static pool inventory](../../reference/static-pool-inventory.md): every
+  sizing knob and its default.
+- [Static memory and pools](../../background/static-memory-and-pools.md): why
+  nano-ros reserves its memory statically.

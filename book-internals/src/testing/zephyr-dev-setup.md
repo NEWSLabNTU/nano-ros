@@ -254,7 +254,7 @@ state wins; the derived number is an upper bound over the interface closure you
 LINK; and one unbounded type in that closure refuses the derivation outright and
 says which. Full explanation, and what to do when the type it names is not one
 you receive, in the [book](../platform/zephyr-in-tree.md) and
-[Static Memory → Sizing the pools](../../guide/contracts/measure-static-memory.html#sizing-the-pools).
+[Size an image from its contract → Which knobs the build derives](../../guide/contracts/size-an-image-from-its-contract.html#which-knobs-the-build-derives).
 
 ### XRCE Options (visible when `CONFIG_NROS_RMW_XRCE=y`)
 
