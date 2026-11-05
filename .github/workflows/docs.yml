@@ -6,6 +6,8 @@ on:
     paths:
       - "book/**"
       - "book-internals/**"
+      - "scripts/mdbook-*.py"
+      - "scripts/lib/book_tabs.py"
       - "packages/api/nros/**"
       - "packages/core/nros-rmw/**"
       - "packages/core/nros-rmw-abi/**"
