@@ -465,7 +465,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // refuses a callback with nothing that bounds its arrivals, for the
     // reason the QoS check above gives. Elsewhere the derived schedule
     // reports it (`unanalysable`).
-    nros_orchestration_ir::task_record::check_model(&model)
+    nros_orchestration_ir::callback_record::check_model(&model)
         .map_err(|e| eyre::eyre!("model `{}`: {e}", model_path.display()))?;
     // phase-462 W2 -- the same ruling for `on_violation`: the contract's word
     // and the tier table's `deadline_policy` are two statements about one

@@ -553,7 +553,7 @@ pub fn run(args: Args) -> Result<()> {
             .map_err(|e| eyre::eyre!("codegen-system: model `{}`: {e}", model_path.display()))?;
         // phase-509 P4 (RFC-0108 D1) -- an unanalysable callback on a safety
         // image, the same refusal the entry road makes.
-        nros_orchestration_ir::task_record::check_model(&model)
+        nros_orchestration_ir::callback_record::check_model(&model)
             .map_err(|e| eyre::eyre!("codegen-system: model `{}`: {e}", model_path.display()))?;
         call_model = Some(model.model.clone());
         // R1-N1 — contracted-publisher monitors ride the bake.

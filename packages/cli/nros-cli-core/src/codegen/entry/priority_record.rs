@@ -671,7 +671,7 @@ mod tests {
             floating_interference: false,
             free: &free,
             pinned: &[],
-            tasks: &[],
+            callback_records: &[],
             max_levels: 2,
             cap_source: "image",
             low_number_is_high: true,

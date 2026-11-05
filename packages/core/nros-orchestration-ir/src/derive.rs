@@ -70,13 +70,13 @@ pub struct DerivedSchedule {
     /// the contract supervises nothing, or the kernel had no priority left
     /// for it (then a degradation says so).
     pub supervisor_priority: Option<i64>,
-    /// phase-509 P4 (RFC-0108 D1) - the task record of every callback the
+    /// phase-509 P4 (RFC-0108 D1) - the callback record of every callback the
     /// model names: release kind, T or T_min, D, C, and a server's Q/P
-    /// ([`crate::task_record`]). On an image whose contract supervises
+    /// ([`crate::callback_record`]). On an image whose contract supervises
     /// nothing, each unanalysable one is also a `unanalysable` degradation;
     /// on one that supervises a deadline it is refused before this runs
-    /// ([`crate::task_record::check_model`]).
-    pub tasks: Vec<crate::task_record::TaskRecord>,
+    /// ([`crate::callback_record::check_model`]).
+    pub callback_records: Vec<crate::callback_record::CallbackRecord>,
     /// phase-509 P5 (RFC-0108 D4) - the preemption levels, one plan per
     /// core: the derived nodes banded under the image's cap, the authored
     /// tiers as pins. The realizer's core placement partitions the nodes
@@ -465,12 +465,12 @@ fn derive_tiers_with_caps(
     input: &ros_launch_manifest_sched::MapperInput,
     caps: &SchedCaps,
 ) -> DerivedSchedule {
-    // phase-509 P4 (RFC-0108 D1) - the task record, and its report on an
+    // phase-509 P4 (RFC-0108 D1) - the callback record, and its report on an
     // image that supervises nothing. Before the rank, so an image with
     // nothing to rank still reports an unbounded input.
-    let tasks = crate::task_record::task_records(model, wcet);
+    let callback_records = crate::callback_record::callback_records(model, wcet);
     let unanalysable = if supervised_nodes(model).is_empty() {
-        crate::task_record::unanalysable_degradations(&tasks)
+        crate::callback_record::unanalysable_degradations(&callback_records)
     } else {
         Vec::new()
     };
@@ -478,7 +478,7 @@ fn derive_tiers_with_caps(
     if ranked.items.is_empty() {
         return DerivedSchedule {
             degradations: unanalysable,
-            tasks,
+            callback_records,
             ..Default::default()
         };
     }
@@ -564,7 +564,7 @@ fn derive_tiers_with_caps(
         realized: plan.nodes.clone(),
         above_transport,
         supervisor_priority,
-        tasks,
+        callback_records,
         ..Default::default()
     };
 
@@ -752,7 +752,7 @@ fn derive_tiers_with_caps(
             floating_interference,
             free: &level_nodes,
             pinned: &pinned,
-            tasks: &out.tasks,
+            callback_records: &out.callback_records,
             max_levels,
             cap_source,
             low_number_is_high: caps.low_number_is_high,

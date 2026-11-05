@@ -3,7 +3,7 @@ rfc: 0052
 title: "SystemModel → RTOS primitives — the execution/contract mapper for embedded consumption"
 status: Draft
 since: 2026-07
-last-reviewed: 2026-07-23
+last-reviewed: 2026-11-05
 implements-tracked-by: [phase-296]
 supersedes: []
 superseded-by: null
@@ -23,6 +23,158 @@ monitors. One mapping table, applied uniformly across POSIX, FreeRTOS,
 Zephyr, ThreadX, and NuttX, landing on the seams that already exist
 (RFC-0015 tiers, RFC-0016 priority normalization, RFC-0047 sched-context
 binding, RFC-0045 boot config, RFC-0048 CMake verbs).
+
+## Names (decided 2026-11-05, phase 536 W0)
+
+rlm and play_launch call the scheduling unit a **task** (`[tasks.<name>]`,
+`group_tasks`, model `execution.tasks`; play_launch phase 99). nano-ros
+follows with one word for its own names: a scheduling tier is a **sched
+task** (`sched_task` / `SCHED_TASK` / `SchedTask`). Not bare "task": every
+RTOS port already has one (FreeRTOS/ThreadX's boot-time app task,
+`app_task_entry`, `NROS_FREERTOS_APP_STACK_KB`, `create_app_task`), and "tier
+task" collapsed onto it exactly (`tier_task_entry` would have become
+`app_task_entry`'s neighbour `task_entry`). The app task names stay as they
+are. Where nano-ros mirrors an rlm key or field it keeps rlm's spelling
+(`tasks`, `group_tasks`).
+
+### The rule
+
+Every own name moves by one substitution, applied in this order:
+
+| Was | Now |
+|---|---|
+| `tier_task` / `TierTask` / `TIER_TASK` ("tier task") | `sched_task` / `SchedTask` / `SCHED_TASK` ("sched task"), never "sched task task" |
+| `tiers` / `Tiers` / `TIERS` | `sched_tasks` / `SchedTasks` / `SCHED_TASKS` |
+| `tier` / `Tier` / `TIER` | `sched_task` / `SchedTask` / `SCHED_TASK` |
+| `tiered` (in a name: `c_tiered_plan`) | `sched_task` (`c_sched_task_plan`) |
+| `untiered`, `tierless` | `single_executor` (an image with no sched task table runs one executor) |
+| hyphenated names (`derived-tiers-cpp`, `check-tier-spin-gap`) | `sched-task(s)` (`derived-sched-tasks-cpp`, `check-sched-task-spin-gap`) |
+| prose "tier" / "tiers" / "tiered entry" | "sched task" / "sched tasks" / "sched-task entry" |
+
+Two names do not follow the rule: `nros_board_{freertos,zephyr}_run_tiers_tasks_in`
+(whose `tasks` meant the task memory) is `..._run_sched_tasks_memory_in`, and
+the nros-cpp struct field `tier_class` is `sched_task_class`.
+
+Before the rename every target name was checked: `sched_task`, `SCHED_TASK`
+and `SchedTask` had no occurrence on `main` (2026-11-05), so no new name
+collides with an old one.
+
+### C ABI (public headers), one release of aliases
+
+| Was | Now |
+|---|---|
+| `nros_native_tier_spec_t` | `nros_native_sched_task_spec_t` |
+| `nros_tier_task_memory_t` | `nros_sched_task_memory_t` |
+| `nros_tier_backing_t` | `nros_sched_task_backing_t` |
+| `nros_board_{native,freertos,zephyr,nuttx}_run_tiers{,_ns,_in}` | `nros_board_{...}_run_sched_tasks{,_ns,_in}` |
+| `nros_board_{freertos,zephyr}_run_tiers_tasks_in` | `nros_board_{freertos,zephyr}_run_sched_tasks_memory_in` |
+| `nros_board_zephyr_run_tiers_backed_in` | `nros_board_zephyr_run_sched_tasks_backed_in` |
+| `nros_native_tier_spec_t::tier_class` | `sched_task_class` (no alias: a C99 struct field cannot carry one) |
+| `<rclc/detail/tier_task_memory_{zephyr,freertos,nuttx}.h>` | `<rclc/detail/sched_task_memory_{...}.h>` |
+| `NROS_TIER_TASK_MEMORY_DEFINE`, `NROS_TIER_TASK_MEMORY`, `NROS_TIER_TASK_MEMORY_NONE` | `NROS_SCHED_TASK_MEMORY_DEFINE`, `NROS_SCHED_TASK_MEMORY`, `NROS_SCHED_TASK_MEMORY_NONE` |
+| `NROS_TIER_TASK_STACK_{DEFAULT,BYTES,DEFINE,WORDS}_` (internal) | `NROS_SCHED_TASK_STACK_{...}_` |
+| `NROS_CPP_TIER_BACKING_SIZE_<i>`, `NROS_CPP_TIER_COUNT` (per-build header) | `NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>`, `NROS_CPP_SCHED_TASK_COUNT` |
+| nros-cpp FFI `nros_cpp_init_tier`, `nros_cpp_tier_level`, `nros_cpp_tier_backing_size`, `nros_cpp_executor_open_over_session_tier` (internal to the C++ headers) | `nros_cpp_init_sched_task`, `nros_cpp_sched_task_level`, `nros_cpp_sched_task_backing_size`, `nros_cpp_executor_open_over_session_sched_task` |
+| board-internal mirrors `nros_tier_spec_t`, `nros_tier_setup_fn_t`, `nros_{zephyr,freertos,nuttx}_tier_ctx_t`, `nros_zephyr_tier_task_create{,_static,_stack}`, `nros_zephyr_tier_thread_start`, `nros_tier_stacks`, `nros_tier_index` | `nros_sched_task_spec_t`, `nros_sched_task_setup_fn_t`, `nros_{...}_sched_task_ctx_t`, `nros_zephyr_sched_task_create{,_static,_stack}`, `nros_zephyr_sched_task_thread_start`, `nros_sched_task_stacks`, `nros_sched_task_index` |
+
+The public old names (the types, the run functions, the three headers and
+their three macros) stay one release: `typedef`s and macros that warn with
+the new name (`NROS_NO_DEPRECATED_TIER_NAMES` drops them early), forwarding
+headers that `#warning`. Struct layouts do not change.
+
+### C++
+
+| Was | Now |
+|---|---|
+| `rclcpp::board::NativeTierSpec` | `NativeSchedTaskSpec` (deprecated alias one release) |
+| `<Board>::run_tiers(...)` (Linux, Zephyr, NuttX, FreeRTOS boards) | `run_sched_tasks(...)` (deprecated forwarder one release) |
+| `nros_px4::TierWorkItem`, `<nros_px4/tier_work_item.hpp>` | `SchedTaskWorkItem`, `<nros_px4/sched_task_work_item.hpp>` (deprecated alias and forwarding header one release) |
+
+### Kconfig, one release of aliases
+
+| Was | Now |
+|---|---|
+| `NROS_ZEPHYR_MAX_TIERS` | `NROS_ZEPHYR_MAX_SCHED_TASKS` |
+| `NROS_ZEPHYR_TIER_STACK_SIZE` | `NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` |
+| `NROS_ZEPHYR_TIER_STACKS_IN_DTCM` | `NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM` |
+
+The old symbols stay one release as deprecated symbols whose value feeds the
+new ones' defaults; the configure warns, naming the new symbol, when a
+`.conf` file sets one.
+
+### Rust (no aliases: no nano-ros crate is on crates.io)
+
+`TierSpec` `SchedTaskSpec`, `NativeTierSpecC` `NativeSchedTaskSpecC`,
+`NativeTierBackingC` `NativeSchedTaskBackingC`, `TierExecutorBacking{,Slot}`
+`SchedTaskExecutorBacking{,Slot}`, `TierBackingShort`
+`SchedTaskBackingShort`, `TierTaskMemory{,Raw,Set}` `SchedTaskMemory{,Raw,Set}`,
+`TIER_TASK_TCB_U64S` `SCHED_TASK_TCB_U64S`, `TIER_BACKING_SIZE_<i>`
+`SCHED_TASK_BACKING_SIZE_<i>`, `TierSetup{,Gate,Guard}`
+`SchedTaskSetup{,Gate,Guard}`, `TierSpinGap` `SchedTaskSpinGap`,
+`RealtimeTiers` `RealtimeSchedTasks`, `BootTier` `BootSchedTask`,
+`tier_level{,_by}` `sched_task_level{,_by}`, `SchedContext::from_tier_policy`
+`from_sched_task_policy`, `apply_tier_sched_policy`
+`apply_sched_task_sched_policy`, `DeadlineAction::{from,as}_tier_str`
+`{from,as}_sched_task_str`, module `nros_platform::board::tier`
+`board::sched_task`; `nros-orchestration-ir`'s `TierDef` `SchedTaskDef`,
+`TierRtosSpec` `SchedTaskRtosSpec`, `ResolvedTier{,Table}`
+`ResolvedSchedTask{,Table}`, `DEFAULT_TIER` `DEFAULT_SCHED_TASK`,
+`TierResolveError` `SchedTaskResolveError`, `resolve_tiers`
+`resolve_sched_tasks`, `resolve_system_tiers` `resolve_system_sched_tasks`,
+`derive_tiers_*` `derive_sched_tasks_*`, `rtos_plan_to_tier_table`
+`rtos_plan_to_sched_task_table`, `is_{single,multi}_tier`
+`is_{single,multi}_sched_task`, `ModeTier{,Deadlines}`
+`ModeSchedTask{,Deadlines}`, `LoweredTiers` `LoweredSchedTasks`; the CLI's
+`orchestration::tier_resolver` `sched_task_resolver`, `Px4TooManyTiers`
+`Px4TooManySchedTasks`, `TierSizing`/`TIER_SIZINGS`
+`SchedTaskSizing`/`SCHED_TASK_SIZINGS`; and every other item, local and test
+name by the rule.
+
+### Generated code and records
+
+| Was | Now |
+|---|---|
+| `__nros_tiers`, `__nros_tier_executor_storage`, `__nros_tier_backings`, `__nros_tier_task_memory`, `__nros_tier_{stack,tcb,thread,backing}_<k>` | `__nros_sched_tasks`, `__nros_sched_task_executor_storage`, ... |
+| `__nros_entry_setup_tier_<k>[_nodes]`, `__nros_tier_<k>_groups`, `__NROS_TIER_EXECUTOR_BACKING` | `__nros_entry_setup_sched_task_<k>[_nodes]`, `__nros_sched_task_<k>_groups`, `__NROS_SCHED_TASK_EXECUTOR_BACKING` |
+| `NROS_ENTRY_TIERS_BACKED`, `NROS_ENTRY_TIER_COUNT`, `NROS_ENTRY_TIERS_MOST_URGENT_PRIORITY`, `NROS_ENTRY_TIER_<NAME>_PRIORITY` | `NROS_ENTRY_SCHED_TASKS_BACKED`, `NROS_ENTRY_SCHED_TASK_COUNT`, ... |
+| sizing descriptor `--tier-record`, priority plan and record keys `tiers` / `tier` | `--sched-task-record`, `sched_tasks` / `sched_task` |
+
+### Names on disk
+
+| Was | Now |
+|---|---|
+| example workspace `derived-tiers-cpp` | `derived-sched-tasks-cpp` |
+| fixtures `orchestration_tiers_{native,freertos}`, cases `orch_tiers_*` | `orchestration_sched_tasks_*`, `orch_sched_tasks_*` |
+| tests `realtime_tiers_*`, `system_toml_tiers_parse`, `linux_orchestration_tiers`, `orchestration_tiers_freertos`, `tier_filter`, `tier_wake_fanout`, `derived_tiers_{bake,entry,precedence}` | `realtime_sched_tasks_*`, ... by the rule |
+| goldens `*_tiers.*.golden`, `*_default_tier.*.golden` | `*_sched_tasks.*.golden`, `*_default_sched_task.*.golden` |
+| `freertos_run_tiers.c`, `zephyr_run_tiers.c`, `nuttx_run_tiers.c`, `entry_tiers.rs`, `board/tier.rs`, `tier_resolver.rs` | `*_run_sched_tasks.c`, `entry_sched_tasks.rs`, `board/sched_task.rs`, `sched_task_resolver.rs` |
+| bin `tier-stacks-dtcm-zephyr-mps2` | `sched-task-stacks-dtcm-zephyr-mps2` |
+| gates `check-tier-priority-plan{,-image}`, `check-tier-spin-gap`, `scripts/dev/measure-tier-priority-cell.sh` | `check-sched-task-priority-plan{,-image}`, `check-sched-task-spin-gap`, `measure-sched-task-priority-cell.sh` |
+
+### RFC-0108's per-callback record
+
+With the unit called a task, RFC-0108's per-callback "task record" (a
+callback's release kind, T, D, C) would read as the renamed unit. It is the
+**callback record**: module `nros_orchestration_ir::callback_record`,
+`CallbackRecord`, `callback_records(..)`; the derived schedule's and the
+level input's `tasks` field is `callback_records`. That frees the bare word
+"task" for the scheduling unit rlm names.
+
+### Kept: the other senses of "tier"
+
+| Sense | Names | Why it stays |
+|---|---|---|
+| CI and test tiers (RFC-0061) | `CiTier`, `Tier1`/`Tier2`/`Tier2N`/`Tier3`, `just ci tier1`, `lane=tier1\|tier2\|tier2-nightly`, `check-tier-has-ci-owner.py`, `check-tier-preconditions.sh`, `NROS_SKIP_TIER_PRECONDITIONS`, `scripts/ci/tier-health.py`, `BucketTier`/`BUCKET_TIERS`, the coverage `Tier` (`matrix.rs`), `isotp-zephyr-tier2.sh` | a rank of test cadence, which is what "tier" means in English; not the scheduling unit |
+| Board and framework support tiers (RFC-0112, RFC-0114) | `check-board-tiers.py`, "Tier 1 framework", the board registry's support levels | a rank of support |
+| Compile, build and SDK tiers | "compile tier", `sdk-tiers.md`, the build tier of a fixture | a rank of how far a target is built |
+| CLI command tiers (RFC-0117) | `CommandTier`, `user`/`dev` tiers, `cli-dev-tier.md`, `tier = "dev"` in an extension descriptor | a rank of command audience |
+| C API tiers | `polling_tier_*`, `callback_tier_*`, `action_callback_tier` | a rank of API shape (polling, callback) |
+| API surface tiers | prelude tiers (`check-prelude-tiers.py`), entity-API tiers (RFC-0022), heap-free / unified tiers (`--tier heap-free`, `check-no-alloc-image.py`) | a rank of API or allocation discipline |
+| Name resolution | `RemapTier` (launch rule before `--ros-args` rule) | the layer a remap rule belongs to |
+| Rust target tiers | "Tier 3 target, needs nightly" | rustc's own term |
+| TIER IV | `tier4_*` packages | a company's package names |
+| The retired keys | `[tiers.*]`, `group_tiers`, `RETIRED_GROUP_TIERS`, `refuse_retired_tiers` | they name the spelling being refused |
+| History | `archived/`, closed issues, `CHANGELOG.md`, existing `changelog.d` fragments | the words of their time |
 
 ## Baseline facts (2026-07 exploration)
 

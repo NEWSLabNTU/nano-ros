@@ -60,7 +60,7 @@ pub mod ftti_budget;
 pub mod leaf_capabilities;
 pub mod leaf_system;
 /// phase-509 P5 (RFC-0108 D3/D4) -- preemption levels derived from the ranks,
-/// the task records and the image's cap; the response-time analysis.
+/// the callback records and the image's cap; the response-time analysis.
 pub mod levels;
 pub mod mapper_input;
 // phase-462 W4 -- a contract mode lowered to a variant of the monitor tables.
@@ -108,10 +108,10 @@ pub mod px4;
 pub mod rtos_realizer;
 pub mod sidecar_slots;
 // RFC-0079's table - a tier's spin period, derived from its members' releases.
-pub mod spin_period;
-/// phase-509 P4 (RFC-0108 D1) — the task record per callback, and the
+/// phase-509 P4 (RFC-0108 D1) — the callback record per callback, and the
 /// refusal of an unanalysable input on a safety image.
-pub mod task_record;
+pub mod callback_record;
+pub mod spin_period;
 // phase-462 W2 - the contract's `on_violation` and a tier's `deadline_policy`
 // are two statements about one fact, in `qos_agreement`'s shape. Here for the
 // same reason that one is: both producers of a baked tier table must ask, and
