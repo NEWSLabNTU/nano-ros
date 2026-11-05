@@ -6,7 +6,7 @@ the host build role; declared overrides; colcon's duplicate rule among
 source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
 #3088), W2e (a duplicate inside one root is refused too, #3113), W4
 (command dispatch, #3116) and W6 (the release underlay, #3122); W5 (the
-first command packages) in review (#PR); W7 next.** Implements
+first command packages) in review (#3130); W7 next.** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -500,7 +500,7 @@ Acceptance:
   same inputs, measured before the code moves.
 - `nros-cli-core` has no router-config or PX4 module left.
 
-Status: **DONE, in review** (2026-11-05, #PR).
+Status: **DONE, in review** (2026-11-05, #3130).
 
 - `packages/rmw/zenoh/nros_zenoh_tools` (`command/router`, bin
   `nros-zenoh-tools`, `nros router config`) and
