@@ -623,7 +623,7 @@ awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-mps2-an385@QemuBaremetal"
 offline = true
-notes = "phase-523 W4 (RFC-0116 industrial): the bare-metal chapter twice — online to stage the release asset and the SDK store, then again from that store in a container with no network (`--network none`, `NROS_OFFLINE=1`) — which must reach the same output line. The book's offline contract is build/vendored-tree.md \"Air-gapped / mirrored CI\". No `qemu_board`: issue 2169's printed-run-command row is the baremetal track's, and this replays the same chapter."
+notes = "phase-523 W4 (RFC-0116 industrial): the bare-metal chapter twice — online to stage the release asset and the SDK store, then again from that store in a container with no network (`--network none`, `NROS_OFFLINE=1`) — which must reach the same output line. The book's offline contract is guide/build/existing-cmake-or-vendor-tree.md \"Air-gapped / mirrored CI\". No `qemu_board`: issue 2169's printed-run-command row is the baremetal track's, and this replays the same chapter."
 
 [[probe]]
 track = "freertos"
