@@ -52,7 +52,7 @@ TARGETS = [
     ('"freertos"', "FreeRTOS"),
     ('"threadx"', "ThreadX"),
     ('"nuttx"', "NuttX"),
-    ("_", "Bare-metal (RTIC / NVIC)"),
+    ("_", "Bare-metal (NVIC)"),
 ]
 
 FIELDS = ["edf", "reservation", "preempt_threshold", "affinity",
@@ -140,7 +140,7 @@ def render():
         "`posix`; Zephyr's EDF is",
         "`CONFIG_SCHED_DEADLINE`; NuttX's reservation is POSIX",
         "`SCHED_SPORADIC`; ThreadX's preemption threshold is native; the",
-        "bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),",
+        "bare-metal row is NVIC hardware priorities,",
         "single core. These are PLATFORM DEFAULTS and there is no per-image",
         "override today. (`[deploy.<board>] edf` / `cores`, documented in older",
         "releases, never took effect and is retired.)",

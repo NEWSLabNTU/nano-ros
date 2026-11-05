@@ -22,7 +22,7 @@ the OS could do*.
 | FreeRTOS | — | — | — | ✓ | 16 | — |
 | ThreadX | — | — | ✓ | ✓ | 32 | ✓ |
 | NuttX | — | ✓ | — | ✓ | 255 | — |
-| Bare-metal (RTIC / NVIC) | — | — | — | — | 8 | — |
+| Bare-metal (NVIC) | — | — | — | — | 8 | — |
 
 Notes carried from the source arms: the Linux row is deliberately
 conservative — no `SCHED_DEADLINE` consumer exists, so `edf` is
@@ -32,7 +32,7 @@ row's reach is `linux` while the platform layer beneath it stays
 `posix`; Zephyr's EDF is
 `CONFIG_SCHED_DEADLINE`; NuttX's reservation is POSIX
 `SCHED_SPORADIC`; ThreadX's preemption threshold is native; the
-bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),
+bare-metal row is NVIC hardware priorities,
 single core. These are PLATFORM DEFAULTS and there is no per-image
 override today. (`[deploy.<board>] edf` / `cores`, documented in older
 releases, never took effect and is retired.)
