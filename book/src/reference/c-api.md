@@ -33,7 +33,7 @@ public surface a user application needs.
 > Layer 2 pairs the same `rclc_*_init_default` with the
 > executor-add call, which is where the callback is supplied
 > (rclc's binding site). See
-> [Two-Layer API](../concepts/two-layer-api.md) for the
+> [Two-Layer API](../background/two-layer-api.md) for the
 > verb discipline and per-layer trade-offs.
 
 > **Event-driven wake callbacks.** Each L1 polling entity supports

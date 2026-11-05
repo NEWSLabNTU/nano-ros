@@ -336,7 +336,7 @@ regardless of whether it's a sub, service, timer, or guard
 condition."
 
 For the per-RTOS-model recommendations (which knobs to set, which
-defaults to use), see the [RTOS Cooperation](../realtime/rtos-cooperation.md)
+defaults to use), see the [RTOS Cooperation](../background/rtos-cooperation.md)
 concepts page.
 
 **Why drive_io and not rmw_wait.** Cooperative single-task runtimes

@@ -192,7 +192,7 @@ pub const RETIRED_FRAMEWORKS: &[(&str, &str)] = &[
         "`embassy` is no longer an `nros::main!` framework (issue 2134): drive the \
          executor from your own `#[embassy_executor::main]` task instead — open the \
          `Executor`, create the nodes, and loop `spin_some` with an `embassy_time` \
-         yield. See book/src/realtime/rtos-cooperation.md",
+         yield. See book/src/background/rtos-cooperation.md",
     ),
     (
         "esp32",

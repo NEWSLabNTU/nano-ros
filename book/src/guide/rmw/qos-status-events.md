@@ -184,7 +184,7 @@ spin_once(timeout)
 
 Same execution context, same priority, same constraints as message
 callbacks. The `max_callbacks_per_spin` knob (see
-[RTOS Cooperation](../../realtime/rtos-cooperation.md)) covers events too — an
+[RTOS Cooperation](../../background/rtos-cooperation.md)) covers events too — an
 event callback counts as one against the cap.
 
 This means events get the same scheduling treatment as messages.
@@ -330,7 +330,7 @@ sub.on_message_lost(|status| {
 
 - [RMW API: Differences from upstream `rmw.h`](../../extending/rmw-vs-upstream.md)
   Section 8 — the design comparison this page expands on.
-- [RTOS Cooperation](../../realtime/rtos-cooperation.md) — `max_callbacks_per_spin`
+- [RTOS Cooperation](../../background/rtos-cooperation.md) — `max_callbacks_per_spin`
   treatment of event callbacks.
-- [Differences from ROS 2](../../from-ros2/differences.md) — broader surface
+- [Differences from ROS 2](../../background/differences-from-ros2.md) — broader surface
   comparison.

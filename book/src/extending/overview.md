@@ -128,7 +128,7 @@ These serve as reference when writing a new port.
 - [Custom Board Package](custom-board.md) -- bringing up a new MCU board
 - [Platform API Reference](../reference/platform-api.md) -- complete trait signatures and method documentation
 - [RMW API Reference](../reference/rmw-api.md) -- RMW trait hierarchy and backend details
-- [Architecture Overview](../concepts/architecture.md) -- concise layer map
+- [Architecture Overview](../background/architecture.md) -- concise layer map
 - [Platform Model](../concepts/platform-model.md) -- conceptual overview of the three feature axes
 
 ## Design background
