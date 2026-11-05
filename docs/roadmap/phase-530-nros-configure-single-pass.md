@@ -379,3 +379,5 @@ Each issue has a `**Home:**` line pointing here.
 | --- | --- | --- |
 | [#2166](../issues/2166-metadata-probe-recorder-32-entities-panics-on-parameters.md) | W2 | The C/C++ metadata probe's recorder holds 32 entities and every parameter is one, so a bigger component panics and `nros sync` reports `no producer`. W2 makes the census the default entity source. |
 | [#2275](../issues/2275-installed-probe-configure-needs-ament.md) | W1 | `nros run`'s implicit configure refuses an unset `AMENT_PREFIX_PATH`, so `just probe installed` stops at first-project.md's `nros run`, whose reader has not sourced ROS yet (found by phase-527 W6). |
+| [#2278](../issues/2278-cmake-bundled-interfaces-fallback.md) | W1 | The CMake and west road (guest apps) still falls back to the bundled interfaces with ROS unsourced, the case issue 2275 keeps configure refusing; decide whether it refuses too. |
+| [#2279](../issues/2279-configure-refusal-names-configure.md) | W1 | The unset-`AMENT_PREFIX_PATH` refusal says "run the setup step … then `nros configure`": no command for the setup step, and it names configure even when `nros run` or `nros build` failed. |
