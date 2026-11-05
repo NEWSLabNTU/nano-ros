@@ -95,6 +95,12 @@ to Internals.
 
 ### D2 — A page's directory is its part
 
+> **Amended by [RFC-0124](0124-book-user-guide-organization.md) D1 (2026-11):** the user
+> book's parts no longer follow the CLI's user-tier groups. They follow what the
+> reader is doing: Start, Get started on your board, Tutorial, User guide,
+> Background, Reference, Extending, Releases. "A directory is its part" stands; the table below is superseded for
+> the user book (Internals keeps its parts).
+
 Each SUMMARY part maps to exactly one directory, and each directory to one
 part. The user book:
 
@@ -408,3 +414,4 @@ Internals (`book-internals/src/`):
   workspace-first-project-layout). D9 and Appendix A follow RFC-0121: every
   project is a workspace, and the four workspace pages become one.
 - 2026-11 — D9 added: the book follows the CLI tiers, the target model, `nros configure` and the board registry.
+- 2026-11 — D2 amended by RFC-0124: the user book's parts follow the reader's task, not the CLI groups.

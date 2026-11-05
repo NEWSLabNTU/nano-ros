@@ -7,7 +7,7 @@ pending), the book merged in #3093 and is published, with follow-ups #3131
 first build). Left, owned elsewhere: the `awaits` lines on 17 probe tracks
 lift when phase-531 W4 lands; the example pointers settle when phase-535
 moves the pairs; the pinned tracks wait for a release with `nros configure`;
-issue 2278 decides the CMake road's bundled fallback. Implements
+issue 2278 decides the CMake road's bundled fallback. The user book's reorganization as a user guide continues in [phase-537](phase-537-book-user-guide-organization.md) (RFC-0124). Implements
 [RFC-0123](../design/0123-two-books-by-audience.md) D1 to D9. Amends the
 scope of [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D2's
 gate (W3).
