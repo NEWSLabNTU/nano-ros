@@ -27,6 +27,7 @@
 - [RMW and communication]()
   - [Configure zenoh](./guide/rmw/configure-zenoh.md)
   - [Use Cyclone DDS](./guide/rmw/use-cyclone-dds.md)
+  - [Use XRCE-DDS](./guide/rmw/use-xrce-dds.md)
   - [Switching RMW in Config](./guide/rmw/switch-the-rmw-per-image.md)
   - [Serial Transport](./guide/rmw/use-a-serial-link.md)
   - [Cross-backend Bridges](./guide/rmw/bridge-between-backends.md)
