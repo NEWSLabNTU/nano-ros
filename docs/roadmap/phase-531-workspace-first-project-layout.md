@@ -243,7 +243,7 @@ same SystemModel as the same workspace with the generated file copied into
 `launch/` (models compared byte for byte); deleting `launch/` returns to
 generation.
 
-**Status: DONE with W4 (2026-11-05, PR TBD).** W4's scaffold needs it: its
+**Status: DONE with W4 (2026-11-05, PR #3143).** W4's scaffold needs it: its
 bringup has no `launch/`. `synthesise_bringup_launch` (`cmd/ws.rs`) writes the
 file from the `[[component]]` rows under a mirror root,
 `<ws>/build/nros/launch/<bringup>/` holding `launch/system.launch.xml` and a
@@ -284,7 +284,7 @@ talker && cd sensor_ws && nros run sensor_node --expect 'Publishing: 0'`
 passes on QEMU. A workspace with two bringups naming one node refuses `nros run
 <node>` and lists both.
 
-**Status: DONE (2026-11-05, PR TBD).**
+**Status: DONE (2026-11-05, PR #3143).**
 
 - `nros new <ws> --board <b>` (`cmd/new_workspace.rs`) writes `src/<node>/`
   (the component scaffold with `workspace_member`: no `[workspace]` table, no
