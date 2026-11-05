@@ -696,8 +696,8 @@ mod tests {
             })
         };
         let west = std::fs::read_to_string(root.join("west.yml")).expect("west.yml");
-        let book =
-            std::fs::read_to_string(root.join("book/src/guide/platforms/zephyr.md")).expect("chapter");
+        let book = std::fs::read_to_string(root.join("book/src/guide/platforms/zephyr.md"))
+            .expect("chapter");
         let pinned = rev_after(&west).expect("west.yml pins zephyr-lang-rust");
         assert_eq!(rev_after(&book).as_deref(), Some(pinned.as_str()));
     }
