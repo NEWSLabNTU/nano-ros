@@ -4210,6 +4210,16 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
     let nano_ros_root =
         crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
     let triple = crate::orchestration::metadata_build::host_triple();
+    // phase-527 W7 — the tree's `nros-extension`, which a scaffolded runner
+    // or command names by registry name. A checkout and a released SDK root
+    // both carry it at this path.
+    let extension_crate = nano_ros_root
+        .as_deref()
+        .map(|r| {
+            r.join("packages/runners")
+                .join(crate::builder::host_tool::EXTENSION_CRATE)
+        })
+        .filter(|p| p.join("Cargo.toml").is_file());
     let host_names: BTreeSet<&str> = hosts.iter().map(|p| p.name.as_str()).collect();
     let mut out = Vec::new();
     for pkg in hosts {
@@ -4230,6 +4240,10 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
                 offline: args.offline,
                 has_lock,
                 cmake_args: &args.cmake_args,
+                extension_crate: extension_crate.as_deref().filter(|_| {
+                    routing.cargo_member
+                        && crate::builder::host_tool::depends_on_extension(&pkg.dir)
+                }),
             },
         ) else {
             eyre::bail!(

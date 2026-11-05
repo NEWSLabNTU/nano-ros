@@ -142,6 +142,8 @@ cd "$repo_root" || exit 2
 
 # shellcheck source=scripts/lib/grep-q.sh
 . "$repo_root/scripts/lib/grep-q.sh"
+# shellcheck source=scripts/lib/deadline.sh
+. "$repo_root/scripts/lib/deadline.sh"
 # shellcheck source=scripts/build/check-skip.sh
 . "$repo_root/scripts/build/check-skip.sh"
 # shellcheck source=scripts/build/gate-prune.sh
@@ -743,7 +745,13 @@ run_one() {
 # The boards are the first chapter's: the host, and the QEMU board RFC-0116
 # measures the field budget on. A board is added here when a getting-started
 # chapter starts from `nros new --board` for it.
-SCAFFOLD_BOARDS=(linux mps2-an385-baremetal)
+#
+# `runner-package` is not a board: it is the runner package `nros new <name>
+# --kind runner` writes (phase-527 W7, RFC-0119 D10), scaffolded into a copy of
+# `multi-node-workspace` and selected for its `linux` image. It rides in this
+# list so the part/shard plumbing places it like any scaffold (`no-zephyr`);
+# `run_scaffold` hands it to `run_runner_package`.
+SCAFFOLD_BOARDS=(linux mps2-an385-baremetal runner-package)
 
 # What D6 promises the package does NOT hold, one line per violation: a
 # `.cargo/` directory, a workspace root, a bringup or launch file, or more than
@@ -761,10 +769,65 @@ scaffold_shape_violations() {
     return 0
 }
 
+# phase-527 W7 acceptance: a scaffolded runner, copied out of the tree, builds
+# in a fresh workspace, passes `nros dev runner check`, and runs the native
+# talker through `method = "<its name>"` at the image level. The workspace is
+# a copy of `multi-node-workspace` (tracked files, worktree content), the
+# runner is written by `nros new acme_runner --kind runner` inside it, and the
+# run must show both the runner's own line and the talker's output. Returns as
+# `run_one` does.
+run_runner_package() {
+    local label="nros new acme_runner --kind runner" work ws log nros rc out
+    nros="$(nros_bin)" || nros=""
+    if [ -z "$nros" ]; then
+        echo "  $label: FAIL — no \`nros\` CLI to build with (just setup-cli)" >&2
+        return 2
+    fi
+    nros_gate_scratch work template-copy-out || return 3
+    log="$work/build.log"
+    ws="$work/ws"
+    copy_out multi-node-workspace "$work/copy" || { echo "  $label: FAIL — could not copy multi-node-workspace" >&2; return 1; }
+    mv "$work/copy/$templates_dir/multi-node-workspace" "$ws" || return 1
+    rc=0
+    (cd "$ws" && "$nros" new acme_runner --kind runner) > "$log" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ] || [ ! -f "$ws/src/acme_runner/nros-runner.toml" ]; then
+        echo "  $label: FAIL — the scaffold wrote no src/acme_runner/ (full log: $log)" >&2
+        nros_gate_scratch_failed "$work"
+        return 1
+    fi
+    printf '\n[image.linux.run]\nmethod = "acme_runner"\n' >> "$ws/src/demo_bringup/system.toml"
+    if nros_gate_prune_enabled; then
+        local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
+        copy_cache_vars "$work"
+    fi
+    { (cd "$ws" && "$nros" configure) && (cd "$ws" && "$nros" build) \
+        && (cd "$ws" && "$nros" dev runner check acme_runner --no-build); } >> "$log" 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        report_build_failure "$label" "$log"
+        nros_gate_scratch_failed "$work"
+        return 1
+    fi
+    rc=0
+    out="$(cd "$ws" && "${NROS_DEADLINE[@]}" 300 "$nros" run --expect 'Publishing' --timeout 120 2>&1)" || rc=$?
+    printf '%s\n' "$out" >> "$log"
+    if [ "$rc" -ne 0 ] || ! nros_grep_q "acme_runner: running" <<<"$out"; then
+        echo "  $label: FAIL — \`nros run\` did not reach the talker through acme_runner (rc=$rc; full log: $log)" >&2
+        nros_gate_scratch_failed "$work"
+        return 1
+    fi
+    echo "  $label: OK — built, \`nros dev runner check\` passed, the talker ran through it"
+    rm -rf "$work"
+    return 0
+}
+
 # Scaffold one package for <board> and build it. Returns as `run_one` does.
 run_scaffold() {
     # Two statements: `local`'s words are all expanded before any is assigned.
     local board="$1"
+    if [ "$board" = runner-package ]; then
+        run_runner_package
+        return
+    fi
     local label="nros new --board $board" work pdir log nros rc v
     nros="$(nros_bin)" || nros=""
     if [ -z "$nros" ]; then

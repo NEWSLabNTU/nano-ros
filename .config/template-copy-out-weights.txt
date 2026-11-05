@@ -29,4 +29,5 @@ cpp-port-minimal-publisher/mps2-an385-freertos    89000
 multi-node-workspace                              49000
 scaffold:mps2-an385-baremetal                     43000
 scaffold:linux                                    39000
+scaffold:runner-package                           90000
 ament-census-sizing                              222000

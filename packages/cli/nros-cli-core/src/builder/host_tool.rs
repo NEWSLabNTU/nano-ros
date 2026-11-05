@@ -61,6 +61,51 @@ pub struct Options<'a> {
     pub has_lock: bool,
     /// `--cmake-args`, for a cmake host tool.
     pub cmake_args: &'a [String],
+    /// The `nros-extension` crate this nano-ros tree carries, for a cargo
+    /// host tool that depends on it by registry name ([`EXTENSION_CRATE`]):
+    /// both cargo commands get a `[patch.crates-io]` row pointing there, as
+    /// an image's generated configuration patches the in-repo nros crates
+    /// (phase-527 W7). `None` adds no row, so a package that does not name the
+    /// crate never sees an unused patch.
+    pub extension_crate: Option<&'a Path>,
+}
+
+/// The crate a runner or command package is written against (RFC-0119 D5).
+/// Not on crates.io yet, so a package names it by registry name and `nros
+/// build` patches it to the tree's copy.
+pub const EXTENSION_CRATE: &str = "nros-extension";
+
+/// Whether the cargo package at `package_dir` names [`EXTENSION_CRATE`] as a
+/// dependency, read from its own `Cargo.toml` (any dependency table).
+#[must_use]
+pub fn depends_on_extension(package_dir: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(package_dir.join("Cargo.toml")) else {
+        return false;
+    };
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return false;
+    };
+    let names = |t: Option<&toml::Value>| {
+        t.and_then(toml::Value::as_table)
+            .is_some_and(|t| t.contains_key(EXTENSION_CRATE))
+    };
+    ["dependencies", "build-dependencies", "dev-dependencies"]
+        .iter()
+        .any(|k| names(doc.get(*k)))
+}
+
+/// `--config` arguments carrying the patch row for [`EXTENSION_CRATE`].
+fn extension_patch(path: Option<&Path>) -> Vec<String> {
+    path.map(|p| {
+        vec![
+            "--config".to_string(),
+            format!(
+                "patch.crates-io.{EXTENSION_CRATE}.path={}",
+                toml::Value::String(p.display().to_string())
+            ),
+        ]
+    })
+    .unwrap_or_default()
 }
 
 /// Plan the build of the host tool at `package_dir`, by the road its routing
@@ -86,6 +131,7 @@ pub fn plan(
         if o.offline {
             a.push("--frozen".to_string());
         }
+        a.extend(extension_patch(o.extension_crate));
         // A package with no lock of its own gets one resolved first, as a
         // package-mode cargo package does: the PATH shim's project-wide
         // `--locked` cannot create one.
@@ -94,6 +140,7 @@ pub fn plan(
             if o.offline {
                 u.push("--offline".to_string());
             }
+            u.extend(extension_patch(o.extension_crate));
             Handoff::new("cargo", u).in_dir(package_dir)
         });
         return Some(HostBuild {
@@ -306,7 +353,45 @@ mod tests {
             offline: false,
             has_lock,
             cmake_args: &[],
+            extension_crate: None,
         }
+    }
+
+    #[test]
+    fn a_tool_naming_nros_extension_gets_its_patch_and_only_then() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg = tmp.path();
+        std::fs::write(
+            pkg.join("Cargo.toml"),
+            "[package]\nname = \"acme\"\n\n[dependencies]\nnros-extension = { version = \"*\" }\n",
+        )
+        .unwrap();
+        assert!(depends_on_extension(pkg));
+        let ext = Path::new("/sdk/packages/runners/nros-extension");
+        let b = plan(
+            Path::new("/ws"),
+            "acme",
+            pkg,
+            Routing {
+                cargo_member: true,
+                cmake_subdir: false,
+            },
+            Options {
+                extension_crate: Some(ext),
+                ..opts(false)
+            },
+        )
+        .unwrap();
+        let want = "patch.crates-io.nros-extension.path=\"/sdk/packages/runners/nros-extension\"";
+        assert!(
+            b.handoff.display().contains(want),
+            "{}",
+            b.handoff.display()
+        );
+        assert!(b.configure.unwrap().display().contains(want));
+
+        std::fs::write(pkg.join("Cargo.toml"), "[package]\nname = \"acme\"\n").unwrap();
+        assert!(!depends_on_extension(pkg));
     }
 
     #[test]
