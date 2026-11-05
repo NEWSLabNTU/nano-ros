@@ -119,7 +119,7 @@ RCLCPP_TRY(pub.publish(msg));
 ```
 
 A publisher can be marked express (it bypasses transmit batching) through its
-QoS profile; see [TX Throughput & Latency Tuning](../guide/rmw/tune-throughput-and-latency.md#per-publisher-express-tx_express).
+QoS profile; see [Tune throughput and latency](../guide/rmw/tune-throughput-and-latency.md#steps).
 
 ### Subscription
 
