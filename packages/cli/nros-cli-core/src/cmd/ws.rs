@@ -1301,6 +1301,25 @@ pub fn provider_search_path_for(
     )
 }
 
+/// [`provider_search_path_for`] for a RUNNER lookup: the implicit nano-ros
+/// root narrows to its runner packages ([`provider_scan::InTreeScope::Runners`]);
+/// every root the user names keeps its full walk.
+///
+/// # Errors
+///
+/// As [`provider_search_path_for`].
+pub fn runner_search_path_for(
+    workspace: &Path,
+    base_paths: &[PathBuf],
+) -> Result<provider_scan::SearchPath> {
+    provider_search_path_scoped(
+        nano_ros_underlay(workspace).as_deref(),
+        workspace,
+        base_paths,
+        provider_scan::InTreeScope::Runners,
+    )
+}
+
 /// The nano-ros tree that is root 0: the checkout the workspace sits in, else
 /// this binary's own SDK root.
 fn nano_ros_underlay(workspace: &Path) -> Option<PathBuf> {
@@ -1352,13 +1371,28 @@ fn provider_search_path_with(
     workspace: &Path,
     base_paths: &[PathBuf],
 ) -> Result<provider_scan::SearchPath> {
+    provider_search_path_scoped(
+        nano_ros_root,
+        workspace,
+        base_paths,
+        provider_scan::InTreeScope::Whole,
+    )
+}
+
+fn provider_search_path_scoped(
+    nano_ros_root: Option<&Path>,
+    workspace: &Path,
+    base_paths: &[PathBuf],
+    scope: provider_scan::InTreeScope,
+) -> Result<provider_scan::SearchPath> {
     let sources = source_roots(workspace, base_paths)?;
     let env = std::env::var(provider_scan::PACKAGE_PATH_ENV).ok();
-    Ok(provider_scan::search_path_over(
+    Ok(provider_scan::search_path_over_scoped(
         nano_ros_root,
         &sources,
         workspace,
         env.as_deref(),
+        scope,
     ))
 }
 
