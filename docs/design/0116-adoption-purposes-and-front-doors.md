@@ -156,6 +156,13 @@ are.
 
 ### D2 — The user surface names an action, never an internal id
 
+> **Amended by [RFC-0123](0123-two-books-by-audience.md) D3 (2026-11):** the
+> gate's book subject is the whole user book (`book/page-map.toml`), not
+> `book/src/getting-started/`, and the contributor-block exemption is
+> retired, because contributor material lives in the Internals book. RFC ids
+> are allowed only in a page's closing `## Design background` section.
+> Landed by phase-532 W3.
+
 > **Sequenced by [RFC-0117](0117-cli-command-tiers.md) (2026-11):** the
 > command tree is restructured first (phase-526), and the help text's ids move
 > into `//` comments there, so this gate's sweep runs once over the final verb

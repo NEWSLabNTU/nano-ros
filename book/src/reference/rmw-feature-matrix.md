@@ -16,8 +16,8 @@ vtable comments name which). A slot filled with a function that only
 returns `UNSUPPORTED` (uORB's service stubs) is `—`, not `wired`.
 Status events count as wired whether the backend calls back
 (`*_event_init`) or the runtime polls it (`*_take_event`). The rows
-below the parity marker are the phase-376 W4 surface — slots declared
-in the ABI whose backend wiring is the in-flight campaign; all-dash
+below the parity marker are slots declared in the ABI whose backend
+wiring is still landing; all-dash
 rows there mean *declared, not yet wired anywhere*, and they flip
 automatically as backends land implementations.
 
@@ -62,7 +62,7 @@ backend lacks pub/sub or services, so the feature cannot exist there.
 | Feature | Zenoh | XRCE-DDS | Cyclone DDS | uORB | Rule |
 |---|---|---|---|---|---|
 | Actions | tested | tested | tested | — | Built in `nros-node` on pub/sub + services (goal / cancel / result services + feedback / status topics). |
-| Parameters (+ param services) | tested | tested | tested | — | Node-layer services (RFC-0004); available wherever services are. |
+| Parameters (+ param services) | tested | tested | tested | — | Node-layer services; available wherever services are. |
 | Lifecycle (REP-2002) | tested | untested | untested | — | Node-layer state machine + services (`lifecycle-services` feature). |
 
 ## QoS policies
@@ -73,7 +73,7 @@ entity creation loudly (`INCOMPATIBLE_QOS`) — **no silent
 downgrade**. Each column is that backend's OWN answer: the zenoh
 shim's `Session::supported_qos_policies`, and for a C backend the
 function its vtable puts in the `supported_qos_policies` slot.
-Per-policy semantics: [RMW vs upstream §7](../design/rmw-vs-upstream.md).
+Per-policy semantics: [RMW vs upstream §7](../extending/rmw-vs-upstream.md).
 
 | Policy | Zenoh | XRCE-DDS | Cyclone DDS | uORB |
 |---|---|---|---|---|
@@ -92,8 +92,6 @@ Per-policy semantics: [RMW vs upstream §7](../design/rmw-vs-upstream.md).
 
 ## Related
 
-- [Choosing an RMW Backend](../user-guide/rmw-choosing.md) — the
-  decision tree
-- [Backend Reference](../user-guide/rmw-backends.md) — architecture,
-  footprint, transports per backend
+- [Choosing an RMW Backend](../communicate/choosing-an-rmw.md) — the
+  decision tree, and how each backend works
 - [Support Status](support-status.md) — versions, pins, and CI tiers

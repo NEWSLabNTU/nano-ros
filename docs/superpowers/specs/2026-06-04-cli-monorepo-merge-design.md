@@ -213,7 +213,7 @@ In-tree references to `nros-cli` (workflows, scripts, docs) bump to
   `just setup` (or the prebuilt-fetch step described above).
 - CLAUDE.md's `nros setup` paragraph updates: "The nros CLI lives at
   `packages/cli/`; `just setup` builds it as its first step".
-- `docs/development/sdk-tiers.md`: Tier 0 `minimal` gains a "build
+- `book-internals/src/dev-env/sdk-tiers.md`: Tier 0 `minimal` gains a "build
   nros CLI from `packages/cli/`" bullet.
 
 ### Roadmap doc
@@ -240,7 +240,7 @@ following work-item slice:
   sha256 attached to release.
 - **H. Existing repo archive.** README redirect commit + GitHub repo
   archive flip + issue migration script.
-- **I. Docs sweep.** CLAUDE.md, `docs/development/sdk-tiers.md`,
+- **I. Docs sweep.** CLAUDE.md, `book-internals/src/dev-env/sdk-tiers.md`,
   `book/src/getting-started/`, `docs/reference/environment-
   variables.md` all reference the new path.
 

@@ -35,7 +35,7 @@ Classification: all **new** (no baseline).
   `NROS_REPO_DIR`); `just setup` still tells users to source it; zephyr /
   contributing / build-commands book pages still reference it · retire +
   repoint → **issue #208**
-- F3/H3 · `book/src/getting-started/installation.md:182`,
+- F3/H3 · `book/src/get-started/installation.md:182`,
   `book/src/reference/cli.md:64` · P2 · book advertises board id `esp32`
   which `nros-sdk-index.toml` does not define (only `qemu-esp32-baremetal`) →
   `nros setup esp32` fails; and top-level verb `nros setup presets` has no CLI-reference

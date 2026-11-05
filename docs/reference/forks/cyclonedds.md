@@ -13,7 +13,7 @@ nano-ros builds `third-party/dds/cyclonedds` from the fork [NEWSLabNTU/cyclonedd
 
 **Pinned commit:** `404fc5d9603dd80af624e3557d52fa1369e274d0`
 
-Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../cyclonedds-fork-delta.md).
+Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../../../book-internals/src/rmw/cyclonedds-fork-delta.md).
 
 ## Commits on top of upstream
 

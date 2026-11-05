@@ -638,7 +638,7 @@ where most embedded defect classes are cheapest to catch.
 ## Setting it up on GitHub
 
 Three things to configure, all scriptable. This assumes the conventions in
-[ci-conventions.md](ci-conventions.md) — a runner is a fresh clone with no
+[ci-conventions.md](../../book-internals/src/dev-env/ci-conventions.md) — a runner is a fresh clone with no
 submodules, no ROS, no SDKs — and the thin-`just`-caller rule from
 [ci-workflow-reorg.md](ci-workflow-reorg.md): workflow YAML calls recipes, it
 never inlines logic.

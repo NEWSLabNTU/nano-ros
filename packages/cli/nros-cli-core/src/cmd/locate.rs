@@ -14,7 +14,10 @@ use clap::{Parser, ValueEnum};
 use eyre::{Result, bail};
 use nros_build_paths::locate::{self, Ctx, Row};
 
-use crate::orchestration::sdk_index::{SdkIndex, SourcePackage};
+use crate::orchestration::{
+    nano_ros_root,
+    sdk_index::{SdkIndex, SourcePackage},
+};
 
 #[derive(Clone, Copy, Debug, Default, ValueEnum)]
 pub enum Format {
@@ -165,6 +168,17 @@ pub fn run(args: Args) -> Result<()> {
     if let Some(e) = crate::orchestration::store::retired_in_env() {
         bail!(e);
     }
+    // `store` and `nano-ros` need no index: the store is `$NROS_HOME`, and the
+    // SDK root is a function of where this binary lives (the `nano_ros_root`
+    // ladder). Loading the index for them would make `nros locate nano-ros`
+    // fail in a project with no index, or block on the network to answer a
+    // question the binary already knows (phase-532 W9).
+    if !args.all
+        && !args.names.is_empty()
+        && args.names.iter().all(|n| n == "store" || n == "nano-ros")
+    {
+        return run_roots(&args);
+    }
     let (index_path, index) = crate::cmd::setup::load_resolved_index(&args.index)?;
     // Absolute: a `--why` trace and a cmake `set()` are read from other cwds.
     let sdk_root = nros_build_paths::canonical(&crate::cmd::setup::index_workspace(&index_path));
@@ -206,17 +220,7 @@ pub fn run(args: Args) -> Result<()> {
                     chosen: true,
                 }],
             )),
-            "nano-ros" => match &checkout {
-                Some(c) => Ok((
-                    c.clone(),
-                    vec![locate::Step {
-                        rung: "root",
-                        saw: format!("{} (the SDK root this index belongs to)", c.display()),
-                        chosen: true,
-                    }],
-                )),
-                None => Err("nano-ros: this index belongs to no nano-ros root".into()),
-            },
+            "nano-ros" => locate_nano_ros(project.as_deref()),
             _ => {
                 let Some(src) = index.source.get(name) else {
                     // An SDK tool is a `tool <name>` (RFC-0103 §3): say so
@@ -293,6 +297,126 @@ pub fn run(args: Args) -> Result<()> {
     // A batch reports what it found and names the rest; a single lookup that
     // missed is a failure — the caller was about to use the path.
     if failed > 0 && (!batch || !args.all) {
+        bail!("{failed} resource(s) not located");
+    }
+    Ok(())
+}
+
+/// The SDK root for the project in hand, through the ONE `nano_ros_root`
+/// ladder `nros dev sdk root` uses: `--nano-ros-path`, then the nano-ros
+/// checkout enclosing the project, then this binary's own SDK root
+/// (`share/nano-ros` beside a released `nros`).
+///
+/// Several projects on one machine may pin different nano-ros versions
+/// (`nros-toolchain.toml`). The launcher reads that pin and runs the pinned
+/// toolchain before any verb, so in the project the binary answering IS the
+/// pinned one and its own root is that version's root. The case that slips
+/// past the launcher is `--project` naming ANOTHER project, pinned to another
+/// version: the own-root rung would then answer for the wrong version, so it
+/// refuses and says where to ask instead.
+fn locate_nano_ros(
+    project: Option<&std::path::Path>,
+) -> Result<(PathBuf, Vec<locate::Step>), String> {
+    let cwd = std::env::current_dir().map_err(|e| format!("nano-ros: {e}"))?;
+    let workspace = project.map(std::path::Path::to_path_buf).unwrap_or(cwd);
+    let Some((root, rung)) = nano_ros_root::resolve_explained(None, &workspace) else {
+        return Err(format!("nano-ros: {}", nano_ros_root::not_found_help()));
+    };
+    let running = std::env::current_exe()
+        .ok()
+        .and_then(|exe| nros_launcher::pin::running_version(&exe))
+        .map(|(v, _)| v);
+    let pin = nros_launcher::pin::find_and_load(&workspace).ok().flatten();
+    if matches!(rung, nano_ros_root::Rung::OwnShipped) {
+        if let Some(msg) = pin_mismatch(running.as_deref(), pin.as_ref(), &workspace) {
+            return Err(msg);
+        }
+    }
+    let mut trace = vec![locate::Step {
+        rung: "root",
+        saw: format!("{} (via {})", root.display(), rung.describe()),
+        chosen: true,
+    }];
+    trace.push(locate::Step {
+        rung: "version",
+        saw: match (&running, &pin) {
+            (Some(v), Some(p)) => format!("nros {v}, pinned by {}", p.path.display()),
+            (Some(v), None) => format!("nros {v}, no pin (the project floats)"),
+            (None, _) => "an in-tree build (no store version)".to_string(),
+        },
+        chosen: false,
+    });
+    Ok((nros_build_paths::canonical(&root), trace))
+}
+
+/// `Some(refusal)` when the project is pinned to a version other than the
+/// one running. Pure, so the refusal is unit-tested without a store.
+fn pin_mismatch(
+    running: Option<&str>,
+    pin: Option<&nros_launcher::pin::Pin>,
+    workspace: &std::path::Path,
+) -> Option<String> {
+    let (running, pin) = (running?, pin?);
+    (running != pin.version).then(|| {
+        format!(
+            "nano-ros: {} is pinned to nano-ros {} ({}), but this is nros {running}, so its \
+             SDK root would be the wrong version's. Run `nros locate nano-ros` inside that \
+             project: there, `nros` runs the pinned toolchain, which answers.",
+            workspace.display(),
+            pin.version,
+            pin.path.display()
+        )
+    })
+}
+
+/// `nros locate store` / `nros locate nano-ros`, with no index loaded.
+fn run_roots(args: &Args) -> Result<()> {
+    let project = project_dir(args.project.as_deref());
+    let batch = args.names.len() > 1;
+    let mut failed = 0usize;
+    for name in &args.names {
+        let answer = if name == "store" {
+            let store = crate::orchestration::store::root();
+            Ok((
+                store.clone(),
+                vec![locate::Step {
+                    rung: "root",
+                    saw: format!(
+                        "{} ({})",
+                        store.display(),
+                        crate::orchestration::store::root_origin()
+                    ),
+                    chosen: true,
+                }],
+            ))
+        } else {
+            locate_nano_ros(project.as_deref())
+        };
+        match answer {
+            Ok((path, trace)) => {
+                match args.format {
+                    Format::Path if batch => println!("{name}\t{}", path.display()),
+                    Format::Path => println!("{}", path.display()),
+                    Format::Sh => println!(
+                        "{}='{}'",
+                        var_name(name),
+                        path.display().to_string().replace('\'', "'\\''")
+                    ),
+                    Format::Cmake => println!("set({} \"{}\")", var_name(name), path.display()),
+                }
+                if args.why {
+                    for s in &trace {
+                        eprintln!("  {:<10} {}", s.rung, s.saw);
+                    }
+                }
+            }
+            Err(e) => {
+                failed += 1;
+                eprintln!("{e}");
+            }
+        }
+    }
+    if failed > 0 {
         bail!("{failed} resource(s) not located");
     }
     Ok(())
@@ -603,7 +727,33 @@ fn cargo_target_dir(checkout: Option<&std::path::Path>) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RENODE_ENV, refuse_placed_archive, refuse_unplaced_header, renode_bin, var_name};
+    use super::{
+        RENODE_ENV, pin_mismatch, refuse_placed_archive, refuse_unplaced_header, renode_bin,
+        var_name,
+    };
+
+    fn pin(v: &str) -> nros_launcher::pin::Pin {
+        nros_launcher::pin::Pin {
+            path: std::path::PathBuf::from("/p/nros-toolchain.toml"),
+            version: v.to_string(),
+        }
+    }
+
+    #[test]
+    fn sdk_root_answers_only_for_the_pinned_version() {
+        let ws = std::path::Path::new("/p");
+        // The project's pinned toolchain is the one running: answer.
+        assert_eq!(pin_mismatch(Some("0.7.0"), Some(&pin("0.7.0")), ws), None);
+        // No pin (the project floats), or an in-tree build: answer.
+        assert_eq!(pin_mismatch(Some("0.7.0"), None, ws), None);
+        assert_eq!(pin_mismatch(None, Some(&pin("0.6.0")), ws), None);
+        // Another project pinned to another version: refuse, naming both.
+        let e = pin_mismatch(Some("0.7.0"), Some(&pin("0.6.0")), ws).expect("refuses");
+        assert!(
+            e.contains("0.6.0") && e.contains("0.7.0") && e.contains("nros-toolchain.toml"),
+            "{e}"
+        );
+    }
     use nros_build_paths::artifact::Artifact;
 
     /// phase-524 W4c -- the env rung wins when it names a file, and a name that

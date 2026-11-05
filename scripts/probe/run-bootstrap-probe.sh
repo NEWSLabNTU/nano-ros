@@ -191,6 +191,18 @@ CLOCK_ARGS=()
 if [[ -n "$PROBE_BUDGET_MIN" ]]; then
     CLOCK_ARGS=(--clock-from "nros setup" --clock-budget "$((PROBE_BUDGET_MIN * 60))")
 fi
+# phase-532 (RFC-0123) — a chapter written ahead of the CLI. The track's
+# registry row says what it awaits; until that lands the probe FAILS here,
+# naming it, before any asset build or container (never a skip). The checkout
+# and zenoh tracks resolve the `linux` row, whose chapters are ahead too.
+# PROBE_EXTRACT_ONLY still extracts: the per-push drift check stays live.
+if ! track_awaits="$(python3 "$SCRIPT_DIR/probe-track.py" --awaits "$PROBE_PLATFORM")"; then
+    exit 2
+fi
+if [[ -n "$track_awaits" && -z "${PROBE_EXTRACT_ONLY:-}" ]]; then
+    echo "probe: [UNMET PRECONDITION] track $PROBE_PLATFORM replays a chapter written ahead of the CLI; it awaits: $track_awaits (the \`awaits\` line of its [[probe]] row in packages/boards/board-support.toml; delete it when that lands)" >&2
+    exit 1
+fi
 # phase-524 W4a — a TWIN track: a board with an emulator twin, replaying either
 # a shared chapter's setup (and the probe's twin smoke run) or, since W4b, its
 # board's own chapter. Its facts (board, west board, emulator, the twin's wiring, the
@@ -216,9 +228,11 @@ if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
     exit 2
 fi
 if [[ "$PROBE_TRACK" = "installed" ]]; then
-    CHAPTERS=(book/src/getting-started/installation.md)
-    # The workspace run lives IN installation.md; listing it twice would
-    # extract every step twice.
+    CHAPTERS=(book/src/get-started/installation.md)
+    # installation.md is the install every track starts from. A track whose
+    # own chapter is installation.md would list it twice and extract every
+    # step twice. (The workspace and pinned runs moved to
+    # installation-details.md in phase-532 W10.)
     if [[ "$PLATFORM_CHAPTER" != "${CHAPTERS[0]}" ]]; then
         CHAPTERS+=("$PLATFORM_CHAPTER")
     fi
@@ -246,7 +260,8 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         VERIFIER="verify-installed-platform.sh"
         [[ "$PROBE_PLATFORM" = workspace ]] && VERIFIER="verify-installed-workspace.sh"
         [[ "$PROBE_PLATFORM" = pinned* ]] && VERIFIER="verify-installed-pinned.sh"
-        # A twin track that replays a SHARED chapter (the Zephyr chapter's
+        # A twin track that replays a SHARED chapter (with `twin_build`, its
+        # setup and the image's build) (the Zephyr chapter's
         # setup blocks) leaves the twin smoke run to the probe
         # (verify-installed-twin.sh), then the platform checks. A twin track
         # replaying its board's OWN chapter (phase-524 W4b: the row's
@@ -272,17 +287,17 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     # cargo build` is exactly what a reader on the interop path runs, and it
     # needs the zenoh-pico source that only `--rmw zenoh` provisions.
     CHAPTERS=(
-        book/src/getting-started/installation.md
-        book/src/internals/contributing.md
-        book/src/getting-started/first-node-rust.md
+        book/src/get-started/installation.md
+        book-internals/src/orientation/contributing.md
+        book/src/get-started/first-node-rust.md
     )
     PROBE_RMW="zenoh"
     VERIFIER="verify-zenoh-interop.sh"
 else
     CHAPTERS=(
-        book/src/getting-started/installation.md
-        book/src/internals/contributing.md
-        book/src/getting-started/first-node-c.md
+        book/src/get-started/installation.md
+        book-internals/src/orientation/contributing.md
+        book/src/get-started/first-node-c.md
     )
     PROBE_RMW="cyclonedds"
     VERIFIER="verify-first-node.sh"

@@ -425,7 +425,7 @@ impl QemuProcess {
     /// Uses `-icount shift=auto` to synchronize QEMU's virtual clock with
     /// wall-clock time. Without this, hardware timers (CMSDK Timer0) race ahead
     /// during WFI, causing zenoh-pico timeouts to expire before network I/O
-    /// completes. See `docs/reference/qemu-icount.md`.
+    /// completes. See `book-internals/src/testing/qemu-icount.md`.
     pub fn start_mps2_an385_networked(binary: &Path) -> TestResult<Self> {
         Self::spawn(mps2_an385_networked_cmd(binary)?)
     }

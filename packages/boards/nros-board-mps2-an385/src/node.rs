@@ -484,7 +484,7 @@ pub fn init_hardware(config: &Config) {
     // This must happen before any clock reads (including smoltcp interface
     // creation which reads the clock). On QEMU, pair with
     // `-icount shift=auto` to keep virtual time aligned with wall-clock
-    // time. See docs/reference/qemu-icount.md.
+    // time. See book-internals/src/testing/qemu-icount.md.
     nros_platform_mps2_an385::clock::init_hardware_timer();
 
     // Register the monotonic clock with the shared busy-wait sleep loop

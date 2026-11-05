@@ -27,7 +27,7 @@ not read — derived from `SUMMARY.md`, the same rule `check-book-links.py` uses
 
 And the retired host-board words (`RETIRED_BOARD_KEYS` in
 `packages/cli/nros-entry-lower/src/lib.rs`, harvested, not copied) appear as a
-board nowhere except `book/src/reference/retired-names.md`, the one page whose
+board nowhere except `book/src/migrating/retired-names.md`, the one page whose
 job is to say they are retired. "As a board" means: in a board position above,
 as `nros new --platform <word>`, or as an inline `` `<word>` `` on a line that
 also says "board".
@@ -68,7 +68,7 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INDEX = ROOT / "nros-sdk-index.toml"
 RETIRED_SRC = ROOT / "packages/cli/nros-entry-lower/src/lib.rs"
-RETIRED_PAGE = "book/src/reference/retired-names.md"
+RETIRED_PAGE = "book/src/migrating/retired-names.md"
 
 BEGIN = re.compile(r"<!-- board-names:begin[^>]*-->\n")
 END = "<!-- board-names:end -->"

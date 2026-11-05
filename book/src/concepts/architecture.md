@@ -56,11 +56,11 @@ Each Node picks its backend at build time. That compile-time selection
 replaces standard ROS 2's runtime `RMW_IMPLEMENTATION` plugin loader,
 which is not available on many embedded targets. A single binary can
 link multiple backends and bridge between them — see
-[Cross-backend Bridges](../user-guide/cross-backend-bridges.md).
+[Cross-backend Bridges](../communicate/bridges.md).
 
 For user-facing backend selection, see
-[Choosing an RMW Backend](../user-guide/rmw-backends.md). For design
-rationale, see [RMW API Design](../design/rmw.md).
+[Choosing an RMW Backend](../communicate/choosing-an-rmw.md). For design
+rationale, see [RMW API Design](../extending/rmw-design.md).
 
 ## Platform Layer
 
@@ -72,7 +72,7 @@ runtime can advance smoltcp while waiting.
 
 The platform is selected at compile time together with the RMW backend
 and ROS edition. See [Platform Model](platform-model.md) for the feature
-axes and [Custom Platform](../porting/custom-platform.md) for porting.
+axes and [Custom Platform](../extending/custom-platform.md) for porting.
 
 ## Board Packages
 
@@ -86,7 +86,7 @@ and drivers. It typically provides:
 - a `run()` entry point that starts the scheduler or main loop.
 
 Board packages are optional for POSIX but useful for RTOS and
-bare-metal targets. See [Custom Board Package](../porting/custom-board.md).
+bare-metal targets. See [Custom Board Package](../extending/custom-board.md).
 
 ## Data Flow
 
@@ -107,7 +107,7 @@ types work across Rust, C, and C++ APIs.
 
 ## Where to Go Next
 
-- New user: [Setup Compared to Standard ROS 2](../start-here/setup-compared-to-ros2.md).
-- Application author: [Configuration](../user-guide/configuration.md).
-- Platform porter: [Porting Overview](../porting/overview.md).
-- Contributor changing internals: [Design Overview](../design/overview.md).
+- New user: [Setup Compared to Standard ROS 2](../from-ros2/setup-compared.md).
+- Application author: [Configuration](../build/configuration.md).
+- Platform porter: [Porting Overview](../extending/overview.md).
+- Contributor changing internals: [Design Overview](design-overview.md).

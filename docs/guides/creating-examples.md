@@ -1,7 +1,7 @@
 # Creating Examples
 
 **Moved.** The contributor guide to adding an example now lives in the book:
-[Creating Examples](../../book/src/internals/creating-examples.md).
+[Creating Examples](../../book-internals/src/testing/creating-examples.md).
 
 This file is kept only so that older links do not 404. Everything it used to
 carry — the canonical `examples/<plat>/<lang>/<example>/` layout, the Rust and
@@ -28,8 +28,8 @@ crate named beside the selection package is refused at `nros configure`
 
 ## See Also
 
-- [Creating Examples](../../book/src/internals/creating-examples.md) — the live page
-- [Message Generation](../../book/src/user-guide/message-generation.md)
-- [zephyr-setup.md](zephyr-setup.md) — Zephyr workspace setup
+- [Creating Examples](../../book-internals/src/testing/creating-examples.md) — the live page
+- [Message Generation](../../book/src/build/message-generation.md)
+- [zephyr-setup.md](../../book-internals/src/testing/zephyr-dev-setup.md) — Zephyr workspace setup
 - [RFC-0098](../design/0098-generated-leaf-build-config.md) — why the leaf build
   configuration is generated from one board choice

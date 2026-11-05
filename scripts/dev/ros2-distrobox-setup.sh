@@ -3,7 +3,7 @@
 # cannot have ROS natively (Arch, Fedora 40+, NixOS …).
 #
 # Full walkthrough, including how to create the box:
-#     docs/development/ros2-on-non-ubuntu.md
+#     book-internals/src/dev-env/ros2-on-non-ubuntu.md
 #
 # Run INSIDE the box, from the checkout:
 #     distrobox enter ros2 -- bash scripts/dev/ros2-distrobox-setup.sh

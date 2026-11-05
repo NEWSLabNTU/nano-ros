@@ -67,7 +67,7 @@ source + examples, **not** the WIP §2 of the design doc):
 
 Genuinely stale; fix:
 
-- `book/src/internals/creating-examples.md`
+- `book-internals/src/testing/creating-examples.md`
   - Lines 14, 18, 104, 153: `examples/<plat>/<lang>/<rmw>/<example>/` →
     `examples/<plat>/<lang>/<example>/`. State RMW is chosen at build time
     (Cargo features / `-DNROS_RMW=` / Kconfig overlay), per CLAUDE.md.
@@ -85,7 +85,7 @@ Genuinely stale; fix:
 
 ### B1. Reconcile existing reference pages
 
-- **`book/src/user-guide/component-and-entry-pkg.md`** → retitle
+- **`book/src/build/roles.md`** → retitle
   **"Node, Bringup & Entry Packages"**. Edits (file is the cookbook):
   - "Component pkg" → "Node pkg" everywhere (note the ROS composable-node
     parallel once). `nros::component!()` → `nros::node!()`.
@@ -109,7 +109,7 @@ Genuinely stale; fix:
   - Keep root `nros.toml` references (correct); add a short note pointing to
     `<bringup>/system.toml` for multi-node topology and link the new track.
   - Do not import the design-doc §2 "never a build verb" claim.
-- **`book/src/concepts/comparison-vs-microros.md`** (lines 36–37): leave the
+- **`book/src/from-ros2/vs-micro-ros.md`** (lines 36–37): leave the
   `nros.toml`/deploy wording (it's accurate) but align any "Component" term.
 
 ### B2. New Getting Started track (4 pages)
@@ -148,10 +148,10 @@ examples + the 3-role examples on disk, and links the cookbook (reference)
 
 Add under Getting Started (after line 14):
 ```
-- [From an app node to a workspace](../../../book/src/getting-started/workspace-from-app-node.md)
-- [Prepare node packages](../../../book/src/getting-started/workspace-node-pkgs.md)
-- [Bringup: launch + system.toml](../../../book/src/getting-started/workspace-bringup.md)
-- [Entry package: boot on a board](../../../book/src/getting-started/workspace-entry-pkg.md)
+- [From an app node to a workspace](../../../book/src/build/growing-your-workspace.md)
+- [Prepare node packages](../../../book/src/build/growing-your-workspace.md)
+- [Bringup: launch + system.toml](../../../book/src/build/growing-your-workspace.md)
+- [Entry package: boot on a board](../../../book/src/build/growing-your-workspace.md)
 ```
 
 ## Workstream C — runnable 3-role workspace template (owner-requested)

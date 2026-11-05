@@ -1,17 +1,12 @@
 # Environment Variables Reference
 
-## Configuration File
+Set a runtime variable in the shell that starts the program. Set a
+build-time knob in the shell before `nros build`, or per image in
+`system.toml` (an `[image.<id>] env` row, or the knob-registry table where
+the section below says so).
 
-All environment variables can be set in a `.env` file at the project root:
-
-    cp .env.example .env
-    # Edit .env — uncomment and adjust values as needed
-
-- **justfile** — `.env` is auto-loaded. Missing file silently ignored.
-- **direnv** — `.envrc` sources `.env` if present.
-- **Manual** — `set -a; source .env; set +a` before `cargo build`.
-
-Variables in `.env` take precedence over justfile defaults but are overridden by explicit shell exports.
+The checkout's `.env` file for in-tree builds: see
+[Internals → Build Commands](../internals/dev-env/build-commands.html#the-env-file).
 
 ## Runtime Configuration
 
@@ -26,7 +21,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA certificate for TLS                           | (none)               |
 | `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`     | Verify server hostname in TLS (`true`/`false`)                  | (none)               |
 
-> **Retired legacy names** (phase-484 W8c): `ZENOH_LOCATOR` and `ZENOH_MODE`
+> **Retired legacy names**: `ZENOH_LOCATOR` and `ZENOH_MODE`
 > are no longer read. Setting either is a startup ERROR naming its
 > replacement (`NROS_LOCATOR` / `NROS_SESSION_MODE`) — Rust panics in
 > `resolve_hosted` / returns `InitError::RetiredEnvVar` from `nros::init`,
@@ -37,7 +32,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 
 ### TLS Notes
 
-- **POSIX**: requires `libmbedtls-dev` (`just setup base` checks it). File-path and base64 cert loading are both supported.
+- **POSIX**: requires `libmbedtls-dev` (install it with your host's package manager). File-path and base64 cert loading are both supported.
 - **Bare-metal**: only `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` is supported (no filesystem). The certificate is embedded at build time.
 - The `link-tls` Cargo feature must be enabled on both the example and the `nros` crate.
 
@@ -46,8 +41,6 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | Variable         | Description                                                                                        | Required                            |
 |------------------|----------------------------------------------------------------------------------------------------|-------------------------------------|
 | `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zpico-sys`) | Only with `system-zenohpico`        |
-| `SSID`           | WiFi network name for ESP32 examples                                                               | Required for `build-examples-esp32` |
-| `PASSWORD`       | WiFi password for ESP32 examples                                                                   | Required for `build-examples-esp32` |
 | `NROS_EXTRA_BOARD_PATH` | Extra board-search roots (PATH-style `:` separated). Each entry is a directory shaped like `packages/boards/` — subdirs carrying `nros-board.toml` crates or `*/boards/<name>/board.cmake` bundles. Read by the `nros` CLI's board catalog AND `nano_ros_use_board()` (also settable as a CMake cache var there). Board keys stay global: a name found under two roots is an error, never shadowed. | (unset) |
 
 ### ARM FVP (`FVP_BaseR_AEMv8R`)
@@ -56,7 +49,7 @@ Not license-gated: `nros setup --tool arm-fvp` fetches the model from a pinned
 Arm CDN permalink (`[tool.arm-fvp]` in `nros-sdk-index.toml`, digest-checked) into
 the SDK store. Arm publishes it for **x86_64 Linux only**. You need none of the
 variables below unless you installed a model yourself. See the
-[ARM FVP getting-started chapter](../getting-started/arm-fvp.md) for the
+[ARM FVP getting-started chapter](../targets/arm-fvp.md) for the
 end-to-end build+run walk-through.
 
 | Variable          | Description                                                                          | Default |
@@ -64,23 +57,21 @@ end-to-end build+run walk-through.
 | `ARMFVP_BIN_PATH` | Directory containing `FVP_BaseR_AEMv8R` (Zephyr-canonical, highest priority).        | (unset) |
 | `ARM_FVP_DIR`     | Install root; resolver scans `models/Linux64_GCC-*/` underneath.                     | (unset) |
 
-`scripts/zephyr/resolve-fvp-bin.sh` resolves, in order: `ARMFVP_BIN_PATH`,
-`ARM_FVP_DIR`, `FVP_BaseR_AEMv8R` on `PATH`, then the store copy
-(`nros dev sdk path arm-fvp`). The `just zephyr run-fvp-*` / `verify-fvp-runtime`
-recipes export the result as `ARMFVP_BIN_PATH` at BUILD time as well as run time,
-because Zephyr's `armfvp.cmake` caches the location at configure. When nothing
-resolves, a recipe you NAMED fails with the remedy (`nros setup --tool arm-fvp`);
-reached through a fixture fan-out it skips and is reported.
+The model is found in this order: `ARMFVP_BIN_PATH`, `ARM_FVP_DIR`,
+`FVP_BaseR_AEMv8R` on `PATH`, then the store copy that
+`nros setup --tool arm-fvp` installs. Set `ARMFVP_BIN_PATH` at BUILD time as
+well as run time, because Zephyr's `armfvp.cmake` caches the location at
+configure. For a model you downloaded by hand, set `ARM_FVP_DIR` to the
+extraction root. `nros doctor --board fvp-aemv8r-smp` reports whether the
+model resolves.
 
-For a model you downloaded by hand, `scripts/installers/arm-fvp-installer.sh`
-(with `ARM_FVP_DIR` set to the extraction root) symlinks it to
-`~/.nros/sdks/arm-fvp/current/` and prints the `export ARMFVP_BIN_PATH=…` line.
-`nros doctor --board fvp-aemv8r-smp` reports whether the model resolves.
+Changing how the FVP is resolved or run in the tree: see
+[Internals → Zephyr in-tree examples](../internals/platform/zephyr-in-tree.html#arm-fvp-resolution).
 
 ### Vendored source trees
 
 You normally set none of these. `nros setup` puts each tree in the shared
-store, and every build locates it through one ladder (RFC-0103 D3): this
+store, and every build locates it through one ladder: this
 variable, then the project's `[sources]` row in `system.toml`, then a checkout
 submodule you are editing, then the store, then the checkout's own copy.
 `nros locate <name> --why` prints which rung answered. Set a variable only to
@@ -103,15 +94,15 @@ them, and the build carries them from there. They are not user inputs.
 ## Buffer Tuning
 
 All optional -- platform-appropriate defaults apply if unset. See
-[Configuration](../user-guide/configuration.md) for deployment-scenario
+[Configuration](../build/configuration.md) for deployment-scenario
 guidance and platform guides for target-specific sizing.
 
 ### Zenoh-pico (`NROS_ZENOH_*`)
 
-Each knob here was spelled `ZPICO_<X>` before phase-484 W5a (RFC-0103 D2b).
-That old spelling is now **retired** (phase-484 W8): set in the environment or
+Each knob here used to be spelled `ZPICO_<X>`. That old spelling is
+**retired**: set in the environment or
 in an `[image.<id>] env` row, it stops the build with an error naming the
-`NROS_ZENOH_*` name to use. The full list is [the retired-names table](retired-names.md#retired-knob-spellings).
+`NROS_ZENOH_*` name to use. The full list is [the retired-names table](../migrating/retired-names.md#retired-knob-spellings).
 
 | Variable                           | Description                                            | Default          | Crate          |
 |------------------------------------|--------------------------------------------------------|------------------|----------------|
@@ -121,23 +112,23 @@ in an `[image.<id>] env` row, it stops the build with an error naming the
 | `NROS_ZENOH_MAX_PUBLISHERS`             | Max concurrent publishers in zenoh shim                | `8`              | zpico-sys      |
 | `NROS_ZENOH_MAX_SUBSCRIBERS`            | Max concurrent subscribers in zenoh shim               | `8`              | zpico-sys      |
 | `NROS_ZENOH_MAX_QUERYABLES`             | Max concurrent queryables in zenoh shim                | `8`              | zpico-sys      |
-| `NROS_ZENOH_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim. DERIVED when the image declares anything: one per node name plus the session's own, one per publisher, subscriber, service server and client, and the parameter and lifecycle families' servers and publisher (issue 1713). A stated value wins. | `16` when nothing is declared | zpico-sys      |
+| `NROS_ZENOH_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim. DERIVED when the image declares anything: one per node name plus the session's own, one per publisher, subscriber, service server and client, and the parameter and lifecycle families' servers and publisher. A stated value wins. | `16` when nothing is declared | zpico-sys      |
 | `NROS_ZENOH_MAX_PENDING_GETS`          | Max concurrent in-flight service calls                 | `4`              | zpico-sys      |
 | `NROS_ZENOH_MAX_TL_PUBLISHERS`          | Retention slots for TRANSIENT_LOCAL publishers in the zenoh shim. Each also takes one `NROS_ZENOH_MAX_QUERYABLES` slot: a transient-local publisher declares a queryable so a late joiner can query its last sample. An image whose endpoints are declared DERIVES this (an `action_server` row counts one for its `/status`), and a stated value below the declared demand fails the build naming the knob. | `2` | nros-rmw-zenoh |
 | `NROS_ZENOH_TL_RETAIN_BYTES`            | Bytes one retained TRANSIENT_LOCAL sample may hold. A larger publish is SENT but not retained, and says so once at WARN. | `1024` | nros-rmw-zenoh |
-| `NROS_ZENOH_TL_RETAIN_DEPTH`            | Samples each TRANSIENT_LOCAL publisher retains and replays, oldest first, to a late joiner. DERIVED from the deepest `KEEP_LAST(N)` a transient-local publisher declares (issue 1709); the publisher is granted and advertises `min(asked, this)`. Must be >= 1. | `1` when nothing is declared | nros-rmw-zenoh |
-| `NROS_SUBSCRIBER_BUFFER_SIZE`      | `small` receive-class slot per subscriber in the zenoh shim; the executor arena reads the same name. (`ZPICO_SUBSCRIBER_BUFFER_SIZE` is a dead spelling — nothing reads it, issue 1181.) | `1024` | nros-rmw-zenoh |
+| `NROS_ZENOH_TL_RETAIN_DEPTH`            | Samples each TRANSIENT_LOCAL publisher retains and replays, oldest first, to a late joiner. DERIVED from the deepest `KEEP_LAST(N)` a transient-local publisher declares; the publisher is granted and advertises `min(asked, this)`. Must be >= 1. | `1` when nothing is declared | nros-rmw-zenoh |
+| `NROS_SUBSCRIBER_BUFFER_SIZE`      | `small` receive-class slot per subscriber in the zenoh shim; the executor arena reads the same name. (`ZPICO_SUBSCRIBER_BUFFER_SIZE` is a dead spelling — nothing reads it.) | `1024` | nros-rmw-zenoh |
 | `NROS_ZENOH_SUBSCRIBER_LARGE_SIZE`      | `large` size-class slot, for subscriptions whose type does not fit the small block | `16384` | nros-rmw-zenoh |
 | `NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD`  | The small/large class split: a subscription whose `rx_buffer_hint` exceeds it is served from `large`. The cmake message-bound derivation assumes the shipped value (`NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING`), so moving it can make a derived class count disagree with runtime routing, which surfaces as a failed `create_subscription`. | `2048` | nros-rmw-zenoh |
-| `NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE`   | Per-publisher TX arena for the zero-copy loan path; costs `NROS_ZENOH_MAX_PUBLISHERS` x this (issue 0813). | `1024` | nros-rmw-zenoh |
-| `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS`      | How many `large`-class blocks this image reserves. **`0` is legal** (phase-403 W4): an image whose subscribed types all fit `NROS_SUBSCRIBER_BUFFER_SIZE` declares 0 and stops paying `RING_DEPTH x LARGE_SIZE` — 65,536 B at the defaults — for a class it never routes into. A hint no class can hold then fails `create_subscription` rather than dropping every sample. **DERIVED, on both lanes** — a Zephyr image gets it from Kconfig's `-1` sentinel, and since issue 1125 a cargo leaf gets it from `nros configure`'s gitignored `.cargo/nros-managed-env.toml`, joined over the types the leaf's own components subscribe to. Setting it here still wins. | `2` | nros-rmw-zenoh |
+| `NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE`   | Per-publisher TX arena for the zero-copy loan path; costs `NROS_ZENOH_MAX_PUBLISHERS` x this. | `1024` | nros-rmw-zenoh |
+| `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS`      | How many `large`-class blocks this image reserves. **`0` is legal**: an image whose subscribed types all fit `NROS_SUBSCRIBER_BUFFER_SIZE` declares 0 and stops paying `RING_DEPTH x LARGE_SIZE` — 65,536 B at the defaults — for a class it never routes into. A hint no class can hold then fails `create_subscription` rather than dropping every sample. **DERIVED, on both lanes** — a Zephyr image gets it from Kconfig's `-1` sentinel, and a cargo image gets it from the build settings `nros build` generates under `build/`, joined over the types the image's components subscribe to. Setting it here still wins. | `2` | nros-rmw-zenoh |
 | `NROS_ZENOH_SERVICE_BUFFER_SIZE`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
-| `NROS_PARAM_SERVICE_INBOX_BYTES`   | Bytes one request slot holds in the inbox ring of a ROS parameter service queryable (six per node) or a REP-2002 lifecycle one (five per node) -- the BUILTIN family, which the zenoh shim selects by service name (phase-461 W2b). **DERIVED**: with nothing stated, the contract's declared parameters bound it, as the largest request a `set_parameters` over the worst-declared node can produce (672 B on the Autoware Safety Island, against the transport's 1,024). A contract declaring a string- or array-valued parameter needs the parameter store's capacities to price, which the RMW cannot see, so the shim abstains there and the user-service slot stands. Setting it here still wins. | derived, else `NROS_SERVICE_INBOX_BYTES` | nros-rmw-zenoh |
+| `NROS_PARAM_SERVICE_INBOX_BYTES`   | Bytes one request slot holds in the inbox ring of a ROS parameter service queryable (six per node) or a REP-2002 lifecycle one (five per node) -- the BUILTIN family, which the zenoh shim selects by service name. **DERIVED**: with nothing stated, the contract's declared parameters bound it, as the largest request a `set_parameters` over the worst-declared node can produce (672 B on the Autoware Safety Island, against the transport's 1,024). A contract declaring a string- or array-valued parameter needs the parameter store's capacities to price, which the RMW cannot see, so the shim abstains there and the user-service slot stands. Setting it here still wins. | derived, else `NROS_SERVICE_INBOX_BYTES` | nros-rmw-zenoh |
 | `NROS_PARAM_SERVICE_INBOX_DEPTH`   | Requests one parameter or lifecycle service queryable holds before the newest is dropped. One, because this traffic is one request and one reply from a client that waits (`ros2 param`, rclcpp's `SyncParametersClient`) and a node's services are polled serially in one spin. Raise it to 2 for an image serving a parameter dashboard. Must be >= 1. | `1` | nros-rmw-zenoh |
 | `NROS_ZENOH_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
 | `NROS_ZENOH_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
-| `NROS_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp); brokered default since Phase 204.2. (`ZPICO_SMOLTCP_MAX_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
-| `NROS_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp); 1 by default, 4 with the `nros-smoltcp/rtps` feature (Phase 204.2). (`ZPICO_SMOLTCP_MAX_UDP_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
+| `NROS_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp); brokered default. (`ZPICO_SMOLTCP_MAX_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp); 1 by default, 4 with the `nros-smoltcp/rtps` feature. (`ZPICO_SMOLTCP_MAX_UDP_SOCKETS` is retired.) | `1` (brokered) | nros-smoltcp |
 | `NROS_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp). (`ZPICO_SMOLTCP_BUFFER_SIZE` is retired.)                          | `2048`           | nros-smoltcp  |
 | `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). (`ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` is retired.)                      | `30000`          | nros-smoltcp  |
 | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). (`ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` is retired.)                       | `10000`          | nros-smoltcp  |
@@ -175,19 +166,17 @@ per image as `[image.<id>.knobs.xrce] buffer_size = 256` — the name without
 `NROS_XRCE_`, lowercased (`max_subscribers`, `max_service_servers`,
 `max_service_clients`, `subscriber_ring_depth`, `subscriber_buffer_size`,
 `service_request_buffer_size`, `service_reply_buffer_size`, `stream_history`,
-`transport_mtu`, `custom_transport_mtu`) — rather than as an `env` row
-(RFC-0103 D6).
+`transport_mtu`, `custom_transport_mtu`) — rather than as an `env` row.
 
 #### On Zephyr the three entity caps DERIVE, and the minimum is 0
 
 `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS` and `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS`
 default to `-1`, which means *take the number from the entities this image
-declares* (the contract sidecar beside the bringup's launch file, or a standalone
-leaf's `system.toml` `[[component]] entities` rows). A listener that declares
+declares* (the contract sidecar beside the bringup's launch file, or beside the
+bringup's `system.toml` when it has no `launch/`). A listener that declares
 one subscription and no service is built with one subscriber slot and zero
 service-server slots, which is what took the session struct from 427,968 bytes
-to 59,088 on the zephyr cpp listener ([issue
-1033](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1033-xrce-subscriber-slots-budget-eight-for-one.md)).
+to 59,088 on the zephyr cpp listener.
 Stating a number in Kconfig or the environment still wins over the derivation,
 in both directions.
 
@@ -203,10 +192,10 @@ create fails with `InvalidConfig` and the backend logs which cap it hit, which
 knob moves it, and that the count came from the declaration.
 
 `NROS_XRCE_SUBSCRIBER_RING_DEPTH` is deliberately NOT derivable — no inventory
-knows how deep a burst a subscriber must survive — but it does now have a
-Kconfig symbol. It did not before issue 1033, which made it unsettable on
-Zephyr however it was spelled: a Zephyr cargo build sees only the knobs
-`nros_cargo_build.cmake` forwards, and shell exports do not survive that.
+knows how deep a burst a subscriber must survive — but it does have a
+Kconfig symbol, and on Zephyr that is the way to set it: a Zephyr cargo build
+sees only the knobs `nros_cargo_build.cmake` forwards, and shell exports do
+not survive that.
 
 #### `NROS_XRCE_BUFFER_SIZE` is the XRCE receive ceiling
 
@@ -220,11 +209,8 @@ The static cost is `XRCE_SUBSCRIBER_RING_DEPTH x XRCE_BUFFER_SIZE` per
 subscriber, which is why the default is small — raise it deliberately, and
 consider lowering the ring depth at the same time.
 
-A payload at or above the transport MTU (4096) arrives fragmented. That
-used to deliver it *corrupted* with no error; the receive path now reads
-the fragment chain
-([issue 0819](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/0819-xrce-payloads-near-the-mtu-arrive-corrupted.md),
-resolved).
+A payload at or above the transport MTU (4096) arrives fragmented; the
+receive path reads the fragment chain and delivers it whole.
 
 #### Compile-time only (not environment variables)
 
@@ -257,3 +243,7 @@ env or Kconfig knob. Changing them means editing that header.
 | `NROS_MAX_ARRAY_LEN`            | Max parameter array length                                                               | `32`    | nros-params |
 | `NROS_MAX_BYTE_ARRAY_LEN`       | Max byte array parameter length                                                          | `256`   | nros-params |
 | `NROS_MAX_PARAM_DESCRIPTION_LEN` | Max parameter description length; longer is truncated and logged, 0 = none (max 256)   | `256`   | nros-params |
+
+## Design background
+
+- [RFC-0103: one owner per fact](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0103-one-owner-per-fact.md) — the one source-location ladder, the `NROS_<ID>` knob spelling, and knob-registry rows

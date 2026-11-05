@@ -39,7 +39,7 @@ CPP_EXT = (".cpp", ".cc", ".hpp", ".hh", ".h", ".cpp.golden", ".hpp.golden")
 CPP_ROOTS = ("examples/", "packages/api/nros-cpp/", "packages/testing/", "packages/cli/")
 # The live documentation whose ```cpp blocks a user copies. History (RFCs,
 # phase docs, issues, the changelog) is deliberately not here.
-DOC_ROOTS = ("book/", "docs/guides/", "docs/reference/", "examples/", "README.md")
+DOC_ROOTS = ("book/", "book-internals/", "docs/guides/", "docs/reference/", "examples/", "README.md")
 TEMPLATE_MARK = "/packs/"
 # `nros::main!` and its siblings are RUST macros, which a refusal message may
 # name; `\w+!` after the path is never C++.

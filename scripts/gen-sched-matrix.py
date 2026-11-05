@@ -30,7 +30,11 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "book", "src", "reference", "sched-matrix.md")
+# Where the page lives is the page map's answer (RFC-0123 D7), not this script's.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import book_pages  # noqa: E402
+
+OUT = str(book_pages.page_file("reference/sched-matrix.md"))
 REALIZER = "packages/core/nros-orchestration-ir/src/rtos_realizer.rs"
 SPIN = "packages/core/nros-node/src/executor/spin.rs"
 
@@ -114,7 +118,7 @@ def render():
         "(`nros-orchestration-ir`), the exact function the workload realizer",
         "calls to decide Native-vs-Degrade for a deployment; its rule, quoted",
         "from the source: *caps describe what nano-ros DELIVERS, not what",
-        "the OS could do* (issue 0261).",
+        "the OS could do*.",
         "",
         "## Kernel capabilities per platform",
         "",
@@ -138,12 +142,8 @@ def render():
         "`SCHED_SPORADIC`; ThreadX's preemption threshold is native; the",
         "bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),",
         "single core. These are PLATFORM DEFAULTS and there is no per-image",
-        "override today: `[deploy.<board>] edf = <bool>` / `cores = <n>` was",
-        "documented here but never authorable (and `[deploy.*]` itself is retired,",
-        "phase-486 W8) — the knob read an extras bag no",
-        "table wrote, and upstream's `deny_unknown_fields` rejected the keys",
-        "outright. Retired with issue 0951; issue 0259 wants the override to",
-        "exist and needs an authoring path first.",
+        "override today. (`[deploy.<board>] edf` / `cores`, documented in older",
+        "releases, never took effect and is retired.)",
         "",
         "## Portable executor classes (`SchedClass`)",
         "",
@@ -185,7 +185,7 @@ def render():
 
 
 def main():
-    content = render()
+    content = book_pages.relink(render(), "reference/sched-matrix.md")
     if "--check" in sys.argv:
         on_disk = open(OUT, encoding="utf8").read() if os.path.exists(OUT) else ""
         if on_disk != content:

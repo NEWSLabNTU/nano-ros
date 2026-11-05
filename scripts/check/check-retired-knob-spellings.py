@@ -85,7 +85,7 @@ ALLOWED = {
     "cmake/NanoRosKnobRegistry.cmake",
     "scripts/gen-knob-registry.py",
     "scripts/check/check-retired-knob-spellings.py",
-    "book/src/reference/retired-names.md",
+    "book/src/migrating/retired-names.md",
     "book/src/reference/deprecated-names.md",
     "docs/issues/open.md",
 }

@@ -42,6 +42,6 @@ Zero-copy raw API design.
 
 ## See also
 
-- [Custom RMW Backend porting guide](../../../../book/src/porting/custom-rmw.md)
+- [Custom RMW Backend porting guide](../../../../book/src/extending/custom-rmw.md)
 - [`nros-rmw` trait surface](../../../core/nros-rmw)
 - Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/zenoh/nros-rmw-zenoh>

@@ -6,7 +6,7 @@
 # rustup + cross targets). NOT baked: the west workspace (per-line, manifest-
 # pinned — stays a dynamic `west update`) and the `nros` CLI (released binary,
 # version-pinned, fetched per-run via install.sh). See
-# docs/development/ci-conventions.md + the zephyr image design (Phase 196.3).
+# book-internals/src/dev-env/ci-conventions.md + the zephyr image design (Phase 196.3).
 #
 # Build/publish via the `zephyr` job in .github/workflows/images.yml →
 #   ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk<ver>-r<N>

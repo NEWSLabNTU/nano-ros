@@ -6,7 +6,7 @@ nano-ros generic board crates (`nros-board-freertos`,
 `nros-board-baremetal-cortex-{m,a}`).
 
 Copy this directory, rename the placeholders, and fill in the
-vendor-specific bits. See `book/src/porting/vendor-overlay.md` for
+vendor-specific bits. See `book/src/extending/vendor-overlay.md` for
 the full cookbook + contract.
 
 ## Files

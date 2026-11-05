@@ -237,7 +237,7 @@ else
         "(interop tests, \`ros2\` CLI verification). Setup, codegen and every BUILD do not" \
         "need it. RUNNING a multi-process zenoh example does: its router is ROS's" \
         "rmw_zenohd (set NROS_RMW_ZENOHD to override), or use --rmw cyclonedds, which" \
-        "needs no daemon — see book/src/getting-started/installation.md" >&2
+        "needs no daemon — see book/src/get-started/installation.md" >&2
 fi
 
 # Issues 0359/0378 — the `scripts/bin/cargo` PATH shim that injected

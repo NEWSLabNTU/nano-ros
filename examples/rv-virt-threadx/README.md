@@ -44,6 +44,6 @@ Test lanes: `just threadx_riscv64 test`, `test-all`.
 - Build skips cleanly if ThreadX/NetX headers or `riscv64-unknown-elf-gcc`
   are missing — run setup first.
 - NetX Duo BSD `SO_RCVTIMEO` takes `nx_bsd_timeval*`, not int ms
-  (`docs/reference/platform-implementation-notes.md`).
+  (`book-internals/src/platform/implementation-notes.md`).
 - Known limitation: firmware NULL `c_app_main` after rebuild on some hosts —
   issue #127.

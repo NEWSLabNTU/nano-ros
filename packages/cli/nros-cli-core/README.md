@@ -1,6 +1,6 @@
 # nros-cli-core
 
-Library backing the canonical [`nros` CLI](../nros-cli/). Contains the subcommand dispatch, project scaffolder, config inspector, the `build` driver and the `doctor` health check, codegen commands, and shell-completion generator. (There is no `run` verb: `nros build` ends at an artifact — see [What `nros build` Produces](../../../book/src/user-guide/build-artifacts.md).)
+Library backing the canonical [`nros` CLI](../nros-cli/). Contains the subcommand dispatch, project scaffolder, config inspector, the `build` driver and the `doctor` health check, codegen commands, and shell-completion generator. (There is no `run` verb: `nros build` ends at an artifact — see [What `nros build` Produces](../../../book/src/build/build-artifacts.md).)
 
 > **Not published.** This crate is `publish = false` and is not on crates.io.
 > To *use* nano-ros, install an `nros` release (`scripts/install.sh`); to

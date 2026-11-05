@@ -52,7 +52,7 @@
  *    set_custom_transport, peek_custom_transport,
  *    take_custom_transport}` (the canonical Rust-side surface;
  *    this header mirrors its `#[repr(C)]` layout exactly).
- *  - Porting guide: `book/src/porting/custom-transport.md` — when
+ *  - Porting guide: `book/src/extending/custom-transport.md` — when
  *    to use, full Rust/C/C++ examples, framing per backend.
  */
 

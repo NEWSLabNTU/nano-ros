@@ -197,7 +197,7 @@ in one breaking change, with a `.breaking.md` entry:
 | `set_ready_notifier`, `ready_notifier_supported`, `ready_fd` | Rust; C `rclc_executor_set_ready_notifier`; C++ `rclcpp::Executor::set_ready_notifier` |
 | public `next_deadline_us` (it stays crate-internal for the park) | Rust; C `rclc_executor_get_next_deadline_ns`; C++ `rclcpp::Executor::next_deadline_us` |
 | the tokio examples (`examples/linux/rust/{service,action}-client-async`) and `linux_async_roundtrip_e2e` | — |
-| the Embassy recipe (`book/src/user-guide/embassy-integration.md`) and the async section of `nros::guide::services` | — |
+| the Embassy recipe (`book/src/realtime/rtic.md`) and the async section of `nros::guide::services` | — |
 | `nros::setup!` and its `nros_setup` / `nros_deploy` emit (phase-520, issue 2150) | Rust |
 | phase-520 W3's host-loop deferred surface: `callback_mark`, `set_deferred_since`, `CallbackMark`, the `nros::node_runtime` host-drain functions, and `examples/linux/rust/listener-host-loop` | Rust |
 

@@ -282,35 +282,35 @@ BOOK_CLAIMS = (
         "covers": "ParameterServer::new_in/declare/set/get over ParameterStorage<4>",
     },
     {
-        "file": "book/src/design/client-library.md",
+        "file": "book/src/concepts/client-library.md",
         "text": "reach a `no_std` no-alloc target",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "Executor::spin_once, spin_some and spin_forever are all linked",
     },
     {
-        "file": "book/src/internals/dispatch-strategy.md",
+        "file": "book/src/realtime/dispatch-strategy.md",
         "text": "keeping dispatch heap-free",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "the executor open + component install + spin path",
     },
     {
-        "file": "book/src/internals/dispatch-strategy.md",
+        "file": "book/src/realtime/dispatch-strategy.md",
         "text": "(Heap-free here is a checked property of the",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "the scoping sentence itself: executor path yes, transport no",
     },
     {
-        "file": "book/src/internals/dispatch-strategy.md",
+        "file": "book/src/realtime/dispatch-strategy.md",
         "text": "`heap-free-poc-mps2`",
         "kind": "image",
         "backed_by": HEAP_FREE_POC,
         "covers": "names the checked image",
     },
     {
-        "file": "book/src/user-guide/rmw-choosing.md",
+        "file": "book/src/communicate/choosing-an-rmw.md",
         "text": "not heap-free: each allocation goes through",
         "kind": "disclaimer",
         "why": "says XRCE is NOT heap-free (it replaced 'no heap required', "
@@ -337,49 +337,49 @@ BOOK_CLAIMS = (
         "type whatever the image links",
     },
     {
-        "file": "book/src/concepts/ros2-comparison.md",
+        "file": "book/src/from-ros2/differences.md",
         "text": "an array parameter, with no heap",
         "kind": "type-level",
         "why": "`Seq<T, N>` is inline storage; a property of the value type",
     },
     {
-        "file": "book/src/getting-started/workspace-cpp.md",
+        "file": "book/src/build/cpp-workspaces.md",
         "text": "no-alloc trampoline",
         "kind": "type-level",
         "why": "a C++ template trampoline with `this` as ctx — no storage is "
         "created, by construction of the call",
     },
     {
-        "file": "book/src/internals/dispatch-strategy.md",
+        "file": "book/src/realtime/dispatch-strategy.md",
         "text": "task's stack frame, no heap, no boxing",
         "kind": "type-level",
         "why": "where an inline closure's captures live (the spin task's "
         "stack frame), not a statement about the linked image",
     },
     {
-        "file": "book/src/user-guide/rtic-integration.md",
+        "file": "book/src/realtime/rtic.md",
         "text": "a no-alloc framework",
         "kind": "rationale",
         "why": "explains why the tag API exists (an unknown closure type has "
         "nowhere to live without a heap); promises nothing about an image",
     },
     {
-        "file": "book/src/internals/realtime-analysis.md",
+        "file": "book/src/realtime/rt-analysis.md",
         "text": "No heap in RT code",
         "kind": "rationale",
         "why": "a clippy disallowed-methods entry a user writes",
     },
     {
-        "file": "book/src/design/rmw.md",
+        "file": "book/src/extending/rmw-design.md",
         "text": '"no heap" is a property of the BACKEND',
         "kind": "disclaimer",
         "why": "issue 0777's correction of the old flat 'no heap' claim",
     },
     {
-        "file": "book/src/design/rmw.md",
-        "text": 'overstated it for years ("no heap", flatly)',
+        "file": "book/src/extending/rmw-design.md",
+        "text": 'The BACKENDS are another matter: "no heap" is not',
         "kind": "disclaimer",
-        "why": "quotes the retired claim in order to retract it",
+        "why": "retracts the old flat 'no heap' claim: not true of every backend (reworded by phase-532 W3)",
     },
 )
 

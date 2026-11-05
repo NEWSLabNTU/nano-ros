@@ -203,11 +203,19 @@ def twin_facts(index: dict, sdk_index: dict, p: dict) -> dict:
     if not west_board or not line:
         raise SystemExit(f"{where}: {ref[0]} states no `[board.zephyr] west_board` or "
                          "`[board.provisioning] zephyr_line`; a twin track builds a Zephyr image")
-    if not p.get("twin_locator"):
+    # A track whose CHAPTER builds the image (`twin_build`, the build
+    # directory its steps leave) boots that one; its locator is the chapter's
+    # own Kconfig, so the track states none. Otherwise the probe scaffolds the
+    # image, and the track states the serial locator it dials.
+    chapter_build = p.get("twin_build")
+    if chapter_build and p.get("twin_locator"):
+        raise SystemExit(f"{where}: `twin_build` boots the chapter's image, whose locator "
+                         "is the chapter's; drop `twin_locator`")
+    if not chapter_build and not p.get("twin_locator"):
         raise SystemExit(f"{where}: a twin track states `twin_locator`, the serial "
                          "locator its image dials")
     image = ["[image.twin]", f'board = "{key}"', 'rmw = "zenoh"',
-             f'locator = "{p["twin_locator"]}"']
+             f'locator = "{p.get("twin_locator", "")}"']
     # Issue 2194 -- the board's RAM knobs are its descriptor's `[knobs]`, which
     # every road carries below the image's own; restating them here typed one
     # fact twice. The field is refused, naming where the knobs live.
@@ -223,6 +231,15 @@ def twin_facts(index: dict, sdk_index: dict, p: dict) -> dict:
              "machine": machine,
              "link": " ".join(link) if isinstance(link, list) else link,
              "image_toml": "\n".join(image), "modules": modules}
+    if chapter_build:
+        del facts["image_toml"]
+        facts["chapter_build"] = chapter_build
+    # What `ros2 topic echo` subscribes with and must print, when the image
+    # publishes something other than the scaffold's `std_msgs/String`.
+    if p.get("twin_echo"):
+        facts["echo"] = p["twin_echo"]
+    if p.get("twin_heard"):
+        facts["heard"] = p["twin_heard"]
     if wiring.get("console"):
         facts["console"] = wiring["console"]
     if needs.get("secret"):
@@ -283,6 +300,8 @@ def render_probe_json(reg: Registry) -> str:
             t["offline"] = True
         if p.get("budget_minutes"):
             t["budget_minutes"] = int(p["budget_minutes"])
+        if p.get("awaits"):
+            t["awaits"] = list(p["awaits"])
         twin = getattr(reg, "twins", {}).get(p["track"])
         if twin:
             t["twin"] = twin
@@ -578,6 +597,15 @@ def self_test() -> None:
                                                           "needed_by": ["m"]}}}, probe)
     assert facts["modules"] == ["hal_m"] and facts["link"] == "u3", facts
     assert "knobs" not in facts["image_toml"], facts
+    built = twin_facts(idx, {}, {"track": "t", "twin": "k", "twin_build": "b",
+                                  "twin_echo": "pkg/msg/T", "twin_heard": "data: 1"})
+    assert built["chapter_build"] == "b" and "image_toml" not in built, built
+    assert built["echo"] == "pkg/msg/T" and built["heard"] == "data: 1", built
+    try:
+        twin_facts(idx, {}, {**probe, "twin_build": "b"})
+        raise AssertionError("a chapter-built twin with a locator was accepted")
+    except SystemExit as e:
+        assert "twin_build" in str(e), e
     try:
         twin_facts(idx, {}, {**probe, "twin_knobs": ["zenoh.a = 0"]})
         raise AssertionError("a twin track restating knobs was accepted")

@@ -49,7 +49,11 @@ _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "book", "src", "reference", "rmw-feature-matrix.md")
+# Where the page lives is the page map's answer (RFC-0123 D7), not this script's.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import book_pages  # noqa: E402
+
+OUT = str(book_pages.page_file("reference/rmw-feature-matrix.md"))
 
 # The canonical slot list: EMPTY_VTABLE in the cffi crate names EVERY field
 # (phase-376 W4 made that a load-bearing property). Parsed as the authority so
@@ -173,7 +177,7 @@ NODE_LAYER = [
      "Built in `nros-node` on pub/sub + services (goal / cancel / result "
      "services + feedback / status topics)."),
     ("Parameters (+ param services)", "Params",
-     "Node-layer services (RFC-0004); available wherever services are."),
+     "Node-layer services; available wherever services are."),
     ("Lifecycle (REP-2002)", "Lifecycle",
      "Node-layer state machine + services (`lifecycle-services` feature)."),
 ]
@@ -421,8 +425,8 @@ def render():
         "returns `UNSUPPORTED` (uORB's service stubs) is `—`, not `wired`.",
         "Status events count as wired whether the backend calls back",
         "(`*_event_init`) or the runtime polls it (`*_take_event`). The rows",
-        "below the parity marker are the phase-376 W4 surface — slots declared",
-        "in the ABI whose backend wiring is the in-flight campaign; all-dash",
+        "below the parity marker are slots declared in the ABI whose backend",
+        "wiring is still landing; all-dash",
         "rows there mean *declared, not yet wired anywhere*, and they flip",
         "automatically as backends land implementations.",
         "",
@@ -494,9 +498,7 @@ def render():
         "## Related",
         "",
         "- [Choosing an RMW Backend](../user-guide/rmw-choosing.md) — the",
-        "  decision tree",
-        "- [Backend Reference](../user-guide/rmw-backends.md) — architecture,",
-        "  footprint, transports per backend",
+        "  decision tree, and how each backend works",
         "- [Support Status](support-status.md) — versions, pins, and CI tiers",
         "",
     ]
@@ -504,7 +506,7 @@ def render():
 
 
 def main():
-    content = render()
+    content = book_pages.relink(render(), "reference/rmw-feature-matrix.md")
     if "--check" in sys.argv:
         on_disk = open(OUT, encoding="utf8").read() if os.path.exists(OUT) else ""
         if on_disk != content:

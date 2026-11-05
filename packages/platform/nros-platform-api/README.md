@@ -36,7 +36,7 @@ implements the subset its target supports.
 
 The trait grouping (and the per-method behaviour contract — blocking,
 may-fail, unsupported-fallback) is documented at length in the
-[Platform API Design](../../../book/src/design/platform-api.md) page.
+[Platform API Design](../../../book/src/extending/platform-api-design.md) page.
 
 ## When to use
 
@@ -50,8 +50,8 @@ may-fail, unsupported-fallback) is documented at length in the
 
 ## See also
 
-- [Custom Platform porting guide](../../../book/src/porting/custom-platform.md)
-- [Platform API Design](../../../book/src/design/platform-api.md)
+- [Custom Platform porting guide](../../../book/src/extending/custom-platform.md)
+- [Platform API Design](../../../book/src/extending/platform-api-design.md)
 - [`nros-platform-cffi`](../nros-platform-cffi) — C vtable for porters
   staying in C.
 - Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-api>

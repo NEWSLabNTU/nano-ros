@@ -97,5 +97,5 @@ session / pub / sub TUs will start `#include`-ing
 Staying in C means no `extern "C"` wrapping, no exception/RTTI knobs,
 and the same toolchain baseline as the rest of the XRCE ecosystem.
 Cyclone DDS picked C++ because Cyclone's idiomatic API is C++; the
-host-language rule (`book/src/internals/rmw-backends.md`) says match
+host-language rule (`book-internals/src/rmw/backend-host-language-policy.md`) says match
 the underlying library, which lands us in C here.

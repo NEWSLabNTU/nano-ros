@@ -46,4 +46,4 @@ case. The riscv NuttX lane lives at
 ## Gotchas
 
 - NuttX spin uses `sem_timedwait` (pthread condvar hangs) — see
-  `docs/reference/platform-implementation-notes.md`.
+  `book-internals/src/platform/implementation-notes.md`.

@@ -317,7 +317,7 @@ Four of ten are not packaged; most of the rest are years behind. So on this host
 "prefer system" would rarely fire — and on Arch, Fedora or nixpkgs the table
 looks very different. That asymmetry is the argument FOR the mechanism (it is
 what makes a non-Ubuntu host first-class, cf.
-`docs/development/ros2-on-non-ubuntu.md`) and AGAINST deleting dists on the
+`book-internals/src/dev-env/ros2-on-non-ubuntu.md`) and AGAINST deleting dists on the
 strength of one distro's archive.
 
 ### What this amendment decides

@@ -23,7 +23,7 @@ vtable with that registry before `main`.
 
 Unlike the platform axis, RMW is **not** mutually exclusive — Phase
 104 lets one binary register multiple backends (bridge nodes). See
-[Choosing an RMW Backend](../user-guide/rmw-backends.md).
+[Choosing an RMW Backend](../communicate/choosing-an-rmw.md).
 
 ### Platform (pick one)
 
@@ -33,7 +33,7 @@ The platform feature selects which OS primitives (threading, mutexes, clock, sle
 |----------------------|-------------------------------|-------------------|------------------|
 | `platform-posix`     | Linux (host board), NuttX     | pthreads          | BSD sockets      |
 | `platform-zephyr`    | Zephyr RTOS                   | k_thread_create   | Zephyr sockets   |
-| `platform-bare-metal`| Cortex-M, RISC-V, ESP32       | Single-threaded   | smoltcp          |
+| `platform-bare-metal`| Cortex-M, RISC-V              | Single-threaded   | smoltcp          |
 | `platform-freertos`  | FreeRTOS                      | xTaskCreate       | lwIP             |
 | `platform-nuttx`     | NuttX RTOS                    | pthreads          | BSD sockets      |
 | `platform-threadx`   | Azure RTOS / ThreadX          | tx_thread_create  | NetX Duo         |
@@ -56,7 +56,7 @@ These features are orthogonal to the three axes above and can be combined freely
 | `std`                    | Enables `std`-dependent APIs: `spin()`, `spin_period()`, system clock  |
 | `alloc`                  | Enables heap-dependent APIs: boxed callbacks, the parameter store heap fallback |
 | `safety-e2e`             | CRC-32 integrity + sequence tracking (AUTOSAR E2E / EN 50159)                   |
-| `param-services`         | ROS 2 parameter service handlers (`~/get_parameters`, etc.). Uses `alloc` only for its fallback (issue 1812). |
+| `param-services`         | ROS 2 parameter service handlers (`~/get_parameters`, etc.). Uses `alloc` only for its fallback. |
 | `ffi-sync`               | Wraps transport FFI calls in `critical_section::with()` for RTOS reentrancy     |
 | `sync-spin`              | Use spin-lock mutex (default)                                                   |
 | `sync-critical-section`  | Use `critical-section` mutex (for RTIC, Embassy)                                |
@@ -94,9 +94,8 @@ own platform axis — it pulls in one of the rows above.
 The board-over-RTOS pattern — a board that pulls in an RTOS row rather than
 being a platform itself — is what NVIDIA's Jetson Orin SPE would be: a
 Cortex-R5F running NVIDIA's FreeRTOS FSP, i.e. `platform = "freertos"`, never a
-platform of its own. Its board crate was removed in phase-337, and the SPE is
-not supported for now: every work item of its phase is closed (see
-[phase-418](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-418-orin-safety-island-and-spe.md)).
+platform of its own. nano-ros ships no board crate for it, and the SPE is
+not supported for now.
 
 ## Example Configurations
 
@@ -152,8 +151,7 @@ nros-rmw-xrce-cffi = { path = "…/nros-rmw-xrce-cffi", features = ["platform-nu
 
 ## How the pieces link
 
-Phase 208 decoupled `nros` from concrete backends — `nros` carries
-no RMW crate dependency. Instead:
+`nros` carries no RMW crate dependency. Instead:
 
 - **RMW.** The consuming crate's `nros-rmw-*` dep ships a `#[ctor]`
   that calls `nros_rmw_<name>_register()` at lib load (POSIX
@@ -171,11 +169,10 @@ no RMW crate dependency. Instead:
   `z_*` / `uxr_*` platform calls to the canonical `nros_platform_*` symbols:
   `zpico-sys/c/zpico/platform_aliases.c` (default-on `platform-aliases`
   feature) for zenoh-pico, and `nros-rmw-xrce/src/platform_aliases.c` (always
-  compiled into `nros-rmw-xrce-cffi`) for XRCE-DDS. (These replaced the
-  former `zpico-platform-shim` / `xrce-platform-shim` crates, deleted in
-  Phase 129.)
+  compiled into `nros-rmw-xrce-cffi`) for XRCE-DDS. (The former `zpico-platform-shim` / `xrce-platform-shim` crates no longer
+  exist.)
 
 The default feature set is `std` only. No RMW backend or platform is
 selected by default — the consuming crate chooses explicitly.
 
-For implementation details on how to add a new platform, see the [Porting Guide](../porting/overview.md) and [Platform API Reference](../reference/platform-api.md).
+For implementation details on how to add a new platform, see the [Porting Guide](../extending/overview.md) and [Platform API Reference](../reference/platform-api.md).

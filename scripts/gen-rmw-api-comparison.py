@@ -40,12 +40,17 @@ import collections
 import html
 import importlib.util as _util
 import os
+import pathlib
 import re
 import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOC = os.path.join(ROOT, "book", "src", "reference", "rmw-api-comparison.md")
+# Where the page lives is the page map's answer (RFC-0123 D7), not this script's.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import book_pages  # noqa: E402
+
+DOC = str(book_pages.page_file("reference/rmw-api-comparison.md"))
 ABI_DIR = os.path.join(ROOT, "packages", "core", "nros-rmw-abi", "include", "nros")
 
 
@@ -521,7 +526,8 @@ def render(contract, rows, tally, matrix, _un):
     w("so a slot changing shape moves this page in the same commit or fails the gate.")
     w("")
     w("For the prose rationale behind the big divergences, see")
-    w("[RMW API: Differences from upstream `rmw.h`](../design/rmw-vs-upstream.md).")
+    vs_upstream = book_pages.link(pathlib.Path(DOC), book_pages.page_file("design/rmw-vs-upstream.md"))
+    w(f"[RMW API: Differences from upstream `rmw.h`]({vs_upstream}).")
     w("")
     w("## How to read a row")
     w("")
@@ -935,13 +941,13 @@ def main():
         )
         return 1
 
-    new = render(contract, rows, tally, matrix, unexplained)
+    new = book_pages.relink(render(contract, rows, tally, matrix, unexplained), "reference/rmw-api-comparison.md")
 
     if args.check:
         old = open(DOC).read() if os.path.exists(DOC) else ""
         if new != old:
             print(
-                "ERROR: book/src/reference/rmw-api-comparison.md is stale — regenerate with\n"
+                "ERROR: book-internals/src/rmw/rmw-api-comparison.md is stale — regenerate with\n"
                 "  python3 scripts/gen-rmw-api-comparison.py\n"
                 "and commit. It derives from the headers and the map the parity gate\n"
                 "reads, so drift means one of those moved and the document did not.",
@@ -959,7 +965,7 @@ def main():
     with open(DOC, "w") as fh:
         fh.write(new)
     print(
-        f"wrote book/src/reference/rmw-api-comparison.md — {len(contract)} symbols "
+        f"wrote book-internals/src/rmw/rmw-api-comparison.md — {len(contract)} symbols "
         "(" + ", ".join(
             f"{sum(matrix[(st, c)] for c in SURFACES)} {st}"
             for st in STATUS_ORDER

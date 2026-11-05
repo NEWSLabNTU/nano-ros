@@ -145,7 +145,7 @@ rmw-abi-shape:
 rmw-doc-slot-names:
     @python3 scripts/check-rmw-doc-slot-names.py --check
 
-# `book/src/reference/rmw-api-comparison.md` is GENERATED from the ROS 2
+# `book-internals/src/rmw/rmw-api-comparison.md` is GENERATED from the ROS 2
 # signature extract, the nano-ros ABI headers, and the same reason map
 # `rmw-api-parity` enforces — so the book cannot drift from the headers. A
 # hand-maintained comparison describes the tree on the day it was written;

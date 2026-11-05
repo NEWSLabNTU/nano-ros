@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "book/**"
+      - "book-internals/**"
       - "packages/api/nros/**"
       - "packages/core/nros-rmw/**"
       - "packages/core/nros-rmw-abi/**"
@@ -116,6 +117,11 @@ jobs:
           python3 scripts/gen-pool-inventory.py
           python3 scripts/gen-config-surface.py
           mdbook build book
+          # RFC-0123 D7: nano-ros Internals, staged under the user book at
+          # `internals/` (built separately: mdBook clears its build dir).
+          mdbook build book-internals
+          mkdir -p book/book/internals
+          cp -r book-internals/book/. book/book/internals/
 
       - name: Build rustdoc
         # User-facing crates only — internal platform/board/driver crates

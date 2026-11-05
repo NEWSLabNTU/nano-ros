@@ -3,7 +3,7 @@
 
 # The failure this prevents
 
-`docs/reference/canonical-build-path.md` explains how a configuration knob
+`book-internals/src/pipeline/canonical-build-path.md` explains how a configuration knob
 reaches the compiler on each build road, and `scripts/nros-build-wiring.py`
 carries the one authored structure that map needs: a road's CARRIER, which is a
 design fact no grep can read off the tree.
@@ -40,7 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PLAN = ROOT / "packages/cli/nros-cli-core/src/builder/plan.rs"
-DOC = ROOT / "docs/reference/canonical-build-path.md"
+DOC = ROOT / "book-internals/src/pipeline/canonical-build-path.md"
 TOOL = ROOT / "scripts/nros-build-wiring.py"
 
 # `pub enum Driver { ... }` up to the closing brace at column 0 of the block.

@@ -61,7 +61,7 @@ nros::main!(board = LinuxBoard, launch = "demo_bringup:sim.launch.xml", args = [
 ## Task 1: Canonical example-shape fixes
 
 **Files:**
-- Modify: `book/src/internals/creating-examples.md` (lines 14, 18, 104, 153)
+- Modify: `book-internals/src/testing/creating-examples.md` (lines 14, 18, 104, 153)
 - Modify: `book/src/reference/c-api.md` (line ~76)
 
 - [ ] **Step 1: Baseline grep (expect stale hits)**
@@ -77,7 +77,7 @@ Replace the row:
 ```
 with:
 ```
-| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [the workspace track](../../../book/src/getting-started/workspace-from-app-node.md). |
+| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [the workspace track](../../../book/src/build/growing-your-workspace.md). |
 ```
 
 - [ ] **Step 3: Fix `creating-examples.md` matrix sentence (line 18)**
@@ -105,7 +105,7 @@ Expected: **no output** (zero hits).
 - [ ] **Step 8: Commit**
 
 ```bash
-git add book/src/internals/creating-examples.md book/src/reference/c-api.md
+git add book-internals/src/testing/creating-examples.md book/src/reference/c-api.md
 git commit -m "docs(book): collapse example paths to canonical <plat>/<lang>/<example> shape
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -116,7 +116,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 2: Reconcile the cookbook to the 3-role model
 
 **Files:**
-- Modify: `book/src/user-guide/component-and-entry-pkg.md` (whole file)
+- Modify: `book/src/build/roles.md` (whole file)
 - Modify: `book/src/SUMMARY.md` (line 33 title)
 
 This file is the reference cookbook. Apply the fact-sheet model. Keep it reference-voice (the new tutorial pages link here).
@@ -161,7 +161,7 @@ into the Entry pkg directly.
 `<arg>`, `<node>`, `<param>`, `<remap>`, `<group>`, `<include>`, with
 `$(find <pkg>)` / `$(var)` / `$(env)` substitutions. Stock nav2/Autoware
 XML pastes in and Just Works (Python `.launch.py` is not supported yet).
-See [the workspace bringup tutorial](../../../book/src/getting-started/workspace-bringup.md).
+See [the workspace bringup tutorial](../../../book/src/build/growing-your-workspace.md).
 ````
 
 - [ ] **Step 5: Fix the `nros::main!` forms block (lines 72–95)**
@@ -197,13 +197,13 @@ Rename "single-Component convenience" → "single-Node convenience"; "One Compon
 
 - [ ] **Step 10: Verify no stale terms remain in the file**
 
-Run: `grep -n 'Component pkg\|nros::component\|metadata.nros.component\|retired Bringup' book/src/user-guide/component-and-entry-pkg.md`
+Run: `grep -n 'Component pkg\|nros::component\|metadata.nros.component\|retired Bringup' book/src/build/roles.md`
 Expected: **no output**.
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add book/src/user-guide/component-and-entry-pkg.md book/src/SUMMARY.md
+git add book/src/build/roles.md book/src/SUMMARY.md
 git commit -m "docs(book): reconcile cookbook to 3-role model (Node/Bringup/Entry)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -214,7 +214,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 3: Terminology drift sweep across other pages
 
 **Files:**
-- Modify (as hits dictate): `book/src/user-guide/workflow.md`, `book/src/user-guide/deployment.md`, `book/src/porting/board-trait.md`, `book/src/concepts/comparison-vs-microros.md`, any other hit.
+- Modify (as hits dictate): `book/src/build/growing-your-workspace.md`, `book/src/operate/deployment.md`, `book/src/extending/board-trait.md`, `book/src/from-ros2/vs-micro-ros.md`, any other hit.
 
 - [ ] **Step 1: Find all remaining stale terms book-wide**
 
@@ -276,7 +276,7 @@ In the `nros build` section, change the framing to: "`nros build` **delegates** 
 
 - [ ] **Step 5: Add a `system.toml` cross-reference note**
 
-Where root `nros.toml` is introduced, add one sentence: "Multi-node *topology* (which nodes, their wiring, per-target overrides) lives in a Bringup pkg's `system.toml` — see [Bringup](../../../book/src/getting-started/workspace-bringup.md). The root `nros.toml` carries deploy *targets* (`[deploy.<name>]`)." Do **not** delete `nros.toml` references.
+Where root `nros.toml` is introduced, add one sentence: "Multi-node *topology* (which nodes, their wiring, per-target overrides) lives in a Bringup pkg's `system.toml` — see [Bringup](../../../book/src/build/growing-your-workspace.md). The root `nros.toml` carries deploy *targets* (`[deploy.<name>]`)." Do **not** delete `nros.toml` references.
 
 - [ ] **Step 6: Verify every documented verb exists in the shipped binary**
 
@@ -297,7 +297,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 5: New page — "From an app node to a workspace"
 
 **Files:**
-- Create: `book/src/getting-started/workspace-from-app-node.md`
+- Create: `book/src/build/growing-your-workspace.md`
 
 - [ ] **Step 1: Write the page**
 
@@ -316,18 +316,18 @@ Tutorial voice. Required content:
 | `ros2 run <pkg> <exe>` | run the Entry pkg binary (`cargo run`) | one Entry pkg per board |
 ```
 
-- A "Where to go next" list linking the next three pages + the [Node, Bringup & Entry Packages](../../../book/src/user-guide/component-and-entry-pkg.md) reference.
+- A "Where to go next" list linking the next three pages + the [Node, Bringup & Entry Packages](../../../book/src/build/roles.md) reference.
 - Note the app-node shape stays perfectly valid for single-node work — don't make a workspace until you need one.
 
 - [ ] **Step 2: Verify cited paths exist**
 
-Run: `ls examples/native/rust/talker/ book/src/user-guide/component-and-entry-pkg.md`
+Run: `ls examples/native/rust/talker/ book/src/build/roles.md`
 Expected: both exist.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/getting-started/workspace-from-app-node.md
+git add book/src/build/growing-your-workspace.md
 git commit -m "docs(book): add 'From an app node to a workspace' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -338,7 +338,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 6: New page — "Prepare node packages"
 
 **Files:**
-- Create: `book/src/getting-started/workspace-node-pkgs.md`
+- Create: `book/src/build/growing-your-workspace.md`
 
 - [ ] **Step 1: Write the page**
 
@@ -361,7 +361,7 @@ default_namespace = "/"
 - A minimal `src/lib.rs` skeleton showing `nros::node!(Talker);` and the `Node`/`ExecutableNode` impl shape (cite `examples/stm32f4/rust/talker_pkg/src/lib.rs` for the full worked version; show ~15 lines, not the whole thing).
 - State: **no `fn main()`** in a Node pkg (it's a lib linked into an Entry pkg); codegen owns the spin loop.
 - Build: `cargo build` from the workspace root builds all Node pkgs.
-- Link to the [Node, Bringup & Entry Packages](../../../book/src/user-guide/component-and-entry-pkg.md) reference for the full API.
+- Link to the [Node, Bringup & Entry Packages](../../../book/src/build/roles.md) reference for the full API.
 
 - [ ] **Step 2: Verify the cited example + macro line**
 
@@ -371,7 +371,7 @@ Expected: both match.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/getting-started/workspace-node-pkgs.md
+git add book/src/build/growing-your-workspace.md
 git commit -m "docs(book): add 'Prepare node packages' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -382,7 +382,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 7: New page — "Bringup: launch + system.toml"
 
 **Files:**
-- Create: `book/src/getting-started/workspace-bringup.md`
+- Create: `book/src/build/growing-your-workspace.md`
 
 **Note:** This page cites `examples/templates/multi-node-workspace/` (Task 10). If Task 10 runs after, leave the link in place — Task 11 link-checks the whole book.
 
@@ -431,7 +431,7 @@ Expected: exists.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/getting-started/workspace-bringup.md
+git add book/src/build/growing-your-workspace.md
 git commit -m "docs(book): add 'Bringup: launch + system.toml' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -442,7 +442,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 8: New page — "Entry package: boot on a board"
 
 **Files:**
-- Create: `book/src/getting-started/workspace-entry-pkg.md`
+- Create: `book/src/build/growing-your-workspace.md`
 
 - [ ] **Step 1: Write the page**
 
@@ -479,7 +479,7 @@ Expected: both match.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/getting-started/workspace-entry-pkg.md
+git add book/src/build/growing-your-workspace.md
 git commit -m "docs(book): add 'Entry package: boot on a board' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -496,10 +496,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 After the `Your own message package` line and before `Troubleshooting — First 10 Minutes`, add:
 ```
-- [From an app node to a workspace](../../../book/src/getting-started/workspace-from-app-node.md)
-- [Prepare node packages](../../../book/src/getting-started/workspace-node-pkgs.md)
-- [Bringup: launch + system.toml](../../../book/src/getting-started/workspace-bringup.md)
-- [Entry package: boot on a board](../../../book/src/getting-started/workspace-entry-pkg.md)
+- [From an app node to a workspace](../../../book/src/build/growing-your-workspace.md)
+- [Prepare node packages](../../../book/src/build/growing-your-workspace.md)
+- [Bringup: launch + system.toml](../../../book/src/build/growing-your-workspace.md)
+- [Entry package: boot on a board](../../../book/src/build/growing-your-workspace.md)
 ```
 
 - [ ] **Step 2: Verify each linked file exists**

@@ -17,7 +17,7 @@ same duplication class one family over.
 **Prior:** phase-468 W3 (`check-board-build-wiring`, the shared build crate as a
 rule), issue 1280 (an inherited path outranks the checkout being built), issue
 0491 (watch the CONTENT, never the spelling), RFC-0049 (the knob ladder),
-RFC-0064 (board organization), [docs/reference/canonical-build-path.md](../../reference/canonical-build-path.md).
+RFC-0064 (board organization), [docs/reference/canonical-build-path.md](../../../book-internals/src/pipeline/canonical-build-path.md).
 
 **Source:** a census of every tracked `build.rs`, run on `main` at `e3de8bda1`
 on 2026-09-28. Every number below is reproducible with

@@ -365,7 +365,7 @@ other carrier is generated from it:
   worktree cannot inherit another checkout's trees.
 
 The map of how this meets the three build roads is
-[canonical-build-path.md](../reference/canonical-build-path.md).
+[canonical-build-path.md](../../book-internals/src/pipeline/canonical-build-path.md).
 
 ## 6. Language API surfaces
 

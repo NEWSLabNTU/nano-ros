@@ -47,7 +47,7 @@ EXEMPT_FILES = {
     "cmake/NanoRosRetiredNames.cmake",          # the error table
     "scripts/check/check-retired-cmake-names.py",
     "tests/cmake-retired-names-tests.sh",       # asserts each old name fails
-    "book/src/reference/retired-names.md",      # old -> new IS the page
+    "book/src/migrating/retired-names.md",      # old -> new IS the page
     # RFC-0103 D6: `NANO_ROS_ROOT` as an ENVIRONMENT variable is refused by a
     # different rule; that gate names it.
     "scripts/check/check-retired-store-vars.py",

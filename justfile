@@ -258,7 +258,7 @@ list-all:
 #
 # WITH NO SCOPE this stays the workspace build — deliberately NOT "the fixtures
 # for everything provisioned". `just build` is the documented fast inner loop
-# (book/src/internals/build-system.md), minutes not hours, and silently
+# (book-internals/src/pipeline/build-system.md), minutes not hours, and silently
 # promoting it to a fixture sweep would be the most expensive surprise in the
 # tree. What it gains instead is the derived default scope PRINTED, so the
 # question "what would `just build <scope>` cover here?" is answered without
@@ -1631,7 +1631,7 @@ test-doc:
 # so downstream consumers (CI dashboards, _count-real-failures, _test-summary,
 # scripts/test/failed-filterset.py) see them as skips, not failures.
 # Idempotent + safe on missing files. See `scripts/test/rewrite-skipped-junit.py`
-# and `docs/development/test-harness.md` (Phase 214.R).
+# and `book-internals/src/testing/test-harness.md` (Phase 214.R).
 _rewrite-skipped-junit junit="target/nextest/default/junit.xml":
     #!/usr/bin/env bash
     python3 scripts/test/rewrite-skipped-junit.py "{{junit}}"
@@ -5903,6 +5903,13 @@ book:
     python3 scripts/gen-pool-inventory.py
     python3 scripts/gen-config-surface.py
     "$MDBOOK" build book
+    # RFC-0123 D7: nano-ros Internals is served at `internals/` under the user
+    # book. Built in its own directory and staged after, like `api/` below:
+    # mdBook clears its build dir, and the user book still writes pages under
+    # `internals/` until phase-532 W4.
+    "$MDBOOK" build book-internals
+    mkdir -p book/book/internals
+    cp -r book-internals/book/. book/book/internals/
     mkdir -p book/book/api
     rm -rf book/book/api/rust book/book/api/c book/book/api/cpp \
            book/book/api/rmw-cffi book/book/api/platform-cffi
@@ -5926,6 +5933,12 @@ book:
 [group("docs")]
 book-serve:
     mdbook serve book/ --open
+
+# Live-preview nano-ros Internals (the contributor book, RFC-0123) on its own
+# port. Cross-book links resolve only in the staged `just book` output.
+[group("docs")]
+book-internals-serve:
+    mdbook serve book-internals/ --port 3001 --open
 
 # Clean example build artifacts across platform namespaces.
 [group("maintenance")]

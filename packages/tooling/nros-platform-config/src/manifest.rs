@@ -5,7 +5,7 @@
 //! / `[arch.*]`, the backend's `nros-rmw.toml` supplies `[port.<platform>]`
 //! ([`PortRow`]), and `PlatformsTree::as_platform_manifest` joins them into
 //! the [`PlatformManifest`] below. Reference:
-//! `book/src/internals/zpico-build.md`.
+//! `book-internals/src/rmw/zpico-build.md`.
 //!
 //! Phase 136.1 / 136.4 landed the loader + per-platform resolver
 //! inside `zpico-sys/build/`. Phase 152.5 lifted it into the

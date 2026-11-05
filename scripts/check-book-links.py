@@ -29,6 +29,11 @@ resolved against the tree too. A chapter the book's own table of contents marks
 dormant or retired (`[ESP32 (esp-hal, dormant)](…)` in `SUMMARY.md`) is not
 held to that arm: it is parked text, kept unchanged on purpose (issue 1525).
 
+phase-532 W0 (RFC-0123 D7): two books. `book-internals/src/**/*.md` is read
+too, and a link that crosses books is a relative `.html` link between the two
+DEPLOY roots (the user book at the site root, Internals at `internals/`).
+Such a link is resolved by turning the page into its deploy URL, joining the
+link, and mapping the URL back to the source page of whichever book serves it.
 Enumeration is `git ls-files`: tracked files only, the same index-driven
 discipline the rest of the gates use, so an untracked scratch page cannot
 fail the build and a build tree cannot slow it down.
@@ -37,6 +42,7 @@ Exit 0 when every link resolves, 1 otherwise.
 """
 
 import pathlib
+import posixpath
 import re
 import subprocess
 import sys
@@ -73,6 +79,33 @@ OWN_TREE = re.compile(r"^https://github\.com/NEWSLabNTU/nano-ros/(?:blob|tree)/m
 PARKED = re.compile(r"\[[^\]]*\((?:[^)]*,\s*)?(?:dormant|retired)\)\]\(\./([^)]+)\)", re.I)
 
 
+# RFC-0123 D7: where each book's pages are served, relative to the site root.
+DEPLOY = (("internals/", "book-internals/src"), ("", "book/src"))
+
+
+def deploy_url(rel: str) -> str:
+    """`book/src/a/b.md` -> `a/b.html`; `book-internals/src/x.md` -> `internals/x.html`."""
+    for prefix, src in DEPLOY:
+        if rel.startswith(src + "/"):
+            return prefix + str(pathlib.PurePosixPath(rel[len(src) + 1 :]).with_suffix(".html"))
+    raise ValueError(rel)
+
+
+def cross_book_sources(rel: str, link: str) -> list[str]:
+    """Source pages that could serve the deploy URL a `.html` link from page
+    `rel` names, most specific first. Until phase-532 W4 empties the user
+    book's `internals/` directory, a URL under `internals/` may be served by
+    either book (RFC-0123 D7), so both are candidates."""
+    if not link.endswith(".html"):
+        return []
+    url = posixpath.normpath(posixpath.join(posixpath.dirname(deploy_url(rel)), link))
+    out = []
+    for prefix, src in DEPLOY:
+        if url.startswith(prefix):
+            out.append(f"{src}/{str(pathlib.PurePosixPath(url[len(prefix):]).with_suffix('.md'))}")
+    return out
+
+
 def self_test() -> None:
     """Both link spellings are read (issue 1615)."""
     assert [m.group(1) for m in REFDEF_RE.finditer("x\n[r]: ./p.md#a\n")] == ["./p.md"]
@@ -84,13 +117,19 @@ def self_test() -> None:
         "getting-started/esp32.md"
     ]
     assert not PARKED.findall("- [Retired names](./reference/retired-names.md)")
+    assert deploy_url("book-internals/src/rmw/z.md") == "internals/rmw/z.html"
+    assert cross_book_sources("book/src/a/p.md", "../internals/rmw/z.html")[0] == "book-internals/src/rmw/z.md"
+    assert cross_book_sources("book-internals/src/rmw/z.md", "../../start/i.html") == ["book/src/start/i.md"]
+    # the shared `internals/` prefix: the user book's own page is a candidate too
+    assert "book/src/internals/x.md" in cross_book_sources("book-internals/src/rmw/z.md", "../../internals/x.html")
 
 
 def main() -> int:
     self_test()
     repo_root = pathlib.Path(__file__).resolve().parent.parent
     listed = subprocess.run(
-        ["git", "ls-files", "book/src/**/*.md", "book/src/*.md"],
+        ["git", "ls-files", "book/src/**/*.md", "book/src/*.md",
+         "book-internals/src/**/*.md", "book-internals/src/*.md"],
         cwd=repo_root,
         capture_output=True,
         text=True,
@@ -121,8 +160,11 @@ def main() -> int:
             if GENERATED_API.search(link):
                 continue
             links += 1
-            if not (page.parent / link).resolve().exists():
-                dead.append((rel, link))
+            if (page.parent / link).resolve().exists():
+                continue
+            if any((repo_root / c).exists() for c in cross_book_sources(rel, link)):
+                continue
+            dead.append((rel, link))
 
     if not dead:
         print(

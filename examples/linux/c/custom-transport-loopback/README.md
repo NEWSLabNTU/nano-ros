@@ -60,7 +60,7 @@ WFE wake.
 
 ## See also
 
-* `book/src/porting/custom-transport.md` — full porting guide.
+* `book/src/extending/custom-transport.md` — full porting guide.
 * `examples/linux/rust/custom-transport-{talker,listener}/`
   — Rust-side equivalents (two-process loopback over a Unix
   socket).

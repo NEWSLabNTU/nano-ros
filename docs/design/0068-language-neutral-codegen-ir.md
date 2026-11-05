@@ -254,7 +254,7 @@ Entries, which this RFC did not scope, need more: each entry language has a
 Rust emitter that builds its view (RFC-0091 §8). The Escape hatch above is
 closer to how entries work today than Stage 3 is. No code changed with this
 amendment; it corrects the claim. The procedure is in
-`book/src/internals/codegen-packs.md`.
+`book-internals/src/pipeline/codegen-packs.md`.
 
 ### Amendment 3 (2026-09-27, issue 1422) — `LoweredType` states no layout fact
 

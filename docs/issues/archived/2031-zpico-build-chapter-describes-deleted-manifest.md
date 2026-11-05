@@ -14,7 +14,7 @@ related: [phase-418]
 
 ## What
 
-[`book/src/internals/zpico-build.md`](../../../book/src/internals/zpico-build.md)
+[`book/src/internals/zpico-build.md`](../../../book-internals/src/rmw/zpico-build.md)
 is written around `packages/rmw/zenoh/zpico-sys/zenoh_platforms.toml` — one
 manifest with `[platform.<name>]` and `[arch.<name>]` tables, read by a single
 `cc-rs` invocation. That file is gone. The data is now split by owner:

@@ -497,6 +497,6 @@ contributors.
 
 - `docs/research/build-config-deploy-comparison.md` — the first-image
   time+space measurement that motivates this (W.5).
-- `docs/development/sdk-tiers.md` — the current `just setup` tier model (the
+- `book-internals/src/dev-env/sdk-tiers.md` — the current `just setup` tier model (the
   source-build baseline this supersedes for users).
 - `docs/roadmap/phase-172-orchestration-deferred.md` — W.5 tracking.

@@ -23,8 +23,8 @@ The two layers are deliberately **separate verb sets** so the choice is explicit
   spelling `node.create_subscription::<M, _>("/topic", |m| { ... })` — executor
   dispatches.
 
-phase-483 W2 gave the polled receive-side constructors their `create_polling_*`
-names: on `nros::Node`, rclrs's `create_subscription` and `create_service` take
+The polled receive-side constructors are named `create_polling_*`
+because on `nros::Node`, rclrs's `create_subscription` and `create_service` take
 a callback, and a polled form under the same name would compile a ported line
 into a different contract.
 
@@ -85,11 +85,11 @@ Service clients and action clients **stay on L1** in the current code — they h
 
 Both layers cross the FFI cleanly:
 
-- **C, L1 polling** — `rclc_polling_subscription_init` writes a `RawSubscription` inline in `rclc_polling_subscription_t._opaque`, and `rclc_polling_subscription_take_serialized` reads from the inline buffer. Like C++, C splits the two layers by TYPE (phase-487): a dispatched `rcl_subscription_t` has no inline storage at all. Services and clients have the same split: `rclc_polling_service_t` / `rclc_polling_client_t` with `rclc_polling_service_take_request_raw` / `rclc_polling_client_take_response_raw`, beside the dispatched `rcl_service_t` / `rcl_client_t`. Action servers and clients keep both roads in one type for now (phase-487 W4).
+- **C, L1 polling** — `rclc_polling_subscription_init` writes a `RawSubscription` inline in `rclc_polling_subscription_t._opaque`, and `rclc_polling_subscription_take_serialized` reads from the inline buffer. Like C++, C splits the two layers by TYPE: a dispatched `rcl_subscription_t` has no inline storage at all. Services and clients have the same split: `rclc_polling_service_t` / `rclc_polling_client_t` with `rclc_polling_service_take_request_raw` / `rclc_polling_client_take_response_raw`, beside the dispatched `rcl_service_t` / `rcl_client_t`. Action servers and clients keep both roads in one type for now.
 - **C, L2 callback** — `rclc_subscription_init_default` creates the entity; the callback is supplied at registration (`rclc_executor_add_subscription_with_context` — rclc's six arguments — for the typed path, `rclc_executor_add_subscription_raw` for the byte path), which also allocates the executor-arena entry. The arena entry owns the subscriber, the callback and its context; the struct keeps the arena handle and the description it was initialised with.
-- **C++** — typed templates wrap each FFI surface: `rclcpp::PollSubscription<M>` + `take`, `rclcpp::PollService<S>` + `take_request` and `rclcpp::PollClient<S>` + `send_request` for L1, `rclcpp::PollingActionServer<A>` for the L1 action path (122.3.d.b), the L2 executor-registered callback model via the existing `rclcpp::ActionServer<A>` API. The L1/L2 split is a TYPE split in C++ since phase-456: one class serving both owners offered the L1 method set on an L2 object, where the storage it reads is never filled.
+- **C++** — typed templates wrap each FFI surface: `rclcpp::PollSubscription<M>` + `take`, `rclcpp::PollService<S>` + `take_request` and `rclcpp::PollClient<S>` + `send_request` for L1, `rclcpp::PollingActionServer<A>` for the L1 action path, the L2 executor-registered callback model via the existing `rclcpp::ActionServer<A>` API. The L1/L2 split is a TYPE split in C++: one class serving both owners would offer the L1 method set on an L2 object, where the storage it reads is never filled.
 
-For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/index.html). For the example migration tally (32 examples on L2, 16 intentionally L1), see the [unify-api-paths roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-122-unify-api-paths.md).
+For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/index.html).
 
 ## Event-driven path (122.3.c.6.e)
 

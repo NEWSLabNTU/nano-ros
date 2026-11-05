@@ -11,7 +11,7 @@ prose. The per-platform rows are parsed from `sched_caps_for()`
 (`nros-orchestration-ir`), the exact function the workload realizer
 calls to decide Native-vs-Degrade for a deployment; its rule, quoted
 from the source: *caps describe what nano-ros DELIVERS, not what
-the OS could do* (issue 0261).
+the OS could do*.
 
 ## Kernel capabilities per platform
 
@@ -34,12 +34,8 @@ row's reach is `linux` while the platform layer beneath it stays
 `SCHED_SPORADIC`; ThreadX's preemption threshold is native; the
 bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),
 single core. These are PLATFORM DEFAULTS and there is no per-image
-override today: `[deploy.<board>] edf = <bool>` / `cores = <n>` was
-documented here but never authorable (and `[deploy.*]` itself is retired,
-phase-486 W8) — the knob read an extras bag no
-table wrote, and upstream's `deny_unknown_fields` rejected the keys
-outright. Retired with issue 0951; issue 0259 wants the override to
-exist and needs an authoring path first.
+override today. (`[deploy.<board>] edf` / `cores`, documented in older
+releases, never took effect and is retired.)
 
 ## Portable executor classes (`SchedClass`)
 
@@ -58,10 +54,10 @@ with zero sites is a type, not a behavior.
 
 ## Related
 
-- [Scheduling Models](../internals/scheduling-models.md) — the
+- [Scheduling Models](../realtime/scheduling-models.md) — the
   narrative: how tiers, transport priorities, and these classes
   land on each kernel
-- [RTOS Cooperation](../concepts/rtos-cooperation.md) — spin-loop
+- [RTOS Cooperation](../realtime/rtos-cooperation.md) — spin-loop
   shapes per execution model
 - [Support Status](support-status.md) · [Per-RMW Feature
   Matrix](rmw-feature-matrix.md)

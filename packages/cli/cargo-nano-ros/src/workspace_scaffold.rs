@@ -312,18 +312,19 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
             // `orchestration::nano_ros_root`). Advertising the export made the
             // first documented command unrunnable for exactly the reader who
             // installed a release. Same commands as first-project.md.
-            "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  ./build/posix-{1}-linux/cmake/linux_entry\n\
-             (`nros build` finds nano-ros itself; `nros dev sdk root --explain` prints the root it uses.)",
+            //
+            // phase-532 W9: run with `nros run`, which starts the image
+            // `nros build` names, rather than a build-tree path; and point at
+            // the user-tier `nros locate nano-ros`, not the dev tier.
+            "Next steps:\n  cd {0}\n  nros setup\n  nros sync\n  nros build\n  nros run\n\
+             (`nros build` finds nano-ros itself; `nros locate nano-ros --why` prints the root it uses.)",
             cfg.dir.display(),
-            cfg.rmw
         ),
         _ => format!(
             // The cargo road's coordinate carries the RMW too (`posix-<rmw>`);
             // only the cmake road appends the board.
-            "Next steps:\n  cd {0}\n  nros sync\n  nros build\n  \
-             RUST_LOG=info ./build/posix-{1}/linux_entry/target/debug/linux_entry",
+            "Next steps:\n  cd {0}\n  nros setup\n  nros sync\n  nros build\n  RUST_LOG=info nros run",
             cfg.dir.display(),
-            cfg.rmw
         ),
     };
     eprintln!("{next}");

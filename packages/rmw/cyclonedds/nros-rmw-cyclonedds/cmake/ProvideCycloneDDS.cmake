@@ -124,7 +124,7 @@ macro(nros_provide_cyclonedds)
                 # `find_program` caches, and CMake never revalidates a cached
                 # path. A build dir configured on the host and re-entered from
                 # a container (the ROS distrobox — see
-                # docs/development/ros2-on-non-ubuntu.md) then keeps the host's
+                # book-internals/src/dev-env/ros2-on-non-ubuntu.md) then keeps the host's
                 # `/usr/bin/sccache` as the compiler launcher, and every Cyclone
                 # TU dies at `Error 127` — `/bin/sh: 1: /usr/bin/sccache: not
                 # found` — which reads as a broken build, not a stale cache.

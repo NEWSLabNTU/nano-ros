@@ -33,7 +33,7 @@
 #
 # Keep this revision in lock-step with the `zephyr-lang-rust` project in
 # nano-ros's top-level `west.yml` (Phase 199.2). See
-# docs/development/zephyr-version-support.md.
+# book-internals/src/platform/zephyr-version-support.md.
 
 manifest:
   remotes:

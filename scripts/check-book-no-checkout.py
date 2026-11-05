@@ -22,10 +22,10 @@ That class goes away when no user step names a ref of this repository.
 
 WHICH CHAPTERS ARE "USER"
 
-Decided by SECTION, never by a list of files: a page is a user chapter when it
-lives in one of the user directories of `book/src/` (`USER_DIRS`). Contributor
-material lives in `internals/` (the "Internals" and "Contributing" parts of
-`SUMMARY.md`), which this gate does not read. A chapter the table of contents
+Decided by the page map, never by a list of files here: a page is a user
+chapter when `book/page-map.toml` puts it in the user book (RFC-0123 D3,
+phase-532 W3). Contributor material lives in the Internals book
+(`book-internals/`), which this gate does not read. A chapter the table of contents
 marks `(…, dormant)` or `(…, retired)` — the parked ESP32 pages, issue 1525 —
 is kept unchanged on purpose and is skipped, with the same derivation
 `check-book-links.py` and `check-book-board-names.py` use.
@@ -47,8 +47,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-# The user sections of the book, as directories under book/src/.
-USER_DIRS = ("getting-started", "start-here", "user-guide", "platform-guides", "porting")
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import book_pages  # noqa: E402  the scope: every user-book page (RFC-0123 D3)
+
+USER_PAGES = book_pages.user_page_paths()
 
 FENCE = re.compile(r"^\s*(?:```|~~~)\s*([A-Za-z0-9_+-]*)")
 # A fence with one of these info strings (or none) holds shell a reader runs.
@@ -81,8 +83,7 @@ def parked_pages(summary: str) -> set[str]:
 
 
 def is_user_page(rel: str) -> bool:
-    parts = rel.split("/")
-    return len(parts) >= 3 and parts[:2] == ["book", "src"] and parts[2] in USER_DIRS
+    return rel in USER_PAGES
 
 
 def scan_page(rel: str, text: str) -> list[str]:
@@ -118,7 +119,7 @@ def run(pages: dict[str, str]) -> list[str]:
 
 
 def selftest(verbose: bool = False) -> int:
-    first = "book/src/getting-started/first-project.md"
+    first = "book/src/get-started/first-project.md"
     cases = [
         ("planted clone in first-project.md fails",
          {first: "```sh\ngit clone https://github.com/NEWSLabNTU/nano-ros.git\n```\n"}, True),
@@ -144,13 +145,13 @@ def selftest(verbose: bool = False) -> int:
         ("cd into examples/ fails", {first: "```bash probe=40\ncd examples/linux/c/talker\n```\n"}, True),
         ("cd into a scaffold passes", {first: "```sh\nnros new t && cd t\n```\n"}, False),
         ("contributor section is exempt",
-         {"book/src/internals/contributing.md": "```sh\n./scripts/bootstrap.sh\n```\n"}, False),
+         {"book-internals/src/orientation/contributing.md": "```sh\n./scripts/bootstrap.sh\n```\n"}, False),
         ("dormant chapter is exempt",
-         {"book/src/SUMMARY.md": "- [ESP32 (esp-hal, dormant)](./getting-started/esp32.md)\n",
-          "book/src/getting-started/esp32.md": "```sh\njust esp32 build\n```\n"}, False),
+         {"book/src/SUMMARY.md": "- [ESP32 (esp-hal, dormant)](./migrating/esp32.md)\n",
+          "book/src/migrating/esp32.md": "```sh\njust esp32 build\n```\n"}, False),
         ("a user page not marked dormant is read",
-         {"book/src/SUMMARY.md": "- [ESP32 (esp-hal, dormant)](./getting-started/esp32.md)\n",
-          "book/src/getting-started/zephyr.md": "```sh\njust zephyr build\n```\n"}, True),
+         {"book/src/SUMMARY.md": "- [ESP32 (esp-hal, dormant)](./migrating/esp32.md)\n",
+          "book/src/targets/zephyr.md": "```sh\njust zephyr build\n```\n"}, True),
     ]
     failed = 0
     for name, pages, want_fail in cases:
@@ -196,7 +197,7 @@ def main() -> int:
             "\nA user has the installed `nros` (install.sh puts it in ~/.nros/bin), not"
             "\na clone. Use `nros new` / `nros dev sdk root` / the `nros` command a `just`"
             "\nrecipe wraps, or link the example on GitHub as reading material."
-            "\nContributor material belongs in book/src/internals/.",
+            "\nContributor material belongs in the Internals book (book-internals/).",
             file=sys.stderr,
         )
         return 1

@@ -167,7 +167,7 @@ Concrete shape per layer:
   full contract — surface inventory, capability groups, two port
   shapes (Rust trait + macro export vs pure C body), and the
   "adding a new port" checklist — lives in
-  [`book/src/internals/platform-c-abi.md`](../../book/src/internals/platform-c-abi.md).
+  [`book/src/extending/platform-c-abi.md`](../../book/src/extending/platform-c-abi.md).
 
 cbindgen still produces `nros_generated.h` for message types —
 that surface is data-only, machine-derivable, and a poor fit for
@@ -286,7 +286,7 @@ ABI alignment", or similar):
    `NrosPlatformVtable`, plus future ones). Bump from `0` →
    `1` as the rollout.
 3. Add the C-implemented stub RMW smoke test (R6).
-4. Update `book/src/porting/custom-rmw.md` to document L0/L1/L2
+4. Update `book/src/extending/custom-rmw.md` to document L0/L1/L2
    ladder and lead with the C ABI.
 5. Re-evaluate `nros-rmw::Rmw` trait: every associated type, every
    `impl Trait` parameter, every Rust-specific shape gets a

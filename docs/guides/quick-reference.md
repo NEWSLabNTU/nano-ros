@@ -1,7 +1,7 @@
 # Quick Reference
 
 **Moved.** The manual-testing cheat sheet now lives in the book:
-[Quick Reference](../../book/src/reference/build-commands.md).
+[Quick Reference](../../book-internals/src/dev-env/build-commands.md).
 
 This file is kept only so that older links do not 404. The book page is a strict
 superset — the same Manual Testing / UDP / TLS / ROS 2 Interop / Actions / Docker
@@ -20,5 +20,5 @@ it is `[system] rmw` in the leaf's `system.toml`
 
 ## See Also
 
-- [Quick Reference](../../book/src/reference/build-commands.md) — the live page
-- [zephyr-setup.md](zephyr-setup.md) — Zephyr workspace setup
+- [Quick Reference](../../book-internals/src/dev-env/build-commands.md) — the live page
+- [zephyr-setup.md](../../book-internals/src/testing/zephyr-dev-setup.md) — Zephyr workspace setup

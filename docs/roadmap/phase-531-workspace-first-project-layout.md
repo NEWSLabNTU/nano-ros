@@ -283,7 +283,7 @@ order, each step with its own PR and gate run:
    that flow in W8;
 9. W2's warning becomes a refusal.
 
-Each deletion is listed in `book/src/reference/retired-names.md` with its
+Each deletion is listed in `book/src/migrating/retired-names.md` with its
 replacement.
 
 **Acceptance:** W1's table has every row marked deleted or kept-with-reason;
@@ -292,6 +292,12 @@ replacement.
 ### W8 — Book rewrite
 
 The book teaches one shape, the workspace, from the first page.
+
+Page paths below are today's. [Phase-532](phase-532-two-books-by-audience.md)
+moves pages into part directories by `book/page-map.toml` (RFC-0123). The four
+workspace pages this item merges are already mapped to one target,
+`build/growing-your-workspace.md`. A branch rebases over a move with
+`scripts/book-move.py --rewrite`.
 
 | Page | Change |
 | --- | --- |
@@ -311,7 +317,7 @@ The book teaches one shape, the workspace, from the first page.
   commands are executed, not just edited.
 - Coordinate the first chapter with phase-525 W4 (the timed chapter), so one
   rewrite lands. Phase-525 W4 shipped the single-package chapter in PR #3076;
-  phase-532 (PR #3093, RFC-0122) rewrites it to this phase's workspace shape
+  phase-532 (PR #3093, RFC-0123) rewrites it to this phase's workspace shape
   ahead of the CLI, by the maintainer's ruling of 2026-11-04. Its `[[probe]]`
   rows carry `awaits = ["phase-530 W1", "phase-531 W4"]` and fail as an unmet
   precondition until then; when W4 lands, the phase-532 owner removes the
@@ -327,7 +333,7 @@ code; `just book` builds; every touched page's probe track is green.
   include) are replaced by one-line pointers to RFC-0121.
 - AGENTS.md, `examples/README.md` and `examples/workspaces/README-layout.md`:
   the workspace shape, and how to add an example.
-- `docs/reference/canonical-build-path.md`: the leaf road leaves the map.
+- `book-internals/src/pipeline/canonical-build-path.md`: the leaf road leaves the map.
 
 **Acceptance:** `just check fast` green (the doc-reference and identifier gates
 cover these files).

@@ -615,6 +615,13 @@ Still open:
 
 ## Changelog
 
+- 2026-11-03 — D6's `nano-ros` row now holds outside a checkout too:
+  `nros locate nano-ros` answers through the same `nano_ros_root` ladder as
+  `nros dev sdk root` (explicit, the enclosing checkout, this toolchain's own
+  `share/nano-ros`) and loads no index for it. Because the launcher runs the
+  project's pinned toolchain first, the answer is the pinned version's root.
+  `--project` naming a project pinned to another version refuses rather than
+  answer for the wrong version (phase-532 W9).
 - 2026-10-24 — D10 superseded by RFC-0109 (three layers: OS devices, the
   RMW's own file for wiring, ROS-level facts here). D10e, D10f and D10b's rules
   survive in the form the table under D10 records; §3's network and locator

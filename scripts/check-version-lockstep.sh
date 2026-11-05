@@ -65,7 +65,7 @@ check-version-lockstep: bundle version mismatch (Phase 218.J).
 
 Both files MUST carry the same bundle version. Use:
   just release-bump <X.Y.Z>
-to bump both atomically. See docs/development/versioning.md.
+to bump both atomically. See book-internals/src/dev-env/versioning.md.
 EOF
     exit 1
 fi

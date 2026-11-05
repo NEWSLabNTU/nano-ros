@@ -56,12 +56,12 @@ platform name:
 platform-asset out="tmp/probe-asset":
     PROBE_TRACK=installed PROBE_ASSET_OUT={{out}} ./scripts/probe/run-bootstrap-probe.sh
 
-# book/src/getting-started/multi-node-linux.md — the two-node C++ workspace on
-# the Linux host (the installed track's default chapter until phase-525 W4).
+# book/src/get-started/first-project.md's "run it on this machine" section —
+# the same scaffold on the Linux host over Cyclone DDS (weekly).
 [group("main")]
 linux: (platform "linux")
 
-# book/src/getting-started/bare-metal.md — Rust talker on QEMU MPS2-AN385.
+# book/src/targets/bare-metal.md — Rust talker on QEMU MPS2-AN385.
 [group("main")]
 baremetal: (platform "baremetal")
 
@@ -71,54 +71,72 @@ baremetal: (platform "baremetal")
 [group("main")]
 offline: (platform "offline")
 
-# book/src/getting-started/freertos.md — Rust workspace image on QEMU MPS2-AN385.
+# book/src/targets/freertos.md — Rust workspace image on QEMU MPS2-AN385.
 [group("main")]
 freertos: (platform "freertos")
 
-# book/src/getting-started/freertos.md — the C package on the same board
+# book/src/targets/freertos.md — the C package on the same board
 # (phase-517 W17: the chapter's other language road).
 [group("main")]
 freertos-c: (platform "freertos-c")
 
-# book/src/getting-started/threadx.md — the Linux simulator flavour.
+# book/src/targets/threadx.md — the Linux simulator flavour.
 [group("main")]
 threadx-linux: (platform "threadx-linux")
 
-# book/src/getting-started/threadx.md — the RISC-V 64 QEMU flavour.
+# book/src/targets/threadx.md — the RISC-V 64 QEMU flavour.
 [group("main")]
 threadx-riscv64: (platform "threadx-riscv64")
 
-# book/src/getting-started/threadx.md — the C package on the Linux simulator
+# book/src/targets/threadx.md — the C package on the Linux simulator
 # (phase-517 W17).
 [group("main")]
 threadx-linux-c: (platform "threadx-linux-c")
 
-# book/src/getting-started/integration-nuttx.md — QEMU Arm `virt`.
+# book/src/targets/nuttx.md — QEMU Arm `virt`.
 [group("main")]
 nuttx-arm: (platform "nuttx-arm")
 
-# book/src/getting-started/integration-nuttx.md — the Rust workspace image on
+# book/src/targets/nuttx.md — the Rust workspace image on
 # Arm virt (issue 2149).
 [group("main")]
 nuttx-arm-rust: (platform "nuttx-arm-rust")
 
-# book/src/getting-started/integration-nuttx.md — QEMU RISC-V `rv-virt`.
+# book/src/targets/nuttx.md — QEMU RISC-V `rv-virt`.
 [group("main")]
 nuttx-riscv: (platform "nuttx-riscv")
 
-# book/src/getting-started/integration-nuttx.md — the Rust workspace image on
+# book/src/targets/nuttx.md — the Rust workspace image on
 # rv-virt (issue 2178).
 [group("main")]
 nuttx-riscv-rust: (platform "nuttx-riscv-rust")
 
-# book/src/getting-started/integration-zephyr.md — native_sim.
+# book/src/targets/zephyr.md — native_sim.
 [group("main")]
 zephyr: (platform "zephyr")
 
-# book/src/getting-started/integration-zephyr.md — the Rust workspace on
+# book/src/targets/zephyr.md — the Rust workspace on
 # native_sim (phase-517 W17; issues 2151, 2152).
 [group("main")]
 zephyr-rust: (platform "zephyr-rust")
+
+# book/src/targets/zephyr-west-app.md — a Zephyr application built with
+# plain west (no workspace, no system.toml), on native_sim.
+[group("main")]
+zephyr-west-app: (platform "zephyr-west-app")
+
+# The same chapter's C++ node, the same build and run.
+[group("main")]
+zephyr-west-app-cpp: (platform "zephyr-west-app-cpp")
+
+# The same chapter's flash section: the Nucleo-F767ZI image it builds, booted
+# in the board's Renode twin in place of `west flash`.
+[group("main")]
+zephyr-west-app-flash: (platform "zephyr-west-app-flash")
+
+# The same chapter's Rust application (awaits `nros configure`, phase-530).
+[group("main")]
+zephyr-west-app-rust: (platform "zephyr-west-app-rust")
 
 # phase-524 W4a — the Nucleo-F767ZI's Renode twin (no chapter yet, W4b): the
 # Zephyr chapter's setup blocks, then the board's serial C talker built through
@@ -135,11 +153,11 @@ wokwi-pico: (platform "wokwi-pico")
 
 # phase-517 W4: not a platform chapter, but it rides the same harness. One bare
 # `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.
-# book/src/getting-started/installation.md — "Provision a whole workspace".
+# book/src/get-started/installation-details.md — "Provision a whole workspace".
 [group("main")]
 workspace: (platform "workspace")
 
-# phase-517 W11: installation.md "Pinning a version" — a project pinned to an
+# phase-517 W11: installation-details.md "Pinning a version" — a project pinned to an
 # older release; the installed nros must fetch and run the pinned one.
 [group("main")]
 pinned: (platform "pinned")

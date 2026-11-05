@@ -81,7 +81,7 @@ pub fn register() -> Result<(), RegisterError> {
     // static, immutable vtable to `nros_rmw_cffi_register_named` inside
     // its C++ TU. No invariants required from the caller beyond
     // "call before opening any session" — that is the runtime
-    // contract documented in `book/src/internals/rmw-backends.md`.
+    // contract documented in `book-internals/src/rmw/backend-host-language-policy.md`.
     let rc = unsafe { nros_rmw_cyclonedds_register() };
     // Phase 248 (C2) — install the per-type descriptor registrar into the
     // generic `nros_rmw` seam so the platform/RMW-agnostic core reaches

@@ -292,7 +292,7 @@ path was open, and a user could walk it.
    `idf_component_register`, no `Kconfig.projbuild` and no `partitions.csv`
    anywhere in the tree. Even a correctly shaped IDF project had nothing of
    nano-ros to pull in.
-3. **No carrier.** `docs/reference/canonical-build-path.md` gives each road the
+3. **No carrier.** `book-internals/src/pipeline/canonical-build-path.md` gives each road the
    mechanism that delivers a resolved knob to the compiler. This road's cell was
    EMPTY, and `native_handoff` attached no environment: every pool size, QoS
    policy, entity fact and executor budget would have arrived at its compiled-in
@@ -363,9 +363,9 @@ shape, and would be right if one were written) and D12's citation of
 active routing goes* — not *delete every mention*.
 
 *What a user who wants ESP-IDF does.* Nothing here forbids an out-of-tree
-integration, and `book/src/getting-started/integration-esp-idf.md` says how the
+integration, and `book/src/migrating/esp32.md` says how the
 shape would look. What nano-ros offers on ESP32 today is the esp-hal bare-metal
-Rust road (`book/src/getting-started/esp32.md`). C or C++ on an ESP32 has no
+Rust road (`book/src/migrating/esp32.md`). C or C++ on an ESP32 has no
 in-tree path: that is issue 1525, which also states what re-adding one would
 need — an IDF component, a knob carrier for the road, a `[tool.esp-idf]` index
 entry, and a lane that builds it.

@@ -96,19 +96,25 @@ cell_table = "board-support-cells.toml"
 crate = "nros-board-linux"
 matrix_platform = "Linux"
 board_keys = ["linux"]
-book_run = "getting-started/multi-node-linux.md#run"
+book_run = "get-started/first-project.md#run"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
 maintainers = []
-notes = "The reference platform: the densest Runtime coverage of any target, all three RMWs. phase-337 W8.a merged the `native` shim and the `posix` family driver into this one crate — the registry carried TWO rows for one implementation because `board_path_for` mapped both keys to the same ZST."
+# Maintainer evidence (moved out of `notes`, which renders on the user
+# book's board page — phase-532 W3, RFC-0123 D3):
+#   Was: The reference platform: the densest Runtime coverage of any target, all
+#   three RMWs. phase-337 W8.a merged the `native` shim and the `posix` family
+#   driver into this one crate — the registry carried TWO rows for one
+#   implementation because `board_path_for` mapped both keys to the same ZST.
+notes = "The reference platform: the densest Runtime coverage of any target, all three RMWs. One board crate covers both the Linux host and the POSIX family driver."
 
 [[board]]
 crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
 board_keys = ["zephyr"]
 nightly_token = "zephyr"
-book_run = "getting-started/integration-zephyr.md#run-on-native_sim"
+book_run = "targets/zephyr.md#run-on-native_sim"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -147,7 +153,7 @@ crate = "nros-board-mps2-an385-freertos"
 matrix_platform = "FreertosMps2"
 nightly_token = "freertos"
 link_check_example = "examples/mps2-an385-freertos/rust/talker"
-book_run = "getting-started/freertos.md#run-on-qemu"
+book_run = "targets/freertos.md#run-on-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -176,7 +182,7 @@ crate = "nros-board-s32z270-freertos"
 # board yet. Give it a real PlatformId when it gets a witness, not the
 # neighbour's.
 real_hardware = true
-book_flash = "getting-started/freertos.md#flash-a-real-board"
+book_flash = "targets/freertos.md#flash-a-real-board"
 runs = "none"
 hardware = "s32z270"
 breadth = "inherits FreertosMps2"
@@ -193,7 +199,7 @@ matrix_platform = "NuttxArm"
 board_keys = ["nuttx", "qemu-armv7a-nuttx"]
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-armv7a-nuttx/rust/talker"
-book_run = "getting-started/integration-nuttx.md#run-on-qemu-arm-virt"
+book_run = "targets/nuttx.md#run-on-qemu-arm-virt"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -204,7 +210,7 @@ crate = "nros-board-threadx-linux"
 matrix_platform = "ThreadxLinux"
 nightly_token = "threadx_linux"
 link_check_example = "examples/threadx-linux/rust/talker"
-book_run = "getting-started/threadx.md#run-on-the-linux-simulator"
+book_run = "targets/threadx.md#run-on-the-linux-simulator"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -221,7 +227,7 @@ matrix_platform = "FreertosPosix"
 # `just freertos build-posix-*`. The old token named no module, which nothing
 # asked about until `cadence = "daily"` did (phase-522 W1).
 nightly_token = "freertos"
-book_run = "getting-started/freertos.md#run-on-the-posix-simulator"
+book_run = "targets/freertos.md#run-on-the-posix-simulator"
 runs = "host"
 cadence = "daily"
 breadth = "inherits FreertosMps2"
@@ -232,7 +238,7 @@ maintainers = []
 crate = "nros-board-threadx-qemu-riscv64"
 matrix_platform = "ThreadxRiscv64"
 nightly_token = "threadx_riscv64"
-book_run = "getting-started/threadx.md#run-on-qemu-risc-v-64"
+book_run = "targets/threadx.md#run-on-qemu-risc-v-64"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits ThreadxLinux"
@@ -243,12 +249,16 @@ notes = "All three Action rows are BuildOnly by a deliberate wall-clock choice (
 crate = "nros-board-mps2-an385"
 matrix_platform = "QemuBaremetal"
 nightly_token = "qemu"
-book_run = "getting-started/bare-metal.md#run-on-qemu"
+book_run = "targets/bare-metal.md#run-on-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
 maintainers = []
-notes = "phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row."
+# Maintainer evidence (moved out of `notes`, which renders on the user
+# book's board page — phase-532 W3, RFC-0123 D3):
+#   Was: phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic`
+#   feature — one crate, two entry shapes (direct-exec + RTIC), one witness row.
+notes = "One crate, two entry shapes: direct execution and RTIC (the `rtic` feature)."
 
 # phase-337 W2 — the Zephyr Cortex-M witness: a real 32-bit Cortex-M3 running
 # Zephyr's OWN IP stack over `eth_smsc911x`. There is NO board crate — the
@@ -266,19 +276,30 @@ notes = "phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` fea
 crate = "nros-board-mps2-an385-zephyr"
 matrix_platform = "ZephyrQemuCortexM"
 nightly_token = "zephyr"
-book_run = "getting-started/integration-zephyr.md#run-on-qemu-mps2-an385"
+book_run = "targets/zephyr.md#run-on-qemu-mps2-an385"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
 maintainers = []
-notes = "C, C++ and Rust pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. It also carries the tree's first non-native_sim live-peer interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-zenoh`). This note used to say NO RUST ROW, because `zephyr-lang-rust` could not compile for any board whose devicetree has gpio nodes — issue 0432, RESOLVED 2026-08-12 by phase-346 W2/W3, after which the Rust leaf built and `zephyr_cortex_m_rust_zenoh_pubsub_e2e` ran it while four documents still said it could not. Daily rather than per merge because `just ci` is host-only and this needs QEMU."
+# Maintainer evidence (moved out of `notes`, which renders on the user
+# book's board page — phase-532 W3, RFC-0123 D3):
+#   Was: C, C++ and Rust pubsub are Runtime; service/action are BuildOnly
+#   pending the runner's peer half. It also carries the tree's first non-
+#   native_sim live-peer interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-
+#   zenoh`). This note used to say NO RUST ROW, because `zephyr-lang-rust` could
+#   not compile for any board whose devicetree has gpio nodes — issue 0432,
+#   RESOLVED 2026-08-12 by phase-346 W2/W3, after which the Rust leaf built and
+#   `zephyr_cortex_m_rust_zenoh_pubsub_e2e` ran it while four documents still
+#   said it could not. Daily rather than per merge because `just ci` is host-
+#   only and this needs QEMU.
+notes = "C, C++ and Rust pubsub are Runtime; service and action are BuildOnly until the runner's peer half lands. It carries a live-peer interop cell against a host peer over zenoh. Daily rather than per merge, because the merge lane is host-only and this board needs QEMU."
 
 [[board]]
 crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
 board_keys = ["nuttx-riscv", "rv-virt-nuttx"]
 nightly_token = "nuttx"
-book_run = "getting-started/integration-nuttx.md#run-on-qemu-risc-v-rv-virt"
+book_run = "targets/nuttx.md#run-on-qemu-risc-v-rv-virt"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits NuttxArm"
@@ -292,13 +313,29 @@ matrix_platform = "Fvp"
 board_keys = ["fvp-aemv8r-smp"]
 sdk = "arm-fvp"  # `[tool.arm-fvp]` since 2026-09-06 — fetched, not gated
 real_hardware = false
-book_run = "getting-started/arm-fvp.md#run-on-the-fvp"
+book_run = "targets/arm-fvp.md#run-on-the-fvp"
 runs = "emulator"
 cadence = "manual"
 last_run = "2026-09-06"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = []
-notes = "Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — hence `cadence = \"manual\"`, which is what exempts this row from the Runtime-cell requirement. The model is NOT licence-gated (that claim stood here until 2026-09-06 and was wrong): `nros setup --tool arm-fvp` fetches it from a pinned Arm CDN permalink, and the board-import fixture was verified booting on it (`nros: smoke ok`) the same day. What still keeps CI out is cost and x86_64-only hosting, not permission. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for."
+# Maintainer evidence (moved out of `notes`, which renders on the user
+# book's board page — phase-532 W3, RFC-0123 D3):
+#   Was: Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — hence
+#   `cadence = "manual"`, which is what exempts this row from the Runtime-cell
+#   requirement. The model is NOT licence-gated (that claim stood here until
+#   2026-09-06 and was wrong): `nros setup --tool arm-fvp` fetches it from a
+#   pinned Arm CDN permalink, and the board-import fixture was verified booting
+#   on it (`nros: smoke ok`) the same day. What still keeps CI out is cost and
+#   x86_64-only hosting, not permission. Kept in-tree: it is the ASI reference
+#   consumer's target (phase-292), a real downstream user the CI evidence cannot
+#   see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-
+#   board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and
+#   a `run` loop) had zero consumers, so what it actually shipped was a
+#   prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a
+#   Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate,
+#   matrix_platform) keying is for.
+notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model is not licence-gated: `nros setup --tool arm-fvp` fetches it from a pinned Arm download. CI does not run it because of cost and x86_64-only hosting. It is the target of the Autoware safety-island reference consumer."
 
 # phase-522 W1 (RFC-0114 migration table) — the S32K344 safety island. A board
 # nano-ros has measured booting on silicon, declared nowhere until now: the
@@ -318,14 +355,20 @@ notes = "Runtime is maintainer-run via `just zephyr verify-fvp-runtime` — henc
 crate = "s32k344-safety-island"
 external = "simple-autoware-safety-island"
 real_hardware = true
-book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
+book_flash = "targets/zephyr.md#flash-a-real-board"
 runs = "hardware"
 hardware = "mr-canhubk344"
 cadence = "manual"
 last_run = "2026-10-26"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
-notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-baud UART zenoh link to an island gateway router. Evidence: phase-474 \"The board halves, 2026-10-26\" (nine acts, all PASS, violation records read over SWD). The board package is the downstream island's."
+# Maintainer evidence (moved out of `notes`, which renders on the user
+# book's board page — phase-532 W3, RFC-0123 D3):
+#   Was: NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a
+#   921,600-baud UART zenoh link to an island gateway router. Evidence:
+#   phase-474 "The board halves, 2026-10-26" (nine acts, all PASS, violation
+#   records read over SWD). The board package is the downstream island's.
+notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-baud UART zenoh link to an island gateway router. Verified on hardware on 2026-10-26. The board package belongs to the downstream island project."
 
 # phase-524 W3 (RFC-0115 D3/D4) — the Nucleo-F767ZI, the first book board
 # with an emulator twin rather than a QEMU machine of its own. Its evidence is
@@ -354,8 +397,8 @@ notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-
 crate = "nros-board-nucleo-f767zi-zephyr"
 board_keys = ["nucleo-f767zi-zephyr"]
 real_hardware = true
-book_run = "getting-started/nucleo-f767zi.md#run-in-the-twin"
-book_flash = "getting-started/nucleo-f767zi.md#flash-a-real-board"
+book_run = "targets/nucleo-f767zi.md#run-in-the-twin"
+book_flash = "targets/nucleo-f767zi.md#flash-a-real-board"
 runs = "emulator"
 hardware = "nucleo-f767zi"
 matrix_platform = "ZephyrNucleoF767zi"
@@ -364,7 +407,14 @@ cadence = "manual"
 last_run = "2026-11-01"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
-notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Renode twin booted the C talker over serial (USART3, the ST-LINK VCP) and ethernet (phase-524 W1). Its RAM budget, `max_large_subscribers = 0`, is the descriptor's `[knobs.zenoh]`, which every image inherits (issue 2194); the ethernet image's extra knobs are its own (see the descriptor header)."
+# Maintainer evidence (moved out of `notes`, which renders on the user
+# book's board page — phase-532 W3, RFC-0123 D3):
+#   Was: ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr
+#   3.7. Renode twin booted the C talker over serial (USART3, the ST-LINK VCP)
+#   and ethernet (phase-524 W1). Its RAM budget, `max_large_subscribers = 0`, is
+#   the descriptor's `[knobs.zenoh]`, which every image inherits (issue 2194);
+#   the ethernet image's extra knobs are its own (see the descriptor header).
+notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Its Renode twin boots the C talker over serial (USART3, the ST-LINK VCP) and over ethernet. Its RAM budget, `max_large_subscribers = 0`, is the board descriptor's `[knobs.zenoh]`, which every image inherits; the ethernet image adds its own knobs (see the descriptor header)."
 
 # phase-524 W3 (RFC-0115 D3/D4) -- the Raspberry Pi Pico W, the field
 # solutions board, whose twin is Wokwi's hosted `board-pi-pico-w` (the
@@ -393,14 +443,24 @@ notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7
 crate = "nros-board-rpi-pico-w-zephyr"
 board_keys = ["rpi-pico-w-zephyr"]
 real_hardware = true
-book_flash = "getting-started/integration-zephyr.md#flash-a-real-board"
+book_flash = "targets/zephyr.md#flash-a-real-board"
 runs = "emulator"
 hardware = "rpi-pico-w"
 cadence = "manual"
 last_run = "2026-11-01"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
-notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only. Wokwi twin booted the C talker over UART0, the Wokwi serial monitor, with the console on UART1 (phase-524 W1 rerun). The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs, which are the descriptor's `[knobs]` and every image inherits (issue 2194; see the descriptor header). Each twin run needs a `WOKWI_CLI_TOKEN` and spends that account's simulation minutes, so the twin is user-run and never in our CI (maintainer ruling 2026-11-02)."
+# Maintainer evidence (moved out of `notes`, which renders on the user
+# book's board page — phase-532 W3, RFC-0123 D3):
+#   Was: Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7,
+#   serial only. Wokwi twin booted the C talker over UART0, the Wokwi serial
+#   monitor, with the console on UART1 (phase-524 W1 rerun). The image needs
+#   `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs,
+#   which are the descriptor's `[knobs]` and every image inherits (issue 2194;
+#   see the descriptor header). Each twin run needs a `WOKWI_CLI_TOKEN` and
+#   spends that account's simulation minutes, so the twin is user-run and never
+#   in our CI (maintainer ruling 2026-11-02).
+notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only. Its Wokwi twin boots the C talker over UART0 (the Wokwi serial monitor), with the console on UART1. The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs, which are the descriptor's `[knobs]` and every image inherits. Each twin run needs your own `WOKWI_CLI_TOKEN` and spends that account's simulation minutes, so the twin is run by users and not in nano-ros CI."
 
 # ===== infra — not boards ==================================================
 
@@ -515,46 +575,55 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 #   budget_minutes  the track's wall-clock budget from the first `nros setup`
 #               to its last asserted line; the probe prints the time after
 #               every step and fails past it (phase-525 W4, RFC-0116 D1)
+#   awaits      the CLI work the chapter is written ahead of (phase-532, RFC-0123):
+#               while it is set, the probe FAILS up front with
+#               `[UNMET PRECONDITION]` naming it, never a skip. Delete the line
+#               when that work lands and the track replays again.
 
 [[probe]]
 track = "first-project"
-chapter = "getting-started/first-project.md"
-variant = ""
+chapter = "get-started/first-project.md"
+variant = "qemu"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = false
 row = "nros-board-mps2-an385@QemuBaremetal"
 qemu_board = "mps2-an385-baremetal"
 budget_minutes = 30
-notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the installed track's default, replayed by `probe.yml`. The mps2-an385 talker over its serial link under `nros run`, then `ros2 topic echo`, timed from the first `nros setup` against the field budget."
+notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the installed track's default, replayed by `probe.yml`. The mps2-an385 talker over its serial link under `nros run`, then `ros2 topic echo`, timed from the first `nros setup` against the field budget. phase-532 rewrote the chapter to RFC-0121 D4/D5 (a workspace, `nros run <node>`) ahead of phase-531's scaffold and node rung, so it fails until those land."
 
 [[probe]]
 track = "linux"
-chapter = "getting-started/multi-node-linux.md"
-variant = ""
+chapter = "get-started/first-project.md"
+variant = "linux"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-linux@Linux"
-notes = "The Linux-host multi-node chapter. It was the installed track's default chapter (first-project.md) until phase-525 W4 made that chapter the serial QEMU one; now weekly."
+notes = "The first chapter's \"run it on this machine\" section: the same scaffold for the Linux host over Cyclone DDS, no router. Weekly since phase-525 W4 made the serial QEMU run the installed track's default."
 
 [[probe]]
 track = "baremetal"
-chapter = "getting-started/bare-metal.md"
+chapter = "targets/bare-metal.md"
 variant = ""
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-mps2-an385@QemuBaremetal"
 qemu_board = "mps2-an385-baremetal"
 
 [[probe]]
 track = "offline"
-chapter = "getting-started/bare-metal.md"
+chapter = "targets/bare-metal.md"
 variant = ""
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-mps2-an385@QemuBaremetal"
 offline = true
-notes = "phase-523 W4 (RFC-0116 industrial): the bare-metal chapter twice — online to stage the release asset and the SDK store, then again from that store in a container with no network (`--network none`, `NROS_OFFLINE=1`) — which must reach the same output line. The book's offline contract is getting-started/vendored-tree.md \"Air-gapped / mirrored CI\". No `qemu_board`: issue 2169's printed-run-command row is the baremetal track's, and this replays the same chapter."
+notes = "phase-523 W4 (RFC-0116 industrial): the bare-metal chapter twice — online to stage the release asset and the SDK store, then again from that store in a container with no network (`--network none`, `NROS_OFFLINE=1`) — which must reach the same output line. The book's offline contract is build/vendored-tree.md \"Air-gapped / mirrored CI\". No `qemu_board`: issue 2169's printed-run-command row is the baremetal track's, and this replays the same chapter."
 
 [[probe]]
 track = "freertos"
-chapter = "getting-started/freertos.md"
+chapter = "targets/freertos.md"
 variant = "rust"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
 qemu_board = "mps2-an385-freertos"
@@ -562,98 +631,147 @@ notes = "phase-517 W17 — one track per language road the chapter documents: th
 
 [[probe]]
 track = "freertos-c"
-chapter = "getting-started/freertos.md"
+chapter = "targets/freertos.md"
 variant = "c"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
 qemu_board = "mps2-an385-freertos"
 
 [[probe]]
 track = "threadx-linux"
-chapter = "getting-started/threadx.md"
+chapter = "targets/threadx.md"
 variant = "linux"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-threadx-linux@ThreadxLinux"
 
 [[probe]]
 track = "threadx-riscv64"
-chapter = "getting-started/threadx.md"
+chapter = "targets/threadx.md"
 variant = "riscv64"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-threadx-qemu-riscv64@ThreadxRiscv64"
 qemu_board = "rv-virt-threadx"
 
 [[probe]]
 track = "threadx-linux-c"
-chapter = "getting-started/threadx.md"
+chapter = "targets/threadx.md"
 variant = "linux-c"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-threadx-linux@ThreadxLinux"
 
 [[probe]]
 track = "nuttx-arm"
-chapter = "getting-started/integration-nuttx.md"
+chapter = "targets/nuttx.md"
 variant = "arm"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxArm"
 qemu_board = "qemu-armv7a-nuttx"
 
 [[probe]]
 track = "nuttx-arm-rust"
-chapter = "getting-started/integration-nuttx.md"
+chapter = "targets/nuttx.md"
 variant = "arm-rust"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxArm"
 qemu_board = "qemu-armv7a-nuttx"
 
 [[probe]]
 track = "nuttx-riscv"
-chapter = "getting-started/integration-nuttx.md"
+chapter = "targets/nuttx.md"
 variant = "riscv"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxRiscv"
 qemu_board = "rv-virt-nuttx"
 
 [[probe]]
 track = "nuttx-riscv-rust"
-chapter = "getting-started/integration-nuttx.md"
+chapter = "targets/nuttx.md"
 variant = "riscv-rust"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxRiscv"
 qemu_board = "rv-virt-nuttx"
 
 [[probe]]
 track = "zephyr"
-chapter = "getting-started/integration-zephyr.md"
+chapter = "targets/zephyr.md"
 variant = "native-sim"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 
 [[probe]]
 track = "zephyr-rust"
-chapter = "getting-started/integration-zephyr.md"
+chapter = "targets/zephyr.md"
 variant = "native-sim-rust"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 
 [[probe]]
-track = "workspace"
-chapter = "getting-started/installation.md"
-variant = "workspace"
+track = "zephyr-west-app"
+chapter = "targets/zephyr-west-app.md"
+variant = "west-app"
 weekly = true
-notes = "phase-517 W4 — not a platform: installation.md's \"Provision a whole workspace\" run, one bare `nros setup` for a Linux and a FreeRTOS image, then `nros build --all` with nothing else installed."
+row = "nros-board-zephyr@ZephyrNativeSim"
+notes = "phase-532 (RFC-0123) — a guest Zephyr application (RFC-0121 D6, RFC-0085 D14): no workspace and no system.toml. The chapter writes a C talker app into a fresh west workspace, configures it in prj.conf, builds it with a plain `west build` naming the module by `nros locate nano-ros`, and runs native_sim against ROS's rmw_zenohd."
+
+[[probe]]
+track = "zephyr-west-app-cpp"
+chapter = "targets/zephyr-west-app.md"
+variant = "west-app-cpp"
+weekly = true
+row = "nros-board-zephyr@ZephyrNativeSim"
+notes = "phase-532 (RFC-0123) — the same guest application as `zephyr-west-app`, with the chapter's C++ node (a class with a `configure` member, registered with its HEADER) in place of the C one; same prj.conf, same plain `west build`, same native_sim run against ROS's rmw_zenohd."
+
+[[probe]]
+track = "zephyr-west-app-flash"
+chapter = "targets/zephyr-west-app.md"
+variant = "west-app-flash"
+weekly = true
+row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
+twin = "nucleo-f767zi-zephyr"
+twin_build = "build-board"
+twin_echo = "std_msgs/msg/Int32 --qos-reliability best_effort"
+twin_heard = "data: 1"
+notes = "phase-532 (RFC-0123) — the guest application's flash section: the chapter provisions the Nucleo-F767ZI, adds its board .conf/.overlay (zenoh over USART3, the ST-LINK port), and builds it with plain `west build -b nucleo_f767zi -d build-board`. `west flash` needs the board, so the probe boots that same ELF in the board's Renode twin and hears it with `ros2 topic echo` over a serial-locator rmw_zenohd."
+
+[[probe]]
+track = "zephyr-west-app-rust"
+chapter = "targets/zephyr-west-app.md"
+variant = "west-app-rust"
+weekly = true
+row = "nros-board-zephyr@ZephyrNativeSim"
+notes = "phase-532 (RFC-0123) — the guest application in Rust: zephyr-lang-rust in the chapter's west manifest, `nros setup board zephyr` on the west workspace, a `rustapp` staticlib crate built by `rust_cargo_application()`, `nros configure` for its message crates and cargo patches, then the chapter's plain `west build` and native_sim run."
+
+[[probe]]
+track = "workspace"
+chapter = "get-started/installation-details.md"
+variant = "workspace"
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = true
+notes = "phase-517 W4 — not a platform: installation-details.md's \"Provision a whole workspace\" run, one bare `nros setup` for a Linux and a FreeRTOS image, then `nros build --all` with nothing else installed."
 
 [[probe]]
 track = "pinned"
-chapter = "getting-started/installation.md"
+chapter = "get-started/installation-details.md"
 variant = "pinned"
+awaits = ["phase-530 W1 in a release to pin: the pinned release predates nros configure, and the book no longer shows its separate sync step"]
 weekly = true
-notes = "phase-517 W11/W16 — installation.md's \"Pinning a version\": a project pinned to a release other than the installed one, so the installed `nros` must hand off to the pinned one, fetching it first."
+notes = "phase-517 W11/W16 — installation-details.md's \"Pinning a version\": a project pinned to a release other than the installed one, so the installed `nros` must hand off to the pinned one, fetching it first."
 
 [[probe]]
 track = "pinned-newer"
-chapter = "getting-started/installation.md"
+chapter = "get-started/installation-details.md"
 variant = "pinned"
+awaits = ["phase-530 W1 in a release to pin: the pinned release predates nros configure, and the book no longer shows its separate sync step"]
 weekly = true
 notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]` pins installed instead of this branch's asset, so a NEWER front must hand off to the project's older pin."
 
@@ -677,8 +795,9 @@ notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]
 
 [[probe]]
 track = "renode-nucleo"
-chapter = "getting-started/nucleo-f767zi.md"
+chapter = "targets/nucleo-f767zi.md"
 variant = ""
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
 twin = "nucleo-f767zi-zephyr"
@@ -687,7 +806,7 @@ notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on
 
 [[probe]]
 track = "wokwi-pico"
-chapter = "getting-started/integration-zephyr.md"
+chapter = "targets/zephyr.md"
 variant = "zephyr-twin"
 weekly = false
 row = "nros-board-rpi-pico-w-zephyr@-"

@@ -45,7 +45,7 @@ public surface a user application needs.
 
 ## Action server
 
-`<rclc/action_server.h>` follows rclc's model (phase-515 C4):
+`<rclc/action_server.h>` follows rclc's model:
 
 ```c
 example_interfaces__action__Fibonacci_SendGoal_Request goal_requests[2];
@@ -103,9 +103,9 @@ goals, requesting results, and cancelling:
   (the action leaves the graph), free its callback slot and arena bytes for
   reuse, and bring `rclc_executor_get_handle_count()` back down. A program
   that tears the executor down with `rclc_executor_fini()` needs neither —
-  that drops every entry (issue 1609).
-- **The same holds for every other entity the executor registers** (issue
-  1631): `rclc_executor_remove_subscription()`, `rclc_executor_remove_timer()`,
+  that drops every entry.
+- **The same holds for every other entity the executor registers**:
+  `rclc_executor_remove_subscription()`, `rclc_executor_remove_timer()`,
   `rclc_executor_remove_service()` and `rclc_executor_remove_client()` — rclc's
   `rclc_executor_remove_*` shape — each drop the arena entry (receive ring
   included), free the slot and bring `handle_count` back down. Call one before
@@ -115,7 +115,7 @@ goals, requesting results, and cancelling:
   entity not registered on that executor and `RCLC_RET_REENTRANT` from inside
   a callback. A subscription whose callback also receives the sample's
   attachment is registered with `rclc_executor_add_subscription_with_info()`
-  into a `rcl_subscription_t` and removed the same way (issue 1668); the
+  into a `rcl_subscription_t` and removed the same way; the
   older direct-arg `rclc_executor_add_subscription_raw_with_info()` takes no
   subscription object, so its entry lives until `rclc_executor_fini()`.
 
@@ -130,10 +130,10 @@ yourself between async calls until your callback flags the result. See
 the example layouts in `examples/linux/c/action-client/` and
 `examples/mps2-an385-freertos/c/action-client/`.
 
-Phase 122.3 added a separate L1 polling family
+A separate L1 polling family
 (`rclc_polling_action_client_init` + the `_raw` send/recv siblings)
-that stores `ActionClientCore` inline in the separate type
-`rclc_polling_action_client_t` (phase-487 W4) and skips the executor entirely;
+stores `ActionClientCore` inline in the separate type
+`rclc_polling_action_client_t` and skips the executor entirely;
 see the Doxygen for the full L1 verb list.
 
 ## CMake integration
@@ -141,7 +141,7 @@ see the Doxygen for the full L1 verb list.
 Out-of-tree projects link the `NanoRos::NanoRos` CMake target and
 generate C bindings with `nano_ros_generate_interfaces(<pkg> LANGUAGE C)`
 (the function defaults to `LANGUAGE CPP`; the full which-spelling table
-is in [Message Generation](../user-guide/message-generation.md#which-cmake-spelling-one-table)) —
+is in [Message Generation](../build/message-generation.md#which-cmake-spelling-one-table)) —
 covered in
 [`docs/reference/c-api-cmake.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/c-api-cmake.md).
 

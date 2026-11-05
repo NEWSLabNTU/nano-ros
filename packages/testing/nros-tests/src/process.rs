@@ -1471,7 +1471,7 @@ impl Drop for ManagedProcess {
 /// Step 2 is what makes "source `setup.bash`, then run the tests" true, and
 /// `/opt/ros` alone did not: a ROS install need not live there. This repo
 /// documents building one on Arch/Fedora/NixOS
-/// (`docs/development/ros2-on-non-ubuntu.md`), and a colcon overlay sits
+/// (`book-internals/src/dev-env/ros2-on-non-ubuntu.md`), and a colcon overlay sits
 /// wherever the user put it. `AMENT_PREFIX_PATH` is the sourced environment's
 /// own answer to "which prefixes are active", so it covers both without this
 /// code guessing a layout.

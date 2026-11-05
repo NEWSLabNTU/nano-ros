@@ -2,7 +2,7 @@
 
 Procurement-grade compatibility matrix, in two parts.
 
-**Board packages in this tree** come first. Those rows are generated from the
+**Board packages nano-ros ships** come first. Those rows are generated from the
 board support registry, so each status there is derived from evidence (where
 the board runs, how often, and when it last did) and links to the board's
 evidence page. [Board Support Levels](board-support-levels.md) explains each
@@ -29,49 +29,32 @@ status word.
 | `nros-board-rpi-pico-w-zephyr` | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `wokwi:pi-pico-w`, `rpi-pico-w` (target) | [evidence page](boards/rpi-pico-w-zephyr.md) |
 <!-- END GENERATED registry rows -->
 
-**Parts with no board package in this tree** follow. That table is written by
-hand, because the registry describes only packages nano-ros ships. Its status
-words are its own: **Ready** rows compile and run but no lane checks them,
-**Untested** rows compile per the architecture support but nobody has reported
-booting nano-ros on them, and **Out of tree**, **Dormant**, **Retired** and
-**Deferred** say why a part has no lane.
+## Other boards and how you would approach them
 
-| Vendor       | Board                | MCU / SoC          | Arch       | Default RTOS  | Status   | Example / board crate                                            |
-|--------------|----------------------|--------------------|------------|---------------|----------|-------------------------------------------------------------------|
-| STMicro      | STM32F4-Discovery    | STM32F407          | Cortex-M4F | bare            | Out of tree | [Worked example](../porting/stm32f4-out-of-tree.md) — no in-CI lane boots it |
-| STMicro      | STM32H7-Nucleo       | STM32H743          | Cortex-M7F | FreeRTOS / Zephyr | Ready  | Use FreeRTOS / Zephyr starter with `nros-board-freertos` overlay   |
-| STMicro      | Pixhawk 4 (FMUv5)    | STM32F765          | Cortex-M7F | NuttX (PX4)   | Ready    | `integrations/px4/module-template/`                                |
-| STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)   | Ready    | `integrations/px4/module-template/`                                |
-| Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr        | Untested | Zephyr starter — supply `-b nrf52840dk_nrf52840`                  |
-| Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr        | Untested | Zephyr starter — supply `-b nrf5340dk_nrf5340_cpuapp`             |
-| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | **Retired** | The in-tree component shell (`integrations/nano-ros/`) was deleted in phase-468 W2 after being measured on 2026-09-25: no workflow built it and no fixture row named it. The bare-metal esp-hal path that replaced it is itself dormant now — see the QEMU row above |
-| Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | —              | Not supported (no board crate) | Xtensa is not a supported target today — see [ESP32 chapter](../getting-started/esp32.md) |
-| Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | bare (esp-hal) | Untested | Same bare-metal path as the C3; no board crate ships for it        |
-| NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |
-| NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
-| TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | Untested | FreeRTOS starter + TI driver overlay                         |
-| RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS | Untested | Bare-metal Cortex-M3 path — Cortex-M0+ has only 4 NVIC priority levels (per-callback OS-priority dispatch is disqualified — pub/sub still works fine) |
-| QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr        | Tested   | Zephyr `-b qemu_cortex_a9`                                         |
-| NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS (NVIDIA FSP) | **Not supported** | Not supported for now (maintainer decision, 2026-11-01); no board package, and every work item of [phase-418](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-418-orin-safety-island-and-spe.md) is closed. The IVC driver (`nvidia-ivc`) and zenoh-pico IVC link stay in-tree |
+The parts below have no board package in nano-ros, so the registry says
+nothing about them and this page claims no status for them. Each row names the
+path you would take to bring nano-ros up on it.
 
-## How to add a new board
+| Vendor       | Board                | MCU / SoC          | Arch       | RTOS to start from | How to approach it |
+|--------------|----------------------|--------------------|------------|--------------------|--------------------|
+| STMicro      | STM32F4-Discovery    | STM32F407          | Cortex-M4F | bare               | [Worked example](../extending/stm32f4-out-of-tree.md), an out-of-tree board package |
+| STMicro      | STM32H7-Nucleo       | STM32H743          | Cortex-M7F | FreeRTOS / Zephyr  | FreeRTOS or Zephyr starter, with an overlay on `nros-board-freertos` |
+| STMicro      | Pixhawk 4 (FMUv5)    | STM32F765          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../targets/px4.md) |
+| STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../targets/px4.md) |
+| Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr             | Zephyr starter with `-b nrf52840dk_nrf52840` |
+| Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr             | Zephyr starter with `-b nrf5340dk_nrf5340_cpuapp` |
+| NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr             | Zephyr starter with `-b lpcxpresso55s69_cpu0` |
+| NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr  | FreeRTOS starter plus the vendor BSP |
+| TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | FreeRTOS starter plus a TI driver overlay |
+| RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS    | The bare-metal Cortex-M path; see the Cortex-M0+ caveat below |
+| QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr             | Zephyr starter with `-b qemu_cortex_a9` |
+| NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS (NVIDIA FSP) | No board package, and no work on one is planned. The IVC driver (`nvidia-ivc`) and the zenoh-pico IVC link remain in nano-ros |
 
-1. **Pick the matching RTOS path.** Cortex-M3 / M4 / M7 + RTOS → use
-   FreeRTOS or Zephyr starter. Cortex-M0+ → bare-metal starter
-   (limited; no NVIC priority headroom). Cortex-A / RISC-V64 → NuttX
-   or Zephyr. RISC-V32 + Wi-Fi → esp-hal (bare-metal); Xtensa has no
-   supported path here.
-2. **Find or write a board crate.** Existing crates under
-   `packages/boards/nros-board-*/` cover most QEMU + reference dev
-   kits. Real-hardware boards need a thin board crate that supplies
-   startup, linker script, and `BoardIdle::wfi()` (bare-metal) or
-   wraps the RTOS's BSP (FreeRTOS / Zephyr).
-3. **Run the existing example tree.** Each row above points at the
-   canonical example dir. Cross-compile the talker / listener and
-   verify against stock ROS 2 + `RMW_IMPLEMENTATION=rmw_zenoh_cpp`.
-4. **Report back.** Open an issue with the working build + flash +
-   run commands so the row moves from *Untested* / *Ready* to
-   *Tested*.
+The ESP32 boards (ESP-IDF component and esp-hal bare-metal) are retired:
+[ESP32 — retired](../migrating/esp32.md).
+
+To add a board, as a package of your own or contributed to nano-ros, see
+[Adding a Board to the Registry](../extending/adding-a-board-to-the-registry.md).
 
 ## Caveats by chip family
 
@@ -80,20 +63,20 @@ booting nano-ros on them, and **Out of tree**, **Dormant**, **Retired** and
   shape originally proposed by Choi et al. as **PiCAS**, RTAS '21)
   is disqualified on this class; nano-ros's user-space EDF / FIFO
   scheduler is the only option. Pub/sub works fine.
-- **Xtensa ESP32 / ESP32-S2 / ESP32-S3**: needs the `esp-rs` fork
-  of rustc (`rustup target add` does not cover Xtensa; install via
-  https://github.com/esp-rs/rust-build).
+- **Xtensa (ESP32, ESP32-S2, ESP32-S3)**: not supported. nano-ros has no
+  Xtensa board, and the RISC-V ESP32 boards are retired
+  ([ESP32 — retired](../migrating/esp32.md)).
 - **Cortex-A9 / A53**: hosted-RTOS only (NuttX, Zephyr). Heap +
   libc required; bare-metal Cortex-A is not in the coverage matrix.
 - **PX4 boards**: NuttX is the underlying kernel; the PX4 module
   template is the canonical entry path — see
-  [PX4 Autopilot](../getting-started/px4.md).
+  [PX4 Autopilot](../targets/px4.md).
 
 ## See also
 
-- [Quick board check (intro)](../introduction.md) — hobbyist-grade
-  one-liner per chip.
-- [Embedded Starters](../getting-started/freertos.md) — per-RTOS
+- [Board Support Levels](board-support-levels.md) — what each status word
+  means.
+- [Embedded Starters](../targets/freertos.md) — per-RTOS
   walkthrough.
 - [Platform Differences](./platform-differences.md) — per-platform
   capability deltas.

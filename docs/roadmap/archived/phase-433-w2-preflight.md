@@ -16,7 +16,7 @@ recorded, not applied.
 
 Related: issue 1127 (eight of these binaries are named by no recipe),
 `interop::CELLS` (`packages/testing/nros-tests/src/interop.rs`),
-[docs/development/ros2-on-non-ubuntu.md](../../development/ros2-on-non-ubuntu.md).
+[docs/development/ros2-on-non-ubuntu.md](../../../book-internals/src/dev-env/ros2-on-non-ubuntu.md).
 
 ## What was MEASURED versus what was READ
 

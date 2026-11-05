@@ -105,7 +105,7 @@ fn multi_tier_freertos_firmware_builds_and_boots_run_tiers() -> nros_tests::Test
     // `Command::new("timeout").args(["qemu-system-arm", …])`. The sibling test
     // below already used it, so the bypass was never a capability gap: it just
     // missed what the interpreter centralises — the `-icount shift=auto`
-    // convention (docs/reference/qemu-icount.md), boot-deadline handling and log
+    // convention (book-internals/src/testing/qemu-icount.md), boot-deadline handling and log
     // capture.
     let mut qemu = nros_tests::qemu::QemuProcess::start_mps2_an385(&bin)
         .expect("boot multi-tier freertos firmware on QEMU");

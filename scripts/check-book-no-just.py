@@ -9,26 +9,19 @@ This gate keeps it that way. (phase-517 W2's `check-book-no-checkout` is
 stricter about code blocks — no `just` at all in a user chapter's fences —
 and also reads porting/; this one still covers inline `just <recipe>` spans.)
 
-Scope: tracked .md under book/src/{getting-started,user-guide,start-here,
-platform-guides}. Everything else (internals/, porting/, reference/, …) is
-contributor-facing and out of scope.
+Scope: every page of the user book, as `book/page-map.toml` assigns them
+(RFC-0123 D3, phase-532 W3): contributor material lives in the Internals book,
+so no user directory is out of scope any more.
 
 A line INVOKES just when a code-fence line starts with `just ` (optionally
 after `$ `, `#`-comment lines excluded) or contains `` `just <word>` `` as an
 inline command. English uses ("just works", "just a") never match — the
 pattern requires a following recipe-shaped token.
 
-An invocation is ALLOWED when its context is contributor-marked, where
-context is any of (checked in this order):
-
-* the line itself or any of the 8 lines above it contains "contributor"
-  (case-insensitive) or the explicit escape hatch "no-just-ok" (an HTML
-  comment for quoted tool output and other verbatim text);
-* the nearest preceding markdown heading contains "contributor" — a
-  "## Contributor setup" section licenses its whole body;
-* for a table row: the current table's header row contains "contributor" —
-  a "recipes (contributors)" column licenses the rows under it.
-
+An invocation is ALLOWED only as quoted tool output: the line itself or any
+of the 8 lines above it carries the escape `no-just-ok` (an HTML comment), or
+the nearest heading or table header does. Since RFC-0123 D3 there is no
+contributor exemption: contributor material lives in the Internals book.
 A marker at the top of the page does NOT exempt the page; only the nearest
 heading does, and only when the heading itself says so.
 
@@ -41,14 +34,9 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
-import book_contributor  # noqa: E402  the exemption, shared with check-user-surface-ids
+import book_contributor  # noqa: E402  the verbatim escape (`no-just-ok`)
 
-TRACKS = [
-    "book/src/getting-started/*.md",
-    "book/src/user-guide/*.md",
-    "book/src/start-here/*.md",
-    "book/src/platform-guides/*.md",
-]
+import book_pages  # noqa: E402  the scope: every user-book page (RFC-0123 D3)
 
 # `just <recipe>` in command position inside a fence, or `` `just <recipe>` ``
 # inline. The recipe token must look like a recipe (letters/dash/underscore,
@@ -59,9 +47,7 @@ INLINE_CMD = re.compile(r"`just\s+[a-z_-]{2,}[^`]*`")
 
 def main() -> int:
     repo = pathlib.Path(__file__).resolve().parent.parent
-    files = subprocess.run(
-        ["git", "ls-files", *TRACKS], cwd=repo, capture_output=True, text=True, check=True
-    ).stdout.split()
+    files = book_pages.tracked_user_pages()
 
     bad = []
     for rel in files:
@@ -84,9 +70,9 @@ def main() -> int:
     print(
         "\nUsers do not have `just`. Either give the command a user spelling\n"
         "(nros / bootstrap.sh / the platform's own tool / `ros2 run\n"
-        "rmw_zenoh_cpp rmw_zenohd`) or mark the block contributor-only —\n"
-        'a "**Contributors (…):**" lead within 8 lines. Contributor content\n'
-        "that dominates a page belongs in internals/ instead.",
+        "rmw_zenoh_cpp rmw_zenohd`), or move the contributor material to the\n"
+        "Internals book (book-internals/, RFC-0123). Quoted tool output may\n"
+        "carry a `<!-- no-just-ok -->` escape.",
         file=sys.stderr,
     )
     return 1

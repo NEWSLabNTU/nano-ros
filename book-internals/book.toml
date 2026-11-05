@@ -1,0 +1,21 @@
+[book]
+title = "nano-ros Internals"
+authors = ["aeon"]
+language = "en"
+src = "src"
+
+# RFC-0123: the contributor book. Its sibling `book/` is the nano-ros Book
+# (users and porters). `just book` and the docs workflow build this one after
+# the user book and stage it under the user book's output at `internals/`
+# (D7), the way the API docs are staged under `api/`. It is not built into
+# that directory directly, because mdBook clears its build directory, and
+# until phase-532 W4 the user book still writes pages under `internals/`.
+#
+# No mermaid preprocessor yet: no page here draws a diagram. Add it, with the
+# same pinned assets as book/, when one does.
+
+[build]
+build-dir = "book"
+
+[output.html]
+git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"

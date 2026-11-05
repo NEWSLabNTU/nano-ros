@@ -921,18 +921,16 @@ pub fn run(args: Args) -> Result<()> {
                 bail!(
                     "nros new: a Rust node on --platform {platform} is built as a workspace — a \
                      node package plus an entry the image is built from — not as a single \
-                     package. Start one with:\n\n{}\n\n(book: getting-started/{}.md)",
+                     package. Start one with:\n\n{}\n\n(book: targets/{}.md)",
                     lines
                         .iter()
                         .map(|l| format!("  {l}"))
                         .collect::<Vec<_>>()
                         .join("\n"),
-                    if platform == "zephyr" {
-                        "integration-zephyr"
-                    } else if platform == "nuttx" {
-                        "integration-nuttx"
-                    } else {
-                        platform.as_str()
+                    match platform.as_str() {
+                        "baremetal" => "bare-metal",
+                        "linux" => "linux-host",
+                        p => p,
                     }
                 );
             }

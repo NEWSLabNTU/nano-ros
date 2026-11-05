@@ -48,36 +48,10 @@ case "$cyclone_dir" in
 esac
 
 # --- the Run step, non-interactively -------------------------------------------
-# multi-node-linux.md's Run block, with the output it documents: `Published: N`
-# from the talker and `Received: N` from the listener, both in one process.
-# Require the SECOND tick of each, so the timer fired more than once and
-# delivery is a stream rather than a coincidence.
-bin=./build/posix-cyclonedds-linux/cmake/linux_entry
-[ -x "$bin" ] || probe_fail "the entry binary multi-node-linux.md runs is missing at $PWD/${bin#./}"
-
-log=/tmp/installed-first-project.log
-# `NROS_DEADLINE` travels at the head of the probe script with grep-q.sh (the
-# `--prelude` in run-bootstrap-probe.sh): the installed track has no checkout to source it from.
-"${NROS_DEADLINE[@]}" 60 "$bin" >"$log" 2>&1 &
-entry_pid=$!
-deadline=$((SECONDS + 45))
-# `nros_grep_q` comes from scripts/lib/grep-q.sh, which run-bootstrap-probe.sh
-# places at the head of the probe script (`--prelude`), in this same shell. A grep that cannot run
-# exits 2 here rather than reading as "not published yet" for 45 s (issue 0726).
-until nros_grep_q "Published: 1" "$log" && nros_grep_q "Received: 1" "$log"; do
-    if ! kill -0 "$entry_pid" 2>/dev/null; then
-        tail -50 "$log"
-        probe_fail "the entry exited before publishing and receiving twice"
-    fi
-    if ((SECONDS >= deadline)); then
-        tail -50 "$log"
-        probe_fail "no 'Published: 1' + 'Received: 1' within 45 s (the book shows them at ~1 s)"
-    fi
-    sleep 2
-done
-kill "$entry_pid" 2>/dev/null || true
-head -6 "$log"
-
+# The Run step is the chapter's own: its `nros run ... --expect` block exits
+# non-zero unless the talker published, so the book step already asserted it
+# (phase-532: first-project.md's Linux variant runs one talker through
+# `nros run` instead of a hand-run entry binary).
 # phase-522 W5 — the installed `nros` states this board's support status, read
 # from the registry its own SDK root ships (RFC-0114). No tier number: a status
 # word from RFC-0114 D10's table.

@@ -195,7 +195,7 @@ change rather than a fixed set. `row_coord()`, `NROS_TEST_COORDS` and
 `pr.yml` running L0/L1/L2 on `ubuntu-22.04`, replacing the PR half of
 `pr-checks.yml`. Thin `just` callers per
 [ci-workflow-reorg.md](../../development/ci-workflow-reorg.md); fresh-clone
-assumptions per [ci-conventions.md](../../development/ci-conventions.md).
+assumptions per [ci-conventions.md](../../../book-internals/src/dev-env/ci-conventions.md).
 
 Path filters so an express change (docs, an index row) runs L0 and nothing else.
 `pr-checks.yml` already has a `changes` job to model this on.

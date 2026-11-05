@@ -6,4 +6,4 @@ A platform file here holds the platform's half of a vendored C build:
 zenoh-pico half is `[port.<platform>]` in
 `packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml` (phase-349 W2b). Both
 schemas, and how a build joins them, are in the book chapter
-[`internals/zpico-build.md`](../book/src/internals/zpico-build.md).
+[`internals/zpico-build.md`](../book-internals/src/rmw/zpico-build.md).

@@ -56,7 +56,7 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 
 nano-ros is distributed as **source** — nothing is published to crates.io.
 Consumers either build in-tree (below) or add a path dependency (see
-[Rust-only consumers](book/src/getting-started/installation.md#rust-only-consumers)).
+[Rust-only consumers](book/src/get-started/installation-details.md#rust-only-consumers)).
 
 ### 1. Get the `nros` CLI
 
@@ -123,8 +123,8 @@ it names no board crate either: its image-only dependencies come from a `<pkg>_n
 `nros sync` generates for the image's board, so there too the board line is the
 whole edit ([issue 1305](docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
-See [Installation](book/src/getting-started/installation.md) and
-[First Node — Rust](book/src/getting-started/first-node-rust.md) for the
+See [Installation](book/src/get-started/installation.md) and
+[First Node — Rust](book/src/get-started/first-node-rust.md) for the
 complete walkthrough.
 
 ## Quick Start (C API)
@@ -177,7 +177,7 @@ name  = "talker"
 board = "linux"
 ```
 
-See [First Node — C](book/src/getting-started/first-node-c.md) for a complete C walkthrough.
+See [First Node — C](book/src/get-started/first-node-c.md) for a complete C walkthrough.
 
 ## On Zephyr (west module)
 
@@ -185,7 +185,7 @@ nano-ros is consumable as a Zephyr **module** from your own west workspace,
 on both **Zephyr 3.7 LTS and 4.x**: import via `west.yml`, apply patches
 (`west patch apply` on 4.x), pick an RMW (`-S nros-<rmw>` snippet on 4.x),
 and copy out a worked example. See
-[Zephyr (west module)](book/src/getting-started/integration-zephyr.md) for
+[Zephyr (west module)](book/src/targets/zephyr.md) for
 the version-spanning consumption guide + compatibility matrix.
 
 ## ROS 2 Interoperability
@@ -244,12 +244,12 @@ nano-ros generates its bindings from ROS 2 `.msg`/`.srv`/`.action` packages — 
 
 | Topic                  | Location                                                     |
 |------------------------|--------------------------------------------------------------|
-| Getting started        | [book/src/getting-started/installation.md](book/src/getting-started/installation.md) |
+| Getting started        | [book/src/get-started/installation.md](book/src/get-started/installation.md) |
 | Message generation     | [docs/guides/message-generation.md](docs/guides/message-generation.md)     |
 | ROS 2 interop protocol | [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md)       |
 | Testing                | [tests/README.md](tests/README.md)                           |
-| Zephyr setup           | [docs/guides/zephyr-setup.md](docs/guides/zephyr-setup.md)                 |
-| Embedded integration   | [book/src/concepts/board-integration.md](book/src/concepts/board-integration.md) |
+| Zephyr setup           | [book-internals/src/testing/zephyr-dev-setup.md](book-internals/src/testing/zephyr-dev-setup.md)                 |
+| Embedded integration   | [book/src/extending/board-integration.md](book/src/extending/board-integration.md) |
 | Troubleshooting        | [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md)           |
 
 ## License

@@ -19,8 +19,8 @@
  * callbacks from inside `drive_io` when the event is detected — same
  * thread, same priority, same constraints as message callbacks. No
  * waitset, no take-event polling. See
- * `book/src/concepts/status-events.md` and
- * `book/src/design/rmw-vs-upstream.md` Section 8 for the design.
+ * `book/src/communicate/qos-status-events.md` and
+ * `book/src/extending/rmw-vs-upstream.md` Section 8 for the design.
  *
  * **Matched and incompatible-type events (issue 1972).** Iron/Jazzy's
  * RMW_EVENT_{PUBLICATION,SUBSCRIPTION}_MATCHED and

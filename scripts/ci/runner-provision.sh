@@ -177,7 +177,7 @@ _provision_ros2_notice() {
   Then put ROS_DISTRO in the runner's own environment (its `.env` file), so
   jobs and `runner-doctor.sh` resolve the same install.
 
-  Not on Ubuntu? docs/development/ros2-on-non-ubuntu.md — and read its warning
+  Not on Ubuntu? book-internals/src/dev-env/ros2-on-non-ubuntu.md — and read its warning
   first: when the distrobox is in play, EVERY job runs in the box on its OWN
   tree (issue 0759).
 

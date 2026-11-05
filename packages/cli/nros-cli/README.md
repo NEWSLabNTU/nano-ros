@@ -18,7 +18,7 @@ The `nros` command-line tool — the user-facing entry point to [nano-ros](https
 > No release has been cut yet, so today everyone takes the second row —
 > `install.sh` says so if you run it early. A *globally* installed `nros`
 > shadowing the tree's own binary is a known footgun; see
-> [`book/src/internals/cli-in-monorepo.md`](../../../book/src/internals/cli-in-monorepo.md).
+> [`book-internals/src/dev-env/cli-in-monorepo.md`](../../../book-internals/src/dev-env/cli-in-monorepo.md).
 
 ```bash
 # Contributor path (the one that works today):

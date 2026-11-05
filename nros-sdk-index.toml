@@ -694,7 +694,7 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # CycloneDDS path) depends on. Header/config-only at install time: a small
 # CMake superproject staged into `~/.nros/sdk/corrosion/share/corrosion/`
 # (well under the 500 MB / 5 min `default` tier policy in
-# `docs/development/sdk-tiers.md`, idempotent — `just workspace install-corrosion`
+# `book-internals/src/dev-env/sdk-tiers.md`, idempotent — `just workspace install-corrosion`
 # already gates on a `.installed-version` stamp). Source-built only — upstream
 # `corrosion-rs/corrosion` releases ship source tarballs, not prebuilt binaries
 # we mirror, so no `dist.<host>` rows (re-verified 2026-09-11 for issue 1273 /
@@ -1911,7 +1911,7 @@ why = "the zenoh ROS interop lanes: the peer runs `source /opt/ros/<distro>/setu
 # before rcutils logging is up ("logging system isn't initialized"), so no
 # cell got a verdict. Both names in one install command move together.
 ros_package = ["rmw_zenoh_cpp", "zenoh_cpp_vendor"]
-# No dnf/pacman: ROS 2 is not packaged there, and docs/development/ros2-on-non-ubuntu.md
+# No dnf/pacman: ROS 2 is not packaged there, and book-internals/src/dev-env/ros2-on-non-ubuntu.md
 # routes those hosts through an Ubuntu distrobox, whose setup script installs this.
 #
 # No `check` probe: the artifact is the `rmw_zenohd` binary inside the
@@ -2529,7 +2529,7 @@ check = { cmd = "cargo-asm" }
 # `clang-format` are EXEMPT BY MEASUREMENT, written down, not overlooked.
 #
 # dnf / pacman / brew are deliberately NOT mapped. The book measured that Fedora
-# and Arch ship no rosidl packages (`book/src/getting-started/installation.md`
+# and Arch ship no rosidl packages (`book/src/get-started/installation.md`
 # pip-installs these four there on purpose, saying so), and nothing here has
 # measured the rest. A GUESSED mapping prints a command that fails; an absent
 # one falls to pip, which is what those hosts already do — so absence is the
