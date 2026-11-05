@@ -23,6 +23,12 @@ command = "python3 ../scripts/mdbook-board-status.py"
 [preprocessor.lang-tabs]
 command = "python3 ../scripts/mdbook-lang-tabs.py"
 
+# RFC-0124 D2 and Topic levels: a page's `<!-- type: … · level: N -->`
+# declaration renders as a badge under its title ("How-to · Level 2: Building
+# real applications"). Pages with no declaration (the generated ones) get none.
+[preprocessor.level-badge]
+command = "python3 ../scripts/mdbook-level-badge.py"
+
 [output.html]
 git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]

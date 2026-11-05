@@ -8,6 +8,7 @@ on:
       - "book-internals/**"
       - "scripts/mdbook-*.py"
       - "scripts/lib/book_tabs.py"
+      - "scripts/lib/book_charter.py"
       - "packages/api/nros/**"
       - "packages/core/nros-rmw/**"
       - "packages/core/nros-rmw-abi/**"
