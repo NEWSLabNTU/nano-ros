@@ -124,6 +124,86 @@ A page may assume only topics at its own level or below. It lists them on a
 A reference page carries the level of the most advanced topic it describes.
 Anyone may look it up.
 
+## Languages in tabs
+
+When a step has a Rust, a C and a C++ version, write the versions as one tab
+group. The rendered book shows them as tabs, and the language a reader picks
+switches every group on the page and stays picked on the next page.
+
+````markdown
+<!-- tabs -->
+
+#### Rust
+
+```rust
+executor.spin_once(10)?;
+```
+
+#### C
+
+```c
+rclc_executor_spin_some(&executor, 10);
+```
+
+#### C++
+
+```cpp
+executor.spin_some(10);
+```
+
+<!-- /tabs -->
+````
+
+It renders as:
+
+<!-- tabs -->
+
+#### Rust
+
+```rust
+executor.spin_once(10)?;
+```
+
+#### C
+
+```c
+rclc_executor_spin_some(&executor, 10);
+```
+
+#### C++
+
+```cpp
+executor.spin_some(10);
+```
+
+<!-- /tabs -->
+
+The rules:
+
+- `<!-- tabs -->` and `<!-- /tabs -->` each stand alone on a line, at column
+  0, so a group cannot sit inside a list or a quote.
+- The first line after `<!-- tabs -->` (blank lines aside) is a heading whose
+  text is `Rust`, `C` or `C++`. Every heading at that level inside the group
+  starts the next tab. Use one level below the section you are in.
+- A tab holds any markdown: prose, several fences, a list. Deeper headings
+  are content. A group has at least two tabs and each language once.
+- Show only the languages the step has. Rust first, then C, then C++.
+
+On GitHub, which does not run the preprocessor, a group reads as one
+sub-heading per language. The tab headings do not appear in the rendered page,
+so do not link to them.
+
+A probe step inside a tab belongs to that tab's language. Give each
+language's version of a step the same `probe=NN`, and set `lang` (`rust`, `c`
+or `cpp`) on the `[[probe]]` row of each track that replays the page, in
+`packages/boards/board-support.toml`. The extractor keeps that language's
+blocks and every untabbed one, and it refuses a tabbed step on a track that
+names no language. The charter counts a group's prose once, as its longest
+tab.
+
+`scripts/mdbook-lang-tabs.py` renders the groups and `scripts/lib/book_tabs.py`
+parses them. `check-book-audience` refuses a malformed group.
+
 ## Templates
 
 Each template gives the headings in order. Replace the comments. Keep the
