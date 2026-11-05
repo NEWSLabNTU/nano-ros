@@ -184,7 +184,7 @@ failed`, check:
    or `param set`).
 3. uORB topic not advertised yet — start the upstream PX4 module
    that publishes it (`commander start` etc.) first.
-4. See [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md).
+4. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
 
 ## GitHub source
 

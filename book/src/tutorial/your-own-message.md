@@ -222,7 +222,7 @@ manifest row itself (`my_msgs = { path = "../../generated/my_msgs",
 default-features = false }  # nros-managed`). The shipped precedent is
 [`examples/workspaces/features/src/custom_msgs`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features/src/custom_msgs) with its
 `rust_reading_listener_pkg` consumer. Full
-detail: [Message Generation](../build/message-generation.md).
+detail: [Message Generation](../reference/message-generation.md).
 
 ```rust,ignore
 use my_msgs::msg::MyMsg;   // generated crate, same field names
@@ -314,6 +314,6 @@ dep between them, plus a consumer node). Use it as a copy-out template.
 ## Next
 
 - Something broke on the way here? [Troubleshooting — First 10
-  Minutes](../get-started/first-10-minutes.md).
+  Minutes](../reference/troubleshooting-index.md).
 - Single-node deep dive: [First Node — Rust](add-a-second-node.md).
 - Grow the workspace: [Add a node package](grow-your-workspace.md#1-add-a-node-package).

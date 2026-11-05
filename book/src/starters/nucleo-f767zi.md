@@ -199,7 +199,7 @@ console, USART6, is on the board's pins rather than on the USB cable.
   port 7447 on this machine.
 - A build that cannot find `hal_stm32`: the west workspace predates the
   `hal_stm32` line in its allowlist; add it and run `west update` again.
-- Everything else: [Troubleshooting - First 10 Minutes](../get-started/first-10-minutes.md).
+- Everything else: [Troubleshooting - First 10 Minutes](../reference/troubleshooting-index.md).
 
 ## Where to go next
 

@@ -304,7 +304,7 @@ before the first publish lands. threadx-riscv64
    up; without it the fixtures use the loopback fallback, which is
    fine for this tutorial (`nros setup threadx-linux` does not create
    the interface).
-3. See [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md).
+3. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
 
 ## Flash a real board
 

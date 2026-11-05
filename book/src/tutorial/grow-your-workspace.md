@@ -475,7 +475,7 @@ commit:
 `nros build` then runs that host tool, so compiler errors are the compiler's.
 `nros build --dry-run` prints the command for an image, and running it
 yourself works too. Where each binary lands is
-[What `nros build` Produces](../build/build-artifacts.md).
+[What `nros build` Produces](../reference/build-outputs.md).
 
 ## Customising an entry
 

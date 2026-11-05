@@ -146,7 +146,7 @@ see the Doxygen for the full L1 verb list.
 Out-of-tree projects link the `NanoRos::NanoRos` CMake target and
 generate C bindings with `nano_ros_generate_interfaces(<pkg> LANGUAGE C)`
 (the function defaults to `LANGUAGE CPP`; the full which-spelling table
-is in [Message Generation](../build/message-generation.md#which-cmake-spelling-one-table)) —
+is in [Message Generation](message-generation.md#which-cmake-spelling-one-table)) —
 covered in
 [`docs/reference/c-api-cmake.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/c-api-cmake.md).
 

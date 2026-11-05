@@ -6,7 +6,7 @@ Build, run, and verify a single nano-ros publisher node on Linux from
 C++. The node is a C++ library built with CMake, in the ament shape; the
 program around it is generated. Uses the Zenoh backend.
 
-> **Stuck?** See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md) for the common first-build errors.
+> **Stuck?** See [Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md) for the common first-build errors.
 
 ## Prereqs
 
@@ -243,7 +243,7 @@ talker. If it does not appear in 30 seconds:
    program stops, naming the step.
 2. `-3` / `-100` on stderr both mean the transport did not open: check
    `NROS_LOCATOR` and the router's port.
-3. See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md).
+3. See [Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md).
 
 ## Next
 
@@ -258,7 +258,7 @@ talker. If it does not appear in 30 seconds:
   (`pubsub_bringup`, `service_bringup`, `action_bringup`), and
   [C / C++ multi-node workspaces](../guide/contracts/cpp-workspaces.md).
 - Custom `.msg` / `.srv` / `.action`:
-  [Message Generation](../build/message-generation.md)
+  [Message Generation](../reference/message-generation.md)
 - Cross-compile for an RTOS: pick the right Embedded Starter from
   the next section.
 

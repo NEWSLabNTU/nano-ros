@@ -202,7 +202,7 @@ board list and [`nros` CLI](../../reference/cli.md) for every subcommand.
 > output. Default ports: `tcp/127.0.0.1:7447` on POSIX,
 > `tcp/10.0.2.2:7447` on QEMU FreeRTOS (Slirp forwards to host).
 > Mismatch = silent hang; see
-> [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md).
+> [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
 
 After provisioning, follow the per-platform starter page (FreeRTOS,
 Zephyr, NuttX, …) for the board's build + run steps.
@@ -228,7 +228,7 @@ IDE or a CI step that has not sourced ROS still builds. A project whose
 packages depend on no message package at all configures without ROS 2. With
 neither a sourced shell nor a record, configure stops and names the setup
 step; see
-[Troubleshooting](../../get-started/first-10-minutes.md#a10-ament_prefix_path-is-unset).
+[Troubleshooting](../../reference/troubleshooting-index.md#a10-ament_prefix_path-is-unset).
 
 Running is where it splits, and the reason is the **router**. zenoh-pico
 connects in client mode, so any two-process example needs a zenoh router

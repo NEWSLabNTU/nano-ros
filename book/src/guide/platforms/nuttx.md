@@ -298,7 +298,7 @@ count at 1 like the official ROS 2 demo talker. If no
    `10.0.2.15` (the board's default on QEMU's network; an image's `net` address overrides it).
 3. Confirm `zenohd` reachable; the image's `locator` must match the
    router's listen port.
-4. See [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md).
+4. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
 
 ## Run on QEMU (RISC-V rv-virt)
 
