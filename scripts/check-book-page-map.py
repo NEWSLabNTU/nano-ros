@@ -47,19 +47,22 @@ def self_test() -> None:
     """Negative controls, run on every invocation: a map with each defect
     must be refused by `book_pages.check`."""
     P = book_pages.Page
-    ok = [P(book="user", path="concepts/a.md", action="move", batch="b", old="x/a.md"),
+    ok = [P(book="user", path="background/a.md", action="move", batch="b", old="x/a.md"),
           P(book="internals", path="rmw/b.md", action="new phase-532", batch="b")]
     assert book_pages.check(ok) == [], book_pages.check(ok)
     bad = {
         "not under a user part": [P(book="user", path="nowhere/a.md", action="move", batch="b", old="x/a.md")],
-        "two rows": [ok[0], P(book="user", path="concepts/c.md", action="move", batch="b", old="x/a.md")],
-        "target of both": [ok[0], P(book="user", path="concepts/a.md", action="move", batch="b", old="x/z.md")],
-        "which no row owns": [P(book="user", path="concepts/q.md", action="merge-into concepts/q.md", batch="b", old="x/q.md")],
-        "needs an `old` path": [P(book="user", path="concepts/n.md", action="move", batch="b")],
-        "use `move`": [P(book="user", path="concepts/k.md", action="keep", batch="b", old="x/k.md")],
+        "two rows": [ok[0], P(book="user", path="background/c.md", action="move", batch="b", old="x/a.md")],
+        "target of both": [ok[0], P(book="user", path="background/a.md", action="move", batch="b", old="x/z.md")],
+        "which no row owns": [P(book="user", path="background/q.md", action="merge-into background/q.md", batch="b", old="x/q.md")],
+        "needs an `old` path": [P(book="user", path="background/n.md", action="move", batch="b")],
+        "two rows (a `was` path)": [ok[0], P(book="user", path="background/w.md", action="move", batch="b", old="x/w.md", was=("x/a.md",))],
+        "`was` needs an `old` path": [P(book="user", path="background/v.md", action="new p", batch="b", was=("x/v.md",))],
+        "use `move`": [P(book="user", path="background/k.md", action="keep", batch="b", old="x/k.md")],
     }
     for want, rows in bad.items():
         got = book_pages.check(rows)
+        want = want.split(" (")[0]
         assert any(want in e for e in got), f"self-test: expected {want!r}, got {got}"
 
 
