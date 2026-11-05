@@ -226,7 +226,7 @@ path = "guide/rmw/qos-status-events.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["communicate/qos-status-events.md"]
-note = "Appendix A names only its basics, for Tutorial 10 (W5); the rest has no Appendix A page yet: an RFC-0124 amendment or W6 decides"
+note = "Use QoS, status events and discovery (W6, a how-to); Tutorial 10 (W5) takes its basics, and Appendix A needs an RFC-0124 amendment to name this page"
 
 [[page]]
 old = "getting-started/workspace-cpp.md"
