@@ -732,6 +732,45 @@ pub fn graceful_kill_process_group_within(handle: &mut Child, _grace: Duration) 
     false
 }
 
+/// How long [`ManagedProcess::wait_for_output_pattern`] keeps reading after
+/// its pattern appears on a line that has not ended yet (issue 2286). The
+/// line normally completes within one more write; this only bounds the wait
+/// for a line that never ends.
+const MATCH_LINE_GRACE: Duration = Duration::from_secs(2);
+
+/// Whether the first occurrence of `pattern` in `text` sits on a COMPLETE
+/// line: a `\n` follows it in the same stream, or the pattern itself ends one.
+/// Issue 2286 — see `wait_until_pattern`.
+fn match_line_complete(text: &str, pattern: &str) -> bool {
+    match text.find(pattern) {
+        Some(at) => pattern.ends_with('\n') || text[at + pattern.len()..].contains('\n'),
+        None => false,
+    }
+}
+
+/// THE rule every pattern wait over one output stream applies (issue 2286):
+/// `pattern` is in `text` AND its line is complete, or it has sat on an open
+/// line for [`MATCH_LINE_GRACE`]. `seen_open` holds when the open line was
+/// first seen; the caller keeps it across polls of one wait.
+pub(crate) fn pattern_line_ready(
+    text: &str,
+    pattern: &str,
+    seen_open: &std::cell::Cell<Option<std::time::Instant>>,
+) -> bool {
+    if !text.contains(pattern) {
+        return false;
+    }
+    if match_line_complete(text, pattern) {
+        return true;
+    }
+    let first = seen_open.get().unwrap_or_else(|| {
+        let now = std::time::Instant::now();
+        seen_open.set(Some(now));
+        now
+    });
+    first.elapsed() >= MATCH_LINE_GRACE
+}
+
 /// Managed process with automatic cleanup
 ///
 /// Wraps a child process and ensures it is killed on drop.
@@ -1015,6 +1054,13 @@ impl ManagedProcess {
         }
 
         let mut buf = [0u8; 4096];
+        // Issue 2286 — each stream on its own as well, so "the line holding the
+        // match is complete" asks the stream that printed it: a newline the
+        // OTHER stream interleaves after the match ends nothing.
+        let mut out_text = String::new();
+        let mut err_text = String::new();
+        // When the pattern first appeared on a line that was still open.
+        let seen_open = std::cell::Cell::new(None);
 
         loop {
             if start.elapsed() > timeout {
@@ -1045,6 +1091,7 @@ impl ManagedProcess {
                 && n > 0
             {
                 crate::capture::append(&mut output, &buf[..n]);
+                crate::capture::append(&mut out_text, &buf[..n]);
                 got_data = true;
             }
             if let Some(ref mut err) = stderr
@@ -1052,14 +1099,33 @@ impl ManagedProcess {
                 && n > 0
             {
                 crate::capture::append(&mut output, &buf[..n]);
+                crate::capture::append(&mut err_text, &buf[..n]);
                 got_data = true;
             }
 
+            // Issue 2286 — a match counts once the LINE holding it is complete.
+            // A read can end mid-line, and a caller that waits on a prefix
+            // (`Result received:`) and then asserts on the rest of that line
+            // used to see half of it: the C++ action client prints its result
+            // one element per unbuffered write. A line that never ends (a
+            // prompt, a marker printed without `\n`) still matches after
+            // `MATCH_LINE_GRACE`, so no caller waits out its whole timeout.
             if output.contains(pattern) {
-                // Put handles back for further use
-                self.handle.stdout = stdout;
-                self.handle.stderr = stderr;
-                return (output, true);
+                // The stream that printed the match decides; a match only the
+                // interleaved whole holds is judged on the whole.
+                let stream = if out_text.contains(pattern) {
+                    &out_text
+                } else if err_text.contains(pattern) {
+                    &err_text
+                } else {
+                    &output
+                };
+                if pattern_line_ready(stream, pattern, &seen_open) {
+                    // Put handles back for further use
+                    self.handle.stdout = stdout;
+                    self.handle.stderr = stderr;
+                    return (output, true);
+                }
             }
 
             if !got_data {
@@ -1925,6 +1991,56 @@ mod tests {
             .expect("the pattern was printed");
         p.kill();
         assert!(out.contains("READY"), "Ok must carry the output: {out}");
+    }
+
+    /// Issue 2286 — a pattern that opens a line matches only once that line is
+    /// complete. The two writes are 300 ms apart, so the first read sees the
+    /// prefix with the line still open; the old engine returned there, and the
+    /// caller's assertion on the whole line failed.
+    #[test]
+    fn wait_for_output_pattern_returns_the_whole_matched_line() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c")
+            .arg("printf 'Result received: [0, 1'; sleep 0.3; printf ', 2]\\n'; sleep 30");
+        let mut p = ManagedProcess::spawn_command(cmd, "2286-contract").expect("spawn sh");
+        let out = p
+            .wait_for_output_pattern(crate::output::ACTION_RESULT_PREFIX, Duration::from_secs(10))
+            .expect("the pattern was printed");
+        p.kill();
+        assert!(
+            out.contains("Result received: [0, 1, 2]\n"),
+            "the matched line must be returned whole, got: {out:?}"
+        );
+    }
+
+    /// Issue 2286 — a line that never ends still matches, after the grace, and
+    /// well before the caller's timeout.
+    #[test]
+    fn wait_for_output_pattern_accepts_an_unterminated_line_after_the_grace() {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c").arg("printf 'prompt> '; sleep 30");
+        let mut p = ManagedProcess::spawn_command(cmd, "2286-contract").expect("spawn sh");
+        let t0 = std::time::Instant::now();
+        let out = p
+            .wait_for_output_pattern("prompt>", Duration::from_secs(20))
+            .expect("the pattern was printed");
+        let waited = t0.elapsed();
+        p.kill();
+        assert!(out.contains("prompt>"), "got: {out:?}");
+        assert!(
+            waited >= MATCH_LINE_GRACE && waited < Duration::from_secs(10),
+            "an unterminated line must match after the grace ({MATCH_LINE_GRACE:?}), \
+             not at once and not at the timeout; waited {waited:?}"
+        );
+    }
+
+    /// Issue 2286 — the line is judged in the stream that printed the match.
+    #[test]
+    fn match_line_complete_needs_a_newline_after_the_match() {
+        assert!(match_line_complete("a\nResult: [1, 2]\n", "Result:"));
+        assert!(!match_line_complete("a\nResult: [1, 2", "Result:"));
+        assert!(match_line_complete("x DONE\n", "DONE\n"));
+        assert!(!match_line_complete("", "Result:"));
     }
 
     /// The lenient counterpart keeps the old behavior under an honest name:
