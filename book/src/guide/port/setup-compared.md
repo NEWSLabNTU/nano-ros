@@ -118,7 +118,7 @@ derived rather than restated.
 
 Multi-RMW bridges (one binary, two or more backends) use
 `Executor::open_with_rmw("<name>", ...)` + `node_builder.rmw("<name>")`
-— see [Cross-backend Bridges](../rmw/bridge-between-backends.md).
+— see [Bridge between backends](../rmw/bridge-between-backends.md).
 
 ## What Stays Familiar
 
