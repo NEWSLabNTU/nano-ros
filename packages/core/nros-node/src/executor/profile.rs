@@ -115,7 +115,7 @@ struct State {
     /// thread registered last. Per THREAD, not per process: a tiered native
     /// boot runs each tier's setup on its own task, concurrently, and a global
     /// cursor attributed one tier's timer to another tier's node (measured on
-    /// `examples/workspaces/derived-tiers-cpp`, the first run of this module).
+    /// `examples/workspaces/derived-sched-tasks-cpp`, the first run of this module).
     cursors: BTreeMap<usize, (Option<String>, Option<usize>)>,
     in_flight: BTreeMap<usize, InFlight>,
     thread_key: fn() -> usize,

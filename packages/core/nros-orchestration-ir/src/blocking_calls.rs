@@ -41,7 +41,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ros_launch_manifest_model::{CallMode, CliContract, ServiceWiring, SystemModel};
 
-use crate::ResolvedTierTable;
+use crate::ResolvedSchedTaskTable;
 
 /// One level a node's callbacks run on.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -66,7 +66,7 @@ impl ImageLevels {
     /// A tierless image: every member on one level.
     pub fn one_level<'a>(members: impl IntoIterator<Item = &'a str>) -> Self {
         let level = LevelRef {
-            name: crate::DEFAULT_TIER.to_string(),
+            name: crate::DEFAULT_SCHED_TASK.to_string(),
             priority: 0,
         };
         Self {
@@ -83,8 +83,8 @@ impl ImageLevels {
     /// `members` is every node of the image (bare names); one the table does
     /// not hold is unplaced, unless the table has one tier, which then holds
     /// the whole image.
-    pub fn from_tiers<'a>(
-        table: &ResolvedTierTable,
+    pub fn from_sched_tasks<'a>(
+        table: &ResolvedSchedTaskTable,
         low_number_is_high: bool,
         members: impl IntoIterator<Item = &'a str>,
     ) -> Self {
@@ -351,10 +351,10 @@ pub fn check_model(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ResolvedTier;
+    use crate::ResolvedSchedTask;
 
-    fn tier(name: &str, priority: i64, members: &[&str]) -> ResolvedTier {
-        ResolvedTier {
+    fn tier(name: &str, priority: i64, members: &[&str]) -> ResolvedSchedTask {
+        ResolvedSchedTask {
             name: name.to_string(),
             priority,
             stack_bytes: None,
@@ -378,13 +378,13 @@ mod tests {
     /// Zephyr-direction table (lower number more urgent): `hi` at 5 holds
     /// `handler` and `peer`; `lo` at 8 holds `operator`.
     fn levels() -> ImageLevels {
-        let table = ResolvedTierTable {
+        let table = ResolvedSchedTaskTable {
             tiers: vec![
                 tier("lo", 8, &["operator"]),
                 tier("hi", 5, &["handler", "peer"]),
             ],
         };
-        ImageLevels::from_tiers(&table, true, ["handler", "peer", "operator"])
+        ImageLevels::from_sched_tasks(&table, true, ["handler", "peer", "operator"])
     }
 
     /// `handler` calls a server on `operator` (less urgent) and one on
@@ -465,7 +465,7 @@ mod tests {
     /// A tierless image is one level: any blocking call inside it deadlocks,
     /// and a server outside the image is not checked.
     #[test]
-    fn a_tierless_image_is_one_level() {
+    fn a_single_executor_image_is_one_level() {
         let one = ImageLevels::one_level(["handler", "peer", "operator"]);
         let err = check_model(&model(Some(CallMode::Blocking)), &one).unwrap_err();
         assert_eq!(err.refused.len(), 3);
@@ -484,23 +484,23 @@ mod tests {
     /// priority preempt nothing, so that call is refused too.
     #[test]
     fn urgency_follows_the_kernels_direction() {
-        let table = ResolvedTierTable {
+        let table = ResolvedSchedTaskTable {
             tiers: vec![
                 tier("lo", 8, &["operator"]),
                 tier("hi", 5, &["handler", "peer"]),
             ],
         };
-        let posix = ImageLevels::from_tiers(&table, false, ["handler", "peer", "operator"]);
+        let posix = ImageLevels::from_sched_tasks(&table, false, ["handler", "peer", "operator"]);
         let err = check_model(&model(Some(CallMode::Blocking)), &posix).unwrap_err();
         let clients: Vec<_> = err.refused.iter().map(|f| f.client.as_str()).collect();
         assert_eq!(clients, ["/s/handler/same", "/s/operator/up"]);
-        let flat = ResolvedTierTable {
+        let flat = ResolvedSchedTaskTable {
             tiers: vec![
                 tier("a", 5, &["operator"]),
                 tier("b", 5, &["handler", "peer"]),
             ],
         };
-        let flat = ImageLevels::from_tiers(&flat, true, ["handler", "peer", "operator"]);
+        let flat = ImageLevels::from_sched_tasks(&flat, true, ["handler", "peer", "operator"]);
         assert_eq!(
             check_model(&model(Some(CallMode::Blocking)), &flat)
                 .unwrap_err()
@@ -530,10 +530,10 @@ mod tests {
                 ..Default::default()
             },
         );
-        let table = ResolvedTierTable {
+        let table = ResolvedSchedTaskTable {
             tiers: vec![tier("lo", 8, &["operator"]), tier("hi", 5, &["handler"])],
         };
-        let lv = ImageLevels::from_tiers(&table, true, ["handler", "operator", "stray"]);
+        let lv = ImageLevels::from_sched_tasks(&table, true, ["handler", "operator", "stray"]);
         let err = check_model(&m, &lv).unwrap_err();
         assert_eq!(err.refused.len(), 1);
         assert!(err.to_string().contains("action client `/s/handler/go`"));

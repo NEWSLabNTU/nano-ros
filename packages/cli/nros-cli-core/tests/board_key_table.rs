@@ -28,7 +28,7 @@ fn every_table_key_maps_to_its_family_through_every_consumer() {
         assert_eq!(board_family(key), Ok(family), "board_family(`{key}`)");
         assert_eq!(
             board_to_rtos(key),
-            Ok(family.tier_rtos_key()),
+            Ok(family.sched_task_rtos_key()),
             "board_to_rtos(`{key}`)"
         );
         let entry = LoweredEntry {
@@ -125,7 +125,11 @@ fn a_spelling_in_both_namespaces_names_the_same_rtos() {
             family.as_str(),
             platform.kebab()
         );
-        assert_eq!(platform.tier_rtos_key(), family.tier_rtos_key(), "`{key}`");
+        assert_eq!(
+            platform.sched_task_rtos_key(),
+            family.sched_task_rtos_key(),
+            "`{key}`"
+        );
     }
     // Measured 2026-09-11: 18 of the 21 keys resolved in the catalog. Since
     // issue 1902 every key does, and `threadx`, which two descriptors claim, is
@@ -146,8 +150,8 @@ fn a_spelling_in_both_namespaces_names_the_same_rtos() {
             platform.kebab()
         );
         assert_eq!(
-            platform.tier_rtos_key(),
-            nros_entry_lower::tier_rtos_key_for(key),
+            platform.sched_task_rtos_key(),
+            nros_entry_lower::sched_task_rtos_key_for(key),
             "`{key}`"
         );
     }
@@ -248,7 +252,7 @@ fn repo_root() -> PathBuf {
 }
 
 /// Every runner symbol `c_abi_runners` names is DEFINED in the tree. The table
-/// it replaced named `nros_board_threadx_run_tiers`, a symbol that exists
+/// it replaced named `nros_board_threadx_run_sched_tasks`, a symbol that exists
 /// nowhere.
 ///
 /// A C definition is a line starting `int32_t <sym>(` in a board crate's `c/`.
@@ -297,8 +301,8 @@ fn c_abi_runners_name_only_symbols_that_exist() {
         };
         for sym in [
             runners.run_components,
-            runners.run_tiers,
-            runners.run_tiers_backed,
+            runners.run_sched_tasks,
+            runners.run_sched_tasks_backed,
             runners.run_levels,
         ]
         .into_iter()
@@ -317,7 +321,7 @@ fn c_abi_runners_name_only_symbols_that_exist() {
     // The negative control: the name the old table invented is absent, so
     // the scan can fail. A scan that finds everything proves nothing.
     assert!(
-        !defined("nros_board_threadx_run_tiers"),
+        !defined("nros_board_threadx_run_sched_tasks"),
         "the scan found a definition of the symbol issue 1285 says does not exist \
          — either ThreadX gained a C runner (update c_abi_runners and this test) or \
          the scan is too loose"

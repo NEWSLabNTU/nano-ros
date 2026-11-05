@@ -60,7 +60,7 @@ static void semihost_write0(const char *s) {
     semihosting_write0(s);
 }
 
-/* phase-370 — the family console hook `freertos_run_tiers.c` reports through.
+/* phase-370 — the family console hook `freertos_run_sched_tasks.c` reports through.
  *
  * That TU used to call `semihosting_write0` directly, which tied a file about
  * FreeRTOS tiers to one board family's debug transport. On a Cortex-M board

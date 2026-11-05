@@ -42,7 +42,7 @@ pub(crate) use crate::timer::{TimerCallInfo, TimerClockSource};
 // `Ok(false)` — "ran, fired nothing", the common outcome for a timer that is
 // not yet due — would be recorded as an invocation that never happened.
 //
-// Paired stubs (the `entry_tiers.rs` idiom) so the call sites read IDENTICALLY
+// Paired stubs (the `entry_sched_tasks.rs` idiom) so the call sites read IDENTICALLY
 // whether or not the feature is on; the `#[cfg]` lives here, once, instead of
 // wrapping every hook site.
 

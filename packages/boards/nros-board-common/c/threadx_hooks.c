@@ -363,7 +363,7 @@ void tx_application_define(void *first_unused_memory)
 /* ---- Phase 297 W2/W4 — multi-tier thread-creation shim (RFC-0053) -----------
  *
  * `nros_threadx_create_task` is the SINGLE thread-creation backend the Rust
- * `run_tiers` (W4) and any C/C++ entry call to spawn a per-tier thread —
+ * `run_sched_tasks` (W4) and any C/C++ entry call to spawn a per-tier thread —
  * mirroring the FreeRTOS `nros_freertos_create_task` shape, not a per-language
  * reimplementation (the common-backend principle).
  *
@@ -376,7 +376,7 @@ void tx_application_define(void *first_unused_memory)
  * `k_thread` pool; neither bakes per-tier static stacks. The byte pool is
  * consistent with ThreadX's OWN app thread, adds no new static RAM (a tier
  * executor stack is ~hundreds of KB — a fixed static pool would cost
- * MAX_TIERS × that in BSS), and its one downside (runtime-alloc failure) is
+ * MAX_SCHED_TASKS × that in BSS), and its one downside (runtime-alloc failure) is
  * handled here (return -1 → the tier does not spawn). Exact per-tier static
  * stacks remain a future RAM optimization for constrained MCU targets.
  *
@@ -572,7 +572,7 @@ int nros_threadx_create_task(
     pt = (preempt_threshold < 0) ? priority : (UINT)preempt_threshold;
 
     /* #0266 — round-robin time slice (TX_NO_TIME_SLICE when 0 µs = FIFO). */
-    status = tx_thread_create(thread, (CHAR *)(name ? name : "nros_tier"),
+    status = tx_thread_create(thread, (CHAR *)(name ? name : "nros_sched_task"),
                                nros_tx_task_trampoline, (ULONG)nros_tx_task_count,
                                stack, stack_size,
                                priority, pt,
@@ -586,7 +586,7 @@ int nros_threadx_create_task(
     return 0;
 }
 
-/* Allocate `bytes` from the shared ThreadX byte pool. The Rust `run_tiers`
+/* Allocate `bytes` from the shared ThreadX byte pool. The Rust `run_sched_tasks`
  * uses this for each spawned tier's heap context (mirrors the FreeRTOS
  * `nros_platform_alloc` → `pvPortMalloc` shape). Returns NULL on failure. */
 void *nros_threadx_alloc(unsigned long bytes)

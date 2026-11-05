@@ -28,7 +28,7 @@
       first — `check-provider-announcements.py` compares them, because two
       spellings of one fact drift.
     -->
-    <!-- `linux`, the one name (phase-500 W1): `apply_tier_affinity` calls
+    <!-- `linux`, the one name (phase-500 W1): `apply_sched_task_affinity` calls
          `sched_setaffinity`, which libc does not define for apple, windows or
          freebsd, so this board builds on Linux only. `native` (every
          general-purpose host) and `posix` (the platform) are not its names.

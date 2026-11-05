@@ -293,8 +293,8 @@ static NATIVE_WORKSPACE_CPP_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = On
 /// Phase 269 W4 — cached paths to the 2-tier sched-context C/C++ realtime workspace entries.
 static NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
-/// Issue 1733 — the native derived-tier C++ entry (`derived-tiers-cpp`).
-static NATIVE_WORKSPACE_CPP_DERIVED_TIERS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// Issue 1733 — the native derived-tier C++ entry (`derived-sched-tasks-cpp`).
+static NATIVE_WORKSPACE_CPP_DERIVED_SCHED_TASKS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-509 P10 -- the native LEVELS C++ entry (`levels-cpp`'s linux image).
 static NATIVE_WORKSPACE_CPP_LEVELS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_LEVELS_S1_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -344,13 +344,13 @@ static THREADX_RISCV64_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::n
 static FREERTOS_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-281 W3-nuttx — cached path to the 2-tier C++ realtime NuttX entry
-/// (`realtime-cpp` nuttx_entry), run by `realtime_tiers_cpp_nuttx_e2e.rs`.
+/// (`realtime-cpp` nuttx_entry), run by `realtime_sched_tasks_cpp_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-281 W3-nuttx — cached path to the 2-tier C realtime NuttX entry
-/// (`realtime-c` nuttx_entry), run by `realtime_tiers_c_nuttx_e2e.rs`.
+/// (`realtime-c` nuttx_entry), run by `realtime_sched_tasks_c_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-281 W3-nuttx — cached path to the 2-tier **Rust** realtime NuttX entry
-/// (`realtime-rust` nuttx_entry), run by `realtime_tiers_rust_nuttx_e2e.rs`.
+/// (`realtime-rust` nuttx_entry), run by `realtime_sched_tasks_rust_nuttx_e2e.rs`.
 static NUTTX_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -359,7 +359,7 @@ static NUTTX_RISCV_WORKSPACE_RUST_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = Onc
 static THREADX_LINUX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-274 W3 (#126) — cached path to the 2-tier C++ realtime FreeRTOS entry
-/// (`realtime-cpp`), run by `realtime_tiers_cpp_freertos_e2e.rs`.
+/// (`realtime-cpp`), run by `realtime_sched_tasks_cpp_freertos_e2e.rs`.
 static FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-427 W12 (issue 1247) — cached path to the FREESTANDING subnode entry
@@ -369,7 +369,7 @@ static FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCel
 static FREERTOS_WORKSPACE_CPP_SUBNODE_PORTABLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-281 W2 — cached path to the 2-tier C realtime FreeRTOS entry
-/// (`realtime-c`), run by `realtime_tiers_c_freertos_e2e.rs`.
+/// (`realtime-c`), run by `realtime_sched_tasks_c_freertos_e2e.rs`.
 static FREERTOS_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2c — cached path to the MIXED (C + C++ + Rust) threadx-linux embedded entry.
@@ -2954,8 +2954,8 @@ pub fn build_native_workspace_rust_lifecycle_entry() -> TestResult<&'static Path
 }
 
 /// phase-263 B2 (Track D) — the real-time 2-tier workspace Entry (cached). The
-/// `run_tiers` multi-tier entry schedules a high-tier `/ctrl` node (10 ms) and a
-/// low-tier `/telem` node (100 ms); `realtime_tiers_e2e` asserts both are scheduled.
+/// `run_sched_tasks` multi-tier entry schedules a high-tier `/ctrl` node (10 ms) and a
+/// low-tier `/telem` node (100 ms); `realtime_sched_tasks_e2e` asserts both are scheduled.
 pub fn build_native_workspace_rust_realtime_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_RUST_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -3626,9 +3626,9 @@ pub fn build_nuttx_workspace_c_entry() -> TestResult<&'static Path> {
 
 /// phase-281 W3-nuttx — the 2-tier **C++** realtime NuttX (QEMU arm-virt) entry
 /// (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++
-/// nodes over ONE shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1,
+/// nodes over ONE shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1,
 /// one pthread per tier). The FIRST full nuttx link + runtime proof of the
-/// W3(nuttx) `nros_board_nuttx_run_tiers` seam. Kernel-linked via cargo
+/// W3(nuttx) `nros_board_nuttx_run_sched_tasks` seam. Kernel-linked via cargo
 /// `nros-nuttx-ffi` into the bootable `armv7a-nuttx-eabihf` ELF; the connect
 /// locator (`tcp/10.0.2.2:<port>`, dialed through the QEMU slirp gateway) is baked
 /// via the NanoRosEntry COMPILE_DEFINITIONS ferried into the cc-rs entry-TU
@@ -3648,7 +3648,7 @@ pub fn build_nuttx_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
 
 /// phase-281 W3-nuttx — the 2-tier **C** realtime NuttX (QEMU arm-virt) entry
 /// (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes
-/// over ONE shared session via `NuttxBoard::run_tiers` (RFC-0015 Model 1, one
+/// over ONE shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1, one
 /// pthread per tier). The C sibling of the C++ `build_nuttx_workspace_cpp_realtime_entry`
 /// and of the pure-C `build_nuttx_workspace_c_entry`. Kernel-linked via cargo
 /// `nros-nuttx-ffi` into the bootable `armv7a-nuttx-eabihf` ELF; the connect
@@ -3671,8 +3671,8 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
 /// #199 follow-up — the 2-tier **C++** realtime NuttX rv-virt (riscv32) entry
 /// (`realtime-cpp/src/riscv_nuttx_entry`), the riscv sibling of the arm
 /// `workspace-cpp-nuttx-realtime` entry. Built by `just nuttx
-/// build-riscv-c-workspaces`; consumed by `realtime_tiers_e2e` (once
-/// ~~`realtime_tiers_cpp_riscv_nuttx_e2e`~~).
+/// build-riscv-c-workspaces`; consumed by `realtime_sched_tasks_e2e` (once
+/// ~~`realtime_sched_tasks_cpp_riscv_nuttx_e2e`~~).
 pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     static NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
@@ -3690,8 +3690,8 @@ pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static P
 /// #199 follow-up — the 2-tier **C** realtime NuttX rv-virt (riscv32) entry
 /// (`realtime-c/src/riscv_nuttx_entry`), the riscv sibling of
 /// [`build_nuttx_workspace_c_realtime_entry`]. Built by `just nuttx
-/// build-riscv-c-workspaces`; consumed by `realtime_tiers_e2e` (once
-/// ~~`realtime_tiers_c_riscv_nuttx_e2e`~~).
+/// build-riscv-c-workspaces`; consumed by `realtime_sched_tasks_e2e` (once
+/// ~~`realtime_sched_tasks_c_riscv_nuttx_e2e`~~).
 pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Path> {
     static NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_WORKSPACE_C_REALTIME_ENTRY_BINARY
@@ -3708,7 +3708,7 @@ pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Pat
 
 /// phase-281 W3-nuttx — the 2-tier **Rust** realtime NuttX (QEMU arm-virt) entry
 /// (`realtime-rust/src/nuttx_entry`): ctrl (high tier, 10 ms) + telem (low
-/// tier, 100 ms) Rust nodes over ONE shared session via `<QemuArmVirt>::run_tiers`
+/// tier, 100 ms) Rust nodes over ONE shared session via `<QemuArmVirt>::run_sched_tasks`
 /// (RFC-0015 Model 1, one `std::thread` per tier — NuttX is `std` + zenoh-pico
 /// `Z_FEATURE_MULTI_THREAD = 1`). Closes the LAST cell (rust×nuttx) of the
 /// convergence matrix. Unlike the C/C++ nuttx entries (kernel-linked via CMake),
@@ -3744,7 +3744,7 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
                 crate::alloc::port_of(
                     crate::matrix::PlatformId::NuttxRiscv,
                     crate::matrix::Lang::Rust,
-                    crate::matrix::Workload::RealtimeTiers,
+                    crate::matrix::Workload::RealtimeSchedTasks,
                 ),
             );
             Ok(binary)
@@ -3788,7 +3788,7 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
                 crate::alloc::port_of(
                     crate::matrix::PlatformId::NuttxArm,
                     crate::matrix::Lang::Rust,
-                    crate::matrix::Workload::RealtimeTiers,
+                    crate::matrix::Workload::RealtimeSchedTasks,
                 ),
             );
             Ok(binary)
@@ -3799,7 +3799,7 @@ pub fn build_nuttx_workspace_rust_realtime_entry() -> TestResult<&'static Path> 
 /// phase-297 W5 (RFC-0053) — the 2-tier **Rust** realtime ThreadX-Linux entry
 /// (`realtime-rust/src/threadx_entry`): ctrl (high tier, 10 ms) + telem
 /// (low tier, 100 ms) Rust nodes over ONE shared session via
-/// `<ThreadxLinux>::run_tiers` (one ThreadX thread per tier, stacks from the
+/// `<ThreadxLinux>::run_sched_tasks` (one ThreadX thread per tier, stacks from the
 /// shared byte pool — `nros_threadx_create_task`). Hosted simulation: a plain
 /// host cargo cross-dir build (ThreadX threads are
 /// pthreads, NSOS host sockets — no QEMU), so it resolves the prebuilt binary
@@ -3829,7 +3829,7 @@ pub fn build_threadx_workspace_rust_realtime_entry() -> TestResult<&'static Path
                 crate::alloc::port_of(
                     crate::matrix::PlatformId::ThreadxLinux,
                     crate::matrix::Lang::Rust,
-                    crate::matrix::Workload::RealtimeTiers,
+                    crate::matrix::Workload::RealtimeSchedTasks,
                 ),
             );
             Ok(binary)
@@ -3923,10 +3923,10 @@ pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
 
 /// phase-274 W3 (#126) — the 2-tier C++ realtime FreeRTOS/mps2 entry
 /// (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
-/// over one shared session via `FreertosBoard::run_tiers` (RFC-0015 Model 1).
+/// over one shared session via `FreertosBoard::run_sched_tasks` (RFC-0015 Model 1).
 /// issue 0636 gap 2 — the 2-tier **Rust** realtime FreeRTOS/mps2 entry
 /// (`realtime-rust`): ctrl (high, 10 ms) + telem (low, 100 ms) over one shared
-/// session via `Mps2An385Freertos::run_tiers` → `run_tiers_entry`.
+/// session via `Mps2An385Freertos::run_sched_tasks` → `run_sched_tasks_entry`.
 ///
 /// That Rust path was exported from `nros-board-freertos` and reachable from
 /// the `nros::main!` macro with NO consumer anywhere: every FreeRTOS realtime
@@ -3958,7 +3958,7 @@ pub fn build_freertos_workspace_rust_realtime_entry() -> TestResult<&'static Pat
                 crate::alloc::port_of(
                     crate::matrix::PlatformId::FreertosMps2,
                     crate::matrix::Lang::Rust,
-                    crate::matrix::Workload::RealtimeTiers,
+                    crate::matrix::Workload::RealtimeSchedTasks,
                 ),
             );
             Ok(binary)
@@ -4011,7 +4011,7 @@ pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path
 ///
 /// Its groups span tiers, so the plan's `ExecutorShape` is `SchedContexts` and
 /// not `Tiers` — the generated entry is `FreertosBoard::run_components` plus
-/// the sched-context ABI, unlike the `run_tiers` siblings above.
+/// the sched-context ABI, unlike the `run_sched_tasks` siblings above.
 ///
 /// Resolving it here rather than only building it is what makes the freshness
 /// of the image a CHECKED property: this goes through the same staleness probe
@@ -4032,9 +4032,9 @@ pub fn build_freertos_workspace_cpp_subnode_portable_entry() -> TestResult<&'sta
 
 /// phase-281 W2 — the 2-tier **C** realtime FreeRTOS/mps2 entry
 /// (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms)
-/// over one shared session via `FreertosBoard::run_tiers` → the shared C
-/// `nros_board_freertos_run_tiers` glue (RFC-0015 Model 1). Proves that shared
-/// C run_tiers impl drives a C *node*, not only a C++ one.
+/// over one shared session via `FreertosBoard::run_sched_tasks` → the shared C
+/// `nros_board_freertos_run_sched_tasks` glue (RFC-0015 Model 1). Proves that shared
+/// C run_sched_tasks impl drives a C *node*, not only a C++ one.
 pub fn build_freertos_workspace_c_realtime_entry() -> TestResult<&'static Path> {
     FREERTOS_WORKSPACE_C_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -4196,7 +4196,7 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
 /// Phase 269 W4 — the 2-tier sched-context C realtime workspace entry (cached).
 /// Schedules ctrl_node (10 ms, high-priority sched context) and telem_node
 /// (100 ms, low-priority sched context) via nros_cpp_create_sched_context +
-/// nros_cpp_node_create_ex. Consumed by tests/realtime_tiers_c_e2e.rs.
+/// nros_cpp_node_create_ex. Consumed by tests/realtime_sched_tasks_c_e2e.rs.
 pub fn build_native_workspace_c_realtime_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -4208,7 +4208,7 @@ pub fn build_native_workspace_c_realtime_entry() -> TestResult<&'static Path> {
 /// Phase 269 W4 — the 2-tier sched-context C++ realtime workspace entry (cached).
 /// Schedules ctrl_node (10 ms, high-priority sched context) and telem_node
 /// (100 ms, low-priority sched context) via nros_cpp_create_sched_context +
-/// NodeBuilder::sched(). Consumed by tests/realtime_tiers_cpp_e2e.rs.
+/// NodeBuilder::sched(). Consumed by tests/realtime_sched_tasks_cpp_e2e.rs.
 pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -4221,15 +4221,15 @@ pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> 
         .map(|p| p.as_path())
 }
 
-/// Issue 1733 — the native DERIVED-tier C++ entry (cached): `derived-tiers-cpp`'s
+/// Issue 1733 — the native DERIVED-tier C++ entry (cached): `derived-sched-tasks-cpp`'s
 /// four components, one derived tier each, three of them spawned over the boot
-/// executor's session by `nros_board_native_run_tiers_in`.
-pub fn build_native_workspace_cpp_derived_tiers_entry() -> TestResult<&'static Path> {
-    NATIVE_WORKSPACE_CPP_DERIVED_TIERS_ENTRY_BINARY
+/// executor's session by `nros_board_native_run_sched_tasks_in`.
+pub fn build_native_workspace_cpp_derived_sched_tasks_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_DERIVED_SCHED_TASKS_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry(
-                "workspace-cpp-native-derived-tiers",
-                "derived-tiers-cpp",
+                "workspace-cpp-native-derived-sched-tasks",
+                "derived-sched-tasks-cpp",
                 "linux_entry",
             )
         })
@@ -4295,7 +4295,7 @@ pub fn build_native_workspace_cpp_levels_budget_entry() -> TestResult<&'static P
 /// telem_node 100 ms low) but components are IS-A-node `nros::Node` subclasses
 /// subclasses (SHAPE rclcpp). Tier binding via the W2-seeded `node_name →
 /// sched_context` table — the runtime proof that #124 is dissolved.
-/// Consumed by tests/realtime_tiers_cpp_rclcpp_e2e.rs.
+/// Consumed by tests/realtime_sched_tasks_cpp_rclcpp_e2e.rs.
 pub fn build_native_workspace_cpp_rclcpp_realtime_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_RCLCPP_REALTIME_ENTRY_BINARY
         .get_or_try_init(|| {
@@ -5639,14 +5639,14 @@ pub fn build_zephyr_cortex_m_idle_wake(rmw: Rmw) -> TestResult<PathBuf> {
     )
 }
 
-/// Issue 2084 -- the `build-cortex-m-c-tier-stacks-dtcm-zenoh` row: one level
+/// Issue 2084 -- the `build-cortex-m-c-sched-task-stacks-dtcm-zenoh` row: one level
 /// on the shim's tier pool, `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` on, for an
 /// `mps2_an385` given a "DTCM" region by the fixture's `app.overlay`. A link
 /// witness: the test reads its ELF.
-pub fn build_zephyr_cortex_m_tier_stacks_dtcm() -> TestResult<PathBuf> {
-    let leaf = "packages/testing/nros-tests/bins/tier-stacks-dtcm-zephyr-mps2";
+pub fn build_zephyr_cortex_m_sched_task_stacks_dtcm() -> TestResult<PathBuf> {
+    let leaf = "packages/testing/nros-tests/bins/sched-task-stacks-dtcm-zephyr-mps2";
     let binary_path =
-        zephyr_build_root().join("build-cortex-m-c-tier-stacks-dtcm-zenoh/zephyr/zephyr.elf");
+        zephyr_build_root().join("build-cortex-m-c-sched-task-stacks-dtcm-zenoh/zephyr/zephyr.elf");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
         ZephyrLeafSource {
@@ -5854,11 +5854,11 @@ pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBu
 /// phase-276 W2 / issue #128 half 2 — the Zephyr (native_sim) RT-TIERS Rust
 /// workspace Entry (`realtime-rust`'s `[image.zephyr]`): `system.toml`
 /// declares two `[tasks.*]` with `[tasks.*.zephyr]` priorities, so the macro
-/// emits `ZephyrBoard::run_tiers` — one k_thread per tier over ONE shared
+/// emits `ZephyrBoard::run_sched_tasks` — one k_thread per tier over ONE shared
 /// session; ctrl (10 ms, high) publishes `/ctrl`, telem (100 ms, low)
 /// publishes `/telem`. Built by the west lane into
 /// `<zephyr-build-root>/build-ws-rs-realtime-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/realtime_tiers_zephyr_entry_e2e.rs`.
+/// consumed by `tests/realtime_sched_tasks_zephyr_entry_e2e.rs`.
 ///
 /// phase-470 W5.b2 (issue 1288) — the leaf source is the WORKSPACE, for the
 /// reason the safety sibling above gives. This is also the image whose board
@@ -5880,7 +5880,7 @@ pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
 /// zenoh read task's band, so `nros::main!` must allocate the derived tiers out
 /// of THIS image's `.config` to land below its transport. Built by the west lane
 /// into `<zephyr-build-root>/build-ws-rs-realtime-derived-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/sched_dims_applied_e2e.rs` (`DerivedTierBelowTransport`),
+/// consumed by `tests/sched_dims_applied_e2e.rs` (`DerivedSchedTaskBelowTransport`),
 /// which also reads the `.config` beside the image.
 ///
 /// The leaf source is the WORKSPACE for the reason the authored sibling above
@@ -5896,13 +5896,13 @@ pub fn build_zephyr_workspace_rust_realtime_derived_entry() -> TestResult<PathBu
 
 /// phase-281 W3b — the Zephyr (native_sim) RT-TIERS C++ workspace Entry
 /// (`realtime-cpp/src/zephyr_entry`): the FIRST full west link + runtime proof of
-/// the W3a `ZephyrBoard::run_tiers` seam. `demo_bringup/system.toml` declares two
+/// the W3a `ZephyrBoard::run_sched_tasks` seam. `demo_bringup/system.toml` declares two
 /// `[tasks.*]` with `[tasks.*.zephyr]` priorities, so the C++ codegen emits a plain
-/// `int main(void)` calling `ZephyrBoard::run_tiers` (`nros_board_zephyr_run_tiers`) —
+/// `int main(void)` calling `ZephyrBoard::run_sched_tasks` (`nros_board_zephyr_run_sched_tasks`) —
 /// one k_thread per tier over ONE shared session; ctrl (10 ms, high) publishes `/ctrl`,
 /// telem (100 ms, low) publishes `/telem`. Built by the west lane into
 /// `<zephyr-build-root>/build-ws-cpp-realtime-entry-zenoh/zephyr/zephyr.exe`; consumed by
-/// `tests/realtime_tiers_cpp_zephyr_e2e.rs`.
+/// `tests/realtime_sched_tasks_cpp_zephyr_e2e.rs`.
 pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
     let binary_path =
         zephyr_build_root().join("build-ws-cpp-realtime-entry-zenoh/zephyr/zephyr.exe");
@@ -5914,21 +5914,21 @@ pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
 }
 
 /// issue 1575 — the Zephyr (native_sim) DERIVED-tier C++ workspace Entry
-/// (`derived-tiers-cpp/src/zephyr_entry`): four components with no authored
+/// (`derived-sched-tasks-cpp/src/zephyr_entry`): four components with no authored
 /// `[tasks.*]`, so `codegen entry` derives one tier per node from the contract
 /// in the synced SystemModel. The image issue 1551 exhausted the platform heap
 /// on. Built by the west lane into
-/// `<zephyr-build-root>/build-ws-cpp-derived-tiers-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/realtime_tiers_e2e.rs` (`zephyr/cpp-derived`).
-pub fn build_zephyr_workspace_cpp_derived_tiers_entry() -> TestResult<PathBuf> {
+/// `<zephyr-build-root>/build-ws-cpp-derived-sched-tasks-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/realtime_sched_tasks_e2e.rs` (`zephyr/cpp-derived`).
+pub fn build_zephyr_workspace_cpp_derived_sched_tasks_entry() -> TestResult<PathBuf> {
     let binary_path =
-        zephyr_build_root().join("build-ws-cpp-derived-tiers-entry-zenoh/zephyr/zephyr.exe");
+        zephyr_build_root().join("build-ws-cpp-derived-sched-tasks-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
         // The WORKSPACE, not `src/zephyr_entry`, for the reason the Rust
         // derived sibling above gives: the tier table is derived from the
         // bringup's contract, which lives outside the entry package.
-        ZephyrLeafSource::zenoh("examples/workspaces/derived-tiers-cpp", "cpp"),
+        ZephyrLeafSource::zenoh("examples/workspaces/derived-sched-tasks-cpp", "cpp"),
     )
 }
 
@@ -5937,7 +5937,7 @@ pub fn build_zephyr_workspace_cpp_derived_tiers_entry() -> TestResult<PathBuf> {
 /// rates, so the derivation gives three preemption levels and the runner
 /// spawns one worker per level. Built by the west lane into
 /// `<zephyr-build-root>/build-ws-cpp-levels-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/realtime_tiers_e2e.rs` (`zephyr/cpp-levels`).
+/// consumed by `tests/realtime_sched_tasks_e2e.rs` (`zephyr/cpp-levels`).
 pub fn build_zephyr_workspace_cpp_levels_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-cpp-levels-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(
@@ -5966,13 +5966,13 @@ pub fn build_zephyr_workspace_cpp_violation_entry() -> TestResult<PathBuf> {
 
 /// phase-281 W3c — the Zephyr (native_sim) RT-TIERS C workspace Entry
 /// (`realtime-c`'s `demo_bringup:zephyr`, generated since phase-477 W1): the FIRST full west link + runtime proof of the
-/// W3a `ZephyrBoard::run_tiers` seam for a C node (closes the c×zephyr cell).
+/// W3a `ZephyrBoard::run_sched_tasks` seam for a C node (closes the c×zephyr cell).
 /// `demo_bringup/system.toml` declares two `[tasks.*]` with `[tasks.*.zephyr]` priorities,
-/// so the C codegen emits a plain `int main(void)` calling `ZephyrBoard::run_tiers`
-/// (`nros_board_zephyr_run_tiers`) — one k_thread per tier over ONE shared session; ctrl
+/// so the C codegen emits a plain `int main(void)` calling `ZephyrBoard::run_sched_tasks`
+/// (`nros_board_zephyr_run_sched_tasks`) — one k_thread per tier over ONE shared session; ctrl
 /// (10 ms, high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the
 /// west lane into `<zephyr-build-root>/build-ws-c-realtime-entry-zenoh/zephyr/zephyr.exe`;
-/// consumed by `tests/realtime_tiers_c_zephyr_e2e.rs`.
+/// consumed by `tests/realtime_sched_tasks_c_zephyr_e2e.rs`.
 pub fn build_zephyr_workspace_c_realtime_entry() -> TestResult<PathBuf> {
     let binary_path = zephyr_build_root().join("build-ws-c-realtime-entry-zenoh/zephyr/zephyr.exe");
     require_prebuilt_binary_fresh_zephyr(

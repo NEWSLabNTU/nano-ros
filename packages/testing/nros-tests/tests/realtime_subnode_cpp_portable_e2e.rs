@@ -35,7 +35,7 @@ use std::{process::Command, time::Duration};
 /// the workspace `deploy_bringup/system.toml` uses different tier names ("fast"/"bulk"
 /// vs "high"/"low"). Both groups still bind correctly and schedule at their cadences.
 #[rstest]
-fn realtime_subnode_cpp_portable_two_groups_bind_renamed_tiers(zenohd_unique: ZenohRouter) {
+fn realtime_subnode_cpp_portable_two_groups_bind_renamed_sched_tasks(zenohd_unique: ZenohRouter) {
     require_zenohd();
     let entry = build_native_workspace_cpp_subnode_portable_entry()
         .map(|p| p.to_path_buf())

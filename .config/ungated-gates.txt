@@ -23,7 +23,7 @@
 # sched-dim-arms compiles a probe against FreeRTOS.h. It passed a pristine
 # WORKTREE on a provisioned host and still failed CI's bare container:
 #   FAIL: the accept arm does not compile — this IS the call site.
-#   .../freertos_run_tiers.c:20:10: fatal error: FreeRTOS.h: No such file or directory
+#   .../freertos_run_sched_tasks.c:20:10: fatal error: FreeRTOS.h: No such file or directory
 # A pristine worktree proves "no build artifacts"; it does NOT prove "no
 # toolchains, SDKs or submodules". CI is the oracle for that.
 sched-dim-arms

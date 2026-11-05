@@ -2,7 +2,7 @@
 //!
 //! Every runtime e2e lane in `nros-tests` is a **cell** of this table:
 //! (platform × language × RMW × workload × kind). The parametrized matrix
-//! consumers (`entry_e2e`, `workspace_features_e2e`, `realtime_tiers_e2e`, …)
+//! consumers (`entry_e2e`, `workspace_features_e2e`, `realtime_sched_tasks_e2e`, …)
 //! iterate [`CELLS`]; the
 //! isolation allocator ([`crate::alloc`]) derives each cell's port/domain;
 //! the coverage gate cross-checks `examples/fixtures.toml` against this
@@ -391,7 +391,7 @@ pub enum Workload {
     Params,
     Lifecycle,
     Safety,
-    RealtimeTiers,
+    RealtimeSchedTasks,
     Multihost,
     /// Launch/model `<remap>` + `~` private names reach the WIRE remapped
     /// (phase-306 W4, issue 0255).
@@ -559,7 +559,7 @@ impl Workload {
             Workload::Params => 70,
             Workload::Lifecycle => 80,
             Workload::Safety => 90,
-            Workload::RealtimeTiers => 91,
+            Workload::RealtimeSchedTasks => 91,
             Workload::Multihost => 92,
             Workload::Remap => 93,
             // No peer and no socket the test dials; 83 is free in every band.
@@ -846,8 +846,8 @@ pub enum Consumer {
     Multihost,
     /// `tests/roundtrip_xprocess_e2e.rs` — workspace `Service`/`Action`.
     Roundtrip,
-    /// `tests/realtime_tiers_e2e.rs` — every `RealtimeTiers` cell.
-    RealtimeTiers,
+    /// `tests/realtime_sched_tasks_e2e.rs` — every `RealtimeSchedTasks` cell.
+    RealtimeSchedTasks,
     /// `tests/entry_e2e.rs` — the RTOS zenoh `EntryPubsub` subset + zephyr
     /// feature entries.
     Entry,
@@ -910,7 +910,7 @@ impl Consumer {
     pub const ALL: &'static [Consumer] = &[
         Consumer::Multihost,
         Consumer::Roundtrip,
-        Consumer::RealtimeTiers,
+        Consumer::RealtimeSchedTasks,
         Consumer::Entry,
         Consumer::WorkspaceFeatures,
         Consumer::LinuxExamplePubsub,
@@ -951,7 +951,7 @@ impl Consumer {
         match self {
             Consumer::Multihost => "multihost_e2e",
             Consumer::Roundtrip => "roundtrip_xprocess_e2e",
-            Consumer::RealtimeTiers => "realtime_tiers_e2e",
+            Consumer::RealtimeSchedTasks => "realtime_sched_tasks_e2e",
             Consumer::Entry => "entry_e2e",
             Consumer::WorkspaceFeatures => "workspace_features_e2e",
             Consumer::LinuxExamplePubsub => "linux_example_pubsub_e2e",
@@ -1178,9 +1178,9 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("linux_main_macro_forms", NonCell::CompileCheck),
     ("linux_main_macro_misuse", NonCell::CompileCheck),
     (
-        "linux_orchestration_tiers",
+        "linux_orchestration_sched_tasks",
         NonCell::Secondary(
-            "Linux/Rust/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+            "Linux/Rust/Zenoh/RealtimeSchedTasks/Workspace — answered by realtime_sched_tasks_e2e",
         ),
     ),
     ("loc_budgets", NonCell::Static),
@@ -1220,9 +1220,9 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("orchestration_includes", NonCell::Static),
     ("orchestration_set_remap_env", NonCell::Static),
     (
-        "orchestration_tiers_freertos",
+        "orchestration_sched_tasks_freertos",
         NonCell::Secondary(
-            "FreertosMps2/Rust/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+            "FreertosMps2/Rust/Zenoh/RealtimeSchedTasks/Workspace — answered by realtime_sched_tasks_e2e",
         ),
     ),
     ("output_marker_gate", NonCell::Static),
@@ -1245,13 +1245,13 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     (
         "realtime_subnode_cpp_e2e",
         NonCell::Secondary(
-            "Linux/Cpp/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+            "Linux/Cpp/Zenoh/RealtimeSchedTasks/Workspace — answered by realtime_sched_tasks_e2e",
         ),
     ),
     (
         "realtime_subnode_cpp_portable_e2e",
         NonCell::Secondary(
-            "Linux/Cpp/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+            "Linux/Cpp/Zenoh/RealtimeSchedTasks/Workspace — answered by realtime_sched_tasks_e2e",
         ),
     ),
     ("readiness_park", NonCell::FeatureLane),
@@ -1270,7 +1270,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     (
         "rt_sched_levels_e2e",
         NonCell::Secondary(
-            "Linux/Cpp/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e; this one \
+            "Linux/Cpp/Zenoh/RealtimeSchedTasks/Workspace — answered by realtime_sched_tasks_e2e; this one \
              asserts preemption order, a kernel budget throttle and RFC-0002 S1 under \
              SCHED_FIFO/SCHED_DEADLINE, on an rt-sched lane only (phase-162)",
         ),
@@ -1278,7 +1278,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     (
         "sched_dims_applied_e2e",
         NonCell::Secondary(
-            "the matrix::SCHED_CELLS consumer (RFC-0051 §6a); its RealtimeTiers cells are answered by realtime_tiers_e2e",
+            "the matrix::SCHED_CELLS consumer (RFC-0051 §6a); its RealtimeSchedTasks cells are answered by realtime_sched_tasks_e2e",
         ),
     ),
     ("sched_dims_model_coverage", NonCell::Static),
@@ -1302,9 +1302,9 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("static_memory_declared_pools", NonCell::CompileCheck),
     ("staticlib_duplicate_symbols", NonCell::CompileCheck),
     ("subnode_freestanding_link", NonCell::CompileCheck),
-    ("system_toml_tiers_parse", NonCell::Static),
-    ("tier_filter", NonCell::FeatureLane),
-    ("tier_wake_fanout", NonCell::FeatureLane),
+    ("system_toml_sched_tasks_parse", NonCell::Static),
+    ("sched_task_filter", NonCell::FeatureLane),
+    ("sched_task_wake_fanout", NonCell::FeatureLane),
     ("time_to_ros_msg", NonCell::Static),
     (
         "trigger_conditions",
@@ -1374,12 +1374,12 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         };
     }
     match (cell.platform, cell.lang, cell.rmw, cell.workload, cell.kind) {
-        // phase-511 B2 — ahead of the RealtimeTiers arm, whose consumer
+        // phase-511 B2 — ahead of the RealtimeSchedTasks arm, whose consumer
         // derives its cases and runs only Runtime cells.
-        (P::Fvp, L::Cpp, R::Cyclonedds, W::RealtimeTiers, K::Workspace) => Some(FvpRuntimeWs),
+        (P::Fvp, L::Cpp, R::Cyclonedds, W::RealtimeSchedTasks, K::Workspace) => Some(FvpRuntimeWs),
         // ── the phase-329 W1 consumers, which derive their cases ──────────
         (_, _, _, W::Multihost, _) => Some(Multihost),
-        (_, _, _, W::RealtimeTiers, _) => Some(RealtimeTiers),
+        (_, _, _, W::RealtimeSchedTasks, _) => Some(RealtimeSchedTasks),
         (_, _, _, W::Service | W::Action, K::Workspace) => Some(Roundtrip),
         // entry_e2e — the RTOS EntryPubsub subset it boots. ZENOH only: its
         // exec table is keyed without the RMW, so a Cyclone cell here booted
@@ -1534,7 +1534,7 @@ pub enum SchedDim {
     /// `budget_us`/`period_us` → NuttX `SCHED_SPORADIC`.
     SporadicBudget,
     /// tier priority → NuttX per-tier `SCHED_FIFO` priority.
-    TierPriority,
+    SchedTaskPriority,
     /// issue 0260 — `core` verified as PLACEMENT on a MULTI-CORE image: the
     /// tier is observed running on the cpu it declared.
     ///
@@ -1545,22 +1545,22 @@ pub enum SchedDim {
     CorePinPlacement,
     /// issue 1537 — a DERIVED tier priority lands BELOW the image's own
     /// transport band: the Zephyr boot report
-    /// (`nros_zephyr_report_tier_vs_transport`) stays silent on an image whose
+    /// (`nros_zephyr_report_sched_task_vs_transport`) stays silent on an image whose
     /// band differs from the Kconfig defaults projection.
     ///
-    /// Distinct from [`SchedDim::TierPriority`], which asserts an AUTHORED
+    /// Distinct from [`SchedDim::SchedTaskPriority`], which asserts an AUTHORED
     /// priority is adopted. Here nothing is authored: `nros::main!` derives the
     /// table, and the claim is about WHERE it allocated — out of the image's
     /// `.config`, or out of the projection. Only a lowered-band image can tell
     /// those apart; on a default-band image they are the same numbers.
-    DerivedTierBelowTransport,
+    DerivedSchedTaskBelowTransport,
 }
 
 /// One realtime-dim matrix cell: a `(dim × platform × lang)` coordinate. Like
 /// [`Cell`] this is NEUTRAL — the boot mechanism, markers, and assert shape are
 /// the consumer's execution data (`tests/sched_dims_applied_e2e.rs`), not table
 /// facts. Every cell boots a `ws-realtime-*` fixture (shared with
-/// `realtime_tiers_e2e`).
+/// `realtime_sched_tasks_e2e`).
 #[derive(Copy, Clone, Debug)]
 pub struct SchedCell {
     pub dim: SchedDim,
@@ -1602,8 +1602,8 @@ pub const SCHED_CELLS: &[SchedCell] = {
         sched(EdfDeadline, ZephyrNativeSim, C, Runtime),
         // NuttX sporadic + tier-priority.
         sched(SporadicBudget, NuttxArm, Cpp, Runtime),
-        sched(TierPriority, NuttxArm, Rust, Runtime),
-        // issue 0636 — the C/C++ arm of the same board. `nuttx_run_tiers.c`
+        sched(SchedTaskPriority, NuttxArm, Rust, Runtime),
+        // issue 0636 — the C/C++ arm of the same board. `nuttx_run_sched_tasks.c`
         // took `&tiers[0]` as its session owner long after the Rust arm stopped,
         // and nothing noticed because no cell asserted tier priority on this
         // arm at all: the C arm applied priorities at `pthread_create` time and
@@ -1611,20 +1611,25 @@ pub const SCHED_CELLS: &[SchedCell] = {
         // was enforced in one language only. Both arms now route through
         // `nros_nuttx_apply_current_priority`, one implementation and one
         // marker, and this cell is what keeps them from diverging again.
-        sched(TierPriority, NuttxArm, Cpp, Runtime),
+        sched(SchedTaskPriority, NuttxArm, Cpp, Runtime),
         // issue 0636 — the FreeRTOS arm of the same rule. Added with the seam
         // that made it assertable: this kernel printed no tier-priority marker
         // in either language, so #579 was enforced on NuttX alone and a boot
         // task adopting NO priority at all had no cell that could see it. Both
         // languages, because one seam TU serves both entries.
-        sched(TierPriority, FreertosMps2, Cpp, Runtime),
-        sched(TierPriority, FreertosMps2, C, Runtime),
+        sched(SchedTaskPriority, FreertosMps2, Cpp, Runtime),
+        sched(SchedTaskPriority, FreertosMps2, C, Runtime),
         // issue 1537 — the ONLY Rust Zephyr image whose tiers `nros::main!`
         // DERIVES (`realtime-rust/src/derived_bringup`), on an image with a
         // lowered transport band. A macro that regressed to the Kconfig
         // defaults projection puts both tiers inside that band and the boot
         // report fires; measured, not reasoned.
-        sched(DerivedTierBelowTransport, ZephyrNativeSim, Rust, Runtime),
+        sched(
+            DerivedSchedTaskBelowTransport,
+            ZephyrNativeSim,
+            Rust,
+            Runtime,
+        ),
         // ThreadX preempt-threshold + time-slice.
         sched(PreemptThreshold, ThreadxLinux, Rust, Runtime),
         sched(TimeSlice, ThreadxLinux, Rust, Runtime),
@@ -1645,7 +1650,7 @@ mod tests {
     /// phase-329 W1 gate G5 — the consumer-claim partition is sound.
     ///
     /// (1) Every Runtime cell of a FULLY-OWNED workload (`Multihost`,
-    /// `RealtimeTiers`, workspace `Service`/`Action`) is claimed by a W1
+    /// `RealtimeSchedTasks`, workspace `Service`/`Action`) is claimed by a W1
     /// consumer — so adding such a cell to `CELLS` can never leave it un-run
     /// (the "adding a row adds no test" defect). (2) Every consumer still claims
     /// at least one Runtime cell — a tripwire against a workload/platform set
@@ -1686,9 +1691,9 @@ mod tests {
             SchedDim::PreemptThreshold,
             SchedDim::TimeSlice,
             SchedDim::SporadicBudget,
-            SchedDim::TierPriority,
+            SchedDim::SchedTaskPriority,
             SchedDim::CorePinPlacement,
-            SchedDim::DerivedTierBelowTransport,
+            SchedDim::DerivedSchedTaskBelowTransport,
         ] {
             assert!(
                 sched_runtime_cells().any(|c| c.dim == dim),
@@ -1748,7 +1753,7 @@ mod tests {
 
     /// Every carve-out / build-only reason is non-empty (audit E5).
     #[test]
-    fn gap_tiers_carry_reasons() {
+    fn gap_sched_tasks_carry_reasons() {
         for c in CELLS {
             match c.tier {
                 Tier::BuildOnly(r) | Tier::CarveOut(r) | Tier::Gated(r) => {

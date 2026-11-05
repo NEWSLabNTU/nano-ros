@@ -22,9 +22,9 @@
 //!   UART, `cmake/zephyr/mps2-an385-serial.conf`); the build linking is the
 //!   regression, and the test pins that the image really has no stack.
 //! * Issue 2084 -- `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` moved only the task
-//!   stacks (`nros_thread_stacks`); the tier pool (`nros_tier_stacks`) stayed
+//!   stacks (`nros_thread_stacks`); the tier pool (`nros_sched_task_stacks`) stayed
 //!   in SRAM, and a Rust level image with a 64 KiB slot overflowed the
-//!   S32K344's RAM by 30,028 B. The `build-cortex-m-c-tier-stacks-dtcm-zenoh`
+//!   S32K344's RAM by 30,028 B. The `build-cortex-m-c-sched-task-stacks-dtcm-zenoh`
 //!   row spawns one level on the pool for an mps2_an385 given a "DTCM" region,
 //!   and the test requires both arrays inside the DTCM output section.
 //!
@@ -36,7 +36,7 @@ use nros_tests::{
     elf::{Elf, Symbol},
     fixtures::{
         RequireFixture, Rmw, build_zephyr_cortex_m_example,
-        build_zephyr_cortex_m_rust_serial_talker, build_zephyr_cortex_m_tier_stacks_dtcm,
+        build_zephyr_cortex_m_rust_serial_talker, build_zephyr_cortex_m_sched_task_stacks_dtcm,
     },
 };
 use std::path::Path;
@@ -136,9 +136,9 @@ fn serial_only_rust_image_links_without_ip_stack() {
 /// entry-declared level stack sit in the DTCM output section beside the task
 /// stacks.
 #[test]
-fn tier_stack_pool_follows_stacks_in_dtcm() {
-    let elf_path = build_zephyr_cortex_m_tier_stacks_dtcm().require(
-        "zephyr cortex-m tier-stacks-in-DTCM image (build-cortex-m-c-tier-stacks-dtcm-zenoh)",
+fn sched_task_stack_pool_follows_stacks_in_dtcm() {
+    let elf_path = build_zephyr_cortex_m_sched_task_stacks_dtcm().require(
+        "zephyr cortex-m tier-stacks-in-DTCM image (build-cortex-m-c-sched-task-stacks-dtcm-zenoh)",
     );
     let elf = read_elf(&elf_path);
     let dtcm = elf
@@ -153,10 +153,10 @@ fn tier_stack_pool_follows_stacks_in_dtcm() {
             )
         });
     // The shim's tier pool, a level stack declared the way a generated C/C++
-    // entry declares one (`NROS_TIER_TASK_MEMORY_DEFINE`), and the task stacks.
+    // entry declares one (`NROS_SCHED_TASK_MEMORY_DEFINE`), and the task stacks.
     for array in [
-        "nros_tier_stacks",
-        "__nros_tier_stack_1",
+        "nros_sched_task_stacks",
+        "__nros_sched_task_stack_1",
         "nros_thread_stacks",
     ] {
         let sym = elf.defined(array).unwrap_or_else(|| {

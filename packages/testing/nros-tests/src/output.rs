@@ -311,7 +311,7 @@ pub const PARAM_SERVICE_NODE_PREFIX: &str = "param services registered for node:
 /// print `"[<tier>] tick=N"` on the QEMU serial console **only when the
 /// tier's publish succeeds** — the marker doubles as a delivery proof for
 /// lanes observed via serial output instead of host-side subscribers.
-pub fn tier_tick_marker(tier: impl std::fmt::Display) -> String {
+pub fn sched_task_tick_marker(tier: impl std::fmt::Display) -> String {
     format!("[{tier}] tick=")
 }
 
@@ -321,7 +321,7 @@ pub fn tier_tick_marker(tier: impl std::fmt::Display) -> String {
 /// `on_<x>: first publish OK (tier <name> is dispatching)` on their FIRST
 /// successful publish and nothing per tick after it — a recorded decision
 /// (issue 0572), because the 10 ms tier would swamp the serial console the
-/// e2e observers read. So the C/C++ [`tier_tick_marker`] has no Rust
+/// e2e observers read. So the C/C++ [`sched_task_tick_marker`] has no Rust
 /// counterpart, and a serial-console proof for a Rust cell has to anchor here.
 ///
 /// It is the right anchor for what #0636 is about: the defect that issue keeps
@@ -329,11 +329,11 @@ pub fn tier_tick_marker(tier: impl std::fmt::Display) -> String {
 /// publish succeeded" is exactly that property. It does not prove ONGOING
 /// publication — `CounterRatio3x` is the proof for that, and it needs host
 /// observers the freertos/mps2 lane does not use.
-pub fn tier_dispatch_marker(tier: impl std::fmt::Display) -> String {
+pub fn sched_task_dispatch_marker(tier: impl std::fmt::Display) -> String {
     format!("(tier `{tier}` is dispatching)")
 }
 
-/// Issue 2067 -- the FreeRTOS level runners (C `freertos_run_tiers.c`, Rust
+/// Issue 2067 -- the FreeRTOS level runners (C `freertos_run_sched_tasks.c`, Rust
 /// `nros-board-freertos` `entry.rs`) print the kernel's
 /// `configUSE_TIME_SLICING` once their levels are spawned:
 /// [`KERNEL_TIME_SLICING_OFF`] for a level image (RFC-0108 D6, issue 2017),
@@ -1096,53 +1096,54 @@ pub const RULE_RATE_HIERARCHY_RUNTIME: &str = "rate-hierarchy-runtime";
 /// Subscriber max-data-age violation rule id (`max_age_ms` assumption).
 pub const RULE_MAX_AGE_RUNTIME: &str = "max-age-runtime";
 
-/// Emitted by `nros-board-zephyr`'s `run_tiers` when a real-time tier's
+/// Emitted by `nros-board-zephyr`'s `run_sched_tasks` when a real-time tier's
 /// kernel EDF deadline is applied (phase-296 W5.5). MIRRORS the literal
-/// `::log::info!` prefix in `nros-board-zephyr/src/entry_tiers.rs`
-/// (`apply_tier_deadline`) AND the C/C++ arm's `zephyr_apply_tier_deadline`
-/// in `nros-board-zephyr/c/zephyr_run_tiers.c` — keep all three in lockstep
+/// `::log::info!` prefix in `nros-board-zephyr/src/entry_sched_tasks.rs`
+/// (`apply_sched_task_deadline`) AND the C/C++ arm's `zephyr_apply_sched_task_deadline`
+/// in `nros-board-zephyr/c/zephyr_run_sched_tasks.c` — keep all three in lockstep
 /// (the no_std board crate cannot depend on this crate).
 pub const ZEPHYR_EDF_DEADLINE_MARKER: &str = "nros: EDF deadline set tier=";
 
 /// issue 1537 — the HEADER of the Zephyr boot report
-/// (`nros_zephyr_report_tier_vs_transport`, `zephyr/nros_platform_zephyr_shims.c`,
+/// (`nros_zephyr_report_sched_task_vs_transport`, `zephyr/nros_platform_zephyr_shims.c`,
 /// called by BOTH tier arms after the session opens and before any tier runs):
 /// printed once, on the first tier whose RAW k_thread priority ties or outranks
 /// the least urgent transport task the kernel actually created. The Zephyr twin
-/// of FreeRTOS's `report_tiers_above_transport`. MIRRORS the `printk` literal
+/// of FreeRTOS's `report_sched_tasks_above_transport`. MIRRORS the `printk` literal
 /// there — keep in lockstep (the C shim cannot depend on this crate).
 ///
 /// A test asserts its ABSENCE on an image whose tiers must sit below the
 /// transport: the derived-tier cell of `sched_dims_applied_e2e`, where a
 /// `nros::main!` that regressed to the Kconfig defaults projection puts both
 /// tiers inside the lowered band and this line is the runtime signal.
-pub const ZEPHYR_TIER_MEETS_TRANSPORT_MARKER: &str = "nros: tier priority meets the transport band";
+pub const ZEPHYR_SCHED_TASK_MEETS_TRANSPORT_MARKER: &str =
+    "nros: tier priority meets the transport band";
 
 /// issue 1537 — the report's OTHER line: printed once when the image created no
 /// task at an explicit priority, so there is no transport band to judge a tier
-/// against. Its absence is what makes [`ZEPHYR_TIER_MEETS_TRANSPORT_MARKER`]'s
+/// against. Its absence is what makes [`ZEPHYR_SCHED_TASK_MEETS_TRANSPORT_MARKER`]'s
 /// absence mean "judged and below", rather than "never judged". MIRRORS the
 /// `printk` literal in the same function — keep in lockstep.
-pub const ZEPHYR_TIER_NOT_CHECKED_MARKER: &str =
+pub const ZEPHYR_SCHED_TASK_NOT_CHECKED_MARKER: &str =
     "nros: tier priorities NOT checked against the transport";
 
-/// issue 1537 — printed by the Zephyr Rust tier arm (`ZephyrBoard::run_tiers`,
-/// `nros-board-zephyr/src/entry_tiers.rs`) once the boot tier is set up, AFTER
+/// issue 1537 — printed by the Zephyr Rust tier arm (`ZephyrBoard::run_sched_tasks`,
+/// `nros-board-zephyr/src/entry_sched_tasks.rs`) once the boot tier is set up, AFTER
 /// the transport report ran. MIRRORS the `::log::info!` literal there — keep in
 /// lockstep. A single-executor image prints `zephyr workspace entry up` instead
 /// and never reaches the report at all, so this line is what makes a SILENT
 /// report mean "judged" rather than "never called" — measured: the first build of
 /// the derived-tier fixture derived no table, booted single-executor, and a
 /// silence-only assert passed it.
-pub const ZEPHYR_MULTI_TIER_ENTRY_UP_MARKER: &str = "nros: zephyr multi-tier entry up (";
+pub const ZEPHYR_MULTI_SCHED_TASK_ENTRY_UP_MARKER: &str = "nros: zephyr multi-tier entry up (";
 
-/// [`ZEPHYR_MULTI_TIER_ENTRY_UP_MARKER`] with the tier COUNT, so a cell can pin
+/// [`ZEPHYR_MULTI_SCHED_TASK_ENTRY_UP_MARKER`] with the tier COUNT, so a cell can pin
 /// how many tiers the image runs rather than only that it runs some.
-pub fn zephyr_multi_tier_entry_up_line(tiers: usize) -> String {
-    format!("{ZEPHYR_MULTI_TIER_ENTRY_UP_MARKER}{tiers} tiers")
+pub fn zephyr_multi_sched_task_entry_up_line(tiers: usize) -> String {
+    format!("{ZEPHYR_MULTI_SCHED_TASK_ENTRY_UP_MARKER}{tiers} tiers")
 }
 
-/// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
+/// Emitted by the NuttX board seam (`nuttx_run_sched_tasks.c`,
 /// `nros_nuttx_apply_current_sporadic` — shared by the C/C++ AND Rust tier
 /// arms) when the kernel actually accepted SCHED_SPORADIC for a tier
 /// (phase-296 W5.9). MIRRORS the printf literal there — keep in lockstep.
@@ -1151,7 +1152,7 @@ pub const NUTTX_SPORADIC_MARKER: &str = "nros: sporadic budget set tier=";
 /// The honest-fallback sibling: printed when a tier DECLARED a sporadic
 /// budget but the running kernel lacks `CONFIG_SCHED_SPORADIC` (the
 /// executor's cooperative Sporadic SchedContext stays the enforcement).
-/// MIRRORS the printf literal in `nuttx_run_tiers.c` — keep in lockstep.
+/// MIRRORS the printf literal in `nuttx_run_sched_tasks.c` — keep in lockstep.
 pub const NUTTX_SPORADIC_FALLBACK_MARKER: &str = "nros: sporadic budget declared for tier=";
 
 /// Emitted by the ThreadX board (`nros-board-threadx/src/entry.rs`, both the
@@ -1162,9 +1163,9 @@ pub const THREADX_PREEMPT_MARKER: &str = "nros: preempt threshold set tier=";
 
 /// Emitted by the Zephyr board when the kernel ACCEPTED a tier's CPU pin
 /// (phase-296 W5.11, the `placement` dim). MIRRORS the `::log::info!` prefix
-/// in `nros-board-zephyr/src/entry_tiers.rs` (`apply_boot_tier_core_pin`) AND the
+/// in `nros-board-zephyr/src/entry_sched_tasks.rs` (`apply_boot_sched_task_core_pin`) AND the
 /// `printk` literal in the C/C++ arm's `zephyr_apply_boot_core_pin`
-/// (`nros-board-zephyr/c/zephyr_run_tiers.c`) — keep all three in lockstep
+/// (`nros-board-zephyr/c/zephyr_run_sched_tasks.c`) — keep all three in lockstep
 /// (the no_std board crate cannot depend on this crate).
 pub const ZEPHYR_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 
@@ -1208,30 +1209,30 @@ pub const CORE_PIN_OBSERVED_CPU1: &str = "nros: core pin observed tier=`high` ru
 /// board-neutral name.
 pub const ZEPHYR_CORE_PIN_OBSERVED_CPU1: &str = CORE_PIN_OBSERVED_CPU1;
 
-/// Emitted by the NuttX board seam (`nuttx_run_tiers.c`,
+/// Emitted by the NuttX board seam (`nuttx_run_sched_tasks.c`,
 /// `nros_nuttx_apply_current_affinity` — shared by the C/C++ AND Rust tier
 /// arms) when the kernel accepted a tier's SMP core pin (phase-296 W5.11, the
 /// placement dim). The board-agnostic literal is identical to the Zephyr arm's;
 /// kept board-scoped here for lockstep clarity. MIRRORS the printf literal in
-/// `nuttx_run_tiers.c` — keep in lockstep.
+/// `nuttx_run_sched_tasks.c` — keep in lockstep.
 pub const NUTTX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 
 /// phase-302 W3 (issue 0263) — the nuttx Rust arm's tier-priority adopt
-/// marker (`nros_nuttx_apply_current_priority`, nuttx_run_tiers.c).
-pub const NUTTX_TIER_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
+/// marker (`nros_nuttx_apply_current_priority`, nuttx_run_sched_tasks.c).
+pub const NUTTX_SCHED_TASK_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
 
 /// The loud-failure sibling: printed when a tier DECLARED a
 /// `[tasks.*.nuttx] priority` but `pthread_setschedparam` rejected it — the
 /// tier runs at its INHERITED priority, loudly. MIRRORS the `FAILED` printf in
-/// `nuttx_run_tiers.c` — keep in lockstep.
+/// `nuttx_run_sched_tasks.c` — keep in lockstep.
 ///
 /// issue 0579 / phase-358 W4 — this const exists because the e2e cell spelled
 /// the note as a bare literal, which is the thing that lets a marker be slimmed
 /// out from under a test.
-pub const NUTTX_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED tier=";
+pub const NUTTX_SCHED_TASK_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED tier=";
 
 /// issue 0636 — the FreeRTOS seam's tier-priority markers
-/// (`freertos_apply_tier_priority`, freertos_run_tiers.c). The literals are the
+/// (`freertos_apply_sched_task_priority`, freertos_run_sched_tasks.c). The literals are the
 /// SAME strings the NuttX seam prints; kept board-scoped here for lockstep
 /// clarity, exactly as the two core-pin markers are.
 ///
@@ -1239,14 +1240,14 @@ pub const NUTTX_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED 
 /// EITHER language, so #579's "every declaring tier adopts or says why" was
 /// enforced on NuttX alone — and a boot task that adopted nothing at all had no
 /// cell that could see it.
-pub const FREERTOS_TIER_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
+pub const FREERTOS_SCHED_TASK_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
 
-/// The loud-failure sibling of [`FREERTOS_TIER_PRIORITY_MARKER`]: printed when
+/// The loud-failure sibling of [`FREERTOS_SCHED_TASK_PRIORITY_MARKER`]: printed when
 /// a tier DECLARED a priority this build cannot express (>= `configMAX_PRIORITIES`).
 /// `xTaskCreate` would clamp such a value SILENTLY, which makes a mis-authored
 /// table read as honored. MIRRORS the `FAILED` literal in
-/// `freertos_run_tiers.c` — keep in lockstep.
-pub const FREERTOS_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED tier=";
+/// `freertos_run_sched_tasks.c` — keep in lockstep.
+pub const FREERTOS_SCHED_TASK_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAILED tier=";
 
 /// Render the per-tier form of a tier-priority marker, so a test can assert
 /// that a SPECIFIC tier adopted a SPECIFIC declared priority rather than that
@@ -1257,12 +1258,12 @@ pub const FREERTOS_TIER_PRIORITY_FAILED_MARKER: &str = "nros: tier priority FAIL
 /// exactly how the two seams came to differ in the first place (0636).
 ///
 /// issue 0579 / phase-358 W4 — the reason this exists. The tier-priority cell
-/// asserted `log.contains(NUTTX_TIER_PRIORITY_MARKER)`, which one spawned tier
+/// asserted `log.contains(NUTTX_SCHED_TASK_PRIORITY_MARKER)`, which one spawned tier
 /// satisfies for the whole image; the boot tier dropped its declared priority
 /// for the life of the bug with that assert green. The rule is "every DECLARING
 /// tier adopts or says why", so the gate has to name the tiers (the issue-0196
 /// class: gate coverage narrower than the rule it enforces).
-pub fn tier_priority_line(marker: &str, tier: &str, priority: u32) -> String {
+pub fn sched_task_priority_line(marker: &str, tier: &str, priority: u32) -> String {
     format!("{marker}`{tier}` prio={priority}")
 }
 
@@ -1272,7 +1273,7 @@ pub fn tier_priority_line(marker: &str, tier: &str, priority: u32) -> String {
 /// keep in lockstep.
 pub const NUTTX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
-/// Emitted by the FreeRTOS board seam (`freertos_run_tiers.c`) over the
+/// Emitted by the FreeRTOS board seam (`freertos_run_sched_tasks.c`) over the
 /// semihosting console when a tier's SMP core pin is applied
 /// (`vTaskCoreAffinitySet` on a `configUSE_CORE_AFFINITY` build) — phase-296
 /// W5.11, the placement dim. Board-agnostic literal; kept board-scoped for
@@ -1282,11 +1283,11 @@ pub const FREERTOS_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 /// The honest-fallback sibling: printed when a tier DECLARED a `core` but the
 /// FreeRTOS build is uniprocessor (no `configUSE_CORE_AFFINITY`) — the tier
 /// runs unpinned, loudly (before W5.11 this was a SILENT `(void)task`). MIRRORS
-/// the `FAILED` literal in `freertos_run_tiers.c` — keep in lockstep.
+/// the `FAILED` literal in `freertos_run_sched_tasks.c` — keep in lockstep.
 pub const FREERTOS_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 
 /// Emitted by the ThreadX board (`nros-board-threadx/src/entry.rs`,
-/// `apply_tier_core_exclude`, boot + spawned) when the kernel accepted a tier's
+/// `apply_sched_task_core_exclude`, boot + spawned) when the kernel accepted a tier's
 /// SMP core pin (`tx_thread_smp_core_exclude` — the placement dim's ThreadX
 /// realization, RFC-0052's "SMP core exclude"), phase-296 W5.13. Board-agnostic
 /// literal; MIRRORS the `B::println` literal there — keep in lockstep.
@@ -1307,7 +1308,7 @@ pub const THREADX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier="
 pub const THREADX_TIME_SLICE_MARKER: &str = "nros: time slice set tier=";
 
 /// Emitted by the LINUX board (`nros-board-linux/src/lib.rs`,
-/// `apply_tier_affinity`, boot + spawned) when `sched_setaffinity` pinned a
+/// `apply_sched_task_affinity`, boot + spawned) when `sched_setaffinity` pinned a
 /// tier thread to its declared `core` (phase-296 W5.13, the placement dim). A
 /// Linux host is genuinely multi-core and the call needs no privilege, so this
 /// is the FIRST RUNTIME accept-arm proof of the core-pin consumer (issue #260).

@@ -105,7 +105,7 @@ SIGNATURE_CONFORMED = {
 # ROS API, so they keep their spelling.
 ENTRY_HEADERS = {
     "app_main.h", "app_config.h", "boot_config.h", "entry_config.h", "main.h",
-    "tier_task_memory_freertos.h", "tier_task_memory_zephyr.h",
+    "sched_task_memory_freertos.h", "sched_task_memory_zephyr.h",
 }
 
 # phase-492 W1.b — reached only through a `<rclc/detail/baked_rmw.h>` macro, which
@@ -129,7 +129,7 @@ BUILD_UPPER = re.compile(
     r"|BUILDING_DLL|USING_DLL|SERIALIZATION_FORMAT.*|MSG_FORMAT_ID_.*"
     r"|ASSERT_MESSAGE_FORMAT|PLATFORM_.*|HOST_.*|NUTTX_.*|SAFETY_E2E|PARAM_SERVICES"
     r"|EXECUTOR_MAX_.*|EXECUTOR_ARENA_SIZE|LOG_BUFFER_SIZE|LOG_FMT_BUFFER_SIZE"
-    r"|LOG_MAX_LEVEL|LOG_DYNAMIC_LOGGERS|TIER_TASK_.*|ZEPHYR_.*|CPP_.*"
+    r"|LOG_MAX_LEVEL|LOG_DYNAMIC_LOGGERS|SCHED_TASK_.*|ZEPHYR_.*|CPP_.*"
     r"|C_[A-Z_]*_STORAGE_SIZE|.*_SIZE|.*_U64S|BOOT_CONFIG_MAGIC|BOOT_CONFIG_VERSION"
     r"|TRANSPORT_OPS_ABI_.*|NO_DEPRECATED_.*|PKG_NAME|NODE_NAME|NODE_NAMESPACE"
     r"|LOCATOR|STATIC_ASSERT.*|WARN_UNUSED|RCL_COMPAT_ASSERT|PUBLISHER_GID_SIZE"

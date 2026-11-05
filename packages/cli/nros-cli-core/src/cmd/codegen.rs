@@ -543,13 +543,13 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // here, naming the known ones, instead of reading as `posix`/`native`.
         let family = nros_entry_lower::board_family(&plan.board).map_err(|e| eyre!("{e}"))?;
         let image_plan = crate::orchestration::image_priority_plan::plan_for_image(
-            family.tier_rtos_key(),
+            family.sched_task_rtos_key(),
             args.dotconfig.as_deref(),
             "codegen entry",
         )?;
         let derivation = entry_codegen::resolve_plan_sched_recorded(
             &mut plan,
-            family.tier_rtos_key(),
+            family.sched_task_rtos_key(),
             image_plan.as_ref(),
         )?;
         let image_plan_direction;
@@ -562,7 +562,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 Some(p) => p,
                 None => {
                     projection = nros_orchestration_ir::priority_plan::PriorityPlan::for_target(
-                        family.tier_rtos_key(),
+                        family.sched_task_rtos_key(),
                     );
                     &projection
                 }
@@ -582,10 +582,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 })
                 .collect();
             let record = entry_codegen::priority_record::PriorityRecord {
-                tier_key: family.tier_rtos_key(),
+                sched_task_key: family.sched_task_rtos_key(),
                 plan: plan_ref,
                 from_image: image_plan.is_some(),
-                tiers: plan.resolved_tiers.as_ref(),
+                tiers: plan.resolved_sched_tasks.as_ref(),
                 derivation: derivation.as_ref(),
                 nodes: &node_names,
                 member_stacks: &member_stacks,
@@ -602,7 +602,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         }
         // phase-462 W4c -- a mode's deadlines on the tiers derived above, and
         // its switch, refused when the slowest tier's spin outlasts its budget.
-        let mut mode_tier = entry_codegen::emit::ModeTier::default();
+        let mut mode_sched_task = entry_codegen::emit::ModeSchedTask::default();
         if let Some(model) = &switch_model {
             for n in derivation
                 .as_ref()
@@ -611,7 +611,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             {
                 eprintln!("nros codegen entry: {n}");
             }
-            if let Some(tiers) = plan.resolved_tiers.as_ref() {
+            if let Some(tiers) = plan.resolved_sched_tasks.as_ref() {
                 let periods: Vec<(String, u64)> = tiers
                     .tiers
                     .iter()
@@ -628,7 +628,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                     eprintln!("nros codegen entry: {n}");
                 }
             }
-            mode_tier = entry_codegen::emit::ModeTier {
+            mode_sched_task = entry_codegen::emit::ModeSchedTask {
                 deadlines: derivation
                     .as_ref()
                     .map(|d| d.mode_deadlines.clone())
@@ -683,8 +683,8 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                     ages: &age_rows,
                     hazard_model: hazard_model.as_ref(),
                     modes: &mode_rows,
-                    mode_deadlines: Some(&mode_tier.deadlines),
-                    mode_switch: &mode_tier.switch,
+                    mode_deadlines: Some(&mode_sched_task.deadlines),
+                    mode_switch: &mode_sched_task.switch,
                     probe: None,
                     node_ranks: &node_ranks,
                     session_properties: &session_properties,
@@ -699,7 +699,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 &age_rows,
                 hazard_model.as_ref(),
                 &mode_rows,
-                &mode_tier,
+                &mode_sched_task,
                 &node_ranks,
                 &session_properties,
             )
@@ -988,7 +988,7 @@ fn write_link_libs_sidecar(
     {
         let _ = writeln!(
             out,
-            "set_property(TARGET {exe_target} PROPERTY NROS_TIER_STACKS_BSS_BYTES {bytes})"
+            "set_property(TARGET {exe_target} PROPERTY NROS_SCHED_TASK_STACKS_BSS_BYTES {bytes})"
         );
     }
     // Issue 2017 (RFC-0108 D6) -- a tiered entry runs the LEVEL runner, and a

@@ -20,7 +20,7 @@
 /// task is created at. One since RFC-0110 D2: zenoh-pico 1.10 runs the lease
 /// on its executor (read) task, so ~~`CONFIG_NROS_ZENOH_LEASE_PRIORITY`~~ is gone. An image that sets none of them runs the Kconfig
 /// default (`nros_orchestration_ir::priority_plan::ZEPHYR_TRANSPORT_BAND_DEFAULT`,
-/// checked against `zephyr/Kconfig` by `check-tier-priority-plan-image.py
+/// checked against `zephyr/Kconfig` by `check-sched-task-priority-plan-image.py
 /// --selftest`).
 pub const ZEPHYR_TRANSPORT_BAND_SYMBOLS: [&str; 1] = ["CONFIG_NROS_ZENOH_READ_PRIORITY"];
 

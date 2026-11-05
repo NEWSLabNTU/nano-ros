@@ -36,7 +36,7 @@ worked case) exposes:
 | Item | Type | Purpose |
 |---|---|---|
 | `Config` / `BaseConfig` | structs | Network + transport config; overlay can extend. |
-| `run_bare` / `run_entry` / `run_tiers_entry` | generic functions | Entry points, generic over a board **marker type**. Initialise kernel + network, then call your closure inside the app task. |
+| `run_bare` / `run_entry` / `run_sched_tasks_entry` | generic functions | Entry points, generic over a board **marker type**. Initialise kernel + network, then call your closure inside the app task. |
 | `nros_platform::BoardInit` | trait | One required method — `init_hardware()`, called once before the executor opens. Your marker type implements it (plus `BoardPrint` / `BoardExit` / `BoardEntry` from the same family). |
 | `nros_board_register_netif` / `nros_board_poll_netif` | **weak C hooks** (`c/network_glue.c`) | The network attach points: the overlay provides strong definitions wiring the vendor Ethernet driver into lwIP. |
 

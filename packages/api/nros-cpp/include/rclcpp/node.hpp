@@ -3134,7 +3134,7 @@ class Node {
     ///
     /// It was a SECOND answer: the context's own tag already says whether the
     /// storage is live, and the flag was maintained by hand at four sites. They
-    /// could disagree — a direct `nros_cpp_fini` (which `run_tiers.c` does)
+    /// could disagree — a direct `nros_cpp_fini` (which `run_sched_tasks.c` does)
     /// tore the context down without touching the flag, so `ok()` kept saying
     /// yes over a dropped executor.
     ///

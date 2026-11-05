@@ -60,7 +60,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
         safety: None,
         tiers: Default::default(),
         node_overrides: Vec::new(),
-        resolved_tiers: None,
+        resolved_sched_tasks: None,
         session: Default::default(),
     }
 }
@@ -99,7 +99,7 @@ fn fixture_plan_typed(nodes: &[(&str, &str, &str, &str, &str)]) -> Plan {
         safety: None,
         tiers: Default::default(),
         node_overrides: Vec::new(),
-        resolved_tiers: None,
+        resolved_sched_tasks: None,
         session: Default::default(),
     }
 }
@@ -163,7 +163,7 @@ fn metadata_probe_reuses_the_setup_body_and_swaps_the_tail() {
     );
     assert!(!src.contains("NROS_BOOT_CONFIG"), "{src}");
     assert!(
-        !src.contains("run_tiers"),
+        !src.contains("run_sched_tasks"),
         "probe records every tier:\n{src}"
     );
 }
@@ -237,8 +237,8 @@ fn typed_emit_remaps_are_one_flash_table() {
 }
 
 #[test]
-fn typed_emit_tiered_remaps_are_installed_before_every_tier_setup() {
-    let mut plan = fixture_plan_with_tiers();
+fn typed_emit_sched_task_remaps_are_installed_before_every_sched_task_setup() {
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].remaps = vec![("a".into(), "/x".into())];
     plan.nodes[1].remaps = vec![("b".into(), "/y".into())];
     let src = emit_typed(&plan).expect("typed cpp tier emit ok");
@@ -615,10 +615,10 @@ fn typed_emit_rclcpp_empty_launch_identity_is_unset() {
 /// fix applied to one arm and not the other is exactly the shape this
 /// pins shut.
 #[test]
-fn typed_emit_rclcpp_launch_identity_reaches_the_tiered_arm() {
+fn typed_emit_rclcpp_launch_identity_reaches_the_sched_task_arm() {
     // The node keeps its declared NAME (`ctrl`) because a tier's members
     // are matched by name; the namespace is what moves.
-    let mut plan = fixture_plan_with_tiers();
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "freertos".into();
     for n in &mut plan.nodes {
         n.shape = Some("rclcpp".into());
@@ -963,9 +963,9 @@ fn typed_emit_lifecycle_after_param_block() {
 // Phase 269 (W4) — sched-context wiring tests
 // -------------------------------------------------------------------------
 
-fn fixture_plan_with_tiers() -> Plan {
-    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
-    let high_tier = ResolvedTier {
+fn fixture_plan_with_sched_tasks() -> Plan {
+    use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
+    let high_sched_task = ResolvedSchedTask {
         name: "high".into(),
         priority: 80,
         stack_bytes: None,
@@ -981,7 +981,7 @@ fn fixture_plan_with_tiers() -> Plan {
         core: None,
         members: vec![("ctrl".into(), "ctrl_grp".into())],
     };
-    let low_tier = ResolvedTier {
+    let low_sched_task = ResolvedSchedTask {
         name: "low".into(),
         priority: 10,
         stack_bytes: None,
@@ -1017,8 +1017,8 @@ fn fixture_plan_with_tiers() -> Plan {
     plan.nodes[0].sched_context = Some(0);
     plan.nodes[1].callback_groups = vec!["telem_grp".into()];
     plan.nodes[1].sched_context = Some(1);
-    plan.resolved_tiers = Some(ResolvedTierTable {
-        tiers: vec![high_tier, low_tier],
+    plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
+        tiers: vec![high_sched_task, low_sched_task],
     });
     plan
 }
@@ -1058,8 +1058,8 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
 /// executor, a tier runner on one executor each, and the shim resolves the
 /// index from the executor it seeds.
 #[test]
-fn typed_emit_tier_seeds_name_their_node() {
-    let mut plan = fixture_plan_with_tiers();
+fn typed_emit_sched_task_seeds_name_their_node() {
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].params = vec![("period".into(), "10".into())];
     plan.nodes[1].params = vec![("period".into(), "100".into())];
     let src = emit_typed(&plan).expect("typed cpp tier emit ok");
@@ -1082,12 +1082,12 @@ fn typed_emit_tier_seeds_name_their_node() {
 fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
     // Phase 282 follow-up (RFC-0047) — ONE node with callback groups on TWO
     // tiers (`group_tasks = { ctrl = "high", telem = "low" }`) cannot use
-    // run_tiers: per-tier setup fns construct whole nodes, so the node
+    // run_sched_tasks: per-tier setup fns construct whole nodes, so the node
     // landed on the last tier and both timers ran at that cadence
     // (regression caught by realtime_subnode_cpp_e2e: ctrl=6 telem=5).
     // Such plans must keep the single-executor sched-context path.
-    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
-    let high_tier = ResolvedTier {
+    use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
+    let high_sched_task = ResolvedSchedTask {
         name: "high".into(),
         priority: 80,
         stack_bytes: None,
@@ -1103,7 +1103,7 @@ fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
         core: None,
         members: vec![("sub_node".into(), "ctrl".into())],
     };
-    let low_tier = ResolvedTier {
+    let low_sched_task = ResolvedSchedTask {
         name: "low".into(),
         priority: 10,
         stack_bytes: None,
@@ -1127,12 +1127,12 @@ fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
         "subnode_pkg/SubNode.hpp",
     )]);
     plan.nodes[0].callback_groups = vec!["ctrl".into(), "telem".into()];
-    plan.resolved_tiers = Some(ResolvedTierTable {
-        tiers: vec![high_tier, low_tier],
+    plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
+        tiers: vec![high_sched_task, low_sched_task],
     });
     let src = emit_typed(&plan).expect("typed cpp group-split emit ok");
 
-    // Sched-context path: per-group seeding present, run_tiers absent.
+    // Sched-context path: per-group seeding present, run_sched_tasks absent.
     assert!(
         src.contains("nros_cpp_bind_group_sched"),
         "group-split node must seed bind_group_sched; src:\n{src}"
@@ -1142,29 +1142,29 @@ fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
         "both groups must be seeded; src:\n{src}"
     );
     assert!(
-        !src.contains("__nros_entry_setup_tier_0"),
-        "group-split plan must NOT use the run_tiers path; src:\n{src}"
+        !src.contains("__nros_entry_setup_sched_task_0"),
+        "group-split plan must NOT use the run_sched_tasks path; src:\n{src}"
     );
     assert!(
-        !src.contains("run_tiers("),
-        "group-split plan must NOT call run_tiers; src:\n{src}"
+        !src.contains("run_sched_tasks("),
+        "group-split plan must NOT call run_sched_tasks; src:\n{src}"
     );
 }
 
 #[test]
-fn typed_emit_tiers_native_uses_run_tiers_path() {
+fn typed_emit_sched_tasks_native_uses_run_sched_tasks_path() {
     // Phase 274.W2 — native board + multi-tier emits per-tier setup functions +
-    // run_tiers call instead of the old sched-context wiring.
-    let plan = fixture_plan_with_tiers();
+    // run_sched_tasks call instead of the old sched-context wiring.
+    let plan = fixture_plan_with_sched_tasks();
     let src = emit_typed(&plan).expect("typed cpp tier emit ok");
 
     // Per-tier setup functions emitted.
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
     );
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
         "expected tier-1 setup fn; got:\n{src}"
     );
     // Each setup fn creates only its tier's nodes via create_node_on.
@@ -1176,10 +1176,10 @@ fn typed_emit_tiers_native_uses_run_tiers_path() {
         src.contains("::rclcpp::create_node_on(__nros_node_1, executor, \"telem\", \"/\")"),
         "telem node must use create_node_on in tier-1 setup; src:\n{src}"
     );
-    // NativeTierSpec array emitted.
+    // NativeSchedTaskSpec array emitted.
     assert!(
-        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
-        "expected 2-element NativeTierSpec array; src:\n{src}"
+        src.contains("static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[2]"),
+        "expected 2-element NativeSchedTaskSpec array; src:\n{src}"
     );
     assert!(
         src.contains("\"high\""),
@@ -1196,30 +1196,30 @@ fn typed_emit_tiers_native_uses_run_tiers_path() {
         src.contains("::rclcpp::board::LinuxBoard::run_levels("),
         "main must call LinuxBoard::run_levels; src:\n{src}"
     );
-    // Old sched-context wiring must NOT appear in the run_tiers path.
+    // Old sched-context wiring must NOT appear in the run_sched_tasks path.
     assert!(
         !src.contains("__nros_sc_ids"),
-        "run_tiers path must not emit sc_ids; src:\n{src}"
+        "run_sched_tasks path must not emit sc_ids; src:\n{src}"
     );
     assert!(
         !src.contains("nros_cpp_create_sched_context"),
-        "run_tiers path must not emit create_sched_context; src:\n{src}"
+        "run_sched_tasks path must not emit create_sched_context; src:\n{src}"
     );
     assert!(
         !src.contains("nros_cpp_bind_node_name_sched"),
-        "run_tiers path must not emit bind_node_name_sched; src:\n{src}"
+        "run_sched_tasks path must not emit bind_node_name_sched; src:\n{src}"
     );
 }
 
 #[test]
-fn typed_emit_tiers_embedded_uses_sched_context_path() {
+fn typed_emit_sched_tasks_embedded_uses_sched_context_path() {
     // Phase 272/273 (W2) — a sched-context embedded board (ThreadX) + multi-tier
     // still uses sched-context wiring (bind_node_name_sched + bind_group_sched) because
-    // run_tiers is limited to native + FreeRTOS + Zephyr + NuttX (phase-281 W3/W3a).
-    // ThreadX keeps board_is_embedded=true && !run_tiers → the single-executor
+    // run_sched_tasks is limited to native + FreeRTOS + Zephyr + NuttX (phase-281 W3/W3a).
+    // ThreadX keeps board_is_embedded=true && !run_sched_tasks → the single-executor
     // sched-context path.
-    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
-    let high_tier = ResolvedTier {
+    use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
+    let high_sched_task = ResolvedSchedTask {
         name: "high".into(),
         priority: 80,
         stack_bytes: None,
@@ -1235,7 +1235,7 @@ fn typed_emit_tiers_embedded_uses_sched_context_path() {
         core: None,
         members: vec![("ctrl".into(), "ctrl_grp".into())],
     };
-    let low_tier = ResolvedTier {
+    let low_sched_task = ResolvedSchedTask {
         name: "low".into(),
         priority: 10,
         stack_bytes: None,
@@ -1267,14 +1267,14 @@ fn typed_emit_tiers_embedded_uses_sched_context_path() {
             "telem_pkg/Telem.hpp",
         ),
     ]);
-    // Sched-context embedded board (ThreadX) → sched-context path (NOT run_tiers).
+    // Sched-context embedded board (ThreadX) → sched-context path (NOT run_sched_tasks).
     plan.board = "threadx".into();
     plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
     plan.nodes[0].sched_context = Some(0);
     plan.nodes[1].callback_groups = vec!["telem_grp".into()];
     plan.nodes[1].sched_context = Some(1);
-    plan.resolved_tiers = Some(ResolvedTierTable {
-        tiers: vec![high_tier, low_tier],
+    plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
+        tiers: vec![high_sched_task, low_sched_task],
     });
     let src = emit_typed(&plan).expect("typed cpp embedded tier emit ok");
     // Sched-context IDs array declared.
@@ -1300,23 +1300,23 @@ fn typed_emit_tiers_embedded_uses_sched_context_path() {
         src.contains("nros_cpp_bind_node_name_sched(__exec, \"telem\", \"/\", __nros_sc_ids[1])"),
         "telem must be seeded; src:\n{src}"
     );
-    // run_tiers must NOT be called (embedded boards use single executor).
+    // run_sched_tasks must NOT be called (embedded boards use single executor).
     assert!(
-        !src.contains("LinuxBoard::run_tiers"),
-        "embedded board must not emit run_tiers; src:\n{src}"
+        !src.contains("LinuxBoard::run_sched_tasks"),
+        "embedded board must not emit run_sched_tasks; src:\n{src}"
     );
 }
 
 #[test]
-fn typed_emit_single_executor_forwards_real_time_tier_to_backend() {
+fn typed_emit_single_executor_forwards_real_time_sched_task_to_backend() {
     // Phase 297 W1 / RFC-0052 (common backend) — the single-executor
     // sched-context path (ThreadX + group-split) forwards a `real_time`
     // tier's RAW class/budget/period/deadline to
     // `nros_cpp_create_sched_context_from_policy`, whose backend
-    // (`SchedContext::from_tier_policy`) does the class→Sporadic lowering —
+    // (`SchedContext::from_sched_task_policy`) does the class→Sporadic lowering —
     // the SAME one the Rust runtime uses. The codegen re-derives nothing.
-    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
-    let rt_tier = ResolvedTier {
+    use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
+    let rt_sched_task = ResolvedSchedTask {
         name: "control".into(),
         priority: 90,
         stack_bytes: None,
@@ -1342,14 +1342,14 @@ fn typed_emit_single_executor_forwards_real_time_tier_to_backend() {
     plan.board = "threadx".into();
     plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
     plan.nodes[0].sched_context = Some(0);
-    plan.resolved_tiers = Some(ResolvedTierTable {
-        tiers: vec![rt_tier],
+    plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
+        tiers: vec![rt_sched_task],
     });
     let src = emit_typed(&plan).expect("typed cpp real_time tier emit ok");
     // RFC-0052 common backend: the codegen forwards the RAW tier fields to
     // `nros_cpp_create_sched_context_from_policy`; the class→Sporadic +
     // budget/period lowering happens in the FFI backend
-    // (`SchedContext::from_tier_policy`), unit-tested in nros-node. The
+    // (`SchedContext::from_sched_task_policy`), unit-tested in nros-node. The
     // codegen must NOT re-derive the mapping (no `__sc.class_ = ...`).
     assert!(
         src.contains(
@@ -1364,28 +1364,28 @@ fn typed_emit_single_executor_forwards_real_time_tier_to_backend() {
 }
 
 #[test]
-fn typed_emit_tiers_freertos_embedded_uses_run_tiers_path() {
+fn typed_emit_sched_tasks_freertos_embedded_uses_run_sched_tasks_path() {
     // Phase 274.W3 — FreeRTOS embedded board + multi-tier emits per-tier setup
-    // functions + FreertosBoard::run_tiers via nros_app_main +
+    // functions + FreertosBoard::run_sched_tasks via nros_app_main +
     // NROS_APP_MAIN_REGISTER_VOID (NOT the sched-context path, NOT int main).
-    let mut plan = fixture_plan_with_tiers();
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "freertos".into(); // FreertosBoard
 
     let src = emit_typed(&plan).expect("typed cpp freertos tier emit ok");
 
     // Per-tier setup functions emitted.
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
     );
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
         "expected tier-1 setup fn; got:\n{src}"
     );
-    // NativeTierSpec array emitted.
+    // NativeSchedTaskSpec array emitted.
     assert!(
-        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
-        "expected 2-element NativeTierSpec array; src:\n{src}"
+        src.contains("static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[2]"),
+        "expected 2-element NativeSchedTaskSpec array; src:\n{src}"
     );
     // phase-509 P10 -- FreertosBoard::run_levels called (not LinuxBoard).
     assert!(
@@ -1395,25 +1395,25 @@ fn typed_emit_tiers_freertos_embedded_uses_run_tiers_path() {
     // FreeRTOS embedded entry point: nros_app_main + NROS_APP_MAIN_REGISTER_VOID.
     assert!(
         src.contains("extern \"C\" int nros_app_main("),
-        "FreeRTOS run_tiers must emit nros_app_main; src:\n{src}"
+        "FreeRTOS run_sched_tasks must emit nros_app_main; src:\n{src}"
     );
     assert!(
         src.contains("NROS_APP_MAIN_REGISTER_VOID()"),
-        "FreeRTOS run_tiers must emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
+        "FreeRTOS run_sched_tasks must emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
     );
     // NOT int main (that's native).
     assert!(
         !src.contains("int main("),
-        "FreeRTOS run_tiers must NOT emit int main; src:\n{src}"
+        "FreeRTOS run_sched_tasks must NOT emit int main; src:\n{src}"
     );
     // Old sched-context wiring must NOT appear.
     assert!(
         !src.contains("__nros_sc_ids"),
-        "FreeRTOS run_tiers path must not emit sc_ids; src:\n{src}"
+        "FreeRTOS run_sched_tasks path must not emit sc_ids; src:\n{src}"
     );
     assert!(
         !src.contains("nros_cpp_create_sched_context"),
-        "FreeRTOS run_tiers path must not emit create_sched_context; src:\n{src}"
+        "FreeRTOS run_sched_tasks path must not emit create_sched_context; src:\n{src}"
     );
 }
 
@@ -1422,13 +1422,13 @@ fn typed_emit_tiers_freertos_embedded_uses_run_tiers_path() {
 /// spawned level is derived from its own member's stack, not `0u`.
 #[test]
 fn typed_emit_a_member_stack_reaches_its_level() {
-    let mut plan = fixture_plan_with_tiers();
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "zephyr".into();
     for n in &mut plan.nodes {
         let name = n.name.clone().unwrap_or_else(|| n.exec.clone());
         n.stack_bytes = Some(if name == "ctrl" { 6000 } else { 7000 });
     }
-    let spawned = &plan.resolved_tiers.as_ref().unwrap().tiers[1];
+    let spawned = &plan.resolved_sched_tasks.as_ref().unwrap().tiers[1];
     let member = if spawned.members[0].0 == "ctrl" {
         6000
     } else {
@@ -1437,35 +1437,35 @@ fn typed_emit_a_member_stack_reaches_its_level() {
     let src = emit_typed(&plan).expect("typed cpp zephyr tier emit ok");
     assert!(
         src.contains(&format!(
-            "NROS_TIER_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES({member}u));"
+            "NROS_SCHED_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES({member}u));"
         )),
         "the spawned level derives from its member's stack; src:\n{src}"
     );
 }
 
 #[test]
-fn typed_emit_tiers_zephyr_embedded_uses_run_tiers_path() {
+fn typed_emit_sched_tasks_zephyr_embedded_uses_run_sched_tasks_path() {
     // phase-281 W3a — Zephyr embedded board + multi-tier emits per-tier setup
-    // functions + ZephyrBoard::run_tiers via a plain `int main(void)` (the Zephyr
+    // functions + ZephyrBoard::run_sched_tasks via a plain `int main(void)` (the Zephyr
     // kernel calls main directly — NO nros_app_main, NO sched-context path).
-    let mut plan = fixture_plan_with_tiers();
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "zephyr".into(); // ZephyrBoard
 
     let src = emit_typed(&plan).expect("typed cpp zephyr tier emit ok");
 
     // Per-tier setup functions emitted.
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
     );
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
         "expected tier-1 setup fn; got:\n{src}"
     );
-    // NativeTierSpec array emitted.
+    // NativeSchedTaskSpec array emitted.
     assert!(
-        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
-        "expected 2-element NativeTierSpec array; src:\n{src}"
+        src.contains("static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[2]"),
+        "expected 2-element NativeSchedTaskSpec array; src:\n{src}"
     );
     // ZephyrBoard::run_levels called (not LinuxBoard / FreertosBoard):
     // phase-509 P9, each tier row is one level over the core's scheduler.
@@ -1474,7 +1474,7 @@ fn typed_emit_tiers_zephyr_embedded_uses_run_tiers_path() {
         "main must call ZephyrBoard::run_levels; src:\n{src}"
     );
     assert!(
-        src.contains("NROS_TIER_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES(0u));"),
+        src.contains("NROS_SCHED_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES(0u));"),
         "an undeclared spawned level's stack is derived; src:\n{src}"
     );
     assert!(
@@ -1484,58 +1484,58 @@ fn typed_emit_tiers_zephyr_embedded_uses_run_tiers_path() {
     // Zephyr entry point: plain int main(void), kernel calls it directly.
     assert!(
         src.contains("int main(void) {"),
-        "Zephyr run_tiers must emit int main(void); src:\n{src}"
+        "Zephyr run_sched_tasks must emit int main(void); src:\n{src}"
     );
     // NOT the FreeRTOS/startup.c app_main shape.
     assert!(
         !src.contains("nros_app_main"),
-        "Zephyr run_tiers must NOT emit nros_app_main; src:\n{src}"
+        "Zephyr run_sched_tasks must NOT emit nros_app_main; src:\n{src}"
     );
     assert!(
         !src.contains("NROS_APP_MAIN_REGISTER_VOID"),
-        "Zephyr run_tiers must NOT emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
+        "Zephyr run_sched_tasks must NOT emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
     );
-    // Old sched-context wiring must NOT appear (this is the run_tiers path).
+    // Old sched-context wiring must NOT appear (this is the run_sched_tasks path).
     assert!(
         !src.contains("__nros_sc_ids"),
-        "Zephyr run_tiers path must not emit sc_ids; src:\n{src}"
+        "Zephyr run_sched_tasks path must not emit sc_ids; src:\n{src}"
     );
     assert!(
         !src.contains("nros_cpp_create_sched_context"),
-        "Zephyr run_tiers path must not emit create_sched_context; src:\n{src}"
+        "Zephyr run_sched_tasks path must not emit create_sched_context; src:\n{src}"
     );
-    // run_tiers path must not CALL run_components (the string appears once in the
+    // run_sched_tasks path must not CALL run_components (the string appears once in the
     // file-header doc comment, so assert on the call form specifically).
     assert!(
         !src.contains("ZephyrBoard::run_components"),
-        "Zephyr run_tiers path must not call ZephyrBoard::run_components; src:\n{src}"
+        "Zephyr run_sched_tasks path must not call ZephyrBoard::run_components; src:\n{src}"
     );
 }
 
 #[test]
-fn typed_emit_tiers_nuttx_embedded_uses_run_tiers_path() {
+fn typed_emit_sched_tasks_nuttx_embedded_uses_run_sched_tasks_path() {
     // phase-281 W3 (nuttx) — NuttX embedded board + multi-tier emits per-tier
-    // setup functions + NuttxBoard::run_tiers via nros_app_main +
+    // setup functions + NuttxBoard::run_sched_tasks via nros_app_main +
     // NROS_APP_MAIN_REGISTER_VOID (the NuttX startup path calls app_main, like
     // FreeRTOS — NOT Zephyr's int main(void), NOT the sched-context path).
-    let mut plan = fixture_plan_with_tiers();
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "nuttx".into(); // NuttxBoard
 
     let src = emit_typed(&plan).expect("typed cpp nuttx tier emit ok");
 
     // Per-tier setup functions emitted.
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_0(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
     );
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
         "expected tier-1 setup fn; got:\n{src}"
     );
-    // NativeTierSpec array emitted.
+    // NativeSchedTaskSpec array emitted.
     assert!(
-        src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
-        "expected 2-element NativeTierSpec array; src:\n{src}"
+        src.contains("static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[2]"),
+        "expected 2-element NativeSchedTaskSpec array; src:\n{src}"
     );
     // phase-509 P10 -- NuttxBoard::run_levels called (not LinuxBoard /
     // FreertosBoard / ZephyrBoard).
@@ -1547,35 +1547,35 @@ fn typed_emit_tiers_nuttx_embedded_uses_run_tiers_path() {
     // (the app_main startup shape, shared with FreeRTOS).
     assert!(
         src.contains("extern \"C\" int nros_app_main("),
-        "NuttX run_tiers must emit nros_app_main; src:\n{src}"
+        "NuttX run_sched_tasks must emit nros_app_main; src:\n{src}"
     );
     assert!(
         src.contains("NROS_APP_MAIN_REGISTER_VOID()"),
-        "NuttX run_tiers must emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
+        "NuttX run_sched_tasks must emit NROS_APP_MAIN_REGISTER_VOID; src:\n{src}"
     );
     // NOT int main (that's native) and NOT the Zephyr int main(void).
     assert!(
         !src.contains("int main("),
-        "NuttX run_tiers must NOT emit int main; src:\n{src}"
+        "NuttX run_sched_tasks must NOT emit int main; src:\n{src}"
     );
-    // Old sched-context wiring must NOT appear (this is the run_tiers path).
+    // Old sched-context wiring must NOT appear (this is the run_sched_tasks path).
     assert!(
         !src.contains("__nros_sc_ids"),
-        "NuttX run_tiers path must not emit sc_ids; src:\n{src}"
+        "NuttX run_sched_tasks path must not emit sc_ids; src:\n{src}"
     );
     assert!(
         !src.contains("nros_cpp_create_sched_context"),
-        "NuttX run_tiers path must not emit create_sched_context; src:\n{src}"
+        "NuttX run_sched_tasks path must not emit create_sched_context; src:\n{src}"
     );
 }
 
 #[test]
-fn typed_emit_tiers_rclcpp_embedded_node_is_seeded() {
+fn typed_emit_sched_tasks_rclcpp_embedded_node_is_seeded() {
     // Phase 272 (W2) — rclcpp-shape tiered node on an embedded board IS seeded
-    // via bind_node_name_sched (the #124 dissolve). Native boards use run_tiers
+    // via bind_node_name_sched (the #124 dissolve). Native boards use run_sched_tasks
     // instead; this test covers the embedded (sched-context) path.
-    use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
-    let high_tier = ResolvedTier {
+    use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
+    let high_sched_task = ResolvedSchedTask {
         name: "high".into(),
         priority: 80,
         stack_bytes: None,
@@ -1599,13 +1599,13 @@ fn typed_emit_tiers_rclcpp_embedded_node_is_seeded() {
         "ctrl_pkg/Ctrl.hpp",
     )]);
     // ThreadX — a sched-context embedded board (phase-281 W3a moved Zephyr and
-    // W3(nuttx) moved NuttX onto the run_tiers path, so this seeding proof now
+    // W3(nuttx) moved NuttX onto the run_sched_tasks path, so this seeding proof now
     // uses a board that still schedules via the single-executor sched-context wiring).
     plan.board = "threadx".into();
     plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
     plan.nodes[0].sched_context = Some(0);
-    plan.resolved_tiers = Some(ResolvedTierTable {
-        tiers: vec![high_tier],
+    plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
+        tiers: vec![high_sched_task],
     });
     let src = emit_typed(&plan).expect("rclcpp embedded tier emit ok");
     // rclcpp-shape node MUST be seeded (the #124 proof, embedded path).
@@ -1659,8 +1659,8 @@ fn an_rclcpp_node_is_constructed_under_its_declared_callback_groups() {
 }
 
 #[test]
-fn typed_emit_no_tiers_uses_plain_create_node() {
-    // Guard: empty resolved_tiers keeps byte-identical plain create (no seed, no sched).
+fn typed_emit_no_sched_tasks_uses_plain_create_node() {
+    // Guard: empty resolved_sched_tasks keeps byte-identical plain create (no seed, no sched).
     let plan = fixture_plan_typed(&[(
         "talker_pkg",
         "talker",
@@ -1731,8 +1731,8 @@ fn typed_emit_creates_each_node_at_its_plan_namespace() {
 
 /// The tiered arm of the same rule — `create_node_on`, one tier each.
 #[test]
-fn typed_emit_tiered_creates_each_node_at_its_plan_namespace() {
-    let mut plan = fixture_plan_with_tiers();
+fn typed_emit_sched_task_creates_each_node_at_its_plan_namespace() {
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].namespace = Some("/island".into());
     // nodes[1] keeps `None`, so both arms appear in one render.
     let src = emit_typed(&plan).expect("typed cpp tiered emit ok");
@@ -1778,7 +1778,7 @@ fn every_board_family_derives_its_boot_shape_once() {
 ///
 /// ThreadX is the one board the two former branch chains disagreed about,
 /// and it is kept out of the per-tier chain by `Plan::executor_shape`: the
-/// board has no `run_tiers` (issue 1286). Pinning it
+/// board has no `run_sched_tasks` (issue 1286). Pinning it
 /// here means the shared derivation is right about it on its own terms,
 /// rather than by an argument about a condition elsewhere.
 #[test]
@@ -1792,10 +1792,10 @@ would collide with the one the board defines"
     assert_eq!(boot_shape("threadx"), boot_shape("nuttx"));
 }
 
-/// The boards that DO have `run_tiers` still emit it, each in its own
+/// The boards that DO have `run_sched_tasks` still emit it, each in its own
 /// wrapper — the consolidation must not have narrowed what works.
 #[test]
-fn boards_with_run_tiers_still_emit_their_own_wrapper() {
+fn boards_with_run_sched_tasks_still_emit_their_own_wrapper() {
     for (board, wrapper) in [
         ("linux", "int main(int /*argc*/, char** /*argv*/) {"),
         ("zephyr", "int main(void) {"),
@@ -1808,7 +1808,7 @@ fn boards_with_run_tiers_still_emit_their_own_wrapper() {
             "extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {",
         ),
     ] {
-        let mut plan = fixture_plan_with_tiers();
+        let mut plan = fixture_plan_with_sched_tasks();
         plan.board = board.into();
         let src =
             emit_typed(&plan).unwrap_or_else(|e| panic!("{board} multi-tier emit failed: {e}"));
@@ -2111,15 +2111,15 @@ fn typed_emit_monitor_rows_match_namespaced_nodes() {
 /// was building (`nros_cpp_report_setup_failure`) before it returns the code
 /// the runner fails the boot with.
 #[test]
-fn typed_emit_tier_setup_reports_its_failing_node() {
-    let mut plan = fixture_plan_with_tiers();
+fn typed_emit_sched_task_setup_reports_its_failing_node() {
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "zephyr".into();
     let src = emit_typed(&plan).expect("levels emit ok");
     let body = src
-        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
+        .find("static int32_t __nros_entry_setup_sched_task_1_nodes(void* executor, const char** __nros_at)")
         .expect("the tier's node body");
     let wrapper = src
-        .find("static int32_t __nros_entry_setup_tier_1(void* executor)")
+        .find("static int32_t __nros_entry_setup_sched_task_1(void* executor)")
         .expect("the tier's setup");
     assert!(
         src[body..wrapper].contains("*__nros_at = \"telem\";"),
@@ -2139,7 +2139,7 @@ fn typed_emit_tier_setup_reports_its_failing_node() {
 /// installs one.
 #[test]
 fn typed_emit_levels_install_one_monitor_table() {
-    let mut plan = fixture_plan_with_tiers();
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "zephyr".into();
     let row = |topic: &str, fqn: &str| MonitorRow {
         topic: topic.into(),
@@ -2178,10 +2178,10 @@ fn typed_emit_levels_install_one_monitor_table() {
         "installed once; src:\n{src}"
     );
     let t0 = src
-        .find("static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at)")
+        .find("static int32_t __nros_entry_setup_sched_task_0_nodes(void* executor, const char** __nros_at)")
         .unwrap();
     let t1 = src
-        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
+        .find("static int32_t __nros_entry_setup_sched_task_1_nodes(void* executor, const char** __nros_at)")
         .unwrap();
     assert!(
         src[t0..t1].contains("nros_cpp_install_monitors("),
@@ -2227,12 +2227,12 @@ fn rust_node_install_receives_the_unwrapped_executor() {
 /// Issue 1535 — the tiered path hands each tier's own `executor`, which is a
 /// context too.
 #[test]
-fn rust_node_install_on_a_tier_receives_the_unwrapped_executor() {
-    let mut plan = fixture_plan_with_tiers();
+fn rust_node_install_on_a_sched_task_receives_the_unwrapped_executor() {
+    let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[1].lang = Some(Lang::Rust);
     let src = emit_typed(&plan).expect("tiered rust-node cpp emit ok");
     assert!(
-        src.contains("static int32_t __nros_entry_setup_tier_1(void* executor)"),
+        src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
         "expected the tiered path;\n{src}"
     );
     assert!(
@@ -2276,7 +2276,7 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
         &ages,
         Some(&model),
         &[],
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("hazard emit ok");
     assert!(
@@ -2333,7 +2333,7 @@ fn typed_emit_wires_a_hazards_safe_state_reaction_to_the_hook() {
         &ages,
         Some(&model),
         &[],
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("hazard emit ok");
     assert!(
@@ -2395,7 +2395,7 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
         &ages,
         None,
         &modes,
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("mode emit ok");
     assert!(src.contains("#define NROS_MODE_DEGRADED_SAFE 1u"), "{src}");
@@ -2419,7 +2419,7 @@ fn typed_emit_bakes_a_modes_numbers_after_the_monitors() {
         &ages,
         None,
         &[],
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("plain emit ok");
     assert!(
@@ -2466,7 +2466,7 @@ fn typed_emit_aliases_a_mode_equal_to_the_base() {
         &ages,
         None,
         &modes,
-        &super::ModeTier::default(),
+        &super::ModeSchedTask::default(),
     )
     .expect("mode emit ok");
     assert!(src.contains("#define NROS_MODE_SAME 2u"), "{src}");

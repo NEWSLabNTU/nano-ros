@@ -347,8 +347,8 @@ required-features = ["trigger-test"]
 # phase-521 W7 (RFC-0113 D2.5) — the wake fan-out over one session: what a
 # low-tier arrival costs the high tiers, attributing vs not.
 [[test]]
-name = "tier_wake_fanout"
-path = "tests/tier_wake_fanout.rs"
+name = "sched_task_wake_fanout"
+path = "tests/sched_task_wake_fanout.rs"
 required-features = ["trigger-test"]
 
 [[test]]
@@ -410,8 +410,8 @@ required-features = ["rclrs-port-test"]
 # Phase 228 — per-tier callback-group filter + shared-session
 # (session_ptr / open_with_session) acceptance test.
 [[test]]
-name = "tier_filter"
-path = "tests/tier_filter.rs"
+name = "sched_task_filter"
+path = "tests/sched_task_filter.rs"
 required-features = ["component-runtime-test"]
 
 # Phase 212.M.5.a.4 — BSP-path dispatch wiring (typed-erased state +

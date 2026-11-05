@@ -4,7 +4,7 @@
 # Four manifests across TWO cargo workspaces pin this crate, and bumping a
 # subset does not fail in a way that names the cause. It fails like this:
 #
-#     expected `TierDef`, found `ros_launch_manifest_model::TierDef`
+#     expected `SchedTaskDef`, found `ros_launch_manifest_model::TaskDef`
 #       .../checkouts/ros-launch-manifest-<hash>/1a53088/sched/src/types.rs:23
 #       .../checkouts/ros-launch-manifest-<hash>/ce0b918/sched/src/types.rs:23
 #

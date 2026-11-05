@@ -1226,7 +1226,7 @@ mod tests {
     }
 
     #[test]
-    fn the_tier_rows_survive_a_round_trip() {
+    fn the_sched_task_rows_survive_a_round_trip() {
         // Issue 1970 -- each tier's own facts, after every other section.
         let mut d = island();
         let mut estop = Tier {

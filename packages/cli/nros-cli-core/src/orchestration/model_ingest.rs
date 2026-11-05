@@ -3,25 +3,25 @@
 //! `nros codegen-system --model system_model.yaml` consumes the checked
 //! artifact play_launch `resolve` emits (RFC-0050): the model's execution
 //! layer REPLACES the bringup's `[tasks.*]` + `[[node_overrides]]` before
-//! the existing `resolve_system_tiers` pipeline runs — same resolver, same
-//! `nros-plan.json`, same `run_tiers` output as the `system.toml`-authored
+//! the existing `resolve_system_sched_tasks` pipeline runs — same resolver, same
+//! `nros-plan.json`, same `run_sched_tasks` output as the `system.toml`-authored
 //! equivalent, by construction.
 //!
 //! Schema note: the tier tables exist twice by design — the shared
-//! `ros-launch-manifest-sched::TierDef` (authoring + model schema, both
-//! projects vendor it) and `nros-orchestration-ir::TierDef` (the no_std
+//! `ros-launch-manifest-sched::TaskDef` (authoring + model schema, both
+//! projects vendor it) and `nros-orchestration-ir::SchedTaskDef` (the no_std
 //! resolver input the proc-macro also uses). This module is the ONE
 //! conversion point. Its mirror-drift guard,
-//! ~~`tier_roundtrip_covers_every_field`~~ (issue-0160 lesson, applied
+//! ~~`sched_task_roundtrip_covers_every_field`~~ (issue-0160 lesson, applied
 //! cross-repo), is gone, and nothing has replaced it.
 
 use std::{collections::BTreeMap, path::Path};
 
 use eyre::{Result, WrapErr, bail};
-// RFC-0052 — `tier_from_model` moved to nros-orchestration-ir (the shared home
+// RFC-0052 — `sched_task_from_model` moved to nros-orchestration-ir (the shared home
 // for the CLI codegen + the nros::main! proc-macro); re-exported here so the
-// existing `model_ingest::tier_from_model` call sites and tests keep working.
-pub use nros_orchestration_ir::tier_from_model;
+// existing `model_ingest::sched_task_from_model` call sites and tests keep working.
+pub use nros_orchestration_ir::sched_task_from_model;
 use nros_orchestration_ir::{CallbackGroupDecl, CallbackGroupOverride, NodeOverride};
 use ros_launch_manifest_model::SystemModel;
 
@@ -101,7 +101,7 @@ pub fn apply_model_execution(
         .execution
         .tasks
         .iter()
-        .map(|(name, t)| (name.clone(), tier_from_model(t, target_rtos)))
+        .map(|(name, t)| (name.clone(), sched_task_from_model(t, target_rtos)))
         .collect();
 
     let component_names: Vec<&str> = system.components.iter().map(|c| c.name.as_str()).collect();
@@ -239,7 +239,7 @@ pub fn apply_model_execution(
 /// from the contract layer (`node_paths` + criticality) via the shared
 /// platform-agnostic core + the RTOS realizer, and synthesize them into the
 /// bringup as ordinary `[tasks.*]` + `[[node_overrides]]` rows so the ENTIRE
-/// existing pipeline (resolve_system_tiers → validation → plan → run_tiers)
+/// existing pipeline (resolve_system_sched_tasks → validation → plan → run_sched_tasks)
 /// consumes them unchanged.
 ///
 /// issue 1426 — AUTHORED still wins, per FACT rather than per TABLE. This used
@@ -284,13 +284,13 @@ pub fn derive_execution_in_plan(
     // stderr and mutates the bringup `SystemToml` — behavior-identical to the
     // pre-relocation inline version.
     let derived = match priority_plan {
-        Some(pp) => nros_orchestration_ir::derive::derive_tiers_in_plan(
+        Some(pp) => nros_orchestration_ir::derive::derive_sched_tasks_in_plan(
             model,
             target_rtos,
             callback_groups,
             pp,
         ),
-        None => nros_orchestration_ir::derive::derive_tiers_from_contracts(
+        None => nros_orchestration_ir::derive::derive_sched_tasks_from_contracts(
             model,
             target_rtos,
             callback_groups,
@@ -536,7 +536,7 @@ fn resolve_max_cbs_through_ladder(platform: &str) -> Option<usize> {
 /// bake, unchanged.
 ///
 /// Issue 1397 — `platform` is the image's RESOLVED platform
-/// ([`tier_resolver::derive_target_platform`](super::tier_resolver::derive_target_platform)),
+/// ([`sched_task_resolver::derive_target_platform`](super::sched_task_resolver::derive_target_platform)),
 /// not the `--target` / `--for-entry` block id. Both facts this check needs —
 /// the `max_cbs` ladder's platform name and whether the board honors per-entry
 /// sizing — are read off it through their own accessors, so no one string
@@ -1233,7 +1233,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn binding_to_unknown_tier_or_node_fails_loud() {
+    fn binding_to_unknown_sched_task_or_node_fails_loud() {
         use ros_launch_manifest_model::SystemModel;
         let mut system: SystemToml =
             toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n")
@@ -1316,7 +1316,7 @@ mod tests {
     }
 
     #[test]
-    fn derives_tiers_from_contracts_when_none_declared() {
+    fn derives_sched_tasks_from_contracts_when_none_declared() {
         let mut system: SystemToml =
             toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
         let model = contract_model();
@@ -1358,7 +1358,7 @@ mod tests {
     }
 
     #[test]
-    fn groupless_node_stays_on_default_tier() {
+    fn groupless_node_stays_on_default_sched_task() {
         let mut system: SystemToml =
             toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
         let model = contract_model();
@@ -1449,7 +1449,7 @@ pub fn violation_rows(model: &SystemModel) -> Result<Vec<ViolationRow>> {
             fqn: ep_ref.clone(),
             silence_ms: age.round().max(1.0).min(u32::MAX as f64) as u32,
             reaction: on_violation.reaction.clone(),
-            action: action.as_tier_str().to_string(),
+            action: action.as_sched_task_str().to_string(),
         });
     }
     rows.sort_by(|a, b| a.fqn.cmp(&b.fqn));

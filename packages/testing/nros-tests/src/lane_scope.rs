@@ -7,13 +7,13 @@
 //! added the test-name exclusion to cover it.
 //!
 //! Five consumers escape BOTH halves, because consolidation went one step
-//! further: `entry_e2e entry_matrix`, `realtime_tiers_e2e realtime_tiers`,
+//! further: `entry_e2e entry_matrix`, `realtime_sched_tasks_e2e realtime_sched_tasks`,
 //! `multihost_e2e multihost`, `roundtrip_xprocess_e2e roundtrip_xprocess` and
 //! `sched_dims_applied_e2e sched_dims_applied` are ONE test each, iterating
 //! every platform cell in a single process. No name filter can reach inside a
 //! test, so on a tier-1 host every image that happens to exist gets booted —
 //! and every image that does NOT exist is a silently absent cell, which is how
-//! `realtime_tiers` reported a 12-second PASS while running 1 of its 16 rows.
+//! `realtime_sched_tasks` reported a 12-second PASS while running 1 of its 16 rows.
 //!
 //! The fifth was found the hard way (issue 0630) and is why [`CONSUMERS`] is
 //! now DATA with a test behind it rather than a sentence in this paragraph.
@@ -80,7 +80,7 @@ pub const CONSUMERS: &[&str] = &[
     "entry_e2e.rs",
     "typed_carrier_e2e.rs",
     "multihost_e2e.rs",
-    "realtime_tiers_e2e.rs",
+    "realtime_sched_tasks_e2e.rs",
     "roundtrip_xprocess_e2e.rs",
     "sched_dims_applied_e2e.rs",
 ];

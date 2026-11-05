@@ -28,7 +28,7 @@ const c = @cImport({
     @cInclude("rclc/detail/app_main.h");
 {%- endif %}
     @cInclude("rclcpp/detail/nros_cpp_ffi.h");
-{%- if boot.tier_storage or boot.component_storage %}
+{%- if boot.sched_task_storage or boot.component_storage %}
     @cInclude("rclcpp/detail/nros_cpp_config_generated.h");
 {%- endif %}
 });
@@ -83,7 +83,7 @@ var __nros_node_{{ loop.index0 }}: c.nros_cpp_node_t = undefined;
 {%- endmacro %}
 {% if tiers %}
 {%- for t in tiers.setups %}
-fn __nros_entry_setup_tier_{{ t.index }}(executor: ?*anyopaque) callconv(.C) i32 {
+fn __nros_entry_setup_sched_task_{{ t.index }}(executor: ?*anyopaque) callconv(.C) i32 {
     if (executor == null) return c.NROS_CPP_RET_NOT_INIT;
 {%- for s in t.nodes %}{{ node_body(nodes[s.node], s.node, s.on_executor) }}{% endfor %}
 {%- if t.emits_services %}{{ service_calls() }}{% endif %}
@@ -92,22 +92,22 @@ fn __nros_entry_setup_tier_{{ t.index }}(executor: ?*anyopaque) callconv(.C) i32
 {%- endfor %}
 {% for t in tiers.rows %}
 {%- if t.groups %}
-var __nros_tier_{{ t.index }}_groups = [_][*c]const u8{ {% for g in t.groups %}"{{ g[0] | c_str }}", "{{ g[1] | c_str }}", "{{ g[2] | c_str }}", {% endfor %}};
+var __nros_sched_task_{{ t.index }}_groups = [_][*c]const u8{ {% for g in t.groups %}"{{ g[0] | c_str }}", "{{ g[1] | c_str }}", "{{ g[2] | c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
-const __nros_tiers = [_]c.nros_native_tier_spec_t{
+const __nros_sched_tasks = [_]c.nros_native_sched_task_spec_t{
 {%- for t in tiers.rows %}
     .{
         .name = "{{ t.name | c_str }}",
-        .groups = {% if t.groups %}&__nros_tier_{{ t.index }}_groups{% else %}null{% endif %},
+        .groups = {% if t.groups %}&__nros_sched_task_{{ t.index }}_groups{% else %}null{% endif %},
         .n_groups = {{ t.groups | length }},
         .priority = {{ t.priority }},
         .stack_bytes = {{ t.stack_bytes }},
         .spin_period_us = {{ t.spin_period_us }},
-        .setup = &__nros_entry_setup_tier_{{ t.index }},
+        .setup = &__nros_entry_setup_sched_task_{{ t.index }},
         .core_plus1 = {{ t.core_plus1 }},
         .preempt_threshold = {{ t.preempt_threshold }},
-        .tier_class = {% if t.class is none %}null{% else %}"{{ t.class | c_str }}"{% endif %},
+        .sched_task_class = {% if t.class is none %}null{% else %}"{{ t.class | c_str }}"{% endif %},
         .period_us = {{ t.period_us }},
         .budget_us = {{ t.budget_us }},
         .deadline_us = {{ t.deadline_us }},
@@ -127,7 +127,7 @@ fn __nros_entry_setup(executor: ?*anyopaque) callconv(.C) i32 {
     if (c.nros_cpp_bind_node_name_sched(executor, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", sc[{{ b.sched_context }}]) != c.NROS_CPP_RET_OK) return -1;
 {%- endfor %}
 {%- for b in sched.group_binds %}
-    if (c.nros_cpp_bind_group_sched(executor, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", "{{ b.group | c_str }}", sc[{{ b.tier_index }}]) != c.NROS_CPP_RET_OK) return -1;
+    if (c.nros_cpp_bind_group_sched(executor, "{{ b.name | c_str }}", "{{ b.namespace | c_str }}", "{{ b.group | c_str }}", sc[{{ b.sched_task_index }}]) != c.NROS_CPP_RET_OK) return -1;
 {%- endfor %}
 {%- endif %}
 {%- for n in nodes %}{{ node_body(n, loop.index0, loop.index0) }}{% endfor %}
@@ -152,8 +152,8 @@ export const NROS_BOOT_CONFIG: c.struct_nros_baked_boot_config linksection(".nro
     .namespace_ = fixed(64, "{% if boot_config.namespace is not none %}{{ boot_config.namespace | c_str }}{% endif %}"),
     .rmw = fixed(32, "{% if boot_config.rmw is not none %}{{ boot_config.rmw | c_str }}{% endif %}"),
 };
-{% if boot.tier_storage %}
-var __nros_tier_executor_storage: [{{ boot.n_tiers }}][(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
+{% if boot.sched_task_storage %}
+var __nros_sched_task_executor_storage: [{{ boot.n_sched_tasks }}][(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
 {% elif boot.component_storage %}
 var __nros_executor_storage: [(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
 {% endif %}
@@ -165,7 +165,7 @@ var __nros_executor_storage: [(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = u
 {%- set connect = "" if boot_shape == "host" else "c.NROS_ENTRY_LOCATOR, c.NROS_ENTRY_DOMAIN_ID, " %}
 fn run() i32 {
 {%- if boot.tiers %}
-    return c.{{ boot.runners.run_tiers }}({{ connect }}{{ name }}, &__nros_tiers, __nros_tiers.len{% if boot.tier_storage %}, &__nros_tier_executor_storage, @sizeOf(@TypeOf(__nros_tier_executor_storage[0])){% endif %}{% if boot.task_memory %}, null{% endif %});
+    return c.{{ boot.runners.run_sched_tasks }}({{ connect }}{{ name }}, &__nros_sched_tasks, __nros_sched_tasks.len{% if boot.sched_task_storage %}, &__nros_sched_task_executor_storage, @sizeOf(@TypeOf(__nros_sched_task_executor_storage[0])){% endif %}{% if boot.task_memory %}, null{% endif %});
 {%- else %}
     return c.{{ boot.runners.run_components }}({{ connect }}{{ name }}, &__nros_entry_setup{% if boot.component_storage %}, &__nros_executor_storage, @sizeOf(@TypeOf(__nros_executor_storage)){% endif %});
 {%- endif %}

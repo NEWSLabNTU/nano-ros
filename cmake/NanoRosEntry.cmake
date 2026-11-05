@@ -775,32 +775,32 @@ function(nano_ros_entry)
     # generated entry. On FreeRTOS those stacks used to come out of heap_4, so
     # the heap default still budgeted for them and the bytes were reserved
     # twice: realtime-cpp's `demo_bringup:freertos` overflowed RAM by 151,024
-    # bytes with a 3 MiB `ucHeap` beside two 256 KiB `__nros_tier_stack_*`.
+    # bytes with a 3 MiB `ucHeap` beside two 256 KiB `__nros_sched_task_stack_*`.
     # The sidecar states the moved total; the kernel's DEFAULT heap subtracts
     # it (`FreeRTOSConfig.h`), so the move is a move and not a second
     # reservation. An explicit `NROS_FREERTOS_HEAP_KB` is a size someone chose
     # and is left alone. On `freertos_config`, because every TU that includes
     # `FreeRTOSConfig.h` must agree on `configTOTAL_HEAP_SIZE` (issue 1197).
     if(TARGET ${_NRA_NAME} AND TARGET freertos_config)
-        get_target_property(_nra_tier_bss ${_NRA_NAME} NROS_TIER_STACKS_BSS_BYTES)
-        if(_nra_tier_bss)
+        get_target_property(_nra_sched_task_bss ${_NRA_NAME} NROS_SCHED_TASK_STACKS_BSS_BYTES)
+        if(_nra_sched_task_bss)
             # Whole KiB, rounded DOWN, so the heap never shrinks by more than
             # actually moved.
-            math(EXPR _nra_tier_bss_kb "${_nra_tier_bss} / 1024")
-            get_property(_nra_prev GLOBAL PROPERTY _NROS_FREERTOS_TIER_STACKS_IN_BSS_KB)
-            if(_nra_prev AND NOT _nra_prev STREQUAL _nra_tier_bss_kb)
+            math(EXPR _nra_sched_task_bss_kb "${_nra_sched_task_bss} / 1024")
+            get_property(_nra_prev GLOBAL PROPERTY _NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB)
+            if(_nra_prev AND NOT _nra_prev STREQUAL _nra_sched_task_bss_kb)
                 message(FATAL_ERROR
                     "nano_ros_entry(${_NRA_NAME}): this configure already "
                     "sized the shared FreeRTOS kernel's heap for an entry whose "
                     "tier stacks moved ${_nra_prev} KiB to .bss; this one moves "
-                    "${_nra_tier_bss_kb} KiB. One kernel has one heap, so two "
+                    "${_nra_sched_task_bss_kb} KiB. One kernel has one heap, so two "
                     "tiered entries need two build directories.")
             endif()
             if(NOT _nra_prev)
                 set_property(GLOBAL PROPERTY
-                    _NROS_FREERTOS_TIER_STACKS_IN_BSS_KB "${_nra_tier_bss_kb}")
+                    _NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB "${_nra_sched_task_bss_kb}")
                 nros_freertos_config_define(
-                    "NROS_FREERTOS_TIER_STACKS_IN_BSS_KB=${_nra_tier_bss_kb}")
+                    "NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB=${_nra_sched_task_bss_kb}")
             endif()
         endif()
     endif()
@@ -1546,7 +1546,7 @@ function(_nros_entry_invoke_codegen)
         RMW       "${_nrx_rmw}"
         # Issue 1970 -- the tiers `codegen entry` resolved above, so a board
         # whose runner sizes each tier's executor gets one `[[tier]]` row each.
-        TIER_RECORD "${CMAKE_CURRENT_BINARY_DIR}/nros_priority_plan.json")
+        SCHED_TASK_RECORD "${CMAKE_CURRENT_BINARY_DIR}/nros_priority_plan.json")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")
     # Issues 1653/1661 -- the Cyclone facts reach `nros_rmw_cyclonedds` ONCE,

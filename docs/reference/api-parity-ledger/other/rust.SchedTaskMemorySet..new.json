@@ -1,0 +1,5 @@
+{
+  "key": "rust:SchedTaskMemorySet::new",
+  "verdict": "divergence",
+  "why": "See `rust:SchedTaskMemorySet`."
+}

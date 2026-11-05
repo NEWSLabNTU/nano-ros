@@ -4,13 +4,13 @@
 
 **Goal:** Make the RTOS realizer's `deadline_real = Native` claim TRUE end-to-end on Zephyr — the runtime actually calls `k_thread_deadline_set` for a real-time tier that carries a deadline — or degrade honestly, driven by a single `edf` capability knob.
 
-**Architecture:** Three seams. (1) Host — the realizer's per-board `SchedCaps.edf` is sourced from a per-deploy `edf` knob (`Deploy.extra`), so its degradation record is accurate against the image instead of a hardcoded per-platform guess. (2) Runtime — `nros-board-zephyr`'s `run_tiers` calls a new `cfg`-gated C shim `nros_zephyr_set_current_deadline` (→ `k_thread_deadline_set`) for boot + spawned tiers whose class is real-time and that carry a deadline, when the `zephyr-edf` cargo feature is on; the executor's cooperative `SchedContext` deadline monitor stays the miss-handler in both the Native and Backfill cases. (3) A Zephyr QEMU fixture with two equal-priority deadline tiers proves the shim fires (trace marker), built against an authored `prj.conf` that sets `CONFIG_SCHED_DEADLINE=y`.
+**Architecture:** Three seams. (1) Host — the realizer's per-board `SchedCaps.edf` is sourced from a per-deploy `edf` knob (`Deploy.extra`), so its degradation record is accurate against the image instead of a hardcoded per-platform guess. (2) Runtime — `nros-board-zephyr`'s `run_sched_tasks` calls a new `cfg`-gated C shim `nros_zephyr_set_current_deadline` (→ `k_thread_deadline_set`) for boot + spawned tiers whose class is real-time and that carry a deadline, when the `zephyr-edf` cargo feature is on; the executor's cooperative `SchedContext` deadline monitor stays the miss-handler in both the Native and Backfill cases. (3) A Zephyr QEMU fixture with two equal-priority deadline tiers proves the shim fires (trace marker), built against an authored `prj.conf` that sets `CONFIG_SCHED_DEADLINE=y`.
 
 **Tech Stack:** Rust (edition 2024, `no_std` board crate), C (Zephyr kernel shim), Zephyr `CONFIG_SCHED_DEADLINE`, QEMU (`qemu_cortex_m3`/existing zephyr harness), `cargo nextest`, the vendored `ros-launch-manifest` `model` + `sched` crates.
 
 ## Global Constraints
 
-- **Runtime EDF trigger** is `class == Some("real_time") && deadline_us.is_some()`. `TierSpec` carries NO `sched_class` field — do not invent one; the board decides EDF from `class` + `deadline_us`.
+- **Runtime EDF trigger** is `class == Some("real_time") && deadline_us.is_some()`. `SchedTaskSpec` carries NO `sched_class` field — do not invent one; the board decides EDF from `class` + `deadline_us`.
 - **Zephyr priority direction:** numerically LOWER = higher urgency; negatives = cooperative. `CONFIG_SCHED_DEADLINE` orders **equal-priority** threads by earliest deadline (a tiebreak, not a global EDF) — matches one-`k_thread`-per-tier.
 - **`k_thread_deadline_set` takes CYCLES**, not µs — convert with `k_us_to_cyc_near32(us)`.
 - **`prj.conf` is authored per-example**, not codegen-emitted (the CLI only knows a `prj_conf` PATH). The fixture's `prj.conf` carries `CONFIG_SCHED_DEADLINE=y` directly. Auto-emitting `CONFIG_SCHED_DEADLINE` from the deploy knob is an explicit NON-GOAL (follow-up).
@@ -135,23 +135,23 @@ Claude-Session: https://claude.ai/code/session_01SwjKNujon1qUVmwC7yhRJQ"
 
 ---
 
-### Task 2: Runtime — Zephyr `set_current_deadline` shim + `zephyr-edf` feature + `run_tiers` wiring
+### Task 2: Runtime — Zephyr `set_current_deadline` shim + `zephyr-edf` feature + `run_sched_tasks` wiring
 
 Adds the kernel-native deadline application. Boot tier and spawned tiers each self-set their deadline (like they self-adopt priority) when the tier is real-time-with-a-deadline and the `zephyr-edf` feature is on. Emits a trace line the QEMU e2e (Task 4) greps.
 
 **Files:**
-- Modify: `packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c` (add the C shim near the existing priority shim)
+- Modify: `packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c` (add the C shim near the existing priority shim)
 - Modify: `packages/boards/nros-board-zephyr/Cargo.toml:20` (`[features]` — add `zephyr-edf`)
-- Modify: `packages/boards/nros-board-zephyr/src/entry_tiers.rs` (extern decl ~line 45; spawned-tier call in `tier_task_entry` after `apply_tier_sched_policy` ~line 133; boot-tier call after `nros_zephyr_set_current_priority` ~line 246)
+- Modify: `packages/boards/nros-board-zephyr/src/entry_sched_tasks.rs` (extern decl ~line 45; spawned-tier call in `sched_task_entry` after `apply_sched_task_sched_policy` ~line 133; boot-tier call after `nros_zephyr_set_current_priority` ~line 246)
 - Modify: `packages/testing/nros-tests/src/output.rs` (add the marker constant)
 
 **Interfaces:**
-- Consumes: existing `nros_zephyr_set_current_priority` pattern, `TierSpec { class: Option<&str>, deadline_us: Option<u64>, name, priority, … }`.
-- Produces: C symbol `void nros_zephyr_set_current_deadline(unsigned int deadline_us)`; Rust helper `fn apply_tier_deadline(tier: &TierSpec)` (private, in `entry_tiers.rs`) that emits the marker + calls the shim under `#[cfg(feature = "zephyr-edf")]`; `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`.
+- Consumes: existing `nros_zephyr_set_current_priority` pattern, `SchedTaskSpec { class: Option<&str>, deadline_us: Option<u64>, name, priority, … }`.
+- Produces: C symbol `void nros_zephyr_set_current_deadline(unsigned int deadline_us)`; Rust helper `fn apply_sched_task_deadline(tier: &SchedTaskSpec)` (private, in `entry_sched_tasks.rs`) that emits the marker + calls the shim under `#[cfg(feature = "zephyr-edf")]`; `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`.
 
 - [ ] **Step 1: Add the C shim (gated on `CONFIG_SCHED_DEADLINE`)**
 
-In `packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c`, next to the priority shim:
+In `packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c`, next to the priority shim:
 
 ```c
 /* phase-296 W5.5 — apply a per-thread earliest-deadline on the CALLING
@@ -185,15 +185,15 @@ zephyr-edf = []
 In `packages/testing/nros-tests/src/output.rs`:
 
 ```rust
-/// Emitted by `nros-board-zephyr`'s `run_tiers` when a real-time tier's
+/// Emitted by `nros-board-zephyr`'s `run_sched_tasks` when a real-time tier's
 /// kernel EDF deadline is applied (phase-296 W5.5). MIRRORS the literal
-/// `::log::info!` prefix in `nros-board-zephyr/src/entry_tiers.rs`
-/// (`apply_tier_deadline`) — keep the two in lockstep (the no_std board
+/// `::log::info!` prefix in `nros-board-zephyr/src/entry_sched_tasks.rs`
+/// (`apply_sched_task_deadline`) — keep the two in lockstep (the no_std board
 /// crate cannot depend on this crate).
 pub const ZEPHYR_EDF_DEADLINE_MARKER: &str = "nros: EDF deadline set tier=";
 ```
 
-- [ ] **Step 4: Wire the extern + helper + both call sites in `entry_tiers.rs`**
+- [ ] **Step 4: Wire the extern + helper + both call sites in `entry_sched_tasks.rs`**
 
 Add to the `unsafe extern "C"` block (after `nros_zephyr_set_current_priority`, ~line 45):
 
@@ -213,7 +213,7 @@ Add a private helper (near the other free fns in the module):
 /// monitor is the sole enforcement (an honest Backfill). The `::log::info!`
 /// literal MUST match `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`.
 #[cfg(feature = "zephyr-edf")]
-fn apply_tier_deadline(tier: &::nros::node_runtime::TierSpec<'_>) {
+fn apply_sched_task_deadline(tier: &::nros::node_runtime::SchedTaskSpec<'_>) {
     if tier.class == Some("real_time") {
         if let Some(us) = tier.deadline_us {
             let us = us.min(u32::MAX as u64) as u32;
@@ -225,21 +225,21 @@ fn apply_tier_deadline(tier: &::nros::node_runtime::TierSpec<'_>) {
 
 #[cfg(not(feature = "zephyr-edf"))]
 #[inline]
-fn apply_tier_deadline(_tier: &::nros::node_runtime::TierSpec<'_>) {}
+fn apply_sched_task_deadline(_sched_task: &::nros::node_runtime::SchedTaskSpec<'_>) {}
 ```
 
-(If `TierSpec`'s import path in this file differs, use the same path the existing `apply_tier_sched_policy` call reaches it by — grep `TierSpec` in `entry_tiers.rs`.)
+(If `SchedTaskSpec`'s import path in this file differs, use the same path the existing `apply_sched_task_sched_policy` call reaches it by — grep `SchedTaskSpec` in `entry_sched_tasks.rs`.)
 
-Call it on the SPAWNED thread, in `tier_task_entry`, immediately after the existing `crt.apply_tier_sched_policy(...)` (~line 133):
+Call it on the SPAWNED thread, in `sched_task_entry`, immediately after the existing `crt.apply_sched_task_sched_policy(...)` (~line 133):
 
 ```rust
-    apply_tier_deadline(&ctx.tier);
+    apply_sched_task_deadline(&ctx.tier);
 ```
 
 Call it on the BOOT thread, immediately after the `nros_zephyr_set_current_priority(...)` unsafe block (~line 246):
 
 ```rust
-        apply_tier_deadline(boot_tier);
+        apply_sched_task_deadline(boot_sched_task);
 ```
 
 - [ ] **Step 5: Format**
@@ -254,15 +254,15 @@ cargo +nightly fmt -p nros-tests -p nros-board-zephyr
 
 The Zephyr board crate has no host cargo path, so its compile is proven by the Task 3 fixture build. Verify only formatting + the marker mirror here:
 
-Run: `grep -n "EDF deadline set tier=" packages/boards/nros-board-zephyr/src/entry_tiers.rs packages/testing/nros-tests/src/output.rs`
+Run: `grep -n "EDF deadline set tier=" packages/boards/nros-board-zephyr/src/entry_sched_tasks.rs packages/testing/nros-tests/src/output.rs`
 Expected: the literal appears in BOTH files (the mirror invariant).
 
 ```bash
-git add packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c \
+git add packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c \
         packages/boards/nros-board-zephyr/Cargo.toml \
-        packages/boards/nros-board-zephyr/src/entry_tiers.rs \
+        packages/boards/nros-board-zephyr/src/entry_sched_tasks.rs \
         packages/testing/nros-tests/src/output.rs
-git commit -m "feat(296-W5.5): Zephyr k_thread_deadline_set shim + zephyr-edf feature + run_tiers wiring
+git commit -m "feat(296-W5.5): Zephyr k_thread_deadline_set shim + zephyr-edf feature + run_sched_tasks wiring
 
 Boot + spawned tiers self-apply a kernel EDF deadline (k_thread_deadline_set,
 us→cycles) when the tier is real_time with a deadline and the zephyr-edf
@@ -292,7 +292,7 @@ An authored fixture example that exercises the Task 2 path: two real-time tiers 
 
 - [ ] **Step 1: Scaffold the fixture from the nearest zephyr multi-tier example**
 
-Run: `find examples/zephyr packages/testing -name "*.rs" -path "*zephyr*" | xargs grep -l "run_tiers\|tiers" 2>/dev/null | head`
+Run: `find examples/zephyr packages/testing -name "*.rs" -path "*zephyr*" | xargs grep -l "run_sched_tasks\|tiers" 2>/dev/null | head`
 Copy the closest multi-tier zephyr fixture into `packages/testing/nros-tests/bins/zephyr-edf/`. Set two tiers in its tier table (system.toml or `main!`), both `[tiers.<n>.zephyr] priority = 5`, `class = "real_time"`, distinct `deadline_us` (e.g. 10000 and 20000).
 
 - [ ] **Step 2: Author `prj.conf` with EDF on**
@@ -352,12 +352,12 @@ Boots the Task 3 fixture in QEMU and asserts, via the trace marker, that `k_thre
 - Create: `packages/testing/nros-tests/tests/zephyr_edf_deadline_applied.rs`
 
 **Interfaces:**
-- Consumes: `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`, the existing zephyr QEMU harness (mirror `realtime_tiers_e2e.rs`), the Task 3 fixture ELF.
+- Consumes: `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`, the existing zephyr QEMU harness (mirror `realtime_sched_tasks_e2e.rs`), the Task 3 fixture ELF.
 - Produces: a passing e2e that fails-loud on unmet preconditions.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `packages/testing/nros-tests/tests/zephyr_edf_deadline_applied.rs`, mirroring the harness shape of `realtime_tiers_e2e.rs`:
+Create `packages/testing/nros-tests/tests/zephyr_edf_deadline_applied.rs`, mirroring the harness shape of `realtime_sched_tasks_e2e.rs`:
 
 ```rust
 //! phase-296 W5.5 — the Zephyr Native EDF claim is honored end-to-end:
@@ -367,9 +367,9 @@ Create `packages/testing/nros-tests/tests/zephyr_edf_deadline_applied.rs`, mirro
 use nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER;
 
 #[test]
-fn zephyr_edf_deadline_applied_for_both_tiers() {
+fn zephyr_edf_deadline_applied_for_both_sched_tasks() {
     // Boot the prebuilt zephyr-edf fixture in QEMU and capture its log.
-    // (Use the same fixture-resolve + qemu-run helper realtime_tiers_e2e.rs
+    // (Use the same fixture-resolve + qemu-run helper realtime_sched_tasks_e2e.rs
     // uses; nros_tests::skip! if the fixture/emulator is absent — never a
     // bare eprintln+return.)
     let log = nros_tests::fixtures::run_zephyr_qemu("zephyr-edf")
@@ -384,7 +384,7 @@ fn zephyr_edf_deadline_applied_for_both_tiers() {
 }
 ```
 
-(Replace `run_zephyr_qemu` with the ACTUAL helper name in `nros_tests::fixtures` used by `realtime_tiers_e2e.rs` — grep it first; keep the `skip!`-on-missing-precondition discipline.)
+(Replace `run_zephyr_qemu` with the ACTUAL helper name in `nros_tests::fixtures` used by `realtime_sched_tasks_e2e.rs` — grep it first; keep the `skip!`-on-missing-precondition discipline.)
 
 - [ ] **Step 2: Run to verify it fails (before the fixture is wired / with feature off)**
 
@@ -434,7 +434,7 @@ Claude-Session: https://claude.ai/code/session_01SwjKNujon1qUVmwC7yhRJQ"
 ## Non-goals (recorded — do NOT implement here)
 
 - Auto-emitting `CONFIG_SCHED_DEADLINE` from the deploy knob (prj.conf is authored).
-- Wiring `realize_rtos`/`sched_caps_from_deploy` into `codegen-system` as the default bake path (the legacy `tier_resolver` still bakes; the runtime honoring works off either path's `TierSpec`).
+- Wiring `realize_rtos`/`sched_caps_from_deploy` into `codegen-system` as the default bake path (the legacy `sched_task_resolver` still bakes; the runtime honoring works off either path's `SchedTaskSpec`).
 - Behavioral earliest-deadline-ORDERING proof (two equal-priority tiers, assert the tighter one runs first) — Zephyr's equal-priority tiebreak makes a deterministic QEMU ordering test fiddly.
 - The other five dims (`budget` native reservation, `non_preempt_scope`, `placement`, `activation`, `urgency` refinement) and a formal `PlatformSched` Rust trait.
 - RTOS-side priority band-scarcity collapse (`rank_to_priority` stays the simple clamp).

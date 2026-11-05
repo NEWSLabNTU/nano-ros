@@ -19,7 +19,7 @@
 //! traits live in `packages/platform/nros-platform/src/board/` and are
 //! re-exported at the `nros_platform` crate root) for the hosted
 //! LINUX target. Not "POSIX (Linux, macOS, BSD)", which this said and
-//! which the crate cannot honour: `apply_tier_affinity` below calls
+//! which the crate cannot honour: `apply_sched_task_affinity` below calls
 //! `sched_setaffinity` with `cpu_set_t` / `CPU_SET`, none of which
 //! libc defines for apple, and nothing here is `cfg(target_os)`-gated.
 //! The PLATFORM beneath it (`nros-platform-posix`) is POSIX-clean —
@@ -91,7 +91,7 @@ use std::io::Write as _;
 
 // `nros_platform::board` is `mod board;` (private); the Board trait
 // family is re-exported at the crate root.
-use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
+use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx, SchedTaskSpec};
 
 /// POSIX family driver ZST. Plug into an Entry pkg `main.rs` via:
 ///
@@ -155,8 +155,8 @@ impl BoardExit for LinuxBoard {
 /// trigger registration itself before opening the executor. Idempotent — safe
 /// to call more than once; re-registering an already-registered backend is a
 /// no-op. Apps that boot through `nros::main!()` or any `BoardEntry::run*` /
-/// `run_tiers` entry point never need to call this themselves — every boot path
-/// below funnels through `boot_hosted` / `run_tiers`, which call it.
+/// `run_sched_tasks` entry point never need to call this themselves — every boot path
+/// below funnels through `boot_hosted` / `run_sched_tasks`, which call it.
 #[inline]
 pub fn register_linked_rmw() {
     #[cfg(feature = "rmw-zenoh")]
@@ -407,7 +407,7 @@ impl BoardEntry for LinuxBoard {
 /// IDENTITY of the primary session, and nothing else.
 ///
 /// Issue 1442. This board has TWO boot funnels (`boot_hosted` for the
-/// single-executor path, `run_tiers` for the tiered one) and they built this
+/// single-executor path, `run_sched_tasks` for the tiered one) and they built this
 /// value separately: issue 1434 gave both the namespace, and `node_name`
 /// reached only the first, so a tiered image's session was called `node`
 /// however its launch named it. One function is the fix, because the drift was
@@ -637,7 +637,7 @@ impl LinuxBoard {
     }
 
     /// Phase 228.E — per-tier multi-task entry. Opens the one RMW session,
-    /// then (issue 2016, RFC-0108 "As built in P10") runs each [`TierSpec`]
+    /// then (issue 2016, RFC-0108 "As built in P10") runs each [`SchedTaskSpec`]
     /// as one LEVEL over the core's ONE executor
     /// ([`nros::levels::LevelCore`]): the least urgent level runs on the
     /// calling thread and owns the session (issue 0636), every other level is
@@ -659,12 +659,12 @@ impl LinuxBoard {
     /// takes the runtime back ([`nros::levels::LevelCore::into_runtime`]),
     /// closes the session and returns `Ok` (issue 1732). A level whose setup
     /// fails fails the boot.
-    pub fn run_tiers<F, E>(
+    pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
-        tiers: &[TierSpec<'_>],
+        tiers: &[SchedTaskSpec<'_>],
         // issue 1571 — the spawned tiers' executor backing: the entry's `.bss`
-        // `TierExecutorBacking`, emitted by `nros::main!`.
-        tier_backing: &'static mut [::nros::TierExecutorBackingSlot],
+        // `SchedTaskExecutorBacking`, emitted by `nros::main!`.
+        sched_task_backing: &'static mut [::nros::SchedTaskExecutorBackingSlot],
         setup: F,
     ) -> Result<(), E>
     where
@@ -673,7 +673,7 @@ impl LinuxBoard {
     {
         // Issue #48 — hosted boards take their locator from the environment, so
         // the overlay's CONNECT fields are ignored here (the firmware boards'
-        // `run_tiers` consumes them). Its IDENTITY fields are not connect
+        // `run_sched_tasks` consumes them). Its IDENTITY fields are not connect
         // facts and are no longer ignored: issue 1434 read the baked namespace
         // out of `deploy.boot_config`, and issue 1442 added `deploy.node_name`
         // beside it, both at the session open below. That is the same line
@@ -693,7 +693,7 @@ impl LinuxBoard {
 
         if tiers.is_empty() {
             <Self as BoardPrint>::println(format_args!(
-                "nros: run_tiers called with no tiers — nothing to run"
+                "nros: run_sched_tasks called with no tiers — nothing to run"
             ));
             <Self as BoardExit>::exit_failure();
         }
@@ -702,7 +702,9 @@ impl LinuxBoard {
         // has no fixed reservation and this moves nothing a budget pays for —
         // but it is the same METHOD every board uses, so one entry expansion
         // serves them all.
-        if let Err(short) = ::nros::check_tier_executor_backing(tiers.len(), tier_backing) {
+        if let Err(short) =
+            ::nros::check_sched_task_executor_backing(tiers.len(), sched_task_backing)
+        {
             <Self as BoardPrint>::println(format_args!("nros: {short}"));
             <Self as BoardExit>::exit_failure();
         }
@@ -739,7 +741,7 @@ impl LinuxBoard {
         // place — so skipping it is the correct behaviour, not a degradation.
         #[cfg(all(unix, feature = "rmw-zenoh"))]
         {
-            // RFC-0079 — the RESERVED band's floor, not `max_tier + 1`.
+            // RFC-0079 — the RESERVED band's floor, not `max_sched_task + 1`.
             //
             // Deriving it from the tiers was circular: a reserved band defined
             // by the tiers it is meant to sit above moves whenever they do, and
@@ -748,10 +750,10 @@ impl LinuxBoard {
             // NuttX 100, ThreadX 14) with the pool below it; POSIX now does
             // too — `[board.priority_plan]` in packages/boards/linux, reserved
             // 90..99, pool 1..89, cross-checked against this constant by
-            // `check-tier-priority-plan` so the two cannot drift.
+            // `check-sched-task-priority-plan` so the two cannot drift.
             const TRANSPORT_BAND_FLOOR: u32 = 90;
-            let max_tier = tiers.iter().map(|t| t.priority).max().unwrap_or(0);
-            if max_tier > 0 {
+            let max_sched_task = tiers.iter().map(|t| t.priority).max().unwrap_or(0);
+            if max_sched_task > 0 {
                 let transport = TRANSPORT_BAND_FLOOR;
                 unsafe extern "C" {
                     fn zpico_set_task_config(read_priority: u32, read_stack_bytes: u32);
@@ -762,7 +764,7 @@ impl LinuxBoard {
                 <Self as BoardPrint>::println(format_args!(
                     "nros: transport tasks at SCHED_FIFO {} (reserved band floor; most \
                      urgent tier is {})",
-                    transport, max_tier
+                    transport, max_sched_task
                 ));
             }
         }
@@ -780,7 +782,7 @@ impl LinuxBoard {
         //
         // Issue 1442, the OLDER half — `node_name` travels too, and it is a
         // separate defect from the namespace above with its own history.
-        // `run_tiers` has ignored `deploy` since issue #48 ("kept for
+        // `run_sched_tasks` has ignored `deploy` since issue #48 ("kept for
         // signature parity"), so this was the one boot funnel on which
         // `DeployOverlay::node_name` did nothing — while the field's own
         // doc-comment on `nros_platform::DeployOverlay` says it is "applied to
@@ -851,7 +853,7 @@ impl LinuxBoard {
         // set up (issue #144), so no two setups overlap on the session. The
         // tiers' executor backing is still checked against the table (issue
         // 1571), but one executor serves every level: the slots go unused.
-        let _ = tier_backing;
+        let _ = sched_task_backing;
         if tiers.len() > ::nros::MAX_LEVELS {
             <Self as BoardPrint>::println(format_args!(
                 "nros: {} tiers is past the {} levels a core holds",
@@ -864,23 +866,25 @@ impl LinuxBoard {
         // Each tier's level: its urgency among the tiers, POSIX
         // bigger-is-urgent, equal priorities in table order.
         let level_of =
-            |i: usize| ::nros::tier_level_by(n, i, false, |j| tiers[j].priority).unwrap_or(0);
+            |i: usize| ::nros::sched_task_level_by(n, i, false, |j| tiers[j].priority).unwrap_or(0);
         let boot_index = (0..n).max_by_key(|&i| (level_of(i), i)).unwrap_or(0);
-        let boot_tier = &tiers[boot_index];
+        let boot_sched_task = &tiers[boot_index];
 
         // The boot level's own lowering, on the executor before it is shared.
         // issue 0765 -- its declared priority too: it runs on the calling
         // thread, the tier most easily forgotten.
-        apply_tier_priority(boot_tier);
+        apply_sched_task_priority(boot_sched_task);
         // issue 1172 -- `Err` means the filter did not fit, and
         // `set_active_groups` has already cleared it and left filtering ON,
         // so this level registers NOTHING rather than registering on a
         // quietly narrower set.
-        let _ = boot_crt.executor_mut().set_active_groups(boot_tier.groups);
+        let _ = boot_crt
+            .executor_mut()
+            .set_active_groups(boot_sched_task.groups);
         install_park(&mut boot_crt);
         // Issue 2018 -- the boot level's policy lowers onto its own context
         // below, once the level core seats it, not onto the default.
-        apply_tier_affinity::<Self>(boot_tier);
+        apply_sched_task_affinity::<Self>(boot_sched_task);
 
         // The executor's lock, before a second thread can reach it: the
         // POSIX port's recursive `PTHREAD_PRIO_INHERIT` mutex and
@@ -935,7 +939,7 @@ impl LinuxBoard {
                 // transport, so it gets no kernel reservation (a throttled
                 // owner stalls every level's I/O, issue #246's shape); its
                 // budget, if any, is the executor's, gating its callbacks only.
-                apply_level_sched::<Self>(crt, boot_tier, false);
+                apply_level_sched::<Self>(crt, boot_sched_task, false);
                 let mut ctx = RuntimeCtx::with_runtime(crt);
                 setup(&mut ctx)
             })
@@ -943,7 +947,7 @@ impl LinuxBoard {
         if let Err(e) = rc {
             <Self as BoardPrint>::println(format_args!(
                 "nros: boot tier `{}` setup failed: {e:?}",
-                boot_tier.name
+                boot_sched_task.name
             ));
             // SAFETY: no other level was started.
             close_session::<Self>(Some(unsafe { core.into_runtime() }));
@@ -965,7 +969,7 @@ impl LinuxBoard {
                 let state = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
                 let st = std::sync::Arc::clone(&state);
                 let mut builder =
-                    std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
+                    std::thread::Builder::new().name(format!("nros-sched-task-{}", tier.name));
                 // phase-302 W2 (issue 0262) -- a declared per-tier stack.
                 if tier.stack_bytes > 0 {
                     builder = builder.stack_size(tier.stack_bytes);
@@ -973,8 +977,8 @@ impl LinuxBoard {
                 let spawn = builder.spawn_scoped(scope, move || {
                     use std::sync::atomic::Ordering::SeqCst;
                     // issue 0765 -- the level's own priority before any work.
-                    apply_tier_priority(tier);
-                    apply_tier_affinity::<Self>(tier);
+                    apply_sched_task_priority(tier);
+                    apply_sched_task_affinity::<Self>(tier);
                     // SAFETY: once, on this level's own thread.
                     let worker = match unsafe { core.open_level(level) } {
                         Ok(w) => w,
@@ -990,7 +994,7 @@ impl LinuxBoard {
                     // SAFETY: the runtime reference lives inside the closure.
                     // Issue 2018 -- the kernel's reservation on this level's
                     // thread; the level's context defers to it when it took.
-                    let kernel = apply_tier_deadline(tier);
+                    let kernel = apply_sched_task_deadline(tier);
                     let rc = unsafe {
                         core.with_runtime(|crt| {
                             let _ = crt.executor_mut().set_active_groups(tier.groups);
@@ -1017,7 +1021,7 @@ impl LinuxBoard {
                     let budget = unsafe { core.entry_spin_budget() };
                     // issue 0636 option 3 -- every iteration reaches a
                     // scheduling point.
-                    let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
+                    let mut gap = ::nros_platform::SchedTaskSpinGap::new(tier.spin_period_us);
                     while !stop.load(SeqCst) && !run_should_end(deadline) {
                         let iter = gap.mark();
                         // SAFETY: `worker` is this thread's, from `open_level`.
@@ -1062,7 +1066,8 @@ impl LinuxBoard {
                 // wake object, which ends this park.
                 // SAFETY: the boot level's thread, no runtime borrow live.
                 let budget = unsafe { core.entry_spin_budget() };
-                let mut gap = ::nros_platform::TierSpinGap::new(boot_tier.spin_period_us);
+                let mut gap =
+                    ::nros_platform::SchedTaskSpinGap::new(boot_sched_task.spin_period_us);
                 while !run_should_end(deadline) {
                     let iter = gap.mark();
                     // A bounded run ends on time, not at the next deadline.
@@ -1147,12 +1152,12 @@ fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
 /// shares. Call it on the registering level, before its setup.
 ///
 /// `kernel`: the kernel enforces the level's budget on its thread
-/// (`SCHED_DEADLINE`, [`apply_tier_deadline`]), so the executor does not
+/// (`SCHED_DEADLINE`, [`apply_sched_task_deadline`]), so the executor does not
 /// enforce it a second time; otherwise the executor's cooperative budget does,
 /// with the same numbers. One enforcer per level, and the line says which.
 fn apply_level_sched<B: BoardPrint>(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
-    tier: &TierSpec<'_>,
+    tier: &SchedTaskSpec<'_>,
     kernel: bool,
 ) {
     let sc = crt.apply_level_sched_policy(
@@ -1176,7 +1181,7 @@ fn apply_level_sched<B: BoardPrint>(
 unsafe extern "C" {
     fn nros_posix_apply_current_deadline(
         name: *const core::ffi::c_char,
-        tier_class: *const core::ffi::c_char,
+        sched_task_class: *const core::ffi::c_char,
         budget_us: u64,
         period_us: u64,
         deadline_us: u64,
@@ -1191,7 +1196,7 @@ unsafe extern "C" {
 /// budget is the enforcement. A tier that declares no reservation is
 /// untouched.
 #[cfg(unix)]
-fn apply_tier_deadline(tier: &TierSpec<'_>) -> bool {
+fn apply_sched_task_deadline(tier: &SchedTaskSpec<'_>) -> bool {
     let (Some(class), Some(budget), Some(period)) = (tier.class, tier.budget_us, tier.period_us)
     else {
         return false;
@@ -1215,7 +1220,7 @@ fn apply_tier_deadline(tier: &TierSpec<'_>) -> bool {
 }
 
 #[cfg(not(unix))]
-fn apply_tier_deadline(_tier: &TierSpec<'_>) -> bool {
+fn apply_sched_task_deadline(_sched_task: &SchedTaskSpec<'_>) -> bool {
     false
 }
 
@@ -1233,7 +1238,7 @@ fn apply_tier_deadline(_tier: &TierSpec<'_>) -> bool {
 /// `cfg(target_os)`-gated, so this crate does not build on macOS. Gating it to
 /// a loud no-op off Linux is what would make the board's reach `posix`; until
 /// someone needs that, the accurate word is the one in the crate name.
-fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
+fn apply_sched_task_affinity<B: BoardPrint>(tier: &SchedTaskSpec<'_>) {
     let Some(core) = tier.core else {
         return;
     };
@@ -1266,7 +1271,7 @@ fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
 // error; whoever owns issue 0765 should say what it meant to say.
 // Register + spin one tier on a freshly-opened borrowed-session
 // executor (spawned-tier path).
-// RFC-0079 / issue 0765 — see `apply_tier_priority` below.
+// RFC-0079 / issue 0765 — see `apply_sched_task_priority` below.
 #[cfg(unix)]
 unsafe extern "C" {
     fn nros_posix_apply_current_priority(name: *const core::ffi::c_char, priority: u32) -> i32;
@@ -1287,7 +1292,7 @@ unsafe extern "C" {
 /// bad bargain; the operator gets a line naming `setcap cap_sys_nice+ep`
 /// instead.
 #[cfg(unix)]
-fn apply_tier_priority(tier: &TierSpec<'_>) {
+fn apply_sched_task_priority(tier: &SchedTaskSpec<'_>) {
     if tier.priority <= 0 {
         return;
     }
@@ -1305,7 +1310,7 @@ fn apply_tier_priority(tier: &TierSpec<'_>) {
 }
 
 #[cfg(not(unix))]
-fn apply_tier_priority(_tier: &TierSpec<'_>) {}
+fn apply_sched_task_priority(_sched_task: &SchedTaskSpec<'_>) {}
 
 /// The deadline a numeric `NROS_ENTRY_SPIN_MS` puts on a tiered run, or `None`
 /// for an unbounded one (unset, `0`, `forever`, or not a number).
@@ -1434,7 +1439,7 @@ mod tests {
 
     unsafe extern "C" {
         fn nros_posix_deadline_attr(
-            tier_class: *const core::ffi::c_char,
+            sched_task_class: *const core::ffi::c_char,
             budget_us: u64,
             period_us: u64,
             deadline_us: u64,
@@ -1494,15 +1499,15 @@ mod tests {
     /// says so on its output.
     #[test]
     fn a_level_past_its_deadline_budget_is_throttled_by_the_kernel() {
-        let tier = TierSpec {
+        let tier = SchedTaskSpec {
             name: "overrun",
             class: Some("real_time"),
             budget_us: Some(2_000),
             period_us: Some(10_000),
-            ..TierSpec::single()
+            ..SchedTaskSpec::single()
         };
         let handle = std::thread::spawn(move || {
-            let accepted = apply_tier_deadline(&tier);
+            let accepted = apply_sched_task_deadline(&tier);
             // SAFETY: plain libc reads of the calling thread's policy and clock.
             let policy = unsafe { libc::sched_getscheduler(0) };
             let cpu_ns = || {
@@ -1618,7 +1623,7 @@ mod tests {
     // What IS unit-testable is the value both funnels hand the resolver, which
     // is where issue 1442's hosted half lived. `hosted_baked_rung` is that
     // value, and it is now the only place either funnel computes it — so these
-    // tests bind BOTH `boot_hosted` and `run_tiers` by construction rather
+    // tests bind BOTH `boot_hosted` and `run_sched_tasks` by construction rather
     // than by two copies of one assertion.
 
     static BAKED_BOTH: ::nros::BakedBootConfig =
@@ -1671,7 +1676,7 @@ mod tests {
     /// Issue 1442, the `node_name` half — a SEPARATE defect with its own
     /// history (issue #48, "kept for signature parity"). The name comes from
     /// `DeployOverlay::node_name`, the rung whose own doc-comment says it "IS
-    /// honored on hosted boards"; `run_tiers` was the one funnel where that
+    /// honored on hosted boards"; `run_sched_tasks` was the one funnel where that
     /// was false.
     #[test]
     fn the_baked_rung_carries_the_overlays_node_name() {

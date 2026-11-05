@@ -759,7 +759,7 @@ macro_rules! zephyr_component_main {
             // This is the funnel: a pure-Rust Zephyr image has no
             // `libnros_c.a` (issue 0163), so `rclc_log_init` / `rclc_log_emit`'s
             // lazy `ensure_default_sinks()` never run, and `nros-board-zephyr`
-            // covers only `run_tiers`. Reached through `nros_platform` because
+            // covers only `run_sched_tasks`. Reached through `nros_platform` because
             // the example leaves dep that and not `nros-platform-cffi`.
             //
             // FIRST, before `wait_network`: `init` DRAINS the early ring, and
@@ -1257,33 +1257,34 @@ pub use nros_node::executor::port_park;
 pub use nros_node::executor::{MAX_WAKE_SOURCES, NextDeadlineFn, WakeSourceId};
 
 /// issue 1571 — the spawned tiers' executor backing. `nros::main!` emits one
-/// `TierExecutorBacking` static per tiered entry and hands its slots to the
-/// board's `run_tiers`, which refuses a short block through
-/// `check_tier_executor_backing` and opens each spawned tier with
+/// `SchedTaskExecutorBacking` static per tiered entry and hands its slots to the
+/// board's `run_sched_tasks`, which refuses a short block through
+/// `check_sched_task_executor_backing` and opens each spawned tier with
 /// `Executor::open_with_session_slot`. Gated like the module it names
 /// (`has_rmw` + `alloc` in nros-node).
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub use nros_node::executor::{
-    EXECUTOR_BACKING_DEFAULT_U64S, TierBackingShort, TierExecutorBacking, TierExecutorBackingSlot,
-    TierSetupGate, TierSetupGuard, check_tier_executor_backing,
+    EXECUTOR_BACKING_DEFAULT_U64S, SchedTaskBackingShort, SchedTaskExecutorBacking,
+    SchedTaskExecutorBackingSlot, SchedTaskSetupGate, SchedTaskSetupGuard,
+    check_sched_task_executor_backing,
 };
 /// issue 1598 — each spawned tier's TASK memory (stack + control block):
-/// `nros::main!` emits one `TierTaskMemory` static per spawned tier, sized from
-/// its `stack_bytes`, and hands the `TierTaskMemorySet` rows to a board whose
+/// `nros::main!` emits one `SchedTaskMemory` static per spawned tier, sized from
+/// its `stack_bytes`, and hands the `SchedTaskMemorySet` rows to a board whose
 /// tier runner creates the task over them (FreeRTOS `xTaskCreateStatic`).
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub use nros_node::executor::{
-    TIER_TASK_TCB_U64S, TierTaskMemory, TierTaskMemoryRaw, TierTaskMemorySet,
+    SCHED_TASK_TCB_U64S, SchedTaskMemory, SchedTaskMemoryRaw, SchedTaskMemorySet,
 };
 
 /// phase-509 P7 (RFC-0108 D8) -- which level an executor is, and whether every
 /// level of the image is alive: what a supervisor that owns a route per level
 /// or feeds a watchdog reads, and what a board's tier runner states (the level
-/// count, and each tier's level by [`tier_level_by`]). Plain atomics in
+/// count, and each tier's level by [`sched_task_level_by`]). Plain atomics in
 /// nros-node, so ungated.
 pub use nros_node::executor::{
-    MAX_LEVELS, every_level_alive, level_count, level_last_spin_us, level_spins, set_level_count,
-    take_every_level_alive, tier_level, tier_level_by,
+    MAX_LEVELS, every_level_alive, level_count, level_last_spin_us, level_spins, sched_task_level,
+    sched_task_level_by, set_level_count, take_every_level_alive,
 };
 
 pub use nros_node::NodeError;

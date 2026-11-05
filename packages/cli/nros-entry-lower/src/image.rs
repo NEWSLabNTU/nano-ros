@@ -103,10 +103,10 @@ pub struct SetupNode {
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LoweredRunners {
     pub run_components: Option<String>,
-    pub run_tiers: Option<String>,
-    /// See [`CAbiRunners::run_tiers_backed`] (issue 1970).
+    pub run_sched_tasks: Option<String>,
+    /// See [`CAbiRunners::run_sched_tasks_backed`] (issue 1970).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub run_tiers_backed: Option<String>,
+    pub run_sched_tasks_backed: Option<String>,
     /// See [`CAbiRunners::run_levels`] (phase-509 P9).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_levels: Option<String>,
@@ -118,8 +118,8 @@ impl From<CAbiRunners> for LoweredRunners {
     fn from(r: CAbiRunners) -> Self {
         LoweredRunners {
             run_components: r.run_components.map(String::from),
-            run_tiers: r.run_tiers.map(String::from),
-            run_tiers_backed: r.run_tiers_backed.map(String::from),
+            run_sched_tasks: r.run_sched_tasks.map(String::from),
+            run_sched_tasks_backed: r.run_sched_tasks_backed.map(String::from),
             run_levels: r.run_levels.map(String::from),
             takes_executor_storage: r.takes_executor_storage,
         }
@@ -135,17 +135,17 @@ pub struct LoweredBoot {
     pub tiers: bool,
     /// Issue 1551 — the tier runner takes every tier's executor storage from
     /// the entry. Only ever true with `tiers`.
-    pub tier_storage: bool,
+    pub sched_task_storage: bool,
     /// Issue 1568 — the C-ABI `run_components` takes the single executor's
     /// storage from the entry. Only ever true WITHOUT `tiers`. A pack that
     /// does not call the C-ABI runner (C++'s `Board::run_components` reaches
     /// the same `.bss` shape through `GlobalStorageHolder`) ignores it.
     pub component_storage: bool,
     /// The tier count, when `tiers`; 0 otherwise.
-    pub n_tiers: usize,
+    pub n_sched_tasks: usize,
     /// Issues 1598 + 1232 — each spawned tier's TASK memory (stack + control
     /// block), declared by the entry for a family whose tier runner takes it
-    /// ([`crate::CAbiRunners::tier_task_memory`]). `None` without `tiers` or
+    /// ([`crate::CAbiRunners::sched_task_memory`]). `None` without `tiers` or
     /// for a family whose kernel allocates the stack itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task_memory: Option<LoweredTaskMemory>,
@@ -156,7 +156,7 @@ pub struct LoweredBoot {
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LoweredTaskMemory {
     /// The header that spells the per-RTOS declaration macros
-    /// (`NROS_TIER_TASK_MEMORY_DEFINE` / `_MEMORY` / `_MEMORY_NONE`).
+    /// (`NROS_SCHED_TASK_MEMORY_DEFINE` / `_MEMORY` / `_MEMORY_NONE`).
     pub header: String,
     pub rows: Vec<TaskStackRow>,
 }
@@ -172,7 +172,7 @@ pub struct TaskStackRow {
     pub bytes: u64,
     /// phase-509 P9 -- the stack is DERIVED from the level's members by the
     /// family header (`NROS_LEVEL_STACK_BYTES`), because the level declares
-    /// none and the family derives ([`crate::TierTaskMemory::derives_level_stacks`]).
+    /// none and the family derives ([`crate::SchedTaskMemory::derives_level_stacks`]).
     /// `bytes` is then 0.
     #[serde(default)]
     pub derived: bool,
@@ -186,12 +186,12 @@ pub struct TaskStackRow {
 
 impl LoweredTaskMemory {
     /// The rows for a tier table, from the family's lowering
-    /// ([`crate::TierTaskMemory::stacks`]). `stack_bytes` 0 is "undeclared".
+    /// ([`crate::SchedTaskMemory::stacks`]). `stack_bytes` 0 is "undeclared".
     /// `member_bytes[i]` is the largest stack a member of tier `i` states (0:
     /// none, or shorter than the table), what a derived row passes to
     /// `NROS_LEVEL_STACK_BYTES`.
-    pub fn for_tiers(
-        mem: &crate::TierTaskMemory,
+    pub fn for_sched_tasks(
+        mem: &crate::SchedTaskMemory,
         stack_bytes: &[u64],
         member_bytes: &[u64],
     ) -> Self {
@@ -233,18 +233,18 @@ impl LoweredTaskMemory {
     }
 }
 
-/// The `run_tiers` executor layout: one setup per tier, and the rows of the
+/// The `run_sched_tasks` executor layout: one setup per tier, and the rows of the
 /// tier table the runner walks.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct LoweredTiers {
+pub struct LoweredSchedTasks {
     pub n: usize,
-    pub setups: Vec<TierSetup>,
-    pub rows: Vec<TierRow>,
+    pub setups: Vec<SchedTaskSetup>,
+    pub rows: Vec<SchedTaskRow>,
 }
 
 /// One tier's setup function: the nodes it builds on the tier's executor.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TierSetup {
+pub struct SchedTaskSetup {
     pub index: usize,
     pub name: String,
     pub nodes: Vec<SetupNode>,
@@ -257,13 +257,13 @@ pub struct TierSetup {
     pub monitors: Option<MonitorTable>,
 }
 
-/// One tier row, in neutral terms — what `nros_native_tier_spec_t` holds.
+/// One tier row, in neutral terms — what `nros_native_sched_task_spec_t` holds.
 ///
 /// The ENCODINGS are ABI facts: `core_plus1` is the core index plus one with 0
 /// meaning unpinned, `preempt_threshold` is -1 when unset. `None` strings are
 /// unset; the pack spells that.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TierRow {
+pub struct SchedTaskRow {
     pub index: usize,
     pub name: String,
     /// `(node name, node namespace, group)` per admitted group (issue 1172).
@@ -316,7 +316,7 @@ pub struct GroupBind {
     pub name: String,
     pub namespace: String,
     pub group: String,
-    pub tier_index: usize,
+    pub sched_task_index: usize,
 }
 
 /// The param-services and lifecycle registrations — PROCESS facts, which is
@@ -379,7 +379,7 @@ pub struct MonitorTable {
     /// phase-462 W4c -- each row's `sc` is a TIER INDEX into the setup's
     /// `__nros_sc_ids` (the single-executor sched shape), not a context id.
     #[serde(default)]
-    pub deadline_sc_is_tier: bool,
+    pub deadline_sc_is_sched_task: bool,
 }
 
 /// phase-462 W4c -- one sched-context deadline in one mode
@@ -564,24 +564,24 @@ mod tests {
     /// FreeRTOS heap default, so counting the boot tier would shrink the heap
     /// by a stack that never left it.
     #[test]
-    fn spawned_bytes_counts_spawned_tiers_only() {
-        let mem = crate::TierTaskMemory {
+    fn spawned_bytes_counts_spawned_sched_tasks_only() {
+        let mem = crate::SchedTaskMemory {
             header: "h",
-            boot_tier: crate::BootTier::Last,
+            boot_sched_task: crate::BootSchedTask::Last,
             default_stack_bytes: 262_144,
             derives_level_stacks: false,
         };
         // tier 0 declares 4 KiB, tier 1 nothing, tier 2 is the boot tier.
-        let lowered = LoweredTaskMemory::for_tiers(&mem, &[4096, 0, 999], &[]);
+        let lowered = LoweredTaskMemory::for_sched_tasks(&mem, &[4096, 0, 999], &[]);
         assert_eq!(lowered.spawned_bytes(), 4096 + 262_144);
         // A Zephyr-shaped default of 0 defers to a board knob, so it states
         // nothing rather than a number it does not know.
-        let deferred = crate::TierTaskMemory {
+        let deferred = crate::SchedTaskMemory {
             default_stack_bytes: 0,
             ..mem
         };
         assert_eq!(
-            LoweredTaskMemory::for_tiers(&deferred, &[0, 0], &[]).spawned_bytes(),
+            LoweredTaskMemory::for_sched_tasks(&deferred, &[0, 0], &[]).spawned_bytes(),
             0
         );
     }
@@ -594,9 +594,9 @@ mod tests {
     fn an_undeclared_spawned_level_derives_its_stack() {
         let zephyr = crate::BoardFamily::Zephyr
             .c_abi_runners()
-            .and_then(|r| r.tier_task_memory)
+            .and_then(|r| r.sched_task_memory)
             .expect("Zephyr takes tier task memory");
-        let rows = LoweredTaskMemory::for_tiers(&zephyr, &[0, 0, 8192], &[]).rows;
+        let rows = LoweredTaskMemory::for_sched_tasks(&zephyr, &[0, 0, 8192], &[]).rows;
         let derived: Vec<(bool, bool, u64)> = rows
             .iter()
             .map(|r| (r.spawned, r.derived, r.bytes))
@@ -610,13 +610,14 @@ mod tests {
         for family in [crate::BoardFamily::Freertos, crate::BoardFamily::Nuttx] {
             let mem = family
                 .c_abi_runners()
-                .and_then(|r| r.tier_task_memory)
+                .and_then(|r| r.sched_task_memory)
                 .expect("the family takes tier task memory");
-            let rows: Vec<(bool, bool)> = LoweredTaskMemory::for_tiers(&mem, &[0, 4096, 0], &[])
-                .rows
-                .iter()
-                .map(|r| (r.spawned, r.derived))
-                .collect();
+            let rows: Vec<(bool, bool)> =
+                LoweredTaskMemory::for_sched_tasks(&mem, &[0, 4096, 0], &[])
+                    .rows
+                    .iter()
+                    .map(|r| (r.spawned, r.derived))
+                    .collect();
             assert_eq!(rows, [(true, true), (true, false), (false, false)]);
         }
     }

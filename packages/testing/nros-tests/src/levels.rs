@@ -3,7 +3,7 @@
 //! Each function takes the image's whole console output and returns `Err`
 //! naming the first thing it did not find, so a test can print it beside the
 //! console. They are pure text functions, unit-tested here, and shared by
-//! `realtime_tiers_e2e` (phase-509) and `rt_sched_levels_e2e` (phase-162).
+//! `realtime_sched_tasks_e2e` (phase-509) and `rt_sched_levels_e2e` (phase-162).
 
 /// The text between each `[<node>] begin=N` and the `[<node>] end=N` that
 /// closes it, for every complete pair in `console` (phase-509 P9).

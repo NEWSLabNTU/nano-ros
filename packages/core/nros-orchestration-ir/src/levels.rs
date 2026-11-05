@@ -1025,7 +1025,7 @@ mod tests {
     /// priority, the free nodes are banded around it, and a free band never
     /// spans it.
     #[test]
-    fn an_authored_tier_is_a_pin() {
+    fn an_authored_sched_task_is_a_pin() {
         let free = [node("/a", 5), node("/c", 9)];
         let pinned = [PinnedBand {
             tier: "mid".to_string(),

@@ -72,17 +72,17 @@ pub use config::Config;
 // phase-337 W5 — `Config.base` is a `BaseConfig`, so consumers that build one
 // literally need the type. Re-export rather than making every leaf dep
 // `nros-board-common` directly.
-pub use entry::{run_bare, run_entry, run_tiers_entry};
+pub use entry::{run_bare, run_entry, run_sched_tasks_entry};
 pub use nros_board_common::BaseConfig;
 
 /// issue 1571 — the type of one spawned tier's executor backing slot, so a
-/// board crate that wraps this one's `run_tiers` can name its parameter without
+/// board crate that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself.
-pub use ::nros::TierExecutorBackingSlot;
+pub use ::nros::SchedTaskExecutorBackingSlot;
 
 /// issue 1598 — one spawned tier's task memory row (stack + TCB), for the same
 /// reason: a wrapping board crate names it without depending on `nros`.
-pub use ::nros::TierTaskMemoryRaw;
+pub use ::nros::SchedTaskMemoryRaw;
 
 /// Internal re-export of the `Error` + `Result` types used by
 /// per-board `node.rs` files during the 152.1.B.5 → final-lift

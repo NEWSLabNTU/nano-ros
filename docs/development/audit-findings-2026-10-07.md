@@ -168,7 +168,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `entry-pack-conformance` | a codegen pack's manifest and templates agree | delete packs/c/service.c.jinja | 1 | — | — | **CLEAN** |
 | `entry-rmw-vocabulary` | NROS_ENTRY_RMW's bakeable names equal the registry's names | uorb package.xml provides rmw name uorb -> uorbx | 1 | — | — | **CLEAN** |
 | `entry-rung-consumers` | a baked NROS_ENTRY_* rung is consumed by every language surface | C surface baked_rmw.h: every NROS_ENTRY_RMW -> NROS_ENTRY_RMWX | 1 | — | — | **CLEAN** |
-| `entry-session-name` | every emitted run_components call names a session | C++ boot_wrapper run_components(...) -> run_components(&__nros_entry_setup) (run_tiers keeps the marker) | 1 | the same, plus the marker blanked on run_tiers too | — | **CLEAN** |
+| `entry-session-name` | every emitted run_components call names a session | C++ boot_wrapper run_components(...) -> run_components(&__nros_entry_setup) (run_sched_tasks keeps the marker) | 1 | the same, plus the marker blanked on run_sched_tasks too | — | **CLEAN** |
 | `example-matrix` | no per-RMW example roots (examples/<plat>/<lang>/<rmw>/) | new examples/native/rust/zenoh/talker/Cargo.toml | 1 | — | — | **CLEAN** |
 | `executor-backing-arena-pairing` | a stated backing_u64s must reach a port that subtracts it (and arithmetic pairs) | freertos board descriptor states backing_u64s (port does not subtract) | 1 | — | — | **CLEAN** |
 | `executor-stack-floor` | every producer emits and guards NROS_EXECUTOR_MAIN_STACK_MIN | first cpp.rs emitter's guard -> #if 0 | 1 | — | — | **CLEAN** |
@@ -315,9 +315,9 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `tests-can-fail` | reject test shapes that report PASS (Err arm only prints) | entry_e2e.rs: match with Err(e) => eprintln!, assertion only in Ok | 1 | — | — | **CLEAN** |
 | `third-party-is-submodules` | third-party/ holds tracked submodules and nothing else | track a regular file third-party/zz-audit/README | 1 | — | — | **CLEAN** |
 | `tier-has-ci-owner` | every declared CI tier is run by some workflow COMMAND | both `just ci tier1 …` invocations replaced by echo; disk-report.sh/reclaim-disk.sh ARGUMENT strings "before just ci tier1" remain | 0 | the same, with those argument strings reworded too | 1 | **HOLE** |
-| `tier-priority-plan` | a tier priority pin respects its port's reserved bands | realtime-c [tiers.high.freertos] priority 3 -> 4 (the transport band) | 1 | — | — | **CLEAN** |
-| `tier-priority-plan-image-selftest` | derived Zephyr priority plan vs a built image .config | N/A: recipe is the selftest; the image half needs a built Zephyr .config | — | — | — | **N/A** |
-| `tier-spin-gap` | every tier spin loop reaches a scheduling point | FreeRTOS C first tier loop drops nros_tier_spin_gap_step (second loop + prototype kept) | 1 | — | — | **CLEAN** |
+| `sched-task-priority-plan` | a tier priority pin respects its port's reserved bands | realtime-c [tiers.high.freertos] priority 3 -> 4 (the transport band) | 1 | — | — | **CLEAN** |
+| `sched-task-priority-plan-image-selftest` | derived Zephyr priority plan vs a built image .config | N/A: recipe is the selftest; the image half needs a built Zephyr .config | — | — | — | **N/A** |
+| `sched-task-spin-gap` | every tier spin loop reaches a scheduling point | FreeRTOS C first tier loop drops nros_sched_task_spin_gap_step (second loop + prototype kept) | 1 | — | — | **CLEAN** |
 | `unsafe-census` | unsafe counts only fall (ratchet) | nros-core gains an unsafe block | 1 | — | — | **CLEAN** |
 | `vendor-fetch-pinned` | every FetchContent in a discovered package is pinned by digest | cpp action_client_pkg CMakeLists FetchContent_Declare by tag | 1 | — | — | **CLEAN** |
 | `wait-evidence-discarded` | a timed-out wait's evidence is not discarded | entry_e2e.rs: wait_for_output_pattern(..).unwrap_or_default() | 1 | — | — | **CLEAN** |

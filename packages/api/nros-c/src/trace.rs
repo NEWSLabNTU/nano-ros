@@ -4,7 +4,7 @@
 //!
 //! `nros_node::executor::callback_trace::set_trace_sink` is a Rust `pub fn`,
 //! so a C entry funnel cannot call it. The Zephyr entry path IS C
-//! (`nros-board-zephyr`'s `c/zephyr_run_tiers.c` — the crate's Rust half is
+//! (`nros-board-zephyr`'s `c/zephyr_run_sched_tasks.c` — the crate's Rust half is
 //! not in every image's link graph, only that translation unit is), and it is
 //! the one place that runs before the executor registers anything, which is
 //! the deadline the registration events have to beat.

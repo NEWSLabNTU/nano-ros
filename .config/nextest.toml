@@ -47,17 +47,17 @@ store-failure-output = true
 
 # issue 2004 — these tests run a matrix of cells inside one `#[test]` and PASS
 # when the cells in this run's coordinates pass, recording the rest as "out of
-# lane". Their stdout summary ("realtime_tiers: 6 row(s) executed (6 passed,
+# lane". Their stdout summary ("realtime_sched_tasks: 6 row(s) executed (6 passed,
 # 0 failed), 14 out of lane, 0 skipped", `nros_tests::matrix_tally`) is the
 # only record of which cells a green covered, and nextest discards a passing
-# test's output by default. So a tier-2 nightly reported `PASS realtime_tiers`
+# test's output by default. So a tier-2 nightly reported `PASS realtime_sched_tasks`
 # and could not say which RTOS cells it ran (phase-466 W5). Print it on PASS.
 # A `--success-output never` on a command line outranks this override, so no
 # recipe passes one; the gate below refuses it too.
 # The list is derived, not authored: `check-matrix-summary-visible` finds every
 # test that calls `lane_scope::skip_note(` for a summary and requires it here.
 [[profile.default.overrides]]
-filter = "binary(entry_e2e) or binary(multihost_e2e) or binary(realtime_tiers_e2e) or binary(roundtrip_xprocess_e2e) or binary(sched_dims_applied_e2e)"
+filter = "binary(entry_e2e) or binary(multihost_e2e) or binary(realtime_sched_tasks_e2e) or binary(roundtrip_xprocess_e2e) or binary(sched_dims_applied_e2e)"
 success-output = "final"
 junit.store-success-output = true
 
@@ -167,27 +167,27 @@ max-threads = 1
 # phase-296 W5.5 (final-review finding 1) — issue-#141-style RESOURCE: one
 # baked image serves two tests. The ws-realtime-rust Zephyr native_sim entry
 # (`build_zephyr_workspace_rust_realtime_entry`) and its baked router port
-# (`port_of(ZephyrNativeSim, Rust, RealtimeTiers)`) are shared by
-# `realtime_tiers_e2e`'s `zephyr_rust` cell and the new
+# (`port_of(ZephyrNativeSim, Rust, RealtimeSchedTasks)`) are shared by
+# `realtime_sched_tasks_e2e`'s `zephyr_rust` cell and the new
 # `zephyr_edf_deadline_applied` e2e — serialize them so the two router
 # starts never collide. W5.8 follow-up: the EDF e2e grew cpp/c cases that
 # share the ws-realtime-{cpp,c} images + their baked ports with the
-# realtime_tiers_e2e zephyr_cpp/zephyr_c cells, so those join the group too.
+# realtime_sched_tasks_e2e zephyr_cpp/zephyr_c cells, so those join the group too.
 
 # phase-296 W5.9 — same RESOURCE pattern for NuttX: the arm cpp realtime
-# image + its baked router port are shared by realtime_tiers_e2e's
+# image + its baked router port are shared by realtime_sched_tasks_e2e's
 # nuttx_arm_cpp cell and the sporadic-policy e2e — serialize them.
 
 # phase-296 W5.10 — shared threadx-linux realtime image + baked port:
 # serialize the preempt-threshold e2e with the realtime cell.
 
 # phase-296 W5.11 — shared nuttx-arm RUST realtime image + baked port
-# (`port_of(NuttxArm, Rust, RealtimeTiers)`): the core-pin e2e and
-# realtime_tiers_e2e's `nuttx_arm_rust` cell start a router on the same port.
+# (`port_of(NuttxArm, Rust, RealtimeSchedTasks)`): the core-pin e2e and
+# realtime_sched_tasks_e2e's `nuttx_arm_rust` cell start a router on the same port.
 
 # phase-296 W5.11 — shared freertos mps2 CPP realtime image + baked port
-# (`port_of(FreertosMps2, Cpp, RealtimeTiers)`): the core-pin e2e and
-# realtime_tiers_e2e's `freertos_cpp` cell start a router on the same port.
+# (`port_of(FreertosMps2, Cpp, RealtimeSchedTasks)`): the core-pin e2e and
+# realtime_sched_tasks_e2e's `freertos_cpp` cell start a router on the same port.
 
 # Resource: QEMU host-load throttle (2 MPS2 slirp guests + a zenohd per
 # test). Ports are allocator-unique per (variant, lang) since phase-89.13/
@@ -602,7 +602,7 @@ test-group = "cyclone-slirp-an536"
 # / nros at test time and carried a 120s x 4 headroom override here. The rule
 # shrank to empty as each was converted to consume a build-stage fixture, and the
 # override is GONE: the last two, `native_orchestration_misuse` (deleted — it
-# duplicated `orch_tiers_multi`) and `linux_main_macro_misuse` (now reads
+# duplicated `orch_sched_tasks_multi`) and `linux_main_macro_misuse` (now reads
 # `cargo-check-verdict` rows), were converted by issue 1620. A `binary()` that
 # matches nothing is a nextest PARSE error (issue 0743), so the block could not
 # stay behind as a comment-only reminder; this comment is the reminder.
@@ -645,12 +645,12 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # phase-285 W6 — the rv-virt realtime-tiers e2e cells boot a riscv32 NuttX
 # guest under -icount; cold boot + zenoh discovery + the 5-sample slow-tier
 # anchor exceed the default 60 s kill. Each cell has its own slirp port
-# (allocator 8691/8791/8891, derived in the realtime_tiers_e2e cell table
+# (allocator 8691/8791/8891, derived in the realtime_sched_tasks_e2e cell table
 # via `alloc::port_of`), so no group serialization needed against the
 # arm-nuttx groups. The #199-follow-up C talker e2e (c_riscv_nuttx_e2e,
 # allocator port 8700) has the same boot profile.
-# phase-295 W3.b consolidated the 15 per-cell realtime_tiers_* binaries into
-# binary(realtime_tiers_e2e), and phase-329 W1 consolidated their CASES into one
+# phase-295 W3.b consolidated the 15 per-cell realtime_sched_tasks_* binaries into
+# binary(realtime_sched_tasks_e2e), and phase-329 W1 consolidated their CASES into one
 # test — so the `test(nuttx_riscv)` branch this filter used to carry selected
 # nothing (issue 0571). The riscv realtime cells take their budget from the
 # binary-level override below; this row is now purely the #199-follow-up C
@@ -677,7 +677,7 @@ filter = "binary(typed_carrier_e2e)"
 slow-timeout = { period = "120s", terminate-after = 2 }
 
 # issue 0571 — five overrides stood here (phase-296 W5.5/W5.9/W5.10/W5.11,
-# phase-302 W5), each serializing ONE realtime_tiers_e2e CASE against the
+# phase-302 W5), each serializing ONE realtime_sched_tasks_e2e CASE against the
 # partner e2e that shares its baked image and port. Every one of them selected a
 # test name that phase-329 W1 deleted when it folded those cases into a single
 # test, so all five had been inert. Their intent lives on in
@@ -727,7 +727,7 @@ test-group = "qemu-threadx-riscv"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 # ThreadX Linux sim (veth bridge) — allocator window 9000+. The
-# realtime_tiers_e2e threadx_linux_rust case (phase-297 W5) rides the same
+# realtime_sched_tasks_e2e threadx_linux_rust case (phase-297 W5) rides the same
 # host-load throttle.
 [[profile.default.overrides]]
 # issue 0838 — every test that speaks to a threadx-linux cyclonedds fixture uses
@@ -1163,7 +1163,7 @@ test-group = "qemu-emulated"
 # The survivor boots the zephyr / nuttx / threadx / freertos images the groups
 # above serialize, so it gets max-threads = 1 and their slowest budget. NOTE the
 # residual: nextest groups bound concurrency WITHIN a group, so this test can
-# still run alongside `realtime_tiers_e2e` cells that share those ports. If it
+# still run alongside `realtime_sched_tasks_e2e` cells that share those ports. If it
 # flakes that way, the fix is to merge it into those groups rather than to widen
 # the timeout.
 # issue 0571 — ONE group for every consolidated multi-platform consumer, and
@@ -1182,7 +1182,7 @@ test-group = "qemu-emulated"
 # (it serializes pairs that may not actually collide) but never wrong.
 #
 # RESIDUAL, unchanged and stated: a consumer can still run alongside a
-# PER-PLATFORM binary whose port it reuses (`realtime_tiers`'s nuttx-arm rust
+# PER-PLATFORM binary whose port it reuses (`realtime_sched_tasks`'s nuttx-arm rust
 # cell reuses rtos_e2e's talker image and port 8200). nextest allows one group
 # per test, so that cannot be expressed at the same time as this one. If it
 # flakes that way, move the per-platform partner into this group too.
@@ -1195,8 +1195,8 @@ test-group = "matrix-consumers-serial"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 # issue 0564 — the 0413 consolidation cost, one binary further out. phase-329 W1
-# folded 15 per-cell `realtime_tiers_*` files into ONE test that iterates every
-# RealtimeTiers cell in a single process, and the timeout budget did not follow.
+# folded 15 per-cell `realtime_sched_tasks_*` files into ONE test that iterates every
+# RealtimeSchedTasks cell in a single process, and the timeout budget did not follow.
 # Unlike 0413's native-only sweep this one BOOTS QEMU images (zephyr, nuttx-arm,
 # nuttx-riscv, freertos, threadx) and waits for five 100 ms-tier deliveries per
 # cell, so its wall clock is the sum of sixteen boot+observe rows.
@@ -1212,14 +1212,14 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # assigned by its own override far ABOVE, not from here: `binary(~zephyr)` sits
 # between this block and the top of the file and would claim it first. Naming it
 # here as well would be a second spelling that never takes effect.
-filter = "binary(realtime_tiers_e2e) or binary(entry_e2e) or binary(multihost_e2e) or binary(roundtrip_xprocess_e2e)"
+filter = "binary(realtime_sched_tasks_e2e) or binary(entry_e2e) or binary(multihost_e2e) or binary(roundtrip_xprocess_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 # 2026-10-16 — the registration audit boots baked host images (threadx-linux)
 # against a router on THEIR baked port, which is the allocator port the
-# RealtimeTiers / EntryPubsub cells above also start a router on, and a router
+# RealtimeSchedTasks / EntryPubsub cells above also start a router on, and a router
 # start kills whatever listens on its port. So it joins their serial group.
 filter = "binary(rmw_coordinate_truth) and test(a_rows_entry_registers_its_nodes_at_runtime)"
 test-group = "matrix-consumers-serial"

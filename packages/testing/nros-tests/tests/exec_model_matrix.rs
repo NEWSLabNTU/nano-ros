@@ -13,7 +13,7 @@
 //! renamed — fails this test. That closes the loophole where a matrix cell
 //! silently regresses to unproven while the docs/artifact still read "done".
 //!
-//! Scope: the *tier* (`run_tiers` / Model 1) cell only — single-tier
+//! Scope: the *tier* (`run_sched_tasks` / Model 1) cell only — single-tier
 //! `run_entry` boards (threadx, and the single-tier fallbacks) are a different
 //! path and out of scope here. When a deferred cell lands its test, move it
 //! from `DEFERRED` to `COVERED` in the SAME change that adds the test.
@@ -22,7 +22,7 @@ use std::path::PathBuf;
 
 /// The languages Model 1 must reach.
 const LANGS: &[&str] = &["rust", "c", "cpp"];
-/// The platforms with a multi-tier (`run_tiers`) path in scope.
+/// The platforms with a multi-tier (`run_sched_tasks`) path in scope.
 ///
 /// The `nuttx` cells are arm-virt; `nuttx-riscv` is the rv-virt (riscv32)
 /// second-arch NuttX board, PROMOTED to a matrix axis after #199's fix chain
@@ -35,28 +35,28 @@ const PLATFORMS: &[&str] = &["native", "freertos", "zephyr", "nuttx", "nuttx-ris
 /// `packages/testing/nros-tests/tests/`; the gate asserts it exists.
 const COVERED: &[(&str, &str, &str)] = &[
     // (lang, platform, covering test file)
-    ("rust", "native", "realtime_tiers_e2e"),
-    ("rust", "freertos", "orchestration_tiers_freertos"),
-    ("rust", "zephyr", "realtime_tiers_e2e"),
-    ("c", "native", "realtime_tiers_e2e"),
-    ("c", "freertos", "realtime_tiers_e2e"),
-    ("cpp", "native", "realtime_tiers_e2e"),
-    ("cpp", "freertos", "realtime_tiers_e2e"),
-    ("cpp", "zephyr", "realtime_tiers_e2e"),
-    ("c", "zephyr", "realtime_tiers_e2e"),
-    ("cpp", "nuttx", "realtime_tiers_e2e"),
-    ("c", "nuttx", "realtime_tiers_e2e"),
-    // phase-281 W3-nuttx — the LAST cell. `<QemuArmVirt>::run_tiers` (one
+    ("rust", "native", "realtime_sched_tasks_e2e"),
+    ("rust", "freertos", "orchestration_sched_tasks_freertos"),
+    ("rust", "zephyr", "realtime_sched_tasks_e2e"),
+    ("c", "native", "realtime_sched_tasks_e2e"),
+    ("c", "freertos", "realtime_sched_tasks_e2e"),
+    ("cpp", "native", "realtime_sched_tasks_e2e"),
+    ("cpp", "freertos", "realtime_sched_tasks_e2e"),
+    ("cpp", "zephyr", "realtime_sched_tasks_e2e"),
+    ("c", "zephyr", "realtime_sched_tasks_e2e"),
+    ("cpp", "nuttx", "realtime_sched_tasks_e2e"),
+    ("c", "nuttx", "realtime_sched_tasks_e2e"),
+    // phase-281 W3-nuttx — the LAST cell. `<QemuArmVirt>::run_sched_tasks` (one
     // std::thread per tier over one shared session; NuttX is `std` + zenoh-pico
     // `Z_FEATURE_MULTI_THREAD = 1`) drives a Rust node too. All 12 cells proven.
-    ("rust", "nuttx", "realtime_tiers_e2e"),
+    ("rust", "nuttx", "realtime_sched_tasks_e2e"),
     // #199 follow-ups — the rv-virt (riscv32) second-arch NuttX axis: rust
     // landed in phase-285 W5/W6; the C/C++ workspace entries + e2e landed with
-    // the #199 fix chain (link_app port, run_tiers seam, #149 nightly pin,
+    // the #199 fix chain (link_app port, run_sched_tasks seam, #149 nightly pin,
     // per-arch ffi-glue cross config). 15 cells proven.
-    ("rust", "nuttx-riscv", "realtime_tiers_e2e"),
-    ("c", "nuttx-riscv", "realtime_tiers_e2e"),
-    ("cpp", "nuttx-riscv", "realtime_tiers_e2e"),
+    ("rust", "nuttx-riscv", "realtime_sched_tasks_e2e"),
+    ("c", "nuttx-riscv", "realtime_sched_tasks_e2e"),
+    ("cpp", "nuttx-riscv", "realtime_sched_tasks_e2e"),
 ];
 
 /// Cells not yet proven, each with a reason + the work item that closes it.

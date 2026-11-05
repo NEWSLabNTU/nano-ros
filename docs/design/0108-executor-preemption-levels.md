@@ -97,7 +97,7 @@ What generated code puts into those keys:
 - Codegen makes **one sched context per tier**, not per node or group
   (`packages/cli/nros-cli-core/src/codegen/entry/lower.rs:560-575`). The
   tier's kernel priority goes into `os_pri`; nothing sets `Priority`.
-- `SchedContext::from_tier_policy` leaves `priority` at its default
+- `SchedContext::from_sched_task_policy` leaves `priority` at its default
   (`sched_context.rs:584-618`; the default is `Priority::Normal`,
   `sched_context.rs:549`), and it never produces the `Edf` class.
 
@@ -138,7 +138,7 @@ When a group names no tier, rule 4 gives each NODE its own tier,
 `derived-<node>` (`derive.rs:530-608`; the name at `:534`). Equal ranks pay a
 thread each and gain nothing the fixed-priority analysis can see: two threads
 at one priority on a FIFO kernel behave like one thread with both groups. The
-`derived-tiers-cpp` fixture gets four tiers for two ranks.
+`derived-sched-tasks-cpp` fixture gets four tiers for two ranks.
 
 ### 4. What a tier costs
 
@@ -148,7 +148,7 @@ at one priority on a FIFO kernel behave like one thread with both groups. The
 | second tier (`estop` = emergency operator alone) | +7,096 B | [M] island phase-13 measurement |
 | of which: backings / `CppContext` / thread object / monitor rows | +3,904 / +2,680 / +272 / +240 B | [M] ELF symbol diff |
 | DTCM ceiling (131,072 B minus the 8 KiB guard) | 122,880 B | [C] island `linker/dtcm-headroom.ld:8` |
-| spawned-tier stack on Zephyr | 16,384 B (SRAM) | [C] `zephyr/Kconfig:435` `NROS_ZEPHYR_TIER_STACK_SIZE` |
+| spawned-tier stack on Zephyr | 16,384 B (SRAM) | [C] `zephyr/Kconfig:435` `NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` |
 | island SRAM in use | 280,680 of 327,680 B | [M] island board build |
 | spawned-tier stack on FreeRTOS (default) | 262,144 B | [C] `packages/cli/nros-entry-lower/src/lib.rs:201` |
 | RFC-0107's baseline (d5fe58a518): one / two tiers | 112,464 / 127,400 B | [M] RFC-0107 |
@@ -441,7 +441,7 @@ left open:
   feasible bands exceed the cap, rule 3 runs on top; if no banding keeps
   every deadline, the levels stay one per rank with a `feasibility` line per
   miss. The bake roads select no RFC-0078 profile yet, so on them C is
-  absent and rules 1 and 3 decide; `derive_tiers_with_wcet` takes one.
+  absent and rules 1 and 3 decide; `derive_sched_tasks_with_wcet` takes one.
 - **Rule 3's protected band** holds a node with a deadline (the realizer's
   `deadline_us`) or a supervised route.
 - **Rule 4:** `CONFIG_NROS_EXECUTOR_MAX_LEVELS` (default 8) is read from the
@@ -599,8 +599,8 @@ per-sched-context alive slots, which live inside one executor, cannot hold
 it); `take_every_level_alive` is the watchdog feed. nano-ros has no
 spin-hook ABI: a supervisor wraps the spin and reads the handle's level.
 
-**As built in P9** (`zephyr_run_tiers.c`, the `nros_cpp_*` scheduler FFI,
-the entry packs, `tier_task_memory_zephyr.h`, `scripts/nros-mem-report.py
+**As built in P9** (`zephyr_run_sched_tasks.c`, the `nros_cpp_*` scheduler FFI,
+the entry packs, `sched_task_memory_zephyr.h`, `scripts/nros-mem-report.py
 --levels`). The Zephyr runner spawns one worker thread per level (each row
 of the entry's table is a derived level, or an authored tier, which is one
 band) over a per-core scheduler record: `nros_cpp_scheduler_open(core,
@@ -623,13 +623,13 @@ differ from the step above:
   `NROS_CPP_SCHEDULER_BACKING_SIZE(n)`, the entry's static; one scheduler
   for the runner's table, which spans the image. There is no
   `NROS_CPP_CORE_BACKING_SIZE`: the backings stay per level
-  (`NROS_CPP_TIER_BACKING_SIZE_<i>`).
+  (`NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>`).
 - **Member stacks.** A spawned level that declares no `stack_bytes` gets
   `NROS_LEVEL_STACK_BYTES(member)`: the largest member's stack plus the
   worker frame (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, 13,312 B,
   measured by issue 2065; issue 2019 measured FreeRTOS and NuttX, below).
   No contract or `system.toml` key stated a member's stack in P9, so every member took
-  the per-callback default (`CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` minus the
+  the per-callback default (`CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` minus the
   frame) and the cost report named it; a level's stack was then exactly the knob, as before.
   Issue 2019 added the key (`[[component]] stack_bytes`, below "As built
   in P10").
@@ -875,11 +875,11 @@ executor's lock and the thread identity:
 | Linux / POSIX (C ABI) | `nros_board_native_run_levels_in` (nros-cpp) | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | the process's (no task memory) |
 | FreeRTOS (C) | `nros_board_freertos_run_levels_in` | `nros_platform_mutex_rec_*` (FreeRTOS recursive mutex) | `xTaskGetCurrentTaskHandle` | entry static (`xTaskCreateStatic`), `NROS_LEVEL_STACK_BYTES` |
 | NuttX (C) | `nros_board_nuttx_run_levels_in` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | entry static (`pthread_attr_setstack`), `NROS_LEVEL_STACK_BYTES` |
-| Zephyr (Rust) | `ZephyrBoard::run_tiers_with_task_memory` | bare `k_mutex` (`nros_zephyr_exec_lock*`) | `k_current_get` | entry static or the pool slot (declared size) |
-| ThreadX (Rust) | `run_tiers_entry` | `nros_platform_mutex_rec_*` (`TX_INHERIT`) | `tx_thread_identify` | byte pool (declared size) |
-| Linux (Rust, issue 2016) | `LinuxBoard::run_tiers` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | the process's (`std::thread`, declared size) |
-| FreeRTOS (Rust, issue 2016) | `run_tiers_entry` | `nros_platform_mutex_rec_*` (FreeRTOS recursive mutex) | `nros_freertos_current_task_id` (`xTaskGetCurrentTaskHandle`) | entry static or heap_4 (declared size) |
-| NuttX (Rust, issue 2016) | `run_tiers` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | `sys::spawn_tier` (declared size, else 64 KiB) |
+| Zephyr (Rust) | `ZephyrBoard::run_sched_tasks_with_task_memory` | bare `k_mutex` (`nros_zephyr_exec_lock*`) | `k_current_get` | entry static or the pool slot (declared size) |
+| ThreadX (Rust) | `run_sched_tasks_entry` | `nros_platform_mutex_rec_*` (`TX_INHERIT`) | `tx_thread_identify` | byte pool (declared size) |
+| Linux (Rust, issue 2016) | `LinuxBoard::run_sched_tasks` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | the process's (`std::thread`, declared size) |
+| FreeRTOS (Rust, issue 2016) | `run_sched_tasks_entry` | `nros_platform_mutex_rec_*` (FreeRTOS recursive mutex) | `nros_freertos_current_task_id` (`xTaskGetCurrentTaskHandle`) | entry static or heap_4 (declared size) |
+| NuttX (Rust, issue 2016) | `run_sched_tasks` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | `sys::spawn_sched_task` (declared size, else 64 KiB) |
 
 - **The Rust level core** is `nros::levels::LevelCore`: the core's
   `ExecutorNodeRuntime`, leaked for the image's life, with the lock and
@@ -904,12 +904,12 @@ executor's lock and the thread identity:
   run the same band pass. Before this, every tick ran on the boot level
   (the least urgent), at its priority and period.
 - **Derived stacks.** FreeRTOS and NuttX derive like Zephyr
-  (`TierTaskMemory::derives_level_stacks`): a spawned level that declares
+  (`SchedTaskMemory::derives_level_stacks`): a spawned level that declares
   no `stack_bytes` is `NROS_LEVEL_STACK_BYTES(0)`, the per-callback default
   plus a 4,096 B worker frame, which together are the stack every tier got
   before (FreeRTOS 256 KiB, `NROS_FREERTOS_LEVEL_STACK_DEFAULT`; NuttX
   16 KiB, `NROS_NUTTX_LEVEL_STACK_DEFAULT`). NuttX now takes its levels'
-  stacks from the entry (`tier_task_memory_nuttx.h`), which it did not
+  stacks from the entry (`sched_task_memory_nuttx.h`), which it did not
   before.
 - **Member stacks** (issue 2019). A component states the stack its
   callbacks need in `system.toml`: `[[component]] stack_bytes = <bytes>`.
@@ -980,7 +980,7 @@ executor's lock and the thread identity:
   `LevelCore` too, so every tier runner in the tree is a level runner. Each
   keeps its boot choice (the least urgent tier owns the session) and its
   chained setups. The tiers' per-executor scheduling policy
-  (`apply_tier_sched_policy`) is the boot level's alone now, since the levels
+  (`apply_sched_task_sched_policy`) is the boot level's alone now, since the levels
   share one executor, as on Zephyr and ThreadX; the kernel facts stay per
   level thread (priority, core pin, NuttX's `SCHED_SPORADIC` server on the
   non-owner levels). A spawned level's failed setup now fails the boot on
@@ -989,7 +989,7 @@ executor's lock and the thread identity:
   back (`LevelCore::into_runtime`, the lock removed) to close the session.
 - **A level's own sched context** (issue 2018). A level's tier policy
   (class, budget, period, deadline) lowers through
-  `SchedContext::from_tier_policy` onto a context of the level's own
+  `SchedContext::from_sched_task_policy` onto a context of the level's own
   (`Executor::set_level_sched_context`; C ABI
   `nros_cpp_level_set_sched_policy`; Rust
   `ExecutorNodeRuntime::apply_level_sched_policy`), set after the level
@@ -1067,7 +1067,7 @@ executor's lock and the thread identity:
   (`schedule_board_features`, the same predicate as `nros::main!`'s
   multi-tier arm), and `nros-board-freertos`'s build.rs defines it on every
   `cc::Build`. A tiered entry refuses to build against a slicing kernel
-  (`tier_task_memory_freertos.h`; a host with its own config states
+  (`sched_task_memory_freertos.h`; a host with its own config states
   `NROS_FREERTOS_ALLOW_TIME_SLICING` to keep it), and both level runners say
   what the kernel was built with (`nros: kernel time slicing OFF`). With
   slicing off, equal-priority tasks rotate only when one blocks. The

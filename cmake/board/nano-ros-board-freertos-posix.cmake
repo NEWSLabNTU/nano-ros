@@ -58,12 +58,12 @@ set(_NROS_BOARDS_COMMON_C_DIR
 # `freertos_task_glue.c` out of `network_glue.c` so the half that is about
 # FreeRTOS rather than about lwIP is shared rather than copied.
 #
-# `freertos_run_tiers.c` carries over unchanged — it is FreeRTOS plus nros-cpp
+# `freertos_run_sched_tasks.c` carries over unchanged — it is FreeRTOS plus nros-cpp
 # FFI and knows nothing about the chip; the unused function is dropped by
 # --gc-sections for single-tier apps.
 set(_NROS_BOARD_STARTUP_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
-    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_tiers.c"
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_sched_tasks.c"
     # phase-432 W3.1 — the C-ABI single-executor runner, beside the tiers one.
     # SHARED by every RTOS board (`nros_board_rtos_run_components`), which is
     # why it comes from the common dir rather than the family one. The CMake

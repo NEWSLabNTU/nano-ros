@@ -234,7 +234,7 @@ static DEFAULT_SINKS_INSTALLED: AtomicBool = AtomicBool::new(false);
 /// runtime raised first — the RMW adapter's out-of-heap diagnostic, the
 /// subscription-pool exhaustion line, `ensure_node_liveliness`'s lost-token
 /// error — was HELD by `nros_log::early` and never printed. Measured on the
-/// Zephyr derived-tiers-cpp image: a publisher's create failed with
+/// Zephyr derived-sched-tasks-cpp image: a publisher's create failed with
 /// `BAD_ALLOC` and its named error never reached the console, because no
 /// C/C++ board funnel installs a sink the way every Rust board funnel does
 /// (`nros_platform_cffi::log::init_default()`).

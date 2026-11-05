@@ -12,7 +12,7 @@
 #    SHORTER struct by value than the FFI consumer reads, so the tail field is
 #    stack garbage).
 #
-# 2. `nros_native_tier_spec_t` (phase-432, RFC-0091 §5). The tier table crosses
+# 2. `nros_native_sched_task_spec_t` (phase-432, RFC-0091 §5). The tier table crosses
 #    C, C++ and Rust and is declared SIX times by hand — a header comment asks a
 #    human to keep them in sync, which is exactly the arrangement family 1 exists
 #    to replace. Worse, it is INITIALISED by two codegen templates, so a field
@@ -216,28 +216,28 @@ for tag in QOS_ENUM_TAGS:
             )
 
 # ---------------------------------------------------------------------------
-# Family 2 — nros_native_tier_spec_t across its six declarations and two
+# Family 2 — nros_native_sched_task_spec_t across its six declarations and two
 # codegen initialisers.
 # ---------------------------------------------------------------------------
 
-TIER_CANONICAL = "packages/api/nros-c/include/rclc/detail/main.h"
+SCHED_TASK_CANONICAL = "packages/api/nros-c/include/rclc/detail/main.h"
 
 # The C family is compared by full DECLARATION (types included): these four are
 # cast to one another at runtime, so a type change is an ABI change. The only
 # legitimate spelling difference is the setup fn-ptr typedef's name.
-TIER_C_MIRRORS = [
-    "packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c",
-    "packages/boards/nros-board-nuttx-qemu/c/nuttx_run_tiers.c",
-    "packages/boards/nros-board-freertos/c/freertos_run_tiers.c",
+SCHED_TASK_C_MIRRORS = [
+    "packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c",
+    "packages/boards/nros-board-nuttx-qemu/c/nuttx_run_sched_tasks.c",
+    "packages/boards/nros-board-freertos/c/freertos_run_sched_tasks.c",
 ]
 
 # The C++ and Rust declarations are compared by FIELD NAME ORDER only. They
-# cannot be compared by type: `NativeTierSpec` spells `groups` as `const char**`
+# cannot be compared by type: `NativeSchedTaskSpec` spells `groups` as `const char**`
 # where C has `const char* const*`, and Rust spells everything differently. Name
 # order is what the initialisers key on and what an insertion breaks.
-TIER_NAME_ONLY = [
-    ("packages/api/nros-cpp/include/rclcpp/detail/main.hpp", "cpp", "NativeTierSpec"),
-    ("packages/api/nros-cpp/src/lib.rs", "rust", "NativeTierSpecC"),
+SCHED_TASK_NAME_ONLY = [
+    ("packages/api/nros-cpp/include/rclcpp/detail/main.hpp", "cpp", "NativeSchedTaskSpec"),
+    ("packages/api/nros-cpp/src/lib.rs", "rust", "NativeSchedTaskSpecC"),
 ]
 
 # The two entry packs. Each emits ONE `.field = value` row inside a `{% for %}`,
@@ -247,16 +247,16 @@ TIER_NAME_ONLY = [
 # the move, which is what it is for: it names its producers rather than
 # globbing them, so a pack that walks away from it fails loudly.
 ENTRY_PACKS = "packages/cli/nros-cli-core/src/codegen/entry/packs/entry"
-TIER_INITIALISERS = [
-    (f"{ENTRY_PACKS}/c/entry.c.jinja", "nros_native_tier_spec_t __nros_tiers["),
+SCHED_TASK_INITIALISERS = [
+    (f"{ENTRY_PACKS}/c/entry.c.jinja", "nros_native_sched_task_spec_t __nros_sched_tasks["),
     (
         f"{ENTRY_PACKS}/cpp/entry.cpp.jinja",
-        "::rclcpp::board::NativeTierSpec __nros_tiers[",
+        "::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[",
     ),
 ]
 
 # Field-name spelling is one fact; the fn-ptr typedef is not.
-TIER_TYPE_NORMALIZE = {"nros_tier_setup_fn_t": "nros_c_entry_setup_fn"}
+SCHED_TASK_TYPE_NORMALIZE = {"nros_sched_task_setup_fn_t": "nros_c_entry_setup_fn"}
 
 
 def anon_typedef_body(path, tag):
@@ -325,7 +325,7 @@ def initialiser_field_names(path, anchor):
 
 
 def normalize_types(decl):
-    for old, new in TIER_TYPE_NORMALIZE.items():
+    for old, new in SCHED_TASK_TYPE_NORMALIZE.items():
         decl = decl.replace(old, new)
     return decl
 
@@ -339,13 +339,13 @@ def report_names(label, names, reference):
               file=sys.stderr)
 
 
-tier_canonical_decls = [
-    normalize_types(d) for d in decls(anon_typedef_body(TIER_CANONICAL, "nros_native_tier_spec_t"))
+sched_task_canonical_decls = [
+    normalize_types(d) for d in decls(anon_typedef_body(SCHED_TASK_CANONICAL, "nros_native_sched_task_spec_t"))
 ]
-tier_canonical_names = [c_field_name(d) for d in tier_canonical_decls]
+sched_task_canonical_names = [c_field_name(d) for d in sched_task_canonical_decls]
 
-TIER_ADVICE = (
-    "  `nros_native_tier_spec_t` is declared by hand in six places and initialised\n"
+SCHED_TASK_ADVICE = (
+    "  `nros_native_sched_task_spec_t` is declared by hand in six places and initialised\n"
     "  by two codegen templates. Every one of them must carry the same fields in\n"
     "  the same ORDER — a mirror that is short passes a truncated struct by value,\n"
     "  and an initialiser whose field names disagree with the declaration builds a\n"
@@ -353,46 +353,46 @@ TIER_ADVICE = (
     "  of them together; never insert."
 )
 
-for path in TIER_C_MIRRORS:
-    got = [normalize_types(d) for d in decls(anon_typedef_body(path, "nros_tier_spec_t"))]
-    if got != tier_canonical_decls:
+for path in SCHED_TASK_C_MIRRORS:
+    got = [normalize_types(d) for d in decls(anon_typedef_body(path, "nros_sched_task_spec_t"))]
+    if got != sched_task_canonical_decls:
         fail(f"tier-spec mirror DRIFTED: {path}")
-        print(f"  canonical ({TIER_CANONICAL}):", file=sys.stderr)
-        for d in tier_canonical_decls:
+        print(f"  canonical ({SCHED_TASK_CANONICAL}):", file=sys.stderr)
+        for d in sched_task_canonical_decls:
             print(f"   {' ' if d in got else '+'} {d}", file=sys.stderr)
         print(f"  mirror ({path}, setup typedef normalized):", file=sys.stderr)
         for d in got:
-            print(f"   {' ' if d in tier_canonical_decls else '!'} {d}", file=sys.stderr)
-        print(TIER_ADVICE, file=sys.stderr)
+            print(f"   {' ' if d in sched_task_canonical_decls else '!'} {d}", file=sys.stderr)
+        print(SCHED_TASK_ADVICE, file=sys.stderr)
 
-for path, lang, name in TIER_NAME_ONLY:
+for path, lang, name in SCHED_TASK_NAME_ONLY:
     if lang == "rust":
         got = rust_field_names(path, name)
     else:
         got = [c_field_name(d) for d in decls(cpp_struct_body(path, name))]
-    if got != tier_canonical_names:
+    if got != sched_task_canonical_names:
         fail(f"tier-spec mirror DRIFTED (field names): {path} :: {name}")
-        report_names(f"canonical ({TIER_CANONICAL})", tier_canonical_names, got)
-        report_names(f"mirror ({path})", got, tier_canonical_names)
-        print(TIER_ADVICE, file=sys.stderr)
+        report_names(f"canonical ({SCHED_TASK_CANONICAL})", sched_task_canonical_names, got)
+        report_names(f"mirror ({path})", got, sched_task_canonical_names)
+        print(SCHED_TASK_ADVICE, file=sys.stderr)
 
-for path, anchor in TIER_INITIALISERS:
+for path, anchor in SCHED_TASK_INITIALISERS:
     got = initialiser_field_names(path, anchor)
-    if got != tier_canonical_names:
+    if got != sched_task_canonical_names:
         fail(f"tier-spec INITIALISER DRIFTED: {path}")
-        report_names(f"canonical ({TIER_CANONICAL})", tier_canonical_names, got)
-        report_names(f"template ({path})", got, tier_canonical_names)
-        print(TIER_ADVICE, file=sys.stderr)
+        report_names(f"canonical ({SCHED_TASK_CANONICAL})", sched_task_canonical_names, got)
+        report_names(f"template ({path})", got, sched_task_canonical_names)
+        print(SCHED_TASK_ADVICE, file=sys.stderr)
 
 # ---------------------------------------------------------------------------
-# Family 3 — nros_tier_task_memory_t (issues 1598 + 1232): the entry's per-tier
+# Family 3 — nros_sched_task_memory_t (issues 1598 + 1232): the entry's per-tier
 # stack + TCB row, mirrored by every RTOS runner that takes it (they are
 # compiled where no nros header is in reach). Full declaration compare.
 # ---------------------------------------------------------------------------
 
 TASK_MEM_C_MIRRORS = [
-    "packages/boards/nros-board-freertos/c/freertos_run_tiers.c",
-    "packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c",
+    "packages/boards/nros-board-freertos/c/freertos_run_sched_tasks.c",
+    "packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c",
 ]
 
 def last_typedef_body(path, tag):
@@ -410,12 +410,12 @@ def last_typedef_body(path, tag):
     return body[body.index("{") + 1:]
 
 
-task_mem_canonical = decls(last_typedef_body(TIER_CANONICAL, "nros_tier_task_memory_t"))
+task_mem_canonical = decls(last_typedef_body(SCHED_TASK_CANONICAL, "nros_sched_task_memory_t"))
 for path in TASK_MEM_C_MIRRORS:
-    got = decls(last_typedef_body(path, "nros_tier_task_memory_t"))
+    got = decls(last_typedef_body(path, "nros_sched_task_memory_t"))
     if got != task_mem_canonical:
         fail(f"tier task-memory mirror DRIFTED: {path}")
-        print(f"  canonical ({TIER_CANONICAL}): {task_mem_canonical}", file=sys.stderr)
+        print(f"  canonical ({SCHED_TASK_CANONICAL}): {task_mem_canonical}", file=sys.stderr)
         print(f"  mirror ({path}): {got}", file=sys.stderr)
 
 # ---------------------------------------------------------------------------
@@ -465,4 +465,4 @@ if spec_rust != spec_names:
 sys.exit(1 if failed else 0)
 PY
 
-echo "FFI struct mirrors in sync (qos.hpp + nros_native_tier_spec_t ×8 + the session spec ×3)."
+echo "FFI struct mirrors in sync (qos.hpp + nros_native_sched_task_spec_t ×8 + the session spec ×3)."

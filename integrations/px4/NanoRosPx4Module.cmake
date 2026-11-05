@@ -178,7 +178,7 @@ set(_NROS_PX4_INCLUDES
     "${NROS_REPO_DIR}/packages/api/nros-c/include"
     "${NROS_REPO_DIR}/packages/core/nros-rmw-abi/include"
     "${NROS_REPO_DIR}/packages/platform/nros-platform-api/include"
-    # phase-521 W8 (b) -- `nros_px4/tier_work_item.hpp`, the runtime half of
+    # phase-521 W8 (b) -- `nros_px4/sched_task_work_item.hpp`, the runtime half of
     # the generated entry: one PX4 work item per tier (RFC-0113 D9).
     "${NROS_REPO_DIR}/integrations/px4/include")
 

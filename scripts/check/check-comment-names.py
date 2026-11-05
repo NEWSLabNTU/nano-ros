@@ -239,7 +239,7 @@ def self_test():
     index = ap._NameIndex({"rclc_executor_spin", "Node", "create_publisher", "live_fn"})
 
     def run(src, foreign=()):
-        return check_text("t.rs", src, index, set(foreign), set(), {"NROS_MAX_TIERS"})
+        return check_text("t.rs", src, index, set(foreign), set(), {"NROS_MAX_SCHED_TASKS"})
 
     def expect(label, src, want, foreign=()):
         got = len(run(src, foreign))
@@ -256,11 +256,11 @@ def self_test():
     expect("struck one, other live", "// ~~`gone_a`~~ became `live_fn`\n", 0)
     expect("struck one, other dead", "// ~~`gone_a`~~ became `gone_b`\n", 1)
     expect("foreign", "// zenoh-pico's `_z_open`\n", 0, foreign=("_z_open",))
-    expect("our Kconfig symbol", "// `CONFIG_NROS_MAX_TIERS`\n", 0)
+    expect("our Kconfig symbol", "// `CONFIG_NROS_MAX_SCHED_TASKS`\n", 0)
     expect("gone Kconfig symbol", "// `CONFIG_NROS_GONE`\n", 1)
     expect("RTOS Kconfig symbol", "// `CONFIG_HEAP_MEM_POOL_SIZE`\n", 0)
     expect("struck retired Kconfig symbol", "// ~~`CONFIG_NROS_GONE`~~\n", 0)
-    expect("struck live Kconfig symbol", "// ~~`CONFIG_NROS_MAX_TIERS`~~\n", 1)
+    expect("struck live Kconfig symbol", "// ~~`CONFIG_NROS_MAX_SCHED_TASKS`~~\n", 1)
     expect("struck inside an intra-doc link", "/// see [~~`gone_fn`~~]\n", 1)
     expect("placeholder", "// each `Node::create_X<T>` and `foo_pkg`\n", 0)
     expect("string literal is not a comment", 'let s = "// `gone_fn`";\n', 0)

@@ -170,7 +170,7 @@ crate = "nros-board-s32z270-freertos"
 # NO matrix_platform, deliberately. It read `FreertosMps2` "until a hardware
 # witness exists" — reusing the family lane's PlatformId — and that is the
 # declaration check-board-tiers exists to reject: FreertosMps2 HAS Runtime
-# cells (RealtimeTiers, TierPriority C/C++), so a build-only row pointing at it
+# cells (RealtimeSchedTasks, SchedTaskPriority C/C++), so a build-only row pointing at it
 # claims build-only support from a platform whose cells assert running code.
 # The cells are MPS2-AN385's; this board is a Cortex-R52 automotive part with
 # no emulator here, and the two share only a kernel. That mismatch is the exact
@@ -489,7 +489,7 @@ notes = "Real family driver: the MPS2 overlay is `pub use nros_board_freertos::C
 crate = "nros-board-nuttx"
 infra = true
 maintainers = []
-notes = "NuttX FAMILY DRIVER, not a façade: owns run_entry / run_tiers / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays."
+notes = "NuttX FAMILY DRIVER, not a façade: owns run_entry / run_sched_tasks / the tier spin loops, which the one board overlay (nros-board-nuttx-qemu) delegates to. phase-337 W3 merged the two board crates below it; this layer stays."
 
 [[board]]
 crate = "nros-board-threadx"

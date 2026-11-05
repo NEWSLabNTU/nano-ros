@@ -101,13 +101,13 @@ mod entry;
 // (entry.rs), which is independent of `node.rs`; the file is gone. `ThreadxConfig`
 // (a config trait, not ~~`board_init`~~) stays.
 
-pub use entry::{run_app_thread, run_bare, run_entry, run_tiers_entry};
+pub use entry::{run_app_thread, run_bare, run_entry, run_sched_tasks_entry};
 pub use nros_board_common::ThreadxConfig;
 
 /// issue 1571 — the type of one spawned tier's executor backing slot, so a
-/// board crate that wraps this one's `run_tiers` can name its parameter without
+/// board crate that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself.
-pub use ::nros::TierExecutorBackingSlot;
+pub use ::nros::SchedTaskExecutorBackingSlot;
 
 // Legacy 152.2.A façade — keep the per-board `Config` +
 // `init_hardware` + `run` re-export accessible behind the

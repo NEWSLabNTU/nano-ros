@@ -178,15 +178,15 @@ level input's `tasks` field is `callback_records`. That frees the bare word
 
 ## Baseline facts (2026-07 exploration)
 
-- `system.toml` tiers are resolved by `nros-orchestration-ir::resolve_tiers`
+- `system.toml` tiers are resolved by `nros-orchestration-ir::resolve_sched_tasks`
   (the CLI/`nros::main!` shared SSoT) and narrowed to the runtime
-  `TierSpec { name, groups, priority, stack_bytes, spin_period_us }`
-  (`packages/platform/nros-platform/src/board/tier.rs`).
+  `SchedTaskSpec { name, groups, priority, stack_bytes, spin_period_us }`
+  (`packages/platform/nros-platform/src/board/sched_task.rs`).
 - **Lossy narrowing**: `core`, `preempt_threshold`, `sched_class`, `class`,
   `period_us`, `budget_us`, `deadline_us`, `deadline_policy` die at the
-  codegen boundary (`codegen_system.rs::PlanTierDoc`); FreeRTOS's
+  codegen boundary (`codegen_system.rs::PlanSchedTaskDoc`); FreeRTOS's
   `emit_cpp` additionally drops `stack_bytes` (documented in
-  `freertos_run_tiers.c`).
+  `freertos_run_sched_tasks.c`).
 - The executor already HAS sporadic-budget ticking and time-triggered
   windows (`sched_context.rs::tick`, `tt_window_offset_us`) — but only via
   the programmatic API, never fed from tier tables.
@@ -194,8 +194,8 @@ level input's `tasks` field is `callback_records`. That frees the bare word
   (`handles.rs::take`) never extracts `header.stamp`; no rate/jitter
   accounting exists.
 - The vendored `ros-launch-manifest` `model`/`sched` crates define
-  `TierDef`/`TierPlatformSpec` that duplicate `nros-orchestration-ir`'s
-  `TierDef` — two hand-mirrored tier schemas (the FFI-mirror-drift class,
+  `SchedTaskDef`/`SchedTaskPlatformSpec` that duplicate `nros-orchestration-ir`'s
+  `SchedTaskDef` — two hand-mirrored tier schemas (the FFI-mirror-drift class,
   cross-repo).
 
 ## Model ingestion (build side)
@@ -210,8 +210,8 @@ re-validation:
    `nano_ros_use_board` / `package.xml <export><nano_ros board=…>`). A
    model with no `deploy` section and exactly one candidate node set is
    accepted with a note; ambiguity is a hard error.
-2. **Tiers + bindings** → `ResolvedTierTable` (existing tier_resolver
-   path) → `nros-plan.json` + the `run_tiers` const table. Bindings keys
+2. **Tiers + bindings** → `ResolvedSchedTaskTable` (existing sched_task_resolver
+   path) → `nros-plan.json` + the `run_sched_tasks` const table. Bindings keys
    are node FQNs or `FQN/callback_group` — exactly RFC-0047's binding
    granularity.
 3. **Boot config** → RFC-0045 baked rung: domain/locator from
@@ -223,8 +223,8 @@ re-validation:
    "On-target monitors"), plus QoS onto endpoint config.
 
 The vendored `model` crate is the parser — no schema re-declaration in
-nano-ros. **Schema unification**: `nros-orchestration-ir::TierDef` gains
-`From<ros_launch_manifest_sched::TierDef>` (explicit conversion, not type
+nano-ros. **Schema unification**: `nros-orchestration-ir::SchedTaskDef` gains
+`From<ros_launch_manifest_sched::TaskDef>` (explicit conversion, not type
 replacement — orchestration-ir must stay `no_std`-friendly for the
 proc-macro; drift is caught by a round-trip test over every field, the
 FFI-mirror lesson applied).
@@ -254,11 +254,11 @@ a property of the TRANSPORT. `Executor::spin_once` drives I/O with a zero
 timeout whenever a wake already fired, so under sustained arrival the loop never
 blocks — precisely when the system is busiest — and on a uniprocessor under
 fixed-priority preemption a thread that never blocks never lets a lower-priority
-tier run. Choosing the least urgent tier as session owner (`boot_tier_index`)
+tier run. Choosing the least urgent tier as session owner (`boot_sched_task_index`)
 removes the starvation; the gap is what makes the guarantee independent of that
 ordering being right. One implementation,
-`nros_platform::board::tier::TierSpinGap` / `nros_tier_spin_gap_step`, for the
-Rust and C tier runners alike; gate: `check-tier-spin-gap`.
+`nros_platform::board::sched_task::SchedTaskSpinGap` / `nros_sched_task_spin_gap_step`, for the
+Rust and C tier runners alike; gate: `check-sched-task-spin-gap`.
 
 Rejection semantics: a platform-inapplicable field in the SELECTED
 target's sub-table is a **bake-time error** (same philosophy as
@@ -522,7 +522,7 @@ earlier version had nano-ros *consume* a resolved chain structure that
   arrangement: **split `chain_aware_mapper`** into (a) a platform-agnostic
   **core** — feasibility + clock-segmentation + chain/segment **ranking**, a
   *priorityless* ordered/segmented structure — and (b) the **Linux realizer**
-  (`rt_priority_band` → `ResolvedTierTable`, `posix`-tagged). nano-ros calls
+  (`rt_priority_band` → `ResolvedSchedTaskTable`, `posix`-tagged). nano-ros calls
   the agnostic core (a) + its **own RTOS realizer** (below); it does NOT use
   (b). **Derivation is nano-ros's own**, sharing the `MapperInput` type:
   nano-ros builds `MapperInput` from the **input** SystemModel —
@@ -626,7 +626,7 @@ the L1 record is provably consistent with the image. This closes the "where
 does `const CAPS` come from" gap the L2 sketch left open.
 
 **Runtime honoring (the L2 seam, minimally).** `set_deadline`/`replenish` need
-not be a full trait to start: `run_tiers` calls a `cfg`-gated board shim
+not be a full trait to start: `run_sched_tasks` calls a `cfg`-gated board shim
 (Zephyr `k_thread_deadline_set` on the tier thread) when the tier's
 `sched_class` is `edf` and the feature is on — mirroring the existing
 `k_thread_priority_set` adoption. The executor's `SchedContext` deadline

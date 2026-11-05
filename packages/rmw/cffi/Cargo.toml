@@ -90,7 +90,7 @@ c-stub-test = []
 # beside them in every native C++ image (`metadata-mode`). Sized from the
 # declaration alone, a single-RMW image's registry held exactly one slot, the
 # recorder's registration failed silently, and its census run died at backend
-# selection — measured on `examples/workspaces/derived-tiers-cpp`
+# selection — measured on `examples/workspaces/derived-sched-tasks-cpp`
 # (`$NROS_RMW names a backend that is not registered`, exit 253).
 recorder-slot = []
 

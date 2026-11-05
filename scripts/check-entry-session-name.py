@@ -74,7 +74,7 @@ PRODUCERS: list[tuple[str, str, str]] = [
     #
     # issue 1616 (W7): HARVESTED, not authored. Every entry-pack template that
     # emits a runner call is a producer — the C boot wrapper emits the same
-    # `run_components` / `run_tiers` calls as the C++ one and was not listed,
+    # `run_components` / `run_sched_tasks` calls as the C++ one and was not listed,
     # so blanking its node name passed. `producer_globs()` derives the list.
 ]
 PACKS = "packages/cli/nros-cli-core/src/codegen/entry/packs"
@@ -139,7 +139,7 @@ def calls(blob: str) -> list[str]:
     out = []
     # Both runners, and the jinja spelling of the callee
     # (`{{ boot.runners.run_components }}(`) as well as the C++ one.
-    for m in re.finditer(r"\b(?:run_components|run_tiers)\s*(?:\}\})?\s*\(", blob):
+    for m in re.finditer(r"\b(?:run_components|run_sched_tasks)\s*(?:\}\})?\s*\(", blob):
         depth, i = 0, m.end() - 1
         while i < len(blob):
             if blob[i] == "(":
@@ -278,8 +278,8 @@ def self_test(quiet: bool = True) -> int:
         ("C jinja runner, node name blanked (issue 1616)",
          '{{ boot.runners.run_components }}("", nros_boot_config_namespace(&NROS_BOOT_CONFIG), &s)\n',
          "nros_boot_config_node_name", False, True),
-        ("C jinja run_tiers with node name",
-         '{{ boot.runners.run_tiers }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), ns, t, 2u)\n',
+        ("C jinja run_sched_tasks with node name",
+         '{{ boot.runners.run_sched_tasks }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), ns, t, 2u)\n',
          "nros_boot_config_node_name", False, False),
         ("fixed host shape (2-arg)", _TPL_FIXED_HOST, "nros_boot_config_node_name", False, False),
         ("issue-1003 shape", _TPL_BROKEN, "nros_boot_config_node_name", False, True),

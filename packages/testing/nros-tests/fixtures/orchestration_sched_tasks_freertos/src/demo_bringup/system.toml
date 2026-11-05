@@ -1,0 +1,75 @@
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+# issue 0438 — `group_tasks` BINDS a callback group to a tier (phase-273 W2 /
+# RFC-0047). Without it the `[tasks.*]` tables below have no members, resolve to
+# a single synthesized `default`, and the entry silently emits the SINGLE-tier
+# path — the same latent defect the native sibling of this fixture carried.
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+group_tasks = { ctrl = "high" }
+
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tasks = { telem = "low" }
+
+# The image `src/demo_entry/` (package `demo_entry`) boots. Its deployment was
+# that entry's `[package.metadata.nros.deploy.freertos]` table until phase-445
+# W5 retired it: `nros::main!` reads this image instead (`leaf_system::for_entry`,
+# which matches `entry` against the PACKAGE name). Issue 1305: `nros sync`
+# reads the same claim to write the entry's selection package (its board crate).
+#
+# Issue #48 cause 1 — slirp addressing threaded into the firmware boot Config
+# via `Mps2An385::run_sched_tasks` (multi-tier path): guest 10.0.2.15 / gateway 10.0.2.2,
+# dialing the host zenohd at the slirp alias 10.0.2.2.
+#
+# Issue 0342 — the PORT is the allocator's slot for this cell:
+# `port_of(FreertosMps2, Rust, RealtimeSchedTasks)` = 7891. It was a bare 7447, which
+# is not merely unallocated but sits inside ANOTHER platform's window, so it
+# could collide as the matrix grows. A baked literal cannot call the allocator,
+# so `orchestration_sched_tasks_freertos.rs` asserts this file's port against
+# `port_of(...)` before booting — the mirror cannot drift silently.
+[image.freertos]
+board = "freertos"
+entry = "demo_entry"
+# No `net`: the guest is QEMU's first guest, 10.0.2.15, which is what an image
+# on the board's `qemu` network that states no address gets (RFC-0103 D10,
+# phase-497 W2). This entry is cross-built by plain cargo, with no CLI to
+# resolve a stated address into NROS_IMAGE_NET, and `nros::main!` refuses one
+# it would have to drop.
+locator = "tcp/10.0.2.2:7891"
+
+# Two FreeRTOS priority tiers. Raw FreeRTOS priorities (0..configMAX-1, higher =
+# higher) authored directly in the per-RTOS sub-table.
+#
+# Issue #48 — each spawned tier task shares the boot session and runs the
+# zenoh-pico-backed per-tier spin (publish/take). zenoh-pico operations are
+# stack-heavy on the Cortex-M3; the original 8192/4096-byte stacks overflowed
+# (`*** STACK OVERFLOW: nros_sched_task ***`) the moment the firmware actually
+# connected (a #46-class overflow, previously masked because the inert deploy
+# config never let `Executor::open` succeed). 64 KiB boots + runs both tiers.
+[tasks.high]
+spin_period = "1000us"
+[tasks.high.freertos]
+priority = 5
+stack_bytes = 65536
+
+[tasks.low]
+spin_period = "10000us"
+[tasks.low.freertos]
+priority = 2
+stack_bytes = 65536
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

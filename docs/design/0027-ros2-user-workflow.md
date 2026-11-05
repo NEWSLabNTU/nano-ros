@@ -746,7 +746,7 @@ include!(concat!(env!("OUT_DIR"), "/nros_generated.rs"));
 #[nros::entry]
 fn main() -> ! {
     let mut system = nros_generated::open_system();
-    nros_generated::create_tiers(&mut system).unwrap();
+    nros_generated::create_sched_tasks(&mut system).unwrap();
     nros_generated::create_sched_contexts(&mut system).unwrap();
     nros_generated::register_instances(&mut system).unwrap();
     nros_generated::bind_callbacks(&mut system).unwrap();

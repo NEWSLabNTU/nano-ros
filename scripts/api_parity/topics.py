@@ -345,7 +345,7 @@ KEY_OVERRIDES = {
     "Transition::goal_state": "lifecycle",
     # RFC-0052's deadline-miss reaction, not an action.
     "DeadlineAction": "exec",
-    "DeadlineAction::from_tier_str": "exec",
+    "DeadlineAction::from_sched_task_str": "exec",
     # `TickCtx` is one concept; the Rust one is declared in a mapped header and
     # the C++ one is not, which split it across two stages.
     "TickCtx": "exec",

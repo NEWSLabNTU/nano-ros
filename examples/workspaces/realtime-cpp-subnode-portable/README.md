@@ -49,7 +49,7 @@ nros build freertos
 ```
 
 `SubNode`'s two callback groups land on two tiers, and a node whose groups span
-tiers cannot take `run_tiers` (per-tier setup functions construct whole *nodes*)
+tiers cannot take `run_sched_tasks` (per-tier setup functions construct whole *nodes*)
 — so the generated entry is `FreertosBoard::run_components` plus
 `nros_cpp_create_sched_context_from_policy` / `nros_cpp_bind_group_sched`, a
 different shape from the `workspace-{c,cpp}-freertos-realtime` entries.

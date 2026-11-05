@@ -115,7 +115,7 @@ else
         -I "$FREERTOS_DIR/portable/GCC/ARM_CM3" \
         -I "$repo_root/packages/api/nros-c/include" \
         -I "$repo_root/packages/platform/nros-platform-api/include" \
-        "$repo_root/packages/boards/nros-board-freertos/c/freertos_run_tiers.c" 2>&1)"
+        "$repo_root/packages/boards/nros-board-freertos/c/freertos_run_sched_tasks.c" 2>&1)"
     rc=$?
     if [ "$rc" -eq 0 ]; then
         say "OK: the accept arm type-checks against FreeRTOS $(grep -o 'V[0-9.]*' "$FREERTOS_DIR/include/task.h" | head -1)"
@@ -168,7 +168,7 @@ else
         -I "$NUTTX_DIR/sched" \
         -I "$repo_root/packages/api/nros-c/include" \
         -I "$repo_root/packages/platform/nros-platform-api/include" \
-        "$repo_root/packages/boards/nros-board-nuttx-qemu/c/nuttx_run_tiers.c" 2>&1)"
+        "$repo_root/packages/boards/nros-board-nuttx-qemu/c/nuttx_run_sched_tasks.c" 2>&1)"
     rc=$?
     if [ "$rc" -eq 0 ]; then
         say "OK: the accept arm type-checks against the vendored NuttX headers"

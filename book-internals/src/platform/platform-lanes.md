@@ -159,7 +159,7 @@ Build: `just zephyr build-fvp-all` runs the FVP build lanes.
 
 ```bash
 # The workspace C++ RT-tiers Entry — the canonical ASI-consumption
-# reference (nano_ros_use_board + run_tiers).
+# reference (nano_ros_use_board + run_sched_tasks).
 just zephyr build-fvp-ws-entry
 
 # The minimal board-crate IMPORT surface: nano_ros_use_board() and a

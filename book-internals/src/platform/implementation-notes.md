@@ -339,9 +339,9 @@ Consequences and rules:
   on one session (only on `Z_FEATURE_MULTI_THREAD=0` — embedded; native's
   MT=1 has internal session mutexes) the losing publisher's zenoh-pico write
   filter can stay closed — `z_publisher_put` succeeds while nothing reaches
-  the wire. All embedded `run_tiers` paths (`ZephyrBoard::run_tiers`, the
-  FreeRTOS Rust `run_tiers_entry`, and the FreeRTOS C
-  `nros_board_freertos_run_tiers`) therefore **chain-spawn** the tiers: the
+  the wire. All embedded `run_sched_tasks` paths (`ZephyrBoard::run_sched_tasks`, the
+  FreeRTOS Rust `run_sched_tasks_entry`, and the FreeRTOS C
+  `nros_board_freertos_run_sched_tasks`) therefore **chain-spawn** the tiers: the
   boot tier runs its setup, then spawns exactly one task for the next tier,
   which runs ITS setup and spawns the next — so no two `setup()` (declare)
   bursts ever overlap, for any tier count (issue 0144; the 0128 fix only

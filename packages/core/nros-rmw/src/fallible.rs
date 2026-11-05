@@ -11,7 +11,7 @@
 //! entry, whose write re-enters `zvfs_write` forever (issue 0589). So the
 //! message never appears: the thread overflows its stack inside a recursive
 //! `k_mutex` and the process dies with SIGSEGV (exit 139). Measured on the
-//! derived-tiers-cpp image, ~104,735 frames deep, from a `Box::new` in the
+//! derived-sched-tasks-cpp image, ~104,735 frames deep, from a `Box::new` in the
 //! RMW adapter whose C caller had a perfectly good error return.
 //!
 //! None of the three levers that would make the OOM handler itself safe are

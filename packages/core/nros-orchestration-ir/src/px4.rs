@@ -28,12 +28,12 @@ pub const PX4_WORK_QUEUES: &[&str] = &[
 
 /// An image declared more tiers than [`PX4_WORK_QUEUES`] has queues.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Px4TooManyTiers {
+pub struct Px4TooManySchedTasks {
     /// Every tier the image declared, most urgent first.
     pub tiers: Vec<String>,
 }
 
-impl fmt::Display for Px4TooManyTiers {
+impl fmt::Display for Px4TooManySchedTasks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -50,7 +50,7 @@ impl fmt::Display for Px4TooManyTiers {
     }
 }
 
-impl std::error::Error for Px4TooManyTiers {}
+impl std::error::Error for Px4TooManySchedTasks {}
 
 /// The work queue for each tier. `tiers` is the image's tiers, MOST URGENT
 /// FIRST (the caller orders them; the IR's tier tables already carry the
@@ -61,9 +61,9 @@ impl std::error::Error for Px4TooManyTiers {}
 /// no queues.
 pub fn px4_work_queues<S: AsRef<str>>(
     tiers: &[S],
-) -> Result<Vec<(&str, &'static str)>, Px4TooManyTiers> {
+) -> Result<Vec<(&str, &'static str)>, Px4TooManySchedTasks> {
     if tiers.len() > PX4_WORK_QUEUES.len() {
-        return Err(Px4TooManyTiers {
+        return Err(Px4TooManySchedTasks {
             tiers: tiers.iter().map(|t| t.as_ref().to_string()).collect(),
         });
     }
@@ -79,7 +79,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_most_urgent_tier_takes_rate_ctrl_and_the_rest_follow_in_rank() {
+    fn the_most_urgent_sched_task_takes_rate_ctrl_and_the_rest_follow_in_rank() {
         let got = px4_work_queues(&["control", "estimate", "plan", "log"]).unwrap();
         assert_eq!(
             got,
@@ -93,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn fewer_tiers_take_the_most_urgent_queues() {
+    fn fewer_sched_tasks_take_the_most_urgent_queues() {
         let got = px4_work_queues(&["only"]).unwrap();
         assert_eq!(got, vec![("only", "rate_ctrl")]);
         let none: [&str; 0] = [];
@@ -101,7 +101,7 @@ mod tests {
     }
 
     #[test]
-    fn more_tiers_than_queues_is_refused_naming_every_tier() {
+    fn more_sched_tasks_than_queues_is_refused_naming_every_sched_task() {
         let tiers = ["a", "b", "c", "d", "e"];
         let err = px4_work_queues(&tiers).unwrap_err();
         assert_eq!(err.tiers, ["a", "b", "c", "d", "e"]);

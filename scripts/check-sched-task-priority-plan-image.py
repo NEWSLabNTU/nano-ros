@@ -1,0 +1,746 @@
+#!/usr/bin/env python3
+"""RFC-0079 §4.1 — check a DERIVED priority plan against ONE built image.
+
+`check-sched-task-priority-plan` judges ports whose reserved band is a literal. Zephyr's
+is computed from Kconfig, per image, so that checker defers and this one finishes
+the job: it resolves the band from a real `.config` and evaluates the tier pins
+against it.
+
+Two things it must not do, both of which would defeat the point:
+
+  * Guess a `.config`. Without one there is nothing to resolve, and a default
+    would be a literal band by another name.
+  * Treat "the priority is never applied in this image" as a pass. If the
+    Kconfig gates are off, the transport INHERITS its creator and there IS no
+    band — that is the NuttX pre-0736 state, and it is reported as such.
+  * Judge an image the tree has moved past. A `.config` configured before a
+    nano-ros default changed resolves the OLD band, and a verdict on it is a
+    verdict about a museum. In discovery mode it is reported `[STALE]` and
+    never judged — and a workspace where nothing was judged and something is
+    stale FAILS, because "checked nothing current" must not read as "checked".
+    In `--images-from` mode the caller BUILT it, so a stale one FAILS. The
+    rule and its measurements live beside `stale_band_reasons` in
+    `scripts/lib/priority_plan.py`.
+  * Judge a pin against an image that does not carry it. A band is a property
+    of ONE image and a pin is a property of ONE bringup, so a pin is judged
+    against exactly the images built from its bringup — attributed through the
+    fixture manifest row that built the image (`image_bringups`). Issue 1583:
+    this judged every pin in the tree against every image, so the derived-tier
+    image (`derived_bringup`, `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
+    [4, 9]) failed `realtime-{c,cpp,rust}`'s `tiers.high.zephyr = 9` — pins that
+    image does not contain, and that sit in `pool.app` [5, 14] of the images
+    that do. A pin whose bringup no current image was built from is listed as
+    NOT JUDGED rather than borrowed by an unrelated image.
+
+Usage:
+    python3 scripts/check-sched-task-priority-plan-image.py <path/to/zephyr/.config> [sched_task_key]
+    python3 scripts/check-sched-task-priority-plan-image.py --images-from <list> [sched_task_key]
+    python3 scripts/check-sched-task-priority-plan-image.py            # discovery
+    python3 scripts/check-sched-task-priority-plan-image.py --selftest
+    python3 scripts/check-sched-task-priority-plan-image.py --derived-plan \
+        <nros_priority_plan.json> <path/to/zephyr/.config> [<generated entry TU>]
+
+`--derived-plan` holds the record `nros dev codegen entry` writes beside a
+generated entry (RFC-0079 section 5) to the image it was built for: the
+record's bands must be the ones this checker resolves from the `.config`,
+every derived or allocated tier must sit in `pool.app` and on no reserved
+band, and, given the generated TU, the tier priorities it runs at must be the
+record's.
+"""
+
+import importlib.util
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from priority_plan import (BAND_DEFAULTED, kconfig_default, load_plans,
+                           resolve_zephyr_plan, scan_pins, stale_band_reasons)
+
+RESOLVERS = {"zephyr": resolve_zephyr_plan}
+
+MANIFEST = ROOT / "examples" / "fixtures.toml"
+UNATTRIBUTED = object()
+
+
+def _manifest_module():
+    """`scripts/build/fixtures-manifest.py` — hyphenated, so importlib."""
+    path = ROOT / "scripts" / "build" / "fixtures-manifest.py"
+    spec = importlib.util.spec_from_file_location("_fixtures_manifest", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def image_bringups(manifest=MANIFEST):
+    """West build-dir NAME -> the repo-relative `system.toml` of the bringup
+    that image is built from, or None for a row that builds no bringup.
+
+    Issue 1583. The fixture manifest is what BUILT every image a lane lists
+    (`zephyr-fixture-leaves.sh` emits one record per row and names the dir
+    `west_build_name`), so it is the attribution, read through the manifest's
+    own `west_build_name` rather than a second spelling of the naming rule.
+
+    Not the image's own `nros-image-facts.cmake`: that is resolved from the
+    ENTRY package, and two bringups of one workspace share one entry — on the
+    derived-tier image it reads `demo_bringup:zephyr`, the wrong bringup
+    (issue 1582's collision, measured 2026-09-29).
+    """
+    fm = _manifest_module()
+    out = {}
+    for e in fm.load(manifest):
+        if e.get("builder") == "west":
+            out[fm.west_build_name(e)] = None
+    for e in fm.load_workspace_fixtures(manifest):
+        if e.get("platform") not in ("zephyr", "zephyr-cortex-m"):
+            continue
+        bringup = e.get("bringup")
+        out[fm.west_build_name(e)] = (
+            Path(e["dir"].rstrip("/")) / bringup / "system.toml" if bringup else None)
+    return out
+
+
+def pins_for(bringup, sched_task_key, pins=None):
+    """The `sched_task_key` pins authored in ONE bringup's `system.toml`."""
+    if bringup is None:
+        return []
+    if pins is None:
+        pins = scan_pins()
+    return [p for p in pins if p[0] == bringup and p[2] == sched_task_key]
+
+
+def discover():
+    """Every built Zephyr image's `.config`, newest first.
+
+    With no argument the checker examines EVERY image this tree has built
+    rather than one the caller happened to name. A derived band is a property
+    of an IMAGE, so "the plan holds" is a claim about all of them, and letting
+    the caller pick which one to prove is how a green comes to mean less than
+    it looks.
+    """
+    # issue 1596 — "every image this TREE has built" is exactly this
+    # checkout's build root, the one derivation. It used to sweep the WORKSPACE
+    # candidates, i.e. the directory every checkout shared, so it judged images
+    # other worktrees configured from other sources.
+    p = subprocess.run(
+        ["bash", str(ROOT / "scripts/lib/zephyr-workspace.sh"), "--root", str(ROOT),
+         "build-root"],
+        capture_output=True, text=True,
+    )
+    r = Path(p.stdout.strip()) if p.returncode == 0 and p.stdout.strip() else None
+    if r is None or not r.is_dir():
+        return []
+    return sorted(r.glob("build-*/zephyr/.config"))
+
+
+def check_one(dotconfig, sched_task_key, plans, bringups):
+    plan = plans.get(sched_task_key)
+    name = dotconfig.parent.parent.name
+    bringup = bringups.get(name, UNATTRIBUTED)
+    if bringup is UNATTRIBUTED:
+        print(f"  [NO ROW]  {name}: no examples/fixtures.toml row builds this dir, so "
+              f"no bringup's pins can be attributed to it")
+        return 0, 0, "unattributed"
+    reasons = stale_band_reasons(dotconfig)
+    if reasons:
+        print(f"  [STALE]   {dotconfig.parent.parent.name}: not evidence about this tree")
+        for r in reasons:
+            print(f"        {r}")
+        return 0, 0, "stale"
+    resolved = RESOLVERS[plan["derived"]](dotconfig)
+    if "error" in resolved:
+        print(f"  cannot resolve {dotconfig}: {resolved['error']}")
+        return 2, 0, "error"
+    if "unapplied" in resolved:
+        # Not a pass and not a failure: the image applies no band at all, so
+        # there is nothing for a pin to collide with. Reported so it cannot be
+        # mistaken for a checked image (issue 0766).
+        print(f"  [NO BAND] {dotconfig.parent.parent.name}: {resolved['unapplied']}")
+        return 0, 0, "noband"
+    lo, hi = resolved["reserved"]["transport"]
+    plo, phi = resolved["pool"]["app"]
+    errs, ok = [], 0
+    for rel, tier, plat, prio, above in pins_for(bringup, sched_task_key):
+        where = f"{rel}: tiers.{tier}.{plat} = {prio}"
+        if lo <= prio <= hi:
+            errs.append(f"{where} lands ON the reserved transport band [{lo}, {hi}]")
+        elif prio < lo and above != "transport":
+            errs.append(
+                f"{where} is MORE URGENT than the transport band [{lo}, {hi}] and does "
+                f"not say so.\n        Move it into pool.app [{plo}, {phi}], or state "
+                f'the choice with `above = "transport"` on [tasks.{tier}].')
+        else:
+            ok += 1
+    src = f" from {bringup}" if bringup else " (builds no bringup)"
+    if errs:
+        print(f"  [FAIL] {name}: transport [{lo}, {hi}], pool [{plo}, {phi}]{src}")
+        for e in errs:
+            print(f"        {e}")
+        return 1, ok, "judged"
+    print(f"  [ok]   {name}: transport [{lo}, {hi}], pool [{plo}, {phi}] — "
+          f"{ok} pin(s){src}")
+    return 0, ok, "judged"
+
+
+def images_from(listing):
+    """`.config` paths for the build dirs named in `listing`, one per line.
+
+    The LANE's mode. `discover()` answers "what does this workspace hold",
+    which on a shared or long-lived workspace includes images no run of this
+    tree produced — and a derived band read off a museum `.config` fails pins
+    that pass against every image the run actually built. Tier 2 was red three
+    nights on exactly that (images still carrying the pre-0852 0-31 zenoh band,
+    transport [14, 14]). The lane knows which leaves it built, so it says so.
+
+    A listed dir with no `.config` is an ERROR, not a skip: the lane only gets
+    here after every listed leaf built, so a missing `.config` means the list
+    and the build disagree, and silently checking fewer images is how a green
+    comes to mean less than it looks.
+    """
+    configs, missing = [], []
+    for raw in Path(listing).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        p = Path(line)
+        cfg = p if p.name == ".config" else p / "zephyr" / ".config"
+        (configs if cfg.is_file() else missing).append(cfg)
+    return configs, missing
+
+
+def check_many(configs, sched_task_key, plans, origin, listed):
+    """Judge `configs`; `listed` says whether the caller BUILT them.
+
+    A STALE image means different things in the two modes. Discovered, it is
+    residue the workspace happens to hold: reported, never judged. Listed, the
+    caller just built it, so a `.config` still carrying an old default means the
+    build did not re-run configure after the default moved — a missing edge,
+    and a failure, not residue.
+    """
+    plan = plans.get(sched_task_key)
+    if plan is None or not plan.get("derived"):
+        print(f"{sched_task_key!r} has no DERIVED plan")
+        return 2
+    if not selftest():
+        return 1
+    bringups = image_bringups()
+    rc, total, failed = 0, 0, []
+    states = {"judged": 0, "stale": 0, "noband": 0, "error": 0, "unattributed": 0}
+    judged_bringups = set()
+    print(f"check-sched-task-priority-plan-image: {len(configs)} image(s) ({origin})")
+    for c in configs:
+        r, n, state = check_one(c, sched_task_key, plans, bringups)
+        if state == "judged":
+            judged_bringups.add(bringups[c.parent.parent.name])
+        if state in ("stale", "unattributed") and listed:
+            # Listed means BUILT by this run from a manifest record, so a dir
+            # the manifest does not name is the list and the manifest
+            # disagreeing — checking fewer images than were built.
+            r = 1
+        if r:
+            failed.append(c.parent.parent.name)
+        rc = max(rc, r)
+        total += n
+        states[state] += 1
+    if states["stale"] and listed:
+        print(f"\n  {states['stale']} image(s) this run BUILT still carry an old "
+              f"default: the build did not re-run configure after it moved. "
+              f"`cmake <build-dir>` re-runs it in place.")
+    elif states["stale"] and not states["judged"]:
+        # issue 0599's rule one step on: "checked nothing" must not read as
+        # "checked". Nothing here was judged, and the images that COULD
+        # carry a band are the stale ones — the rest apply none — so
+        # rebuilding them is what would produce evidence. A precondition,
+        # and unmet preconditions fail.
+        print(f"\n  no image was judged: the {states['stale']} that could carry "
+              f"a band are STALE, and the other {states['noband']} apply none. "
+              f"Rebuild the stale ones (`just zephyr build-fixtures`), or "
+              f"`cmake <build-dir>` to re-run configure in place.")
+        rc = max(rc, 1)
+    unjudged = sorted({str(p[0]) for p in scan_pins()
+                       if p[2] == sched_task_key and p[0] not in judged_bringups})
+    if unjudged:
+        # Reported, not failed: a filtered lane legitimately builds a subset.
+        # What it must not do is read as checked — before issue 1583 these
+        # pins were "checked" against whatever unrelated image was present.
+        print(f"\n  NOT JUDGED — no current image here was built from these "
+              f"bringup(s), so their {sched_task_key} pins were checked against nothing:")
+        for u in unjudged:
+            print(f"    {u}")
+    verdict = "FAILED" if rc else "OK"
+    print(f"\ntier-priority-plan-image: {verdict} "
+          f"({total} pin-check(s) over {states['judged']} current image(s); "
+          f"{states['stale']} STALE, {states['noband']} NO BAND, "
+          f"{states['unattributed']} NO ROW)")
+    if failed:
+        # Named in the LAST lines on purpose: a failing lane prints the tail of
+        # this output, and the per-image [FAIL] blocks are above it. The tier-2
+        # log showed forty `[ok]` lines and a bare FAILED, with every failing
+        # image scrolled off.
+        print(f"  failing image(s): {', '.join(failed)}")
+    return rc
+
+
+SCHED_TASK_SPEC_RE = re.compile(r'\.name\s*=\s*"([^"]*)",[^}]*?\.priority\s*=\s*(-?\d+)LL', re.S)
+
+
+def entry_sched_task_priorities(tu_text):
+    """`{tier name: priority}` from a generated entry's tier spec table."""
+    m = re.search(r"SchedTaskSpec\s+__nros_sched_tasks\[\d+\]\s*=\s*\{(.*?)\n\};", tu_text, re.S)
+    if m is None:
+        return {}
+    return {name: int(prio) for name, prio in SCHED_TASK_SPEC_RE.findall(m.group(1))}
+
+
+def check_derived_plan(record, resolved, tu_text=None):
+    """The findings of holding one priority record to one resolved image plan
+    (and, given, to the generated entry's tier table). Empty means it holds."""
+    errs = []
+    if "error" in resolved:
+        return [f"cannot resolve the image's plan: {resolved['error']}"]
+    if "unapplied" in resolved:
+        if record["plan"].get("from_image"):
+            errs.append("the record says its plan came from the image, but the "
+                        f"image applies no transport priority: {resolved['unapplied']}")
+        return errs
+    plan = record["plan"]
+    if not plan.get("from_image"):
+        errs.append("the record's plan is the tier key's projection, not the image's "
+                    "(the entry was generated without --dotconfig)")
+    lo, hi = resolved["reserved"]["transport"]
+    rec_t = plan.get("reserved", {}).get("transport")
+    if rec_t is None or tuple(rec_t) != (lo, hi):
+        errs.append(f"transport band: record {rec_t}, image [{lo}, {hi}]")
+    plo, phi = resolved["pool"]["app"]
+    if tuple(plan["app"]) != (plo, phi):
+        errs.append(f"pool.app: record {plan['app']}, image [{plo}, {phi}]")
+    smaller = plan.get("direction", "smaller-is-urgent") == "smaller-is-urgent"
+    above = (lambda a, b: a < b) if smaller else (lambda a, b: a > b)
+    edge = lo if smaller else hi
+    for t in record.get("tiers", []):
+        if t["origin"] not in ("derived", "allocated"):
+            continue
+        p = t["priority"]
+        if t.get("above_transport"):
+            # RFC-0079 section 6: the tier names `above = "transport"`
+            # (issue 1967), so it is allocated above the transport, never on
+            # it and never cooperative.
+            if not above(p, edge):
+                errs.append(f"tier {t['name']} names the transport band but runs at {p}, "
+                            f"not above the transport band [{lo}, {hi}]")
+            if smaller and p < 0:
+                errs.append(f"tier {t['name']} at {p} is cooperative")
+            continue
+        if not plo <= p <= phi:
+            errs.append(f"tier {t['name']} ({t['origin']}) at {p} is outside "
+                        f"pool.app [{plo}, {phi}]")
+        if lo <= p <= hi:
+            errs.append(f"tier {t['name']} ({t['origin']}) at {p} is ON the "
+                        f"transport band [{lo}, {hi}]")
+    sup = record.get("supervisor_priority")
+    if sup is not None:
+        for t in record.get("tiers", []):
+            if not above(sup, t["priority"]):
+                errs.append(f"the supervisor's priority {sup} is not above tier "
+                            f"{t['name']} ({t['priority']})")
+        if not above(sup, edge):
+            errs.append(f"the supervisor's priority {sup} is not above the transport [{lo}, {hi}]")
+    if tu_text is not None:
+        ran = entry_sched_task_priorities(tu_text)
+        want = {t["name"]: t["priority"] for t in record.get("tiers", [])}
+        if ran != want:
+            errs.append(f"the generated entry runs {ran}, the record says {want}")
+    return errs
+
+
+def derived_plan_main(record_path, dotconfig, tu_path=None):
+    import json
+    record = json.loads(Path(record_path).read_text(encoding="utf-8"))
+    resolved = resolve_zephyr_plan(dotconfig)
+    tu_text = Path(tu_path).read_text(encoding="utf-8") if tu_path else None
+    errs = check_derived_plan(record, resolved, tu_text)
+    tiers = ", ".join(f"{t['name']} {t['priority']} ({t['origin']}"
+                      + (", above the transport" if t.get("above_transport") else "") + ")"
+                      for t in record.get("tiers", [])) or "no tier"
+    if record.get("supervisor_priority") is not None:
+        tiers += f"; supervisor {record['supervisor_priority']}"
+    band = (f"transport {list(resolved['reserved']['transport'])}, pool.app "
+            f"{list(resolved['pool']['app'])}" if "reserved" in resolved else "no band")
+    if errs:
+        print(f"  [FAIL] {record_path}: {band}; {tiers}")
+        for e in errs:
+            print(f"        {e}")
+        return 1
+    print(f"  [ok]   {record_path}: {band}; {tiers}"
+          + ("; the generated entry agrees" if tu_text is not None else ""))
+    return 0
+
+
+def main(argv):
+    if len(argv) > 1 and argv[1] == "--selftest":
+        return 0 if selftest() else 1
+    if len(argv) > 1 and argv[1] == "--derived-plan":
+        if len(argv) not in (4, 5):
+            print("usage: --derived-plan <nros_priority_plan.json> <.config> [<entry TU>]")
+            return 2
+        return derived_plan_main(argv[2], Path(argv[3]), argv[4] if len(argv) == 5 else None)
+    plans = load_plans()
+    sched_task_key = "zephyr"
+    if len(argv) >= 3 and argv[1] == "--images-from":
+        configs, missing = images_from(argv[2])
+        if len(argv) > 3:
+            sched_task_key = argv[3]
+        if missing:
+            print("check-sched-task-priority-plan-image: listed image(s) have no .config:")
+            for m in missing:
+                print(f"  {m}")
+            return 2
+        if not configs:
+            print(f"check-sched-task-priority-plan-image: {argv[2]} names no image — "
+                  "the caller built nothing, so there is nothing to check")
+            return 2
+        return check_many(configs, sched_task_key, plans, f"listed in {argv[2]}",
+                          listed=True)
+    if len(argv) < 2:
+        # Discovery mode (the operator's `just check sched-task-priority-plan-image`):
+        # every image the workspace holds. A tree with no Zephyr workspace
+        # SKIPS loudly rather than passing — issue 0599's rule, and the
+        # difference between "checked nothing" and "checked". Lanes do NOT use
+        # this mode: they name the images they built (`--images-from`).
+        configs = discover()
+        if not configs:
+            print("check-sched-task-priority-plan-image: SKIPPED — no built Zephyr image "
+                  "found (run `just zephyr setup` then `just zephyr build-fixtures`).")
+            print("  The DEFERRED pins reported by check-sched-task-priority-plan stay "
+                  "unchecked on this host.")
+            return 0
+        return check_many(configs, sched_task_key, plans, "every image in the workspace",
+                          listed=False)
+    dotconfig = Path(argv[1])
+    sched_task_key = argv[2] if len(argv) > 2 else "zephyr"
+    if not dotconfig.is_file():
+        print(f"no such .config: {dotconfig}")
+        return 2
+
+    plans = load_plans()
+    plan = plans.get(sched_task_key)
+    if plan is None or not plan.get("derived"):
+        print(f"{sched_task_key!r} has no DERIVED plan — use check-sched-task-priority-plan")
+        return 2
+
+    bringup = image_bringups().get(dotconfig.parent.parent.name, UNATTRIBUTED)
+    if bringup is UNATTRIBUTED:
+        print(f"sched-task-priority-plan-image ({sched_task_key}): {dotconfig.parent.parent.name} "
+              f"is built by no examples/fixtures.toml row, so no bringup's pins can "
+              f"be attributed to it (issue 1583: a pin is judged only against the "
+              f"images built from its own bringup)")
+        return 2
+
+    reasons = stale_band_reasons(dotconfig)
+    if reasons:
+        print(f"sched-task-priority-plan-image ({sched_task_key}): STALE image — cannot judge "
+              f"it against this tree")
+        for r in reasons:
+            print(f"  {r}")
+        print(f"  `cmake {dotconfig.parent.parent}` re-runs configure from the "
+              f"cached settings and regenerates the .config in place.")
+        return 2
+    resolved = RESOLVERS[plan["derived"]](dotconfig)
+    if "error" in resolved:
+        print(f"cannot resolve: {resolved['error']}")
+        return 2
+    if "unapplied" in resolved:
+        print(f"sched-task-priority-plan-image ({sched_task_key}): NO BAND in this image")
+        print(f"  {resolved['unapplied']}")
+        print(f"  from: {resolved['derived_from']}")
+        return 1
+
+    d = resolved["detail"]
+    print(f"resolved from {resolved['derived_from']}")
+    for name, v in sorted(d.items()):
+        print(f"  {name:6s} band {v['band']:3d} -> posix {v['posix']:3d} "
+              f"-> k_thread {v['kthread']:3d}")
+    lo, hi = resolved["reserved"]["transport"]
+    plo, phi = resolved["pool"]["app"]
+    print(f"  reserved.transport = [{lo}, {hi}]   pool.app = [{plo}, {phi}]   "
+          f"range = {resolved['range']}")
+    print(f"  bringup: {bringup if bringup else '(none - this row builds no bringup)'}")
+
+    errors, ok = [], 0
+    for rel, tier, plat, prio, above in pins_for(bringup, sched_task_key):
+        where = f"{rel}: tiers.{tier}.{plat} = {prio}"
+        if lo <= prio <= hi:
+            errors.append(f"{where} lands ON the reserved transport band "
+                          f"[{lo}, {hi}] resolved for this image")
+        elif prio < lo:  # smaller-is-urgent
+            if above == "transport":
+                print(f"  DECLARED  {where} preempts transport by declaration")
+            else:
+                errors.append(
+                    f"{where} is MORE URGENT than the transport band [{lo}, {hi}] "
+                    f"and does not say so.\n"
+                    f"      Move it into pool.app [{plo}, {phi}], or state the "
+                    f'choice with `above = "transport"` on [tasks.{tier}].')
+        else:
+            ok += 1
+
+    if errors:
+        print(f"\ntier-priority-plan-image ({sched_task_key}): FAILED")
+        for e in errors:
+            print(f"  {e}")
+        return 1
+    print(f"\ntier-priority-plan-image ({sched_task_key}): OK ({ok} pin(s) "
+          f"checked against this image)")
+    return 0
+
+
+def selftest():
+    """The staleness rule's own negative control, run on the normal path.
+
+    This rule fails SILENT if it breaks: `kconfig_default` returning None turns
+    every comparison off and every image back into a judged one. So the REAL
+    zephyr/Kconfig must yield an integer for both band inputs, and the synthetic
+    cases must come out the way they are written — including the three
+    "cannot tell" cases that must answer "not stale".
+    """
+    import tempfile
+    fails = []
+
+    def expect(name, got, want):
+        if got != want:
+            fails.append(f"{name}: got {got!r}, want {want!r}")
+
+    for key in BAND_DEFAULTED:
+        v = kconfig_default(key)
+        if not isinstance(v, int):
+            fails.append(f"real zephyr/Kconfig: no integer default for {key} "
+                         f"(got {v!r}) — the stale check would be silently OFF")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        kc = d / "Kconfig"
+        kc.write_text(
+            "config NROS_ZENOH_READ_PRIORITY\n"
+            "    int \"read\"\n"
+            "    default 200\n"
+            "    help\n"
+            "      default 999 is help text, not an attribute.\n"
+            "\n"
+            "config NROS_ZENOH_OTHER_PRIORITY\n"
+            "    int \"other\"\n"
+            "    default 100 if SOMETHING\n"
+            "    default 200\n")
+        expect("a plain default",
+               kconfig_default("CONFIG_NROS_ZENOH_READ_PRIORITY", kc), 200)
+        expect("a conditional default is not one fact",
+               kconfig_default("CONFIG_NROS_ZENOH_OTHER_PRIORITY", kc), None)
+        kc_cond = d / "Kconfig.cond"
+        kc_cond.write_text(
+            "config NROS_ZENOH_READ_PRIORITY\n"
+            "    int \"read\"\n"
+            "    default 100 if SOMETHING\n"
+            "    default 200\n")
+
+        def image(name, dotconfig, confs, cache=True):
+            b = d / name
+            (b / "zephyr").mkdir(parents=True)
+            (b / "zephyr" / ".config").write_text(dotconfig)
+            app = d / f"{name}-app"
+            app.mkdir()
+            for fn, body in confs.items():
+                (app / fn).write_text(body)
+            if cache:
+                (b / "CMakeCache.txt").write_text(
+                    f"APPLICATION_SOURCE_DIR:PATH={app}\n"
+                    f"CONF_FILE:STRING={';'.join(confs)}\n")
+            return b / "zephyr" / ".config"
+
+        READ16 = "CONFIG_NROS_ZENOH_READ_PRIORITY=16\n"
+        expect("a value equal to the default is current",
+               stale_band_reasons(image("cur", "CONFIG_NROS_ZENOH_READ_PRIORITY=200\n",
+                                        {"prj.conf": ""}), kc), [])
+        expect("an old default that no conf sets is STALE",
+               len(stale_band_reasons(image("old", READ16,
+                                            {"prj.conf": "CONFIG_FOO=y\n"}), kc)), 1)
+        expect("a conf that sets it is an OVERRIDE, not staleness",
+               stale_band_reasons(image("ovr", READ16, {"prj.conf": READ16}), kc), [])
+        expect("no CMakeCache is UNKNOWN, never stale",
+               stale_band_reasons(image("unk", READ16, {"prj.conf": ""}, cache=False), kc), [])
+        expect("an absent symbol has nothing to compare",
+               stale_band_reasons(image("abs", "CONFIG_FOO=y\n", {"prj.conf": ""}), kc), [])
+        def stated(cfg, value):
+            nros = cfg.parent.parent / "nros"
+            nros.mkdir()
+            (nros / "Kconfig.from-system-toml").write_text(
+                "# env NROS_ZENOH_READ_PRIORITY\n"
+                "config NROS_ZENOH_READ_PRIORITY\n"
+                f"    int\n    default {value}\n")
+            return cfg
+        expect("a band the image's system.toml states is current (phase-484 W5b)",
+               stale_band_reasons(stated(image("toml", READ16, {"prj.conf": ""}), 16),
+                                  kc), [])
+        expect("a .config older than the system.toml value it was rendered from is STALE",
+               len(stale_band_reasons(stated(image("toml-old", READ16,
+                                                   {"prj.conf": ""}), 100), kc)), 1)
+        expect("no single default means no comparison",
+               stale_band_reasons(image("cond", READ16, {"prj.conf": ""}), kc_cond), [])
+
+        # phase-459 W4 (issue 1427) - the BAND ITSELF, not just the staleness
+        # rule around it. `realize_rtos` now allocates a derived tier out of
+        # `pool.app`, and the Rust half of that arithmetic
+        # (`packages/core/nros-orchestration-ir/src/priority_plan.rs`) is a
+        # second implementation of `resolve_zephyr_plan`. This file is the
+        # CHECKER of it, so the two must agree on the measured case: the
+        # island's image, 15 preemptive priorities with the zenoh band at its
+        # nano-ros default, puts the transport at k_thread 4 and leaves the
+        # application [5, 14] (one band since RFC-0110 D2: zenoh-pico 1.10 has
+        # no lease task). The Rust test
+        # `priority_plan_resolves_the_island_band_from_a_dotconfig` asserts the
+        # same triple.
+        ISLAND = ("CONFIG_NUM_PREEMPT_PRIORITIES=15\n"
+                  "CONFIG_NUM_COOP_PRIORITIES=16\n"
+                  "CONFIG_POSIX_PRIORITY_SCHEDULING=y\n"
+                  "CONFIG_PREEMPT_ENABLED=y\n"
+                  "CONFIG_NROS_ZENOH_READ_PRIORITY=200\n")
+        island = resolve_zephyr_plan(image("island", ISLAND, {"prj.conf": ""}))
+        expect("the island's transport band",
+               island["reserved"]["transport"], (4, 4))
+        expect("the island's application pool", island["pool"]["app"], (5, 14))
+        expect("the island's usable range", island["range"], (-16, 14))
+
+        # The negative control, and the reason the pool is checked at all: the
+        # pre-0852 band (16 on the 0-255 scale) resolves k_thread 14 - the
+        # least urgent preemptive priority - so the transport owns [14, 14] and
+        # `pool.app` is EMPTY. A derived tier has nowhere to go, which is what
+        # the realizer reports instead of allocating outside the plan.
+        stale_cfg = ISLAND.replace("READ_PRIORITY=200", "READ_PRIORITY=16")
+        stale = resolve_zephyr_plan(image("stale-band", stale_cfg, {"prj.conf": ""}))
+        expect("the pre-0852 transport band",
+               stale["reserved"]["transport"], (14, 14))
+        expect("the pre-0852 pool is empty", stale["pool"]["app"], (15, 14))
+
+        # RFC-0079 section 5 - `--derived-plan`: a record of one allocated
+        # tier at 5 on an image whose transport is [4, 4] holds; the same
+        # record against the stale band, a tier on the band, a projection,
+        # and a generated entry that runs another number do not.
+        CUR = ISLAND
+        cur = resolve_zephyr_plan(image("island-cur", CUR, {"prj.conf": ""}))
+        rec = {"plan": {"reserved": {"transport": [4, 4]}, "app": [5, 14],
+                        "from_image": True},
+               "tiers": [{"name": "mrm", "priority": 5, "origin": "allocated"}]}
+        tu = ('static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[1] = {\n'
+              '    {\n        .name = "mrm",\n        .groups = g,\n'
+              '        .n_groups = 3u,\n        .priority = 5LL,\n    },\n};\n')
+        expect("a record that matches its image holds",
+               check_derived_plan(rec, cur, tu), [])
+        expect("the generated entry's table is read",
+               entry_sched_task_priorities(tu), {"mrm": 5})
+        expect("a record against another image's band does not",
+               len(check_derived_plan(rec, stale)) > 0, True)
+        on_band = {**rec, "tiers": [{"name": "mrm", "priority": 4,
+                                     "origin": "allocated"}]}
+        expect("an allocated tier on the transport band does not",
+               len(check_derived_plan(on_band, cur)), 2)
+        proj = {**rec, "plan": {**rec["plan"], "from_image": False}}
+        expect("a projection is not the image's plan",
+               len(check_derived_plan(proj, cur)), 1)
+        expect("a generated entry running another number does not",
+               len(check_derived_plan(rec, cur, tu.replace("5LL", "3LL"))), 1)
+        # RFC-0079 section 6: a tier that names the transport runs above it,
+        # the supervisor above the tier; the same tier below the transport,
+        # or a supervisor under the tier, does not hold. A tier that does not
+        # name it stays in pool.app, supervised or not, and the supervisor
+        # still runs above the transport (issue 1967).
+        lifted = {**rec, "tiers": [{"name": "mrm", "priority": 3, "origin": "allocated",
+                                    "above_transport": True}],
+                  "supervisor_priority": 2}
+        expect("a named tier above the transport holds",
+               check_derived_plan(lifted, cur, tu.replace("5LL", "3LL")), [])
+        sunk = {**lifted, "tiers": [{**lifted["tiers"][0], "priority": 5}]}
+        expect("a named tier below the transport does not",
+               len(check_derived_plan(sunk, cur)) > 0, True)
+        low_sup = {**lifted, "supervisor_priority": 3}
+        expect("a supervisor not above its tier does not",
+               len(check_derived_plan(low_sup, cur)), 1)
+        pooled = {**rec, "supervisor_priority": 3}
+        expect("an unnamed tier in pool.app, its supervisor above the transport, holds",
+               check_derived_plan(pooled, cur, tu), [])
+        sup_on = {**rec, "supervisor_priority": 4}
+        expect("a supervisor on the transport band does not",
+               len(check_derived_plan(sup_on, cur)), 1)
+
+    # RFC-0071 D2 - the Rust twin is a CORE crate, so it may not read the
+    # transport's Kconfig symbols by name: it is handed the normalised bands,
+    # and carries ONE number of its own for the case where no image is in hand
+    # (`ZEPHYR_TRANSPORT_BAND_DEFAULT`). That number is the platform default,
+    # and a second copy of a number is only safe while something compares it -
+    # so this is the comparison. The symbols themselves are named HERE, where
+    # backends are known, and by the board descriptor's `inputs`.
+    rust_default = None
+    rust_src = ROOT / "packages/core/nros-orchestration-ir/src/priority_plan.rs"
+    try:
+        text = rust_src.read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    m = re.search(r"ZEPHYR_TRANSPORT_BAND_DEFAULT:\s*i64\s*=\s*(\d+)\s*;", text)
+    if m is None:
+        fails.append(f"{rust_src.relative_to(ROOT)}: no "
+                     "ZEPHYR_TRANSPORT_BAND_DEFAULT to check - the core's "
+                     "default band is unverified")
+    else:
+        rust_default = int(m.group(1))
+        for key in BAND_DEFAULTED:
+            want = kconfig_default(key)
+            expect(f"the core's default band against {key}", rust_default, want)
+
+    # Issue 1583 — the ATTRIBUTION, against the real manifest and the real
+    # pins. It fails silent in two directions if it breaks: a pin attributed
+    # to no row is never judged anywhere (a "NOT JUDGED" line nobody reads on
+    # a green lane), and a row attributed to the wrong bringup judges the
+    # wrong pins. So every bringup that authors a zephyr pin must be built by
+    # at least one Zephyr row, every attributed system.toml must exist, and the
+    # measured case must come out the way it was measured: the derived-tier
+    # image carries no authored pin, its demo sibling carries the two.
+    try:
+        bringups = image_bringups()
+    except Exception as e:  # noqa: BLE001 — any failure here IS the finding
+        fails.append(f"examples/fixtures.toml: attribution unreadable ({e})")
+        bringups = {}
+    attributed = {b for b in bringups.values() if b is not None}
+    for b in sorted(attributed):
+        if not (ROOT / b).is_file():
+            fails.append(f"a Zephyr row names bringup {b}, which does not exist")
+    pinned = sorted({p[0] for p in scan_pins() if p[2] == "zephyr"})
+    for b in pinned:
+        if b not in attributed:
+            fails.append(f"{b} authors [tasks.*.zephyr] pins but no Zephyr row in "
+                         f"examples/fixtures.toml builds that bringup — they can "
+                         f"never be judged against an image")
+    derived = bringups.get("build-ws-rs-realtime-derived-entry-zenoh", UNATTRIBUTED)
+    expect("the derived-tier image's bringup", str(derived),
+           "examples/workspaces/realtime-rust/src/derived_bringup/system.toml")
+    if derived not in (None, UNATTRIBUTED):
+        expect("the derived-tier image carries no authored zephyr pin",
+               pins_for(derived, "zephyr"), [])
+    demo = bringups.get("build-ws-rs-realtime-entry-zenoh", UNATTRIBUTED)
+    if demo not in (None, UNATTRIBUTED):
+        expect("its demo sibling carries the two authored pins",
+               len(pins_for(demo, "zephyr")), 2)
+    else:
+        fails.append("build-ws-rs-realtime-entry-zenoh: no bringup attributed")
+
+    if fails:
+        print("check-sched-task-priority-plan-image --selftest: FAILED")
+        for f in fails:
+            print(f"  {f}")
+        return False
+    print("check-sched-task-priority-plan-image --selftest: OK "
+          "(real zephyr/Kconfig parses; 23 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig; every zephyr pin's\n"
+          "  bringup is built by a manifest row, the derived-tier image by its own)")
+    return True
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

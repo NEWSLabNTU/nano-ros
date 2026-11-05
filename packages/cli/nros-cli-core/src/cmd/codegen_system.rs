@@ -40,8 +40,9 @@ use crate::orchestration::{
     capability_resolver,
     cargo_metadata_schema::{SystemComponentEntry, SystemToml, validate_and_warn_capabilities},
     nros_config::{BringupPackageEntry, NrosConfig},
-    tier_resolver::{
-        ResolvedTierTable, collect_callback_groups, derive_target_platform, resolve_system_tiers,
+    sched_task_resolver::{
+        ResolvedSchedTaskTable, collect_callback_groups, derive_target_platform,
+        resolve_system_sched_tasks,
     },
 };
 
@@ -263,9 +264,9 @@ fn resolve_target_block(
 /// block of the bringup being baked; otherwise the bake is refused, naming the
 /// blocks it could have named.
 ///
-/// Before this, `tier_resolver::target_board_id` found nothing for such an id
+/// Before this, `sched_task_resolver::target_board_id` found nothing for such an id
 /// and `derive_target_platform` answered the host's `posix`, so the only trace
-/// of the mistake was a Zephyr image whose `run_tiers` table carried
+/// of the mistake was a Zephyr image whose `run_sched_tasks` table carried
 /// `[tasks.*.posix]` priorities (issue 1312 measured it; issue 1396 gated the
 /// build shims and could not gate a hand-run). The build shims are unaffected:
 /// the Zephyr, ESP-IDF and PlatformIO ones ask `--for-entry`, and the NuttX
@@ -322,7 +323,7 @@ mod resolve_target_block_tests {
     /// Neither path is read when `--target` is given; the refusal is decided
     /// from the parsed bringup alone.
     fn resolve(target: Option<&str>, s: &SystemToml) -> Result<Option<String>> {
-        let nowhere = Path::new("/nonexistent/derived-tiers-cpp");
+        let nowhere = Path::new("/nonexistent/derived-sched-tasks-cpp");
         resolve_target_block(target, None, s, nowhere, &nowhere.join("src/demo_bringup"))
     }
 
@@ -437,7 +438,7 @@ pub fn run(args: Args) -> Result<()> {
     // of it, and so is what the executor capacity check reads below. The block
     // id is the author's namespace and answers neither question.
     let target_platform = {
-        let catalog = if crate::orchestration::tier_resolver::target_board_id(
+        let catalog = if crate::orchestration::sched_task_resolver::target_board_id(
             &bringup.system,
             target.as_deref(),
         )
@@ -468,7 +469,7 @@ pub fn run(args: Args) -> Result<()> {
         derive_target_platform(&bringup.system, target.as_deref(), &catalog)
             .map_err(|e| eyre::eyre!("codegen-system: {e}"))?
     };
-    let target_rtos = target_platform.tier_rtos_key().to_string();
+    let target_rtos = target_platform.sched_task_rtos_key().to_string();
     // phase-304 W2 (RFC-0056) — resolve + VALIDATE the declared ROS edition
     // (typo guard: an unknown `[system].ros_edition` fails the bake loudly, not
     // a silent humble fallback). Recorded so the operator sees the axis the
@@ -581,7 +582,7 @@ pub fn run(args: Args) -> Result<()> {
         // it, on sched contexts that entry creates, so no context id is known
         // here. Say so per moved tier rather than drop it.
         if !model_modes.is_empty() {
-            let moved = nros_orchestration_ir::mode_variants::mode_tier_deadlines(
+            let moved = nros_orchestration_ir::mode_variants::mode_sched_task_deadlines(
                 &model,
                 &target_rtos,
                 &callback_groups,
@@ -762,17 +763,21 @@ pub fn run(args: Args) -> Result<()> {
         }
         bringup
     };
-    let tier_table = resolve_system_tiers(&bringup.system, &callback_groups, &target_rtos)
-        .map_err(|e| eyre::eyre!("tier resolution: {e}"))?;
+    let sched_task_table =
+        resolve_system_sched_tasks(&bringup.system, &callback_groups, &target_rtos)
+            .map_err(|e| eyre::eyre!("tier resolution: {e}"))?;
     // RFC-0052 W2 — bake-time reject for knobs the selected target can't honor.
-    nros_orchestration_ir::validate_tier_platform_applicability(&tier_table, &target_rtos)
-        .map_err(|e| eyre::eyre!(e))?;
+    nros_orchestration_ir::validate_sched_task_platform_applicability(
+        &sched_task_table,
+        &target_rtos,
+    )
+    .map_err(|e| eyre::eyre!(e))?;
     // phase-509 P8 (RFC-0108 D8.3) -- a blocking call whose server cannot
     // preempt the client, the same refusal the entry road and `nros::main!`
     // make. Until P9 a level is a tier.
     if let Some(model) = &call_model {
-        let levels = nros_orchestration_ir::blocking_calls::ImageLevels::from_tiers(
-            &tier_table,
+        let levels = nros_orchestration_ir::blocking_calls::ImageLevels::from_sched_tasks(
+            &sched_task_table,
             nros_orchestration_ir::rtos_realizer::sched_caps_for(&target_rtos).low_number_is_high,
             bringup.system.components.iter().map(|c| c.name.as_str()),
         );
@@ -804,7 +809,7 @@ pub fn run(args: Args) -> Result<()> {
     // slowest tier's spin (the same refusal `nros::main!` and the entry road
     // make).
     if let Some(model) = &switch_model {
-        let periods: Vec<(String, u64)> = tier_table
+        let periods: Vec<(String, u64)> = sched_task_table
             .tiers
             .iter()
             .map(|t| {
@@ -851,7 +856,7 @@ pub fn run(args: Args) -> Result<()> {
         target.as_deref(),
         args.rmw.as_deref(),
         resolved_launch.as_deref(),
-        &tier_table,
+        &sched_task_table,
         model_monitors,
         model_ages,
         model_hazards,
@@ -1085,7 +1090,7 @@ fn emit_bake_tree(
     target: Option<&str>,
     cli_rmw: Option<&str>,
     resolved_launch: Option<&str>,
-    tier_table: &ResolvedTierTable,
+    sched_task_table: &ResolvedSchedTaskTable,
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
     ages: Vec<crate::orchestration::model_ingest::AgeRow>,
     hazards: Vec<crate::orchestration::model_ingest::HazardRow>,
@@ -1170,7 +1175,7 @@ fn emit_bake_tree(
             component_kinds,
             target,
             resolved_launch,
-            tier_table,
+            sched_task_table,
             monitors,
             ages,
             transports,
@@ -1379,7 +1384,7 @@ struct PlanDoc<'a> {
     /// Phase 228.B — resolved per-tier table. Omitted in the single-tier
     /// degenerate case so the bake output stays byte-identical to pre-228.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tiers: Vec<PlanTierDoc<'a>>,
+    tiers: Vec<PlanSchedTaskDoc<'a>>,
     /// Issue 0259 — what the realizer concluded while deriving this schedule.
     /// Omitted when empty so a plan with no verdicts stays byte-identical to
     /// one produced before this field existed.
@@ -1388,7 +1393,7 @@ struct PlanDoc<'a> {
 }
 
 #[derive(Serialize)]
-struct PlanTierDoc<'a> {
+struct PlanSchedTaskDoc<'a> {
     name: &'a str,
     priority: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1413,11 +1418,11 @@ struct PlanTierDoc<'a> {
     deadline_us: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     deadline_policy: Option<&'a str>,
-    members: Vec<PlanTierMember<'a>>,
+    members: Vec<PlanSchedTaskMember<'a>>,
 }
 
 #[derive(Serialize)]
-struct PlanTierMember<'a> {
+struct PlanSchedTaskMember<'a> {
     node: &'a str,
     group: &'a str,
 }
@@ -1431,7 +1436,7 @@ fn render_plan_json(
     component_kinds: &[(String, ComponentLang)],
     target: Option<&str>,
     resolved_launch: Option<&str>,
-    tier_table: &ResolvedTierTable,
+    sched_task_table: &ResolvedSchedTaskTable,
     monitors: Vec<crate::orchestration::model_ingest::MonitorRow>,
     ages: Vec<crate::orchestration::model_ingest::AgeRow>,
     transports: Vec<crate::orchestration::plan::PlanTransport>,
@@ -1477,13 +1482,13 @@ fn render_plan_json(
         .collect();
 
     // Degenerate single-tier → omit (keeps pre-228 bake output byte-identical).
-    let tiers: Vec<PlanTierDoc> = if tier_table.is_single_tier() {
+    let tiers: Vec<PlanSchedTaskDoc> = if sched_task_table.is_single_sched_task() {
         Vec::new()
     } else {
-        tier_table
+        sched_task_table
             .tiers
             .iter()
-            .map(|t| PlanTierDoc {
+            .map(|t| PlanSchedTaskDoc {
                 name: &t.name,
                 priority: t.priority,
                 stack_bytes: t.stack_bytes,
@@ -1499,7 +1504,7 @@ fn render_plan_json(
                 members: t
                     .members
                     .iter()
-                    .map(|(node, group)| PlanTierMember { node, group })
+                    .map(|(node, group)| PlanSchedTaskMember { node, group })
                     .collect(),
             })
             .collect()
@@ -1669,8 +1674,8 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
     );
     // PX4 side-car plan: no NrosConfig here (callback groups unavailable), so
     // the tier table is the degenerate single tier (omitted from the json).
-    let px4_tiers = resolve_system_tiers(&bringup.system, &BTreeMap::new(), "posix")
-        .unwrap_or(ResolvedTierTable { tiers: Vec::new() });
+    let px4_sched_tasks = resolve_system_sched_tasks(&bringup.system, &BTreeMap::new(), "posix")
+        .unwrap_or(ResolvedSchedTaskTable { tiers: Vec::new() });
     write_if_changed(
         &out_dir.join("nros-plan.json"),
         &render_plan_json(
@@ -1681,7 +1686,7 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
             &kinds,
             Some("px4"),
             None,
-            &px4_tiers,
+            &px4_sched_tasks,
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -1974,7 +1979,7 @@ structure:
     /// Phase 228.B — two pinned nodes (control_node → high, telem_node → low)
     /// the system maps to `[tasks.*]` (v1 node-pinned-to-tier). The binding is
     /// `[[component]] group_tasks` (RFC-0047), never the node manifest.
-    fn write_tiered_workspace(dir: &Path) {
+    fn write_sched_task_workspace(dir: &Path) {
         fs::write(
             dir.join("Cargo.toml"),
             "[workspace]\nresolver = \"2\"\nmembers = [\"ctrl_pkg\", \"telem_pkg\"]\nexclude = [\"demo_bringup\"]\n\n[workspace.metadata.nros]\ndefault_system = \"demo_bringup\"\n",
@@ -2102,10 +2107,10 @@ execution:
     }
 
     #[test]
-    fn codegen_system_emits_resolved_tiers() {
+    fn codegen_system_emits_resolved_sched_tasks() {
         crate::test_support::isolate_model_discovery();
-        let dir = scratch_dir("emits_resolved_tiers");
-        write_tiered_workspace(&dir);
+        let dir = scratch_dir("emits_resolved_sched_tasks");
+        write_sched_task_workspace(&dir);
         let out = dir.join("build/demo_bringup");
         run(Args {
             workspace: Some(dir.clone()),
@@ -2144,7 +2149,7 @@ execution:
     fn codegen_system_refuses_a_manifest_callback_groups_binding() {
         crate::test_support::isolate_model_discovery();
         let dir = scratch_dir("refuses_manifest_callback_groups");
-        write_tiered_workspace(&dir);
+        write_sched_task_workspace(&dir);
         let manifest = dir.join("ctrl_pkg/Cargo.toml");
         let body = fs::read_to_string(&manifest).unwrap().replace(
             "name = \"control_node\"\n",
@@ -2175,7 +2180,7 @@ execution:
         );
     }
 
-    /// `write_tiered_workspace`, re-pointed at a ZEPHYR image (issue 1312).
+    /// `write_sched_task_workspace`, re-pointed at a ZEPHYR image (issue 1312).
     ///
     /// The bringup gains an `[image.*]` whose board the catalog resolves to
     /// Zephyr and which CLAIMS the west application beside it, and every tier
@@ -2183,8 +2188,8 @@ execution:
     /// bake read is readable off the output rather than inferred. The model
     /// carries them too, because a model's execution layer REPLACES the
     /// authored tiers before resolution (RFC-0052 W1).
-    fn write_zephyr_tiered_workspace(dir: &Path) {
-        write_tiered_workspace(dir);
+    fn write_zephyr_sched_task_workspace(dir: &Path) {
+        write_sched_task_workspace(dir);
         // The west application. Its NAME is what the image claims; this is the
         // `zephyr_app/` of the in-tree `multi_pkg_workspace_zephyr` fixture.
         fs::create_dir_all(dir.join("zephyr_app")).unwrap();
@@ -2282,10 +2287,10 @@ execution:
     /// verb, not just `resolve_target_block`, so the bake is proven to stop
     /// before it writes a plan.
     #[test]
-    fn a_zephyr_image_named_by_its_entry_bakes_the_zephyr_tier_table() {
+    fn a_zephyr_image_named_by_its_entry_bakes_the_zephyr_sched_task_table() {
         crate::test_support::isolate_model_discovery();
-        let dir = scratch_dir("zephyr_entry_tiers");
-        write_zephyr_tiered_workspace(&dir);
+        let dir = scratch_dir("zephyr_entry_sched_tasks");
+        write_zephyr_sched_task_workspace(&dir);
 
         let bake = |out: &Path, target: Option<&str>, for_entry: Option<String>| {
             run(Args {
@@ -2339,7 +2344,7 @@ execution:
         );
     }
 
-    /// `write_tiered_workspace`, re-pointed at TWO images whose block names
+    /// `write_sched_task_workspace`, re-pointed at TWO images whose block names
     /// disagree with the boards they build (issue 1397).
     ///
     /// `[image.rt_host]` builds the HOSTED board and `[image.linux]` builds a
@@ -2349,7 +2354,7 @@ execution:
     /// server), which derives twelve against a build default of four, so the
     /// capacity check has something to say about both.
     fn write_misnamed_image_workspace(dir: &Path) {
-        write_tiered_workspace(dir);
+        write_sched_task_workspace(dir);
         fs::write(
             dir.join("demo_bringup/system.toml"),
             r#"
@@ -2526,9 +2531,9 @@ execution:
     /// phase-296 W5.12 — a workspace whose committed model declares NO
     /// `execution.tasks`, only the CONTRACT layer (`node_paths` deadlines +
     /// pub rates). Same two pkgs (callback groups declared) as
-    /// `write_tiered_workspace`.
+    /// `write_sched_task_workspace`.
     fn write_derived_workspace(dir: &Path) {
-        write_tiered_workspace(dir);
+        write_sched_task_workspace(dir);
         // Drop the authored `[tasks.*]` from system.toml — the model derives them.
         fs::write(
             dir.join("demo_bringup/system.toml"),
@@ -2636,7 +2641,7 @@ contracts:
     /// realizer path from the verb, not just the `derive_execution_from_contracts`
     /// unit (W5.6).
     #[test]
-    fn codegen_system_derives_tiers_from_contract_model() {
+    fn codegen_system_derives_sched_tasks_from_contract_model() {
         crate::test_support::isolate_model_discovery();
         let dir = scratch_dir("derives_from_contracts");
         write_derived_workspace(&dir);

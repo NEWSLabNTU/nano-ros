@@ -20,7 +20,7 @@ spawn a task, size a lock, or decide whether a capability exists at all.
 
 Two work items hit this within one week and both worked *around* the ABI rather
 than through it. phase-359 W7 needed a task with a chosen stack size on NuttX
-and wrote a bespoke C shim (`nros_nuttx_spawn_tier`) because the ABI cannot
+and wrote a bespoke C shim (`nros_nuttx_spawn_sched_task`) because the ABI cannot
 express one. phase-359 W10 needed the same thing generically and had to add
 `nros_platform_task_storage_{size,align}` first, because `task_init`'s contract
 says "size determined by the implementor" and offered no way to ask.
@@ -225,7 +225,7 @@ Rules that make it portable rather than merely shared:
 * **`attr_init` rather than designated initialisers**, so adding a field later
   does not break source compatibility for out-of-tree ports.
 
-The three private structs are deleted. W7's `nros_nuttx_spawn_tier` shim
+The three private structs are deleted. W7's `nros_nuttx_spawn_sched_task` shim
 collapses into a plain `task_init` call with an attr, and W10's `PlatformTask`
 stops passing `NULL` — which is what makes it correct on ThreadX.
 
@@ -363,9 +363,9 @@ work items.
 | --- | --- | --- |
 | M1 | C3 — return vocabulary; narrow `nros_platform_ret_t`; ports return the specific codes | compile-only; no caller reads them yet |
 | M2 | C1 — probes + compile-time macros + static asserts for `mutex`/`mutex_rec`/`condvar`; delete the zenoh adapter's hand-computed table | the adapter compiles on every RTOS lane; a deliberately-wrong macro must fail the static assert |
-| M3 | C2 — public `nros_platform_task_attr_t`; `NULL` = defaults on every port; delete the three private structs; collapse `nros_nuttx_spawn_tier`; W10's `PlatformTask` passes a real attr | NuttX + FreeRTOS + ThreadX QEMU cells; the ThreadX `NULL` path is the one that must be run, not just built |
+| M3 | C2 — public `nros_platform_task_attr_t`; `NULL` = defaults on every port; delete the three private structs; collapse `nros_nuttx_spawn_sched_task`; W10's `PlatformTask` passes a real attr | NuttX + FreeRTOS + ThreadX QEMU cells; the ThreadX `NULL` path is the one that must be run, not just built |
 | M4 | C5 — generated export list + symbol-parity gate | the gate must fail on the current tree before it passes (the W10 task probes are the fixture) |
-| M5 | C4 — normalised priority + raw escape | `realtime_tiers_e2e` on NuttX and ThreadX; the inversion is only observable at runtime |
+| M5 | C4 — normalised priority + raw escape | `realtime_sched_tasks_e2e` on NuttX and ThreadX; the inversion is only observable at runtime |
 
 M1 and M2 are independent of the rest and of each other. M3 depends on M1 (it
 returns `UNSUPPORTED`). M4 should land before M5 so the priority change reaches

@@ -17,7 +17,7 @@
 //! The executor half -- a switch applies the deadline at the next spin and
 //! `mode-switch-runtime` judges a slow one -- is proved against a real
 //! executor in `nros-node`
-//! (`a_mode_switch_moves_the_tier_deadline_and_judges_its_latency`); this
+//! (`a_mode_switch_moves_the_sched_task_deadline_and_judges_its_latency`); this
 //! crate builds no executor under the command the phase names.
 
 use std::collections::BTreeMap;
@@ -26,7 +26,7 @@ use nros_orchestration_ir::{
     CallbackGroupDecl,
     contract_monitors::{RenderPaths, render_monitor_rs_full},
     mode_variants::{
-        ModeError, ModeExtras, all_variants, deadline_rows, mode_tier_deadlines,
+        ModeError, ModeExtras, all_variants, deadline_rows, mode_sched_task_deadlines,
         render_mode_tables_rs,
     },
 };
@@ -114,7 +114,7 @@ fn two_modes_bake_two_monitor_variants_and_two_deadline_sets() {
     let rate = |i: usize| variants[i].1[0].min_rate_hz_milli;
     assert_eq!((rate(0), rate(1)), (50_000, 100_000), "each mode's numbers");
 
-    let d = mode_tier_deadlines(&m, "posix", &groups()).expect("tiers lower");
+    let d = mode_sched_task_deadlines(&m, "posix", &groups()).expect("tiers lower");
     assert_eq!(d.tiers, ["derived-control_node"], "only the moved tier");
     assert_eq!(
         d.deadlines,
@@ -136,7 +136,7 @@ fn a_variant_shares_the_base_cells_and_adds_only_rows() {
         .iter()
         .map(|(_, r, a)| (r.as_slice(), a.as_slice()))
         .collect();
-    let d = mode_tier_deadlines(&m, "posix", &groups()).unwrap();
+    let d = mode_sched_task_deadlines(&m, "posix", &groups()).unwrap();
     let extras = ModeExtras {
         deadlines: deadline_rows(&d, |t| (t == "derived-control_node").then_some(0)),
         switch: Vec::new(),

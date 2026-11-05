@@ -100,7 +100,7 @@ BASELINE = {
     "packages/testing/nros-tests/tests/linux_example_reqresp_e2e.rs": 1,
     "packages/testing/nros-tests/tests/params.rs": 3,
     "packages/testing/nros-tests/tests/qos.rs": 1,
-    "packages/testing/nros-tests/tests/realtime_tiers_e2e.rs": 5,
+    "packages/testing/nros-tests/tests/realtime_sched_tasks_e2e.rs": 5,
     "packages/testing/nros-tests/tests/ros_editions_bridge.rs": 1,
     "packages/testing/nros-tests/tests/ros_editions_nano_interop.rs": 1,
     "packages/testing/nros-tests/tests/rtos_e2e.rs": 2,

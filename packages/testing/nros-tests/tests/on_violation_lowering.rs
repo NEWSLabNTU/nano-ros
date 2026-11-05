@@ -10,15 +10,15 @@
 //!    at a node path, whose `miss.action` says what happens);
 //! 2. `violation_agreement` lowers it to the tier that runs that path's
 //!    callbacks, refusing when a tier table states a different word;
-//! 3. `resolve_tiers` carries it into the `ResolvedTier` the entry emitters
+//! 3. `resolve_sched_tasks` carries it into the `ResolvedSchedTask` the entry emitters
 //!    bake -- `deadline_policy`, the string
-//!    `SchedContext::from_tier_policy` turns into a `DeadlineAction`
+//!    `SchedContext::from_sched_task_policy` turns into a `DeadlineAction`
 //!    (`nros-node/src/executor/sched_context.rs`), which is what the executor
 //!    runs on a missed deadline: report, skip the SC's siblings, or call the
 //!    fault hook.
 //!
 //! The NEGATIVE CONTROL is the third assertion of
-//! [`the_contracts_word_reaches_the_baked_tier`]: the same fixture resolved
+//! [`the_contracts_word_reaches_the_baked_sched_task`]: the same fixture resolved
 //! WITHOUT the lowering applied -- which is the tree before this wave --
 //! resolves to `deadline_policy: None`, so the executor's action is `Ignore`
 //! and the declared `abort` is dropped on the floor. The test prints both
@@ -38,16 +38,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nros_orchestration_ir::{
-    CallbackGroupDecl, TierDef, resolve_tiers, tier_from_model,
+    CallbackGroupDecl, SchedTaskDef, resolve_sched_tasks, sched_task_from_model,
     violation_agreement::{ViolationAction, contract_deadline_policies, node_actions},
 };
 use ros_launch_manifest_model::SystemModel;
 
 /// One contracted node, one declared tier, one reaction path.
 ///
-/// `MISS` and TIER_POLICY are substituted so the three cases differ by
+/// `MISS` and SCHED_TASK_POLICY are substituted so the three cases differ by
 /// exactly the line under test.
-fn fixture(miss: &str, tier_policy: &str) -> String {
+fn fixture(miss: &str, sched_task_policy: &str) -> String {
     format!(
         r#"
 meta:
@@ -87,7 +87,7 @@ execution:
   tiers:
     rt:
       class: real_time
-{tier_policy}      posix:
+{sched_task_policy}      posix:
         priority: 20
         stack_bytes: 16384
 "#
@@ -103,15 +103,15 @@ fn model(yaml: &str) -> SystemModel {
 /// The tier table a bake builds from the model, with and without this wave's
 /// lowering applied -- `plan_from_model`'s two lines, so the gate exercises
 /// the same code the entry bake runs.
-fn tier_defs(m: &SystemModel) -> BTreeMap<String, TierDef> {
+fn sched_task_defs(m: &SystemModel) -> BTreeMap<String, SchedTaskDef> {
     m.execution
         .tasks
         .iter()
-        .map(|(name, t)| (name.clone(), tier_from_model(t, "posix")))
+        .map(|(name, t)| (name.clone(), sched_task_from_model(t, "posix")))
         .collect()
 }
 
-fn resolved_policy(tiers: &BTreeMap<String, TierDef>) -> Option<String> {
+fn resolved_policy(tiers: &BTreeMap<String, SchedTaskDef>) -> Option<String> {
     let groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::from([(
         "detector".to_string(),
         vec![CallbackGroupDecl {
@@ -121,7 +121,8 @@ fn resolved_policy(tiers: &BTreeMap<String, TierDef>) -> Option<String> {
         }],
     )]);
     let names: BTreeSet<&str> = BTreeSet::from(["detector"]);
-    let table = resolve_tiers(tiers, &[], &names, &groups, "posix").expect("the tier resolves");
+    let table =
+        resolve_sched_tasks(tiers, &[], &names, &groups, "posix").expect("the tier resolves");
     table
         .tiers
         .iter()
@@ -134,7 +135,7 @@ fn resolved_policy(tiers: &BTreeMap<String, TierDef>) -> Option<String> {
 /// The whole chain: a contract word becomes the tier string the executor
 /// lowers to a `DeadlineAction`.
 #[test]
-fn the_contracts_word_reaches_the_baked_tier() {
+fn the_contracts_word_reaches_the_baked_sched_task() {
     let m = model(&fixture(MISS_ABORT, ""));
 
     // 1. The contract states a reaction, and it is `abort`.
@@ -150,7 +151,7 @@ fn the_contracts_word_reaches_the_baked_tier() {
     assert_eq!(policies.get("rt").map(String::as_str), Some("fault"));
 
     // 3. And it reaches the resolved tier the entry bakes.
-    let mut tiers = tier_defs(&m);
+    let mut tiers = sched_task_defs(&m);
     let before = resolved_policy(&tiers);
     for (tier, action) in &policies {
         if let Some(def) = tiers.get_mut(tier) {
@@ -171,7 +172,7 @@ fn the_contracts_word_reaches_the_baked_tier() {
     assert_eq!(
         after.as_deref(),
         Some("fault"),
-        "the baked tier carries the contract's word; `SchedContext::from_tier_policy` \
+        "the baked tier carries the contract's word; `SchedContext::from_sched_task_policy` \
          turns exactly this string into `DeadlineAction::Fault`"
     );
 }
@@ -179,7 +180,7 @@ fn the_contracts_word_reaches_the_baked_tier() {
 /// The refusal the phase asks for: a contract and a tier string that disagree
 /// stop the bake, naming both.
 #[test]
-fn a_tier_table_that_contradicts_the_contract_refuses() {
+fn a_sched_task_table_that_contradicts_the_contract_refuses() {
     let m = model(&fixture(MISS_ABORT, "      deadline_policy: warn\n"));
     let err = contract_deadline_policies(&m)
         .expect_err("two statements about one fact must not both be honoured")
@@ -221,14 +222,14 @@ fn the_silence_lease_is_the_declared_age_bound() {
 /// A model that declares no reaction lowers nothing and refuses nothing: the
 /// tier table is then the only statement, and it stands.
 #[test]
-fn a_contract_without_on_violation_changes_no_tier() {
+fn a_contract_without_on_violation_changes_no_sched_task() {
     let mut m = model(&fixture(MISS_ABORT, "      deadline_policy: skip\n"));
     m.contracts.node_paths.clear();
     m.contracts.sub_endpoints.clear();
     let policies = contract_deadline_policies(&m).expect("nothing to disagree with");
     assert!(policies.is_empty());
     assert_eq!(
-        resolved_policy(&tier_defs(&m)).as_deref(),
+        resolved_policy(&sched_task_defs(&m)).as_deref(),
         Some("skip"),
         "an authored tier policy survives a contract that says nothing"
     );

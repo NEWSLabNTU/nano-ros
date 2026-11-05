@@ -23,7 +23,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::ResolvedTierTable;
+use crate::ResolvedSchedTaskTable;
 
 /// What [`apply_derived_spin_periods`] did to one tier.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -113,7 +113,7 @@ fn bare(name: &str) -> &str {
 /// bare, as the tier's members are).
 pub fn derive_spin_period_us(
     members: &[(String, String)],
-    tier_period_us: Option<u64>,
+    sched_task_period_us: Option<u64>,
     periods: &BTreeMap<String, u64>,
 ) -> Option<(u64, Option<String>)> {
     let bare_periods: BTreeMap<&str, u64> = periods
@@ -122,7 +122,7 @@ pub fn derive_spin_period_us(
         .map(|(n, p)| (bare(n), *p))
         .collect();
     let mut best: Option<(u64, Option<String>)> =
-        tier_period_us.filter(|p| *p > 0).map(|p| (p, None));
+        sched_task_period_us.filter(|p| *p > 0).map(|p| (p, None));
     for (node, _group) in members {
         if let Some(&p) = bare_periods.get(bare(node))
             && best.as_ref().is_none_or(|(b, _)| p < *b)
@@ -136,7 +136,7 @@ pub fn derive_spin_period_us(
 /// Fill every tier's unset spin period from its members' releases, and hold
 /// an authored one to them. See the module docs for the rule.
 pub fn apply_derived_spin_periods(
-    table: &mut ResolvedTierTable,
+    table: &mut ResolvedSchedTaskTable,
     periods: &BTreeMap<String, u64>,
 ) -> Result<Vec<SpinPeriodNote>, SpinPeriodTooSlow> {
     let mut notes = Vec::new();
@@ -176,10 +176,10 @@ pub fn apply_derived_spin_periods(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ResolvedTier;
+    use crate::ResolvedSchedTask;
 
-    fn tier(name: &str, spin: Option<u64>, members: &[&str]) -> ResolvedTier {
-        ResolvedTier {
+    fn tier(name: &str, spin: Option<u64>, members: &[&str]) -> ResolvedSchedTask {
+        ResolvedSchedTask {
             name: name.into(),
             priority: 3,
             stack_bytes: None,
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn an_unset_spin_period_is_the_fastest_members_release() {
-        let mut t = ResolvedTierTable {
+        let mut t = ResolvedSchedTaskTable {
             tiers: vec![tier("mrm", None, &ISLAND)],
         };
         let notes = apply_derived_spin_periods(&mut t, &island_periods()).unwrap();
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn a_faster_authored_spin_period_is_kept_and_reported() {
-        let mut t = ResolvedTierTable {
+        let mut t = ResolvedSchedTaskTable {
             tiers: vec![tier("mrm", Some(10_000), &ISLAND)],
         };
         let notes = apply_derived_spin_periods(&mut t, &island_periods()).unwrap();
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn an_authored_spin_period_equal_to_the_derived_one_is_silent() {
-        let mut t = ResolvedTierTable {
+        let mut t = ResolvedSchedTaskTable {
             tiers: vec![tier("mrm", Some(33_333), &ISLAND)],
         };
         assert!(
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn a_slower_authored_spin_period_is_refused() {
-        let mut t = ResolvedTierTable {
+        let mut t = ResolvedSchedTaskTable {
             tiers: vec![tier("mrm", Some(50_000), &ISLAND)],
         };
         let e = apply_derived_spin_periods(&mut t, &island_periods()).unwrap_err();
@@ -276,8 +276,8 @@ mod tests {
     }
 
     #[test]
-    fn a_tier_of_event_driven_members_keeps_what_it_had() {
-        let mut t = ResolvedTierTable {
+    fn a_sched_task_of_event_driven_members_keeps_what_it_had() {
+        let mut t = ResolvedSchedTaskTable {
             tiers: vec![
                 tier("ev", None, &["listener"]),
                 tier("ev2", Some(7), &["x"]),
@@ -293,8 +293,8 @@ mod tests {
     }
 
     #[test]
-    fn the_tiers_own_period_is_a_release_too() {
-        let mut t = ResolvedTierTable {
+    fn the_sched_tasks_own_period_is_a_release_too() {
+        let mut t = ResolvedSchedTaskTable {
             tiers: vec![tier("ev", None, &["listener"])],
         };
         t.tiers[0].period_us = Some(20_000);
@@ -303,8 +303,8 @@ mod tests {
     }
 
     #[test]
-    fn each_tier_derives_from_its_own_members() {
-        let mut t = ResolvedTierTable {
+    fn each_sched_task_derives_from_its_own_members() {
+        let mut t = ResolvedSchedTaskTable {
             tiers: vec![
                 tier("estop", None, &["mrm_emergency_stop_operator"]),
                 tier(

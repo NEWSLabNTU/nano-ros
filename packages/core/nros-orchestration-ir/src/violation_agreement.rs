@@ -21,10 +21,10 @@
 //!   refuses here.
 //!
 //! Both roads end in the same three words, which is the executor's own
-//! vocabulary (`DeadlineAction::from_tier_str` in
+//! vocabulary (`DeadlineAction::from_sched_task_str` in
 //! `nros-node/src/executor/sched_context.rs`): `warn`, `skip`, `fault`. The
 //! two crates cannot share a type -- the executor is `no_std` and knows
-//! nothing about the model -- so [`ViolationAction::as_tier_str`] is the
+//! nothing about the model -- so [`ViolationAction::as_sched_task_str`] is the
 //! agreed spelling and both sides have a test pinning it.
 //!
 //! # Why the tier and not the endpoint
@@ -66,9 +66,9 @@ pub enum ViolationAction {
 
 impl ViolationAction {
     /// The spelling the baked tier table carries and
-    /// `DeadlineAction::from_tier_str` reads. The two crates share no type, so
+    /// `DeadlineAction::from_sched_task_str` reads. The two crates share no type, so
     /// this string IS the interface.
-    pub const fn as_tier_str(self) -> &'static str {
+    pub const fn as_sched_task_str(self) -> &'static str {
         match self {
             ViolationAction::Warn => "warn",
             ViolationAction::Skip => "skip",
@@ -80,7 +80,7 @@ impl ViolationAction {
     /// reaction, so it reads as `None` here and never disagrees with a
     /// contract that declares one -- it is the default the executor already
     /// has.
-    pub fn from_tier_str(s: &str) -> Option<Self> {
+    pub fn from_sched_task_str(s: &str) -> Option<Self> {
         match s {
             "warn" => Some(ViolationAction::Warn),
             "skip" => Some(ViolationAction::Skip),
@@ -105,7 +105,7 @@ impl ViolationAction {
 
 impl fmt::Display for ViolationAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_tier_str())
+        f.write_str(self.as_sched_task_str())
     }
 }
 
@@ -157,7 +157,7 @@ pub enum ViolationAgreementError {
     UnknownReaction { endpoint: String, reaction: String },
     /// Two nodes on one tier declare different actions. One SchedContext has
     /// one reaction, so the bake cannot honour both.
-    TierSplit {
+    SchedTaskSplit {
         tier: String,
         first: ActionSite,
         second: ActionSite,
@@ -176,7 +176,7 @@ impl fmt::Display for ViolationAgreementError {
                  and cannot say what runs it, so the image would carry the promise and not the \
                  behaviour."
             ),
-            ViolationAgreementError::TierSplit {
+            ViolationAgreementError::SchedTaskSplit {
                 tier,
                 first,
                 second,
@@ -311,7 +311,7 @@ pub fn node_actions(
 ///
 /// Tiers with no contracted node are absent from the map: the tier table's own
 /// `deadline_policy` is then the only statement, and it stands.
-pub fn tier_actions(
+pub fn sched_task_actions(
     model: &SystemModel,
 ) -> Result<BTreeMap<String, ActionSite>, ViolationAgreementError> {
     let by_node = node_actions(model)?;
@@ -326,7 +326,7 @@ pub fn tier_actions(
             }
             Some(held) if held.action == declared.action => {}
             Some(held) => {
-                return Err(ViolationAgreementError::TierSplit {
+                return Err(ViolationAgreementError::SchedTaskSplit {
                     tier: tier.clone(),
                     first: held.clone(),
                     second: declared.clone(),
@@ -342,13 +342,13 @@ pub fn tier_actions(
 /// authored.
 ///
 /// This is the whole lowering. `plan_from_model` applies the result to the
-/// `TierDef`s it builds, so the baked entry's `run_tiers` / SchedContext rows
+/// `SchedTaskDef`s it builds, so the baked entry's `run_sched_tasks` / SchedContext rows
 /// carry the contract's word and the executor reacts to it -- rather than the
 /// word staying in a YAML file, which is the state phase-462 exists to end.
 pub fn contract_deadline_policies(
     model: &SystemModel,
 ) -> Result<BTreeMap<String, String>, ViolationAgreementError> {
-    let actions = tier_actions(model)?;
+    let actions = sched_task_actions(model)?;
     let mut divergent = Vec::new();
     let mut out = BTreeMap::new();
     for (tier, contract) in actions {
@@ -361,8 +361,8 @@ pub fn contract_deadline_policies(
             // `ignore`, or an unreadable word, is not a competing statement:
             // the executor's default IS ignore, so a contract that declares a
             // reaction simply supplies what was missing.
-            Some(d) if ViolationAction::from_tier_str(d) == Some(contract.action) => {}
-            Some(d) if ViolationAction::from_tier_str(d).is_some() => {
+            Some(d) if ViolationAction::from_sched_task_str(d) == Some(contract.action) => {}
+            Some(d) if ViolationAction::from_sched_task_str(d).is_some() => {
                 divergent.push(Disagreement {
                     tier: tier.clone(),
                     contract: contract.clone(),
@@ -372,7 +372,7 @@ pub fn contract_deadline_policies(
             }
             _ => {}
         }
-        out.insert(tier, contract.action.as_tier_str().to_string());
+        out.insert(tier, contract.action.as_sched_task_str().to_string());
     }
     if !divergent.is_empty() {
         return Err(ViolationAgreementError::Divergent(divergent));
@@ -391,7 +391,7 @@ mod tests {
 
     /// A model with one contracted node on one tier. `miss` and `on_violation`
     /// are filled by the callers below.
-    fn model_yaml(path_miss: &str, on_violation: &str, tier_policy: &str) -> String {
+    fn model_yaml(path_miss: &str, on_violation: &str, sched_task_policy: &str) -> String {
         format!(
             "meta:\n  version: 1\nstructure:\n  scopes:\n    demo.launch.xml:\n      \
              file: demo.launch.xml\n  nodes:\n    /ctrl/control_node:\n      \
@@ -401,7 +401,7 @@ mod tests {
              output: [/ctrl/control_node/cmd]\n      max_latency_ms: 20.0\n{path_miss}\
              \n  sub_endpoints:\n    /ctrl/control_node/scan:\n      max_age_ms: 100.0\n\
              {on_violation}\nexecution:\n  bindings:\n    /ctrl/control_node: rt\n  tiers:\n    \
-             rt:\n      class: real_time\n{tier_policy}"
+             rt:\n      class: real_time\n{sched_task_policy}"
         )
     }
 
@@ -414,7 +414,7 @@ mod tests {
                            reaction: /ctrl/control_node/tick\n";
 
     #[test]
-    fn a_paths_miss_action_lowers_to_the_tier_string() {
+    fn a_paths_miss_action_lowers_to_the_sched_task_string() {
         let m = parse(&model_yaml(MISS_ABORT, "", ""));
         let policies = contract_deadline_policies(&m).expect("no disagreement");
         assert_eq!(policies.get("rt").map(String::as_str), Some("fault"));
@@ -442,7 +442,7 @@ mod tests {
     /// The negative control the phase asks for: a contract and a tier string
     /// that disagree refuse, naming both.
     #[test]
-    fn a_tier_string_that_disagrees_refuses_naming_both() {
+    fn a_sched_task_string_that_disagrees_refuses_naming_both() {
         let m = parse(&model_yaml(
             MISS_ABORT,
             OV_TICK,
@@ -505,18 +505,21 @@ mod tests {
         );
     }
 
-    /// The three words are the executor's, and `DeadlineAction::from_tier_str`
+    /// The three words are the executor's, and `DeadlineAction::from_sched_task_str`
     /// is the reader. `nros-node` pins the same three in
-    /// `sched_context.rs::the_contract_vocabulary_is_the_tier_vocabulary`.
+    /// `sched_context.rs::the_contract_vocabulary_is_the_sched_task_vocabulary`.
     #[test]
-    fn the_tier_spelling_round_trips() {
+    fn the_sched_task_spelling_round_trips() {
         for a in [
             ViolationAction::Warn,
             ViolationAction::Skip,
             ViolationAction::Fault,
         ] {
-            assert_eq!(ViolationAction::from_tier_str(a.as_tier_str()), Some(a));
+            assert_eq!(
+                ViolationAction::from_sched_task_str(a.as_sched_task_str()),
+                Some(a)
+            );
         }
-        assert_eq!(ViolationAction::from_tier_str("ignore"), None);
+        assert_eq!(ViolationAction::from_sched_task_str("ignore"), None);
     }
 }

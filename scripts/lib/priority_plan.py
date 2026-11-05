@@ -1,6 +1,6 @@
 """RFC-0079 priority address plans — ONE reader for both consumers.
 
-`check-tier-priority-plan.py` enforces plans; `dev/priority-collision-report.py`
+`check-sched-task-priority-plan.py` enforces plans; `dev/priority-collision-report.py`
 reports on them. They had a table each for about an hour, which is the second
 spelling this codebase keeps paying for — and the plan tables are precisely the
 thing whose whole value is being the single place a band is written down.
@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Phase 536 W3: `[tasks.*]`; the pre-rename `[tiers.*]` is refused since
 # rlm v0.3.11, so only the new key can carry a pin.
-TIER_PLAT_RE = re.compile(r"^\[tasks\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\]\s*$")
-TIER_RE = re.compile(r"^\[tasks\.([A-Za-z0-9_]+)\]\s*$")
+SCHED_TASK_PLAT_RE = re.compile(r"^\[tasks\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\]\s*$")
+SCHED_TASK_RE = re.compile(r"^\[tasks\.([A-Za-z0-9_]+)\]\s*$")
 PRIO_RE = re.compile(r"^priority\s*=\s*(-?\d+)")
 PAIR_RE = re.compile(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]")
 
@@ -58,8 +58,8 @@ def _parse_plan_block(text, header, source, platform=None):
             plan["derived"] = line.split("=", 1)[1].strip().strip('"')
         elif line.startswith("resolver"):
             plan["resolver"] = line.split("=", 1)[1].strip().strip('"')
-        elif line.startswith("tier_key"):
-            plan["tier_key"] = line.split("=", 1)[1].strip().strip('"')
+        elif line.startswith("sched_task_key"):
+            plan["sched_task_key"] = line.split("=", 1)[1].strip().strip('"')
         elif line.startswith("direction"):
             plan["direction"] = line.split("=", 1)[1].strip().strip('"')
         elif line.startswith("range"):
@@ -98,7 +98,7 @@ PLATFORM_ROOTS = ("packages/platform", "config")
 
 
 def load_platform_plans():
-    """tier_key -> plan, from every `nros-platform.toml` in the tree.
+    """sched_task_key -> plan, from every `nros-platform.toml` in the tree.
 
     phase-375 W8 — a priority plan is a PLATFORM fact (`range = [1, 7]` is
     FreeRTOS's `configMAX_PRIORITIES`), and stating it on boards meant two
@@ -119,7 +119,7 @@ def load_platform_plans():
             if got is None:
                 continue
             plan, _ = got
-            key = plan.pop("tier_key", None)
+            key = plan.pop("sched_task_key", None)
             if key:
                 plans.setdefault(key, plan)
     return plans
@@ -145,7 +145,7 @@ def load_plans():
         # `threadx-linux` / `threadx-riscv64` while bringups write
         # `[tasks.*.threadx]`. FreeRTOS and NuttX matched by coincidence, which
         # is not a thing to build on — so the plan states it.
-        key = plan.pop("tier_key", None) or platform
+        key = plan.pop("sched_task_key", None) or platform
         if not key:
             continue
         prev = plans.get(key)
@@ -154,7 +154,7 @@ def load_plans():
                                                             plan["pool"],
                                                             plan.get("direction")):
             raise SystemExit(
-                f"two boards claim tier_key {key!r} with DIFFERENT plans:\n"
+                f"two boards claim sched_task_key {key!r} with DIFFERENT plans:\n"
                 f"  {prev['source']}\n  {plan['source']}\n"
                 "One tier key is one address space; if these ports really "
                 "differ, they need different keys.")
@@ -187,11 +187,11 @@ def scan_pins():
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
-            m = TIER_PLAT_RE.match(line)
+            m = SCHED_TASK_PLAT_RE.match(line)
             if m:
                 tier, plat = m.group(1), m.group(2)
                 continue
-            m = TIER_RE.match(line)
+            m = SCHED_TASK_RE.match(line)
             if m:
                 tier, plat = m.group(1), None
                 continue
@@ -459,7 +459,7 @@ def resolve_zephyr_plan(dotconfig):
     realizer allocates a derived tier out of `pool.app` and cannot shell out to
     a script from inside a proc-macro. That is two implementations of ONE
     formula, and the split is only safe while one of them is a TEST of the
-    other: this module stays the CHECKER. `check-tier-priority-plan-image.py`
+    other: this module stays the CHECKER. `check-sched-task-priority-plan-image.py`
     judges a BUILT image - which a unit test cannot see - and its `--selftest`
     pins the same measured triple the Rust test asserts (15 preemptive
     priorities, the two zenoh defaults: transport [0, 4], pool [5, 14]).

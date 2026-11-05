@@ -139,7 +139,7 @@ impl PlatformKind {
     ///
     /// Issue 1285 follow-up. This bridges the board-CATALOG namespace (an
     /// `[image.*] board` id resolved to its descriptor) to the tier vocabulary.
-    /// The tier key is then `BoardFamily::tier_rtos_key`, the same spelling
+    /// The tier key is then `BoardFamily::sched_task_rtos_key`, the same spelling
     /// the entry namespace reads out of `BOARD_KEYS`. The CLI's `codegen-system`
     /// used to take a SUBSTRING of the image board id instead, and read
     /// `native_sim/native/64` (a Zephyr board) as the host.
@@ -175,12 +175,12 @@ impl PlatformKind {
     }
 
     /// The `[tasks.<name>.<rtos>]` key this platform's images read.
-    /// [`NO_RTOS_TIER_KEY`](nros_entry_lower::NO_RTOS_TIER_KEY) for a
+    /// [`NO_RTOS_SCHED_TASK_KEY`](nros_entry_lower::NO_RTOS_SCHED_TASK_KEY) for a
     /// platform with no RTOS.
-    pub fn tier_rtos_key(self) -> &'static str {
+    pub fn sched_task_rtos_key(self) -> &'static str {
         self.board_family().map_or(
-            nros_entry_lower::NO_RTOS_TIER_KEY,
-            nros_entry_lower::BoardFamily::tier_rtos_key,
+            nros_entry_lower::NO_RTOS_SCHED_TASK_KEY,
+            nros_entry_lower::BoardFamily::sched_task_rtos_key,
         )
     }
 }
@@ -534,7 +534,7 @@ pub struct BoardDescriptor {
     ///
     /// The tier/transport priority plan (RFC-0049; `linux/nros-board.toml`
     /// declares `reserved.transport = [90, 99]` for zenoh-pico's read and
-    /// lease tasks) is consumed by `check-tier-priority-plan` and by
+    /// lease tasks) is consumed by `check-sched-task-priority-plan` and by
     /// `nros-platform-config`, not by this reader. It is modelled as an opaque
     /// value ON PURPOSE: `deny_unknown_fields` above must not mean "every
     /// consumer's schema is restated here", which would make this struct the

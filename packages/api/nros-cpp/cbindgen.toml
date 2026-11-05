@@ -129,27 +129,27 @@ exclude = [
     # gated). Declared locally in subscription.hpp with a matching 6-arg
     # plain fn-ptr typedef and in nros_cpp_ffi.h manually.
     "nros_cpp_subscription_register_validated",
-    # Phase 274.W2 — `NativeTierSpecC` has a fn-ptr field typed
+    # Phase 274.W2 — `NativeSchedTaskSpecC` has a fn-ptr field typed
     # `Option<unsafe extern "C" fn(*mut c_void) -> i32>` which cbindgen
     # renders as an opaque wrapper struct. The struct and EVERY runner that
     # takes it are declared by hand instead, in `<rclc/detail/main.h>`, against the
-    # canonical `nros_native_tier_spec_t`.
+    # canonical `nros_native_sched_task_spec_t`.
     #
     # Issue 1442 — that is why the `_ns` twin is here too, and it is not
     # cosmetic: cbindgen happily emitted
-    # `nros_board_native_run_tiers_ns(..., const NativeTierSpecC *tiers, ...)`
+    # `nros_board_native_run_sched_tasks_ns(..., const NativeSchedTaskSpecC *tiers, ...)`
     # naming a type this very list removes, so the generated header stopped
     # being self-contained. A runner added to `c_abi_runners` that takes a tier
     # array belongs on this list.
-    "NativeTierSpecC",
-    "nros_board_native_run_tiers",
-    "nros_board_native_run_tiers_ns",
+    "NativeSchedTaskSpecC",
+    "nros_board_native_run_sched_tasks",
+    "nros_board_native_run_sched_tasks_ns",
     # Issue 1597 — the storage-taking twin, for the same reason.
-    "nros_board_native_run_tiers_in",
+    "nros_board_native_run_sched_tasks_in",
     # phase-509 P10 — the level runner, and its backing row (declared by
-    # hand as `nros_tier_backing_t`), for the same reason.
+    # hand as `nros_sched_task_backing_t`), for the same reason.
     "nros_board_native_run_levels_in",
-    "NativeTierBackingC",
+    "NativeSchedTaskBackingC",
 ]
 
 [fn]

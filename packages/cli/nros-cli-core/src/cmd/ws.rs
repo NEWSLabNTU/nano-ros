@@ -5536,7 +5536,7 @@ fn narrowed_generated_entries(
 /// Comparing key SETS, not values: a value that legitimately changes is a
 /// re-resolve doing its job, whereas a key that DISAPPEARS is content the
 /// inputs could never have produced.
-fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
+fn execution_sched_task_dims(yaml: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let Ok(doc) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(yaml) else {
         // Unparseable: report nothing rather than guess. The caller treats an
@@ -5584,12 +5584,12 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
 }
 
 /// `nros ws model-dims <model.yaml>` — issue 0380's read-only door onto
-/// [`execution_tier_dims`], so the gate and the sync-time guard cannot disagree
+/// [`execution_sched_task_dims`], so the gate and the sync-time guard cannot disagree
 /// about what a "dim" is.
 fn run_model_dims(args: ModelDimsArgs) -> Result<()> {
     let raw = std::fs::read_to_string(&args.model)
         .wrap_err_with(|| format!("model-dims: read {}", args.model.display()))?;
-    for dim in execution_tier_dims(&raw) {
+    for dim in execution_sched_task_dims(&raw) {
         println!("{dim}");
     }
     Ok(())
@@ -8717,7 +8717,7 @@ mod resolver_warnings_tests {
     use super::*;
 
     /// Issue 1372: the two entries are copied from a model the pinned resolver
-    /// wrote for `derived-tiers-cpp` with one promise raised above its timer
+    /// wrote for `derived-sched-tasks-cpp` with one promise raised above its timer
     /// (`min_rate_hz: 30` on a 10 Hz path). The warning is what `nros sync` now
     /// prints; the info beside it stays in the file.
     #[test]

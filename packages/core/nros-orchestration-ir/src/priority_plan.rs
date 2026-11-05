@@ -40,12 +40,12 @@
 //! out of an image is `scripts/lib/priority_plan.py`'s job. The one number
 //! that lives here, [`ZEPHYR_TRANSPORT_BAND_DEFAULT`], is a platform fact and
 //! is checked against `zephyr/Kconfig` by
-//! `check-tier-priority-plan-image.py --selftest` rather than trusted.
+//! `check-sched-task-priority-plan-image.py --selftest` rather than trusted.
 //!
 //! The same formula exists once more, in Python
 //! (`scripts/lib/priority_plan.py:resolve_zephyr_plan`), and that copy is
 //! deliberate: it is the CHECKER of this one
-//! (`scripts/check-tier-priority-plan-image.py`, which judges a built image
+//! (`scripts/check-sched-task-priority-plan-image.py`, which judges a built image
 //! and can therefore see what a unit test cannot). Two implementations of one
 //! formula, one of them a test - not two sources.
 //!
@@ -128,7 +128,7 @@ pub enum PriorityPlanError {
     MissingKey { key: String },
     /// The image applies no transport priority at all, so nothing is reserved
     /// and the transport inherits its creator (the NuttX pre-0736 state).
-    /// Judged, never treated as a pass: see `check-tier-priority-plan-image.py`.
+    /// Judged, never treated as a pass: see `check-sched-task-priority-plan-image.py`.
     #[error(
         "CONFIG_POSIX_PRIORITY_SCHEDULING and/or CONFIG_PREEMPT_ENABLED is off - the \
          transport priority is NOT applied in this image; the tasks inherit their \
@@ -159,7 +159,7 @@ const ZEPHYR_DEFAULT_NUM_COOP: i64 = 16;
 /// reach this module as the `transport_bands` argument below, already read.
 ///
 /// The default is checked against its source rather than restated on trust:
-/// `check-tier-priority-plan-image.py --selftest` asserts this constant equals
+/// `check-sched-task-priority-plan-image.py --selftest` asserts this constant equals
 /// the unconditional default `zephyr/Kconfig` gives the transport-priority
 /// symbols the descriptor names. A second copy of a number is only safe while
 /// something compares it, which is this section's own lesson (RFC-0079 4.1).
@@ -252,7 +252,7 @@ fn dotconfig_has(text: &str, key: &str) -> bool {
 impl PriorityPlan {
     /// The plan for a tier KEY, with no image in hand.
     ///
-    /// `target` is the output of `BoardFamily::tier_rtos_key` and is matched
+    /// `target` is the output of `BoardFamily::sched_task_rtos_key` and is matched
     /// EXACTLY, the same rule `sched_caps_for` follows (issue 1285). An
     /// unrecognised key - including `""`, a board with no RTOS family - gets
     /// the whole range and no reserved band, which is the pre-RFC-0079
@@ -264,7 +264,7 @@ impl PriorityPlan {
     /// [`ZEPHYR_TRANSPORT_BAND_DEFAULT`], through the same [`zephyr_plan`]
     /// arithmetic. An image that changes any of them resolves its own plan
     /// with [`PriorityPlan::from_zephyr_dotconfig`], handed the bands its own
-    /// transport declares, and `check-tier-priority-plan-image.py` is what
+    /// transport declares, and `check-sched-task-priority-plan-image.py` is what
     /// judges a BUILT image against its `.config` - a unit test cannot see
     /// one.
     pub fn for_target(target: &str) -> Self {
@@ -587,7 +587,7 @@ mod tests {
 
     /// The projection phase-459 records: transport at k_thread 4, the
     /// application pool `[5, 14]`. The same triple is asserted by
-    /// `scripts/check-tier-priority-plan-image.py --selftest`.
+    /// `scripts/check-sched-task-priority-plan-image.py --selftest`.
     #[test]
     fn priority_plan_resolves_the_island_band_from_a_dotconfig() {
         let plan =
@@ -707,7 +707,7 @@ mod tests {
     /// issue 1427 - the FreeRTOS pool agrees with the BOOT-TIME report, which
     /// is the only place in the tree where both numbers meet at run time.
     ///
-    /// `report_tiers_above_transport` (`nros-board-freertos/src/entry.rs`,
+    /// `report_sched_tasks_above_transport` (`nros-board-freertos/src/entry.rs`,
     /// issue 0623) prints a warning for every tier whose priority meets the
     /// transport floor `min(read, poll)`, in RAW FreeRTOS units - the
     /// same units a derived priority is allocated in here. So "a derived tier
@@ -751,7 +751,7 @@ mod tests {
             assert!(
                 p < floor,
                 "pool.app {:?} can allocate {p}, which meets the transport floor \
-                 {floor} that `report_tiers_above_transport` compares against - a \
+                 {floor} that `report_sched_tasks_above_transport` compares against - a \
                  derived tier would preempt its own transport and the image would \
                  warn about itself at boot (issues 0623, 1427)",
                 plan.app
@@ -774,7 +774,7 @@ mod tests {
     }
 
     /// Every `[board.priority_plan]` / `[priority_plan]` table in the tree,
-    /// keyed by `tier_key`, skipping the DERIVED ones (Zephyr states no
+    /// keyed by `sched_task_key`, skipping the DERIVED ones (Zephyr states no
     /// numbers by design).
     fn descriptor_plans() -> BTreeMap<String, (String, Band, Band)> {
         let mut out = BTreeMap::new();
@@ -807,7 +807,7 @@ mod tests {
                     continue;
                 }
                 let key = plan
-                    .get("tier_key")
+                    .get("sched_task_key")
                     .and_then(toml::Value::as_str)
                     .or_else(|| {
                         board

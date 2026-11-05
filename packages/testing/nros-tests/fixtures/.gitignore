@@ -30,4 +30,4 @@
 # the file it meant held sync's `include` and the board projection's, both of
 # which W6 retired.
 !multi_pkg_workspace_freertos/firmware/.cargo/config.toml
-!orchestration_tiers_freertos/.cargo/config.toml
+!orchestration_sched_tasks_freertos/.cargo/config.toml

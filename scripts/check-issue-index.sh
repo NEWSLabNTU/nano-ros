@@ -212,7 +212,7 @@ fi
 # below the FROZEN-DIGESTS-BELOW marker is history nothing maintains, so its
 # bytes are the invariant: any edit, deletion or addition changes the hash. The
 # count arm stays because its message names the remedy for the common case.
-frozen_block_sha256=a769ca89c5a3af06f64a5e6655bbb59b01c1ead1e5b424d0ef8e6186c19ee807
+frozen_block_sha256=3b0a56e770a2385e60b7a0d81c0577c2856d377b60460c10691c2ed26f0ae275
 frozen_block_digest() {  # <file> -> sha256 of every line after the ONE marker; "" if none/many
     local body
     body="$(awk '/^<!-- FROZEN-DIGESTS-BELOW/ { n++; next } n == 1 { print }

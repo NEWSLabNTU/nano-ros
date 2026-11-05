@@ -65,7 +65,7 @@ pub fn zephyr_image_plan(dotconfig: &Path) -> Result<ImagePlan> {
     zephyr_image_plan_from_text(&text, &dotconfig.display().to_string())
 }
 
-/// The plan a derivation for `tier_key` allocates out of, given the image's
+/// The plan a derivation for `sched_task_key` allocates out of, given the image's
 /// `.config` if the caller has one. `Ok(None)` means "use the tier key's
 /// projection" - no `.config`, or an image that applies no priority (whose
 /// note is printed with `who` as the prefix).
@@ -73,16 +73,16 @@ pub fn zephyr_image_plan(dotconfig: &Path) -> Result<ImagePlan> {
 /// A `.config` handed in for a board that is not Zephyr is refused rather than
 /// ignored: it can only mean a caller wired the flag to the wrong image.
 pub fn plan_for_image(
-    tier_key: &str,
+    sched_task_key: &str,
     dotconfig: Option<&Path>,
     who: &str,
 ) -> Result<Option<PriorityPlan>> {
     let Some(path) = dotconfig else {
         return Ok(None);
     };
-    if tier_key != "zephyr" {
+    if sched_task_key != "zephyr" {
         return Err(eyre!(
-            "{who}: --dotconfig {} was given for a board whose tier key is {tier_key:?}; \
+            "{who}: --dotconfig {} was given for a board whose tier key is {sched_task_key:?}; \
              only a Zephyr image derives its priority plan from a .config",
             path.display()
         ));

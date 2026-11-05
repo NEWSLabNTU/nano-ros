@@ -40,7 +40,7 @@ fn workspace_system_toml(lang: Lang, dim: SchedDim) -> PathBuf {
         SchedDim::CorePinPlacement => "src/smp_bringup/system.toml",
         // issue 1537 — the derived-tier image has its own bringup, because
         // what it must NOT declare (tiers) is what `demo_bringup` does declare.
-        SchedDim::DerivedTierBelowTransport => "src/derived_bringup/system.toml",
+        SchedDim::DerivedSchedTaskBelowTransport => "src/derived_bringup/system.toml",
         _ => "src/demo_bringup/system.toml",
     };
     let ws = match lang {
@@ -117,10 +117,10 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
         SchedDim::PreemptThreshold => &[&["preempt_threshold"]],
         SchedDim::TimeSlice => &[&["time_slice", "time_slice_us"]],
         SchedDim::SporadicBudget => &[&["budget", "budget_us"], &["period", "period_us"]],
-        SchedDim::TierPriority => &[&["priority"]],
+        SchedDim::SchedTaskPriority => &[&["priority"]],
         // issue 1537 — nothing is AUTHORED for this dim; that is the dim. What
         // must hold of its bringup is checked by `derived_bringup_problems`.
-        SchedDim::DerivedTierBelowTransport => &[],
+        SchedDim::DerivedSchedTaskBelowTransport => &[],
     }
 }
 
@@ -210,16 +210,16 @@ fn key_declared(doc: &toml::Value, rtos: &str, key: &str) -> bool {
     let Some(tiers) = doc.get("tasks").and_then(|t| t.as_table()) else {
         return false;
     };
-    for (_tier_name, tier) in tiers {
-        let Some(tier_tbl) = tier.as_table() else {
+    for (_sched_task_name, tier) in tiers {
+        let Some(sched_task_tbl) = tier.as_table() else {
             continue;
         };
         // Generic dim on [tasks.<tier>] — applies to all platforms.
-        if tier_tbl.get(key).is_some() {
+        if sched_task_tbl.get(key).is_some() {
             return true;
         }
         // Kernel-scoped dim on [tasks.<tier>.<rtos>].
-        if tier_tbl
+        if sched_task_tbl
             .get(rtos)
             .and_then(|r| r.as_table())
             .and_then(|r| r.get(key))
@@ -265,7 +265,7 @@ fn sched_dims_are_declared_in_authored_system_toml() {
             .or_insert_with(|| load(&path))
             .clone();
         let rtos = rtos_key(cell.platform);
-        if cell.dim == SchedDim::DerivedTierBelowTransport {
+        if cell.dim == SchedDim::DerivedSchedTaskBelowTransport {
             missing.extend(derived_bringup_problems(&path, &doc).into_iter().map(|p| {
                 format!(
                     "  - {:?}/{:?}/{:?}: {p}",

@@ -46,7 +46,7 @@
  * every `cc::Build` when `nros build` turned on the board's `level-image`
  * feature for a multi-tier schedule (`schedule_board_features`). An image
  * without levels keeps the kernel default, 1. A tiered entry refuses to
- * build against a kernel that slices (`tier_task_memory_freertos.h`). */
+ * build against a kernel that slices (`sched_task_memory_freertos.h`). */
 #if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE
 #define configUSE_TIME_SLICING                  0
 #else
@@ -123,7 +123,7 @@
  *    this budget until 1598 gave each spawned tier a static one, so without
  *    the subtraction the bytes were reserved twice (realtime-cpp's
  *    `demo_bringup:freertos` overflowed RAM by 151,024 bytes with `ucHeap` at
- *    0x300000). `nano_ros_entry` defines `NROS_FREERTOS_TIER_STACKS_IN_BSS_KB`
+ *    0x300000). `nano_ros_entry` defines `NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB`
  *    from the generated entry's own declarations. The zenoh cmake images were
  *    NOT re-derived: on this host they open a session and never tick, on main
  *    as on this change, so no heap peak past session open could be read
@@ -132,15 +132,15 @@
  * Override per image with `NROS_FREERTOS_HEAP_KB` (cargo: the build env, which
  * build.rs forwards; cmake: a compile definition). It is a size someone chose
  * and is never adjusted by either rule above. */
-#ifndef NROS_FREERTOS_TIER_STACKS_IN_BSS_KB
-#define NROS_FREERTOS_TIER_STACKS_IN_BSS_KB     0
+#ifndef NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB
+#define NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB     0
 #endif
 #define NROS_FREERTOS_DDS_HEAP_KB 640
 #ifndef NROS_FREERTOS_HEAP_KB
 #if defined(NROS_FREERTOS_HEAP_DEFAULT_DDS) && NROS_FREERTOS_HEAP_DEFAULT_DDS
 #define NROS_FREERTOS_HEAP_KB                   (NROS_FREERTOS_DDS_HEAP_KB)
 #else
-#define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_TIER_STACKS_IN_BSS_KB))
+#define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB))
 #endif
 #endif
 #define configTOTAL_HEAP_SIZE                   ((size_t)((NROS_FREERTOS_HEAP_KB) * 1024))

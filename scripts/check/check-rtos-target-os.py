@@ -109,11 +109,11 @@ CLASSIFIED: dict[tuple[str, str], str] = {
         "packages/boards/nros-board-nuttx/src/lib.rs",
         'cfg(not(target_os = "none"))',
     ): "Dependency question, not a hosted one (issue 1571): the gated item "
-    "re-exports `::nros::TierExecutorBackingSlot`, and this crate's manifest "
+    "re-exports `::nros::SchedTaskExecutorBackingSlot`, and this crate's manifest "
     "declares its `nros` dependency under `[target.'cfg(not(target_os = "
     "\"none\"))'.dependencies]`. The `cfg` must mirror that manifest predicate "
     "exactly or the re-export names a crate that is not linked; NuttX is "
-    "INSIDE the arm, which is what the NuttX `run_tiers` using it needs.",
+    "INSIDE the arm, which is what the NuttX `run_sched_tasks` using it needs.",
     (
         "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/sync.rs",
         'cfg(target_os = "none")',

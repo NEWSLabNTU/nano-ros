@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 // `nros::main!()` proc-macro). Re-exported here so the rest of the CLI keeps
 // referencing them through `cargo_metadata_schema::` unchanged.
 pub use nros_orchestration_ir::{
-    CallbackGroupDecl, CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
+    CallbackGroupDecl, CallbackGroupOverride, NodeOverride, SchedTaskDef, SchedTaskRtosSpec,
 };
 
 /// RFC-0078 — re-exported so a `system.toml` reader sees one vocabulary.
@@ -339,7 +339,7 @@ pub struct ComponentMetadata {
     /// group → tier binding here; phase-273 W2 (RFC-0047) moved it to
     /// `system.toml`'s `[[component]] group_tasks`, and the manifest form was
     /// honoured with a `[WARN]` for one release by a fallback rung in
-    /// `tier_resolver::collect_callback_groups`. That rung is gone, so the key
+    /// `sched_task_resolver::collect_callback_groups`. That rung is gone, so the key
     /// is accepted by the schema only so the reader can REFUSE it by name
     /// (`refuse_retired_callback_groups`) — on every typed reader of this
     /// table, since each reaches it through this struct — rather than serde's
@@ -711,7 +711,7 @@ pub struct SystemToml {
     /// `[tiers.*]` is refused, as rlm refuses it, naming the new key and
     /// `play_launch migrate` ([`Self::retired_tiers`]).
     #[serde(default, rename = "tasks", skip_serializing_if = "BTreeMap::is_empty")]
-    pub tiers: BTreeMap<String, TierDef>,
+    pub tiers: BTreeMap<String, SchedTaskDef>,
     /// `[tiers.*]`, refused since rlm v0.3.11: present only to name its
     /// replacement instead of `deny_unknown_fields`' generic "unknown field".
     #[serde(
@@ -1857,7 +1857,7 @@ pub struct SystemComponentEntry {
     /// replacing the package manifest's `callback_groups` tier binding (now
     /// refused at parse). A group with no entry runs on the default tier. Empty ⇒
     /// a cmake component's `CALLBACK_GROUPS` keyword, if any, at the default tier
-    /// (`tier_resolver::collect_callback_groups`).
+    /// (`sched_task_resolver::collect_callback_groups`).
     ///
     /// Phase 536 W3 (rlm v0.3.11): the key is `group_tasks`; the pre-rename
     /// `group_tiers` is refused naming it ([`Self::retired_group_tiers`]).
@@ -3011,7 +3011,7 @@ name = "talker"
     }
 
     #[test]
-    fn system_toml_parses_tiers_and_overrides() {
+    fn system_toml_parses_sched_tasks_and_overrides() {
         // Phase 228.A (RFC-0015 §4.2) — tier + override schema.
         let raw = r#"
 [system]

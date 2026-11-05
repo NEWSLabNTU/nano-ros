@@ -8,7 +8,7 @@
 #[path = "../build/arena_floor.rs"]
 mod arena_floor;
 
-use arena_floor::{ARENA_FLOOR, arena_for_demand, tier_arena};
+use arena_floor::{ARENA_FLOOR, arena_for_demand, sched_task_arena};
 
 /// The safety island's `estop` tier (RFC-0107): its model is 7,500 B, and the
 /// floor raised it to 8,192.
@@ -26,14 +26,14 @@ fn a_declared_image_arena_is_its_model_above_the_floor() {
 }
 
 #[test]
-fn a_tier_arena_is_its_model_unfloored() {
-    assert_eq!(tier_arena(Some(ESTOP_MODEL)), Some(ESTOP_MODEL));
-    assert_eq!(tier_arena(Some(20_272)), Some(20_272));
+fn a_sched_task_arena_is_its_model_unfloored() {
+    assert_eq!(sched_task_arena(Some(ESTOP_MODEL)), Some(ESTOP_MODEL));
+    assert_eq!(sched_task_arena(Some(20_272)), Some(20_272));
 }
 
 #[test]
-fn a_tier_whose_counts_are_unknown_is_not_floored_into_a_guess() {
-    assert_eq!(tier_arena(None), None);
+fn a_sched_task_whose_counts_are_unknown_is_not_floored_into_a_guess() {
+    assert_eq!(sched_task_arena(None), None);
 }
 
 #[test]

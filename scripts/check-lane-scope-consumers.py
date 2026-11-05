@@ -5,7 +5,7 @@ Consolidation (phase-329 W1) made some consumers ONE test each, generically
 named, iterating every platform's cell in a single process. Nothing outside the
 test can deselect a cell inside it, so on a host lane those cells boot whatever
 images exist — and the cells whose images do NOT exist vanish into a green
-verdict. That is issue 0571: `realtime_tiers` reported a 12-second PASS having
+verdict. That is issue 0571: `realtime_sched_tasks` reported a 12-second PASS having
 run 1 of its 16 rows, and a genuinely broken NuttX cell (issue 0572) sat behind
 it.
 

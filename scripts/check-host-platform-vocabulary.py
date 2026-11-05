@@ -9,7 +9,7 @@ phase-500):
     linux    Linux specifically
 
 The host board (`packages/boards/linux/nros-board.toml`) builds on Linux ONLY —
-measured: `nros-board-linux::apply_tier_affinity` uses `cpu_set_t` /
+measured: `nros-board-linux::apply_sched_task_affinity` uses `cpu_set_t` /
 `sched_setaffinity`, which libc does not define for apple, windows or freebsd.
 So its one true name is `linux`:
 
@@ -219,7 +219,7 @@ def sdk_index_problems(doc):
 RENAMED_TESTS = ("api", "async_roundtrip_e2e", "entry_boot",
                  "example_executor_bound_node_e2e", "example_pubsub_e2e",
                  "example_reqresp_e2e", "main_macro_forms", "main_macro_misuse",
-                 "orchestration_tiers")
+                 "orchestration_sched_tasks")
 RETIRED_LANE_RE = re.compile(
     r"\bjust (?:setup |build |test |doctor )?native\b(?![-_])"
     r"|\blane=native\b"

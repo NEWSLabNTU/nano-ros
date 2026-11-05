@@ -2,7 +2,7 @@
 //!
 //! Thin-wrapper discipline (RFC-0019): this crate BUILDS `DiagnosticArray`
 //! messages — it owns no publisher, no executor, no aggregation. The entry
-//! glue (fixture, codegen entry, `run_tiers` loop) creates one
+//! glue (fixture, codegen entry, `run_sched_tasks` loop) creates one
 //! `Publisher<DiagnosticArray>` on `/diagnostics` and publishes whatever
 //! [`DiagnosticReporter::report`] returns. `no_std` + heapless throughout.
 //!

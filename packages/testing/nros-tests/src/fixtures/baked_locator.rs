@@ -164,11 +164,11 @@ mod tests {
         matrix::{Lang, PlatformId, Workload},
     };
 
-    /// Every embedded RealtimeTiers row bakes its cell's allocator port. Static:
+    /// Every embedded RealtimeSchedTasks row bakes its cell's allocator port. Static:
     /// reads the manifest and the bringups, needs no fixture. The rows are named
     /// here because a manifest row carries no workload.
     #[test]
-    fn realtime_tier_rows_dial_their_allocator_port() {
+    fn realtime_sched_task_rows_dial_their_allocator_port() {
         use Lang::*;
         use PlatformId::*;
         let rows: &[(&str, PlatformId, Lang)] = &[
@@ -187,7 +187,7 @@ mod tests {
         let bad: Vec<String> = rows
             .iter()
             .filter_map(|&(id, p, l)| {
-                let want = port_of(p, l, Workload::RealtimeTiers);
+                let want = port_of(p, l, Workload::RealtimeSchedTasks);
                 match baked_locator_in(&root, id) {
                     Ok(loc) if locator_port(&loc) == Some(want) => None,
                     Ok(loc) => Some(format!("{id}: bakes `{loc}`, cell wants port {want}")),

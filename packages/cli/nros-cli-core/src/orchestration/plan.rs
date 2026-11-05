@@ -615,7 +615,7 @@ pub struct PlanSchedContext {
     pub class: SchedClass,
     pub priority: Option<u8>,
     // No `period`/`budget`/`deadline`: the derived schedule travels as
-    // `TierDef` in us (RFC-0079), and nothing ever wrote a number here. The
+    // `SchedTaskDef` in us (RFC-0079), and nothing ever wrote a number here. The
     // `_ms` fields were deleted rather than converted (issue 0259); a future
     // producer adds fields in the runtime's unit.
     pub deadline_policy: DeadlinePolicy,

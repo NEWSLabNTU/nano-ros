@@ -201,23 +201,23 @@ STORAGE_ROLES = [
     ),
     (
         "executor storage",
-        r"__nros_tier_executor_storage",
+        r"__nros_sched_task_executor_storage",
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/c/boot_wrapper.jinja",
-        "static uint64_t __nros_tier_executor_storage[",
+        "static uint64_t __nros_sched_task_executor_storage[",
     ),
     (
         "executor storage",
-        r"__nros_tier_executor_storage",
+        r"__nros_sched_task_executor_storage",
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/boot_wrapper.jinja",
-        "static uint64_t __nros_tier_executor_storage[",
+        "static uint64_t __nros_sched_task_executor_storage[",
     ),
     # phase-521 W8 (b) -- the PX4 entry: each borrowed tier's executor, and
     # the component slots it shares in spelling with the C++ entry.
     (
         "executor storage",
-        r"__nros_tier_storage",
+        r"__nros_sched_task_storage",
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/px4_entry.cpp.jinja",
-        "static ::nros_px4::TierStorage __nros_tier_storage[",
+        "static ::nros_px4::SchedTaskStorage __nros_sched_task_storage[",
     ),
     (
         "component storage",
@@ -239,9 +239,9 @@ STORAGE_ROLES = [
     ),
     (
         "executor storage",
-        r"(?:[A-Za-z_][A-Za-z0-9_]*::)*__NROS_TIER_EXECUTOR_BACKING",
+        r"(?:[A-Za-z_][A-Za-z0-9_]*::)*__NROS_SCHED_TASK_EXECUTOR_BACKING",
         "packages/core/nros-macros/src/main_macro.rs",
-        "static __NROS_TIER_EXECUTOR_BACKING:",
+        "static __NROS_SCHED_TASK_EXECUTOR_BACKING:",
     ),
     (
         "component storage",
@@ -257,7 +257,7 @@ STORAGE_ROLES = [
     ),
     # Issue 2040 -- a level image's statics (phase-509). The core's one
     # executor is carved from `__nros_levels_backing` (P9b); before P9b each
-    # level carried its own `__nros_tier_backing_<i>`.
+    # level carried its own `__nros_sched_task_backing_<i>`.
     (
         "executor storage",
         r"__nros_levels_backing",
@@ -272,15 +272,15 @@ STORAGE_ROLES = [
     ),
     (
         "executor storage",
-        r"__nros_tier_backing_\d+",
+        r"__nros_sched_task_backing_\d+",
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/c/boot_wrapper.jinja",
-        "static uint64_t __nros_tier_backing_",
+        "static uint64_t __nros_sched_task_backing_",
     ),
     (
         "executor storage",
-        r"__nros_tier_backing_\d+",
+        r"__nros_sched_task_backing_\d+",
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/boot_wrapper.jinja",
-        "static uint64_t __nros_tier_backing_",
+        "static uint64_t __nros_sched_task_backing_",
     ),
     (
         "level scheduler",
@@ -295,24 +295,24 @@ STORAGE_ROLES = [
         "static uint64_t __nros_scheduler_0[",
     ),
     # A spawned level's worker: its stack and its thread / task control block,
-    # from `NROS_TIER_TASK_MEMORY_DEFINE` in the per-RTOS header.
+    # from `NROS_SCHED_TASK_MEMORY_DEFINE` in the per-RTOS header.
     (
         "level task memory",
-        r"__nros_tier_(?:stack|thread)_\d+",
-        "packages/api/nros-c/include/rclc/detail/tier_task_memory_zephyr.h",
-        "static NROS_TIER_TASK_STACK_DEFINE_(__nros_tier_stack_##i,",
+        r"__nros_sched_task_(?:stack|thread)_\d+",
+        "packages/api/nros-c/include/rclc/detail/sched_task_memory_zephyr.h",
+        "static NROS_SCHED_TASK_STACK_DEFINE_(__nros_sched_task_stack_##i,",
     ),
     (
         "level task memory",
-        r"__nros_tier_(?:stack|tcb)_\d+",
-        "packages/api/nros-c/include/rclc/detail/tier_task_memory_freertos.h",
-        "static StackType_t __nros_tier_stack_##i[",
+        r"__nros_sched_task_(?:stack|tcb)_\d+",
+        "packages/api/nros-c/include/rclc/detail/sched_task_memory_freertos.h",
+        "static StackType_t __nros_sched_task_stack_##i[",
     ),
     (
         "level task memory",
-        r"__nros_tier_stack_\d+",
-        "packages/api/nros-c/include/rclc/detail/tier_task_memory_nuttx.h",
-        "static uint8_t __nros_tier_stack_##i[",
+        r"__nros_sched_task_stack_\d+",
+        "packages/api/nros-c/include/rclc/detail/sched_task_memory_nuttx.h",
+        "static uint8_t __nros_sched_task_stack_##i[",
     ),
     # The generated entry's contract-monitor tables (rows, ages, hazards, modes).
     (
@@ -349,15 +349,15 @@ _STORAGE_DEF = re.compile(
     r"|GlobalStorageHolder<N>::storage\["
     r'|format_ident!\(\s*"[^"]*_SLOT_STORE"'
     # issue 2040 -- the level image's statics and the platform task stacks.
-    r"|\bstatic\b.*\b__nros_(?:levels_backing|tier_backing_|scheduler_|tier_stack_|tier_thread_"
-    r"|tier_tcb_|mon_storage|age_storage|hz_storage|mode_storage|mon_rows)"
+    r"|\bstatic\b.*\b__nros_(?:levels_backing|sched_task_backing_|scheduler_|sched_task_stack_|sched_task_thread_"
+    r"|sched_task_tcb_|mon_storage|age_storage|hz_storage|mode_storage|mon_rows)"
     r"|STACK_ARRAY_DEFINE(?:_IN)?\(\s*nros_thread_stacks\b"
 )
 # The same set, as a POSIX ERE `git grep` can parse (it has no `(?:`).
 _STORAGE_GREP = (
     "executor_storage|EXECUTOR_BACKING|_SLOT_STORE|__nros_comp_buf_|GlobalStorageHolder"
-    "|__nros_levels_backing|__nros_tier_backing_|__nros_scheduler_|__nros_tier_stack_"
-    "|__nros_tier_thread_|__nros_tier_tcb_|__nros_mon_storage|__nros_age_storage"
+    "|__nros_levels_backing|__nros_sched_task_backing_|__nros_scheduler_|__nros_sched_task_stack_"
+    "|__nros_sched_task_thread_|__nros_sched_task_tcb_|__nros_mon_storage|__nros_age_storage"
     "|__nros_hz_storage|__nros_mode_storage|__nros_mon_rows|nros_thread_stacks"
 )
 # Grouped before anchoring: a row's regex may be an alternation.
@@ -742,7 +742,7 @@ def read_sizes(paths, elf_mtime):
 # the entry's `uint64_t [(SIZE + 7) / 8]` rows round up to a word, the C++
 # boot storage is `uint8_t [SIZE]` exactly.
 _EXEC_SLOT_ROUNDING = [
-    (re.compile(r"^__nros_(?:tier_)?executor_storage$"), 8),
+    (re.compile(r"^__nros_(?:sched_task_)?executor_storage$"), 8),
     (re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*::)*Node::GlobalStorageHolder<\d+>::storage$"), 1),
 ]
 
@@ -751,7 +751,7 @@ _EXEC_SLOT_ROUNDING = [
 # macro each, as `uint64_t [MACRO / 8u]`: a whole number of words, rounded down.
 _SIZED_BY_MACRO = [
     (re.compile(r"^__nros_levels_backing$"), "NROS_CPP_LEVELS_BACKING_SIZE"),
-    (re.compile(r"^__nros_tier_backing_(\d+)$"), "NROS_CPP_TIER_BACKING_SIZE_{}"),
+    (re.compile(r"^__nros_sched_task_backing_(\d+)$"), "NROS_CPP_SCHED_TASK_BACKING_SIZE_{}"),
     (re.compile(r"^__nros_scheduler_(\d+)$"), "NROS_CPP_SCHEDULER_BACKING_SIZE_{}"),
 ]
 
@@ -1500,18 +1500,18 @@ def selftest_attribution():
          "nros::Node::GlobalStorageHolder<0>::storage", "[executor storage]"),
         ("_ZN4nros6detail5stashE", "nros::detail::stash", "C++ nros"),
         ("_RNvNtCs1_4nros3env9ENV_CACHE", "nros::env::ENV_CACHE", "nros"),
-        ("__nros_tier_executor_storage", "__nros_tier_executor_storage", "[executor storage]"),
+        ("__nros_sched_task_executor_storage", "__nros_sched_task_executor_storage", "[executor storage]"),
         ("__nros_executor_storage", "__nros_executor_storage", "[executor storage]"),
         ("_RNvNtNtCs1_9nros_node8executor7backing16EXECUTOR_BACKING.llvm.7",
          "nros_node::executor::backing::EXECUTOR_BACKING (.llvm.7)", "[executor storage]"),
-        ("_RNvNvCs1_12native_entry16___nros_entry_run28___NROS_TIER_EXECUTOR_BACKING",
-         "linux_entry::__nros_entry_run::__NROS_TIER_EXECUTOR_BACKING", "[executor storage]"),
+        ("_RNvNvCs1_12native_entry16___nros_entry_run28___NROS_SCHED_TASK_EXECUTOR_BACKING",
+         "linux_entry::__nros_entry_run::__NROS_SCHED_TASK_EXECUTOR_BACKING", "[executor storage]"),
         ("__nros_comp_buf_3", "__nros_comp_buf_3", "[component storage]"),
         ("_RNvCs1_8ctrl_pkg36___NROS_COMPONENT_ctrl_pkg_SLOT_STORE",
          "ctrl_pkg::___NROS_COMPONENT_ctrl_pkg_SLOT_STORE", "[component storage]"),
         ("_ZN4core3fmt5write17h0123456789abcdefE", "core::fmt::write::h0123456789abcdef", "core"),
         ("_ZTVN6rclcpp4NodeE", "vtable for rclcpp::Node", "C++ rclcpp"),
-        ("_ZL12__nros_tiers", "__nros_tiers", "C++ (global namespace)"),
+        ("_ZL12__nros_sched_tasks", "__nros_sched_tasks", "C++ (global namespace)"),
         ("g_sessions", "g_sessions", "(C / asm / no path)"),
     ]
     for raw, name, want in cases:
@@ -1530,14 +1530,14 @@ def selftest_level_image():
     rows = [
         # (raw, demangled, bytes, owner)
         ("_ZL21__nros_levels_backing", "__nros_levels_backing", 40640, "[executor storage]"),
-        ("_ZL28__nros_tier_executor_storage", "__nros_tier_executor_storage", 2792,
+        ("_ZL28__nros_sched_task_executor_storage", "__nros_sched_task_executor_storage", 2792,
          "[executor storage]"),
-        ("_ZL20__nros_tier_backing_1", "__nros_tier_backing_1", 4096, "[executor storage]"),
-        ("_ZL18__nros_tier_stack_1", "__nros_tier_stack_1", 16384, "[level task memory]"),
-        ("_ZL18__nros_tier_stack_2", "__nros_tier_stack_2", 16384, "[level task memory]"),
-        ("_ZL19__nros_tier_thread_1", "__nros_tier_thread_1", 272, "[level task memory]"),
-        ("_ZL19__nros_tier_thread_2", "__nros_tier_thread_2", 272, "[level task memory]"),
-        ("__nros_tier_tcb_1", "__nros_tier_tcb_1", 100, "[level task memory]"),
+        ("_ZL20__nros_sched_task_backing_1", "__nros_sched_task_backing_1", 4096, "[executor storage]"),
+        ("_ZL18__nros_sched_task_stack_1", "__nros_sched_task_stack_1", 16384, "[level task memory]"),
+        ("_ZL18__nros_sched_task_stack_2", "__nros_sched_task_stack_2", 16384, "[level task memory]"),
+        ("_ZL19__nros_sched_task_thread_1", "__nros_sched_task_thread_1", 272, "[level task memory]"),
+        ("_ZL19__nros_sched_task_thread_2", "__nros_sched_task_thread_2", 272, "[level task memory]"),
+        ("__nros_sched_task_tcb_1", "__nros_sched_task_tcb_1", 100, "[level task memory]"),
         ("_ZL18__nros_scheduler_0", "__nros_scheduler_0", 232, "[level scheduler]"),
         ("_ZL18__nros_mon_storage", "__nros_mon_storage", 400, "[monitor storage]"),
         ("_ZL19__nros_mode_storage", "__nros_mode_storage", 288, "[monitor storage]"),
@@ -1547,7 +1547,7 @@ def selftest_level_image():
         ("nros_thread_stacks", "nros_thread_stacks", 4 * 5120, "[platform task stacks]"),
         ("__nros_comp_buf_0", "__nros_comp_buf_0", 3368, "[component storage]"),
         # Near misses stay with their language: the anchors hold.
-        ("_ZL12__nros_tiers", "__nros_tiers", 96, "C++ (global namespace)"),
+        ("_ZL12__nros_sched_tasks", "__nros_sched_tasks", 96, "C++ (global namespace)"),
         ("my_nros_thread_stacks", "my_nros_thread_stacks", 64, "(C / asm / no path)"),
         ("__nros_mon_rows_x", "__nros_mon_rows_x", 8, "(C / asm / no path)"),
     ]
@@ -1572,16 +1572,16 @@ def selftest_level_image():
     priced = {s["symbol"]: s["priced"] for s in res["storage"]}
     assert priced["__nros_levels_backing"] == "NROS_CPP_LEVELS_BACKING_SIZE = 40,644", priced
     assert priced["__nros_scheduler_0"] == "NROS_CPP_SCHEDULER_BACKING_SIZE_0 = 232", priced
-    assert "no per-build sizes header states NROS_CPP_TIER_BACKING_SIZE_1" in (
-        priced["__nros_tier_backing_1"]), priced
+    assert "no per-build sizes header states NROS_CPP_SCHED_TASK_BACKING_SIZE_1" in (
+        priced["__nros_sched_task_backing_1"]), priced
     assert priced["nros_thread_stacks"].startswith(
         "4 x 5,120 (CONFIG_NROS_ZEPHYR_TASK_SLOTS = 4, CONFIG_MAIN_STACK_SIZE = 5,120"), priced
-    assert priced["__nros_tier_stack_1"] is None, "a level stack is priced by --levels"
+    assert priced["__nros_sched_task_stack_1"] is None, "a level stack is priced by --levels"
 
     # The pricing must be able to FAIL.
     assert price_by_macro("__nros_levels_backing", 40640,
                           {"NROS_CPP_LEVELS_BACKING_SIZE": 13112}).startswith("MISMATCH")
-    assert price_by_macro("__nros_tiers", 96, sizes) is None
+    assert price_by_macro("__nros_sched_tasks", 96, sizes) is None
     assert price_task_stacks(20481, kconfig).startswith("MISMATCH"), "not whole slots"
     assert price_task_stacks(4 * 4096, kconfig).startswith("MISMATCH"), "slot below the ask"
     assert price_task_stacks(4 * 8192, dict(kconfig, CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=8192)
@@ -1719,9 +1719,9 @@ def check_storage_roles():
 # derived one, each backing and the scheduler the generated size.
 #
 # The entry's statics, named by the generated entry (boot_wrapper.jinja):
-#   __nros_tier_stack_<i>, __nros_tier_thread_<i>   a spawned level's worker
-#   __nros_tier_executor_storage                     n contexts, one per level
-#   __nros_tier_backing_<i>                          a level's own backing
+#   __nros_sched_task_stack_<i>, __nros_sched_task_thread_<i>   a spawned level's worker
+#   __nros_sched_task_executor_storage                     n contexts, one per level
+#   __nros_sched_task_backing_<i>                          a level's own backing
 #   __nros_scheduler_0                               the core's scheduler
 # `i` is the row of the entry's table (the runner's order); the LEVEL is the
 # row's urgency order among the rows, the rule `NROS_ENTRY_LEVEL_OF_<node>` is
@@ -1733,13 +1733,13 @@ PRIORITY_RECORD = "nros_priority_plan.json"
 # The worker frame is the C level runner's measured setup peak (issue 2065,
 # the S32K344 island); the selftest reads both back from zephyr/Kconfig.
 LEVEL_KCONFIG_DEFAULTS = {
-    "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE": 16384,
+    "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE": 16384,
     "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME": 13312,
 }
 _KCONFIG_INT = re.compile(r"^(CONFIG_[A-Z0-9_]+)=([0-9]+)\s*$", re.M)
 _LEVEL_SYM = re.compile(
-    r"^__nros_(tier_stack|tier_thread|tier_backing|scheduler)_([0-9]+)$"
-    r"|^__nros_tier_executor_storage$|^__nros_levels_backing$"
+    r"^__nros_(sched_task_stack|sched_task_thread|sched_task_backing|scheduler)_([0-9]+)$"
+    r"|^__nros_sched_task_executor_storage$|^__nros_levels_backing$"
 )
 
 
@@ -1772,20 +1772,20 @@ LEVEL_HEADER_DEFAULTS = {
 
 def level_knobs(family, kconfig):
     """(level default, worker frame, source) of `family`'s
-    <rclc/detail/tier_task_memory_<family>.h>: Zephyr's from the image's
+    <rclc/detail/sched_task_memory_<family>.h>: Zephyr's from the image's
     `.config`, FreeRTOS's and NuttX's the header defaults."""
     if family in LEVEL_HEADER_DEFAULTS:
         dname, dval, fname, fval = LEVEL_HEADER_DEFAULTS[family]
-        return dval, fval, f"<rclc/detail/tier_task_memory_{family}.h> defaults ({dname}, {fname})"
+        return dval, fval, f"<rclc/detail/sched_task_memory_{family}.h> defaults ({dname}, {fname})"
     return (
-        kconfig["CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE"],
+        kconfig["CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE"],
         kconfig["CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME"],
-        "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE, CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME",
+        "CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME",
     )
 
 
 def derived_level_stack(member_bytes, level_default, frame):
-    """`NROS_LEVEL_STACK_BYTES(member)` of <rclc/detail/tier_task_memory_*.h>:
+    """`NROS_LEVEL_STACK_BYTES(member)` of <rclc/detail/sched_task_memory_*.h>:
     the largest member's stated stack (issue 2019, `[[component]]
     stack_bytes`), or the per-callback default (the level default minus the
     worker frame) when none states one, plus the worker frame."""
@@ -1794,7 +1794,7 @@ def derived_level_stack(member_bytes, level_default, frame):
 
 def level_order(priorities, smaller_is_urgent):
     """Each row's level: its urgency order among the rows, equal priorities in
-    row order (`nros_cpp_tier_level`)."""
+    row order (`nros_cpp_sched_task_level`)."""
     key = (lambda i: (priorities[i], i)) if smaller_is_urgent else (lambda i: (-priorities[i], i))
     order = sorted(range(len(priorities)), key=key)
     levels = [0] * len(priorities)
@@ -1908,7 +1908,7 @@ def level_costs(elf, sizes_header=None):
         res["note"] = "one level: the image spawns no worker, so it has no level statics"
         return res
     smaller = record.get("plan", {}).get("direction", "") in ("smaller-is-urgent", "smaller")
-    family = (record.get("tier_key") or "").split("/")[0]
+    family = (record.get("sched_task_key") or "").split("/")[0]
     # The runner boots tiers[0] on Zephyr, the last row on FreeRTOS and NuttX.
     boot = len(tiers) - 1 if family in ("freertos", "nuttx") else 0
     kconfig, kconfig_src = read_kconfig(elf)
@@ -1930,7 +1930,7 @@ def level_costs(elf, sizes_header=None):
             {"what": what, "measured": measured, "expected": expected, "ok": measured == expected}
         )
 
-    storage = symbols.get("__nros_tier_executor_storage")
+    storage = symbols.get("__nros_sched_task_executor_storage")
     # phase-509 P9b (RFC-0108 "As built in P9b") -- a level image opens ONE
     # executor per core, carved from the levels backing; a level is a worker
     # record (its scheduler seat) and a stack. Before P9b each level was an
@@ -1972,8 +1972,8 @@ def level_costs(elf, sizes_header=None):
                 else "per-callback default + worker frame"
             )
             row["members_defaulted"] = [] if stated or member else members
-            st = symbols.get(f"__nros_tier_stack_{i}")
-            th = symbols.get(f"__nros_tier_thread_{i}")
+            st = symbols.get(f"__nros_sched_task_stack_{i}")
+            th = symbols.get(f"__nros_sched_task_thread_{i}")
             if st:
                 row["stack"] = st[1]
                 row["stack_region"] = region_of(st[0], st[2], regions)
@@ -1998,11 +1998,11 @@ def level_costs(elf, sizes_header=None):
                 row["thread_region"] = region_of(th[0], th[2], regions)
         else:
             row["stack_rule"] = "the caller's thread (main), not the entry's"
-        bk = symbols.get(f"__nros_tier_backing_{i}")
+        bk = symbols.get(f"__nros_sched_task_backing_{i}")
         if bk:
             row["backing"] = bk[1]
             row["backing_region"] = region_of(bk[0], bk[2], regions)
-            key = f"NROS_CPP_TIER_BACKING_SIZE_{i}"
+            key = f"NROS_CPP_SCHED_TASK_BACKING_SIZE_{i}"
             if key in sizes:
                 check(f"level {levels[i]} backing ({key})", bk[1], sizes[key])
         if one_executor:
@@ -2152,7 +2152,7 @@ def selftest_levels():
         assert m and int(m.group(1)) == val, f"{sym} drifted from zephyr/Kconfig"
     detail = os.path.join(root, "packages", "api", "nros-c", "include", "rclc", "detail")
     for family, (dname, dval, fname, fval) in LEVEL_HEADER_DEFAULTS.items():
-        with open(os.path.join(detail, f"tier_task_memory_{family}.h")) as fh:
+        with open(os.path.join(detail, f"sched_task_memory_{family}.h")) as fh:
             text = fh.read()
         for name, val in ((dname, dval), (fname, fval)):
             m = re.search(rf"^#define {name} (\d+)u?$", text, re.M)

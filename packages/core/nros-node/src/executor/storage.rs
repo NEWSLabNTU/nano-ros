@@ -665,18 +665,18 @@ pub struct ExecutorInlineStorage {
     ///
     /// Issue 1970 -- [`INLINE_BACKING_U64S`] words: the image's whole
     /// executor, or none at all on a tiered image, whose tiers each carve a
-    /// backing of their own size ([`tier_sizing`]).
+    /// backing of their own size ([`sched_task_sizing`]).
     pub backing: [MaybeUninit<u64>; INLINE_BACKING_U64S],
 }
 
 /// Issue 1970 -- the sizing an inline backing is carved at: the image's
 /// ([`ExecutorSizing::DEFAULT`]), or `None` on an image whose executors are
-/// sized per tier ([`crate::config::TIER_SIZINGS`] is non-empty). There the
+/// sized per tier ([`crate::config::SCHED_TASK_SIZINGS`] is non-empty). There the
 /// inline backing is EMPTY -- one whole-image backing per tier context is the
 /// cost this issue removes -- and an executor opened over a context alone
 /// (`rclc_executor_init`, `nros_cpp_init`) is refused, naming the per-tier
 /// road, rather than carved short.
-pub const INLINE_SIZING: Option<ExecutorSizing> = if crate::config::TIER_SIZINGS.is_empty() {
+pub const INLINE_SIZING: Option<ExecutorSizing> = if crate::config::SCHED_TASK_SIZINGS.is_empty() {
     Some(ExecutorSizing::DEFAULT)
 } else {
     None
@@ -693,7 +693,7 @@ pub const INLINE_BACKING_U64S: usize = match INLINE_SIZING {
 /// image's scheduling-context count. A tier that declares parameters on an
 /// image that carves no store carves none either (the store is built from
 /// the heap there, as it is for the image's one executor).
-pub const fn tier_executor_sizing(t: &crate::config::TierSizing) -> ExecutorSizing {
+pub const fn sched_task_executor_sizing(t: &crate::config::SchedTaskSizing) -> ExecutorSizing {
     let store = nros_params::IMPLIED_STORE_SLOTS;
     ExecutorSizing {
         cbs: t.cbs,
@@ -713,20 +713,20 @@ pub const fn tier_executor_sizing(t: &crate::config::TierSizing) -> ExecutorSizi
 
 /// Issue 1970 -- the sizing of the tier named `name`, `None` when the image
 /// sizes no tier of that name.
-pub fn tier_sizing(name: &str) -> Option<ExecutorSizing> {
-    crate::config::TIER_SIZINGS
+pub fn sched_task_sizing(name: &str) -> Option<ExecutorSizing> {
+    crate::config::SCHED_TASK_SIZINGS
         .iter()
         .find(|t| t.name == name)
-        .map(tier_executor_sizing)
+        .map(sched_task_executor_sizing)
 }
 
 /// Issue 1970 -- the backing bytes the `index`-th tier's executor carves, `0`
-/// past the last tier. What `nros::sizes::TIER_BACKING_SIZE_<i>` publishes to
+/// past the last tier. What `nros::sizes::SCHED_TASK_BACKING_SIZE_<i>` publishes to
 /// the C/C++ header.
-pub const fn tier_backing_bytes(index: usize) -> usize {
-    let tiers = crate::config::TIER_SIZINGS;
+pub const fn sched_task_backing_bytes(index: usize) -> usize {
+    let tiers = crate::config::SCHED_TASK_SIZINGS;
     if index < tiers.len() {
-        tier_executor_sizing(&tiers[index]).u64_len() * 8
+        sched_task_executor_sizing(&tiers[index]).u64_len() * 8
     } else {
         0
     }
@@ -737,7 +737,7 @@ pub const fn tier_backing_bytes(index: usize) -> usize {
 /// arena and declared parameters, summed over the image's tiers (each row of
 /// the tier table is one level). `None` when the image sizes no tier.
 pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
-    let tiers = crate::config::TIER_SIZINGS;
+    let tiers = crate::config::SCHED_TASK_SIZINGS;
     if tiers.is_empty() {
         return None;
     }
@@ -780,9 +780,9 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
 /// and one executor pays it once, so `levels - 1` of them come off. With the
 /// tiers partitioning the image's entities this is the image's own model, the
 /// number `NROS_EXECUTOR_ARENA_SIZE` derives to.
-pub(crate) const fn levels_arena_bytes(tier_arena_sum: usize, levels: usize) -> usize {
+pub(crate) const fn levels_arena_bytes(sched_task_arena_sum: usize, levels: usize) -> usize {
     let extra = crate::config::arena_model::BASE_OVERHEAD * levels.saturating_sub(1);
-    tier_arena_sum.saturating_sub(extra)
+    sched_task_arena_sum.saturating_sub(extra)
 }
 
 /// phase-509 P9b item 4 -- the backing bytes [`levels_executor_sizing`]
@@ -994,8 +994,8 @@ mod tests {
         let base = crate::config::arena_model::BASE_OVERHEAD;
         let (a, b, c) = (4_080, 5_104, 11_120);
         let image_model = a + b + c + base;
-        let tier_sum = (a + base) + (b + base) + (c + base);
-        assert_eq!(levels_arena_bytes(tier_sum, 3), image_model);
+        let sched_task_sum = (a + base) + (b + base) + (c + base);
+        assert_eq!(levels_arena_bytes(sched_task_sum, 3), image_model);
         assert_eq!(
             levels_arena_bytes(a + base, 1),
             a + base,
@@ -1569,15 +1569,15 @@ mod tests {
     /// scheduling contexts, and its declared parameters capped at the store
     /// the image carves (none when the image carves none).
     #[test]
-    fn a_tier_is_carved_at_its_own_counts() {
-        let t = crate::config::TierSizing {
+    fn a_sched_task_is_carved_at_its_own_counts() {
+        let t = crate::config::SchedTaskSizing {
             name: "estop",
             cbs: 3,
             arena: 8192,
             nodes: 2,
             params: Some(4),
         };
-        let s = tier_executor_sizing(&t);
+        let s = sched_task_executor_sizing(&t);
         assert_eq!((s.cbs, s.arena, s.nodes), (3, 8192, 2));
         // Issue 1971 -- the runtime remap table is the image's default on
         // every tier; the launch's rules are the shared flash table.
@@ -1585,7 +1585,8 @@ mod tests {
         assert_eq!(s.sc, crate::config::MAX_SC);
         let store = nros_params::IMPLIED_STORE_SLOTS;
         assert_eq!(s.params, 4.min(store));
-        let unstated = tier_executor_sizing(&crate::config::TierSizing { params: None, ..t });
+        let unstated =
+            sched_task_executor_sizing(&crate::config::SchedTaskSizing { params: None, ..t });
         assert_eq!(unstated.params, store);
         // A smaller tier is a smaller backing.
         let image = ExecutorSizing::DEFAULT;
@@ -1598,10 +1599,10 @@ mod tests {
     /// and publishes no tier backing.
     #[test]
     fn an_image_sized_as_one_executor_keeps_the_inline_backing() {
-        if crate::config::TIER_SIZINGS.is_empty() {
+        if crate::config::SCHED_TASK_SIZINGS.is_empty() {
             assert_eq!(INLINE_BACKING_U64S, ExecutorSizing::DEFAULT.u64_len());
-            assert_eq!(tier_backing_bytes(0), 0);
-            assert!(tier_sizing("anything").is_none());
+            assert_eq!(sched_task_backing_bytes(0), 0);
+            assert!(sched_task_sizing("anything").is_none());
         } else {
             assert_eq!(INLINE_BACKING_U64S, 0);
         }

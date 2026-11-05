@@ -54,7 +54,7 @@ scripts/check-submodule-drift.sh
 scripts/check-submodule-pinned-locks.py
 scripts/check-test-domain-assignment.sh
 scripts/check-tier-preconditions.sh
-scripts/check-tier-priority-plan.py
+scripts/check-sched-task-priority-plan.py
 scripts/check-version-lockstep.sh
 scripts/check-weak-symbols-image.sh
 scripts/check-workspace-build-output.sh

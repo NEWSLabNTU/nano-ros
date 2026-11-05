@@ -17,7 +17,7 @@ superseded-by: null
 > now come from the play_launch-resolved **SystemModel** (RFC-0050/0052):
 > `codegen-system --model` / `nano_ros_add_executable(... MODEL …)` /
 > `nros::main!(model = …)` resolve the tiers through the shared
-> `nros_orchestration_ir::tier_from_model` + `resolve_tiers`. The launch-tree
+> `nros_orchestration_ir::sched_task_from_model` + `resolve_sched_tasks`. The launch-tree
 > + `system.toml [tasks.*]` orchestration this RFC describes is
 > **transitional** — deprecated in R3, removed in R4 once consumers migrate.
 > The tier *schema* and resolver are unchanged; only the input surface moves
@@ -50,7 +50,7 @@ superseded-by: null
 > codegen timing: RFC-0003 §7.
 >
 > **Model 1 is the single execution model for ALL languages (decided 2026-07).**
-> Rust (`nros::main!`) already runs Model 1 via `run_tiers`. C/C++ diverged with a
+> Rust (`nros::main!`) already runs Model 1 via `run_sched_tasks`. C/C++ diverged with a
 > single-`Executor` + per-callback `sched_context` binding (phase-272/273); that is
 > **reconciled onto Model 1** — C/C++ get per-tier executors too. The **user surface
 > is the callback-group model of RFC-0047 / phase-273** (code-declared
@@ -64,8 +64,8 @@ superseded-by: null
 > `xTaskCreate`, Zephyr `k_thread`, NuttX task, ThreadX `tx_thread`, RTIC task),
 > reusing the RFC-0016 0–31→native priority mappers + the one-shared-session
 > (Borrowed store) model the Rust boards already have; the C/C++ boards gain a
-> `run_tiers` mirror. **Sub-node splitting** (a node with groups on different tiers):
-> the phase-273 **single-`Executor`** path supports it now (the `NodeSpansTiers` v1
+> `run_sched_tasks` mirror. **Sub-node splitting** (a node with groups on different tiers):
+> the phase-273 **single-`Executor`** path supports it now (the `NodeSpansSchedTasks` v1
 > guard was lifted — each callback binds its own group `sched_context`, proven by
 > `realtime_subnode_cpp_e2e`). Under **Model 1** it needs the node to register on
 > **multiple tier-executors** (each gating its groups) with sound per-executor
@@ -80,7 +80,7 @@ superseded-by: null
 > #102 example-fixture work by the 2026-07 renumber (`93946185e`) — embedded
 > C/C++ convergence is phase-274 W3. **Rust caveat:** the Rust `nros::main!`
 > **Zephyr** emit branch is the one framework arm NOT on Model 1 — it wires only
-> register+spin (no `run_tiers` / param-services / lifecycle); that gap is the
+> register+spin (no `run_sched_tasks` / param-services / lifecycle); that gap is the
 > Rust-Zephyr sibling of phase-274 W3, tracked by **issue #128**.)
 >
 > **Entry-emit pipeline superseded by RFC-0032.** §3's "cargo nano-ros
@@ -90,7 +90,7 @@ superseded-by: null
 > with the embedded-C scaffold baked by `nros dev codegen system` (RFC-0003). Read
 > §3's "cargo-nano-ros codegen orchestrator" box and §10.2's spawn sketch as the
 > *execution-model intent*; the concrete emitter mechanics (frameworks, the
-> `BoardEntry::run` vs `run_tiers` contract, the shared `nros-orchestration-ir`
+> `BoardEntry::run` vs `run_sched_tasks` contract, the shared `nros-orchestration-ir`
 > tier resolver) live in RFC-0032.
 
 ---
@@ -147,7 +147,7 @@ Picks up REP-2014 (callback-group priority) data model statically at build time.
 > "tiers" are RTIC interrupt priorities, framework-owned).
 
 - Platforms with `Z_FEATURE_MULTI_THREAD=1` (**all RTOS**: POSIX, Zephyr, FreeRTOS, NuttX, ThreadX, ESP-IDF): rely on zenoh-pico internal mutexes (`_z_session_t::_mutex_inner`, per-transport TX mutex, cancellation mutex). This is what the per-tier model (one shared session, N preemptive spin tasks) builds on.
-- Platforms with `Z_FEATURE_MULTI_THREAD=0` (**bare-metal only**): single execution context; `ffi-sync` wraps FFI in `critical_section::with()` for RTIC mixed-priority. No `run_tiers` here.
+- Platforms with `Z_FEATURE_MULTI_THREAD=0` (**bare-metal only**): single execution context; `ffi-sync` wraps FFI in `critical_section::with()` for RTIC mixed-priority. No `run_sched_tasks` here.
 
 Per-tier session model rejected:
 
@@ -204,12 +204,12 @@ Codegen + runtime hooks land in existing `nano-ros` and `play_launch` workspaces
 │ Generated orchestration binary                               │
 │  main() {                                                    │
 │    open shared zenoh session (ffi-sync if MT=0)              │
-│    spawn task_tier_high (priority 90, stack 8K)              │
-│    spawn task_tier_normal (priority 50, stack 4K)            │
-│    spawn task_tier_low (priority 10, stack 4K)               │
+│    spawn task_sched_task_high (priority 90, stack 8K)              │
+│    spawn task_sched_task_normal (priority 50, stack 4K)            │
+│    spawn task_sched_task_low (priority 10, stack 4K)               │
 │    join / WFI                                                │
 │  }                                                            │
-│  task_tier_X() {                                             │
+│  task_sched_task_X() {                                             │
 │    let mut exec = Executor::open_with_session(shared);       │
 │    register_node_a_to_exec(&mut exec);                       │
 │    register_node_b_to_exec(&mut exec);                       │
@@ -461,7 +461,7 @@ Single-tier codegen output ≡ hand-written single-`main` shape (modulo formatti
 | FreeRTOS   | 1                        | zenoh-pico internal mutexes | `system/freertos` |
 | NuttX      | 1                        | zenoh-pico internal mutexes | `system/unix` (pthread) |
 | ThreadX    | 1                        | zenoh-pico internal mutexes | `system/threadx` |
-| Bare-metal | 0                        | `ffi-sync` critical_section | none (stubs) — no `run_tiers` |
+| Bare-metal | 0                        | `ffi-sync` critical_section | none (stubs) — no `run_sched_tasks` |
 
 ### 7.2 Shared-session cost (chosen)
 
@@ -640,7 +640,7 @@ fn nros_main() -> ! {
     open_shared_session();
     let (args, count) = nros_runtime_args_get();
     apply_runtime_param_overrides(args, count);  // populates ParameterServer
-    spawn_tier_tasks();
+    spawn_sched_tasks();
     join_or_idle();
 }
 ```
@@ -684,9 +684,9 @@ For each tier in the system manifest, codegen emits one task spawn matching the 
 | -------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | POSIX    | `pthread_create` + `pthread_setschedparam(SCHED_FIFO, prio)`                                                      | `loop { exec.spin_once(N); sched_yield(); }`                                                                                             |
 | Zephyr   | `K_THREAD_DEFINE(tid, stack_bytes, entry, ..., prio, 0, 0)`                                                       | `loop { exec.spin_once(N); k_yield(); }`                                                                                                 |
-| FreeRTOS | `xTaskCreate(entry, "tier_X", stack_words, NULL, prio, NULL)`                                                     | `loop { exec.spin_once(N); vTaskDelay(1); }`                                                                                             |
+| FreeRTOS | `xTaskCreate(entry, "sched_task_X", stack_words, NULL, prio, NULL)`                                                     | `loop { exec.spin_once(N); vTaskDelay(1); }`                                                                                             |
 | ThreadX  | `tx_thread_create(..., entry, ..., stack_ptr, stack_bytes, prio, preempt_thresh, 0, TX_AUTO_START)`               | `loop { exec.spin_once(N); tx_thread_relinquish(); }`                                                                                    |
-| NuttX    | `task_create("tier_X", prio, stack_bytes, entry, NULL)` (or `pthread_create`) w/ `sched_setscheduler(SCHED_FIFO)` | `loop { exec.spin_once(N); sched_yield(); }`                                                                                             |
+| NuttX    | `task_create("sched_task_X", prio, stack_bytes, entry, NULL)` (or `pthread_create`) w/ `sched_setscheduler(SCHED_FIFO)` | `loop { exec.spin_once(N); sched_yield(); }`                                                                                             |
 | RTIC     | `#[task(priority = N, binds = SomeIRQ)]` macro at compile time; codegen emits the macro invocation                | RTIC-managed; `exec.spin_once(0)` inside async task body w/ `Mono::delay().await` for QEMU I/O yield (per CLAUDE.md "QEMU I/O Yielding") |
 
 ### 10.3 Direction-flip handling
@@ -770,12 +770,12 @@ Inventory of existing components vs work required. Goal: maximize reuse, identif
 | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `cargo-nano-ros` clap CLI w/ subcommands (`generate-rust/c/cpp`, `bindgen`, `new`, `clean`) | Complete. Discovers workspace packages, parses `package.xml`.                          | **Extend** — add `generate-main` subcommand for orchestration codegen.                                                                                   |
 | `cargo-nano-ros::package_discovery`                                                         | Walks workspace, parses Cargo.toml + package.xml.                                      | **Reuse** — extend to discover `nros.toml` files in same walk.                                                                                           |
-| `rosidl-codegen` Askama template engine                                                     | Jinja-style w/ Rust expressions. Templates for Rust msg/srv/action, C, C++ headers.    | **Reuse** — write new templates: `main.rs.jinja`, `tier_task.rs.jinja`, `shared_context.h.jinja`, `shared_context.rs.jinja`, `shared_context.hpp.jinja`. |
+| `rosidl-codegen` Askama template engine                                                     | Jinja-style w/ Rust expressions. Templates for Rust msg/srv/action, C, C++ headers.    | **Reuse** — write new templates: `main.rs.jinja`, `sched_task.rs.jinja`, `shared_context.h.jinja`, `shared_context.rs.jinja`, `shared_context.hpp.jinja`. |
 | `rosidl-parser`                                                                             | `.msg/.srv/.action` lexer + parser.                                                    | **Reuse as-is** — orthogonal; orchestration codegen consumes its outputs but doesn't extend.                                                             |
 | `nros-c/build.rs` size-probing pattern (Phase 87)                                           | `nros_sizes_build::find_dep_rlib` extracts `__NROS_SIZE_*` symbols → header constants. | **Reuse pattern** — add probes for per-tier executor sizing in generated main.                                                                           |
 | `nros-cpp/build.rs` storage-derivation                                                      | Computes `CppContext` upper bound from `nros` rlib symbols.                            | **Reuse** — same pattern for shared-context size in generated header.                                                                                    |
 | Zephyr CMake `nros_generate_interfaces()`                                                   | Discovers `.msg/.srv/.action`, invokes `nros-codegen`, links into Zephyr `app` target. | **Mirror as `nros_generate_orchestration()`** — new CMake fn invoking `cargo-nano-ros generate-main`.                                                    |
-| Zephyr Kconfig (`CONFIG_NROS_*`)                                                            | Selects API (C/C++/Rust), RMW backend, zenoh-pico features.                            | **Extend** — add `CONFIG_NROS_ORCHESTRATION_TIERS_MAX` etc.                                                                                              |
+| Zephyr Kconfig (`CONFIG_NROS_*`)                                                            | Selects API (C/C++/Rust), RMW backend, zenoh-pico features.                            | **Extend** — add `CONFIG_NROS_ORCHESTRATION_SCHED_TASKS_MAX` etc.                                                                                              |
 
 ### 11.3 nano-ros runtime API
 
@@ -798,7 +798,7 @@ Inventory of existing components vs work required. Goal: maximize reuse, identif
 Components with no existing infrastructure to reuse:
 
 1. **`nros.toml` schema crate** (`nros-orchestration-manifest`, in play_launch workspace) — TOML serde types, validation, merger of node + system manifests. Mirrors `ros-launch-manifest-types` but for our extended schema. **~500 LOC est.**
-2. **`cargo nano-ros generate-main` subcommand** — consumes `record.json` + workspace `nros.toml` files → emits orchestration crate w/ generated `main.rs`, `tier_task_*.rs`, `shared_context.{h,rs,hpp}`, plus build.rs probes. **~1500 LOC est.**
+2. **`cargo nano-ros generate-main` subcommand** — consumes `record.json` + workspace `nros.toml` files → emits orchestration crate w/ generated `main.rs`, `sched_task_*.rs`, `shared_context.{h,rs,hpp}`, plus build.rs probes. **~1500 LOC est.**
 3. **Tier resolver** — symbolic tier name → per-RTOS numeric (validated against per-RTOS bounds), spin period bound check, callback-set partition by tier, group→tier index. **~300 LOC est.**
 4. **Per-package `nros.toml` discoverer** — walks workspace, picks up node manifests, detects exactly-one system manifest per build target. Extends `cargo-nano-ros::package_discovery`. **~150 LOC est.**
 5. **Shared-context emitter** — analyzes `[[shared_state]]` accessor sets, picks sync mode (no lock vs cross-tier mutex), emits `#[repr(C)]` struct + `_get/_set/_modify` C-ABI accessors in 3 languages. **~600 LOC est.**

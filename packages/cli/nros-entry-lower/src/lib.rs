@@ -35,9 +35,9 @@ pub mod zephyr_image;
 pub use image::{
     AgeRow, ComponentKind, ComponentSeam, GroupBind, HazardMember, HazardMonitor, HazardRow,
     HazardRung, LoweredBoot, LoweredBootConfig, LoweredProbe, LoweredRunners, LoweredSched,
-    LoweredServices, LoweredTaskMemory, LoweredTiers, ModeDeadlineRow, ModeName, ModeRow,
-    ModeVariantRows, MonitorRow, MonitorTable, NodeBind, SchedContext, SetupNode, TaskStackRow,
-    TierRow, TierSetup, family_from_str,
+    LoweredSchedTasks, LoweredServices, LoweredTaskMemory, ModeDeadlineRow, ModeName, ModeRow,
+    ModeVariantRows, MonitorRow, MonitorTable, NodeBind, SchedContext, SchedTaskRow,
+    SchedTaskSetup, SetupNode, TaskStackRow, family_from_str,
 };
 pub use node::{LoweredEntry, LoweredNode, NodeIdentity, QosOverride, sanitize_pkg};
 
@@ -121,7 +121,7 @@ impl BoardFamily {
     /// Issue 1285. This is the ONE record of which symbol a C entry calls.
     /// The runner names used to live in `emit_c`'s own table, while this
     /// predicate lived here, and nothing tied the two. The table's ThreadX arm
-    /// named `nros_board_threadx_run_tiers`, a symbol that exists nowhere (in
+    /// named `nros_board_threadx_run_sched_tasks`, a symbol that exists nowhere (in
     /// neither the pre- nor the post-1442 spelling). Now
     /// the predicate is derived from the names, so the two cannot disagree.
     ///
@@ -131,12 +131,12 @@ impl BoardFamily {
     /// pair. EVERY name here carries the `_ns` suffix that the
     /// launch-declared NAMESPACE added when it became a runner argument —
     /// issue 1434 for the `run_components` half, issue 1442 for the
-    /// `run_tiers` half — and all six are additive symbols, because an entry
+    /// `run_sched_tasks` half — and all six are additive symbols, because an entry
     /// TU generated before either change still calls the older spelling and
     /// those are what it must keep resolving to. Where each is DEFINED:
     ///
     /// - `Native` — `nros_board_native_run_components_named_in` and
-    ///   `nros_board_native_run_tiers_in`, both `extern "C"` in Rust
+    ///   `nros_board_native_run_sched_tasks_in`, both `extern "C"` in Rust
     ///   (`packages/api/nros-cpp/src/lib.rs`). They took the executor storage
     ///   from the entry last (issue 1597); the `_ns` spellings stay defined for
     ///   a TU generated before that.
@@ -144,16 +144,16 @@ impl BoardFamily {
     ///   `nros_board_rtos_run_components_in`
     ///   (`packages/boards/nros-board-common/c/nros_rtos_run_components.c`),
     ///   because the single-executor path differs only in a per-tick yield.
-    ///   `run_tiers` is per-board: a FreeRTOS task, a Zephyr `k_thread` and a
+    ///   `run_sched_tasks` is per-board: a FreeRTOS task, a Zephyr `k_thread` and a
     ///   NuttX pthread are three different things. The three are
-    ///   `nros_board_{freertos,zephyr,nuttx}_run_tiers_in`, in each board
-    ///   crate's `c/<rtos>_run_tiers.c`. Every RTOS runner is the `_in` twin
+    ///   `nros_board_{freertos,zephyr,nuttx}_run_sched_tasks_in`, in each board
+    ///   crate's `c/<rtos>_run_sched_tasks.c`. Every RTOS runner is the `_in` twin
     ///   (Zephyr's tiers in issue 1551, the rest in issue 1568): it takes the
     ///   executor storage from the entry rather than the heap — see
     ///   [`CAbiRunners::takes_executor_storage`]. The `_ns` spellings stay
     ///   defined for a TU generated before that.
     /// - `Threadx` — the same shared `nros_board_rtos_run_components_in`, and NO
-    ///   `run_tiers` (issue 1286). ThreadX's C++ `run_components` is the
+    ///   `run_sched_tasks` (issue 1286). ThreadX's C++ `run_components` is the
     ///   FreeRTOS one line for line, and the shared runner already has no
     ///   per-tick yield off Zephyr, so there was nothing ThreadX-specific to
     ///   write. The CMake lane compiles the TU into the app target (both
@@ -166,7 +166,7 @@ impl BoardFamily {
     /// ThreadX is the family that uses that: a `Some` with one `None` in it.
     /// A multi-tier ThreadX plan therefore takes the single-executor
     /// sched-context path in the C pack, exactly as it does in the C++ one
-    /// (`Plan::executor_shape` reads the `run_tiers` half).
+    /// (`Plan::executor_shape` reads the `run_sched_tasks` half).
     ///
     /// `nros-cli-core/tests/board_key_table.rs` checks that every name here is
     /// defined in the tree.
@@ -174,8 +174,8 @@ impl BoardFamily {
         match self {
             BoardFamily::Linux => Some(CAbiRunners {
                 run_components: Some("nros_board_native_run_components_named_in"),
-                run_tiers: Some("nros_board_native_run_tiers_in"),
-                run_tiers_backed: None,
+                run_sched_tasks: Some("nros_board_native_run_sched_tasks_in"),
+                run_sched_tasks_backed: None,
                 // phase-509 P10 -- one worker thread per level over the
                 // core's one executor (nros-cpp).
                 run_levels: Some("nros_board_native_run_levels_in"),
@@ -185,12 +185,12 @@ impl BoardFamily {
                 // now they take the entry's `.bss` like every RTOS runner.
                 takes_executor_storage: true,
                 // A host thread's stack is the process's to map.
-                tier_task_memory: None,
+                sched_task_memory: None,
             }),
             BoardFamily::Freertos => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
-                run_tiers: Some("nros_board_freertos_run_tiers_tasks_in"),
-                run_tiers_backed: None,
+                run_sched_tasks: Some("nros_board_freertos_run_sched_tasks_memory_in"),
+                run_sched_tasks_backed: None,
                 // phase-509 P10 -- one worker task per level over the core's
                 // one executor, whose scheduler the entry owns.
                 run_levels: Some("nros_board_freertos_run_levels_in"),
@@ -201,9 +201,9 @@ impl BoardFamily {
                 // 256 KiB is issue #126's verified tier stack (64 KiB
                 // HardFaults at the first context switch); it moved here
                 // from the runner so the number sits where it is reserved.
-                tier_task_memory: Some(TierTaskMemory {
-                    header: "rclc/detail/tier_task_memory_freertos.h",
-                    boot_tier: BootTier::Last,
+                sched_task_memory: Some(SchedTaskMemory {
+                    header: "rclc/detail/sched_task_memory_freertos.h",
+                    boot_sched_task: BootSchedTask::Last,
                     default_stack_bytes: 262_144,
                     // phase-509 P10 -- a level that declares no stack gets
                     // `NROS_LEVEL_STACK_BYTES`: its largest member's stack
@@ -213,9 +213,9 @@ impl BoardFamily {
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
-                run_tiers: Some("nros_board_zephyr_run_tiers_tasks_in"),
+                run_sched_tasks: Some("nros_board_zephyr_run_sched_tasks_memory_in"),
                 // Issue 1970 -- and its per-tier-sized twin.
-                run_tiers_backed: Some("nros_board_zephyr_run_tiers_backed_in"),
+                run_sched_tasks_backed: Some("nros_board_zephyr_run_sched_tasks_backed_in"),
                 // phase-509 P9 -- the levels runner every generated Zephyr
                 // entry calls: one worker per level over the core's
                 // scheduler, whose backing the entry owns.
@@ -226,11 +226,11 @@ impl BoardFamily {
                 // `stack_bytes`; the fixed pool slot ignored it. The runner
                 // boots `tiers[0]` (Zephyr is lower-number-wins and the table
                 // is descending, issue 0251). 0 = the header's default,
-                // CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE, which keeps that knob's
+                // CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, which keeps that knob's
                 // meaning for a tier that declares nothing.
-                tier_task_memory: Some(TierTaskMemory {
-                    header: "rclc/detail/tier_task_memory_zephyr.h",
-                    boot_tier: BootTier::First,
+                sched_task_memory: Some(SchedTaskMemory {
+                    header: "rclc/detail/sched_task_memory_zephyr.h",
+                    boot_sched_task: BootSchedTask::First,
                     default_stack_bytes: 0,
                     // phase-509 P9 -- a level that declares no stack gets
                     // `NROS_LEVEL_STACK_BYTES`: its largest member's stack
@@ -240,8 +240,8 @@ impl BoardFamily {
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
-                run_tiers: Some("nros_board_nuttx_run_tiers_in"),
-                run_tiers_backed: None,
+                run_sched_tasks: Some("nros_board_nuttx_run_sched_tasks_in"),
+                run_sched_tasks_backed: None,
                 // phase-509 P10 -- one SCHED_FIFO pthread per level over the
                 // core's one executor, whose scheduler the entry owns.
                 run_levels: Some("nros_board_nuttx_run_levels_in"),
@@ -250,21 +250,21 @@ impl BoardFamily {
                 // static (`pthread_attr_setstack`), sized from its members
                 // when it declares none; the boot level runs on `app_main`'s
                 // thread, the last row. 16 KiB is the stack every tier pthread
-                // got before (`NROS_NUTTX_TIER_STACK_BYTES`).
-                tier_task_memory: Some(TierTaskMemory {
-                    header: "rclc/detail/tier_task_memory_nuttx.h",
-                    boot_tier: BootTier::Last,
+                // got before (`NROS_NUTTX_SCHED_TASK_STACK_BYTES`).
+                sched_task_memory: Some(SchedTaskMemory {
+                    header: "rclc/detail/sched_task_memory_nuttx.h",
+                    boot_sched_task: BootSchedTask::Last,
                     default_stack_bytes: 16_384,
                     derives_level_stacks: true,
                 }),
             }),
             BoardFamily::Threadx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
-                run_tiers: None,
-                run_tiers_backed: None,
+                run_sched_tasks: None,
+                run_sched_tasks_backed: None,
                 run_levels: None,
                 takes_executor_storage: true,
-                tier_task_memory: None,
+                sched_task_memory: None,
             }),
         }
     }
@@ -296,13 +296,13 @@ impl BoardFamily {
     }
 
     /// The key a tier's per-RTOS sub-table is read under:
-    /// `[tasks.<name>.<rtos>]`, rlm's `TierDef::platform`, and
+    /// `[tasks.<name>.<rtos>]`, rlm's `SchedTaskDef::platform`, and
     /// `nros-orchestration-ir`'s `rtos_spec`.
     ///
     /// This is `as_str()` for every family but the host, which is spelled
     /// `posix` there. That is the platform the host build runs on, not the
     /// board it names.
-    pub fn tier_rtos_key(self) -> &'static str {
+    pub fn sched_task_rtos_key(self) -> &'static str {
         match self {
             BoardFamily::Linux => "posix",
             other => other.as_str(),
@@ -334,38 +334,38 @@ impl BoardFamily {
 /// [`BoardFamily::c_abi_runners`].
 ///
 /// Each half is independently optional. A family may ship `run_components`
-/// without `run_tiers`: ThreadX does (issue 1286).
+/// without `run_sched_tasks`: ThreadX does (issue 1286).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CAbiRunners {
     /// The single-executor runner: `(…, setup) -> int32_t`, or
     /// `(…, setup, storage, bytes) -> int32_t` when
     /// [`takes_executor_storage`](Self::takes_executor_storage).
     pub run_components: Option<&'static str>,
-    /// The one-task-per-tier runner: `(…, tiers, n_tiers) -> int32_t`, or
-    /// `(…, tiers, n_tiers, storage, stride) -> int32_t` when
+    /// The one-task-per-tier runner: `(…, tiers, n_sched_tasks) -> int32_t`, or
+    /// `(…, tiers, n_sched_tasks, storage, stride) -> int32_t` when
     /// [`takes_executor_storage`](Self::takes_executor_storage).
-    pub run_tiers: Option<&'static str>,
+    pub run_sched_tasks: Option<&'static str>,
     /// Issue 1970 -- the tier runner for a PER-TIER-SIZED image:
-    /// `(…, tiers, n_tiers, storage, stride, backings, task_memory) -> int32_t`,
+    /// `(…, tiers, n_sched_tasks, storage, stride, backings, task_memory) -> int32_t`,
     /// where `backings[i]` is tier `i`'s own executor backing, sized by the
-    /// per-build header's `NROS_CPP_TIER_BACKING_SIZE_<i>`. The entry calls it
-    /// when that header publishes `NROS_CPP_TIER_COUNT` equal to its own tier
-    /// count, and [`run_tiers`](Self::run_tiers) otherwise. `None` for a family
+    /// per-build header's `NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>`. The entry calls it
+    /// when that header publishes `NROS_CPP_SCHED_TASK_COUNT` equal to its own tier
+    /// count, and [`run_sched_tasks`](Self::run_sched_tasks) otherwise. `None` for a family
     /// whose runner has no such twin (its tiers keep one whole-image executor
     /// each).
-    pub run_tiers_backed: Option<&'static str>,
+    pub run_sched_tasks_backed: Option<&'static str>,
     /// phase-509 P9 (RFC-0108) -- the LEVELS runner:
-    /// `(…, tiers, n_tiers, storage, stride, backings, task_memory,
+    /// `(…, tiers, n_sched_tasks, storage, stride, backings, task_memory,
     /// scheduler_backing, scheduler_bytes) -> int32_t`. Each row of the tier
     /// table is one level; the core's scheduler lives in the entry's
     /// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static, and `backings` is the
-    /// [`run_tiers_backed`](Self::run_tiers_backed) array or NULL. When a
+    /// [`run_sched_tasks_backed`](Self::run_sched_tasks_backed) array or NULL. When a
     /// family has one, the entry calls it in place of both tier runners.
     pub run_levels: Option<&'static str>,
     /// Issues 1551 + 1568 — this family's runners take the executor storage
     /// from the CALLER, and the entry emits it as ONE file-scope static: `n`
     /// blocks of `NROS_CPP_EXECUTOR_STORAGE_SIZE` rounded to 8, one per tier
-    /// (`__nros_tier_executor_storage`) or one for the single executor
+    /// (`__nros_sched_task_executor_storage`) or one for the single executor
     /// (`__nros_executor_storage`). The runner asks the linked library whether
     /// the block is big enough (`nros_cpp_executor_storage_check`) and refuses
     /// one that is not.
@@ -381,29 +381,29 @@ pub struct CAbiRunners {
     pub takes_executor_storage: bool,
     /// Issues 1598 + 1232 — the tier runner also takes each SPAWNED tier's
     /// task memory (stack + control block) from the entry, which declares
-    /// them as statics sized from the tier's `stack_bytes`: `run_tiers` is
+    /// them as statics sized from the tier's `stack_bytes`: `run_sched_tasks` is
     /// then `(…, storage, stride, task_memory) -> int32_t`. `None` keeps the
     /// kernel allocating the stack.
-    pub tier_task_memory: Option<TierTaskMemory>,
+    pub sched_task_memory: Option<SchedTaskMemory>,
 }
 
 /// How a family's generated entry declares its tier tasks' memory. See
-/// [`CAbiRunners::tier_task_memory`].
+/// [`CAbiRunners::sched_task_memory`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TierTaskMemory {
+pub struct SchedTaskMemory {
     /// The header the entry includes for the per-RTOS spelling
-    /// (`NROS_TIER_TASK_MEMORY_DEFINE` / `NROS_TIER_TASK_MEMORY` /
-    /// `NROS_TIER_TASK_MEMORY_NONE`).
+    /// (`NROS_SCHED_TASK_MEMORY_DEFINE` / `NROS_SCHED_TASK_MEMORY` /
+    /// `NROS_SCHED_TASK_MEMORY_NONE`).
     pub header: &'static str,
     /// Which tier the runner runs on the CALLER's task, which therefore gets
     /// no memory. The runner REFUSES an entry that disagrees, so a drift here
     /// is a boot-time refusal naming the cause, never a tier with no stack.
-    pub boot_tier: BootTier,
+    pub boot_sched_task: BootSchedTask,
     /// The stack a tier that declares no `stack_bytes` gets, stated where it
     /// is reserved. The port's floor is applied on top by the header's macro
     /// (issue 0667: a task size is a floor the port raises). `0` hands the
     /// choice to the header, which names the board's own knob (Zephyr:
-    /// CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE).
+    /// CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE).
     pub default_stack_bytes: u64,
     /// phase-509 P9 (RFC-0108 D3) -- a spawned level that declares no
     /// `stack_bytes` gets a stack DERIVED from its members (the header's
@@ -416,7 +416,7 @@ pub struct TierTaskMemory {
 
 /// Which tier of a highest-priority-first table a runner boots on the caller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum BootTier {
+pub enum BootSchedTask {
     /// `tiers[0]` — Zephyr, whose table is in descending RAW priority number
     /// and lower-number-wins, so index 0 is the least urgent.
     First,
@@ -424,14 +424,14 @@ pub enum BootTier {
     Last,
 }
 
-impl TierTaskMemory {
+impl SchedTaskMemory {
     /// The stack each tier of an `n`-tier table gets, by tier index: `None`
     /// for the boot tier, the declared `stack_bytes` (or the default) for
     /// every spawned one.
     pub fn stacks(&self, declared: &[Option<u64>]) -> alloc::vec::Vec<Option<u64>> {
-        let boot = match self.boot_tier {
-            BootTier::First => 0,
-            BootTier::Last => declared.len().saturating_sub(1),
+        let boot = match self.boot_sched_task {
+            BootSchedTask::First => 0,
+            BootSchedTask::Last => declared.len().saturating_sub(1),
         };
         declared
             .iter()
@@ -448,10 +448,10 @@ impl TierTaskMemory {
 
 impl CAbiRunners {
     /// Whether a tiered entry must emit the tiers' executor storage for its
-    /// runner — `run_tiers` exists and takes it. The one reading both entry
+    /// runner — `run_sched_tasks` exists and takes it. The one reading both entry
     /// packs use.
-    pub fn tiers_take_static_storage(&self) -> bool {
-        self.run_tiers.is_some() && self.takes_executor_storage
+    pub fn sched_tasks_take_static_storage(&self) -> bool {
+        self.run_sched_tasks.is_some() && self.takes_executor_storage
     }
 
     /// Whether a single-executor C entry must emit its executor's storage for
@@ -584,7 +584,7 @@ impl core::error::Error for UnknownBoard {}
 /// phase-500 W1 — `native` selected the host board until the maintainer's
 /// 2026-10-14 ruling: `native` names the whole class of general-purpose hosts
 /// (Linux, macOS, Windows), while the board under every host image,
-/// `nros-board-linux`, builds on Linux only (`apply_tier_affinity`'s
+/// `nros-board-linux`, builds on Linux only (`apply_sched_task_affinity`'s
 /// `cpu_set_t`/`sched_setaffinity` fail on darwin, windows and freebsd). So the
 /// selector claimed more than the board delivers, and `linux` is the one name.
 ///
@@ -696,19 +696,19 @@ pub fn board_family(board: &str) -> Result<BoardFamily, UnknownBoard> {
 /// `codegen-system` wrote `"posix"` from a SUBSTRING match. So an RTIC entry
 /// read its tiers from the host's sub-table in one Rust producer and from none
 /// in the other. What this key means downstream:
-/// - `resolve_tiers` refuses an AUTHORED tier (`TierResolveError::NoRtosFamily`):
+/// - `resolve_sched_tasks` refuses an AUTHORED tier (`SchedTaskResolveError::NoRtosFamily`):
 ///   there is no sub-table to read and no task to run it. The degenerate
 ///   default tier is unaffected.
 /// - `sched_caps_for` answers the bare-metal caps.
-/// - `derive_tiers_from_contracts` derives no tier, and records a degradation
+/// - `derive_sched_tasks_from_contracts` derives no tier, and records a degradation
 ///   for each node it would have placed.
-pub const NO_RTOS_TIER_KEY: &str = "";
+pub const NO_RTOS_SCHED_TASK_KEY: &str = "";
 
 /// The `[tasks.<name>.<rtos>]` key for an entry board key, for a caller where
 /// an UNKNOWN key is legal.
 ///
 /// Read from [`BOARD_KEYS`]. A key the table does not know gets
-/// [`NO_RTOS_TIER_KEY`], never a guess from how the key is spelled. That covers
+/// [`NO_RTOS_SCHED_TASK_KEY`], never a guess from how the key is spelled. That covers
 /// a no-RTOS Rust board (`rtic-mps2-an385`, bare `mps2-an385`)
 /// and an out-of-tree board. The old substring match read `my-freertos-board`
 /// as FreeRTOS and `s32z270` as the host.
@@ -717,8 +717,8 @@ pub const NO_RTOS_TIER_KEY: &str = "";
 /// any Rust or out-of-tree board: `plan_from_model` (shared with `nros build`'s
 /// Rust entry generation) and the `nros::main!` proc-macro. A caller that
 /// NEEDS the family asks [`board_family`] and refuses the key.
-pub fn tier_rtos_key_for(board: &str) -> &'static str {
-    board_family(board).map_or(NO_RTOS_TIER_KEY, BoardFamily::tier_rtos_key)
+pub fn sched_task_rtos_key_for(board: &str) -> &'static str {
+    board_family(board).map_or(NO_RTOS_SCHED_TASK_KEY, BoardFamily::sched_task_rtos_key)
 }
 
 #[cfg(test)]
@@ -728,9 +728,13 @@ mod tests {
     /// Issue 1285 follow-up: the lenient lookup is the table read one way. It
     /// is never the spelling of the key.
     #[test]
-    fn tier_rtos_key_for_reads_the_table() {
+    fn sched_task_rtos_key_for_reads_the_table() {
         for (key, family) in BOARD_KEYS {
-            assert_eq!(tier_rtos_key_for(key), family.tier_rtos_key(), "`{key}`");
+            assert_eq!(
+                sched_task_rtos_key_for(key),
+                family.sched_task_rtos_key(),
+                "`{key}`"
+            );
         }
         // The old substring match's victims: none contains its RTOS's name.
         for (key, rtos) in [
@@ -738,7 +742,7 @@ mod tests {
             ("an536", "freertos"),
             ("fvp-aemv8r-smp", "zephyr"),
         ] {
-            assert_eq!(tier_rtos_key_for(key), rtos, "`{key}`");
+            assert_eq!(sched_task_rtos_key_for(key), rtos, "`{key}`");
         }
     }
 
@@ -756,7 +760,11 @@ mod tests {
             "mps2-an385",
             "stm32f4",
         ] {
-            assert_eq!(tier_rtos_key_for(key), NO_RTOS_TIER_KEY, "`{key}`");
+            assert_eq!(
+                sched_task_rtos_key_for(key),
+                NO_RTOS_SCHED_TASK_KEY,
+                "`{key}`"
+            );
         }
     }
 
@@ -804,14 +812,14 @@ mod tests {
         }
     }
 
-    /// Each tier-key spelling is what rlm's `TierDef::platform` matches. The
+    /// Each tier-key spelling is what rlm's `SchedTaskDef::platform` matches. The
     /// host is `posix` there, not `native`.
     #[test]
-    fn tier_rtos_key_is_the_spelling_the_tier_tables_use() {
-        assert_eq!(BoardFamily::Linux.tier_rtos_key(), "posix");
+    fn sched_task_rtos_key_is_the_spelling_the_sched_task_tables_use() {
+        assert_eq!(BoardFamily::Linux.sched_task_rtos_key(), "posix");
         for f in BoardFamily::ALL {
             if f != BoardFamily::Linux {
-                assert_eq!(f.tier_rtos_key(), f.as_str());
+                assert_eq!(f.sched_task_rtos_key(), f.as_str());
             }
         }
     }
@@ -830,22 +838,22 @@ mod tests {
         }
     }
 
-    /// Issue 1286. ThreadX has the shared `run_components` and NO `run_tiers`.
+    /// Issue 1286. ThreadX has the shared `run_components` and NO `run_sched_tasks`.
     /// So a C entry renders as C, and a multi-tier plan takes the
-    /// sched-context path, not `run_tiers`. Both halves are pinned: a
-    /// `run_tiers` named here would be a symbol defined nowhere, which is the
+    /// sched-context path, not `run_sched_tasks`. Both halves are pinned: a
+    /// `run_sched_tasks` named here would be a symbol defined nowhere, which is the
     /// defect issue 1285 removed.
     #[test]
-    fn threadx_has_run_components_and_no_run_tiers() {
+    fn threadx_has_run_components_and_no_run_sched_tasks() {
         assert_eq!(
             BoardFamily::Threadx.c_abi_runners(),
             Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
-                run_tiers: None,
-                run_tiers_backed: None,
+                run_sched_tasks: None,
+                run_sched_tasks_backed: None,
                 run_levels: None,
                 takes_executor_storage: true,
-                tier_task_memory: None,
+                sched_task_memory: None,
             })
         );
         assert!(BoardFamily::Threadx.has_c_run_components());
@@ -861,7 +869,7 @@ mod tests {
             let r = f.c_abi_runners().expect("every family has runners");
             assert!(r.takes_executor_storage, "{}", f.as_str());
             assert!(r.components_take_static_storage(), "{}", f.as_str());
-            for name in [r.run_components, r.run_tiers].into_iter().flatten() {
+            for name in [r.run_components, r.run_sched_tasks].into_iter().flatten() {
                 assert!(name.ends_with("_in"), "{}: {name}", f.as_str());
             }
         }
@@ -870,18 +878,18 @@ mod tests {
     /// Issue 1598 — the boot tier gets no task memory (it runs on the caller),
     /// a declared size is kept, and an undeclared one gets the stated default.
     #[test]
-    fn tier_task_stacks_skip_the_boot_tier_and_default_the_undeclared() {
+    fn sched_task_stacks_skip_the_boot_sched_task_and_default_the_undeclared() {
         let m = BoardFamily::Freertos
             .c_abi_runners()
-            .and_then(|r| r.tier_task_memory)
+            .and_then(|r| r.sched_task_memory)
             .expect("FreeRTOS takes tier task memory");
         assert_eq!(
             m.stacks(&[Some(65_536), None, Some(0)]),
             alloc::vec![Some(65_536), Some(262_144), None],
             "FreeRTOS boots the LAST tier"
         );
-        let first = TierTaskMemory {
-            boot_tier: BootTier::First,
+        let first = SchedTaskMemory {
+            boot_sched_task: BootSchedTask::First,
             ..m
         };
         assert_eq!(

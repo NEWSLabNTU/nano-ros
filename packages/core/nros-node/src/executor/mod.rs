@@ -40,9 +40,9 @@ mod backing;
 // the static (it knows the tier count), boards hand each tier a slot.
 #[cfg(all(any(has_rmw, test), feature = "alloc"))]
 pub use backing::{
-    EXECUTOR_BACKING_DEFAULT_U64S, TIER_TASK_TCB_U64S, TierBackingShort, TierExecutorBacking,
-    TierExecutorBackingSlot, TierSetupGate, TierSetupGuard, TierTaskMemory, TierTaskMemoryRaw,
-    TierTaskMemorySet, check_tier_executor_backing,
+    EXECUTOR_BACKING_DEFAULT_U64S, SCHED_TASK_TCB_U64S, SchedTaskBackingShort,
+    SchedTaskExecutorBacking, SchedTaskExecutorBackingSlot, SchedTaskMemory, SchedTaskMemoryRaw,
+    SchedTaskMemorySet, SchedTaskSetupGate, SchedTaskSetupGuard, check_sched_task_executor_backing,
 };
 // Phase 8 (autoware-safety-island `docs/design/callback_tracing.rst`) —
 // callback-level dispatch tracing. Same gating shape as `wake_probe`, for the
@@ -111,8 +111,8 @@ pub mod exec_lock;
 // liveness. Plain atomics, no RMW: every build carries it.
 pub mod level_liveness;
 pub use level_liveness::{
-    MAX_LEVELS, every_level_alive, level_count, level_last_spin_us, level_spins, set_level_count,
-    take_every_level_alive, tier_level, tier_level_by,
+    MAX_LEVELS, every_level_alive, level_count, level_last_spin_us, level_spins, sched_task_level,
+    sched_task_level_by, set_level_count, take_every_level_alive,
 };
 // phase-509 P6 (RFC-0108 D3/D7) -- the per-core scheduler and the per-level
 // worker the executor's dispatcher splits into.
@@ -229,7 +229,7 @@ pub use spin::{
 pub use storage::{
     ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, RegionUnit,
     RegionUnits, executor_storage_layout, executor_storage_layout_with, executor_storage_u64_len,
-    levels_backing_bytes, levels_executor_sizing, tier_backing_bytes, tier_executor_sizing,
-    tier_sizing,
+    levels_backing_bytes, levels_executor_sizing, sched_task_backing_bytes,
+    sched_task_executor_sizing, sched_task_sizing,
 };
 pub use types::*;

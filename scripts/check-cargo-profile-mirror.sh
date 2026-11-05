@@ -20,8 +20,8 @@
 #
 # That is the same shape as every other mirror in this repo (the sizes-header
 # family, the FFI struct mirrors, and — found the same day as this gate —
-# `nros_orchestration_ir::TierRtosSpec` vs `ros_launch_manifest_sched::
-# TierPlatformSpec`, where the narrower copy silently decided what users were
+# `nros_orchestration_ir::SchedTaskRtosSpec` vs `ros_launch_manifest_sched::
+# SchedTaskPlatformSpec`, where the narrower copy silently decided what users were
 # allowed to write). Mirrors are fine; ungated mirrors are not.
 #
 # THE RULE

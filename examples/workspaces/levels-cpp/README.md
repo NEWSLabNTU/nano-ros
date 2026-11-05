@@ -14,7 +14,7 @@ preemption level per distinct rank.
 On Zephyr the long callbacks run with `k_busy_wait`, which keeps the thread
 ready, so the only way another marker prints between a `begin=` and its
 `end=` is a more urgent level's worker preempting it. The test
-(`realtime_tiers_e2e`, cell `zephyr/cpp-levels`) checks the order: an
+(`realtime_sched_tasks_e2e`, cell `zephyr/cpp-levels`) checks the order: an
 `[urgent]` tick inside a `[middle]` pair, `[urgent]` and `[middle]` markers
 inside a `[lazy]` pair, and never a less urgent marker inside a more urgent
 pair. It also checks each spawned level's stack is the derived one.

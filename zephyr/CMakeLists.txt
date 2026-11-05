@@ -230,6 +230,30 @@ if(CONFIG_ARMV6_M_ARMV8_M_BASELINE AND NOT CONFIG_ARMV8_M_BASELINE)
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_armv6m_atomic.c)
 endif()
 
+# Phase 536 W2 -- three Kconfig symbols were renamed (tier -> sched task).
+# The old ones stay one release as deprecated symbols feeding the new ones'
+# defaults; a .conf file that still sets one gets this warning naming the
+# new symbol. Kconfig cannot tell a set value from a default, so this reads
+# the fragments the build merged.
+set(_nros_conf_files ${CONF_FILE} ${EXTRA_CONF_FILE} ${OVERLAY_CONFIG})
+foreach(_nros_conf IN LISTS _nros_conf_files)
+    if(NOT IS_ABSOLUTE "${_nros_conf}")
+        set(_nros_conf "${APPLICATION_SOURCE_DIR}/${_nros_conf}")
+    endif()
+    if(EXISTS "${_nros_conf}")
+        file(STRINGS "${_nros_conf}" _nros_old_syms
+             REGEX "^[ \t]*CONFIG_NROS_ZEPHYR_(MAX_TIERS|TIER_STACK_SIZE|TIER_STACKS_IN_DTCM)=")
+        foreach(_nros_line IN LISTS _nros_old_syms)
+            string(REGEX REPLACE "^[ \t]*CONFIG_(NROS_ZEPHYR_[A-Z_]+)=.*" "\\1" _nros_old "${_nros_line}")
+            string(REPLACE "MAX_TIERS" "MAX_SCHED_TASKS" _nros_new "${_nros_old}")
+            string(REPLACE "TIER_STACK" "SCHED_TASK_STACK" _nros_new "${_nros_new}")
+            message(WARNING "nano-ros: CONFIG_${_nros_old} (set in ${_nros_conf}) is "
+                "deprecated and will be removed; set CONFIG_${_nros_new} instead "
+                "(phase 536).")
+        endforeach()
+    endif()
+endforeach()
+
 # Task stacks for `nros_zephyr_task_create`. Both tokens are #ifndef-guarded in
 # the shim; NROS_ZEPHYR_STACK_SIZE otherwise derives from CONFIG_MAIN_STACK_SIZE,
 # which couples main's budget to every task nano-ros creates and makes main's
@@ -242,22 +266,22 @@ endif()
 if(CONFIG_NROS_ZEPHYR_TASK_SLOTS)
     zephyr_compile_definitions(NROS_ZEPHYR_MAX_THREADS=${CONFIG_NROS_ZEPHYR_TASK_SLOTS})
 endif()
-# The RT-tier pool (`nros_zephyr_tier_task_create`). Both tokens are
+# The RT-tier pool (`nros_zephyr_sched_task_create`). Both tokens are
 # #ifndef-guarded in the shim and, until phase-412, had no producer: the
 # spawn-failure and oversize-stack diagnostics named knobs nothing could set.
-if(CONFIG_NROS_ZEPHYR_MAX_TIERS)
-    zephyr_compile_definitions(NROS_ZEPHYR_MAX_TIERS=${CONFIG_NROS_ZEPHYR_MAX_TIERS})
+if(CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS)
+    zephyr_compile_definitions(NROS_ZEPHYR_MAX_SCHED_TASKS=${CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS})
 endif()
-if(CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE)
-    zephyr_compile_definitions(NROS_ZEPHYR_TIER_STACK_SIZE=${CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE})
+if(CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE)
+    zephyr_compile_definitions(NROS_ZEPHYR_SCHED_TASK_STACK_SIZE=${CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE})
 endif()
 if(CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM)
     zephyr_compile_definitions(NROS_ZEPHYR_STACKS_IN_DTCM=1)
 endif()
-# Issue 2084 -- the tier/level stacks (the shim's `nros_tier_stacks` pool and a
+# Issue 2084 -- the tier/level stacks (the shim's `nros_sched_task_stacks` pool and a
 # generated C entry's per-level `K_THREAD_STACK_DEFINE`), on their own knob.
-if(CONFIG_NROS_ZEPHYR_TIER_STACKS_IN_DTCM)
-    zephyr_compile_definitions(NROS_ZEPHYR_TIER_STACKS_IN_DTCM=1)
+if(CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM)
+    zephyr_compile_definitions(NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM=1)
 endif()
 if(CONFIG_NROS_FAULT_LOG)
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_fault_log.c)
@@ -301,10 +325,10 @@ if(CONFIG_CAN)
 endif()
 
 # phase-281 W3a — C/C++ multi-tier Zephyr entry seam
-# (`nros_board_zephyr_run_tiers`, packages/boards/nros-board-zephyr/c/). A
-# generated Zephyr C/C++ tiers entry emits `ZephyrBoard::run_tiers(...)` which
+# (`nros_board_zephyr_run_sched_tasks`, packages/boards/nros-board-zephyr/c/). A
+# generated Zephyr C/C++ tiers entry emits `ZephyrBoard::run_sched_tasks(...)` which
 # calls this C seam; it opens ONE RMW session and spawns one `k_thread` per
-# non-boot tier via the `nros_zephyr_tier_task_create` shim above (RFC-0015
+# non-boot tier via the `nros_zephyr_sched_task_create` shim above (RFC-0015
 # Model 1). It references nros_cpp_* (the typed runtime in nros-c / nros-cpp),
 # so compile it only when the C or C++ API is present; it is inert (its symbol
 # unreferenced) for single-tier / run_components entries. Added once here — the
@@ -312,7 +336,7 @@ endif()
 # source twice.
 if(CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API)
     zephyr_library_sources(
-        ${NROS_REPO_DIR}/packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c
+        ${NROS_REPO_DIR}/packages/boards/nros-board-zephyr/c/zephyr_run_sched_tasks.c
         # phase-432 W3.1 — the C-ABI single-executor entry, shared by every
         # RTOS board (`nros_board_rtos_run_components`). Zephyr is the one
         # kernel whose per-tick `k_yield()` that loop must do, and it does it

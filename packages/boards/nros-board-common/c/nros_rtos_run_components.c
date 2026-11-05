@@ -7,9 +7,9 @@
  * a certified C compiler, MISRA-style, no C++ runtime — can boot a nano-ros
  * image without a C++ toolchain in the build.
  *
- * ## Why ONE file and ONE symbol, where `run_tiers` has three
+ * ## Why ONE file and ONE symbol, where `run_sched_tasks` has three
  *
- * `run_tiers` is genuinely per-RTOS: it spawns a task per tier, and a
+ * `run_sched_tasks` is genuinely per-RTOS: it spawns a task per tier, and a
  * FreeRTOS task, a Zephyr `k_thread` and a NuttX pthread are three different
  * things. `run_components` is the SINGLE-EXECUTOR path — open, set up, spin,
  * shut down, all on the caller's thread — and there is nothing in it that
@@ -27,14 +27,14 @@
  * ## Why this is new code rather than a re-declaration
  *
  * The phase's first assessment said declaring `nros_board_<rtos>_run_components`
- * was not new capability, because `nros_board_freertos_run_tiers` is 666 lines
+ * was not new capability, because `nros_board_freertos_run_sched_tasks` is 666 lines
  * of C. That inference does not hold, and the correction is worth keeping here
- * rather than only in the roadmap: `run_tiers` and `run_components` are two
+ * rather than only in the roadmap: `run_sched_tasks` and `run_components` are two
  * different architectures. The tiers path IS C underneath a four-line C++
  * veneer; `FreertosBoard::run_components` is fully implemented in the C++
  * header with no C function beneath it, and the one C-ABI `run_components`
  * that does exist — native's — is Rust. This is also the DOMINANT embedded
- * path: `run_tiers` is reached only when a plan declares tiers.
+ * path: `run_sched_tasks` is reached only when a plan declares tiers.
  *
  * ## What made it possible
  *
@@ -51,7 +51,7 @@
  * flag, `nros_cpp_init*` stamps it and `nros_cpp_fini` clears it. That change
  * also removed a duplicate — the C++ `initialized` bool was a SECOND answer
  * maintained by hand at four sites, and a direct `nros_cpp_fini` (which
- * `freertos_run_tiers.c` does) tore the context down without touching it, so
+ * `freertos_run_sched_tasks.c` does) tore the context down without touching it, so
  * `ok()` kept saying yes over a dropped executor.
  *
  * `nros_board_network_wait()` is the other thing that had to move: it was a
@@ -80,7 +80,7 @@
 
 /* ---- nros-cpp CFFI (Rust) ----
  *
- * Declared rather than included, matching `freertos_run_tiers.c`: this file is
+ * Declared rather than included, matching `freertos_run_sched_tasks.c`: this file is
  * compiled by `build.rs` before cmake runs, so the generated
  * `nros_cpp_ffi.h` is not on the include path. Signatures must match it
  * exactly — `check-ffi-struct-mirrors` covers the structs, and these are
@@ -174,7 +174,7 @@ extern void nros_platform_dealloc(void* ptr);
 /* ---- Executor storage sizing ----
  *
  * Issue 1568 — the size comes from the LINKED library and so does the
- * refusal, exactly as in every `run_tiers` runner. This file used to
+ * refusal, exactly as in every `run_sched_tasks` runner. This file used to
  * `__has_include` the per-build header and fall back to 98,304 (Zephyr) or
  * 81,920 bytes (everything else), which is what shipped wherever the file is
  * compiled without the header in reach: the NuttX seam archive always, and
@@ -267,7 +267,7 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
  * `setup(executor)`, spin, shutdown. Returns 0 on a graceful exit, else the
  * first non-zero `setup` or spin code.
  *
- * Argument order matches every `nros_board_<rtos>_run_tiers` so the two entry
+ * Argument order matches every `nros_board_<rtos>_run_sched_tasks` so the two entry
  * points read the same way at a call site.
  */
 int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
@@ -317,7 +317,7 @@ int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id
  * Issue 1568 — the runner over CALLER-SUPPLIED executor storage, and the one a
  * generated C entry calls (`CAbiRunners::takes_executor_storage`).
  *
- * The same method as every tiered runner (`nros_board_<rtos>_run_tiers_in`)
+ * The same method as every tiered runner (`nros_board_<rtos>_run_sched_tasks_in`)
  * with one block: the entry emits a file-scope `.bss` static sized from the
  * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE`, so the linker places it and
  * `mem-report` names it — the C twin of the C++ entry's

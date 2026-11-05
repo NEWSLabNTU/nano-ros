@@ -913,10 +913,10 @@ rust-stdio-on-zephyr:
 # cross-references each plan against the code it describes, so the plan cannot
 # drift into a second spelling of the same fact. Buildless.
 [private]
-tier-priority-plan:
-    @python3 scripts/check-tier-priority-plan.py
+sched-task-priority-plan:
+    @python3 scripts/check-sched-task-priority-plan.py
 
-# RFC-0079 §4.1 — finish the check `check-tier-priority-plan` DEFERS.
+# RFC-0079 §4.1 — finish the check `check-sched-task-priority-plan` DEFERS.
 #
 # Zephyr's reserved band is computed per IMAGE from Kconfig, so the static gate
 # cannot judge its pins and says so instead of pretending. This resolves the
@@ -927,8 +927,8 @@ tier-priority-plan:
 #
 # SKIPS loudly on a host with no built Zephyr image, rather than passing —
 # issue 0599's rule. Buildless (reads `.config`, builds nothing).
-tier-priority-plan-image config="":
-    @python3 scripts/check-tier-priority-plan-image.py {{config}}
+sched-task-priority-plan-image config="":
+    @python3 scripts/check-sched-task-priority-plan-image.py {{config}}
 
 # Issue 1583 — the image gate's buildless half, on the FAST line. The gate above
 # runs only where Zephyr images are built (the tier-2 nightly and the platform
@@ -937,13 +937,13 @@ tier-priority-plan-image config="":
 # bringup that authors a `[tasks.*.zephyr]` pin is built by a Zephyr row in
 # examples/fixtures.toml, so no pin can drift into "judged against nothing".
 [private]
-tier-priority-plan-image-selftest:
-    @python3 scripts/check-tier-priority-plan-image.py --selftest
+sched-task-priority-plan-image-selftest:
+    @python3 scripts/check-sched-task-priority-plan-image.py --selftest
 
 # Issue 0636 option 3 — every tier spin loop reaches a scheduling point.
 [group("check")]
-tier-spin-gap:
-    @python3 scripts/check-tier-spin-gap.py
+sched-task-spin-gap:
+    @python3 scripts/check-sched-task-spin-gap.py
 
 # Issue 0654 — the router takes NO command-line configuration, so a `zenohd
 # --listen …` line is not merely a stale name: the flags are UNREAD rather than

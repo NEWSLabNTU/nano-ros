@@ -400,7 +400,7 @@ build-fvp-ws-entry:
     echo "phase-292 W1.a FVP AEMv8-R workspace image (cpp/cyclonedds) build smoke OK"
 
 # phase-298 W3.1 (issue 0232) — run the realtime-cpp workspace image
-# (`demo_bringup:fvp`: board package config + MODEL + run_tiers) on the FVP
+# (`demo_bringup:fvp`: board package config + MODEL + run_sched_tasks) on the FVP
 # via stock `west build -t run`. The publish-success markers are
 # `[ctrl] tick=` / `[telem] tick=` (printed only on publish().ok());
 # `fvp_runtime_ws.rs` greps them. NROS_REPO_DIR is exported because

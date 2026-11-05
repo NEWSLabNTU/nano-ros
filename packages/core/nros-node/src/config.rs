@@ -9,10 +9,10 @@ include!(concat!(env!("OUT_DIR"), "/nros_node_config.rs"));
 /// the sizing descriptor's `[[tier]]` row: the callback slots, node slots and
 /// arena its members need, and the parameters they declare (`None`: the tier
 /// stated no count, so it carves the image's store). Read through
-/// [`TIER_SIZINGS`]; `crate::executor::tier_sizing` turns a row into the
+/// [`SCHED_TASK_SIZINGS`]; `crate::executor::sched_task_sizing` turns a row into the
 /// `ExecutorSizing` its executor is carved at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TierSizing {
+pub struct SchedTaskSizing {
     /// The tier's name, as the entry's tier table spells it.
     pub name: &'static str,
     pub cbs: usize,

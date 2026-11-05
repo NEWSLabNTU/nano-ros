@@ -146,14 +146,14 @@ ZERO_LEGAL = {
 #   * NROS_RMW_UORB_PX4_MAX_CALLBACKS — `Slot g_pool[N]` is C++, and ISO C++
 #     has no zero-size array at all, so 0 is not a saving that the language
 #     will express. Guarded beside the array.
-#   * NROS_ZEPHYR_MAX_TIERS — the C side has no such refusal: GCC's
+#   * NROS_ZEPHYR_MAX_SCHED_TASKS — the C side has no such refusal: GCC's
 #     zero-length-array extension makes `K_THREAD_STACK_ARRAY_DEFINE(x, 0, N)`
 #     compile CLEAN (measured under the real arm-zephyr-eabi flags: `B x`,
 #     size 0, no diagnostic), so nothing but a guard stands between a `-D` and
 #     an image whose every tier spawn fails. Its case for zero rested on
 #     "64 KiB in every Zephyr image, tiers declared or not", and that premise
 #     is false: --gc-sections drops the section in any image declaring no
-#     tier. Over the 91 built images, 4 carry `nros_tier_stacks` and 87 do
+#     tier. Over the 91 built images, 4 carry `nros_sched_task_stacks` and 87 do
 #     not, and the 4 are exactly the four realtime-entry images that declare
 #     tiers. Zero reclaims nothing the linker has not already reclaimed, while
 #     a tiered image wanting a SMALLER pool can still say 2 — the saving a

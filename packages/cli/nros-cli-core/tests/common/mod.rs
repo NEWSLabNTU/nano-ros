@@ -112,7 +112,7 @@ pub fn isolate_model_discovery() {
     });
 }
 
-/// issue 1426 — the `examples/workspaces/derived-tiers-cpp` fixture harness,
+/// issue 1426 — the `examples/workspaces/derived-sched-tasks-cpp` fixture harness,
 /// one spelling for every test that drives it.
 /// The files git TRACKS under `repo` that match `pathspec`, as absolute paths,
 /// sorted.
@@ -149,4 +149,4 @@ pub fn tracked_files(repo: &std::path::Path, pathspec: &str) -> Vec<PathBuf> {
     files
 }
 
-pub mod derived_tiers;
+pub mod derived_sched_tasks;

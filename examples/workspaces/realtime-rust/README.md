@@ -25,7 +25,7 @@ generated staticlib under `build/<coord>/`.
 
 The Zephyr image is also where the `[tasks.*]` block below stops being only a
 runtime schedule and becomes a BUILD input. `nros-board-zephyr` keeps
-`ZephyrBoard::run_tiers` behind a `tiers` cargo feature and the kernel-EDF call
+`ZephyrBoard::run_sched_tasks` behind a `tiers` cargo feature and the kernel-EDF call
 behind `zephyr-edf`; the deleted entry named both by hand, and the generated one
 derives them from this file — `tiers` from the table not collapsing to the single
 `default` tier, `zephyr-edf` from `[tasks.high]` being `class = "real_time"` with
@@ -62,7 +62,7 @@ there is nothing to keep in step.
    ```
 
 `nros::main!()` reads both, resolves the 2-tier table, and emits the multi-tier
-`run_tiers` entry — one (POSIX-priority) task per tier — instead of the single-tier
+`run_sched_tasks` entry — one (POSIX-priority) task per tier — instead of the single-tier
 `run`. Retune priorities/periods by editing `system.toml`; the node code is
 untouched. On native, priorities are advisory; on an RTOS deploy (FreeRTOS /
 ThreadX) they are real task priorities.

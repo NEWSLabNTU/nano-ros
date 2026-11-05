@@ -104,7 +104,7 @@ and its variants, read the macro instead.
     and is never silently ignored. A knob that keeps its name and loses its
     effect is the kind of carrier that caused issues 0460 and 0491.
   - **Issue 0623's transport band** becomes `{executor, poll}`, and
-    `report_tiers_above_transport` uses `min(executor, poll)`.
+    `report_sched_tasks_above_transport` uses `min(executor, poll)`.
 - **The executor's stack is measured, not summed.** One thread now holds the
   read path, the lease and keep-alive sends, the reconnect (a blocking
   connect plus handshake and declaration replay) and every user callback.
@@ -299,7 +299,7 @@ the executor's timers never ran, so the lease and keep-alive never ran.
   cannot spawn its transport futures. At 5 and at 8, 22 of 22 pass. The
   default stays 8. That leaves headroom of 3, and the stack sampler holds
   one slot for its first minute.
-- **ThreadX multi-tier contention: passes.** The `realtime_tiers` row
+- **ThreadX multi-tier contention: passes.** The `realtime_sched_tasks` row
   `threadx-linux/rust` (the cell that caught #247) passed in 3 of 3 runs,
   on fixtures rebuilt from this tree.
 - **App-thread spawn latency: not reached in steady state.** The futures

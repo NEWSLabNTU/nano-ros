@@ -78,6 +78,7 @@ pub mod rust_toolchain;
 pub use nros_orchestration_ir::rtos_realizer;
 /// phase-447 D1 (RFC-0099 D5) — is this host at or above a dist's floor?
 pub mod host_floor;
+pub mod sched_task_resolver;
 pub mod schema;
 pub mod sdk_index;
 pub mod sdk_store;
@@ -90,7 +91,6 @@ pub mod step_log;
 /// D2 + D11). `sdk_store` is where a version GOES; this is what is there.
 pub mod store;
 pub mod system_obs;
-pub mod tier_resolver;
 pub mod workspace;
 
 pub use cargo_nano_ros::{

@@ -81,14 +81,14 @@ set(_NROS_FREERTOS_NET_C
 # file is `freertos_c_entry.c`, which is the C equivalent of the Rust lane's
 # `run_entry` (it defines `main`, which on the Rust lane is the Rust entry).
 #
-# `freertos_run_tiers.c` (Phase 274.W3) defines `nros_board_freertos_run_tiers`,
-# called by FreertosBoard::run_tiers for embedded C/C++ multi-tier entries; the
+# `freertos_run_sched_tasks.c` (Phase 274.W3) defines `nros_board_freertos_run_sched_tasks`,
+# called by FreertosBoard::run_sched_tasks for embedded C/C++ multi-tier entries; the
 # unused function is dropped by --gc-sections for single-tier apps.
 set(_NROS_FREERTOS_SHARED_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_hooks.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/network_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
-    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_tiers.c"
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_sched_tasks.c"
     # phase-432 W3.1 — the C-ABI single-executor runner, beside the tiers one.
     # SHARED by every RTOS board (`nros_board_rtos_run_components`), which is
     # why it comes from the common dir rather than the family one. The CMake

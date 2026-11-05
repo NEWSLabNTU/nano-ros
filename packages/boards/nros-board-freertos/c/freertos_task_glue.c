@@ -51,11 +51,11 @@ int nros_freertos_create_task(
 
 /*
  * Issue 1598 — create a FreeRTOS task over CALLER-OWNED memory: the Rust
- * `nros::main!` entry's `TierTaskMemory` static (stack + control-block region),
+ * `nros::main!` entry's `SchedTaskMemory` static (stack + control-block region),
  * so a tier's stack is `.bss` the linker prices instead of a heap_4 block.
  *
  * `tcb_bytes` is the region the entry reserved for the control block, an upper
- * bound stated in Rust (`TIER_TASK_TCB_U64S`) because Rust cannot name a C
+ * bound stated in Rust (`SCHED_TASK_TCB_U64S`) because Rust cannot name a C
  * type's size. It is CHECKED here, where `sizeof(StaticTask_t)` is known: a
  * kernel whose control block outgrew the bound is refused by name rather than
  * overrunning. Returns 0 on success, -1 on refusal or failure.
@@ -104,8 +104,8 @@ void nros_freertos_set_current_task_priority(uint32_t priority)
 
 /*
  * Issue 2016 -- the executor lock's thread identity for the Rust level
- * runner (`run_tiers_entry`): the running task's handle, as the C runner's
- * `freertos_thread_id` gives it (`freertos_run_tiers.c`).
+ * runner (`run_sched_tasks_entry`): the running task's handle, as the C runner's
+ * `freertos_thread_id` gives it (`freertos_run_sched_tasks.c`).
  */
 uintptr_t nros_freertos_current_task_id(void)
 {

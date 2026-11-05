@@ -8,7 +8,7 @@ work queue, whatever the RTOS or libc started. On POSIX that is answerable
 cheaply: `/proc/<pid>/task/*/stat` carries each thread's scheduling policy and
 real-time priority.
 
-    python3 scripts/dev/priority-thread-probe.py <pid> [tier_key]
+    python3 scripts/dev/priority-thread-probe.py <pid> [sched_task_key]
 
 Classifies every thread against the plan and prints what it found. It REPORTS;
 deciding what a surprise means is the reader's job, because the interesting
@@ -68,21 +68,21 @@ def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 2
-    pid, tier_key = argv[1], (argv[2] if len(argv) > 2 else "posix")
+    pid, sched_task_key = argv[1], (argv[2] if len(argv) > 2 else "posix")
     if not Path(f"/proc/{pid}/task").is_dir():
         print(f"no such live process: {pid}")
         return 2
-    plan = load_plans().get(tier_key)
+    plan = load_plans().get(sched_task_key)
     if plan is None:
-        print(f"{tier_key!r} declares no [board.priority_plan]")
+        print(f"{sched_task_key!r} declares no [board.priority_plan]")
         return 2
     if plan.get("derived"):
-        print(f"{tier_key!r} has a DERIVED plan — resolve it per image first")
+        print(f"{sched_task_key!r} has a DERIVED plan — resolve it per image first")
         return 2
 
     res = ", ".join(f"{k} {v[0]}..{v[1]}" for k, v in plan["reserved"].items())
     pool = ", ".join(f"{k} {v[0]}..{v[1]}" for k, v in plan["pool"].items())
-    print(f"plan ({tier_key}): reserved {res} | pool {pool} | {plan['source']}\n")
+    print(f"plan ({sched_task_key}): reserved {res} | pool {pool} | {plan['source']}\n")
     print(f"{'TID':>8}  {'THREAD':<18} {'POLICY':<8} {'RTPRIO':>6}  BUCKET")
 
     buckets = {}

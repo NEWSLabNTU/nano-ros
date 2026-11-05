@@ -1204,7 +1204,7 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
 /// the image derived for the tier named `tier`, instead of from the context's
 /// inline tail (which such an image does not carry). Refused -- before a
 /// session opens -- for a tier the image sizes nothing for, or a backing below
-/// the tier's layout ([`nros_cpp_tier_backing_size`] says how many bytes).
+/// the tier's layout ([`nros_cpp_sched_task_backing_size`] says how many bytes).
 ///
 /// # Safety
 /// As [`nros_cpp_init`], plus: `tier` is a valid NUL-terminated string and
@@ -1213,7 +1213,7 @@ pub unsafe extern "C" fn nros_cpp_init_rmw(
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
-pub unsafe extern "C" fn nros_cpp_init_tier(
+pub unsafe extern "C" fn nros_cpp_init_sched_task(
     locator: *const c_char,
     domain_id: u8,
     node_name: *const c_char,
@@ -1223,7 +1223,7 @@ pub unsafe extern "C" fn nros_cpp_init_tier(
     backing: *mut c_void,
     backing_bytes: usize,
 ) -> nros_cpp_ret_t {
-    let external = match unsafe { tier_backing(tier, backing, backing_bytes) } {
+    let external = match unsafe { sched_task_backing(tier, backing, backing_bytes) } {
         Ok(b) => b,
         Err(ret) => return ret,
     };
@@ -1248,7 +1248,7 @@ pub unsafe extern "C" fn nros_cpp_init_tier(
 /// below [`nros_cpp_levels_backing_size`].
 ///
 /// # Safety
-/// As [`nros_cpp_init_tier`], without the tier name.
+/// As [`nros_cpp_init_sched_task`], without the tier name.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_init_levels(
@@ -1315,15 +1315,15 @@ pub extern "C" fn nros_cpp_levels_backing_size() -> usize {
 /// `tier` is NULL or a valid NUL-terminated string.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_tier_backing_size(tier: *const c_char) -> usize {
+pub unsafe extern "C" fn nros_cpp_sched_task_backing_size(tier: *const c_char) -> usize {
     unsafe { cstr_to_str(tier) }
-        .and_then(nros_node::tier_sizing)
+        .and_then(nros_node::sched_task_sizing)
         .map_or(0, |s| s.u64_len() * 8)
 }
 
 /// Issue 1970 -- one tier's own backing and the sizing it is carved at.
 #[cfg(feature = "rmw-cffi")]
-type TierBacking = (
+type SchedTaskBacking = (
     &'static mut [core::mem::MaybeUninit<u64>],
     nros_node::ExecutorSizing,
 );
@@ -1332,15 +1332,15 @@ type TierBacking = (
 /// tier must be one the image sizes, and the backing non-null, 8-aligned and
 /// at least the tier's layout.
 #[cfg(feature = "rmw-cffi")]
-unsafe fn tier_backing(
+unsafe fn sched_task_backing(
     tier: *const c_char,
     backing: *mut c_void,
     backing_bytes: usize,
-) -> Result<TierBacking, nros_cpp_ret_t> {
+) -> Result<SchedTaskBacking, nros_cpp_ret_t> {
     let Some(name) = (unsafe { cstr_to_str(tier) }) else {
         return Err(NROS_CPP_RET_INVALID_ARGUMENT);
     };
-    let Some(sizing) = nros_node::tier_sizing(name) else {
+    let Some(sizing) = nros_node::sched_task_sizing(name) else {
         cpp_diag!(
             "nros: tier `{name}` has no executor sizing in this image (issue 1970) -- the \
              entry and the library were built from different tier tables; rebuild"
@@ -1369,7 +1369,7 @@ unsafe fn tier_backing(
     Ok((words, sizing))
 }
 
-/// The body of [`nros_cpp_init_rmw`] and [`nros_cpp_init_tier`]: `external`
+/// The body of [`nros_cpp_init_rmw`] and [`nros_cpp_init_sched_task`]: `external`
 /// is the tier's own backing, `None` the context's inline one.
 #[cfg(feature = "rmw-cffi")]
 unsafe fn init_rmw_over(
@@ -1379,7 +1379,7 @@ unsafe fn init_rmw_over(
     node_name: *const c_char,
     namespace: *const c_char,
     storage: *mut c_void,
-    external: Option<TierBacking>,
+    external: Option<SchedTaskBacking>,
 ) -> nros_cpp_ret_t {
     // phase-412 -- stamp the self-report BEFORE anything can reject an
     // argument. This is the first nano-ros code an image runs, so a record that
@@ -2091,7 +2091,7 @@ pub struct NrosCppSessionSpec {
 /// The state was also duplicated. The tag below already says whether the
 /// storage holds a live `CppContext`; the C++ flag was a second answer,
 /// maintained by hand at four sites, and the two could disagree — a `fini`
-/// called directly (as `run_tiers.c` does) tore the context down without
+/// called directly (as `run_sched_tasks.c` does) tore the context down without
 /// touching the flag, so `ok()` kept saying yes.
 ///
 /// So the tag IS the flag now, and it has one owner: `nros_cpp_init*` stamps
@@ -2266,7 +2266,7 @@ pub unsafe extern "C" fn nros_board_native_run_components_named(
 ///
 /// Issue 1442 — ONE spelling, shared by the two hosted C-ABI runners that take
 /// the argument ([`nros_board_native_run_components_named_ns`] and
-/// [`nros_board_native_run_tiers_ns`]). Issue 1434 wrote this inline in the
+/// [`nros_board_native_run_sched_tasks_ns`]). Issue 1434 wrote this inline in the
 /// first of them; a second copy in the second is exactly the drift CLAUDE.md's
 /// "one shared helper rather than a second spelling" rule is about, and the
 /// empty-vs-absent distinction is the part that would rot quietly.
@@ -2460,7 +2460,7 @@ static CENSUS_SIZING_PENDING: core::sync::atomic::AtomicBool =
 /// `ctx_ptr` must point at caller storage of at least `sizeof(CppContext)`
 /// bytes that outlives the executor, as `nros_cpp_init`'s own contract says.
 #[cfg(feature = "rmw-cffi")]
-unsafe fn executor_backing_for_open(ctx_ptr: *mut CppContext) -> Option<TierBacking> {
+unsafe fn executor_backing_for_open(ctx_ptr: *mut CppContext) -> Option<SchedTaskBacking> {
     #[cfg(all(feature = "env", feature = "metadata-mode"))]
     if CENSUS_SIZING_PENDING.swap(false, core::sync::atomic::Ordering::AcqRel) {
         let block: &'static mut [core::mem::MaybeUninit<u64>] =
@@ -2472,7 +2472,7 @@ unsafe fn executor_backing_for_open(ctx_ptr: *mut CppContext) -> Option<TierBack
         cpp_diag!(
             "nros: this image sizes its executors per tier (issue 1970) and carries no \
              inline executor backing; open each tier's executor over its own \
-             (`nros_cpp_init_tier` / `nros_cpp_executor_open_over_session_tier`)"
+             (`nros_cpp_init_sched_task` / `nros_cpp_executor_open_over_session_sched_task`)"
         );
         return None;
     };
@@ -5043,10 +5043,10 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
 }
 
 /// RFC-0052 — create a scheduling context from a RAW tier policy, routing
-/// through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_tier_policy`]
+/// through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_sched_task_policy`]
 /// so the C++ entry codegen never re-derives the class/budget/period/deadline
 /// mapping. This is the single-source-of-truth shared with the Rust runtime
-/// (`ExecutorNodeRuntime::apply_tier_sched_policy`) — the C++ single-executor
+/// (`ExecutorNodeRuntime::apply_sched_task_sched_policy`) — the C++ single-executor
 /// entry path emits a call to THIS instead of building an
 /// `nros_cpp_sched_context_t` field-by-field, so a `real_time` tier lowers to
 /// the same Sporadic SC on every language.
@@ -5099,7 +5099,7 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context_from_policy(
             .ok()
     };
     let opt_u64 = |v: u64| if v == 0 { None } else { Some(v) };
-    let (mut sc, tt_frame) = SchedContext::from_tier_policy(
+    let (mut sc, tt_frame) = SchedContext::from_sched_task_policy(
         class_str,
         opt_u64(period_us),
         opt_u64(budget_us),
@@ -5358,7 +5358,7 @@ const STACK_HEADROOM_DIVISOR: usize = 8;
 /// without the size it was taken against, so the executor cannot compute a
 /// fraction even in principle.
 ///
-/// The board can. `zephyr_run_tiers.c` and its FreeRTOS mirror hold
+/// The board can. `zephyr_run_sched_tasks.c` and its FreeRTOS mirror hold
 /// `stack_bytes` because they just created the thread with it, so they are in
 /// a position to make the declaration on the tier's behalf. That is what this
 /// is for: the policy lives HERE, in one place, rather than being spelled
@@ -7104,14 +7104,14 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session(
 /// Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one TIER of a
 /// per-tier-sized image: the borrowed executor is carved from `backing` at the
 /// sizing the image derived for the tier named `tier` (see
-/// [`nros_cpp_init_tier`] for what is refused).
+/// [`nros_cpp_init_sched_task`] for what is refused).
 ///
 /// # Safety
-/// As [`nros_cpp_executor_open_over_session`], plus [`nros_cpp_init_tier`]'s
+/// As [`nros_cpp_executor_open_over_session`], plus [`nros_cpp_init_sched_task`]'s
 /// contract on `tier` and `backing`.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_executor_open_over_session_tier(
+pub unsafe extern "C" fn nros_cpp_executor_open_over_session_sched_task(
     session_handle: *mut c_void,
     node_name: *const c_char,
     domain_id: u32,
@@ -7120,7 +7120,7 @@ pub unsafe extern "C" fn nros_cpp_executor_open_over_session_tier(
     backing: *mut c_void,
     backing_bytes: usize,
 ) -> nros_cpp_ret_t {
-    let external = match unsafe { tier_backing(tier, backing, backing_bytes) } {
+    let external = match unsafe { sched_task_backing(tier, backing, backing_bytes) } {
         Ok(b) => b,
         Err(ret) => return ret,
     };
@@ -7142,7 +7142,7 @@ unsafe fn open_over_session(
     node_name: *const c_char,
     domain_id: u32,
     out_storage: *mut c_void,
-    external: Option<TierBacking>,
+    external: Option<SchedTaskBacking>,
 ) -> nros_cpp_ret_t {
     if session_handle.is_null() || out_storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
@@ -7168,7 +7168,7 @@ unsafe fn open_over_session(
                 cpp_diag!(
                     "nros: this image sizes its executors per tier (issue 1970) and carries \
                      no inline executor backing; use \
-                     `nros_cpp_executor_open_over_session_tier`"
+                     `nros_cpp_executor_open_over_session_sched_task`"
                 );
                 return NROS_CPP_RET_NOT_INIT;
             };
@@ -7245,7 +7245,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
     }
     // issue 1172 — `groups` is 3N strings: (node name, node namespace, group),
     // repeated, and `n` counts TRIPLES. Flat rather than a struct array so
-    // `nros_native_tier_spec_t` stays byte-identical — no change to its eight
+    // `nros_native_sched_task_spec_t` stays byte-identical — no change to its eight
     // mirrors, its designated initialisers or the three C tier runners, which
     // pass the array through without reading it. Rust holds the same data as a
     // tuple slice, so the grouping is the compiler's job on that side.
@@ -7292,9 +7292,9 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 // Phase 274.W2 — RFC-0015 Model 1: native multi-tier entry (C-ABI seam)
 // ============================================================================
 
-/// Per-tier specification for [`nros_board_native_run_tiers`].
+/// Per-tier specification for [`nros_board_native_run_sched_tasks`].
 ///
-/// Mirrors `nros_platform::TierSpec` in C-ABI form. `groups` must point to
+/// Mirrors `nros_platform::SchedTaskSpec` in C-ABI form. `groups` must point to
 /// FLAT `(node name, node namespace, group)` triples — 3 × `n_groups`
 /// null-terminated UTF-8 strings; NULL / 0 means "accept all groups"
 /// (wildcard — degenerate single-tier). issue 1172: `n_groups` counts TRIPLES.
@@ -7321,7 +7321,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 // environment it resolves its locator, domain and spin bound from.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[repr(C)]
-pub struct NativeTierSpecC {
+pub struct NativeSchedTaskSpecC {
     pub name: *const c_char,
     pub groups: *const *const c_char,
     pub n_groups: usize,
@@ -7337,10 +7337,10 @@ pub struct NativeTierSpecC {
     /// phase-296 W5.7 append — RTOS-agnostic scheduling class
     /// (`"best_effort"`|`"real_time"`|`"time_triggered"`); NULL = unset.
     /// ABI append-only. One of six hand mirrors of main.h's canonical
-    /// `nros_native_tier_spec_t` (the others: main.hpp `NativeTierSpec` and the
-    /// three board `nros_tier_spec_t`), plus the two entry templates that
+    /// `nros_native_sched_task_spec_t` (the others: main.hpp `NativeSchedTaskSpec` and the
+    /// three board `nros_sched_task_spec_t`), plus the two entry templates that
     /// initialise it. Gated by `check-ffi-struct-mirrors`; never insert.
-    pub tier_class: *const c_char,
+    pub sched_task_class: *const c_char,
     /// Sporadic replenishment period (µs); 0 = unset.
     pub period_us: u64,
     /// Execution budget (µs); 0 = unset.
@@ -7474,7 +7474,7 @@ pub unsafe extern "C" fn nros_cpp_executor_level(
 /// phase-509 P7 — place this executor at `level` (0 the most urgent), so
 /// [`nros_cpp_executor_level`] answers it and its spins check in as it. A
 /// runner calls it once per level before the level spins, with the index
-/// [`nros_cpp_tier_level`] gives its tier. `INVALID_ARGUMENT` at or past
+/// [`nros_cpp_sched_task_level`] gives its tier. `INVALID_ARGUMENT` at or past
 /// `NROS_CPP_MAX_LEVELS`.
 ///
 /// # Safety
@@ -7573,7 +7573,7 @@ pub const NROS_CPP_MAX_LEVELS: u8 = nros_node::executor::MAX_LEVELS as u8;
 /// `first_priority` must point at the `priority` field of the first of `n`
 /// array elements `stride` bytes apart, or be NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_tier_level(
+pub unsafe extern "C" fn nros_cpp_sched_task_level(
     first_priority: *const i64,
     stride: usize,
     n: usize,
@@ -7593,7 +7593,7 @@ pub unsafe extern "C" fn nros_cpp_tier_level(
             .cast::<i64>()
             .read_unaligned()
     };
-    nros_node::executor::tier_level_by(n, index, smaller_is_urgent, at).map_or(-1, i32::from)
+    nros_node::executor::sched_task_level_by(n, index, smaller_is_urgent, at).map_or(-1, i32::from)
 }
 
 /// phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs. A
@@ -8021,7 +8021,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_set_registering_level(
 
 /// Issue 2018 (RFC-0108 As-built) -- give the registering level its own
 /// scheduling context, lowered from its tier's policy by the common backend
-/// (`SchedContext::from_tier_policy`): what the level's setup registers from
+/// (`SchedContext::from_sched_task_policy`): what the level's setup registers from
 /// now on binds to it rather than to the executor's default, which every
 /// level on the core shares (`Executor::set_level_sched_context`). Call it
 /// after [`nros_cpp_level_open`] / [`nros_cpp_level_adopt`] and before the
@@ -8073,7 +8073,7 @@ pub unsafe extern "C" fn nros_cpp_level_set_sched_policy(
     };
     let opt_u64 = |v: u64| if v == 0 { None } else { Some(v) };
     unsafe { *out_sc_id = 0 };
-    let Some((sc, tt_frame)) = SchedContext::from_tier_policy(
+    let Some((sc, tt_frame)) = SchedContext::from_sched_task_policy(
         text(class),
         opt_u64(period_us),
         opt_u64(budget_us),
@@ -8411,7 +8411,7 @@ pub unsafe extern "C" fn nros_cpp_executor_wake_handle(handle: *mut c_void) -> *
     //
     // Narrowing the export to match is the wrong direction and measurably
     // worse: `nros_cpp_ffi.h` declares this symbol unconditionally and
-    // `nros-board-zephyr`'s `zephyr_run_tiers.c` declares AND calls it
+    // `nros-board-zephyr`'s `zephyr_run_sched_tasks.c` declares AND calls it
     // unguarded, so a no-alloc Zephyr board would stop LINKING instead of
     // stop compiling — a symbol name where there used to be a cause.
     //
@@ -8724,7 +8724,7 @@ pub unsafe extern "C" fn nros_cpp_executor_clear_release_jitter_stats(
 /// Phase 274.W2 (RFC-0015 Model 1) — run a native multi-tier entry over one
 /// shared RMW session.
 ///
-/// Opens ONE session on the calling (boot) thread; spawns `n_tiers - 1`
+/// Opens ONE session on the calling (boot) thread; spawns `n_sched_tasks - 1`
 /// threads each opening a **borrowed** executor (no second RMW session, no
 /// double-close). Each thread:
 ///   1. `nros_cpp_executor_open_over_session` — open borrowed executor.
@@ -8740,24 +8740,26 @@ pub unsafe extern "C" fn nros_cpp_executor_clear_release_jitter_stats(
 /// `Arc<AtomicBool>`) and joins them before closing the session.
 ///
 /// # Safety
-/// `tiers` must be a valid pointer to `n_tiers` [`NativeTierSpecC`] entries,
+/// `tiers` must be a valid pointer to `n_sched_tasks` [`NativeSchedTaskSpecC`] entries,
 /// valid for the duration of the call. `session_name` is NULL or a valid
 /// null-terminated string.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_board_native_run_tiers(
+pub unsafe extern "C" fn nros_board_native_run_sched_tasks(
     session_name: *const c_char,
-    tiers: *const NativeTierSpecC,
-    n_tiers: usize,
+    tiers: *const NativeSchedTaskSpecC,
+    n_sched_tasks: usize,
 ) -> i32 {
     // Issue 1442 — delegates with a NULL namespace, which is "this image
     // declares none" and resolves to the root. Kept as its own symbol because
     // it is the one a pre-1442 generated entry calls, and an entry TU outlives
     // the library it was generated against (issue 1050's rule).
-    unsafe { nros_board_native_run_tiers_ns(session_name, core::ptr::null(), tiers, n_tiers) }
+    unsafe {
+        nros_board_native_run_sched_tasks_ns(session_name, core::ptr::null(), tiers, n_sched_tasks)
+    }
 }
 
-/// Issue 1442 — [`nros_board_native_run_tiers`] with the primary session's
+/// Issue 1442 — [`nros_board_native_run_sched_tasks`] with the primary session's
 /// NAMESPACE.
 ///
 /// Issue 1434 threaded the launch-declared namespace to the single-executor
@@ -8771,7 +8773,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
 /// `env.namespace.or(baked.namespace)`).
 ///
 /// What it names is the SESSION. A tier's own nodes carry their own
-/// `(name, namespace, group)` triples in [`NativeTierSpecC::groups`] (issue
+/// `(name, namespace, group)` triples in [`NativeSchedTaskSpecC::groups`] (issue
 /// 1172) and are untouched by this.
 ///
 /// Additive rather than a fourth parameter on the symbol above, for the reason
@@ -8779,47 +8781,47 @@ pub unsafe extern "C" fn nros_board_native_run_tiers(
 /// spelling is what every already-generated entry TU calls.
 ///
 /// # Safety
-/// As [`nros_board_native_run_tiers`], plus: `node_namespace` must be NULL or a
+/// As [`nros_board_native_run_sched_tasks`], plus: `node_namespace` must be NULL or a
 /// valid null-terminated string.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
+pub unsafe extern "C" fn nros_board_native_run_sched_tasks_ns(
     session_name: *const c_char,
     node_namespace: *const c_char,
-    tiers: *const NativeTierSpecC,
-    n_tiers: usize,
+    tiers: *const NativeSchedTaskSpecC,
+    n_sched_tasks: usize,
 ) -> i32 {
     // Issue 1597 — kept for an entry TU generated before
-    // `nros_board_native_run_tiers_in` existed (issue 1050's rule), exactly as
+    // `nros_board_native_run_sched_tasks_in` existed (issue 1050's rule), exactly as
     // every RTOS `_ns` runner is kept (issue 1568): it takes every tier's
     // storage in ONE block, at the linked library's own size, and hands it to
     // the runner, so the two spellings run the same code over the same layout.
     // The block outlives every tier: `_in` joins its tier tasks before it
     // returns.
-    if tiers.is_null() || n_tiers == 0 {
+    if tiers.is_null() || n_sched_tasks == 0 {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let stride = nros_cpp_executor_storage_size();
     let mut storage: alloc::vec::Vec<u64> =
-        alloc::vec![0u64; n_tiers * (stride / core::mem::size_of::<u64>())];
+        alloc::vec![0u64; n_sched_tasks * (stride / core::mem::size_of::<u64>())];
     unsafe {
-        nros_board_native_run_tiers_in(
+        nros_board_native_run_sched_tasks_in(
             session_name,
             node_namespace,
             tiers,
-            n_tiers,
+            n_sched_tasks,
             storage.as_mut_ptr().cast(),
             stride,
         )
     }
 }
 
-/// Issue 1597 — [`nros_board_native_run_tiers_ns`] over CALLER-SUPPLIED
+/// Issue 1597 — [`nros_board_native_run_sched_tasks_ns`] over CALLER-SUPPLIED
 /// executor storage, and the runner a generated native tiered entry calls
 /// (`CAbiRunners::takes_executor_storage`).
 ///
 /// The RTOS shape (issues 1551 + 1568), so every executor in the tree is
-/// allocated one way. `executor_storage` holds `n_tiers` blocks of
+/// allocated one way. `executor_storage` holds `n_sched_tasks` blocks of
 /// `storage_stride` bytes; block `i` is tier `i`'s executor (block 0 the boot
 /// tier's, on the calling thread). The generated entry passes a file-scope
 /// static sized from the per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its
@@ -8835,16 +8837,16 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_ns(
 /// the storage need only outlive the call.
 ///
 /// # Safety
-/// As [`nros_board_native_run_tiers_ns`], plus: `executor_storage` must be
-/// valid for writes of `n_tiers * storage_stride` bytes for the duration of
+/// As [`nros_board_native_run_sched_tasks_ns`], plus: `executor_storage` must be
+/// valid for writes of `n_sched_tasks * storage_stride` bytes for the duration of
 /// the call and used by nothing else meanwhile.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_board_native_run_tiers_in(
+pub unsafe extern "C" fn nros_board_native_run_sched_tasks_in(
     session_name: *const c_char,
     node_namespace: *const c_char,
-    tiers: *const NativeTierSpecC,
-    n_tiers: usize,
+    tiers: *const NativeSchedTaskSpecC,
+    n_sched_tasks: usize,
     executor_storage: *mut c_void,
     storage_stride: usize,
 ) -> i32 {
@@ -8855,7 +8857,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     use alloc::{string::String, sync::Arc, vec::Vec};
     use core::sync::atomic::{AtomicBool, Ordering};
 
-    if tiers.is_null() || n_tiers == 0 {
+    if tiers.is_null() || n_sched_tasks == 0 {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     // The one refusal every runner shares (issue 1568), before a byte is
@@ -8866,7 +8868,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     }
     let storage = executor_storage as *mut u8;
 
-    let tier_slice = unsafe { core::slice::from_raw_parts(tiers, n_tiers) };
+    let sched_task_slice = unsafe { core::slice::from_raw_parts(tiers, n_sched_tasks) };
 
     // Resolve session name: null / empty → "node".
     let name_resolved: &core::ffi::CStr = if session_name.is_null() {
@@ -8939,7 +8941,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
         // Issue 1419 -- a failing tier still gets its census written, with the
         // failure as the exit code; see the single-executor runner above.
         let mut setup_rc = 0;
-        for tier in tier_slice {
+        for tier in sched_task_slice {
             let Some(setup_fn) = tier.setup else { continue };
             setup_rc = unsafe { setup_fn(sptr) };
             if setup_rc != 0 {
@@ -8952,13 +8954,17 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     }
 
     // Boot tier — apply active_groups + run setup on the owning executor.
-    let boot_tier = &tier_slice[0];
-    if !boot_tier.groups.is_null() && boot_tier.n_groups > 0 {
+    let boot_sched_task = &sched_task_slice[0];
+    if !boot_sched_task.groups.is_null() && boot_sched_task.n_groups > 0 {
         unsafe {
-            nros_cpp_executor_set_active_groups(sptr, boot_tier.groups, boot_tier.n_groups);
+            nros_cpp_executor_set_active_groups(
+                sptr,
+                boot_sched_task.groups,
+                boot_sched_task.n_groups,
+            );
         }
     }
-    if let Some(setup_fn) = boot_tier.setup {
+    if let Some(setup_fn) = boot_sched_task.setup {
         let setup_rc = unsafe { setup_fn(sptr) };
         if setup_rc != 0 {
             unsafe { nros_cpp_fini(sptr) };
@@ -8968,7 +8974,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
 
     crate::cpp_info!(
         "nros: multi-tier run — {} tier(s) over one session",
-        n_tiers
+        n_sched_tasks
     );
 
     // Shared shutdown flag — boot thread sets it; tier tasks poll it.
@@ -8976,14 +8982,14 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     // phase-521 W6 — a tier parks in `spin_once` until its next deadline or
     // arrival, so the flag alone no longer ends it: the boot thread cancels
     // every live tier executor (which posts its wake object) after raising it.
-    let tier_live = Arc::new(TierLiveSet::new(n_tiers));
+    let sched_task_live = Arc::new(SchedTaskLiveSet::new(n_sched_tasks));
     // Issue 1733 — held across each spawned tier's open + `setup`, so no two
     // tiers declare on the shared session at once (the boot tier's setup has
     // already returned above). Every RTOS runner serializes by chaining its
     // spawns (issue #144) and the Linux Rust runner by this same gate (issue
     // 0447); this runner spawned every tier at once and let their setups
     // race, through `&mut` aliases of ONE backend session.
-    let setup_gate = Arc::new(nros_node::executor::TierSetupGate::new());
+    let setup_gate = Arc::new(nros_node::executor::SchedTaskSetupGate::new());
 
     // phase-359 W10 — one PLATFORM TASK per non-boot tier, not one
     // `std::thread`.
@@ -8999,19 +9005,20 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
     // create and treats a refusal — the usual case on Linux without
     // `CAP_SYS_NICE` — as success, so an unprivileged run behaves exactly as
     // it did before.
-    let mut tier_tasks: Vec<nros_platform::task::PlatformTask> = Vec::with_capacity(n_tiers - 1);
-    for (i, tier) in tier_slice.iter().enumerate().skip(1) {
-        let tier_name = if tier.name.is_null() {
+    let mut sched_tasks: Vec<nros_platform::task::PlatformTask> =
+        Vec::with_capacity(n_sched_tasks - 1);
+    for (i, tier) in sched_task_slice.iter().enumerate().skip(1) {
+        let sched_task_name = if tier.name.is_null() {
             String::new()
         } else {
             unsafe { core::ffi::CStr::from_ptr(tier.name) }
                 .to_string_lossy()
                 .into_owned()
         };
-        let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeTierCtx {
+        let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeSchedTaskCtx {
             shutdown: Arc::clone(&shutdown),
             setup_gate: Arc::clone(&setup_gate),
-            live: Arc::clone(&tier_live),
+            live: Arc::clone(&sched_task_live),
             slot: i,
             n_groups: tier.n_groups,
             groups: tier.groups as usize,
@@ -9020,17 +9027,18 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
             storage: storage.wrapping_add(i * storage_stride) as usize,
             setup: tier.setup,
             domain_id,
-            name: tier_name.clone(),
+            name: sched_task_name.clone(),
         }));
         // The port copies what it keeps, but the pointer must be valid FOR the
         // call, so the CString outlives it here.
-        let task_name = alloc::ffi::CString::new(alloc::format!("nros-tier-{tier_name}"))
-            .unwrap_or_else(|_| c"nros-tier".into());
+        let task_name =
+            alloc::ffi::CString::new(alloc::format!("nros-sched-task-{sched_task_name}"))
+                .unwrap_or_else(|_| c"nros-tier".into());
         // SAFETY: `ctx` stays live until the trampoline reclaims it — on the
         // spawned task, after its loop exits.
         let spawned = unsafe {
             nros_platform::task::PlatformTask::spawn_with(
-                native_tier_trampoline,
+                native_sched_task_trampoline,
                 ctx as *mut c_void,
                 task_name.as_ptr(),
                 tier.stack_bytes,
@@ -9038,9 +9046,11 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
             )
         };
         match spawned {
-            Some(task) => tier_tasks.push(task),
+            Some(task) => sched_tasks.push(task),
             None => {
-                crate::cpp_diag!("nros: failed to spawn tier '{tier_name}' — tier will not run");
+                crate::cpp_diag!(
+                    "nros: failed to spawn tier '{sched_task_name}' — tier will not run"
+                );
                 // SAFETY: nothing was spawned, so nothing else owns this.
                 drop(unsafe { alloc::boxed::Box::from_raw(ctx) });
             }
@@ -9086,8 +9096,8 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
 
     // Signal all tier tasks to exit, end their parks, and wait for them.
     shutdown.store(true, Ordering::SeqCst);
-    tier_live.cancel_all();
-    for t in tier_tasks {
+    sched_task_live.cancel_all();
+    for t in sched_tasks {
         t.join();
     }
 
@@ -9104,13 +9114,13 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
 /// executor its tier is dropping: the tier unregisters under it, so a cancel
 /// either finishes first or finds the slot empty.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
-struct TierLiveSet {
+struct SchedTaskLiveSet {
     lock: core::sync::atomic::AtomicBool,
     slots: alloc::vec::Vec<core::sync::atomic::AtomicUsize>,
 }
 
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
-impl TierLiveSet {
+impl SchedTaskLiveSet {
     fn new(n: usize) -> Self {
         Self {
             lock: core::sync::atomic::AtomicBool::new(false),
@@ -9166,13 +9176,13 @@ impl TierLiveSet {
 /// ~~`SendUsize`~~ wrapper existed: raw pointers are not `Send`, and this value
 /// moves to another task.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
-struct NativeTierCtx {
+struct NativeSchedTaskCtx {
     shutdown: alloc::sync::Arc<core::sync::atomic::AtomicBool>,
     /// Issue 1733 — the runner's one setup gate, shared by every spawned tier.
-    setup_gate: alloc::sync::Arc<nros_node::executor::TierSetupGate>,
+    setup_gate: alloc::sync::Arc<nros_node::executor::SchedTaskSetupGate>,
     /// phase-521 W6 — where this tier registers its executor so the boot
     /// thread can cancel its park at shutdown, and its slot there.
-    live: alloc::sync::Arc<TierLiveSet>,
+    live: alloc::sync::Arc<SchedTaskLiveSet>,
     slot: usize,
     n_groups: usize,
     groups: usize,
@@ -9187,17 +9197,17 @@ struct NativeTierCtx {
 /// One tier's loop, as a platform-task entry.
 ///
 /// # Safety
-/// `arg` must be the `Box<NativeTierCtx>` raw pointer the spawn site created,
+/// `arg` must be the `Box<NativeSchedTaskCtx>` raw pointer the spawn site created,
 /// passed exactly once.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
-unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
+unsafe extern "C" fn native_sched_task_trampoline(arg: *mut c_void) -> *mut c_void {
     use core::sync::atomic::Ordering;
 
     // SAFETY: the caller's contract — this task is the only consumer of the
     // pointer, and reclaiming it here is what frees the context when the loop
     // exits.
-    let ctx = unsafe { alloc::boxed::Box::from_raw(arg as *mut NativeTierCtx) };
-    let tier_name = &ctx.name;
+    let ctx = unsafe { alloc::boxed::Box::from_raw(arg as *mut NativeSchedTaskCtx) };
+    let sched_task_name = &ctx.name;
 
     // Open borrowed executor (shares the session — does NOT open a new RMW
     // session and does NOT close it on drop).
@@ -9215,7 +9225,7 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
         unsafe { nros_cpp_executor_open_over_session(sh, core::ptr::null(), ctx.domain_id, tptr) };
     if rc != NROS_CPP_RET_OK {
         crate::cpp_diag!(
-            "nros: tier '{tier_name}' FAILED to open its borrowed executor (rc={rc}) — tier will not run"
+            "nros: tier '{sched_task_name}' FAILED to open its borrowed executor (rc={rc}) — tier will not run"
         );
         return core::ptr::null_mut();
     }
@@ -9230,7 +9240,7 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
         let setup_rc = unsafe { setup(tptr) };
         if setup_rc != 0 {
             crate::cpp_diag!(
-                "nros: tier '{tier_name}' setup FAILED (rc={setup_rc}) — tier will not run"
+                "nros: tier '{sched_task_name}' setup FAILED (rc={setup_rc}) — tier will not run"
             );
             // Drop borrowed executor (no session close).
             unsafe { core::ptr::drop_in_place(tptr as *mut CppContext) };
@@ -9249,7 +9259,7 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
         let rc = unsafe { nros_cpp_spin_once(tptr, budget_ms) };
         if rc != NROS_CPP_RET_OK {
             crate::cpp_diag!(
-                "nros: tier '{tier_name}' spin_once returned rc={rc} — tier loop EXITING"
+                "nros: tier '{sched_task_name}' spin_once returned rc={rc} — tier loop EXITING"
             );
             break;
         }
@@ -9262,10 +9272,10 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
 }
 
 /// phase-509 P10 -- one core executor backing a generated entry hands a
-/// level runner, `nros_tier_backing_t`'s layout (`<rclc/detail/main.h>`).
+/// level runner, `nros_sched_task_backing_t`'s layout (`<rclc/detail/main.h>`).
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[repr(C)]
-pub struct NativeTierBackingC {
+pub struct NativeSchedTaskBackingC {
     pub backing: *mut c_void,
     pub bytes: usize,
 }
@@ -9296,7 +9306,7 @@ struct NativeLevelCtx {
     n_groups: usize,
     groups: usize,
     setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
-    /// Issue 2018 -- the level's row (`*const NativeTierSpecC`, the entry's
+    /// Issue 2018 -- the level's row (`*const NativeSchedTaskSpecC`, the entry's
     /// static table), for its policy.
     spec: usize,
     /// Issue 2066 -- set once the spawner's `spawn_with` returned. The
@@ -9317,12 +9327,12 @@ struct NativeLevelCtx {
 /// # Safety
 /// `sched` is the runner's scheduler; `t` a row of the entry's table.
 #[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
-unsafe fn native_level_sched_policy(sched: *mut c_void, t: &NativeTierSpecC, kernel: bool) {
+unsafe fn native_level_sched_policy(sched: *mut c_void, t: &NativeSchedTaskSpecC, kernel: bool) {
     let mut sc: u8 = 0;
     let rc = unsafe {
         nros_cpp_level_set_sched_policy(
             sched,
-            t.tier_class,
+            t.sched_task_class,
             t.period_us,
             t.budget_us,
             t.deadline_us,
@@ -9386,7 +9396,7 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
     // Issue 2018 -- the kernel's reservation on this level's thread, then the
     // level's own context, which defers to the kernel when it took the budget.
     // SAFETY: `spec` is a row of the entry's static table.
-    if let Some(t) = unsafe { (ctx.spec as *const NativeTierSpecC).as_ref() } {
+    if let Some(t) = unsafe { (ctx.spec as *const NativeSchedTaskSpecC).as_ref() } {
         // Issue 2066 -- not before the spawner's priority write: it would
         // replace the reservation with SCHED_FIFO. A sleep, not a spin: under
         // SCHED_FIFO on one CPU a spinning level starves its spawner.
@@ -9397,7 +9407,7 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
         let kernel = unsafe {
             nros_platform::sched::apply_current_deadline(
                 ctx.name.as_ptr(),
-                t.tier_class,
+                t.sched_task_class,
                 t.budget_us,
                 t.period_us,
                 t.deadline_us,
@@ -9449,7 +9459,7 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
 /// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static, or NULL for one from the heap.
 ///
 /// # Safety
-/// As [`nros_board_native_run_tiers_in`], plus: `backings` is NULL or one
+/// As [`nros_board_native_run_sched_tasks_in`], plus: `backings` is NULL or one
 /// element; `scheduler_backing` NULL or `scheduler_bytes` writable bytes that
 /// outlive the call.
 #[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
@@ -9457,11 +9467,11 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
 pub unsafe extern "C" fn nros_board_native_run_levels_in(
     session_name: *const c_char,
     node_namespace: *const c_char,
-    tiers: *const NativeTierSpecC,
-    n_tiers: usize,
+    tiers: *const NativeSchedTaskSpecC,
+    n_sched_tasks: usize,
     executor_storage: *mut c_void,
     storage_stride: usize,
-    backings: *const NativeTierBackingC,
+    backings: *const NativeSchedTaskBackingC,
     task_memory: *const c_void,
     scheduler_backing: *mut c_void,
     scheduler_bytes: usize,
@@ -9476,21 +9486,21 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
         fn nros_platform_mutex_rec_storage_size() -> usize;
     }
 
-    if tiers.is_null() || n_tiers == 0 || !task_memory.is_null() {
+    if tiers.is_null() || n_sched_tasks == 0 || !task_memory.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    if n_tiers > usize::from(NROS_CPP_MAX_LEVELS) {
+    if n_sched_tasks > usize::from(NROS_CPP_MAX_LEVELS) {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     // A census counts what the setups CREATE, on one executor and no thread:
     // the tier runner's census arm is exactly that.
     if census_out_path().is_some() {
         return unsafe {
-            nros_board_native_run_tiers_in(
+            nros_board_native_run_sched_tasks_in(
                 session_name,
                 node_namespace,
                 tiers,
-                n_tiers,
+                n_sched_tasks,
                 executor_storage,
                 storage_stride,
             )
@@ -9500,7 +9510,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     if chk != NROS_CPP_RET_OK {
         return chk;
     }
-    let tier_slice = unsafe { core::slice::from_raw_parts(tiers, n_tiers) };
+    let sched_task_slice = unsafe { core::slice::from_raw_parts(tiers, n_sched_tasks) };
     let name_resolved: &core::ffi::CStr = if session_name.is_null() {
         c"node"
     } else {
@@ -9511,14 +9521,24 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     nros_platform::termination::install_guard();
 
     // Each row's level: its urgency among the rows, POSIX bigger-is-urgent.
-    let stride = core::mem::size_of::<NativeTierSpecC>();
+    let stride = core::mem::size_of::<NativeSchedTaskSpecC>();
     let level_of = |i: usize| -> u8 {
-        let l = unsafe { nros_cpp_tier_level(&tier_slice[0].priority, stride, n_tiers, i, false) };
+        let l = unsafe {
+            nros_cpp_sched_task_level(
+                &sched_task_slice[0].priority,
+                stride,
+                n_sched_tasks,
+                i,
+                false,
+            )
+        };
         l.max(0) as u8
     };
     // The adopted level is the least urgent one (issue 0636: an owner that
     // outranks its peers and then spins starves them).
-    let boot = (0..n_tiers).max_by_key(|&i| (level_of(i), i)).unwrap_or(0);
+    let boot = (0..n_sched_tasks)
+        .max_by_key(|&i| (level_of(i), i))
+        .unwrap_or(0);
 
     // The core's one executor.
     let sptr = executor_storage;
@@ -9554,7 +9574,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     // recursive priority-inheriting mutex, and the thread identity, so each
     // pass releases it around its callbacks and its park. One level needs
     // neither. The mutex lives as long as the process.
-    if n_tiers > 1 {
+    if n_sched_tasks > 1 {
         let words = unsafe { nros_platform_mutex_rec_storage_size() }
             .div_ceil(8)
             .max(1);
@@ -9577,7 +9597,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     }
 
     // The core's scheduler: the entry's static, or one from the heap.
-    let n_levels = n_tiers as u8;
+    let n_levels = n_sched_tasks as u8;
     let mut heap_sched: Vec<u64> = Vec::new();
     let (sb, sbytes) = if scheduler_backing.is_null() {
         let bytes = nros_cpp_scheduler_backing_size(n_levels);
@@ -9592,7 +9612,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     }
 
     // The adopted level: seat it, gate it, set it up on this thread.
-    let bt = &tier_slice[boot];
+    let bt = &sched_task_slice[boot];
     if unsafe { nros_cpp_level_adopt(sched, level_of(boot), sptr, 0, bt.name) } != NROS_CPP_RET_OK {
         return fini(NROS_CPP_RET_ERROR);
     }
@@ -9604,7 +9624,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     // every level's I/O, issue #246's shape); its context's budget, if any,
     // is the executor's, which gates only its own callbacks.
     unsafe { native_level_sched_policy(sched, bt, false) };
-    let tier_name = |t: &NativeTierSpecC| -> alloc::string::String {
+    let sched_task_name = |t: &NativeSchedTaskSpecC| -> alloc::string::String {
         if t.name.is_null() {
             alloc::string::String::from("?")
         } else {
@@ -9619,7 +9639,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             crate::cpp_diag!(
                 "nros: level {} (`{}`) setup failed (rc={rc}): failing the boot",
                 level_of(boot),
-                tier_name(bt)
+                sched_task_name(bt)
             );
             return fini(rc);
         }
@@ -9628,7 +9648,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     // Every other level, one at a time, each started once the last has set
     // up: a worker thread over the core's executor.
     let shutdown = Arc::new(AtomicBool::new(false));
-    let mut workers: Vec<nros_platform::task::PlatformTask> = Vec::with_capacity(n_tiers - 1);
+    let mut workers: Vec<nros_platform::task::PlatformTask> = Vec::with_capacity(n_sched_tasks - 1);
     let stop = |workers: Vec<nros_platform::task::PlatformTask>| {
         shutdown.store(true, Ordering::Relaxed);
         // phase-521 W6 -- end every level's park, so each sees the flag now
@@ -9639,14 +9659,14 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             w.join();
         }
     };
-    for (i, t) in tier_slice.iter().enumerate() {
+    for (i, t) in sched_task_slice.iter().enumerate() {
         if i == boot {
             continue;
         }
         let state = Arc::new(AtomicU8::new(0));
         let setup_rc = Arc::new(AtomicI32::new(0));
         let born = Arc::new(core::sync::atomic::AtomicBool::new(false));
-        let name = tier_name(t);
+        let name = sched_task_name(t);
         let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeLevelCtx {
             shutdown: Arc::clone(&shutdown),
             state: Arc::clone(&state),
@@ -9658,7 +9678,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             n_groups: t.n_groups,
             groups: t.groups as usize,
             setup: t.setup,
-            spec: t as *const NativeTierSpecC as usize,
+            spec: t as *const NativeSchedTaskSpecC as usize,
             spawned: Arc::clone(&born),
         }));
         let task_name = alloc::ffi::CString::new(alloc::format!("nros-level-{name}"))
@@ -9698,7 +9718,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             return fini(rc);
         }
     }
-    crate::cpp_info!("nros: multi-level run — {n_tiers} level(s) over one executor");
+    crate::cpp_info!("nros: multi-level run — {n_sched_tasks} level(s) over one executor");
 
     // The adopted level's loop, bounded as the tier runner's.
     let bound_ms: u64 = entry_spin_ms();
@@ -10430,7 +10450,7 @@ mod census_funnel_tests {
     /// Issue 1419 -- an image that links the recorder reserves the recorder's
     /// registry slot BESIDE the backends it declares, never out of them.
     ///
-    /// Measured on `examples/workspaces/derived-tiers-cpp`: a single-entry
+    /// Measured on `examples/workspaces/derived-sched-tasks-cpp`: a single-entry
     /// native configure names its sizing descriptor to cargo, the descriptor
     /// says `backend_count = 1`, and the registry held exactly that one slot --
     /// zenoh's. The census's recorder registration then failed silently and the
@@ -10529,7 +10549,7 @@ mod census_funnel_tests {
     /// node to attribute the publisher to and refused it, and the install
     /// returned that refusal — so the setup stopped before creating a single
     /// node, the dump found nothing (`rc=-2`) and the run exited 156. Measured
-    /// on `examples/workspaces/derived-tiers-cpp`'s `linux_entry`, the
+    /// on `examples/workspaces/derived-sched-tasks-cpp`'s `linux_entry`, the
     /// live-peer lane's census prepass. After: the census run arms no reporter
     /// (it never spins, so it could never publish one), records exactly the
     /// node's own publisher — no `/diagnostics` row, which the inventory counts
@@ -10953,8 +10973,8 @@ mod executor_storage_check_tests {
             0
         }
 
-        fn spec() -> NativeTierSpecC {
-            NativeTierSpecC {
+        fn spec() -> NativeSchedTaskSpecC {
+            NativeSchedTaskSpecC {
                 name: c"t".as_ptr(),
                 groups: core::ptr::null(),
                 n_groups: 0,
@@ -10964,7 +10984,7 @@ mod executor_storage_check_tests {
                 setup: Some(mark_setup),
                 core_plus1: 0,
                 preempt_threshold: -1,
-                tier_class: core::ptr::null(),
+                sched_task_class: core::ptr::null(),
                 period_us: 0,
                 budget_us: 0,
                 deadline_us: 0,
@@ -10973,12 +10993,12 @@ mod executor_storage_check_tests {
         }
 
         #[test]
-        fn a_short_tier_stride_is_refused_before_anything_opens() {
+        fn a_short_sched_task_stride_is_refused_before_anything_opens() {
             let need = nros_cpp_executor_storage_size();
             let tiers = [spec(), spec()];
             let mut b = alloc::vec![0u64; 2 * (need / 8)];
             let rc = unsafe {
-                nros_board_native_run_tiers_in(
+                nros_board_native_run_sched_tasks_in(
                     core::ptr::null(),
                     core::ptr::null(),
                     tiers.as_ptr(),
@@ -11424,10 +11444,10 @@ mod level_tests {
     /// urgency order (`nros codegen entry`'s `NROS_ENTRY_LEVEL_OF_<node>`
     /// rule), read through the runner's own array.
     #[test]
-    fn a_tiers_level_is_read_from_the_runners_array() {
+    fn a_sched_tasks_level_is_read_from_the_runners_array() {
         let tiers = [spec(6), spec(5), spec(8)];
         let level = |i| unsafe {
-            nros_cpp_tier_level(
+            nros_cpp_sched_task_level(
                 &tiers[0].priority,
                 core::mem::size_of::<Spec>(),
                 tiers.len(),
@@ -11438,7 +11458,7 @@ mod level_tests {
         assert_eq!([level(0), level(1), level(2)], [1, 0, 2]);
         assert_eq!(level(3), -1, "out of range");
         assert_eq!(
-            unsafe { nros_cpp_tier_level(core::ptr::null(), 8, 1, 0, true) },
+            unsafe { nros_cpp_sched_task_level(core::ptr::null(), 8, 1, 0, true) },
             -1
         );
     }

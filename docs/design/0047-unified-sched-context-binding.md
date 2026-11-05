@@ -36,7 +36,7 @@ routes the Rust path through the same table.
 Two problems, one mechanism fixes both.
 
 **1. Fragmented + coarse binding (phase-272 recap).** Tier binding was done four different ways
-(Rust `run_tiers`/per-callback `bind_handle_to_sched_context`, C/C++ `NodeBuilder::sched`, rclcpp-shape
+(Rust `run_sched_tasks`/per-callback `bind_handle_to_sched_context`, C/C++ `NodeBuilder::sched`, rclcpp-shape
 = nothing → #124). phase-272 unified the *node-level* case behind a `node_name → sched_context` table
 resolved at `node_builder(name)` (every node funnels through it, RFC-0046). But that table is
 **per-node** — one tier per node — while the Rust path is **per-callback**: a single node can put a
@@ -136,7 +136,7 @@ phase-459 W3's open question.
 ### Uniform across languages
 Rust and C/C++ both: create named groups in code, create entities in a group, and let the executor
 resolve group→sched_context from the config-seeded table. The Rust path drops its bespoke
-per-callback `bind_handle_to_sched_context` loop in favor of the shared table (keeping `run_tiers`
+per-callback `bind_handle_to_sched_context` loop in favor of the shared table (keeping `run_sched_tasks`
 for the *spin* structure); C/C++ gain the group-scoped create + carry the group across the register
 FFI. One mechanism, ROS-shaped, portable.
 
@@ -146,7 +146,7 @@ node's default sched (phase-272 node-name table / `NodeBuilder::sched`) > `Sched
 
 ### Scope boundary — binding vs execution
 Unchanged from phase-272: this RFC governs **binding** (which sched-context a callback uses). The
-**execution** side — `run_tiers`, per-RTOS task priority (RFC-0016) — is orthogonal and stays.
+**execution** side — `run_sched_tasks`, per-RTOS task priority (RFC-0016) — is orthogonal and stays.
 
 > **Reconciliation with RFC-0015 Model 1 (2026-07).** RFC-0015 decided the single execution model for
 > ALL languages is **Model 1** — one RTOS task per tier, `active_groups` gating (see its banner). Under

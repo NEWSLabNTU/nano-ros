@@ -373,7 +373,7 @@ fn codegen_system_model_mode_plan_matches_system_toml() {
     // CONVENTION-DISCOVERED committed model carrying the tiers. The second
     // bake passes the same content via explicit `--model` — discovery and
     // override must agree byte-for-byte.
-    let tiered_model = r#"meta:
+    let sched_task_model = r#"meta:
   version: 1
 structure:
   scopes:
@@ -401,7 +401,7 @@ execution:
 "#;
     fs::write(
         ws.join("demo_bringup/config/system_model.yaml"),
-        tiered_model,
+        sched_task_model,
     )
     .unwrap();
 
@@ -429,7 +429,7 @@ execution:
 "#,
     )
     .unwrap();
-    fs::write(&model_path, tiered_model).unwrap();
+    fs::write(&model_path, sched_task_model).unwrap();
 
     let out_model = temp_root("model-eq-out-model");
     let mut a = args(&ws, &out_model);

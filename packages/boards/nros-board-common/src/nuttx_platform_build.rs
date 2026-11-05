@@ -139,12 +139,12 @@ pub fn run_platform() {
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_INCLUDES");
 }
 
-/// phase-281 W3 (nuttx) — compile the board's `nros_board_nuttx_run_tiers` C
-/// seam (`c/nuttx_run_tiers.c`) into `libnros_nuttx_run_tiers.a` and emit the
+/// phase-281 W3 (nuttx) — compile the board's `nros_board_nuttx_run_sched_tasks` C
+/// seam (`c/nuttx_run_sched_tasks.c`) into `libnros_nuttx_run_sched_tasks.a` and emit the
 /// propagating `-bundle,+whole-archive` link directive. The NuttX analog of the
-/// FreeRTOS glue (`nros-board-freertos/build.rs` compiling `c/freertos_run_tiers.c`):
-/// the generated C++ entry's `NuttxBoard::run_tiers` references
-/// `nros_board_nuttx_run_tiers`, so this seam must be whole-archived into the
+/// FreeRTOS glue (`nros-board-freertos/build.rs` compiling `c/freertos_run_sched_tasks.c`):
+/// the generated C++ entry's `NuttxBoard::run_sched_tasks` references
+/// `nros_board_nuttx_run_sched_tasks`, so this seam must be whole-archived into the
 /// final NuttX kernel image.
 ///
 /// Each of `seam_srcs` is a calling board crate's run-tiers C file (kept in the board
@@ -187,7 +187,7 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     // Same rationale as `run_platform`: emit the link directives by hand
     // (`-bundle,+whole-archive`) rather than cc's default `+bundle`, so the seam
     // object lands as a standalone `lib*.a` pulled WHOLE at the image link. The
-    // whole-archive is what makes the C++ entry's `nros_board_nuttx_run_tiers`
+    // whole-archive is what makes the C++ entry's `nros_board_nuttx_run_sched_tasks`
     // reference resolve regardless of archive order (issue-0048 / RFC-0042 D3);
     // `-bundle` alone places the `-l` right after this crate, not after every
     // rlib (issue 2103).
@@ -211,14 +211,14 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     for src in seam_srcs {
         seam.file(src);
     }
-    seam.compile("nros_nuttx_run_tiers");
+    seam.compile("nros_nuttx_run_sched_tasks");
     nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(
         &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
     ));
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
     println!("cargo:rustc-link-search=native={out_dir}");
-    println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_nuttx_run_tiers");
+    println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_nuttx_run_sched_tasks");
     for src in seam_srcs {
         println!("cargo:rerun-if-changed={}", src.display());
     }

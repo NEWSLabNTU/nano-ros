@@ -125,7 +125,7 @@ pub(crate) static LEVELS: LevelRegistry = LevelRegistry::new();
 /// ([`Executor::set_level`](super::Executor::set_level)). `nros codegen
 /// entry` writes `NROS_ENTRY_LEVEL_OF_<node>` by the same rule, over the same
 /// array. `None` when `index` is out of range.
-pub fn tier_level_by(
+pub fn sched_task_level_by(
     n: usize,
     index: usize,
     smaller_is_urgent: bool,
@@ -148,9 +148,9 @@ pub fn tier_level_by(
     u8::try_from(ahead).ok()
 }
 
-/// [`tier_level_by`] over a slice of priorities.
-pub fn tier_level(priorities: &[i64], index: usize, smaller_is_urgent: bool) -> Option<u8> {
-    tier_level_by(priorities.len(), index, smaller_is_urgent, |i| {
+/// [`sched_task_level_by`] over a slice of priorities.
+pub fn sched_task_level(priorities: &[i64], index: usize, smaller_is_urgent: bool) -> Option<u8> {
+    sched_task_level_by(priorities.len(), index, smaller_is_urgent, |i| {
         priorities[i]
     })
 }
@@ -199,14 +199,14 @@ mod tests {
     /// 0 wherever it sits in the array; equal priorities keep array order;
     /// the other direction inverts it.
     #[test]
-    fn a_tiers_level_is_its_urgency_order() {
+    fn a_sched_tasks_level_is_its_urgency_order() {
         let p = [6, 5, 8, 6];
-        let levels: [Option<u8>; 4] = core::array::from_fn(|i| tier_level(&p, i, true));
+        let levels: [Option<u8>; 4] = core::array::from_fn(|i| sched_task_level(&p, i, true));
         assert_eq!(levels, [Some(1), Some(0), Some(3), Some(2)]);
-        let levels: [Option<u8>; 4] = core::array::from_fn(|i| tier_level(&p, i, false));
+        let levels: [Option<u8>; 4] = core::array::from_fn(|i| sched_task_level(&p, i, false));
         assert_eq!(levels, [Some(1), Some(3), Some(0), Some(2)]);
-        assert_eq!(tier_level(&p, 4, true), None);
-        assert_eq!(tier_level(&[5], 0, true), Some(0));
+        assert_eq!(sched_task_level(&p, 4, true), None);
+        assert_eq!(sched_task_level(&[5], 0, true), Some(0));
     }
 
     /// The aggregate is false while one level has not checked in, true once

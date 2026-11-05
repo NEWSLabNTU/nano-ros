@@ -2,7 +2,7 @@
 """A test that PASSES over rows it did not run must have its summary printed.
 
 Issue 2004. Several runtime tests run a whole matrix of cells inside ONE
-`#[test]` (`realtime_tiers_e2e`, `sched_dims_applied_e2e`, `entry_e2e`, ...).
+`#[test]` (`realtime_sched_tasks_e2e`, `sched_dims_applied_e2e`, `entry_e2e`, ...).
 A cell outside the run's coordinates is recorded with
 `nros_tests::lane_scope::skip_note` and the test still passes when the rest
 ran, so the test's own stdout is the only place that says "6 rows ran, 14 out
@@ -11,7 +11,7 @@ reason, since "1 of 16 ran" and "16 of 16 passed" otherwise read the same.
 
 nextest throws a passing test's output away (`success-output = "never"` is its
 default), so on every lane the summary existed and nobody could read it. The
-tier-2 nightly of 2026-10-22 (run 39739466151) reported `PASS realtime_tiers`
+tier-2 nightly of 2026-10-22 (run 39739466151) reported `PASS realtime_sched_tasks`
 and `PASS sched_dims_applied` and could not say which RTOS cells had run, which
 is the one question phase-466 W5 asks of it.
 

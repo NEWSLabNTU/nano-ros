@@ -2,7 +2,7 @@
 //! workspace Entry, the in-tree mirror of the ASI consumption shape
 //! (`nano_ros_use_board(fvp-aemv8r-smp)` + `find_package(nano_ros)` +
 //! `nano_ros_add_executable(BOARD zephyr MODEL … TYPED DEPLOY zephyr)` driving
-//! `ZephyrBoard::run_tiers` — two tiers over one shared Cyclone DDS session).
+//! `ZephyrBoard::run_sched_tasks` — two tiers over one shared Cyclone DDS session).
 //!
 //! This is the maintainer pre-release gate (`just zephyr verify-fvp-runtime`
 //! builds + runs it): no CI runner provisions the ARM FVP (`nros setup --tool
@@ -66,7 +66,7 @@ fn resolve_zephyr_workspace(_root: &Path) -> Option<PathBuf> {
 }
 
 #[test]
-fn fvp_ws_entry_two_tier_publishes() {
+fn fvp_ws_entry_two_sched_task_publishes() {
     // Issue 1685's ordering — see fvp_smoke.rs.
     nros_tests::fixtures::lane::require_platform_in_lane(
         &[nros_tests::matrix::PlatformId::Fvp],
@@ -133,7 +133,7 @@ fn fvp_ws_entry_two_tier_publishes() {
     assert!(
         output.contains(CTRL_MARKER),
         "telem published but ctrl marker `{CTRL_MARKER}` missing — high tier \
-         not publishing (run_tiers/priority regression?):\n{output}"
+         not publishing (run_sched_tasks/priority regression?):\n{output}"
     );
 
     drop(proc);
@@ -154,7 +154,7 @@ fn cases_bound_to_matrix_cells() {
             P::Fvp,
             L::Cpp,
             R::Cyclonedds,
-            W::RealtimeTiers,
+            W::RealtimeSchedTasks,
             K::Workspace,
         )],
     );

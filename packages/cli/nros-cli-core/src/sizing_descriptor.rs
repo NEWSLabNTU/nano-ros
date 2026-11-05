@@ -2250,9 +2250,9 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<Option<WrittenDescr
 }
 
 /// Issue 1970 -- [`write_for_model`], stating each tier's own `[[tier]]` row
-/// ([`tier_rows`]) in the same write, so the file is written once per
+/// ([`sched_task_rows`]) in the same write, so the file is written once per
 /// configure and identical bytes keep their mtime.
-pub fn write_for_model_with_tiers(
+pub fn write_for_model_with_sched_tasks(
     img: &ModelImage<'_>,
     tiers: Vec<nros_sizing_descriptor::Tier>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
@@ -6200,13 +6200,13 @@ contracts:
 }
 
 /// Issue 1970 -- the most tiers a per-tier-sized image carries: the C/C++
-/// header publishes `TIER_BACKING_SIZE_0..7` (`nros::sizes`).
-pub const MAX_SIZED_TIERS: usize = 8;
+/// header publishes `SCHED_TASK_BACKING_SIZE_0..7` (`nros::sizes`).
+pub const MAX_SIZED_SCHED_TASKS: usize = 8;
 
 /// Issue 1970 -- one tier as `codegen entry`'s priority record states it: its
 /// name and the node names it hosts, in the tier table's order.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TierMembers {
+pub struct SchedTaskMembers {
     pub name: String,
     pub nodes: Vec<String>,
 }
@@ -6215,14 +6215,14 @@ pub struct TierMembers {
 /// (`nros_priority_plan.json`, beside the generated TU) names, when the
 /// entry's board runs per-tier-sized tiers; `None` for an entry with no tier
 /// table, or one whose runner has no per-tier twin
-/// (`CAbiRunners::run_tiers_backed`), or more tiers than
-/// [`MAX_SIZED_TIERS`].
-pub fn tiers_from_priority_record(text: &str) -> Option<Vec<TierMembers>> {
+/// (`CAbiRunners::run_sched_tasks_backed`), or more tiers than
+/// [`MAX_SIZED_SCHED_TASKS`].
+pub fn sched_tasks_from_priority_record(text: &str) -> Option<Vec<SchedTaskMembers>> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
-    let key = v.get("tier_key")?.as_str()?;
+    let key = v.get("sched_task_key")?.as_str()?;
     let family = nros_entry_lower::board_family(key).ok()?;
-    family.c_abi_runners()?.run_tiers_backed?;
-    let tiers: Vec<TierMembers> = v
+    family.c_abi_runners()?.run_sched_tasks_backed?;
+    let tiers: Vec<SchedTaskMembers> = v
         .get("tiers")?
         .as_array()?
         .iter()
@@ -6236,10 +6236,10 @@ pub fn tiers_from_priority_record(text: &str) -> Option<Vec<TierMembers>> {
                 .collect();
             nodes.sort();
             nodes.dedup();
-            Some(TierMembers { name, nodes })
+            Some(SchedTaskMembers { name, nodes })
         })
         .collect::<Option<_>>()?;
-    (!tiers.is_empty() && tiers.len() <= MAX_SIZED_TIERS).then_some(tiers)
+    (!tiers.is_empty() && tiers.len() <= MAX_SIZED_SCHED_TASKS).then_some(tiers)
 }
 
 /// Issue 1970 -- the `[[tier]]` rows: each tier's own facts, composed by the
@@ -6250,9 +6250,9 @@ pub fn tiers_from_priority_record(text: &str) -> Option<Vec<TierMembers>> {
 /// All or nothing (`Err` names why): a tier whose members the inventory does
 /// not cover, or whose derivation refuses, leaves the image on one executor
 /// size, which is the shape before this issue rather than a short tier.
-pub fn tier_rows(
+pub fn sched_task_rows(
     inventory: &EntityInventory,
-    tiers: &[TierMembers],
+    tiers: &[SchedTaskMembers],
 ) -> Result<Vec<nros_sizing_descriptor::Tier>, String> {
     use crate::entity_inventory::Derivation;
     fn bare(s: &str) -> &str {
@@ -6324,7 +6324,7 @@ pub fn tier_rows(
 }
 
 #[cfg(test)]
-mod tier_row_tests {
+mod sched_task_row_tests {
     use super::*;
     use crate::entity_inventory::EntityDecl;
 
@@ -6384,13 +6384,13 @@ mod tier_row_tests {
         inv
     }
 
-    fn tiers() -> Vec<TierMembers> {
+    fn tiers() -> Vec<SchedTaskMembers> {
         vec![
-            TierMembers {
+            SchedTaskMembers {
                 name: "mrm".into(),
                 nodes: vec!["mrm_comfortable_stop_operator".into(), "mrm_handler".into()],
             },
-            TierMembers {
+            SchedTaskMembers {
                 name: "estop".into(),
                 nodes: vec!["mrm_emergency_stop_operator".into()],
             },
@@ -6398,8 +6398,8 @@ mod tier_row_tests {
     }
 
     #[test]
-    fn each_tier_states_its_own_members_facts() {
-        let rows = tier_rows(&island(), &tiers()).unwrap();
+    fn each_sched_task_states_its_own_members_facts() {
+        let rows = sched_task_rows(&island(), &tiers()).unwrap();
         let (mrm, estop) = (&rows[0], &rows[1]);
         assert_eq!(mrm.name, "mrm");
         assert_eq!(mrm.image.node_count().stated(), Some(&2));
@@ -6426,34 +6426,34 @@ mod tier_row_tests {
     }
 
     #[test]
-    fn a_tier_hosting_a_node_the_inventory_does_not_name_is_refused() {
+    fn a_sched_task_hosting_a_node_the_inventory_does_not_name_is_refused() {
         let mut t = tiers();
         t[1].nodes.push("ghost".into());
-        let e = tier_rows(&island(), &t).unwrap_err();
+        let e = sched_task_rows(&island(), &t).unwrap_err();
         assert!(e.contains("`ghost`"), "{e}");
     }
 
     #[test]
-    fn only_a_board_with_a_per_tier_runner_reads_the_record() {
+    fn only_a_board_with_a_per_sched_task_runner_reads_the_record() {
         let record = |key: &str| {
             format!(
-                r#"{{"version":1,"tier_key":"{key}","tiers":[
+                r#"{{"version":1,"sched_task_key":"{key}","tiers":[
                     {{"name":"estop","members":[["mrm_emergency_stop_operator","main"]]}},
                     {{"name":"mrm","members":[["mrm_handler","main"],
                                               ["mrm_comfortable_stop_operator","main"]]}}]}}"#
             )
         };
-        let t = tiers_from_priority_record(&record("zephyr")).unwrap();
+        let t = sched_tasks_from_priority_record(&record("zephyr")).unwrap();
         assert_eq!(t.len(), 2);
         assert_eq!(t[0].name, "estop");
         assert_eq!(
             t[1].nodes,
             vec!["mrm_comfortable_stop_operator", "mrm_handler"]
         );
-        assert_eq!(tiers_from_priority_record(&record("freertos")), None);
+        assert_eq!(sched_tasks_from_priority_record(&record("freertos")), None);
         // An entry with no tier table writes `"tiers": []`.
         assert_eq!(
-            tiers_from_priority_record(r#"{"tier_key":"zephyr","tiers":[]}"#),
+            sched_tasks_from_priority_record(r#"{"sched_task_key":"zephyr","tiers":[]}"#),
             None
         );
     }

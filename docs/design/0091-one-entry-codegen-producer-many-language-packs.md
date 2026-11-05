@@ -310,7 +310,7 @@ key names its surface — because a convention nothing enforces is two
 conventions with a preference (phase-432 W2.5).
 
 **The tier table must use DESIGNATED initialisers.** It was emitted positionally
-against `nros_native_tier_spec_t` — mirrored by hand across **eight** sites, not
+against `nros_native_sched_task_spec_t` — mirrored by hand across **eight** sites, not
 the nine first counted here — and `check-ffi-struct-mirrors` did not cover it (it
 compared `component.h` against `nros_cpp_ffi.h`). A field inserted anywhere but
 the end silently mis-assigned every generated entry: issue 0160's class, ungated.
@@ -320,10 +320,10 @@ have LANDED (phase-432, branch `fix/nros-native-tier-spec-designated-init`).
 
 The eight, measured rather than counted from a comment: six DECLARATIONS —
 `nros-c/include/rclc/detail/main.h` (canonical), `nros-cpp/include/nros/main.hpp`
-(`NativeTierSpec`), `nros-cpp/src/lib.rs` (`NativeTierSpecC`) and the THREE
-board `nros_tier_spec_t` mirrors (zephyr, nuttx-qemu, freertos) — plus the two
+(`NativeSchedTaskSpec`), `nros-cpp/src/lib.rs` (`NativeSchedTaskSpecC`) and the THREE
+board `nros_sched_task_spec_t` mirrors (zephyr, nuttx-qemu, freertos) — plus the two
 entry templates that initialise it. main.h's own comment claimed FOUR board
-mirrors; there are three. `nros_platform::TierSpec` is a semantic sibling with
+mirrors; there are three. `nros_platform::SchedTaskSpec` is a semantic sibling with
 different field names and no `repr(C)`, so it is not a mirror and counting it is
 what made the number nine.
 
@@ -356,14 +356,14 @@ decision. The C-callable board surface as this section found it (phase-432
 W3.1 and issue 1286 have since filled the `run_components` column; see the
 end of this section):
 
-| board | `run_components` | `run_tiers` |
+| board | `run_components` | `run_sched_tasks` |
 | --- | --- | --- |
 | native | yes (+`_named`) | yes |
 | freertos / zephyr / nuttx | — | **yes** |
 | threadx | — | — |
 
 The layering runs opposite to the dispatch's justification for the TIERS path
-— `nros_board_freertos_run_tiers` is 666 lines of C under a 4-line C++ veneer
+— `nros_board_freertos_run_sched_tasks` is 666 lines of C under a 4-line C++ veneer
 — but **not for `run_components`**, and phase-432 W3.1's assessment corrected
 this section: `FreertosBoard::run_components` is fully implemented in the C++
 header with no C function under it, and native's C-ABI `run_components` is
@@ -373,7 +373,7 @@ The claim that survives is different and stronger: the C++ `run_components`
 uses no C++ feature a C function lacks — no exceptions, no RAII, and its
 `template <typename Setup>` is only ever instantiated with a plain function
 pointer in generated code — while every primitive it calls is already C-ABI and
-already called from C by the sibling `run_tiers.c`. Two prerequisites gated it and **both are now closed**, ahead of W3.1 itself
+already called from C by the sibling `run_sched_tasks.c`. Two prerequisites gated it and **both are now closed**, ahead of W3.1 itself
 and independently of whether W3.1 proceeds — each was a live trap on its own.
 `nros_board_network_wait` existed only as a weak symbol in a C++ header, so a
 pure-C TU failed at link; its definition moved to `<rclc/detail/main.h>`, the C header
@@ -390,11 +390,11 @@ copy". That stopped being true once W3.1 made `run_components` ONE shared TU
 (`nros_board_rtos_run_components`): ThreadX's C++ `run_components` is
 FreeRTOS's line for line, and the shared TU's per-tick yield is empty off
 Zephyr, which is what ThreadX needs. So ThreadX takes that runner and has NO
-`run_tiers`. A multi-tier ThreadX plan takes the single-executor
+`run_sched_tasks`. A multi-tier ThreadX plan takes the single-executor
 sched-context path in the C pack, exactly as it does in the C++ one; issue
 1283 is what gave the C pack that path. The surface now:
 
-| board | `run_components` | `run_tiers` |
+| board | `run_components` | `run_sched_tasks` |
 | --- | --- | --- |
 | native | yes (+`_named`) | yes |
 | freertos / zephyr / nuttx | yes (shared) | yes |
@@ -590,8 +590,8 @@ macro "stops re-deriving tiers (91 references), QoS (23) and board paths (6)".
 Measured on `main_macro.rs`: 93 `tier`, 34 `qos`, 15 `board_path` — but every
 one is a REFERENCE to shared code in `nros-orchestration-ir`, not a
 re-derivation. `board_path_for` delegates (phase-346), QoS goes through
-`qos_override::lower_all` (issue 0303), tiers through `resolve_tiers` /
-`tier_from_model` / `derive_tiers_from_contracts` (phase-228.G, RFC-0032 §6).
+`qos_override::lower_all` (issue 0303), tiers through `resolve_sched_tasks` /
+`sched_task_from_model` / `derive_sched_tasks_from_contracts` (phase-228.G, RFC-0032 §6).
 That convergence had already landed. What was genuinely duplicated is the
 **per-node runtime bake** — params, remaps, QoS overrides, identity and the
 `register` call — which is precisely where the two drifted, and
@@ -793,7 +793,7 @@ language first is what made the shortcut visible at all.
 - The proc-macro and the CLI share lowering; a gate compares the two Rust
   renderings.
 - The tier table uses designated initialisers, and the mirror gate covers
-  `nros_native_tier_spec_t` across its EIGHT sites (six declarations + the two
+  `nros_native_sched_task_spec_t` across its EIGHT sites (six declarations + the two
   entry templates; the nine was a miscount — see §5). DONE.
 - Adding a language touches no LOWERING Rust. Its Rust is one `Language`
   variant, a filter set, a generator per message kind, and — if it writes
@@ -836,9 +836,9 @@ language first is what made the shortcut visible at all.
   commits, and marks the superseded passages in place. The original text is
   kept. This RFC's §5 stays the decision record.
 - ~~`nros_board_threadx_run_components` does not exist and neither does its
-  `run_tiers` — is pure-C ThreadX worth the shim, or is the declaration
+  `run_sched_tasks` — is pure-C ThreadX worth the shim, or is the declaration
   enough?~~ ANSWERED by issue 1286: no shim was needed. ThreadX takes the
-  shared `nros_board_rtos_run_components`, has no `run_tiers`, and a tiered
+  shared `nros_board_rtos_run_components`, has no `run_sched_tasks`, and a tiered
   plan uses sched contexts. `workspace-c-threadx-linux` builds with no C++
   runtime.
 - ~~Does the designated-initialiser change land with the C++ pack conversion or
@@ -850,14 +850,14 @@ language first is what made the shortcut visible at all.
   reason a sibling would have been worse: the C family (main.h + three board
   mirrors) is compared by full DECLARATION because those four are cast to one
   another, while C++/Rust and the templates are compared by field-name ORDER —
-  `NativeTierSpec` spells `groups` as `const char**` where C has
+  `NativeSchedTaskSpec` spells `groups` as `const char**` where C has
   `const char* const*`, so a type comparison there would be permanently red. One
   script, one canonical source, three comparison strengths.
 
 ## 12. Known gap in the current goldens
 
 Five C rows (`c_nuttx_one`, `c_zephyr_one`, `c_freertos_one`, `c_threadx_one`,
-`c_nuttx_tiers`) come from calling `emit_c` directly, which the pipeline never
+`c_nuttx_sched_tasks`) come from calling `emit_c` directly, which the pipeline never
 does for those boards — an embedded C entry routes to the C++ emitter. They are
 byte-identical to the native rows except a comment and read as board coverage
 they do not have. Route the harness through the dispatch, or relabel them to pin
@@ -866,7 +866,7 @@ what they actually prove. Tracked on issue 1102.
 Since phase-432 W3.1 and issue 1286 every family has a C runner, so the
 dispatch DOES call `emit_c` for all five boards. The rows now record what the
 pipeline produces: each calls its family's runner in its boot shape.
-`c_threadx_one` used to pin the refusal text; `c_threadx_tiers` pins the
+`c_threadx_one` used to pin the refusal text; `c_threadx_sched_tasks` pins the
 sched-context path a tiered ThreadX C plan takes.
 
 ---

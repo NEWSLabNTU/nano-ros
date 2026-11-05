@@ -253,15 +253,15 @@ tiers than queues is refused at generation, never shared (phase-521 W8 a).
 
 The entry is generated C++ (phase-521 W8 b): `nros dev codegen entry`'s PX4
 emitter (`codegen/entry/px4.rs`) renders a PX4 module with one
-`nros_px4::TierWorkItem` subclass per tier on the queue its rank picks, and
+`nros_px4::SchedTaskWorkItem` subclass per tier on the queue its rank picks, and
 the work item is the runtime half (`integrations/px4/include/nros_px4/
-tier_work_item.hpp`). The boot tier opens the session and the others borrow
+sched_task_work_item.hpp`). The boot tier opens the session and the others borrow
 it, as on every tier runner. A `Run()` is one pass whose first park answers
 EXPIRED, so it drains and dispatches without blocking, then passes until the
 park slot yields: the slot arms `ScheduleDelayed(bound)`, or
 `ScheduleClear()` when no deadline falls inside the executor's idle budget
 (`NROS_CPP_ENTRY_IDLE_BUDGET_MS`). Arrivals reach the tier through
-`TierWorkItem::notify()`, which a clear cannot lose, and they reach `notify()`
+`SchedTaskWorkItem::notify()`, which a clear cannot lose, and they reach `notify()`
 through the slot's wake half: `nros_cpp_executor_set_wake_hook`, a hook the
 executor's wake object calls on every signal, ahead of the platform signal
 (issue 2225, maintainer ruling 2026-11-03). Every backend's arrival therefore
@@ -299,7 +299,7 @@ deleted receive-blocking wait.
 | XRCE over a custom transport with no receive notification | **refused** at open (D5) | `readiness_park::a_session_with_no_readiness_form_is_refused_at_open` (a stub backend stating none, with and without a wake slot) |
 | RTIC images (mps2-an385, LAN9118) | Notify — an RTIC hardware task bound to `ETHERNET` posts the wake object; the run loop parks with the entry budget (SysTick one-shot at the next deadline) | idle `qemu-rtic-listener`, QEMU 9.0.2, 20 s: 0 SysTick one-shots and 2 host CPU ticks (the router's keep-alive arrives first); the retired 1 ms dual-timer tick woke it 20,000 times. `test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass |
 | uORB polling build | none: refused under D5 | host test double only |
-| uORB, PX4 glue build | Notify — each subscription's `uORB::SubscriptionCallback` (publisher's context) fires the per-entity callback, so only the owning tier's executor wake is signalled, and that wake's hook calls the tier's `TierWorkItem::notify()` (phase-521 W8 d, issue 2225) | PX4 SITL: the generated `nros_uorb_demo` dispatches `vehicle_status` on arrival on its work item; `px4_uorb_interop_e2e` passes. The glue had never been linked before (issue 2218, archived) |
+| uORB, PX4 glue build | Notify — each subscription's `uORB::SubscriptionCallback` (publisher's context) fires the per-entity callback, so only the owning tier's executor wake is signalled, and that wake's hook calls the tier's `SchedTaskWorkItem::notify()` (phase-521 W8 d, issue 2225) | PX4 SITL: the generated `nros_uorb_demo` dispatches `vehicle_status` on arrival on its work item; `px4_uorb_interop_e2e` passes. The glue had never been linked before (issue 2218, archived) |
 
 Measured on Linux over `rmw_zenohd` (`entity_wake`, `required-features-tests`
 lane, 2026-11-02): an idle entry with one 1 s timer runs 4 spins in 3.5 s and
@@ -333,7 +333,7 @@ through the wake object, not on a tick. The test states the port's bound as
 one tick plus the receive path, 5 ms, and a lower bound of 1 µs, so a stamp
 that is not measuring the receive path fails.
 
-D2.5's fan-out, measured on Linux (`tier_wake_fanout`,
+D2.5's fan-out, measured on Linux (`sched_task_wake_fanout`,
 `required-features-tests` lane, 2026-11-03) over a stub backend registered
 under its own name in two shapes that differ only in the entity slot: four
 tiers share one session, each on its own thread parked in a 1 s spin, and
@@ -345,7 +345,7 @@ naming its entity) it wakes none of them: each parks its whole budget, and
 the low tier is woken by its own arrival.
 
 Under PX4's work-queue scheduler (D9; PX4 v1.17.0 SITL,
-`px4_sitl::work_queue_tier_wakes_only_for_deadlines_and_arrivals`, the
+`px4_sitl::work_queue_sched_task_wakes_only_for_deadlines_and_arrivals`, the
 hosted `px4-sitl` nightly job, 2026-11-03): the generated `nros_uorb_demo`
 runs one tier, a 1 s timer and a `vehicle_status` subscription, as a PX4
 work item. The tier counts its own runs and the component its dispatches;
@@ -406,7 +406,7 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
 - 2026-11-03 — D9: the yielding park slot's code, `NROS_PLATFORM_PARK_YIELDED`,
   lands in the park ABI (phase-521 W8 c).
 - 2026-11-03 — D2.5's fan-out bound stated and measured
-  (`tier_wake_fanout`); the open question closes. Zephyr arrival→dispatch
+  (`sched_task_wake_fanout`); the open question closes. Zephyr arrival→dispatch
   measured on mps2/an385 (phase-521 W7).
 - 2026-11-03 — D9: the maintainer's rulings recorded (a PX4 tier waits
   through a yielding park slot; the maintainer owns PX4), and the work-queue

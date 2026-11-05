@@ -4401,7 +4401,7 @@ fn generate_entry(
     };
     // phase-470 W5.b2 (issue 1288) — resolve the SCHEDULE, because the board
     // crate's feature set depends on it (`builder::entry::schedule_board_features`,
-    // which owns the rationale). Same `resolve_tiers` over the same model the
+    // which owns the rationale). Same `resolve_sched_tasks` over the same model the
     // `nros::main!` expansion runs, so the feature and the code it gates cannot
     // disagree.
     //
@@ -4409,9 +4409,9 @@ fn generate_entry(
     // table and will refuse with the same reason, at the point where the user
     // can read it against their own tier table. Deriving no features from a
     // table that did not resolve is then a compile error naming the missing
-    // `run_tiers`, which is the loud half of the asymmetry that function
+    // `run_sched_tasks`, which is the loud half of the asymmetry that function
     // describes.
-    let plan_rtos = nros_entry_lower::tier_rtos_key_for(&plan.board);
+    let plan_rtos = nros_entry_lower::sched_task_rtos_key_for(&plan.board);
     if let Err(e) = crate::codegen::entry::resolve_plan_sched(&mut plan, plan_rtos) {
         eprintln!("nros build: warning: cannot resolve tiers for `{image_id}`: {e}");
     }
@@ -4805,7 +4805,7 @@ fn generate_entry(
         facts
             .board_features
             .extend(crate::builder::entry::schedule_board_features(
-                plan.resolved_tiers.as_ref(),
+                plan.resolved_sched_tasks.as_ref(),
                 |f| crate::orchestration::facade::crate_declares_feature(&crate_dir, f),
             ));
         // Issue 1305 — the entry surface this board key's framework drives

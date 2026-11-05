@@ -8,7 +8,7 @@
 //!   * `nros-build`  — `bringup_dir.join("config/system_model.yaml")`
 //!   * `cmake/NanoRosEntry.cmake` — a `MODEL <path>` argument with the same default
 //!
-//! Three copies of a path policy is how the two `TierRtosSpec` mirrors drifted
+//! Three copies of a path policy is how the two `SchedTaskRtosSpec` mirrors drifted
 //! earlier in this phase, so the policy lives here once and the consumers call
 //! it.
 //!

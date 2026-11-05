@@ -472,16 +472,16 @@ until the nightly pairing runs.
 ## Amendment (2026-10-31, phase-466 W5) — realtime-tiers cells are covered PER CELL in 2n
 
 Phase-330 handed phase-466 one acceptance box: a verdict from
-`realtime_tiers_e2e` and `sched_dims_applied_e2e` on every RTOS cell. That is a
+`realtime_sched_tasks_e2e` and `sched_dims_applied_e2e` on every RTOS cell. That is a
 promise about each CELL, and a pairwise cover makes no promise about any one
 cell. When the nightly's junit was first read with cell names (2026-10-29 and
 -30, runs 40833557587 and 41018247377), the Zephyr and FreeRTOS C++ pairs were
 covered by `zephyr,cpp,xrce` and `freertos,cpp,cyclonedds`, so the realtime C++
-rows at `zephyr,cpp,zenoh` and `freertos,cpp,zenoh` (four `realtime_tiers` rows,
+rows at `zephyr,cpp,zenoh` and `freertos,cpp,zenoh` (four `realtime_sched_tasks` rows,
 and three `sched_dims` cells on the same workspace fixtures) ran in no
 scheduled lane. Neither did the Linux C and C++ realtime rows.
 
-So tier 2n adds one requirement per cell whose consumer is `RealtimeTiers`
+So tier 2n adds one requirement per cell whose consumer is `RealtimeSchedTasks`
 (`ci_lane::realtime_cell_reqs`). Keyed on the consumer, not the workload, so the
 FVP realtime cell — `Gated`, its own lane — stays outside the cover.
 

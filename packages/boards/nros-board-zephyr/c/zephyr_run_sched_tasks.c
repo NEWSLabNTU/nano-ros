@@ -1,0 +1,1136 @@
+/*
+ * zephyr_run_sched_tasks.c — phase-281 W3a: C++ embedded multi-tier entry for Zephyr.
+ *
+ * Implements `nros_board_zephyr_run_sched_tasks`, the Zephyr analog of the FreeRTOS
+ * `nros_board_freertos_run_sched_tasks` (and the native `nros_board_native_run_sched_tasks`):
+ * opens ONE RMW session on the calling thread (the Zephyr `main()` thread — an
+ * already-running post-init thread), runs the boot tier's setup, then
+ * CHAIN-spawns the remaining tiers (each with a borrowed executor sharing the
+ * one session) so their setups serialize (issue #144), and runs the boot tier
+ * on the caller.
+ *
+ * Zephyr deltas vs the FreeRTOS mirror:
+ *   - non-boot tiers spawn via the `nros_zephyr_sched_task_create` k_thread shim
+ *     (`zephyr/nros_platform_zephyr_shims.c`), NOT xTaskCreate; the shim owns a
+ *     static tier stack pool + RAW Zephyr priorities;
+ *   - the boot tier adopts its declared RAW priority on the caller thread via
+ *     `nros_zephyr_set_current_priority` (the spawned tiers get theirs at
+ *     `k_thread_create`);
+ *   - Zephyr owns boot + networking (`CONFIG_NET_CONFIG_AUTO_INIT`), so there is
+ *     no lwIP bring-up here — just the weak `nros_board_network_wait()` gate
+ *     (mirrors `ZephyrBoard::run_components` in main.hpp), not the FreeRTOS
+ *     network path.
+ *
+ * Called from `ZephyrBoard::run_sched_tasks` (main.hpp) via the generated `int
+ * main(void)` (the Zephyr kernel calls `main` directly — no `nros_app_main`).
+ *
+ * phase-281 W3a / RFC-0015 §5.
+ */
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+/* --- Zephyr k_thread tier shim (zephyr/nros_platform_zephyr_shims.c) ---
+ *
+ * `nros_zephyr_sched_task_create`: spawn one tier task on a static pool thread
+ * at the RAW Zephyr priority (cooperative if negative). Returns 0 on success,
+ * -1 when the pool (NROS_ZEPHYR_MAX_SCHED_TASKS) is exhausted. The `entry(arg)`
+ * signature is `void* (*)(void*)`.
+ *
+ * `nros_zephyr_set_current_priority`: adopt a RAW Zephyr priority on the CALLING
+ * thread (the boot thread runs tiers[0] itself).
+ *
+ * `nros_zephyr_msleep`: real-symbol wrapper around `k_msleep` for the idle /
+ * park loops (the k_msleep inline has no exported symbol). */
+/* issue 0655 — `core_plus1` (0 = unpinned) makes the shim create the thread
+ * SUSPENDED and pin it before starting, the only window in which Zephyr
+ * accepts a cpu mask. `pin_rc` returns the kernel's own code so the marker
+ * text stays here, in lockstep with nros_tests::output::ZEPHYR_CORE_PIN_*. */
+/* issue 0260 — the CPU the CALLING thread is observed on, or
+ * NROS_ZEPHYR_CPU_UNKNOWN (0xFFFFFFFF) when the image cannot say. SMP-only by
+ * construction: `arch_proc_id()` is declared inside `#ifdef CONFIG_SMP`, and
+ * the posix arch (native_sim) does not provide it at all. */
+extern uint32_t nros_zephyr_current_cpu(void);
+/* issue 0758 W4 — see zephyr/nros_platform_zephyr_shims.c. */
+extern void nros_zephyr_epoch_acquire_configured(void);
+
+/* phase-8 W4 — callback tracing. The shim is an unconditional symbol whose
+ * body is `#ifdef CONFIG_TRACING_CTF`; the setter is an unconditional export
+ * from nros-c whose body is feature-gated. So this pair links in EVERY
+ * configuration and costs a single stored null pointer when either half is
+ * absent — which is what lets the call below stay unguarded. */
+extern void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg);
+extern int rclc_set_default_trace_sink(void (*sink)(uint32_t, uint32_t));
+
+extern int nros_zephyr_sched_task_create(void* (*entry)(void*), void* arg, int32_t priority,
+                                        const char* name, size_t stack_bytes, uint32_t core_plus1,
+                                        int* pin_rc);
+/* Issue 1232 — the same spawn over the ENTRY's thread object and stack
+ * (`<rclc/detail/sched_task_memory_zephyr.h>`), so a tier's declared `stack_bytes` is
+ * the stack its thread gets. */
+extern int nros_zephyr_sched_task_create_static(void* (*entry)(void*), void* arg, int32_t priority,
+                                               const char* name, void* stack, size_t stack_size,
+                                               void* thread, uint32_t core_plus1, int* pin_rc);
+/* Issue 1232 — what the kernel recorded for the CALLING thread's stack (0 when
+ * the image keeps no stack info). */
+extern size_t nros_zephyr_current_stack_size(void);
+extern void nros_zephyr_set_current_priority(int32_t priority);
+/* issue 1537 — judge one tier against the transport band the kernel actually
+ * gave this image's explicitly-prioritised tasks; prints the boot report (see
+ * `nros_platform_zephyr_shims.c`). Shared with the Rust arm. */
+extern int nros_zephyr_report_sched_task_vs_transport(const char* tier, size_t sched_task_len, int32_t prio);
+extern int32_t nros_zephyr_msleep(int32_t ms);
+/* phase-509 P9b -- fail the boot (k_panic) after a level's open or setup
+ * failed; see the shim. Never returns. */
+extern void nros_zephyr_fail_boot(void);
+/* Phase 110.D shim — pin the CALLING thread to a CPU (`k_thread_cpu_pin`).
+ * Returns 0 on success, -ENOSYS when the image lacks CONFIG_SCHED_CPU_MASK,
+ * else the kernel error. issue 0655: for a STARTED thread that error is always
+ * -EINVAL, so this is the BOOT-tier path only — spawned tiers are pinned by
+ * `nros_zephyr_sched_task_create` before their thread starts. */
+extern int nros_zephyr_thread_cpu_pin(int cpu);
+/* phase-296 W5.5 shim — apply an earliest-deadline (µs) on the CALLING
+ * thread (`k_thread_deadline_set`, µs→cycles). Returns 1 when the kernel
+ * actually applied it (CONFIG_SCHED_DEADLINE present), 0 on no-op. */
+extern int nros_zephyr_set_current_deadline(unsigned int deadline_us);
+/* printk — loud channel for placement/deadline application notes. Zephyr's
+ * printk returns void (sys/printk.h); signature must match exactly. */
+extern void printk(const char* fmt, ...);
+
+/* phase-296 W5.5/W5.7 (C/C++ arm) — apply the tier's kernel EDF deadline on
+ * the CALLING thread when the tier is real-time and carries a deadline.
+ * Mirrors the Rust arm's `apply_sched_task_deadline`: the marker line prints ONLY
+ * when the shim reports the kernel actually applied it (else a
+ * CONFIG_SCHED_DEADLINE-less image would claim EDF while nothing happened).
+ * The literal matches `nros_tests::output::ZEPHYR_EDF_DEADLINE_MARKER`. */
+static void zephyr_apply_sched_task_deadline(const char* name, const char* sched_task_class,
+                                       uint64_t deadline_us) {
+    if (sched_task_class == NULL || strcmp(sched_task_class, "real_time") != 0 || deadline_us == 0u) {
+        return;
+    }
+    unsigned int us = (deadline_us > 0xFFFFFFFFull) ? 0xFFFFFFFFu : (unsigned int)deadline_us;
+    if (nros_zephyr_set_current_deadline(us) != 0) {
+        printk("nros: EDF deadline set tier=`%s` %uus\n", (name != NULL) ? name : "?", us);
+    }
+}
+
+/* issue 0655 — the placement dim's accept/fallback marker, for a tier whose
+ * pin was applied by the shim in its create->start window. ONE spelling shared
+ * by the spawn path here and the Rust arm's `report_core_pin`; the literal
+ * prefixes MIRROR nros_tests::output::ZEPHYR_CORE_PIN_MARKER and
+ * ZEPHYR_CORE_PIN_FALLBACK_MARKER — keep all three in lockstep. */
+static void zephyr_report_core_pin(const char* name, uint32_t core_plus1, int rc) {
+    int cpu = (int)(core_plus1 - 1u);
+    if (rc == 0) {
+        printk("nros: core pin tier=`%s` cpu=%d\n", name, cpu);
+    } else {
+        printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d "
+               "(-22/EINVAL: the thread was already RUNNING — Zephyr accepts a cpu mask only "
+               "before start, issue 0655; -88/ENOSYS: image lacks CONFIG_SCHED_CPU_MASK) "
+               "— tier runs unpinned\n",
+               name, cpu, rc);
+    }
+}
+
+/* The BOOT tier's placement attempt (issue 0655).
+ *
+ * phase-296 W5.7 added this as a general "pin the calling thread" consumer for
+ * both the boot tier and every spawned tier. It could never work: Zephyr's
+ * `cpu_mask_mod` accepts a mask only on a thread prevented from running, and
+ * `k_current_get()` never is. Spawned tiers now pin in their create->start
+ * window; this remains only for the boot tier, which the kernel started before
+ * run_sched_tasks saw it and which therefore has no such window. A `core` declared on
+ * the boot tier CANNOT be honored on Zephyr — reported as the limitation it is,
+ * per RFC-0052's fail-loud contract. Mirrors the Rust arm's
+ * `apply_boot_sched_task_core_pin`. */
+static void zephyr_apply_boot_core_pin(const char* name, uint32_t core_plus1) {
+    if (core_plus1 == 0u) {
+        return; /* unpinned */
+    }
+    int cpu = (int)(core_plus1 - 1u);
+    int rc = nros_zephyr_thread_cpu_pin(cpu);
+    if (rc == 0) {
+        printk("nros: core pin tier=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
+    } else {
+        printk("nros: core pin FAILED tier=`%s` cpu=%d rc=%d — this is the BOOT tier, which "
+               "Zephyr started before nros ran, and a cpu mask is only settable before a thread "
+               "starts (issue 0655). Declare the `core` on a SPAWNED tier. -88/ENOSYS instead "
+               "means the image lacks CONFIG_SCHED_CPU_MASK. Tier runs unpinned\n",
+               (name != NULL) ? name : "?", cpu, rc);
+    }
+}
+
+/* --- nros-cpp C FFI forward declarations ---
+ *
+ * These symbols are defined in nros-cpp (Rust) and linked into the final binary.
+ * No need to include nros_cpp_ffi.h here — the linker resolves by name.
+ * Signatures must match nros_cpp_ffi.h exactly. */
+
+extern int nros_cpp_init(const char* locator, uint8_t domain_id, const char* node_name,
+                         const char* namespace_, void* storage);
+
+extern int nros_cpp_fini(void* storage);
+
+/* Issue 1970 -- the boot level's open for a per-tier-sized image: the executor
+ * is carved from the level's own backing at the sizing the library derived for
+ * the tier named `tier`, and refused before a session opens if that backing is
+ * short. The other levels open through `nros_cpp_level_open` (below). */
+extern int nros_cpp_init_sched_task(const char* locator, uint8_t domain_id, const char* node_name,
+                              const char* namespace_, void* storage, const char* tier,
+                              void* backing, size_t backing_bytes);
+
+extern int nros_cpp_executor_set_active_groups(void* executor, const char* const* groups, size_t n);
+extern int nros_cpp_executor_derive_min_stack_headroom(void* executor, size_t stack_bytes);
+/* The stack a POOL-spawned tier thread gets (the fixed slot) — the `_in` /
+ * `_ns` road only. A tier whose entry supplies its memory (issue 1232) gets
+ * its declared size instead. */
+extern size_t nros_zephyr_sched_task_stack_size(void);
+/* The stack the boot tier runs on (the `main()` thread's
+ * CONFIG_MAIN_STACK_SIZE) — its spec's `stack_bytes` describes no real
+ * thread. */
+extern size_t nros_zephyr_main_stack_size(void);
+/* phase-436 W7 — the wake-source seam's C-ABI surface. Without these the
+ * executor here is an opaque handle and the seam is unreachable from this
+ * arm, which is the arm the Zephyr FVP lane takes. */
+extern void* nros_cpp_executor_wake_handle(void* executor);
+extern int nros_cpp_executor_set_park_primitive(void* executor, int8_t (*park)(void*, uint64_t),
+                                                void* ctx, uint64_t granularity_us);
+extern int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us);
+extern uint64_t nros_platform_wake_park_granularity_us(void);
+
+/* Install the microsecond park on `executor`, if this build has a wake object
+ * to park on.
+ *
+ * The ctx is the executor's OWN wake object, deliberately: the backend's
+ * listener signals that one, so parking on it keeps the async break. A park on
+ * a fresh semaphore would sleep its whole deadline with data already waiting,
+ * because `spin_once` drops the transport drain to non-blocking once a port
+ * has parked — worse than not parking at all.
+ *
+ * Silent no-op when no wake object exists; that build keeps the millisecond
+ * `wake_wait_ms` path it already had. */
+static void zephyr_install_park(void* executor, const char* sched_task_name) {
+    void* wake = nros_cpp_executor_wake_handle(executor);
+    if (wake == NULL) {
+        return;
+    }
+    int rc = nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us, wake,
+                                                  nros_platform_wake_park_granularity_us());
+    if (rc != 0) {
+        printk("nros: park primitive NOT installed tier=`%s` rc=%d — falling back to the "
+               "millisecond wake path\n",
+               (sched_task_name != NULL) ? sched_task_name : "?", rc);
+    }
+}
+
+extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
+
+/* phase-509 P7/P9 (RFC-0108 D8) -- each row of the runner's table is one
+ * level (a derived level, or an authored tier, which is one band), placed by
+ * its urgency order among the rows, Zephyr's smaller-is-urgent: the rule
+ * `NROS_ENTRY_LEVEL_OF_<node>` is generated by. The array the runner was
+ * handed is the one the levels are counted over. */
+extern int32_t nros_cpp_sched_task_level(const int64_t* first_priority, size_t stride, size_t n,
+                                   size_t index, bool smaller_is_urgent);
+
+/* phase-509 P9 (RFC-0108; the amended RFC-0107 step 5) -- the runner spawns
+ * LEVELS over one scheduler: the scheduler holds the session every level
+ * shares and one seat per level (its executor, its worker's stack, its name),
+ * in a backing the generated entry owns (NROS_CPP_SCHEDULER_BACKING_SIZE_0).
+ * The boot level is adopted (it owns the session and runs on main()); every
+ * other level is opened by its own worker thread. */
+extern size_t nros_cpp_scheduler_backing_size(uint8_t n_levels);
+extern void* nros_cpp_scheduler_open(uint8_t core, uint8_t n_levels, void* owner, void* backing,
+                                     size_t bytes);
+extern int nros_cpp_level_adopt(void* scheduler, uint8_t level, void* executor, size_t stack_bytes,
+                                const char* name);
+/* phase-509 P9b (RFC-0108 "As built in P9b") -- a level is a WORKER over the
+ * core's ONE executor (the owner's): `nros_cpp_level_open` seats its record and wake
+ * object, the level's setup then registers its nodes on the owner's handle,
+ * and the worker loops on `nros_cpp_level_spin_once`. The owner's executor carries the
+ * port's recursive priority-inheriting mutex and this thread identity, so a
+ * pass releases it around each callback and park: the levels preempt each
+ * other on one executor. */
+extern int nros_cpp_level_open(void* scheduler, uint8_t level, const char* name,
+                               size_t stack_bytes);
+extern int nros_cpp_level_spin_once(void* scheduler, uint8_t level, int32_t timeout_ms);
+extern void* nros_cpp_scheduler_owner(void* scheduler);
+extern int nros_cpp_init_levels(const char* locator, uint8_t domain_id, const char* node_name,
+                                const char* namespace_, void* storage, void* backing,
+                                size_t backing_bytes);
+extern int nros_cpp_executor_set_lock(void* executor, int8_t (*lock)(void*),
+                                      int8_t (*unlock)(void*), void* ctx);
+extern int nros_cpp_executor_set_thread_id(void* executor, uintptr_t (*thread_id)(void));
+/* phase-509 P10 -- the executor's lock is a bare `k_mutex` (recursive and
+ * priority-inheriting), through the module's shims: the port's
+ * `nros_platform_mutex_rec_*` cost five times as much per pair on a
+ * CONFIG_POSIX_API image (zephyr/nros_platform_zephyr_shims.c). */
+extern size_t nros_zephyr_exec_lock_size(void);
+extern int8_t nros_zephyr_exec_lock_init(void* m);
+extern int8_t nros_zephyr_exec_lock(void* m);
+extern int8_t nros_zephyr_exec_unlock(void* m);
+extern uintptr_t nros_zephyr_thread_id(void);
+
+/* The core's executor lock, one per image: room for a `struct k_mutex`
+ * (20-32 bytes on the targets), whose real size is checked at boot. */
+static uint64_t zephyr_exec_mutex[64u / 8u];
+
+/* issue 0636 option 3 — the tier spin loop's scheduled gap.
+ *
+ * ONE implementation, shared with the Rust tier runners
+ * (`nros_platform::board::sched_task`): a second spelling per language is how the
+ * tier-priority marker drifted, which is most of what this issue was. Pass 0
+ * on the first call and keep the returned value; the sleep, when the rule
+ * calls for one, happens inside. State is an opaque u64 rather than a struct
+ * so there is no hand-mirrored FFI layout to drift (three prior incidents). */
+extern uint64_t nros_sched_task_spin_gap_step(uint64_t state, uint64_t iter_start_ns, uint64_t now_ns,
+                                        uint32_t spin_period_us);
+extern uint64_t nros_platform_clock_ns(void);
+
+/* nros_board_network_wait: weak no-op in <rclc/detail/main.h> (phase-432 W3.1 moved
+ * it there from the C++ sibling main.hpp so a pure C entry links); strong
+ * override on boards that must block for DHCP / link-up. On the canonical
+ * Zephyr path (CONFIG_NET_CONFIG_AUTO_INIT) this is a no-op — the kernel
+ * brings up networking before main() runs. */
+extern void nros_board_network_wait(void);
+
+/* RFC-0034 — the sole sanctioned allocation seam (wraps the Zephyr heap); a
+ * single counter sees all traffic. Direct k_malloc/k_free are forbidden. */
+extern void* nros_platform_alloc(size_t size);
+extern void nros_platform_dealloc(void* ptr);
+
+/* --- Executor storage sizing ---
+ *
+ * nros_cpp_init / nros_cpp_executor_open_over_session build a `CppContext` in
+ * storage the caller supplies, with no size argument. Issue 1568 — the size
+ * comes from the LINKED library (`nros_cpp_executor_storage_size`), and the
+ * refusal for a caller's block is the library's too
+ * (`nros_cpp_executor_storage_check`). This used to be a `__has_include` of
+ * the per-build header with a 98,304-byte fallback: exact here, where the
+ * Zephyr module build puts the header on the path, but a guess on every lane
+ * that compiles a runner without it (issue #245 was that guess going 32 bytes
+ * short; NuttX's 81,920 was 6,640 short). One number, from the object that is
+ * built in the storage, is the only spelling that cannot drift. */
+extern size_t nros_cpp_executor_storage_size(void);
+extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
+
+/* --- Local tier-spec type ---
+ *
+ * Mirror of nros_native_sched_task_spec_t (rclc/detail/main.h). Layout MUST match: same
+ * field order, same types, same ABI (verified by the C++ caller casting
+ * NativeSchedTaskSpec* → nros_native_sched_task_spec_t* → this type). Gated by
+ * `check-ffi-struct-mirrors`, which compares this declaration to main.h's
+ * field by field (the `nros_sched_task_setup_fn_t` typedef being the one
+ * legitimate spelling difference). */
+typedef int32_t (*nros_sched_task_setup_fn_t)(void* executor);
+
+typedef struct {
+    const char* name;
+    const char* const* groups;
+    size_t n_groups;
+    int64_t priority;
+    size_t stack_bytes;
+    uint64_t spin_period_us;
+    nros_sched_task_setup_fn_t setup;
+    /* RFC-0052 W2 — appended (ABI append-only): CPU pin + 1 (0 = unpinned)
+     * and the ThreadX preemption threshold (-1 = unset; bake-validated
+     * ThreadX-only, so this mirror never consumes it). Keep the offset
+     * comment above in sync when appending further. */
+    uint32_t core_plus1;
+    int64_t preempt_threshold;
+    /* phase-296 W5.7 — appended: the RTOS-agnostic real-time policy
+     * (NULL/0 = unset). This mirror consumes sched_task_class + deadline_us
+     * (Zephyr kernel EDF); the rest ride for layout parity. */
+    const char* sched_task_class;
+    uint64_t period_us;
+    uint64_t budget_us;
+    uint64_t deadline_us;
+    const char* deadline_policy;
+} nros_sched_task_spec_t;
+
+/* Issue 1232 — one tier task's memory, owned by the generated entry. Mirror of
+ * `nros_sched_task_memory_t` in <rclc/detail/main.h> (gated by check-ffi-struct-mirrors,
+ * family 3). On Zephyr: `stack` is the entry's `K_THREAD_STACK_DEFINE`,
+ * `stack_bytes` its `K_THREAD_STACK_SIZEOF`, `tcb` its `struct k_thread`. */
+typedef struct {
+    void* stack;
+    size_t stack_bytes;
+    void* tcb;
+} nros_sched_task_memory_t;
+_Static_assert(sizeof(nros_sched_task_memory_t) == 3u * sizeof(void*),
+               "nros_sched_task_memory_t mirrors <rclc/detail/main.h>: three pointer-sized fields");
+
+/* Issue 1970 — one tier's executor backing, owned by the generated entry and
+ * sized by the per-build header's NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>. Mirror of
+ * `nros_sched_task_backing_t` in <rclc/detail/main.h>. */
+typedef struct {
+    void* backing;
+    size_t bytes;
+} nros_sched_task_backing_t;
+_Static_assert(sizeof(nros_sched_task_backing_t) == 2u * sizeof(void*),
+               "nros_sched_task_backing_t mirrors <rclc/detail/main.h>: two pointer-sized fields");
+
+/* phase-509 P7/P9 -- the runner's table, which the levels are counted over
+ * (declared here, after `nros_sched_task_spec_t`). */
+static const nros_sched_task_spec_t* zephyr_level_sched_tasks;
+static size_t zephyr_level_n_sched_tasks;
+
+/* The level of tier `t` of the runner's array, or 0 outside it. */
+static uint8_t zephyr_sched_task_level(const nros_sched_task_spec_t* t) {
+    if (zephyr_level_sched_tasks == NULL || t < zephyr_level_sched_tasks ||
+        t >= zephyr_level_sched_tasks + zephyr_level_n_sched_tasks) {
+        return 0u;
+    }
+    int32_t l = nros_cpp_sched_task_level(&zephyr_level_sched_tasks[0].priority, sizeof(nros_sched_task_spec_t),
+                                    zephyr_level_n_sched_tasks, (size_t)(t - zephyr_level_sched_tasks), true);
+    return (l < 0) ? 0u : (uint8_t)l;
+}
+
+/* --- Per-tier task context ---
+ *
+ * Heap-allocated by the spawning thread before nros_zephyr_sched_task_create;
+ * lives for the firmware lifetime (the spawned task never returns).
+ * executor_storage is this tier's block of the CALLER's storage (issue 1551 —
+ * a file-scope static in the generated entry, not a heap block), passed to
+ * nros_cpp_executor_open_over_session. */
+typedef struct {
+    /* phase-509 P9 -- the scheduler this level is opened over. */
+    void* scheduler;
+    const char* const* groups;
+    size_t n_groups;
+    uint64_t spin_period_us;
+    nros_sched_task_setup_fn_t setup;
+    void* executor_storage;
+    /* issue #144 — chained spawn tail: the tiers still to bring up AFTER this
+     * one. This task spawns rest[0] (carrying rest[1..]) only after its own
+     * setup returns, so no two setups overlap on the shared session. */
+    const nros_sched_task_spec_t* rest;
+    size_t n_rest;
+    /* issue 1551 — the storage for rest[0] (rest[k] is at k * storage_stride),
+     * carried down the chain beside the specs it belongs to. */
+    unsigned char* rest_storage;
+    size_t storage_stride;
+    /* issue 1232 — the task memory for rest[0] (rest[k] at rest_task_memory[k]),
+     * NULL when the caller supplied none (an `_in` / `_ns` entry: the shim's
+     * fixed pool then), and the stack THIS tier's thread was created with. */
+    const nros_sched_task_memory_t* rest_task_memory;
+    size_t stack_bytes;
+    /* phase-296 W5.5/W5.7 — tier name + declared CPU pin (+1; 0 = unpinned)
+     * + generic real-time policy, carried so the tier task can self-apply
+     * its kernel placement/deadline. */
+    const char* name;
+    uint32_t core_plus1;
+    const char* sched_task_class;
+    uint64_t deadline_us;
+    /* issue 1970 — this tier's own executor backing (NULL: the context's
+     * inline one), and rest[0]'s (rest[k] at rest_backings[k]). */
+    void* backing;
+    size_t backing_bytes;
+    const nros_sched_task_backing_t* rest_backings;
+    /* phase-509 P7 -- this tier's level, 0 the most urgent. */
+    uint8_t level;
+} nros_zephyr_sched_task_ctx_t;
+
+/* Forward decl — zephyr_sched_task and zephyr_spawn_next_sched_task are mutually
+ * recursive (each tier's task spawns the next tier via this helper). */
+static int zephyr_spawn_next_sched_task(void* scheduler, const nros_sched_task_spec_t* remaining,
+                                  size_t n_remaining, unsigned char* storage, size_t storage_stride,
+                                  const nros_sched_task_memory_t* task_memory,
+                                  const nros_sched_task_backing_t* backings);
+
+/* Issue 1232 — the POOL spawn, reached only through `_in`/`_ns` (an entry with
+ * no task memory). Held in a pointer `_in` sets, so a generated entry — which
+ * calls `_tasks_in` and never `_in` — references no pool function and
+ * --gc-sections drops `nros_sched_task_stacks` (NROS_ZEPHYR_MAX_SCHED_TASKS x
+ * NROS_ZEPHYR_SCHED_TASK_STACK_SIZE) from the image: the pool is not a second
+ * allocation of the same stacks. */
+typedef int (*zephyr_pool_create_fn)(void* (*entry)(void*), void* arg, int32_t priority,
+                                     const char* name, size_t stack_bytes, uint32_t core_plus1,
+                                     int* pin_rc);
+static zephyr_pool_create_fn zephyr_pool_create;
+
+/* Minimum spin delay: 1 ms. */
+#define SPIN_PERIOD_FLOOR_MS 1u
+
+/* zephyr_sched_task — body of each non-boot tier task.
+ *
+ * Opens a borrowed executor over the shared session, gates it to the tier's
+ * callback groups, calls the tier's setup function, spawns the next tier
+ * (issue #144), then spins forever at the tier's declared period. On failure:
+ * parks (never returns — the boot thread is the session owner and must outlive
+ * all borrowed executors). Signature is `void* (*)(void*)` to match the
+ * nros_zephyr_sched_task_create shim's entry type. */
+static void* zephyr_sched_task(void* arg) {
+    nros_zephyr_sched_task_ctx_t* ctx = (nros_zephyr_sched_task_ctx_t*)arg;
+
+    /* issue 0655 — NO core pin here. This runs on the tier's own STARTED
+     * thread, and Zephyr refuses a cpu mask on a started thread, so the
+     * self-apply this line used to do could only ever log -EINVAL. The pin is
+     * applied inside nros_zephyr_sched_task_create, before the start. */
+
+    /* issue 0260 — but this IS the place to report where the tier actually
+     * runs. The pin markers say the kernel ACCEPTED the mask; on a
+     * uniprocessor image that is true and uninformative, since cpu 0 is the
+     * only CPU the thread could be on. Mirrors the Rust arm's
+     * `nros: core pin observed` in `entry_sched_tasks.rs` — the two must not drift,
+     * which is why both were added together rather than one now and one when
+     * an SMP fixture needs it.
+     *
+     * Silent when the image cannot answer, rather than printing a fabricated
+     * cpu 0. */
+    {
+        uint32_t observed = nros_zephyr_current_cpu();
+        if (observed != 0xFFFFFFFFu) {
+            printk("nros: core pin observed tier=`%s` running_on=%u\n",
+                   (ctx->name != NULL) ? ctx->name : "?", observed);
+        }
+    }
+
+    zephyr_apply_sched_task_deadline(ctx->name, ctx->sched_task_class, ctx->deadline_us);
+
+    /* phase-509 P9b -- open this LEVEL over the scheduler: a worker over the
+     * core's one executor (the owner's), seated with the stack this thread
+     * was created with. The boot level owns the executor and outlives this
+     * task; its spin loop runs forever, enforcing this. */
+    int rc = nros_cpp_level_open(ctx->scheduler, ctx->level, ctx->name, ctx->stack_bytes);
+    void* owner = nros_cpp_scheduler_owner(ctx->scheduler);
+    if (rc != 0 || owner == NULL) {
+        /* phase-509 P9b -- FAIL THE BOOT. Parking here (as before) halted
+         * the spawn chain, since the next level spawns after this one's
+         * setup (issue #144), and left the image half up with nothing to
+         * say so. */
+        printk("nros: level %u (`%s`) did not open (rc=%d): failing the boot\n",
+               (unsigned)ctx->level, (ctx->name != NULL) ? ctx->name : "?", rc);
+        nros_zephyr_fail_boot();
+    }
+
+    /* Gate the registrations of this level's setup to its tier's callback
+     * groups (the gate applies at registration, so each level sets it before
+     * its own setup). */
+    if (ctx->n_groups > 0 && ctx->groups != NULL) {
+        nros_cpp_executor_set_active_groups(owner, ctx->groups, ctx->n_groups);
+    }
+    /* The kernel's own record of this thread's stack, printed beside the
+     * stack it was created with, so the claim is checkable on a running
+     * image. The stack-headroom rule stays the owner's (the executor's own
+     * worker): a level's stack is checked by `mem-report --levels`. */
+    printk("nros: tier stack tier=`%s` bytes=%u kernel=%u\n", (ctx->name != NULL) ? ctx->name : "?",
+           (unsigned)ctx->stack_bytes, (unsigned)nros_zephyr_current_stack_size());
+
+    /* Run the tier's node-setup function on the core's executor: what it
+     * registers is this level's (`nros_cpp_level_open` made it current). */
+    if (ctx->setup != NULL) {
+        rc = ctx->setup(owner);
+        if (rc != 0) {
+            /* phase-509 P9b -- FAIL THE BOOT, as for a level that did not
+             * open. The generated setup has named the node it was building
+             * (`nros_cpp_report_setup_failure`). */
+            printk("nros: level %u (`%s`) setup failed (rc=%d): failing the boot\n",
+                   (unsigned)ctx->level, (ctx->name != NULL) ? ctx->name : "?", rc);
+            nros_zephyr_fail_boot();
+        }
+    }
+
+    /* issue #144 — this tier's setup is done, so bringing up the next tier can
+     * no longer race our declares: spawn rest[0] (carrying rest[1..]). A failed
+     * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
+     * the return (zephyr_spawn_next_sched_task frees what it allocated on failure). */
+    (void)zephyr_spawn_next_sched_task(ctx->scheduler, ctx->rest, ctx->n_rest, ctx->rest_storage,
+                                 ctx->storage_stride, ctx->rest_task_memory, ctx->rest_backings);
+
+    /* The worker's loop: each pass parks on the level's own wake object (the
+     * lock released) until its band's next timer, an arrival in its band, or
+     * the period, then runs its band's ready callbacks. */
+    uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
+    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
+        period_ms = SPIN_PERIOD_FLOOR_MS;
+    }
+    /* issue 0636 option 3 — every iteration reaches a scheduling point. */
+    uint64_t gap_state = 0;
+    for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
+        nros_cpp_level_spin_once(ctx->scheduler, ctx->level, (int32_t)period_ms);
+        gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            ctx->spin_period_us);
+    }
+
+    /* Unreachable — the spin loop never exits; satisfies the non-void return. */
+    return NULL;
+}
+
+/* zephyr_spawn_next_sched_task — issue #144 chained tier spawn.
+ *
+ * Spawns exactly ONE k_thread (via the shim) for remaining[0], handing it
+ * remaining[1..] as its own `rest` so the chain continues once its setup
+ * completes. Empty `remaining` → nothing left, return 0. Serializing spawns
+ * behind each setup guarantees no two setup() (entity declare) calls run
+ * concurrently on the shared zenoh-pico session — the interest-handshake race
+ * that silently closes a losing publisher's write filter.
+ *
+ * `storage` is remaining[0]'s executor block and remaining[k]'s is at
+ * `k * storage_stride` (issue 1551: the caller's static, never a heap block —
+ * this function used to take one executor's storage out of the platform heap
+ * PER TIER, and nothing anywhere multiplied that by the tier count).
+ *
+ * On any alloc/create failure, frees what IT allocated and returns -1. It does
+ * NOT touch the caller's storage. */
+static int zephyr_spawn_next_sched_task(void* scheduler, const nros_sched_task_spec_t* remaining,
+                                  size_t n_remaining, unsigned char* storage, size_t storage_stride,
+                                  const nros_sched_task_memory_t* task_memory,
+                                  const nros_sched_task_backing_t* backings) {
+    if (n_remaining == 0u) {
+        return 0;
+    }
+    const nros_sched_task_spec_t* t = &remaining[0];
+
+    /* phase-509 P9b -- a level has no executor of its own: it works on the
+     * core's one executor, so nothing of the caller's storage is its. */
+    void* sched_task_exec = NULL;
+
+    /* Allocate the tier task context (lives for firmware lifetime). About a
+     * hundred bytes, the one per-tier heap cost left on this path. */
+    nros_zephyr_sched_task_ctx_t* ctx =
+        (nros_zephyr_sched_task_ctx_t*)nros_platform_alloc(sizeof(nros_zephyr_sched_task_ctx_t));
+    if (ctx == NULL) {
+        return -1;
+    }
+
+    ctx->scheduler = scheduler;
+    ctx->groups = t->groups;
+    ctx->n_groups = t->n_groups;
+    ctx->spin_period_us = t->spin_period_us;
+    ctx->setup = t->setup;
+    ctx->executor_storage = sched_task_exec;
+    /* Chain tail: this task will spawn remaining[1] after its own setup. */
+    ctx->rest = remaining + 1;
+    ctx->n_rest = n_remaining - 1u;
+    /* phase-509 P9b -- no level takes a block of the caller's storage (the
+     * entry carries one, the core executor's); carried unchanged. */
+    ctx->rest_storage = storage;
+    ctx->storage_stride = storage_stride;
+    ctx->rest_task_memory = (task_memory != NULL) ? task_memory + 1 : NULL;
+    ctx->stack_bytes =
+        (task_memory != NULL) ? task_memory->stack_bytes : nros_zephyr_sched_task_stack_size();
+    ctx->name = t->name;
+    ctx->core_plus1 = t->core_plus1;
+    ctx->sched_task_class = t->sched_task_class;
+    ctx->deadline_us = t->deadline_us;
+    ctx->backing = (backings != NULL) ? backings[0].backing : NULL;
+    ctx->backing_bytes = (backings != NULL) ? backings[0].bytes : 0u;
+    ctx->rest_backings = (backings != NULL) ? backings + 1 : NULL;
+    ctx->level = zephyr_sched_task_level(t);
+
+    /* RAW Zephyr priority from the tier spec (the system.toml
+     * [tasks.*.zephyr].priority is the numeric Zephyr value verbatim —
+     * negatives are cooperative). Clamp to int32 range. The shim manages the
+     * tier's stack from its static pool (NROS_ZEPHYR_SCHED_TASK_STACK_SIZE);
+     * t->stack_bytes rides along so the shim can print LOUD when the
+     * declared stack exceeds the fixed slot (phase-302 W2, issue 0262). */
+    int64_t p = t->priority;
+    if (p > (int64_t)INT32_MAX) {
+        p = (int64_t)INT32_MAX;
+    } else if (p < (int64_t)INT32_MIN) {
+        p = (int64_t)INT32_MIN;
+    }
+
+    /* issue 0655 — the pin happens INSIDE the shim, between k_thread_create and
+     * k_thread_start. An unpinned tier passes core_plus1 = 0 and keeps the old
+     * K_NO_WAIT path verbatim. */
+    int pin_rc = 0;
+    const char* tname = (t->name != NULL) ? t->name : "nros_sched_task";
+    /* Issue 1232 — the entry's memory when it supplied some: the declared
+     * size is the size the thread gets. Otherwise the shim's fixed pool. */
+    int rc = (task_memory != NULL)
+                 ? nros_zephyr_sched_task_create_static(zephyr_sched_task, ctx, (int32_t)p, tname,
+                                                       task_memory->stack, task_memory->stack_bytes,
+                                                       task_memory->tcb, t->core_plus1, &pin_rc)
+             : (zephyr_pool_create == NULL)
+                 ? -1
+                 : zephyr_pool_create(zephyr_sched_task, ctx, (int32_t)p, tname,
+                                      (size_t)t->stack_bytes, t->core_plus1, &pin_rc);
+    if (rc != 0) {
+        nros_platform_dealloc(ctx);
+        return -1;
+    }
+    if (t->core_plus1 != 0u) {
+        zephyr_report_core_pin((t->name != NULL) ? t->name : "?", t->core_plus1, pin_rc);
+    }
+    return 0;
+}
+
+/* nros_board_zephyr_run_sched_tasks — phase-281 W3a (RFC-0015 Model 1 embedded).
+ *
+ * Called from ZephyrBoard::run_sched_tasks (main.hpp) which is called from the
+ * generated `int main(void)`. By this point: the Zephyr kernel is running, the
+ * network is up (CONFIG_NET_CONFIG_AUTO_INIT), and we are executing on the
+ * main() thread.
+ *
+ * The `tiers` array is laid out identically to nros_native_sched_task_spec_t (the
+ * caller casts NativeSchedTaskSpec* → nros_native_sched_task_spec_t* → nros_sched_task_spec_t*).
+ *
+ * `locator`      — zenoh connect endpoint (compile-time NROS_ENTRY_LOCATOR)
+ * `domain_id`    — ROS domain ID (compile-time NROS_ENTRY_DOMAIN_ID)
+ * `session_name` — primary session / node name; NULL or empty → "node"
+ * `tiers`        — tier-spec array in codegen order (descending RAW priority
+ *                  number; Zephyr is lower-number-wins, so tiers[0] — the
+ *                  boot tier — is the LOWEST-priority tier; issue 0251)
+ * `n_sched_tasks`      — number of tiers (>= 1)
+ *
+ * Returns: normally never returns (the boot tier spins forever). Returns a
+ * non-zero error code only if the primary session open or a spawn fails. */
+int32_t nros_board_zephyr_run_sched_tasks(const char* locator, uint8_t domain_id,
+                                    const char* session_name, const nros_sched_task_spec_t* tiers,
+                                    size_t n_sched_tasks);
+int32_t nros_board_zephyr_run_sched_tasks_ns(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_sched_task_spec_t* tiers, size_t n_sched_tasks);
+int32_t nros_board_zephyr_run_sched_tasks_in(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                       void* executor_storage, size_t storage_stride);
+int32_t nros_board_zephyr_run_sched_tasks_memory_in(const char* locator, uint8_t domain_id,
+                                             const char* session_name, const char* node_namespace,
+                                             const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                             void* executor_storage, size_t storage_stride,
+                                             const nros_sched_task_memory_t* task_memory);
+int32_t nros_board_zephyr_run_sched_tasks_backed_in(const char* locator, uint8_t domain_id,
+                                              const char* session_name, const char* node_namespace,
+                                              const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                              void* executor_storage, size_t storage_stride,
+                                              const nros_sched_task_backing_t* backings,
+                                              const nros_sched_task_memory_t* task_memory);
+int32_t nros_board_zephyr_run_levels_in(const char* locator, uint8_t domain_id,
+                                        const char* session_name, const char* node_namespace,
+                                        const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                        void* executor_storage, size_t storage_stride,
+                                        const nros_sched_task_backing_t* backings,
+                                        const nros_sched_task_memory_t* task_memory,
+                                        void* scheduler_backing, size_t scheduler_bytes);
+static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, const char* session_name,
+                                const char* node_namespace, const nros_sched_task_spec_t* tiers,
+                                size_t n_sched_tasks, void* executor_storage, size_t storage_stride,
+                                const nros_sched_task_backing_t* backings,
+                                const nros_sched_task_memory_t* task_memory, void* scheduler_backing,
+                                size_t scheduler_bytes);
+
+int32_t nros_board_zephyr_run_sched_tasks(const char* locator, uint8_t domain_id,
+                                    const char* session_name, const nros_sched_task_spec_t* tiers,
+                                    size_t n_sched_tasks) {
+    /* Issue 1442 - delegates with a NULL namespace, which is "this image
+     * declares none" and resolves to the root. Kept as its own symbol because
+     * it is the one a pre-1442 generated entry TU calls, and an entry TU
+     * outlives the library it was generated against (issue 1050's rule). */
+    return nros_board_zephyr_run_sched_tasks_ns(locator, domain_id, session_name, NULL, tiers, n_sched_tasks);
+}
+
+/*
+ * Issue 1442 - the same runner, with the primary session's NAMESPACE.
+ *
+ * `node_namespace` is the launch-declared namespace the generated entry reads
+ * out of `.nros_boot_config` with `nros_boot_config_namespace()`. NULL or empty
+ * means the image declares none, which resolves to the ROOT - never to the
+ * empty namespace, which would read as "configured to nothing" to every rung
+ * above. `nros_boot_config_namespace()` already returns NULL when
+ * `NROS_BOOT_SET_NAMESPACE` is clear, so the empty case only arises from a bake
+ * that did not resolve.
+ *
+ * There is no environment rung on Zephyr, so the bake IS the answer here; the
+ * locator and the domain stay the board's, baked by cmake. Issue 1434 drew the
+ * same line one runner over (`nros_board_rtos_run_components_ns`); this is that
+ * change on the tiered path.
+ *
+ * What it names is the SESSION. Each tier's own nodes carry their own
+ * `(name, namespace, group)` triples in the spec array (issue 1172) and are
+ * untouched.
+ *
+ * Issue 1551 — this spelling takes the tiers' executor storage from the
+ * platform heap, and is kept only for an entry TU generated before
+ * `nros_board_zephyr_run_sched_tasks_in` existed. It takes all of it in ONE block,
+ * up front: the old per-tier allocations let the boot tier open, declare and
+ * spawn before a later tier found the arena empty, which is how the
+ * derived-sched-tasks-cpp image died in tier 1 of 4. One block fails before any
+ * session opens, with the whole request in the HEAP EXHAUSTED line.
+ */
+int32_t nros_board_zephyr_run_sched_tasks_ns(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_sched_task_spec_t* tiers, size_t n_sched_tasks) {
+    if (tiers == NULL || n_sched_tasks == 0) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    const size_t stride = nros_cpp_executor_storage_size();
+    void* storage = nros_platform_alloc(n_sched_tasks * stride);
+    if (storage == NULL) {
+        printk("nros: zephyr run_sched_tasks: %u tiers x %u bytes of executor storage do not fit "
+               "the platform heap; regenerate the entry (nros_board_zephyr_run_sched_tasks_in "
+               "takes them as a static) or raise CONFIG_NROS_ZEPHYR_HEAP_SIZE\n",
+               (unsigned)n_sched_tasks, (unsigned)stride);
+        return -1; /* NROS_CPP_RET_ERROR */
+    }
+    int32_t rc = nros_board_zephyr_run_sched_tasks_in(locator, domain_id, session_name, node_namespace,
+                                                tiers, n_sched_tasks, storage, stride);
+    nros_platform_dealloc(storage);
+    return rc;
+}
+
+/*
+ * Issue 1551 — the runner, over caller-supplied executor storage.
+ *
+ * `executor_storage` holds `n_sched_tasks` blocks of `storage_stride` bytes; block
+ * `i` is tier `i`'s executor and block 0 is the boot tier's. A generated entry
+ * passes a file-scope static it sized from the per-build
+ * `NROS_CPP_EXECUTOR_STORAGE_SIZE`, and the check below asks the linked library
+ * (issue 1568) — a backstop for a caller that did not (a hand-written entry, or
+ * a TU built against a different per-build header), not a path a generated
+ * image takes.
+ *
+ * Ownership stays with the caller: nothing here frees the storage.
+ */
+int32_t nros_board_zephyr_run_sched_tasks_in(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                       void* executor_storage, size_t storage_stride) {
+    /* Issue 1232 — kept for an entry TU generated before
+     * `nros_board_zephyr_run_sched_tasks_memory_in` existed: no task memory, so its
+     * tiers run on the shim's fixed pool slots as before. */
+    zephyr_pool_create = nros_zephyr_sched_task_create;
+    return nros_board_zephyr_run_sched_tasks_memory_in(locator, domain_id, session_name, node_namespace,
+                                                tiers, n_sched_tasks, executor_storage, storage_stride,
+                                                NULL);
+}
+
+/*
+ * Issue 1232 — the runner, over caller-supplied executor storage AND
+ * caller-supplied task memory, and the one a generated tiered Zephyr entry
+ * calls (`CAbiRunners::sched_task_memory`).
+ *
+ * `task_memory[i]` is `tiers[i]`'s thread object and stack, which the entry
+ * declared with `K_THREAD_STACK_DEFINE` at the tier's own `stack_bytes` — so a
+ * tier's declared stack is the stack its thread GETS, instead of the fixed
+ * NROS_ZEPHYR_SCHED_TASK_STACK_SIZE slot whatever it declared. The boot tier
+ * (`tiers[0]`, run on the `main()` thread) must have none; every spawned tier
+ * must have one. A disagreement is refused before the session opens. NULL is
+ * the `_in` behaviour (the pool).
+ */
+int32_t nros_board_zephyr_run_sched_tasks_memory_in(const char* locator, uint8_t domain_id,
+                                             const char* session_name, const char* node_namespace,
+                                             const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                             void* executor_storage, size_t storage_stride,
+                                             const nros_sched_task_memory_t* task_memory) {
+    return zephyr_run_sched_tasks(locator, domain_id, session_name, node_namespace, tiers, n_sched_tasks,
+                            executor_storage, storage_stride, NULL, task_memory, NULL, 0u);
+}
+
+/*
+ * Issue 1970 — the runner for a per-tier-sized image, and the one a generated
+ * tiered Zephyr entry calls when its per-build header publishes
+ * NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>. `executor_storage` holds the tiers' CONTEXTS
+ * (`storage_stride` each, which on such an image carry no inline backing), and
+ * `backings[i]` is tier i's own executor backing, sized for what that tier
+ * hosts. The library refuses a backing short of its tier's layout, and a tier
+ * it sizes nothing for, before the session opens (the boot tier) or before the
+ * tier's thread opens its executor (a spawned tier).
+ */
+int32_t nros_board_zephyr_run_sched_tasks_backed_in(const char* locator, uint8_t domain_id,
+                                              const char* session_name, const char* node_namespace,
+                                              const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                              void* executor_storage, size_t storage_stride,
+                                              const nros_sched_task_backing_t* backings,
+                                              const nros_sched_task_memory_t* task_memory) {
+    if (backings == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    return zephyr_run_sched_tasks(locator, domain_id, session_name, node_namespace, tiers, n_sched_tasks,
+                            executor_storage, storage_stride, backings, task_memory, NULL, 0u);
+}
+
+/*
+ * phase-509 P9 (RFC-0108; the amended RFC-0107 step 5) -- the runner a
+ * generated Zephyr entry calls: each row of `tiers` is one LEVEL (a derived
+ * level, or an authored tier, which is one band), and `scheduler_backing` is
+ * the entry's own `NROS_CPP_SCHEDULER_BACKING_SIZE_0` bytes, which the
+ * scheduler of this core lives in. `backings` is NULL when the build sizes no
+ * per-level backing (the `_tasks_in` case), else the `_backed_in` array.
+ * `task_memory[i]` is level i's worker thread and its derived stack
+ * (`NROS_LEVEL_STACK_BYTES`, <rclc/detail/sched_task_memory_zephyr.h>).
+ */
+int32_t nros_board_zephyr_run_levels_in(const char* locator, uint8_t domain_id,
+                                        const char* session_name, const char* node_namespace,
+                                        const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                        void* executor_storage, size_t storage_stride,
+                                        const nros_sched_task_backing_t* backings,
+                                        const nros_sched_task_memory_t* task_memory,
+                                        void* scheduler_backing, size_t scheduler_bytes) {
+    if (scheduler_backing == NULL || task_memory == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    return zephyr_run_sched_tasks(locator, domain_id, session_name, node_namespace, tiers, n_sched_tasks,
+                            executor_storage, storage_stride, backings, task_memory,
+                            scheduler_backing, scheduler_bytes);
+}
+
+static int32_t zephyr_run_sched_tasks(const char* locator, uint8_t domain_id, const char* session_name,
+                                const char* node_namespace, const nros_sched_task_spec_t* tiers,
+                                size_t n_sched_tasks, void* executor_storage, size_t storage_stride,
+                                const nros_sched_task_backing_t* backings,
+                                const nros_sched_task_memory_t* task_memory, void* scheduler_backing,
+                                size_t scheduler_bytes) {
+    if (tiers == NULL || n_sched_tasks == 0 || executor_storage == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    /* phase-509 P9 -- the scheduler's backing: the entry's static, or, for an
+     * entry generated before `_levels_in` existed, one block from the platform
+     * heap taken here, before any session opens. A few hundred bytes for
+     * those entries only; a generated image takes none. */
+    if (n_sched_tasks > 32u) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT: past NROS_CPP_MAX_LEVELS */
+    }
+    if (scheduler_backing == NULL) {
+        scheduler_bytes = nros_cpp_scheduler_backing_size((uint8_t)n_sched_tasks);
+        scheduler_backing = nros_platform_alloc(scheduler_bytes);
+        if (scheduler_backing == NULL) {
+            printk("nros: zephyr run_sched_tasks: no %u bytes for the level scheduler; regenerate the "
+                   "entry (nros_board_zephyr_run_levels_in takes it as a static)\n",
+                   (unsigned)scheduler_bytes);
+            return -1; /* NROS_CPP_RET_ERROR */
+        }
+    }
+    if (task_memory == NULL && n_sched_tasks > 1u && zephyr_pool_create == NULL) {
+        printk("nros: zephyr run_sched_tasks: no task memory for the spawned tiers — pass the entry's "
+               "(`_tasks_in`) or call `_in` for the pool; refused\n");
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    if (task_memory != NULL) {
+        for (size_t i = 0u; i < n_sched_tasks; ++i) {
+            const nros_sched_task_memory_t* m = &task_memory[i];
+            const char* tn = (tiers[i].name != NULL) ? tiers[i].name : "?";
+            if (i == 0u) {
+                if (m->stack != NULL || m->tcb != NULL) {
+                    printk("nros: zephyr run_sched_tasks: the entry gave the BOOT tier `%s` a thread "
+                           "stack (it runs on main()) — the entry and this runner disagree "
+                           "about which tier boots; refused\n",
+                           tn);
+                    return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+                }
+                continue;
+            }
+            if (m->stack == NULL || m->tcb == NULL || m->stack_bytes == 0u) {
+                printk("nros: zephyr run_sched_tasks: spawned tier `%s` has no task memory from the "
+                       "entry; refused before the session opens\n",
+                       tn);
+                return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+            }
+        }
+    }
+    /* Issue 1568 — the library's own refusal: a stride below THIS build's
+     * executor, not a multiple of 8, or a misaligned base is refused (the
+     * library logs both numbers) before a byte is written. */
+    if (nros_cpp_executor_storage_check(executor_storage, storage_stride) != 0) {
+        printk("nros: zephyr run_sched_tasks: executor storage refused (stride %u, this build needs "
+               "%u)\n",
+               (unsigned)storage_stride, (unsigned)nros_cpp_executor_storage_size());
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    unsigned char* storage = (unsigned char*)executor_storage;
+
+    /* Weak network-readiness gate (no-op on the canonical Zephyr
+     * auto-init path; a board/app may provide a strong override). */
+    nros_board_network_wait();
+
+    /* issue 0758 W4 — acquire the wall-clock epoch HERE, in the one window
+     * where both halves of the ordering hold: the network is up (the gate
+     * above just returned) and no component has constructed yet, so nothing
+     * has stamped a message. Acquiring earlier cannot reach a server;
+     * acquiring later means the first stamps carry boot-relative time and a
+     * validating peer rejects exactly the messages a system emits at startup.
+     *
+     * Unconditional on purpose — the shim decides. The Rust tier arm
+     * (`entry_sched_tasks.rs`) makes the same call at the same point, and it cannot
+     * hold a `#ifdef CONFIG_NROS_SNTP_EPOCH` because Kconfig knobs do not reach
+     * the cargo lane (issue 0460). One decision in C is the only shape in which
+     * the two arms cannot drift. */
+    nros_zephyr_epoch_acquire_configured();
+
+    /* phase-8 W4 — install the CTF sink BEFORE the executor is opened, so the
+     * registration events emitted as callbacks are added are not lost. A sink
+     * installed later is not an error, but every callback registered before it
+     * decodes as a bare `handle N` with no name.
+     *
+     * The DEFAULT sink only: an application that installed its own before
+     * main() (a SYS_INIT, as the Autoware safety island's tracing does) keeps
+     * it. `ZephyrBoard::run_components` installs none, so a sink set before
+     * main() reached the executor there and was replaced here, the moment an
+     * image moved to tiers. */
+    (void)rclc_set_default_trace_sink(nros_zephyr_trace_marker);
+
+    /* --- Open the primary (owning) executor on the boot thread --- */
+    const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
+    /* Issue 1442 - NULL and empty are one case: the image declares no
+     * namespace, so the next rung down answers (the root). Same test the
+     * session name gets one line up. */
+    const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
+
+    /* Block 0 of the caller's storage is the boot tier's executor. */
+    void* boot_storage = storage;
+    memset(boot_storage, 0, storage_stride);
+
+    /* phase-509 P9b -- the core's ONE executor: carved from the entry's
+     * levels backing (every level's members, summed) when the build sizes its
+     * levels, else the context's inline whole-image backing. */
+    int rc = (backings != NULL)
+                 ? nros_cpp_init_levels(locator, domain_id, sn, ns, boot_storage,
+                                        backings[0].backing, backings[0].bytes)
+                 : nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
+    if (rc != 0) {
+        return (int32_t)rc;
+    }
+    /* phase-509 P9b -- the executor's lock, before any second thread can
+     * reach it: a bare `k_mutex` (recursive, priority-inheriting), and this
+     * thread identity, so each pass releases it around its callbacks and its
+     * park. One level needs neither. */
+    if (n_sched_tasks > 1u) {
+        if (nros_zephyr_exec_lock_size() > sizeof(zephyr_exec_mutex) ||
+            nros_zephyr_exec_lock_init(zephyr_exec_mutex) != 0 ||
+            nros_cpp_executor_set_lock(boot_storage, nros_zephyr_exec_lock,
+                                       nros_zephyr_exec_unlock, zephyr_exec_mutex) != 0 ||
+            nros_cpp_executor_set_thread_id(boot_storage, nros_zephyr_thread_id) != 0) {
+            printk("nros: zephyr run_levels: the executor lock was not installed; refused\n");
+            nros_cpp_fini(boot_storage);
+            return -1; /* NROS_CPP_RET_ERROR */
+        }
+    }
+
+    /* phase-509 P9 -- the scheduler of this core, over the session the boot
+     * level just opened: every other level borrows it. It stays valid as long
+     * as boot_storage lives (forever: the boot spin loop never returns). */
+    zephyr_level_sched_tasks = tiers;
+    zephyr_level_n_sched_tasks = n_sched_tasks;
+    void* scheduler = nros_cpp_scheduler_open(0u, (uint8_t)n_sched_tasks, boot_storage, scheduler_backing,
+                                              scheduler_bytes);
+    if (scheduler == NULL) {
+        printk("nros: zephyr run_levels: the scheduler did not open (%u levels, %u bytes)\n",
+               (unsigned)n_sched_tasks, (unsigned)scheduler_bytes);
+        nros_cpp_fini(boot_storage);
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    printk("nros: scheduler core=0 levels=%u backing=%u\n", (unsigned)n_sched_tasks,
+           (unsigned)scheduler_bytes);
+
+    /* issue 1537 — the session is open, so its transport tasks exist and their
+     * priorities are recorded; judge every tier against them before any tier
+     * runs. The Rust arm (`entry_sched_tasks.rs`) calls the same function. */
+    for (size_t i = 0; i < n_sched_tasks; i++) {
+        const char* tn = (tiers[i].name != NULL) ? tiers[i].name : "?";
+        int64_t rp = tiers[i].priority;
+        if (rp > (int64_t)INT32_MAX) {
+            rp = (int64_t)INT32_MAX;
+        } else if (rp < (int64_t)INT32_MIN) {
+            rp = (int64_t)INT32_MIN;
+        }
+        (void)nros_zephyr_report_sched_task_vs_transport(tn, strlen(tn), (int32_t)rp);
+    }
+
+    /* --- Run boot tier (tiers[0]) setup on THIS thread FIRST --- */
+    /* issue #144 — boot setup runs BEFORE any tier spawn: concurrent entity
+     * declares from two threads race the zenoh-pico interest handshake, and the
+     * losing publisher's write filter stays closed (every put silently
+     * dropped). Running boot's declares first, then CHAINING the remaining
+     * spawns, makes setup order total (boot, t1, t2, …) so no two declares
+     * overlap. */
+    const nros_sched_task_spec_t* boot = &tiers[0];
+
+    /* Gate the boot executor to its tier's callback groups. */
+    if (boot->n_groups > 0 && boot->groups != NULL) {
+        nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
+    }
+    /* phase-509 P9 -- the boot level is seated with the stack it runs on, the
+     * `main()` thread's (the scheduler already stated the level count). */
+    if (nros_cpp_level_adopt(scheduler, zephyr_sched_task_level(boot), boot_storage,
+                             nros_zephyr_main_stack_size(), boot->name) != 0) {
+        printk("nros: zephyr run_levels: boot level `%s` not seated\n",
+               (boot->name != NULL) ? boot->name : "?");
+    }
+
+    /* Same derive for the boot tier, but from the `main()` thread's own stack.
+     * `boot->stack_bytes` describes a thread that was never spawned — the
+     * kernel created this one with CONFIG_MAIN_STACK_SIZE before any nano-ros
+     * code ran — so the shim is asked instead. Excluding the boot tier
+     * entirely would leave the rule off on every single-tier app, which is the
+     * common shape and includes the Zephyr FVP lane. */
+    if (nros_cpp_executor_derive_min_stack_headroom(boot_storage, nros_zephyr_main_stack_size()) !=
+        0) {
+        printk("nros: stack-headroom bound NOT set tier=`%s` (boot) — the rule stays off\n",
+               (boot->name != NULL) ? boot->name : "?");
+    }
+    zephyr_install_park(boot_storage, boot->name);
+
+    /* Boot tier node setup. */
+    if (boot->setup != NULL) {
+        rc = boot->setup(boot_storage);
+        if (rc != 0) {
+            /* phase-509 P9b -- the boot level fails the boot like any other
+             * level: returning the code left `main()` to return and the
+             * image idle with no level spinning. */
+            printk("nros: level %u (`%s`) setup failed (rc=%d): failing the boot\n",
+                   (unsigned)zephyr_sched_task_level(boot), (boot->name != NULL) ? boot->name : "?",
+                   (int)rc);
+            nros_zephyr_fail_boot();
+        }
+    }
+
+    /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
+    /* A boot-side spawn failure is fatal: tear down boot_storage (which the
+     * helper never touches) and return error. Downstream tier tasks handle
+     * their own spawn failures by parking + continuing to spin. */
+    int src = zephyr_spawn_next_sched_task(scheduler, &tiers[1], n_sched_tasks - 1u, storage,
+                                     storage_stride, (task_memory != NULL) ? &task_memory[1] : NULL,
+                                     (backings != NULL) ? &backings[1] : NULL);
+    if (src != 0) {
+        nros_cpp_fini(boot_storage);
+        return -1;
+    }
+
+    /* The boot thread runs tiers[0] itself — adopt its declared RAW priority
+     * (the spawned tiers already got theirs at k_thread_create; without this
+     * the boot tier keeps the main-thread default and the declared tier QoS
+     * would not hold for it). */
+    {
+        int64_t bp = boot->priority;
+        if (bp > (int64_t)INT32_MAX) {
+            bp = (int64_t)INT32_MAX;
+        } else if (bp < (int64_t)INT32_MIN) {
+            bp = (int64_t)INT32_MIN;
+        }
+        nros_zephyr_set_current_priority((int32_t)bp);
+    }
+    /* phase-296 W5.5/W5.7 — boot tier self-applies its declared CPU pin +
+     * kernel EDF deadline too. */
+    zephyr_apply_boot_core_pin(boot->name, boot->core_plus1);
+    zephyr_apply_sched_task_deadline(boot->name, boot->sched_task_class, boot->deadline_us);
+
+    /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as
+     * timeout) so the boot session's zenoh handshake is driven from the spin
+     * path and the CPU yields cooperatively (mirrors the Rust zephyr
+     * run_sched_tasks boot loop). */
+    uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);
+    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
+        period_ms = SPIN_PERIOD_FLOOR_MS;
+    }
+    /* issue 0636 option 3 — every iteration reaches a scheduling point. The
+     * executor's own wait is skipped whenever a wake already fired, so under
+     * sustained traffic this loop would otherwise never block, and under
+     * SCHED_FIFO a thread that never blocks never lets a lower-priority tier
+     * run. The gap costs nothing while the spins do block. */
+    uint64_t gap_state = 0;
+    for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
+        nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
+        gap_state = nros_sched_task_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            boot->spin_period_us);
+    }
+
+    /* Unreachable — satisfies the compiler. */
+    nros_cpp_fini(boot_storage);
+    return 0;
+}

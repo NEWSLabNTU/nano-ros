@@ -1,5 +1,0 @@
-{
-  "key": "rust:TierTaskMemory::raw",
-  "verdict": "divergence",
-  "why": "See `rust:TierTaskMemory`."
-}

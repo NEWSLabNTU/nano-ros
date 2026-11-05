@@ -27,7 +27,7 @@ extern fn __nros_c_component_telem_pkg_configure(node: *const c.nros_cpp_node_t,
 var __nros_node_0: c.nros_cpp_node_t = undefined;
 var __nros_node_1: c.nros_cpp_node_t = undefined;
 
-fn __nros_entry_setup_tier_0(executor: ?*anyopaque) callconv(.C) i32 {
+fn __nros_entry_setup_sched_task_0(executor: ?*anyopaque) callconv(.C) i32 {
     if (executor == null) return c.NROS_CPP_RET_NOT_INIT;
     {
         if (c.nros_cpp_declare_node_param(executor, "ctrl", "level_tag", "0") != c.NROS_CPP_RET_OK) return -1;
@@ -39,7 +39,7 @@ fn __nros_entry_setup_tier_0(executor: ?*anyopaque) callconv(.C) i32 {
     }
     return 0;
 }
-fn __nros_entry_setup_tier_1(executor: ?*anyopaque) callconv(.C) i32 {
+fn __nros_entry_setup_sched_task_1(executor: ?*anyopaque) callconv(.C) i32 {
     if (executor == null) return c.NROS_CPP_RET_NOT_INIT;
     {
         if (c.nros_cpp_declare_node_param(executor, "telem", "level_tag", "1") != c.NROS_CPP_RET_OK) return -1;
@@ -52,20 +52,20 @@ fn __nros_entry_setup_tier_1(executor: ?*anyopaque) callconv(.C) i32 {
     return 0;
 }
 
-var __nros_tier_0_groups = [_][*c]const u8{ "ctrl", "/", "ctrl_grp", };
-var __nros_tier_1_groups = [_][*c]const u8{ "telem", "/", "telem_grp", };
-const __nros_tiers = [_]c.nros_native_tier_spec_t{
+var __nros_sched_task_0_groups = [_][*c]const u8{ "ctrl", "/", "ctrl_grp", };
+var __nros_sched_task_1_groups = [_][*c]const u8{ "telem", "/", "telem_grp", };
+const __nros_sched_tasks = [_]c.nros_native_sched_task_spec_t{
     .{
         .name = "high",
-        .groups = &__nros_tier_0_groups,
+        .groups = &__nros_sched_task_0_groups,
         .n_groups = 1,
         .priority = 80,
         .stack_bytes = 0,
         .spin_period_us = 10000,
-        .setup = &__nros_entry_setup_tier_0,
+        .setup = &__nros_entry_setup_sched_task_0,
         .core_plus1 = 0,
         .preempt_threshold = -1,
-        .tier_class = null,
+        .sched_task_class = null,
         .period_us = 0,
         .budget_us = 0,
         .deadline_us = 0,
@@ -73,15 +73,15 @@ const __nros_tiers = [_]c.nros_native_tier_spec_t{
     },
     .{
         .name = "low",
-        .groups = &__nros_tier_1_groups,
+        .groups = &__nros_sched_task_1_groups,
         .n_groups = 1,
         .priority = 10,
         .stack_bytes = 0,
         .spin_period_us = 100000,
-        .setup = &__nros_entry_setup_tier_1,
+        .setup = &__nros_entry_setup_sched_task_1,
         .core_plus1 = 0,
         .preempt_threshold = -1,
-        .tier_class = null,
+        .sched_task_class = null,
         .period_us = 0,
         .budget_us = 0,
         .deadline_us = 0,
@@ -101,10 +101,10 @@ export const NROS_BOOT_CONFIG: c.struct_nros_baked_boot_config linksection(".nro
     .rmw = fixed(32, ""),
 };
 
-var __nros_tier_executor_storage: [2][(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
+var __nros_sched_task_executor_storage: [2][(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = undefined;
 
 fn run() i32 {
-    return c.nros_board_zephyr_run_tiers_tasks_in(c.NROS_ENTRY_LOCATOR, c.NROS_ENTRY_DOMAIN_ID, c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_tiers, __nros_tiers.len, &__nros_tier_executor_storage, @sizeOf(@TypeOf(__nros_tier_executor_storage[0])), null);
+    return c.nros_board_zephyr_run_sched_tasks_memory_in(c.NROS_ENTRY_LOCATOR, c.NROS_ENTRY_DOMAIN_ID, c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_sched_tasks, __nros_sched_tasks.len, &__nros_sched_task_executor_storage, @sizeOf(@TypeOf(__nros_sched_task_executor_storage[0])), null);
 }
 
 export fn main() c_int {
