@@ -233,7 +233,7 @@ exempt `reference/retired-names.md` (`check-retired-knob-spellings`,
 
 ### D8 — Gate: `check-book-audience`
 
-> **Extended by [RFC-0124](0124-book-user-guide-organization.md) D2 and phase-537 W0/W9 (2026-11):** the gate also reads each page's type and level declaration and checks the gated principles.
+> **Extended by [RFC-0124](0124-book-user-guide-organization.md) D2 and phase-537 W0/W13 (2026-11):** the gate also reads each page's type and level declaration and checks the gated principles.
 
 
 On the fast line:
