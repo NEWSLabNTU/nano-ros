@@ -36,6 +36,11 @@ F. **The Book charter** (RFC-0124 Principles 3, 7, 14, 15 and the Topic
    printed and never fails the gate. `--charter` lists each finding. W13
    makes them refusals.
 
+G. **Language tab groups parse** (RFC-0124 D9, phase-537 W2;
+   `lib/book_tabs.py`). A malformed `<!-- tabs -->` group fails the book build
+   in `scripts/mdbook-lang-tabs.py`, which runs only when the book is built;
+   this refuses it per push instead. The preprocessor's self-test runs here.
+
 The self-test runs on every invocation. Exit 0 when clean; 1 with one line
 per problem otherwise.
 """
@@ -53,6 +58,7 @@ sys.path.insert(0, str(HERE / "lib"))
 import board_registry  # noqa: E402
 import book_charter  # noqa: E402
 import book_pages  # noqa: E402
+import book_tabs  # noqa: E402
 
 ROOT = book_pages.ROOT
 CONTRIB_LEAD = re.compile(r"^\s*(?:>\s*)*\*\*Contributors?\b", re.I)
@@ -215,6 +221,15 @@ def self_test() -> None:
     assert rule_e("book/src/reference/boards/x.md", "Tier 1", True) == []
 
 
+def rule_g(rel: str, text: str) -> list[str]:
+    """A tab group the preprocessor would refuse."""
+    try:
+        book_tabs.groups(text)
+    except book_tabs.TabError as e:
+        return [f"{rel}:{e.line}: language tabs: {e} (RFC-0124 D9)"]
+    return []
+
+
 def charter_findings(user_paths: list[str], generated: set[str]) -> list[str]:
     """Rule F over the hand-written user pages and the registry's rows."""
     pages = {rel[len("book/src/"):]: (ROOT / rel).read_text() for rel in user_paths
@@ -228,6 +243,8 @@ def charter_findings(user_paths: list[str], generated: set[str]) -> list[str]:
 def main() -> int:
     self_test()
     book_charter.self_test()
+    load("mdbook_lang_tabs", HERE / "mdbook-lang-tabs.py").self_test()
+    assert rule_g("a.md", "<!-- tabs -->\n#### Rust\nx\n<!-- /tabs -->\n")[0].startswith("a.md:1:")
     errs: list[str] = []
     pm = load("check_book_page_map", HERE / "check-book-page-map.py")
     if pm.main() != 0:
@@ -243,6 +260,7 @@ def main() -> int:
         errs += rule_b(rel, text)
         errs += rule_d(rel, text, olds, probe_hits)
         errs += rule_e(rel, text, rel in generated)
+        errs += rule_g(rel, text)
     if len(probe_hits) > PROBE_FENCE_BASELINE:
         errs += probe_hits
         errs.append(f"{len(probe_hits)} dev-tier step(s) in probe fences, baseline {PROBE_FENCE_BASELINE}: "

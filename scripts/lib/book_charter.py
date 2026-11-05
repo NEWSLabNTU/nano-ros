@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
+import book_tabs
+
 TYPES = ("tutorial", "how-to", "explanation", "reference")
 LEVELS = (1, 2, 3, 4)
 
@@ -65,7 +67,20 @@ def declaration(text: str) -> tuple[str, int, str | None] | None:
 
 
 def prose_words(text: str) -> int:
-    """Words outside fences and HTML comments: what a reader reads as prose."""
+    """Words outside fences and HTML comments: what a reader reads as prose.
+
+    A language tab group (RFC-0124 D9) counts once, as its longest tab: a
+    reader reads one language. Its markers and tab headings are not prose.
+    A malformed group counts as plain text; check-book-audience refuses it."""
+    try:
+        segs = book_tabs.segments(text)
+    except book_tabs.TabError:
+        return _plain_words(text)
+    return sum(max(_plain_words("\n".join(t.body)) for t in s.tabs)
+               if isinstance(s, book_tabs.Group) else _plain_words(s) for s in segs)
+
+
+def _plain_words(text: str) -> int:
     out, fence = [], None
     for line in text.splitlines():
         m = FENCE.match(line)
@@ -202,6 +217,10 @@ def self_test() -> None:
     assert declaration(page) == ("how-to", 2, None)
     assert declaration("# T\n<!-- type: tutorial · level: 1 · topic: rmw -->\n") == ("tutorial", 1, "rmw")
     assert prose_words(page) == 402, prose_words(page)  # "#", "T" and 400
+    tabbed = ("intro words\n<!-- tabs -->\n#### Rust\none two three\n```rust\nx y z\n```\n"
+              "#### C\none two\n```bash\nmake\n```\n<!-- /tabs -->\nend\n")
+    assert prose_words(tabbed) == 6, prose_words(tabbed)  # intro words + the Rust tab's three + end
+    assert unprobed_steps(tabbed) == [10], unprobed_steps(tabbed)  # each fence is still a fence
     assert unprobed_steps(page) == [6], unprobed_steps(page)
     f = page_findings("guide/x.md", page)
     assert len(f) == 1 and "no probe fence (line 6)" in f[0], f
