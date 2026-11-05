@@ -1,5 +1,7 @@
 # Porting a ROS 2 C++ node to nano-ros
 
+<!-- type: how-to · level: 3 -->
+
 Goal: take a normal ROS 2 C++ node (one that compiles + runs under
 `colcon build` against `ros-humble-*`) and run it under nano-ros — without
 rewriting the source. The `rclcpp::` names are declared by nano-ros's own C++

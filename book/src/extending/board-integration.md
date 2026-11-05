@@ -1,5 +1,7 @@
 # Board Integration
 
+<!-- type: how-to · level: 4 -->
+
 How you consume nano-ros depends on what your project's build
 system looks like, not on what RTOS you're targeting. This page maps
 **user profile → recommended path**. Pick your row, follow the

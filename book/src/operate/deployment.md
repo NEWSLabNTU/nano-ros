@@ -1,5 +1,7 @@
 # Deployment Workflow
 
+<!-- type: how-to · level: 3 -->
+
 Deployment means different things per target, but the order is stable:
 prepare toolchain, build package, move binary/firmware to target, then
 verify ROS 2 communication.

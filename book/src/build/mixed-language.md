@@ -1,5 +1,7 @@
 # Mixed-language workspace
 
+<!-- type: how-to · level: 2 -->
+
 Languages mix per package, not per file. A bringup's `[[component]]` row
 names a package and a class whatever language implements it, and node
 packages are linked through a C ABI register trampoline, so one image can

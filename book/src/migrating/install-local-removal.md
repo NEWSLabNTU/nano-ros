@@ -1,5 +1,7 @@
 # Migrating off the `install-local` prefix
 
+<!-- type: how-to · level: 2 -->
+
 **TL;DR.** nano-ros no longer has a CMake install step: the `install-local`
 recipe, the `build/install/`
 prefix, every `install(...)` rule, every `Config.cmake.in` template,

@@ -1,5 +1,7 @@
 # Architecture Overview
 
+<!-- type: explanation · level: 3 -->
+
 nano-ros is a ROS 2 client stack for embedded and RTOS targets. The
 important architectural idea is separation by responsibility: user code
 talks to a ROS-shaped API, the core runtime owns entities and

@@ -1,5 +1,7 @@
 # XRCE-DDS Symbol Reference
 
+<!-- type: reference · level: 4 -->
+
 XRCE-DDS has a minimal platform abstraction layer. It is single-threaded,
 heap-less, and delegates networking to user-provided transport callbacks.
 The 2-3 required FFI symbols (`uxr_millis`, `uxr_nanos`) are provided by

@@ -1,5 +1,7 @@
 # Vendor Overlay Board Crate
 
+<!-- type: how-to · level: 4 -->
+
 An **overlay** crate is a small Cargo crate that depends
 on a generic per-kernel board crate (`nros-board-freertos`,
 `nros-board-threadx`, `nros-board-nuttx` — there is no bare-metal

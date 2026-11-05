@@ -1,5 +1,7 @@
 # Introduction
 
+<!-- type: explanation · level: 1 -->
+
 nano-ros is a lightweight ROS 2 client library for embedded real-time systems.
 It runs on bare-metal microcontrollers, FreeRTOS, NuttX, ThreadX, and Zephyr,
 as well as Linux hosts. The entire core stack is `no_std` compatible.

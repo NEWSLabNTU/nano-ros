@@ -1,5 +1,7 @@
 # C++ API
 
+<!-- type: reference · level: 2 -->
+
 The nano-ros C++ API is a freestanding C++14 interface for ROS 2 nodes on
 embedded and host targets. It needs no standard library, no exceptions and no
 RTTI, so the same code builds for Zephyr, FreeRTOS, NuttX, ThreadX, bare metal

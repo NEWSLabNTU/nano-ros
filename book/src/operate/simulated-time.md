@@ -1,5 +1,7 @@
 # Simulated Time
 
+<!-- type: how-to · level: 3 -->
+
 A node in a simulation or replaying a bag should run on the simulator's clock,
 not the wall. nano-ros implements ROS 2's answer to that: `rosgraph_msgs/msg/Clock`
 on `/clock`, the `use_sim_time` parameter, and timers that can be told which

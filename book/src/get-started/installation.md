@@ -1,5 +1,7 @@
 # Installation
 
+<!-- type: how-to · level: 1 -->
+
 Three steps take a bare Linux machine to one that builds nano-ros: install a
 few host packages, install the `nros` CLI, and let `nros setup` provision the
 toolchains for your board.

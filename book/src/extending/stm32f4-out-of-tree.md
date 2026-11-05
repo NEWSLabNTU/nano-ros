@@ -1,5 +1,7 @@
 # Worked Example — STM32F4 Out of Tree
 
+<!-- type: how-to · level: 4 -->
+
 This chapter takes one real board all the way through
 [the customization ladder](./overview.md): an **STM32F429/F407** with Ethernet,
 built and maintained entirely outside the nano-ros repository.

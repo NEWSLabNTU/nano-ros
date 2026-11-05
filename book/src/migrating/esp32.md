@@ -1,5 +1,7 @@
 # ESP32 — retired
 
+<!-- type: how-to · level: 2 -->
+
 nano-ros no longer supports the ESP32. Two paths existed, and both have been
 removed: the ESP32-C3 bare-metal board over `esp-hal`, and the ESP-IDF
 component with its `idf.py` build driver. This page says what each was, why it

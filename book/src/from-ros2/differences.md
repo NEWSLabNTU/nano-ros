@@ -1,5 +1,7 @@
 # Differences from standard ROS 2
 
+<!-- type: explanation · level: 3 -->
+
 Coming from `rclcpp`, `rclrs`, or `rclc`? This page calls out where
 nano-ros looks the same, where it diverges, and the reason behind each
 choice. It is an *orientation* page — the per-language API references

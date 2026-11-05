@@ -1,5 +1,7 @@
 # First Project
 
+<!-- type: tutorial · level: 1 -->
+
 > **Support level:** [`mps2-an385-baremetal`](../reference/boards/mps2-an385.md) and [the Linux host](../reference/boards/linux.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
 
 In this chapter you scaffold a talker for an Arm Cortex-M3 board, run it in

@@ -1,5 +1,7 @@
 # Migration Guide for ROS 2 Users
 
+<!-- type: how-to · level: 3 -->
+
 This page maps standard ROS 2 concepts to their nano-ros equivalents.
 It is not an API reference; use it as a checklist when moving an
 existing `rclcpp`, `rclc`, or `rclrs` node toward nano-ros.

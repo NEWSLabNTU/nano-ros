@@ -1,5 +1,7 @@
 # Porting Overview
 
+<!-- type: explanation · level: 4 -->
+
 nano-ros is designed for customization at three independent levels: **RMW** (transport protocol), **Platform** (OS or RTOS), and **Board** (hardware). The core crates define stable interfaces through Rust traits; your implementation lives in your own crates. Be aware of the honest boundary: a board of yours can live in your own tree (`NROS_EXTRA_BOARD_PATH`), but *registering* a new platform still touches a handful of files inside nano-ros itself (the registration steps below) — that is a fork, built the way [Contributing](../internals/orientation/contributing.html) describes.
 
 ## Which chapter do I need?

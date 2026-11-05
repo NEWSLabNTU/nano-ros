@@ -1,5 +1,7 @@
 # E2E Safety Protocol
 
+<!-- type: explanation · level: 3 -->
+
 > The `safety-e2e` feature described in this document has been implemented.
 > It is available in `nros-rmw`, `nros-node`, and the top-level `nros` crate.
 

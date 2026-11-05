@@ -1,5 +1,7 @@
 # C / C++ multi-node workspaces
 
+<!-- type: how-to · level: 2 -->
+
 [Growing your workspace](growing-your-workspace.md) describes the canonical
 node pkgs + bringup pkg + `[image.*]` shape against the Rust path
 (`nros::node!(…)` + `nros::main!(launch = …)`). This chapter shows the

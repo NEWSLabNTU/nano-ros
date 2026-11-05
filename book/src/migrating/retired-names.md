@@ -1,5 +1,7 @@
 # Retired names
 
+<!-- type: reference · level: 2 -->
+
 nano-ros's cmake variables use one prefix, `NROS_`. Older releases used
 `NANO_ROS_` for some of them, and the release before this one still accepted
 those spellings as deprecated aliases. They are now **retired**: a configure

@@ -1,5 +1,7 @@
 # RMW API: Differences from upstream `rmw.h`
 
+<!-- type: reference · level: 4 -->
+
 This page is for developers who already know upstream ROS 2's
 [`rmw/rmw.h`](https://github.com/ros2/rmw) and want to write — or just
 understand — a backend for nano-ros. Side-by-side: what `rmw.h` looks

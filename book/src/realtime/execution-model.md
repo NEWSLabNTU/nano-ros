@@ -1,5 +1,7 @@
 # The Real-Time Execution Model
 
+<!-- type: explanation · level: 3 -->
+
 This chapter is about one question: when does a nano-ros callback meet its
 deadline, and what does the runtime do to make it? The design records are
 listed under [Design background](#design-background) at the end of this page.

@@ -1,5 +1,7 @@
 # Build as a CMake subdirectory
 
+<!-- type: how-to · level: 3 -->
+
 **This is the escape hatch, not the path.** If your project is a
 nano-ros package or workspace, you state the board once in
 the bringup's `system.toml` and let `nros build` drive CMake — you

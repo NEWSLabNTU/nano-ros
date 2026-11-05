@@ -1,5 +1,7 @@
 # Integrating nano-ros into a Vendored Tree
 
+<!-- type: how-to · level: 3 -->
+
 This page is for the engineer whose company has its own source tree —
 a BSP, possibly a forked RTOS, an existing build system — and needs
 nano-ros to be part of it: pinned, reproducible, buildable offline,

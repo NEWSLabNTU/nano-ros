@@ -1,5 +1,7 @@
 # Native (Host) Build
 
+<!-- type: how-to · level: 2 -->
+
 Use the host (`linux`) board for first experiments, CI smoke tests, and
 ROS 2 interoperability checks on Linux. It uses OS sockets, the
 host process environment, and the same project layout as the

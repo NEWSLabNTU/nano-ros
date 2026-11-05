@@ -1,5 +1,7 @@
 # Role Reference: Node pkgs, Bringup pkgs, and Images
 
+<!-- type: reference · level: 2 -->
+
 A nano-ros workspace has **two kinds of package you write**, and a third thing
 that is not a package at all:
 

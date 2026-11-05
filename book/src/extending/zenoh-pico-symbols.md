@@ -1,5 +1,7 @@
 # Zenoh-pico Symbol Reference
 
+<!-- type: reference · level: 4 -->
+
 This page documents the ~55 FFI symbols that zenoh-pico requires at link time.
 These symbols are provided by `zpico-sys`'s C alias translation unit
 (`c/zpico/platform_aliases.c`, built by the default-on `platform-aliases`

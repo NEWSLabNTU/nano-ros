@@ -1,5 +1,7 @@
 # Message Binding Generation
 
+<!-- type: reference · level: 2 -->
+
 nros uses generated Rust bindings for ROS 2 message types. `nros build` generates `no_std` compatible bindings from each package's `package.xml` dependencies before it builds (`nros configure` does that step alone, and `nros interface generate rust` the codegen alone).
 
 ## Overview

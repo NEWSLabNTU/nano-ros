@@ -1,5 +1,7 @@
 # Canonical Platform C ABI
 
+<!-- type: reference · level: 4 -->
+
 nano-ros separates the platform layer (clock, sleep, allocator,
 threading, critical section, network, timer, …) from the rest of the
 code via a **single canonical C ABI** of free `extern "C"` symbols.

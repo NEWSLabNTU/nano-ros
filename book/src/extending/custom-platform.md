@@ -1,5 +1,7 @@
 # Custom Platform
 
+<!-- type: how-to · level: 4 -->
+
 This guide walks through porting nano-ros to a new RTOS or bare-metal environment. A "platform" provides the OS-level primitives that nano-ros needs at runtime: clock, memory, sleep, threading, and networking. The core library is `#![no_std]` and makes zero platform calls directly -- everything flows through your platform crate.
 
 > **Canonical interface spec.** The function-pointer signatures,

@@ -1,5 +1,7 @@
 # Client Library Model: nros vs rclc / rclcpp / rclrs
 
+<!-- type: explanation · level: 3 -->
+
 The RMW layer decouples the transport from the client library. The *client library* is the user-facing API on top of RMW: nodes, executors, publishers, subscribers, services, clients, callbacks, futures. ROS 2 ships three: **rclc** (C, MCU-focused), **rclcpp** (C++, desktop), and **rclrs** (Rust, experimental). nano-ros adds a fourth -- the `nros-node` crate plus its `nros-c` / `nros-cpp` wrappers.
 
 This page explains the shape of nros-node and how it differs from the three official client libraries. For trait signatures see [Rust API](../reference/rust-api.md) / [C API](../reference/c-api.md) / [C++ API](../reference/cpp-api.md).

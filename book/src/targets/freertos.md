@@ -1,5 +1,7 @@
 # FreeRTOS (QEMU MPS2-AN385)
 
+<!-- type: how-to · level: 2 -->
+
 > **Support level:** [`mps2-an385-freertos`](../reference/boards/mps2-an385-freertos.md), [`freertos-posix`](../reference/boards/freertos-posix.md), [`s32z270-freertos`](../reference/boards/s32z270-freertos.md), [`mps3-an536-freertos`](../reference/boards/mps3-an536-freertos.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
 
 Single-node starter on FreeRTOS + lwIP, cross-compiled for Cortex-M3

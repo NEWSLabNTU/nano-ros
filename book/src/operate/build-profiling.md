@@ -1,5 +1,7 @@
 # Profiling Your Build
 
+<!-- type: how-to · level: 3 -->
+
 When a build feels slow, `nros-build-profile` tells you **where the time went** —
 codegen vs compile vs link vs flash, which unit dominated, and whether a shared
 crate was rebuilt redundantly.
