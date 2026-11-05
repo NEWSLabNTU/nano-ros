@@ -368,6 +368,32 @@ pub fn pair_row_locator_error(
     }
 }
 
+/// [`resolve`] for the plain (unconfigured) Example cell at this coordinate.
+pub fn resolve_coord(
+    platform: PlatformId,
+    lang: Lang,
+    rmw: Rmw,
+    role: PairRole,
+) -> TestResult<PathBuf> {
+    let cell = crate::matrix::CELLS
+        .iter()
+        .find(|c| {
+            is_pair_cell(c)
+                && c.platform == platform
+                && c.lang == lang
+                && c.rmw == rmw
+                && c.workload == role.workload()
+                && c.config.is_empty()
+        })
+        .ok_or_else(|| {
+            TestError::BuildFailed(format!(
+                "no ({platform:?}, {lang:?}, {rmw:?}, {:?}) Example cell in matrix::CELLS",
+                role.workload()
+            ))
+        })?;
+    resolve(cell, role)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

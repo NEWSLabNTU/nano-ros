@@ -728,7 +728,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7930" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 # phase-372 W2 — the S32Z270 RTU (Cortex-R52) link-completeness witness: no
 # emulator models this SoC, so the cell's whole promise is "a C++ cyclonedds
@@ -1276,7 +1276,224 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
-cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8030" }
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+# ===========================================================================
+# phase-535 W3 (RFC-0122 D1) — the mps2-an385-freertos example pairs, as
+# images of the language workspaces' behaviour bringups. One row per (lang,
+# role); `nros_tests::fixtures::workspace_image` maps a cell's role to its row.
+# The C and C++ rows of one language share ONE configure
+# (`build/freertos-zenoh-mps2-an385-freertos/cmake`), so the runtime is built
+# once per language rather than once per leaf; each image's locator and
+# address reach its own entry (`LOCATOR` / `IMAGE_NET` in the generated root).
+# A Rust image is its own cargo root (issue 0616), so it has its own target
+# dir. `examples/mps2-an385-freertos/<lang>/talker` stays as the witness
+# (RFC-0122 D3).
+# ===========================================================================
+
+[[workspace_fixture]]
+id = "workspace-rust-freertos-talker"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "freertos_talker"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/freertos-talker"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-freertos-listener"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "freertos_listener"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/freertos-listener"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-freertos-service-server"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "freertos_service_server"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/freertos-service-server"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-freertos-service-client"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "freertos_service_client"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/freertos-service-client"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-freertos-action-server"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "freertos_action_server"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/freertos-action-server"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-freertos-action-client"
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "freertos_action_client"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/freertos-action-client"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-c-freertos-talker"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "freertos_talker"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-c-freertos-listener"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "freertos_listener"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-c-freertos-service-server"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "freertos_service_server"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-c-freertos-service-client"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "freertos_service_client"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-c-freertos-action-server"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "freertos_action_server"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-c-freertos-action-client"
+platform = "freertos"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "freertos_action_client"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-talker"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "freertos_talker"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-listener"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "freertos_listener"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-service-server"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "freertos_service_server"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-service-client"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "freertos_service_client"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-action-server"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "freertos_action_server"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-action-client"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "freertos_action_client"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
 id = "workspace-mixed-native"
@@ -2518,41 +2735,6 @@ dir = "examples/mps2-an385-freertos/rust/talker"
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
-platform = "freertos"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/rust/listener"
-target = "thumbv7m-none-eabi"
-
-[[fixture]]
-platform = "freertos"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/rust/service-server"
-target = "thumbv7m-none-eabi"
-
-[[fixture]]
-platform = "freertos"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/rust/service-client"
-target = "thumbv7m-none-eabi"
-
-[[fixture]]
-platform = "freertos"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/rust/action-server"
-target = "thumbv7m-none-eabi"
-
-[[fixture]]
-platform = "freertos"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/rust/action-client"
-target = "thumbv7m-none-eabi"
-
-[[fixture]]
 id = "freertos-logging-smoke-mps2"
 platform = "freertos"
 lang = "rust"
@@ -3275,51 +3457,9 @@ cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
 
 [[fixture]]
 platform = "freertos"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/c/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7900" }
-
-[[fixture]]
-platform = "freertos"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/c/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
-
-[[fixture]]
-platform = "freertos"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/c/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7910" }
-
-[[fixture]]
-platform = "freertos"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/c/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
-
-[[fixture]]
-platform = "freertos"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/c/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7920" }
-
-[[fixture]]
-platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/cpp/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
-
-[[fixture]]
-platform = "freertos"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/cpp/listener"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8000" }
 
 # phase-482 W3 — the ported ROS 2 tutorial publisher (the template's unmodified
@@ -3364,34 +3504,6 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/templates/ament-workspace-port/mps2-an385-freertos"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8086" }
-
-[[fixture]]
-platform = "freertos"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/cpp/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
-
-[[fixture]]
-platform = "freertos"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/cpp/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8010" }
-
-[[fixture]]
-platform = "freertos"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/cpp/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
-
-[[fixture]]
-platform = "freertos"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/mps2-an385-freertos/cpp/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8020" }
 
 # ===========================================================================
 # nuttx — C / C++ (cmake). Zenoh only (Cyclone gated on a hosted NuttX port).

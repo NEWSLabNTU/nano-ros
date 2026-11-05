@@ -113,7 +113,7 @@ endfunction()
 # ---------------------------------------------------------------------------
 # nano_ros_add_executable(<name> <sources…> [DEPLOY <target>…] [BOARD <board>]
 #     [BRINGUP <dir>] [LAUNCH <launch.xml>] [LAUNCH_ARGS <k=v>…] [LANG c|cpp]
-#     [PANIC <policy>] [DOMAIN_ID <n>] [TYPED])
+#     [PANIC <policy>] [DOMAIN_ID <n>] [LOCATOR <loc>] [IMAGE_NET <text>] [TYPED])
 #
 # Standalone entry. DEPLOY/BOARD default to the package.xml `<export>` tuple in
 # W4; until then DEPLOY defaults to `linux` and an embedded board is passed
@@ -138,7 +138,7 @@ function(nano_ros_add_executable name)
     # and removed the callee's half of it; this is the other half. Parsing them
     # explicitly also makes the chain checkable: `check-generated-cmake-keywords`
     # compares what `cmake_root.rs` emits against BOTH frames' keyword sets.
-    cmake_parse_arguments(_NRE "TYPED;ROS2_MAIN" "BOARD;BRINGUP;LAUNCH;MODEL;HOST;LANG;PANIC;DOMAIN_ID;IMAGE" "DEPLOY;SOURCES;LAUNCH_ARGS" ${ARGN})
+    cmake_parse_arguments(_NRE "TYPED;ROS2_MAIN" "BOARD;BRINGUP;LAUNCH;MODEL;HOST;LANG;PANIC;DOMAIN_ID;IMAGE;LOCATOR;IMAGE_NET" "DEPLOY;SOURCES;LAUNCH_ARGS" ${ARGN})
     set(_srcs ${_NRE_SOURCES} ${_NRE_UNPARSED_ARGUMENTS})
     if(NOT _srcs AND NOT _NRE_LAUNCH AND NOT _NRE_BRINGUP AND NOT _NRE_MODEL)
         message(FATAL_ERROR
@@ -225,6 +225,15 @@ function(nano_ros_add_executable name)
     # generated root. `DEFINED`, not truthiness: domain 0 is a domain.
     if(DEFINED _NRE_DOMAIN_ID)
         list(APPEND _entry_extra DOMAIN_ID ${_NRE_DOMAIN_ID})
+    endif()
+    # Phase-535 W3 — the image's locator and network, per entry for the same
+    # reason: the pair images of one bringup share this configure. The network
+    # text holds no `;`, so it survives the list.
+    if(_NRE_LOCATOR)
+        list(APPEND _entry_extra LOCATOR "${_NRE_LOCATOR}")
+    endif()
+    if(_NRE_IMAGE_NET)
+        list(APPEND _entry_extra IMAGE_NET "${_NRE_IMAGE_NET}")
     endif()
     if(_NRE_TYPED)
         list(APPEND _entry_extra TYPED)

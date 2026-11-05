@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- The whole pair, for the workspace metadata probe. No image runs it:
+     each image is one role (RFC-0122 D1). -->
+<launch>
+  <node pkg="action_server_pkg" exec="fibonacci_server" name="fibonacci_server"/>
+  <node pkg="action_client_pkg" exec="fibonacci_client" name="fibonacci_client"/>
+</launch>

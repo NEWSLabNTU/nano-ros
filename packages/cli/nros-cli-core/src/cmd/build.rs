@@ -1693,6 +1693,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                             return Some(Err(before_boot_not_on_c_road(&id)));
                         }
                         let b = img.board.clone().unwrap_or_default();
+                        let resolved = nros_orchestration_ir::leaf_system::read_image(&bd, &id);
                         Some(Ok(crate::builder::cmake_root::CmakeEntry {
                             image: id.clone(),
                             launch: img.launch.clone().unwrap_or_else(|| "default".to_string()),
@@ -1734,11 +1735,27 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                             // (`leaf_system`: `[image]`, its defaults, then
                             // `[system]`). Until this the CMake road carried
                             // none, and a stated domain was dropped silently.
-                            domain_id: match nros_orchestration_ir::leaf_system::read_image(
-                                &bd, &id,
-                            ) {
-                                Ok(sys) => sys.and_then(|s| s.network.domain_id),
+                            domain_id: match &resolved {
+                                Ok(sys) => sys.as_ref().and_then(|s| s.network.domain_id),
                                 Err(e) => return Some(Err(eyre::eyre!("{e}"))),
+                            },
+                            // Phase-535 W3 — the locator and the network, per
+                            // entry for the reason the domain is: the images of
+                            // one configure dial different routers and hold
+                            // different addresses.
+                            locator: resolved
+                                .as_ref()
+                                .ok()
+                                .and_then(|s| s.as_ref())
+                                .and_then(|s| s.network.locator.clone()),
+                            image_net: match workspace_image_net(
+                                &catalog,
+                                &bd,
+                                &id,
+                                nano_ros_root.as_deref(),
+                            ) {
+                                Ok(n) => n.map(|n| n.text()),
+                                Err(e) => return Some(Err(e)),
                             },
                             name,
                         }))

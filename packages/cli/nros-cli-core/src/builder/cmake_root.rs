@@ -85,6 +85,17 @@ pub struct CmakeEntry {
     /// is PER ENTRY because several images share one configure, so a
     /// configure-wide `-DNROS_DOMAIN_ID` cannot carry it.
     pub domain_id: Option<u32>,
+    /// `LOCATOR` — the image's resolved connect locator (`[image.<id>]`, its
+    /// defaults, then `[system]`). Phase-535 W3: PER ENTRY for the reason
+    /// `domain_id` is — the pair images of one bringup share a configure and
+    /// dial different routers, so a configure-wide `-DNROS_ENTRY_LOCATOR`
+    /// cannot carry it.
+    pub locator: Option<String>,
+    /// `IMAGE_NET` — the image's resolved network (`NROS_IMAGE_NET` text,
+    /// RFC-0103 D10f). Per entry for the same reason: the two images of a
+    /// pair state different addresses, and identical ones seed identical
+    /// zenoh ids.
+    pub image_net: Option<String>,
 }
 
 /// Everything the emitted root needs that is not in [`Discovered`].
@@ -420,6 +431,12 @@ pub fn render(
         if let Some(d) = e.domain_id {
             out.push_str(&format!("    DOMAIN_ID {d}\n"));
         }
+        if let Some(l) = &e.locator {
+            out.push_str(&format!("    LOCATOR \"{l}\"\n"));
+        }
+        if let Some(n) = &e.image_net {
+            out.push_str(&format!("    IMAGE_NET \"{n}\"\n"));
+        }
         // Every one of the 57 C/C++ entries in this tree is TYPED — it routes
         // each launch node to the real executor through its component object.
         // An untyped generated entry would be a different program.
@@ -654,6 +671,8 @@ mod tests {
             deploy: "linux".to_string(),
             panic: None,
             domain_id: None,
+            locator: None,
+            image_net: None,
         }];
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
 
@@ -712,6 +731,8 @@ mod tests {
                 deploy: "mps3-an536-freertos".to_string(),
                 panic: None,
                 domain_id: *dom,
+                locator: None,
+                image_net: None,
             })
             .collect();
         let body = render(&d, &root.join("build/freertos"), &sp).expect("renders");
@@ -724,6 +745,58 @@ mod tests {
         };
         assert!(call("stated_entry").contains("DOMAIN_ID 54"), "{body}");
         assert!(!call("silent_entry").contains("DOMAIN_ID"), "{body}");
+    }
+
+    #[test]
+    fn an_images_locator_and_network_reach_its_generated_entry() {
+        // Phase-535 W3. The two images of a pair share a configure and differ
+        // in the router they dial and the address they hold, so both are
+        // emitted per call, and nothing for an image that states neither.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
+        let mut sp = spec(root);
+        sp.board = Some("mps2-an385-freertos".to_string());
+        sp.entries = [
+            (
+                "stated_entry",
+                Some("tcp/10.0.2.2:7900"),
+                Some("eth0,ethernet,qemu,10.0.2.10,24,10.0.2.2,02:00:00:00:00:0a,slirp"),
+            ),
+            ("silent_entry", None, None),
+        ]
+        .iter()
+        .map(|(name, loc, net)| CmakeEntry {
+            name: (*name).to_string(),
+            image: String::from("img"),
+            launch: "talker.launch.xml".to_string(),
+            args: vec![],
+            lang: Language::C,
+            deploy: "mps2-an385-freertos".to_string(),
+            panic: None,
+            domain_id: None,
+            locator: loc.map(str::to_string),
+            image_net: net.map(str::to_string),
+        })
+        .collect();
+        let body = render(&d, &root.join("build/freertos"), &sp).expect("renders");
+        let call = |name: &str| -> String {
+            let start = body
+                .find(&format!("nano_ros_add_executable({name}"))
+                .expect(name);
+            let rest = &body[start..];
+            rest[..rest.find("DEPLOY").unwrap()].to_string()
+        };
+        assert!(
+            call("stated_entry").contains("LOCATOR \"tcp/10.0.2.2:7900\""),
+            "{body}"
+        );
+        assert!(
+            call("stated_entry").contains("IMAGE_NET \"eth0,ethernet,qemu,10.0.2.10,"),
+            "{body}"
+        );
+        assert!(!call("silent_entry").contains("LOCATOR"), "{body}");
+        assert!(!call("silent_entry").contains("IMAGE_NET"), "{body}");
     }
 
     #[test]
@@ -750,6 +823,8 @@ mod tests {
                 deploy: "linux".to_string(),
                 panic: None,
                 domain_id: None,
+                locator: None,
+                image_net: None,
             })
             .collect();
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");

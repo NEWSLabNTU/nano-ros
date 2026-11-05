@@ -1,0 +1,41 @@
+# phase-535 (RFC-0122 D1) — the pubsub pair as images: one image per
+# (platform, role, rmw), ids `<platform>_<role>[_<rmw>]`. The test-side map
+# from a matrix cell to these ids is `nros_tests::fixtures::workspace_image`.
+# `locator` is the cell's `alloc::port_of` on QEMU's SLIRP host; the test
+# `pair_image_rows_dial_their_allocator_port` holds it there.
+
+[system]
+name = "rust_pubsub"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[[component]]
+pkg = "listener_pkg"
+class = "listener_pkg::Listener"
+name = "listener"
+
+[image_defaults]
+rmw = "zenoh"
+
+[image.freertos_talker]
+board = "mps2-an385-freertos"
+panic = "own"
+launch = "talker.launch.xml"
+locator = "tcp/10.0.2.2:7800"
+os_config = ["board-net-15.toml"]
+
+[image.freertos_listener]
+board = "mps2-an385-freertos"
+panic = "own"
+launch = "listener.launch.xml"
+locator = "tcp/10.0.2.2:7800"
+os_config = ["board-net-16.toml"]
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

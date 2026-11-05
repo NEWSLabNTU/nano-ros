@@ -87,6 +87,10 @@ rmw = "zenoh"
 # W9.a left in `workspaces/rust`.
 [image.freertos]
 board = "mps2-an385-freertos"
+# phase-535 W3 — stated here, not as the row's `-DNROS_ENTRY_LOCATOR`: the
+# pair images share this configure, so the locator is a per-image fact.
+# 7930 = `alloc::port_of(FreertosMps2, C, EntryPubsub)`.
+locator = "tcp/10.0.2.2:7930"
 
 [image.freertos_posix]
 board = "freertos-posix"
