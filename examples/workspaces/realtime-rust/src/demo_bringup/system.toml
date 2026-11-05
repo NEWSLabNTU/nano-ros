@@ -3,7 +3,7 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
-# Phase 273 W2 (RFC-0047): the group→tier binding is [[component]].group_tiers,
+# Phase 273 W2 (RFC-0047): the group→tier binding is [[component]].group_tasks,
 # the one source both the CLI resolver (collect_callback_groups) and the
 # nros::main!() proc-macro read. The package-manifest `callback_groups` form it
 # replaced is retired: a node Cargo.toml still carrying it is refused at parse.
@@ -11,13 +11,13 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).
@@ -34,20 +34,20 @@ group_tiers = { telem = "low" }
 # this same block into always had them — the two mirrors had drifted). The
 # model is now reproducible from launch + this file alone.
 #
-# SCOPING IS THE POINT. A dim on `[tiers.high]` applies to EVERY platform; the
-# same dim in `[tiers.high.<rtos>]` engages one kernel's mechanism and lowers to
+# SCOPING IS THE POINT. A dim on `[tasks.high]` applies to EVERY platform; the
+# same dim in `[tasks.high.<rtos>]` engages one kernel's mechanism and lowers to
 # None elsewhere. A generic `budget` flips every executor into cooperative
-# sporadic gating, while `[tiers.high.nuttx].budget` engages only NuttX's
+# sporadic gating, while `[tasks.high.nuttx].budget` engages only NuttX's
 # SCHED_SPORADIC.
-[tiers.high]
+[tasks.high]
 class = "real_time"
 spin_period = "1000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 core = 0
 # phase-276 W2 / issue #128 half 2 — RAW Zephyr priority (preemptive; lower
 # number = higher priority). Consumed by the zephyr_entry projection.
-[tiers.high.zephyr]
+[tasks.high.zephyr]
 # RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
 # than the transport band. Zephyr's band is not a literal: the zenoh read/lease
 # tasks are pthreads whose Kconfig band maps through Zephyr's POSIX layer to a
@@ -69,10 +69,10 @@ core = 0
 # lowers to None (Fifo, unchanged) on posix/nuttx/threadx.
 deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
-# priority). `[tiers.*.nuttx]` flips the macro's generic OwnedSpin arm onto
+# priority). `[tasks.*.nuttx]` flips the macro's generic OwnedSpin arm onto
 # `<QemuArmVirt>::run_tiers` (RFC-0015 Model 1), one std::thread (NuttX pthread)
 # per tier over one shared session.
-[tiers.high.nuttx]
+[tasks.high.nuttx]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
@@ -85,7 +85,7 @@ period = "10000us"
 # phase-297 W5 — RAW ThreadX priority (lower number = higher priority), near
 # the app thread priority (4). Mirrors config/system_model.yaml (the entries
 # read the model; this file feeds `play_launch resolve --system`).
-[tiers.high.threadx]
+[tasks.high.threadx]
 # RFC-0079 — allocated from the port's `pool.app` [15, 31], strictly LESS
 # urgent than the reserved transport band (Z_TASK_PRIORITY 14). ThreadX counts
 # 0 as the HIGHEST priority, so "below the transport" is NUMERICALLY LARGER
@@ -97,24 +97,24 @@ priority = 15
 # by raw number and the boot tier is the least urgent one, so `high` (ctrl,
 # 10 ms) is chain-spawned. Mirrors the `realtime-cpp` bringup's freertos
 # numbers so the two language arms are comparable.
-[tiers.high.freertos]
+[tasks.high.freertos]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 3
 
-[tiers.low]
+[tasks.low]
 spin_period = "10000us"
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
-[tiers.low.zephyr]
+[tasks.low.zephyr]
 priority = 10
 # issue 0655 — no `core` here on purpose: `low` is the BOOT tier on zephyr and
 # Zephyr cannot pin an already-started thread. The declaration moved to
-# `[tiers.high.zephyr]`, which is spawned. (The nuttx/threadx `core` below stay
+# `[tasks.high.zephyr]`, which is spawned. (The nuttx/threadx `core` below stay
 # — those boards apply placement through their own mechanisms.)
-[tiers.low.nuttx]
+[tasks.low.nuttx]
 # RFC-0079 — 99, not 100. 100 is the priority zenoh-pico's read and lease
 # threads INHERIT from the thread that opens the session (app_main's
 # SCHED_PRIORITY_DEFAULT), so a tier at 100 shares a priority with the link it
@@ -128,13 +128,13 @@ priority = 10
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 98
 core = 0
-[tiers.low.freertos]
+[tasks.low.freertos]
 priority = 2
 # No `core` here: mps2-an385 is uniprocessor, so a declared pin can only
 # produce the loud fallback (RFC-0052). `realtime-cpp` declares one on its
 # `low` tier precisely to exercise that fallback; this arm asserts tier
 # PRIORITY, so it does not need a second copy of that experiment.
-[tiers.low.threadx]
+[tasks.low.threadx]
 # RFC-0079 — allocated from the port's `pool.app` [15, 31], strictly LESS
 # urgent than the reserved transport band (Z_TASK_PRIORITY 14). ThreadX counts
 # 0 as the HIGHEST priority, so "below the transport" is NUMERICALLY LARGER
@@ -170,7 +170,7 @@ panic = "own"
 locator = "tcp/10.0.2.2:7891"
 
 # issue 1109 — `linux`, the REACH word, not `native`, the ROLE word: this image
-# authors `[tiers.high.posix] core = 0`, a pin the host board applies with
+# authors `[tasks.high.posix] core = 0`, a pin the host board applies with
 # `sched_setaffinity` — Linux's call, which no POSIX standard has. So the image
 # itself needs Linux, and says so here. Both words select the same board.
 # Gate: `check-host-platform-vocabulary`.
@@ -201,11 +201,11 @@ locator = "tcp/127.0.0.1:9091"
 # This is the image whose BOARD CRATE FEATURES are derived rather than declared.
 # The deleted entry carried
 # `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }` by hand — the only
-# one in the tree that did — and both are now read off the `[tiers.*]` block
+# one in the tree that did — and both are now read off the `[tasks.*]` block
 # above: `tiers` because the resolved table is not the degenerate single
 # `default` tier (the same predicate `nros::main!` uses to emit
-# `ZephyrBoard::run_tiers`), `zephyr-edf` because `[tiers.high]` is
-# `class = "real_time"` and `[tiers.high.zephyr]` carries a `deadline`. There is
+# `ZephyrBoard::run_tiers`), `zephyr-edf` because `[tasks.high]` is
+# `class = "real_time"` and `[tasks.high.zephyr]` carries a `deadline`. There is
 # no `board_features` key to author, deliberately — see
 # `builder::entry::schedule_board_features`.
 [image.zephyr]

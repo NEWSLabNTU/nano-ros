@@ -63,7 +63,7 @@ def declares_components(path):
     # issue 1615 (W6): the CLI's own predicate is "a `system.toml` is PRESENT"
     # (`codegen_system.rs`, R-code.1: "a bringup that DECLARES system semantics
     # (system.toml present) must resolve them into a SystemModel"), so every
-    # table — `[lifecycle]`, `[param_services]`, `[tiers.*]` — demands a model,
+    # table — `[lifecycle]`, `[param_services]`, `[tasks.*]` — demands a model,
     # not only `[[component]]`. Keyed on what the refusal keys on.
     return os.path.isfile(path)
 

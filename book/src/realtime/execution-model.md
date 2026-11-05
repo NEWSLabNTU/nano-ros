@@ -52,7 +52,7 @@ kernel preempts a less urgent level mid-callback when the urgent one wakes.
   (`CONFIG_NROS_EXECUTOR_MAX_LEVELS`, default 8).
 - **Priorities are allocated, not authored.** A derived level takes a
   priority from the board's application band, below the transport tasks.
-  An authored `[tiers.<name>]` bound with `group_tiers` is a pin:
+  An authored `[tasks.<name>]` bound with `group_tasks` is a pin:
   its members share one level at its stated priority.
 - **The boot level** is the least urgent one; it runs on `main()` and owns the
   session. The others are spawned.

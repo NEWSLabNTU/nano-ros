@@ -7,23 +7,23 @@ domain_id = 0
 # The ctrl node publishes /ctrl every 10 ms (high tier);
 # the telem node publishes /telem every 100 ms (low tier).
 # Phase 273 W2 (RFC-0047): group→tier binding moved from [[node_overrides]] to
-# [[component]].group_tiers (deployment config, not package manifest).
-# CALLBACK_GROUPS in cmake declares the group IDs; group_tiers here assigns
+# [[component]].group_tasks (deployment config, not package manifest).
+# CALLBACK_GROUPS in cmake declares the group IDs; group_tasks here assigns
 # them to the named tiers. nros dev codegen emits nros_cpp_create_sched_context +
 # nros_cpp_bind_group_sched to bind each group to its priority tier.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Ctrl"
 name = "ctrl_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
-[tiers.high]
+[tasks.high]
 # phase-330 / issue 0380 — authored HERE, not in the generated model. Commit
 # 15a72db8e restored `class` and the Zephyr `deadline` into
 # config/system_model.yaml after a re-resolve stripped them, but the model is
@@ -32,12 +32,12 @@ group_tiers = { telem = "low" }
 # expressible).
 class = "real_time"
 spin_period = "10000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 # phase-281 W3c — RAW Zephyr priority (preemptive; lower number = higher priority).
-# Consumed by the zephyr_entry projection: [tiers.*.zephyr] flips the C codegen onto
+# Consumed by the zephyr_entry projection: [tasks.*.zephyr] flips the C codegen onto
 # ZephyrBoard::run_tiers (RFC-0015 Model 1), one k_thread per tier.
-[tiers.high.zephyr]
+[tasks.high.zephyr]
 # RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
 # than the transport band. Zephyr's band is not a literal: the zenoh read/lease
 # tasks are pthreads whose Kconfig band maps through Zephyr's POSIX layer to a
@@ -72,34 +72,34 @@ core = 1
 # on posix/nuttx, so the other bakes are byte-identical.
 deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
-# priority; verbatim into pthread_attr_setschedparam). `[tiers.*.nuttx]` flips the
+# priority; verbatim into pthread_attr_setschedparam). `[tasks.*.nuttx]` flips the
 # C codegen onto NuttxBoard::run_tiers (RFC-0015 Model 1), one pthread per tier.
 # phase-331 W6 / issue 0395 — RAW FreeRTOS priority, restored with the C arm's
 # freertos bake (same consolidation dropped it here).
-[tiers.high.freertos]
+[tasks.high.freertos]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 3
 
-[tiers.high.nuttx]
+[tasks.high.nuttx]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
 # reserved transport band. A tier that outranks the link cannot be drained
 # or refilled by it (issue 0623, measured again in 0736); a tier that needs
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 99
 
-[tiers.low]
+[tasks.low]
 spin_period = "100000us"
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
-[tiers.low.freertos]
+[tasks.low.freertos]
 priority = 2
 
-[tiers.low.zephyr]
+[tasks.low.zephyr]
 priority = 10
-[tiers.low.nuttx]
+[tasks.low.nuttx]
 # RFC-0079 — 99, not 100. 100 is the priority zenoh-pico's read and lease
 # threads INHERIT from the thread that opens the session (app_main's
 # SCHED_PRIORITY_DEFAULT), so a tier at 100 shares a priority with the link it

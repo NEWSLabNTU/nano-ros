@@ -44,7 +44,7 @@ use nros_tests::{
 };
 use std::{path::Path, process::Command, time::Duration};
 
-/// `levels-cpp`'s `capped` tier (`[tiers.capped.posix]`): the reservation the
+/// `levels-cpp`'s `capped` tier (`[tasks.capped.posix]`): the reservation the
 /// budget image's `load_capped` level runs under.
 const CAPPED_BUDGET_US: u64 = 2_000;
 const CAPPED_PERIOD_US: u64 = 10_000;

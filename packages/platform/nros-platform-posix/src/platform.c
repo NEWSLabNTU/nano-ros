@@ -1140,7 +1140,7 @@ static pthread_mutex_t s_log_mutex = PTHREAD_MUTEX_INITIALIZER;
  * a refusal that is reported rather than absorbed. It exists because the Linux
  * board spawns its tiers with `std::thread::scope`, which never reaches this
  * file's `task_init` — so the attribute path that gives NuttX its priorities
- * cannot reach a native tier, and eleven `[tiers.*.posix] priority` pins in the
+ * cannot reach a native tier, and eleven `[tasks.*.posix] priority` pins in the
  * tree were inert with nothing saying so.
  *
  * `priority` is the RAW SCHED_FIFO value, the vocabulary issue 0623 settled on

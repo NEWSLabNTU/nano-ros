@@ -1023,7 +1023,7 @@ mod tests {
                 .expect_err("a retired binding must not parse silently");
             assert!(err.contains("RETIRED"), "{err}");
             assert!(
-                err.contains("group_tiers = { ctrl = \"high\" }"),
+                err.contains("group_tasks = { ctrl = \"high\" }"),
                 "the refusal must spell the replacement: {err}"
             );
         }

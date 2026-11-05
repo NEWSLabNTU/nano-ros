@@ -934,7 +934,7 @@ tier-priority-plan-image config="":
 # runs only where Zephyr images are built (the tier-2 nightly and the platform
 # sweep), so its rules had no per-push verdict. This one needs no image: the
 # band arithmetic against the real zephyr/Kconfig, and the ATTRIBUTION — every
-# bringup that authors a `[tiers.*.zephyr]` pin is built by a Zephyr row in
+# bringup that authors a `[tasks.*.zephyr]` pin is built by a Zephyr row in
 # examples/fixtures.toml, so no pin can drift into "judged against nothing".
 [private]
 tier-priority-plan-image-selftest:

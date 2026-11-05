@@ -1081,7 +1081,7 @@ fn typed_emit_tier_seeds_name_their_node() {
 #[test]
 fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
     // Phase 282 follow-up (RFC-0047) — ONE node with callback groups on TWO
-    // tiers (`group_tiers = { ctrl = "high", telem = "low" }`) cannot use
+    // tiers (`group_tasks = { ctrl = "high", telem = "low" }`) cannot use
     // run_tiers: per-tier setup fns construct whole nodes, so the node
     // landed on the last tier and both timers ran at that cadence
     // (regression caught by realtime_subnode_cpp_e2e: ctrl=6 telem=5).

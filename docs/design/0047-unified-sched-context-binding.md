@@ -11,6 +11,8 @@ superseded-by: null
 
 # RFC-0047 — Unified sched-context binding via callback groups
 
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` still read this release with a `deprecated-spelling` warning, and rlm R+1 refuses them. The prose and nano-ros's own names move in W2.
+
 ## Summary
 
 Scheduling in nano-ros binds a callback to a **sched-context** (a tier: priority + spin period). This
@@ -42,7 +44,7 @@ fast control loop and slow telemetry on different tiers. The per-node table can'
 *up* to per-callback-group, not down to per-node.
 
 **2. Non-portable coupling.** The group→tier binding lives in the **package manifest**
-(`callback_groups = [{ id = "ctrl", tier = "high" }]`), but tier names (`[tiers.high]`) are defined in
+(`callback_groups = [{ id = "ctrl", tier = "high" }]`), but tier names (`[tasks.high]`) are defined in
 the **workspace** `system.toml`. A reusable package (RFC-0026: packages are copy-out portable) thus
 hardcodes a name that only exists in one workspace — move it elsewhere and the binding dangles. This
 inverts ROS 2's own split.
@@ -85,16 +87,16 @@ references a code-declared topic:
 [[component]]
 pkg = "ctrl_pkg"
 name = "control_node"
-group_tiers = { ctrl = "high", telem = "low" }   # a group with no entry → the default tier
+group_tasks = { ctrl = "high", telem = "low" }   # a group with no entry → the default tier
 
-[tiers.high]  spin_period = "1000us"   [tiers.high.posix]  priority = 80
-[tiers.low]   spin_period = "10000us"  [tiers.low.posix]   priority = 10
+[tasks.high]  spin_period = "1000us"   [tasks.high.posix]  priority = 80
+[tasks.low]   spin_period = "10000us"  [tasks.low.posix]   priority = 10
 ```
 
-A group named in code but absent from `group_tiers` runs on the default tier — harmless, exactly like
+A group named in code but absent from `group_tasks` runs on the default tier — harmless, exactly like
 a topic with no QoS override. The manifest form this replaced (`callback_groups = [{ id, tier }]` in a
 node's `[package.metadata.nros.node]`) was honoured for one release with a `[WARN]`; it is now refused
-at parse, naming the package and the `group_tiers` line to write, because nothing reads it and a
+at parse, naming the package and the `group_tasks` line to write, because nothing reads it and a
 binding accepted-then-dropped would silently run every group on the default tier. A typo'd name in `system.toml` simply never matches — same failure mode
 (and same discipline) as topic-name overrides.
 
@@ -103,16 +105,16 @@ rule that a priority is allocated rather than authored). The example above write
 hand; the form that does not is a tier with **no platform sub-table at all**:
 
 ```toml
-group_tiers = { main = "ctrl" }      # the binding still needs a NAME to reference
+group_tasks = { main = "ctrl" }      # the binding still needs a NAME to reference
 
-[tiers.ctrl]  class = "real_time"    # no [tiers.ctrl.posix], no [tiers.ctrl.zephyr]:
+[tasks.ctrl]  class = "real_time"    # no [tasks.ctrl.posix], no [tasks.ctrl.zephyr]:
                                      # the priority is ALLOCATED from the contract's rates,
                                      # inside the board's application pool
 ```
 
 Precedence is per FACT — one tier's placement for one target RTOS — and has exactly one
 implementation, `nros_orchestration_ir::derive::placement_is_unauthored`, which states its four
-rules. What matters at this layer: an authored `[tiers.<n>.<rtos>]` always wins and is never
+rules. What matters at this layer: an authored `[tasks.<n>.<rtos>]` always wins and is never
 overwritten, but it is REPORTED when it displaces an allocation, so a hand-written number cannot
 quietly outrank the rate its own contract declares; a tier with sub-tables for other boards and not
 this one stays a refusal, because that is a mistake rather than a request; and a tier bound by
@@ -121,7 +123,7 @@ because one tier is one thread. Whether the allocation should instead SPLIT such
 phase-459 W3's open question.
 
 ### The executor: a `group → sched_context` table, bound at registration
-- The entry (deployment) resolves `system.toml`'s `group_tiers` + `[tiers.*]` to a
+- The entry (deployment) resolves `system.toml`'s `group_tasks` + `[tasks.*]` to a
   `group_name → sched_context` mapping and **seeds it on the executor** before entities register —
   the per-group analog of the phase-272 node-name seed, same seed-by-name pattern as params/identity.
 - Each entity registers **carrying its group name**; the executor sets that callback's
@@ -154,7 +156,7 @@ Unchanged from phase-272: this RFC governs **binding** (which sched-context a ca
 > (a) the single-`Executor`/no-tier fallback and (b) an optional **intra-tier** fine-scheduling knob
 > (sporadic-server / per-callback priority *within* one tier task, RFC-0017). The **group API + config
 > from this RFC (phase-273) are the durable surface** Model 1's gating consumes — code-declared groups
-> + `system.toml group_tiers`. Net: the *binding* half of tiering is superseded by gating under Model
+> + `system.toml group_tasks`. Net: the *binding* half of tiering is superseded by gating under Model
 > 1; the group *declaration + config* half is the permanent user model.
 
 ## Alternatives considered
@@ -177,8 +179,8 @@ Unchanged from phase-272: this RFC governs **binding** (which sched-context a ca
 1. **Concurrency type (follow-up).** rclcpp groups carry MutuallyExclusive/Reentrant. This RFC ships
    name + tier binding only; the concurrency type + its executor semantics (serialize-within-group)
    are a separate follow-up RFC/phase. The group object reserves room for it.
-2. **`group_tiers` key shape.** By `(component, group)` under `[[component]]` (above) vs a flat
-   `[group_tiers]` table keyed by `component.group`. Proposed: under `[[component]]` (co-located with
+2. **`group_tasks` key shape.** By `(component, group)` under `[[component]]` (above) vs a flat
+   `[group_tasks]` table keyed by `component.group`. Proposed: under `[[component]]` (co-located with
    the node's other deployment config); settle in phase-273.
 3. **Default tier.** Unmapped group → the executor default sched-context (SC 0 / the node default).
    Proposed: yes.

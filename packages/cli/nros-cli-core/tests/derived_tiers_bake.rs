@@ -4,8 +4,8 @@
 //! The fixture is `examples/workspaces/derived-tiers-cpp` (phase-459 W0): four
 //! `SHAPE rclcpp` C++ components in the shape of the Autoware Safety Island,
 //! one wall timer each, two at 30 Hz and two at 10 Hz, `CALLBACK_GROUPS main`
-//! on every registration, and a `system.toml` that authors no `group_tiers`
-//! and no `[tiers.*]`.
+//! on every registration, and a `system.toml` that authors no `group_tasks`
+//! and no `[tasks.*]`.
 //!
 //! What issue 1426 measured on exactly that shape: the derivation is complete
 //! code with tests, and no authored input reaches it. `codegen-system`
@@ -85,7 +85,7 @@ fn priorities(derived: &DerivedSchedule) -> BTreeMap<String, i64> {
         let spec = tier
             .zephyr
             .as_ref()
-            .unwrap_or_else(|| panic!("tier `{tier_name}` has no [tiers.*.zephyr] sub-table"));
+            .unwrap_or_else(|| panic!("tier `{tier_name}` has no [tasks.*.zephyr] sub-table"));
         out.insert(ov.name.clone(), spec.priority);
     }
     out
@@ -144,7 +144,7 @@ fn the_cmake_keyword_makes_the_fixture_derive_a_schedule() {
     let ranks: std::collections::BTreeSet<i64> = prio.values().copied().collect();
     assert_eq!(ranks.len(), 2, "two ranks over four nodes: {prio:?}");
 
-    // Every derived tier is a real `[tiers.*]` row the rest of the pipeline can
+    // Every derived tier is a real `[tasks.*]` row the rest of the pipeline can
     // consume, carrying the Zephyr sub-table the target selects. phase-509 P5
     // (RFC-0108 D4 rule 1): one LEVEL per distinct rank, not a tier per node,
     // so the four nodes at two ranks are two levels of two nodes each.
@@ -233,7 +233,7 @@ const ISLAND_TRANSPORT_BANDS: [i64; 1] = [200];
 /// `an_empty_application_pool_derives_no_tier_rather_than_a_reserved_one`) prove
 /// the realizer's rule. This proves the rule survives the whole road the
 /// operator drives - launch file -> resolved model -> callback groups ->
-/// `derive_tiers_from_contracts` -> `[tiers.*.zephyr] priority` - which is where
+/// `derive_tiers_from_contracts` -> `[tasks.*.zephyr] priority` - which is where
 /// issue 1427 was measured, and where a green unit test would not have caught
 /// a bake that passed a different plan.
 #[test]

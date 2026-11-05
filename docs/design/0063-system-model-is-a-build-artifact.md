@@ -136,7 +136,7 @@ read the marker.
 - **Config surface for the dims.** Exact schema for per-platform scoped tiers
   in the system config, and whether it lives in `system.toml`'s
   `nros_orchestration_ir` schema or beside it.
-  *Answered (phase-330 W1):* in `system.toml`'s `[tiers.<name>.<rtos>]`
+  *Answered (phase-330 W1):* in `system.toml`'s `[tasks.<name>.<rtos>]`
   tables, the `nros_orchestration_ir` schema. The resolver already parsed them
   into rlm's `TierPlatformSpec`, so the gap was nano-ros's narrower mirror and
   needed no fork change.

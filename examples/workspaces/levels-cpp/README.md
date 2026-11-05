@@ -1,7 +1,7 @@
 # ws-levels-cpp - three preemption levels on Zephyr (phase-509 P9)
 
 The fixture for RFC-0108's level runner. Three C++ components, one wall timer
-each, and nothing else: no `[tiers.*]`, no `group_tiers`. The contract beside
+each, and nothing else: no `[tasks.*]`, no `group_tasks`. The contract beside
 the launch file states each timer's rate, and the derivation gives one
 preemption level per distinct rank.
 
@@ -23,8 +23,8 @@ pair. It also checks each spawned level's stack is the derived one.
 
 Three more Linux images share this bringup, each with its own launch file.
 The three-node `linux` and `zephyr` images above launch none of their nodes,
-and those nodes are the only reason the bringup has `[tiers.*]` and
-`group_tiers` at all.
+and those nodes are the only reason the bringup has `[tasks.*]` and
+`group_tasks` at all.
 
 | Image | Launch | What it runs |
 | --- | --- | --- |

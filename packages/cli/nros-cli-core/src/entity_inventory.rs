@@ -1400,7 +1400,7 @@ pub fn check_rx_arrival(
     let slack = match tightest {
         None => SlackVerdict::NotChecked(
             "no tier in this image's model states a `deadline` or a `period`, so no tier slack \
-             is computable; declare the tiers' timing in `[tiers.*]` to have it checked"
+             is computable; declare the tiers' timing in `[tasks.*]` to have it checked"
                 .to_string(),
         ),
         Some(t) if occupancy_us > t.slack_us => {
@@ -1458,7 +1458,7 @@ impl ImageFrame {
             // Issue 1198 -- the SCHEDULING declaration. Not an entity fact: the
             // service families are what the runtime creates FOR the image,
             // while this is what the integrator authored about how it runs
-            // (RFC-0016 tiers, `[tiers.*]` in `system.toml`).
+            // (RFC-0016 tiers, `[tasks.*]` in `system.toml`).
             tiers: model.execution.tiers.len(),
             // phase-496 W1 -- the contract-monitor tables, counted by the
             // functions the entry emitters bake them with. An inconsistent
@@ -2041,7 +2041,7 @@ pub struct DerivedEntityKnobs {
     /// authored tier count alone, because a bringup that authors NO tiers does
     /// not thereby have one: `derive_tiers_from_contracts` synthesises a
     /// `derived-<node>` tier per schedulable node, so a model with an empty
-    /// `[tiers.*]` can still resolve to one tier per node. Taking the larger
+    /// `[tasks.*]` can still resolve to one tier per node. Taking the larger
     /// of the two covers both shapes and over-counts for the Rust one, which
     /// is the safe direction.
     ///
@@ -3448,7 +3448,7 @@ impl EntityInventory {
     ///
     /// Issue 1729 -- "every tier" is [`Self::executor_bound`], NOT the
     /// AUTHORED tier count. This read `self.tiers.max(1)`, and a bringup that
-    /// authors no `[tiers.*]` still runs one executor per `derived-<node>`
+    /// authors no `[tasks.*]` still runs one executor per `derived-<node>`
     /// tier (`derive_tiers_from_contracts`): `realtime-rust`'s `derived_bringup`
     /// derived ONE reporter for its two derived tiers, so the boot tier's
     /// reporter and `/telem` plus the second tier's reporter filled the three
@@ -7068,7 +7068,7 @@ mod tests {
     }
 
     /// Issue 1729 -- `realtime-rust`'s `derived_bringup`, measured: two nodes,
-    /// each with one `min_rate_hz` publisher, and NO authored `[tiers.*]`.
+    /// each with one `min_rate_hz` publisher, and NO authored `[tasks.*]`.
     /// `nros::main!` derives a `derived-<node>` tier per node and installs a
     /// monitor table -- and arms a `/diagnostics` reporter -- on EACH tier's
     /// executor, so the image creates four publishers. The authored-tier count

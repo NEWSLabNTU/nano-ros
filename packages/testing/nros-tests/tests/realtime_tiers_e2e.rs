@@ -4,7 +4,7 @@
 //! parametrized test over the `Workload::RealtimeTiers` cells of the test
 //! matrix (`nros_tests::matrix`): every cell deploys a `ws-realtime-*`
 //! workspace whose `system.toml` maps two callback groups onto two priority
-//! tiers (`[tiers.high]` 10 ms `/ctrl` timer, `[tiers.low]` 100 ms `/telem`
+//! tiers (`[tasks.high]` 10 ms `/ctrl` timer, `[tasks.low]` 100 ms `/telem`
 //! timer — RFC-0015 Model 1, `run_tiers`), then proves BOTH tiers are
 //! scheduled at their declared cadences.
 //!
@@ -296,7 +296,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 boot: Boot::ZephyrNativeSim,
                 proof: Proof::ConsoleTicks(DERIVED_TIERS_CPP_NODES),
                 note: "issue 1575: derived-tiers-cpp — four tiers DERIVED from the contract \
-                       (no authored [tiers.*]); the image issue 1551 ran the heap dry on",
+                       (no authored [tasks.*]); the image issue 1551 ran the heap dry on",
             },
             Exec {
                 label: "cpp-levels",

@@ -170,7 +170,7 @@ def check_one(dotconfig, tier_key, plans, bringups):
             errs.append(
                 f"{where} is MORE URGENT than the transport band [{lo}, {hi}] and does "
                 f"not say so.\n        Move it into pool.app [{plo}, {phi}], or state "
-                f'the choice with `above = "transport"` on [tiers.{tier}].')
+                f'the choice with `above = "transport"` on [tasks.{tier}].')
         else:
             ok += 1
     src = f" from {bringup}" if bringup else " (builds no bringup)"
@@ -482,7 +482,7 @@ def main(argv):
                     f"{where} is MORE URGENT than the transport band [{lo}, {hi}] "
                     f"and does not say so.\n"
                     f"      Move it into pool.app [{plo}, {phi}], or state the "
-                    f'choice with `above = "transport"` on [tiers.{tier}].')
+                    f'choice with `above = "transport"` on [tasks.{tier}].')
         else:
             ok += 1
 
@@ -715,7 +715,7 @@ def selftest():
     pinned = sorted({p[0] for p in scan_pins() if p[2] == "zephyr"})
     for b in pinned:
         if b not in attributed:
-            fails.append(f"{b} authors [tiers.*.zephyr] pins but no Zephyr row in "
+            fails.append(f"{b} authors [tasks.*.zephyr] pins but no Zephyr row in "
                          f"examples/fixtures.toml builds that bringup — they can "
                          f"never be judged against an image")
     derived = bringups.get("build-ws-rs-realtime-derived-entry-zenoh", UNATTRIBUTED)

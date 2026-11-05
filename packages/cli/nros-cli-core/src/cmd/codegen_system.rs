@@ -88,7 +88,7 @@ pub struct Args {
     // anyway, with `--target zephyr-<rmw>` synthesised from Kconfig, and that
     // names no block in any bringup: everything `--target` selects fell back
     // to the system-wide default, and for the tier resolver that default is
-    // the HOST, so a Zephyr image baked here read `[tiers.*.posix]`.
+    // the HOST, so a Zephyr image baked here read `[tasks.*.posix]`.
     //
     // Same flag name and same resolver as `nros image-facts --for-entry` (and
     // as the `nros ws board-facts` the Zephyr lane already calls):
@@ -141,7 +141,7 @@ pub struct Args {
 
     /// Consume a SystemModel (play_launch `resolve` output).
     ///
-    /// The model's execution layer replaces the bringup's `[tiers.*]` +
+    /// The model's execution layer replaces the bringup's `[tasks.*]` +
     /// `[[node_overrides]]` (same resolver, same plan output as the
     /// equivalent `system.toml`).
     // RFC-0052 / phase-296 W1. Structure/contract layers: later waves.
@@ -158,7 +158,7 @@ pub struct Args {
 
     /// The image's Zephyr `.config`. Refused for a non-Zephyr target.
     ///
-    /// A derived tier table (no authored `[tiers.*]`) is allocated out of the
+    /// A derived tier table (no authored `[tasks.*]`) is allocated out of the
     /// priority pool this image's Kconfig resolves rather than the
     /// Kconfig-defaults projection, so `nros-plan.json` records the numbers
     /// the image's entry runs. The Zephyr module passes `${DOTCONFIG}`.
@@ -266,7 +266,7 @@ fn resolve_target_block(
 /// Before this, `tier_resolver::target_board_id` found nothing for such an id
 /// and `derive_target_platform` answered the host's `posix`, so the only trace
 /// of the mistake was a Zephyr image whose `run_tiers` table carried
-/// `[tiers.*.posix]` priorities (issue 1312 measured it; issue 1396 gated the
+/// `[tasks.*.posix]` priorities (issue 1312 measured it; issue 1396 gated the
 /// build shims and could not gate a hand-run). The build shims are unaffected:
 /// the Zephyr, ESP-IDF and PlatformIO ones ask `--for-entry`, and the NuttX
 /// one pins a real block key.
@@ -423,7 +423,7 @@ pub fn run(args: Args) -> Result<()> {
     let component_kinds = classify_components(&cfg, &bringup.system.components);
 
     // Phase 228.B (RFC-0015) — resolve the per-tier table. Node packages declare
-    // their callback groups in metadata; the system's `[tiers.*]` +
+    // their callback groups in metadata; the system's `[tasks.*]` +
     // `[[node_overrides]]` map them to RTOS tasks. No tiers/groups declared →
     // the single `default` tier (today's single-task output, unchanged).
     let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
@@ -683,7 +683,7 @@ pub fn run(args: Args) -> Result<()> {
         //
         // issue 1426 — this asked `model.execution.tiers.is_empty()`, which is
         // a question about the TABLE where the rule is about a FACT: one
-        // component binding to one authored `[tiers.ctrl.zephyr]` disabled the
+        // component binding to one authored `[tasks.ctrl.zephyr]` disabled the
         // derivation for every OTHER node in the image, leaving each on the
         // synthesised default tier with its rate contract unread. Authored
         // still wins, per fact, and says so — the precedence is stated once, on
@@ -729,7 +729,7 @@ pub fn run(args: Args) -> Result<()> {
                     // The RFC-0052 realizer.
                     "codegen-system: derived {derived} scheduling tier(s) from model \
                      contracts (every one of them a placement no \
-                     `[tiers.*.{target_rtos}]` authored)"
+                     `[tasks.*.{target_rtos}]` authored)"
                 );
             }
         }
@@ -1972,8 +1972,8 @@ structure:
     }
 
     /// Phase 228.B — two pinned nodes (control_node → high, telem_node → low)
-    /// the system maps to `[tiers.*]` (v1 node-pinned-to-tier). The binding is
-    /// `[[component]] group_tiers` (RFC-0047), never the node manifest.
+    /// the system maps to `[tasks.*]` (v1 node-pinned-to-tier). The binding is
+    /// `[[component]] group_tasks` (RFC-0047), never the node manifest.
     fn write_tiered_workspace(dir: &Path) {
         fs::write(
             dir.join("Cargo.toml"),
@@ -2040,20 +2040,20 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
-[tiers.high]
+[tasks.high]
 spin_period = "1000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 stack_bytes = 8192
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
 
 [image.linux]
@@ -2063,7 +2063,7 @@ launch = "system.launch.xml"
         )
         .unwrap();
         // R-code.1 — tiers now ride the committed model (discovery consumes it),
-        // and so do the bindings: the resolver projects `group_tiers` into
+        // and so do the bindings: the resolver projects `group_tasks` into
         // `execution.bindings` (`<node FQN>/<group>: <tier>`).
         fs::create_dir_all(dir.join("demo_bringup/config")).unwrap();
         fs::write(
@@ -2137,7 +2137,7 @@ execution:
 
     /// RFC-0047 — a node manifest still carrying the retired `callback_groups`
     /// tier binding stops `codegen-system` with an error that names the package
-    /// and spells the `group_tiers` line to write. Its one reader (a `[WARN]`ing
+    /// and spells the `group_tasks` line to write. Its one reader (a `[WARN]`ing
     /// fallback rung in `collect_callback_groups`) is gone, so accepting the key
     /// would drop the binding and run every group on the default tier.
     #[test]
@@ -2170,7 +2170,7 @@ execution:
         assert!(msg.contains("ctrl_pkg"), "must name the package: {msg}");
         assert!(msg.contains("RETIRED"), "{msg}");
         assert!(
-            msg.contains("group_tiers = { ctrl = \"high\" }"),
+            msg.contains("group_tasks = { ctrl = \"high\" }"),
             "must spell the replacement binding: {msg}"
         );
     }
@@ -2205,23 +2205,23 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
-[tiers.high]
+[tasks.high]
 spin_period = "1000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
-[tiers.high.zephyr]
+[tasks.high.zephyr]
 priority = 7
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
-[tiers.low.zephyr]
+[tasks.low.zephyr]
 priority = 9
 
 [image.zephyr_native_sim]
@@ -2270,7 +2270,7 @@ execution:
     }
 
     /// Issue 1312 — a Zephyr image baked through the Zephyr module's own
-    /// invocation reads `[tiers.*.zephyr]`, and the `--target zephyr-<rmw>` the
+    /// invocation reads `[tasks.*.zephyr]`, and the `--target zephyr-<rmw>` the
     /// module used to pass read the HOST's sub-table instead.
     ///
     /// Both halves run the same bake over the same workspace, so the only
@@ -2362,23 +2362,23 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
-[tiers.high]
+[tasks.high]
 spin_period = "1000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
-[tiers.high.zephyr]
+[tasks.high.zephyr]
 priority = 7
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
-[tiers.low.zephyr]
+[tasks.low.zephyr]
 priority = 9
 
 # A hosted image whose block is named for its ROLE. `linux` is the host
@@ -2529,7 +2529,7 @@ execution:
     /// `write_tiered_workspace`.
     fn write_derived_workspace(dir: &Path) {
         write_tiered_workspace(dir);
-        // Drop the authored `[tiers.*]` from system.toml — the model derives them.
+        // Drop the authored `[tasks.*]` from system.toml — the model derives them.
         fs::write(
             dir.join("demo_bringup/system.toml"),
             r#"
@@ -2558,7 +2558,7 @@ launch = "system.launch.xml"
         // keys on. A workspace that derives its schedule states its groups
         // without binding them - here through the cmake `CALLBACK_GROUPS`
         // keyword's `nros-metadata.json` (`metadata_callback_groups`), since
-        // `group_tiers` would bind them and the node manifest's
+        // `group_tasks` would bind them and the node manifest's
         // `callback_groups` is retired.
         fs::create_dir_all(dir.join("build")).unwrap();
         fs::write(

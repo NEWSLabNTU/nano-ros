@@ -63,7 +63,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
   are refused as board/lane/scope words with a hint naming `linux` — no alias
   maps them (phase-500 W5). The PLATFORM stays **`posix`** (`nros-platform-posix`
   — NuttX compiles the same sources) and its package config carries no Linux
-  facts; `[tiers.*.posix]` keeps its name (external rlm/play_launch vocabulary;
+  facts; `[tasks.*.posix]` keeps its name (external rlm/play_launch vocabulary;
   its `core` key is Linux-only). No macOS/BSD support is claimed. Gates:
   `check-host-platform-vocabulary`, `check-posix-platform-purity`.
 - **nano-ros** — project name (prose, docs)
@@ -991,7 +991,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **Tier and transport priorities land in ONE scheduler — they now share ONE vocabulary,
   RAW FreeRTOS (issue 0623, FIXED).** `FreertosScheduling`'s `zenoh_read_priority` /
   `poll_priority` are raw `0..configMAX_PRIORITIES-1`, the same
-  units `[tiers.*.freertos] priority` is written in. Shipped defaults: app **3**,
+  units `[tasks.*.freertos] priority` is written in. Shipped defaults: app **3**,
   transport band **4/4** — transport above the app, no collision. The normalised 0–31
   scale WAS the defect (a tier written as 5 against a transport reading "16" was above it,
   not below); `to_freertos_priority` survives as THE single conversion for anyone still
@@ -1005,15 +1005,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   predicate** — `nros_orchestration_ir::derive::placement_is_unauthored`, asked by
   `codegen-system`, `codegen entry` and `nros::main!` (issue 1426). Three sites spelled
   it themselves as `model.execution.tiers.is_empty()`, which asks about the whole
-  `[tiers.*]` table where the rule is about one tier's placement for one target: so one
-  component binding to one authored `[tiers.ctrl.zephyr]` disabled the derivation for
+  `[tasks.*]` table where the rule is about one tier's placement for one target: so one
+  component binding to one authored `[tasks.ctrl.zephyr]` disabled the derivation for
   every OTHER node, and three nodes with 30/10 Hz contracts sat on the synthesised
   default tier at Zephyr priority **0**, above the transport that feeds them (1427's
   inversion through the guard, not the allocator), silently. Rules: an authored
-  `[tiers.<n>.<rtos>]` wins and is REPORTED when it displaces a rank
+  `[tasks.<n>.<rtos>]` wins and is REPORTED when it displaces a rank
   (`DerivedSchedule::shadowed` → stderr + `nros-plan.json`); a tier with **no platform
   sub-table at all** is an ALLOCATION REQUEST (RFC-0079 — that is also how a
-  `group_tiers` binding gets a name to reference without a new `[tiers.*]` key, which
+  `group_tasks` binding gets a name to reference without a new `[tasks.*]` key, which
   rlm's `deny_unknown_fields` `TierDef` would refuse); sub-tables for OTHER boards and
   not this one stay a refusal; an unbound group gets `derived-<node>`. A named tier gets
   ONE priority (most urgent member) plus a `Degradation` when members disagree.

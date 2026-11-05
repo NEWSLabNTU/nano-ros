@@ -18,7 +18,7 @@
 //! until the derivation supplies them (later waves).
 
 use ros_launch_manifest_sched::{
-    MapperInput, RankedPlan, ResolvedTier, ResolvedTierTable, chain::EffectiveTrigger,
+    MapperInput, RankedPlan, ResolvedTask, ResolvedTaskTable, chain::EffectiveTrigger,
 };
 use std::collections::BTreeMap;
 
@@ -800,15 +800,15 @@ pub fn realize_rtos(
 }
 
 /// W5.4 — wire the realization into the existing bake: convert an [`RtosPlan`]
-/// into the [`ResolvedTierTable`] the `codegen-system` plan emitter + the
+/// into the [`ResolvedTaskTable`] the `codegen-system` plan emitter + the
 /// `run_tiers` const table already consume (one tier per realized node; the
 /// executor lowers `class`/`period_us`/`budget_us`/`deadline_us` into its
 /// `SchedContext` — Sporadic budget / EDF / TT — per W3a). `low_number_is_high`
 /// (from [`SchedCaps`]) is needed to order the table by URGENCY (the table is
 /// "most urgent first"; the realized priority is already board-direction-
 /// normalized, so the numeric sort flips with the platform).
-pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> ResolvedTierTable {
-    let mut tiers: Vec<ResolvedTier> = plan
+pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> ResolvedTaskTable {
+    let mut tiers: Vec<ResolvedTask> = plan
         .nodes
         .iter()
         .map(|n| {
@@ -819,7 +819,7 @@ pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> Res
             } else {
                 "best_effort"
             };
-            ResolvedTier {
+            ResolvedTask {
                 name: n.name.clone(),
                 priority: n.priority,
                 // rlm v0.1.5 added the typed POSIX placement. The RTOS realizer
@@ -852,7 +852,7 @@ pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> Res
         };
         urgency.then_with(|| a.name.cmp(&b.name))
     });
-    ResolvedTierTable { tiers }
+    ResolvedTaskTable { tasks: tiers }
 }
 
 #[cfg(test)]
@@ -1071,7 +1071,7 @@ mod tests {
 
     #[test]
     fn wires_into_tier_table() {
-        // W5.4: RtosPlan → ResolvedTierTable the existing bake consumes. Six-dim
+        // W5.4: RtosPlan → ResolvedTaskTable the existing bake consumes. Six-dim
         // fields ride through; ordering is most-urgent-first per direction.
         let input = input_two();
         let ranked = chain_aware_rank(&input);
@@ -1079,9 +1079,9 @@ mod tests {
         let plan = realize_rtos(&ranked, &input, &caps, &plan_for(&caps));
         let table = rtos_plan_to_tier_table(&plan, caps.low_number_is_high);
 
-        assert_eq!(table.tiers.len(), 2, "one tier per node");
+        assert_eq!(table.tasks.len(), 2, "one tier per node");
         // /hi is most urgent → first (zephyr low=high → smaller number first).
-        let hi = &table.tiers[0];
+        let hi = &table.tasks[0];
         assert_eq!(hi.name, "/hi");
         assert_eq!(hi.members, vec!["/hi".to_string()]);
         assert_eq!(hi.class.as_deref(), Some("real_time")); // has a deadline
@@ -1220,7 +1220,7 @@ mod tests {
         }
         // The tier table the rest of the pipeline consumes is empty too, so a
         // consumer that reads only `nodes` cannot pick the refused number up.
-        assert!(rtos_plan_to_tier_table(&realized, true).tiers.is_empty());
+        assert!(rtos_plan_to_tier_table(&realized, true).tasks.is_empty());
     }
 
     /// issue 1427, the class rather than the case: over every plan this tree

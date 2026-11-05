@@ -5853,7 +5853,7 @@ pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBu
 
 /// phase-276 W2 / issue #128 half 2 — the Zephyr (native_sim) RT-TIERS Rust
 /// workspace Entry (`realtime-rust`'s `[image.zephyr]`): `system.toml`
-/// declares two `[tiers.*]` with `[tiers.*.zephyr]` priorities, so the macro
+/// declares two `[tasks.*]` with `[tasks.*.zephyr]` priorities, so the macro
 /// emits `ZephyrBoard::run_tiers` — one k_thread per tier over ONE shared
 /// session; ctrl (10 ms, high) publishes `/ctrl`, telem (100 ms, low)
 /// publishes `/telem`. Built by the west lane into
@@ -5862,7 +5862,7 @@ pub fn build_zephyr_workspace_rust_multihost_robot1_entry() -> TestResult<PathBu
 ///
 /// phase-470 W5.b2 (issue 1288) — the leaf source is the WORKSPACE, for the
 /// reason the safety sibling above gives. This is also the image whose board
-/// features are DERIVED from the `[tiers.*]` block named here
+/// features are DERIVED from the `[tasks.*]` block named here
 /// (`builder::entry::schedule_board_features`), so that block is a build input
 /// and watching the whole workspace is what keeps it one.
 pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
@@ -5876,7 +5876,7 @@ pub fn build_zephyr_workspace_rust_realtime_entry() -> TestResult<PathBuf> {
 
 /// issue 1537 — the Zephyr (native_sim) DERIVED-tier Rust workspace Entry
 /// (`realtime-rust`'s `derived_bringup`, `[image.zephyr_derived]`): no authored
-/// `[tiers.*]`, a contract, and an image whose `env` NROS_ZENOH_READ_PRIORITY row moves the
+/// `[tasks.*]`, a contract, and an image whose `env` NROS_ZENOH_READ_PRIORITY row moves the
 /// zenoh read task's band, so `nros::main!` must allocate the derived tiers out
 /// of THIS image's `.config` to land below its transport. Built by the west lane
 /// into `<zephyr-build-root>/build-ws-rs-realtime-derived-entry-zenoh/zephyr/zephyr.exe`;
@@ -5897,7 +5897,7 @@ pub fn build_zephyr_workspace_rust_realtime_derived_entry() -> TestResult<PathBu
 /// phase-281 W3b — the Zephyr (native_sim) RT-TIERS C++ workspace Entry
 /// (`realtime-cpp/src/zephyr_entry`): the FIRST full west link + runtime proof of
 /// the W3a `ZephyrBoard::run_tiers` seam. `demo_bringup/system.toml` declares two
-/// `[tiers.*]` with `[tiers.*.zephyr]` priorities, so the C++ codegen emits a plain
+/// `[tasks.*]` with `[tasks.*.zephyr]` priorities, so the C++ codegen emits a plain
 /// `int main(void)` calling `ZephyrBoard::run_tiers` (`nros_board_zephyr_run_tiers`) —
 /// one k_thread per tier over ONE shared session; ctrl (10 ms, high) publishes `/ctrl`,
 /// telem (100 ms, low) publishes `/telem`. Built by the west lane into
@@ -5915,7 +5915,7 @@ pub fn build_zephyr_workspace_cpp_realtime_entry() -> TestResult<PathBuf> {
 
 /// issue 1575 — the Zephyr (native_sim) DERIVED-tier C++ workspace Entry
 /// (`derived-tiers-cpp/src/zephyr_entry`): four components with no authored
-/// `[tiers.*]`, so `codegen entry` derives one tier per node from the contract
+/// `[tasks.*]`, so `codegen entry` derives one tier per node from the contract
 /// in the synced SystemModel. The image issue 1551 exhausted the platform heap
 /// on. Built by the west lane into
 /// `<zephyr-build-root>/build-ws-cpp-derived-tiers-entry-zenoh/zephyr/zephyr.exe`;
@@ -5967,7 +5967,7 @@ pub fn build_zephyr_workspace_cpp_violation_entry() -> TestResult<PathBuf> {
 /// phase-281 W3c — the Zephyr (native_sim) RT-TIERS C workspace Entry
 /// (`realtime-c`'s `demo_bringup:zephyr`, generated since phase-477 W1): the FIRST full west link + runtime proof of the
 /// W3a `ZephyrBoard::run_tiers` seam for a C node (closes the c×zephyr cell).
-/// `demo_bringup/system.toml` declares two `[tiers.*]` with `[tiers.*.zephyr]` priorities,
+/// `demo_bringup/system.toml` declares two `[tasks.*]` with `[tasks.*.zephyr]` priorities,
 /// so the C codegen emits a plain `int main(void)` calling `ZephyrBoard::run_tiers`
 /// (`nros_board_zephyr_run_tiers`) — one k_thread per tier over ONE shared session; ctrl
 /// (10 ms, high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the

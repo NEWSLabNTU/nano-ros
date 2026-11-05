@@ -3,7 +3,7 @@
 //! When a resolved `SystemModel` declares NO `execution.tiers`, the schedule is
 //! DERIVED from the contract layer: `mapper_input_from_model` → `chain_aware_rank`
 //! → `realize_rtos` produce a per-node RTOS realization, which this module
-//! synthesizes into ordinary `[tiers.*]` (`derived-<node>`) + `[[node_overrides]]`
+//! synthesizes into ordinary `[tasks.*]` (`derived-<node>`) + `[[node_overrides]]`
 //! rows. Both consumers call this ONE core so the derivation never drifts:
 //! - the CLI's `codegen-system` (wraps it with `SystemToml` mutation), and
 //! - the `nros::main!` proc-macro (feeds the tiers straight into `resolve_tiers`).
@@ -39,7 +39,7 @@ pub struct DerivedSchedule {
     /// issue 1426 — placements ALLOCATED for tiers the author NAMED and left
     /// unplaced, keyed by the authored tier name.
     ///
-    /// The caller installs each on the `[tiers.<name>]` it already built from
+    /// The caller installs each on the `[tasks.<name>]` it already built from
     /// the model, so the head facts (`class`, `period_us`, `deadline_us`, …)
     /// stay AUTHORED and only the address is allocated. It is a separate field
     /// from [`Self::tiers`] for exactly that reason: a whole `TierDef` here
@@ -101,13 +101,13 @@ pub fn supervised_nodes(model: &SystemModel) -> std::collections::BTreeSet<Strin
 }
 
 /// RFC-0079 section 6: does this authored tier NAME the transport band
-/// (`[tiers.<name>] above = "transport"`)?
+/// (`[tasks.<name>] above = "transport"`)?
 ///
 /// Issue 1967. The key is rlm's `TierDef::above` (`ReservedBand`, a closed
 /// set whose one member is `transport`; rlm v0.1.67). rlm refuses a misspelt
 /// band at parse, so a tier that reaches this either named the transport or
 /// named nothing.
-fn names_the_transport(t: &ros_launch_manifest_sched::TierDef) -> bool {
+fn names_the_transport(t: &ros_launch_manifest_sched::TaskDef) -> bool {
     t.above == Some(ros_launch_manifest_sched::ReservedBand::Transport)
 }
 
@@ -265,7 +265,7 @@ pub struct ShadowedPlacement {
     pub node: String,
     /// The authored tier it is bound to.
     pub tier: String,
-    /// What `[tiers.<tier>.<rtos>] priority` says.
+    /// What `[tasks.<tier>.<rtos>] priority` says.
     pub authored: i64,
     /// What the contract's rank would have allocated for it.
     pub allocated: i64,
@@ -280,16 +280,16 @@ pub struct ShadowedPlacement {
 /// `nros::main!` macro — and that question is about the TABLE where the rule is
 /// about a FACT. Precedence, stated once and per fact:
 ///
-/// 1. `[tiers.<name>.<rtos>]` authored for this target ⇒ **AUTHORED**. Never
+/// 1. `[tasks.<name>.<rtos>]` authored for this target ⇒ **AUTHORED**. Never
 ///    overwritten; a rank it beat is recorded in
 ///    [`DerivedSchedule::shadowed`].
-/// 2. `[tiers.<name>]` authored with **no** platform sub-table at all ⇒
+/// 2. `[tasks.<name>]` authored with **no** platform sub-table at all ⇒
 ///    **ALLOCATED** for that tier ([`DerivedSchedule::placements`]). Naming a
-///    tier is how a binding gets written (`group_tiers = { main = "ctrl" }`);
+///    tier is how a binding gets written (`group_tasks = { main = "ctrl" }`);
 ///    it says nothing about a priority, and RFC-0079 is that a priority is
 ///    allocated rather than authored. So an unplaced tier is a REQUEST, which
-///    is also why this needs no new key in the `[tiers.*]` schema.
-/// 3. `[tiers.<name>]` authored with sub-tables for OTHER targets and not this
+///    is also why this needs no new key in the `[tasks.*]` schema.
+/// 3. `[tasks.<name>]` authored with sub-tables for OTHER targets and not this
 ///    one ⇒ neither. The author did place it, for a different board, and
 ///    `resolve_tiers` raises `MissingRtosSpec` exactly as before. Reading that
 ///    as a request would silence a real mistake.
@@ -303,7 +303,7 @@ pub struct ShadowedPlacement {
 /// a derived placement cannot depend on whether some OTHER node's tier was
 /// authored — which is what `tiers.is_empty()` made it depend on. Measured on
 /// the phase-459 W0 fixture: one component binding to one authored
-/// `[tiers.ctrl.zephyr]` left the other three on the synthesised default tier
+/// `[tasks.ctrl.zephyr]` left the other three on the synthesised default tier
 /// at Zephyr priority 0, i.e. ABOVE the transport that feeds them, with their
 /// rate contracts unread and nothing printed.
 pub fn placement_is_unauthored(
@@ -334,7 +334,7 @@ type AllocationCandidate<'a> = (&'a str, i64);
 
 /// Has this tier a platform sub-table for ANY target? The discriminator between
 /// rules 2 and 3 above — see [`placement_is_unauthored`].
-fn authors_any_placement(t: &ros_launch_manifest_sched::TierDef) -> bool {
+fn authors_any_placement(t: &ros_launch_manifest_sched::TaskDef) -> bool {
     t.posix.is_some()
         || t.freertos.is_some()
         || t.zephyr.is_some()
@@ -516,7 +516,7 @@ fn derive_tiers_with_caps(
     for tier in named_above_transport {
         if !priority_plan.reserved.contains_key("transport") {
             plan.degradations.push(Degradation {
-                node: format!("[tiers.{tier}]"),
+                node: format!("[tasks.{tier}]"),
                 dim: "priority",
                 reason: format!(
                     "the tier names `above = \"transport\"`, but the plan for this \
@@ -648,7 +648,7 @@ fn derive_tiers_with_caps(
     // Issue 1285 follow-up. `target_rtos` is a tier KEY (the output of
     // `tier_rtos_key`, or `""` for a board with no RTOS), so it is matched
     // EXACTLY. For a no-RTOS board a derived level has no
-    // `[tiers.<name>.<rtos>]` sub-table to live in: such a node stays on the
+    // `[tasks.<name>.<rtos>]` sub-table to live in: such a node stays on the
     // default tier, and the degradation record says so.
     if !free.is_empty() && !rtos_slot_exists(target_rtos) {
         for (n, _) in &free {
@@ -657,7 +657,7 @@ fn derive_tiers_with_caps(
                 dim: "tier",
                 reason: format!(
                     "the target (tier key {target_rtos:?}) has no RTOS family, so a derived \
-                     tier has no `[tiers.<name>.<rtos>]` sub-table and no task to run \
+                     tier has no `[tasks.<name>.<rtos>]` sub-table and no task to run \
                      on; the node stays on the default tier"
                 ),
             });
@@ -838,7 +838,7 @@ fn derive_tiers_with_caps(
                 node: other.to_string(),
                 dim: "tier",
                 reason: format!(
-                    "`[tiers.{tier}]` states no priority for this board, so one is \
+                    "`[tasks.{tier}]` states no priority for this board, so one is \
                      allocated from the contract - but its members do not share a \
                      rank: `{leader}` would take {priority} and this node {relaxed}. \
                      One tier is one thread at one priority, so the tier takes the \
@@ -853,7 +853,7 @@ fn derive_tiers_with_caps(
                 dim: "tier",
                 reason: format!(
                     "the target (tier key {target_rtos:?}) has no RTOS family, so the \
-                     unplaced `[tiers.{tier}]` has no `[tiers.{tier}.<rtos>]` sub-table \
+                     unplaced `[tasks.{tier}]` has no `[tasks.{tier}.<rtos>]` sub-table \
                      to allocate a priority into; `resolve_tiers` will refuse it"
                 ),
             });
@@ -866,7 +866,7 @@ fn derive_tiers_with_caps(
                 // A kernel threshold is authored, never allocated: RFC-0108
                 // derives thresholds per level (`levels.rs`), not per tier.
                 preempt_threshold: None,
-                // Everything else stays AUTHORED on the `[tiers.<name>]`
+                // Everything else stays AUTHORED on the `[tasks.<name>]`
                 // head — see `DerivedSchedule::placements`. Spelled out rather
                 // than `..Default::default()`, because a defaulted `priority`
                 // would be a silent 0 and 0 is a legal Zephyr priority.
@@ -970,7 +970,7 @@ fn level_tier(
     def
 }
 
-/// Does `target_rtos` name an RTOS family with a `[tiers.<name>.<rtos>]`
+/// Does `target_rtos` name an RTOS family with a `[tasks.<name>.<rtos>]`
 /// sub-table to install a placement into? The same question the `slot` match
 /// above answers for rule 4; a board with no family (tier key `""`) gets
 /// neither, and the realizer's degradation record says so.
@@ -1146,7 +1146,7 @@ mod tests {
         assert!(ctrl.zephyr.is_some() && ctrl.posix.is_none() && ctrl.freertos.is_none());
 
         // Resolving that table for a board with NO RTOS is refused BY NAME.
-        // Not `MissingRtosSpec`, whose message would print `[tiers.x.]` and
+        // Not `MissingRtosSpec`, whose message would print `[tasks.x.]` and
         // advise adding a sub-table that does not exist. A real key with no
         // sub-table keeps the old error.
         let component_names: BTreeSet<&str> = ["control_node", "telem_node"].into_iter().collect();
@@ -1703,7 +1703,7 @@ mod tests {
         assert!(
             d.degradations
                 .iter()
-                .any(|x| x.node == "[tiers.fast]" && x.reason.contains("no transport band")),
+                .any(|x| x.node == "[tasks.fast]" && x.reason.contains("no transport band")),
             "{:?}",
             d.degradations
         );

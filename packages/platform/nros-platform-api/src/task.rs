@@ -97,7 +97,7 @@ impl PlatformTask {
     /// "unstated" and inherits, matching how the board descriptors spell an
     /// absent priority; anything positive is the kernel's own number and is
     /// passed through the band's RAW escape hatch, because a
-    /// `[tiers.<name>.<rtos>] priority` is already in the kernel's units.
+    /// `[tasks.<name>.<rtos>] priority` is already in the kernel's units.
     ///
     /// # Safety
     /// Same as [`spawn`](Self::spawn).

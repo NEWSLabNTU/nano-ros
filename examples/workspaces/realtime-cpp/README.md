@@ -11,8 +11,8 @@ not in node code.
 | `ctrl_node` | `ctrl_pkg::Ctrl` | `ctrl` → `high` (10 ms spin, posix prio 80) | `/ctrl` `std_msgs/Int32` every 10 ms |
 | `telem_node` | `telem_pkg::Telem` | `telem` → `low` (100 ms spin, posix prio 10) | `/telem` every 100 ms |
 
-Tiers live in `src/demo_bringup/system.toml` (`[tiers.high]` / `[tiers.low]` +
-`[[component]].group_tiers`); the components are configure-shape
+Tiers live in `src/demo_bringup/system.toml` (`[tasks.high]` / `[tasks.low]` +
+`[[component]].group_tasks`); the components are configure-shape
 (`Result configure(rclcpp::Node&)`).
 
 ## Run

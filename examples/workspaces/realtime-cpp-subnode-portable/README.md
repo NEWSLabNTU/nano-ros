@@ -10,8 +10,8 @@ deployment.
 
 - `src/subnode_pkg/` — functionally identical node logic to the `-subnode` variant.
 - `src/deploy_bringup/` (note: not `demo_bringup`) —
-  `group_tiers = { ctrl = "fast", telem = "bulk" }`, with `[tiers.fast]`
-  (10 ms, posix prio 80) and `[tiers.bulk]` (100 ms, prio 10) in
+  `group_tasks = { ctrl = "fast", telem = "bulk" }`, with `[tasks.fast]`
+  (10 ms, posix prio 80) and `[tasks.bulk]` (100 ms, prio 10) in
   `system.toml`; the entry's `main.cpp` references
   `"deploy_bringup:system.launch.xml"`.
 
@@ -32,7 +32,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 `[image.freertos]` builds the **identical** `subnode_pkg` for
 FreeRTOS/mps2-an385 — `arm-none-eabi-g++`, `thumbv7m-none-eabi`, no OS
 underneath. Nothing in `src/subnode_pkg/` changes: the move is
-`[tiers.fast.freertos]` / `[tiers.bulk.freertos]` priorities plus the image
+`[tasks.fast.freertos]` / `[tasks.bulk.freertos]` priorities plus the image
 block, all in `deploy_bringup/system.toml`. That is the portability claim of
 this workspace measured against a cross toolchain rather than a second tier
 vocabulary.

@@ -139,7 +139,7 @@ The `inputs` hashes make the model reproducible and give the cache key.
 
 Deployment assignment is **integrator-owned**: it is declared in the bringup
 package's `system.toml` (a `[deploy]` section beside the existing
-`[tiers.*]`), never in the component manifests — the component developer
+`[tasks.*]`), never in the component manifests — the component developer
 declares contracts, the integrator decides placement.
 
 ### Semantics ship with the schema, not with each consumer (2026-07-27)

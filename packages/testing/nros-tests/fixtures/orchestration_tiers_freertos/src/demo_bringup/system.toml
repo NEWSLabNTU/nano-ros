@@ -3,21 +3,21 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
-# issue 0438 — `group_tiers` BINDS a callback group to a tier (phase-273 W2 /
-# RFC-0047). Without it the `[tiers.*]` tables below have no members, resolve to
+# issue 0438 — `group_tasks` BINDS a callback group to a tier (phase-273 W2 /
+# RFC-0047). Without it the `[tasks.*]` tables below have no members, resolve to
 # a single synthesized `default`, and the entry silently emits the SINGLE-tier
 # path — the same latent defect the native sibling of this fixture carried.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Control"
 name = "control_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
 # The image `src/demo_entry/` (package `demo_entry`) boots. Its deployment was
 # that entry's `[package.metadata.nros.deploy.freertos]` table until phase-445
@@ -54,15 +54,15 @@ locator = "tcp/10.0.2.2:7891"
 # (`*** STACK OVERFLOW: nros_tier ***`) the moment the firmware actually
 # connected (a #46-class overflow, previously masked because the inert deploy
 # config never let `Executor::open` succeed). 64 KiB boots + runs both tiers.
-[tiers.high]
+[tasks.high]
 spin_period = "1000us"
-[tiers.high.freertos]
+[tasks.high.freertos]
 priority = 5
 stack_bytes = 65536
 
-[tiers.low]
+[tasks.low]
 spin_period = "10000us"
-[tiers.low.freertos]
+[tasks.low.freertos]
 priority = 2
 stack_bytes = 65536
 

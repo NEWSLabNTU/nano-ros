@@ -13,25 +13,25 @@ domain_id = 0
 pkg = "subnode_pkg"
 class = "subnode_pkg::SubNode"
 name = "sub_node"
-group_tiers = { ctrl = "fast", telem = "bulk" }
+group_tasks = { ctrl = "fast", telem = "bulk" }
 
-[tiers.fast]
+[tasks.fast]
 spin_period = "10000us"
-[tiers.fast.posix]
+[tasks.fast.posix]
 priority = 80
 # phase-427 W12 — RAW FreeRTOS priority for the mps2-an385 image below. The
 # port's address plan (`packages/platform/nros-platform-freertos/
 # nros-platform.toml` `[priority_plan]`) reserves 4 for the transport band and
 # hands `pool.app = [1, 3]` to tiers, so `fast` takes the top app slot and
 # still sits strictly BELOW the link it publishes over (RFC-0079, issue 0623).
-[tiers.fast.freertos]
+[tasks.fast.freertos]
 priority = 3
 
-[tiers.bulk]
+[tasks.bulk]
 spin_period = "100000us"
-[tiers.bulk.posix]
+[tasks.bulk.posix]
 priority = 10
-[tiers.bulk.freertos]
+[tasks.bulk.freertos]
 priority = 1
 
 
@@ -55,7 +55,7 @@ board = "linux"
 # It is this workspace and not `realtime-cpp` because the portability proof is
 # exactly what the port needs: `subnode_pkg` names only the group IDs "ctrl" and
 # "telem", so moving it onto an RTOS board is a deploy-side edit — the tier
-# table above gains a `[tiers.*.freertos]` priority and nothing in the package
+# table above gains a `[tasks.*.freertos]` priority and nothing in the package
 # changes. Same launch file, same component, different board.
 [image.freertos]
 board = "mps2-an385-freertos"

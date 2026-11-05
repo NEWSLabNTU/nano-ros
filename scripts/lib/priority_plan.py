@@ -15,8 +15,10 @@ from tracked import tracked  # issue 0721: index lookup, not a walk
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
-TIER_PLAT_RE = re.compile(r"^\[tiers\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\]\s*$")
-TIER_RE = re.compile(r"^\[tiers\.([A-Za-z0-9_]+)\]\s*$")
+# Phase 536 W1: `[tasks.*]` since rlm v0.3.10; the pre-rename `[tiers.*]`
+# still reads this release, so a pin written either way is a lease.
+TIER_PLAT_RE = re.compile(r"^\[(?:tasks|tiers)\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\]\s*$")
+TIER_RE = re.compile(r"^\[(?:tasks|tiers)\.([A-Za-z0-9_]+)\]\s*$")
 PRIO_RE = re.compile(r"^priority\s*=\s*(-?\d+)")
 PAIR_RE = re.compile(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]")
 
@@ -138,10 +140,10 @@ def load_plans():
         if got is None:
             continue
         plan, platform = got
-        # The key a `[tiers.<name>.<key>]` pin is written under. Usually the
+        # The key a `[tasks.<name>.<key>]` pin is written under. Usually the
         # board's own `platform`, but not always: both ThreadX boards are
         # `threadx-linux` / `threadx-riscv64` while bringups write
-        # `[tiers.*.threadx]`. FreeRTOS and NuttX matched by coincidence, which
+        # `[tasks.*.threadx]`. FreeRTOS and NuttX matched by coincidence, which
         # is not a thing to build on — so the plan states it.
         key = plan.pop("tier_key", None) or platform
         if not key:
@@ -170,7 +172,7 @@ def scan_pins():
     `above` is the band this tier DELIBERATELY outranks, declared on the tier
     (RFC-0079 §6) and inherited by each of its per-platform pins:
 
-        [tiers.safety]
+        [tasks.safety]
         above = "transport"      # states the choice once, for every port
 
     It sits on the tier rather than the platform table because it is a

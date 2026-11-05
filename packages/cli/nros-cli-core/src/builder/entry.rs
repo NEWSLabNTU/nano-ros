@@ -314,7 +314,7 @@ pub fn package_name(image_id: &str) -> String {
 ///   callback group binds to a tier other than `default`, and `resolve_tiers`
 ///   refuses a group naming a tier the system did not declare
 ///   (`TierResolveError::UnknownTier`). So "wants `tiers`" implies "declares
-///   `[tiers.*]`", by construction rather than by survey. Of the seven, four
+///   `[tasks.*]`", by construction rather than by survey. Of the seven, four
 ///   have a Zephyr image — `realtime-rust` and `realtime-c` x2 and
 ///   `realtime-cpp` — and `realtime-rust`'s is the only RUST one; the other
 ///   three keep hand-written C/C++ applications, which `generate_entry`
@@ -328,11 +328,11 @@ pub fn package_name(image_id: &str) -> String {
 ///   named exactly when the code it gates is emitted.
 ///
 /// The per-RTOS half matters and is easy to get wrong: `class` is stated on
-/// `[tiers.<name>]` but `deadline` on `[tiers.<name>.<rtos>]`, so `deadline_us`
+/// `[tasks.<name>]` but `deadline` on `[tasks.<name>.<rtos>]`, so `deadline_us`
 /// is only visible once the plan's schedule has been resolved for THIS image's
 /// RTOS key. `[board.zephyr]` and `[board."native_sim/native/64"]` are both
 /// `BoardFamily::Zephyr` in `nros_entry_lower::BOARD_KEYS`, so the two
-/// spellings of this board select the same `[tiers.*.zephyr]` sub-table — which
+/// spellings of this board select the same `[tasks.*.zephyr]` sub-table — which
 /// is what makes `realtime-rust`'s authored `board = "zephyr"` safe here.
 ///
 /// ## `declares` is not optional
@@ -1287,8 +1287,8 @@ mod tests {
     #[test]
     fn a_multi_tier_image_with_a_real_time_deadline_gets_both_features() {
         // `realtime-rust`'s shape, and the one entry in the tree that names
-        // these by hand: `[tiers.high] class = "real_time"` +
-        // `[tiers.high.zephyr] deadline = "10000us"`, plus a plain `low`.
+        // these by hand: `[tasks.high] class = "real_time"` +
+        // `[tasks.high.zephyr] deadline = "10000us"`, plus a plain `low`.
         let table = ResolvedTierTable {
             tiers: vec![
                 tier("high", Some("real_time"), Some(10_000)),

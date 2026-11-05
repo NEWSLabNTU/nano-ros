@@ -776,7 +776,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // scope). `node_groups` maps a node *instance* name → its declared callback
     // groups; `node_instances` is every launch node name (for the
     // instance-identity check vs `[[component]]`). `resolved_tiers` stays `None`
-    // unless `system.toml` declares `[tiers.*]`.
+    // unless `system.toml` declares `[tasks.*]`.
     let mut node_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     // issue 1172 — bare name -> namespace, for the tier filter's node key. Built
     // from the SAME FQN split that makes each node's `NodeIdentity`, so the
@@ -1320,7 +1320,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             for s in &derived.shadowed {
                 eprintln!(
                     "nros::main!: authored priority wins — {} [priority]: \
-                     `[tiers.{}]` authors priority {} for this board, so it wins; the \
+                     `[tasks.{}]` authors priority {} for this board, so it wins; the \
                      contract's rank would have allocated {}. Remove every platform \
                      sub-table from that tier to have the priority allocated instead \
                      (RFC-0079).",
@@ -1765,7 +1765,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         quote! { #leaf_axis_asserts #launch_axis_asserts #param_services_call };
 
     // Phase 228.G (RFC-0032 §5) — the OwnedSpin entry call. Multi-tier
-    // (`[tiers.*]` present, more than the synthesized `default` tier) emits
+    // (`[tasks.*]` present, more than the synthesized `default` tier) emits
     // `<Board>::run_tiers(TIERS, TIER_BACKING, register-only-closure)`; the board owns the
     // per-tier spin. Single-tier / no tiers keeps the unchanged
     // `BoardEntry::run` path (`setup` owns the bounded hosted spin) — so the
@@ -1939,11 +1939,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         exec_sizing,
     );
 
-    // issue 0438 — a system that DECLARES `[tiers.*]` and binds no callback
+    // issue 0438 — a system that DECLARES `[tasks.*]` and binds no callback
     // group to any of them resolves to the degenerate single synthesized
     // `default` tier, and the macro then emits the SINGLE-tier path. That is a
     // declaration being discarded, and it used to happen in silence: the
-    // orchestration_tiers_native fixture declared `[tiers.high]`/`[tiers.low]`
+    // orchestration_tiers_native fixture declared `[tasks.high]`/`[tasks.low]`
     // for months, emitted a single-tier binary, and the only visible symptom
     // was an E2E three layers away reporting a missing boot marker — which sent
     // the investigation to the board's print statements instead of here.
@@ -1963,7 +1963,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 "nros::main!: the system declares tier(s) [{}] but no callback group is \
                  bound to any of them, so they resolve to a single default tier and this \
                  entry would silently emit the SINGLE-tier path.\n  \
-                 Bind groups with `[[component]] group_tiers = {{ <group> = \"<tier>\" }}` \
+                 Bind groups with `[[component]] group_tasks = {{ <group> = \"<tier>\" }}` \
                  in `system.toml` (phase-273 W2 / RFC-0047 — `callback_groups` in a node \
                  package's Cargo.toml is the retired form and is not read).\n  \
                  If the tiers are genuinely unused, delete them. issue 0438",
@@ -4190,7 +4190,7 @@ mod image_plan_tests {
 }
 
 /// The RTOS key `resolve_tiers` expects, which picks the
-/// `[tiers.<name>.<rtos>]` sub-table, for the board this entry resolved.
+/// `[tasks.<name>.<rtos>]` sub-table, for the board this entry resolved.
 ///
 /// Issue 1285 follow-up. This was a SUBSTRING match on the deploy key with a
 /// `posix` fallback. It now has two arms, and neither reads the spelling of the

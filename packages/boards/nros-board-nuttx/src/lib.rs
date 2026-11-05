@@ -265,7 +265,7 @@ pub mod sys {
     ) -> i32 {
         /// `NROS_PLATFORM_PRIORITY_RAW(n)` from `<nros/platform.h>` — the band's
         /// escape hatch for "this number is already in the kernel's own units",
-        /// which a `[tiers.<name>.nuttx] priority` is by construction.
+        /// which a `[tasks.<name>.nuttx] priority` is by construction.
         const fn raw(n: i32) -> i32 {
             -0x4000_0000 - n
         }

@@ -488,7 +488,7 @@ entry-domain-agreement:
 #
 # `--target` selects that block, and an id naming NONE is not refused: the tier
 # resolver falls through to `BoardFamily::Linux`, so an embedded image silently
-# bakes the HOST's `[tiers.*.posix]` priorities. Four shims had synthesised one;
+# bakes the HOST's `[tasks.*.posix]` priorities. Four shims had synthesised one;
 # 1312 fixed two and left NuttX and PlatformIO with no tracked id in their
 # comments, which is why it could add no gate. Buildless; `--self-test` drives
 # both verdicts over synthetic files including the two real pre-fix shim bodies.

@@ -13,7 +13,7 @@
 //!   create_timer_in_group<SubNode, &SubNode::on_telem>(telem_grp, 100); // 100 ms
 //!   ```
 //!
-//! `system.toml [[component]].group_tiers = { ctrl = "high", telem = "low" }` maps
+//! `system.toml [[component]].group_tasks = { ctrl = "high", telem = "low" }` maps
 //! the two groups to the two tiers. The codegen emits BEFORE construction:
 //!
 //!   ```cpp

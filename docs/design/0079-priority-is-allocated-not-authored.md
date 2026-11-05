@@ -12,6 +12,8 @@ superseded-by: null
 
 # RFC-0079 — Priority is allocated, not authored
 
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` still read this release with a `deprecated-spelling` warning, and rlm R+1 refuses them. The prose and nano-ros's own names move in W2.
+
 **Status (2026-11-05, phase 534):** play_launch's platform-file key is
 `priority_assignment:` since ros-launch-manifest v0.3.7 (the standard term
 for the policy); it was `mapper:` before, which rlm v0.3.9 refuses naming
@@ -73,7 +75,7 @@ tracks is that collision:
 The whole taught vocabulary:
 
 ```toml
-[tiers.control]
+[tasks.control]
 profile  = "realtime_periodic"
 period   = "10ms"
 deadline = "10ms"        # optional — defaults to `period`
@@ -345,7 +347,7 @@ thread is placed one above the transport from the header.
 The legitimate rare case — a hard safety loop that must preempt networking:
 
 ```toml
-[tiers.safety]
+[tasks.safety]
 profile = "realtime_periodic"
 period  = "1ms"
 above   = "transport"          # names a SYSTEM band, deliberately
@@ -393,7 +395,7 @@ name for the crossing, it is a reason an author may write one.
 Measured on the Autoware safety island (transport `[4, 4]`, one allocated
 tier `mrm`, ranks 5 / 7 / 8, `mrm_handler/call_mrm` supervised): without
 the key, the tier runs at 5, below the transport, and the supervisor at 3;
-with `above = "transport"` on `[tiers.mrm]`, the tier runs at 3 and the
+with `above = "transport"` on `[tasks.mrm]`, the tier runs at 3 and the
 supervisor at 2, the numbers #2312's implicit lift gave.
 
 ## The primitive reduction## The primitive reduction
@@ -554,7 +556,7 @@ is declared on the TIER, not the platform table, because it states something
 about the system rather than about one kernel's numbering:
 
 ```toml
-[tiers.safety]
+[tasks.safety]
 above = "transport"
 ```
 

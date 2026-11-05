@@ -556,7 +556,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
      * Prefetch Abort at tskSTACK_FILL_BYTE right after a context switch). At
      * 256 KiB the firmware runs the full run_tiers path with no fault under
      * QEMU mps2-an385. The boot tier keeps the 512 KiB app_task stack.
-     * RFC-0052 W2: `[tiers.*.freertos].stack_bytes` now propagates through
+     * RFC-0052 W2: `[tasks.*.freertos].stack_bytes` now propagates through
      * emit_cpp (the pre-W2 literal hardcoded 0), so a configured stack is
      * honored; this default covers unset specs. */
     uint32_t stack_words = (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
@@ -575,7 +575,7 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
      * assigned it before this. */
     ctx->stack_bytes = (size_t)stack_words * 4u;
 
-    /* Raw FreeRTOS priority from the tier spec (the system.toml [tiers.*.freertos]
+    /* Raw FreeRTOS priority from the tier spec (the system.toml [tasks.*.freertos]
      * priority is the numeric FreeRTOS value; clamp to configMAX_PRIORITIES-1). */
     UBaseType_t prio = (t->priority > 0)
                            ? (UBaseType_t)(t->priority < (int64_t)(configMAX_PRIORITIES)
@@ -914,7 +914,7 @@ int32_t nros_board_freertos_run_tiers_tasks_in(const char* locator, uint8_t doma
      *   1. It adopted nothing at all. `nros_freertos_set_current_task_priority`
      *      was called only from the Rust arm, so a C or C++ boot tier kept
      *      whatever priority `app_task_entry` was created at and its declared
-     *      `[tiers.*.freertos] priority` did not hold for the tier the boot
+     *      `[tasks.*.freertos] priority` did not hold for the tier the boot
      *      task actually runs.
      *   2. The ORDER. `boot` is the LEAST urgent tier, so every tier spawned
      *      below outranks it; FreeRTOS is preemptive, so the first

@@ -1221,7 +1221,7 @@ pub const NUTTX_CORE_PIN_MARKER: &str = "nros: core pin tier=";
 pub const NUTTX_TIER_PRIORITY_MARKER: &str = "nros: tier priority set tier=";
 
 /// The loud-failure sibling: printed when a tier DECLARED a
-/// `[tiers.*.nuttx] priority` but `pthread_setschedparam` rejected it — the
+/// `[tasks.*.nuttx] priority` but `pthread_setschedparam` rejected it — the
 /// tier runs at its INHERITED priority, loudly. MIRRORS the `FAILED` printf in
 /// `nuttx_run_tiers.c` — keep in lockstep.
 ///

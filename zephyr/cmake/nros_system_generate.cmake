@@ -221,7 +221,7 @@ function(nros_system_generate bringup_pkg)
     # any bringup. `--target` selects a block, so everything it selects — the
     # tier sub-table above all — fell back to the system-wide default, and for
     # the tier resolver that default is the HOST: a tiered Zephyr image baked
-    # through this module got `[tiers.*.posix]` priorities. The fix is not to
+    # through this module got `[tasks.*.posix]` priorities. The fix is not to
     # read "zephyr" back out of the string (that is the substring guess the
     # issue-1285 follow-up removed) but to name the IMAGE, which this configure
     # can only do via its entry package — see `--for-entry`.

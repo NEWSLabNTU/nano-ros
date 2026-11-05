@@ -5562,7 +5562,7 @@ impl<'s> Executor<'s> {
     /// (slot 0, the SC every unbound callback dispatches through).
     ///
     /// The run_tiers model runs one Executor per tier, so a tier-wide
-    /// scheduling policy (`[tiers.<t>] class/budget_us/period_us` and the
+    /// scheduling policy (`[tasks.<t>] class/budget_us/period_us` and the
     /// TT window) is exactly "this executor's default SC". Boards call
     /// this once, before entity creation; explicit per-handle/per-group
     /// bindings still take precedence (they never resolve to slot 0).

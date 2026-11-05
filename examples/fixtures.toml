@@ -243,8 +243,8 @@ image = "linux_action_client"
 target_dir = "target-fixtures"
 
 # phase-263 B2 (Track D) — the real-time multi-tier workspace. Pure-cargo
-# `nros::main!(launch = "demo_bringup")` resolves the 2-tier table ([tiers.high] +
-# [tiers.low]) and emits the multi-tier `run_tiers` entry. The high-tier control
+# `nros::main!(launch = "demo_bringup")` resolves the 2-tier table ([tasks.high] +
+# [tasks.low]) and emits the multi-tier `run_tiers` entry. The high-tier control
 # node publishes `/ctrl` every 10 ms, the low-tier telemetry node `/telem` every
 # 100 ms. Consumed by tests/realtime_tiers_e2e.rs: subscribe both, assert the
 # high-tier publishes ~10× the low-tier (both tiers scheduled). 2 nodes × 1 timer =
@@ -433,7 +433,7 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 
 # phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-tier RT-tiers Rust NuttX (QEMU
 # arm-virt) Entry (`realtime-rust/src/nuttx_entry`): `system.toml` declares two
-# `[tiers.*]` with `[tiers.*.nuttx]` priorities, so the macro's generic OwnedSpin
+# `[tasks.*]` with `[tasks.*.nuttx]` priorities, so the macro's generic OwnedSpin
 # arm emits `<QemuArmVirt>::run_tiers` — one `std::thread` per tier over ONE shared
 # session (NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`); ctrl (10 ms,
 # high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the
@@ -871,7 +871,7 @@ cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_E
 
 # #199 follow-up — the rv-virt (riscv32) C RT-TIERS workspace entry: the riscv
 # sibling of workspace-c-nuttx-realtime (same demo_bringup 2-tier plan; the
-# `[tiers.*.nuttx]` table keys on the RTOS). Built by `just nuttx
+# `[tasks.*.nuttx]` table keys on the RTOS). Built by `just nuttx
 # build-riscv-c-workspaces` (provisions the rv-virt kernel; the recipe exports
 # NUTTX_DIR + the riscv CC). Own build_subdir (one board per CMake configure).
 # Consumed by tests/realtime_tiers_c_riscv_nuttx_e2e.rs (port 8791).
@@ -984,7 +984,7 @@ image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
-# Phase 269 W4 — 2-tier sched-context C++ workspace. [tiers.high]/[tiers.low] + [[node_overrides]]
+# Phase 269 W4 — 2-tier sched-context C++ workspace. [tasks.high]/[tasks.low] + [[node_overrides]]
 # bake nros_cpp_create_sched_context + NodeBuilder::sched() calls into the generated entry;
 # ctrl_node binds to the high-priority sched context (10 ms), telem_node to the low-priority
 # sched context (100 ms). Consumed by tests/realtime_tiers_cpp_e2e.rs.
@@ -1000,7 +1000,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 # Issue 1733 — the NATIVE derived-tier C++ image: `derived-tiers-cpp`'s four
-# components, no authored `[tiers.*]`, a contract, so the C++ entry derives one
+# components, no authored `[tasks.*]`, a contract, so the C++ entry derives one
 # tier per node and `nros_board_native_run_tiers_in` spawns three of them over
 # the boot executor's session. Every tier arms its own `/diagnostics` reporter,
 # and the derived `ZPICO_MAX_PUBLISHERS` counted one for the image (4 + 1 for
@@ -1099,7 +1099,7 @@ build_subdir = "build/posix-zenoh-linux/cmake"
 
 # Phase 273 W4 (RFC-0047) — sub-node 2-group realtime workspace. ONE component
 # (subnode_pkg::SubNode) with TWO callback groups: "ctrl" (10 ms, high tier) and
-# "telem" (100 ms, low tier). system.toml group_tiers seeds bind_group_sched for
+# "telem" (100 ms, low tier). system.toml group_tasks seeds bind_group_sched for
 # BOTH groups of the SAME node before construction — the per-group binding capability
 # the per-node-name table cannot express. Consumed by tests/realtime_subnode_cpp_e2e.rs.
 [[workspace_fixture]]
@@ -1197,7 +1197,7 @@ cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", N
 #
 # The PORTABLE workspace and not `realtime-cpp`, deliberately: the package names
 # only its group IDs ("ctrl" / "telem"), so the move onto an RTOS board is a
-# deploy-side edit (`[tiers.*.freertos]` priorities + `[image.freertos]` in
+# deploy-side edit (`[tasks.*.freertos]` priorities + `[image.freertos]` in
 # deploy_bringup/system.toml) with no change to the component. That is the same
 # property the native `-portable` row exists to prove, re-measured against a
 # cross toolchain instead of a second tier vocabulary.
@@ -5944,8 +5944,8 @@ west_zenoh_locator = "tcp/127.0.0.1:7492"
 skip_probe = true
 
 # phase-276 W2 / issue #128 half 2 — the RT-TIERS Rust workspace Entry: the
-# tiers-on-embedded coverage cell. system.toml declares two [tiers.*] with
-# [tiers.*.zephyr] priorities, so the macro emits ZephyrBoard::run_tiers —
+# tiers-on-embedded coverage cell. system.toml declares two [tasks.*] with
+# [tasks.*.zephyr] priorities, so the macro emits ZephyrBoard::run_tiers —
 # one k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10
 # ms) + telem (100 ms) publish /ctrl + /telem. Distinct zenohd port (7491).
 # Consumed by tests/realtime_tiers_e2e.rs (zephyr_rust cell).
@@ -5953,7 +5953,7 @@ skip_probe = true
 # phase-470 W5.b2 (issue 1288) — MIGRATED, and this is the row that needed the
 # board-crate features DERIVED: its hand-written entry was the tree's only one
 # naming `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`, and both
-# are now read off the very `[tiers.*]` block above
+# are now read off the very `[tasks.*]` block above
 # (`builder::entry::schedule_board_features`). `conf_files` is gone for the
 # reason `workspace-rust-zephyr` states; the Kconfig lives in
 # `src/demo_bringup/boards/native_sim_native_64/` (RFC-0065 D4) and the merged
@@ -5974,7 +5974,7 @@ skip_probe = true
 
 # issue 1537 — the DERIVED-tier Rust Zephyr image: the only one in the tree
 # whose tier table `nros::main!` derives instead of reading authored
-# `[tiers.*]`. Same workspace and node packages as the row above; the axis is
+# `[tasks.*]`. Same workspace and node packages as the row above; the axis is
 # the BRINGUP (`derived_bringup`: a contract, no tiers) and its image's Kconfig
 # (`[image.zephyr_derived] env NROS_ZENOH_READ_PRIORITY = "100"` -> `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
 # band [4, 9], tier pool [10, 14]). The `workspace-zephyr-c-realtime-smp` row is
@@ -6014,7 +6014,7 @@ skip_probe = true
 # the FIRST full west
 # link + runtime proof of the W3a ZephyrBoard::run_tiers seam. The C++
 # sibling of the rust realtime entry above; demo_bringup/system.toml
-# declares two [tiers.*] with [tiers.*.zephyr] priorities, so the C++
+# declares two [tasks.*] with [tasks.*.zephyr] priorities, so the C++
 # codegen emits a plain int main(void) calling ZephyrBoard::run_tiers
 # (nros_board_zephyr_run_tiers) — one k_thread per tier over ONE shared
 # session (RFC-0015 Model 1); ctrl (10 ms, high) publishes /ctrl, telem (100
@@ -6046,7 +6046,7 @@ skip_probe = true
 
 # issue 1575 — the DERIVED-tier C++ Zephyr image
 # (examples/workspaces/derived-tiers-cpp/src/zephyr_entry): four components,
-# no authored `[tiers.*]`, a contract; `codegen entry` derives one tier per
+# no authored `[tasks.*]`, a contract; `codegen entry` derives one tier per
 # node from it. It is the image issue 1551 ran the platform heap dry on, and
 # until this row no lane booted it, so that regression could come back unseen.
 # The C++ sibling of the Rust `workspace-zephyr-rs-realtime-derived` row.
@@ -6131,8 +6131,8 @@ skip_probe = true
 # since phase-477 W1, issue 1288): the FIRST full west
 # link + runtime proof of the W3a ZephyrBoard::run_tiers seam for a C node
 # (the C sibling of the wscpprt cpp realtime entry above; closes the
-# c×zephyr cell). demo_bringup/system.toml declares two [tiers.*] with
-# [tiers.*.zephyr] priorities, so the C codegen emits a plain int main(void)
+# c×zephyr cell). demo_bringup/system.toml declares two [tasks.*] with
+# [tasks.*.zephyr] priorities, so the C codegen emits a plain int main(void)
 # calling ZephyrBoard::run_tiers (nros_board_zephyr_run_tiers) — one
 # k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10 ms,
 # high) publishes /ctrl, telem (100 ms, low) publishes /telem.

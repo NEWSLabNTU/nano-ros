@@ -27,7 +27,7 @@ pub struct Config {
 
     // ── Scheduling ─────────────────────────────────────────────────────
     // RAW FreeRTOS priorities (0..configMAX_PRIORITIES-1, higher = more
-    // urgent) — the same units a `[tiers.<name>.freertos] priority` is written
+    // urgent) — the same units a `[tasks.<name>.freertos] priority` is written
     // in, so the two can be compared without knowing a mapping (issue 0623).
     // A `[node.rt]` section still accepts the legacy normalized 0-31 scale and
     // converts on read; `[node.rt.freertos]` is raw.
@@ -217,7 +217,7 @@ impl Config {
                 }
             }
             // ...and `[node.rt.freertos]` is RAW, mirroring
-            // `[tiers.<name>.freertos] priority`. One vocabulary for
+            // `[tasks.<name>.freertos] priority`. One vocabulary for
             // the two numbers that meet in one scheduler.
             ("node.rt.freertos", "app_priority") => {
                 if let Some(v) = parse_u32(value) {
@@ -238,7 +238,7 @@ impl Config {
                 }
             }
             // ...and `[node.rt.freertos]` is RAW, mirroring
-            // `[tiers.<name>.freertos] priority`. One vocabulary for
+            // `[tasks.<name>.freertos] priority`. One vocabulary for
             // the two numbers that meet in one scheduler.
             ("node.rt.freertos", "zenoh_read_priority") => {
                 if let Some(v) = parse_u32(value) {
@@ -275,7 +275,7 @@ impl Config {
                 }
             }
             // ...and `[node.rt.freertos]` is RAW, mirroring
-            // `[tiers.<name>.freertos] priority`. One vocabulary for
+            // `[tasks.<name>.freertos] priority`. One vocabulary for
             // the two numbers that meet in one scheduler.
             ("node.rt.freertos", "poll_priority") => {
                 if let Some(v) = parse_u32(value) {

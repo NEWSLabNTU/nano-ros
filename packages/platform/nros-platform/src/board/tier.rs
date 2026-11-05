@@ -33,7 +33,7 @@
 //! normalized one. This module doc used to say priorities are declared on a
 //! normalized 0-31 scale (RFC-0016): 0 = idle, 12 = normal, 31 = critical,
 //! lowered per RTOS by the mappers below. That has not been true of the
-//! codegen path for a long time - `[tiers.<name>.<rtos>] priority` is written
+//! codegen path for a long time - `[tasks.<name>.<rtos>] priority` is written
 //! in the target kernel's own numbering, `resolve_tiers` copies it through
 //! without inverting, and the boards pass it straight to `k_thread_create` /
 //! `xTaskCreate`. The note above about `tiers[0]` depending on the kernel's
@@ -57,7 +57,7 @@
 /// table in `nros-plan.json`.
 #[derive(Clone, Copy, Debug)]
 pub struct TierSpec<'a> {
-    /// Tier name (matches the `system.toml [tiers.<name>]` key); used
+    /// Tier name (matches the `system.toml [tasks.<name>]` key); used
     /// for the spawned task's debug name.
     pub name: &'a str,
     /// Callback groups admitted on this tier, as `(node name, node namespace,
@@ -77,7 +77,7 @@ pub struct TierSpec<'a> {
     pub groups: &'a [(&'a str, &'a str, &'a str)],
     /// **Raw per-RTOS** task priority — the value passed straight to the
     /// native spawn call. The system author writes it in
-    /// `[tiers.<name>.<rtos>].priority`, so it is already in the target
+    /// `[tasks.<name>.<rtos>].priority`, so it is already in the target
     /// kernel's scale (FreeRTOS 0–7, ThreadX 0–31 lower=higher, …);
     /// `i64` admits Zephyr's negative coop priorities. (The
     /// `*_priority_for` mappers in this module are a separate utility for
@@ -119,7 +119,7 @@ pub struct TierSpec<'a> {
 /// Which way a kernel's raw priority numbers run.
 ///
 /// `TierSpec::priority` is RAW — the number the system author wrote in
-/// `[tiers.<name>.<rtos>].priority`, already in the target kernel's scale — so
+/// `[tasks.<name>.<rtos>].priority`, already in the target kernel's scale — so
 /// only the board knows which end is urgent. Issue 0636.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PriorityDirection {

@@ -35,7 +35,7 @@ use std::{
 /// field it replaced was honoured for one release and is now RETIRED — refused
 /// at parse (`ComponentMetadata::retired_callback_groups`), so it is no rung.
 ///
-/// phase-459 W1 (issue 1426): a second source below `group_tiers` - the cmake
+/// phase-459 W1 (issue 1426): a second source below `group_tasks` - the cmake
 /// keyword `CALLBACK_GROUPS`, read from the `nros-metadata.json` a configure
 /// wrote. See [`metadata_callback_groups`] for why a cmake workspace never
 /// reached the manifest rung, and what that cost.
@@ -73,7 +73,7 @@ pub fn collect_callback_groups(
         // shape `derive_tiers_from_contracts` keys on - a node with groups and
         // no authored binding is the one route on which the rate-monotonic
         // derivation runs (RFC-0052), and a bound group would instead have to
-        // name a `[tiers.*]` that this workspace deliberately does not author.
+        // name a `[tasks.*]` that this workspace deliberately does not author.
         if let Some(ids) = from_metadata.get(&c.name) {
             map.insert(
                 c.name.clone(),
@@ -284,7 +284,7 @@ pub fn target_board_id(system: &SystemToml, target: Option<&str>) -> Option<(Str
     Some((format!("[image.{t}] board"), board))
 }
 
-/// The `[tiers.<name>.<rtos>]` key for the selected target, read from the BOARD
+/// The `[tasks.<name>.<rtos>]` key for the selected target, read from the BOARD
 /// CATALOG (issue 1285 follow-up).
 ///
 /// The board id from [`target_board_id`] is an IMAGE board id. That is the
@@ -296,7 +296,7 @@ pub fn target_board_id(system: &SystemToml, target: Option<&str>) -> Option<(Str
 ///
 /// This used to be a SUBSTRING match on the id with a `posix` fallback. That
 /// read `native_sim/native/64`, a Zephyr board, as the host, and so would have
-/// baked `[tiers.*.posix]` priorities into a Zephyr image. The same happened to
+/// baked `[tasks.*.posix]` priorities into a Zephyr image. The same happened to
 /// `qemu-cortex-a53`, `s32z270` and `an536`.
 ///
 /// - No board id (no `--target`, or a target naming no image with a board): the
@@ -351,7 +351,7 @@ mod tests {
     use super::*;
 
     /// Issue 0951 — `derive_target_rtos` had NO direct test for two phases.
-    /// It decides which `[tiers.<name>.<rtos>]` sub-table is read, so a wrong
+    /// It decides which `[tasks.<name>.<rtos>]` sub-table is read, so a wrong
     /// answer silently applies another RTOS's scheduling parameters.
     mod target_rtos {
         use super::*;
@@ -474,7 +474,7 @@ mod tests {
         /// Ids the substring match answered wrongly. `native_sim/native/64`
         /// is a Zephyr board (`packages/boards/zephyr`), and `native` in its
         /// name is the ROLE (a host process), not the platform. So its tiers
-        /// are Zephyr `k_thread`s and read `[tiers.*.zephyr]`.
+        /// are Zephyr `k_thread`s and read `[tasks.*.zephyr]`.
         #[test]
         fn substring_victims_read_their_platform() {
             for (id, was, now) in [
@@ -554,7 +554,7 @@ mod tests {
         assert_eq!(by_id["telem"], "low");
     }
 
-    /// Phase 273 (W2) — `resolve_system_tiers` with `group_tiers` produces the
+    /// Phase 273 (W2) — `resolve_system_tiers` with `group_tasks` produces the
     /// expected `(component, group) → sched_context` mapping without needing
     /// `[[node_overrides]]`.
     #[test]
@@ -569,22 +569,22 @@ domain_id = 0
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Ctrl"
 name = "ctrl_node"
-group_tiers = { ctrl = "high" }
+group_tasks = { ctrl = "high" }
 
 [[component]]
 pkg = "telem_pkg"
 class = "telem_pkg::Telem"
 name = "telem_node"
-group_tiers = { telem = "low" }
+group_tasks = { telem = "low" }
 
-[tiers.high]
+[tasks.high]
 spin_period = "10000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 
-[tiers.low]
+[tasks.low]
 spin_period = "100000us"
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
 "#;
         let system: SystemToml = toml::from_str(system_toml_str).expect("parse system.toml");
@@ -626,16 +626,16 @@ domain_id = 0
 pkg = "subnode_pkg"
 class = "subnode_pkg::SubNode"
 name = "sub_node"
-group_tiers = { ctrl = "high", telem = "low" }
+group_tasks = { ctrl = "high", telem = "low" }
 
-[tiers.high]
+[tasks.high]
 spin_period = "10000us"
-[tiers.high.posix]
+[tasks.high.posix]
 priority = 80
 
-[tiers.low]
+[tasks.low]
 spin_period = "100000us"
-[tiers.low.posix]
+[tasks.low.posix]
 priority = 10
 "#;
         let system: SystemToml = toml::from_str(system_toml_str).expect("parse system.toml");
@@ -812,7 +812,7 @@ priority = 10
             assert!(metadata_callback_groups(tmp.path()).contains_key("ctrl_node"));
         }
 
-        /// The whole point: a C/C++ component, no `group_tiers`, no cargo
+        /// The whole point: a C/C++ component, no `group_tasks`, no cargo
         /// package entry - the two sources that existed - and the keyword still
         /// reaches `collect_callback_groups`, bound to `DEFAULT_TIER`, which is
         /// the input shape `derive_tiers_from_contracts` keys on.
@@ -836,7 +836,7 @@ priority = 10
             );
         }
 
-        /// The new rung is the LAST one: an authored `group_tiers` still
+        /// The new rung is the LAST one: an authored `group_tasks` still
         /// decides, and the metadata does not add a second entry beside it.
         #[test]
         fn an_authored_binding_still_outranks_the_keyword() {

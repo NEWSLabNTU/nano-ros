@@ -14,12 +14,12 @@
 //!
 //! # The bullet this file does NOT move
 //!
-//! `group_tiers` naming a tier with no `[tiers.<name>]` at all stays a
+//! `group_tasks` naming a tier with no `[tasks.<name>]` at all stays a
 //! REFUSAL - rule 4's `None` arm. A typo in a tier name must not silently
 //! become a derived tier, which is the same reason phase-459 W3 chose an
 //! explicit marker over an undeclared name. What changed is that the author now
 //! has somewhere to go: declaring the tier and writing NO platform sub-table is
-//! rule 2, an allocation request, and needs no new key in the `[tiers.*]`
+//! rule 2, an allocation request, and needs no new key in the `[tasks.*]`
 //! schema (`ros-launch-manifest`'s `TierDef` is `deny_unknown_fields`, so a new
 //! key cannot land from this repository).
 
@@ -117,12 +117,12 @@ fn priorities(plan: &Plan) -> BTreeMap<String, i64> {
 }
 
 // ============================================================================
-// bullet 1 - `group_tiers` naming an undeclared tier: still refused
+// bullet 1 - `group_tasks` naming an undeclared tier: still refused
 // ============================================================================
 
 /// issue 1426 bullet 1, UNCHANGED and deliberately so.
 ///
-/// `group_tiers = { main = "ctrl" }` with no `[tiers.ctrl]` anywhere is a
+/// `group_tasks = { main = "ctrl" }` with no `[tasks.ctrl]` anywhere is a
 /// binding to a tier that does not exist. It was refused before this fix and it
 /// is refused after: the alternative is that `ctrll` becomes a derived tier and
 /// the author never learns they misspelled `ctrl`.
@@ -167,13 +167,13 @@ fn a_binding_to_an_undeclared_tier_is_refused_by_name() {
 // bullet 2 - a DECLARED tier with no placement: the fix
 // ============================================================================
 
-/// issue 1426 bullet 2, FIXED. `[tiers.ctrl]` declared with no platform
+/// issue 1426 bullet 2, FIXED. `[tasks.ctrl]` declared with no platform
 /// sub-table is rule 2: an ALLOCATION REQUEST, not a table that disables the
 /// derivation.
 ///
 /// Before: `codegen_system.rs` derived only when `model.execution.tiers` was
 /// empty, so declaring the tier a binding needs was exactly what turned the
-/// derivation off - "a `group_tiers` binding needs a declared tier, and a
+/// derivation off - "a `group_tasks` binding needs a declared tier, and a
 /// declared tier disables derivation", the dead end the issue describes.
 #[test]
 fn a_declared_tier_with_no_placement_has_its_priority_allocated() {
@@ -182,12 +182,12 @@ fn a_declared_tier_with_no_placement_has_its_priority_allocated() {
     // Every component binds its one group to `ctrl`; `ctrl` states a name and a
     // class and NO priority.
     let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
-    fixture.author("ctrl", &all, "[tiers.ctrl]\nclass = \"real_time\"\n");
+    fixture.author("ctrl", &all, "[tasks.ctrl]\nclass = \"real_time\"\n");
 
     let (derived, wanted) = bake(&fixture, true);
     assert!(
         wanted,
-        "an authored tier with no `[tiers.ctrl.{TARGET_RTOS}]` is an unauthored \
+        "an authored tier with no `[tasks.ctrl.{TARGET_RTOS}]` is an unauthored \
          PLACEMENT, so the derivation must be wanted"
     );
     let spec = derived
@@ -244,7 +244,7 @@ fn a_declared_tier_with_no_placement_has_its_priority_allocated() {
     );
 }
 
-/// Issue 1967, end to end: `[tiers.ctrl] above = "transport"` written in
+/// Issue 1967, end to end: `[tasks.ctrl] above = "transport"` written in
 /// the `system.toml` reaches the model through the pinned resolver (rlm
 /// v0.1.67's `TierDef::above`) and the derivation allocates the tier ABOVE
 /// the reserved transport band; the same tier without the key is allocated
@@ -276,9 +276,9 @@ fn a_tier_that_names_the_transport_is_allocated_above_it() {
         });
         fixture.configure(&["main"]);
         let head = if names_it {
-            "[tiers.ctrl]\nclass = \"real_time\"\nabove = \"transport\"\n"
+            "[tasks.ctrl]\nclass = \"real_time\"\nabove = \"transport\"\n"
         } else {
-            "[tiers.ctrl]\nclass = \"real_time\"\n"
+            "[tasks.ctrl]\nclass = \"real_time\"\n"
         };
         fixture.author("ctrl", &all, head);
 
@@ -323,7 +323,7 @@ fn a_tier_that_names_the_transport_is_allocated_above_it() {
 
 /// The negative control for rule 2, and the measurement of what the
 /// table-shaped guard did with this exact input: with no allocation,
-/// `[tiers.ctrl]` has no `[tiers.ctrl.<rtos>]` and `resolve_tiers` REFUSES.
+/// `[tasks.ctrl]` has no `[tasks.ctrl.<rtos>]` and `resolve_tiers` REFUSES.
 ///
 /// So before this fix the acceptance image was not "built with the wrong
 /// priority" - it could not be built at all. `codegen entry` saw a non-empty
@@ -338,13 +338,13 @@ fn without_the_allocation_an_unplaced_tier_cannot_resolve() {
     let fixture = Fixture::copy("prec-unplaced-refused");
     fixture.configure(&["main"]);
     let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
-    fixture.author("ctrl", &all, "[tiers.ctrl]\n");
+    fixture.author("ctrl", &all, "[tasks.ctrl]\n");
 
     let model = resolve_model(&fixture.bringup(), true);
     let system = system_toml(&fixture);
     let cfg = NrosConfig::from_workspace(&fixture.bake_workspace()).expect("workspace");
     // The groups as the bake sees them, with each one bound to `ctrl` by
-    // `group_tiers` - i.e. exactly what `resolve_tiers` is given, minus the
+    // `group_tasks` - i.e. exactly what `resolve_tiers` is given, minus the
     // allocation.
     let mut groups = collect_callback_groups(&cfg, &system.components);
     for decls in groups.values_mut() {
@@ -380,7 +380,7 @@ fn without_the_allocation_an_unplaced_tier_cannot_resolve() {
 fn the_entry_runs_an_allocated_authored_tier() {
     let fixture = Fixture::copy("prec-unplaced-entry");
     let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
-    fixture.author("ctrl", &all, "[tiers.ctrl]\n");
+    fixture.author("ctrl", &all, "[tasks.ctrl]\n");
 
     let plan = entry_plan(&fixture, true);
     let prio = priorities(&plan);
@@ -416,9 +416,9 @@ fn the_entry_runs_an_allocated_authored_tier() {
 // bullet 3 - groups with no bindings, model resolved without `--system`
 // ============================================================================
 
-/// issue 1426 bullet 3. A `system.toml` carrying `group_tiers`, resolved into a
+/// issue 1426 bullet 3. A `system.toml` carrying `group_tasks`, resolved into a
 /// model WITHOUT `--system`, produces a model with no bindings at all - and the
-/// bake then refuses, because the `group_tiers` the author wrote reached no
+/// bake then refuses, because the `group_tasks` the author wrote reached no
 /// node.
 ///
 /// The refusal is CORRECT and stays: silently ignoring a binding is issue 0398,
@@ -430,7 +430,7 @@ fn the_entry_runs_an_allocated_authored_tier() {
 fn a_binding_that_reached_no_node_is_refused_naming_the_component() {
     let fixture = Fixture::copy("prec-no-system");
     fixture.configure(&["main"]);
-    fixture.author("ctrl", &["mrm_handler"], "[tiers.ctrl]\n");
+    fixture.author("ctrl", &["mrm_handler"], "[tasks.ctrl]\n");
 
     // `with_system: false` - the pairing the issue measured.
     let model = resolve_model(&fixture.bringup(), false);
@@ -443,7 +443,7 @@ fn a_binding_that_reached_no_node_is_refused_naming_the_component() {
     let cfg = NrosConfig::from_workspace(&fixture.bake_workspace()).expect("workspace");
     let groups = collect_callback_groups(&cfg, &system.components);
     let err = model_ingest::apply_model_execution(&mut system, &model, TARGET_RTOS, &groups)
-        .expect_err("a `group_tiers` that reached no node must be refused");
+        .expect_err("a `group_tasks` that reached no node must be refused");
     let text = err.to_string();
     assert!(
         text.contains("mrm_handler"),
@@ -455,7 +455,7 @@ fn a_binding_that_reached_no_node_is_refused_naming_the_component() {
 // bullet 4 - an authored placement wins, and says what it beat
 // ============================================================================
 
-/// issue 1426 bullet 4. `[tiers.ctrl.zephyr] priority = 5` is rule 1: AUTHORED
+/// issue 1426 bullet 4. `[tasks.ctrl.zephyr] priority = 5` is rule 1: AUTHORED
 /// wins verbatim. What changed is that it no longer wins SILENTLY, and no longer
 /// wins for nodes that did not author it.
 #[test]
@@ -465,7 +465,7 @@ fn an_authored_placement_wins_and_names_the_rank_it_beat() {
     fixture.author(
         "ctrl",
         &["mrm_handler"],
-        "[tiers.ctrl]\n[tiers.ctrl.zephyr]\npriority = 9\n",
+        "[tasks.ctrl]\n[tasks.ctrl.zephyr]\npriority = 9\n",
     );
 
     let (derived, wanted) = bake(&fixture, true);
@@ -535,13 +535,13 @@ fn a_fully_authored_workspace_derives_nothing() {
     fixture.author(
         "ctrl",
         &all,
-        "[tiers.ctrl]\n[tiers.ctrl.zephyr]\npriority = 8\n",
+        "[tasks.ctrl]\n[tasks.ctrl.zephyr]\npriority = 8\n",
     );
 
     let (derived, wanted) = bake(&fixture, true);
     assert!(
         !wanted,
-        "every group names a tier with an authored `[tiers.ctrl.{TARGET_RTOS}]`, \
+        "every group names a tier with an authored `[tasks.ctrl.{TARGET_RTOS}]`, \
          so there is no unauthored placement and the derivation must not run"
     );
     assert!(

@@ -190,7 +190,7 @@ pub enum DeadlineAction {
 }
 
 impl DeadlineAction {
-    /// Lower the tier-table string (`[tiers.<t>].deadline_policy`).
+    /// Lower the tier-table string (`[tasks.<t>].deadline_policy`).
     /// Unknown strings map to `Ignore` — the bake already validated the
     /// vocabulary; runtime tolerance here avoids a boot-time panic path.
     ///
@@ -605,7 +605,7 @@ impl SchedContext {
     }
 
     /// RFC-0052 — the **common backend** that lowers an RTOS-agnostic tier
-    /// policy (`[tiers.<t>]` class / budget / period / deadline) to a
+    /// policy (`[tasks.<t>]` class / budget / period / deadline) to a
     /// [`SchedContext`]. ONE implementation shared by every language: the Rust
     /// runtime (`ExecutorNodeRuntime::apply_tier_sched_policy`)
     /// and the C / C++ entries (`nros_{c,cpp}_create_sched_context_from_policy`)

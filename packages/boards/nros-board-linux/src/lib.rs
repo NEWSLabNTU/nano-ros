@@ -1277,7 +1277,7 @@ unsafe extern "C" {
 ///
 /// The native board spawns tiers with `std::thread::scope`, which never reaches
 /// `nros-platform-posix`'s `task_init` — so the attribute path that gives NuttX
-/// its priorities cannot reach a native tier, and every `[tiers.*.posix]
+/// its priorities cannot reach a native tier, and every `[tasks.*.posix]
 /// priority` in the tree was inert with nothing saying so. This is the same
 /// self-apply-at-tier-entry shape NuttX and FreeRTOS already use: one
 /// implementation per port, one marker, and a refusal that is REPORTED.

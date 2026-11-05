@@ -244,7 +244,7 @@ What porting Nav2 packages to FreeRTOS and Zephyr needed edited in the source:
   other arm. A `try` / `catch` around a call needs the same guard.
 - **Linux scheduling.** Nav2's `setSoftRealTimePriority()` calls
   `sched_setscheduler`. On an RTOS a thread's priority is its tier's
-  (`system.toml` `[tiers.*]`), so make the call a no-op there.
+  (`system.toml` `[tasks.*]`), so make the call a no-op there.
 - **Per-request client callbacks.** No `std::promise`, so no
   `Client<S>::SharedFuture`: read the future on a later tick (the client row
   in the table below).

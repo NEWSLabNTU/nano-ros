@@ -5,7 +5,7 @@ Issue 1396; the class issue 1312 measured and could not gate.
 
 `nros dev codegen system --target <id>` selects the `[image.<id>]` / `[deploy.<id>]`
 block of the bringup being baked. Everything that block decides — the
-`[tiers.*.<rtos>]` sub-table first among them, then the resolved domain id, RMW,
+`[tasks.*.<rtos>]` sub-table first among them, then the resolved domain id, RMW,
 locator and per-image launch — comes from there. An id that names NO block is
 not refused: `tier_resolver::target_board_id` simply finds nothing, and
 `derive_target_rtos` answers `BoardFamily::Linux.tier_rtos_key()`. So a

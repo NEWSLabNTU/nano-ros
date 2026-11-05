@@ -50,7 +50,7 @@ required_env = [
 
 # RFC-0079 — the PORT's priority address plan.
 #
-# `tier_key` is the key a `[tiers.<name>.<key>]` pin is written under. FreeRTOS
+# `tier_key` is the key a `[tasks.<name>.<key>]` pin is written under. FreeRTOS
 # matched its platform name by coincidence; the loader's own comment says that
 # is not a thing to build on, so it is stated.
 #

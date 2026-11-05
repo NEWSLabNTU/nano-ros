@@ -496,7 +496,7 @@ pub fn render_mode_tables_rs(
 /// tier states none), keyed by tier name.
 ///
 /// Only a derived tier's deadline is the contract's: an authored
-/// `[tiers.*]` table states its own, which a mode override of a path's
+/// `[tasks.*]` table states its own, which a mode override of a path's
 /// latency does not move. So a model whose placement is authored derives
 /// nothing here, and its modes bake no deadline rows.
 #[must_use]
