@@ -72,7 +72,7 @@ nano-ros keeps DDS-shaped QoS profile fields, but each backend advertises
 the policies it can enforce. Unsupported QoS is reported at entity
 creation instead of being silently downgraded.
 
-See [QoS, Status Events, and Discovery](../rmw/qos-status-events.md)
+See [Use QoS, status events and discovery](../rmw/qos-status-events.md)
 and [Choosing an RMW Backend](../../tutorial/pick-the-rmw.md).
 
 ## Message Generation
