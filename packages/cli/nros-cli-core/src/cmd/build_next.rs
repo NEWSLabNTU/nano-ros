@@ -216,7 +216,9 @@ fn platform_chapter(platform: &PlatformKind) -> Option<&'static str> {
         PlatformKind::BareMetal => "book/src/guide/platforms/bare-metal.md",
         PlatformKind::Nuttx => "book/src/guide/platforms/nuttx.md",
         PlatformKind::Zephyr => "book/src/guide/platforms/zephyr.md",
-        PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "book/src/guide/platforms/threadx.md",
+        PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => {
+            "book/src/guide/platforms/threadx.md"
+        }
         _ => return None,
     })
 }
