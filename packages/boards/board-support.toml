@@ -400,8 +400,8 @@ notes = "NXP S32K344 (Cortex-M7) on the MR-CANHUBK344, Zephyr, behind a 921,600-
 crate = "nros-board-nucleo-f767zi-zephyr"
 board_keys = ["nucleo-f767zi-zephyr"]
 real_hardware = true
-book_run = "targets/nucleo-f767zi.md#run-in-the-twin"
-book_flash = "targets/nucleo-f767zi.md#flash-a-real-board"
+book_run = "starters/nucleo-f767zi.md#run-in-the-twin"
+book_flash = "starters/nucleo-f767zi.md#flash-a-real-board"
 runs = "emulator"
 hardware = "nucleo-f767zi"
 matrix_platform = "ZephyrNucleoF767zi"
@@ -798,7 +798,7 @@ notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]
 
 [[probe]]
 track = "renode-nucleo"
-chapter = "targets/nucleo-f767zi.md"
+chapter = "starters/nucleo-f767zi.md"
 variant = ""
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true

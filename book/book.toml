@@ -23,6 +23,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/targets/nucleo-f767zi.html" = "../starters/nucleo-f767zi.html"
 "/start/introduction.html" = "welcome.html"
 "/start/choose-by-purpose.html" = "choose-your-path.html"
 "/get-started/installation.html" = "../start/install.html"
