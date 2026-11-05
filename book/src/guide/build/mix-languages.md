@@ -179,7 +179,7 @@ the CMake configure.
 **The RMW is spelled once**, whatever the languages: `[system] rmw` in the
 bringup's `system.toml`, or `rmw =` on one `[image.*]` block when one image
 differs. The features each package needs follow from it, so switching backend
-is a one-word edit: [Switching RMW in Config](../rmw/switch-the-rmw-per-image.md).
+is a one-word edit: [Switch the RMW per image](../rmw/switch-the-rmw-per-image.md).
 
 ## Scaffolding
 

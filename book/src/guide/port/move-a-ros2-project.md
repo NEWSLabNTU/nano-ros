@@ -16,7 +16,7 @@ existing `rclcpp`, `rclc`, or `rclrs` node toward nano-ros.
 | `ros2 launch pkg file` | `nros build <image>`, then run its binary — the launch product is compiled in | [Add an image](../../tutorial/grow-your-workspace.md#4-add-an-image) |
 | `colcon build` | `nros build <image>` — it generates the root and hands off to `cmake` / `cargo` / `west`. Running those yourself still works when you point them at the generated build root, and `colcon build` still works for POSIX C++ workspaces | [C/C++ workspaces](../contracts/cpp-workspaces.md) |
 | `rosdep install` | `nros setup <board> --rmw <rmw>` | [Install](../../start/install.md) |
-| `RMW_IMPLEMENTATION=…` at runtime | compile-time backend, one line: `[system] rmw = "…"` in the bringup's `system.toml`, then `nros build` | [Switching RMW](../rmw/switch-the-rmw-per-image.md) |
+| `RMW_IMPLEMENTATION=…` at runtime | compile-time backend, one line: `[system] rmw = "…"` in the bringup's `system.toml`, then `nros build` | [Switch the RMW per image](../rmw/switch-the-rmw-per-image.md) |
 | generated msg packages (ament index) | `nros build` writes `generated/` crates; the cargo patch table goes in the generated settings under `build/`, not in your package | [Message Generation](../../reference/message-generation.md) |
 | `find_package(rclcpp)` | `find_package(nano_ros)` — ament-shaped, source-backed | [Porting a C++ node](port-a-cpp-node.md) |
 | `ament_target_dependencies(t std_msgs)` | kept, verbatim (nano-ros's ament verbs + find modules) | same page |

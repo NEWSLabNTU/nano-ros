@@ -6,7 +6,7 @@ Every nano-ros binary picks its RMW (ROS Middleware) backend at **build
 time**. There are three: **Cyclone DDS**, **Zenoh** (zenoh-pico), and
 **XRCE-DDS**. This page helps you pick one and explains how each backend
 connects your device to a ROS 2 network. The mechanics of changing your
-pick are in [Switching RMW Backends](../guide/rmw/switch-the-rmw-per-image.md).
+pick are in [Switch the RMW per image](../guide/rmw/switch-the-rmw-per-image.md).
 
 ## Start with Cyclone DDS
 
@@ -303,7 +303,7 @@ link **multiple backends** and bridge between them, for example zenoh
 devices to a Cyclone DDS stack, or XRCE devices to a Zenoh network — see
 [Cross-backend Bridges](../guide/rmw/bridge-between-backends.md).
 
-Once you have picked, [Switching RMW Backends](../guide/rmw/switch-the-rmw-per-image.md)
+Once you have picked, [Switch the RMW per image](../guide/rmw/switch-the-rmw-per-image.md)
 shows the exact edits per build system.
 
 ## Design background
