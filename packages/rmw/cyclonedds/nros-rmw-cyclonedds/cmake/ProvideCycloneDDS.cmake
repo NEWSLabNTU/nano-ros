@@ -137,8 +137,14 @@ macro(nros_provide_cyclonedds)
                 endif()
                 find_program(NROS_SCCACHE sccache)
                 if(NROS_SCCACHE)
-                    set(CMAKE_C_COMPILER_LAUNCHER "${NROS_SCCACHE}")
-                    set(CMAKE_CXX_COMPILER_LAUNCHER "${NROS_SCCACHE}")
+                    # Issue 2284 — through `env -u` the jobserver: a server this
+                    # compile starts would otherwise join the caller's make
+                    # token pool, keep its tokens, and hang that make at exit.
+                    # A C/C++ compile has no use for the pool.
+                    set(_nros_sccache_launcher
+                        env -u MAKEFLAGS -u MFLAGS -u CARGO_MAKEFLAGS "${NROS_SCCACHE}")
+                    set(CMAKE_C_COMPILER_LAUNCHER "${_nros_sccache_launcher}")
+                    set(CMAKE_CXX_COMPILER_LAUNCHER "${_nros_sccache_launcher}")
                     message(STATUS "nano-ros: routing CycloneDDS build through sccache (${NROS_SCCACHE})")
                 endif()
             endif()

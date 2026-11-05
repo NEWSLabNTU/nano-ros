@@ -150,3 +150,11 @@ NO VERDICT.
 **If it happens again**, the dump is the next step, as "If you get a dump"
 above says. File a new issue with it rather than reopening this one, because
 the open question is now the cause, not the detection.
+
+## Probable cause (2026-11-05)
+
+[Issue 2284](2284-sccache-server-holds-jobserver-tokens.md) reproduced this
+state on purpose and found the likely cause: an sccache server started inside
+the make, which inherits the jobserver, joins the pool, and keeps its tokens.
+make collects all its tokens before it exits, so it waits forever with no
+child. Every sccache launch now drops the jobserver.

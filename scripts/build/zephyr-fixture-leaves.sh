@@ -593,7 +593,9 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     sccache_launcher=0
     if [ "$sccache_disable" = "0" ] && command -v sccache >/dev/null 2>&1; then
         sccache_launcher=1
-        extra_cmake_defs="$extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+        # issue 2284 — the launcher drops the jobserver, so a server this compile
+        # starts never joins (and drains) the fixture make's token pool.
+        extra_cmake_defs="$extra_cmake_defs -DCMAKE_C_COMPILER_LAUNCHER=$script_dir/../bin/sccache-no-jobserver -DCMAKE_CXX_COMPILER_LAUNCHER=$script_dir/../bin/sccache-no-jobserver"
     fi
 
     target="fixture/$id"

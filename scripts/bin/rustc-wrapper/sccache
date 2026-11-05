@@ -80,6 +80,17 @@ if [ "$#" -gt 0 ] && emits_staticlib "$@"; then
     exec "$@"
 fi
 if [ -n "$real" ]; then
+    # Issue 2284 — the first client to find no server starts one, and that
+    # daemon inherits this environment. cargo hands rustc its jobserver
+    # (`CARGO_MAKEFLAGS`, and `MAKEFLAGS` under a fixture make), so the server
+    # would join the token pool, keep its tokens, and hang the owning make at
+    # exit with zero children (issue 1403's shape). Start it outside the pool
+    # first; the compile itself keeps the jobserver rustc uses. The probe is a
+    # bash socket open in a subshell, so a running server costs one fork.
+    if [ -n "${MAKEFLAGS:-}${MFLAGS:-}${CARGO_MAKEFLAGS:-}" ] && [ -z "${SCCACHE_SERVER_UDS:-}" ] \
+        && ! (exec 3<>"/dev/tcp/127.0.0.1/${SCCACHE_SERVER_PORT:-4226}") 2>/dev/null; then
+        env -u MAKEFLAGS -u MFLAGS -u CARGO_MAKEFLAGS "$real" --start-server >/dev/null 2>&1 || true
+    fi
     exec "$real" "$@"
 fi
 exec "$@"

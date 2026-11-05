@@ -1,0 +1,15 @@
+#!/bin/sh
+# Issue 2284 — run sccache as a C/C++ compiler LAUNCHER without the jobserver.
+#
+# The first sccache client to find no server starts one, and the server is a
+# daemon that inherits the client's environment. Under a make jobserver that
+# environment names the token pool (`MAKEFLAGS`/`MFLAGS`/`CARGO_MAKEFLAGS`),
+# the server joins it, takes tokens, and never gives them back. The make that
+# owns the pool then blocks at exit, collecting its tokens, with zero
+# children: issue 1403's "deadlock", reproduced in the issue in four lines.
+#
+# A C or C++ compile has no use for the pool (nothing here builds with
+# `-flto=jobserver`), so the launcher drops it for the whole compile and the
+# server it may start can never join. Used where a build hands sccache to
+# CMake as `CMAKE_<LANG>_COMPILER_LAUNCHER`.
+exec env -u MAKEFLAGS -u MFLAGS -u CARGO_MAKEFLAGS sccache "$@"
