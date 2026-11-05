@@ -230,6 +230,7 @@ run_with_make() {
     } >"$makefile"
 
     jobs="$(nros_cargo_frontend_jobs)"
+    local -a make_jobs_args=("-j$jobs")
     make_bin="make"
     if [ -x "$(nros dev sdk path make)/bin/make" ] && \
        "$(nros dev sdk path make)/bin/make" --version | head -1 | grep -q "4.4"; then
@@ -241,6 +242,12 @@ run_with_make() {
         # shellcheck source=scripts/build/jobserver-pool.sh
         source scripts/build/jobserver-pool.sh
         export PATH="$(nros_pinned_tool_path_prefix "$make_bin"):$PATH"
+        # phase-535 W3 — a stage running beside another under one outer pool
+        # joins it rather than opening a second scheduler; an explicit `-j`
+        # would reset the jobserver and give this make a pool of its own.
+        if nros_inherited_jobserver; then
+            make_jobs_args=()
+        fi
     fi
 
     # issue 1403 — THIS make is the one observed stalled (`threadx_linux
@@ -248,7 +255,7 @@ run_with_make() {
     # into a diagnostic + NO VERDICT (rc 75) instead of a hang.
     python3 scripts/build/make-stall-watchdog.py \
         --label "fixtures-build $platform $lang${rmw:+ $rmw}" --diag-dir "$work_root" -- \
-        "$make_bin" -j"$jobs" -f "$makefile"
+        "$make_bin" "${make_jobs_args[@]}" -f "$makefile"
     rm -f "$makefile"
 }
 

@@ -97,6 +97,43 @@ nros_pinned_tool_path_prefix() {
     printf '%s\n' "$prefix"
 }
 
+# phase-535 W3 — JOIN an inherited pool rather than open a second one.
+#
+# `NROS_INHERIT_JOBSERVER=1` already told a stage "your tools draw from an
+# outer token pool" (issue 0726's pooled `build-test-fixtures`), and the stage
+# recipes act on it by dropping their explicit cmake width. The fan-out
+# drivers below them did not: each ran its own pinned make with `-j<budget>`
+# behind `env -u MAKEFLAGS`, i.e. a SECOND scheduler with a full budget of its
+# own, so two pooled stages could run twice the budget between them.
+#
+# A make that finds a fifo jobserver in MAKEFLAGS and is given no `-j` is a
+# CLIENT of it: its first job runs in the slot its parent spent on it, every
+# further job takes a token from the same pool. So under the flag, and only
+# when the fifo it names exists, a driver keeps MAKEFLAGS and drops `-j`.
+# Succeeds (exit 0) when that is the case.
+nros_inherited_jobserver() {
+    [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ] || return 1
+    local flags=" ${MAKEFLAGS:-} " fifo
+    case "$flags" in
+        *" --jobserver-auth=fifo:"*) ;;
+        *) return 1 ;;
+    esac
+    fifo="${flags##* --jobserver-auth=fifo:}"
+    fifo="${fifo%% *}"
+    [ -p "$fifo" ]
+}
+
+# The make arguments a fan-out driver runs its pool with: `-j<n>
+# --jobserver-style=fifo` to open a pool, nothing to join an inherited one
+# (`nros_inherited_jobserver`). One line per argument.
+nros_pool_make_args() {
+    local jobs="${1:?jobs}"
+    if nros_inherited_jobserver; then
+        return 0
+    fi
+    printf '%s\n' "-j$jobs" "--jobserver-style=fifo"
+}
+
 nros_pool_available() {
     local units="$2"
     [ "${NROS_JOBSERVER:-}" = "1" ] && return 1
@@ -193,12 +230,17 @@ nros_pool_run() {
     # exported, so the caller's shell keeps its PATH after the pool returns.
     local pinned_make
     pinned_make="$(nros_pinned_make)"
+    # phase-535 W3 — join an inherited pool instead of opening a second one
+    # (`nros_inherited_jobserver`); otherwise a fresh pool, as before.
+    local -a make_args env_unset=()
+    mapfile -t make_args < <(nros_pool_make_args "$pool_jobs")
+    nros_inherited_jobserver || env_unset=(-u MAKEFLAGS -u CARGO_MAKEFLAGS)
     nros_guard_exec "$(nros_pool_guard_name "$label")" \
         python3 "$repo_root/scripts/build/make-stall-watchdog.py" \
         --label "jobserver-pool $label" --diag-dir "$work_root" -- \
-        env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
+        env "${env_unset[@]}" \
         PATH="$(nros_pinned_tool_path_prefix "$pinned_make"):$PATH" \
-        "$pinned_make" -j"$pool_jobs" --jobserver-style=fifo \
+        "$pinned_make" "${make_args[@]}" \
         -f "$makefile" || rc=$?
     rm -f "$makefile"
     return $rc

@@ -273,6 +273,16 @@ before run is discarded for host load. Table, loads and method:
   Rust target shared per (board, rmw) behind D6's gate.
 - By the rule above, W4 does not start.
 
+**Levers pulled (2026-11-05, maintainer: one more lever, re-measure once, then
+proceed).** The freertos leaf stage and workspace stage now run side by side
+under one jobserver pool, and fan-out drivers under an inherited pool join it
+instead of opening a second one. The first lever, one `cmake --build` over
+every image of a configure, is not a builder change. The seven rows of one
+C/C++ configure belong to four bringups, and the generated root carries one
+bringup's entries at a time. Within a bringup, the untargeted `cmake --build`
+already builds every entry in one ninja graph. Each bringup switch rebuilds
+the Rust runtime, 22 to 32 s measured: issue 2287.
+
 ### W4 — The merge boards: linux, zephyr native_sim, threadx-linux
 
 Same move as W3, all three RMWs. `demo_bringup`'s `linux_service_*` and

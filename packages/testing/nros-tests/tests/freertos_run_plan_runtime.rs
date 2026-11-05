@@ -182,12 +182,13 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
         dir.display()
     );
     // The Entry pkg's `[patch.crates-io]` points its msg deps at `generated/`,
-    // which `nros sync` (run by `just freertos build-examples`) produces. It is
-    // build output, so its absence goes through the shared absence funnel
-    // (issue 1758) like any other unbuilt fixture.
+    // which `nros sync` (run by the leaf stage of `just freertos
+    // build-fixtures`) produces. It is build output, so its absence goes
+    // through the shared absence funnel (issue 1758) like any other unbuilt
+    // fixture.
     nros_tests::fixtures::require_prebuilt_artifact(
         &dir.join("generated"),
-        "just freertos build-examples",
+        "just freertos build-fixtures",
     )
     .require("FreeRTOS Entry `generated/` msg crates");
 
