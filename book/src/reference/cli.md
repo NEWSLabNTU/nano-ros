@@ -139,7 +139,7 @@ fetching. Full explanation:
 Note `setup` does **not** provision a zenoh router: the router is
 ROS's `rmw_zenoh_cpp/rmw_zenohd`, so a zenoh run needs a ROS 2 install;
 Cyclone DDS needs no daemon. See
-[Do I need ROS 2 installed?](../start/install.md#do-i-need-ros-2-installed).
+[ROS 2 and the Zenoh router](../guide/build/install-options.md#ros-2-and-the-zenoh-router).
 
 ```sh
 nros setup linux --rmw zenoh            # host build (router comes from ROS)

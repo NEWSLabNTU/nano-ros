@@ -130,7 +130,7 @@ see [Build Profiles](../guide/build/build-profiles.md) for driving cargo yoursel
 A multi-process zenoh example also needs a router; that is ROS's `rmw_zenohd`,
 not something nano-ros ships — see
 [Deployment Workflow](../guide/deploy/deploy-to-production.md) and
-[Install](../start/install.md#do-i-need-ros-2-installed).
+[ROS 2 and the Zenoh router](../guide/build/install-options.md#ros-2-and-the-zenoh-router).
 
 ## C, C++ and mixed workspaces (cmake)
 
