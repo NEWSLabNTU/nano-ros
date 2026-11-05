@@ -1,7 +1,7 @@
 ---
 id: 2275
 title: "`just probe installed` stops at first-project.md's `nros run`: configure refuses an unset `AMENT_PREFIX_PATH`"
-status: open
+status: resolved
 type: bug
 area: probe, cli, book
 purpose: [education]
@@ -9,7 +9,7 @@ related: [phase-530, phase-527, phase-447, phase-532]
 found: 2026-11-05
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)** — the implicit configure inside `nros run`.
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)** — the implicit configure inside `nros run`.
 
 ## Measured
 
@@ -43,3 +43,23 @@ Decide which is wrong: the chapter (source ROS before `nros run`), or
 configure (fall back to the toolchain's bundled interfaces when
 `AMENT_PREFIX_PATH` is unset, as the pre-configure `sync` verb did). Then re-run
 `just probe installed`.
+
+## Resolution (2026-11-05)
+
+**Maintainer ruling: the chapter was wrong, not configure.** Configure keeps
+its refusal of an unset `AMENT_PREFIX_PATH` when the project has messages to
+generate (`configure.rs`, phase-530 Ruling R44); there is NO fallback to the
+release's bundled interfaces. Message code is generated from the host's ROS
+install because that is what keeps the message layout and the type hash —
+part of the key expression in `rmw_zenoh` from Jazzy on — compatible with the
+ROS peer. A bundled copy would silently pick a distro.
+
+The chapter fix is on `main`: `book/src/get-started/first-project.md` sources
+ROS (`source /opt/ros/humble/setup.bash`) before its first `nros run`, on
+both the QEMU and the Linux variant, and its troubleshooting list names this
+refusal (35494e2a4a, phase-532; 3e85895960, "building needs a sourced ROS 2,
+once per project").
+
+Not re-measured by the session that archived this: `just probe installed`
+(track `first-project`) after those commits. Reopen if it still stops at
+step 50.
