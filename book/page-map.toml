@@ -170,6 +170,13 @@ batch = "p537-w6"
 note = "Configure zenoh (W6): router, locators, client mode, a session file; from the zenoh task parts of tutorial/pick-the-rmw and the serial and tuning pages"
 
 [[page]]
+book = "user"
+path = "guide/rmw/use-cyclone-dds.md"
+action = "new phase-537"
+batch = "p537-w6"
+note = "Use Cyclone DDS (W6): select and configure it for an image"
+
+[[page]]
 old = "user-guide/rmw-switching.md"
 book = "user"
 path = "guide/rmw/switch-the-rmw-per-image.md"
