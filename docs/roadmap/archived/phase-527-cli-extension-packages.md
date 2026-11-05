@@ -1,17 +1,16 @@
 # Phase 527 — Runner and command packages: kinds, host build, dispatch, release underlay
 
-**Status (2026-11-05). IN PROGRESS — W3, W1, W2, W2b and W2c landed
-(`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
-the host build role; declared overrides; colcon's duplicate rule among
-source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
-#3088), W2e (a duplicate inside one root is refused too, #3113), W4
-(command dispatch, #3116), W5 (the first command packages, #3130) and W6
-(the release underlay, #3122); W7 (scaffolds and checks) in review (#3146).** Implements
-[RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
+**Status (2026-11-05). DONE — W1 to W7 landed: the `runner` and `command`
+kinds and `packages/runners/` with `nros-extension` (W1, W3); the host build
+role (W2); declared overrides (W2b), colcon's duplicate rule among source
+roots (W2c, and inside one root, W2e #3113) and one `--base-paths` meaning
+(W2d #3088); command dispatch (W4 #3116); the first command packages (W5
+#3130); the release underlay (W6 #3122); scaffolds and checks (W7 #3146).** Implements
+[RFC-0119](../../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
-[phase-528](phase-528-run-on-host-and-emulator.md) and
-[phase-529](archived/phase-529-flash-monitor-bench.md), which depend on W1 to W3 here.
-W4 depends on [phase-526](archived/phase-526-cli-two-tier-restructure.md) W2 for the
+[phase-528](../phase-528-run-on-host-and-emulator.md) and
+[phase-529](phase-529-flash-monitor-bench.md), which depend on W1 to W3 here.
+W4 depends on [phase-526](phase-526-cli-two-tier-restructure.md) W2 for the
 reserved-verb list.
 
 ---
@@ -374,7 +373,7 @@ depends on how the roots are split is one nobody can predict. The cost — a
 user who keeps two same-named copies in one root gets an error — is one
 `touch COLCON_IGNORE`, the same as colcon asks.
 
-Status: **DONE, in review** (2026-11-04).
+Status: **DONE** (2026-11-04, #3113).
 
 ### W3 — `packages/runners/` and `nros-extension`
 
@@ -500,7 +499,7 @@ Acceptance:
   same inputs, measured before the code moves.
 - `nros-cli-core` has no router-config or PX4 module left.
 
-Status: **DONE, in review** (2026-11-05, #3130).
+Status: **DONE** (2026-11-05, #3130).
 
 - `packages/rmw/zenoh/nros_zenoh_tools` (`command/router`, bin
   `nros-zenoh-tools`, `nros router config`) and
@@ -578,7 +577,7 @@ Acceptance:
   `nros run` refuses it, and
   `nros doctor` reports it either way.
 
-Status: **DONE, in review** (2026-11-05, #3122).
+Status: **DONE** (2026-11-05, #3122).
 
 - **What ships.** `nros toolchain stage-packages <prefix>` (hidden, like
   `toolchain manifest`; `nros-cli-core/src/orchestration/release_packages.rs`)
@@ -627,7 +626,7 @@ Status: **DONE, in review** (2026-11-05, #3122).
   After rebasing onto the phase-530 W1 merges (2026-11-05) the track stops
   earlier, in the chapter's own step 50, before any W6 check runs: the
   implicit configure refuses an unset `AMENT_PREFIX_PATH`
-  ([issue 2275](../issues/archived/2275-installed-probe-configure-needs-ament.md)).
+  ([issue 2275](../../issues/archived/2275-installed-probe-configure-needs-ament.md)).
   The branch touches neither the chapter nor configure.
 - Tests: `release_packages` unit tests (a runner and a command staged, source
   removed, an announcement-free package kept, an unbuilt exe refused, `bin`
@@ -677,7 +676,7 @@ Acceptance:
   `method = "<its name>"` at the image level.
 - This is a `check-template-copy-out` row.
 
-**Status: in review (#3146).** What landed:
+**Status: DONE (2026-11-05, #3146).** What landed:
 
 - `nros new <name> --kind runner|command [--lang rust|cpp]`
   (`cmd/new_extension.rs`). It writes `package.xml` (build type
@@ -758,7 +757,7 @@ question 1).
 
 ## RFC-0120 (2026-11-03): what changes for this phase
 
-[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+[RFC-0120](../../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](../phase-530-nros-configure-single-pass.md). For this phase:
 
 - **W2, the host build role.** Building a runner or command package is layer 2 (`nros build`), never `nros configure`. Configure invokes no target build tool and no `nros build` (RFC-0120 D1).
 - **`nros run`'s stale-build step.** It is configure if stale, then the build including the runner package. A west or CMake hook calls configure only, so a plain `west build` never builds a runner package.
