@@ -265,6 +265,11 @@ negative control moves the authored priority and sees the entry move.
 Acceptance: `git grep -i tier` outside `archived/` returns only the other
 senses listed above and the retired-names tables.
 
+**rlm R+2 (2026-11-05):** rlm `v0.3.12` and play_launch 0.29.0 retire
+`tier` from their own user-facing text (`check-terms`); nano-ros bumps to
+them with no change in what it reads. This phase stays open for W0, W2
+and W4's docs sweep.
+
 **Survey (2026-11-05, W3 branch):** no tracked `system.toml` writes
 `[tiers.*]` or `group_tiers`; comments, examples, the FreeRTOS config
 template, `zephyr/Kconfig` and the RFCs that spelled a key `[tiers.*]` now

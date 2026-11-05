@@ -1,0 +1,1 @@
+ros-launch-manifest v0.3.12 and play_launch 0.29.0 (play_launch phase 99 T5, R+2 of the tier rename): the `check-terms` gates of both list `tier` as a retired word in user-facing text. Nothing nano-ros reads changes.
