@@ -23,3 +23,36 @@ function(nros_message_detail)
         message(VERBOSE "${_text}")
     endif()
 endfunction()
+
+# nros_reconfigure_remedy(<configure_out> <again_out>) -- phase-530 W7, Ruling
+# R53. What a configure-time FATAL tells its user to run so THIS build dir
+# configures again. The ONE spelling: every FATAL whose remedy ends in a
+# re-configure asks it.
+#
+# A FATAL in a clean dir's first configure leaves a cache that already holds
+# `CMAKE_PROJECT_NAME`, and no `build.ninja`. There a bare `west build -d <dir>`
+# passes no cmake options, so it skips cmake and fails at ninja ("loading
+# 'build.ninja'"; measured on Zephyr 4.4). So the command must FORCE cmake:
+#
+#   <configure_out>  `nros configure <p> --image <i>` where a CLI drives this
+#                    road (`NROS_CONFIGURED_COMMAND`, which
+#                    `nros_configured_locate` publishes once a CLI resolves),
+#                    else empty;
+#   <again_out>      `nros build --workspace <p> <i>` on that road
+#                    (`NROS_CONFIGURED_BUILD_COMMAND`: it re-passes the image's
+#                    cmake options when `build.ninja` is absent), else
+#                    `west build -d <dir> --cmake` on Zephyr, else
+#                    `cmake <dir>`.
+function(nros_reconfigure_remedy _configure_out _again_out)
+    get_property(_configure GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
+    get_property(_again GLOBAL PROPERTY NROS_CONFIGURED_BUILD_COMMAND)
+    if("${_again}" STREQUAL "")
+        if(DEFINED ZEPHYR_BASE AND NOT "${ZEPHYR_BASE}" STREQUAL "")
+            set(_again "west build -d ${CMAKE_BINARY_DIR} --cmake")
+        else()
+            set(_again "cmake ${CMAKE_BINARY_DIR}")
+        endif()
+    endif()
+    set(${_configure_out} "${_configure}" PARENT_SCOPE)
+    set(${_again_out} "${_again}" PARENT_SCOPE)
+endfunction()

@@ -98,7 +98,8 @@
 # once it has resolved a CLI), `nros configure ...` then `nros build ...` (which
 # re-passes the image's cmake options when `build.ninja` is absent, R51);
 # otherwise -- a guest application, a host with no CLI -- `cmake <build-dir>`,
-# or `west build -d <build-dir> --cmake` on Zephyr.
+# or `west build -d <build-dir> --cmake` on Zephyr. Spelled once, in
+# `nros_reconfigure_remedy` (cmake/NanoRosDiagnostics.cmake).
 #
 # A placeholder says so on a line of its own (`nros_promise_placeholder_line`),
 # and a reader that wrote a default itself because the fragment was absent says
@@ -342,7 +343,7 @@ function(_nros_promise_check_one _path)
             "second pass would build with whichever answer came last (RFC-0120 D5). "
             "`diff` the two files and report it.")
     endif()
-    get_property(_cmd GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
+    nros_reconfigure_remedy(_cmd _again)
     if("${_cmd}" STREQUAL "")
         set(_cmd "nros configure")
     endif()
@@ -354,30 +355,8 @@ function(_nros_promise_check_one _path)
         "  configure: ${_path}\n"
         "  Declare it where `nros configure` reads it (the package's `package.xml`, "
         "the leaf's `system.toml` / `[[component]] entities`, or the launch contract), "
-        "then run `${_cmd}` and configure again (RFC-0120 D5). Every reader of this "
+        "then run `${_cmd}`, then `${_again}` (RFC-0120 D5). Every reader of this "
         "configure used the seed, so the build is not allowed to proceed on it.")
-endfunction()
-
-# _nros_promise_unseeded_remedy(<cmd_out> <again_out>) -- Rulings R52/R53.
-# <cmd_out> is the CLI remedy, empty when no CLI drives this road; <again_out>
-# is the command that re-runs cmake on THIS dir (see the header for why
-# `--cmake`).
-function(_nros_promise_unseeded_remedy _cmd_out _again_out)
-    get_property(_configure GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
-    get_property(_build GLOBAL PROPERTY NROS_CONFIGURED_BUILD_COMMAND)
-    set(_cmd "")
-    if(NOT "${_configure}" STREQUAL "" AND NOT "${_build}" STREQUAL "")
-        set(_cmd "`${_configure}`, then `${_build}`")
-    elseif(NOT "${_configure}" STREQUAL "")
-        set(_cmd "`${_configure}`")
-    endif()
-    if(DEFINED ZEPHYR_BASE AND NOT "${ZEPHYR_BASE}" STREQUAL "")
-        set(_again "west build -d ${CMAKE_BINARY_DIR} --cmake")
-    else()
-        set(_again "cmake ${CMAKE_BINARY_DIR}")
-    endif()
-    set(${_cmd_out} "${_cmd}" PARENT_SCOPE)
-    set(${_again_out} "${_again}" PARENT_SCOPE)
 endfunction()
 
 # _nros_promise_check_unseeded(<path> <label>) -- the end-of-configure answer
@@ -386,13 +365,13 @@ endfunction()
 function(_nros_promise_check_unseeded _path _label)
     _nros_promise_props("${_path}" _p)
     get_property(_kind GLOBAL PROPERTY ${_p_KIND})
-    _nros_promise_unseeded_remedy(_cmd _again)
-    if("${_cmd}" STREQUAL "")
+    nros_reconfigure_remedy(_configure _again)
+    if("${_configure}" STREQUAL "")
         set(_fix "Re-run this build's configure (`${_again}`)")
         set(_fix_before "Configure again (`${_again}`) to read the composed answer")
     else()
-        set(_fix "Run ${_cmd}")
-        set(_fix_before "Run ${_cmd} for derived sizes in one pass")
+        set(_fix "Run `${_configure}`, then `${_again}`")
+        set(_fix_before "Run `${_configure}`, then `${_again}`, for derived sizes in one pass")
     endif()
     if(_kind STREQUAL "absent" OR _kind STREQUAL "placeholder")
         set(_derived FALSE)
