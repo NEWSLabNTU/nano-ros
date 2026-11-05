@@ -338,7 +338,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::Doctor(args) => cmd::doctor::run(args),
         cmd::Cmd::Board(args) => cmd::board::run(args),
         cmd::Cmd::Ws(args) => cmd::ws::run(args),
-        cmd::Cmd::Dev(_) => unreachable!("`nros dev` is lowered above"),
+        cmd::Cmd::Dev(a) => cmd::dev::run_unlowered(a),
         cmd::Cmd::Version => cmd::version::run(),
         cmd::Cmd::Completions(args) => cmd::completions::run(args),
         #[cfg(feature = "release")]

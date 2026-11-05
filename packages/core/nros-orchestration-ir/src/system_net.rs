@@ -100,9 +100,9 @@ impl Attach {
     }
 }
 
-/// `[image.<id>.run]` (RFC-0109 D6, phase-514 W6): facts about how this image
-/// is RUN, read by the QEMU launchers and the test harness only. The image's
-/// build never reads them.
+/// `[image.<id>.run]` (RFC-0109 D6, phase-514 W6; RFC-0118 D5's image rung):
+/// facts about how this image is RUN, read by `nros run`, the QEMU launchers
+/// and the test harness. The image's build never reads them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageRun {
@@ -111,14 +111,50 @@ pub struct ImageRun {
     /// any other network.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nic: Option<Attach>,
+    /// The runner that runs this image (`method = "acme"` is the runner
+    /// package announcing `runner/acme`), over what the board's `[board.run]`
+    /// implies (phase-527 W7). As `[image.<id>.flash] method`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
+    /// A command template that runs the image (RFC-0118 D5), through the
+    /// `command` runner. An alternative to `method`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<crate::target_exec::CommandTemplate>,
 }
 
 impl ImageRun {
     /// Check the stated facts. `id` is the image id.
     pub fn validate(&self, id: &str) -> Result<(), String> {
+        if self.method.is_some() && self.command.is_some() {
+            return Err(format!(
+                "[image.{id}.run]: `method` and `command` are alternatives — a command template \
+                 REPLACES the method (RFC-0118 D5)"
+            ));
+        }
         match &self.nic {
             Some(n) => n.validate(&format!("[image.{id}.run]")),
             None => Ok(()),
+        }
+    }
+
+    /// Key by key over `base` (`[image_defaults]`): `method` and `command`
+    /// travel together, as a flash table's do, so an image stating either
+    /// replaces both.
+    #[must_use]
+    pub fn over(&self, base: &ImageRun) -> ImageRun {
+        let how = self.method.is_some() || self.command.is_some();
+        ImageRun {
+            nic: self.nic.clone().or_else(|| base.nic.clone()),
+            method: if how {
+                self.method.clone()
+            } else {
+                base.method.clone()
+            },
+            command: if how {
+                self.command.clone()
+            } else {
+                base.command.clone()
+            },
         }
     }
 
@@ -719,10 +755,35 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// phase-527 W7 — `[image.<id>.run] method` parses, `method` with
+    /// `command` is refused, and an image's method replaces the defaults'
+    /// command (the two travel together).
+    #[test]
+    fn a_run_method_parses_and_travels_with_its_command() {
+        let t: toml::Table = "[run]\nmethod = \"acme\"\n".parse().unwrap();
+        let run = parse_run(Some(&t), "x").unwrap();
+        assert_eq!(run.method.as_deref(), Some("acme"));
+        let t: toml::Table = "[run]\nmethod = \"acme\"\ncommand = \"go {elf}\"\n"
+            .parse()
+            .unwrap();
+        assert!(
+            parse_run(Some(&t), "x")
+                .unwrap_err()
+                .contains("alternatives")
+        );
+        let t: toml::Table = "[run]\ncommand = \"go {elf}\"\n".parse().unwrap();
+        let defaults = parse_run(Some(&t), "x").unwrap();
+        let merged = run.over(&defaults);
+        assert_eq!(merged.method.as_deref(), Some("acme"));
+        assert!(merged.command.is_none());
+        assert_eq!(ImageRun::default().over(&defaults), defaults);
+    }
+
     #[test]
     fn the_run_nic_is_the_first_interfaces_attach() {
         let run = ImageRun {
             nic: Some(Attach::Tap { tap: "tap0".into() }),
+            ..ImageRun::default()
         };
         assert_eq!(
             run.attach_for("lab", true),

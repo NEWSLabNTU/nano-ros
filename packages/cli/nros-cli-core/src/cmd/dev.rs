@@ -54,6 +54,14 @@ pub enum Noun {
     Sdk(Sdk),
     /// Collect component source metadata for orchestration planning.
     Metadata(metadata::Args),
+    /// Check a runner package: built, answers `describe`, speaks our protocol.
+    // phase-527 W7 (RFC-0119 D10). Born under `nros dev`: no old spelling.
+    #[command(subcommand)]
+    Runner(cmd::extension_check::RunnerSub),
+    /// Check a command package: built, its descriptor and executable usable.
+    // phase-527 W7 (RFC-0119 D10). Born under `nros dev`: no old spelling.
+    #[command(subcommand)]
+    Command(cmd::extension_check::CommandSub),
 }
 
 #[derive(Debug, Subcommand)]
@@ -206,6 +214,30 @@ pub fn lower(args: Args) -> Cmd {
             }),
         },
         Noun::Metadata(a) => Cmd::Metadata(a),
+        // Born under `nros dev` with no older spelling to lower into: run as
+        // they are (`crate::run`'s `Cmd::Dev` arm).
+        noun @ (Noun::Runner(_) | Noun::Command(_)) => Cmd::Dev(Args { noun }),
+    }
+}
+
+/// Verbs born under `nros dev`, which no older spelling lowers to, so they
+/// have no row in [`ALIASES`].
+pub const BORN_IN_DEV: &[&str] = &["dev runner check", "dev command check"];
+
+/// Run a `nros dev` command [`lower`] left as it is.
+///
+/// # Errors
+///
+/// What the verb returns.
+pub fn run_unlowered(args: Args) -> eyre::Result<()> {
+    match args.noun {
+        Noun::Runner(cmd::extension_check::RunnerSub::Check(a)) => {
+            cmd::extension_check::runner_check(a)
+        }
+        Noun::Command(cmd::extension_check::CommandSub::Check(a)) => {
+            cmd::extension_check::command_check(a)
+        }
+        other => unreachable!("`nros dev` lowers {other:?}"),
     }
 }
 
@@ -371,7 +403,9 @@ pub(crate) mod tests {
             }
             for verb in noun.get_subcommands() {
                 let path = format!("{noun_path} {}", verb.get_name());
-                if !ALIASES.iter().any(|(_, new)| *new == path) {
+                if !ALIASES.iter().any(|(_, new)| *new == path)
+                    && !BORN_IN_DEV.contains(&path.as_str())
+                {
                     missing.push(path);
                 }
             }

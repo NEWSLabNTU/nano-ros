@@ -1,12 +1,12 @@
 # Phase 527 — Runner and command packages: kinds, host build, dispatch, release underlay
 
-**Status (2026-11-04). IN PROGRESS — W3, W1, W2, W2b and W2c landed
+**Status (2026-11-05). IN PROGRESS — W3, W1, W2, W2b and W2c landed
 (`packages/runners/` and `nros-extension`; the `runner` and `command` kinds;
 the host build role; declared overrides; colcon's duplicate rule among
 source roots, overrides in `nros.toml`), W2d (one `--base-paths` meaning,
 #3088), W2e (a duplicate inside one root is refused too, #3113), W4
-(command dispatch, #3116) and W6 (the release underlay, #3122); W5 (the
-first command packages) in review (#3130); W7 next.** Implements
+(command dispatch, #3116), W5 (the first command packages, #3130) and W6
+(the release underlay, #3122); W7 (scaffolds and checks) in review (#3146).** Implements
 [RFC-0119](../design/0119-cli-extension-packages.md) D1 to D7, D9 and D10.
 The first-party runner packages of D8 are built in
 [phase-528](phase-528-run-on-host-and-emulator.md) and
@@ -676,6 +676,69 @@ Acceptance:
   passes `nros dev runner check`, and runs the native talker through
   `method = "<its name>"` at the image level.
 - This is a `check-template-copy-out` row.
+
+**Status: in review (#3146).** What landed:
+
+- `nros new <name> --kind runner|command [--lang rust|cpp]`
+  (`cmd/new_extension.rs`). It writes `package.xml` (build type
+  `nros_cargo` or `nros_cmake`), the descriptor (`nros-runner.toml` with
+  protocol 1, `verbs = ["run"]` and `needs = ["elf"]`, or `nros-command.toml`
+  with tier `user`), a README and a stub. The Rust runner stub is built on
+  `nros_extension::runner::main`: it answers `describe` and runs `elf` with
+  the pass-through arguments. A test checks that the stub's answer agrees
+  with its descriptor. The package lands in `src/<name>` when the current
+  directory is a workspace with a `src/`, otherwise in `<name>`, and
+  `--destination-directory` overrides both.
+- `nros dev runner check <name>` and `nros dev command check <name>`
+  (`cmd/extension_check.rs`). Each resolves the package through the same
+  provider resolution as dispatch, builds it with `nros build
+  --packages-select` (skip that with `--no-build`), and locates the built
+  binary through `host_tool::locate_built`. The runner check calls
+  `describe` for each verb in its descriptor and compares the verbs and needs.
+  It then makes a dry-run plan, `nros run --dry-run --json`, which must name
+  this runner and carry its needs. That step is reported NOT RUN when the
+  workspace has no single image, or when its image selects another runner;
+  in the second case it prints the `[image.<id>.run] method` row that would
+  select this one. The command check refuses a built-in verb
+  name, negotiates the descriptor's protocol, and runs `<bin> --help`. A
+  non-zero exit there is a note, not a failure.
+- **`[image.<id>.run] method | command`**: the acceptance's image-level
+  `method` did not exist, because `[image.<id>.run]` held only `nic`. It now
+  mirrors `[image.<id>.flash]`. The image rung sits above `[board.run]` in
+  `run_plan::resolve_run`, `--why` names it, and `method` and `command` are
+  alternatives: setting both is refused. `ImageRun::over` merges
+  `[image_defaults.run]` key by key, so `method` and `command` travel
+  together. Tested by `an_image_run_method_beats_the_boards` and
+  `a_run_method_parses_and_travels_with_its_command`.
+- `nros build`'s next steps print `nros run <image>` for an image whose
+  runner is a runner package. They used to print "which this nros cannot
+  launch yet", which stopped being true at phase-528 W3.
+- A host tool that depends on `nros-extension` gets a `--config
+  patch.crates-io.nros-extension.path=…` row on its build and on its lock
+  configure, pointing at the checkout's `packages/runners/nros-extension`.
+  The scaffold names the crate `version = "*"`, as every unpublished
+  nano-ros crate is named. A tool that does not name the crate gets no row,
+  so its build prints no "unused patch" warning. `nros-extension`'s manifest
+  inlines its `workspace = true` fields, because it is now built from
+  outside the root workspace.
+- The `check-template-copy-out` row `scaffold:runner-package` copies
+  `multi-node-workspace` out, scaffolds `acme_runner`, sets `[image.linux.run]
+  method = "acme_runner"`, builds, runs `nros dev runner check`, and runs the
+  talker through `nros run --expect Publishing`. It requires the runner's own
+  `acme_runner: running` line in the output.
+
+Deviations:
+
+- **The C++ stubs do not use `nros-extension`.** It is a Rust crate with no
+  C++ surface. The C++ runner stub prints the `describe` JSON itself and
+  reads `elf` from the plan by hand. `nros dev runner check` holds the C++
+  stub to the same protocol as the Rust one, so the two stay in step.
+- **The command check runs `--help`, not `describe`.** RFC-0119's command
+  protocol defines no `describe` verb, so the check negotiates the
+  descriptor's protocol number and smoke-runs the binary.
+- **The workspace test is temporary.** It uses `extension::is_workspace`
+  until phase-531 W4's `new_workspace::enclosing_workspace` lands. The swap
+  is one call.
 
 ## Acceptance
 

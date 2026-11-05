@@ -459,11 +459,12 @@ pub fn next_steps(
                 Err(_) => unresolved = Some(no_command(&p.board)),
             },
             "renode" => renode_line(&p.qualified, &mut out),
-            // The runner is phase-528 W3's.
-            other => out.notes.push(format!(
-                "`{}` runs under the `{other}` runner ({}), which this nros cannot launch yet",
-                p.board,
-                plan.target.emulator.as_deref().unwrap_or("?")
+            // Any other runner is a runner package (RFC-0119): `nros run`
+            // resolves and launches it, and there is no line to paste
+            // instead, because the package reads the plan it is handed.
+            other => out.commands.push((
+                format!("run through the `{other}` runner"),
+                format!("nros run {}", shell_word(&p.qualified)),
             )),
         },
         Err(e) => unresolved = Some(e.to_string()),

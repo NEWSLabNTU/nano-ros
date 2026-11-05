@@ -74,6 +74,11 @@ pub struct ImageTables {
     /// `NROS_IMAGE_NET` text), which carries `[image.<id>.run] nic` and the
     /// MAC the firmware was built with. `None`: the image states no network.
     pub net: Option<String>,
+    /// `[image.<id>.run] method` / `command`: the runner the image names,
+    /// above the one its board's `[board.run]` implies (phase-527 W7).
+    pub run_method: Option<String>,
+    /// See [`Self::run_method`].
+    pub run_command: Option<String>,
 }
 
 impl ImageTables {
@@ -89,6 +94,8 @@ impl ImageTables {
             console: b.console.clone(),
             locator: b.locator.clone(),
             net: net.map(crate::orchestration::image_net::ImageNet::text),
+            run_method: b.run.method.clone(),
+            run_command: b.run.command.as_ref().map(|c| c.as_str().to_string()),
         }
     }
 
@@ -103,6 +110,13 @@ impl ImageTables {
             console: l.network.console.clone(),
             locator: l.network.locator.clone(),
             net: net.map(crate::orchestration::image_net::ImageNet::text),
+            run_method: l.network.run.method.clone(),
+            run_command: l
+                .network
+                .run
+                .command
+                .as_ref()
+                .map(|c| c.as_str().to_string()),
         }
     }
 }
@@ -395,7 +409,16 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
             target.emulator.as_deref().unwrap_or(kind),
         )));
     }
-    let r = match (target.host, emu_kind) {
+    // phase-527 W7 — `[image.<id>.run] method|command` (the image rung)
+    // names the runner above what the board's `[board.run]` implies. The
+    // target stays the board's: the runner decides how to reach it.
+    let r = match (&i.tables.run_method, &i.tables.run_command) {
+        (_, Some(_)) => Some(runner("nros_runner_command", "command")),
+        (Some(m), None) => Some(method_runner(m)),
+        (None, None) => None,
+    };
+    let rung = if r.is_some() { IMAGE } else { METHOD };
+    let r = r.unwrap_or_else(|| match (target.host, emu_kind) {
         (true, _) => runner("nros_runner_native", "native"),
         (false, Some("fvp")) => runner("nros_runner_fvp", "fvp"),
         (false, Some(k)) if is_west(&i) && WEST_EMULATORS.contains(&k) => {
@@ -403,9 +426,13 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
         }
         (false, Some(k)) => runner(&format!("nros_runner_{k}"), k),
         (false, None) => unreachable!("a target was set above"),
-    };
-    prov.set("runner", METHOD);
+    });
+    prov.set("runner", rung);
     let mut plan = plan_shell(Verb::Run, &i, r, target);
+    if let Some(c) = &i.tables.run_command {
+        plan.args.insert("command".into(), c.clone());
+        prov.set("args.command", IMAGE);
+    }
 
     // ---- args: the Renode twin's wiring (phase-524 W4b) ----------------------
     if plan.runner.name == "renode"
@@ -1134,6 +1161,47 @@ mod tests {
         )
     }
 
+    /// phase-527 W7 — `[image.<id>.run] method` beats the runner the board's
+    /// `[board.run]` implies, keeps the board's target, and `--why` names the
+    /// image rung; a `command` goes to the `command` runner with its template.
+    #[test]
+    fn an_image_run_method_beats_the_boards() {
+        let cat = BoardCatalog::load(&repo_root()).unwrap();
+        let d = board(&cat, "linux");
+        let out = cargo_out(None);
+        let p = go(
+            Verb::Run,
+            &d,
+            &out,
+            &ImageTables::default(),
+            &Invocation::default(),
+        )
+        .unwrap();
+        assert_eq!(p.runner.name, "native");
+        assert_eq!(p.provenance.get("runner").map(String::as_str), Some(METHOD));
+
+        let tables = ImageTables {
+            run_method: Some("acme".into()),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Run, &d, &out, &tables, &Invocation::default()).unwrap();
+        assert_eq!(p.runner.name, "acme");
+        assert_eq!(p.runner.package, "nros_runner_acme");
+        assert!(p.target.host, "the target is still the board's");
+        assert_eq!(p.provenance.get("runner").map(String::as_str), Some(IMAGE));
+
+        let tables = ImageTables {
+            run_command: Some("my-launcher {elf}".into()),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Run, &d, &out, &tables, &Invocation::default()).unwrap();
+        assert_eq!(p.runner.name, "command");
+        assert_eq!(
+            p.args.get("command").map(String::as_str),
+            Some("my-launcher {elf}")
+        );
+    }
+
     /// The board rung: `[board.run]` and `[board.run.qemu]` give the target,
     /// the runner and every QEMU arg, each recorded as `board`.
     #[test]
@@ -1345,6 +1413,7 @@ mod tests {
             }),
             locator: Some("serial/serial@40004800#baudrate=115200".into()),
             net: None,
+            ..ImageTables::default()
         };
         let inv = Invocation {
             port: Some("/dev/ttyACM0".into()),

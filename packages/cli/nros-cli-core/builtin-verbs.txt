@@ -50,11 +50,13 @@ user version
 user ws
 dev board
 dev codegen
+dev command
 dev image
 dev lock
 dev metadata
 dev profile
 dev rmw
+dev runner
 dev sdk
 dev ws
 reserved bench

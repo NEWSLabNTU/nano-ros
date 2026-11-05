@@ -227,14 +227,18 @@ pub struct Args {
     #[arg(long, requires = "workspace", value_name = "PACKAGE")]
     pub from: Option<PathBuf>,
 
-    /// Deprecated: use `--image` or `--host`.
+    // RFC-0119 D10.
+    /// `runner` or `command`: scaffold a runner or command package.
     ///
-    /// Only read by `--deploy`, to decide whether it meant a machine (`self`)
-    /// or a board build (anything else). `--image` and `--host` say which
-    /// directly.
-    // DEPRECATED by issue 0951.
-    #[arg(long, default_value = "self")]
-    pub kind: String,
+    /// The package holds its `package.xml`, its descriptor and a stub on
+    /// `nros-extension` (`--lang rust`, the default) or a CMake executable
+    /// that speaks the protocol JSON itself (`--lang cpp`). Inside a workspace
+    /// it lands in `src/<name>/`. Check it with `nros dev runner check <name>`
+    /// or `nros dev command check <name>`.
+    // phase-527 W7. With `--deploy` this keeps its deprecated meaning (issue
+    // 0951): `self` scaffolds a host, anything else an image.
+    #[arg(long)]
+    pub kind: Option<String>,
 
     /// Deprecated: accepted and ignored.
     ///
@@ -286,7 +290,10 @@ pub struct Args {
 /// refusals it replaces were unreachable. [`nros_lang::Language::parse`] also
 /// takes `c++`/`cxx`, which clap rejects first; if the flag's own list ever
 /// grows to match, it grows THERE, in one place a reader can see.
-fn language_arg(flag: Option<&str>, default: nros_lang::Language) -> Result<nros_lang::Language> {
+pub(crate) fn language_arg(
+    flag: Option<&str>,
+    default: nros_lang::Language,
+) -> Result<nros_lang::Language> {
     match flag {
         Some(s) => nros_lang::Language::parse(s).map_err(|e| eyre::eyre!("nros new --lang: {e}")),
         None => Ok(default),
@@ -728,6 +735,11 @@ pub fn run(args: Args) -> Result<()> {
         return Ok(());
     }
 
+    // phase-527 W7 — `nros new <name> --kind runner|command`.
+    if let Some(kind) = extension_kind(&args) {
+        return crate::cmd::new_extension::scaffold(&args, kind);
+    }
+
     // Issue 0951 — `[deploy.*]` split into `[image.*]` (what is BUILT) and
     // `[host.*]` (WHERE it runs), so the scaffolder asks which one.
     //
@@ -742,7 +754,7 @@ pub fn run(args: Args) -> Result<()> {
         (Some(name), None, None) => Some((name.clone(), ScaffoldTable::Image)),
         (None, Some(name), None) => Some((name.clone(), ScaffoldTable::Host)),
         (None, None, Some(name)) => {
-            let table = if args.kind == "self" {
+            let table = if args.kind.as_deref().unwrap_or("self") == "self" {
                 ScaffoldTable::Host
             } else {
                 ScaffoldTable::Image
@@ -757,7 +769,7 @@ pub fn run(args: Args) -> Result<()> {
                  into `[image.*]` (what is BUILT) and `[host.*]` (WHERE it runs). \
                  With --kind {}, this scaffolds {} block; use `{replacement}` \
                  directly.",
-                args.kind,
+                args.kind.as_deref().unwrap_or("self"),
                 match table {
                     ScaffoldTable::Image => "an [image.*]",
                     ScaffoldTable::Host => "a [host.*]",
@@ -1046,9 +1058,20 @@ pub(crate) fn board_platform(
     Ok((platform.to_string(), word.to_string()))
 }
 
+/// The runner or command package `--kind` asks for (phase-527 W7), or `None`
+/// for every other invocation. `--deploy` keeps `--kind`'s deprecated meaning,
+/// and a `--kind` value that names neither kind is ignored, as it was.
+#[must_use]
+pub fn extension_kind(args: &Args) -> Option<crate::cmd::new_extension::ExtKind> {
+    if args.deploy.is_some() {
+        return None;
+    }
+    crate::cmd::new_extension::ExtKind::parse(args.kind.as_deref()?)
+}
+
 /// Where a package or component is created: `<--destination-directory>/<name>`,
 /// else `<name>` under the current directory.
-fn package_dir(args: &Args, name: &str) -> PathBuf {
+pub(crate) fn package_dir(args: &Args, name: &str) -> PathBuf {
     args.destination_directory
         .as_ref()
         .map_or_else(|| PathBuf::from(name), |d| d.join(name))

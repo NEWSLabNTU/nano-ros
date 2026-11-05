@@ -510,9 +510,7 @@ impl ImageBlock {
             // (`SystemToml::fold_os_config`), so the image's already hold both.
             net: self.net.clone(),
             networks: self.networks.clone(),
-            run: nros_orchestration_ir::system_net::ImageRun {
-                nic: self.run.nic.clone().or_else(|| base.run.nic.clone()),
-            },
+            run: self.run.over(&base.run),
             // KEY BY KEY (phase-528 W1): `[image.<id>]` and `[image_defaults]`
             // are both D5's image rung, so the RunPlan resolver sees one
             // table and ladders it over the board's the same way.
