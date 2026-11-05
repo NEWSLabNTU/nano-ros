@@ -35,6 +35,7 @@
   - [Use QoS, status events and discovery](./guide/rmw/qos-status-events.md)
 - [Contracts and sizing]()
   - [C / C++ multi-node workspaces](./guide/contracts/cpp-workspaces.md)
+  - [Declare QoS in a contract](./guide/contracts/declare-qos-in-a-contract.md)
   - [Measuring Static Memory](./guide/contracts/measure-static-memory.md)
 - [Build and configure]()
   - [Organize a larger workspace](./guide/build/organize-a-larger-workspace.md)
