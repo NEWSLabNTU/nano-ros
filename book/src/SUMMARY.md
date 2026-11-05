@@ -74,18 +74,18 @@
 
 # Background
 
-- [How Integration Works](./targets/how-integration-works.md)
-- [Architecture Overview](./concepts/architecture.md)
-- [Overview](./concepts/design-overview.md)
-- [The Real-Time Execution Model](./realtime/execution-model.md)
-- [Execution Model and Two-Layer API](./concepts/two-layer-api.md)
-- [Dispatch Strategy](./realtime/dispatch-strategy.md)
-- [RTOS Cooperation](./realtime/rtos-cooperation.md)
-- [`no_std`, `alloc`, and `std`](./concepts/no-std.md)
-- [Client Library Model](./concepts/client-library.md)
-- [Safety Protocol](./realtime/safety-protocol.md)
-- [Differences from Standard ROS 2](./from-ros2/differences.md)
-- [nano-ros vs micro-ROS](./from-ros2/vs-micro-ros.md)
+- [How Integration Works](./background/how-a-build-becomes-an-image.md)
+- [Architecture Overview](./background/architecture.md)
+- [Overview](./background/design-overview.md)
+- [The Real-Time Execution Model](./background/execution-model.md)
+- [Execution Model and Two-Layer API](./background/two-layer-api.md)
+- [Dispatch Strategy](./background/dispatch-strategy.md)
+- [RTOS Cooperation](./background/rtos-cooperation.md)
+- [`no_std`, `alloc`, and `std`](./background/static-memory-and-pools.md)
+- [Client Library Model](./background/client-library.md)
+- [Safety Protocol](./background/safety.md)
+- [Differences from Standard ROS 2](./background/differences-from-ros2.md)
+- [nano-ros vs micro-ROS](./background/vs-micro-ros.md)
 
 # Reference
 

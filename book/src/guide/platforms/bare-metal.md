@@ -171,7 +171,7 @@ What it writes is
 regenerated on every build; never edit it, and never add a `.cargo/config.toml`
 of your own to carry board facts. Your own Rust-toolchain preferences go where
 cargo already looks for them — a parent directory or `$CARGO_HOME`. See
-[When `nros build` drives the build](../../targets/how-integration-works.md#when-nros-build-drives-the-build).
+[When `nros build` drives the build](../../background/how-a-build-becomes-an-image.md#when-nros-build-drives-the-build).
 
 ## Run on QEMU
 

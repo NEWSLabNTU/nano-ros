@@ -207,7 +207,7 @@ build after a pin move regenerates it; there is no separate step to remember.
 
 - [Build as a CMake subdirectory](cmake-subdirectory.md) — cache
   variables, link targets
-- [How Integration Works](../../targets/how-integration-works.md) — per-RTOS build
+- [How Integration Works](../../background/how-a-build-becomes-an-image.md) — per-RTOS build
   hosting
 - [Vendor Overlay Board Crate](../../extending/vendor-overlay.md) — board
   glue that lives in *your* tree

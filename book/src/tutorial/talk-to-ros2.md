@@ -185,7 +185,7 @@ and won't find the router.
 
 ## Next Steps
 
-- [Architecture](../concepts/architecture.md) — understand the layer model
+- [Architecture](../background/architecture.md) — understand the layer model
 - [Internals → Zenoh protocol](../internals/rmw/zenoh-protocol.html) —
   how the wire format is encoded
 

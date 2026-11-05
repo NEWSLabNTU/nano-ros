@@ -84,7 +84,7 @@ When a project grows beyond one node, continue with
   build; later builds reuse what it recorded.
 - **Real-time you can reason about.** Fixed-size pools sized at build time,
   plus scheduling and safety features for RTOS targets: see
-  [Real-Time and Safety](../realtime/rtos-cooperation.md).
+  [Real-Time and Safety](../background/rtos-cooperation.md).
 - **Checked, not only tested.** Serialization, scheduling and the safety
   protocol are covered by model checking and machine-checked proofs, and
   every example is held identical across platforms by a test.

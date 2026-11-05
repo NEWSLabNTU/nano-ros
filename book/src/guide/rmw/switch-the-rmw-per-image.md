@@ -125,7 +125,7 @@ See the platform guides for the concrete per-platform workflow:
 - [ThreadX](../platforms/threadx.md)
 - [ESP32](../../migrating/esp32.md)
 
-and [When `nros build` drives the build](../../targets/how-integration-works.md#when-nros-build-drives-the-build) for
+and [When `nros build` drives the build](../../background/how-a-build-becomes-an-image.md#when-nros-build-drives-the-build) for
 which builder applies where.
 
 ## Design background

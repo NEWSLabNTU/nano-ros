@@ -127,5 +127,5 @@ two-and-a-half rows at the top + bottom of the matrix.
   — root CMake entry for vendor-IDE consumers.
 - [Platform Model](../concepts/platform-model.md) — Boards vs Platforms;
   Layer 1's `<nros/platform_*.h>` contract overlays sit on top of.
-- [RTOS Cooperation](../realtime/rtos-cooperation.md) — what the runtime
+- [RTOS Cooperation](../background/rtos-cooperation.md) — what the runtime
   expects from the OS underneath the platform layer.

@@ -214,7 +214,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 3: Terminology drift sweep across other pages
 
 **Files:**
-- Modify (as hits dictate): `book/src/tutorial/grow-your-workspace.md`, `book/src/guide/deploy/deploy-to-production.md`, `book/src/extending/board-trait.md`, `book/src/from-ros2/vs-micro-ros.md`, any other hit.
+- Modify (as hits dictate): `book/src/tutorial/grow-your-workspace.md`, `book/src/guide/deploy/deploy-to-production.md`, `book/src/extending/board-trait.md`, `book/src/background/vs-micro-ros.md`, any other hit.
 
 - [ ] **Step 1: Find all remaining stale terms book-wide**
 

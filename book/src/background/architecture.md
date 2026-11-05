@@ -73,7 +73,7 @@ helpers. Bare-metal ports may also expose a `network_poll()` hook so the
 runtime can advance smoltcp while waiting.
 
 The platform is selected at compile time together with the RMW backend
-and ROS edition. See [Platform Model](platform-model.md) for the feature
+and ROS edition. See [Platform Model](../concepts/platform-model.md) for the feature
 axes and [Custom Platform](../extending/custom-platform.md) for porting.
 
 ## Board Packages

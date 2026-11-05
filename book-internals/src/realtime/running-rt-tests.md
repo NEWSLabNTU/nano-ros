@@ -1,7 +1,7 @@
 # Running the real-time tests
 
 > The model these tests measure is
-> [The Real-Time Execution Model](../../realtime/execution-model.html) in
+> [The Real-Time Execution Model](../../background/execution-model.html) in
 > the nano-ros Book. A level's budget has exactly one enforcer (issue 2018);
 > S3 was measured on the S32K344 safety island in phase-509.
 

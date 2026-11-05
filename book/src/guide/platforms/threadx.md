@@ -213,7 +213,7 @@ in seconds. The binary lands under `build/`; `nros build --dry-run` prints the
 exact paths and the `cargo` or `cmake` lines, for driving the tool yourself
 (run `nros configure` first to write the generated entry without
 building). See
-[When `nros build` drives the build](../../targets/how-integration-works.md#when-nros-build-drives-the-build).
+[When `nros build` drives the build](../../background/how-a-build-becomes-an-image.md#when-nros-build-drives-the-build).
 
 After a successful build, `nros build` prints the artifact and the command
 that runs it.
