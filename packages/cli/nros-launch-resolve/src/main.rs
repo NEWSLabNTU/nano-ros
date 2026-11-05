@@ -194,7 +194,7 @@ fn main() -> Result<()> {
             cli.out,
             model.structure.nodes.len(),
             model.structure.topics.len(),
-            model.execution.tiers.len(),
+            model.execution.tasks.len(),
         );
     }
     Ok(())

@@ -97,7 +97,7 @@ pub enum Sub {
     #[command(name = "central-patch", hide = true)]
     CentralPatch(CentralPatchArgs),
 
-    /// Print the `execution.tiers` dim keys a committed SystemModel declares,
+    /// Print the `execution.tasks` dim keys a committed SystemModel declares,
     /// one per line, sorted.
     ///
     /// Uses the same extraction as the sync-time guard. Reads a file; needs
@@ -5521,7 +5521,7 @@ fn narrowed_generated_entries(
     narrowed
 }
 
-/// Every `execution.tiers.<tier>[.<scope>].<dim>` leaf a model declares.
+/// Every `execution.tasks.<tier>[.<scope>].<dim>` leaf a model declares.
 ///
 /// Issue 0380 — the committed SystemModel is the SSoT for scheduling dims the
 /// resolver's inputs cannot express (`zephyr.deadline_us`,
@@ -5544,7 +5544,12 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
         // a guard that fires on a file it cannot read is a guard people disable.
         return out;
     };
-    let Some(tiers) = doc.get("execution").and_then(|e| e.get("tiers")) else {
+    // `execution.tasks` since model schema 5 (rlm v0.3.11); a model committed
+    // before it spells the table `execution.tiers`.
+    let Some(tiers) = doc
+        .get("execution")
+        .and_then(|e| e.get("tasks").or_else(|| e.get("tiers")))
+    else {
         return out;
     };
     let serde_yaml_ng::Value::Mapping(tiers) = tiers else {

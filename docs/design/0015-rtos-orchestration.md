@@ -11,7 +11,7 @@ superseded-by: null
 
 # RTOS Orchestration via Launch Tree + Manifest Codegen
 
-> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` still read this release with a `deprecated-spelling` warning, and rlm R+1 refuses them. The prose and nano-ros's own names move in W2.
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names move in W2.
 
 > **Canonical path (phase-296 R3/R4).** Tier tables, bindings, and budgets
 > now come from the play_launch-resolved **SystemModel** (RFC-0050/0052):

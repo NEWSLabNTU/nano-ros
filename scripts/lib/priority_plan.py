@@ -15,10 +15,10 @@ from tracked import tracked  # issue 0721: index lookup, not a walk
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
-# Phase 536 W1: `[tasks.*]` since rlm v0.3.10; the pre-rename `[tiers.*]`
-# still reads this release, so a pin written either way is a lease.
-TIER_PLAT_RE = re.compile(r"^\[(?:tasks|tiers)\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\]\s*$")
-TIER_RE = re.compile(r"^\[(?:tasks|tiers)\.([A-Za-z0-9_]+)\]\s*$")
+# Phase 536 W3: `[tasks.*]`; the pre-rename `[tiers.*]` is refused since
+# rlm v0.3.11, so only the new key can carry a pin.
+TIER_PLAT_RE = re.compile(r"^\[tasks\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\]\s*$")
+TIER_RE = re.compile(r"^\[tasks\.([A-Za-z0-9_]+)\]\s*$")
 PRIO_RE = re.compile(r"^priority\s*=\s*(-?\d+)")
 PAIR_RE = re.compile(r"\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]")
 

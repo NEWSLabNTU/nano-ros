@@ -321,15 +321,15 @@ pkg = <span class="lit">"telem_pkg"</span>
 name = <span class="lit">"telem_node"</span>
 group_tiers = { <span class="hl">telem = "low"</span> }
 
-[tiers.high]
+[tasks.high]
 spin_period_us = <span class="lit">1000</span>
-[tiers.high.posix]  priority = <span class="lit">80</span>
-[tiers.high.zephyr] priority = <span class="lit">5</span>       <span class="cmt"># lower = higher on Zephyr</span>
-[tiers.high.nuttx]  priority = <span class="lit">110</span>
+[tasks.high.posix]  priority = <span class="lit">80</span>
+[tasks.high.zephyr] priority = <span class="lit">5</span>       <span class="cmt"># lower = higher on Zephyr</span>
+[tasks.high.nuttx]  priority = <span class="lit">110</span>
 
-[tiers.low]
+[tasks.low]
 spin_period_us = <span class="lit">10000</span>
-[tiers.low.posix]   priority = <span class="lit">10</span></pre>
+[tasks.low.posix]   priority = <span class="lit">10</span></pre>
       </div>
       <div class="note"><span class="tag">key idea</span><div>Tiers are declared <strong>per RTOS</strong> in sub-tables. Same nodes, same groups — retarget by picking which sub-table the codegen reads. (See the deploy slide.)</div></div>
     </div>
@@ -367,7 +367,7 @@ spin_period_us = <span class="lit">10000</span>
         <div class="panel">
           <div class="cap"><span>nros-platform · board/tier.rs</span><span class="lang">real struct</span></div>
 <pre><span class="kw">pub struct</span> TierSpec&lt;<span class="lit">'a</span>&gt; {
-    <span class="kw">pub</span> name: &amp;<span class="lit">'a</span> str,        <span class="cmt">// [tiers.&lt;name&gt;]</span>
+    <span class="kw">pub</span> name: &amp;<span class="lit">'a</span> str,        <span class="cmt">// [tasks.&lt;name&gt;]</span>
     <span class="kw">pub</span> groups: &amp;<span class="lit">'a</span> [&amp;<span class="lit">'a</span> str], <span class="cmt">// active_groups; [] = wildcard</span>
     <span class="kw">pub</span> priority: i64,          <span class="cmt">// raw per-RTOS spawn value</span>
     <span class="kw">pub</span> stack_bytes: usize,
@@ -398,7 +398,7 @@ spin_period_us = <span class="lit">10000</span>
     <div class="inner">
       <div class="eyebrow">§ scheduler integration</div>
       <h2 class="mt">A tier = one native RTOS task</h2>
-      <p class="sub">Same loop body everywhere; only the spawn call and yield primitive change. Priorities come straight from the <code>[tiers.*.&lt;rtos&gt;]</code> sub-table.</p>
+      <p class="sub">Same loop body everywhere; only the spawn call and yield primitive change. Priorities come straight from the <code>[tasks.*.&lt;rtos&gt;]</code> sub-table.</p>
       <div class="tbl-wrap panel mt">
         <table>
           <thead><tr><th>Target</th><th>Spawn</th><th>Priority scale</th><th>Yield</th></tr></thead>
@@ -412,7 +412,7 @@ spin_period_us = <span class="lit">10000</span>
           </tbody>
         </table>
       </div>
-      <div class="note"><span class="tag">one bringup, three deploys</span><div>The <em>same</em> nodes + <code>system.toml</code> ship to native, Zephyr, or NuttX by adding a <code>[tiers.*.&lt;rtos&gt;]</code> sub-table and switching the board — no node code changes.</div></div>
+      <div class="note"><span class="tag">one bringup, three deploys</span><div>The <em>same</em> nodes + <code>system.toml</code> ship to native, Zephyr, or NuttX by adding a <code>[tasks.*.&lt;rtos&gt;]</code> sub-table and switching the board — no node code changes.</div></div>
     </div>
   </section>
 

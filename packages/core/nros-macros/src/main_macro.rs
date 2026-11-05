@@ -1247,13 +1247,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // the table via the SHARED nros-orchestration-ir path.
         // issue 1426 — the AUTHORED half and the DERIVED half are one table,
         // not an if/else. This was the third site spelling the precedence as
-        // `model.execution.tiers.is_empty()`, and the third site to get the
+        // `model.execution.tasks.is_empty()`, and the third site to get the
         // same thing wrong: a model that authored one tier derived nothing for
         // any other node, however much contract those nodes carried. Rules and
         // the shared predicate: `derive::placement_is_unauthored`.
         let mut tiers: BTreeMap<String, nros_orchestration_ir::TierDef> = model
             .execution
-            .tiers
+            .tasks
             .iter()
             .map(|(name, t)| {
                 (
@@ -1264,7 +1264,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             .collect();
         // issue 0438 — remember that tiers were AUTHORED, so a collapse to the
         // degenerate default below can be reported instead of taken.
-        authored_tier_names = model.execution.tiers.keys().cloned().collect();
+        authored_tier_names = model.execution.tasks.keys().cloned().collect();
         let mut overrides: Vec<nros_orchestration_ir::NodeOverride> = Vec::new();
 
         if nros_orchestration_ir::derive::placement_is_unauthored(&model, &rtos, &node_groups) {

@@ -18,7 +18,7 @@ namespace ctrl_pkg {
 
 #if defined(NROS_PLATFORM_NUTTX)
 // Issue 2018 -- on NuttX the `high` level declares a 5 ms budget per 10 ms
-// (`[tiers.high.nuttx]`), which the kernel's SCHED_SPORADIC server enforces.
+// (`[tasks.high.nuttx]`), which the kernel's SCHED_SPORADIC server enforces.
 // One tick in fifty runs for 8 ms, past the budget, so the kernel demotes the
 // level to its floor priority and the runner reports it ("throttled by the
 // KERNEL"); the e2e reads that line. The other ticks stay well inside it.

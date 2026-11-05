@@ -280,7 +280,7 @@ pub fn package_name(image_id: &str) -> String {
 /// | `zephyr-edf` | some tier is `class = "real_time"` AND carries a `deadline` | `nros_board_zephyr::entry_tiers::apply_tier_deadline`'s body: `if tier.class == Some("real_time") { if let Some(us) = tier.deadline_us { … } }` |
 ///
 /// The table this reads is the one `plan_from_model` + `resolve_plan_sched`
-/// produce, from `model.execution.tiers` lowered for the image's own RTOS key —
+/// produce, from `model.execution.tasks` lowered for the image's own RTOS key —
 /// the same `nros_orchestration_ir::resolve_tiers` over the same SystemModel the
 /// macro expands against. So this is not a heuristic that happens to agree: it
 /// is the same computation on the same input, which is the only standard under

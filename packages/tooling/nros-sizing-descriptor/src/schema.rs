@@ -838,7 +838,7 @@ impl Image {
 
     /// Issue 1655 — Scheduling contexts the executor creates — `max_sc`: slot 0 plus the
     /// larger of the authored tier count and the node count. The SCHEDULE
-    /// (`execution.tiers`) is an input no endpoint row carries.
+    /// (`execution.tasks`) is an input no endpoint row carries.
     pub fn sched_context_count(&self) -> Fact<usize> {
         fact(
             &self.sched_context_count,

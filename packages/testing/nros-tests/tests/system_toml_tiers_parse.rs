@@ -60,8 +60,9 @@ fn every_tracked_system_toml_tiers_parse() {
                 continue;
             }
         };
-        // Phase 536 W1: `[tasks.*]`; the pre-rename `[tiers.*]` still reads.
-        let Some(tiers) = doc.get("tasks").or_else(|| doc.get("tiers")) else {
+        // Phase 536 W3: `[tasks.*]`; the pre-rename `[tiers.*]` is refused
+        // since rlm v0.3.11.
+        let Some(tiers) = doc.get("tasks") else {
             continue;
         };
         with_tiers += 1;
