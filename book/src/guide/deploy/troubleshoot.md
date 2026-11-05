@@ -11,7 +11,7 @@ only happen in their topic:
   [ROS 2 Interop](../../tutorial/talk-to-ros2.md#troubleshooting)
 - Serial links (session timeouts, baud rate, a shared UART):
   [Use a serial link](../rmw/use-a-serial-link.md#if-it-doesnt-work)
-- Multi-backend binaries: [Cross-backend Bridges](../rmw/bridge-between-backends.md#troubleshooting)
+- Multi-backend binaries: [Bridge between backends](../rmw/bridge-between-backends.md#if-it-doesnt-work)
 
 ## zenoh-pico Multiple Client Issues
 
