@@ -2,10 +2,19 @@
 
 <!-- type: how-to · level: 3 -->
 
-[Installation](../../start/install.md) is the short path. This page is the rest:
+[Install](../../start/install.md) is the short path. This page is the rest:
 what each host package is for, other ways to install, provisioning in depth,
-ROS 2 and the RMW daemons, pinning a project to a release, and using nano-ros
-from a build that is not a nano-ros workspace.
+ROS 2 and the RMW daemons, pinning a project to a release, working offline,
+and using nano-ros from a build that is not a nano-ros workspace.
+
+A release carries everything a project needs. The `nros` CLI provisions
+toolchains, scaffolds projects, generates message bindings and drives the
+build. The library ships inside the release as source, and `nros build`
+compiles it into your project. There is no prebuilt library, no system-wide
+install and no nano-ros clone: your project never names a path into
+nano-ros. Working on nano-ros itself needs a checkout and its own build of
+the CLI instead; see
+[Contributing](../../internals/orientation/contributing.html#development-setup).
 
 ## Host packages
 
@@ -17,6 +26,16 @@ the ROS message-to-IDL step the Cyclone DDS backend uses; empy must stay 3.x.
 On Arch, `base-devel` is a package group that covers `pkg-config`, and
 `ca-certificates` ships with the base system. Each tool's absence produces an
 error naming it.
+
+Fedora and Arch ship no packages for the rosidl Python side, so Install has
+them installed with `pip install --user`. Arch's Python is externally
+managed, so pip needs `--break-system-packages` there even for a `--user`
+install; the packages still land under `~/.local`, not in the system
+Python. To keep them apart from your user site instead, install the same four
+packages into a virtual environment:
+create one with `python -m venv ~/.venvs/nros`, activate it with
+`. ~/.venvs/nros/bin/activate`, run the same `pip install` without `--user`,
+and activate it in every shell you build from.
 
 These are the only packages you install by hand. Per-board OS dependencies
 later on are declared in the index and printed for your package manager
@@ -46,6 +65,11 @@ curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/in
 
 `NROS_HOME` moves the install root away from `~/.nros`. The repository's
 GitHub Releases page lists every release.
+
+After installing, `nros version` prints the CLI, codegen and library
+versions, and `nros doctor`, run outside a workspace, checks the install
+itself: the launcher on `PATH`, the SDK store and the version a pin in the
+current directory names.
 
 ## Provisioning with `nros setup`
 
@@ -347,6 +371,20 @@ regenerates them. After installing a newer release, re-run `nros setup <board>`
 are already current are no-ops. See
 [versioning](https://github.com/NEWSLabNTU/nano-ros/blob/main/book-internals/src/dev-env/versioning.md)
 for how the release number is chosen.
+
+## Working offline
+
+A machine with no network installs and builds from copies you stage while
+online. Install the release from a mirror or a local file with
+`NROS_INSTALL_URL=<url>` (its `.sha256` must sit beside it), set
+`NROS_OFFLINE=1` so `nros` never fetches the SDK index or a crate, and carry
+`~/.nros` with the Rust toolchain's `~/.rustup` and `~/.cargo` to the offline
+host. Run `nros configure` in each workspace while online, so the offline
+build has nothing left to fetch. A build that needs something missing stops
+and names it rather than fetching it.
+
+[Integrating into a Vendored Tree](existing-cmake-or-vendor-tree.md#air-gapped--mirrored-ci)
+gives the whole offline contract, for a company tree and air-gapped CI.
 
 ## Consuming nano-ros
 
