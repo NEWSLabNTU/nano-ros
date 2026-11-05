@@ -37,6 +37,20 @@ in 20 s. The other waited out its 30 s boot timeout without its SITL printing
 a single line. PX4's posix daemon takes a per-instance lock and fixed UDP
 ports.
 
+### Second sighting: the other test lost (2026-11-05)
+
+Nightly run 41985062052 (2026-11-05 07:07 UTC, main `1cc4ad92`), job
+127103760109, step `Build SITL and run the PX4 cells`. The roles were reversed:
+
+    FAIL [  30.026s] (3/3) nros-tests::px4_sitl work_queue_tier_wakes_only_for_deadlines_and_arrivals
+    PX4 SITL did not boot: 0 of 1 line(s) containing `Startup script returned successfully` within 30s
+
+On 2026-11-04 `work_queue_tier_…` passed and `stock_px4_listener_…` failed.
+On 2026-11-05 `work_queue_tier_…` failed. The failing test changes from run
+to run, and each time the SITL log is empty and the failure is the 30 s boot
+timeout. A defect in either test's own logic would fail the same test every
+time; a race between the two boots fails whichever one loses.
+
 ## What it is not
 
 - **Not issue 1896** (the PX4 bridge's XRCE client colliding with
