@@ -39,21 +39,27 @@ my_drone_firmware/
 > already build. Clone it (or use the one you have) and initialize its
 > submodules; nano-ros is tested against PX4 v1.17.0.
 
-```bash
+```bash probe=30
 git clone --branch v1.17.0 https://github.com/PX4/PX4-Autopilot.git
 git -C PX4-Autopilot submodule update --init \
     --depth 1 --recommend-shallow --recursive
 ```
 
-PX4's own Python dependencies come from its `Tools/setup` scripts
-(e.g. `PX4-Autopilot/Tools/setup/ubuntu.sh`) — run those per PX4's
-documentation if the firmware build complains about missing Python
-modules.
+PX4's own build tools and Python dependencies come from its `Tools/setup`
+scripts. On Ubuntu, once per host (the SITL build needs neither the NuttX
+toolchain nor the simulators, so leave those out until you build for a
+Pixhawk or run Gazebo):
+
+```bash probe=32
+bash PX4-Autopilot/Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools
+```
+
+Other hosts: see PX4's development-environment documentation.
 
 Copy the template into your firmware repo; PX4 is pointed at the copy at
 build time:
 
-```bash
+```bash probe=40
 mkdir -p px4-modules
 sdk="$(nros locate nano-ros)"   # this project's nano-ros SDK root
 cp -r "$sdk/integrations/px4/module-template" px4-modules/nano-ros
@@ -89,7 +95,7 @@ make -C PX4-Autopilot px4_sitl_default \
     CMAKE_ARGS="-Dnano_ros_ROOT=$sdk"    # optional
 ```
 
-> **Not replayed.** No probe track runs the PX4 SITL build yet, so this line is unmeasured on the installed track ([tracking issue](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2176-unprobed-fvp-sitl-flash-lines.md)).
+> **Not replayed.** The `px4` probe track builds the plain SITL line under [Build](#build); this form, with `CMAKE_ARGS`, is not run by any probe.
 
 Inside the module, the canonical pattern bridges uORB → nano-ros.
 The module is a `PX4Module` subclass that runs in its own work
@@ -111,12 +117,16 @@ always enabled.)
 ## Build
 
 One `make`, one tree. For the SITL simulator (POSIX target — easier to
-develop against), or for a Pixhawk (`px4_fmu-v5_default` here; use your
-board's PX4 target):
+develop against):
 
-```bash
+```bash probe=50
 make -C PX4-Autopilot px4_sitl_default \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros"
+```
+
+Or for a Pixhawk (`px4_fmu-v5_default` here; use your board's PX4 target):
+
+```bash
 make -C PX4-Autopilot px4_fmu-v5_default \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros"
 ```
@@ -130,7 +140,36 @@ missing, stops naming the command that builds it).
 
 ## Run on the SITL simulator
 
-PX4's SITL runs the autopilot as a host process against a simulator. With
+PX4's SITL runs the autopilot as a host process. It boots without a
+simulator attached, which is enough to see the module start. From the SITL
+build directory, start the PX4 daemon:
+
+```bash probe=60 probe-run=120 probe-keep
+cd PX4-Autopilot/build/px4_sitl_default
+bin/px4 -d etc/init.d-posix/rcS
+```
+
+It is up once its startup script reports:
+
+```text probe-expect=60
+Startup script returned successfully
+```
+
+Then, in a second terminal in the same directory, start the module through
+the daemon's client command:
+
+```bash probe=70 probe-run=60
+cd PX4-Autopilot/build/px4_sitl_default
+bin/px4-nano_ros_app start
+```
+
+```text probe-expect=70
+nano-ros uORB backend registered
+```
+
+Ctrl-C stops the daemon.
+
+To fly a simulated vehicle, run SITL against a simulator instead. With
 Gazebo (Harmonic) installed per PX4's documentation:
 
 ```bash
@@ -165,7 +204,8 @@ board's startup script.
 
 No probe runs the upload line (a CI runner has no board): it stands
 unverified until run against a named board. PX4 SITL is the replay that can
-run in CI, and it is not yet run there either.
+run in CI: the `px4` probe track replays this chapter's SITL build and its
+headless run.
 
 **Readiness signal.** After `nano_ros_app start` in the PX4
 console, the shipped template logs `nano-ros uORB backend

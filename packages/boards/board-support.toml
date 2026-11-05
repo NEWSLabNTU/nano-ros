@@ -488,6 +488,12 @@ notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, s
 #     booting tests losing a race to boot a second SITL in the same build dir
 #     (issue 2243, open). Each test passed in one of the two runs; neither run
 #     was green. A job that has not kept a cadence does not earn one.
+# The book's evidence is the `px4` [[probe]] track (RFC-0115 D4: a board with
+# no emulator twin stays in the user book only with a probe track replaying its
+# chapter). It replays targets/px4.md's SITL build and a headless boot plus
+# `nano_ros_app start`, not these nightly tests, and it awaits a user-tier build
+# of the module's nano-ros archives (see its `awaits`). It is not a cadence for
+# this row: the row's status stays the hand run below until a lane is green.
 # `last_run` is the hand run phase-521 W8 (e)/(f) recorded on 2026-11-03: a
 # stock PX4 `listener` read a nano-ros publication, and the work-queue tier
 # test measured 30 runs for 10 deadlines and 20 arrivals in each of three
@@ -794,6 +800,15 @@ variant = "west-app-rust"
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 notes = "phase-532 (RFC-0123) — the guest application in Rust: zephyr-lang-rust in the chapter's west manifest, `nros setup board zephyr` on the west workspace, a `rustapp` staticlib crate built by `rust_cargo_application()`, `nros configure` for its message crates and cargo patches, then the chapter's plain `west build` and native_sim run."
+
+[[probe]]
+track = "px4"
+chapter = "targets/px4.md"
+variant = ""
+awaits = ["a user-tier build of the PX4 module's nano-ros archives: a release ships no `libnros_cpp.a` (uORB), `libnros_platform_posix.a` or placed headers, and NanoRosPx4Module.cmake stops PX4's configure naming a `cargo build -p nros-cpp` inside the SDK root, which the book cannot tell a reader to run"]
+weekly = true
+row = "px4-sitl@Px4"
+notes = "RFC-0115 D4 — PX4 SITL is a host executable with no emulator twin, so its chapter stays in the user book through this track. It replays targets/px4.md on the installed track: the reader's own PX4-Autopilot v1.17.0 clone and its `Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools`, the module template copied out of `nros locate nano-ros`, the plain `make px4_sitl_default EXTERNAL_MODULES_LOCATION=…` build, then the headless SITL daemon (`bin/px4 -d etc/init.d-posix/rcS`, asserted on `Startup script returned successfully`) and `bin/px4-nano_ros_app start` (asserted on `nano-ros uORB backend registered`). One daemon in its own build dir, so issue 2243's two-daemon race does not apply. Not replayed: the Gazebo run, the ROS 2 echo (the template forwards nothing), the `CMAKE_ARGS` form, the Pixhawk build and upload. Weekly so the gap fails visibly each Monday, up front and naming what it awaits; delete the `awaits` line when the archives have a user-tier build."
 
 [[probe]]
 track = "workspace"
