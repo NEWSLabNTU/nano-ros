@@ -121,6 +121,20 @@ These serve as reference when writing a new port.
 | `nros-platform-mps2-an385` | Cortex-M3 bare-metal | Single-threaded | smoltcp |
 | `nros-platform-stm32f4` | STM32F4 bare-metal | Single-threaded | smoltcp |
 
+## Runner packages
+
+A runner package teaches `nros run`, `nros flash` and `nros monitor` to drive
+a launcher, flasher or console that nano-ros does not ship a runner for. It is
+an ordinary package in your workspace, with a `package.xml` and a small
+descriptor, built for the host by `nros build`.
+
+## Command packages
+
+A command package adds a verb to `nros`. It is an ordinary package in your
+workspace, with a `package.xml` and a small descriptor, built for the host by
+`nros build`. `nros help --all` lists each extension verb with the package
+that provides it.
+
 ## Further reading
 
 - [Custom RMW Backend](custom-rmw.md) -- implementing a new transport protocol
@@ -135,3 +149,4 @@ These serve as reference when writing a new port.
 
 - [RFC-0049: hierarchical platform and board config](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0049-hierarchical-platform-board-config.md) — the two-crate, two-toml layout
 - [RFC-0042: platform build determinism](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0042-platform-build-determinism.md) — the `nros-board.toml` hardware descriptor
+- [RFC-0119: CLI extension packages](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0119-cli-extension-packages.md) — runner and command packages

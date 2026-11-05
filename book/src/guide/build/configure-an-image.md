@@ -18,6 +18,15 @@ standalone `config.toml` for hand-written `no_std` apps.
 > into `system.toml`; readers refuse them rather than reading them. The
 > design records are listed under [Design background](#design-background).
 
+## Building and configuring
+
+`nros build` is the recommended way to build an image: it prepares
+everything the build needs (generated messages, the resolved system, the
+image's build settings) and then runs the host build tool, as `cargo build`
+does. A project that stays in west, CMake, NuttX `make` or an IDE runs the
+preparation step, `nros configure`, from that tool's own configure step
+instead.
+
 ## One home per concern
 
 | File | Owns | Per |
@@ -641,3 +650,4 @@ On the `native` host build, `ExecutorConfig::from_env()` reads at process start
 - [RFC-0015: RTOS orchestration (multi-node RT tiers)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0015-rtos-orchestration.md)
 - [RFC-0002: RT execution model (timer overrun policy, § 4.4a)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0002-rt-execution-model.md)
 - [RFC-0103: one owner per fact (source lookup ladder)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0103-one-owner-per-fact.md)
+- [RFC-0120: one resolver for every build road](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0120-nros-configure-one-resolver.md) — `nros build` and `nros configure`

@@ -127,6 +127,50 @@ name it with `-d`. When it finishes it prints whichever of the two lines
 the board supports. Bringing your own west workspace, or driving `west build`
 by hand: [Zephyr Integration](../platforms/zephyr.md).
 
+## The Target Model
+
+Every place an image can run is described the same way: a **launcher or a
+flasher** (a host process, an emulator, or a tool that programs a board), a
+**console** (where the image's output appears), and a **link** (how its
+middleware reaches the rest of the system). `nros` reads these from the
+board's descriptor, so the same commands work on every board.
+
+- `nros run` launches an image on the host or in an emulator.
+- `nros flash` programs a real board, and `nros monitor` attaches to its
+  console.
+- `nros bench` records which board on your machine is on which port.
+
+See the [`nros` CLI reference](../../reference/cli.md) for each verb.
+
+### Running an Image: `nros run`
+
+`nros run` builds the image if it is stale, starts what its link needs, and
+streams the console, for host images and emulators. `nros run --expect
+'<line>'` exits successfully when that line appears, which makes it a
+one-line smoke test. On a real board it refuses and names the flashing step
+instead. See `nros run` in the [`nros` CLI reference](../../reference/cli.md).
+
+### Run Plans
+
+Before it runs anything, `nros run` resolves a **run plan**: which launcher
+or flasher, which console and which link, and where each fact came from. The
+facts come from five levels, highest first: the command line, the image, your
+machine's bench file, the board's descriptor, and the runner's defaults.
+`--plan` prints the plan without running it.
+
+### Flashing and Monitoring a Board
+
+`nros flash` programs a real board with a built image, and `nros monitor`
+attaches to its console. Both read how to do it from the board's descriptor.
+Until those verbs are available for your board, flash with the board
+vendor's own tools, as the sections above show.
+
+### Your Bench: `nros bench`
+
+`nros bench` records which board on this machine is connected to which
+serial port and debug probe, so `nros flash` and `nros monitor` find it
+without being told each time.
+
 ## Verify
 
 After deployment, verify from ROS 2 side:
@@ -144,3 +188,4 @@ mode, QoS reliability, and platform network setup.
 - [RFC-0003: RTOS integration pattern](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0003-rtos-integration-pattern.md) — the three-step embedded deploy contract (§4)
 - [RFC-0065: colcon-like workspace builder](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0065-colcon-like-workspace-builder.md) — `nros build`
 - [RFC-0075: zenoh router provenance](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0075-zenoh-router-provenance-and-the-unstable-seam.md) — why the router comes from ROS 2
+- [RFC-0118: target execution model](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0118-target-execution-model.md) — the target model, `nros run`, run plans, `nros flash`, `nros monitor` and `nros bench`
