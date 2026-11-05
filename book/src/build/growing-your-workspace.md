@@ -244,10 +244,10 @@ has two, so it refuses and prints the spellings that would resolve, here
 `sensor_node_bringup:baremetal`.
 
 The bringup still has no `launch/`, so the build generates its launch file
-from the two rows. To see it:
+from the two rows. After a build, it is at:
 
 ```bash
-nros plan explain sensor_node_bringup
+cat build/nros/launch/sensor_node_bringup/launch/system.launch.xml
 ```
 
 Before a build, two checks catch most mistakes in a bringup (a
@@ -268,7 +268,7 @@ file, so that adding it changes nothing until you edit it:
 
 ```bash
 mkdir -p src/sensor_node_bringup/launch
-cp build/nros/launch/sensor_node_bringup/system.launch.xml \
+cp build/nros/launch/sensor_node_bringup/launch/system.launch.xml \
    src/sensor_node_bringup/launch/system.launch.xml
 ```
 

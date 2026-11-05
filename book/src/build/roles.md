@@ -71,9 +71,9 @@ package in dependency order, each into its own `build/<pkg>/`, which is
 colcon's default; there are simply no images.)
 
 `launch/` is optional. A bringup without it gets a launch file generated from
-its `[[component]]` rows under `build/nros/launch/<bringup>/`, resolved exactly
-as an authored one; `nros plan explain <bringup>` prints it and says it was
-generated. Adding `launch/system.launch.xml` replaces it. A bringup with
+its `[[component]]` rows, written to
+`build/nros/launch/<bringup>/launch/system.launch.xml` and resolved exactly as
+an authored one. Adding `launch/system.launch.xml` replaces it. A bringup with
 neither `launch/` nor a `[[component]]` row is refused.
 
 `launch/*.launch.xml` is the ROS 2 launch schema verbatim — `<launch>`,

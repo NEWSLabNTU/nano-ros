@@ -40,6 +40,7 @@ The same node builds for any board. Nothing in this package says
 [system]
 name = "sensor_node"
 rmw = "zenoh"                        # which middleware
+ros_edition = "humble"               # which ROS 2 your peers run
 domain_id = 0
 
 [[component]]                        # which nodes run
@@ -60,13 +61,13 @@ the `rmw` line. Neither touches `src/sensor_node/`.
 
 ROS 2 projects describe what to start in a launch file. This bringup has no
 `launch/` directory, so `nros run` generated one from the `[[component]]`
-rows. To see it:
+rows, after the first build. To see it:
 
 ```bash
-nros plan explain sensor_node_bringup
+cat build/nros/launch/sensor_node_bringup/launch/system.launch.xml
 ```
 
-It prints the launch file and says it was generated. When you need what only
+When you need what only
 a launch file can say (a parameter, a remap, a launch argument), add
 `launch/system.launch.xml` to the bringup and it replaces the generated one.
 The file is the ROS 2 launch XML schema, so a launch file from another ROS 2
