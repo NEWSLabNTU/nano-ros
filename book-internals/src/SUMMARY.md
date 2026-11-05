@@ -49,6 +49,7 @@
 - [Running the real-time tests](./realtime/running-rt-tests.md)
 - [Dispatch ABI history](./realtime/dispatch-abi-history.md)
 - [The memory report](./realtime/mem-report.md)
+- [RTIC Integration](./realtime/rtic.md)
 
 # Testing and Verification
 

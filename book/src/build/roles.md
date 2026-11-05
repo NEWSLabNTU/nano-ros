@@ -270,7 +270,7 @@ every role stays its own image. Run one role by naming its bringup and image:
 nros run pubsub_bringup:linux_listener
 ```
 
-A variant with different code (a callback-style client, an RTIC listener) is
+A variant with different code (a callback-style client, a polling listener) is
 its own node package with its own image row; a configuration (a serial link, a
 custom transport) is an image row that states the knob over the same packages.
 

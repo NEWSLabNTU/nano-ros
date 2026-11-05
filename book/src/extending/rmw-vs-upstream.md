@@ -293,7 +293,7 @@ a timer that should have fired 5 ms in is delayed 75 ms.
 | Cooperative single-task (one task does ROS, no priority competition) | Yes — no other task to preempt; entity scheduling fairness is moot |
 | Async / tokio / Embassy (futures, wakers) | **Not supported** — the runtime's scheduler, not nano-ros, would decide when callbacks run, so no real-time bound could be stated |
 | Preemptive priority RTOS, ROS at one priority (FreeRTOS / ThreadX / Zephyr typical) | **Partial** — kernel preemption from higher-priority tasks works; ROS-internal entity scheduling is batch-FIFO, timer expiries can be delayed by long sub callbacks at the same priority |
-| WCET-bounded real-time (RTIC, DO-178C) | **No** — `drive_io` has unbounded execution time; callers needing per-callback WCET use RTIC, whose tasks `nros::main!` generates |
+| WCET-bounded real-time (DO-178C) | **No** — `drive_io` has unbounded execution time; callers needing per-callback WCET give each callback a tier of its own, whose task `nros::main!` generates |
 | Time-triggered cyclic | **No** — no way to bound `drive_io` to a fixed wall-clock budget |
 
 The "Yes" rows are where nano-ros ships today. The "Partial" / "No"

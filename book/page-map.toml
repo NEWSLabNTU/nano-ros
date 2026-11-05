@@ -437,17 +437,10 @@ action = "move"
 batch = "w4-realtime"
 
 [[page]]
-old = "user-guide/rtic-integration.md"
-book = "user"
-path = "realtime/rtic.md"
-action = "move"
-batch = "w4-realtime"
-
-[[page]]
 old = "user-guide/embassy-integration.md"
 book = "user"
-path = "realtime/rtic.md"
-action = "merge-into realtime/rtic.md"
+path = "realtime/rtos-cooperation.md"
+action = "merge-into realtime/rtos-cooperation.md"
 batch = "w4-realtime"
 
 [[page]]
@@ -1181,6 +1174,14 @@ path = "realtime/mem-report.md"
 action = "new phase-532"
 batch = "w3"
 note = "receives a split half of internals/measuring-static-memory.md"
+
+[[page]]
+old = "user-guide/rtic-integration.md"
+book = "internals"
+path = "realtime/rtic.md"
+action = "move"
+batch = "rtic-internals"
+note = "RTIC has no board-support row of its own (the `rtic` feature of nros-board-mps2-an385), so the user book does not teach it (RFC-0114 D10)"
 
 # phase-532 W7 (RFC-0123 D6): narrative documents imported from docs/.
 # The old path keeps a one-line "moved" stub (book-move.py import_doc).

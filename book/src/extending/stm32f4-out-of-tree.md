@@ -5,8 +5,8 @@ This chapter takes one real board all the way through
 built and maintained entirely outside the nano-ros repository.
 
 It exists because that is the honest arrangement for this board. nano-ros
-carried `nros-board-stm32f4` and `nros-board-rtic-stm32f4` in-tree for a long
-time, and **no CI lane ever booted either of them** — the hardware is not in the
+carried two STM32F4 board crates (`nros-board-stm32f4` and a framework variant)
+in-tree for a long time, and **no CI lane ever booted either of them** — the hardware is not in the
 test rack and QEMU does not model the STM32 MAC. An in-tree crate reads as a
 support promise, so the two crates left the supported matrix and became this
 page instead. The hardware works exactly as well

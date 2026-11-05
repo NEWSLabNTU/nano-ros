@@ -4,10 +4,8 @@
 > `DispatchStrategy` is shaped the way it is — the trichotomy, the
 > per-Node granularity, the tag-based callback API, the
 > `__nros_node_<pkg>_dispatch_strategy()` ABI symbol, and the
-> backward-compat contract. For the user-facing tutorials see
-> [RTIC Integration](rtic.md). Embassy is not
-> supported ([RTIC Integration → Embassy](rtic.md#embassy) says
-> why).
+> backward-compat contract. Embassy and other foreign async runtimes are not
+> supported ([RTOS Cooperation](rtos-cooperation.md) says why).
 
 ## The Inline / Deferred / FromIsr trichotomy
 
@@ -30,17 +28,16 @@ The variants:
 - **`Inline`** — Callbacks fire from the executor's spin loop, in the
   same task that drives transport I/O. Default for every Node
   (a Node that does not name a strategy keeps working unchanged). Served by every
-  runtime: POSIX, FreeRTOS, NuttX, Zephyr, ThreadX, bare-metal, RTIC
-  (proxied via `__nros_dispatch` task when needed), Embassy
-  (likewise — though Inline is unusual under cooperative async; see
-  the matrix below).
+  runtime: POSIX, FreeRTOS, NuttX, Zephyr, ThreadX and bare-metal.
 
-- **`Deferred`** — Callbacks land in a board-side queue
-  (`heapless::spsc::Queue` on RTIC, `embassy_sync::channel::Channel`
-  on Embassy). A framework-owned dispatch task drains the queue and
-  drives `ExecutableNode::on_callback` from its own task context,
-  decoupling callback latency from network polling. Required for
-  callback-driven Nodes on RTIC + Embassy.
+- **`Deferred`** — Callbacks land in a queue, and a dispatch task drains it
+  and drives `ExecutableNode::on_callback` from its own task context,
+  decoupling callback latency from network polling. The entry `nros::main!`
+  generates for a supported board has no such task: each tier's loop is the
+  only task that runs its callbacks, so a `Deferred` component is registered
+  inline there (a queue nothing drains would lose callbacks). The node still
+  has to use the tag API below, so it builds unchanged for an entry that does
+  drain the queue.
 
 - **`FromIsr`** — Callbacks fire directly from an ISR handler. **Design
   slot only** — not implemented yet. Reserved so
@@ -58,28 +55,17 @@ The matrix `nros check` enforces:
 ┌─────────────┼──────────────┼─────────────────┼─────────────────────┤
 │ posix       │  OK          │  OK             │  ERR: no ISRs       │
 │ rtos        │  OK          │  OK             │  ERR: no ISRs       │
-│ rtic        │  WARN: pref. │  OK (canonical) │  FUTURE             │
-│             │  Deferred    │                 │                     │
-│ embassy     │  WARN: pref. │  OK (canonical) │  ERR: no ISR exec   │
-│             │  Deferred    │                 │                     │
+│ bare-metal  │  OK          │  OK             │  ERR: no ISRs       │
 └─────────────┴──────────────┴─────────────────┴─────────────────────┘
 ```
 
-- **POSIX + RTOS**: both Inline and Deferred work. Inline is the
-  default because the executor's spin loop *is* the natural place to
-  dispatch callbacks on hosted targets.
-- **RTIC + Embassy**: Deferred is canonical. Inline is permitted (the
-  framework adapter still serves it) but `nros check` warns:
-  callback-driven Nodes that run inline tie their handler latency to
-  spin task scheduling, which is rarely what you want under
-  hardware-interrupt or async-cooperative scheduling.
-- **`FromIsr` on POSIX/RTOS**: rejected — there's no meaningful "ISR
-  context" for nano-ros to dispatch from on a hosted OS.
-- **`FromIsr` on RTIC**: future — needs the reentrancy audit + SPSC
-  rework + per-Node `#[isr_safe]` contract described below.
-- **`FromIsr` on Embassy**: rejected — Embassy has no concept of
-  "callback fires from an ISR handler"; ISR-driven work hands off to
-  an async task via `embassy_sync::signal::Signal` or similar.
+- **Inline and Deferred**: both accepted on every supported board. Inline is
+  the default because the executor's spin loop *is* the natural place to
+  dispatch callbacks when the entry owns that loop.
+- **`FromIsr`**: rejected — the entries nano-ros generates dispatch from a
+  task or loop, never from an ISR handler, so there is no ISR context to
+  dispatch from. It stays rejected until the reentrancy audit, the SPSC
+  rework and the per-Node `#[isr_safe]` contract described below exist.
 
 ## Why per-Node, not per-callback
 
@@ -219,11 +205,11 @@ and a forced-correct API for the Deferred path.
 
 ## Deferring callbacks without the macros
 
-`Node::DISPATCH` and the RTIC queue above belong to `nros::node!` nodes. The
-queue under them is the executor's own, with three calls and no macro-private
-type. A loop that drains it is a priority mapping nano-ros
-generates (RTIC) or owns; a foreign host's loop would decide when the
-callbacks run, which nano-ros does not support:
+`Node::DISPATCH` belongs to `nros::node!` nodes. The queue under it is the
+executor's own, with three calls and no macro-private type. A loop that drains
+it must be a task whose priority nano-ros owns, such as a tier's; a foreign
+host's loop would decide when the callbacks run, which nano-ros does not
+support:
 
 ```rust
 use nros::{Executor, HandleId};
@@ -259,8 +245,8 @@ The rules:
   readiness is decided inside its own dispatch.
 - The defer notifier fires during the spin and says which callback to run.
 - The drain needs `&mut Executor`, like `spin_once`. On a single task that is
-  the same task; across tasks (RTIC's), the executor is the shared resource
-  already guarded for spinning.
+  the same task; across tasks, the executor is the shared resource already
+  guarded for spinning.
 
 ## The `__nros_node_<pkg>_dispatch_strategy()` ABI symbol
 
@@ -285,11 +271,10 @@ Three consumers care about this symbol:
 
 2. **The `nros::main!()` proc-macro.** When
    expanding the Entry pkg's `main.rs` it walks the registered Node
-   list and reads each pkg's strategy. If any Node is Deferred, the
-   generated `#[rtic::app]` / `#[embassy_executor::main]` body
-   includes the `__nros_dispatch` task; if all are Inline, the
-   dispatch task is omitted (zero overhead for Inline-only
-   workspaces).
+   list and reads each pkg's strategy. An entry with a dispatch task adds
+   it only when some Node is Deferred, so Inline-only workspaces pay
+   nothing for it; the entries generated for the supported boards have
+   none and register every Node inline.
 
 3. **Future runtime diagnostic tools.** A `nros doctor` or `nros
    topology` style introspection tool can read the symbols from a
@@ -327,27 +312,27 @@ impls (`ExecutorNodeRuntime` in `nros`, `NullNodeRuntime` in
 `nros-platform`). A Deferred runtime overrides both:
 
 ```rust
-// File: packages/boards/nros-board-mps2-an385/src/rtic.rs (sketch)
-impl NodeDispatchRuntime for RticRuntime {
+// A sketch: a board runtime with a dispatch task of its own.
+impl NodeDispatchRuntime for DeferredRuntime {
     fn dispatch_strategy(&self) -> DispatchStrategy {
         DispatchStrategy::Deferred
     }
     fn signal_callback(&mut self, cb_id: CallbackId<'_>, ctx: &mut CallbackCtx<'_>) {
-        // SAFETY: SPSC producer is single-threaded by RTIC priority assignment.
+        // Single producer: only the spin task enqueues.
         self.queue_producer.enqueue((cb_id, ctx.snapshot())).unwrap();
-        // Wake the dispatch task; RTIC will schedule it at its declared priority.
-        __nros_dispatch::spawn().ok();
+        // Wake the dispatch task; it runs at its own declared priority.
+        self.wake_dispatch_task();
     }
 }
 ```
 
 `signal_callback`'s default panic is the right behavior: the Inline
 path never calls it (callbacks flow through the existing inline
-trampoline). If a Deferred Node ends up on an Inline runtime — for
-example because the user manually picked the wrong board — the panic
-is louder than silently dropping the callback. The `nros check`
-lint prevents this combination from compiling in the first
-place; the panic is a belt-and-braces backstop.
+trampoline). If a callback is signalled to an Inline runtime anyway —
+for example from a hand-written entry — the panic is louder than
+silently dropping the callback. A generated entry never reaches it:
+`nros::main!` registers a Deferred Node inline when the runtime has no
+dispatch task, so the panic is a belt-and-braces backstop.
 
 ## Backward compatibility
 
@@ -411,10 +396,8 @@ branch in the "after" version — same code, hoisted to a method.
 
 ## See also
 
-- [RTIC Integration](rtic.md) — user-facing
-  tutorial for the RTIC side of dispatch.
-- [RTIC Integration → Embassy](rtic.md#embassy) — why
-  Embassy is not supported.
+- [RTOS Cooperation](rtos-cooperation.md) — the supported execution
+  shapes, and why Embassy is not one.
 - [Scheduling Models](./scheduling-models.md) — the real-time
   scheduling backdrop against which dispatch strategy choices are
   made.

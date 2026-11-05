@@ -51,7 +51,7 @@ The main porting decision is whether to use:
 - polling handles from `Node::create_*`, or
 - callback registration through `Executor::register_*`.
 
-Use polling for RTIC, Embassy, or tight RT loops. Use callbacks for
+Use polling for tight RT loops and a task per entity. Use callbacks for
 desktop-style event-driven nodes.
 
 ## Services and Actions

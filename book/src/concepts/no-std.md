@@ -55,7 +55,7 @@ is propagated through the feature chain but does not add any API surface.
 
 - **Layer 1 (caller polls)** -- `Node::create_*` returns an owned
   handle. Caller drives `take` / `call` / `try_accept_goal` /
-  `take_request_raw` itself. Good for RTIC, Embassy,
+  `take_request_raw` itself. Good for tight RT loops and
   task-per-entity FreeRTOS.
 - **Layer 2 (executor dispatches)** -- `Executor::register_*`
   takes a closure; `spin_once` fires it on rx / reply / timer.

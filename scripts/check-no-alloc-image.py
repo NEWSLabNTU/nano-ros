@@ -357,13 +357,6 @@ BOOK_CLAIMS = (
         "stack frame), not a statement about the linked image",
     },
     {
-        "file": "book/src/realtime/rtic.md",
-        "text": "a no-alloc framework",
-        "kind": "rationale",
-        "why": "explains why the tag API exists (an unknown closure type has "
-        "nowhere to live without a heap); promises nothing about an image",
-    },
-    {
         "file": "book/src/realtime/rt-analysis.md",
         "text": "No heap in RT code",
         "kind": "rationale",

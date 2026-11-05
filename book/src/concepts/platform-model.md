@@ -59,7 +59,7 @@ These features are orthogonal to the three axes above and can be combined freely
 | `param-services`         | ROS 2 parameter service handlers (`~/get_parameters`, etc.). Uses `alloc` only for its fallback. |
 | `ffi-sync`               | Wraps transport FFI calls in `critical_section::with()` for RTOS reentrancy     |
 | `sync-spin`              | Use spin-lock mutex (default)                                                   |
-| `sync-critical-section`  | Use `critical-section` mutex (for RTIC, Embassy)                                |
+| `sync-critical-section`  | Use `critical-section` mutex (for interrupt-driven code)                        |
 | `unstable-zenoh-api`     | Zero-copy receive path (Zenoh backend only)                                     |
 
 ## Mutual Exclusivity Enforcement
