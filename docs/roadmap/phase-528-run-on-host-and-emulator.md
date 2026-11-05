@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-05). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 partial: step 1 (native cells) landed, step 2 (QEMU cells, tier 2) pending on the CI runner.** Implements
+**Status (2026-11-05). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 partial: step 1 (native cells) landed in #3167, step 2 (QEMU cells, tier 2) pending on the CI runner.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -448,7 +448,7 @@ Decision step: if the verb's overhead breaks the 5 % bound on short cells,
 fix the cost in the verb (lazy resolution, no rebuild check under `--plan`),
 never by giving the harness a private path.
 
-Status: **partial.** Step 1 (native cells) landed. Step 2 (QEMU cells,
+Status: **partial.** Step 1 (native cells) landed in #3167. Step 2 (QEMU cells,
 serial included now that issue 2231 is fixed) is pending. Its tier-2 lane
 cannot run on the development host in reasonable time, so its before/after
 runs are dispatched on the CI runner (`run-matrix.yml`, tier-2 lane, `main`
