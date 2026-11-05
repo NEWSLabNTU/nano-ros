@@ -1,5 +1,7 @@
 # Your Bench: `nros bench`
 
+<!-- type: how-to · level: 2 -->
+
 `nros bench` records which board on this machine is connected to which
 serial port and debug probe, so `nros flash` and `nros monitor` find it
 without being told each time.

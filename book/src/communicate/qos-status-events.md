@@ -1,5 +1,7 @@
 # QoS, Status Events, and Discovery
 
+<!-- type: how-to · level: 2 -->
+
 This page covers runtime event behavior that application authors need
 after choosing an RMW backend: liveliness, deadline misses, lost
 messages, and the places where nano-ros deliberately differs from

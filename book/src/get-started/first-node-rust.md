@@ -1,5 +1,7 @@
 # First Node — Rust (Linux)
 
+<!-- type: tutorial · level: 1 -->
+
 Build, run, and verify a single nano-ros publisher node on Linux in
 about ten minutes. Uses the canonical Zenoh backend. The zenoh router comes from ROS 2
 (`ros2 run rmw_zenoh_cpp rmw_zenohd`) — nano-ros no longer ships one.

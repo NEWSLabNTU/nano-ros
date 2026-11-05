@@ -1,5 +1,7 @@
 # ARM FVP (`FVP_BaseR_AEMv8R`)
 
+<!-- type: how-to · level: 2 -->
+
 Run nano-ros on Arm's `Base_RevC AEMv8-R` Fast Models — the
 Cortex-A SMP profile under Zephyr 3.7 (board id
 `fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp`). The FVP is the

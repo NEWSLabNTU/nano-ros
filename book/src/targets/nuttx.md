@@ -1,5 +1,7 @@
 # NuttX (apps/external)
 
+<!-- type: how-to · level: 2 -->
+
 > **Support level:** [`qemu-armv7a-nuttx`](../reference/boards/nuttx-arm.md), [`rv-virt-nuttx`](../reference/boards/nuttx-riscv.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../reference/board-support-levels.md) explains the words.
 
 Single-node starter on NuttX. nano-ros plugs into the standard NuttX

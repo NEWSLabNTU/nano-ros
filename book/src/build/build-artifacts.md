@@ -1,5 +1,7 @@
 # What `nros build` Produces
 
+<!-- type: reference · level: 3 -->
+
 `nros build` ends at an **artifact** and stops. It discovers your packages,
 resolves the image, checks the toolchain, generates the root build file and the
 entry, and then hands off to the native tool — `cargo`, `cmake` or `west`. The last stage is an `exec`, so the artifact is exactly the one that

@@ -6,6 +6,7 @@
 - [Architecture](./orientation/architecture.md)
 - [Repo Map](./orientation/repo-map.md)
 - [Contributing](./orientation/contributing.md)
+- [Writing the Book](./orientation/writing-the-book.md)
 
 # Development Environment
 

@@ -1,5 +1,7 @@
 # Logging
 
+<!-- type: how-to · level: 2 -->
+
 nano-ros ships a ROS 2 style leveled logging facade
 ([`nros-log`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-log))
 with the same `Logger` + severity surface as `rclcpp::Logger` /

@@ -1,5 +1,7 @@
 # Scheduling Models
 
+<!-- type: how-to · level: 3 -->
+
 This chapter introduces the real-time scheduling models used by the platforms
 nano-ros supports. Understanding these models helps you make informed
 decisions about task priorities, deadline guarantees, and platform selection

@@ -1,5 +1,7 @@
 # Configuration Guide
 
+<!-- type: how-to · level: 3 -->
+
 nano-ros config is **language-agnostic** and has **one home per concern** — no
 setting lives in two places, and nothing is merged across files. The authored
 surfaces are a universal `system.toml`, `package.xml`, and launch XML — plus

@@ -1,5 +1,7 @@
 # Platform Porting Pitfalls
 
+<!-- type: how-to · level: 4 -->
+
 Hard-won lessons from porting nros to bare-metal ARM (QEMU MPS2-AN385), bare-metal RISC-V,
 STM32F4, FreeRTOS, NuttX, ThreadX, and Zephyr. Read this before adding a new
 platform or debugging mysterious failures on an existing one.

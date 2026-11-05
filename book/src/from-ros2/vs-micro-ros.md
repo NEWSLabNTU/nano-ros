@@ -1,5 +1,7 @@
 # nano-ros vs micro-ROS
 
+<!-- type: explanation · level: 3 -->
+
 The closest peer project to nano-ros is **micro-ROS**. Both ship a
 full embedded ROS 2 framework — client library + RMW + tooling
 targeted at MCU-class hardware. This page is an apples-to-apples

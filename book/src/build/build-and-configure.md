@@ -1,5 +1,7 @@
 # Building and Configuring
 
+<!-- type: how-to · level: 2 -->
+
 `nros build` is the recommended way to build an image: it prepares
 everything the build needs (generated messages, the resolved system, the
 image's build settings) and then runs the host build tool, as `cargo build`

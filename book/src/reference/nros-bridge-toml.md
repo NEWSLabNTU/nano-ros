@@ -1,5 +1,7 @@
 # `nros-bridge.toml` — bridge configuration schema
 
+<!-- type: reference · level: 3 -->
+
 Consumed by `nros::run_from_config` (Rust) and the future C/C++ mirror
 (`nros::run_from_config` in `nros-cpp`).
 

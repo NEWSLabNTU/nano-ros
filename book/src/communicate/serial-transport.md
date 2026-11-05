@@ -1,5 +1,7 @@
 # Serial Transport
 
+<!-- type: how-to · level: 2 -->
+
 This guide covers using serial (UART) transport with nros on embedded targets. Serial transport connects an MCU directly to a zenoh router over UART, without needing an IP stack.
 
 ## Overview

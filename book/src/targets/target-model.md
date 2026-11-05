@@ -1,5 +1,7 @@
 # The Target Model
 
+<!-- type: explanation · level: 2 -->
+
 Every place an image can run is described the same way: a **launcher or a
 flasher** (a host process, an emulator, or a tool that programs a board), a
 **console** (where the image's output appears), and a **link** (how its

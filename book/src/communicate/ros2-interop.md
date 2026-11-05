@@ -1,5 +1,7 @@
 # ROS 2 Interop
 
+<!-- type: tutorial · level: 2 -->
+
 nano-ros communicates with standard ROS 2 nodes using the
 [rmw_zenoh_cpp](https://github.com/ros2/rmw_zenoh) middleware. Both sides
 connect to the same zenohd router and exchange CDR-encoded messages with

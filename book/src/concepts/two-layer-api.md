@@ -1,5 +1,7 @@
 # Two-Layer API
 
+<!-- type: explanation · level: 3 -->
+
 nano-ros exposes the same communication primitives — subscriptions, publishers, services, service clients, action servers, action clients, timers — through **two layers** with disjoint verbs. Picking between them is a per-entity deployment choice. The two layers share the same session and compose freely.
 
 | | Layer 1 — caller polls | Layer 2 — executor dispatches |

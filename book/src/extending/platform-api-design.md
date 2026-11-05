@@ -1,5 +1,7 @@
 # Platform API Design
 
+<!-- type: explanation · level: 4 -->
+
 The platform API (`nros-platform`) sits below the RMW backend. It
 exposes the OS or hardware primitives that zenoh-pico and XRCE-DDS
 need: a clock, optionally a heap, optionally threading, optionally

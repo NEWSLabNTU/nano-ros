@@ -1,5 +1,7 @@
 # Adding a Platform (CMake Layer)
 
+<!-- type: how-to · level: 4 -->
+
 > **Scope.** This page covers the **CMake-side** glue: how the build
 > system picks the right platform shim, links the right archives, and
 > dispatches per-app fixups (linker scripts, startup files, ISR vectors).

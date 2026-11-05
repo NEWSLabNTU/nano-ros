@@ -1,5 +1,7 @@
 # Troubleshooting
 
+<!-- type: how-to · level: 2 -->
+
 Common issues and solutions when working with nros. This page owns
 troubleshooting; a few chapters keep a short section for failures that
 only happen in their topic:

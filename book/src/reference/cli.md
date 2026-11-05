@@ -1,5 +1,7 @@
 # `nros` CLI reference
 
+<!-- type: reference · level: 2 -->
+
 The `nros` binary is the user entry point for nano-ros: it provisions
 toolchains, scaffolds workspaces, generates message bindings, builds and runs
 images, and inspects boards, configuration and plans.

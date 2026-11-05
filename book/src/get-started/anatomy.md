@@ -1,5 +1,7 @@
 # Anatomy of What You Just Built
 
+<!-- type: tutorial · level: 1 -->
+
 Two packages, two roles. Everything you add to this project later is another
 package with one of these roles, or a few more lines in the bringup. The
 shape never changes; it only gains packages.

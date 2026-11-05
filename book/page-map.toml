@@ -1022,6 +1022,13 @@ action = "move"
 batch = "w2"
 
 [[page]]
+book = "internals"
+path = "orientation/writing-the-book.md"
+action = "new phase-537"
+batch = "w0-charter"
+note = "the Book charter for writers: RFC-0124 principles, topic levels, templates"
+
+[[page]]
 old = "reference/build-commands.md"
 book = "internals"
 path = "dev-env/build-commands.md"

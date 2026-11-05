@@ -1,5 +1,7 @@
 # PX4 Autopilot (external module)
 
+<!-- type: how-to · level: 2 -->
+
 Single-node starter on PX4 Autopilot via the **external-module
 copy-out template**. PX4's `EXTERNAL_MODULES_LOCATION` pattern lets
 downstream firmware drop in nano-ros without forking PX4 itself.

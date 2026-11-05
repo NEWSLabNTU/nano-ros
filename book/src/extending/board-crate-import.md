@@ -1,5 +1,7 @@
 # Importing a Board Crate
 
+<!-- type: how-to · level: 4 -->
+
 This chapter is for **consumers** of a nano-ros board crate -- vendors and downstream applications (the Autoware Safety Island archetype) who want to bring a board into their own Zephyr app with as little glue as possible. If you are *writing* a new board crate, see [The `Board` Trait Family](board-trait.md) and [Custom Board Package](custom-board.md) instead.
 
 ## Goal

@@ -1,5 +1,7 @@
 # Real-Time Analysis
 
+<!-- type: how-to · level: 3 -->
+
 This chapter describes static analysis methods and tools for detecting anti-patterns that violate real-time guarantees in Rust embedded applications.
 
 ## Overview

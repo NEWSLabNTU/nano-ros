@@ -1,5 +1,7 @@
 # Switching RMW Backends
 
+<!-- type: how-to · level: 2 -->
+
 nano-ros selects its RMW backend at **build time** — there is no
 `RMW_IMPLEMENTATION` environment variable to flip at runtime the way
 desktop ROS 2 does. Which edit you make depends on how your project is

@@ -1,5 +1,7 @@
 # Adding a Board to the Registry
 
+<!-- type: how-to · level: 4 -->
+
 Every support claim the book makes about a board (its status, breadth,
 emulator and run line) is generated from one row of the board-support
 registry and the board's own descriptor. A board you add out of tree needs no

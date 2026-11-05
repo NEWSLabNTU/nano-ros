@@ -1,5 +1,7 @@
 # Retired Configuration Files
 
+<!-- type: how-to · level: 2 -->
+
 These files used to carry configuration and no longer do. If a guide, an old
 project or a blog post tells you to write one of them, its content now
 belongs in `system.toml` (an image's settings, under `[image.<id>]`) or, for a

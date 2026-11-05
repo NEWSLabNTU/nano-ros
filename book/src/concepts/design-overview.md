@@ -1,5 +1,7 @@
 # Design Overview
 
+<!-- type: explanation · level: 3 -->
+
 This section explains *why* nano-ros has the shape it does. It is not a tutorial (see [Getting Started](../get-started/installation.md)) and not an API reference (see the [Reference](../reference/rust-api.md) chapters). It is the rationale a contributor needs to evaluate proposed changes, and the context a porter needs to make judgment calls when the [Porting](../extending/overview.md) guides don't cover their case.
 
 Three design choices shape almost everything else:

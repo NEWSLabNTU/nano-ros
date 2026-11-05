@@ -1,5 +1,7 @@
 # Platform Model
 
+<!-- type: explanation · level: 4 -->
+
 nano-ros configures the library for a specific target through
 compile-time choices on three axes. `nros` itself carries one
 generic `rmw-cffi` runtime registry; the consuming `Cargo.toml`

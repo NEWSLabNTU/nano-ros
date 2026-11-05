@@ -28,6 +28,14 @@ E. **No board fact typed in prose** (RFC-0114 D12, RFC-0123 D9): no tier
 
 `migrating/` is exempt from D and E: naming what was retired is its job.
 
+F. **The Book charter** (RFC-0124 Principles 3, 7, 14, 15 and the Topic
+   levels; `lib/book_charter.py`): every hand-written page declares one type
+   and level, keeps its type's length budget, links "needs first" only to
+   pages at its level or below, probes its shell steps, and is a board page
+   only for an admitted board. phase-537 W0 REPORTS these: the count is
+   printed and never fails the gate. `--charter` lists each finding. W13
+   makes them refusals.
+
 The self-test runs on every invocation. Exit 0 when clean; 1 with one line
 per problem otherwise.
 """
@@ -42,6 +50,8 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "lib"))
+import board_registry  # noqa: E402
+import book_charter  # noqa: E402
 import book_pages  # noqa: E402
 
 ROOT = book_pages.ROOT
@@ -205,8 +215,19 @@ def self_test() -> None:
     assert rule_e("book/src/reference/boards/x.md", "Tier 1", True) == []
 
 
+def charter_findings(user_paths: list[str], generated: set[str]) -> list[str]:
+    """Rule F over the hand-written user pages and the registry's rows."""
+    pages = {rel[len("book/src/"):]: (ROOT / rel).read_text() for rel in user_paths
+             if rel not in generated and not rel.endswith("SUMMARY.md")}
+    doc = board_registry.with_descriptor_facts(
+        board_registry.load(ROOT / "packages/boards/board-support.toml"), board_registry.descriptor_index(ROOT))
+    rows = [(r, board_registry.status_word(r, True)) for r in doc.get("board", [])]
+    return book_charter.findings(pages, rows)
+
+
 def main() -> int:
     self_test()
+    book_charter.self_test()
     errs: list[str] = []
     pm = load("check_book_page_map", HERE / "check-book-page-map.py")
     if pm.main() != 0:
@@ -234,6 +255,12 @@ def main() -> int:
     checkout = load("check_book_no_checkout", HERE / "check-book-no-checkout.py")
     nojust_re = re.compile(nojust.INLINE_CMD.pattern + "|" + nojust.FENCE_CMD.pattern)
     errs += rule_c(ids_mod, nojust_re, checkout)
+    charter = charter_findings(user_paths, generated)
+    if "--charter" in sys.argv:
+        for f in charter:
+            print(f"  charter: {f}")
+    print(f"check-book-audience: {len(charter)} charter finding(s), reported, not refused "
+          f"(RFC-0124, phase-537 W0; `--charter` lists them)")
     if errs:
         print(f"check-book-audience: {len(errs)} problem(s):")
         for e in errs:

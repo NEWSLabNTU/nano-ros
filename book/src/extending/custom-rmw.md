@@ -1,5 +1,7 @@
 # Porting a Custom RMW Backend
 
+<!-- type: how-to · level: 4 -->
+
 nano-ros ships with three RMW backends -- zenoh-pico, Micro-XRCE-DDS, and
 Cyclone DDS. To add your own transport (MQTT, a proprietary bus, etc.),
 implement a small set of traits or fill in a C function table.
