@@ -1,15 +1,16 @@
 ---
 id: 2286
 title: "`wait_for_output_pattern` returns as soon as a prefix appears, so a test that then kills the process can assert on half a line"
-status: open
+status: resolved
 type: bug
 area: [testing, ci]
 severity: medium
 found: 2026-11-05
+resolved: 2026-11-05
 related: [phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**: a
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**: a
 scheduled lane went red because the harness stopped reading in the middle of a line.
 The code under test was correct.
 
@@ -75,3 +76,28 @@ Fix it in the shared engine, not at the site that failed:
 - A unit test in `process.rs` feeds `Result received: [0, 1` and then `, 2]\n` in two
   writes, and asserts that the returned output holds the whole line.
 - `roundtrip_xprocess` cpp/action then needs no change of its own.
+
+## Resolution (2026-11-05)
+
+Fixed in the shared engines, as proposed above.
+
+- `ManagedProcess::wait_until_pattern` returns a match only when the line holding
+  it is complete: a `\n` follows the match in the stream that printed it. A line
+  that never ends still matches after `MATCH_LINE_GRACE` (2 s), so a marker printed
+  without a newline costs 2 s, not the caller's whole timeout. One rule,
+  `process::pattern_line_ready`.
+- The same rule now applies to the two sibling engines with this shape: the QEMU
+  `collect_until`/`wait_for_output_pattern` (`qemu.rs`) and the Zephyr
+  `wait_for_pattern` (`zephyr.rs`). The line-based reader in `lib.rs` already
+  returned whole lines. The COUNT waits (`wait_for_output_count`) are left alone:
+  no caller of theirs asserts on the rest of a counted line.
+- Unit tests in `process.rs`: the prefix and the rest of the line arrive 300 ms
+  apart, and the whole line comes back. This test fails with the grace set to zero,
+  which is the old behaviour. A line that never ends matches after the grace and
+  well before the timeout.
+- `roundtrip_xprocess` needed no change of its own, and neither did any other
+  site, because the fix is in the engine every one of them reaches. The sites
+  that wait on a `*_PREFIX` constant are `wait_for_output_pattern`,
+  `collect_until`, the QEMU waits and the Zephyr waits. Sweep:
+  `git grep -n -A1 "wait_for_output_pattern($" packages/testing/nros-tests/tests | grep PREFIX`,
+  plus `git grep -n "collect_until(.*PREFIX" packages/testing/nros-tests/tests`.

@@ -763,7 +763,14 @@ impl QemuProcess {
     }
 
     fn collect_until_inner(&mut self, pattern: &str, timeout: Duration) -> TestResult<String> {
-        self.collect_until_pred(|out| out.contains(pattern), timeout)
+        // Issue 2286 — the line holding the match must be complete (or have
+        // sat open for the grace), or a caller asserting on the rest of that
+        // line reads half of it.
+        let seen_open = std::cell::Cell::new(None);
+        self.collect_until_pred(
+            |out| crate::process::pattern_line_ready(out, pattern, &seen_open),
+            timeout,
+        )
     }
 
     /// Collect output, stopping early once `pattern` has appeared `expected`

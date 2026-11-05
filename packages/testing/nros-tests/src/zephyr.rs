@@ -563,10 +563,13 @@ impl ZephyrProcess {
     /// seeing new output as it arrives.
     pub fn wait_for_pattern(&self, pattern: &str, timeout: Duration) -> String {
         let deadline = Instant::now() + timeout;
+        // Issue 2286 — a complete line, not the first read that holds the
+        // pattern (see `process::pattern_line_ready`).
+        let seen_open = std::cell::Cell::new(None);
         loop {
             {
                 let guard = self.output.lock().expect("output mutex poisoned");
-                if guard.contains(pattern) {
+                if crate::process::pattern_line_ready(&guard, pattern, &seen_open) {
                     return guard.clone();
                 }
                 if self.reader_done.load(std::sync::atomic::Ordering::Acquire) {
