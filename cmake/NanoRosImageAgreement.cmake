@@ -31,6 +31,9 @@
 # that was not asking it anything.
 include_guard(GLOBAL)
 
+# `nros_reconfigure_remedy` (phase-530 W7, Ruling R53).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+
 # _nros_image_facts_file(<out-var>)
 #
 # Run `nros dev image facts --for-entry <app> --cmake --if-present` ONCE per
@@ -291,11 +294,14 @@ function(nros_check_generated_app_current)
     if(_on_disk STREQUAL NROS_GENERATED_APP_DIGEST)
         return()
     endif()
+    # Ruling R53 (review N8): name a command that re-runs cmake on this dir; a
+    # bare re-run of the build skips cmake after a failed first configure.
+    nros_reconfigure_remedy(_cfg _again)
     message(FATAL_ERROR
 "nano-ros: the generated west application was rewritten while this configure ran (issue 1707).
     ${_app}
 This configure read the PREVIOUS file, so its Kconfig and NROS_FEATURES describe a declaration that no longer holds. Nothing was generated from it.
-Re-run the build: it reconfigures from the current file. `nros build <image>` regenerates the application BEFORE configuring and never meets this.
+Configure this build again, which reads the current file: ${_again}. `nros build <image>` regenerates the application BEFORE configuring and never meets this.
 If it repeats on every build, two different nros CLIs render this file differently -- the one that ran `nros build` and the one this configure resolved.")
 endfunction()
 
