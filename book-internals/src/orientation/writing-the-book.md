@@ -102,6 +102,11 @@ title. Generated pages are reference pages and carry none.
 <!-- type: how-to · level: 2 -->
 ```
 
+The rendered book shows the declaration as a badge under the title, such as
+"How-to · Level 2: Building real applications", so a reader sees the page's
+kind and what it assumes. `scripts/mdbook-level-badge.py` renders it, with the
+level names of the table below.
+
 Add `· topic: <slug>` when a topic has pages of several types, so the gate
 can tell that each type appears once:
 
