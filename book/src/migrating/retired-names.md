@@ -39,7 +39,7 @@ board; both are refused the same way, naming the board's one name:
 | `qemu-mps2-an385` | `mps2-an385-baremetal` | names the emulator, not the board: QEMU is how the AN385 image is run |
 | `threadx-qemu-riscv64` | `rv-virt-threadx` | names the emulator, not the board: QEMU is how the RISC-V `virt` image is run |
 
-`posix` stays correct as a PLATFORM name and in `[tiers.*.posix]`. This
+`posix` stays correct as a PLATFORM name and in `[tasks.*.posix]`. This
 page is the only place in the book that spells any of these words as a board.
 
 ## Retired knob spellings
