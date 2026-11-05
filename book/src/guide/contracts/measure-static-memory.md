@@ -183,7 +183,8 @@ The transport's wire buffers (`NROS_ZENOH_FRAG_MAX_SIZE`, the batch sizes,
 `NROS_ZENOH_SERVICE_BUFFER_SIZE`, `NROS_ZENOH_GET_REPLY_BUF_SIZE`,
 `NROS_ZENOH_MAX_PENDING_GETS`), the smoltcp socket pools and the parameter
 store limits are not derived: they are yours. They are covered in
-[TX Throughput & Latency Tuning](../rmw/tune-throughput-and-latency.md#transport-buffers-and-limits).
+[Tune throughput and latency](../rmw/tune-throughput-and-latency.md#set-the-wire-buffers)
+and listed in the [Environment variables reference](../../reference/environment-variables.md#buffer-tuning).
 
 **Precedence.** A value you state wins over a derived one: an exported
 environment variable first, then the image's `[image.<id>.knobs]`, then the

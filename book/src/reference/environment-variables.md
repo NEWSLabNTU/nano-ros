@@ -135,6 +135,24 @@ in an `[image.<id>] env` row, it stops the build with an error naming the
 | `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp). (`ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` is retired.)                      | `30000`          | nros-smoltcp  |
 | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp). (`ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` is retired.)                       | `10000`          | nros-smoltcp  |
 
+### Zenoh-pico transmit path
+
+Build-time knobs of the zenoh-pico transmit path. The defaults are the
+platform's (`[knobs.zenoh.tx]` in its `nros-platform.toml`, over a built-in
+default of off): Zephyr turns batching and split locking on.
+`nros config explain --platform <name>` prints the value each one resolves
+to and the rung that set it.
+
+| Variable | Image key | Zephyr Kconfig | Meaning | Default |
+|---|---|---|---|---|
+| `NROS_ZENOH_TX_BATCH` | `[image.<id>.knobs.zenoh.tx] batch` | `CONFIG_NROS_ZENOH_TX_BATCH` | Collect publishes and send one batch per flush | platform's |
+| `NROS_ZENOH_TX_BATCH_FLUSH_MS` | `[image.<id>.knobs.zenoh.tx] flush_ms` | `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS` | Flush period (ms): the most a batched sample waits | `50` |
+| `NROS_ZENOH_TX_SPLIT_LOCK` | `[image.<id>.knobs.zenoh.tx] split_lock` | `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK` | Send one batch while publishers fill the next; needs batching | platform's |
+| `NROS_ZENOH_SOCKET_TIMEOUT_MS` | — | `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` | Receive window the read task holds the session socket for (ms) | `100` |
+| `NROS_ZENOH_SUBSCRIBER_RING_DEPTH` | — | — | Samples one subscriber's receive ring holds; a full ring evicts the oldest. Derived from the declared QoS depths when unset | `4` when nothing is declared |
+
+A publisher's `tx_express` QoS flag sends its samples outside the batch.
+
 ### XRCE-DDS (`NROS_XRCE_*`)
 
 These are read by `nros-rmw-xrce-cffi`'s build script, either from the
