@@ -102,6 +102,11 @@ nros setup linux --rmw zenoh || underlay_fail "\`nros setup linux --rmw zenoh\` 
 nros new native_talker --board linux --template talker \
     || underlay_fail "\`nros new native_talker --board linux --template talker\` failed"
 cd native_talker || underlay_fail "the scaffold wrote no native_talker/"
+# A new project's first configure generates std_msgs from ROS 2 (issue 2275).
+# The chapter sourced ROS only inside its `nros run` steps' own sessions, so
+# this shell has not; source it the way the chapter tells a reader to.
+# shellcheck disable=SC1091
+source /opt/ros/humble/setup.bash
 nros configure || underlay_fail "\`nros configure\` failed in the native talker"
 "${NROS_DEADLINE[@]}" 900 nros run --expect 'Publishing:' \
     || underlay_fail "\`nros run --expect 'Publishing:'\` on the native talker failed"

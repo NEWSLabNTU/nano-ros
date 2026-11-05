@@ -276,12 +276,15 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
                 --prelude "$SCRIPT_DIR/twin/smoke.sh"
             )
         fi
-        # The QEMU chapters dial ROS's `rmw_zenohd` (RFC-0075: nano-ros ships
-        # no router), so the reader they describe has a ROS 2 install. The
-        # user container is that host: the release's own base plus ROS — the
-        # same jammy, so the asset's ABI floor still holds.
-        default_platform_image="ros:humble"
     fi
+    # Every chapter's first build generates its messages from the reader's
+    # ROS 2 install (issue 2275: configure refuses an unset
+    # `AMENT_PREFIX_PATH`), and the QEMU chapters also dial ROS's `rmw_zenohd`
+    # (RFC-0075: nano-ros ships no router). So every installed-track reader,
+    # the Linux one included, has a ROS 2 install. The user container is that
+    # host: the release's own base plus ROS — the same jammy, so the asset's
+    # ABI floor still holds.
+    default_platform_image="ros:humble"
 elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     # first-node-rust.md is IN this track: its zenoh-default `nros configure &&
     # cargo build` is exactly what a reader on the interop path runs, and it
