@@ -4347,7 +4347,7 @@ NROS_PUBLIC void rclc_set_trace_sink(void (*sink)(uint32_t, uint32_t));
  * Returns 1 when `sink` was installed, 0 when a sink was already installed
  * (it is kept) or the crate was built without `trace-callbacks`.
  *
- * For an entry path's DEFAULT sink: the Zephyr tier runner installs its
+ * For an entry path's DEFAULT sink: the Zephyr sched task runner installs its
  * platform shim this way, so a sink the application installed earlier (from
  * a `SYS_INIT`, before `main()`) is not replaced.
  *

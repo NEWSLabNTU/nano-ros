@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!-- phase-162 W1 - one level that runs past its kernel budget: `load_capped`
-     burns 10 ms of CPU per release on the authored `capped` tier (2 ms per
-     10 ms, SCHED_DEADLINE). `load_boot` is on the lower `background` tier, so
+     burns 10 ms of CPU per release on the authored `capped` sched task (2 ms per
+     10 ms, SCHED_DEADLINE). `load_boot` is on the lower `background` sched task, so
      it is the boot level that owns the session; the kernel reservation goes
      only on a spawned level (issue 2018). -->
 <launch>

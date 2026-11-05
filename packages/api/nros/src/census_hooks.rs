@@ -81,8 +81,8 @@ pub const CENSUS_SIZING: nros_node::ExecutorSizing = {
 /// it.
 ///
 /// Re-opening a node of the same name makes it current again rather than
-/// failing: a tiered Rust entry runs a component's `register()` once per tier
-/// executor, and each tier's run creates the same node (issue 1419).
+/// failing: a sched-task Rust entry runs a component's `register()` once per sched task
+/// executor, and each sched task's run creates the same node (issue 1419).
 /// phase-463 W5 I4 -- `true` iff the hook bodies exist (`metadata-mode`).
 ///
 /// An empty `#[inline]` body costs nothing, but its ARGUMENTS still do: a

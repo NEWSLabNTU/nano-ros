@@ -86,7 +86,7 @@
 
 extern crate alloc;
 
-/// issue 1571 — the type of one spawned tier's executor backing slot, so a
+/// issue 1571 — the type of one spawned sched task's executor backing slot, so a
 /// board crate that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself. Gated like the `nros` dependency it names
 /// (`cfg(not(target_os = "none"))` in this crate's manifest).
@@ -161,10 +161,10 @@ pub mod sys {
     ///
     /// The buffer is not an optimisation, it is the ATOMICITY the std path
     /// provided: `println!` locked `Stdout` and its `LineWriter` emitted one
-    /// `write(2)` per line, so two tiers printing concurrently could not
+    /// `write(2)` per line, so two sched tasks printing concurrently could not
     /// interleave mid-line. Writing each `core::fmt` fragment straight to fd 1
-    /// would have shredded exactly the multi-tier diagnostics that issues 0572
-    /// and 0579 added — a tier's identity line arrives interleaved with
+    /// would have shredded exactly the multi-sched-task diagnostics that issues 0572
+    /// and 0579 added — a sched task's identity line arrives interleaved with
     /// another's, and the console stops being readable at the moment it matters.
     ///
     /// A line longer than the buffer degrades to several writes rather than
@@ -230,7 +230,7 @@ pub mod sys {
         unsafe { nros_platform_yield_now() }
     }
 
-    /// Spawn a detached tier task with an explicit stack size (issue 0246).
+    /// Spawn a detached sched task with an explicit stack size (issue 0246).
     ///
     /// phase-364 W3 — this now goes through the ABI's own `task_init`, with a
     /// `nros_platform_task_attr_t`. It used to call ~~`nros_nuttx_spawn_sched_task`~~, a
@@ -245,13 +245,13 @@ pub mod sys {
     /// Returns 0 on success, else the platform return code (`NOMEM` for a
     /// transient refusal — issue 0246's case — which the caller retries).
     ///
-    /// `priority` is the tier's DECLARED NuttX priority (0 = undeclared). It is
-    /// passed in the attribute rather than left to the tier's self-apply at
+    /// `priority` is the sched task's DECLARED NuttX priority (0 = undeclared). It is
+    /// passed in the attribute rather than left to the sched task's self-apply at
     /// entry, because those two are not equivalent under SCHED_FIFO: a task
-    /// born with `INHERIT` starts at the SPAWNING tier's priority, and the
-    /// spawner here is the boot tier — the highest-priority one. On a
+    /// born with `INHERIT` starts at the SPAWNING sched task's priority, and the
+    /// spawner here is the boot sched task — the highest-priority one. On a
     /// single-core guest an equal-priority FIFO peer does not preempt, so the
-    /// new tier ran only when the boot tier's spin happened to block, and its
+    /// new sched task ran only when the boot sched task's spin happened to block, and its
     /// self-apply (with the marker RFC-0052 requires) was reached late or not
     /// within the cell's window. Measured 1 of 5 runs passing before this,
     /// which read as a flake and was a priority inversion for the whole
@@ -272,7 +272,7 @@ pub mod sys {
         // `SchedTaskSpec::priority` is `i64` (one field for every kernel's range);
         // NuttX's is 1..=255, so anything outside that is not a priority this
         // port can express and falls back to INHERIT rather than wrapping into
-        // some other tier's band.
+        // some other sched task's band.
         let priority = i32::try_from(priority)
             .ok()
             .filter(|p| (1..=255).contains(p));
@@ -469,9 +469,9 @@ macro_rules! println {
 /// A panic on this guest is INVISIBLE otherwise: Rust prints the message and
 /// location to stderr, and stderr does not reach the NuttX serial console here
 /// — the same finding that hid every `eprintln!` diagnostic on this board. Its
-/// own comment said "a boot tier that panics after spawning its siblings would
+/// own comment said "a boot sched task that panics after spawning its siblings would
 /// look exactly like one that silently stopped scheduling", and it was then
-/// installed on ONE of the two entry paths: `run_sched_tasks` — the multi-tier path,
+/// installed on ONE of the two entry paths: `run_sched_tasks` — the multi-sched-task path,
 /// the only one that HAS siblings to spawn — never called it. Issue 0583 is
 /// exactly the scenario it describes, on exactly the path that lacked it.
 ///
@@ -667,7 +667,7 @@ where
     println!("nros entry ready");
 
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
-    // phase-436 — the single-executor entry parks like the tier runners do.
+    // phase-436 — the single-executor entry parks like the sched task runners do.
     install_park(&mut crt);
     let mut runtime = nros_platform::RuntimeCtx::with_runtime(&mut crt);
     let setup_result = setup(&mut runtime);
@@ -716,7 +716,7 @@ unsafe extern "C" {
 // so `cpu_set_t` / `pthread_setaffinity_np` lay out per THIS kernel's config
 // (config-gated on CONFIG_SMP — the #131 layout trap avoided; Rust never
 // mirrors the set). Returns 1 when the kernel accepted the pin, 0 otherwise
-// (unpinned tier / no CONFIG_SMP / rejection — the C side logs the accept
+// (unpinned sched task / no CONFIG_SMP / rejection — the C side logs the accept
 // marker or the loud fallback note). The ABI carried `core_plus1` since W2 but
 // had NO consumer before this — a declared `core` was silently dropped.
 #[cfg(target_os = "nuttx")]
@@ -724,10 +724,10 @@ unsafe extern "C" {
     fn nros_nuttx_apply_current_affinity(name: *const core::ffi::c_char, core_plus1: u32) -> i32;
 }
 
-// phase-302 W3 (issue 0263) — the C shim that adopts the tier's declared
+// phase-302 W3 (issue 0263) — the C shim that adopts the sched task's declared
 // SCHED_FIFO priority on the calling thread (nuttx_run_sched_tasks.c, shared with
 // the C arm's create-time path). std's Builder has no priority attr, so the
-// Rust arm self-applies at tier entry — without this a non-sporadic tier ran
+// Rust arm self-applies at sched task entry — without this a non-sporadic sched task ran
 // at the parent's priority (invisible until contention).
 //
 // issue 1309 / phase-451 W4 — target-gated to match its SIBLING twelve lines
@@ -748,7 +748,7 @@ unsafe extern "C" {
 // it every park here is floored at the `wake_wait_ms` ABI's millisecond.
 //
 // `//` not `///`: rustdoc documents nothing on an extern block. Gated like
-// the tier runners that call it.
+// the sched task runners that call it.
 #[cfg(target_os = "nuttx")]
 unsafe extern "C" {
     fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
@@ -767,26 +767,26 @@ fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
     );
 }
 
-/// Adopt the tier's declared priority on the current thread (no-op
-/// off-target and when the tier declares none). Name crosses the FFI as a
+/// Adopt the sched task's declared priority on the current thread (no-op
+/// off-target and when the sched task declares none). Name crosses the FFI as a
 /// NUL-terminated stack copy, mirroring [`apply_sched_task_affinity`].
 #[cfg(target_os = "nuttx")]
-fn apply_sched_task_priority(tier: &nros_platform::SchedTaskSpec<'_>) {
-    if tier.priority <= 0 {
+fn apply_sched_task_priority(sched_task: &nros_platform::SchedTaskSpec<'_>) {
+    if sched_task.priority <= 0 {
         return;
     }
     let mut name_buf = [0u8; 64];
-    let n = tier.name.len().min(63);
-    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    let n = sched_task.name.len().min(63);
+    name_buf[..n].copy_from_slice(&sched_task.name.as_bytes()[..n]);
     unsafe {
         nros_nuttx_apply_current_priority(
             name_buf.as_ptr() as *const core::ffi::c_char,
-            tier.priority as u32,
+            sched_task.priority as u32,
         );
     }
 }
 
-/// Default per-tier pthread stack for spawned Rust tiers (issue #246). Mirrors
+/// Default per-sched-task pthread stack for spawned Rust sched tasks (issue #246). Mirrors
 /// the C glue's `NROS_NUTTX_SCHED_TASK_STACK_BYTES` intent but sized at NuttX's own
 /// `CONFIG_PTHREAD_STACK_DEFAULT` (64 KiB): the executor arena lives on the
 /// heap (`nros_platform_alloc`), so this only carries the zenoh-pico/executor
@@ -794,21 +794,22 @@ fn apply_sched_task_priority(tier: &nros_platform::SchedTaskSpec<'_>) {
 #[cfg(target_os = "nuttx")]
 const NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES: usize = 65536;
 
-/// Self-apply the tier's kernel sporadic policy (no-op off-target and when
-/// the tier declares no budget/period). Name/class cross the FFI as
+/// Self-apply the sched task's kernel sporadic policy (no-op off-target and when
+/// the sched task declares no budget/period). Name/class cross the FFI as
 /// NUL-terminated stack copies (SchedTaskSpec strings are `&str`, not C strings).
 /// `true` when the kernel accepted `SCHED_SPORADIC`: the kernel then enforces
 /// the level's budget, and the executor must not enforce it again (issue
 /// 2018, [`apply_level_policy`]).
 #[cfg(target_os = "nuttx")]
-fn apply_sched_task_sporadic(tier: &nros_platform::SchedTaskSpec<'_>) -> bool {
-    let (Some(class), Some(budget), Some(period)) = (tier.class, tier.budget_us, tier.period_us)
+fn apply_sched_task_sporadic(sched_task: &nros_platform::SchedTaskSpec<'_>) -> bool {
+    let (Some(class), Some(budget), Some(period)) =
+        (sched_task.class, sched_task.budget_us, sched_task.period_us)
     else {
         return false;
     };
     let mut name_buf = [0u8; 64];
-    let n = tier.name.len().min(63);
-    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    let n = sched_task.name.len().min(63);
+    name_buf[..n].copy_from_slice(&sched_task.name.as_bytes()[..n]);
     let mut class_buf = [0u8; 32];
     let c = class.len().min(31);
     class_buf[..c].copy_from_slice(&class.as_bytes()[..c]);
@@ -818,13 +819,13 @@ fn apply_sched_task_sporadic(tier: &nros_platform::SchedTaskSpec<'_>) -> bool {
             class_buf.as_ptr() as *const core::ffi::c_char,
             budget,
             period,
-            tier.priority,
+            sched_task.priority,
         ) == 1
     }
 }
 
 /// Issue 2018 (RFC-0108 As-built) -- the level's own sched context, lowered
-/// from its tier's policy, so what its setup registers is charged to it and
+/// from its sched task's policy, so what its setup registers is charged to it and
 /// not to the executor's default context, which every level shares. With
 /// `kernel` (the kernel accepted `SCHED_SPORADIC` for this level's thread,
 /// with the same budget and period) the executor does not enforce the budget
@@ -834,27 +835,27 @@ fn apply_sched_task_sporadic(tier: &nros_platform::SchedTaskSpec<'_>) -> bool {
 #[cfg(target_os = "nuttx")]
 fn apply_level_policy(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
-    tier: &nros_platform::SchedTaskSpec<'_>,
+    sched_task: &nros_platform::SchedTaskSpec<'_>,
     budget: bool,
     kernel: bool,
 ) {
     let (period_us, budget_us) = if budget {
-        (tier.period_us, tier.budget_us)
+        (sched_task.period_us, sched_task.budget_us)
     } else {
         (None, None)
     };
     let sc = crt.apply_level_sched_policy(
-        tier.class,
+        sched_task.class,
         period_us,
         budget_us,
-        tier.deadline_us,
-        tier.deadline_policy,
+        sched_task.deadline_us,
+        sched_task.deadline_policy,
         kernel,
     );
     if let (Some(_), Some(b), Some(p)) = (sc, budget_us, period_us) {
         println!(
-            "nros: level budget tier=`{}` {}us/{}us enforced by the {}",
-            tier.name,
+            "nros: level budget sched_task=`{}` {}us/{}us enforced by the {}",
+            sched_task.name,
             b,
             p,
             if kernel { "KERNEL" } else { "EXECUTOR" }
@@ -862,20 +863,20 @@ fn apply_level_policy(
     }
 }
 
-/// phase-296 W5.11 — self-apply the tier's SMP core pin (no-op off-target and
-/// when the tier declares no `core`). The `core + 1` encoding (0 = unpinned)
+/// phase-296 W5.11 — self-apply the sched task's SMP core pin (no-op off-target and
+/// when the sched task declares no `core`). The `core + 1` encoding (0 = unpinned)
 /// matches the C emit. Name crosses the FFI as a NUL-terminated stack copy.
-/// Safe on the session-owning boot tier too: a core pin does not budget-cap the
+/// Safe on the session-owning boot sched task too: a core pin does not budget-cap the
 /// thread, so (unlike the sporadic server, #246) it never starves the shared
 /// session flush.
 #[cfg(target_os = "nuttx")]
-fn apply_sched_task_affinity(tier: &nros_platform::SchedTaskSpec<'_>) {
-    let Some(core) = tier.core else {
+fn apply_sched_task_affinity(sched_task: &nros_platform::SchedTaskSpec<'_>) {
+    let Some(core) = sched_task.core else {
         return;
     };
     let mut name_buf = [0u8; 64];
-    let n = tier.name.len().min(63);
-    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    let n = sched_task.name.len().min(63);
+    name_buf[..n].copy_from_slice(&sched_task.name.as_bytes()[..n]);
     unsafe {
         nros_nuttx_apply_current_affinity(
             name_buf.as_ptr() as *const core::ffi::c_char,
@@ -891,13 +892,13 @@ fn apply_sched_task_affinity(tier: &nros_platform::SchedTaskSpec<'_>) {
 // `println!` and threads — was compiled UNCONDITIONALLY. It has not bitten
 // because this crate is workspace-excluded and only ever built for NuttX. The
 // rustdoc `unused doc comment` error on those extern blocks was the symptom.
-/// phase-281 W3-nuttx (RFC-0015 Model 1) — per-tier multi-task NuttX entry.
+/// phase-281 W3-nuttx (RFC-0015 Model 1) — per-sched-task multi-task NuttX entry.
 ///
-/// The multi-tier sibling of [`run_entry`]: opens the ONE RMW session, then
+/// The multi-sched-task sibling of [`run_entry`]: opens the ONE RMW session, then
 /// (issue 2016, RFC-0108 "As built in P10") runs each
 /// [`nros_platform::SchedTaskSpec`] as one LEVEL over the core's ONE executor
-/// ([`nros::levels::LevelCore`]): the boot tier owns the session and runs on
-/// this task, every other tier is a detached worker pthread over the same
+/// ([`nros::levels::LevelCore`]): the boot sched task owns the session and runs on
+/// this task, every other sched task is a detached worker pthread over the same
 /// executor (`sys::spawn_sched_task`), started once the level before it has set
 /// up. NuttX's zenoh-pico build sets `Z_FEATURE_MULTI_THREAD = 1`
 /// (`platforms/nuttx/nros-platform.toml` `[platform.nuttx]`).
@@ -907,22 +908,22 @@ fn apply_sched_task_affinity(tier: &nros_platform::SchedTaskSpec<'_>) {
 /// zenoh-pico entity declares carry an interest handshake; two threads that
 /// declare concurrently race it, and the losing publisher's write filter can
 /// stay closed (every put silently dropped). To avoid it we run the **boot
-/// tier's `setup` FIRST on the boot task** (its declares finish before any
-/// other tier starts), THEN spawn the remaining tiers. A spawned tier's `setup`
-/// overlaps only the boot tier's *spin* (keepalives / data, not declares) — the
-/// two-tier demo is therefore race-free. (For the single-tier deploy the
+/// sched task's `setup` FIRST on the boot task** (its declares finish before any
+/// other sched task starts), THEN spawn the remaining sched tasks. A spawned sched task's `setup`
+/// overlaps only the boot sched task's *spin* (keepalives / data, not declares) — the
+/// two-sched-task demo is therefore race-free. (For the single-sched-task deploy the
 /// byte-identical [`run_entry`] path is used instead.)
 ///
-/// `setup` is `Fn` (invoked once per tier) + `Sync` (spawned tiers share
-/// `&setup`); it must register entities only — this fn owns each tier's
-/// `active_groups` filter + the spin loop. Blocks forever (the boot tier's spin
-/// never returns); returns only if the boot tier's `setup` fails before spin.
+/// `setup` is `Fn` (invoked once per sched task) + `Sync` (spawned sched tasks share
+/// `&setup`); it must register entities only — this fn owns each sched task's
+/// `active_groups` filter + the spin loop. Blocks forever (the boot sched task's spin
+/// never returns); returns only if the boot sched task's `setup` fails before spin.
 #[cfg(target_os = "nuttx")]
 pub fn run_sched_tasks<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     locator: &'static str,
     domain_id: u32,
-    tiers: &[nros_platform::SchedTaskSpec<'_>],
+    sched_tasks: &[nros_platform::SchedTaskSpec<'_>],
     sched_task_backing: &'static mut [::nros::SchedTaskExecutorBackingSlot],
     setup: F,
 ) -> Result<(), E>
@@ -951,13 +952,15 @@ where
     // NuttX virtio-net warm-up — same magic number + rationale as `run_entry`.
     sys::sleep_secs(5);
 
-    if tiers.is_empty() {
-        println!("nros: run_sched_tasks called with no tiers — nothing to run");
+    if sched_tasks.is_empty() {
+        println!("nros: run_sched_tasks called with no sched tasks — nothing to run");
         sys::exit_process(1);
     }
     // issue 1571 — the one refusal, before the session opens: every spawned
-    // tier needs a slot of the entry's `.bss` backing.
-    if let Err(short) = ::nros::check_sched_task_executor_backing(tiers.len(), sched_task_backing) {
+    // sched task needs a slot of the entry's `.bss` backing.
+    if let Err(short) =
+        ::nros::check_sched_task_executor_backing(sched_tasks.len(), sched_task_backing)
+    {
         println!("nros: {}", short);
         sys::exit_process(1);
     }
@@ -982,12 +985,12 @@ where
     }
 
     // The boot task opens the one session and owns it for the program's life
-    // (the boot tier's spin loop never returns).
+    // (the boot sched task's spin loop never returns).
     let boot_exec = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
         Err(err) => {
             println!(
-                "nros: Executor::open failed ({:?}); multi-tier entry needs a live session \
+                "nros: Executor::open failed ({:?}); multi-sched-task entry needs a live session \
                  — aborting.",
                 err
             );
@@ -995,41 +998,41 @@ where
         }
     };
     install_stdout_logger();
-    // Boot-readiness marker (same contract as `run_entry`) + a multi-tier marker
-    // an E2E can gate on ("this image entered the per-tier run with a live
-    // session"); the single-tier `run_entry` never prints the latter.
+    // Boot-readiness marker (same contract as `run_entry`) + a multi-sched-task marker
+    // an E2E can gate on ("this image entered the per-sched-task run with a live
+    // session"); the single-sched-task `run_entry` never prints the latter.
     println!("nros entry ready");
     println!(
-        "nros: multi-tier run — {} tier(s) over one session",
-        tiers.len()
+        "nros: multi-sched-task run — {} sched task(s) over one session",
+        sched_tasks.len()
     );
 
     let mut boot_crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(boot_exec);
 
-    // issue #144 — boot-tier declares FIRST, before spawning any other tier.
+    // issue #144 — boot-sched-task declares FIRST, before spawning any other sched task.
     //
-    // issue 0636 — the boot tier is CHOSEN, not `tiers[0]`. This board runs a
+    // issue 0636 — the boot sched task is CHOSEN, not `sched_tasks[0]`. This board runs a
     // uniprocessor guest under SCHED_FIFO, and `resolve_sched_tasks` orders by raw
-    // number descending without inverting per kernel, so `tiers[0]` was the
-    // MOST urgent tier here. An owner that outranks its peers and then spins
-    // starves them — measured at 1 of 5 runs before a spawned tier reached its
+    // number descending without inverting per kernel, so `sched_tasks[0]` was the
+    // MOST urgent sched task here. An owner that outranks its peers and then spins
+    // starves them — measured at 1 of 5 runs before a spawned sched task reached its
     // first statement at all — and `sched_yield` cannot rescue it, because
     // under FIFO a yield rotates the caller within its OWN priority queue and
-    // never lets a lower-priority thread run. `boot_sched_task_index` picks the tier
+    // never lets a lower-priority thread run. `boot_sched_task_index` picks the sched task
     // that outranks nothing.
     let boot_index = nros_platform::boot_sched_task_index(
-        tiers,
+        sched_tasks,
         nros_platform::PriorityDirection::BiggerIsMoreUrgent,
     );
-    let boot_sched_task = &tiers[boot_index];
-    // issue 0572 — say WHICH tier is the session-owning boot tier, and with what.
-    // The boot tier is the one that prints no priority marker (it keeps the
+    let boot_sched_task = &sched_tasks[boot_index];
+    // issue 0572 — say WHICH sched task is the session-owning boot sched task, and with what.
+    // The boot sched task is the one that prints no priority marker (it keeps the
     // inherited FIFO priority by design), so the console showed the spawned
-    // tiers only and the reader could not tell whether tiers[0] was the tier
+    // sched tasks only and the reader could not tell whether sched_tasks[0] was the sched task
     // they meant, nor whether its knobs survived the bake. On STDOUT with the
     // rest: this guest's stderr does not reach the serial console.
     println!(
-        "nros: boot tier `{}` (session owner) — groups {:?}, class {:?}, \
+        "nros: boot sched task `{}` (session owner) — groups {:?}, class {:?}, \
          budget {:?} us, period {:?} us, spin {} us, priority {}",
         boot_sched_task.name,
         boot_sched_task.groups,
@@ -1038,30 +1041,30 @@ where
         boot_sched_task.period_us,
         boot_sched_task.spin_period_us,
         // issue 0579 — the EFFECTIVE priority, so "accepted and dropped" is
-        // visible from the console instead of needing a crash dump's tier
-        // table to notice. `0` means the tier declared none and the thread
+        // visible from the console instead of needing a crash dump's sched task
+        // table to notice. `0` means the sched task declared none and the thread
         // keeps whatever the init task was started with.
         boot_sched_task.priority
     );
     // issue 1172 — `Err` means the filter did not fit, and
     // `set_active_groups` has already cleared it and left filtering ON,
-    // so this tier registers NOTHING rather than registering on a
-    // quietly narrower set. Nothing here can return an error (the tier
+    // so this sched task registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the sched task
     // runner is `-> ()`), so the fail-closed state IS the report.
     let _ = boot_crt
         .executor_mut()
         .set_active_groups(boot_sched_task.groups);
     install_park(&mut boot_crt);
-    // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT). BUT the
-    // boot tier is the SESSION OWNER: `apply_sched_task_sched_policy` installs the
+    // W5.4 — shared sched task→SchedContext lowering (Sporadic / EDF / TT). BUT the
+    // boot sched task is the SESSION OWNER: `apply_sched_task_sched_policy` installs the
     // lowered context as the executor's *default* SchedContext, which gates
     // EVERY dispatch on this executor — including the spin loop that flushes
-    // the one shared zenoh-pico session for all tiers. A budget/sporadic policy
+    // the one shared zenoh-pico session for all sched tasks. A budget/sporadic policy
     // there caps the session flush and starves delivery (issue #246: the
     // high/ctrl publisher delivered exactly ONE sample). Unlike the Rust
     // default-SC model, the C++ path binds the lowered context per HANDLE, so
-    // its boot-tier flush stays Fifo — which is exactly why the C/C++ siblings
-    // pass with the same model. Mirror that: the session-owning boot tier keeps
+    // its boot-sched-task flush stays Fifo — which is exactly why the C/C++ siblings
+    // pass with the same model. Mirror that: the session-owning boot sched task keeps
     // the default Fifo SchedContext (drop its budget/period), so only the EDF
     // deadline dim — which does not gate throughput — can still lower here.
     let boot_is_budgeted = boot_sched_task.class == Some("real_time")
@@ -1071,28 +1074,28 @@ where
     // the level core seats it, before its setup), not onto the executor's
     // default, which every level on the core shares.
     // phase-296 W5.9 / issue #246 — likewise DON'T self-apply the kernel
-    // SCHED_SPORADIC server to the boot tier here (nor below): it would drop
+    // SCHED_SPORADIC server to the boot sched task here (nor below): it would drop
     // this session-owning thread to `sched_ss_low_priority` when its budget is
-    // spent, stalling the shared flush. Spawn every tier at the boot tier's
-    // normal FIFO priority; spawned NON-owner tiers self-apply the budget dim's
+    // spent, stalling the shared flush. Spawn every sched task at the boot sched task's
+    // normal FIFO priority; spawned NON-owner sched tasks self-apply the budget dim's
     // kernel + cooperative realization in `nuttx_level_trampoline`.
-    // issue 2016 (RFC-0108 "As built in P10") — every tier is one LEVEL over
+    // issue 2016 (RFC-0108 "As built in P10") — every sched task is one LEVEL over
     // the core's ONE executor (`nros::levels::LevelCore`), the shape the C
     // runner (`nros_board_nuttx_run_levels_in`) and the Zephyr and ThreadX
-    // Rust runners have. The boot tier stays the session owner and runs on
-    // this task; every other tier is a worker pthread over the same executor.
-    // The entry's tier executor backing (issue 1571) was checked against the
+    // Rust runners have. The boot sched task stays the session owner and runs on
+    // this task; every other sched task is a worker pthread over the same executor.
+    // The entry's sched task executor backing (issue 1571) was checked against the
     // table above, but one executor serves every level: the slots go unused.
     let _ = sched_task_backing;
-    if tiers.len() > ::nros::MAX_LEVELS {
+    if sched_tasks.len() > ::nros::MAX_LEVELS {
         println!(
-            "nros: {} tiers is past the {} levels a core holds",
-            tiers.len(),
+            "nros: {} sched tasks is past the {} levels a core holds",
+            sched_tasks.len(),
             ::nros::MAX_LEVELS
         );
         sys::exit_process(1);
     }
-    let n = tiers.len();
+    let n = sched_tasks.len();
     // The executor's lock, before a second thread can reach it: the POSIX
     // port's recursive `PTHREAD_PRIO_INHERIT` mutex and `pthread_self`, so
     // each pass releases it around its callbacks and its park. One level
@@ -1120,7 +1123,7 @@ where
         ::nros::levels::LevelCore::new(
             boot_crt,
             u8::try_from(n).unwrap_or(u8::MAX),
-            nuttx_level_of(tiers, boot_index),
+            nuttx_level_of(sched_tasks, boot_index),
             mutex,
             nros_platform_mutex_rec_lock,
             nros_platform_mutex_rec_unlock,
@@ -1149,7 +1152,7 @@ where
         // issue 0572 — STDOUT. This guest's stderr does not reach the serial
         // console, so a `stderr` diagnostic here is invisible.
         println!(
-            "nros: boot tier `{}` setup FAILED: {:?}",
+            "nros: boot sched task `{}` setup FAILED: {:?}",
             boot_sched_task.name, e
         );
         return Err(e);
@@ -1158,10 +1161,10 @@ where
     // The other levels, CHAINED: this task starts the first, and each starts
     // the next once its own setup has returned (issue #144), so no two setups
     // overlap on the shared session (issue 1733 needed a gate for that when
-    // every tier was spawned at once). Spawn order is table order without the
-    // boot tier.
+    // every sched task was spawned at once). Spawn order is table order without the
+    // boot sched task.
     //
-    // phase-359 W7 — what the spawned tasks borrow (`tiers`, `setup`) lives
+    // phase-359 W7 — what the spawned tasks borrow (`sched_tasks`, `setup`) lives
     // in this frame, and `run_sched_tasks` never returns (the boot level's spin
     // below is infinite), so every borrow outlives every task spawned from
     // it. That is the same invariant the C arm relies on; the `'static`
@@ -1175,7 +1178,7 @@ where
     // SAFETY: the never-returns invariant above.
     let all: &'static [nros_platform::SchedTaskSpec<'static>] = unsafe {
         core::slice::from_raw_parts(
-            tiers.as_ptr() as *const nros_platform::SchedTaskSpec<'static>,
+            sched_tasks.as_ptr() as *const nros_platform::SchedTaskSpec<'static>,
             n,
         )
     };
@@ -1185,23 +1188,23 @@ where
         sys::exit_process(1);
     }
     println!("nros: multi-level run — {} level(s) over one executor", n);
-    // phase-296 W5.9 / issue #246 — the boot tier is the SESSION OWNER: its
+    // phase-296 W5.9 / issue #246 — the boot sched task is the SESSION OWNER: its
     // passes drive the one shared zenoh-pico session's TX flush for EVERY
     // level. A kernel SCHED_SPORADIC server would drop this thread to
     // `sched_ss_low_priority` the moment its budget is spent, stalling the
-    // whole session's flush. So the session-owning boot tier stays
+    // whole session's flush. So the session-owning boot sched task stays
     // SCHED_FIFO — it is NEVER budget-capped. The budget dim's kernel-Native
     // realization applies to the other levels, which self-apply it in
     // `nuttx_level_trampoline`.
     if boot_is_budgeted {
         println!(
-            "nros: tier `{}` declares a sporadic budget but is the session-owning \
-             boot tier — kept SCHED_FIFO (a kernel/cooperative budget cap would \
-             stall the shared session flush; non-owner tiers realize the budget)",
+            "nros: sched task `{}` declares a sporadic budget but is the session-owning \
+             boot sched task — kept SCHED_FIFO (a kernel/cooperative budget cap would \
+             stall the shared session flush; non-owner sched tasks realize the budget)",
             boot_sched_task.name
         );
     }
-    // phase-296 W5.11 — placement dim: the boot tier self-pins to its
+    // phase-296 W5.11 — placement dim: the boot sched task self-pins to its
     // declared `core` (a core pin, unlike the sporadic budget above, does not
     // cap CPU so it cannot starve the shared flush).
     apply_sched_task_affinity(boot_sched_task);
@@ -1209,7 +1212,7 @@ where
     // it has started the first level and before it spins: before that it
     // starved against the transport tasks (4 of 8), and never applying it
     // leaves the marker RFC-0052 requires unset. A plain priority caps
-    // nothing, unlike the sporadic server kept off this tier above.
+    // nothing, unlike the sporadic server kept off this sched task above.
     apply_sched_task_priority(boot_sched_task);
     // SAFETY: this is the boot level's thread.
     nuttx_spin_sched_task_forever(boot_sched_task, |t| unsafe { core.spin_boot_once(t) });
@@ -1234,11 +1237,12 @@ unsafe extern "C" fn nuttx_thread_id() -> usize {
     unsafe { pthread_self() as usize }
 }
 
-/// The level of tier `index`: its urgency order among `tiers`, NuttX's
+/// The level of sched task `index`: its urgency order among `sched_tasks`, NuttX's
 /// bigger-is-urgent (the rule `NROS_ENTRY_LEVEL_OF_<node>` is generated by).
 #[cfg(target_os = "nuttx")]
-fn nuttx_level_of(tiers: &[nros_platform::SchedTaskSpec<'_>], index: usize) -> u8 {
-    ::nros::sched_task_level_by(tiers.len(), index, false, |i| tiers[i].priority).unwrap_or(0)
+fn nuttx_level_of(sched_tasks: &[nros_platform::SchedTaskSpec<'_>], index: usize) -> u8 {
+    ::nros::sched_task_level_by(sched_tasks.len(), index, false, |i| sched_tasks[i].priority)
+        .unwrap_or(0)
 }
 
 /// issue 2016 — what a spawned level task receives: the core, the table, the
@@ -1258,7 +1262,7 @@ struct LevelCtx<F, E> {
 }
 
 /// Start the level at `order[pos]` (nothing past the end): one detached
-/// pthread at the tier's priority, retried on a transient refusal (issue
+/// pthread at the sched task's priority, retried on a transient refusal (issue
 /// #246). `false` when it could not be started.
 #[cfg(target_os = "nuttx")]
 fn nuttx_spawn_level<F, E>(
@@ -1275,18 +1279,18 @@ where
     let Some(&index) = order.get(pos) else {
         return true;
     };
-    let tier = &all[index];
+    let sched_task = &all[index];
     // issue 0572 — the spawned level's identity + groups.
     println!(
-        "nros: spawning tier `{}` — groups {:?}, class {:?}, spin {} us",
-        tier.name, tier.groups, tier.class, tier.spin_period_us
+        "nros: spawning sched task `{}` — groups {:?}, class {:?}, spin {} us",
+        sched_task.name, sched_task.groups, sched_task.class, sched_task.spin_period_us
     );
-    // issue #246 — a tier spawned with no explicit stack requested the std
+    // issue #246 — a sched task spawned with no explicit stack requested the std
     // default (2 MiB), which `pthread_create` cannot satisfy from NuttX's
     // small kernel heap. Honour `stack_bytes`, else a 64 KiB default
     // (== NuttX's own `CONFIG_PTHREAD_STACK_DEFAULT`).
-    let stack_bytes = if tier.stack_bytes > 0 {
-        tier.stack_bytes
+    let stack_bytes = if sched_task.stack_bytes > 0 {
+        sched_task.stack_bytes
     } else {
         NUTTX_SCHED_TASK_STACK_DEFAULT_BYTES
     };
@@ -1303,9 +1307,9 @@ where
     const SPAWN_ATTEMPTS: u32 = 5;
     for attempt in 1..=SPAWN_ATTEMPTS {
         let rc = sys::spawn_sched_task(
-            tier.name,
+            sched_task.name,
             stack_bytes,
-            tier.priority,
+            sched_task.priority,
             nuttx_level_trampoline::<F, E>,
             ctx as *mut core::ffi::c_void,
         );
@@ -1313,8 +1317,8 @@ where
             return true;
         }
         println!(
-            "nros: spawn tier `{}` attempt {}/{} failed (stack {} B, errno {})",
-            tier.name, attempt, SPAWN_ATTEMPTS, stack_bytes, rc
+            "nros: spawn sched task `{}` attempt {}/{} failed (stack {} B, errno {})",
+            sched_task.name, attempt, SPAWN_ATTEMPTS, stack_bytes, rc
         );
         sys::yield_now();
     }
@@ -1322,14 +1326,14 @@ where
     // only live pointer to that allocation.
     drop(unsafe { alloc::boxed::Box::from_raw(ctx) });
     println!(
-        "nros: FAILED to spawn tier `{}` after {} attempts",
-        tier.name, SPAWN_ATTEMPTS
+        "nros: FAILED to spawn sched task `{}` after {} attempts",
+        sched_task.name, SPAWN_ATTEMPTS
     );
     false
 }
 
 /// C-ABI entry for a spawned level: a worker over the core's one executor.
-/// It adopts its tier's kernel facts, opens its level, runs `setup` on the
+/// It adopts its sched task's kernel facts, opens its level, runs `setup` on the
 /// shared runtime with its groups active (what registers is this level's),
 /// starts the next level, then loops on its band's passes. A level that does
 /// not open, whose setup fails or whose successor cannot start fails the
@@ -1356,20 +1360,20 @@ where
         ..
     } = *ctx;
     let index = order[pos];
-    let tier = &all[index];
+    let sched_task = &all[index];
     let level = nuttx_level_of(all, index);
     // phase-302 W3 (issue 0263) — the declared SCHED_FIFO priority; phase-296
     // W5.9 — the kernel sporadic server, when declared; W5.11 — the core pin.
-    apply_sched_task_priority(tier);
-    let kernel_budget = apply_sched_task_sporadic(tier);
-    apply_sched_task_affinity(tier);
+    apply_sched_task_priority(sched_task);
+    let kernel_budget = apply_sched_task_sporadic(sched_task);
+    apply_sched_task_affinity(sched_task);
     // SAFETY: once, on this level's own thread.
     let worker = match unsafe { core.open_level(level) } {
         Ok(w) => w,
         Err(e) => {
             println!(
-                "nros: tier `{}` did not open as level {} ({:?}): failing the boot",
-                tier.name, level, e
+                "nros: sched task `{}` did not open as level {} ({:?}): failing the boot",
+                sched_task.name, level, e
             );
             sys::exit_process(1);
         }
@@ -1382,8 +1386,8 @@ where
             // `set_active_groups` has already cleared it and left filtering
             // ON, so this level registers NOTHING rather than registering on
             // a quietly narrower set.
-            let _ = crt.executor_mut().set_active_groups(tier.groups);
-            apply_level_policy(crt, tier, true, kernel_budget);
+            let _ = crt.executor_mut().set_active_groups(sched_task.groups);
+            apply_level_policy(crt, sched_task, true, kernel_budget);
             let mut rctx = nros_platform::RuntimeCtx::with_runtime(crt);
             (*setup)(&mut rctx)
         })
@@ -1391,8 +1395,8 @@ where
     if let Err(e) = rc {
         // issue 0572 — STDOUT; this guest's stderr never reaches the console.
         println!(
-            "nros: tier `{}` setup FAILED: {:?} — failing the boot",
-            tier.name, e
+            "nros: sched task `{}` setup FAILED: {:?} — failing the boot",
+            sched_task.name, e
         );
         sys::exit_process(1);
     }
@@ -1401,15 +1405,15 @@ where
         sys::exit_process(1);
     }
     // SAFETY: `worker` is this thread's, from `open_level`.
-    nuttx_spin_sched_task_forever(tier, |t| unsafe { core.spin_level_once(worker, t) });
+    nuttx_spin_sched_task_forever(sched_task, |t| unsafe { core.spin_level_once(worker, t) });
     core::ptr::null_mut()
 }
 
-/// Drive a level's passes (`pass`, one of `LevelCore`'s) at its tier's
+/// Drive a level's passes (`pass`, one of `LevelCore`'s) at its sched task's
 /// declared period, forever.
 #[cfg(target_os = "nuttx")]
 fn nuttx_spin_sched_task_forever(
-    tier: &nros_platform::SchedTaskSpec<'_>,
+    sched_task: &nros_platform::SchedTaskSpec<'_>,
     mut pass: impl FnMut(core::time::Duration) -> ::nros::SpinOnceResult,
 ) -> ! {
     // issue 0572 — which wait the executor's spin will take. The primary
@@ -1424,8 +1428,8 @@ fn nuttx_spin_sched_task_forever(
     // SAFETY: documented pure probe, callable before init.
     let wake_bytes = unsafe { nros_platform_wake_storage_size() };
     println!(
-        "nros: tier `{}` entering spin — wake primitive {} ({} byte(s))",
-        tier.name,
+        "nros: sched task `{}` entering spin — wake primitive {} ({} byte(s))",
+        sched_task.name,
         if wake_bytes == 0 {
             "ABSENT (std Condvar fallback)"
         } else {
@@ -1434,19 +1438,19 @@ fn nuttx_spin_sched_task_forever(
         wake_bytes
     );
 
-    let period_ms = ((tier.spin_period_us / 1000).max(1)) as u32;
-    // issue 0572 — a per-tier heartbeat carrying the counts `spin_once` used to
-    // discard. A tier that dispatches NOTHING and a tier that is not running at
+    let period_ms = ((sched_task.spin_period_us / 1000).max(1)) as u32;
+    // issue 0572 — a per-sched-task heartbeat carrying the counts `spin_once` used to
+    // discard. A sched task that dispatches NOTHING and a sched task that is not running at
     // all look identical from outside the guest (a silent topic), and that
     // ambiguity is what left this cell undiagnosed. Once per ~5 s of spins, so
-    // it costs one line per tier per five seconds on the serial console.
+    // it costs one line per sched task per five seconds on the serial console.
     // ~1 s, not 5: the e2e kills the guest a couple of seconds after the slow
-    // tier's anchor, so a 5 s heartbeat never printed once.
-    let heartbeat_every = (1_000_000 / tier.spin_period_us.max(1)).max(1);
+    // sched task's anchor, so a 5 s heartbeat never printed once.
+    let heartbeat_every = (1_000_000 / sched_task.spin_period_us.max(1)).max(1);
 
     // issue 0736 — the discriminator the issue asks for, and it needs no host.
     //
-    // The symptom is 1000 spins producing 7 fires of a 10 ms timer: the tier IS
+    // The symptom is 1000 spins producing 7 fires of a 10 ms timer: the sched task IS
     // scheduled, and its sense of time is not keeping up. Two candidates fit
     // that equally from outside — `spin_once` returning early without waiting
     // its declared period, or the clock the timer compares against
@@ -1476,11 +1480,11 @@ fn nuttx_spin_sched_task_forever(
     // (`spin_once` drives I/O with a ZERO timeout on that arm), so under
     // sustained traffic this loop would otherwise never block — and under
     // SCHED_FIFO, which this guest runs, a thread that never blocks never lets
-    // a lower-priority tier run at all. `boot_sched_task_index` made the owner
+    // a lower-priority sched task run at all. `boot_sched_task_index` made the owner
     // outrank nothing, which is what fixed this issue; the gap is what makes
     // the guarantee hold without depending on that ordering being right.
     // Costs nothing while the spins do block.
-    let mut gap = nros_platform::SchedTaskSpinGap::new(tier.spin_period_us);
+    let mut gap = nros_platform::SchedTaskSpinGap::new(sched_task.spin_period_us);
     // Issue 2018 -- say when the kernel's sporadic server throttles this
     // level (it demoted the thread to the floor priority), as the C level
     // runner does after each pass: the C seam's one implementation.
@@ -1492,19 +1496,19 @@ fn nuttx_spin_sched_task_forever(
         ) -> i32;
     }
     let mut name_buf = [0u8; 64];
-    let n = tier.name.len().min(63);
-    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    let n = sched_task.name.len().min(63);
+    name_buf[..n].copy_from_slice(&sched_task.name.as_bytes()[..n]);
     let mut throttle_reported: i32 = 0;
     loop {
         let iter = gap.mark();
         let r = pass(core::time::Duration::from_millis(period_ms as u64));
-        if tier.priority > 0 {
+        if sched_task.priority > 0 {
             // SAFETY: `name_buf` is NUL-terminated and outlives the call;
             // `throttle_reported` is this loop's.
             unsafe {
                 nros_nuttx_report_current_sporadic_throttle(
                     name_buf.as_ptr() as *const core::ffi::c_char,
-                    tier.priority,
+                    sched_task.priority,
                     &mut throttle_reported,
                 );
             }
@@ -1518,15 +1522,15 @@ fn nuttx_spin_sched_task_forever(
             // The loop is ALIVE. Distinguishes "spinning but never dispatching"
             // from "never reached the spin at all" — two very different bugs
             // that both present as a silent topic.
-            println!("nros: tier `{}` completed spin 1", tier.name);
+            println!("nros: sched task `{}` completed spin 1", sched_task.name);
         }
         // One-shot, and the datum that does not depend on how long the guest
-        // lives: did this tier EVER dispatch anything?
+        // lives: did this sched task EVER dispatch anything?
         if !announced_first && (timers > 0 || subs > 0) {
             announced_first = true;
             println!(
-                "nros: tier `{}` FIRST dispatch at spin {} — {} timer(s), {} sub callback(s)",
-                tier.name, iters, timers, subs
+                "nros: sched task `{}` FIRST dispatch at spin {} — {} timer(s), {} sub callback(s)",
+                sched_task.name, iters, timers, subs
             );
         }
         if iters % heartbeat_every == 0 {
@@ -1535,11 +1539,11 @@ fn nuttx_spin_sched_task_forever(
             // between them is the defect, and which side is wrong is the
             // question this line exists to answer.
             let clock_us = clock_ns().saturating_sub(spin_start_ns) / 1_000;
-            let asked_us = iters.saturating_mul(tier.spin_period_us as u64);
+            let asked_us = iters.saturating_mul(sched_task.spin_period_us as u64);
             println!(
-                "nros: tier `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), \
+                "nros: sched task `{}` alive — {} spin(s), {} timer(s) fired, {} sub callback(s), \
                  {} error(s), {} gap(s), clock {} us vs asked {} us",
-                tier.name,
+                sched_task.name,
                 iters,
                 timers,
                 subs,

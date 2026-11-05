@@ -33,7 +33,7 @@ gets driven depends on the build:
 
 `zpico.c` today drives the session three ways. The background read and lease
 tasks serve POSIX, Zephyr, NuttX and FreeRTOS. ThreadX runs no background
-task and polls `zp_read` from its tier threads under a try-lock. Bare-metal
+task and polls `zp_read` from its sched task threads under a try-lock. Bare-metal
 smoltcp and serial poll `zp_read`, process query timeouts by hand and send
 their own keep-alives. Under 1.10.1 the ThreadX arm no longer compiles, and
 the single-thread arms compile but would never run the lease, reconnect or
@@ -72,7 +72,7 @@ Three facts about 1.10.1, all read in its source:
 The ThreadX arm exists because of a measured hazard (phase-297 W5). On
 ThreadX's Linux host port, a host `select` or `recv` blocks the pthread while
 the ThreadX scheduler still counts that thread as running, so every other
-tier starves. 1.10.1's background executor would put exactly that blocking
+sched task starves. 1.10.1's background executor would put exactly that blocking
 receive on a thread of its own.
 
 ## Design
@@ -157,7 +157,7 @@ while (steps < ZPICO_SPIN_BUDGET && zp_spin_once(z_session_loan(&s->session))) {
 
 ### D4 — CALLER, multi-thread (ThreadX): the background executor, run by the caller
 
-ThreadX needs the multi-thread runtime, because tier threads publish
+ThreadX needs the multi-thread runtime, because sched task threads publish
 concurrently and need its locks. It must not have the executor thread. Two
 pieces make that work:
 
@@ -165,7 +165,7 @@ pieces make that work:
    `zp_spin_once` becomes available in multi-thread builds while the
    background executor is NOT started. It runs one `_z_executor_spin` step
    under the executor's mutex, taken with `try_lock`. A caller that loses
-   the race returns `false` without blocking ("another tier is draining").
+   the race returns `false` without blocking ("another sched task is draining").
    - This replaces `threadx_read_mutex` and `_zpico_threadx_locked_read`.
      The executor's own mutex is now the single-reader rule from issue #247.
    - Calling it while the thread IS started returns `false` and does
@@ -235,7 +235,7 @@ which sends one keep-alive through the transport's TX path.
 | executor stack high-water mark, per THREAD platform | one stack now holds read + lease + reconnect + callbacks (D2) | boot-time peak print, the issue 1146 method |
 | keep-alive delay under a blocked receive | NuttX sets `Z_CONFIG_SOCKET_TIMEOUT = 5000`; a 5 s blocked receive delays the keep-alive against `rmw_zenohd`'s 10 s lease | quiet-link soak on NuttX against `rmw_zenohd`; if it is marginal, lower the timeout to Zephyr's 100 ms (issue 0129's reasoning) |
 | `Z_RUNTIME_MAX_TASKS` floor | the default of 8 is an estimate | count live tasks at open, reconnect and close in a test image |
-| ThreadX multi-tier contention | the try-lock replaces `threadx_read_mutex`; a spawned tier's interest reply must still arrive (issue #247) | the multi-tier ThreadX e2e that caught #247 |
+| ThreadX multi-sched-task contention | the try-lock replaces `threadx_read_mutex`; a spawned sched task's interest reply must still arrive (issue #247) | the multi-sched-task ThreadX e2e that caught #247 |
 | app-thread latency on spawn and cancel | spawning from an app thread waits for the current executor poll (D2, fact 1) | only advanced pub/sub and session open spawn from app threads; confirm nano-ros reaches neither in steady state |
 
 ### Results (2026-10-27)
@@ -299,7 +299,7 @@ the executor's timers never ran, so the lease and keep-alive never ran.
   cannot spawn its transport futures. At 5 and at 8, 22 of 22 pass. The
   default stays 8. That leaves headroom of 3, and the stack sampler holds
   one slot for its first minute.
-- **ThreadX multi-tier contention: passes.** The `realtime_sched_tasks` row
+- **ThreadX multi-sched-task contention: passes.** The `realtime_sched_tasks` row
   `threadx-linux/rust` (the cell that caught #247) passed in 3 of 3 runs,
   on fixtures rebuilt from this tree.
 - **App-thread spawn latency: not reached in steady state.** The futures
@@ -318,7 +318,7 @@ the executor's timers never ran, so the lease and keep-alive never ran.
   Duo hardware, where the receive is a ThreadX wait. D1 can split that row
   if a measurement favours it.
 - **ThreadX goes single-thread** (`Z_FEATURE_MULTI_THREAD = 0`). Rejected:
-  tier threads call `z_put` concurrently, and single-thread builds compile
+  sched task threads call `z_put` concurrently, and single-thread builds compile
   out the transport locks.
 - **Keep `zp_read` in CALLER builds and add the executor beside it.**
   Rejected: the polled read resets the buffer the read future compacts
@@ -351,7 +351,7 @@ Tracked by phase-508:
 - 2026-10-24: first draft, from issue 0910's second-pass survey.
 - 2026-10-26: step 6 done — the lease knobs retired and refused.
 - 2026-10-27: step 7 measurements taken (see "Results"). The
-  `MAX_TASKS` floor is 5, ThreadX tiers pass, and app-thread spawns are
+  `MAX_TASKS` floor is 5, ThreadX sched tasks pass, and app-thread spawns are
   not reached in steady state. The stack peaks are under 2.3 KiB
   everywhere. The keep-alive soak FAILS on NuttX (issue 2094), so the RFC
   stays Draft. D6's "a failed spawn is already loud" is corrected: it holds

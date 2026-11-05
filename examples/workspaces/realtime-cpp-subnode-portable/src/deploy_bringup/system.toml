@@ -5,8 +5,8 @@ domain_id = 0
 
 # Phase 273 W4 (RFC-0047) — portability proof.
 # The subnode_pkg::SubNode component is IDENTICAL to ws-realtime-cpp-subnode,
-# but this workspace uses DIFFERENT tier names: "fast" and "bulk" instead of
-# "high" and "low". The package (subnode_pkg) carries NO tier reference — only
+# but this workspace uses DIFFERENT sched task names: "fast" and "bulk" instead of
+# "high" and "low". The package (subnode_pkg) carries NO sched task reference — only
 # the group IDs "ctrl" and "telem". The binding is entirely here in system.toml.
 # This proves a group-using package is portable across workspaces (RFC-0047 §3).
 [[component]]
@@ -22,7 +22,7 @@ priority = 80
 # phase-427 W12 — RAW FreeRTOS priority for the mps2-an385 image below. The
 # port's address plan (`packages/platform/nros-platform-freertos/
 # nros-platform.toml` `[priority_plan]`) reserves 4 for the transport band and
-# hands `pool.app = [1, 3]` to tiers, so `fast` takes the top app slot and
+# hands `pool.app = [1, 3]` to sched tasks, so `fast` takes the top app slot and
 # still sits strictly BELOW the link it publishes over (RFC-0079, issue 0623).
 [tasks.fast.freertos]
 priority = 3
@@ -54,7 +54,7 @@ board = "linux"
 #
 # It is this workspace and not `realtime-cpp` because the portability proof is
 # exactly what the port needs: `subnode_pkg` names only the group IDs "ctrl" and
-# "telem", so moving it onto an RTOS board is a deploy-side edit — the tier
+# "telem", so moving it onto an RTOS board is a deploy-side edit — the sched task
 # table above gains a `[tasks.*.freertos]` priority and nothing in the package
 # changes. Same launch file, same component, different board.
 [image.freertos]

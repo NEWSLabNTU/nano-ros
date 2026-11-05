@@ -75,12 +75,12 @@ pub use config::Config;
 pub use entry::{run_bare, run_entry, run_sched_tasks_entry};
 pub use nros_board_common::BaseConfig;
 
-/// issue 1571 — the type of one spawned tier's executor backing slot, so a
+/// issue 1571 — the type of one spawned sched task's executor backing slot, so a
 /// board crate that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself.
 pub use ::nros::SchedTaskExecutorBackingSlot;
 
-/// issue 1598 — one spawned tier's task memory row (stack + TCB), for the same
+/// issue 1598 — one spawned sched task's RTOS task memory row (stack + TCB), for the same
 /// reason: a wrapping board crate names it without depending on `nros`.
 pub use ::nros::SchedTaskMemoryRaw;
 

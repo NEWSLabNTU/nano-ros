@@ -77,10 +77,10 @@ namespace {
 // phase-521 W8 (d), issue 2218 — this used to be a PX4 `WorkItem` on
 // `lp_default` owning a `SubscriptionCallbackWorkItem` pointed at itself, so
 // every arrival was a hop through the LOWEST-priority work queue before the
-// subscriber's flag flipped: a `rate_ctrl` tier's arrival waited behind
+// subscriber's flag flipped: a `rate_ctrl` sched task's arrival waited behind
 // `lp_default`'s backlog. Now the callback runs where the broker delivers,
 // and it is short by contract (an atomic store, the executor's wake, and the
-// owning tier's `ScheduleNow()`), so there is no queue to wait in.
+// owning sched task's `ScheduleNow()`), so there is no queue to wait in.
 class CallbackSlotImpl final : public uORB::SubscriptionCallback {
 public:
     CallbackSlotImpl(const orb_metadata *meta, uint8_t instance, int handle_in,

@@ -2,7 +2,7 @@
 //! as the realizer's input.
 //!
 //! RFC-0079's rule is that a priority is ALLOCATED out of a board's address
-//! plan, never authored per tier. Until this wave the realizer did not read a
+//! plan, never authored per sched task. Until this wave the realizer did not read a
 //! plan at all: `rank_to_priority` mapped dense rank 0 onto the most urgent
 //! number the kernel has (Zephyr 0), which sits ABOVE the transport threads
 //! that feed the application - the inversion RFC-0079 exists to prevent, and
@@ -15,8 +15,8 @@
 //!   and ThreadX, `bigger-is-urgent` on FreeRTOS, NuttX and POSIX);
 //! * `range` - the kernel's usable priorities;
 //! * `reserved` bands - what the image gives to something that is NOT an
-//!   application tier (the transport, a driver);
-//! * `pool.app` - the band a derived tier may be allocated from.
+//!   application sched task (the transport, a driver);
+//! * `pool.app` - the band a derived sched task may be allocated from.
 //!
 //! # Static plans and the DERIVED Zephyr one
 //!
@@ -56,7 +56,7 @@
 //! `[priority_plan]` table in the tree and asserts this file agrees with it,
 //! so the descriptor stays the source and this table stays a projection of it.
 //! The leaf crate cannot READ those files at run time - it is linked into a
-//! proc-macro and given a tier key, not a tree - which is why the projection
+//! proc-macro and given a sched task key, not a tree - which is why the projection
 //! exists at all.
 
 use std::collections::BTreeMap;
@@ -106,10 +106,10 @@ pub struct PriorityPlan {
     /// The kernel's usable priorities.
     pub range: Band,
     /// Bands that are NOT the application's, by name (`transport`, a driver
-    /// band). Kept whole so a diagnostic can name the band a tier collided
+    /// band). Kept whole so a diagnostic can name the band a sched task collided
     /// with.
     pub reserved: BTreeMap<String, Band>,
-    /// The band a derived tier is allocated from.
+    /// The band a derived sched task is allocated from.
     pub app: Band,
     /// Where this plan came from, for a diagnostic: a descriptor path, an
     /// image's `.config`, or the defaults projection.
@@ -187,10 +187,10 @@ fn posix_rr_to_kthread(posix: i64, num_preempt: i64) -> i64 {
 /// The DERIVED Zephyr plan (RFC-0079 section 4.1), from the four Kconfig
 /// values that decide it.
 ///
-/// Tiers are RAW `k_thread` priorities, so the transport band has to end in
-/// k_thread units for a comparison against a tier to mean anything. The
+/// Sched tasks are RAW `k_thread` priorities, so the transport band has to end in
+/// k_thread units for a comparison against a sched task to mean anything. The
 /// application pool starts one step LESS urgent than the least urgent
-/// transport thread: a derived tier never preempts the transport that feeds
+/// transport thread: a derived sched task never preempts the transport that feeds
 /// it.
 /// `transport_bands` are the NORMALISED priorities (0..255, bigger is more
 /// urgent) the image creates its transport tasks at - numbers this module is
@@ -250,7 +250,7 @@ fn dotconfig_has(text: &str, key: &str) -> bool {
 }
 
 impl PriorityPlan {
-    /// The plan for a tier KEY, with no image in hand.
+    /// The plan for a sched task KEY, with no image in hand.
     ///
     /// `target` is the output of `BoardFamily::sched_task_rtos_key` and is matched
     /// EXACTLY, the same rule `sched_caps_for` follows (issue 1285). An
@@ -311,7 +311,7 @@ impl PriorityPlan {
                 max_levels: None,
             },
             // packages/boards/linux/nros-board.toml. RFC-0079 records POSIX as
-            // HALF-SOLVED: the tiers are SCHED_FIFO and the transport is
+            // HALF-SOLVED: the sched tasks are SCHED_FIFO and the transport is
             // SCHED_OTHER, so the reserved band is an ordering inside the
             // executor's space rather than a kernel band this wave can claim.
             // Allocating inside `pool.app` is still the right move - it is
@@ -329,7 +329,7 @@ impl PriorityPlan {
                 range: band(0, 0),
                 reserved: BTreeMap::new(),
                 app: band(0, 0),
-                source: format!("no priority plan for tier key {target:?}"),
+                source: format!("no priority plan for sched task key {target:?}"),
                 max_levels: None,
             },
         }
@@ -431,7 +431,7 @@ impl PriorityPlan {
     /// and on an empty pool `hi < lo`, so `hi` is not a pool address at all -
     /// it is the last priority the band BELOW the pool owns. On the pre-0852
     /// Zephyr image that band is the transport's (`transport = [0, 14]`,
-    /// `app = [15, 14]`), so the clamp handed a derived tier k_thread **14**:
+    /// `app = [15, 14]`), so the clamp handed a derived sched task k_thread **14**:
     /// a number inside the reserved band, which is the inversion this plan
     /// exists to prevent, arrived at by the code that exists to prevent it.
     /// An empty pool has no address to give, and the caller must say so rather
@@ -457,7 +457,7 @@ impl PriorityPlan {
     /// a thread there is never preempted, which no derived placement may
     /// impose.
     ///
-    /// RFC-0079 section 6 - the band a tier enters when it names
+    /// RFC-0079 section 6 - the band a sched task enters when it names
     /// the crossing (`derive::lift_above_transport`), and the one the
     /// supervisor of a supervised deadline takes.
     pub fn slots_above_transport(&self) -> Vec<i64> {
@@ -490,7 +490,7 @@ impl PriorityPlan {
     }
 
     /// The reserved band a priority lands on, if any - for a diagnostic that
-    /// names what a tier collided with.
+    /// names what a sched task collided with.
     pub fn reserved_band_of(&self, priority: i64) -> Option<(&str, Band)> {
         self.reserved
             .iter()
@@ -499,7 +499,7 @@ impl PriorityPlan {
     }
 }
 
-/// What ONE Zephyr image's `.config` says about the plan its derived tiers
+/// What ONE Zephyr image's `.config` says about the plan its derived sched tasks
 /// allocate out of (issues 1508, 1537).
 #[derive(Debug)]
 pub enum ImagePlan {
@@ -540,7 +540,7 @@ pub fn zephyr_image_plan(
              (issue 1508)"
         ))),
         Err(e @ PriorityPlanError::MissingKey { .. }) => Err(format!(
-            "{origin}: {e}. The derived tier priorities of a Zephyr image are \
+            "{origin}: {e}. The derived sched task priorities of a Zephyr image are \
              allocated out of the pool its own Kconfig resolves (RFC-0079 section \
              4.1, issue 1508), so this must be the image's `zephyr/.config`"
         )),
@@ -642,7 +642,7 @@ mod tests {
         assert_eq!(plan.nth_app_priority(0), None);
         // issue 1427 - and there is no least urgent one either. `app.hi` is 14
         // here, which belongs to the TRANSPORT band; returning it is how the
-        // clamp handed a derived tier the transport's own priority.
+        // clamp handed a derived sched task the transport's own priority.
         assert_eq!(plan.least_urgent_app_priority(), None);
         assert_eq!(
             plan.reserved_band_of(plan.app.hi).map(|(n, _)| n),
@@ -708,9 +708,9 @@ mod tests {
     /// is the only place in the tree where both numbers meet at run time.
     ///
     /// `report_sched_tasks_above_transport` (`nros-board-freertos/src/entry.rs`,
-    /// issue 0623) prints a warning for every tier whose priority meets the
+    /// issue 0623) prints a warning for every sched task whose priority meets the
     /// transport floor `min(read, poll)`, in RAW FreeRTOS units - the
-    /// same units a derived priority is allocated in here. So "a derived tier
+    /// same units a derived priority is allocated in here. So "a derived sched task
     /// never preempts its own transport" is checkable against the shipped
     /// defaults rather than asserted: every priority `pool.app` can hand out
     /// must be strictly below that floor, or the image the derivation produces
@@ -752,12 +752,12 @@ mod tests {
                 p < floor,
                 "pool.app {:?} can allocate {p}, which meets the transport floor \
                  {floor} that `report_sched_tasks_above_transport` compares against - a \
-                 derived tier would preempt its own transport and the image would \
+                 derived sched task would preempt its own transport and the image would \
                  warn about itself at boot (issues 0623, 1427)",
                 plan.app
             );
         }
-        // And the app task's own priority is inside the pool, so a derived tier
+        // And the app task's own priority is inside the pool, so a derived sched task
         // is allocated from the same band the default task already runs in.
         assert!(plan.app.contains(field("app_priority")));
     }

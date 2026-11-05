@@ -1,13 +1,13 @@
 //! phase-521 W8 (a) (RFC-0113 D9) — the PX4 work queues a tier maps onto.
 //!
-//! PX4 owns `main` and every thread, so a PX4 image's tiers do not get threads
-//! of their own: each tier is one `px4::ScheduledWorkItem` on one of PX4's
+//! PX4 owns `main` and every thread, so a PX4 image's sched tasks do not get threads
+//! of their own: each sched task is one `px4::ScheduledWorkItem` on one of PX4's
 //! work queues, and the queue's thread carries the priority
 //! (`px4::wq_configurations`). This module is the table those queues come
 //! from and the rule that picks one per tier. The generated entry (W8 b) asks
 //! it; nothing else may spell the queue names.
 //!
-//! The table is RANK-ORDERED, most urgent first. The most urgent tier gets
+//! The table is RANK-ORDERED, most urgent first. The most urgent sched task gets
 //! `rate_ctrl`, the next `hp_default`, then `nav_and_controllers`, then
 //! `lp_default`. An image with more tiers than queues is REFUSED, never folded
 //! onto a shared queue: two tiers on one queue run one after the other on one
@@ -16,7 +16,7 @@
 
 use core::fmt;
 
-/// PX4's work queues a tier may take, most urgent first
+/// PX4's work queues a sched task may take, most urgent first
 /// (`platforms/common/include/px4_platform_common/px4_work_queue/WorkQueueManager.hpp`,
 /// `wq_configurations`).
 pub const PX4_WORK_QUEUES: &[&str] = &[
@@ -26,10 +26,10 @@ pub const PX4_WORK_QUEUES: &[&str] = &[
     "lp_default",
 ];
 
-/// An image declared more tiers than [`PX4_WORK_QUEUES`] has queues.
+/// An image declared more sched tasks than [`PX4_WORK_QUEUES`] has queues.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Px4TooManySchedTasks {
-    /// Every tier the image declared, most urgent first.
+    /// Every sched task the image declared, most urgent first.
     pub tiers: Vec<String>,
 }
 
@@ -52,9 +52,9 @@ impl fmt::Display for Px4TooManySchedTasks {
 
 impl std::error::Error for Px4TooManySchedTasks {}
 
-/// The work queue for each tier. `tiers` is the image's tiers, MOST URGENT
+/// The work queue for each sched task. `sched_tasks` is the image's sched tasks, MOST URGENT
 /// FIRST (the caller orders them; the IR's tier tables already carry the
-/// rank). The k-th most urgent tier gets the k-th queue of
+/// rank). The k-th most urgent sched task gets the k-th queue of
 /// [`PX4_WORK_QUEUES`].
 ///
 /// Refuses when there are more tiers than queues; an image with no tiers gets

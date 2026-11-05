@@ -127,7 +127,7 @@ pub struct LoweredNode {
     /// `|a|b|` list `rclcpp::detail::DeclaredCallbackGroups` reads, or `None`
     /// when it declared none. A C++ entry installs it around the component's
     /// constructor so `create_callback_group` is held to it, and checks after
-    /// it that every declared group was created. It is the list the tier
+    /// it that every declared group was created. It is the list the sched task
     /// derivation ranked, so the two cannot disagree silently.
     #[serde(default)]
     pub declared_callback_groups: Option<String>,
@@ -189,10 +189,10 @@ pub struct LoweredEntry {
     /// The unique C++ component headers, first-seen order.
     #[serde(default)]
     pub headers: Vec<String>,
-    /// `Some` when the plan runs one executor per tier.
+    /// `Some` when the plan runs one executor per sched task.
     #[serde(default)]
-    pub tiers: Option<crate::LoweredSchedTasks>,
-    /// `Some` when one executor carries a sched context per tier.
+    pub sched_tasks: Option<crate::LoweredSchedTasks>,
+    /// `Some` when one executor carries a sched context per sched task.
     #[serde(default)]
     pub sched: Option<crate::LoweredSched>,
     #[serde(default)]

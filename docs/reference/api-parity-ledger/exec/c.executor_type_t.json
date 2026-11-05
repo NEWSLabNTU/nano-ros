@@ -5,5 +5,5 @@
     "jazzy"
   ],
   "verdict": "declined",
-  "why": "Jazzy rclc selects between its single-threaded, multi-threaded and non-POSIX executor implementations with this enum. RFC-0002: one executor shape, one per RTOS task; priority tiers are configured in `system.toml`, not by swapping the executor implementation. DECLINED."
+  "why": "Jazzy rclc selects between its single-threaded, multi-threaded and non-POSIX executor implementations with this enum. RFC-0002: one executor shape, one per RTOS task; priority sched tasks are configured in `system.toml`, not by swapping the executor implementation. DECLINED."
 }

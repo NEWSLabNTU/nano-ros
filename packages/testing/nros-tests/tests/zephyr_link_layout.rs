@@ -22,7 +22,7 @@
 //!   UART, `cmake/zephyr/mps2-an385-serial.conf`); the build linking is the
 //!   regression, and the test pins that the image really has no stack.
 //! * Issue 2084 -- `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` moved only the task
-//!   stacks (`nros_thread_stacks`); the tier pool (`nros_sched_task_stacks`) stayed
+//!   stacks (`nros_thread_stacks`); the sched task pool (`nros_sched_task_stacks`) stayed
 //!   in SRAM, and a Rust level image with a 64 KiB slot overflowed the
 //!   S32K344's RAM by 30,028 B. The `build-cortex-m-c-sched-task-stacks-dtcm-zenoh`
 //!   row spawns one level on the pool for an mps2_an385 given a "DTCM" region,
@@ -132,13 +132,13 @@ fn serial_only_rust_image_links_without_ip_stack() {
     }
 }
 
-/// Issue 2084 -- with `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM`, the tier pool and an
+/// Issue 2084 -- with `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM`, the sched task pool and an
 /// entry-declared level stack sit in the DTCM output section beside the task
 /// stacks.
 #[test]
 fn sched_task_stack_pool_follows_stacks_in_dtcm() {
     let elf_path = build_zephyr_cortex_m_sched_task_stacks_dtcm().require(
-        "zephyr cortex-m tier-stacks-in-DTCM image (build-cortex-m-c-sched-task-stacks-dtcm-zenoh)",
+        "zephyr cortex-m sched-task-stacks-in-DTCM image (build-cortex-m-c-sched-task-stacks-dtcm-zenoh)",
     );
     let elf = read_elf(&elf_path);
     let dtcm = elf
@@ -152,7 +152,7 @@ fn sched_task_stack_pool_follows_stacks_in_dtcm() {
                 elf_path.display()
             )
         });
-    // The shim's tier pool, a level stack declared the way a generated C/C++
+    // The shim's sched task pool, a level stack declared the way a generated C/C++
     // entry declares one (`NROS_SCHED_TASK_MEMORY_DEFINE`), and the task stacks.
     for array in [
         "nros_sched_task_stacks",
@@ -171,7 +171,7 @@ fn sched_task_stack_pool_follows_stacks_in_dtcm() {
         assert!(
             sec.name == "DTCM" && (dtcm.addr..dtcm.addr + dtcm.size).contains(&sym.value),
             "{}: `{array}` at {:#x} is in `{}`, not in DTCM [{:#x}, {:#x}) -- \
-             CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM (and the tier knob that follows it) must place \
+             CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM (and the sched task knob that follows it) must place \
              it there (issue 2084)",
             elf_path.display(),
             sym.value,

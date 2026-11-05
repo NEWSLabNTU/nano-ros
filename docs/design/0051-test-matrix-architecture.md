@@ -87,7 +87,7 @@ artifacts are NOT moved into `fixtures.toml`).
 
 - The existing `rtos_e2e` `Platform`/`Lang` enums grow into this table; the
   three rstest functions become the single consumer pattern for EVERY
-  runtime family (entry, workspace, tiers, roundtrip, multihost).
+  runtime family (entry, workspace, sched tasks, roundtrip, multihost).
 - Unsupported combinations are declared as `CarveOut("nuttx is arm+riscv
   only by design")` IN the table — the audit's E5 "tribal-memory carve-out"
   smell becomes impossible.
@@ -107,7 +107,7 @@ Every example node's observable behavior is the stock ROS 2 demo's:
 | pubsub | talker prints `Publishing: 'Hello World: N'` (or `Published: N` for Int32), listener `I heard:`/`Received:` with MONOTONIC payloads |
 | service | server ready-marker + request marker; client prints the sum |
 | action | Fibonacci order-10: goal accepted → feedback prefixes → final sequence |
-| params/lifecycle/qos/tiers | the existing `output.rs` marker sets |
+| params/lifecycle/qos/sched tasks | the existing `output.rs` marker sets |
 
 `nros_tests::checker::StandardChecker` (one module beside `output.rs`)
 takes `(Workload, role, min_events)` and wraps the whole

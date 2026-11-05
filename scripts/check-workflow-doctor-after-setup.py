@@ -56,7 +56,7 @@ WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 DOCTOR = re.compile(r"\brunner-doctor\b")
 # `just setup <scope>` -- the provisioning verb (phase-411: a CI job is
 # `just setup <scope>` then one command a developer can type).
-# `just setup` / `just setup <tier>` provisions; `just setup-cli` and
+# `just setup` / `just setup <sched_task>` provisions; `just setup-cli` and
 # `just setup-launch-resolve` are different recipes that provision nothing a
 # runner label asserts (issue 1617: `\b` matched them, so a composite action
 # that ran `setup-cli` earlier credited any later doctor as "after setup").

@@ -337,7 +337,7 @@ name = "entity_wake"
 path = "tests/entity_wake.rs"
 required-features = ["trigger-test"]
 
-# phase-521 W3 (RFC-0113 D3/D4) — a tier parks on a session's WAITABLE handle
+# phase-521 W3 (RFC-0113 D3/D4) — a sched task parks on a session's WAITABLE handle
 # and is woken by data with no wake callback installed.
 [[test]]
 name = "readiness_park"
@@ -345,7 +345,7 @@ path = "tests/readiness_park.rs"
 required-features = ["trigger-test"]
 
 # phase-521 W7 (RFC-0113 D2.5) — the wake fan-out over one session: what a
-# low-tier arrival costs the high tiers, attributing vs not.
+# low-sched-task arrival costs the high sched tasks, attributing vs not.
 [[test]]
 name = "sched_task_wake_fanout"
 path = "tests/sched_task_wake_fanout.rs"
@@ -407,7 +407,7 @@ name = "context_create_executor"
 path = "tests/context_create_executor.rs"
 required-features = ["rclrs-port-test"]
 
-# Phase 228 — per-tier callback-group filter + shared-session
+# Phase 228 — per-sched-task callback-group filter + shared-session
 # (session_ptr / open_with_session) acceptance test.
 [[test]]
 name = "sched_task_filter"

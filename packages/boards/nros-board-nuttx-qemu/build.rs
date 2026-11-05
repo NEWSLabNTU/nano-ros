@@ -64,10 +64,10 @@ fn main() {
     }
 
     nros_board_common::nuttx_platform_build::run_platform();
-    // phase-281 W3 (nuttx) — compile the C++ multi-tier entry seam
+    // phase-281 W3 (nuttx) — compile the C++ multi-sched-task entry seam
     // (`c/nuttx_run_sched_tasks.c`, `nros_board_nuttx_run_sched_tasks`) into a
     // whole-archived static lib the generated entry's `NuttxBoard::run_sched_tasks`
-    // links against (RFC-0015 Model 1: one pthread per tier over one shared
+    // links against (RFC-0015 Model 1: one pthread per sched task over one shared
     // session). NuttX analog of the FreeRTOS `c/freertos_run_sched_tasks.c` glue.
     let run_sched_tasks = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_run_sched_tasks.c");
     // phase-432 W3.1 — the C-ABI single-executor entry rides the same seam

@@ -1,5 +1,5 @@
 {
   "key": "rust:SchedTaskSetupGuard",
   "verdict": "extension",
-  "why": "See `rust:SchedTaskSetupGate`: proof of holding the gate, which a runner can hand to the function that releases it once the tier's setup has returned."
+  "why": "See `rust:SchedTaskSetupGate`: proof of holding the gate, which a runner can hand to the function that releases it once the sched task's setup has returned."
 }

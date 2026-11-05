@@ -31,8 +31,8 @@ static int32_t __nros_entry_setup(void* executor) {
     if (executor == NULL) {
         return (int32_t)NROS_CPP_RET_NOT_INIT;
     }
-    /* issue 1283 — per-tier sched contexts on the single executor (RFC-0047),
-     * the C spelling of the C++ pack's block: one context per tier, then the
+    /* issue 1283 — per-sched-task sched contexts on the single executor (RFC-0047),
+     * the C spelling of the C++ pack's block: one context per sched task, then the
      * node-name and callback-group tables, all seeded BEFORE any node exists
      * so its entities pick the binding up at register time. */
     uint8_t __nros_sc_ids[2] = {0};

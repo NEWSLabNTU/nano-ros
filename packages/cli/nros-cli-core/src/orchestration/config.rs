@@ -102,7 +102,7 @@ pub struct ComponentOverrides {
 // ~~`EndpointMapping`~~, ~~`BuildConfig`~~) is retired. Deployment config now lives in
 // the bringup `system.toml` (`[image.<id>]` is the build, `[host.<name>]` the
 // placement; RFC-0004 §4, phase-486 W8). What remains here is the component manifest
-// (`ComponentConfig`). The scheduling tier is the plan's `PlanSchedContext`;
+// (`ComponentConfig`). The scheduling sched task is the plan's `PlanSchedContext`;
 // the ~~`SchedContextConfig`~~ twin that once sat here had no reader and was
 // deleted (issue 0259).
 

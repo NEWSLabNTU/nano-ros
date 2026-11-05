@@ -323,16 +323,16 @@ package for physical hardware. A board of your own starts from the
 `nros-board-threadx` family crate and the riscv64 arch port as the
 pieces to reuse; it is then flashed with that board vendor's tooling.
 
-## Multi-tier scheduling
+## Multi-sched-task scheduling
 
-ThreadX supports the multi-tier workspace scheduling model: declare per-tier ThreadX priorities in the bringup's
+ThreadX supports the multi-sched-task workspace scheduling model: declare per-sched-task ThreadX priorities in the bringup's
 `system.toml` with `[tasks.<name>.threadx]` priority tables, and
 the generated entry routes the app onto `run_sched_tasks` — one executor per
-tier, all sharing one session, with per-tier stacks carved from the
+sched task, all sharing one session, with per-sched-task stacks carved from the
 ThreadX byte pool. ThreadX priorities follow the native convention:
-**lower number = higher priority**. Tiers are sorted descending by
-raw priority number, so `tiers[0]` (the numerically-largest, i.e.
-lowest-priority tier) boots first and then adopts its declared
+**lower number = higher priority**. Sched tasks are sorted descending by
+raw priority number, so `sched_tasks[0]` (the numerically-largest, i.e.
+lowest-priority sched task) boots first and then adopts its declared
 priority. See [Scheduling Models](../realtime/scheduling-models.md)
 for the mechanics.
 

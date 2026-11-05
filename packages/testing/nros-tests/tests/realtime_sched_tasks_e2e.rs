@@ -1,39 +1,39 @@
-//! phase-295 W3.b — THE realtime-tiers matrix consumer (RFC-0051).
+//! phase-295 W3.b — THE realtime-sched-tasks matrix consumer (RFC-0051).
 //!
 //! Consolidates the 15 per-cell `realtime_sched_tasks_*` files into one
 //! parametrized test over the `Workload::RealtimeSchedTasks` cells of the test
 //! matrix (`nros_tests::matrix`): every cell deploys a `ws-realtime-*`
 //! workspace whose `system.toml` maps two callback groups onto two priority
-//! tiers (`[tasks.high]` 10 ms `/ctrl` timer, `[tasks.low]` 100 ms `/telem`
-//! timer — RFC-0015 Model 1, `run_sched_tasks`), then proves BOTH tiers are
+//! sched tasks (`[tasks.high]` 10 ms `/ctrl` timer, `[tasks.low]` 100 ms `/telem`
+//! timer — RFC-0015 Model 1, `run_sched_tasks`), then proves BOTH sched tasks are
 //! scheduled at their declared cadences.
 //!
 //! Two observation styles, preserved from the per-cell files:
 //! - **Observer cells** (native / zephyr / nuttx): two `int32-sink`
 //!   subscribers on `/ctrl` + `/telem` receive cross-process through a
 //!   zenoh router (issue 0096 — an entry's own nodes can't observe each
-//!   other in-image). Anchor on the SLOW tier (5 telem receives ≈ 0.5 s+
-//!   elapsed), then require the 10 ms tier to have outrun the 100 ms tier.
+//!   other in-image). Anchor on the SLOW sched task (5 telem receives ≈ 0.5 s+
+//!   elapsed), then require the 10 ms sched task to have outrun the 100 ms sched task.
 //!   The per-cell [`Proof`] keeps each lane's historical assertion:
 //!   `CounterRatio3x` (#158 deterministic payload-counter proof, robust to
 //!   delivery batching), `CountRatio3x` (native C/C++ sample-count ≥3×),
 //!   `CountStrict` (zephyr strictly-more margin).
 //! - **Serial-tick cells** (freertos/mps2-an385): no host observers — each
-//!   tier node prints `[<tier>] tick=N` on the QEMU serial console ONLY
-//!   when its publish succeeds. The C++ cell runs a THIRD `[aux]` mid tier
-//!   (50 ms) spawned BY a spawned tier: its tick is the #144 chained-spawn
+//!   sched task node prints `[<sched_task>] tick=N` on the QEMU serial console ONLY
+//!   when its publish succeeds. The C++ cell runs a THIRD `[aux]` mid sched task
+//!   (50 ms) spawned BY a spawned sched task: its tick is the #144 chained-spawn
 //!   regression signal (the pre-fix loop-spawn race left aux's publisher
 //!   write filter closed).
 //!
 //! Cell nuances carried over (see each case's `note`): the native
 //! cpp_rclcpp cell is the issue-#124 proof that IS-A-node rclcpp-shape
-//! components land on their tier via the phase-272 `node_name →
+//! components land on their sched task via the phase-272 `node_name →
 //! sched_context` table; the nuttx cells pin `NuttxBoard::run_sched_tasks`
-//! (pthread per tier, phase-281/285/#199); the zephyr cells pin
-//! `ZephyrBoard::run_sched_tasks` (k_thread per tier, phase-276/281).
+//! (pthread per sched task, phase-281/285/#199); the zephyr cells pin
+//! `ZephyrBoard::run_sched_tasks` (k_thread per sched task, phase-276/281).
 //!
-//! Tier *priority* preemption is advisory on native — the assertions prove
-//! per-tier scheduling at the declared periods, not preemption.
+//! Sched task *priority* preemption is advisory on native — the assertions prove
+//! per-sched-task scheduling at the declared periods, not preemption.
 //!
 //! Isolation (phase-295 W4): every embedded cell's `port` is the ONE
 //! allocator's `RealtimeSchedTasks` number (`nros_tests::alloc::port_of`) — the
@@ -100,7 +100,7 @@ enum Boot {
 /// The per-cell assertion, preserved 1:1 from the pre-consolidation files.
 #[derive(Copy, Clone, Debug)]
 enum Proof {
-    /// #158 deterministic proof: each tier publishes a MONOTONIC counter,
+    /// #158 deterministic proof: each sched task publishes a MONOTONIC counter,
     /// so its highest delivered value = how many times ITS OWN timer fired
     /// (robust to zenoh delivery batching/drops). Assert `telem_max > 0`
     /// and `ctrl_max ≥ 3 × telem_max` (10 ms vs 100 ms ⇒ ~10×).
@@ -109,29 +109,29 @@ enum Proof {
     /// 5-sample telem anchor, `ctrl_n ≥ 3 × telem_n`.
     CountRatio3x,
     /// Zephyr strictly-more margin: `ctrl_n > telem_n` — proves the high
-    /// tier runs FASTER while staying robust to native_sim NSOS jitter and
-    /// zenoh delivery batching (the anchor already proves the low tier).
+    /// sched task runs FASTER while staying robust to native_sim NSOS jitter and
+    /// zenoh delivery batching (the anchor already proves the low sched task).
     CountStrict,
-    /// FreeRTOS serial proof: each listed tier's `[<tier>] tick=` marker
+    /// FreeRTOS serial proof: each listed sched task's `[<sched_task>] tick=` marker
     /// must appear on the QEMU serial console (publish-gated prints).
     SerialTicks(&'static [&'static str]),
     /// issue 0636 gap 2 — serial-console proof for a RUST cell on a lane with
-    /// no host observers. Each named tier must print its dispatch marker
+    /// no host observers. Each named sched task must print its dispatch marker
     /// (`nros_tests::output::sched_task_dispatch_marker`), which the Rust realtime
     /// nodes emit on their first successful publish. `SerialTicks` cannot be
     /// reused: those nodes deliberately print no per-tick line (issue 0572 —
-    /// the 10 ms tier would swamp the console).
+    /// the 10 ms sched task would swamp the console).
     SerialDispatch(&'static [&'static str]),
-    /// issue 1575 — native_sim CONSOLE proof for a DERIVED-tier image whose
+    /// issue 1575 — native_sim CONSOLE proof for a DERIVED-sched-task image whose
     /// nodes publish no `/ctrl`/`/telem` pair for observers to count: each
     /// named node must print its `[<node>] tick=` marker at least twice
-    /// (`tick=1`), under a router, so every derived tier was spawned AND keeps
+    /// (`tick=1`), under a router, so every derived sched task was spawned AND keeps
     /// running. Order-independent — [`ZephyrProcess::wait_for_pattern`]
     /// returns the whole accumulated console, so no marker can be consumed.
     ///
     /// Issue 1733 — on [`Boot::Native`] too: the entry runs to its
     /// `NROS_ENTRY_SPIN_MS` bound and the whole output is read, and a native
-    /// row also fails on any `setup FAILED` line, because a tier that lost its
+    /// row also fails on any `setup FAILED` line, because a sched task that lost its
     /// setup is exactly what this image did on every boot.
     ConsoleTicks(&'static [&'static str]),
     /// phase-509 P9 (RFC-0108 D3) -- native_sim CONSOLE proof of the
@@ -152,7 +152,7 @@ enum Proof {
 
 type Resolver = fn() -> TestResult<PathBuf>;
 
-/// `derived-sched-tasks-cpp`'s four components, one derived tier each — the nodes
+/// `derived-sched-tasks-cpp`'s four components, one derived sched task each — the nodes
 /// whose `[<node>] tick=` markers both of its cells read.
 const DERIVED_SCHED_TASKS_CPP_NODES: &[&str] = &[
     "mrm_emergency_stop_operator",
@@ -162,7 +162,7 @@ const DERIVED_SCHED_TASKS_CPP_NODES: &[&str] = &[
 ];
 
 /// phase-509 P9 -- `levels-cpp`'s spawned levels (the boot level runs on
-/// `main()`): their derived tier names, most urgent first.
+/// `main()`): their derived sched task names, most urgent first.
 const LEVELS_CPP_SPAWNED: &[&str] = &["derived-urgent", "derived-middle"];
 
 /// phase-509 P9b -- the launch parameter each level's node carries
@@ -174,7 +174,7 @@ const LEVELS_CPP_PARAMS: &[(&str, i64)] = &[("urgent", 100), ("middle", 101), ("
 /// per-callback default (16384 - 13312) plus the worker frame (13312).
 const LEVELS_CPP_DERIVED_STACK: u32 = 16_384;
 
-/// The per-cell EXECUTION data for one realtime-tiers matrix cell. The
+/// The per-cell EXECUTION data for one realtime-sched-tasks matrix cell. The
 /// coordinate lives in `matrix::Cell`; this carries the boot/resolver/proof.
 /// A coordinate may yield MORE than one `Exec` — the `(Linux, Cpp)` cell runs
 /// both the component-shape and the #124 rclcpp-shape entry, a sub-variant the
@@ -220,9 +220,9 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 port,
                 boot: Boot::Native,
                 proof: Proof::CounterRatio3x,
-                note: "issue 1733: derived_bringup — two tiers DERIVED from the contract, each \
+                note: "issue 1733: derived_bringup — two sched tasks DERIVED from the contract, each \
                        arming a /diagnostics reporter; a pool sized for one reporter lost the \
-                       control tier (`/ctrl` silent) on every boot",
+                       control sched task (`/ctrl` silent) on every boot",
             },
         ],
         (MP::Linux, ML::C) => vec![Exec {
@@ -250,7 +250,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 proof: Proof::CountRatio3x,
                 note: "issue #124 / phase-272 W3: IS-A-node rclcpp-shape components bind via the \
                        node_name → sched_context table at Executor::node_builder — a miss here \
-                       means rclcpp-shape nodes lost their tier again",
+                       means rclcpp-shape nodes lost their sched task again",
             },
             Exec {
                 label: "cpp-levels",
@@ -267,8 +267,8 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 port,
                 boot: Boot::Native,
                 proof: Proof::ConsoleTicks(DERIVED_SCHED_TASKS_CPP_NODES),
-                note: "issue 1733: derived-sched-tasks-cpp — four DERIVED tiers, three spawned at once \
-                       over one session, each arming a /diagnostics reporter: lost 2-3 tiers \
+                note: "issue 1733: derived-sched-tasks-cpp — four DERIVED sched tasks, three spawned at once \
+                       over one session, each arming a /diagnostics reporter: lost 2-3 sched tasks \
                        per boot to NROS_ZENOH_MAX_PUBLISHERS sized for one reporter",
             },
         ],
@@ -295,7 +295,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 port,
                 boot: Boot::ZephyrNativeSim,
                 proof: Proof::ConsoleTicks(DERIVED_SCHED_TASKS_CPP_NODES),
-                note: "issue 1575: derived-sched-tasks-cpp — four tiers DERIVED from the contract \
+                note: "issue 1575: derived-sched-tasks-cpp — four sched tasks DERIVED from the contract \
                        (no authored [tasks.*]); the image issue 1551 ran the heap dry on",
             },
             Exec {
@@ -338,7 +338,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             port,
             boot: Boot::NuttxArm,
             proof: Proof::CounterRatio3x,
-            note: "phase-281 W3-nuttx: QemuArmVirt::run_sched_tasks (a level worker per tier, issue 2016), \
+            note: "phase-281 W3-nuttx: QemuArmVirt::run_sched_tasks (a level worker per sched task, issue 2016), \
                    the cell that completed the 12-cell Model-1 matrix",
         }],
         (MP::NuttxRiscv, ML::Rust) => vec![Exec {
@@ -371,7 +371,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             port,
             boot: Boot::FreertosMps2,
             proof: Proof::SerialTicks(&["ctrl", "aux", "telem"]),
-            note: "phase-274 W3 (#126) + #144 chained tier spawn: ctrl(10ms)/aux(50ms)/telem(100ms)",
+            note: "phase-274 W3 (#126) + #144 chained sched task spawn: ctrl(10ms)/aux(50ms)/telem(100ms)",
         }],
         (MP::FreertosMps2, ML::C) => vec![Exec {
             label: "c",
@@ -382,15 +382,15 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             note: "phase-281 W2: C nodes over the SHARED nros_board_freertos_run_sched_tasks glue \
                    (codegen routes embedded-C via the C++ emitter + RCLC_C_COMPONENT seam)",
         }],
-        // issue 0636 gap 2 — the Rust arm of the FreeRTOS multi-tier path, which
+        // issue 0636 gap 2 — the Rust arm of the FreeRTOS multi-sched-task path, which
         // was exported from `nros-board-freertos`, reachable from the macro, and
         // called by NOTHING: every FreeRTOS realtime fixture was C or C++, and
-        // the only Rust FreeRTOS entry is single-tier `run_entry`. That is the
+        // the only Rust FreeRTOS entry is single-sched-task `run_entry`. That is the
         // arm #0636's fix had to be reasoned onto rather than measured.
         //
         // `SerialDispatch`, not `SerialTicks` like the C/C++ siblings: the Rust
-        // nodes print no per-tick line by decision (issue 0572). Both tiers
-        // dispatching IS the property this issue is about — a tier that never
+        // nodes print no per-tick line by decision (issue 0572). Both sched tasks
+        // dispatching IS the property this issue is about — a sched task that never
         // runs is the defect.
         (MP::FreertosMps2, ML::Rust) => vec![Exec {
             label: "rust",
@@ -398,7 +398,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             port,
             boot: Boot::FreertosMps2,
             proof: Proof::SerialDispatch(&["low", "high"]),
-            note: "issue 0636 gap 2: Mps2An385Freertos::run_sched_tasks — boot tier is `low` \
+            note: "issue 0636 gap 2: Mps2An385Freertos::run_sched_tasks — boot sched task is `low` \
                    (least urgent, bigger-is-more-urgent kernel), `high` chain-spawned",
         }],
         (MP::ThreadxLinux, ML::Rust) => vec![Exec {
@@ -410,7 +410,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             note: "phase-297 W4/W5: ThreadxLinux::run_sched_tasks over nros_threadx_create_task \
                    (RFC-0053 byte-pool stacks); also the W2 shim's two-threads-run proof. \
                    NOTE resolve_sched_tasks sorts descending by raw number, so on ThreadX the \
-                   BOOT tier is `low` (telem) and `high` (ctrl) is chain-spawned",
+                   BOOT sched task is `low` (telem) and `high` (ctrl) is chain-spawned",
         }],
         (p, l) => panic!(
             "realtime_sched_tasks_e2e: no execution mapping for matrix cell {p:?}/{l:?} — add an \
@@ -506,9 +506,9 @@ impl Guest {
 
     /// Whatever the guest has printed so far — issue 0565.
     ///
-    /// The tier failures report "the low tier was not scheduled", and the guest
+    /// The sched task failures report "the low sched task was not scheduled", and the guest
     /// is the only thing that knows WHICH of the two that is: it prints
-    /// `nros: FAILED to spawn tier <name> after N attempts — tier will not run`
+    /// `nros: FAILED to spawn sched_task <name> after N attempts — sched_task will not run`
     /// (and a per-attempt line carrying the OS error) when the spawn is what
     /// failed, and nothing at all when it never reached the entry banner.
     /// Killing it unread threw that away, so the two were indistinguishable
@@ -534,10 +534,10 @@ impl Guest {
 /// message.
 ///
 /// phase-351 — issue 0565 added this reasoning to the ONE arm where the
-/// symptom was noticed (the low-tier anchor) and left the others killing the
+/// symptom was noticed (the low-sched-task anchor) and left the others killing the
 /// guest first, which by construction destroys the evidence. Issue 0572 is what
 /// that costs: `/ctrl` counter 0 with a healthy `/telem`, and no guest console
-/// to say whether the high tier failed to spawn, failed to open a session, or
+/// to say whether the high sched task failed to spawn, failed to open a session, or
 /// published into a closed writer. Every verdict path calls this now, so the
 /// gap cannot reopen in a third arm.
 ///
@@ -634,7 +634,7 @@ fn require_cell_env(boot: Boot) {
 fn anchor_timeout(boot: Boot) -> Duration {
     match boot {
         // ThreadX-Linux is a host process (no QEMU) but boots the ThreadX
-        // kernel + chain-spawns the second tier — give it the middle budget.
+        // kernel + chain-spawns the second sched task — give it the middle budget.
         Boot::Native | Boot::ThreadxLinux => Duration::from_secs(20),
         Boot::ZephyrNativeSim => Duration::from_secs(60),
         // Freertos cells never take this path (serial proof).
@@ -646,7 +646,7 @@ fn anchor_timeout(boot: Boot) -> Duration {
 // The parametrized matrix consumer
 // =============================================================================
 
-/// THE realtime-tiers matrix consumer (phase-329 W1). Iterates every cell
+/// THE realtime-sched-tasks matrix consumer (phase-329 W1). Iterates every cell
 /// `consumer_of` assigns to `RealtimeSchedTasks`, expands each to its execution
 /// row(s) via [`exec_for`] (the `(Linux, Cpp)` cell yields two — component +
 /// #124 rclcpp), and runs each in one process, catching per-row skips/failures
@@ -731,8 +731,8 @@ fn require_kernel_slicing_off(
     }
 }
 
-/// Boot the workspace entry, observe both tiers, assert the 10 ms high tier
-/// outruns the 100 ms low tier per the row's [`Proof`]. Panics with
+/// Boot the workspace entry, observe both sched tasks, assert the 10 ms high sched task
+/// outruns the 100 ms low sched task per the row's [`Proof`]. Panics with
 /// `[SKIPPED] …` on an unmet precondition; the caller classifies.
 fn run_one(pcell: &MCell, cell: &Exec) {
     let platform = plat_str(pcell.platform);
@@ -763,23 +763,23 @@ fn run_one(pcell: &MCell, cell: &Exec) {
     let observer_locator = format!("tcp/127.0.0.1:{}", router.port());
 
     // FreeRTOS: serial-tick proof, no host observers.
-    if let Proof::SerialDispatch(tiers) = cell.proof {
+    if let Proof::SerialDispatch(sched_tasks) = cell.proof {
         let mut qemu = QemuProcess::start_mps2_an385_networked(&entry)
             .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
         // ORDER-INDEPENDENT, unlike `SerialTicks` above, and that is not
         // fussiness: `wait_for_output_pattern` CONSUMES the stream, so a
         // sequential wait silently misses a marker that already went past. The
-        // boot tier here is `low` (100 ms) while `high` is 10 ms, so once both
+        // boot sched task here is `low` (100 ms) while `high` is 10 ms, so once both
         // are set up `high` publishes FIRST — waiting for `low` first ate
-        // `high`'s line and the cell reported a tier that had in fact
+        // `high`'s line and the cell reported a sched task that had in fact
         // dispatched. Accumulate instead, and only wait for what is not yet
-        // seen; the assertion is "every tier dispatched", which says nothing
+        // seen; the assertion is "every sched task dispatched", which says nothing
         // about the order they got there in.
         let mut seen = String::new();
         require_kernel_slicing_off(&mut qemu, &mut seen, platform, lang, cell.note);
         let mut timeout = Duration::from_secs(90);
-        for tier in tiers {
-            let marker = nros_tests::output::sched_task_dispatch_marker(tier);
+        for sched_task in sched_tasks {
+            let marker = nros_tests::output::sched_task_dispatch_marker(sched_task);
             if seen.contains(&marker) {
                 continue;
             }
@@ -788,7 +788,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 .unwrap_or_else(|e| {
                     qemu.kill();
                     panic!(
-                        "[{} {}] tier `{tier}` never dispatched (`{marker}` absent) — \
+                        "[{} {}] sched task `{sched_task}` never dispatched (`{marker}` absent) — \
                          {}.\nerr: {e:?}\n--- guest console so far ---\n{seen}",
                         platform, lang, cell.note
                     )
@@ -802,10 +802,10 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         qemu.kill();
         return;
     }
-    if let Proof::SerialTicks(tiers) = cell.proof {
+    if let Proof::SerialTicks(sched_tasks) = cell.proof {
         let mut qemu = QemuProcess::start_mps2_an385_networked(&entry)
             .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
-        // phase-509 P10 -- every C/C++ FreeRTOS tier table runs on the level
+        // phase-509 P10 -- every C/C++ FreeRTOS sched task table runs on the level
         // runner (`nros_board_freertos_run_levels_in`): one executor, one
         // worker task per level. Its line comes first; the stream is consumed
         // as it is read, so the ticks are then checked against everything
@@ -828,12 +828,12 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             lang
         );
         require_kernel_slicing_off(&mut qemu, &mut seen, platform, lang, cell.note);
-        // The boot tier connects + publishes first (its tick proves the
+        // The boot sched task connects + publishes first (its tick proves the
         // run_sched_tasks boot session reached the host zenohd), so it gets the
-        // cold-boot budget; each subsequent tier only needs its own period.
+        // cold-boot budget; each subsequent sched task only needs its own period.
         let mut timeout = Duration::from_secs(90);
-        for tier in tiers {
-            let marker = nros_tests::output::sched_task_tick_marker(tier);
+        for sched_task in sched_tasks {
+            let marker = nros_tests::output::sched_task_tick_marker(sched_task);
             if seen.contains(&marker) {
                 continue;
             }
@@ -842,7 +842,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 .unwrap_or_else(|e| {
                     qemu.kill();
                     panic!(
-                        "[{} {}] tier `{tier}` never published (`{marker}` absent) — \
+                        "[{} {}] sched task `{sched_task}` never published (`{marker}` absent) — \
                          {}.\nerr: {e:?}\n--- guest console so far ---\n{seen}",
                         platform, lang, cell.note
                     )
@@ -919,7 +919,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             .env("NROS_SESSION_MODE", "client")
             .env("NROS_ENTRY_SPIN_MS", "4000");
         let mut guest = ManagedProcess::spawn_image(cmd, "derived-sched-tasks-entry")
-            .unwrap_or_else(|e| panic!("spawn native derived-tiers entry: {e}"));
+            .unwrap_or_else(|e| panic!("spawn native derived-sched-tasks entry: {e}"));
         let console = guest
             .wait_for_all_output(Duration::from_secs(20))
             .unwrap_or_else(|e| format!("<no output: {e}>"));
@@ -930,7 +930,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             .collect();
         assert!(
             lost.is_empty(),
-            "[{} {}] a tier lost its setup ({})\n         {}\n         console:\n           {}",
+            "[{} {}] a sched task lost its setup ({})\n         {}\n         console:\n           {}",
             platform,
             lang,
             cell.note,
@@ -942,7 +942,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             assert!(
                 console.contains(&marker),
                 "[{} {}] node `{node}` never ticked twice (`{marker}` absent) — its derived \
-                 tier did not run ({})\n         console:\n           {}",
+                 sched task did not run ({})\n         console:\n           {}",
                 platform,
                 lang,
                 cell.note,
@@ -967,7 +967,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             }
             // phase-509 P9b -- each level's node carries a launch
             // parameter, seeded by that level's setup on the core's ONE
-            // executor. A seed keyed by a per-tier index named node 0 in
+            // executor. A seed keyed by a per-sched-task index named node 0 in
             // every level and failed the second level's setup.
             for (node, tag) in LEVELS_CPP_PARAMS {
                 let line = format!("[{node}] level_tag={tag}");
@@ -978,8 +978,9 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 }
             }
             for level in LEVELS_CPP_SPAWNED {
-                let line =
-                    format!("nros: tier stack tier=`{level}` bytes={LEVELS_CPP_DERIVED_STACK} ");
+                let line = format!(
+                    "nros: sched task stack sched_task=`{level}` bytes={LEVELS_CPP_DERIVED_STACK} "
+                );
                 if !console.contains(&line) {
                     return Err(format!(
                         "level `{level}` did not run on its derived stack (`{line}` absent)"
@@ -1035,7 +1036,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 guest.kill();
                 panic!(
                     "[{} {}] node `{node}` never ticked twice (`{marker}` absent) — its \
-                     derived tier did not run ({})\n         guest console:\n           {}",
+                     derived sched task did not run ({})\n         guest console:\n           {}",
                     platform,
                     lang,
                     cell.note,
@@ -1090,19 +1091,19 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         Boot::FreertosMps2 => unreachable!("freertos cells use SerialTicks"),
     };
 
-    // Anchor on the SLOW tier: once telem (100 ms) has delivered 5 samples,
-    // enough wall time (~0.5 s+) has elapsed that the 10 ms ctrl tier must
-    // have published many more — both tiers live, high runs faster.
+    // Anchor on the SLOW sched task: once telem (100 ms) has delivered 5 samples,
+    // enough wall time (~0.5 s+) has elapsed that the 10 ms ctrl sched task must
+    // have published many more — both sched tasks live, high runs faster.
     let prefix = nros_tests::output::INT32_LISTENER_LOG_PREFIX;
     let telem_out = telem
         .wait_for_output_count(prefix, 5, anchor_timeout(cell.boot))
         .unwrap_or_else(|_| {
             // issue 0565 — this verdict used to throw away the ONE artifact that
             // says WHY. The guest prints its own diagnosis on this path
-            // (`nros: FAILED to spawn tier <name> after N attempts — tier will
-            // not run`, or the per-attempt `spawn tier … failed (… os error …)`),
-            // and killing the guest unread meant "the low tier was not
-            // scheduled" could not be told apart from "the tier never spawned".
+            // (`nros: FAILED to spawn sched task <name> after N attempts — sched task will
+            // not run`, or the per-attempt `spawn sched task … failed (… os error …)`),
+            // and killing the guest unread meant "the low sched task was not
+            // scheduled" could not be told apart from "the sched task never spawned".
             // Same rule as issue 0445: a verdict states what it examined.
             // Drain BEFORE killing: a live guest still has its console open.
             let tail = guest_console(&mut guest);
@@ -1110,7 +1111,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             ctrl.kill();
             telem.kill();
             panic!(
-                "[{} {}] low-tier /telem never reached 5 deliveries — the low tier was \
+                "[{} {}] low-sched-task /telem never reached 5 deliveries — the low sched task was \
                  not scheduled ({})\n         guest console:\n           {}",
                 platform, lang, cell.note, tail
             )
@@ -1140,13 +1141,13 @@ fn run_one(pcell: &MCell, cell: &Exec) {
 
             let telem_max = nros_tests::max_int_after(&telem_all, prefix).unwrap_or(0);
             let ctrl_max = nros_tests::max_int_after(&ctrl_all, prefix).unwrap_or(0);
-            // The anchor already proved 5 low-tier samples; this guards
+            // The anchor already proved 5 low-sched-task samples; this guards
             // against a parse failure making the ratio vacuous (0-indexed
             // counter ⇒ 5 samples = max value 4 — assert advancement).
             assert!(
                 telem_max > 0,
-                "[{} {}] low-tier /telem counter never advanced (max {telem_max}) — the \
-                 low tier did not run ({})\n         guest console:\n           {}",
+                "[{} {}] low-sched-task /telem counter never advanced (max {telem_max}) — the \
+                 low sched task did not run ({})\n         guest console:\n           {}",
                 platform,
                 lang,
                 cell.note,
@@ -1154,14 +1155,14 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             );
             // Issue 0447 — dump the raw observer text, not just the counters.
             // `ctrl_max` is an `unwrap_or(0)`, so 0 means "nothing parsed",
-            // which is equally consistent with the tier never publishing and
+            // which is equally consistent with the sched task never publishing and
             // with the observer printing something `max_int_after` can't read.
             // The counters alone cannot tell those apart; one run of this can.
             assert!(
                 ctrl_max >= 3 * telem_max,
-                "[{} {}] high-tier /ctrl counter {ctrl_max} is not ≥3× the low-tier \
-                 /telem counter {telem_max} — the 10 ms tier is not outrunning the \
-                 100 ms tier ({})\n\
+                "[{} {}] high-sched-task /ctrl counter {ctrl_max} is not ≥3× the low-sched-task \
+                 /telem counter {telem_max} — the 10 ms sched task is not outrunning the \
+                 100 ms sched task ({})\n\
                  --- /ctrl observer output (empty ⇒ nothing was received at all) ---\n{}\n\
                  --- /telem observer output ---\n{}\n\
                  --- guest console ---\n           {}",
@@ -1182,7 +1183,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                     ctrl.kill();
                     telem.kill();
                     panic!(
-                        "[{} {}] high-tier /ctrl produced nothing — the high tier was \
+                        "[{} {}] high-sched-task /ctrl produced nothing — the high sched task was \
                          not scheduled ({})\n         guest console:\n           {}",
                         platform, lang, cell.note, tail
                     )
@@ -1196,7 +1197,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             let ctrl_n = nros_tests::count_pattern(&ctrl_out, prefix);
             assert!(
                 telem_n >= 5,
-                "[{} {}] expected ≥5 low-tier /telem deliveries, got {telem_n} ({})\n\
+                "[{} {}] expected ≥5 low-sched-task /telem deliveries, got {telem_n} ({})\n\
                  --- guest console ---\n           {}",
                 platform,
                 lang,
@@ -1208,8 +1209,8 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 // against native timer jitter and zenoh delivery batching.
                 assert!(
                     ctrl_n >= telem_n * 3,
-                    "[{} {}] expected the high tier (/ctrl, 10 ms) to deliver ≥3× the \
-                     low tier (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} ({})\n\
+                    "[{} {}] expected the high sched task (/ctrl, 10 ms) to deliver ≥3× the \
+                     low sched task (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} ({})\n\
                      --- guest console ---\n           {}",
                     platform,
                     lang,
@@ -1219,8 +1220,8 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             } else {
                 assert!(
                     ctrl_n > telem_n,
-                    "[{} {}] ctrl (10 ms tier) delivered {ctrl_n} ≤ telem's {telem_n} — \
-                     the high tier is not outrunning the low tier ({})\n\
+                    "[{} {}] ctrl (10 ms sched task) delivered {ctrl_n} ≤ telem's {telem_n} — \
+                     the high sched task is not outrunning the low sched task ({})\n\
                      --- guest console ---\n           {}",
                     platform,
                     lang,

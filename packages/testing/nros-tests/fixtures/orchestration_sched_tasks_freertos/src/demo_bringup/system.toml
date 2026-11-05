@@ -3,9 +3,9 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
-# issue 0438 — `group_tasks` BINDS a callback group to a tier (phase-273 W2 /
+# issue 0438 — `group_tasks` BINDS a callback group to a sched task (phase-273 W2 /
 # RFC-0047). Without it the `[tasks.*]` tables below have no members, resolve to
-# a single synthesized `default`, and the entry silently emits the SINGLE-tier
+# a single synthesized `default`, and the entry silently emits the SINGLE-sched-task
 # path — the same latent defect the native sibling of this fixture carried.
 [[component]]
 pkg = "ctrl_pkg"
@@ -26,7 +26,7 @@ group_tasks = { telem = "low" }
 # reads the same claim to write the entry's selection package (its board crate).
 #
 # Issue #48 cause 1 — slirp addressing threaded into the firmware boot Config
-# via `Mps2An385::run_sched_tasks` (multi-tier path): guest 10.0.2.15 / gateway 10.0.2.2,
+# via `Mps2An385::run_sched_tasks` (multi-sched-task path): guest 10.0.2.15 / gateway 10.0.2.2,
 # dialing the host zenohd at the slirp alias 10.0.2.2.
 #
 # Issue 0342 — the PORT is the allocator's slot for this cell:
@@ -45,15 +45,15 @@ entry = "demo_entry"
 # it would have to drop.
 locator = "tcp/10.0.2.2:7891"
 
-# Two FreeRTOS priority tiers. Raw FreeRTOS priorities (0..configMAX-1, higher =
+# Two FreeRTOS priority sched tasks. Raw FreeRTOS priorities (0..configMAX-1, higher =
 # higher) authored directly in the per-RTOS sub-table.
 #
-# Issue #48 — each spawned tier task shares the boot session and runs the
-# zenoh-pico-backed per-tier spin (publish/take). zenoh-pico operations are
+# Issue #48 — each spawned sched task shares the boot session and runs the
+# zenoh-pico-backed per-sched-task spin (publish/take). zenoh-pico operations are
 # stack-heavy on the Cortex-M3; the original 8192/4096-byte stacks overflowed
 # (`*** STACK OVERFLOW: nros_sched_task ***`) the moment the firmware actually
 # connected (a #46-class overflow, previously masked because the inert deploy
-# config never let `Executor::open` succeed). 64 KiB boots + runs both tiers.
+# config never let `Executor::open` succeed). 64 KiB boots + runs both sched tasks.
 [tasks.high]
 spin_period = "1000us"
 [tasks.high.freertos]

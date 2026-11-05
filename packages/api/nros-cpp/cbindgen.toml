@@ -137,9 +137,9 @@ exclude = [
     #
     # Issue 1442 — that is why the `_ns` twin is here too, and it is not
     # cosmetic: cbindgen happily emitted
-    # `nros_board_native_run_sched_tasks_ns(..., const NativeSchedTaskSpecC *tiers, ...)`
+    # `nros_board_native_run_sched_tasks_ns(..., const NativeSchedTaskSpecC *sched_tasks, ...)`
     # naming a type this very list removes, so the generated header stopped
-    # being self-contained. A runner added to `c_abi_runners` that takes a tier
+    # being self-contained. A runner added to `c_abi_runners` that takes a sched task
     # array belongs on this list.
     "NativeSchedTaskSpecC",
     "nros_board_native_run_sched_tasks",

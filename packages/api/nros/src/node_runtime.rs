@@ -1061,21 +1061,21 @@ impl ExecutorNodeRuntime {
         &mut self.executor
     }
 
-    /// RFC-0052 / phase-296 W5.4 — lower a tier's RTOS-agnostic scheduling
+    /// RFC-0052 / phase-296 W5.4 — lower a sched task's RTOS-agnostic scheduling
     /// policy onto this executor's DEFAULT scheduling context. One `Executor`
-    /// per tier means "the tier's policy" == "this executor's default SC";
+    /// per sched task means "the sched task's policy" == "this executor's default SC";
     /// per-group/per-handle bindings still take precedence.
     ///
     /// **Portable** across every board — call from each board's `run_sched_tasks`
-    /// after building the runtime. Takes the tier fields as primitives (not a
+    /// after building the runtime. Takes the sched task fields as primitives (not a
     /// `SchedTaskSpec`) so `nros` needs no board/platform dependency; a board passes
-    /// `tier.class`, `tier.period_us`, … straight through.
+    /// `sched_task.class`, `sched_task.period_us`, … straight through.
     ///
     /// `real_time` + `budget_us` + `period_us` → [`SchedClass::Sporadic`](crate::SchedClass::Sporadic);
     /// `best_effort` → [`SchedClass::BestEffort`](crate::SchedClass::BestEffort); `time_triggered` +
     /// `period_us` → the cyclic dispatcher (major frame = period, window =
     /// `budget_us` or the whole frame); `deadline_us` sets the SC deadline and
-    /// `deadline_policy` its action. A tier with no class/budget/deadline
+    /// `deadline_policy` its action. A sched task with no class/budget/deadline
     /// leaves the default `Fifo` SC untouched (byte-identical pre-W3 behavior).
     pub fn apply_sched_task_sched_policy(
         &mut self,
@@ -1086,7 +1086,7 @@ impl ExecutorNodeRuntime {
         deadline_policy: Option<&str>,
     ) {
         use crate::SchedContext;
-        // Common backend (RFC-0052): the tier→SchedContext lowering lives ONCE
+        // Common backend (RFC-0052): the sched task→SchedContext lowering lives ONCE
         // in `SchedContext::from_sched_task_policy`, shared with the C / C++ entries
         // (`nros_{c,cpp}_create_sched_context_from_policy`) so the mapping never
         // drifts between languages. `None` → keep the default `Fifo` SC.
@@ -1284,9 +1284,9 @@ impl ExecutorNodeRuntime {
     /// instead of discarding them — issue 0572.
     ///
     /// `spin_once` throws away a `SpinOnceResult` that already carries exactly
-    /// what a stalled tier needs to be diagnosed: how many timers fired, how
+    /// what a stalled sched task needs to be diagnosed: how many timers fired, how
     /// many subscription callbacks ran, and how many errored. Without it, "the
-    /// tier's timer never fires" and "the tier's callback runs and its publish
+    /// sched task's timer never fires" and "the sched task's callback runs and its publish
     /// fails" are the same observation from outside the guest — a silent topic.
     pub fn spin_once_counted(
         &mut self,
@@ -1821,19 +1821,19 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
     ) -> NodeResult<()> {
         // Phase 228.C tier gate: when this executor runs a specific tier
         // (`active_groups` set by codegen), an entity whose callback group
-        // is not active on this tier is a no-op — no RMW handle, no slot.
+        // is not active on this sched task is a no-op — no RMW handle, no slot.
         // An unlabeled entity (`callback_group == None`) is wildcard-eligible
-        // and always registers; the degenerate single-tier executor leaves
+        // and always registers; the degenerate single-sched-task executor leaves
         // `active_groups == None`, so every entity registers (byte-identical
         // to pre-228 output).
         //
         // issue 1172 — the lookup moved ABOVE this gate because the gate is now
         // node-qualified. It used to ask "is this GROUP active", which cannot
         // tell node A's `ctrl` from node B's `ctrl`: two nodes may legitimately
-        // declare the same group id on different tiers, and the tier then
+        // declare the same group id on different sched tasks, and the sched task then
         // admitted entities it did not own. Reordering is safe — a missing node
         // was already `NodeDeclError::Runtime` three lines below, so the only
-        // change is which error wins for an entity that is BOTH off-tier and
+        // change is which error wins for an entity that is BOTH off-sched-task and
         // owned by an unknown node, and that combination is a bug either way.
         let (node, node_name, node_ns) = {
             let entry = self
@@ -2029,8 +2029,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     .map_err(|()| NodeDeclError::Metadata(NodeMetadataError::DuplicateId))?;
                 // Issue 1419 — a Rust timer never reaches the RMW, so this hook
                 // is how it enters the census. Recorded AFTER the tier gate
-                // above, so a tiered entry's census holds each timer once, on
-                // the tier that owns it. `Wall` on the steady clock, `Clock`
+                // above, so a sched-task entry's census holds each timer once, on
+                // the sched task that owns it. `Wall` on the steady clock, `Clock`
                 // on any other — the split the C and C++ entry points report.
                 crate::census_hooks::on_timer_create(
                     match metadata.timer_clock {

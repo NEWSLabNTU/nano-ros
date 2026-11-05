@@ -35,7 +35,7 @@ The variants:
 - **`Deferred`** — Callbacks land in a queue, and a dispatch task drains it
   and drives `ExecutableNode::on_callback` from its own task context,
   decoupling callback latency from network polling. The entry `nros::main!`
-  generates for a supported board has no such task: each tier's loop is the
+  generates for a supported board has no such task: each sched task's loop is the
   only task that runs its callbacks, so a `Deferred` component is registered
   inline there (a queue nothing drains would lose callbacks). The node still
   has to use the tag API below, so it builds unchanged for an entry that does
@@ -209,7 +209,7 @@ and a forced-correct API for the Deferred path.
 
 `Node::DISPATCH` belongs to `nros::node!` nodes. The queue under it is the
 executor's own, with three calls and no macro-private type. A loop that drains
-it must be a task whose priority nano-ros owns, such as a tier's; a foreign
+it must be a task whose priority nano-ros owns, such as a sched task's; a foreign
 host's loop would decide when the callbacks run, which nano-ros does not
 support:
 

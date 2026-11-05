@@ -26,14 +26,14 @@
 //!   the key keeps building and says what it would take to check it.
 //!
 //! **What a level is here.** Until the level runners land (phase-509 P9) a
-//! level is a tier of the image's resolved tier table: one thread at the
-//! tier's priority. A tierless image (no table, or the one synthesized
-//! `default` tier) is one level. A node of a multi-tier image that no tier
+//! level is a sched task of the image's resolved sched task table: one thread at the
+//! sched task's priority. A single-executor image (no table, or the one synthesized
+//! `default` sched task) is one level. A node of a multi-sched-task image that no sched task
 //! holds has an unknown level: a call it makes or serves is reported, not
 //! refused. A server outside the image (no level here at all) is a call
 //! across images, which no worker of this one holds: not checked.
 //!
-//! Every tier member is a bare node name (the component instance name the
+//! Every sched task member is a bare node name (the component instance name the
 //! three bake roads key their tables by); a contract endpoint ref
 //! `"<node FQN>/<endpoint>"` is matched by the last segment of its node FQN.
 
@@ -46,9 +46,9 @@ use crate::ResolvedSchedTaskTable;
 /// One level a node's callbacks run on.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LevelRef {
-    /// The tier's name (`default` for a tierless image).
+    /// The sched task's name (`default` for a single-executor image).
     pub name: String,
-    /// The tier's kernel priority, in the RTOS's own direction.
+    /// The sched task's kernel priority, in the RTOS's own direction.
     pub priority: i64,
 }
 
@@ -56,14 +56,14 @@ pub struct LevelRef {
 #[derive(Clone, Debug, Default)]
 pub struct ImageLevels {
     by_node: BTreeMap<String, BTreeSet<LevelRef>>,
-    /// Image members whose level is not known (a multi-tier image that
+    /// Image members whose level is not known (a multi-sched-task image that
     /// places none of their groups).
     unplaced: BTreeSet<String>,
     low_number_is_high: bool,
 }
 
 impl ImageLevels {
-    /// A tierless image: every member on one level.
+    /// A single-executor image: every member on one level.
     pub fn one_level<'a>(members: impl IntoIterator<Item = &'a str>) -> Self {
         let level = LevelRef {
             name: crate::DEFAULT_SCHED_TASK.to_string(),
@@ -79,18 +79,18 @@ impl ImageLevels {
         }
     }
 
-    /// From the image's resolved tier table: until P9 each tier is a level.
+    /// From the image's resolved sched task table: until P9 each sched task is a level.
     /// `members` is every node of the image (bare names); one the table does
-    /// not hold is unplaced, unless the table has one tier, which then holds
+    /// not hold is unplaced, unless the table has one sched task, which then holds
     /// the whole image.
     pub fn from_sched_tasks<'a>(
         table: &ResolvedSchedTaskTable,
         low_number_is_high: bool,
         members: impl IntoIterator<Item = &'a str>,
     ) -> Self {
-        if table.tiers.len() <= 1 {
+        if table.sched_tasks.len() <= 1 {
             let mut one = Self::one_level(members);
-            if let Some(t) = table.tiers.first() {
+            if let Some(t) = table.sched_tasks.first() {
                 let level = LevelRef {
                     name: t.name.clone(),
                     priority: t.priority,
@@ -106,7 +106,7 @@ impl ImageLevels {
             return one;
         }
         let mut by_node: BTreeMap<String, BTreeSet<LevelRef>> = BTreeMap::new();
-        for t in &table.tiers {
+        for t in &table.sched_tasks {
             for (node, _group) in &t.members {
                 by_node.entry(node.clone()).or_default().insert(LevelRef {
                     name: t.name.clone(),
@@ -151,7 +151,7 @@ pub enum Relation {
         server_level: String,
         server_priority: i64,
     },
-    /// One side's level is not known (a node no tier of a multi-tier image
+    /// One side's level is not known (a node no sched task of a multi-sched-task image
     /// holds).
     Unplaced { node: String },
 }
@@ -195,7 +195,7 @@ impl CallFinding {
                  blocking call is a priority inversion bounded by all the work in between"
             ),
             Relation::Unplaced { node } => format!(
-                "node `{node}` is on no level of this image's tier table, so the call \
+                "node `{node}` is on no level of this image's sched task table, so the call \
                  cannot be checked"
             ),
         };
@@ -353,7 +353,7 @@ mod tests {
     use super::*;
     use crate::ResolvedSchedTask;
 
-    fn tier(name: &str, priority: i64, members: &[&str]) -> ResolvedSchedTask {
+    fn sched_task(name: &str, priority: i64, members: &[&str]) -> ResolvedSchedTask {
         ResolvedSchedTask {
             name: name.to_string(),
             priority,
@@ -379,9 +379,9 @@ mod tests {
     /// `handler` and `peer`; `lo` at 8 holds `operator`.
     fn levels() -> ImageLevels {
         let table = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("lo", 8, &["operator"]),
-                tier("hi", 5, &["handler", "peer"]),
+            sched_tasks: vec![
+                sched_task("lo", 8, &["operator"]),
+                sched_task("hi", 5, &["handler", "peer"]),
             ],
         };
         ImageLevels::from_sched_tasks(&table, true, ["handler", "peer", "operator"])
@@ -462,7 +462,7 @@ mod tests {
         assert!(reports[0].render().contains("states no `call:`"));
     }
 
-    /// A tierless image is one level: any blocking call inside it deadlocks,
+    /// A single-executor image is one level: any blocking call inside it deadlocks,
     /// and a server outside the image is not checked.
     #[test]
     fn a_single_executor_image_is_one_level() {
@@ -480,14 +480,14 @@ mod tests {
     }
 
     /// The direction follows the kernel: on a bigger-number-wins kernel the
-    /// same priorities invert which call is refused. Two tiers at one
+    /// same priorities invert which call is refused. Two sched tasks at one
     /// priority preempt nothing, so that call is refused too.
     #[test]
     fn urgency_follows_the_kernels_direction() {
         let table = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("lo", 8, &["operator"]),
-                tier("hi", 5, &["handler", "peer"]),
+            sched_tasks: vec![
+                sched_task("lo", 8, &["operator"]),
+                sched_task("hi", 5, &["handler", "peer"]),
             ],
         };
         let posix = ImageLevels::from_sched_tasks(&table, false, ["handler", "peer", "operator"]);
@@ -495,9 +495,9 @@ mod tests {
         let clients: Vec<_> = err.refused.iter().map(|f| f.client.as_str()).collect();
         assert_eq!(clients, ["/s/handler/same", "/s/operator/up"]);
         let flat = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("a", 5, &["operator"]),
-                tier("b", 5, &["handler", "peer"]),
+            sched_tasks: vec![
+                sched_task("a", 5, &["operator"]),
+                sched_task("b", 5, &["handler", "peer"]),
             ],
         };
         let flat = ImageLevels::from_sched_tasks(&flat, true, ["handler", "peer", "operator"]);
@@ -511,7 +511,7 @@ mod tests {
     }
 
     /// An action client is checked the same way, from
-    /// `action_cli_endpoints`; a node no tier holds is reported.
+    /// `action_cli_endpoints`; a node no sched task holds is reported.
     #[test]
     fn an_action_client_is_checked_and_an_unplaced_node_reported() {
         let mut m = SystemModel::default();
@@ -531,7 +531,10 @@ mod tests {
             },
         );
         let table = ResolvedSchedTaskTable {
-            tiers: vec![tier("lo", 8, &["operator"]), tier("hi", 5, &["handler"])],
+            sched_tasks: vec![
+                sched_task("lo", 8, &["operator"]),
+                sched_task("hi", 5, &["handler"]),
+            ],
         };
         let lv = ImageLevels::from_sched_tasks(&table, true, ["handler", "operator", "stray"]);
         let err = check_model(&m, &lv).unwrap_err();

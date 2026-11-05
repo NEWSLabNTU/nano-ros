@@ -41,11 +41,11 @@
  * to rotate one with an equal-priority task; RFC-0108 D6 asks it not to slice
  * a level in the middle of a callback. `NROS_FREERTOS_LEVEL_IMAGE` is the
  * per-image input: the cmake road's `nano_ros_entry` defines it on
- * `freertos_config` for a tiered entry (the entry's link-libs sidecar says
+ * `freertos_config` for a sched-task entry (the entry's link-libs sidecar says
  * `NROS_LEVEL_IMAGE`), and the cargo road's board build.rs defines it on
  * every `cc::Build` when `nros build` turned on the board's `level-image`
- * feature for a multi-tier schedule (`schedule_board_features`). An image
- * without levels keeps the kernel default, 1. A tiered entry refuses to
+ * feature for a multi-sched-task schedule (`schedule_board_features`). An image
+ * without levels keeps the kernel default, 1. A sched-task entry refuses to
  * build against a kernel that slices (`sched_task_memory_freertos.h`). */
 #if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE
 #define configUSE_TIME_SLICING                  0
@@ -65,7 +65,7 @@
 #define configTASK_NOTIFICATION_ARRAY_ENTRIES   3
 
 /* ---- Memory ---- */
-/* Issue 1598 — ON, so each tier task's stack and TCB are statics the generated
+/* Issue 1598 — ON, so each sched task's stack and TCB are statics the generated
  * entry owns (`xTaskCreateStatic`), sized by the build, placed and priced by the
  * linker, named by `mem-report`. The two hooks this obliges the application to
  * supply are in `c/freertos_hooks.c`. Dynamic allocation stays on: every other
@@ -114,13 +114,13 @@
  *    382,408 beside the app stack; the term is 1.54x that (no remote
  *    participant was on the LAN). Kept measured by
  *    `freertos_qemu::an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`.
- *    NO tier-stack subtraction here: that image has no tiers, and on this road
- *    tier stacks (1598) and tier executors (1568) are `.bss`, so the derivation
+ *    NO sched-task-stack subtraction here: that image has no sched tasks, and on this road
+ *    sched task stacks (1598) and sched task executors (1568) are `.bss`, so the derivation
  *    never contained them — subtracting would take them out twice.
  * 3. Everything else — CMAKE road on zenoh, and a cargo build of the family
- *    crate with no RMW feature — takes the FALLBACK, 3072 KiB minus the tier
+ *    crate with no RMW feature — takes the FALLBACK, 3072 KiB minus the sched task
  *    stacks the entry moved to `.bss` (issue 1598): those stacks came out of
- *    this budget until 1598 gave each spawned tier a static one, so without
+ *    this budget until 1598 gave each spawned sched task a static one, so without
  *    the subtraction the bytes were reserved twice (realtime-cpp's
  *    `demo_bringup:freertos` overflowed RAM by 151,024 bytes with `ucHeap` at
  *    0x300000). `nano_ros_entry` defines `NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB`

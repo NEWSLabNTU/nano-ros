@@ -319,7 +319,8 @@ template <typename T> struct refuse {
     "executor dispatches on ONE task with run-to-completion callbacks, and nano-ros starts no "    \
     "threads behind your back, so a worker pool is not a shape it has; callback groups are "       \
     "therefore all mutually exclusive. Use rclcpp::executors::SingleThreadedExecutor (or "         \
-    "rclcpp::spin(node)). For parallelism, give the work its own TIER -- one executor per RTOS "   \
+    "rclcpp::spin(node)). For parallelism, give the work its own SCHED TASK -- one executor per "  \
+    "RTOS "                                                                                        \
     "task, declared in system.toml -- rather than its own callback group."
 
 // phase-515 P2 — `Executor::remove_node` / `SingleThreadedExecutor::remove_node`.

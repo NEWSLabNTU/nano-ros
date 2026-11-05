@@ -67,7 +67,7 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 /* Issue 1971 -- the launch's remap rules, one table in flash every executor
- * reads (installed below, before the runner sets up any tier). */
+ * reads (installed below, before the runner sets up any sched task). */
 static const nros_cpp_launch_remap_t __nros_launch_remaps[1] = {
     {"renamed_talker", "/", "chatter", "/demo/chatter"},
 };

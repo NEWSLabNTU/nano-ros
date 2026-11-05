@@ -3,7 +3,7 @@
 
 `check-sched-task-priority-plan` judges ports whose reserved band is a literal. Zephyr's
 is computed from Kconfig, per image, so that checker defers and this one finishes
-the job: it resolves the band from a real `.config` and evaluates the tier pins
+the job: it resolves the band from a real `.config` and evaluates the sched_task pins
 against it.
 
 Two things it must not do, both of which would defeat the point:
@@ -25,9 +25,9 @@ Two things it must not do, both of which would defeat the point:
     of ONE image and a pin is a property of ONE bringup, so a pin is judged
     against exactly the images built from its bringup — attributed through the
     fixture manifest row that built the image (`image_bringups`). Issue 1583:
-    this judged every pin in the tree against every image, so the derived-tier
+    this judged every pin in the tree against every image, so the derived-sched_task
     image (`derived_bringup`, `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
-    [4, 9]) failed `realtime-{c,cpp,rust}`'s `tiers.high.zephyr = 9` — pins that
+    [4, 9]) failed `realtime-{c,cpp,rust}`'s `sched_tasks.high.zephyr = 9` — pins that
     image does not contain, and that sit in `pool.app` [5, 14] of the images
     that do. A pin whose bringup no current image was built from is listed as
     NOT JUDGED rather than borrowed by an unrelated image.
@@ -43,8 +43,8 @@ Usage:
 `--derived-plan` holds the record `nros dev codegen entry` writes beside a
 generated entry (RFC-0079 section 5) to the image it was built for: the
 record's bands must be the ones this checker resolves from the `.config`,
-every derived or allocated tier must sit in `pool.app` and on no reserved
-band, and, given the generated TU, the tier priorities it runs at must be the
+every derived or allocated sched_task must sit in `pool.app` and on no reserved
+band, and, given the generated TU, the sched_task priorities it runs at must be the
 record's.
 """
 
@@ -85,7 +85,7 @@ def image_bringups(manifest=MANIFEST):
 
     Not the image's own `nros-image-facts.cmake`: that is resolved from the
     ENTRY package, and two bringups of one workspace share one entry — on the
-    derived-tier image it reads `demo_bringup:zephyr`, the wrong bringup
+    derived-sched_task image it reads `demo_bringup:zephyr`, the wrong bringup
     (issue 1582's collision, measured 2026-09-29).
     """
     fm = _manifest_module()
@@ -162,15 +162,15 @@ def check_one(dotconfig, sched_task_key, plans, bringups):
     lo, hi = resolved["reserved"]["transport"]
     plo, phi = resolved["pool"]["app"]
     errs, ok = [], 0
-    for rel, tier, plat, prio, above in pins_for(bringup, sched_task_key):
-        where = f"{rel}: tiers.{tier}.{plat} = {prio}"
+    for rel, sched_task, plat, prio, above in pins_for(bringup, sched_task_key):
+        where = f"{rel}: sched tasks.{sched_task}.{plat} = {prio}"
         if lo <= prio <= hi:
             errs.append(f"{where} lands ON the reserved transport band [{lo}, {hi}]")
         elif prio < lo and above != "transport":
             errs.append(
                 f"{where} is MORE URGENT than the transport band [{lo}, {hi}] and does "
                 f"not say so.\n        Move it into pool.app [{plo}, {phi}], or state "
-                f'the choice with `above = "transport"` on [tasks.{tier}].')
+                f'the choice with `above = "transport"` on [tasks.{sched_task}].')
         else:
             ok += 1
     src = f" from {bringup}" if bringup else " (builds no bringup)"
@@ -287,7 +287,7 @@ SCHED_TASK_SPEC_RE = re.compile(r'\.name\s*=\s*"([^"]*)",[^}]*?\.priority\s*=\s*
 
 
 def entry_sched_task_priorities(tu_text):
-    """`{tier name: priority}` from a generated entry's tier spec table."""
+    """`{sched_task name: priority}` from a generated entry's sched task spec table."""
     m = re.search(r"SchedTaskSpec\s+__nros_sched_tasks\[\d+\]\s*=\s*\{(.*?)\n\};", tu_text, re.S)
     if m is None:
         return {}
@@ -296,7 +296,7 @@ def entry_sched_task_priorities(tu_text):
 
 def check_derived_plan(record, resolved, tu_text=None):
     """The findings of holding one priority record to one resolved image plan
-    (and, given, to the generated entry's tier table). Empty means it holds."""
+    (and, given, to the generated entry's sched_task table). Empty means it holds."""
     errs = []
     if "error" in resolved:
         return [f"cannot resolve the image's plan: {resolved['error']}"]
@@ -307,7 +307,7 @@ def check_derived_plan(record, resolved, tu_text=None):
         return errs
     plan = record["plan"]
     if not plan.get("from_image"):
-        errs.append("the record's plan is the tier key's projection, not the image's "
+        errs.append("the record's plan is the sched task key's projection, not the image's "
                     "(the entry was generated without --dotconfig)")
     lo, hi = resolved["reserved"]["transport"]
     rec_t = plan.get("reserved", {}).get("transport")
@@ -319,37 +319,37 @@ def check_derived_plan(record, resolved, tu_text=None):
     smaller = plan.get("direction", "smaller-is-urgent") == "smaller-is-urgent"
     above = (lambda a, b: a < b) if smaller else (lambda a, b: a > b)
     edge = lo if smaller else hi
-    for t in record.get("tiers", []):
+    for t in record.get("sched_tasks", []):
         if t["origin"] not in ("derived", "allocated"):
             continue
         p = t["priority"]
         if t.get("above_transport"):
-            # RFC-0079 section 6: the tier names `above = "transport"`
+            # RFC-0079 section 6: the sched task names `above = "transport"`
             # (issue 1967), so it is allocated above the transport, never on
             # it and never cooperative.
             if not above(p, edge):
-                errs.append(f"tier {t['name']} names the transport band but runs at {p}, "
+                errs.append(f"sched task {t['name']} names the transport band but runs at {p}, "
                             f"not above the transport band [{lo}, {hi}]")
             if smaller and p < 0:
-                errs.append(f"tier {t['name']} at {p} is cooperative")
+                errs.append(f"sched task {t['name']} at {p} is cooperative")
             continue
         if not plo <= p <= phi:
-            errs.append(f"tier {t['name']} ({t['origin']}) at {p} is outside "
+            errs.append(f"sched task {t['name']} ({t['origin']}) at {p} is outside "
                         f"pool.app [{plo}, {phi}]")
         if lo <= p <= hi:
-            errs.append(f"tier {t['name']} ({t['origin']}) at {p} is ON the "
+            errs.append(f"sched task {t['name']} ({t['origin']}) at {p} is ON the "
                         f"transport band [{lo}, {hi}]")
     sup = record.get("supervisor_priority")
     if sup is not None:
-        for t in record.get("tiers", []):
+        for t in record.get("sched_tasks", []):
             if not above(sup, t["priority"]):
-                errs.append(f"the supervisor's priority {sup} is not above tier "
+                errs.append(f"the supervisor's priority {sup} is not above sched task "
                             f"{t['name']} ({t['priority']})")
         if not above(sup, edge):
             errs.append(f"the supervisor's priority {sup} is not above the transport [{lo}, {hi}]")
     if tu_text is not None:
         ran = entry_sched_task_priorities(tu_text)
-        want = {t["name"]: t["priority"] for t in record.get("tiers", [])}
+        want = {t["name"]: t["priority"] for t in record.get("sched_tasks", [])}
         if ran != want:
             errs.append(f"the generated entry runs {ran}, the record says {want}")
     return errs
@@ -361,19 +361,19 @@ def derived_plan_main(record_path, dotconfig, tu_path=None):
     resolved = resolve_zephyr_plan(dotconfig)
     tu_text = Path(tu_path).read_text(encoding="utf-8") if tu_path else None
     errs = check_derived_plan(record, resolved, tu_text)
-    tiers = ", ".join(f"{t['name']} {t['priority']} ({t['origin']}"
+    sched_tasks = ", ".join(f"{t['name']} {t['priority']} ({t['origin']}"
                       + (", above the transport" if t.get("above_transport") else "") + ")"
-                      for t in record.get("tiers", [])) or "no tier"
+                      for t in record.get("sched_tasks", [])) or "no sched task"
     if record.get("supervisor_priority") is not None:
-        tiers += f"; supervisor {record['supervisor_priority']}"
+        sched_tasks += f"; supervisor {record['supervisor_priority']}"
     band = (f"transport {list(resolved['reserved']['transport'])}, pool.app "
             f"{list(resolved['pool']['app'])}" if "reserved" in resolved else "no band")
     if errs:
-        print(f"  [FAIL] {record_path}: {band}; {tiers}")
+        print(f"  [FAIL] {record_path}: {band}; {sched_tasks}")
         for e in errs:
             print(f"        {e}")
         return 1
-    print(f"  [ok]   {record_path}: {band}; {tiers}"
+    print(f"  [ok]   {record_path}: {band}; {sched_tasks}"
           + ("; the generated entry agrees" if tu_text is not None else ""))
     return 0
 
@@ -469,8 +469,8 @@ def main(argv):
     print(f"  bringup: {bringup if bringup else '(none - this row builds no bringup)'}")
 
     errors, ok = [], 0
-    for rel, tier, plat, prio, above in pins_for(bringup, sched_task_key):
-        where = f"{rel}: tiers.{tier}.{plat} = {prio}"
+    for rel, sched_task, plat, prio, above in pins_for(bringup, sched_task_key):
+        where = f"{rel}: sched tasks.{sched_task}.{plat} = {prio}"
         if lo <= prio <= hi:
             errors.append(f"{where} lands ON the reserved transport band "
                           f"[{lo}, {hi}] resolved for this image")
@@ -482,7 +482,7 @@ def main(argv):
                     f"{where} is MORE URGENT than the transport band [{lo}, {hi}] "
                     f"and does not say so.\n"
                     f"      Move it into pool.app [{plo}, {phi}], or state the "
-                    f'choice with `above = "transport"` on [tasks.{tier}].')
+                    f'choice with `above = "transport"` on [tasks.{sched_task}].')
         else:
             ok += 1
 
@@ -588,7 +588,7 @@ def selftest():
                stale_band_reasons(image("cond", READ16, {"prj.conf": ""}), kc_cond), [])
 
         # phase-459 W4 (issue 1427) - the BAND ITSELF, not just the staleness
-        # rule around it. `realize_rtos` now allocates a derived tier out of
+        # rule around it. `realize_rtos` now allocates a derived sched task out of
         # `pool.app`, and the Rust half of that arithmetic
         # (`packages/core/nros-orchestration-ir/src/priority_plan.rs`) is a
         # second implementation of `resolve_zephyr_plan`. This file is the
@@ -613,7 +613,7 @@ def selftest():
         # The negative control, and the reason the pool is checked at all: the
         # pre-0852 band (16 on the 0-255 scale) resolves k_thread 14 - the
         # least urgent preemptive priority - so the transport owns [14, 14] and
-        # `pool.app` is EMPTY. A derived tier has nowhere to go, which is what
+        # `pool.app` is EMPTY. A derived sched task has nowhere to go, which is what
         # the realizer reports instead of allocating outside the plan.
         stale_cfg = ISLAND.replace("READ_PRIORITY=200", "READ_PRIORITY=16")
         stale = resolve_zephyr_plan(image("stale-band", stale_cfg, {"prj.conf": ""}))
@@ -622,14 +622,14 @@ def selftest():
         expect("the pre-0852 pool is empty", stale["pool"]["app"], (15, 14))
 
         # RFC-0079 section 5 - `--derived-plan`: a record of one allocated
-        # tier at 5 on an image whose transport is [4, 4] holds; the same
-        # record against the stale band, a tier on the band, a projection,
+        # sched task at 5 on an image whose transport is [4, 4] holds; the same
+        # record against the stale band, a sched task on the band, a projection,
         # and a generated entry that runs another number do not.
         CUR = ISLAND
         cur = resolve_zephyr_plan(image("island-cur", CUR, {"prj.conf": ""}))
         rec = {"plan": {"reserved": {"transport": [4, 4]}, "app": [5, 14],
                         "from_image": True},
-               "tiers": [{"name": "mrm", "priority": 5, "origin": "allocated"}]}
+               "sched_tasks": [{"name": "mrm", "priority": 5, "origin": "allocated"}]}
         tu = ('static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[1] = {\n'
               '    {\n        .name = "mrm",\n        .groups = g,\n'
               '        .n_groups = 3u,\n        .priority = 5LL,\n    },\n};\n')
@@ -639,33 +639,33 @@ def selftest():
                entry_sched_task_priorities(tu), {"mrm": 5})
         expect("a record against another image's band does not",
                len(check_derived_plan(rec, stale)) > 0, True)
-        on_band = {**rec, "tiers": [{"name": "mrm", "priority": 4,
+        on_band = {**rec, "sched_tasks": [{"name": "mrm", "priority": 4,
                                      "origin": "allocated"}]}
-        expect("an allocated tier on the transport band does not",
+        expect("an allocated sched task on the transport band does not",
                len(check_derived_plan(on_band, cur)), 2)
         proj = {**rec, "plan": {**rec["plan"], "from_image": False}}
         expect("a projection is not the image's plan",
                len(check_derived_plan(proj, cur)), 1)
         expect("a generated entry running another number does not",
                len(check_derived_plan(rec, cur, tu.replace("5LL", "3LL"))), 1)
-        # RFC-0079 section 6: a tier that names the transport runs above it,
-        # the supervisor above the tier; the same tier below the transport,
-        # or a supervisor under the tier, does not hold. A tier that does not
+        # RFC-0079 section 6: a sched task that names the transport runs above it,
+        # the supervisor above the sched task; the same sched task below the transport,
+        # or a supervisor under the sched task, does not hold. A sched task that does not
         # name it stays in pool.app, supervised or not, and the supervisor
         # still runs above the transport (issue 1967).
-        lifted = {**rec, "tiers": [{"name": "mrm", "priority": 3, "origin": "allocated",
+        lifted = {**rec, "sched_tasks": [{"name": "mrm", "priority": 3, "origin": "allocated",
                                     "above_transport": True}],
                   "supervisor_priority": 2}
-        expect("a named tier above the transport holds",
+        expect("a named sched task above the transport holds",
                check_derived_plan(lifted, cur, tu.replace("5LL", "3LL")), [])
-        sunk = {**lifted, "tiers": [{**lifted["tiers"][0], "priority": 5}]}
-        expect("a named tier below the transport does not",
+        sunk = {**lifted, "sched_tasks": [{**lifted["sched_tasks"][0], "priority": 5}]}
+        expect("a named sched task below the transport does not",
                len(check_derived_plan(sunk, cur)) > 0, True)
         low_sup = {**lifted, "supervisor_priority": 3}
-        expect("a supervisor not above its tier does not",
+        expect("a supervisor not above its sched task does not",
                len(check_derived_plan(low_sup, cur)), 1)
         pooled = {**rec, "supervisor_priority": 3}
-        expect("an unnamed tier in pool.app, its supervisor above the transport, holds",
+        expect("an unnamed sched task in pool.app, its supervisor above the transport, holds",
                check_derived_plan(pooled, cur, tu), [])
         sup_on = {**rec, "supervisor_priority": 4}
         expect("a supervisor on the transport band does not",
@@ -701,7 +701,7 @@ def selftest():
     # a green lane), and a row attributed to the wrong bringup judges the
     # wrong pins. So every bringup that authors a zephyr pin must be built by
     # at least one Zephyr row, every attributed system.toml must exist, and the
-    # measured case must come out the way it was measured: the derived-tier
+    # measured case must come out the way it was measured: the derived-sched-task
     # image carries no authored pin, its demo sibling carries the two.
     try:
         bringups = image_bringups()
@@ -719,10 +719,10 @@ def selftest():
                          f"examples/fixtures.toml builds that bringup — they can "
                          f"never be judged against an image")
     derived = bringups.get("build-ws-rs-realtime-derived-entry-zenoh", UNATTRIBUTED)
-    expect("the derived-tier image's bringup", str(derived),
+    expect("the derived-sched-task image's bringup", str(derived),
            "examples/workspaces/realtime-rust/src/derived_bringup/system.toml")
     if derived not in (None, UNATTRIBUTED):
-        expect("the derived-tier image carries no authored zephyr pin",
+        expect("the derived-sched-task image carries no authored zephyr pin",
                pins_for(derived, "zephyr"), [])
     demo = bringups.get("build-ws-rs-realtime-entry-zenoh", UNATTRIBUTED)
     if demo not in (None, UNATTRIBUTED):
@@ -738,7 +738,7 @@ def selftest():
         return False
     print("check-sched-task-priority-plan-image --selftest: OK "
           "(real zephyr/Kconfig parses; 23 synthetic cases, the\n  RFC-0079 section 4.1 band the Rust realizer allocates from, and that\n  realizer's own default band against this Kconfig; every zephyr pin's\n"
-          "  bringup is built by a manifest row, the derived-tier image by its own)")
+          "  bringup is built by a manifest row, the derived-sched-task image by its own)")
     return True
 
 

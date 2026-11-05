@@ -163,7 +163,7 @@ locks — the leaf may create its first lock and re-resolve after a later
   - `examples/workspaces/ws-<topic>-<lang>[-<variant>]/` — **topic showcases**
     (`ws-qos-rust`, `ws-lifecycle-cpp`, `ws-realtime-cpp-subnode`, …): each
     demonstrates one feature axis (params, QoS, lifecycle, launch, safety,
-    custom-msg, bridge, realtime tiers) on top of the base shape.
+    custom-msg, bridge, realtime sched tasks) on top of the base shape.
 
 There is no `examples/bridges/` category. A cross-RMW gateway is a workspace
 whose `system.toml` declares a `[[bridge]]` row (`workspaces/bridge-cyclonedds/`,

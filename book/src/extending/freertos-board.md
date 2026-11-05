@@ -45,7 +45,7 @@ board gets it by depending on the crate:
   SysTick) and the semihosting helpers — `c/freertos_hooks.c`
 - lwIP bring-up, the task wrappers and the FFI surface — `c/network_glue.c`
 - the C/C++ application boot path — `c/freertos_c_entry.c`
-- the multi-tier entry — `c/freertos_run_sched_tasks.c`
+- the multi-sched-task entry — `c/freertos_run_sched_tasks.c`
 - the entry driver (`run_entry` / `run_bare` / `run_sched_tasks_entry`) and `Config`
 
 `configure_cflags` resolves your target's compiler flags from the `[arch.*]`

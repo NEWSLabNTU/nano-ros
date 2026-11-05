@@ -2,14 +2,14 @@
   Issue 1102 / phase-432 W2.3 — the C++ entry TU.
 
   Everything here is LAYOUT. Every value the view carries is already correct:
-  board paths are resolved through `nros_entry_lower`, tier rows are values
+  board paths are resolved through `nros_entry_lower`, sched_task rows are values
   rather than initialiser text, and raw strings are quoted here with the
   `c_str` filter (C++ string literals escape exactly as C ones do, so there is
   one filter rather than a second spelling of the same rule).
 
   What this template must NEVER do is decide a target fact — see `render.rs`.
 
-  The tier table uses DESIGNATED initialisers (RFC-0091 §5). `NativeSchedTaskSpec`
+  The sched_task table uses DESIGNATED initialisers (RFC-0091 §5). `NativeSchedTaskSpec`
   is one of six hand-written mirrors of the same C ABI struct, and a positional
   row silently mis-assigns every field after an insertion — issue 0160's class.
   `.field = value` makes a rename or a removal a compile error HERE, and an
@@ -97,9 +97,9 @@ static ::{{ s.class }} __nros_comp_{{ loop.index0 }};
 {%- endfor %}
 {%- include "monitor_statics_cpp.jinja" %}
 
-{% if tiers -%}
-{%- for setup in tiers.setups -%}
-/* Phase 274.W2 — tier[{{ setup.index }}] ({{ setup.name }}) setup: creates only this tier's nodes.
+{% if sched_tasks -%}
+{%- for setup in sched_tasks.setups -%}
+/* Phase 274.W2 — sched_task[{{ setup.index }}] ({{ setup.name }}) setup: creates only this sched task's nodes.
  * phase-509 P9b: `__nros_at` names the node being built, for the report below. */
 static int32_t __nros_entry_setup_sched_task_{{ setup.index }}_nodes(void* executor, const char** __nros_at) {
     if (executor == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
@@ -111,21 +111,21 @@ static int32_t __nros_entry_setup_sched_task_{{ setup.index }}_nodes(void* execu
 {%- for s in setup.nodes %}{% set n = nodes[s.node] %}
     {
         *__nros_at = "{{ n.name | c_str }}";
-{%- with dexec = "executor", idx = s.node, tiered = true %}
+{%- with dexec = "executor", idx = s.node, in_sched_task = true %}
 {%- include "declare_calls.jinja" %}
 {%- include "node_body_cpp.jinja" %}
 {%- endwith %}
     }
 {%- endfor %}
 {%- if setup.emits_services %}
-{%- with tiered = true %}
+{%- with in_sched_task = true %}
 {%- include "service_trailer_cpp.jinja" %}
 {%- endwith %}
 {%- endif %}
     return 0;
 }
 
-/* phase-509 P9b -- a failed setup names its tier and node before the runner
+/* phase-509 P9b -- a failed setup names its sched task and node before the runner
  * fails the boot with its code. */
 static int32_t __nros_entry_setup_sched_task_{{ setup.index }}(void* executor) {
     const char* __nros_at = nullptr;
@@ -135,20 +135,20 @@ static int32_t __nros_entry_setup_sched_task_{{ setup.index }}(void* executor) {
 }
 
 {% endfor -%}
-/* Phase 274.W2 — per-tier groups arrays + tier spec table.
+/* Phase 274.W2 — per-sched-task groups arrays + sched task spec table.
  *
  * issue 1172 — a groups array is FLAT `(node name, node namespace, group)`
  * triples, and `n_groups` counts TRIPLES, not strings. The filter used to
- * match on the group id alone, so two nodes' `ctrl` were one key and a tier
- * naming one of them admitted both. An EMPTY array is the WILDCARD, so a tier
+ * match on the group id alone, so two nodes' `ctrl` were one key and a sched task
+ * naming one of them admitted both. An EMPTY array is the WILDCARD, so a sched task
  * that names groups must never render an empty one. */
-{%- for t in tiers.rows %}
+{%- for t in sched_tasks.rows %}
 {%- if t.groups %}
 static const char* __nros_sched_task_{{ t.index }}_groups[] = {{ "{" }}{% for g in t.groups %}"{{ g[0] | c_str }}", "{{ g[1] | c_str }}", "{{ g[2] | c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
-static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[{{ tiers.n }}] = {
-{%- for t in tiers.rows %}
+static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[{{ sched_tasks.n }}] = {
+{%- for t in sched_tasks.rows %}
     {
         .name = "{{ t.name | c_str }}",
         .groups = {% if t.groups %}__nros_sched_task_{{ t.index }}_groups{% else %}nullptr{% endif %},
@@ -173,7 +173,7 @@ static const ::rclcpp::board::NativeSchedTaskSpec __nros_sched_tasks[{{ tiers.n 
 {%- else -%}
 static int32_t __nros_entry_setup() {
 {%- if sched %}
-    /* Phase 269 (W4) — sched-context wiring (multi-tier scheduling). */
+    /* Phase 269 (W4) — sched-context wiring (multi-sched-task scheduling). */
     uint8_t __nros_sc_ids[{{ sched.n }}] = {0};
     {
         void* __exec = ::rclcpp::global_handle();
@@ -218,13 +218,13 @@ static int32_t __nros_entry_setup() {
 {%- endif %}
 {%- for n in nodes %}
     {
-{%- with dexec = "::rclcpp::global_handle()", idx = loop.index0, tiered = false %}
+{%- with dexec = "::rclcpp::global_handle()", idx = loop.index0, in_sched_task = false %}
 {%- include "declare_calls.jinja" %}
 {%- include "node_body_cpp.jinja" %}
 {%- endwith %}
     }
 {%- endfor %}
-{%- with tiered = false %}
+{%- with in_sched_task = false %}
 {%- include "service_trailer_cpp.jinja" %}
 {%- endwith %}
     return 0;

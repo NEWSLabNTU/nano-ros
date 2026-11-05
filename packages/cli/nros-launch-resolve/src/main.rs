@@ -190,7 +190,7 @@ fn main() -> Result<()> {
         std::fs::write(&cli.out, &yaml)
             .map_err(|e| eyre::eyre!("writing SystemModel to {}: {e}", cli.out))?;
         eprintln!(
-            "SystemModel: {} ({} nodes, {} topics, {} tier(s))",
+            "SystemModel: {} ({} nodes, {} topics, {} sched task(s))",
             cli.out,
             model.structure.nodes.len(),
             model.structure.topics.len(),

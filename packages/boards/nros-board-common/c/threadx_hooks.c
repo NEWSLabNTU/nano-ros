@@ -135,12 +135,12 @@ _Static_assert(sizeof(ULONG) == 4,
  * unsigned arithmetic on an array bound) into a multi-gigabyte `.bss`, which on
  * the RISC-V board fails to link with a message about `.bss` and nothing about
  * this knob. The floor is deliberately generous rather than exact: the pool also
- * feeds the NetX packet pool, the IP/ARP/BSD stacks and every tier's thread
+ * feeds the NetX packet pool, the IP/ARP/BSD stacks and every sched task's thread
  * stack, so a pool that only just fits the backing is already wrong. */
 _Static_assert(BYTE_POOL_SIZE >= (1 * 1024 * 1024),
                "NROS_EXECUTOR_BACKING_U64S leaves the ThreadX byte pool under "
                "1 MiB. The pool is the WHOLE allocator on this port (NetX "
-               "packet pool, IP/ARP/BSD stacks, tier stacks), not just the "
+               "packet pool, IP/ARP/BSD stacks, sched task stacks), not just the "
                "executor's backing. See issue 1145 / phase-448 W5.");
 
 /* ---- Overlay-tunable parameters (weak getters — overlay strong-overrides) ----
@@ -360,24 +360,24 @@ void tx_application_define(void *first_unused_memory)
     nros_board_log("[app_define] App thread created, returning to kernel...\n");
 }
 
-/* ---- Phase 297 W2/W4 — multi-tier thread-creation shim (RFC-0053) -----------
+/* ---- Phase 297 W2/W4 — multi-sched-task thread-creation shim (RFC-0053) -----------
  *
  * `nros_threadx_create_task` is the SINGLE thread-creation backend the Rust
- * `run_sched_tasks` (W4) and any C/C++ entry call to spawn a per-tier thread —
+ * `run_sched_tasks` (W4) and any C/C++ entry call to spawn a per-sched-task thread —
  * mirroring the FreeRTOS `nros_freertos_create_task` shape, not a per-language
  * reimplementation (the common-backend principle).
  *
- * Stack strategy (RFC-0053, revised): each tier's stack is `tx_byte_allocate`d
+ * Stack strategy (RFC-0053, revised): each sched task's stack is `tx_byte_allocate`d
  * from the shared 4 MB byte pool — the SAME mechanism `tx_application_define`
  * already uses for the boot app thread's stack (above). This was chosen over
- * codegen-baked static per-tier stacks (the RFC's original "Option A") because
+ * codegen-baked static per-sched-task stacks (the RFC's original "Option A") because
  * A's stated rationale — "consistency with the freertos/zephyr codegen" — was
  * false: freertos spawns on its heap (`xTaskCreate`) and zephyr on a static
- * `k_thread` pool; neither bakes per-tier static stacks. The byte pool is
- * consistent with ThreadX's OWN app thread, adds no new static RAM (a tier
+ * `k_thread` pool; neither bakes per-sched-task static stacks. The byte pool is
+ * consistent with ThreadX's OWN app thread, adds no new static RAM (a sched task
  * executor stack is ~hundreds of KB — a fixed static pool would cost
  * MAX_SCHED_TASKS × that in BSS), and its one downside (runtime-alloc failure) is
- * handled here (return -1 → the tier does not spawn). Exact per-tier static
+ * handled here (return -1 → the sched task does not spawn). Exact per-sched-task static
  * stacks remain a future RAM optimization for constrained MCU targets.
  *
  * The small, fixed-size TX_THREAD control blocks live in a bounded static
@@ -427,12 +427,12 @@ uintptr_t nros_threadx_thread_id(void)
     return (uintptr_t)tx_thread_identify();
 }
 
-/* Re-prioritize the CALLING thread to a tier's sched values (phase-297 W5).
- * The boot tier runs on the `tx_application_define` app thread, which was
- * created at the fixed `nros_board_app_priority()` — NOT the tier's declared
- * priority. Left alone, a boot-tier priority numerically above the app
- * priority silently inverts the tiers (the W5 e2e caught this: the app
- * thread at 4 starved the spawned `high` tier at 5 — zero publishes).
+/* Re-prioritize the CALLING thread to a sched task's sched values (phase-297 W5).
+ * The boot sched task runs on the `tx_application_define` app thread, which was
+ * created at the fixed `nros_board_app_priority()` — NOT the sched task's declared
+ * priority. Left alone, a boot-sched-task priority numerically above the app
+ * priority silently inverts the sched tasks (the W5 e2e caught this: the app
+ * thread at 4 starved the spawned `high` sched task at 5 — zero publishes).
  * `preempt_threshold < 0` ⇒ = priority (no threshold effect).
  * Returns 0 on success, -1 on any ThreadX error. */
 int nros_threadx_set_current_priority(unsigned int priority, int preempt_threshold)
@@ -460,7 +460,7 @@ int nros_threadx_set_current_priority(unsigned int priority, int preempt_thresho
  * (RFC-0052: "SMP core exclude"). Pins the CALLING thread to `core_plus1 - 1`
  * by EXCLUDING it from every other core (`tx_thread_smp_core_exclude`), when
  * the kernel is built with TX_THREAD_SMP. Returns 1 when the kernel accepted
- * the exclusion, 0 otherwise (unpinned tier / no TX_THREAD_SMP / rejection) —
+ * the exclusion, 0 otherwise (unpinned sched task / no TX_THREAD_SMP / rejection) —
  * the Rust caller prints the accept marker or the loud fallback note so a
  * declared `core` is NEVER silently dropped. `core_plus1` is the emit/macro
  * `core + 1` encoding (0 = unpinned). */
@@ -486,7 +486,7 @@ int nros_threadx_apply_current_core_exclude(unsigned int core_plus1)
     }
     return 1;
 #else
-    /* Fail-loud (RFC-0052): the tier DECLARED a `core` but this kernel was
+    /* Fail-loud (RFC-0052): the sched task DECLARED a `core` but this kernel was
      * built without TX_THREAD_SMP — no core-affinity API to honor it. */
     (void)core_plus1;
     return 0;
@@ -495,7 +495,7 @@ int nros_threadx_apply_current_core_exclude(unsigned int core_plus1)
 
 /* phase-296 #0266 — convert a `time_slice_us` request to ThreadX timer ticks
  * (`tx_thread_create` / `tx_thread_time_slice_change` take TICKS, not µs). 0 µs
- * → TX_NO_TIME_SLICE (round-robin disabled — the tier runs FIFO-until-block,
+ * → TX_NO_TIME_SLICE (round-robin disabled — the sched task runs FIFO-until-block,
  * ThreadX's default). A nonzero request rounds UP to at least 1 tick so a
  * sub-tick slice still yields. The tick constant lives here in the C shim where
  * the ThreadX config is visible (the Rust arm never mirrors it). */
@@ -512,7 +512,7 @@ static ULONG nros_tx_time_slice_ticks(unsigned long time_slice_us)
 }
 
 /* phase-296 #0266 — apply a time slice to the CALLING (boot) thread. Round-robin
- * among same-priority tiers is the placement dim's sibling: mirrors the W5.13
+ * among same-priority sched tasks is the placement dim's sibling: mirrors the W5.13
  * boot-reprioritize path. Returns 1 when a slice was set, 0 when unrequested
  * (0 µs) or the kernel rejected it. */
 int nros_threadx_apply_current_time_slice(unsigned long time_slice_us)
@@ -587,7 +587,7 @@ int nros_threadx_create_task(
 }
 
 /* Allocate `bytes` from the shared ThreadX byte pool. The Rust `run_sched_tasks`
- * uses this for each spawned tier's heap context (mirrors the FreeRTOS
+ * uses this for each spawned sched task's heap context (mirrors the FreeRTOS
  * `nros_platform_alloc` → `pvPortMalloc` shape). Returns NULL on failure. */
 void *nros_threadx_alloc(unsigned long bytes)
 {

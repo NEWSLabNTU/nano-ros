@@ -642,8 +642,8 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # cell reuses rtos_e2e's talker image/port 8200) —
 # they must serialize with it, and the default 60 s kill is shorter than a
 # NuttX QEMU cold boot + zenoh discovery.
-# phase-285 W6 — the rv-virt realtime-tiers e2e cells boot a riscv32 NuttX
-# guest under -icount; cold boot + zenoh discovery + the 5-sample slow-tier
+# phase-285 W6 — the rv-virt realtime-sched-tasks e2e cells boot a riscv32 NuttX
+# guest under -icount; cold boot + zenoh discovery + the 5-sample slow-sched-task
 # anchor exceed the default 60 s kill. Each cell has its own slirp port
 # (allocator 8691/8791/8891, derived in the realtime_sched_tasks_e2e cell table
 # via `alloc::port_of`), so no group serialization needed against the
@@ -821,7 +821,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # ws-realtime-cpp-fvp workspace Entry (replaces the retired 217.C.2/D.3
 # legacy talker smokes — those targeted build-only images that could never
 # publish). Budgets a possible `west build -t run` reconfigure + FVP boot +
-# two-tier publish under fast-sim; single FVP license seat + UART port →
+# two-sched-task publish under fast-sim; single FVP license seat + UART port →
 # serial `zephyr-fvp` group. Skips cleanly when the ARM FVP isn't installed.
 [[profile.default.overrides]]
 filter = "binary(fvp_runtime_ws)"
@@ -1198,7 +1198,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # folded 15 per-cell `realtime_sched_tasks_*` files into ONE test that iterates every
 # RealtimeSchedTasks cell in a single process, and the timeout budget did not follow.
 # Unlike 0413's native-only sweep this one BOOTS QEMU images (zephyr, nuttx-arm,
-# nuttx-riscv, freertos, threadx) and waits for five 100 ms-tier deliveries per
+# nuttx-riscv, freertos, threadx) and waits for five 100 ms-sched-task deliveries per
 # cell, so its wall clock is the sum of sixteen boot+observe rows.
 #
 # Measured on this host: 127 s and 204 s on two consecutive runs — the variance

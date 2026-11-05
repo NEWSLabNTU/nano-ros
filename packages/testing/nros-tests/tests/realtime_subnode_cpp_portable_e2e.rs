@@ -3,14 +3,14 @@
 //!
 //! **What this proves (RFC-0047 portability):**
 //! The `subnode_pkg::SubNode` component is IDENTICAL to the sub-node fixture
-//! (`realtime-cpp`) but this workspace uses DIFFERENT tier names:
+//! (`realtime-cpp`) but this workspace uses DIFFERENT sched task names:
 //!
 //!   - `[tasks.fast]` (10 ms, priority 80)  instead of `[tasks.high]`
 //!   - `[tasks.bulk]` (100 ms, priority 10) instead of `[tasks.low]`
 //!
 //! `deploy_bringup/system.toml group_tasks = { ctrl = "fast", telem = "bulk" }` — no
 //! change to the package source. This proves the RFC-0047 coupling is removed: a
-//! group-using component package can be deployed with any tier names by changing only
+//! group-using component package can be deployed with any sched task names by changing only
 //! `system.toml`. The entry emits:
 //!
 //!   ```cpp
@@ -31,8 +31,8 @@ use rstest::rstest;
 use std::{process::Command, time::Duration};
 
 /// Phase 273 W4 (RFC-0047 portability) — sub-node package portable across workspace
-/// tier naming. The component package (`subnode_pkg::SubNode`) is unchanged; only
-/// the workspace `deploy_bringup/system.toml` uses different tier names ("fast"/"bulk"
+/// sched task naming. The component package (`subnode_pkg::SubNode`) is unchanged; only
+/// the workspace `deploy_bringup/system.toml` uses different sched task names ("fast"/"bulk"
 /// vs "high"/"low"). Both groups still bind correctly and schedule at their cadences.
 #[rstest]
 fn realtime_subnode_cpp_portable_two_groups_bind_renamed_sched_tasks(zenohd_unique: ZenohRouter) {
@@ -54,7 +54,7 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_sched_tasks(zenohd_uniq
     let mut proc = ManagedProcess::spawn_image(cmd, "realtime-cpp-subnode-portable")
         .expect("spawn realtime-cpp-subnode-portable entry");
 
-    // Wait for the slow tier (bulk/100 ms) to publish 5 times.
+    // Wait for the slow sched task (bulk/100 ms) to publish 5 times.
     let telem_out = telem
         .wait_for_output_count(
             nros_tests::output::INT32_LISTENER_LOG_PREFIX,
@@ -66,7 +66,7 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_sched_tasks(zenohd_uniq
             ctrl.kill();
             telem.kill();
             panic!(
-                "portable workspace: /telem (bulk tier, 100 ms) never reached 5 publishes — \
+                "portable workspace: /telem (bulk sched task, 100 ms) never reached 5 publishes — \
                  group 'telem' may not have bound to the renamed 'bulk' tier"
             )
         });
@@ -97,18 +97,18 @@ fn realtime_subnode_cpp_portable_two_groups_bind_renamed_sched_tasks(zenohd_uniq
 
     assert!(
         telem_n >= 5,
-        "expected ≥5 bulk-tier /telem publishes, got {telem_n}"
+        "expected ≥5 bulk-sched-task /telem publishes, got {telem_n}"
     );
     assert!(
         ctrl_n >= telem_n * 3,
         "expected the fast-tier 'ctrl' group (/ctrl, 10 ms) to publish ≥3× \
-         the bulk-tier 'telem' group (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} \
+         the bulk-sched-task 'telem' group (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} \
          — portable workspace group binding may be broken (RFC-0047)"
     );
 
     eprintln!(
         "[realtime_subnode_cpp_portable_e2e] PASS: ctrl={ctrl_n} telem={telem_n} \
-         ratio={:.1}× (≥3× required) — portable deployment to fast/bulk tiers",
+         ratio={:.1}× (≥3× required) — portable deployment to fast/bulk sched tasks",
         ctrl_n as f64 / telem_n.max(1) as f64
     );
 }

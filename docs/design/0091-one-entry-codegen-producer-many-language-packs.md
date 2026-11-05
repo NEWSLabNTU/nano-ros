@@ -144,7 +144,7 @@ fourth would have been skipped by `all` in silence.)*
 
 All *computation*, inside the proc-macro's dependency budget
 (`nros-pkg-index`, `nros-launch-parser`, `nros-orchestration-ir`): boot shape,
-board path, tier rows, QoS codes, boot config, and **escaping**. If this crate
+board path, sched task rows, QoS codes, boot config, and **escaping**. If this crate
 grows a heavy dependency the proc-macro cannot adopt it and the duplication
 returns — so the budget is a design constraint, not a preference.
 
@@ -309,14 +309,14 @@ convention as well (`entry_cpp.cpp` beside `message_rmw.rs`; partials keep
 key names its surface — because a convention nothing enforces is two
 conventions with a preference (phase-432 W2.5).
 
-**The tier table must use DESIGNATED initialisers.** It was emitted positionally
+**The sched task table must use DESIGNATED initialisers.** It was emitted positionally
 against `nros_native_sched_task_spec_t` — mirrored by hand across **eight** sites, not
 the nine first counted here — and `check-ffi-struct-mirrors` did not cover it (it
 compared `component.h` against `nros_cpp_ffi.h`). A field inserted anywhere but
 the end silently mis-assigned every generated entry: issue 0160's class, ungated.
 `{ .name = ..., .groups = ... }` makes drift a compile error at the generated TU;
 extending the mirror gate makes it loud at the point of edit. Both — and both
-have LANDED (phase-432, branch `fix/nros-native-tier-spec-designated-init`).
+have LANDED (phase-432, branch `fix/nros-native-sched_task-spec-designated-init`).
 
 The eight, measured rather than counted from a comment: six DECLARATIONS —
 `nros-c/include/rclc/detail/main.h` (canonical), `nros-cpp/include/nros/main.hpp`
@@ -362,7 +362,7 @@ end of this section):
 | freertos / zephyr / nuttx | — | **yes** |
 | threadx | — | — |
 
-The layering runs opposite to the dispatch's justification for the TIERS path
+The layering runs opposite to the dispatch's justification for the SCHED TASKS path
 — `nros_board_freertos_run_sched_tasks` is 666 lines of C under a 4-line C++ veneer
 — but **not for `run_components`**, and phase-432 W3.1's assessment corrected
 this section: `FreertosBoard::run_components` is fully implemented in the C++
@@ -390,7 +390,7 @@ copy". That stopped being true once W3.1 made `run_components` ONE shared TU
 (`nros_board_rtos_run_components`): ThreadX's C++ `run_components` is
 FreeRTOS's line for line, and the shared TU's per-tick yield is empty off
 Zephyr, which is what ThreadX needs. So ThreadX takes that runner and has NO
-`run_sched_tasks`. A multi-tier ThreadX plan takes the single-executor
+`run_sched_tasks`. A multi-sched-task ThreadX plan takes the single-executor
 sched-context path in the C pack, exactly as it does in the C++ one; issue
 1283 is what gave the C pack that path. The surface now:
 
@@ -580,17 +580,17 @@ there is nothing to compare. Measured: `NanoRosEntry.cmake` does reject any
 `rust_cargo_application()` — but `cmd/codegen.rs` dispatched `--lang rust` to
 the emitter and the golden harness renders it with two committed goldens. What
 was dead is the VERB. It also produced a strictly POORER entry than the macro's
-— the `OwnedSpin` register path only, silently ignoring tiers, `[lifecycle]`,
+— the `OwnedSpin` register path only, silently ignoring sched tasks, `[lifecycle]`,
 `[param_services]` and executor sizing — so retiring it is a fix, not a
 tidy-up. The CLI's Rust STORY is still `builder/entry.rs` emitting
 `nros::main!(...)`.)*
 
 **Both Rust producers consume `LoweredEntry`.** *(Also amended: this said the
-macro "stops re-deriving tiers (91 references), QoS (23) and board paths (6)".
-Measured on `main_macro.rs`: 93 `tier`, 34 `qos`, 15 `board_path` — but every
+macro "stops re-deriving sched tasks (91 references), QoS (23) and board paths (6)".
+Measured on `main_macro.rs`: 93 `sched_task`, 34 `qos`, 15 `board_path` — but every
 one is a REFERENCE to shared code in `nros-orchestration-ir`, not a
 re-derivation. `board_path_for` delegates (phase-346), QoS goes through
-`qos_override::lower_all` (issue 0303), tiers through `resolve_sched_tasks` /
+`qos_override::lower_all` (issue 0303), sched tasks through `resolve_sched_tasks` /
 `sched_task_from_model` / `derive_sched_tasks_from_contracts` (phase-228.G, RFC-0032 §6).
 That convergence had already landed. What was genuinely duplicated is the
 **per-node runtime bake** — params, remaps, QoS overrides, identity and the
@@ -638,7 +638,7 @@ CMake-side property no pack can state about itself.
    (§5). Answer this before writing anything; a language can ship with two
    surfaces and gain the rest later.
 1. `packs/entry/<lang>/entry.<ext>.jinja` — over `LoweredEntry`. Boot shape,
-   board path, tier rows, QoS codes and escaped literals arrive computed.
+   board path, sched task rows, QoS codes and escaped literals arrive computed.
 2. `packs/entry/<lang>/pack.toml` and one row in the pack registry
    (`include_str!`). *(Amendment 1: no registry row — the build script
    discovers the directory. The manifest declares `templates`, `context`,
@@ -731,11 +731,11 @@ The C conversion that landed carries **six** pre-rendered fields:
 they are correct for C++ because it shares C's syntax here — which is precisely
 why the shortcut survived review and would NOT have survived a third language.
 
-Zig's tier table is `.{ .name = "high", .groups = &groups_0, … }`; its baked
+Zig's sched task table is `.{ .name = "high", .groups = &groups_0, … }`; its baked
 config is `export var … linksection(".nros_boot_config")`; its declarations are
 Zig statements. None of that can be reached from a C string.
 
-So Stage 2 must hand over **structured** data — tier rows as fields, not
+So Stage 2 must hand over **structured** data — sched task rows as fields, not
 initialiser text; boot config as values, not a blob; per-node declarations as a
 list of what to declare, not C statements — and each pack spells it.
 
@@ -792,7 +792,7 @@ language first is what made the shortcut visible at all.
   is now a pack and, if needed, a filter — no emitter, no dispatch arm.)*
 - The proc-macro and the CLI share lowering; a gate compares the two Rust
   renderings.
-- The tier table uses designated initialisers, and the mirror gate covers
+- The sched task table uses designated initialisers, and the mirror gate covers
   `nros_native_sched_task_spec_t` across its EIGHT sites (six declarations + the two
   entry templates; the nine was a miscount — see §5). DONE.
 - Adding a language touches no LOWERING Rust. Its Rust is one `Language`
@@ -838,12 +838,12 @@ language first is what made the shortcut visible at all.
 - ~~`nros_board_threadx_run_components` does not exist and neither does its
   `run_sched_tasks` — is pure-C ThreadX worth the shim, or is the declaration
   enough?~~ ANSWERED by issue 1286: no shim was needed. ThreadX takes the
-  shared `nros_board_rtos_run_components`, has no `run_sched_tasks`, and a tiered
+  shared `nros_board_rtos_run_components`, has no `run_sched_tasks`, and a sched-task
   plan uses sched contexts. `workspace-c-threadx-linux` builds with no C++
   runtime.
 - ~~Does the designated-initialiser change land with the C++ pack conversion or
   ahead of it?~~ ANSWERED: its own branch immediately after W2.3, with its own
-  goldens diff (8 goldens, tier rows only).
+  goldens diff (8 goldens, sched task rows only).
 - ~~Does the mirror gate extend (`check-ffi-struct-mirrors` assumes TWO files) or
   get a sibling keyed on a struct with nine?~~ ANSWERED: it EXTENDS, as a second
   family inside the same script. The comparison is not uniform, and that is the
@@ -867,7 +867,7 @@ Since phase-432 W3.1 and issue 1286 every family has a C runner, so the
 dispatch DOES call `emit_c` for all five boards. The rows now record what the
 pipeline produces: each calls its family's runner in its boot shape.
 `c_threadx_one` used to pin the refusal text; `c_threadx_sched_tasks` pins the
-sched-context path a tiered ThreadX C plan takes.
+sched-context path a sched-task ThreadX C plan takes.
 
 ---
 
@@ -879,14 +879,14 @@ per-surface projection" — was the blocker phase-469 deferred. Phase-474 paid i
 **What was measured first.** Read side by side, `emit_c.rs` (340 non-test
 lines, 4 view structs) and `emit_cpp.rs` (797, 7) were ONE projection written
 twice, with a third, shared set of six views in `mod.rs` (~330 lines): the same
-per-tier setups with the same node→tier filter and the same per-executor index
-(issue 1272), the same tier rows (1172), sched binds (1283), boot config (0794)
+per-sched-task setups with the same node→sched task filter and the same per-executor index
+(issue 1272), the same sched task rows (1172), sched binds (1283), boot config (0794)
 and services, and the same `time_slice_us` refusal word for word. What differed
 fell into three kinds, and only one of them was language:
 
 | kind | what | where it went |
 | --- | --- | --- |
-| data shaping | nodes' resolved name/namespace/launch identity, component KIND, class; family, boot shape, C-ABI runner names; the executor layout (single / sched contexts / per-tier setups with `(node, on_executor)`); tier rows; services; boot blob; monitor tables sliced per executor; the probe tail | `nros_entry_lower::LoweredEntry` (types, `#[serde(default)]` so the parity corpus is unchanged) built by ONE `lower.rs` in `nros-cli-core` |
+| data shaping | nodes' resolved name/namespace/launch identity, component KIND, class; family, boot shape, C-ABI runner names; the executor layout (single / sched contexts / per-sched-task setups with `(node, on_executor)`); sched task rows; services; boot blob; monitor tables sliced per executor; the probe tail | `nros_entry_lower::LoweredEntry` (types, `#[serde(default)]` so the parity corpus is unchanged) built by ONE `lower.rs` in `nros-cli-core` |
 | spelling | string escaping, package identifiers, the C++ board class | three Rust FILTERS (`c_str`, `pkg_ident`, `cpp_board_class`) in `filters.rs`, each declared by the packs that call it |
 | pack requirements | which component kinds a pack constructs, whether it calls the C-ABI runners, whether it renders a probe tail | `pack.toml` fields (`components`, `c_abi_runners`, `metadata_probe`), checked by one generic admission step |
 

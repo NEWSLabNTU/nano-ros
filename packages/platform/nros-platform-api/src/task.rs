@@ -2,7 +2,7 @@
 //!
 //! Moved here from `nros-node::executor::platform_task`: Rust callers in two
 //! crates need it (`nros-node`'s `open_threaded` and signalfd forwarder,
-//! `nros-cpp`'s native tier runtime), and a helper for an ABI belongs beside
+//! `nros-cpp`'s native sched task runtime), and a helper for an ABI belongs beside
 //! the ABI rather than inside one of its consumers. (`nros-node`'s
 //! per-OS-priority worker pool used it too, until phase-509 P11 retired it.)
 //!
@@ -92,7 +92,7 @@ impl PlatformTask {
     /// Spawn `entry(arg)` stating a PRIORITY as well.
     ///
     /// phase-359 W10 — `spawn` inherits the creating task's priority, which is
-    /// right for the executor's own workers and wrong for a TIER: a tier's
+    /// right for the executor's own workers and wrong for a SCHED TASK: a sched task's
     /// priority is the thing its author declared. `priority <= 0` means
     /// "unstated" and inherits, matching how the board descriptors spell an
     /// absent priority; anything positive is the kernel's own number and is

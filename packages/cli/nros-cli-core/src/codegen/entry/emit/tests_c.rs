@@ -30,7 +30,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
                 remaps: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
-                group_tiers: std::collections::BTreeMap::new(),
+                group_tasks: std::collections::BTreeMap::new(),
                 stack_bytes: None,
             })
             .collect(),
@@ -40,7 +40,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
         lifecycle: None,
         param_services: false,
         safety: None,
-        tiers: Default::default(),
+        sched_tasks: Default::default(),
         node_overrides: Vec::new(),
         resolved_sched_tasks: None,
         session: Default::default(),
@@ -222,13 +222,13 @@ fn typed_emit_sched_task_remaps_are_installed_before_every_sched_task_setup() {
     let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].remaps = vec![("a".into(), "/x".into())];
     plan.nodes[1].remaps = vec![("b".into(), "/y".into())];
-    let src = emit_typed(&plan).expect("typed C tier emit ok");
+    let src = emit_typed(&plan).expect("typed C sched task emit ok");
     assert!(
         src.contains("__nros_launch_remaps[2]"),
-        "one table for both tiers; src:\n{src}"
+        "one table for both sched tasks; src:\n{src}"
     );
     assert!(!src.contains("nros_cpp_declare_remap"));
-    // phase-509 P10 -- the native tier runner is its levels runner.
+    // phase-509 P10 -- the native sched task runner is its levels runner.
     assert_launch_table_installed_before_the_runner(&src, "run_levels");
 }
 
@@ -243,7 +243,7 @@ fn typed_emit_no_remaps_no_declare_calls() {
 }
 
 /// Issue 1971 -- the launch remap table is installed in the entry point,
-/// before the runner, so before the runner calls any (tier) setup.
+/// before the runner, so before the runner calls any (sched task) setup.
 fn assert_launch_table_installed_before_the_runner(src: &str, runner: &str) {
     let install_at = src
         .find("nros_cpp_set_launch_remaps(__nros_launch_remaps")
@@ -297,15 +297,15 @@ fn typed_emit_param_services_registration_is_non_fatal_both_paths() {
     // seeded pre-construction by `emit_declare_params`, so a failed registration
     // must cost the runtime get/set RPC and nothing else. The C++ emitter moved to
     // the non-fatal shape with 0745; BOTH C paths kept the pre-0745 block, which
-    // returned the rc and aborted boot. Covers the flat AND the tiered emitter,
-    // because the tiered site is a separate copy of the same block.
+    // returned the rc and aborted boot. Covers the flat AND the sched-task emitter,
+    // because the sched-task site is a separate copy of the same block.
     for (label, node, mut plan) in [
         (
             "flat",
             "param_talker",
             fixture_plan(&[("param_talker_pkg", "param_talker")]),
         ),
-        ("tiered", "ctrl", fixture_plan_with_sched_tasks()),
+        ("sched_tasks", "ctrl", fixture_plan_with_sched_tasks()),
     ] {
         plan.param_services = true;
         plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
@@ -440,7 +440,7 @@ fn fixture_plan_with_sched_tasks() -> Plan {
     use crate::codegen::entry::PlanNode;
     use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
     use std::path::PathBuf;
-    // Two-tier plan: high (idx 0) and low (idx 1), each with one C node.
+    // Two-sched-task plan: high (idx 0) and low (idx 1), each with one C node.
     let high_sched_task = ResolvedSchedTask {
         name: "high".into(),
         priority: 80,
@@ -489,8 +489,8 @@ fn fixture_plan_with_sched_tasks() -> Plan {
                 params: Vec::new(),
                 remaps: Vec::new(),
                 callback_groups: vec!["ctrl_grp".into()],
-                sched_context: Some(0), // high tier
-                group_tiers: std::collections::BTreeMap::new(),
+                sched_context: Some(0), // high sched task
+                group_tasks: std::collections::BTreeMap::new(),
                 stack_bytes: None,
             },
             PlanNode {
@@ -506,8 +506,8 @@ fn fixture_plan_with_sched_tasks() -> Plan {
                 params: Vec::new(),
                 remaps: Vec::new(),
                 callback_groups: vec!["telem_grp".into()],
-                sched_context: Some(1), // low tier
-                group_tiers: std::collections::BTreeMap::new(),
+                sched_context: Some(1), // low sched task
+                group_tasks: std::collections::BTreeMap::new(),
                 stack_bytes: None,
             },
         ],
@@ -517,10 +517,10 @@ fn fixture_plan_with_sched_tasks() -> Plan {
         lifecycle: None,
         param_services: false,
         safety: None,
-        tiers: Default::default(),
+        sched_tasks: Default::default(),
         node_overrides: Vec::new(),
         resolved_sched_tasks: Some(ResolvedSchedTaskTable {
-            tiers: vec![high_sched_task, low_sched_task],
+            sched_tasks: vec![high_sched_task, low_sched_task],
         }),
         session: Default::default(),
     }
@@ -551,9 +551,9 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
     );
 }
 
-/// phase-509 P9b -- a tier's seeds NAME their node, never an index: on a
-/// runner with one executor per tier the first node of every tier is index 0
-/// there, and on a level runner (one executor per core) every tier's setup
+/// phase-509 P9b -- a sched task's seeds NAME their node, never an index: on a
+/// runner with one executor per sched task the first node of every sched task is index 0
+/// there, and on a level runner (one executor per core) every sched task's setup
 /// builds on the same executor, so no build-time index is right for both. The
 /// shim resolves the index from the executor it seeds.
 #[test]
@@ -561,7 +561,7 @@ fn typed_emit_sched_task_seeds_name_their_node() {
     let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].params = vec![("period".into(), "10".into())];
     plan.nodes[1].params = vec![("period".into(), "100".into())];
-    let src = emit_typed(&plan).expect("typed C tier emit ok");
+    let src = emit_typed(&plan).expect("typed C sched task emit ok");
 
     assert!(
         src.contains("nros_cpp_declare_node_param(executor, \"ctrl\", \"period\", \"10\")"),
@@ -579,12 +579,12 @@ fn typed_emit_sched_task_seeds_name_their_node() {
 
 #[test]
 fn typed_emit_sched_tasks_uses_run_sched_tasks_path() {
-    // Phase 274.W2 — multi-tier C plan emits per-tier setup functions + run_sched_tasks
+    // Phase 274.W2 — multi-sched-task C plan emits per-sched-task setup functions + run_sched_tasks
     // call instead of the old sched-context wiring.
     let plan = fixture_plan_with_sched_tasks();
-    let src = emit_typed(&plan).expect("typed C tier emit ok");
+    let src = emit_typed(&plan).expect("typed C sched task emit ok");
 
-    // Per-tier setup functions present.
+    // Per-sched-task setup functions present.
     assert!(
         src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier 0 setup fn; got:\n{src}"
@@ -602,18 +602,18 @@ fn typed_emit_sched_tasks_uses_run_sched_tasks_path() {
         src.contains("nros_cpp_node_create(executor, \"telem\", \"/\", &__nros_node_1)"),
         "telem node in tier-1 setup; src:\n{src}"
     );
-    // Tier spec table emitted.
+    // Sched task spec table emitted.
     assert!(
         src.contains("static const nros_native_sched_task_spec_t __nros_sched_tasks[2]"),
-        "expected 2-element tier spec table; src:\n{src}"
+        "expected 2-element sched task spec table; src:\n{src}"
     );
     assert!(
         src.contains("\"high\""),
-        "high tier name in spec table; src:\n{src}"
+        "high sched task name in spec table; src:\n{src}"
     );
     assert!(
         src.contains("\"low\""),
-        "low tier name in spec table; src:\n{src}"
+        "low sched task name in spec table; src:\n{src}"
     );
     // Priority baked in as LL literals.
     assert!(src.contains("80LL"), "high priority 80LL; src:\n{src}");
@@ -635,7 +635,7 @@ fn typed_emit_sched_tasks_uses_run_sched_tasks_path() {
     );
     assert!(
         !src.contains("return nros_board_native_run_components"),
-        "must NOT call run_components in multi-tier; src:\n{src}"
+        "must NOT call run_components in multi-sched-task; src:\n{src}"
     );
     // Old sched-context wiring must NOT appear.
     assert!(
@@ -660,31 +660,31 @@ fn typed_emit_sched_tasks_uses_run_sched_tasks_path() {
 fn typed_emit_no_sched_tasks_uses_plain_node_create() {
     // Guard: empty resolved_sched_tasks keeps byte-identical plain create (no seed, no sched).
     let plan = fixture_plan(&[("talker_pkg", "talker")]);
-    let src = emit_typed(&plan).expect("typed C no-tier emit ok");
+    let src = emit_typed(&plan).expect("typed C no-sched-task emit ok");
     // Must NOT contain sched block artifacts.
     assert!(
         !src.contains("__nros_sc_ids"),
-        "no-tier plan must not emit sc_ids array"
+        "no-sched-task plan must not emit sc_ids array"
     );
     assert!(
         !src.contains("nros_cpp_create_sched_context"),
-        "no-tier plan must not emit sched_context_create"
+        "no-sched-task plan must not emit sched_context_create"
     );
     assert!(
         !src.contains("nros_cpp_bind_node_name_sched"),
-        "no-tier plan must not emit bind_node_name_sched"
+        "no-sched-task plan must not emit bind_node_name_sched"
     );
     assert!(
         !src.contains("nros_cpp_bind_group_sched"),
-        "no-tier plan must not emit bind_group_sched"
+        "no-sched-task plan must not emit bind_group_sched"
     );
     assert!(
         !src.contains("nros_cpp_node_create_ex"),
-        "no-tier plan must use plain nros_cpp_node_create"
+        "no-sched-task plan must use plain nros_cpp_node_create"
     );
     assert!(
         src.contains("nros_cpp_node_create(executor, \"talker\", \"/\", &__nros_node_0)"),
-        "no-tier plan must use plain nros_cpp_node_create"
+        "no-sched-task plan must use plain nros_cpp_node_create"
     );
 }
 

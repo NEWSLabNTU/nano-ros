@@ -3,21 +3,21 @@ name = "derived"
 rmw = "zenoh"
 domain_id = 0
 
-# Issue 1537 — the DERIVED-tier sibling of demo_bringup, and the only Rust
-# Zephyr image in the tree whose tier table `nros::main!` derives rather than
+# Issue 1537 — the DERIVED-sched-task sibling of demo_bringup, and the only Rust
+# Zephyr image in the tree whose sched task table `nros::main!` derives rather than
 # reads.
 #
 # Same two node packages, same launch, and no schedule authored here: no
 # `[tasks.*]`, no priority. The rates are in launch/system.contract.yaml, and
 # the macro derives a rate-monotonic table from them (ctrl 100 Hz above telem
-# 10 Hz). Compare demo_bringup, the authored-tier neighbour, whose
+# 10 Hz). Compare demo_bringup, the authored-sched-task neighbour, whose
 # `[tasks.*.zephyr]` pins cannot exercise the derivation at all.
 #
 # `group_tasks` is here only to NAME each node's callback group: the model's
 # group bindings are the one group input `nros::main!` reads, and a node with no
-# group gets no derived tier (it stays on the default executor, and nothing is
-# derived at all). The tier it binds, `derived`, is declared nowhere; the
-# derivation replaces it with one `derived-<node>` tier per node. (A C++ node
+# group gets no derived sched task (it stays on the default executor, and nothing is
+# derived at all). The sched task it binds, `derived`, is declared nowhere; the
+# derivation replaces it with one `derived-<node>` sched task per node. (A C++ node
 # states its groups with `CALLBACK_GROUPS` instead — derived-sched-tasks-cpp.)
 #
 # Why a second BRINGUP and not a second workspace (RFC-0066): what differs is
@@ -57,7 +57,7 @@ rmw = "zenoh"
 # application — so as `[image.zephyr]` this image and demo_bringup's generated
 # the SAME directory: both west leaves configured it as their
 # APPLICATION_SOURCE_DIR, and whichever `nros build` ran last decided what BOTH
-# images contained (the authored-tier image booted `derived-telem_node`).
+# images contained (the authored-sched-task image booted `derived-telem_node`).
 # `nros build` refuses two bringups generating one id now.
 [image.zephyr_derived]
 board = "zephyr"
@@ -67,8 +67,8 @@ locator = "tcp/127.0.0.1:7491"
 # 15-priority native_sim image `NROS_ZENOH_READ_PRIORITY = 100` (Kconfig
 # `CONFIG_NROS_ZENOH_READ_PRIORITY`) moves the zenoh read task from k_thread 4
 # (the default band, 200) to k_thread 9, so the transport band is [4, 9] and the
-# tier pool [10, 14]. The Kconfig DEFAULTS projection still says pool [5, 14],
-# so a derived tier allocated out of the projection lands at 5 / 6 -- INSIDE the
+# sched task pool [10, 14]. The Kconfig DEFAULTS projection still says pool [5, 14],
+# so a derived sched task allocated out of the projection lands at 5 / 6 -- INSIDE the
 # transport -- and the Zephyr boot report fires; allocated out of the image's
 # own `.config` (what `nros::main!` does since issue 1537) they land at 10 / 11
 # and the report is silent. It lived in its own `prj-lowered-band.conf`, merged
@@ -78,7 +78,7 @@ locator = "tcp/127.0.0.1:7491"
 #
 # The other two rows moved from the board's prj-zenoh.conf: the nano-ros
 # platform heap (issue 1324, 256 KiB on native_sim, scored against the measured
-# peak by every e2e run) and the zsock window the 100 Hz tier needs (issues
+# peak by every e2e run) and the zsock window the 100 Hz sched task needs (issues
 # 0129/0139).
 
 [image.zephyr_derived.knobs.zenoh]

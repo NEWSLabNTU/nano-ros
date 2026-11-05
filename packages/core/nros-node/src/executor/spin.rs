@@ -185,8 +185,8 @@ fn trace_register(_slot: usize, _kind: EntryKind, _name: TraceName<'_>) {}
 ///
 /// The heap arm is still reached, and both cases are legitimate rather than
 /// degraded: a SECOND executor opened through an `alloc` convenience
-/// constructor, and an entry sized past the build-time default. A tiered boot's
-/// spawned tiers are NOT that second executor any more: they open over the
+/// constructor, and an entry sized past the build-time default. A sched-task boot's
+/// spawned sched tasks are NOT that second executor any more: they open over the
 /// entry's `SchedTaskExecutorBacking` slots (`open_with_session_slot`, issue 1571). Neither is an error, so neither
 /// warns — `report_arena_headroom` is where an over-provisioned executor gets
 /// told about itself, and a duplicate line here would just be noise.
@@ -703,8 +703,8 @@ impl core::ops::DerefMut for SessionStore {
 
 /// Phase 228.E — an opaque, `Send` handle to an [`Executor`]'s RMW session.
 ///
-/// In the per-tier model the boot executor opens the one session and hands each
-/// spawned tier task a handle (not a borrow) so the task opens its own
+/// In the per-sched-task model the boot executor opens the one session and hands each
+/// spawned sched task a handle (not a borrow) so the task opens its own
 /// [`Executor`] over that *same* session across the RTOS task boundary. Wrapping
 /// the `pub(crate)` session pointer lets board crates (`nros-board-linux`,
 /// `nros-board-freertos`, …) name + move the handle without naming the session
@@ -713,10 +713,10 @@ impl core::ops::DerefMut for SessionStore {
 #[cfg(any(has_rmw, test))]
 pub struct SessionHandle(*mut session::ConcreteSession);
 
-// SAFETY: the per-tier model deliberately shares one session across RTOS tasks;
+// SAFETY: the per-sched-task model deliberately shares one session across RTOS tasks;
 // concurrent access is serialized by the RMW backend's internal locks (the RTOS
 // targets build zenoh-pico `Z_FEATURE_MULTI_THREAD=1` — RFC-0032 §5.0). The
-// boot executor owns the session and outlives every tier task.
+// boot executor owns the session and outlives every sched task.
 #[cfg(any(has_rmw, test))]
 unsafe impl Send for SessionHandle {}
 
@@ -1040,11 +1040,11 @@ mod group_filter_tests {
         assert!(!group_filter_accepts(Some(&active[..]), n, "telem"));
     }
 
-    /// issue 1172 — the SAME group id on a DIFFERENT node is not this tier's.
+    /// issue 1172 — the SAME group id on a DIFFERENT node is not this sched task's.
     ///
     /// This is the case the whole change exists for: two nodes may legitimately
-    /// declare `ctrl`, pinned to different tiers, and the old filter — keyed on
-    /// the group name alone — admitted both onto whichever tier asked first.
+    /// declare `ctrl`, pinned to different sched tasks, and the old filter — keyed on
+    /// the group name alone — admitted both onto whichever sched task asked first.
     #[test]
     fn the_same_group_on_another_node_is_not_accepted() {
         let active = [entry("talker", "/", "ctrl")];
@@ -1879,10 +1879,10 @@ pub struct Executor<'s> {
     /// Node name for entities the executor registers on the node's behalf.
     /// Empty means unset — no liveliness tokens will be declared.
     pub(crate) node_name: heapless::String<64>,
-    /// Phase 228.C — per-tier callback-group filter. Wildcard (register every
-    /// callback — the single-tier degenerate case + today's behaviour) until
+    /// Phase 228.C — per-sched-task callback-group filter. Wildcard (register every
+    /// callback — the single-sched-task degenerate case + today's behaviour) until
     /// [`set_active_groups`](Self::set_active_groups) names a non-empty set;
-    /// after that this tier's executor accepts only callbacks whose
+    /// after that this sched task's executor accepts only callbacks whose
     /// `.callback_group()` is in it, and skips the others at registration.
     ///
     /// phase-409 — CARVED, and the wildcard is a separate flag rather than an
@@ -1908,7 +1908,7 @@ pub struct Executor<'s> {
     /// fully-qualified `(name, namespace)` pair. `NodeBuilder::build` consults this table to set a
     /// node's `default_sched` when no explicit `.sched()` was given. Empty ⇒ every node stays
     /// `SchedContextId(0)` (byte-identical to pre-272 behaviour). Sized by `MAX_NODES` (at most
-    /// one tier per node — RFC-0047 OQ1).
+    /// one sched task per node — RFC-0047 OQ1).
     ///
     /// phase-409 — CARVED.
     pub(crate) node_sched_table: super::storage::CarvedVec<'s, super::storage::NodeSchedEntry>,
@@ -1941,7 +1941,7 @@ pub struct Executor<'s> {
     /// Issue 1971 -- this executor's own launch remap table, when one was set
     /// on it ([`Self::set_launch_remaps`]); `None` reads the image's
     /// ([`super::launch_remap::launch_remaps`]), which the generated entry
-    /// installs once before any tier is set up. A borrow of `.rodata`, never
+    /// installs once before any sched task is set up. A borrow of `.rodata`, never
     /// a copy.
     pub(crate) launch_remaps: Option<&'static [super::launch_remap::LaunchRemap]>,
     /// Phase 258 (Track 2, 2a) — executor-owned component tick registry.
@@ -2152,7 +2152,7 @@ pub struct Executor<'s> {
     /// Not `wake_ctx.is_some()`: the ctx is also allocated by `signal_fd()`
     /// and by every guard condition, neither of which installs anything on a
     /// session. Clearing on those would clear a callback this executor never
-    /// owned. (Since phase-436 a tier over a BORROWED session does install: it
+    /// owned. (Since phase-436 a sched task over a BORROWED session does install: it
     /// joins the session's wake fan-out, and its teardown is leaving it.)
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) wake_cb_installed: bool,
@@ -2340,7 +2340,7 @@ pub struct Executor<'s> {
     /// Read and written only under the lock; null while no window is open.
     pub(crate) running: *mut super::exec_lock::Running,
     /// Issue #515 — the spin cadence audit runs once, on the first spin
-    /// that carries a non-zero timeout (which is where the tier's
+    /// that carries a non-zero timeout (which is where the sched task's
     /// declared spin period becomes visible to the executor).
     pub(crate) spin_quantization_checked: bool,
     /// phase-436 W1 — the cadence the quantization audit (issue 0515) actually
@@ -2677,7 +2677,7 @@ impl<'s> Executor<'s> {
 
     /// Create a borrowing executor over caller-supplied `backing`, sized by
     /// `sizing`. Counterpart to [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in) for
-    /// the per-tier / C model (the session is borrowed, not owned).
+    /// the per-sched-task / C model (the session is borrowed, not owned).
     ///
     /// # Safety
     /// - `session_ptr` must point to a valid session that outlives the executor
@@ -2840,7 +2840,7 @@ pub enum WakeSourceId {
 pub const MAX_WAKE_SOURCES: usize = 8;
 
 /// phase-521 W3 -- the most `ReadinessSource::Waitable` handles one park
-/// multiplexes: one per session of a tier, and the POSIX port's own cap.
+/// multiplexes: one per session of a sched task, and the POSIX port's own cap.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub(crate) const MAX_WAITABLE_HANDLES: usize = 8;
 
@@ -2867,7 +2867,7 @@ pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u
 /// work item's `ScheduleDelayed(deadline_us)` (or `ScheduleClear()` when the
 /// bound is the caller's budget alone) and returns at once, and `spin_once`
 /// then returns to the work queue instead of blocking. An arrival reaches the
-/// tier through `ScheduleNow()`. No executor API widens for it: the bound the
+/// sched task through `ScheduleNow()`. No executor API widens for it: the bound the
 /// slot receives is the one every park receives.
 ///
 /// A DEADLINE, not a duration, and that distinction is what makes bare metal
@@ -2881,7 +2881,7 @@ pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void, deadlin
 /// Issue 2225 (RFC-0113 D9) -- the wake half of a framework's park slot:
 /// called after every signal of the executor's wake object, from the
 /// signalling context. A framework whose tier is a scheduled item rather than
-/// a parked thread (a PX4 work item) re-schedules the tier here. Must be
+/// a parked thread (a PX4 work item) re-schedules the sched task here. Must be
 /// thread-safe, non-blocking and O(1).
 pub type WakeHookFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void);
 
@@ -2902,13 +2902,13 @@ pub(crate) struct WakeSourceSlot {
 }
 
 impl<'s> Executor<'s> {
-    /// Phase 228.B (RFC-0015) — construct a tier task's executor that **shares**
+    /// Phase 228.B (RFC-0015) — construct a sched task's executor that **shares**
     /// a session opened once by the orchestration `main()`.
     ///
-    /// In the per-tier execution model `main()` opens one RMW session, then
-    /// spawns one RTOS task per priority tier; each task calls this to get an
+    /// In the per-sched-task execution model `main()` opens one RMW session, then
+    /// spawns one RTOS task per priority sched task; each task calls this to get an
     /// [`Executor`] over the *same* session (the `Borrowed` session store — this
-    /// executor neither owns nor closes it), registers its tier's callback
+    /// executor neither owns nor closes it), registers its sched task's callback
     /// groups, and spins. Thin alias over [`ExecutorFfi::from_session_ptr`](crate::executor::ffi::ExecutorFfi::from_session_ptr).
     ///
     /// # Safety
@@ -2919,17 +2919,17 @@ impl<'s> Executor<'s> {
     pub unsafe fn open_with_session(session: *mut session::ConcreteSession) -> Executor<'static> {
         #[allow(unused_mut)]
         let mut exec = unsafe { Executor::<'static>::from_session_ptr(session) };
-        // phase-436 — join the session's wake fan-out, so this tier is woken
+        // phase-436 — join the session's wake fan-out, so this sched task is woken
         // by its arrivals instead of sleeping out its whole bound.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         exec.install_wake_signal_on_primary();
         exec
     }
 
-    /// phase-271 — per-tier borrowed-session constructor over caller-supplied,
-    /// per-tier-sized `backing`. The sized counterpart to
-    /// [`open_with_session`](Self::open_with_session): each RTOS tier task owns
-    /// its own backing so tiers size independently.
+    /// phase-271 — per-sched-task borrowed-session constructor over caller-supplied,
+    /// per-sched-task-sized `backing`. The sized counterpart to
+    /// [`open_with_session`](Self::open_with_session): each RTOS sched task owns
+    /// its own backing so sched tasks size independently.
     ///
     /// # Safety
     /// `session` obligations as in [`open_with_session`](Self::open_with_session);
@@ -2947,24 +2947,24 @@ impl<'s> Executor<'s> {
         exec
     }
 
-    /// Raw pointer to this executor's RMW session, for the per-tier model:
+    /// Raw pointer to this executor's RMW session, for the per-sched-task model:
     /// the boot task opens the one session via [`Executor::open`] (the RMW
     /// session is a process-wide singleton — opening twice fails), then hands
-    /// this pointer to each spawned tier task's
+    /// this pointer to each spawned sched task's
     /// [`Executor::open_with_session`]. The boot task's executor owns the
     /// session and outlives every borrower, so the pointer stays valid for the
     /// program's life. Works for both `Owned` and `Borrowed` stores.
     ///
     /// # Safety
     /// The returned pointer aliases `self.session`. Callers must keep `self`
-    /// alive (not moved/dropped) for as long as any tier executor uses the
+    /// alive (not moved/dropped) for as long as any sched task executor uses the
     /// pointer, and must only touch the session through executor spin calls
     /// (the RMW backend serializes concurrent access through its own locks).
     pub fn session_ptr(&mut self) -> *mut session::ConcreteSession {
         let ptr = &mut *self.session as *mut session::ConcreteSession;
         // phase-436 — the owner of an OWNED session claimed its wake fan-out
         // while this executor value could still move (inside `open*`). The
-        // address handed out here is the one every tier is opened over, so
+        // address handed out here is the one every sched task is opened over, so
         // the entry is keyed by it from now on.
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         if let (SessionStore::Owned(_), Some(m)) = (&self.session, self.wake_membership) {
@@ -2973,8 +2973,8 @@ impl<'s> Executor<'s> {
         ptr
     }
 
-    /// Opaque, `Send` form of [`session_ptr`](Self::session_ptr) — the per-tier
-    /// model hands this to each spawned tier task (it can cross the RTOS task /
+    /// Opaque, `Send` form of [`session_ptr`](Self::session_ptr) — the per-sched-task
+    /// model hands this to each spawned sched task (it can cross the RTOS task /
     /// thread boundary, which a bare `*mut` cannot). See [`SessionHandle`].
     ///
     /// # Safety
@@ -2985,7 +2985,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Open an [`Executor`] over the session a [`SessionHandle`] refers to (the
-    /// `Borrowed` store — neither owns nor closes it). The tier-task counterpart
+    /// `Borrowed` store — neither owns nor closes it). The sched-task counterpart
     /// to [`session_handle`](Self::session_handle).
     ///
     /// # Safety
@@ -2997,7 +2997,7 @@ impl<'s> Executor<'s> {
     }
 
     /// phase-271 — sized counterpart to
-    /// [`open_with_session_handle`](Self::open_with_session_handle) (per-tier
+    /// [`open_with_session_handle`](Self::open_with_session_handle) (per-sched-task
     /// backing).
     ///
     /// # Safety
@@ -3011,9 +3011,9 @@ impl<'s> Executor<'s> {
         unsafe { Self::open_with_session_in(handle.0, backing, sizing) }
     }
 
-    /// issue 1571 — a SPAWNED tier's executor over its slot of the entry's
+    /// issue 1571 — a SPAWNED sched task's executor over its slot of the entry's
     /// [`SchedTaskExecutorBacking`](super::SchedTaskExecutorBacking) — the road every
-    /// board's `run_sched_tasks` takes for each tier but the boot one.
+    /// board's `run_sched_tasks` takes for each sched task but the boot one.
     ///
     /// The slot's TYPE is the size: it is `ExecutorSizing::DEFAULT.u64_len()`
     /// words and this opens with `ExecutorSizing::DEFAULT`, so the pairing is
@@ -3038,7 +3038,7 @@ impl<'s> Executor<'s> {
     }
 
     /// issue 1571 — [`open_with_session_slot`](Self::open_with_session_slot)
-    /// over a [`SessionHandle`], for the boards whose tier tasks carry one.
+    /// over a [`SessionHandle`], for the boards whose sched tasks carry one.
     ///
     /// # Safety
     /// As [`open_with_session_handle`](Self::open_with_session_handle).
@@ -3050,11 +3050,11 @@ impl<'s> Executor<'s> {
         unsafe { Self::open_with_session_slot(handle.0, slot) }
     }
 
-    /// Phase 228.C — set this tier executor's active callback-group filter. The
-    /// generated per-tier task calls this before registering nodes; afterwards
+    /// Phase 228.C — set this sched task executor's active callback-group filter. The
+    /// generated per-sched task calls this before registering nodes; afterwards
     /// only callbacks whose `.callback_group()` is in `groups` register here.
     /// An empty slice (or never calling it) leaves the wildcard — register all
-    /// callbacks (the single-tier degenerate case + today's behaviour).
+    /// callbacks (the single-sched-task degenerate case + today's behaviour).
     pub fn set_active_groups(
         &mut self,
         groups: &[(&str, &str, &str)],
@@ -3068,7 +3068,7 @@ impl<'s> Executor<'s> {
         }
         for (name, ns, group) in groups {
             // issue 1172 — this used to be `if s.push_str(g).is_ok()`, which
-            // DROPPED an oversized group name and left the tier filtering on a
+            // DROPPED an oversized group name and left the sched task filtering on a
             // set that silently lacked it. It fails closed (the entity is never
             // created), so the symptom is a missing entity with nothing to read
             // that says why. Same contract as `declare_remap` below: too long,
@@ -3084,10 +3084,10 @@ impl<'s> Executor<'s> {
             };
             if let Some(why) = why {
                 // FAIL CLOSED, and say so. Returning here with a PARTIAL table
-                // would leave the tier filtering on a subset — the same silent
+                // would leave the sched task filtering on a subset — the same silent
                 // narrowing, one step later. An empty table with filtering ON
                 // accepts NOTHING (`group_filter_accepts` matches on an empty
-                // slice), so the tier registers no entities at all: visible in
+                // slice), so the sched task registers no entities at all: visible in
                 // behaviour, where a missing entry is not. The `Err` is for the
                 // caller that can report it; the state is safe for the one that
                 // cannot.
@@ -3175,7 +3175,7 @@ impl<'s> Executor<'s> {
     /// **This declares an AUTHORITATIVE rule.** Declaration order settles
     /// which of two launch rules for one name wins; it is not how an argv rule
     /// is ranked against a launch rule. The `--ros-args` rules share this table
-    /// but are tagged as the fallback tier, and resolution reads both tiers
+    /// but are tagged as the fallback sched task, and resolution reads both sched tasks
     /// through [`crate::names::resolve_name_layered`] — so an argv rule
     /// installed BEFORE a launch rule still loses to it.
     ///
@@ -3272,7 +3272,7 @@ impl<'s> Executor<'s> {
     // Phase 272 (RFC-0047) — node-name → sched-context table
     // =========================================================================
 
-    /// Seed a config-resolved tier binding by `(name, namespace)` before the
+    /// Seed a config-resolved sched task binding by `(name, namespace)` before the
     /// node is built. `NodeBuilder::build` consults this table when no
     /// explicit `.sched()` override is given — the table entry then wins over
     /// the `SchedContextId(0)` default (precedence: explicit > table > 0).
@@ -3379,7 +3379,7 @@ impl<'s> Executor<'s> {
     // Phase 273 (RFC-0047) — per-callback-group → sched-context table
     // =========================================================================
 
-    /// Seed a config-resolved tier binding by `(name, namespace, group)` before
+    /// Seed a config-resolved sched task binding by `(name, namespace, group)` before
     /// entities are registered. `apply_node_default_sched` consults this table
     /// first (group table > node default > `SchedContextId(0)`).
     ///
@@ -4113,7 +4113,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Issue 2018 (RFC-0108 As-built) -- give the registering level its own
-    /// scheduling context: the one its tier's policy lowers to
+    /// scheduling context: the one its sched task's policy lowers to
     /// ([`SchedContext::from_sched_task_policy`](super::sched_context::SchedContext::from_sched_task_policy)).
     /// Callbacks registered from now on, until the registering level
     /// changes, bind to it unless a node or callback-group binding names
@@ -4382,7 +4382,7 @@ impl<'s> Executor<'s> {
     /// until someone measures cadence on target.
     ///
     /// Runs ONCE, on the first spin carrying a non-zero timeout, because
-    /// that timeout is where the tier's declared spin period becomes
+    /// that timeout is where the sched task's declared spin period becomes
     /// visible down here. A resolve-time diagnostic would be better
     /// still — the toolchain holds both numbers before the image is
     /// built — but this backstop needs no board or codegen change and
@@ -4458,7 +4458,7 @@ impl<'s> Executor<'s> {
     /// Issue 2225 (RFC-0113 D9) -- install (`Some`) or clear (`None`) the hook
     /// the executor's wake object calls after every signal: a backend's
     /// arrival callback, an attributed entity wake, the signal-fd worker. The
-    /// wake half of a yielding park slot, for a tier that never waits on the
+    /// wake half of a yielding park slot, for a sched task that never waits on the
     /// object itself. Returns `false` when this build has no wake object.
     ///
     /// `ctx` must outlive the hook: clear it before `ctx` goes away.
@@ -4606,7 +4606,7 @@ impl<'s> Executor<'s> {
     ///   itself, so it cannot come round more precisely than one park granule.
     ///   Reporting µs there is precision the wait cannot deliver.
     /// * **A declared cadence** (`set_spin_nominal_us`) — the caller paces
-    ///   itself, as nros-cpp's tiers do with `platform_sleep_us` between
+    ///   itself, as nros-cpp's sched tasks do with `platform_sleep_us` between
     ///   spins. That sleep is finer than the wait, so the measurement really
     ///   is good to a microsecond and coarsening it would understate it.
     ///
@@ -5363,10 +5363,10 @@ impl<'s> Executor<'s> {
     /// microseconds. `0` (the default) falls back to the `spin_once` timeout.
     ///
     /// Needed because a driver's pacing and its blocking bound are separate
-    /// numbers. nros-cpp's tier loops sleep `spin_period_us` between spins but
+    /// numbers. nros-cpp's sched task loops sleep `spin_period_us` between spins but
     /// pass a fixed 10 ms timeout, so the release-jitter rule judged every
-    /// tier against 10 ms regardless of what the contract declared -- too lax
-    /// for a 1 ms tier and far too strict for a 30 ms one.
+    /// sched task against 10 ms regardless of what the contract declared -- too lax
+    /// for a 1 ms sched task and far too strict for a 30 ms one.
     ///
     /// This also says the CALLER paces the loop (a sleep finer than the
     /// park), so the measurement is reported at 1 us. A loop paced by the
@@ -5409,7 +5409,7 @@ impl<'s> Executor<'s> {
         // exactly like one that judged and found the stack healthy. Ask the
         // port once, here. Entries set the bound at boot on the thread it
         // describes, so the answer is about the right stack and the warning
-        // lands once per tier, next to the tier's other boot lines.
+        // lands once per sched task, next to the sched task's other boot lines.
         // phase-436 E5 -- "does the port answer at all?" needs one byte, not
         // the whole unused region the full query would scan.
         self.worker.stack_headroom_blind =
@@ -5561,7 +5561,7 @@ impl<'s> Executor<'s> {
     /// RFC-0052 / phase-296 W3a — replace the DEFAULT scheduling context
     /// (slot 0, the SC every unbound callback dispatches through).
     ///
-    /// The run_sched_tasks model runs one Executor per tier, so a tier-wide
+    /// The run_sched_tasks model runs one Executor per sched task, so a sched-task-wide
     /// scheduling policy (`[tasks.<t>] class/budget_us/period_us` and the
     /// TT window) is exactly "this executor's default SC". Boards call
     /// this once, before entity creation; explicit per-handle/per-group
@@ -5992,7 +5992,7 @@ impl<'s> Executor<'s> {
     ///
     /// phase-436 — the backend's slot holds a `WakeFanout`
     /// and this executor JOINS it, so every executor over one session is woken
-    /// by an arrival: the boot executor and each spawned tier
+    /// by an arrival: the boot executor and each spawned sched task
     /// (`open_with_session*` now installs too), or several C executors over
     /// one support context. Idempotent. If the fan-out pool is exhausted the
     /// executor installs its own context directly, as before; if the entry's
@@ -11341,7 +11341,7 @@ impl<'s> Executor<'s> {
     /// `register_guard_condition` always did. With a node, the registered slot
     /// takes that node's default `SchedContext`, which is what "the node owns
     /// it" has to mean for a callback that shares one executor with every other
-    /// tier in the image (RFC-0047).
+    /// sched task in the image (RFC-0047).
     pub fn register_guard_condition_on<F>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
@@ -11993,7 +11993,7 @@ impl<'s> Executor<'s> {
         s = unsafe { &mut *this };
         // phase-521 W8 (c) -- the park slot yielded to its framework's
         // scheduler: nothing is due (the bound was not zero) and nothing is
-        // pending, so there is nothing to scan. The tier runs again when its
+        // pending, so there is nothing to scan. The sched task runs again when its
         // work item is scheduled.
         if core::mem::take(&mut s.worker.park_yielded) {
             return SpinOnceResult::new();
@@ -12466,7 +12466,7 @@ impl<'s> Executor<'s> {
                     // That is why the throttle was invisible. Measured on
                     // nuttx-arm/rust: ~238 activations lost against ~40
                     // reported, so five in six missed firings were unaccounted
-                    // ANYWHERE. The tier ran at a quarter of its declared rate
+                    // ANYWHERE. The sched task ran at a quarter of its declared rate
                     // and the only honest signal was the delivery count itself.
                     //
                     // Advancing the clock here does not dispatch anything and
@@ -12499,14 +12499,14 @@ impl<'s> Executor<'s> {
                     // issue 0736 — a budget skip used to be a bare `continue`,
                     // which is the silent-drop shape 0737 gated one layer out:
                     // the entry is simply not dispatched and nothing anywhere
-                    // says so, so a permanently starved tier is
+                    // says so, so a permanently starved sched task is
                     // indistinguishable from an idle one. It took a hand-run
                     // 45 s image and a per-executor probe to learn that this
-                    // line was skipping 96 % of one tier's spins.
+                    // line was skipping 96 % of one sched task's spins.
                     // The rolling window catches a budget that THROTTLES; the
                     // streak below catches one that starves outright. issue
                     // 0736 needed both: the measured case skipped ~3 spins in
-                    // 4 without ever reaching a streak, so the tier ran at a
+                    // 4 without ever reaching a streak, so the sched task ran at a
                     // quarter of its declared rate in silence.
                     if let Some((skips, total)) = s
                         .sporadic_states
@@ -12516,7 +12516,7 @@ impl<'s> Executor<'s> {
                     {
                         nros_log::log_warn!(
                             nros_log::get_logger("nros"),
-                            "sporadic budget throttled sched context {}: {} of the last {} dispatch opportunities were skipped for want of budget. The declared budget_us/period_us cannot sustain this tier's callbacks on this target.",
+                            "sporadic budget throttled sched context {}: {} of the last {} dispatch opportunities were skipped for want of budget. The declared budget_us/period_us cannot sustain this sched task's callbacks on this target.",
                             sc_idx,
                             skips,
                             total
@@ -12963,7 +12963,7 @@ impl<'s> Executor<'s> {
         // Issue #505 — same ring, same cycle. This runs AFTER dispatch,
         // unlike the windowed rate/age/latency rules at the top of the
         // spin: the activations it reports were dropped by the dispatch
-        // that just happened, and a tier that is stalling should not have
+        // that just happened, and a sched task that is stalling should not have
         // to wait for the next spin to say so.
         s.check_timer_overruns();
         s.check_release_jitter_rule();
@@ -13130,7 +13130,7 @@ impl<'s> Executor<'s> {
         //
         // The first version instrumented `spin_period` only, and that was the
         // same mistake issue 0736 records one layer down: a measurement placed
-        // on a path no shipped image takes. `nros-cpp`'s tier trampoline paces
+        // on a path no shipped image takes. `nros-cpp`'s sched task trampoline paces
         // itself with a `spin_once` loop at `spin_period_us` (see its
         // `run_components` docs, step 4), so `spin_period` is not what the C++
         // entry -- and therefore not what the Zephyr lane -- actually calls.
@@ -13212,7 +13212,7 @@ impl<'s> Executor<'s> {
         // WAITABLE handle (a socket on POSIX / NuttX) is parked on: the port
         // multiplexes the handles with this executor's own wake object, so
         // data arriving ends the park and a guard trigger still does too. The
-        // tier then drains its sessions non-blockingly below, instead of
+        // sched task then drains its sessions non-blockingly below, instead of
         // blocking inside the transport's `recv` (and slicing that wait for
         // a guard condition, phase-436 D5). A port that cannot wait on handles
         // answers `None` and the wait below is the one it always had.
@@ -13266,7 +13266,7 @@ impl<'s> Executor<'s> {
         // SAFETY: the lock is held again (the window, if any, has closed).
         s = unsafe { &mut *this };
         // phase-521 W8 (c) -- a YIELDED slot did not wait: its framework runs
-        // this tier again at the bound or on an arrival, so the pass returns.
+        // this sched task again at the bound or on an arrival, so the pass returns.
         // Not while a wake is already pending, though: then the work is here
         // now, and the answer counts as a park that ended at once.
         #[cfg(feature = "alloc")]
@@ -13437,7 +13437,7 @@ impl<'s> Executor<'s> {
                 // phase-436 — after a park this wait has a zero timeout and
                 // the park has already waited on this same object, so it is a
                 // second syscall that can only time out. Measured on a native
-                // tier: one extra futex wait per iteration, doubling the idle
+                // sched task: one extra futex wait per iteration, doubling the idle
                 // context switches. A signal that lands between the park's
                 // return and here stays posted and ends the next park at once,
                 // which costs one spin and loses nothing.
@@ -16543,7 +16543,7 @@ impl<'s> Executor<'s> {
     ///
     /// Multi-executor preemption (the actual hard-RT win) comes from
     /// the OS scheduler — call `open_threaded` once per criticality
-    /// tier, each with its own policy / priority. The kernel handles
+    /// sched task, each with its own policy / priority. The kernel handles
     /// preemption across executors; within a single executor,
     /// dispatch remains non-preemptive (110.A–C bucketed sets).
     ///
@@ -16580,7 +16580,7 @@ impl<'s> Executor<'s> {
         //
         // The closure becomes a heap context because the entry point crosses C
         // as `*mut c_void`. It is reclaimed by the trampoline on exit rather
-        // than leaked: unlike a tier task, this loop RETURNS — that is what
+        // than leaked: unlike a sched task, this loop RETURNS — that is what
         // `halt` is for.
         let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(ThreadedCtx {
             executor: self,
@@ -16722,7 +16722,7 @@ pub struct ThreadHandle {
 /// Default stack for an `open_threaded` spin loop. `std::thread`'s default was
 /// 2 MiB; the executor's own storage is caller-carved and lives elsewhere, so
 /// this carries call frames only — the same reasoning (and size) as the NuttX
-/// tier spawn, which measured this against a real RTOS default.
+/// sched task spawn, which measured this against a real RTOS default.
 #[cfg(feature = "alloc")]
 const OPEN_THREADED_STACK_BYTES: usize = 65536;
 
@@ -16963,7 +16963,7 @@ mod p274_w1_sched_task_executor_tests {
     /// An oversized group name is REFUSED and fails CLOSED.
     ///
     /// issue 1172 — this used to be `if s.push_str(g).is_ok()`, which dropped
-    /// the name and left the tier filtering on a set that silently lacked it.
+    /// the name and left the sched task filtering on a set that silently lacked it.
     /// Two things are asserted because either alone would let the bug back:
     /// the call must REPORT the failure, and the resulting filter must accept
     /// NOTHING rather than fall back to the wildcard, which would be
@@ -16991,7 +16991,7 @@ mod p274_w1_sched_task_executor_tests {
         assert!(
             !borrowed.group_active("n", "/", "anything-else"),
             "a refused filter must accept NOTHING — falling back to the \
-             wildcard would run every callback on this tier"
+             wildcard would run every callback on this sched task"
         );
     }
 
@@ -17014,7 +17014,7 @@ mod p274_w1_sched_task_executor_tests {
             "default (wildcard) must accept every group"
         );
 
-        // Gate borrowed to only the "ctrl" group (one-tier filter).
+        // Gate borrowed to only the "ctrl" group (one-sched-task filter).
         borrowed
             .set_active_groups(&[("n", "/", "ctrl")])
             .expect("fits");
@@ -17239,7 +17239,7 @@ fn check_deadline_miss(
     }
 }
 
-// Timer-accounting clock default (issue: no_std tiers with no `clock_us`
+// Timer-accounting clock default (issue: no_std sched tasks with no `clock_us`
 // credited each spin the REQUESTED timeout — spin.rs `delta_us` fallback —
 // so shared-session wakes made low-rate timers fire early (a 100 ms timer
 // at ~67 ms on Zephyr native_sim) and tick rounding made fast tiers fire

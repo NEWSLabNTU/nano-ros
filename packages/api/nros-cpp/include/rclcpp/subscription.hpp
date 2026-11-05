@@ -452,7 +452,7 @@ template <typename M> class Subscription {
     //
     // A `HandleId` is EXECUTOR-SCOPED: an index into one executor's arena, not
     // a process-wide identity, and RFC-0002 puts one executor on one RTOS
-    // task, so a tiered image has several. That is why `get_actual_qos()`
+    // task, so a sched-task image has several. That is why `get_actual_qos()`
     // could not be answered from `sched_handle_id_` alone, and why resolving
     // it "from the sched handle" would have needed a global executor
     // registry. The pair is the same one `rclcpp::Client` already keeps

@@ -348,7 +348,7 @@ generic "no new lock" claim must be qualified:
   consumer, head/tail cursors. The borrow needs **no extra lock** — the cursor
   protocol alone is the guard.
 - **Multi-producer / multi-consumer backend (e.g. DDS reader threads, or a
-  multi-tier executor consuming one pool):** the shared-pool **slot allocator**
+  multi-sched-task executor consuming one pool):** the shared-pool **slot allocator**
   (which sub owns which slot, claim/release) needs a short critical section or
   atomic free-list at the producer/consumer boundary regardless — see C2. The
   *borrow itself* is still lock-free; only slot (de)allocation is guarded.
@@ -538,10 +538,10 @@ All seven open questions are resolved (2026-06; discussion folded in here):
    sized `≥ Σ(depths)` make drops purely the intended `KEEP_LAST(N)` recycle.
    Overcommit + a reserved `reliable` sub-pool is a documented opt-in for
    tight-RAM deployments (the only case QoS-partitioning earns its keep).
-5. **Multi-tier (Phase 228) → no new problem.** 228.C pins a node (and its
-   subscriptions) to one tier, so per-subscription consumption stays
-   single-consumer even multi-tier; only the cross-subscription pool allocator is
-   cross-tier contention, and it already requires the thread-safe (`critical_section`)
+5. **Multi-sched-task (Phase 228) → no new problem.** 228.C pins a node (and its
+   subscriptions) to one sched task, so per-subscription consumption stays
+   single-consumer even multi-sched-task; only the cross-subscription pool allocator is
+   cross-sched-task contention, and it already requires the thread-safe (`critical_section`)
    guard. Depends on the 228 node-pinning invariant.
 6. **Polled vs threaded (T3) → `process_raw_in_place` is dispatch-only.** The
    method dispatches at most one *staged* message, uniform across backends. Link

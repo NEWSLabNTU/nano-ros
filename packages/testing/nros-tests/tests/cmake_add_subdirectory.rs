@@ -12,7 +12,7 @@
 //! `build/cmake-fixtures/cmake_add_subdir/`. This test asserts the prebuilt
 //! `smoke` binary rather than running cmake at run time (issue 0034 / 0041 /
 //! AGENTS.md "No compilation inside tests"). Fixture absent (no cmake /
-//! `codegen entry`-capable nros) → tier-aware skip/fail.
+//! `codegen entry`-capable nros) → sched-task-aware skip/fail.
 
 #[test]
 fn cmake_add_subdirectory_smoke() -> nros_tests::TestResult<()> {

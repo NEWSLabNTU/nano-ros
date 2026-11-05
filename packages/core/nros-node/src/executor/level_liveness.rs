@@ -11,8 +11,8 @@
 //!   most urgent, unless its runner set another ([`Executor::set_level`]).
 //!   The generated entry names each node's level at build time
 //!   (`NROS_ENTRY_LEVEL_OF_<node>` in `nros_priority_plan.h`) by the same
-//!   rule the runner applies: a level's index is its tier's urgency order
-//!   among the image's tiers (until phase-509 P9 a level is a tier).
+//!   rule the runner applies: a level's index is its sched task's urgency order
+//!   among the image's sched tasks (until phase-509 P9 a level is a sched task).
 //! - **Liveness.** Every spin of an executor checks its level in here, with
 //!   the time ([`level_last_spin_us`]) and a spin count. The watchdog feed is
 //!   [`take_every_level_alive`]: `true` only when every level of the image
@@ -118,10 +118,10 @@ impl LevelRegistry {
 
 pub(crate) static LEVELS: LevelRegistry = LevelRegistry::new();
 
-/// The level of tier `index` of an image whose `n` tiers have the kernel
+/// The level of sched task `index` of an image whose `n` sched tasks have the kernel
 /// priorities `priority_of(0..n)`: its urgency order, 0 the most urgent,
-/// equal priorities in array order. Until phase-509 P9 a level is a tier, so
-/// this is how a runner places each tier's executor
+/// equal priorities in array order. Until phase-509 P9 a level is a sched task, so
+/// this is how a runner places each sched task's executor
 /// ([`Executor::set_level`](super::Executor::set_level)). `nros codegen
 /// entry` writes `NROS_ENTRY_LEVEL_OF_<node>` by the same rule, over the same
 /// array. `None` when `index` is out of range.
@@ -195,7 +195,7 @@ pub fn take_every_level_alive() -> bool {
 mod tests {
     use super::*;
 
-    /// The island's shape on Zephyr (smaller is urgent): a tier at 5 is level
+    /// The island's shape on Zephyr (smaller is urgent): a sched task at 5 is level
     /// 0 wherever it sits in the array; equal priorities keep array order;
     /// the other direction inverts it.
     #[test]

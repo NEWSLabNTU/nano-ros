@@ -11,7 +11,7 @@ find_package(std_msgs REQUIRED)
 # Sub-node realtime component (RFC-0047). ONE ComponentNode subclass that
 # creates TWO callback groups: "ctrl" (10 ms) and "telem" (100 ms).
 # CALLBACK_GROUPS declares both IDs; system.toml group_tiers assigns them to
-# the deployment tiers — the package itself is tier-agnostic (portable).
+# the deployment sched tasks — the package itself is sched-task-agnostic (portable).
 nano_ros_auto_add_library(subnode_lib STATIC src/SubNode.cpp)
 
 nros_components_register_node(subnode_lib

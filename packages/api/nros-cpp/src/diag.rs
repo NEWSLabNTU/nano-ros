@@ -23,7 +23,7 @@ pub(crate) use nros::contract::DiagSink;
 /// Create this executor's `/diagnostics` publisher and point its violation
 /// sink at it, through the ONE arming step both roads share
 /// (`nros::contract::arm_reporter`, issue 1693). Idempotent: a second install
-/// (another tier's table on the same executor) keeps the first reporter.
+/// (another sched task's table on the same executor) keeps the first reporter.
 ///
 /// Never fatal. A reporter that cannot be created is logged there and the
 /// tables stay installed — what the log line always said ("violations stay in

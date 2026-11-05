@@ -59,7 +59,7 @@ The text below is kept as the record of what was asked.
   goal, the steps, the expected output as a `probe-expect` block, and the
   grading command `nros run --expect '<line>'` the instructor runs per seat.
 - Proposed series: (1) first node over serial; (2) a listener and QoS;
-  (3) a service; (4) parameters and lifecycle; (5) two tiers and timing (the
+  (3) a service; (4) parameters and lifecycle; (5) two sched tasks and timing (the
   real-time promise, measured); (6) talking to a ROS 2 graph on the host;
   (7) the same image flashed to the Nucleo and run over ethernet.
 - Every lab is probe-tagged and joins `probe-platforms.yml`, generated from the

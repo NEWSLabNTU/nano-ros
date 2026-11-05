@@ -171,7 +171,7 @@ which order, so the two phases do not build the same carrier twice.
   locator, the XRCE agent port, the Cyclone domain). Under D2a every such
   symbol becomes a configure ERROR in a project with a `system.toml`.
 - 23 C/C++ sources read `CONFIG_NROS_*` directly (`ZENOH_LOCATOR` 13,
-  `ZEPHYR_HEAP_SIZE` 8, `SNTP_*`, `DOMAIN_ID`, tier stacks, boot report, …), so
+  `ZEPHYR_HEAP_SIZE` 8, `SNTP_*`, `DOMAIN_ID`, sched task stacks, boot report, …), so
   an exported env override — which wins for cargo and the cmake knob lane —
   never reaches them. Env alone cannot replace `-DCONFIG`.
 - The knob census (phase-484 W5, 2026-10-11): 95 knob env names (49 on the

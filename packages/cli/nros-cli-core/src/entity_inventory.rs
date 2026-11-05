@@ -807,14 +807,14 @@ pub struct EntityInventory {
     /// Independent of `components`: an image whose entity count refuses can
     /// still have its parameter store sized, and the reverse.
     params: ParamDeclarations,
-    /// Issue 1198 -- how many SCHEDULING TIERS the bringup authors
+    /// Issue 1198 -- how many SCHEDULING SCHED TASKS the bringup authors
     /// (`execution.tasks`), which is a different declaration from the entity
     /// one and the only artifact that says anything about scheduling contexts.
     /// Zero for an inventory built from a probe, which sees no model.
     ///
     /// See [`DerivedEntityKnobs::max_sc`] for what it is a term in and why the
     /// node count is the other term.
-    tiers: usize,
+    sched_tasks: usize,
     /// phase-496 W1 -- the contract-monitor row counts,
     /// `(monitor_rows(model).len(), age_rows(model).len())`: the SAME two
     /// functions the entry emitters bake the tables from, so the executor is
@@ -833,8 +833,8 @@ pub struct EntityInventory {
     /// that knows the BOARD can re-derive it with the board's per-frame cost
     /// and check the declaration against it ([`Self::check_rx_arrival`]).
     rx_arrival: Vec<DeclaredArrivalCurve>,
-    /// phase-462 W6c -- the tightest authored tier's slack, the second
-    /// RFC-0074 constraint's right-hand side. `None` when no tier states a
+    /// phase-462 W6c -- the tightest authored sched task's slack, the second
+    /// RFC-0074 constraint's right-hand side. `None` when no sched task states a
     /// deadline or a period.
     tightest_sched_task: Option<SchedTaskSlack>,
     /// phase-462 W6c -- the board's `[board.rx]` fact, set by the road that
@@ -990,7 +990,7 @@ fn union_bridges(
 
 /// Issue 1701 -- what an image's MODEL says about the image, apart from the
 /// entity rows its contract describes: which components the launch tree
-/// starts, the runtime's own service families, the authored tier count and
+/// starts, the runtime's own service families, the authored sched task count and
 /// the contract-monitor tables.
 ///
 /// [`EntityInventory::from_model`] answers `None` for a model that describes no
@@ -1001,7 +1001,7 @@ fn union_bridges(
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ImageFrame {
     infra: InfraServices,
-    tiers: usize,
+    sched_tasks: usize,
     monitor_rows: Option<(usize, usize)>,
     rx_task_budget: Option<RxTaskBudget>,
     rx_arrival: Vec<DeclaredArrivalCurve>,
@@ -1186,7 +1186,7 @@ impl DeclaredArrivalCurve {
 /// ```toml
 /// [board.rx]
 /// frame_cost_us = 940   # c: what one received frame costs the read task
-/// floor_us = 11000      # optional: the worst tier gap at zero frames
+/// floor_us = 11000      # optional: the worst sched task gap at zero frames
 /// ```
 ///
 /// A MEASURED fact, never a knob: no compiler sees it. It enters the budget
@@ -1203,42 +1203,42 @@ pub struct RxFrameCost {
     /// `c`, in microseconds. A stated 0 is refused by [`check_rx_arrival`]:
     /// it is the unstated value, written as if it were a measurement.
     pub frame_cost_us: u32,
-    /// The empirical floor of the worst tier gap (RFC-0074's ~11 ms: the
-    /// tier's own work plus scheduler latency, unexplained). Absent is 0,
+    /// The empirical floor of the worst sched task gap (RFC-0074's ~11 ms: the
+    /// sched task's own work plus scheduler latency, unexplained). Absent is 0,
     /// which makes the slack check WEAKER (it can only under-state the
     /// occupancy) and is said so in the check's statement.
     #[serde(default)]
     pub floor_us: Option<u32>,
 }
 
-/// phase-462 W6c -- the tightest authored tier's slack: the most a burst of
-/// the read task may preempt that tier without making it miss by itself.
+/// phase-462 W6c -- the tightest authored sched task's slack: the most a burst of
+/// the read task may preempt that sched task without making it miss by itself.
 ///
-/// `slack = D - B`, where `D` is the tier's relative `deadline`, else its
-/// `period` (an implicit deadline), and `B` its execution `budget`. A tier
+/// `slack = D - B`, where `D` is the sched task's relative `deadline`, else its
+/// `period` (an implicit deadline), and `B` its execution `budget`. A sched task
 /// with neither `deadline` nor `period` has no slack to compute and is
-/// skipped. A tier that states no `budget` contributes `D` -- an UPPER bound
+/// skipped. A sched task that states no `budget` contributes `D` -- an UPPER bound
 /// of its slack -- so a refusal against it is sound (the burst exceeds the
-/// tier's whole deadline) while a pass is only "within the deadline", and the
+/// sched task's whole deadline) while a pass is only "within the deadline", and the
 /// check says which ([`Self::budget_stated`]).
 ///
 /// Only the portable head is read: a platform sub-table may tighten the
 /// deadline, and the slack is then over-stated the same way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SchedTaskSlack {
-    pub tier: String,
+    pub sched_task: String,
     /// `D`, in microseconds.
     pub deadline_us: u64,
-    /// `B`, in microseconds; `None` when the tier states no budget.
+    /// `B`, in microseconds; `None` when the sched task states no budget.
     pub budget_us: Option<u64>,
     /// `D - B` (saturating), or `D` when no budget is stated.
     pub slack_us: u64,
 }
 
 impl SchedTaskSlack {
-    /// The tightest authored tier of a model, `None` when no tier states a
-    /// deadline or a period. Every tier counts as sharing the read task's
-    /// core: the model places no tier on a core, so this is the stricter
+    /// The tightest authored sched task of a model, `None` when no sched task states a
+    /// deadline or a period. Every sched task counts as sharing the read task's
+    /// core: the model places no sched task on a core, so this is the stricter
     /// reading.
     pub fn tightest(model: &ros_launch_manifest_model::SystemModel) -> Option<Self> {
         model
@@ -1249,7 +1249,7 @@ impl SchedTaskSlack {
                 let deadline_us = t.deadline.or(t.period)?.as_micros();
                 let budget_us = t.budget.map(|b| b.as_micros());
                 Some(Self {
-                    tier: name.clone(),
+                    sched_task: name.clone(),
                     deadline_us,
                     budget_us,
                     slack_us: deadline_us.saturating_sub(budget_us.unwrap_or(0)),
@@ -1293,7 +1293,7 @@ pub enum RxArrivalCheck {
     },
 }
 
-/// phase-462 W6c -- the `c x burst + floor <= tier slack` verdict.
+/// phase-462 W6c -- the `c x burst + floor <= sched_task slack` verdict.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlackVerdict {
     /// The occupancy fits the tightest tier's slack.
@@ -1321,19 +1321,19 @@ impl RxArrivalCheck {
         );
         Some(match slack {
             SlackVerdict::Within(t) if t.budget_stated() => format!(
-                "{head}, within tier `{}`'s slack of {} us (deadline {} - budget {})",
-                t.tier,
+                "{head}, within sched task `{}`'s slack of {} us (deadline {} - budget {})",
+                t.sched_task,
                 t.slack_us,
                 t.deadline_us,
                 t.budget_us.unwrap_or(0)
             ),
             SlackVerdict::Within(t) => format!(
-                "{head}, within tier `{}`'s deadline of {} us -- the tier states no `budget`, \
+                "{head}, within sched task `{}`'s deadline of {} us -- the sched task states no `budget`, \
                  so this is checked against an UPPER bound of its slack",
-                t.tier, t.deadline_us
+                t.sched_task, t.deadline_us
             ),
             SlackVerdict::NotChecked(why) => {
-                format!("{head}; `c x burst + floor <= tier slack` NOT CHECKED: {why}")
+                format!("{head}; `c x burst + floor <= sched_task slack` NOT CHECKED: {why}")
             }
         })
     }
@@ -1368,7 +1368,7 @@ pub fn check_rx_arrival(
         return Err(
             "the board states `[board.rx] frame_cost_us = 0`. Zero is what an UNSTATED cost \
              means, so writing it claims a measurement nobody made: state the board's measured \
-             per-frame receive cost (RFC-0074: worst tier gap against the frame budget, \
+             per-frame receive cost (RFC-0074: worst sched task gap against the frame budget, \
              `gap = c x FRAMES + floor`), or delete `[board.rx]`"
                 .to_string(),
         );
@@ -1399,8 +1399,8 @@ pub fn check_rx_arrival(
     };
     let slack = match tightest {
         None => SlackVerdict::NotChecked(
-            "no tier in this image's model states a `deadline` or a `period`, so no tier slack \
-             is computable; declare the tiers' timing in `[tasks.*]` to have it checked"
+            "no sched task in this image's model states a `deadline` or a `period`, so no sched task slack \
+             is computable; declare the sched tasks' timing in `[tasks.*]` to have it checked"
                 .to_string(),
         ),
         Some(t) if occupancy_us > t.slack_us => {
@@ -1410,7 +1410,7 @@ pub fn check_rx_arrival(
                     t.slack_us, t.deadline_us
                 ),
                 None => format!(
-                    "whole deadline of {} us (it states no `budget`, so even an idle tier misses)",
+                    "whole deadline of {} us (it states no `budget`, so even an idle sched task misses)",
                     t.deadline_us
                 ),
             };
@@ -1426,16 +1426,16 @@ pub fn check_rx_arrival(
             return Err(format!(
                 "subscriber `{}` declares `arrival_curve: {{ rate_hz: {}, burst: {} }}`, so the read \
                  task takes {} frames back to back: {} x {c} us (`[board.rx] frame_cost_us`) + \
-                 {floor_note} = {occupancy_us} us, above tier `{}`'s {slack_of}. That burst \
-                 misses the tier's deadline by itself (RFC-0074 constraint 2): {lower}pace the \
-                 topic at the router, or give tier `{}` more slack",
+                 {floor_note} = {occupancy_us} us, above sched task `{}`'s {slack_of}. That burst \
+                 misses the sched task's deadline by itself (RFC-0074 constraint 2): {lower}pace the \
+                 topic at the router, or give sched task `{}` more slack",
                 heavy.endpoint,
                 heavy.rate_hz,
                 heavy.burst,
                 budget.frames,
                 budget.frames,
-                t.tier,
-                t.tier
+                t.sched_task,
+                t.sched_task
             ));
         }
         Some(t) => SlackVerdict::Within(t.clone()),
@@ -1458,8 +1458,8 @@ impl ImageFrame {
             // Issue 1198 -- the SCHEDULING declaration. Not an entity fact: the
             // service families are what the runtime creates FOR the image,
             // while this is what the integrator authored about how it runs
-            // (RFC-0016 tiers, `[tasks.*]` in `system.toml`).
-            tiers: model.execution.tasks.len(),
+            // (RFC-0016 sched tasks, `[tasks.*]` in `system.toml`).
+            sched_tasks: model.execution.tasks.len(),
             // phase-496 W1 -- the contract-monitor tables, counted by the
             // functions the entry emitters bake them with. An inconsistent
             // model is the emitters' refusal to make, loudly, at codegen; here
@@ -2019,29 +2019,29 @@ pub struct DerivedEntityKnobs {
     /// NOT an entity count, and that is the finding rather than an obstacle:
     /// an SC is not created by any component, it is created by the image's
     /// SCHEDULE. Measured over the tree, there are exactly two producers, and
-    /// they disagree about how many slots a tier costs:
+    /// they disagree about how many slots a sched task costs:
     ///
     /// * the RUST runtime creates **none**. `apply_sched_task_sched_policy` ends in
-    ///   `set_default_sched_context`, which MUTATES slot 0 -- so a tiered Rust
-    ///   boot, which opens one executor per tier, spends one reserved slot per
+    ///   `set_default_sched_context`, which MUTATES slot 0 -- so a sched-task Rust
+    ///   boot, which opens one executor per sched task, spends one reserved slot per
     ///   executor and no table entry at all.
-    ///   Issue 2018: a level runner (every tier runner since issue 2016) creates
+    ///   Issue 2018: a level runner (every sched task runner since issue 2016) creates
     ///   **one per level** that declares a policy
     ///   (`set_level_sched_context`, on the core's one executor), on every
-    ///   language, which the tier term below covers.
-    /// * the C / C++ entry pack creates **one per tier**, through
+    ///   language, which the sched task term below covers.
+    /// * the C / C++ entry pack creates **one per sched task**, through
     ///   `nros_cpp_create_sched_context_from_policy` into `__nros_sc_ids[N]`,
-    ///   where `N` is the resolved tier table's length (`LoweredSched::n`).
+    ///   where `N` is the resolved sched task table's length (`LoweredSched::n`).
     ///
     /// So the demand is `1 + <SCs the schedule creates>`: the `1` is slot 0,
     /// which `create_sched_context` reserves for the default Fifo context and
     /// never hands out (it searches `1..MAX_SC`).
     ///
-    /// The second term is bounded by `max(authored tiers, nodes)`, not by the
-    /// authored tier count alone, because a bringup that authors NO tiers does
+    /// The second term is bounded by `max(authored sched_tasks, nodes)`, not by the
+    /// authored sched task count alone, because a bringup that authors NO sched tasks does
     /// not thereby have one: `derive_sched_tasks_from_contracts` synthesises a
-    /// `derived-<node>` tier per schedulable node, so a model with an empty
-    /// `[tasks.*]` can still resolve to one tier per node. Taking the larger
+    /// `derived-<node>` sched task per schedulable node, so a model with an empty
+    /// `[tasks.*]` can still resolve to one sched task per node. Taking the larger
     /// of the two covers both shapes and over-counts for the Rust one, which
     /// is the safe direction.
     ///
@@ -2057,7 +2057,7 @@ pub struct DerivedEntityKnobs {
     /// `NROS_EXECUTOR_MAX_MONITORS` -- contract-monitor RATE/LATENCY rows
     /// (phase-496 W1, issue 1471): `monitor_rows(model).len()`, one row per
     /// contracted publisher with `min_rate_hz` plus latency-only rows from node
-    /// paths. The WHOLE image's count, so an image whose tiers split the table
+    /// paths. The WHOLE image's count, so an image whose sched tasks split the table
     /// over several executors over-counts each one, which is the safe
     /// direction.
     ///
@@ -3262,7 +3262,7 @@ impl EntityInventory {
             components: Vec::new(),
             infra: InfraServices::default(),
             params: ParamDeclarations::Absent,
-            tiers: 0,
+            sched_tasks: 0,
             monitor_rows: None,
             rx_task_budget: None,
             rx_arrival: Vec::new(),
@@ -3329,15 +3329,15 @@ impl EntityInventory {
         &self.params
     }
 
-    /// Issue 1198 -- state the authored tier count for an inventory whose
+    /// Issue 1198 -- state the authored sched task count for an inventory whose
     /// bringup facts arrive by some road other than [`Self::from_model`].
-    pub fn set_sched_tasks(&mut self, tiers: usize) {
-        self.tiers = tiers;
+    pub fn set_sched_tasks(&mut self, sched_tasks: usize) {
+        self.sched_tasks = sched_tasks;
     }
 
-    /// Issue 1198 -- the authored tier count this inventory was given.
-    pub fn tiers(&self) -> usize {
-        self.tiers
+    /// Issue 1198 -- the authored sched task count this inventory was given.
+    pub fn sched_tasks(&self) -> usize {
+        self.sched_tasks
     }
 
     /// phase-496 W1 -- state the contract-monitor row counts
@@ -3446,20 +3446,20 @@ impl EntityInventory {
 
     /// Issue 1676 -- the `/diagnostics` publishers a contracted image's
     /// runtime creates: one per executor that installs a non-empty monitor
-    /// table. Each tier's executor installs its own nodes' rows, so a tiered
-    /// image may arm one per tier; this counts the WORST CASE (every tier) --
+    /// table. Each sched task's executor installs its own nodes' rows, so a sched-task
+    /// image may arm one per sched task; this counts the WORST CASE (every sched task) --
     /// the safe direction for a pool that fails `Full` at boot when short.
     /// Zero for an uncontracted image (no rows, or rows that could not be
     /// counted, which the emitters refuse loudly at codegen).
     ///
-    /// Issue 1729 -- "every tier" is [`Self::executor_bound`], NOT the
-    /// AUTHORED tier count. This read `self.tiers.max(1)`, and a bringup that
+    /// Issue 1729 -- "every sched task" is [`Self::executor_bound`], NOT the
+    /// AUTHORED sched task count. This read `self.sched_tasks.max(1)`, and a bringup that
     /// authors no `[tasks.*]` still runs one executor per `derived-<node>`
-    /// tier (`derive_sched_tasks_from_contracts`): `realtime-rust`'s `derived_bringup`
-    /// derived ONE reporter for its two derived tiers, so the boot tier's
-    /// reporter and `/telem` plus the second tier's reporter filled the three
+    /// sched task (`derive_sched_tasks_from_contracts`): `realtime-rust`'s `derived_bringup`
+    /// derived ONE reporter for its two derived sched tasks, so the boot sched task's
+    /// reporter and `/telem` plus the second sched task's reporter filled the three
     /// publisher slots and `ctrl_pkg`'s `/ctrl` failed
-    /// `PublisherCreationFailed` -- tier `high` never started. Bounded above by
+    /// `PublisherCreationFailed` -- sched task `high` never started. Bounded above by
     /// the row count too: a reporter is armed only by an executor that
     /// installs at least one row.
     pub fn contract_reporters(&self) -> usize {
@@ -3473,14 +3473,14 @@ impl EntityInventory {
     /// is what every per-executor runtime entity (the `/diagnostics` reporter,
     /// a scheduling context) is counted against. ONE spelling: the scheduling
     /// table ([`DerivedEntityKnobs::max_sc`]) already took the larger of the
-    /// authored tier count and the node count, because a bringup that authors
-    /// no tiers can still resolve one `derived-<node>` tier per node, while the
+    /// authored sched task count and the node count, because a bringup that authors
+    /// no sched tasks can still resolve one `derived-<node>` sched task per node, while the
     /// reporter count read the authored count alone -- the 0328 shape, one fact
     /// spelled twice, and the second spelling was the one that was wrong.
-    /// Over-counts an untiered single-executor image, which is the safe
+    /// Over-counts a single-executor single-executor image, which is the safe
     /// direction for a pool that fails at boot when short.
     pub fn executor_bound(&self) -> usize {
-        self.tiers.max(self.components().len())
+        self.sched_tasks.max(self.components().len())
     }
 
     /// phase-412 -- build the inventory from a resolved SystemModel's wiring
@@ -4116,9 +4116,9 @@ impl EntityInventory {
                 if let (None, Some(f)) = (w, frame_of(i)) {
                     inv.reopen_launched_by(&f.launched);
                     inv.infra = inv.infra.union(f.infra);
-                    inv.tiers = inv.tiers.max(f.tiers);
+                    inv.sched_tasks = inv.sched_tasks.max(f.sched_tasks);
                     inv.bridges = union_bridges(&inv.bridges, &f.bridges);
-                    // phase-462 W6c -- its tiers share the runtime's one read
+                    // phase-462 W6c -- its sched tasks share the runtime's one read
                     // task, so the tighter slack binds.
                     inv.tightest_sched_task = SchedTaskSlack::tighter(
                         inv.tightest_sched_task.clone(),
@@ -4156,11 +4156,11 @@ impl EntityInventory {
         (inv, unwired)
     }
 
-    /// Issue 1701 -- adopt a model's [`ImageFrame`]: its families, tiers,
+    /// Issue 1701 -- adopt a model's [`ImageFrame`]: its families, sched tasks,
     /// monitor tables and launch set.
     fn apply_frame(&mut self, f: &ImageFrame) {
         self.infra = f.infra;
-        self.tiers = f.tiers;
+        self.sched_tasks = f.sched_tasks;
         self.monitor_rows = f.monitor_rows;
         self.rx_task_budget = f.rx_task_budget;
         self.rx_arrival = f.rx_arrival.clone();
@@ -4380,10 +4380,10 @@ impl EntityInventory {
         // Issue 1270 -- metadata carries no bringup features, so the model's
         // declaration is what survives; a union, never a max of two counts.
         out.infra = self.infra.union(model.infra);
-        // Issue 1198 -- the tier table is the model's alone (a probe sees no
+        // Issue 1198 -- the sched task table is the model's alone (a probe sees no
         // `system.toml`), so this is a max for the same reason `infra` is a
         // union: whichever side saw the declaration is the one that knows.
-        out.tiers = self.tiers.max(model.tiers);
+        out.sched_tasks = self.sched_tasks.max(model.sched_tasks);
         // phase-496 W1 -- the monitor rows are the model's alone too; a probe
         // sees no contract. Per table, the larger of whichever side counted.
         out.monitor_rows = match (self.monitor_rows, model.monitor_rows) {
@@ -4536,7 +4536,7 @@ impl EntityInventory {
     /// phase-454 W12 -- this inventory with its component ROWS replaced.
     ///
     /// Everything that is not a row rides along: the source line, the
-    /// infrastructure families, the tier count and the parameter declarations.
+    /// infrastructure families, the sched task count and the parameter declarations.
     /// [`crate::contract_join`] needs exactly this -- it rewrites rows and
     /// changes nothing else -- and those four fields are private, deliberately,
     /// so that a caller cannot assemble an inventory that says one thing in its
@@ -4846,8 +4846,8 @@ impl EntityInventory {
         // Issue 1198 -- slot 0 is RESERVED for the default Fifo context
         // (`create_sched_context` searches `1..MAX_SC`), so the demand is one
         // plus whatever the schedule creates. See `DerivedEntityKnobs::max_sc`
-        // for why the second term is the larger of the authored tier count and
-        // the node count rather than the tier count alone.
+        // for why the second term is the larger of the authored sched task count and
+        // the node count rather than the sched task count alone.
         let max_sc = 1 + self.executor_bound().max(max_nodes);
         // phase-496 W1 -- the two monitor tables, straight from the counts.
         let max_monitors = self.monitor_rows.map(|(rows, _)| rows);
@@ -6171,9 +6171,9 @@ impl EntityInventory {
                 // Issue 1198 -- the SCHEDULING half. Slot 0 is reserved for the
                 // default Fifo context, so the demand is 1 + what the schedule
                 // creates; the Rust runtime creates none (it mutates slot 0),
-                // the C/C++ entry pack creates one per tier.
+                // the C/C++ entry pack creates one per sched task.
                 s.push_str(
-                    "# Scheduling-context slots: slot 0 is the reserved default Fifo\n                     # context, plus one per tier the schedule can create. A bringup\n                     # that authors no tiers can still resolve one per node\n                     # (derive_sched_tasks_from_contracts), so the second term is the LARGER\n                     # of the authored tier count and the node count.\n",
+                    "# Scheduling-context slots: slot 0 is the reserved default Fifo\n                     # context, plus one per sched task the schedule can create. A bringup\n                     # that authors no sched tasks can still resolve one per node\n                     # (derive_sched_tasks_from_contracts), so the second term is the LARGER\n                     # of the authored sched task count and the node count.\n",
                 );
                 s.push_str(&format!("set(NROS_DERIVED_EXECUTOR_MAX_SC {})\n", k.max_sc));
                 // phase-496 W1 -- the contract-monitor tables, only when a model
@@ -7079,11 +7079,11 @@ mod tests {
 
     /// Issue 1729 -- `realtime-rust`'s `derived_bringup`, measured: two nodes,
     /// each with one `min_rate_hz` publisher, and NO authored `[tasks.*]`.
-    /// `nros::main!` derives a `derived-<node>` tier per node and installs a
-    /// monitor table -- and arms a `/diagnostics` reporter -- on EACH tier's
-    /// executor, so the image creates four publishers. The authored-tier count
+    /// `nros::main!` derives a `derived-<node>` sched task per node and installs a
+    /// monitor table -- and arms a `/diagnostics` reporter -- on EACH sched task's
+    /// executor, so the image creates four publishers. The authored-sched-task count
     /// (zero) said one reporter, the pool was sized three, and the second
-    /// tier's `/ctrl` failed `PublisherCreationFailed` at boot.
+    /// sched task's `/ctrl` failed `PublisherCreationFailed` at boot.
     #[test]
     fn a_single_executor_multi_node_contract_counts_a_reporter_per_derivable_sched_task() {
         use ros_launch_manifest_model::{PubContract, SystemModel, TopicWiring};
@@ -7111,12 +7111,12 @@ mod tests {
             &nros_orchestration_ir::overlay::LoadedModel::bare(m.clone()),
         )
         .expect("wiring described");
-        assert_eq!(inv.tiers(), 0, "the bringup authors no tiers");
-        assert_eq!(inv.executor_bound(), 2, "one derivable tier per node");
+        assert_eq!(inv.sched_tasks(), 0, "the bringup authors no sched tasks");
+        assert_eq!(inv.executor_bound(), 2, "one derivable sched task per node");
         assert_eq!(
             inv.contract_reporters(),
             2,
-            "one reporter per tier executor"
+            "one reporter per sched task executor"
         );
         let d = inv.derive();
         let k = d.knobs().expect("derived");
@@ -7535,20 +7535,20 @@ contracts:
     }
 
     /// phase-462 W6c -- RFC-0074 constraint 2, `c x FRAMES + floor <= slack`
-    /// of the tightest authored tier, read off the model: refused naming the
-    /// tier, its deadline and budget, the occupancy and the largest burst that
+    /// of the tightest authored sched task, read off the model: refused naming the
+    /// sched task, its deadline and budget, the occupancy and the largest burst that
     /// fits -- with its negative control one floor smaller.
     #[test]
     fn a_burst_longer_than_the_tightest_sched_task_slack_is_refused() {
         // `ctrl`: 10 ms period, 2 ms budget, so 8000 us of slack; `slow` is
         // looser and does not bind.
-        let tiers = "execution:\n  tasks:\n    ctrl: { period: 10ms, budget: 2ms }\n    \
+        let sched_tasks = "execution:\n  tasks:\n    ctrl: { period: 10ms, budget: 2ms }\n    \
                      slow: { period: 100ms, budget: 5ms }\n";
-        let mut inv = arrival_model(tiers);
+        let mut inv = arrival_model(sched_tasks);
         assert_eq!(
             inv.tightest_sched_task,
             Some(SchedTaskSlack {
-                tier: "ctrl".into(),
+                sched_task: "ctrl".into(),
                 deadline_us: 10_000,
                 budget_us: Some(2_000),
                 slack_us: 8_000,
@@ -7564,7 +7564,7 @@ contracts:
             "20 frames back to back",
             "3000 us floor",
             "9000 us",
-            "tier `ctrl`",
+            "sched task `ctrl`",
             "slack of 8000 us (deadline 10000 - budget 2000)",
             "at most 16",
         ] {
@@ -7582,14 +7582,14 @@ contracts:
             panic!("expected a checked declaration, got {ok:?}");
         };
         assert_eq!(*occupancy_us, 7_000);
-        assert!(matches!(slack, SlackVerdict::Within(t) if t.tier == "ctrl"));
+        assert!(matches!(slack, SlackVerdict::Within(t) if t.sched_task == "ctrl"));
         let line = ok.statement().expect("a checked declaration is stated");
         assert!(
-            line.contains("within tier `ctrl`'s slack of 8000 us"),
+            line.contains("within sched task `ctrl`'s slack of 8000 us"),
             "{line}"
         );
 
-        // A tier with no `budget` is checked against its whole deadline -- an
+        // A sched task with no `budget` is checked against its whole deadline -- an
         // upper bound of its slack, and SAID so.
         let mut loose = arrival_model("execution:\n  tasks:\n    ctrl: { period: 10ms }\n");
         loose.set_board_rx_cost(cost(300, Some(3_000)));
@@ -7601,7 +7601,7 @@ contracts:
         assert!(line.contains("UPPER bound"), "{line}");
     }
 
-    /// phase-462 W6c -- an image whose model states no tier timing has no
+    /// phase-462 W6c -- an image whose model states no sched task timing has no
     /// slack to check against. That is STATED (a `NOT CHECKED` line the road
     /// prints), never a guessed slack and never silence; the rate check still
     /// runs.
@@ -7621,10 +7621,10 @@ contracts:
         };
         // 20 x 940 + 11000.
         assert_eq!(*occupancy_us, 29_800);
-        assert!(why.contains("no tier"), "{why}");
+        assert!(why.contains("no sched task"), "{why}");
         let line = check.statement().expect("stated, never silent");
         assert!(line.contains("NOT CHECKED"), "{line}");
-        // A tier with neither deadline nor period has no slack either.
+        // A sched task with neither deadline nor period has no slack either.
         let classless = arrival_model("execution:\n  tasks:\n    ctrl: { class: best_effort }\n");
         assert_eq!(classless.tightest_sched_task, None);
     }
@@ -7643,7 +7643,7 @@ contracts:
         let k = k.knobs().expect("derived");
         assert_eq!(k.max_nodes, 1, "one component is one node slot");
         // Slot 0 is RESERVED for the default Fifo context, so a single-node
-        // image with no authored tiers still needs two.
+        // image with no authored sched tasks still needs two.
         assert_eq!(k.max_sc, 2, "the reserved slot 0 plus this image's one");
 
         let mut three = EntityInventory::new("test");
@@ -7655,24 +7655,28 @@ contracts:
         assert_eq!(k3.max_nodes, 3);
         assert_eq!(k3.max_sc, 4);
 
-        // An AUTHORED tier table outranks the node count when it is larger:
-        // the C/C++ entry pack creates one scheduling context per tier, and a
-        // two-node image on five tiers needs five.
-        let mut tiered = EntityInventory::new("test");
-        tiered.insert(stated("a", "one", &["timer"]));
-        tiered.insert(stated("b", "two", &["timer"]));
-        tiered.set_sched_tasks(5);
+        // An AUTHORED sched task table outranks the node count when it is larger:
+        // the C/C++ entry pack creates one scheduling context per sched task, and a
+        // two-node image on five sched tasks needs five.
+        let mut with_sched_tasks = EntityInventory::new("test");
+        with_sched_tasks.insert(stated("a", "one", &["timer"]));
+        with_sched_tasks.insert(stated("b", "two", &["timer"]));
+        with_sched_tasks.set_sched_tasks(5);
         assert_eq!(
-            tiered.derive().knobs().expect("derived").max_sc,
+            with_sched_tasks.derive().knobs().expect("derived").max_sc,
             6,
-            "five tiers is five contexts, plus the reserved slot 0"
+            "five sched tasks is five contexts, plus the reserved slot 0"
         );
-        // ... and never LOWERS it: a bringup that authors no tiers can still
+        // ... and never LOWERS it: a bringup that authors no sched tasks can still
         // resolve one per node (`derive_sched_tasks_from_contracts`).
         assert_eq!(
-            tiered.derive().knobs().expect("derived").max_nodes,
+            with_sched_tasks
+                .derive()
+                .knobs()
+                .expect("derived")
+                .max_nodes,
             2,
-            "tiers do not change the node table"
+            "sched tasks do not change the node table"
         );
     }
 

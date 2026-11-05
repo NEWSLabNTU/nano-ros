@@ -1,16 +1,16 @@
-# Scheduling-tiers (real-time) showcase workspace
+# Scheduling-sched-tasks (real-time) showcase workspace
 
 A nano-ros **differentiator** demo (phase-263 B2): deployment-time real-time
-scheduling (RFC-0015) — a control loop and a telemetry node on two priority tiers,
+scheduling (RFC-0015) — a control loop and a telemetry node on two priority sched tasks,
 declared in config, no node-code change to retune.
 
 ```
-src/ctrl_pkg/      — Node pkg, 10 ms control loop, callback group `ctrl` → tier `high`.
-src/telem_pkg/     — Node pkg, 100 ms telemetry,  callback group `telem` → tier `low`.
+src/ctrl_pkg/      — Node pkg, 10 ms control loop, callback group `ctrl` → sched task `high`.
+src/telem_pkg/     — Node pkg, 100 ms telemetry,  callback group `telem` → sched task `low`.
 src/demo_bringup/  — Bringup: system.toml declares [tasks.high] / [tasks.low],
                      and boards/native_sim_native_64/ holds the Zephyr image's
                      Kconfig (RFC-0065 D4).
-src/derived_bringup/ — Bringup for the SAME two nodes with NO authored tiers:
+src/derived_bringup/ — Bringup for the SAME two nodes with NO authored sched tasks:
                      launch/system.contract.yaml states their rates and
                      `nros::main!` derives the table. Its one Zephyr image
                      lowers the transport band (its `env` NROS_ZENOH_READ_PRIORITY), so the
@@ -25,16 +25,16 @@ generated staticlib under `build/<coord>/`.
 
 The Zephyr image is also where the `[tasks.*]` block below stops being only a
 runtime schedule and becomes a BUILD input. `nros-board-zephyr` keeps
-`ZephyrBoard::run_sched_tasks` behind a `tiers` cargo feature and the kernel-EDF call
+`ZephyrBoard::run_sched_tasks` behind a `sched_tasks` cargo feature and the kernel-EDF call
 behind `zephyr-edf`; the deleted entry named both by hand, and the generated one
-derives them from this file — `tiers` from the table not collapsing to the single
-`default` tier, `zephyr-edf` from `[tasks.high]` being `class = "real_time"` with
+derives them from this file — `sched_tasks` from the table not collapsing to the single
+`default` sched task, `zephyr-edf` from `[tasks.high]` being `class = "real_time"` with
 a `[tasks.high.zephyr] deadline`. Same predicates their consumers key on, so
 there is nothing to keep in step.
 
-## How tiers are declared
+## How sched tasks are declared
 
-1. The bringup binds each node's callback group to a tier, in the
+1. The bringup binds each node's callback group to a sched task, in the
    `[[component]]` row that declares the node:
 
    ```toml
@@ -51,7 +51,7 @@ there is nothing to keep in step.
    phase-273 W2. The older `[package.metadata.nros.node] callback_groups` form
    in a node's `Cargo.toml` is retired and refused at parse.)
 
-2. The bringup gives each tier its per-RTOS knobs:
+2. The bringup gives each sched task its per-RTOS knobs:
 
    ```toml
    # demo_bringup/system.toml
@@ -61,8 +61,8 @@ there is nothing to keep in step.
    priority = 80
    ```
 
-`nros::main!()` reads both, resolves the 2-tier table, and emits the multi-tier
-`run_sched_tasks` entry — one (POSIX-priority) task per tier — instead of the single-tier
+`nros::main!()` reads both, resolves the 2-sched-task table, and emits the multi-sched-task
+`run_sched_tasks` entry — one (POSIX-priority) task per sched task — instead of the single-sched-task
 `run`. Retune priorities/periods by editing `system.toml`; the node code is
 untouched. On native, priorities are advisory; on an RTOS deploy (FreeRTOS /
 ThreadX) they are real task priorities.

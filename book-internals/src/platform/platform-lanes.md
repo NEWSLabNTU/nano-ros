@@ -158,7 +158,7 @@ through a fixture fan-out it skips and is reported, like every platform lane.
 Build: `just zephyr build-fvp-all` runs the FVP build lanes.
 
 ```bash
-# The workspace C++ RT-tiers Entry — the canonical ASI-consumption
+# The workspace C++ RT-sched-tasks Entry — the canonical ASI-consumption
 # reference (nano_ros_use_board + run_sched_tasks).
 just zephyr build-fvp-ws-entry
 
@@ -179,7 +179,7 @@ Run (once the build artifacts and `ARM_FVP_DIR` / `ARMFVP_BIN_PATH` are
 in place):
 
 ```bash
-# Boot the workspace RT-tiers Entry (prints `[ctrl] tick=` / `[telem] tick=`).
+# Boot the workspace RT-sched-tasks Entry (prints `[ctrl] tick=` / `[telem] tick=`).
 just zephyr run-fvp-ws-entry
 
 # Boot the board-import smoke (prints `nros: smoke ok`).

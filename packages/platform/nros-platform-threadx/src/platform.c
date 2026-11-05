@@ -327,7 +327,7 @@ size_t nros_platform_heap_total_bytes(void) {
  * nros_platform_alloc is the funnel for nano-ros AND zenoh-pico (Mode-A, see
  * the heap-stats comment above) — but the BOARD's own tx_byte_allocate calls do
  * not pass through it and draw from the same pool: the boot app-thread stack,
- * every tier stack, and nros_threadx_alloc. Those sites call this directly. An
+ * every sched task stack, and nros_threadx_alloc. Those sites call this directly. An
  * allocating site that does not note makes the number an UNDER-report, which is
  * the direction that silently under-sizes the pool.
  *

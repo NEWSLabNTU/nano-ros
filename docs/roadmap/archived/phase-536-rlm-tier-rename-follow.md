@@ -1,7 +1,9 @@
 # Phase 536 -- Follow rlm's tier rename
 
-**Status (2026-11-05). IN PROGRESS -- W1 done (#3127); W3 and W4's survey
-done in their pull request; W0 done (the word: sched task); W2 and W4's docs sweep not started.
+**Status (2026-11-05). DONE -- W0 (#3156), W1 (#3127), W2 (#3158), W3 and W4
+(their pull requests). A scheduling tier is a **sched task** in nano-ros's
+own names (RFC-0052 "Names"); the senses of "tier" that stay are listed
+there.
 Raised by the play_launch side, as phase 534 was, so nano-ros knows what is
 moving, what it owns, and where it is on the critical path.** Decided (user,
 2026-11-05): `tier` is renamed, in its own phase on both sides. **The word
@@ -195,8 +197,24 @@ Acceptance:
 
 ### W2 -- nano-ros's own names follow
 
+**Progress (2026-11-05): done in its pull request.** Every own name moved by
+RFC-0052's rule: the C ABI (`nros_native_sched_task_spec_t`,
+`nros_sched_task_memory_t`, `nros_sched_task_backing_t`,
+`nros_board_<rtos>_run_sched_tasks*`, `<rclc/detail/sched_task_memory_<rtos>.h>`),
+C++ (`NativeSchedTaskSpec`, `run_sched_tasks`, PX4's `SchedTaskWorkItem`),
+Kconfig (`NROS_ZEPHYR_MAX_SCHED_TASKS`, `NROS_ZEPHYR_SCHED_TASK_STACK_SIZE`,
+`NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM`), Rust items, generated symbols,
+goldens and names on disk. The old C names, the C++ `NativeTierSpec` /
+`run_tiers`, `TierWorkItem` and the three old headers stay one release as
+aliases that warn with the new name (`NROS_NO_DEPRECATED_TIER_NAMES` drops
+them); `just check cpp` builds both spellings
+(`tests/compile/sched_task_tier_aliases.{c,cpp}`). The old Kconfig symbols
+stay one release as deprecated symbols feeding the new ones' defaults, and
+the configure warns when a `.conf` sets one. The goldens were renamed by the
+table's substitution and regenerate byte for byte.
+
 The table is RFC-0052
-["Names"](../design/0052-system-model-rtos-mapper.md#names-decided-2026-11-05-phase-536-w0).
+["Names"](../../design/0052-system-model-rtos-mapper.md#names-decided-2026-11-05-phase-536-w0).
 
 One vocabulary, as phase 534 W3 decided for `guards`/`ingress`: the own
 names move with rlm's, per W0's table.
@@ -283,6 +301,16 @@ senses listed above and the retired-names tables.
 `tier` from their own user-facing text (`check-terms`); nano-ros bumps to
 them with no change in what it reads. This phase stays open for W0, W2
 and W4's docs sweep.
+
+**Progress (2026-11-05): done in its pull request.** The scheduling sense
+says "sched task" in prose, comments, messages, records and the book: the
+priority plan / record key `sched_tasks`, the sizing descriptor's
+`[[sched_task]]` rows, console markers `sched_task=`, `nros-board-zephyr`'s
+cargo feature `sched_tasks`, and a `[[node_overrides]]` row's `task` key
+(`tier` still read). What `git grep -i tier` still finds outside `archived/`
+is the kept senses (RFC-0052 "Names", "Kept"), the deprecated aliases and
+their tests, the retired-key refusals, schema-4 test inputs, history
+(`docs/issues/`, `CHANGELOG.md`, `changelog.d`) and this record.
 
 **Survey (2026-11-05, W3 branch):** no tracked `system.toml` writes
 `[tiers.*]` or `group_tiers`; comments, examples, the FreeRTOS config

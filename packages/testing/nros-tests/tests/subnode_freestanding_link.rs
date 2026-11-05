@@ -12,7 +12,7 @@
 //!
 //! `workspace-cpp-freertos-realtime-subnode-portable` is that image:
 //! `subnode_pkg::SubNode` IS-A `rclcpp::NodeWithTimers<2>` IS-A `rclcpp::Node`,
-//! two callback groups on two tiers, cross-linked for `thumbv7m-none-eabi` with
+//! two callback groups on two sched tasks, cross-linked for `thumbv7m-none-eabi` with
 //! `arm-none-eabi-g++`. This file reads the linked ELF.
 //!
 //! # Why an ELF read and not a QEMU run
@@ -46,7 +46,7 @@
 //!   `__is_polymorphic` claim, re-measured at LINK scope over the whole binary
 //!   rather than as a `static_assert` in one TU. `-fno-rtti` alone does not
 //!   give this: a polymorphic class still emits a vtable;
-//! * the three sched-context ABI entrypoints — a node whose groups span tiers
+//! * the three sched-context ABI entrypoints — a node whose groups span sched tasks
 //!   takes `ExecutorShape::SchedContexts`, so these are the seam this image
 //!   uses instead of `run_sched_tasks`. If they were dropped, the image would link
 //!   and bind nothing.
@@ -180,7 +180,7 @@ fn the_group_split_entry_links_the_sched_context_abi() -> TestResult<()> {
         panic!("arm-none-eabi-nm failed on {}", binary.display());
     };
 
-    // A node whose groups span tiers cannot take `run_sched_tasks` (per-tier setup
+    // A node whose groups span sched tasks cannot take `run_sched_tasks` (per-sched-task setup
     // functions construct whole NODES), so `Plan::executor_shape` picks
     // `SchedContexts` and the entry binds through these three.
     for sym in [
@@ -191,7 +191,7 @@ fn the_group_split_entry_links_the_sched_context_abi() -> TestResult<()> {
         assert!(
             syms.lines().any(|l| l.ends_with(sym) && l.contains(" T ")),
             "{sym} is not DEFINED in {} — the generated entry calls it, so an \
-             image without it would bind no tier at all; symbols:\n{syms}",
+             image without it would bind no sched task at all; symbols:\n{syms}",
             binary.display()
         );
     }

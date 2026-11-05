@@ -2,12 +2,12 @@
 """No two images, and no two west leaves, may build into one output.
 
 Issue 1582. `realtime-rust` declared `[image.zephyr]` in TWO bringups —
-`demo_bringup` (authored tiers) and `derived_bringup` (derived tiers). A
+`demo_bringup` (authored sched_tasks) and `derived_bringup` (derived sched_tasks). A
 generated entry is keyed on the image ID, `build/<platform>-<rmw>/<id>_entry/`,
 and on the west road that directory IS the Zephyr application, so both west
 leaves configured the same `APPLICATION_SOURCE_DIR`. Each `nros build`
 rewrote its `lib.rs`; whichever ran last decided what BOTH images contained.
-Measured: the authored-tier image `build-ws-rs-realtime-entry-zenoh` carried
+Measured: the authored-sched_task image `build-ws-rs-realtime-entry-zenoh` carried
 the string `derived-telem_node`, and `sched_dims_applied_e2e`'s CorePin and
 EdfDeadline cells failed on an image they never meant to test.
 

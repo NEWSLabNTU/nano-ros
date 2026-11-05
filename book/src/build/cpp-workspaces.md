@@ -341,7 +341,7 @@ appends it to the target's sources, and auto-links every
 selector. The build resolves that into a SystemModel build artifact (under
 `<ws>/build/nros/models/<bringup>/` — never committed; gate
 `check-no-tracked-models`), and the entry bakes from it, so the same artifact
-drives the Linux runtime and every embedded image (contracts, tiers, QoS never
+drives the Linux runtime and every embedded image (contracts, sched tasks, QoS never
 drift). `MODEL` — naming the resolved artifact file directly — is a deprecated
 expert override; the two are mutually exclusive, and a *committed* model is
 banned outright.

@@ -374,7 +374,7 @@ mod tests {
     /// DELIBERATE edit here rather than a silent change of what ships.
     ///
     /// Issue 1286 moved ThreadX, the last family routed to C++. It has the
-    /// shared `run_components` and no `run_sched_tasks`, so a tiered ThreadX C plan
+    /// shared `run_components` and no `run_sched_tasks`, so a sched-task ThreadX C plan
     /// takes the sched-context path rather than being refused.
     #[test]
     fn the_c_board_surface_is_where_this_phase_left_it() {
@@ -388,7 +388,7 @@ mod tests {
 
     /// Issue 1286 — both ThreadX board keys CMake passes answer `pack=c`, with
     /// no routing reported. CMake asks this before any plan exists, which is
-    /// why the answer cannot depend on whether the plan declares tiers.
+    /// why the answer cannot depend on whether the plan declares sched tasks.
     #[test]
     fn a_threadx_c_entry_renders_as_c() {
         for board in ["threadx", "threadx-linux", "rv-virt-threadx"] {

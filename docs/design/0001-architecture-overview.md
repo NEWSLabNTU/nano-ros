@@ -428,7 +428,7 @@ Two dispatch strategies, selected at construction:
 
 ### No async-runtime integration
 
-The executor is driven only by nano-ros's own runtime (tiers on OS threads,
+The executor is driven only by nano-ros's own runtime (sched tasks on OS threads,
 `nros::main!`, the runners) or by a framework whose task mapping
 `nros::main!` generates (RTIC). A foreign async runtime (tokio, Embassy) or
 event loop would decide when callbacks run, so no real-time bound could be

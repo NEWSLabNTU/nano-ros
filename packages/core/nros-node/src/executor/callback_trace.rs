@@ -83,7 +83,7 @@
 //! traced.
 //!
 //! The per-handle settings are keyed by the slot index the events carry, in
-//! one image-wide table: on an image with several executors (tiers) a setting
+//! one image-wide table: on an image with several executors (sched tasks) a setting
 //! applies to that slot index in each of them, which is also how the events
 //! themselves name a callback.
 //!
@@ -187,7 +187,7 @@ pub fn set_trace_sink(sink: Option<TraceSink>) {
 
 /// Install `sink` only when no sink is installed yet; returns whether it was.
 ///
-/// For an entry path that installs a platform DEFAULT sink (the Zephyr tier
+/// For an entry path that installs a platform DEFAULT sink (the Zephyr sched task
 /// runner's `nros_zephyr_trace_marker`): an application that installed its own
 /// sink earlier, for example from a `SYS_INIT` before `main()`, keeps it.
 /// `set_trace_sink` would replace it, and every event after that would go to

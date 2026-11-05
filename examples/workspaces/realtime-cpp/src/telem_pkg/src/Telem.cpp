@@ -1,4 +1,4 @@
-// Telem.cpp — ws-realtime-cpp low-tier telemetry node.
+// Telem.cpp — ws-realtime-cpp low-sched-task telemetry node.
 //
 // Publishes a monotonic Int32 counter on /telem every 100 ms via the typed
 // Publisher<std_msgs::msg::Int32> (generated serialization). Running at 1/10

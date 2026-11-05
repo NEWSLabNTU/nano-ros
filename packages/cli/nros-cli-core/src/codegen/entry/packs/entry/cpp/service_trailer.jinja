@@ -1,10 +1,10 @@
 {#-
   The param-services / lifecycle block that closes a C++ setup function.
 
-  Emitted at most once per TU: on the tiered path only tier 0 carries it,
-  because both are process facts rather than per-tier ones.
+  Emitted at most once per TU: on the in_sched_task path only tier 0 carries it,
+  because both are process facts rather than per-sched-task ones.
 
-  The two arms differ in more than the executor expression — the tiered arm's
+  The two arms differ in more than the executor expression — the sched-task arm's
   non-fatal note names cyclonedds and the single arm's does not. That is one
   comment with two authored spellings, which is this phase's own defect class;
   it is preserved verbatim here because W2.3 is a byte-for-byte conversion, and
@@ -18,7 +18,7 @@
     /* Phase 269 (W1) — param-services: register the runtime get/set surface
      * (seeding: emit_declare_params, pre-construction — issue 0745). */
     {
-{%- if tiered %}
+{%- if in_sched_task %}
         /* Non-fatal (issue 0745): on RMWs without service-server support
          * registration fails — the runtime get/set RPC
          * is unavailable, but the SEEDED store above already carries the launch
@@ -37,10 +37,10 @@
 {%- if services.lifecycle_code is not none %}
     /* Phase 269 (W2) — lifecycle-services: register + autostart. */
     {
-{%- if not tiered %}
+{%- if not in_sched_task %}
         void* __exec = ::rclcpp::global_handle();
         if (__exec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {%- endif %}
-        nros_cpp_lifecycle_autostart({% if tiered %}executor{% else %}__exec{% endif %}, {{ services.lifecycle_code }}u);
+        nros_cpp_lifecycle_autostart({% if in_sched_task %}executor{% else %}__exec{% endif %}, {{ services.lifecycle_code }}u);
     }
 {%- endif -%}

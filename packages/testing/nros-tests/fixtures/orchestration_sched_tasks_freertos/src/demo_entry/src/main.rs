@@ -1,8 +1,8 @@
-//! Phase 228.E.2 fixture — multi-tier FreeRTOS Entry pkg.
+//! Phase 228.E.2 fixture — multi-sched-task FreeRTOS Entry pkg.
 //!
 //! `system.toml` declares `[tasks.high]` + `[tasks.low]`, so `nros::main!()`
-//! resolves a 2-tier table (rtos = `freertos` from `deploy = "freertos"`) and
-//! emits `<Mps2An385>::run_sched_tasks(TIERS, run_plan)` — the FreeRTOS per-tier entry
+//! resolves a 2-sched-task table (rtos = `freertos` from `deploy = "freertos"`) and
+//! emits `<Mps2An385>::run_sched_tasks(SCHED_TASKS, run_plan)` — the FreeRTOS per-sched-task entry
 //! (228.E.2). Keep the Node-pkg rlibs alive against `--gc-sections`.
 
 #![no_std]

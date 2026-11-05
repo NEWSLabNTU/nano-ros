@@ -88,10 +88,10 @@ int nros_zephyr_thread_cpu_pin_tid(void* tid, int cpu) {
 
 /* Pin the CALLING thread. issue 0655: this CANNOT succeed — `k_current_get()`
  * is by definition running, so `cpu_mask_mod` returns -EINVAL every time. It
- * survives only for the BOOT tier, which Zephyr has already started before
+ * survives only for the BOOT sched task, which Zephyr has already started before
  * `run_sched_tasks` ever sees it and which therefore has no create/start window to
  * use. Callers must report the failure honestly rather than retry; spawned
- * tiers go through `nros_zephyr_sched_task_create`'s pinned path instead. */
+ * sched tasks go through `nros_zephyr_sched_task_create`'s pinned path instead. */
 int nros_zephyr_thread_cpu_pin(int cpu) {
 #ifdef CONFIG_SCHED_CPU_MASK
     return k_thread_cpu_pin(k_current_get(), cpu);
@@ -110,10 +110,10 @@ int nros_zephyr_thread_cpu_pin(int cpu) {
 /* issue 0260 / phase-356 — which CPU is the CALLING thread actually on?
  *
  * The pin markers report the kernel's verdict on `k_thread_cpu_pin`, i.e. that
- * the call was ACCEPTED. That is not the same claim as "the tier ran where it
+ * the call was ACCEPTED. That is not the same claim as "the sched task ran where it
  * was asked to", and the difference is invisible on a uniprocessor image, where
  * a pin to cpu 0 is accepted and cpu 0 is the only place it could have run.
- * #260's SMP fixture only earns its cost if the tier reports the CPU it was
+ * #260's SMP fixture only earns its cost if the sched task reports the CPU it was
  * OBSERVED on; otherwise it asserts exactly what the uniprocessor image already
  * asserts.
  *
@@ -126,7 +126,7 @@ int nros_zephyr_thread_cpu_pin(int cpu) {
  * to remove.
  *
  * NOT `arch_proc_id()`, which this used first and which is wrong here: on
- * arm64 it returns the raw MPIDR_EL1, whose bit 31 is RES1, so a tier pinned to
+ * arm64 it returns the raw MPIDR_EL1, whose bit 31 is RES1, so a sched task pinned to
  * core 1 reported `running_on=2147483649` (0x80000001) on the first SMP image
  * that ran. The number a `core` dim is written in is the LOGICAL cpu index, and
  * `arch_curr_cpu()->id` is that. Measured on qemu_cortex_a53 SMP, not reasoned
@@ -179,7 +179,7 @@ int8_t nros_zephyr_exec_unlock(void* m) {
 
 /* issue 0758 W4 — acquire the wall-clock epoch, if this image asked for one.
  *
- * WHY THE DECISION LIVES IN C. Zephyr has TWO tier arms — `zephyr_run_sched_tasks.c`
+ * WHY THE DECISION LIVES IN C. Zephyr has TWO sched task arms — `zephyr_run_sched_tasks.c`
  * for C/C++ and `entry_sched_tasks.rs` for Rust — and they must not drift. Putting
  * `#ifdef CONFIG_NROS_SNTP_EPOCH` in each would guarantee they eventually do,
  * and the Rust one CANNOT hold that ifdef anyway: Kconfig knobs reach the
@@ -242,7 +242,7 @@ void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg) {
     /* WEAK: an image with CTF tracing but without the out-of-tree patch (one
      * that records its own events, as the safety island's RAM backend does)
      * links, and the forward is skipped. A strong reference failed that
-     * image's link the first time it took the tier runner, which is the only
+     * image's link the first time it took the sched task runner, which is the only
      * caller that installs this shim. */
     extern void sys_trace_app_marker(uint32_t, uint32_t) __attribute__((weak));
     if (sys_trace_app_marker != NULL) {
@@ -416,10 +416,10 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
 
 #endif /* CONFIG_NET_SOCKETS */
 
-/* ── issue 1537 — boot report: tiers that meet the transport band ──────
+/* ── issue 1537 — boot report: sched tasks that meet the transport band ──────
  *
  * The Zephyr twin of FreeRTOS's `report_sched_tasks_above_transport` (issue 0623).
- * A tier more urgent than the transport that feeds it starves the RX drain;
+ * A sched task more urgent than the transport that feeds it starves the RX drain;
  * FreeRTOS says so at boot, Zephyr said nothing, so an inversion baked by any
  * road (a derived table from the Kconfig DEFAULTS projection, an authored pin
  * against the wrong image) was silent on the one artifact that runs.
@@ -435,12 +435,12 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
  * `POSIX_TO_ZEPHYR_PRIORITY` (Zephyr `lib/posix/options/pthread.c`), which
  * the kernel applies to the value it returns.
  *
- * ONE implementation serving both tier arms — `entry_sched_tasks.rs` (Rust) and
- * `zephyr_run_sched_tasks.c` (C/C++) call it per tier after their session is open
- * and before any tier spawns — for the reason `nros_zephyr_epoch_acquire_
+ * ONE implementation serving both sched task arms — `entry_sched_tasks.rs` (Rust) and
+ * `zephyr_run_sched_tasks.c` (C/C++) call it per sched task after their session is open
+ * and before any sched task spawns — for the reason `nros_zephyr_epoch_acquire_
  * configured` gives: two copies drift.
  *
- * A REPORT, not an error, as on FreeRTOS: a tier that must preempt transport
+ * A REPORT, not an error, as on FreeRTOS: a sched task that must preempt transport
  * is a legitimate design; choosing it by accident is not. And it says what it
  * could NOT examine: an image whose transport runs at no explicit priority
  * (CONFIG_POSIX_PRIORITY_SCHEDULING / CONFIG_PREEMPT_ENABLED off, or a
@@ -466,16 +466,16 @@ static void nros_zephyr_record_reserved_task(const char* name, int kprio) {
     nros_reserved_task_count++;
 }
 
-/* Judge ONE tier (`prio` is its RAW k_thread priority, smaller = more urgent,
+/* Judge ONE sched task (`prio` is its RAW k_thread priority, smaller = more urgent,
  * negative = cooperative) against the least urgent task of the reserved band.
- * Returns 1 when the tier meets or outranks it, 0 when it is strictly less
- * urgent, -1 when this image has no band to judge against. `tier` need not be
+ * Returns 1 when the sched task meets or outranks it, 0 when it is strictly less
+ * urgent, -1 when this image has no band to judge against. `sched_task` need not be
  * NUL-terminated (a Rust `&str`); `sched_task_len` bounds it. */
-int nros_zephyr_report_sched_task_vs_transport(const char* tier, size_t sched_task_len, int32_t prio) {
+int nros_zephyr_report_sched_task_vs_transport(const char* sched_task, size_t sched_task_len, int32_t prio) {
     if (nros_reserved_task_count == 0) {
         if (!nros_sched_task_report_unchecked_done) {
             nros_sched_task_report_unchecked_done = 1;
-            printk("nros: tier priorities NOT checked against the transport: no task "
+            printk("nros: sched task priorities NOT checked against the transport: no task "
                    "in this image was created at an explicit priority (transport "
                    "priority unapplied - CONFIG_POSIX_PRIORITY_SCHEDULING / "
                    "CONFIG_PREEMPT_ENABLED off - or a transport with no task)\n");
@@ -495,7 +495,7 @@ int nros_zephyr_report_sched_task_vs_transport(const char* tier, size_t sched_ta
     }
     if (!nros_sched_task_report_header_done) {
         nros_sched_task_report_header_done = 1;
-        printk("nros: tier priority meets the transport band (RAW Zephyr k_thread "
+        printk("nros: sched task priority meets the transport band (RAW Zephyr k_thread "
                "units, smaller is more urgent):\n");
         printk("  transport:");
         for (int i = 0; i < nros_reserved_task_count; i++) {
@@ -507,12 +507,12 @@ int nros_zephyr_report_sched_task_vs_transport(const char* tier, size_t sched_ta
                nros_reserved_tasks_dropped > 0 ? " - more tasks not recorded" : "");
         printk("  Intended? then nothing to do. Both numbers are RAW Zephyr k_thread "
                "priorities, the units a `[tasks.<name>.zephyr] priority` is written "
-               "in. If NOT intended: a tier at or above the transport starves the RX "
-               "drain (issues 0506, 0623); a derived tier is allocated below it out of "
+               "in. If NOT intended: a sched task at or above the transport starves the RX "
+               "drain (issues 0506, 0623); a derived sched task is allocated below it out of "
                "the image's own .config (issues 1508, 1537).\n");
     }
-    printk("  tier `%.*s` at %d <= %d - this tier ties or PREEMPTS transport I/O\n", (int)sched_task_len,
-           tier != NULL ? tier : "?", (int)prio, floor);
+    printk("  sched task `%.*s` at %d <= %d - this sched task ties or PREEMPTS transport I/O\n", (int)sched_task_len,
+           sched_task != NULL ? sched_task : "?", (int)prio, floor);
     return 1;
 }
 
@@ -834,12 +834,12 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
     printk("[nros] %s=%lld,%lld\n", tag, (long long)a, (long long)b);
 }
 
-/* ── RT-tier task spawn (issue #128 / RFC-0015 Model 1) ─────────────
+/* ── RT-sched task spawn (issue #128 / RFC-0015 Model 1) ─────────────
  *
- * One `k_thread` per priority tier, RAW Zephyr priority (negatives =
+ * One `k_thread` per priority sched task, RAW Zephyr priority (negatives =
  * cooperative — the `[tasks.<name>.zephyr].priority` value verbatim,
  * which the POSIX pthread shim above cannot express). Static pool:
- * tier count is a compile-time property of the baked system, so a
+ * sched task count is a compile-time property of the baked system, so a
  * small fixed pool avoids CONFIG_DYNAMIC_THREAD. C-ABI-shaped so the
  * phase-274 W3 C/C++ zephyr `run_sched_tasks` can reuse it.
  */
@@ -850,24 +850,24 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
 
 /* Floor of 1, and the reason zero is NOT the answer here is MEASURED, not
  * assumed -- issue 1131 left this knob unruled precisely because a plausible
- * argument said 0 (64 KiB of .noinit reclaimed by a tierless image, the shape
+ * argument said 0 (64 KiB of .noinit reclaimed by a single-executor image, the shape
  * issue 1033 ruled zero-legal for XRCE_MAX_SUBSCRIBERS). That argument rested
  * on a premise that is false: the stacks are NOT present in every Zephyr image.
  *
  * `nros_sched_task_stacks` is the only referent of this array, and the sole path that
  * reaches it is `nros_zephyr_sched_task_create`. In an image that declares no
- * tier nothing calls that function, so --gc-sections (on in every Zephyr link)
+ * sched task nothing calls that function, so --gc-sections (on in every Zephyr link)
  * drops the section. Measured over the 91 built images in this tree: 4 carry
  * `nros_sched_task_stacks`, 87 do not, and the 4 are EXACTLY the four realtime-entry
- * images that declare tiers -- the correspondence is total, with no image
+ * images that declare sched tasks -- the correspondence is total, with no image
  * paying for a pool it does not use. On mps2_an385 the section is listed in the
  * map's "Discarded input sections" at 0x10100 (65,792 bytes); on native_sim the
- * tiered image carries 0x10000 and the tierless one has no such symbol.
+ * sched-task image carries 0x10000 and the single-executor one has no such symbol.
  *
  * So 0 buys nothing the linker does not already give, and in the one class of
- * image that would define it -- a tiered one -- it makes `nros_sched_task_index >=
- * NROS_ZEPHYR_MAX_SCHED_TASKS` true for the FIRST tier, so every spawn fails and the
- * system runs with no tier at all. The saving a tiered image can actually want
+ * image that would define it -- a sched-task one -- it makes `nros_sched_task_index >=
+ * NROS_ZEPHYR_MAX_SCHED_TASKS` true for the FIRST sched task, so every spawn fails and the
+ * system runs with no sched task at all. The saving a sched-task image can actually want
  * is a SMALLER pool (2 or 3 slots, 16 KiB each), which this floor permits: it
  * forecloses nothing, which is the trap issue 1015's first fix fell into. */
 #if NROS_ZEPHYR_MAX_SCHED_TASKS < 1
@@ -878,14 +878,14 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
 #define NROS_ZEPHYR_SCHED_TASK_STACK_SIZE 16384
 #endif
 
-/* Issue 2084 -- the tier pool follows its own knob,
+/* Issue 2084 -- the sched task pool follows its own knob,
  * CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM, which defaults to
  * CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM. Before, only `nros_thread_stacks` moved:
  * a Rust level image on the MR-CANHUBK344 with one 64 KiB level slot kept the
  * slot in SRAM and overflowed RAM by 30,028 B, while 40 KiB of DTCM sat free
  * beside it. A level stack is the same tenant as a task stack (CPU-private,
  * never a DMA target), so it moves with the task stacks unless an image whose
- * DTCM is already claimed turns the tier knob off. Same section, same
+ * DTCM is already claimed turns the sched task knob off. Same section, same
  * NOLOAD placement, same devicetree check (above). */
 #if defined(NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM) && NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
 Z_KERNEL_STACK_ARRAY_DEFINE_IN(nros_sched_task_stacks, NROS_ZEPHYR_MAX_SCHED_TASKS, NROS_ZEPHYR_SCHED_TASK_STACK_SIZE,
@@ -894,10 +894,10 @@ Z_KERNEL_STACK_ARRAY_DEFINE_IN(nros_sched_task_stacks, NROS_ZEPHYR_MAX_SCHED_TAS
 K_THREAD_STACK_ARRAY_DEFINE(nros_sched_task_stacks, NROS_ZEPHYR_MAX_SCHED_TASKS, NROS_ZEPHYR_SCHED_TASK_STACK_SIZE);
 #endif
 
-/* The stack a spawned tier thread ACTUALLY gets.
+/* The stack a spawned sched task thread ACTUALLY gets.
  *
  * `k_thread_create` below is passed NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, not the
- * tier's declared `stack_bytes` — the pool slots are fixed at compile time, so
+ * sched task's declared `stack_bytes` — the pool slots are fixed at compile time, so
  * a declared size can only be checked against the slot (and warned about),
  * never honoured. That gap is issue 1232. Anything deriving a bound FROM the stack has to ask for this
  * number rather than the declared one, or it measures against a stack that
@@ -906,19 +906,19 @@ size_t nros_zephyr_sched_task_stack_size(void) {
     return (size_t)NROS_ZEPHYR_SCHED_TASK_STACK_SIZE;
 }
 
-/* The stack the BOOT tier runs on.
+/* The stack the BOOT sched task runs on.
  *
- * The boot tier is not spawned — it runs on the Zephyr `main()` thread, which
+ * The boot sched task is not spawned — it runs on the Zephyr `main()` thread, which
  * the kernel created with CONFIG_MAIN_STACK_SIZE before any nano-ros code ran.
- * The tier spec's `stack_bytes` describes a thread that was never created, so
- * this is the only honest answer for that tier. */
+ * The sched task spec's `stack_bytes` describes a thread that was never created, so
+ * this is the only honest answer for that sched task. */
 size_t nros_zephyr_main_stack_size(void) {
     return (size_t)CONFIG_MAIN_STACK_SIZE;
 }
 
 /* Issue 1232 — the stack the CALLING thread was created with, as the KERNEL
  * records it (`stack_info.size`), or 0 when this image keeps no stack info
- * (CONFIG_THREAD_STACK_INFO off). Asked by a tier thread to say what it really
+ * (CONFIG_THREAD_STACK_INFO off). Asked by a sched task thread to say what it really
  * got, so "the declared size reached the thread" is a printed fact rather than
  * an inference from the code that created it. */
 size_t nros_zephyr_current_stack_size(void) {
@@ -933,21 +933,21 @@ static int nros_sched_task_index;
 
 static void nros_zephyr_sched_task_trampoline(void* entry, void* arg, void* unused) {
     (void)unused;
-    printk("[nros] tier task entered\n");
+    printk("[nros] sched task entered\n");
     void* (*fn)(void*) = (void* (*)(void*))entry;
     (void)fn(arg);
-    printk("[nros] tier task RETURNED (unexpected)\n");
+    printk("[nros] sched task RETURNED (unexpected)\n");
 }
 
 /**
- * Spawn one tier task. `entry(arg)` runs on a pool thread at the RAW
+ * Spawn one sched task. `entry(arg)` runs on a pool thread at the RAW
  * Zephyr `priority` (cooperative if negative). `name` is the thread's
- * debug name (may be NULL). `stack_bytes` is the tier's DECLARED stack
+ * debug name (may be NULL). `stack_bytes` is the sched task's DECLARED stack
  * (0 = undeclared): the pool slots are compile-time sized
  * (K_THREAD_STACK_ARRAY_DEFINE), so the request cannot resize them — a
- * request past the slot prints LOUD and the tier runs on the slot
+ * request past the slot prints LOUD and the sched task runs on the slot
  * anyway (phase-302 W2 / issue 0262: previously the knob was silently
- * ignored). Raise CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE to honor bigger tiers.
+ * ignored). Raise CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE to honor bigger sched tasks.
  * Returns 0 on success, -1 when the pool is exhausted (more than
  * CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS spawns).
  */
@@ -963,7 +963,7 @@ int nros_zephyr_sched_task_create(void* (*entry)(void*), void* arg, int32_t prio
         return -1;
     }
     if (stack_bytes > (size_t)NROS_ZEPHYR_SCHED_TASK_STACK_SIZE) {
-        printk("nros: tier stack request %u > fixed slot %u tier=`%s` — running with the "
+        printk("nros: sched task stack request %u > fixed slot %u sched_task=`%s` — running with the "
                "slot; raise CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE\n",
                (unsigned)stack_bytes, (unsigned)NROS_ZEPHYR_SCHED_TASK_STACK_SIZE,
                (name != NULL) ? name : "?");
@@ -975,11 +975,11 @@ int nros_zephyr_sched_task_create(void* (*entry)(void*), void* arg, int32_t prio
 }
 
 /**
- * Issue 1232 — spawn one tier task over the CALLER's thread object and stack:
- * the generated entry's `K_THREAD_STACK_DEFINE` sized from the tier's declared
+ * Issue 1232 — spawn one sched task over the CALLER's thread object and stack:
+ * the generated entry's `K_THREAD_STACK_DEFINE` sized from the sched task's declared
  * `stack_bytes` (`<rclc/detail/sched_task_memory_zephyr.h>`), so the declared size is
  * the size the thread GETS, rather than the fixed pool slot above whatever the
- * tier declared. `stack_size` is the usable size (`K_THREAD_STACK_SIZEOF`).
+ * sched task declared. `stack_size` is the usable size (`K_THREAD_STACK_SIZEOF`).
  * Same priority / name / pin behaviour as the pool path.
  */
 int nros_zephyr_sched_task_create_static(void* (*entry)(void*), void* arg, int32_t priority,
@@ -995,7 +995,7 @@ int nros_zephyr_sched_task_create_static(void* (*entry)(void*), void* arg, int32
 
 /**
  * Issue 1232 — the Rust `nros::main!` road's spawn: the STACK is the entry's
- * (a 64-byte-aligned `SchedTaskMemory` static sized from the tier's declared
+ * (a 64-byte-aligned `SchedTaskMemory` static sized from the sched task's declared
  * `stack_bytes`), the thread object comes from the pool (a Rust entry cannot
  * size `struct k_thread`). `stack_bytes` is the raw buffer; the kernel's
  * reserved area is taken out of it here, where K_THREAD_STACK_RESERVED is
@@ -1007,7 +1007,7 @@ int nros_zephyr_sched_task_create_stack(void* (*entry)(void*), void* arg, int32_
                                        const char* name, void* stack, size_t stack_bytes,
                                        uint32_t core_plus1, int* pin_rc) {
 #if defined(CONFIG_USERSPACE) || defined(CONFIG_MPU_STACK_GUARD) || defined(CONFIG_HW_STACK_PROTECTION)
-    printk("nros: tier `%s` — this image enforces kernel stack objects; a Rust-entry stack "
+    printk("nros: sched task `%s` — this image enforces kernel stack objects; a Rust-entry stack "
            "cannot be used, refused (issue 1232)\n",
            (name != NULL) ? name : "?");
     return -1;
@@ -1025,26 +1025,26 @@ int nros_zephyr_sched_task_create_stack(void* (*entry)(void*), void* arg, int32_
 #endif
 }
 
-/* The one place a tier thread is created, for both stack sources above. */
+/* The one place a sched task thread is created, for both stack sources above. */
 static int nros_zephyr_sched_task_thread_start(struct k_thread* thread, k_thread_stack_t* stack,
                                          size_t stack_size, void* (*entry)(void*), void* arg,
                                          int32_t priority, const char* name, uint32_t core_plus1,
                                          int* pin_rc) {
 
-    /* issue 0655 — a tier that declares a `core` is created SUSPENDED
+    /* issue 0655 — a sched task that declares a `core` is created SUSPENDED
      * (`K_FOREVER`), pinned, then started.
      *
      * Zephyr's cpu mask is settable only on a thread that is "prevented from
      * running": `cpu_mask_mod` returns -EINVAL otherwise, and under
      * CONFIG_SCHED_CPU_MASK_PIN_ONLY it additionally asserts
      * "Running threads cannot change CPU pin". The previous code created every
-     * tier with K_NO_WAIT and then had the tier pin ITSELF from its own entry
+     * sched task with K_NO_WAIT and then had the sched task pin ITSELF from its own entry
      * — i.e. always from a running thread — so the accept arm could not be
      * reached on any image, SMP or not. Creating suspended is the whole fix:
      * the window between create and start is the only place this API works.
      *
      * An undeclared core keeps K_NO_WAIT, so the common path is unchanged and
-     * no tier pays a start-up round trip for a knob it does not use. */
+     * no sched task pays a start-up round trip for a knob it does not use. */
     k_timeout_t start_delay = (core_plus1 != 0u) ? K_FOREVER : K_NO_WAIT;
     k_tid_t tid = k_thread_create(thread, stack, stack_size, nros_zephyr_sched_task_trampoline,
                                   (void*)entry, arg, NULL, (int)priority, 0, start_delay);
@@ -1059,7 +1059,7 @@ static int nros_zephyr_sched_task_thread_start(struct k_thread* thread, k_thread
          * accept/fallback marker text (it must stay in lockstep with
          * `nros_tests::output::ZEPHYR_CORE_PIN_*`). The pin is attempted
          * whether or not it succeeds, and the thread starts either way — a
-         * tier that cannot be pinned still runs, unpinned and loudly, which
+         * sched task that cannot be pinned still runs, unpinned and loudly, which
          * is the RFC-0052 fail-loud contract. */
         int rc = nros_zephyr_thread_cpu_pin_tid(tid, (int)(core_plus1 - 1u));
         if (pin_rc != NULL) {
@@ -1071,9 +1071,9 @@ static int nros_zephyr_sched_task_thread_start(struct k_thread* thread, k_thread
 }
 
 /**
- * Set the CALLING thread's priority to a raw Zephyr priority. The tier
- * boot thread (`rust_main`) runs `tiers[0]` itself, so it must adopt that
- * tier's declared priority instead of keeping the main-thread default.
+ * Set the CALLING thread's priority to a raw Zephyr priority. The sched task
+ * boot thread (`rust_main`) runs `sched_tasks[0]` itself, so it must adopt that
+ * sched task's declared priority instead of keeping the main-thread default.
  */
 void nros_zephyr_set_current_priority(int32_t priority) {
     k_thread_priority_set(k_current_get(), (int)priority);

@@ -288,7 +288,7 @@ log_header "E. no producer: a resolve that MOVES reaches the build (issue 1729)"
 # The generated Rust Zephyr entry runs no `nano_ros_entry()`, so the seed is the
 # fragment's ONLY producer. Before issue 1729 it seeded only an absent fragment
 # and `resolved.cmake` was no configure dependency, so the first configure's
-# answer was the image's answer forever: `nros build` re-resolved a derived-tier
+# answer was the image's answer forever: `nros build` re-resolved a derived-sched-task
 # image from three publisher slots to four, ninja ran no configure, and the
 # image failed `PublisherCreationFailed` at boot.
 

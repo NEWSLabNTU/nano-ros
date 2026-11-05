@@ -94,10 +94,10 @@ threads = true
 # 100, ThreadX 14. Zephyr cannot, and that is a property of the port rather
 # than of anyone's diligence (issue 0766).
 #
-# Tiers here are RAW `k_thread` priorities passed straight to
+# Sched tasks here are RAW `k_thread` priorities passed straight to
 # `k_thread_create`. The transport is NOT: its read/lease tasks are created
 # through Zephyr's POSIX layer, so the priority travels a chain — a normalised
-# band, then SCHED_RR, then k_thread — before it lands anywhere a tier can be
+# band, then SCHED_RR, then k_thread — before it lands anywhere a sched task can be
 # compared against.
 #
 # THE CHAIN IS WRITTEN ONCE, IN RFC-0079 §4.1, AND IS NOT RESTATED HERE.

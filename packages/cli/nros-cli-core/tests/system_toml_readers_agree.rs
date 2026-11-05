@@ -12,7 +12,7 @@
 //! parse (shared keys through rlm's struct) with this test, because rlm's
 //! struct is rlm's view of the file and not nano-ros's schema. So for every
 //! tracked `system.toml`, each SHARED key must mean the same to both:
-//! `[system] rmw / domain_id / locator`, `[[component]]` identity, tier
+//! `[system] rmw / domain_id / locator`, `[[component]]` identity, sched task
 //! binding and parameters, `[[bridge]]`, `[host.*]`, `[tasks.*]`.
 //!
 //! It also keeps W7's boundary: rlm's own projection (`apply_to_launch`) puts
@@ -66,7 +66,7 @@ struct Shared {
     hosts: Vec<String>,
     /// name, class, deadline_policy, then spin_period / period / budget /
     /// deadline in µs
-    tiers: Vec<String>,
+    sched_tasks: Vec<String>,
 }
 
 fn rlm_view(text: &str) -> Result<Shared, String> {
@@ -97,7 +97,7 @@ fn rlm_view(text: &str) -> Result<Shared, String> {
             })
             .collect(),
         hosts: c.host.iter().map(|(k, h)| format!("{k} {h:?}")).collect(),
-        tiers: c
+        sched_tasks: c
             .tasks
             .iter()
             .map(|(k, t)| {
@@ -132,7 +132,7 @@ fn nros_view(text: &str) -> Result<Shared, String> {
                     Some(&b.name),
                     Some(&b.pkg),
                     Some(&b.class),
-                    b.group_tiers,
+                    b.group_tasks,
                     b.params,
                     b.params_files
                 )
@@ -149,8 +149,8 @@ fn nros_view(text: &str) -> Result<Shared, String> {
             })
             .collect(),
         hosts: s.host.iter().map(|(k, h)| format!("{k} {h:?}")).collect(),
-        tiers: s
-            .tiers
+        sched_tasks: s
+            .sched_tasks
             .iter()
             .map(|(k, t)| {
                 format!(
@@ -196,7 +196,7 @@ fn both_readers_mean_the_same_by_every_shared_key() {
             }
         };
         compared += 1;
-        with_sched_tasks += usize::from(!nros.tiers.is_empty());
+        with_sched_tasks += usize::from(!nros.sched_tasks.is_empty());
         with_components += usize::from(!nros.components.is_empty());
         if nros != rlm {
             disagreements.push(format!("{rel}:\n  nano-ros {nros:?}\n  rlm      {rlm:?}"));
@@ -211,7 +211,7 @@ fn both_readers_mean_the_same_by_every_shared_key() {
     assert!(compared > 100, "compared only {compared} files");
     assert!(
         with_sched_tasks >= 5,
-        "only {with_sched_tasks} files declare tiers"
+        "only {with_sched_tasks} files declare sched tasks"
     );
     assert!(
         with_components >= 50,

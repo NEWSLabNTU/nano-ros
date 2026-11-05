@@ -552,14 +552,14 @@ pub(crate) unsafe fn executor_init_on_support(
     if session_ptr.is_null() {
         return RCL_RET_NOT_INIT;
     }
-    // Issue 1970 -- an image whose executors are sized per tier carries no
-    // inline backing, so there is nothing here to carve one from. The tier
+    // Issue 1970 -- an image whose executors are sized per sched task carries no
+    // inline backing, so there is nothing here to carve one from. The sched task
     // runner opens every executor such an image has, each over its own backing.
     let Some(inline_sizing) = nros_node::INLINE_SIZING else {
         nros_log::log_error!(
             nros_log::get_logger("nros-c"),
-            "rclc_executor_init: this image sizes its executors per tier (issue 1970) and \
-             carries no inline executor backing; its executors are opened by the tier \
+            "rclc_executor_init: this image sizes its executors per sched task (issue 1970) and \
+             carries no inline executor backing; its executors are opened by the sched task \
              runner"
         );
         return RCL_RET_ERROR;
@@ -5548,7 +5548,7 @@ pub unsafe extern "C" fn rclc_executor_create_sched_context(
             RCL_RET_OK
         }
         // issue 1198 — NAME THE KNOB. `NROS_EXECUTOR_MAX_SC` is derived per
-        // image since phase-448 W6 (slot 0 plus one per tier the schedule can
+        // image since phase-448 W6 (slot 0 plus one per sched task the schedule can
         // create), and the one thing that derivation cannot see is a caller
         // creating scheduling contexts BY HAND through this function. A bare
         // `RCLC_RET_FULL` made that under-count silent, which is exactly the

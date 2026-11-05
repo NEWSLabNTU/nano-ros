@@ -142,7 +142,7 @@ where
 /// the expanded source name. A rule whose `from`/`to` fails to expand is
 /// skipped (never masks the name expansion itself).
 ///
-/// This is the single-tier spelling: **everything passed here is
+/// This is the single-sched-task spelling: **everything passed here is
 /// AUTHORITATIVE**, and precedence among the rules is iterator order. When a
 /// caller has rules from more than one channel, it must say which channel
 /// outranks which — [`resolve_name_layered`] is that call, and it is the only
@@ -179,7 +179,7 @@ where
 /// share is this function, so the tier is an ARGUMENT here rather than a field
 /// there. That also makes the guarantee structural instead of documentary: a
 /// caller cannot promote a fallback rule by declaring it first, because the two
-/// tiers are different parameters and the loop below can never interleave them.
+/// sched tasks are different parameters and the loop below can never interleave them.
 ///
 /// # The rule this encodes
 ///
@@ -230,7 +230,7 @@ where
 }
 
 /// [`resolve_name_layered`]'s SUBSTITUTION, without its expansion: the name the
-/// first matching rule (authoritative tier first) sends `source` to, or `None`
+/// first matching rule (authoritative sched task first) sends `source` to, or `None`
 /// when no rule matches or `source` does not expand.
 ///
 /// For a caller that has never expanded names and must not start: on `None` it

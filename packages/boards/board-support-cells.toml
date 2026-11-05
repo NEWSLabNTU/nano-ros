@@ -223,7 +223,7 @@ comment = '''
 // `zephyr-lang-rust` cannot compile the `zephyr` crate for any board whose
 // devicetree has gpio nodes (issue 0432), so a rust cell here would not
 // build either, and `BuildOnly` promises that it does. An absent row with
-// the reason recorded beats a tier that lies — see this module's header.
+// the reason recorded beats a sched_task that lies — see this module's header.
 //
 // Zenoh only for the delivery cells: cyclone and xrce delivery on this
 // board are untried, and the honest record of "nobody has attempted it" is
@@ -812,7 +812,7 @@ comment = '''
 
 // ── phase-511 A1–A6: Example cells for tests that ran unmodeled ─────
 // Each test existed and ran before these cells did; the cell is what puts
-// it in a tier and binds it (RFC-0051 §7c).
+// it in a sched_task and binds it (RFC-0051 §7c).
 // A1 — `parameters_roundtrip`, the C/C++ parameter-store examples.
 '''
 at = ["Linux", "C", "Zenoh", "Params", "Example"]
@@ -916,7 +916,7 @@ comment = '''
 //
 // The example cells have no runtime test at all: phase-298 W4 retired the
 // legacy talker tests, whose images have no ethernet device and so could
-// never publish. The runtime FVP artifact is the two-tier workspace entry.
+// never publish. The runtime FVP artifact is the two-sched_task workspace entry.
 '''
 at = ["Fvp", "Cpp", "Cyclonedds", "Pubsub", "Example"]
 status = '''
@@ -935,7 +935,7 @@ status = '''CarveOut("zenoh-pico needs POSIX API the FVP board conf doesn't enab
 
 [[cell]]
 comment = '''
-// phase-511 B2 — that workspace entry, the two-tier realtime-cpp image,
+// phase-511 B2 — that workspace entry, the two-sched_task realtime-cpp image,
 // answered by `fvp_runtime_ws`.
 '''
 at = ["Fvp", "Cpp", "Cyclonedds", "RealtimeSchedTasks", "Workspace"]
@@ -1084,7 +1084,7 @@ comment = '''
 // table marked the nuttx-arm C++ and all three nuttx-riscv EntryPubsub
 // rows `Runtime`, but no EntryPubsub fixture or lane exists at those
 // coordinates — the only nuttx workspace rows besides the C arm entry
-// are the REALTIME-TIERS entries (the fixtures.toml realtime rows +
+// are the REALTIME-SCHED_TASKS entries (the fixtures.toml realtime rows +
 // workspace-rust-nuttx-riscv-realtime), which satisfied
 // the (platform, lang) coverage gate and masked the gap. The riscv C
 // runtime proof that exists is the STANDALONE talker example
@@ -1306,7 +1306,7 @@ status = 'Runtime'
 [[cell]]
 comment = '''
 
-// Realtime tiers + multihost.
+// Realtime sched_tasks + multihost.
 '''
 at = ["Linux", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
 status = 'Runtime'
@@ -1366,7 +1366,7 @@ status = 'Runtime'
 [[cell]]
 comment = '''
 // issue 0636 gap 2 — the Rust arm. `run_sched_tasks_entry` was exported and
-// reachable and called by nothing, so the boot-tier fix on this board was
+// reachable and called by nothing, so the boot-sched_task fix on this board was
 // reasoned onto Rust rather than measured. This cell measures it.
 '''
 at = ["FreertosMps2", "Rust", "Zenoh", "RealtimeSchedTasks", "Workspace"]
@@ -1382,7 +1382,7 @@ status = 'Runtime'
 
 [[cell]]
 comment = '''
-// phase-297 W5 (RFC-0053) — ThreadX multi-tier run_sched_tasks acceptance:
+// phase-297 W5 (RFC-0053) — ThreadX multi-sched-task run_sched_tasks acceptance:
 // hosted simulation (pthread-backed ThreadX, host binary + NSOS host
 // sockets), port 9091 = port_of(ThreadxLinux, Rust, RealtimeSchedTasks).
 '''

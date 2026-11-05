@@ -29,8 +29,8 @@ and those nodes are the only reason the bringup has `[tasks.*]` and
 | Image | Launch | What it runs |
 | --- | --- | --- |
 | `linux_s1` | `s1.launch.xml` | RFC-0002 S1: `attitude` (1 kHz, 300 us of work, 1 ms deadline) and `load` (5 ms of CPU at 10 Hz) on two derived levels |
-| `linux_s1_flat` | `s1_flat.launch.xml` | the same two nodes bound to one authored tier: the negative control |
-| `linux_budget` | `budget.launch.xml` | `load_capped` (10 ms of CPU per release) on the `capped` tier, 2 ms per 10 ms under `SCHED_DEADLINE`, beside the boot level `load_boot` |
+| `linux_s1_flat` | `s1_flat.launch.xml` | the same two nodes bound to one authored sched task: the negative control |
+| `linux_budget` | `budget.launch.xml` | `load_capped` (10 ms of CPU per release) on the `capped` sched task, 2 ms per 10 ms under `SCHED_DEADLINE`, beside the boot level `load_boot` |
 
 `attitude` prints one `[attitude] window=` line per 1000 releases, with how
 many release gaps exceeded period plus deadline. `load` prints one

@@ -8,9 +8,9 @@ find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
 
-# High-tier control node. Publishes a counter on /ctrl every 10 ms.
+# High-sched-task control node. Publishes a counter on /ctrl every 10 ms.
 # CALLBACK_GROUPS declares the "ctrl" group ID; system.toml
-# [[node_overrides]] maps it to the [tasks.high] tier (RFC-0015 §4.2).
+# [[node_overrides]] maps it to the [tasks.high] sched task (RFC-0015 §4.2).
 nano_ros_auto_add_library(ctrl_lib STATIC src/Ctrl.cpp)
 
 nros_components_register_node(ctrl_lib

@@ -360,7 +360,7 @@ fn codegen_system_model_mode_plan_matches_system_toml() {
     let ws = temp_root("model-eq");
     write_fixture(&ws);
     // The component still DECLARES its callback group (group declaration is
-    // component metadata; the model's execution.bindings ASSIGNS tiers).
+    // component metadata; the model's execution.bindings ASSIGNS sched tasks).
     let system_toml = ws.join("demo_bringup/system.toml");
     let mut t = fs::read_to_string(&system_toml).unwrap();
     t = t.replace(
@@ -388,7 +388,7 @@ structure:
       pkg: talker_pkg
       exec: talker
 execution:
-  tiers:
+  tasks:
     high:
       spin_period: 1000us
       posix:
@@ -408,7 +408,7 @@ execution:
     let out_toml = temp_root("model-eq-out-toml");
     codegen_system::run(args(&ws, &out_toml)).expect("discovery-mode bake");
 
-    // The equivalent model: same tiers, binding expressed the model way.
+    // The equivalent model: same sched tasks, binding expressed the model way.
     let model_path = ws.join("system_model.yaml");
     fs::write(
         &model_path,
@@ -416,7 +416,7 @@ execution:
   version: 1
 structure: {}
 execution:
-  tiers:
+  tasks:
     high:
       spin_period: 1000us
       posix:
@@ -466,7 +466,7 @@ fn codegen_system_model_mode_unknown_binding_fails() {
   version: 1
 structure: {}
 execution:
-  tiers:
+  tasks:
     rt:
       posix:
         priority: 20
@@ -646,7 +646,7 @@ structure:
       pkg: imu_pkg
       exec: imu
 execution:
-{deploy}  tiers:
+{deploy}  tasks:
     high:
       spin_period: 1000us
       posix:
@@ -697,8 +697,8 @@ execution:
         n.params
             .contains(&("rate_hz".to_string(), "10".to_string()))
     );
-    assert_eq!(n.group_tiers.get("ctrl").map(String::as_str), Some("high"));
-    assert_eq!(plan.tiers["high"].spin_period_us, Some(1000));
+    assert_eq!(n.group_tasks.get("ctrl").map(String::as_str), Some("high"));
+    assert_eq!(plan.sched_tasks["high"].spin_period_us, Some(1000));
 
     // Negative control: the switches come from the overlay and nowhere else.
     fs::remove_file(tmp.join("nros.toml")).unwrap();

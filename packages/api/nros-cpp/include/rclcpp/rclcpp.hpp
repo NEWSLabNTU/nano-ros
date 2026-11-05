@@ -1265,7 +1265,7 @@ template <typename T = void> class MultiThreadedExecutorRefused {
 /// than on an unknown identifier. Declaring one is the compile error. An
 /// executor dispatches on ONE task with run-to-completion callbacks (RFC-0002),
 /// and nano-ros starts no threads behind the caller's back, so a pool of
-/// workers is not a shape it has. Parallelism is per TIER — one executor per
+/// workers is not a shape it has. Parallelism is per SCHED TASK — one executor per
 /// RTOS task, declared in the system description — not per callback group.
 using MultiThreadedExecutor = MultiThreadedExecutorRefused<>;
 

@@ -65,10 +65,10 @@ config NROS_RMW_XRCE
     depends on NET_SOCKETS
     # phase-521 W4 (RFC-0113 D4): the executor parks on the session's socket
     # beside an eventfd its wake object carries, so an arrival ends the park
-    # and the tier never blocks inside the transport's receive. Without
-    # eventfds the session reports no handle and the tier keeps the old wait.
+    # and the sched task never blocks inside the transport's receive. Without
+    # eventfds the session reports no handle and the sched task keeps the old wait.
     # One eventfd per executor that parks on a socket (CONFIG_ZVFS_EVENTFD_MAX,
-    # default 1); a further tier falls back the same way. ZVFS is implied too:
+    # default 1); a further sched task falls back the same way. ZVFS is implied too:
     # ZVFS_EVENTFD sits inside `if ZVFS`, and on the 3.7 line nothing else
     # turns ZVFS on in a sockets-only image (`EVENTFD`, the POSIX option that
     # selects both, is refused for native_sim).
@@ -487,7 +487,7 @@ config NROS_ZEPHYR_STACKS_IN_DTCM
       Put the nano-ros task stack array (`nros_thread_stacks`, the transport's
       tasks) in the SoC's data tightly-coupled memory instead of SRAM, using
       the linker region the devicetree's `zephyr,memory-region = "DTCM"`
-      generates. The tier/level stacks follow by default through
+      generates. The sched_task/level stacks follow by default through
       NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM.
 
       Off by default because a DTCM is a property of the part, not of Zephyr:
@@ -521,7 +521,7 @@ config NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM
     bool "Place nano-ros sched task (level) stacks in DTCM"
     default NROS_ZEPHYR_TIER_STACKS_IN_DTCM
     help
-      Put the tier/level thread stacks in DTCM, beside the task stacks: the
+      Put the sched_task/level thread stacks in DTCM, beside the task stacks: the
       shim's pool (`nros_sched_task_stacks`, NROS_ZEPHYR_MAX_SCHED_TASKS slots of
       NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, used by a level whose entry declares no
       stack, as every Rust `nros::main!` derived level does) and a generated
@@ -563,7 +563,7 @@ config NROS_ZEPHYR_TASK_SLOTS
       reconnect creates no thread), plus a tx-flush task when
       NROS_ZENOH_TX_BATCH is on, and the Zephyr road compiles zenoh-pico with
       one session (`ZPICO_MAX_SESSIONS` 1). So 2 with batching and 1 without.
-      Tier tasks do not count: they have their own pool
+      SchedTask tasks do not count: they have their own pool
       (NROS_ZEPHYR_MAX_SCHED_TASKS). What does count and is not derived: one slot
       per `Executor::open_threaded` the application calls. State the knob to
       cover those. Other backends keep 4: no measurement says what they
@@ -587,14 +587,14 @@ config NROS_ZEPHYR_MAX_SCHED_TASKS
     help
       NROS_ZEPHYR_MAX_SCHED_TASKS in zephyr/nros_platform_zephyr_shims.c — how many
       `[tasks.*]` threads `nros_zephyr_sched_task_create` can spawn from its
-      static pool. A tier past the pool fails to spawn and the image logs
+      static pool. A sched_task past the pool fails to spawn and the image logs
       "pool exhausted? CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS". Total cost is
       NROS_ZEPHYR_MAX_SCHED_TASKS x NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, paid only by an
-      image that declares a tier: --gc-sections drops the pool from every
+      image that declares a sched_task: --gc-sections drops the pool from every
       tierless image (issue 1131 measured 87 of 91 images carrying none).
 
       The floor of 1 is the pool's own (issue 1015): zero would make the FIRST
-      tier's spawn fail. Before this symbol existed the C define had no
+      sched_task's spawn fail. Before this symbol existed the C define had no
       producer at all, so the diagnostic named a knob nobody could set
       (phase-412).
 
@@ -614,8 +614,8 @@ config NROS_ZEPHYR_SCHED_TASK_STACK_SIZE
     default 16384
     range 512 16777216
     help
-      The stack a spawned level's (or tier's) worker thread gets when none
-      of its members states a stack and the tier declares no `stack_bytes`
+      The stack a spawned level's (or sched task's) worker thread gets when none
+      of its members states a stack and the sched_task declares no `stack_bytes`
       (phase-509 P9, RFC-0108 D3). A level's stack is derived from its
       members: the largest member's stack plus the worker's own frame
       (NROS_ZEPHYR_LEVEL_WORKER_FRAME). A member that states nothing takes
@@ -662,12 +662,12 @@ config NROS_EXECUTOR_MAX_LEVELS
     range 1 32
     help
       The image's cap on preemption levels (RFC-0108 D4 rule 4,
-      phase-509 P5). The tier derivation reads it from this image's
+      phase-509 P5). The sched_task derivation reads it from this image's
       .config (nros dev codegen entry --dotconfig, and nros::main! through
       DOTCONFIG): one level per distinct contract rank, merged from the
       least urgent end until the count fits, every member that loses its
       rank reported as a `level-budget` degradation in
-      nros_priority_plan.json. Authored tiers are pins and count toward
+      nros_priority_plan.json. Authored sched_tasks are pins and count toward
       the cap. The Zephyr runner spawns one worker thread per level
       (phase-509 P9), so this also bounds the image's level threads.
 
@@ -1451,7 +1451,7 @@ config NROS_EXECUTOR_EXTRA_SESSIONS
     help
       Issue 1982 -- slots for sessions a node opens on an RMW backend other
       than the primary's (NodeBuilder::rmw, open_multi), per executor (per
-      tier), at most one per node slot. A slot is the backend's session
+      sched_task), at most one per node slot. A slot is the backend's session
       (528 bytes on thumbv7em with zenoh) plus a 168-byte id.
 
       `-1` derives it from the image's backend count (the sizing
@@ -1557,7 +1557,7 @@ config NROS_EXECUTOR_MAX_SC
       searches 1..MAX_SC), plus one per scheduling context the schedule can
       create. The Rust runtime creates NONE -- apply_sched_task_sched_policy ends
       in set_default_sched_context, which mutates slot 0 -- while the C/C++
-      entry pack creates one per tier. A stated number wins, in both
+      entry pack creates one per sched_task. A stated number wins, in both
       directions. The old default was 8 for every image whatever it
       declared, worth 112 bytes a slot in the executor backing on
       thumbv7m-none-eabi. Too small is NodeError::NoSchedContextSlot at
@@ -1615,7 +1615,7 @@ config NROS_EXECUTOR_RUNTIME_REMAPS
 
       `-1` derives it: 16 on a target with process arguments (Linux, NuttX),
       0 on bare metal (Zephyr, FreeRTOS, ThreadX), which has no argv. A rule
-      costs 404 bytes on a 32-bit target, per executor (per tier). At 0,
+      costs 404 bytes on a 32-bit target, per executor (per sched_task). At 0,
       declare_remap is refused by name (RemapRefused::NoRuntimeTable,
       NROS_CPP_RET_FULL); state a count here to restore runtime slots.
 
@@ -2725,7 +2725,7 @@ config NROS_ZENOH_READ_PRIORITY
       one left.
 
       Why 200: on a CONFIG_NUM_PREEMPT_PRIORITIES=15 image it maps to SCHED_RR
-      10, i.e. k_thread 4 — ABOVE the tier pool ([8,14] in
+      10, i.e. k_thread 4 — ABOVE the sched_task pool ([8,14] in
       [board.priority_plan]) and below the main thread. That ordering is
       CHOSEN, not inherited: it is what the board's priority plan already
       declares, and what FreeRTOS ships (app 3 / transport 4). The reverse
@@ -2740,10 +2740,10 @@ config NROS_ZENOH_READ_PRIORITY
       POSIX branch configured only the stack size, carrying a comment about
       SCHED_FIFO needing root — true of Linux, meaningless on Zephyr — so the
       transport tasks ran at whatever default applied and issue 0506's
-      question (what preempts the RT tiers under load?) could not be asked.
+      question (what preempts the RT sched_tasks under load?) could not be asked.
 
-      Raising it above your RT tiers means transport preempts control;
-      lowering it below means a busy tier can starve the RX drain, which
+      Raising it above your RT sched_tasks means transport preempts control;
+      lowering it below means a busy sched_task can starve the RX drain, which
       stalls publishers on retransmission timeouts. Both are real failure
       modes with real cost — see issues 0506 and 0623 before changing it.
 
@@ -2758,7 +2758,7 @@ config NROS_ZENOH_RX_TASK_BUDGET_FRAMES
       processes back to back before it rests NROS_ZENOH_RX_TASK_BUDGET_REST_US.
       Bounds the task's contiguous CPU occupancy at FRAMES x per-frame cost
       (~0.94 ms a frame measured on FreeRTOS mps2-an385), so a flood cannot
-      stall the tiers below the transport band. It defers rather than drops:
+      stall the sched_tasks below the transport band. It defers rather than drops:
       unread bytes stay in the socket and TCP backpressures the sender.
 
       -1 (and unset) states nothing: the budget derived from the contract's
@@ -2768,7 +2768,7 @@ config NROS_ZENOH_RX_TASK_BUDGET_FRAMES
       0 is REFUSED -- a budget of zero frames is not "unlimited". Too large a
       budget is worse than none on stall COUNT (128 frames: 12.5 stalls/run
       against 9.1 unbounded), so size it so FRAMES x cost fits the tightest
-      tier's slack. Maps to Z_RX_TASK_BUDGET_FRAMES.
+      sched_task's slack. Maps to Z_RX_TASK_BUDGET_FRAMES.
 
 
 # prompt: zenoh read task rest after a full budget (us, -1 = derive)

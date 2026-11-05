@@ -1,8 +1,8 @@
 //! The record of an entry's thread priorities (RFC-0079 section 5: "the
 //! result lands in a build artifact").
 //!
-//! `nros codegen entry` resolves a tier table, and on a derived or allocated
-//! tier it computes the numbers itself, from the contract's ranks and the
+//! `nros codegen entry` resolves a sched task table, and on a derived or allocated
+//! sched task it computes the numbers itself, from the contract's ranks and the
 //! image's priority plan. Until this module the only trace of that was one
 //! stderr line, so nothing downstream could hold the image to the plan, and
 //! code outside nano-ros that runs threads of its own (a supervisor, a
@@ -12,11 +12,11 @@
 //! Two files, written beside the generated TU:
 //!
 //! * [`RECORD_JSON`] - the plan (direction, range, reserved bands, `pool.app`,
-//!   where it came from), each tier (priority, how it was decided, members),
+//!   where it came from), each sched task (priority, how it was decided, members),
 //!   each ranked node (priority, period, deadline) and the degradations. Read
 //!   by `scripts/check-sched-task-priority-plan-image.py --derived-plan`.
-//! * [`RECORD_HEADER`] - the same plan and tier priorities as C macros, so a
-//!   thread the application creates is placed from the plan the tiers were
+//! * [`RECORD_HEADER`] - the same plan and sched task priorities as C macros, so a
+//!   thread the application creates is placed from the plan the sched tasks were
 //!   allocated from.
 
 use std::path::Path;
@@ -37,22 +37,22 @@ pub const RECORD_HEADER: &str = "nros_priority_plan.h";
 
 /// Everything the record is made of.
 pub struct PriorityRecord<'a> {
-    /// The tier key (`zephyr`, `freertos`, ...).
+    /// The sched task key (`zephyr`, `freertos`, ...).
     pub sched_task_key: &'a str,
-    /// The plan the tiers were allocated out of: the image's own, or the tier
+    /// The plan the sched tasks were allocated out of: the image's own, or the sched task
     /// key's projection when the caller had no `.config`.
     pub plan: &'a PriorityPlan,
     /// True when `plan` was resolved from the image (`--dotconfig`).
     pub from_image: bool,
-    /// The resolved tier table, `None` when the entry has no tiers.
-    pub tiers: Option<&'a ResolvedSchedTaskTable>,
+    /// The resolved sched task table, `None` when the entry has no sched tasks.
+    pub sched_tasks: Option<&'a ResolvedSchedTaskTable>,
     /// What the derivation did, `None` when nothing was derived.
     pub derivation: Option<&'a EntryDerivation>,
-    /// phase-509 P7 -- the entry's nodes (bare names, as the tier table names
+    /// phase-509 P7 -- the entry's nodes (bare names, as the sched task table names
     /// its members), for `NROS_ENTRY_LEVEL_OF_<node>`.
     pub nodes: &'a [&'a str],
     /// Issue 2019 -- the stacks the entry's nodes state (`system.toml
-    /// [[component]] stack_bytes`), by bare name: each tier's largest member
+    /// [[component]] stack_bytes`), by bare name: each sched task's largest member
     /// stack, which `mem-report --levels` derives the level's stack from.
     pub member_stacks: &'a [(&'a str, u32)],
 }
@@ -65,24 +65,24 @@ fn direction_str(d: Direction) -> &'static str {
 }
 
 impl PriorityRecord<'_> {
-    /// How the tier's priority was decided.
-    fn origin(&self, tier: &str) -> &'static str {
+    /// How the sched task's priority was decided.
+    fn origin(&self, sched_task: &str) -> &'static str {
         if let Some(d) = self.derivation {
-            if d.derived_sched_tasks.iter().any(|t| t == tier) {
+            if d.derived_sched_tasks.iter().any(|t| t == sched_task) {
                 return "derived";
             }
-            if d.allocated_sched_tasks.iter().any(|t| t == tier) {
+            if d.allocated_sched_tasks.iter().any(|t| t == sched_task) {
                 return "allocated";
             }
         }
-        if tier == DEFAULT_SCHED_TASK {
+        if sched_task == DEFAULT_SCHED_TASK {
             "default"
         } else {
             "authored"
         }
     }
 
-    /// Does the tier host a node allocated above the transport?
+    /// Does the sched task host a node allocated above the transport?
     fn above_transport(&self, members: &[(String, String)]) -> bool {
         self.derivation.is_some_and(|d| {
             members.iter().any(|(n, _)| {
@@ -93,12 +93,12 @@ impl PriorityRecord<'_> {
         })
     }
 
-    /// The tiers that run, `(name, priority)`, skipping the synthesised
-    /// single `default` tier (an entry with it runs no tier at all).
+    /// The sched tasks that run, `(name, priority)`, skipping the synthesised
+    /// single `default` sched task (an entry with it runs no sched task at all).
     fn running_sched_tasks(&self) -> Vec<(&str, i64)> {
-        match self.tiers {
+        match self.sched_tasks {
             Some(t) if !t.is_single_sched_task() => t
-                .tiers
+                .sched_tasks
                 .iter()
                 .map(|r| (r.name.as_str(), r.priority))
                 .collect(),
@@ -107,21 +107,21 @@ impl PriorityRecord<'_> {
     }
 
     /// phase-509 P7 (RFC-0108 D8.1) -- each node's level, 0 the most urgent,
-    /// and the level count. Until P9 a level is a tier: a running tier's
-    /// level is its urgency order among the running tiers, equal priorities
-    /// in table order, which is the order the runner's tier array has and
+    /// and the level count. Until P9 a level is a sched task: a running sched task's
+    /// level is its urgency order among the running sched tasks, equal priorities
+    /// in table order, which is the order the runner's sched task array has and
     /// the rule its `nros_cpp_sched_task_level` / `nros::sched_task_level_by` applies. An
-    /// entry with no running tier is one level, every node at 0. A node no
-    /// running tier holds has no level here.
+    /// entry with no running sched task is one level, every node at 0. A node no
+    /// running sched task holds has no level here.
     pub fn node_levels(&self) -> (u8, Vec<(String, u8)>) {
-        let tiers = self.running_sched_tasks();
+        let sched_tasks = self.running_sched_tasks();
         let smaller = self.plan.direction == Direction::SmallerIsUrgent;
-        if tiers.is_empty() {
+        if sched_tasks.is_empty() {
             return (1, self.nodes.iter().map(|n| (n.to_string(), 0)).collect());
         }
         let level_of = |i: usize| -> u8 {
-            let mine = tiers[i].1;
-            let ahead = tiers
+            let mine = sched_tasks[i].1;
+            let ahead = sched_tasks
                 .iter()
                 .enumerate()
                 .filter(|&(j, &(_, q))| {
@@ -131,12 +131,12 @@ impl PriorityRecord<'_> {
             u8::try_from(ahead).unwrap_or(u8::MAX)
         };
         let mut out: Vec<(String, u8)> = Vec::new();
-        if let Some(t) = self.tiers {
-            for (i, r) in t.tiers.iter().enumerate() {
+        if let Some(t) = self.sched_tasks {
+            for (i, r) in t.sched_tasks.iter().enumerate() {
                 for (node, _group) in &r.members {
                     let l = level_of(i);
                     match out.iter_mut().find(|(n, _)| n == node) {
-                        // A node with groups on several tiers: its most
+                        // A node with groups on several sched tasks: its most
                         // urgent level.
                         Some((_, have)) => *have = (*have).min(l),
                         None => out.push((node.clone(), l)),
@@ -145,10 +145,10 @@ impl PriorityRecord<'_> {
             }
         }
         out.sort();
-        (u8::try_from(tiers.len()).unwrap_or(u8::MAX), out)
+        (u8::try_from(sched_tasks.len()).unwrap_or(u8::MAX), out)
     }
 
-    /// The most urgent of the running tiers' priorities, in the plan's
+    /// The most urgent of the running sched tasks' priorities, in the plan's
     /// direction.
     pub fn most_urgent_sched_task(&self) -> Option<i64> {
         let ps = self.running_sched_tasks().into_iter().map(|(_, p)| p);
@@ -166,9 +166,9 @@ impl PriorityRecord<'_> {
             .iter()
             .map(|(k, b)| (k.clone(), json!([b.lo, b.hi])))
             .collect();
-        let tiers: Vec<Value> = match self.tiers {
+        let sched_tasks: Vec<Value> = match self.sched_tasks {
             Some(t) if !t.is_single_sched_task() => t
-                .tiers
+                .sched_tasks
                 .iter()
                 .map(|r| {
                     json!({
@@ -227,7 +227,7 @@ impl PriorityRecord<'_> {
                 "source": self.plan.source,
                 "from_image": self.from_image,
             },
-            "tiers": tiers,
+            "sched_tasks": sched_tasks,
             "most_urgent_sched_task": self.most_urgent_sched_task(),
             "above_transport": self.derivation.map(|d| d.above_transport.clone()).unwrap_or_default(),
             "supervisor_priority": self.derivation.and_then(|d| d.supervisor_priority),
@@ -250,8 +250,8 @@ impl PriorityRecord<'_> {
         let mut h = String::new();
         h.push_str(
             "/* Generated by `nros codegen entry` - DO NOT EDIT.\n * \
-             The entry's priority plan and tier priorities (RFC-0079), the same\n * \
-             numbers the generated entry runs its tiers at. Record: ",
+             The entry's priority plan and sched task priorities (RFC-0079), the same\n * \
+             numbers the generated entry runs its sched tasks at. Record: ",
         );
         h.push_str(RECORD_JSON);
         h.push_str(" */\n#ifndef NROS_PRIORITY_PLAN_H\n#define NROS_PRIORITY_PLAN_H\n\n");
@@ -270,9 +270,9 @@ impl PriorityRecord<'_> {
             define(&format!("NROS_PRIORITY_PLAN_RESERVED_{n}_LO"), b.lo);
             define(&format!("NROS_PRIORITY_PLAN_RESERVED_{n}_HI"), b.hi);
         }
-        let tiers = self.running_sched_tasks();
-        define("NROS_ENTRY_SCHED_TASK_COUNT", tiers.len() as i64);
-        for (name, p) in &tiers {
+        let sched_tasks = self.running_sched_tasks();
+        define("NROS_ENTRY_SCHED_TASK_COUNT", sched_tasks.len() as i64);
+        for (name, p) in &sched_tasks {
             define(
                 &format!("NROS_ENTRY_SCHED_TASK_{}_PRIORITY", macro_name(name)),
                 *p,
@@ -293,7 +293,7 @@ impl PriorityRecord<'_> {
             );
         }
         // RFC-0079 section 6: the priority for the supervisor of the
-        // supervised deadlines, above the transport wherever the tiers sit.
+        // supervised deadlines, above the transport wherever the sched tasks sit.
         if let Some(p) = self.derivation.and_then(|d| d.supervisor_priority) {
             define("NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY", p);
         }
@@ -301,7 +301,7 @@ impl PriorityRecord<'_> {
         h
     }
 
-    /// The operator's view, one line per tier and per ranked node.
+    /// The operator's view, one line per sched task and per ranked node.
     pub fn summary_lines(&self) -> Vec<String> {
         let mut out = vec![format!(
             "priority plan ({}, {}): {} - {}",
@@ -311,18 +311,18 @@ impl PriorityRecord<'_> {
             if self.from_image {
                 "the image's own"
             } else {
-                "the tier key's projection"
+                "the sched task key's projection"
             }
         )];
-        if let Some(t) = self.tiers.filter(|t| !t.is_single_sched_task()) {
-            for r in &t.tiers {
+        if let Some(t) = self.sched_tasks.filter(|t| !t.is_single_sched_task()) {
+            for r in &t.sched_tasks {
                 out.push(format!(
-                    "  tier {}: priority {} ({}{})",
+                    "  sched task {}: priority {} ({}{})",
                     r.name,
                     r.priority,
                     self.origin(&r.name),
                     if self.above_transport(&r.members) {
-                        ", above the transport: the tier names it"
+                        ", above the transport: the sched task names it"
                     } else {
                         ""
                     }
@@ -355,10 +355,10 @@ impl PriorityRecord<'_> {
                         .map(|m| format!("{} (rank {})", m.node, m.rank))
                         .collect::<Vec<_>>()
                         .join(", "),
-                    if level.tiers.is_empty() {
+                    if level.sched_tasks.is_empty() {
                         String::new()
                     } else {
-                        format!(" - authored tier {}", level.tiers.join(", "))
+                        format!(" - authored sched task {}", level.sched_tasks.join(", "))
                     }
                 ));
             }
@@ -434,7 +434,7 @@ mod tests {
         }
     }
 
-    fn tier(name: &str, priority: i64) -> ResolvedSchedTask {
+    fn sched_task(name: &str, priority: i64) -> ResolvedSchedTask {
         ResolvedSchedTask {
             name: name.to_string(),
             priority,
@@ -499,13 +499,13 @@ mod tests {
         );
     }
 
-    /// One allocated tier on the island's plan: the record names its origin
+    /// One allocated sched task on the island's plan: the record names its origin
     /// and the ranks it came from, the header the numbers the entry runs at.
     #[test]
     fn an_allocated_sched_task_is_recorded_with_its_plan_and_ranks() {
         let plan = island_plan();
         let table = ResolvedSchedTaskTable {
-            tiers: vec![tier("mrm", 5)],
+            sched_tasks: vec![sched_task("mrm", 5)],
         };
         let derivation = EntryDerivation {
             allocated_sched_tasks: vec!["mrm".to_string()],
@@ -521,7 +521,7 @@ mod tests {
             sched_task_key: "zephyr",
             plan: &plan,
             from_image: true,
-            tiers: Some(&table),
+            sched_tasks: Some(&table),
             derivation: Some(&derivation),
             nodes: &["mrm_handler"],
             member_stacks: &[],
@@ -529,8 +529,8 @@ mod tests {
         let j = rec.to_json();
         assert_eq!(j["plan"]["reserved"]["transport"], json!([4, 4]));
         assert_eq!(j["plan"]["app"], json!([5, 14]));
-        assert_eq!(j["tiers"][0]["origin"], "allocated");
-        assert_eq!(j["tiers"][0]["priority"], 5);
+        assert_eq!(j["sched_tasks"][0]["origin"], "allocated");
+        assert_eq!(j["sched_tasks"][0]["priority"], 5);
         assert_eq!(j["most_urgent_sched_task"], 5);
         assert_eq!(j["ranks"][1]["period_us"], 33_333);
         let h = rec.to_header();
@@ -548,14 +548,14 @@ mod tests {
             h.contains("#define NROS_ENTRY_SCHED_TASKS_MOST_URGENT_PRIORITY (5)"),
             "{h}"
         );
-        assert_eq!(j["tiers"][0]["above_transport"], true);
+        assert_eq!(j["sched_tasks"][0]["above_transport"], true);
         assert_eq!(j["supervisor_priority"], 4);
         assert_eq!(j["levels"], json!([]), "nothing banded in this fixture");
         assert!(
             h.contains("#define NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY (4)"),
             "{h}"
         );
-        // phase-509 P7: one tier is one level, and it hosts the handler.
+        // phase-509 P7: one sched task is one level, and it hosts the handler.
         assert!(h.contains("#define NROS_ENTRY_LEVEL_COUNT (1)"), "{h}");
         assert!(
             h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_HANDLER (0)"),
@@ -564,15 +564,15 @@ mod tests {
     }
 
     /// phase-509 P7 (RFC-0108 D8.1) -- one `NROS_ENTRY_LEVEL_OF_<node>` per
-    /// node: a running tier's level is its urgency order (Zephyr, smaller is
+    /// node: a running sched task's level is its urgency order (Zephyr, smaller is
     /// urgent), whatever its place in the table; an entry with no running
-    /// tier is one level with every node at 0.
+    /// sched task is one level with every node at 0.
     #[test]
     fn the_header_names_each_nodes_level() {
         let plan = island_plan();
-        let mut handler = tier("hi", 5);
+        let mut handler = sched_task("hi", 5);
         handler.members = vec![("mrm_handler".to_string(), "main".to_string())];
-        let mut ops = tier("lo", 7);
+        let mut ops = sched_task("lo", 7);
         ops.members = vec![
             (
                 "mrm_emergency_stop_operator".to_string(),
@@ -583,15 +583,15 @@ mod tests {
                 "main".to_string(),
             ),
         ];
-        // Table order is raw priority descending: the less urgent tier first.
+        // Table order is raw priority descending: the less urgent sched task first.
         let table = ResolvedSchedTaskTable {
-            tiers: vec![ops, handler],
+            sched_tasks: vec![ops, handler],
         };
         let rec = PriorityRecord {
             sched_task_key: "zephyr",
             plan: &plan,
             from_image: true,
-            tiers: Some(&table),
+            sched_tasks: Some(&table),
             derivation: None,
             nodes: &[
                 "mrm_handler",
@@ -614,7 +614,7 @@ mod tests {
             h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_COMFORTABLE_STOP_OPERATOR (1)"),
             "{h}"
         );
-        // Issue 2019 -- each tier carries its largest stated member stack,
+        // Issue 2019 -- each sched task carries its largest stated member stack,
         // what `mem-report --levels` derives the level's stack from.
         let stated = PriorityRecord {
             member_stacks: &[
@@ -624,18 +624,18 @@ mod tests {
             ..rec
         };
         let j = stated.to_json();
-        let members: Vec<u64> = j["tiers"]
+        let members: Vec<u64> = j["sched_tasks"]
             .as_array()
             .unwrap()
             .iter()
             .map(|t| t["member_stack_bytes"].as_u64().unwrap())
             .collect();
         assert_eq!(members, [5000, 0], "{j}");
-        let tierless = PriorityRecord {
-            tiers: None,
+        let single_executor = PriorityRecord {
+            sched_tasks: None,
             ..stated
         };
-        let h = tierless.to_header();
+        let h = single_executor.to_header();
         assert!(h.contains("#define NROS_ENTRY_LEVEL_COUNT (1)"), "{h}");
         assert!(
             h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_EMERGENCY_STOP_OPERATOR (0)"),
@@ -687,7 +687,7 @@ mod tests {
             sched_task_key: "zephyr",
             plan: &plan,
             from_image: true,
-            tiers: None,
+            sched_tasks: None,
             derivation: Some(&derivation),
             nodes: &[],
             member_stacks: &[],
@@ -716,25 +716,25 @@ mod tests {
         );
     }
 
-    /// No tiers (or only the synthesised `default` one): the plan is still
-    /// recorded, the tier count is 0 and there is no most-urgent macro for a
-    /// caller to mistake for a tier.
+    /// No sched tasks (or only the synthesised `default` one): the plan is still
+    /// recorded, the sched task count is 0 and there is no most-urgent macro for a
+    /// caller to mistake for a sched task.
     #[test]
     fn a_single_executor_entry_records_the_plan_and_no_sched_task() {
         let plan = island_plan();
         let table = ResolvedSchedTaskTable {
-            tiers: vec![tier(DEFAULT_SCHED_TASK, 0)],
+            sched_tasks: vec![sched_task(DEFAULT_SCHED_TASK, 0)],
         };
         let rec = PriorityRecord {
             sched_task_key: "zephyr",
             plan: &plan,
             from_image: true,
-            tiers: Some(&table),
+            sched_tasks: Some(&table),
             derivation: None,
             nodes: &[],
             member_stacks: &[],
         };
-        assert_eq!(rec.to_json()["tiers"], json!([]));
+        assert_eq!(rec.to_json()["sched_tasks"], json!([]));
         let h = rec.to_header();
         assert!(h.contains("#define NROS_ENTRY_SCHED_TASK_COUNT (0)"), "{h}");
         assert!(!h.contains("MOST_URGENT"), "{h}");

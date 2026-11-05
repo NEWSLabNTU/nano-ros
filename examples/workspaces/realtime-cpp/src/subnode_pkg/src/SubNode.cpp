@@ -13,7 +13,7 @@
 // Both timers publish typed std_msgs::msg::Int32 (generated serialization).
 //
 // This is the capability the per-node-name table CANNOT express: two callbacks of
-// ONE node scheduled on two different tiers (RFC-0047 motivation §2).
+// ONE node scheduled on two different sched tasks (RFC-0047 motivation §2).
 
 #include "subnode_pkg/SubNode.hpp"
 
@@ -43,7 +43,7 @@ SubNode::SubNode(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<2>(h, "sub_n
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
 
-    // Two callback groups — declared in code (rclcpp shape), tier-assigned in
+    // Two callback groups — declared in code (rclcpp shape), sched-task-assigned in
     // system.toml group_tiers (the package carries NO tier reference — portable).
     auto ctrl_grp = create_callback_group("ctrl");
     auto telem_grp = create_callback_group("telem");
@@ -51,9 +51,9 @@ SubNode::SubNode(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<2>(h, "sub_n
     ctrl_pub_ = create_publisher_in<std_msgs::msg::Int32>("/ctrl");
     telem_pub_ = create_publisher_in<std_msgs::msg::Int32>("/telem");
 
-    // Timer in ctrl group  → bound to high tier (10 ms) via bind_group_sched seed.
+    // Timer in ctrl group  → bound to high sched task (10 ms) via bind_group_sched seed.
     create_timer_in_group<SubNode, &SubNode::on_ctrl>(ctrl_grp, 10);
-    // Timer in telem group → bound to low tier (100 ms) via bind_group_sched seed.
+    // Timer in telem group → bound to low sched task (100 ms) via bind_group_sched seed.
     create_timer_in_group<SubNode, &SubNode::on_telem>(telem_grp, 100);
 }
 

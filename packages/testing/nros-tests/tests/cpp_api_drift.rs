@@ -119,7 +119,7 @@ fn examples_cpp_have_no_retired_symbols() {
 /// config headers" — was issue 1031, fixed. The excuse outlived the defect by
 /// three months.
 ///
-/// `?` rather than a bare `assert!`, because the tier policy the old code threw
+/// `?` rather than a bare `assert!`, because the sched task policy the old code threw
 /// away already lives in `require_compile_check`: a hard failure in every run
 /// (issue 1758; `[SKIPPED]` under ~~`NROS_FIXTURES_OPTIONAL=1`~~ before). This
 /// restores that policy

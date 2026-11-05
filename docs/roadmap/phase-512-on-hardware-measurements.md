@@ -54,7 +54,7 @@ stock `rmw_zenohd` listening on the board's serial link (921,600 baud) and on
 TCP for host peers. The board's transport was lpuart2; its console is on the
 unwired lpuart0. Every image needed one local, uncommitted link fix, the
 `.nros_boot_config` placement (issue 2077). The H9 image also needed a
-wait-network stub (issue 2078) and its tier stack pool in DTCM (issue 2084,
+wait-network stub (issue 2078) and its sched task stack pool in DTCM (issue 2084,
 resolved 2026-10-27). Logs, dumps, configs and the local diffs are
 kept with the island's run archive for 2026-10-26 (`board-batch/`).
 
@@ -251,7 +251,7 @@ corrected from them.
 | debug (`CONFIG_DEBUG=y`) | 50,376 B | 5,968 B | 50,968 B |
 
 Both are under the 51,200 B frame. The image needed its level stack in DTCM
-(`MAX_SCHED_TASKS=1`, 64 KiB) to fit. In the debug build, the boot tier's main
+(`MAX_SCHED_TASKS=1`, 64 KiB) to fit. In the debug build, the boot sched task's main
 overflowed 32 KiB; at 56 KiB its high-water read 55,992 B. The release main
 was not read.
 
@@ -278,7 +278,7 @@ islands, and the board's heap use with the services is recorded here.
 | [#0902](../issues/archived/0902-action-goal-completion-is-variable.md) | H8: not reproduced 2026-10-26, archived. |
 | [#2077](../issues/archived/2077-nros-boot-config-orphan-lands-in-s32k344-ivt-header.md) | found by batch A: typed entries did not link on the S32K344 without a local section placement. Resolved 2026-10-26 (the module places the section in rodata), archived. |
 | [#2078](../issues/archived/2078-zephyr-rust-serial-image-needs-wait-network.md) | found by batch A (H9): a serial-only Zephyr Rust image did not link. Resolved 2026-10-26 (the wait is defined without sockets), archived. |
-| [#2084](../issues/archived/2084-zephyr-tier-stack-pool-ignores-stacks-in-dtcm.md) | found by batch A (H9): the serial Rust level image overflows RAM by 30,028 B on the S32K344; `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` does not move the tier stack pool. Resolved 2026-10-27 (the tier stacks follow the knob through `CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM`), archived. |
+| [#2084](../issues/archived/2084-zephyr-tier-stack-pool-ignores-stacks-in-dtcm.md) | found by batch A (H9): the serial Rust level image overflows RAM by 30,028 B on the S32K344; `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` does not move the sched task stack pool. Resolved 2026-10-27 (the sched task stacks follow the knob through `CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM`), archived. |
 
 ## Not in this phase
 

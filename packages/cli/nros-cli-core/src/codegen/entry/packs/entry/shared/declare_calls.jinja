@@ -5,7 +5,7 @@
   declared here: they are one flash table for the whole image
   (`launch_remap_table.jinja`), installed before the runner sets up any tier
   (`launch_remap_install.jinja`). One `nros_cpp_declare_remap` per rule per
-  tier filled a 16-rule RAM table in every executor.
+  sched_task filled a 16-rule RAM table in every executor.
 
   ONE partial, included by both entry packs, because the statements are
   byte-identical C in both — only the executor expression differs, and the
@@ -31,7 +31,7 @@
   calls BEFORE the node is created, so the seed is for the NEXT node the
   executor builds. phase-509 P9b: the seed NAMES that node
   (`nros_cpp_declare_node_param`) and the shim resolves its index from the
-  executor itself; a build-time index restarted per tier, and under RFC-0108's
+  executor itself; a build-time index restarted per sched_task, and under RFC-0108's
   one executor per core every level's setup registers on the same executor,
   so the second level's seeds named a node that was not next and its setup
   failed. A seed for another node on the index the previous node was seeded

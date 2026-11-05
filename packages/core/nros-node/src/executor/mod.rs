@@ -36,7 +36,7 @@ pub mod arena_oracle;
 // the images this campaign is about.
 #[cfg(all(any(has_rmw, test), feature = "alloc"))]
 mod backing;
-// issue 1571 — the spawned tiers' half of the same machinery: the ENTRY owns
+// issue 1571 — the spawned sched tasks' half of the same machinery: the ENTRY owns
 // the static (it knows the tier count), boards hand each tier a slot.
 #[cfg(all(any(has_rmw, test), feature = "alloc"))]
 pub use backing::{

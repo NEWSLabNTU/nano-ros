@@ -1179,7 +1179,7 @@ pub fn refuse_framework_board(
 /// is an id several descriptors claim. Never a guess.
 ///
 /// Split out of [`resolve_image_board`] (issue 1285 follow-up) so that
-/// `codegen-system`'s tier RTOS reads an image board the same way `nros build`
+/// `codegen-system`'s sched task RTOS reads an image board the same way `nros build`
 /// resolves it, rather than from a substring of the id.
 pub fn resolve_board_id<'c>(
     catalog: &'c BoardCatalog,

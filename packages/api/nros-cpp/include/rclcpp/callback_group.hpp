@@ -35,7 +35,7 @@ struct CallbackGroup;
 /// Both are accepted and neither changes dispatch: an executor here runs its
 /// callbacks on one task, so every group is mutually exclusive by
 /// construction, and a `Reentrant` group's callbacks still run one at a time.
-/// Parallelism is a tier (RFC-0047), never a group kind.
+/// Parallelism is a sched task (RFC-0047), never a group kind.
 enum class CallbackGroupType { MutuallyExclusive, Reentrant };
 
 /// What `create_callback_group(CallbackGroupType, ...)` returns, and the type
@@ -47,7 +47,7 @@ enum class CallbackGroupType { MutuallyExclusive, Reentrant };
 /// already reads as "the node default", so `create_wall_timer(p, cb, group)`,
 /// `rclcpp::create_timer(..., group)`, `SubscriptionOptions::callback_group`
 /// and the service and client overloads take it as written and dispatch on
-/// the node's default context. A NAMED group, the one that feeds the tier
+/// the node's default context. A NAMED group, the one that feeds the sched task
 /// derivation, is `create_callback_group("name")`, which returns a
 /// `CallbackGroup` by value; this token cannot hold one, so a named group
 /// cannot be lost through it.
@@ -109,12 +109,12 @@ constexpr int32_t DECLARED_CALLBACK_GROUP_MISMATCH = -459;
 /// The groups one component's registration DECLARED, and which of them its
 /// constructor CREATED.
 ///
-/// Why this exists: `CALLBACK_GROUPS` is what the tier derivation reads
+/// Why this exists: `CALLBACK_GROUPS` is what the sched task derivation reads
 /// (phase-459 W1, through `nros-metadata.json`), and `create_callback_group` is
 /// what the executor binds. Two spellings of one fact, so nothing stopped them
 /// from disagreeing — a group created in code that the keyword did not declare
-/// is scheduled on a tier the derivation never ranked, and a declared group
-/// never created ranks a tier nothing runs on.
+/// is scheduled on a sched task the derivation never ranked, and a declared group
+/// never created ranks a sched task nothing runs on.
 ///
 /// `list` is the registration's names as `|a|b|` (the
 /// `NROS_DECLARED_CALLBACK_GROUPS` definition `nano_ros_node_register` puts on
@@ -191,7 +191,7 @@ inline bool admit_callback_group(const char* name) {
 /// The factory's half, after the constructor: the first DECLARED name the
 /// constructor never created, written to `out`/`out_len`, or `false` when there
 /// is none. Node-level placement — ONE declared group and none created in code —
-/// is allowed (every member of the node runs on that group's tier), so a
+/// is allowed (every member of the node runs on that group's sched task), so a
 /// one-name list never reports.
 inline bool first_uncreated_callback_group(const DeclaredCallbackGroups& g, const char** out,
                                            int* out_len) {

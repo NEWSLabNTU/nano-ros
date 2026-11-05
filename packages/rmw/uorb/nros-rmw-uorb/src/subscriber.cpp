@@ -59,8 +59,8 @@ struct SubscriberState {
     bool callback_active;
     // phase-521 W8 (d), issue 2218 — who hears an arrival, besides `ready`:
     // the per-entity callback when the runtime registered one (phase-397: it
-    // names this subscription, so only the owning tier's executor wakes), else
-    // the session's executor wake (its `backend_data`). A PX4 tier hears
+    // names this subscription, so only the owning sched task's executor wakes), else
+    // the session's executor wake (its `backend_data`). A PX4 sched task hears
     // either through its executor's wake hook (issue 2225). Called from the
     // broker's context: atomics only.
     void* session;

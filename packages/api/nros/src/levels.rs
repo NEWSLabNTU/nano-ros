@@ -1,4 +1,4 @@
-//! phase-509 P10 (RFC-0108 "As built in P9b") -- the Rust tier runners' LEVEL
+//! phase-509 P10 (RFC-0108 "As built in P9b") -- the Rust sched task runners' LEVEL
 //! core: one executor per core, a worker per level over it.
 //!
 //! The C-ABI runners reach this through `nros-cpp`'s scheduler FFI

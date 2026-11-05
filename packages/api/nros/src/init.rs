@@ -197,7 +197,7 @@ pub struct Context {
     pub source: ContextSource,
     /// The `-r`/`--remap` rules `init_with_args` / `Context::new` parsed
     /// out of `--ros-args`, in argv order. Installed as the FALLBACK remap
-    /// tier of every executor this context creates
+    /// sched task of every executor this context creates
     /// (`Context::create_executor`, `Context::create_executor_in`).
     ///
     /// rcl keeps its global arguments on the context for the same reason: the

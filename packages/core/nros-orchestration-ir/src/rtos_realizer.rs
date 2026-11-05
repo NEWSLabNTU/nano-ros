@@ -125,7 +125,7 @@ pub struct RtosPlan {
 
 /// The board seam (W5.3): the per-platform [`SchedCaps`] the realizer targets.
 /// Grounded in the platform scheduler survey (RFC-0052 §"Scheduling model
-/// evolution"). `target` is a TIER KEY: `posix` (or `native`), `freertos`,
+/// evolution"). `target` is a SCHED TASK KEY: `posix` (or `native`), `freertos`,
 /// `zephyr`, `threadx` or `nuttx`. That is `BoardFamily::sched_task_rtos_key`'s
 /// output, and it is matched EXACTLY. Anything else, including `""` (a board
 /// with no RTOS family), gets the bare-metal caps. Kept consistent with W2's
@@ -133,9 +133,9 @@ pub struct RtosPlan {
 ///
 /// Issue 1285 follow-up: this used to be a SUBSTRING match that also accepted
 /// board keys (`mps2-an385-freertos`, `threadx-linux`). Every in-tree caller
-/// already passes a tier key, so the substring bought nothing, and it would
+/// already passes a sched task key, so the substring bought nothing, and it would
 /// have read an out-of-tree `my-freertos-board` as FreeRTOS. Board keys are
-/// resolved to a tier key once, upstream, by the one lookup per namespace.
+/// resolved to a sched task key once, upstream, by the one lookup per namespace.
 ///
 /// `n_priorities` is a conservative platform default; a board descriptor can
 /// refine it (Kconfig `CONFIG_NUM_PREEMPT_PRIORITIES` / `configMAX_PRIORITIES`
@@ -149,7 +149,7 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
         // are FALSE — no sched_setattr/SCHED_DEADLINE consumer exists
         // (priorities are documented-advisory too); flip when phase-162
         // lands real consumers. affinity stays TRUE: 296-W5.13 landed the
-        // sched_setaffinity tier consumer (runtime kernel-accept proven).
+        // sched_setaffinity sched task consumer (runtime kernel-accept proven).
         //
         // That affinity consumer is `nros-board-linux`, and it is LINUX, not
         // POSIX: `sched_setaffinity` / `cpu_set_t` / `CPU_SET` are absent from
@@ -242,7 +242,7 @@ struct NodeFacts {
     /// Issue 0259 — the BLOCKING term `B_i`: the longest WCET among this node's
     /// OTHER callbacks.
     ///
-    /// A node's callbacks are mutually exclusive within their tier task (that
+    /// A node's callbacks are mutually exclusive within their sched task (that
     /// is what `CallbackGroupDecl { type: "MutuallyExclusive" }` means, and v1
     /// treats every group that way), so a callback that becomes ready while a
     /// sibling is executing waits for that sibling to finish. The longest
@@ -300,7 +300,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
         // alone is what this used to do, and it dropped every service bound:
         // phase-434 listed `max_response_ms` as "carried and read by nothing
         // here". It is also the value play_launch ranks from, which is the
-        // point of phase-495 -- the tier Zephyr gives a node and the priority
+        // point of phase-495 -- the sched task Zephyr gives a node and the priority
         // Linux gives it are computed from ONE answer.
         //
         // The path fold stays as the fallback because a `MapperInput` built by
@@ -349,7 +349,7 @@ fn node_facts(input: &MapperInput) -> BTreeMap<&str, NodeFacts> {
 }
 
 /// Each node's release period in microseconds, as the realizer reads it
-/// (RFC-0079's table: a tier's spin period is derived from its members'
+/// (RFC-0079's table: a sched task's spin period is derived from its members'
 /// releases). The SAME fold [`realize_rtos`] stamps `RealizedNode::period_us`
 /// from, so the spin period and the realized period cannot disagree. Nodes
 /// that are purely event-driven have no entry.
@@ -398,7 +398,7 @@ fn dense_node_ranks(ranked: &RankedPlan) -> (BTreeMap<&str, usize>, usize) {
 ///
 /// Three outcomes, not two, because "the pool is narrower than the ranking"
 /// and "the pool is empty" are different states and only one of them has an
-/// answer. Collapsing them is what let a derived tier land ON the transport
+/// answer. Collapsing them is what let a derived sched task land ON the transport
 /// band: see [`Allocation::Refused`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Allocation {
@@ -413,7 +413,7 @@ enum Allocation {
     /// Every candidate belongs to a reserved band or is outside the kernel's
     /// range, and handing one over is exactly issue 0623's inversion: measured
     /// on the pre-0852 Zephyr image, the clamp produced k_thread 14 with
-    /// `transport = [0, 14]`, i.e. a derived control tier at the transport's
+    /// `transport = [0, 14]`, i.e. a derived control sched task at the transport's
     /// own priority, reported as a warning in build scrollback. RFC-0079 §6
     /// says crossing into a reserved band requires NAMING the band; nothing
     /// derived can name it, so the derivation declines instead.
@@ -451,7 +451,7 @@ fn rank_to_priority(rank: usize, plan: &PriorityPlan) -> Allocation {
 ///
 /// phase-459 W4 - `plan` is the board's priority address plan (RFC-0079):
 /// where the application's priorities live, and what they must stay below.
-/// [`crate::priority_plan::PriorityPlan::for_target`] answers it from a tier
+/// [`crate::priority_plan::PriorityPlan::for_target`] answers it from a sched task
 /// key; an image resolves its own with `from_zephyr_dotconfig`.
 pub fn realize_rtos(
     ranked: &RankedPlan,
@@ -492,7 +492,7 @@ pub fn realize_rtos(
                 });
                 p
             }
-            // issue 1427 - REFUSE rather than clamp. No tier is derived for
+            // issue 1427 - REFUSE rather than clamp. No sched task is derived for
             // this node, so nothing downstream receives a number that belongs
             // to a reserved band; the image keeps whatever its authored
             // configuration says, and the reason travels every road the
@@ -505,9 +505,9 @@ pub fn realize_rtos(
                     reason: format!(
                         "the board's application pool {} is EMPTY - the reserved bands \
                          {:?} leave the application nothing to be allocated from, so \
-                         NO derived tier is allocated for this node (RFC-0079, issue \
+                         NO derived sched task is allocated for this node (RFC-0079, issue \
                          1427). Deriving one would mean handing it a priority the \
-                         transport owns, and RFC-0079 §6 lets only an AUTHORED tier \
+                         transport owns, and RFC-0079 §6 lets only an AUTHORED sched task \
                          name a reserved band. Widen the pool - on Zephyr that means \
                          the image's transport-priority Kconfig, which is what the \
                          band is computed from.",
@@ -564,7 +564,7 @@ pub fn realize_rtos(
 
         // Issue 0259 — the blocking term IS derivable now that callbacks can
         // carry WCETs (RFC-0078). `B_i` is the longest mutually-exclusive
-        // sibling; the executor serialises a node's callbacks within their tier
+        // sibling; the executor serialises a node's callbacks within their sched task
         // task, so a ready callback waits for whichever sibling is running.
         let blocking_us = f
             .and_then(|f| f.blocking_ms)
@@ -801,7 +801,7 @@ pub fn realize_rtos(
 
 /// W5.4 — wire the realization into the existing bake: convert an [`RtosPlan`]
 /// into the [`ResolvedTaskTable`] the `codegen-system` plan emitter + the
-/// `run_sched_tasks` const table already consume (one tier per realized node; the
+/// `run_sched_tasks` const table already consume (one sched task per realized node; the
 /// executor lowers `class`/`period_us`/`budget_us`/`deadline_us` into its
 /// `SchedContext` — Sporadic budget / EDF / TT — per W3a). `low_number_is_high`
 /// (from [`SchedCaps`]) is needed to order the table by URGENCY (the table is
@@ -811,12 +811,12 @@ pub fn rtos_plan_to_sched_task_table(
     plan: &RtosPlan,
     low_number_is_high: bool,
 ) -> ResolvedTaskTable {
-    let mut tiers: Vec<ResolvedTask> = plan
+    let mut sched_tasks: Vec<ResolvedTask> = plan
         .nodes
         .iter()
         .map(|n| {
             // A node carrying a deadline/budget is real-time; otherwise a plain
-            // fixed-priority best-effort tier (mirrors W3a's class lowering).
+            // fixed-priority best-effort sched task (mirrors W3a's class lowering).
             let class = if n.deadline_us.is_some() || n.budget_us.is_some() {
                 "real_time"
             } else {
@@ -826,7 +826,7 @@ pub fn rtos_plan_to_sched_task_table(
                 name: n.name.clone(),
                 priority: n.priority,
                 // rlm v0.1.5 added the typed POSIX placement. The RTOS realizer
-                // lowers to an RTOS tier table, so there is no host placement to
+                // lowers to an RTOS sched task table, so there is no host placement to
                 // carry — `None` is the accurate answer, not a placeholder.
                 posix: None,
                 sched_class: Some(n.sched_class.to_string()),
@@ -836,7 +836,7 @@ pub fn rtos_plan_to_sched_task_table(
                 deadline_us: n.deadline_us,
                 core: n.core,
                 // RFC-0108 derives thresholds per level, not per node; a
-                // kernel threshold reaches a tier only when authored.
+                // kernel threshold reaches a sched task only when authored.
                 preempt_threshold: None,
                 members: vec![n.name.clone()],
                 stack_bytes: None,
@@ -847,7 +847,7 @@ pub fn rtos_plan_to_sched_task_table(
         .collect();
     // Most-urgent-first. Urgency = smaller priority number when low=high, else
     // larger. Name breaks ties (deterministic).
-    tiers.sort_by(|a, b| {
+    sched_tasks.sort_by(|a, b| {
         let urgency = if low_number_is_high {
             a.priority.cmp(&b.priority)
         } else {
@@ -855,7 +855,7 @@ pub fn rtos_plan_to_sched_task_table(
         };
         urgency.then_with(|| a.name.cmp(&b.name))
     });
-    ResolvedTaskTable { tasks: tiers }
+    ResolvedTaskTable { tasks: sched_tasks }
 }
 
 #[cfg(test)]
@@ -1021,11 +1021,11 @@ mod tests {
         assert_eq!(sched_caps_for("").n_priorities, 8);
     }
 
-    /// Issue 1285 follow-up — `target` is a tier KEY, matched exactly. A board
+    /// Issue 1285 follow-up — `target` is a sched task KEY, matched exactly. A board
     /// key, or any name that merely CONTAINS an RTOS, is not one: the old
     /// substring match read `threadx-linux` as ThreadX and would have read an
     /// out-of-tree `my-freertos-board` as FreeRTOS. Board keys are resolved to
-    /// a tier key upstream, by the one lookup per namespace.
+    /// a sched task key upstream, by the one lookup per namespace.
     #[test]
     fn a_board_key_is_not_a_sched_task_key() {
         let bare = sched_caps_for("");
@@ -1082,7 +1082,7 @@ mod tests {
         let plan = realize_rtos(&ranked, &input, &caps, &plan_for(&caps));
         let table = rtos_plan_to_sched_task_table(&plan, caps.low_number_is_high);
 
-        assert_eq!(table.tasks.len(), 2, "one tier per node");
+        assert_eq!(table.tasks.len(), 2, "one sched task per node");
         // /hi is most urgent → first (zephyr low=high → smaller number first).
         let hi = &table.tasks[0];
         assert_eq!(hi.name, "/hi");
@@ -1127,7 +1127,7 @@ mod tests {
     /// priorities with the transport at k_thread 4, so `pool.app` is [5, 14].
     /// Dense rank 0 must therefore be 5 and rank 1 must be 6 - the numbers
     /// phase-459 records - and NOT 0 and 1, which would put the derived
-    /// control tier above the transport threads that feed it.
+    /// control sched task above the transport threads that feed it.
     #[test]
     fn priority_plan_allocates_inside_the_application_pool() {
         let input = input_two();
@@ -1180,9 +1180,9 @@ mod tests {
     /// The pre-0852 transport band (~~`READ_PRIORITY=16`~~ on the 0..255 scale)
     /// resolves `transport = [14, 14]` on the island's image, which leaves
     /// `app = [15, 14]` - no priority at all. The clamp used to hand both
-    /// nodes k_thread **14**, measured: a derived tier at the transport's own
+    /// nodes k_thread **14**, measured: a derived sched task at the transport's own
     /// priority, with a stderr warning as the only trace. There is no legal
-    /// address here, so no tier is derived and the reason says which band ate
+    /// address here, so no sched task is derived and the reason says which band ate
     /// the pool.
     #[test]
     fn an_empty_application_pool_derives_no_sched_task_rather_than_a_reserved_one() {
@@ -1211,7 +1211,7 @@ mod tests {
         assert_eq!(refused.len(), 2, "one per ranked node: {refused:?}");
         for d in &refused {
             assert!(
-                d.reason.contains("EMPTY") && d.reason.contains("NO derived tier"),
+                d.reason.contains("EMPTY") && d.reason.contains("NO derived sched task"),
                 "the reason says nothing was allocated: {}",
                 d.reason
             );
@@ -1221,7 +1221,7 @@ mod tests {
                 d.reason
             );
         }
-        // The tier table the rest of the pipeline consumes is empty too, so a
+        // The sched task table the rest of the pipeline consumes is empty too, so a
         // consumer that reads only `nodes` cannot pick the refused number up.
         assert!(
             rtos_plan_to_sched_task_table(&realized, true)
@@ -1790,7 +1790,7 @@ mod tests {
     }
 
     /// phase-495 W4 -- a service's response bound is a DEADLINE, and it reaches
-    /// the tier the Zephyr shim hands to `k_thread_deadline_set`.
+    /// the sched task the Zephyr shim hands to `k_thread_deadline_set`.
     ///
     /// The shared derivation (`ros-launch-manifest-derive`) folds every served
     /// `srv_endpoints.*.max_response_ms` into `MapperNode.deadline_us` beside
@@ -1826,7 +1826,7 @@ mod tests {
         // with a TIGHTER 2.5 ms response bound. The node needs the path to be
         // ranked at all: `chain_aware_rank` ranks paths, and a node whose only
         // timing claim is a service bound produces no ranked item and so no
-        // tier (measured while writing this: `ranked = []`). That is the
+        // sched task (measured while writing this: `ranked = []`). That is the
         // upstream ranker's reach, not `node_facts`', and it is recorded in the
         // phase doc. What `node_facts` owns is the node that IS ranked, and for
         // it the deadline is the min of the path budget and the service bound.
@@ -1882,24 +1882,24 @@ mod tests {
         let edf = caps(true, false, false);
         let ranked = chain_aware_rank(&input);
         let plan = realize_rtos(&ranked, &input, &edf, &plan_for(&edf));
-        let tier = plan
+        let sched_task = plan
             .nodes
             .iter()
             .find(|n| n.name == "/server")
             .expect("the realizer dropped /server");
         assert_eq!(
-            tier.deadline_us,
+            sched_task.deadline_us,
             Some(2_500),
-            "the tier's deadline must be the TIGHTER of the path budget (10 ms) \
+            "the sched task's deadline must be the TIGHTER of the path budget (10 ms) \
              and the service bound (2.5 ms) -- the value the Zephyr shim passes \
              to k_thread_deadline_set. 10000 here means node_facts re-derived \
              the deadline from the paths alone and dropped the service"
         );
-        assert_eq!(tier.sched_class, "edf");
-        assert_eq!(tier.deadline_real, DimRealization::Native);
+        assert_eq!(sched_task.sched_class, "edf");
+        assert_eq!(sched_task.deadline_real, DimRealization::Native);
     }
 
-    /// Issue 1372 -- the tier's PERIOD is the authored
+    /// Issue 1372 -- the sched task's PERIOD is the authored
     /// `paths.<p>.trigger.timer.rate_hz`, not the `min_rate_hz` any output
     /// promises.
     ///
@@ -1985,13 +1985,13 @@ mod tests {
         let fifo = caps(false, false, false);
         let ranked = chain_aware_rank(&input);
         let plan = realize_rtos(&ranked, &input, &fifo, &plan_for(&fifo));
-        let tier = plan
+        let sched_task = plan
             .nodes
             .iter()
             .find(|n| n.name == "/op")
             .expect("the realizer dropped /op");
         assert_eq!(
-            tier.period_us,
+            sched_task.period_us,
             Some(40_000),
             "25 Hz trigger -> 40 ms period. 100000 is the first output's \
              `min_rate_hz: 10` (the issue-1372 substitute); 25000 is the second's"

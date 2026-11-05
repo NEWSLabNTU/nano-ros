@@ -71,7 +71,7 @@ point only at pages of the same or a lower level:
   with its expected output. The page ends with a complete working example.
 - **Concepts at the point of need.** Explain a concept only if it is uncommon
   outside nano-ros and central inside it (the bringup, the image, the contract,
-  static pools, the execution tiers), and start from the example in front of
+  static pools, the execution sched tasks), and start from the example in front of
   the reader. For what a ROS 2 user knows, link to the ROS 2 documentation.
 - **The simplest working path first:** serial before ethernet, WiFi stated as
   deferred; one run verb, with `nros flash --monitor` on hardware.

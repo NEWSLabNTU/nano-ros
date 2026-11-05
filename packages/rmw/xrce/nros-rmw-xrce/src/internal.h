@@ -740,7 +740,7 @@ struct xrce_session_state {
     /* Issue 1734 — ONE recursive lock per session, held across every entry
      * point that touches the uxr session or the slot pools.
      *
-     * A session is shared: a multi-tier image's tiers each create entities on
+     * A session is shared: a multi-sched-task image's sched tasks each create entities on
      * it and each drive it, on their own threads. Two things were unguarded.
      * The slot claims (`subscriber_slots[i].active`, the two service pools,
      * `reply_tokens[i].in_use`) are the find-then-mark issue 1711 fixed in the

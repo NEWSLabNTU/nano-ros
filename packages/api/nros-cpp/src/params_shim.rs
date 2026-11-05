@@ -164,10 +164,10 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
 /// shim resolves the node itself: the index is the executor's own next node
 /// (`nodes().len()` at this call), not a number the build counted. Under
 /// RFC-0108's one executor per core, every level's setup registers on the
-/// SAME executor, one after another, so a build-time index restarted per tier
+/// SAME executor, one after another, so a build-time index restarted per sched task
 /// (what [`nros_cpp_declare_param`] is handed) names node 0 in every level:
 /// the second level's seed was refused and its setup failed. A build-time
-/// count across tiers would hold only for a runner that sets the levels up in
+/// count across sched tasks would hold only for a runner that sets the levels up in
 /// table order on one executor, and only while every earlier component built
 /// exactly one node; resolving here holds for any runner, any setup order,
 /// and a component that builds two nodes.

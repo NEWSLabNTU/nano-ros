@@ -1,5 +1,5 @@
 {
   "key": "rust:SchedTaskMemorySet",
   "verdict": "divergence",
-  "why": "issue 1598 -- the spawned tiers' task-memory rows behind a once-only latch, the twin of `rust:SchedTaskExecutorBacking`'s: a second take is EMPTY and refused rather than giving two tasks one stack. Covers `new` and `take`."
+  "why": "issue 1598 -- the spawned sched tasks' task-memory rows behind a once-only latch, the twin of `rust:SchedTaskExecutorBacking`'s: a second take is EMPTY and refused rather than giving two tasks one stack. Covers `new` and `take`."
 }

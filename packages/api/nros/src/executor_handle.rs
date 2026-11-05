@@ -5,7 +5,7 @@
 //!
 //! * a Rust entry's `RuntimeCtx::executor_handle()` — a bare
 //!   `*mut Executor<'static>`;
-//! * a C/C++ entry's `rclcpp::global_handle()` (and every tier's `executor`) —
+//! * a C/C++ entry's `rclcpp::global_handle()` (and every sched task's `executor`) —
 //!   an nros-cpp `CppContext`, which carries the executor at a NON-zero offset,
 //!   behind the [`CPP_CONTEXT_TAG`](crate::executor_handle::CPP_CONTEXT_TAG) word at offset 0.
 //!

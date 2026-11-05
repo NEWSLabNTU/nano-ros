@@ -599,7 +599,7 @@ fn is_cxx_ext(p: &Path) -> bool {
 /// cargo was free to run this script before `nros-cpp`'s had written its
 /// header, and every TU then fell through the include path to the dispatching
 /// stub — which on NuttX included a COMMITTED, hand-kept snapshot. Measured on
-/// realtime-c: the tier executor storage was 2 x 98,312 (the snapshot) against
+/// realtime-c: the sched task executor storage was 2 x 98,312 (the snapshot) against
 /// 2 x 89,072 (the build), and seven buffer sizes in the snapshot had fallen
 /// BELOW the build (issue 1568). Both keys carry `links` now, so cargo orders
 /// this script after both writers, and both paths are the writers' own OUT_DIR

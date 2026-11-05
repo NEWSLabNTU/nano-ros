@@ -6,7 +6,7 @@
  * struct: the arena entry `rclc_executor_add_action_*` registered stayed live
  * with its callback `context` naming that struct, the action's RMW entities
  * stayed advertised, and `handle_count` never came back down. Issue 1496 gave
- * the executor arena its release path and the C++ tier used it from its
+ * the executor arena its release path and the C++ sched task used it from its
  * destructors; this is the C twin, through
  * `rclc_executor_remove_action_{server,client}`.
  *

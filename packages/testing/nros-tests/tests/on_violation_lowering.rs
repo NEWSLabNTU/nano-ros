@@ -8,8 +8,8 @@
 //!
 //! 1. the contract states a reaction (`sub_endpoints.*.on_violation`, pointing
 //!    at a node path, whose `miss.action` says what happens);
-//! 2. `violation_agreement` lowers it to the tier that runs that path's
-//!    callbacks, refusing when a tier table states a different word;
+//! 2. `violation_agreement` lowers it to the sched task that runs that path's
+//!    callbacks, refusing when a sched task table states a different word;
 //! 3. `resolve_sched_tasks` carries it into the `ResolvedSchedTask` the entry emitters
 //!    bake -- `deadline_policy`, the string
 //!    `SchedContext::from_sched_task_policy` turns into a `DeadlineAction`
@@ -43,7 +43,7 @@ use nros_orchestration_ir::{
 };
 use ros_launch_manifest_model::SystemModel;
 
-/// One contracted node, one declared tier, one reaction path.
+/// One contracted node, one declared sched task, one reaction path.
 ///
 /// `MISS` and SCHED_TASK_POLICY are substituted so the three cases differ by
 /// exactly the line under test.
@@ -100,7 +100,7 @@ fn model(yaml: &str) -> SystemModel {
     SystemModel::from_yaml_str(yaml).expect("the fixture parses as a SystemModel")
 }
 
-/// The tier table a bake builds from the model, with and without this wave's
+/// The sched task table a bake builds from the model, with and without this wave's
 /// lowering applied -- `plan_from_model`'s two lines, so the gate exercises
 /// the same code the entry bake runs.
 fn sched_task_defs(m: &SystemModel) -> BTreeMap<String, SchedTaskDef> {
@@ -111,28 +111,28 @@ fn sched_task_defs(m: &SystemModel) -> BTreeMap<String, SchedTaskDef> {
         .collect()
 }
 
-fn resolved_policy(tiers: &BTreeMap<String, SchedTaskDef>) -> Option<String> {
+fn resolved_policy(sched_tasks: &BTreeMap<String, SchedTaskDef>) -> Option<String> {
     let groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::from([(
         "detector".to_string(),
         vec![CallbackGroupDecl {
             id: "proc".to_string(),
             r#type: "MutuallyExclusive".to_string(),
-            tier: "rt".to_string(),
+            sched_task: "rt".to_string(),
         }],
     )]);
     let names: BTreeSet<&str> = BTreeSet::from(["detector"]);
-    let table =
-        resolve_sched_tasks(tiers, &[], &names, &groups, "posix").expect("the tier resolves");
+    let table = resolve_sched_tasks(sched_tasks, &[], &names, &groups, "posix")
+        .expect("the sched task resolves");
     table
-        .tiers
+        .sched_tasks
         .iter()
         .find(|t| t.name == "rt")
-        .expect("the declared tier is in the table")
+        .expect("the declared sched task is in the table")
         .deadline_policy
         .clone()
 }
 
-/// The whole chain: a contract word becomes the tier string the executor
+/// The whole chain: a contract word becomes the sched task string the executor
 /// lowers to a `DeadlineAction`.
 #[test]
 fn the_contracts_word_reaches_the_baked_sched_task() {
@@ -146,38 +146,38 @@ fn the_contracts_word_reaches_the_baked_sched_task() {
         "`abort` on the reaction path is the executor's fault action"
     );
 
-    // 2. It lands on the tier that runs that node's callbacks.
+    // 2. It lands on the sched task that runs that node's callbacks.
     let policies = contract_deadline_policies(&m).expect("no disagreement");
     assert_eq!(policies.get("rt").map(String::as_str), Some("fault"));
 
-    // 3. And it reaches the resolved tier the entry bakes.
-    let mut tiers = sched_task_defs(&m);
-    let before = resolved_policy(&tiers);
-    for (tier, action) in &policies {
-        if let Some(def) = tiers.get_mut(tier) {
+    // 3. And it reaches the resolved sched task the entry bakes.
+    let mut sched_tasks = sched_task_defs(&m);
+    let before = resolved_policy(&sched_tasks);
+    for (sched_task, action) in &policies {
+        if let Some(def) = sched_tasks.get_mut(sched_task) {
             def.deadline_policy = Some(action.clone());
         }
     }
-    let after = resolved_policy(&tiers);
+    let after = resolved_policy(&sched_tasks);
     println!(
-        "on_violation lowering: resolved tier `rt` deadline_policy {before:?} -> {after:?} \
+        "on_violation lowering: resolved sched task `rt` deadline_policy {before:?} -> {after:?} \
          (negative control: {before:?} is DeadlineAction::Ignore -- the declared `abort` \
          dropped on the floor)"
     );
     assert_eq!(
         before, None,
-        "the negative control: without the lowering the tier states nothing, so the \
+        "the negative control: without the lowering the sched task states nothing, so the \
          executor's action is Ignore"
     );
     assert_eq!(
         after.as_deref(),
         Some("fault"),
-        "the baked tier carries the contract's word; `SchedContext::from_sched_task_policy` \
+        "the baked sched task carries the contract's word; `SchedContext::from_sched_task_policy` \
          turns exactly this string into `DeadlineAction::Fault`"
     );
 }
 
-/// The refusal the phase asks for: a contract and a tier string that disagree
+/// The refusal the phase asks for: a contract and a sched task string that disagree
 /// stop the bake, naming both.
 #[test]
 fn a_sched_task_table_that_contradicts_the_contract_refuses() {
@@ -220,7 +220,7 @@ fn the_silence_lease_is_the_declared_age_bound() {
 }
 
 /// A model that declares no reaction lowers nothing and refuses nothing: the
-/// tier table is then the only statement, and it stands.
+/// sched task table is then the only statement, and it stands.
 #[test]
 fn a_contract_without_on_violation_changes_no_sched_task() {
     let mut m = model(&fixture(MISS_ABORT, "      deadline_policy: skip\n"));
@@ -231,6 +231,6 @@ fn a_contract_without_on_violation_changes_no_sched_task() {
     assert_eq!(
         resolved_policy(&sched_task_defs(&m)).as_deref(),
         Some("skip"),
-        "an authored tier policy survives a contract that says nothing"
+        "an authored sched task policy survives a contract that says nothing"
     );
 }

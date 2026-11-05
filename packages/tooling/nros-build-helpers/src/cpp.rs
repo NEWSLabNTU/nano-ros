@@ -271,9 +271,9 @@ fn generate_config(
     let variant_slug = crate::shared::variant_slug();
     let variant_symbol = crate::shared::variant_symbol_suffix();
 
-    // Issue 1970 -- each executor tier's own backing, published only for the
-    // tiers the image sizes (none on an image sized as one executor, whose
-    // entry keeps its per-tier copy of the whole executor).
+    // Issue 1970 -- each executor sched task's own backing, published only for the
+    // sched tasks the image sizes (none on an image sized as one executor, whose
+    // entry keeps its per-sched-task copy of the whole executor).
     let sched_task_backing_defines = sched_task_backing_defines(probed);
     let exact_header = format!(
         "\
@@ -585,9 +585,9 @@ fn generate_header(manifest_dir: &std::path::Path) {
 }
 
 /// Issue 1970 -- `NROS_CPP_SCHED_TASK_COUNT` and one `NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>`
-/// per tier the image sizes, from the `SCHED_TASK_BACKING_SIZE_<i>` probe values
-/// (`nros::sizes`, in tier-table order, zero past the last tier). Empty when
-/// the image sizes no tier.
+/// per sched task the image sizes, from the `SCHED_TASK_BACKING_SIZE_<i>` probe values
+/// (`nros::sizes`, in sched-task-table order, zero past the last sched task). Empty when
+/// the image sizes no sched task.
 fn sched_task_backing_defines(probed: &crate::shared::SizeMap) -> String {
     let sizes: Vec<u64> = (0..8)
         .map(|i| {
@@ -602,9 +602,9 @@ fn sched_task_backing_defines(probed: &crate::shared::SizeMap) -> String {
         return String::new();
     }
     let mut out = format!(
-        "\n/* Issue 1970 -- this image sizes each executor tier from its own members:\n \
-         * tier i's executor is carved from a backing of NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>\n \
-         * bytes (tier-table order), and the contexts above carry none inline. */\n\
+        "\n/* Issue 1970 -- this image sizes each executor sched task from its own members:\n \
+         * sched task i's executor is carved from a backing of NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>\n \
+         * bytes (sched-task-table order), and the contexts above carry none inline. */\n\
          #define NROS_CPP_SCHED_TASK_COUNT {}\n",
         sizes.len()
     );
@@ -614,7 +614,7 @@ fn sched_task_backing_defines(probed: &crate::shared::SizeMap) -> String {
         ));
     }
     // phase-509 P9b item 4 -- the one executor backing a level runner opens:
-    // every tier's members, summed (`nros::sizes::LEVELS_BACKING_SIZE`).
+    // every sched task's members, summed (`nros::sizes::LEVELS_BACKING_SIZE`).
     if let Some(v) = probed
         .get("LEVELS_BACKING_SIZE")
         .copied()

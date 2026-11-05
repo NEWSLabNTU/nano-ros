@@ -240,7 +240,7 @@ Pick Deferred when:
 - The handler does non-trivial work (parses, integrates, posts to a
   hardware peripheral) and you want it scheduled independently from
   network polling.
-- The Node sits at a different priority tier than the spin task.
+- The Node sits at a different priority sched task than the spin task.
 
 ### The tag-based registration API for Deferred Nodes
 
@@ -441,7 +441,7 @@ make the promise. The hand-driven spin task, `Executor::spin_async` /
 
 Use one of these instead:
 
-- **An RTOS or bare-metal board through `nros::main!`.** Tiers become OS
+- **An RTOS or bare-metal board through `nros::main!`.** Sched tasks become OS
   threads (or the bare-metal loop) at priorities nano-ros derives from your
   launch contracts.
 - **RTIC**, as described on this page. RTIC's scheduling is analysable and

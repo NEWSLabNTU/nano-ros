@@ -1,11 +1,11 @@
-//! phase-521 W7 (RFC-0113 D2.5) — what one arrival for a LOW tier costs the
-//! HIGH tiers that share its session.
+//! phase-521 W7 (RFC-0113 D2.5) — what one arrival for a LOW sched task costs the
+//! HIGH sched tasks that share its session.
 //!
-//! Several tiers over one session share the backend's single wake slot through
+//! Several sched tasks over one session share the backend's single wake slot through
 //! the executor's wake fan-out (RFC-0106 D6). A backend that ATTRIBUTES an
 //! arrival names its entity (`subscription_set_on_new_message_callback`, the
-//! entity waker, phase-397), so only the tier that owns the entity wakes. A
-//! backend that cannot attribute fires the session wake, and every tier on the
+//! entity waker, phase-397), so only the sched task that owns the entity wakes. A
+//! backend that cannot attribute fires the session wake, and every sched task on the
 //! session wakes, finds nothing of its own, and parks again: the fan-out D2.5
 //! accepts as "a known cost, documented per backend". This file states that
 //! cost as a measured bound instead of a sentence.
@@ -16,21 +16,21 @@
 //! in two shapes that differ ONLY in that slot:
 //!
 //! - NON-ATTRIBUTING: the slot is NULL and an arrival calls the session wake.
-//!   One arrival for the low tier wakes every high tier (the fan-out count is
-//!   `N - 1`), and each such wake costs its tier a bounded slice of CPU.
+//!   One arrival for the low sched task wakes every high sched task (the fan-out count is
+//!   `N - 1`), and each such wake costs its sched task a bounded slice of CPU.
 //! - ATTRIBUTING: the slot stores the entity's callback, and an arrival calls
-//!   that instead. One arrival for the low tier wakes no high tier.
+//!   that instead. One arrival for the low sched task wakes no high sched task.
 //!
-//! "Woken" is measured, not inferred: after one arrival, each high tier is
-//! spun with a long budget, and a tier whose spin returns well inside it was
-//! woken by that arrival (its executor's wake flag was set). A tier that was
+//! "Woken" is measured, not inferred: after one arrival, each high sched task is
+//! spun with a long budget, and a sched task whose spin returns well inside it was
+//! woken by that arrival (its executor's wake flag was set). A sched task that was
 //! not woken parks for the whole budget.
 //!
 //! Run: `cargo nextest run -p nros-tests --features trigger-test --test sched_task_wake_fanout`.
 
 #![cfg(all(feature = "trigger-test", unix))]
-// The executors are boxed on purpose: the low tier owns the session every
-// other tier's handle refers to, so it must not move when the `Vec` grows.
+// The executors are boxed on purpose: the low sched task owns the session every
+// other sched task's handle refers to, so it must not move when the `Vec` grows.
 #![allow(clippy::vec_box)]
 
 // The POSIX platform port (the wake object and its park) is force-linked by
@@ -53,12 +53,12 @@ use nros_rmw_cffi::{
     nros_rmw_cffi_register_named, rmw_session_t,
 };
 
-/// Tiers over the one session: one low tier that owns the arrivals, the rest
-/// high tiers that own nothing the arrivals touch.
-const TIERS: usize = 4;
+/// Sched tasks over the one session: one low sched task that owns the arrivals, the rest
+/// high sched tasks that own nothing the arrivals touch.
+const SCHED_TASKS: usize = 4;
 /// Arrivals in the cost run.
 const ARRIVALS: usize = 200;
-/// The spin budget a tier that was NOT woken waits out. A woken tier returns
+/// The spin budget a sched task that was NOT woken waits out. A woken sched task returns
 /// in microseconds, so anything under a quarter of this is a wake.
 const PROBE: Duration = Duration::from_millis(200);
 const TYPE: &str = "std_msgs/msg/Empty";
@@ -76,13 +76,13 @@ struct Sub {
     cb: AtomicUsize,
     user: AtomicUsize,
 }
-static SUBS: [Sub; TIERS] = [const {
+static SUBS: [Sub; SCHED_TASKS] = [const {
     Sub {
         pending: AtomicBool::new(false),
         cb: AtomicUsize::new(0),
         user: AtomicUsize::new(0),
     }
-}; TIERS];
+}; SCHED_TASKS];
 static NEXT_SUB: AtomicUsize = AtomicUsize::new(0);
 /// The tests share the statics above; run them one at a time.
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -140,7 +140,10 @@ unsafe extern "C" fn stub_create_subscription(
     out: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
     let idx = NEXT_SUB.fetch_add(1, SeqCst);
-    assert!(idx < TIERS, "the stub has room for {TIERS} subscriptions");
+    assert!(
+        idx < SCHED_TASKS,
+        "the stub has room for {SCHED TASKS} subscriptions"
+    );
     // SAFETY: `out` is the runtime's struct for this subscription.
     unsafe { (*out).backend_data = (idx + 1) as *mut core::ffi::c_void };
     NROS_RMW_RET_OK
@@ -320,9 +323,9 @@ fn thread_cpu() -> Duration {
     Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
 }
 
-/// `TIERS` executors over one session of the stub registered as `name`: the
-/// first (the low tier) opens it, the rest join it. Each has one subscription,
-/// and the low tier's is subscription 0.
+/// `SCHED_TASKS` executors over one session of the stub registered as `name`: the
+/// first (the low sched task) opens it, the rest join it. Each has one subscription,
+/// and the low sched task's is subscription 0.
 fn open_sched_tasks(name: &str, vtable: &'static NrosRmwVtable) -> Vec<Box<Executor<'static>>> {
     for s in &SUBS {
         s.pending.store(false, SeqCst);
@@ -341,51 +344,51 @@ fn open_sched_tasks(name: &str, vtable: &'static NrosRmwVtable) -> Vec<Box<Execu
     // Boxed: the session a handle refers to must not move, and a `Vec` of
     // executors moves its elements when it grows.
     let low = Box::new(Executor::open(&config).expect("Executor::open over the stub"));
-    let mut tiers = vec![low];
-    for _ in 1..TIERS {
-        let handle = tiers[0].session_handle();
-        // SAFETY: the low tier opened the session, is boxed (so it does not
+    let mut sched_tasks = vec![low];
+    for _ in 1..SCHED_TASKS {
+        let handle = sched_tasks[0].session_handle();
+        // SAFETY: the low sched task opened the session, is boxed (so it does not
         // move), and is dropped LAST (first in the vector; `drop_sched_tasks` drops
         // in reverse).
-        tiers.push(Box::new(unsafe {
+        sched_tasks.push(Box::new(unsafe {
             Executor::open_with_session_handle(handle)
         }));
     }
-    for (i, exec) in tiers.iter_mut().enumerate() {
+    for (i, exec) in sched_tasks.iter_mut().enumerate() {
         let node = exec
-            .node_builder(&format!("tier{i}"))
+            .node_builder(&format!("sched task{i}"))
             .build()
             .expect("node");
         exec.node_mut(node)
-            .subscription(&format!("/tier{i}"))
+            .subscription(&format!("/sched task{i}"))
             .generic(TYPE, "")
             .qos(QoSProfile::default())
             .rx_buffer::<64>()
             .build(|_data: &[u8]| {})
             .expect("register subscription");
     }
-    // Settle every tier, so no wake left over from setup is counted.
-    for exec in tiers.iter_mut() {
+    // Settle every sched task, so no wake left over from setup is counted.
+    for exec in sched_tasks.iter_mut() {
         exec.spin_once(Duration::ZERO);
     }
-    tiers
+    sched_tasks
 }
 
-fn drop_sched_tasks(mut tiers: Vec<Box<Executor<'static>>>) {
-    while let Some(exec) = tiers.pop() {
+fn drop_sched_tasks(mut sched_tasks: Vec<Box<Executor<'static>>>) {
+    while let Some(exec) = sched_tasks.pop() {
         drop(exec);
     }
 }
 
-/// How many high tiers one arrival for the low tier woke. Each high tier is
-/// spun once with [`PROBE`]: a woken tier's flag is already set, so its spin
+/// How many high sched tasks one arrival for the low sched task woke. Each high sched task is
+/// spun once with [`PROBE`]: a woken sched task's flag is already set, so its spin
 /// returns at once; any other parks for the whole budget.
-fn high_sched_tasks_woken_by_one_low_arrival(tiers: &mut [Box<Executor<'static>>]) -> usize {
+fn high_sched_tasks_woken_by_one_low_arrival(sched_tasks: &mut [Box<Executor<'static>>]) -> usize {
     arrive(0);
-    // The low tier takes its sample, as its own thread would.
-    tiers[0].spin_once(Duration::ZERO);
+    // The low sched task takes its sample, as its own thread would.
+    sched_tasks[0].spin_once(Duration::ZERO);
     let mut woken = 0;
-    for exec in tiers[1..].iter_mut() {
+    for exec in sched_tasks[1..].iter_mut() {
         let start = Instant::now();
         exec.spin_once(PROBE);
         if start.elapsed() < PROBE / 4 {
@@ -398,62 +401,62 @@ fn high_sched_tasks_woken_by_one_low_arrival(tiers: &mut [Box<Executor<'static>>
 #[test]
 fn a_non_attributing_backend_wakes_every_high_sched_task_and_each_wake_is_bounded() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let mut tiers = open_sched_tasks("sched_task_fanout_stub", &FANOUT_VTABLE);
+    let mut sched_tasks = open_sched_tasks("sched_task_fanout_stub", &FANOUT_VTABLE);
 
-    let woken = high_sched_tasks_woken_by_one_low_arrival(&mut tiers);
+    let woken = high_sched_tasks_woken_by_one_low_arrival(&mut sched_tasks);
     assert_eq!(
         woken,
-        TIERS - 1,
-        "one arrival for the low tier woke {woken} of {} high tiers over a session that cannot \
+        SCHED_TASKS - 1,
+        "one arrival for the low sched task woke {woken} of {} high sched tasks over a session that cannot \
          attribute: the fan-out is every member of the session (RFC-0106 D6)",
-        TIERS - 1
+        SCHED_TASKS - 1
     );
 
-    // The cost, measured as a deployment pays it: every tier on its own
-    // thread, parked in a long `spin_once`, as a tier task is. ARRIVALS
-    // arrivals for the low tier, 2 ms apart; each high tier counts how often
+    // The cost, measured as a deployment pays it: every sched task on its own
+    // thread, parked in a long `spin_once`, as a sched task is. ARRIVALS
+    // arrivals for the low sched task, 2 ms apart; each high sched task counts how often
     // its park ended and what its thread spent in CPU over the run, which
     // includes the wake itself (the futex, the switch-in), not only the pass.
-    let (spurious, per_wake, per_arrival) = threaded_fanout_cost(tiers);
+    let (spurious, per_wake, per_arrival) = threaded_fanout_cost(sched_tasks);
     eprintln!(
-        "fan-out over {TIERS} tiers, one thread each: {per_arrival:.2} high-tier wakes per \
-         low-tier arrival ({spurious} over {ARRIVALS} arrivals), {per_wake:?} of thread CPU each"
+        "fan-out over {SCHED TASKS} sched tasks, one thread each: {per_arrival:.2} high-sched-task wakes per \
+         low-sched-task arrival ({spurious} over {ARRIVALS} arrivals), {per_wake:?} of thread CPU each"
     );
     assert!(
-        per_arrival >= (TIERS - 1) as f64 * 0.9,
-        "{per_arrival:.2} high-tier wakes per arrival over a non-attributing session: expected \
+        per_arrival >= (SCHED_TASKS - 1) as f64 * 0.9,
+        "{per_arrival:.2} high-sched-task wakes per arrival over a non-attributing session: expected \
          {} (every member), so the threaded run is not measuring the fan-out",
-        TIERS - 1
+        SCHED_TASKS - 1
     );
     // The stated bound (RFC-0113 D2.5): a spurious wake is one thread wake and
     // one non-blocking pass, never a wait. 100 us of CPU is an order of
-    // magnitude above what it costs here, and a tenth of a 1 kHz tier's period.
+    // magnitude above what it costs here, and a tenth of a 1 kHz sched task's period.
     assert!(
         per_wake < Duration::from_micros(100),
         "a spurious fan-out wake cost {per_wake:?} of CPU: more than a wake and one pass"
     );
 }
 
-/// A tier executor moved to its own thread. The executor is only ever used by
+/// A sched task executor moved to its own thread. The executor is only ever used by
 /// that thread, and joined before the session owner drops.
 struct SendExec(Box<Executor<'static>>);
 // SAFETY: see the type's comment; the session's wake object and fan-out are
-// the cross-thread parts, and they are built for exactly this (tier tasks).
+// the cross-thread parts, and they are built for exactly this (sched tasks).
 unsafe impl Send for SendExec {}
 
-/// Run each tier on a thread, fire ARRIVALS low-tier arrivals, and return
-/// (high-tier wakes, CPU per high-tier wake, high-tier wakes per arrival).
-fn threaded_fanout_cost(tiers: Vec<Box<Executor<'static>>>) -> (u32, Duration, f64) {
+/// Run each sched task on a thread, fire ARRIVALS low-sched-task arrivals, and return
+/// (high-sched-task wakes, CPU per high-sched-task wake, high-sched-task wakes per arrival).
+fn threaded_fanout_cost(sched_tasks: Vec<Box<Executor<'static>>>) -> (u32, Duration, f64) {
     use std::sync::{Arc, Barrier};
     let stop = Arc::new(AtomicBool::new(false));
-    let ready = Arc::new(Barrier::new(TIERS + 1));
+    let ready = Arc::new(Barrier::new(SCHED_TASKS + 1));
     let mut handles = Vec::new();
     // Spawn the members first and the owner last, so the owner (index 0) is
     // joined and dropped last.
-    let mut tiers = tiers;
+    let mut sched_tasks = sched_tasks;
     let mut owned: Vec<(usize, SendExec)> = Vec::new();
-    while let Some(exec) = tiers.pop() {
-        owned.push((tiers.len(), SendExec(exec)));
+    while let Some(exec) = sched_tasks.pop() {
+        owned.push((sched_tasks.len(), SendExec(exec)));
     }
     for (idx, exec) in owned {
         let stop = stop.clone();
@@ -474,7 +477,7 @@ fn threaded_fanout_cost(tiers: Vec<Box<Executor<'static>>>) -> (u32, Duration, f
         ));
     }
     ready.wait();
-    // Let every tier reach its park before the first arrival.
+    // Let every sched task reach its park before the first arrival.
     std::thread::sleep(Duration::from_millis(50));
     for _ in 0..ARRIVALS {
         arrive(0);
@@ -492,7 +495,7 @@ fn threaded_fanout_cost(tiers: Vec<Box<Executor<'static>>>) -> (u32, Duration, f
     let mut high_cpu = Duration::ZERO;
     let mut back: Vec<(usize, SendExec)> = Vec::new();
     for (idx, h) in handles {
-        let (wakes, cpu, exec) = h.join().expect("tier thread");
+        let (wakes, cpu, exec) = h.join().expect("sched task thread");
         if idx != 0 {
             // The last wake is the stop; it is not an arrival's.
             high_wakes += wakes.saturating_sub(1);
@@ -512,7 +515,7 @@ fn threaded_fanout_cost(tiers: Vec<Box<Executor<'static>>>) -> (u32, Duration, f
 #[test]
 fn an_attributing_backend_does_not_wake_a_high_sched_task_for_a_low_sched_task_arrival() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
-    let mut tiers = open_sched_tasks("sched_task_attributing_stub", &ATTRIBUTING_VTABLE);
+    let mut sched_tasks = open_sched_tasks("sched_task_attributing_stub", &ATTRIBUTING_VTABLE);
     // Control: every subscription took the entity callback, so this run is
     // about attribution and not a backend that silently fell back.
     for (i, s) in SUBS.iter().enumerate() {
@@ -523,19 +526,19 @@ fn an_attributing_backend_does_not_wake_a_high_sched_task_for_a_low_sched_task_a
         );
     }
 
-    let woken = high_sched_tasks_woken_by_one_low_arrival(&mut tiers);
+    let woken = high_sched_tasks_woken_by_one_low_arrival(&mut sched_tasks);
     assert_eq!(
         woken, 0,
-        "one arrival for the low tier woke {woken} high tiers on a backend that names the \
-         arrival's entity: only the owning tier may wake (RFC-0113 D2.5)"
+        "one arrival for the low sched task woke {woken} high sched tasks on a backend that names the \
+         arrival's entity: only the owning sched task may wake (RFC-0113 D2.5)"
     );
-    // Control: the arrival really reached the low tier.
+    // Control: the arrival really reached the low sched task.
     arrive(0);
     let start = Instant::now();
-    tiers[0].spin_once(PROBE);
+    sched_tasks[0].spin_once(PROBE);
     assert!(
         start.elapsed() < PROBE / 4,
-        "the low tier was not woken by its own arrival, so the high tiers sleeping proves nothing"
+        "the low sched task was not woken by its own arrival, so the high sched tasks sleeping proves nothing"
     );
-    drop_sched_tasks(tiers);
+    drop_sched_tasks(sched_tasks);
 }

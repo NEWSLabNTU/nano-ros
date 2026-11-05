@@ -1,18 +1,18 @@
-//! Multi-tier `nros::main!()` on FreeRTOS QEMU (mps2-an385) — `run_sched_tasks`
+//! Multi-sched-task `nros::main!()` on FreeRTOS QEMU (mps2-an385) — `run_sched_tasks`
 //! executes on device (Phase 228.G).
 //!
 //! The fixture's `system.toml` declares `[tasks.*]`, so the macro emits
-//! `<Mps2An385>::run_sched_tasks(TIERS, run_plan)`. Booting the firmware proves the
+//! `<Mps2An385>::run_sched_tasks(SCHED_TASKS, run_plan)`. Booting the firmware proves the
 //! emit links with the kernel and the run_sched_tasks path runs on device (the
-//! `(multi-tier)` banner + network bringup). A second test brings up a host
-//! zenohd reachable over slirp and best-effort confirms the connected per-tier
+//! `(multi-sched_task)` banner + network bringup). A second test brings up a host
+//! zenohd reachable over slirp and best-effort confirms the connected per-sched-task
 //! run.
 //!
 //! The thumbv7m firmware cross build runs in the **build stage** — the
 //! `orch_sched_tasks_freertos` cross-build fixture (`compile-check-fixtures.sh`, run
 //! by `build-test-fixtures`) builds `demo_entry`. These tests boot the prebuilt
 //! ELF in QEMU instead of running cargo at run time (issue 0034 / 0041). Fixture
-//! absent (thumbv7m / arm-gcc / FreeRTOS+lwIP not provisioned) → tier-aware
+//! absent (thumbv7m / arm-gcc / FreeRTOS+lwIP not provisioned) → sched-task-aware
 //! skip/fail via the resolver.
 
 use nros_tests::{
@@ -56,7 +56,7 @@ fn assert_fixture_port() {
     );
 }
 
-/// Resolve the prebuilt multi-tier freertos firmware ELF (debug — the build
+/// Resolve the prebuilt multi-sched-task freertos firmware ELF (debug — the build
 /// stage's default profile). Used by the boot-only test, where speed of
 /// `Executor::open` is irrelevant.
 fn firmware() -> nros_tests::TestResult<PathBuf> {
@@ -90,7 +90,7 @@ fn multi_sched_task_freertos_firmware_builds_and_boots_run_sched_tasks()
 -> nros_tests::TestResult<()> {
     nros_tests::fixtures::lane::require_platform_in_lane(
         &[nros_tests::matrix::PlatformId::FreertosMps2],
-        "the multi-tier FreeRTOS firmware",
+        "the multi-sched-task FreeRTOS firmware",
     );
     let bin = firmware()?;
     assert!(bin.is_file(), "firmware ELF missing at {}", bin.display());
@@ -99,7 +99,7 @@ fn multi_sched_task_freertos_firmware_builds_and_boots_run_sched_tasks()
     }
 
     // Boot on QEMU (no router). `run_sched_tasks_entry` prints the unique
-    // `(multi-tier)` banner + brings up the network before the boot-tier
+    // `(multi-sched_task)` banner + brings up the network before the boot-sched-task
     // Executor::open fails — proving the run_sched_tasks path executes on device.
     //
     // Issue 0342 — through the `qemu` interpreter, not a hand-rolled
@@ -109,15 +109,15 @@ fn multi_sched_task_freertos_firmware_builds_and_boots_run_sched_tasks()
     // convention (book-internals/src/testing/qemu-icount.md), boot-deadline handling and log
     // capture.
     let mut qemu = nros_tests::qemu::QemuProcess::start_mps2_an385(&bin)
-        .expect("boot multi-tier freertos firmware on QEMU");
+        .expect("boot multi-sched-task freertos firmware on QEMU");
     let combined = qemu
         .wait_for_output_pattern("Network ready.", Duration::from_secs(15))
         .unwrap_or_else(|e| {
             panic!("run_sched_tasks boot bringup did not complete the network init: {e}")
         });
     assert!(
-        combined.contains("nros FreeRTOS Platform (multi-tier)"),
-        "QEMU boot did not reach run_sched_tasks_entry (no multi-tier banner).\noutput:\n{combined}",
+        combined.contains("nros FreeRTOS Platform (multi-sched-task)"),
+        "QEMU boot did not reach run_sched_tasks_entry (no multi-sched-task banner).\noutput:\n{combined}",
     );
     Ok(())
 }
@@ -129,7 +129,7 @@ fn multi_sched_task_freertos_firmware_connects_over_slirp_and_runs_sched_tasks()
     // FreeRTOS MPS2 coordinate (the sibling above deselects at `firmware()`).
     nros_tests::fixtures::lane::require_platform_in_lane(
         &[nros_tests::matrix::PlatformId::FreertosMps2],
-        "the multi-tier FreeRTOS firmware",
+        "the multi-sched-task FreeRTOS firmware",
     );
     if !nros_tests::qemu::qemu_system_available("qemu-system-arm") {
         nros_tests::unmet!("qemu-system-arm not found (env, build/qemu, store, PATH)");
@@ -149,28 +149,28 @@ fn multi_sched_task_freertos_firmware_connects_over_slirp_and_runs_sched_tasks()
         nros_tests::fixtures::or_unmet(nros_tests::fixtures::ZenohRouter::start_slirp(ROUTER_PORT));
 
     let mut qemu = nros_tests::qemu::QemuProcess::start_mps2_an385_networked(&bin)
-        .expect("boot multi-tier freertos firmware on QEMU");
+        .expect("boot multi-sched-task freertos firmware on QEMU");
 
     let boot = qemu
         .wait_for_output_pattern("Network ready.", Duration::from_secs(15))
         .expect("firmware did not reach network bringup");
     assert!(
-        boot.contains("nros FreeRTOS Platform (multi-tier)"),
-        "QEMU boot did not reach run_sched_tasks_entry (no multi-tier banner).\noutput:\n{boot}",
+        boot.contains("nros FreeRTOS Platform (multi-sched-task)"),
+        "QEMU boot did not reach run_sched_tasks_entry (no multi-sched-task banner).\noutput:\n{boot}",
     );
 
     // Connected run — ASSERTED (was best-effort) now that #48 is fixed: the zenoh
     // RMW backend is linked + registered (cause 2) AND `Mps2An385::run_sched_tasks`
-    // threads the deploy overlay (cause 1, multi-tier path) so the firmware dials
-    // the reachable slirp locator. With adequate tier stacks (system.toml 64 KiB,
-    // not the old 8/4 KiB that overflowed once the connect succeeded), both tiers
-    // set up and the boot tier enters its spin loop.
-    let connected = qemu.collect_until("Multi-tier setup complete", Duration::from_secs(25));
+    // threads the deploy overlay (cause 1, multi-sched-task path) so the firmware dials
+    // the reachable slirp locator. With adequate sched task stacks (system.toml 64 KiB,
+    // not the old 8/4 KiB that overflowed once the connect succeeded), both sched tasks
+    // set up and the boot sched task enters its spin loop.
+    let connected = qemu.collect_until("Multi-sched-task setup complete", Duration::from_secs(25));
     qemu.kill();
     assert!(
-        connected.contains("Multi-tier setup complete"),
-        "multi-tier firmware did not reach `Multi-tier setup complete` over slirp \
-         (Executor::open / per-tier setup failed).\noutput:\n{connected}",
+        connected.contains("Multi-sched-task setup complete"),
+        "multi-sched-task firmware did not reach `Multi-sched_task setup complete` over slirp \
+         (Executor::open / per-sched-task setup failed).\noutput:\n{connected}",
     );
     Ok(())
 }

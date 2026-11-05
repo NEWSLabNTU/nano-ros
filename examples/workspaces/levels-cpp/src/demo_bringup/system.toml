@@ -50,7 +50,7 @@ class = "load_pkg::Load"
 name = "load"
 
 # W2's negative control (s1_flat.launch.xml): the same two classes, both bound
-# to the authored `flat` tier, so they share one level and the 1 kHz loop
+# to the authored `flat` sched task, so they share one level and the 1 kHz loop
 # waits behind every telemetry callback. It shows the miss count can see a
 # miss.
 [[component]]
@@ -66,9 +66,9 @@ name = "load_flat"
 group_tasks = { main = "flat" }
 
 # W1, the kernel budget (budget.launch.xml): `load_capped` burns 10 ms of CPU
-# per release on the authored `capped` tier, whose SCHED_DEADLINE reservation
+# per release on the authored `capped` sched task, whose SCHED_DEADLINE reservation
 # is 2 ms per 10 ms, so the kernel throttles it. `load_boot` (100 us per
-# release) runs beside it on the authored `background` tier, below `capped`, so
+# release) runs beside it on the authored `background` sched task, below `capped`, so
 # it is the boot level that owns the session: the reservation goes only on a
 # spawned level (issue 2018). It is pinned rather than derived because a
 # derived level is allocated from the top of the app pool (SCHED_FIFO 88

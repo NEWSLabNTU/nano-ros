@@ -1,15 +1,15 @@
 //! phase-521 W8 (b), RFC-0113 D9 — the generated PX4 entry.
 //!
 //! PX4 is a Tier 1 FRAMEWORK, not a board family: PX4 owns `main` and the
-//! threads, and a tier's wait is a work item's schedule. So the entry is a PX4
+//! threads, and a sched task's wait is a work item's schedule. So the entry is a PX4
 //! module — `ModuleBase<>` boilerplate plus one `px4::ScheduledWorkItem`
-//! subclass per tier — rather than a `Board::run_*` call. The work item's
+//! subclass per sched task — rather than a `Board::run_*` call. The work item's
 //! runtime half is `integrations/px4/include/nros_px4/sched_task_work_item.hpp`.
 //!
 //! What is shared with the C++ entry, and what is not:
 //!
 //! * The NODES are the C++ entry's: the plan is admitted and lowered by the
-//!   C++ pack (`admit_and_lower`), and the template renders each tier's setup
+//!   C++ pack (`admit_and_lower`), and the template renders each sched task's setup
 //!   with the same partials (`node_body_cpp.jinja`, `declare_calls.jinja`,
 //!   `service_trailer_cpp.jinja`, the monitor statics and install). A component
 //!   cannot tell which entry constructed it.
@@ -17,14 +17,14 @@
 //!   the POSIX platform (`NanoRosPx4Module.cmake` links the posix shim), and
 //!   the family decides only the boot wrapper and the runners, neither of
 //!   which this template renders.
-//! * The WORK QUEUE of each tier comes from its rank:
+//! * The WORK QUEUE of each sched task comes from its rank:
 //!   `nros_orchestration_ir::px4::px4_work_queues`, most urgent first, where a
-//!   tier's urgency is its resolved priority (bigger is more urgent, the POSIX
-//!   reading the `linux` lowering gives it). More tiers than PX4 has queues is
+//!   sched task's urgency is its resolved priority (bigger is more urgent, the POSIX
+//!   reading the `linux` lowering gives it). More sched tasks than PX4 has queues is
 //!   refused here, at generation, never shared.
-//! * A plan with no tier table is ONE tier, `default`, holding every node. A
-//!   group-split plan (one node's groups on two tiers) is refused: its shape is
-//!   a sched context per tier on ONE executor, and a work item per tier has no
+//! * A plan with no sched task table is ONE sched task, `default`, holding every node. A
+//!   group-split plan (one node's groups on two sched tasks) is refused: its shape is
+//!   a sched context per sched task on ONE executor, and a work item per sched task has no
 //!   executor of its own to give it.
 
 use nros_entry_lower::LoweredEntry;
@@ -41,10 +41,10 @@ const NODE_PACK: &str = "cpp";
 /// The template, registered by the C++ pack's manifest.
 const TEMPLATE: &str = "entry_px4.cpp";
 
-/// One tier's work item.
+/// One sched task's work item.
 #[derive(Debug, Serialize)]
 struct Px4SchedTask {
-    /// Position in the tier table, which is also the open order.
+    /// Position in the sched task table, which is also the open order.
     index: usize,
     name: String,
     /// The PX4 work queue, a `px4::wq_configurations` member.
@@ -55,9 +55,9 @@ struct Px4SchedTask {
     nodes: Vec<usize>,
     /// `(node name, node namespace, group)` triples; empty is the wildcard.
     groups: Vec<(String, String, String)>,
-    /// Only the boot tier registers the process's param and lifecycle services.
+    /// Only the boot sched task registers the process's param and lifecycle services.
     emits_services: bool,
-    /// The boot tier carries the image's monitor table, as on every runner.
+    /// The boot sched task carries the image's monitor table, as on every runner.
     monitors: Option<nros_entry_lower::MonitorTable>,
 }
 
@@ -66,7 +66,7 @@ struct Px4View {
     /// The PX4 `MAIN` of the module: the shell command, and the
     /// `<main>_main` symbol PX4's module registration calls.
     main: String,
-    tiers: Vec<Px4SchedTask>,
+    sched_tasks: Vec<Px4SchedTask>,
 }
 
 #[derive(Serialize)]
@@ -98,9 +98,9 @@ pub fn emit_px4_lowered(
     lowering.board = LOWERING_BOARD.into();
     if lowering.executor_shape() == ExecutorShape::SchedContexts {
         return Err(format!(
-            "PX4 entry (`{main}`): a node's callback groups span two tiers, which runs \
-             one executor with a sched context per tier; a PX4 tier is a work item with \
-             its own executor, so each node's groups must sit on one tier (RFC-0113 D9)"
+            "PX4 entry (`{main}`): a node's callback groups span two sched tasks, which runs \
+             one executor with a sched context per sched task; a PX4 sched task is a work item with \
+             its own executor, so each node's groups must sit on one sched task (RFC-0113 D9)"
         ));
     }
     let all = manifests()?;
@@ -110,7 +110,7 @@ pub fn emit_px4_lowered(
     let mut lowered = admit_and_lower(NODE_PACK, manifest, &all, &lowering, opts)?;
     lowered.board = plan.board.clone();
 
-    let mut tiers: Vec<Px4SchedTask> = match &lowered.tiers {
+    let mut sched_tasks: Vec<Px4SchedTask> = match &lowered.sched_tasks {
         Some(t) => t
             .rows
             .iter()
@@ -139,21 +139,24 @@ pub fn emit_px4_lowered(
     };
 
     // Rank: most urgent first, by resolved priority, ties in table order.
-    let priorities: Vec<i64> = match &lowered.tiers {
+    let priorities: Vec<i64> = match &lowered.sched_tasks {
         Some(t) => t.rows.iter().map(|r| r.priority).collect(),
         None => vec![0],
     };
-    let mut by_rank: Vec<usize> = (0..tiers.len()).collect();
+    let mut by_rank: Vec<usize> = (0..sched_tasks.len()).collect();
     by_rank.sort_by_key(|&i| std::cmp::Reverse(priorities[i]));
-    let names: Vec<&str> = by_rank.iter().map(|&i| tiers[i].name.as_str()).collect();
+    let names: Vec<&str> = by_rank
+        .iter()
+        .map(|&i| sched_tasks[i].name.as_str())
+        .collect();
     let queues = nros_orchestration_ir::px4::px4_work_queues(&names)
         .map_err(|e| format!("PX4 entry (`{main}`): {e}"))?
         .into_iter()
         .map(|(_, q)| q)
         .collect::<Vec<_>>();
     for (rank, (&i, queue)) in by_rank.iter().zip(queues).enumerate() {
-        tiers[i].rank = rank;
-        tiers[i].queue = queue;
+        sched_tasks[i].rank = rank;
+        sched_tasks[i].queue = queue;
     }
 
     let src = super::render::render(
@@ -162,7 +165,7 @@ pub fn emit_px4_lowered(
             entry: &lowered,
             px4: Px4View {
                 main: main.into(),
-                tiers,
+                sched_tasks,
             },
         },
     )?;
@@ -181,35 +184,39 @@ fn is_c_ident(s: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn tiered(n: usize) -> Plan {
+    fn sched_task_plan(n: usize) -> Plan {
         let mut p = super::super::golden::cpp_sched_task_plan("px4");
         if let Some(t) = p.resolved_sched_tasks.as_mut() {
-            let proto = t.tiers[1].clone();
+            let proto = t.sched_tasks[1].clone();
             for i in 2..n {
                 let mut extra = proto.clone();
                 extra.name = format!("extra{i}");
                 extra.priority = 5 - i as i64;
                 extra.members.clear();
-                t.tiers.push(extra);
+                t.sched_tasks.push(extra);
             }
         }
         p
     }
 
-    /// RFC-0113 D9 -- each tier takes the queue its rank picks, and the rank
+    /// RFC-0113 D9 -- each sched task takes the queue its rank picks, and the rank
     /// is its priority, not its position in the table.
     #[test]
     fn each_sched_task_runs_on_the_queue_its_rank_picks() {
-        let mut p = tiered(2);
-        // List the less urgent tier FIRST: the queue must follow the priority.
-        p.resolved_sched_tasks.as_mut().unwrap().tiers.reverse();
+        let mut p = sched_task_plan(2);
+        // List the less urgent sched task FIRST: the queue must follow the priority.
+        p.resolved_sched_tasks
+            .as_mut()
+            .unwrap()
+            .sched_tasks
+            .reverse();
         let src = emit_px4(&p, "nros_demo", &LowerOptions::default()).unwrap();
         let high = src
             .find("class NrosSchedTask_high ")
-            .expect("one work item class per tier");
+            .expect("one work item class per sched task");
         let low = src
             .find("class NrosSchedTask_low ")
-            .expect("one work item class per tier");
+            .expect("one work item class per sched task");
         let rate = src[high..]
             .find("px4::wq_configurations::rate_ctrl")
             .unwrap();
@@ -225,32 +232,32 @@ mod tests {
         );
     }
 
-    /// More tiers than PX4 has queues is refused at generation, naming them.
+    /// More sched tasks than PX4 has queues is refused at generation, naming them.
     #[test]
     fn more_sched_tasks_than_queues_is_refused() {
-        let p = tiered(nros_orchestration_ir::px4::PX4_WORK_QUEUES.len() + 1);
+        let p = sched_task_plan(nros_orchestration_ir::px4::PX4_WORK_QUEUES.len() + 1);
         let err = emit_px4(&p, "nros_demo", &LowerOptions::default()).unwrap_err();
         assert!(err.contains("high") && err.contains("extra4"), "{err}");
     }
 
-    /// A node whose groups span two tiers has no executor of its own per tier.
+    /// A node whose groups span two sched tasks has no executor of its own per sched task.
     #[test]
     fn a_group_split_plan_is_refused() {
-        let mut p = tiered(2);
-        p.nodes[0].group_tiers = std::collections::BTreeMap::from([
+        let mut p = sched_task_plan(2);
+        p.nodes[0].group_tasks = std::collections::BTreeMap::from([
             ("ctrl_grp".to_string(), "high".to_string()),
             ("telem_grp".to_string(), "low".to_string()),
         ]);
-        p.resolved_sched_tasks.as_mut().unwrap().tiers[1]
+        p.resolved_sched_tasks.as_mut().unwrap().sched_tasks[1]
             .members
             .push(("ctrl".into(), "telem_grp".into()));
         let err = emit_px4(&p, "nros_demo", &LowerOptions::default()).unwrap_err();
-        assert!(err.contains("span two tiers"), "{err}");
+        assert!(err.contains("span two sched tasks"), "{err}");
     }
 
     #[test]
     fn a_main_that_is_not_an_identifier_is_refused() {
-        let p = tiered(2);
+        let p = sched_task_plan(2);
         let err = emit_px4(&p, "nros-demo", &LowerOptions::default()).unwrap_err();
         assert!(err.contains("not a C identifier"), "{err}");
     }

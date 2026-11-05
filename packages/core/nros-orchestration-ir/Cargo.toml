@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Shared per-tier orchestration schema + resolver (RFC-0015), consumed by both the nros CLI codegen and the nros::main! proc-macro."
+description = "Shared per-sched-task orchestration schema + resolver (RFC-0015), consumed by both the nros CLI codegen and the nros::main! proc-macro."
 
 # issue 0287 — HOST-ONLY. `just check workspace-embedded` builds the whole
 # workspace for a thumb target, and cargo unifies features across ALL members
@@ -41,9 +41,9 @@ nros-build-paths = { path = "../../tooling/nros-build-paths" }
 # crate, so it is already in every lock this crate is in: one line per lock.
 serde_yaml_ng = "0.10"
 thiserror = { workspace = true }
-# RFC-0052 — the shared SystemModel tier schema. Both consumers of this crate
-# (the CLI's codegen-system and the nros::main! proc-macro) resolve tiers from
-# a resolved model, so the model→ir tier conversion lives here (one SSoT, no
+# RFC-0052 — the shared SystemModel sched task schema. Both consumers of this crate
+# (the CLI's codegen-system and the nros::main! proc-macro) resolve sched tasks from
+# a resolved model, so the model→ir sched task conversion lives here (one SSoT, no
 # drift). Path crosses into the cli sub-workspace's vendored submodule — fine,
 # a path dep groups by lockfile, not visibility (same rationale as nros-macros
 # depping nros-pkg-index / nros-launch-parser).

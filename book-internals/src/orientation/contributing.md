@@ -114,9 +114,9 @@ just docker shell      # Interactive shell with all tools
 just docker test-qemu  # Run QEMU tests in container
 ```
 
-### Setup tiers
+### Setup sched tasks
 
-Choose the setup tier. `base` is enough for most code review and
+Choose the setup sched task. `base` is enough for most code review and
 native development; `all` prepares the full `test-all` matrix:
 
 ```bash

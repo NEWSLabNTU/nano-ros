@@ -1,4 +1,4 @@
-//! Phase 228.G fixture — telemetry node (tier `low`).
+//! Phase 228.G fixture — telemetry node (sched task `low`).
 //!
 //! Publishes a monotonic counter on `/telem` every 100 ms so a subscriber can
 //! observe the low-tier cadence (Track D) — ~10× slower than the high-tier
@@ -24,10 +24,10 @@ impl Component for Telem {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("telem_node"))?;
-        // issue 0572 — say that this node's register() RAN. A tier that never
+        // issue 0572 — say that this node's register() RAN. A sched task that never
         // dispatches and a node that was never registered on it look identical
         // from outside: the topic is simply silent.
-        log::info!("Telem::register on a tier admitting group `telem`");
+        log::info!("Telem::register on a sched task admitting group `telem`");
         node.callback_group("telem")?;
         let pub_telem = node.create_publisher_for_topic::<Int32>("/telem")?;
         let _t =
@@ -55,12 +55,12 @@ impl ExecutableNode for Telem {
             // timer never fired" and "every publish failed" the same
             // observation from outside: `/telem` silent, guest console empty.
             // The FIRST tick and every error now say so. Only the first, because
-            // this tier fires every 10 ms and a per-tick line would swamp the
+            // this sched task fires every 10 ms and a per-tick line would swamp the
             // serial console the e2e observers read.
             match ctx.publish_to_topic::<Int32, 8>("/telem", &msg) {
                 Ok(()) => {
                     if *state == 0 {
-                        log::info!("on_telem: first publish OK (tier `low` is dispatching)");
+                        log::info!("on_telem: first publish OK (sched task `low` is dispatching)");
                     }
                 }
                 Err(e) => log::error!("on_telem: publish to /telem FAILED: {e:?}"),

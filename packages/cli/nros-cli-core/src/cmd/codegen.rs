@@ -297,7 +297,7 @@ pub struct EntryArgs {
 
     /// The image's Zephyr `.config`. Refused for a non-Zephyr board.
     ///
-    /// A derived tier table is allocated out of the priority pool this
+    /// A derived sched task table is allocated out of the priority pool this
     /// image's Kconfig resolves instead of the Kconfig-defaults projection.
     /// `nano_ros_add_executable` passes `${DOTCONFIG}` on a Zephyr build,
     /// where Kconfig has already run.
@@ -316,7 +316,7 @@ pub struct EntryArgs {
     pub rmw_config: Option<PathBuf>,
 
     /// Render a PX4 module entry whose shell command is `<MAIN>`: one PX4
-    /// work item per tier. `--lang cpp --typed` only.
+    /// work item per sched task. `--lang cpp --typed` only.
     ///
     /// PX4 SITL runs nano-ros on the POSIX platform, so the plan resolves on
     /// the `linux` board (`--board` may be omitted or `linux`).
@@ -436,7 +436,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     }
 
     // phase-521 W8 (d) -- a PX4 module entry resolves on the POSIX board it
-    // runs on; any other board would resolve tiers PX4 never runs.
+    // runs on; any other board would resolve sched tasks PX4 never runs.
     let board = match (&args.px4_main, &args.board) {
         (Some(_), Some(b)) if b != "linux" => bail!(
             "codegen entry: `--px4-main` resolves the plan on the `linux` board \
@@ -498,7 +498,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
     // phase-462 W4b -- and each contract mode's variant of those rows, refused
     // when a mode would change which endpoints they watch.
     // phase-462 W4c -- and, when there are modes, the model their switch budget
-    // is checked against once the tiers (whose spin periods bound it) resolve.
+    // is checked against once the sched tasks (whose spin periods bound it) resolve.
     let mut switch_model: Option<ros_launch_manifest_model::SystemModel> = None;
     let (monitor_rows, age_rows, hazard_model, mode_rows) = match &args.model {
         Some(model_path) => {
@@ -536,10 +536,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         };
         let index = entry_codegen::metadata::ComponentIndex::load(meta_path)?;
         entry_codegen::metadata::enrich_plan(&mut plan, &index)?;
-        // Phase 269 (W4) — resolve tiers + stamp PlanNode.sched_context after
+        // Phase 269 (W4) — resolve sched tasks + stamp PlanNode.sched_context after
         // enrich_plan has populated PlanNode.callback_groups from cmake metadata.
         // Issue 1285 — a typed C/C++ entry needs the board's FAMILY (its
-        // runner, its boot shape, its tier sub-table), so an unknown key stops
+        // runner, its boot shape, its sched task sub-table), so an unknown key stops
         // here, naming the known ones, instead of reading as `posix`/`native`.
         let family = nros_entry_lower::board_family(&plan.board).map_err(|e| eyre!("{e}"))?;
         let image_plan = crate::orchestration::image_priority_plan::plan_for_image(
@@ -585,7 +585,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 sched_task_key: family.sched_task_rtos_key(),
                 plan: plan_ref,
                 from_image: image_plan.is_some(),
-                tiers: plan.resolved_sched_tasks.as_ref(),
+                sched_tasks: plan.resolved_sched_tasks.as_ref(),
                 derivation: derivation.as_ref(),
                 nodes: &node_names,
                 member_stacks: &member_stacks,
@@ -600,8 +600,8 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 .unwrap_or_else(|| std::path::Path::new("."));
             record.write(dir)?;
         }
-        // phase-462 W4c -- a mode's deadlines on the tiers derived above, and
-        // its switch, refused when the slowest tier's spin outlasts its budget.
+        // phase-462 W4c -- a mode's deadlines on the sched tasks derived above, and
+        // its switch, refused when the slowest sched task's spin outlasts its budget.
         let mut mode_sched_task = entry_codegen::emit::ModeSchedTask::default();
         if let Some(model) = &switch_model {
             for n in derivation
@@ -611,9 +611,9 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             {
                 eprintln!("nros codegen entry: {n}");
             }
-            if let Some(tiers) = plan.resolved_sched_tasks.as_ref() {
-                let periods: Vec<(String, u64)> = tiers
-                    .tiers
+            if let Some(sched_tasks) = plan.resolved_sched_tasks.as_ref() {
+                let periods: Vec<(String, u64)> = sched_tasks
+                    .sched_tasks
                     .iter()
                     .map(|t| {
                         (
@@ -664,7 +664,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         // ignores them.
         // phase-509 P2 (RFC-0108 D2) -- each ranked node's contract rank,
         // normalised (0 the most urgent), so the executor dispatches in rank
-        // order inside a tier. Nothing derived, nothing seeded.
+        // order inside a sched task. Nothing derived, nothing seeded.
         let node_ranks = derivation
             .as_ref()
             .map(|d| d.node_ranks(image_plan_direction))
@@ -719,7 +719,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             // Retiring it is not tidiness. What this verb produced was a
             // STRICTLY POORER entry than the macro's: it renders the
             // `OwnedSpin` register path and nothing else, so a plan declaring
-            // tiers, `[lifecycle]`, `[param_services]` or per-entry executor
+            // sched tasks, `[lifecycle]`, `[param_services]` or per-entry executor
             // sizing compiled, linked, booted — and ignored all four. That is
             // archived issue 0302's shape (four features that reached one
             // producer and not the other) still live for the four the CLI verb
@@ -734,7 +734,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                  emitted by the `nros::main!()` proc-macro at compile time. \
                  Scaffold one with `nros new`, or let `nano_ros_entry` drive \
                  `rust_cargo_application()`; this verb rendered the register \
-                 path only and silently dropped tiers, lifecycle and param \
+                 path only and silently dropped sched tasks, lifecycle and param \
                  services."
             ),
             // Phase 257 (Stage-3) — the non-typed C/C++ entry (the synthesizing
@@ -972,13 +972,13 @@ fn write_link_libs_sidecar(
         }
     }
     out.push_str(")\n");
-    // Issue 1598 moved each spawned tier's task stack out of the RTOS heap
+    // Issue 1598 moved each spawned sched task's RTOS task stack out of the RTOS heap
     // and into `.bss`, where the entry TU above declares it. The heap a board
     // reserves by default was sized when those stacks still lived in it, so
-    // the same bytes ended up reserved twice and a three-tier C++ FreeRTOS
+    // the same bytes ended up reserved twice and a three-sched-task C++ FreeRTOS
     // image overflowed RAM. This states the moved total on the executable;
     // the board decides what its heap default does with it
-    // (`NanoRosEntry.cmake`). Absent when the entry reserves no tier stacks.
+    // (`NanoRosEntry.cmake`). Absent when the entry reserves no sched task stacks.
     if let Some(bytes) = lowered
         .boot
         .as_ref()
@@ -991,13 +991,13 @@ fn write_link_libs_sidecar(
             "set_property(TARGET {exe_target} PROPERTY NROS_SCHED_TASK_STACKS_BSS_BYTES {bytes})"
         );
     }
-    // Issue 2017 (RFC-0108 D6) -- a tiered entry runs the LEVEL runner, and a
+    // Issue 2017 (RFC-0108 D6) -- a sched-task entry runs the LEVEL runner, and a
     // level image's kernel must not time-slice a level against an
     // equal-priority task. The setting is compiled into the kernel, not the
     // entry, so the entry states the fact on the executable and the board
     // decides what its kernel build does with it (`NanoRosEntry.cmake`:
-    // `NROS_FREERTOS_LEVEL_IMAGE` on FreeRTOS). Absent for an untiered entry.
-    if lowered.boot.as_ref().is_some_and(|b| b.tiers) {
+    // `NROS_FREERTOS_LEVEL_IMAGE` on FreeRTOS). Absent for a single-executor entry.
+    if lowered.boot.as_ref().is_some_and(|b| b.sched_tasks) {
         let _ = writeln!(
             out,
             "set_property(TARGET {exe_target} PROPERTY NROS_LEVEL_IMAGE 1)"

@@ -1,7 +1,7 @@
 //! Which Kconfig symbols carry a Zephyr image's TRANSPORT priority, and the
 //! one reader of them out of that image's `.config` (issues 1508, 1537).
 //!
-//! A derived tier is allocated out of the image's own `pool.app`, and on
+//! A derived sched task is allocated out of the image's own `pool.app`, and on
 //! Zephyr that pool is DERIVED per image (RFC-0079 section 4.1): both ends of
 //! the transport's priority chain are Kconfig. The KERNEL half
 //! (`CONFIG_NUM_PREEMPT_PRIORITIES` & co.) is Zephyr's own vocabulary and

@@ -67,7 +67,7 @@ impl Fixture {
         let repo = repo_root();
         let stamp = super::unique_stamp();
         let root = repo.join("tmp").join(format!(
-            "derived-tiers-{tag}-{}-{stamp}",
+            "derived-sched-tasks-{tag}-{}-{stamp}",
             std::process::id()
         ));
         fs::create_dir_all(&root).expect("create the fixture copy");
@@ -127,12 +127,12 @@ impl Fixture {
     }
 
     /// Append to the fixture's `system.toml`, and optionally bind one group of
-    /// each named component to `tier`.
+    /// each named component to `sched_task`.
     ///
-    /// `bind` names the components that get `group_tasks = { main = "<tier>" }`
+    /// `bind` names the components that get `group_tasks = { main = "<sched_task>" }`
     /// on their `[[component]]` row; `append` is written verbatim at the end
     /// (the `[tasks.*]` the test is about).
-    pub fn author(&self, tier: &str, bind: &[&str], append: &str) {
+    pub fn author(&self, sched_task: &str, bind: &[&str], append: &str) {
         let path = self.bringup().join("system.toml");
         let mut raw = fs::read_to_string(&path).expect("read system.toml");
         for name in bind {
@@ -143,7 +143,7 @@ impl Fixture {
             );
             raw = raw.replace(
                 &row,
-                &format!("{row}\ngroup_tasks = {{ main = \"{tier}\" }}"),
+                &format!("{row}\ngroup_tasks = {{ main = \"{sched_task}\" }}"),
             );
         }
         fs::write(&path, format!("{raw}\n{append}\n")).expect("author system.toml");
@@ -201,7 +201,7 @@ fn copy_tree(from: &Path, to: &Path) {
 /// `with_system` folds the bringup's `system.toml` into the model, which is
 /// what carries `[tasks.*]` and `group_tasks` across — the same `--system`
 /// `nros sync` passes whenever the file exists (`cmd/ws.rs`). The zero-grammar
-/// derived road does not need it: its `system.toml` states no tier at all.
+/// derived road does not need it: its `system.toml` states no sched task at all.
 pub fn resolve_model_path(bringup: &Path, with_system: bool) -> PathBuf {
     let resolver = super::pinned_launch_resolver();
     let out = bringup.join("model-out");

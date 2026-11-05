@@ -852,7 +852,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_message_info(
 /// void callback(data, len, gap, duplicate, crc_valid, ctx)
 /// ```
 /// Arena-registered like `nros_cpp_subscription_register`; `sched_context != 0`
-/// binds the handle to the requested scheduling tier. The C++ `subscription.hpp`
+/// binds the handle to the requested scheduling sched task. The C++ `subscription.hpp`
 /// declares a matching `nros_cpp_subscription_validated_callback_t` typedef and a
 /// `message_safety_trampoline` that packs the scalars back into
 /// `nros_cpp_integrity_status_t` for the typed user handler.

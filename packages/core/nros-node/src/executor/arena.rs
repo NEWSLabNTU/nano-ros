@@ -331,7 +331,7 @@ pub(crate) struct SrvEntry<Svc: RosService, F, const REQ_BUF: usize, const REPLY
 /// What a periodic timer does with periods it missed while its executor
 /// was blocked (issue #505).
 ///
-/// A tier that loses the CPU for several periods — a long-running
+/// A sched task that loses the CPU for several periods — a long-running
 /// callback, or preemption by a higher-priority band — resumes with
 /// accumulated elapsed time worth more than one period.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1692,7 +1692,7 @@ pub(crate) unsafe fn sub_buffered_has_data<M, F>(ptr: *const u8) -> bool {
 /// is refilled by a transport task that may run at a HIGHER priority than the
 /// executor. "Drain until empty" was then unbounded: under a flood the check
 /// for "empty" never came true, one `try_process` never returned, and no other
-/// entry on the executor (or any lower tier on the core) ran again. The
+/// entry on the executor (or any lower sched task on the core) ran again. The
 /// buffered shapes never had this — they drain what was copied in.
 ///
 /// Why 64 and not 1: every sample that was in the ring when the dispatch began

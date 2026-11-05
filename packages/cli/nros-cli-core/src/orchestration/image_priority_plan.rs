@@ -1,6 +1,6 @@
 //! Issue 1508 - the priority plan of ONE Zephyr image, read from its `.config`.
 //!
-//! A derived tier is allocated out of a board's `pool.app` (RFC-0079 §5), and
+//! A derived sched task is allocated out of a board's `pool.app` (RFC-0079 §5), and
 //! Zephyr's pool is DERIVED per image (§4.1): both ends of the transport's
 //! priority chain are Kconfig, so the only honest input is the image's own
 //! `.config`. Without one, the derivation falls back to
@@ -66,7 +66,7 @@ pub fn zephyr_image_plan(dotconfig: &Path) -> Result<ImagePlan> {
 }
 
 /// The plan a derivation for `sched_task_key` allocates out of, given the image's
-/// `.config` if the caller has one. `Ok(None)` means "use the tier key's
+/// `.config` if the caller has one. `Ok(None)` means "use the sched task key's
 /// projection" - no `.config`, or an image that applies no priority (whose
 /// note is printed with `who` as the prefix).
 ///
@@ -82,7 +82,7 @@ pub fn plan_for_image(
     };
     if sched_task_key != "zephyr" {
         return Err(eyre!(
-            "{who}: --dotconfig {} was given for a board whose tier key is {sched_task_key:?}; \
+            "{who}: --dotconfig {} was given for a board whose sched task key is {sched_task_key:?}; \
              only a Zephyr image derives its priority plan from a .config",
             path.display()
         ));
@@ -90,7 +90,7 @@ pub fn plan_for_image(
     match zephyr_image_plan(path)? {
         ImagePlan::Resolved(plan) => {
             eprintln!(
-                "{who}: derived tier priorities allocate out of this image's plan - {} ({})",
+                "{who}: derived sched task priorities allocate out of this image's plan - {} ({})",
                 plan.describe_allocation(),
                 path.display()
             );

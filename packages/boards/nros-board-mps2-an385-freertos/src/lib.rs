@@ -236,8 +236,8 @@ impl nros_platform::BoardEntry for Mps2An385 {
 
 /// Issue #48 cause 1 — overlay the `nros::main!()` deploy block
 /// (the leaf `system.toml`'s `[image.*]`) onto `Config::default()`. Fields
-/// the deploy block omits keep the board default. Shared by the single-tier
-/// [`BoardEntry::run_with_deploy`] and the multi-tier [`Mps2An385::run_sched_tasks`]
+/// the deploy block omits keep the board default. Shared by the single-sched-task
+/// [`BoardEntry::run_with_deploy`] and the multi-sched-task [`Mps2An385::run_sched_tasks`]
 /// entry paths so both stop ignoring the deploy metadata.
 /// phase-337 W5 — the field-by-field merge is
 /// [`nros_board_common::BaseConfig::apply_overlay`], which four board crates
@@ -266,18 +266,18 @@ impl Mps2An385 {
         nros_board_freertos::run_bare::<Mps2An385, F, E>(config, setup)
     }
 
-    /// Phase 228.E.2 — per-tier multi-task entry; delegates to
+    /// Phase 228.E.2 — per-sched-task multi-task entry; delegates to
     /// [`nros_board_freertos::run_sched_tasks_entry`]. The `nros::main!()` macro emits
-    /// `<Mps2An385>::run_sched_tasks(&DEPLOY, TIERS, SCHED_TASK_BACKING, run_plan)` for multi-tier systems
-    /// (single-tier keeps the `BoardEntry::run_with_deploy` path).
+    /// `<Mps2An385>::run_sched_tasks(&DEPLOY, SCHED_TASKS, SCHED_TASK_BACKING, run_plan)` for multi-sched-task systems
+    /// (single-sched-task keeps the `BoardEntry::run_with_deploy` path).
     ///
     /// Issue #48 cause 1 — `deploy` overlays the `[deploy.<board>]` block onto
-    /// `Config::default()` (same seam as the single-tier path) so the multi-tier
+    /// `Config::default()` (same seam as the single-sched-task path) so the multi-sched-task
     /// firmware dials the deploy-named locator/ip instead of the inert default.
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
-        tiers: &'static [nros_platform::SchedTaskSpec<'static>],
-        // issue 1571 — the spawned tiers' executor backing: the entry's
+        sched_tasks: &'static [nros_platform::SchedTaskSpec<'static>],
+        // issue 1571 — the spawned sched tasks' executor backing: the entry's
         // `.bss` `SchedTaskExecutorBacking`, emitted by `nros::main!`.
         sched_task_backing: &'static mut [nros_board_freertos::SchedTaskExecutorBackingSlot],
         setup: F,
@@ -290,24 +290,24 @@ impl Mps2An385 {
         nros_board_freertos::run_sched_tasks_entry::<Mps2An385, F, E>(
             config_with_overlay(deploy),
             deploy.boot_config,
-            tiers,
+            sched_tasks,
             sched_task_backing,
-            // No task memory: every spawned tier is `xTaskCreate`d from heap_4,
+            // No task memory: every spawned sched task is `xTaskCreate`d from heap_4,
             // the shape an entry generated before issue 1598 has.
             &[],
             setup,
         )
     }
 
-    /// Issue 1598 — [`run_sched_tasks`](Self::run_sched_tasks) plus each spawned tier's
+    /// Issue 1598 — [`run_sched_tasks`](Self::run_sched_tasks) plus each spawned sched task's
     /// TASK memory: the entry's `.bss` `SchedTaskMemory` statics (stack + TCB,
-    /// sized from each tier's `stack_bytes`), in spawn order. Every spawned
-    /// tier is `xTaskCreateStatic`d over its row, so no tier stack comes out
+    /// sized from each sched task's `stack_bytes`), in spawn order. Every spawned
+    /// sched task is `xTaskCreateStatic`d over its row, so no sched task stack comes out
     /// of heap_4 and stacks that do not fit RAM fail at link. `nros::main!`
     /// emits this call for a FreeRTOS deploy.
     pub fn run_sched_tasks_with_task_memory<F, E>(
         deploy: &nros_platform::DeployOverlay,
-        tiers: &'static [nros_platform::SchedTaskSpec<'static>],
+        sched_tasks: &'static [nros_platform::SchedTaskSpec<'static>],
         sched_task_backing: &'static mut [nros_board_freertos::SchedTaskExecutorBackingSlot],
         task_memory: &'static [nros_board_freertos::SchedTaskMemoryRaw],
         setup: F,
@@ -320,7 +320,7 @@ impl Mps2An385 {
         nros_board_freertos::run_sched_tasks_entry::<Mps2An385, F, E>(
             config_with_overlay(deploy),
             deploy.boot_config,
-            tiers,
+            sched_tasks,
             sched_task_backing,
             task_memory,
             setup,

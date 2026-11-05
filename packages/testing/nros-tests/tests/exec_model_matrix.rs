@@ -1,20 +1,20 @@
 //! Phase 281 W5 — "no silent caps" gate for the RFC-0015 Model 1 execution-model
 //! convergence matrix (language × platform).
 //!
-//! Phase-274 made Model 1 (one executor per priority tier over one shared
+//! Phase-274 made Model 1 (one executor per priority sched task over one shared
 //! session, `active_groups`-gated) the single execution model for all
 //! languages. Phase-281 closes the remaining lang×platform cells. This gate
-//! keeps that matrix honest: every {language, platform} tier cell must be
+//! keeps that matrix honest: every {language, platform} sched task cell must be
 //! EITHER
-//!   - **covered** by a named end-to-end tiers test that exists in `tests/`, OR
+//!   - **covered** by a named end-to-end sched tasks test that exists in `tests/`, OR
 //!   - **deferred** with an explicit reason + the work item that closes it.
 //!
 //! A cell that is neither — or a "covered" cell whose test file was removed /
 //! renamed — fails this test. That closes the loophole where a matrix cell
 //! silently regresses to unproven while the docs/artifact still read "done".
 //!
-//! Scope: the *tier* (`run_sched_tasks` / Model 1) cell only — single-tier
-//! `run_entry` boards (threadx, and the single-tier fallbacks) are a different
+//! Scope: the *sched task* (`run_sched_tasks` / Model 1) cell only — single-sched-task
+//! `run_entry` boards (threadx, and the single-sched-task fallbacks) are a different
 //! path and out of scope here. When a deferred cell lands its test, move it
 //! from `DEFERRED` to `COVERED` in the SAME change that adds the test.
 
@@ -22,7 +22,7 @@ use std::path::PathBuf;
 
 /// The languages Model 1 must reach.
 const LANGS: &[&str] = &["rust", "c", "cpp"];
-/// The platforms with a multi-tier (`run_sched_tasks`) path in scope.
+/// The platforms with a multi-sched-task (`run_sched_tasks`) path in scope.
 ///
 /// The `nuttx` cells are arm-virt; `nuttx-riscv` is the rv-virt (riscv32)
 /// second-arch NuttX board, PROMOTED to a matrix axis after #199's fix chain
@@ -47,7 +47,7 @@ const COVERED: &[(&str, &str, &str)] = &[
     ("cpp", "nuttx", "realtime_sched_tasks_e2e"),
     ("c", "nuttx", "realtime_sched_tasks_e2e"),
     // phase-281 W3-nuttx — the LAST cell. `<QemuArmVirt>::run_sched_tasks` (one
-    // std::thread per tier over one shared session; NuttX is `std` + zenoh-pico
+    // std::thread per sched task over one shared session; NuttX is `std` + zenoh-pico
     // `Z_FEATURE_MULTI_THREAD = 1`) drives a Rust node too. All 12 cells proven.
     ("rust", "nuttx", "realtime_sched_tasks_e2e"),
     // #199 follow-ups — the rv-virt (riscv32) second-arch NuttX axis: rust
@@ -62,7 +62,7 @@ const COVERED: &[(&str, &str, &str)] = &[
 /// Cells not yet proven, each with a reason + the work item that closes it.
 /// A deferred cell must NOT also be COVERED (checked below).
 ///
-/// phase-281 W3-nuttx — **empty**: every lang×platform Model-1 tier cell is now
+/// phase-281 W3-nuttx — **empty**: every lang×platform Model-1 sched task cell is now
 /// proven by a named e2e (the c×nuttx + rust×nuttx cells, formerly gated on
 /// phase-280, closed here). If a future cell regresses to unproven, add it back
 /// here with a reason + work item rather than deleting its COVERED row silently.

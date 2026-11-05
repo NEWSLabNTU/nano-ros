@@ -138,13 +138,13 @@ impl PlatformKind {
     /// RTOS.
     ///
     /// Issue 1285 follow-up. This bridges the board-CATALOG namespace (an
-    /// `[image.*] board` id resolved to its descriptor) to the tier vocabulary.
-    /// The tier key is then `BoardFamily::sched_task_rtos_key`, the same spelling
+    /// `[image.*] board` id resolved to its descriptor) to the sched task vocabulary.
+    /// The sched task key is then `BoardFamily::sched_task_rtos_key`, the same spelling
     /// the entry namespace reads out of `BOARD_KEYS`. The CLI's `codegen-system`
     /// used to take a SUBSTRING of the image board id instead, and read
     /// `native_sim/native/64` (a Zephyr board) as the host.
     ///
-    /// `Posix` is the host platform, whose family is `Native` and whose tier key
+    /// `Posix` is the host platform, whose family is `Native` and whose sched task key
     /// is `posix`. `freertos-posix` is `Freertos` here, because its nodes run
     /// as FreeRTOS tasks. Exhaustive, so a new kind has to choose.
     pub fn board_family(self) -> Option<nros_entry_lower::BoardFamily> {
@@ -532,7 +532,7 @@ pub struct BoardDescriptor {
     pub source: Option<String>,
     /// `[board.priority_plan]` — ACKNOWLEDGED here, interpreted elsewhere.
     ///
-    /// The tier/transport priority plan (RFC-0049; `linux/nros-board.toml`
+    /// The sched task/transport priority plan (RFC-0049; `linux/nros-board.toml`
     /// declares `reserved.transport = [90, 99]` for zenoh-pico's read and
     /// lease tasks) is consumed by `check-sched-task-priority-plan` and by
     /// `nros-platform-config`, not by this reader. It is modelled as an opaque
@@ -988,7 +988,7 @@ impl BoardDescriptor {
     ///   (phase-470 W5.b2): `cmd::build` adds whatever
     ///   [`crate::builder::entry::schedule_board_features`] derives from the
     ///   IMAGE's resolved schedule, on top of whatever the descriptor states.
-    ///   Those two could not be one field — `tiers` is true of an image whose
+    ///   Those two could not be one field — `sched_tasks` is true of an image whose
     ///   bringup declares them and false of its sibling on the same board, and
     ///   this struct is per-BOARD.
     fn apply_conventions(&mut self) {

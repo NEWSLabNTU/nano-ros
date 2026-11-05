@@ -101,7 +101,7 @@ mod tests {
     /// Issue 1729 — a STALE in-lane fixture is a FAILURE. The consolidated
     /// matrix consumers used to turn every resolver `Err` into a local
     /// `skip!`, so `sched_dims_applied` PASSED with three in-lane Zephyr cells
-    /// reading "realtime fixture unavailable: … is STALE" and its derived-tier
+    /// reading "realtime fixture unavailable: … is STALE" and its derived-sched-task
     /// cell — the one that was actually broken — never booted.
     #[test]
     fn a_stale_fixture_is_a_failure_not_a_skip() {

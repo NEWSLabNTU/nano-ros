@@ -18,11 +18,11 @@ one concrete system variant: the node graph, its timing/QoS **contracts**, and
 its **execution/deployment** assignment. It is produced by the play_launch
 front-end (`play_launch resolve`) from three inputs — the ROS 2 launch tree,
 the per-scope contract manifests (ros-launch-manifest, phases 34–35), and the
-integrator's system config (tiers + deployment) — and consumed by exactly two
+integrator's system config (sched tasks + deployment) — and consumed by exactly two
 kinds of back-end:
 
 - the **nano-ros build system**, which bakes each MCU node's slice into its
-  image (executor tiers, QoS, budgets, domain/locator, wiring), and
+  image (executor sched tasks, QoS, budgets, domain/locator, wiring), and
 - the **play_launch Linux runtime**, which spawns/supervises the Linux nodes
   and drives its rcl-interception monitors from the same contract numbers.
 
@@ -54,7 +54,7 @@ nano-ros and play_launch hold complementary halves of a real-time story:
   satisfiability, cross-scope consistency) and a Linux
   runtime monitor (rcl interception: max_age on take, rates, burstiness).
 - nano-ros RFC-0015/RFC-0047 give the **scheduling mechanism** — callback
-  groups mapped to tiers, per-tier spin periods and RTOS priorities,
+  groups mapped to sched tasks, per-sched-task spin periods and RTOS priorities,
   declared in `system.toml`, baked at build time on embedded targets.
 
 Nothing connects them. A cross-machine end-to-end budget (MCU sensor node →
@@ -98,9 +98,9 @@ first-boot time.
 3. **Execution/deployment** — the nano-ros extension, integrator-owned:
    - `deploy`: node → target assignment (`linux` process vs `mcu:<board>`
      image), host/domain/locator;
-   - `tiers`: the RFC-0015 tier table (spin periods, per-RTOS priorities)
+   - `sched_tasks`: the RFC-0015 sched task table (spin periods, per-RTOS priorities)
      joined from `system.toml`;
-   - callback-group → tier mapping per node.
+   - callback-group → sched task mapping per node.
 
 Producers and consumers touch different layers: manifests own layer 2, the
 launch tree owns layer 1, `system.toml` owns layer 3. play_launch runtime
@@ -177,7 +177,7 @@ Consequences for anything added later:
 ## nano-ros consumption (sketch — phase doc will detail)
 
 1. **Build side**: `nros` gains a verb to ingest `system_model.yaml` and emit
-   each `mcu:*` node's slice: tier table → RFC-0015/0047 sched-context
+   each `mcu:*` node's slice: sched task table → RFC-0015/0047 sched-context
    binding, QoS + budgets → per-endpoint config, domain/locator → boot
    config (RFC-0045 baked rung), wiring → topic names. The existing
    `system.toml`-driven flow becomes the degenerate no-contracts case.
@@ -202,7 +202,7 @@ structure* (chains + per-path ranks) into the model. That is **reverted**
 - **play_launch is a parser.** It gathers **all input** into the model —
   launch tree (nodes/wiring/topics), contracts (rates/ages/budgets/paths/QoS),
   system config, and the integrator's **declared** assignments (`deploy`,
-  `tiers`, callback-group `bindings`). The model is the complete **input**;
+  `sched_tasks`, callback-group `bindings`). The model is the complete **input**;
   nothing resolved-for-execution lives in it. Phase-46 (Unified SystemModel —
   merging `record.json`/LaunchDump) is exactly this parser job and continues.
 - **Causality + execution modeling is the consumer's job.** The chain/DAG
@@ -220,9 +220,9 @@ structure* (chains + per-path ranks) into the model. That is **reverted**
   ((b) for play_launch's Linux runtime; an RTOS realizer for nano-ros, RFC-0052).
   **Derivation stays per-consumer**, sharing the `MapperInput` type — play_launch
   derives it from its `LaunchDump` (`sched_derive`, parser-coupled); nano-ros
-  derives it from the SystemModel (`node_paths` + wiring + declared tiers). One
+  derives it from the SystemModel (`node_paths` + wiring + declared sched tasks). One
   agnostic core, two derivations, two realizers, zero embedded output.
-- **Declared config stays.** `deploy`/`tiers`/`bindings` are integrator input
+- **Declared config stays.** `deploy`/`sched_tasks`/`bindings` are integrator input
   the parser gathers; they stay in `execution:`. nano-ros reads them and
   models its RTOS execution on top (it does not treat them as a finished
   scheduling plan).
@@ -266,7 +266,7 @@ W5); play_launch keeps `sched_derive` + the Linux realizer.
   `docs/contract-theory.md` (contract composition rules)
 - play_launch `docs/design/system-model.md` (producer-side design, sibling
   of this RFC)
-- RFC-0015 scheduling tiers, RFC-0045 boot-config resolution, RFC-0047
+- RFC-0015 sched tasks, RFC-0045 boot-config resolution, RFC-0047
   sched-context binding, RFC-0048 CMake consumption (the seams the embedded
   slice lands on)
 

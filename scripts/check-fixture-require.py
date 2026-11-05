@@ -166,7 +166,7 @@ def _rel(f):
 # a cell table — `resolver: build_x` — and call them as `(cell.resolver)()`, so
 # `sites()` keyed on resolver NAMES never saw one. Three of the five turned the
 # `Err` into a local `skip!`, which laundered a STALE in-lane fixture into a
-# skip, and `sched_dims_applied` PASSED with its derived-tier cell never booted.
+# skip, and `sched_dims_applied` PASSED with its derived-sched-task cell never booted.
 # Keyed on the TYPE instead: any binding declared as a function returning
 # `TestResult` (directly, or through a `type X = fn(..) -> TestResult<..>`
 # alias in the same file) is a resolver handle, and calling it is a call site.

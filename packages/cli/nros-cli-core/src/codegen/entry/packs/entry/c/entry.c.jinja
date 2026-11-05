@@ -7,16 +7,16 @@
 
   Two mutually exclusive bodies, chosen by `Plan::executor_shape` — the SAME
   branch the C++ pack takes (issue 1283):
-    * tiers    — one setup function per tier, a groups array per tier, and the
+    * sched_tasks    — one setup function per sched_task, a groups array per sched_task, and the
                  `nros_native_sched_task_spec_t` table `run_sched_tasks` walks.
     * setup    — a single `__nros_entry_setup`. When `sched` is set it first
-                 creates one sched context per tier and binds nodes and
+                 creates one sched context per sched_task and binds nodes and
                  callback groups to them (a group-split plan, or a board with
-                 no `run_sched_tasks`); otherwise it is the plain single-tier case.
+                 no `run_sched_tasks`); otherwise it is the plain single-sched_task case.
 
   What arrives, and in what form (RFC-0091 §8b):
 
-    * VALUES, spelled here — `name`, `namespace` and `tiers` are raw data. The
+    * VALUES, spelled here — `name`, `namespace` and `sched_tasks` are raw data. The
       node's `namespace` is the PLAN's, never the literal `"/"` this template
       used to write (issue 1443): the ONE derivation is
       `entry::node_namespace`, so a node is CREATED at the same
@@ -31,13 +31,13 @@
       to know them.
     * phase-494 — the CONTEXT is `nros_entry_lower::LoweredEntry` itself, not
       a view a Rust emitter built: there is no `emit_c.rs`. Node bodies index
-      `nodes` (a tier setup lists `(node, on_executor)` pairs); package
+      `nodes` (a sched_task setup lists `(node, on_executor)` pairs); package
       identifiers are spelled with the `pkg_ident` filter; what this pack
       needs of Rust is the filters `pack.toml` names, and nothing else.
 
   A quoting bug cannot originate in this file: the filter is Rust.
 
-  The tier table uses DESIGNATED initialisers (RFC-0091 §5, C99). The struct is
+  The sched_task table uses DESIGNATED initialisers (RFC-0091 §5, C99). The struct is
   one of six hand-written mirrors of the same ABI, and a positional row
   silently mis-assigns every field after an insertion — issue 0160's class.
   `.field = value` makes a rename or a removal a compile error HERE, and an
@@ -47,7 +47,7 @@
   Whitespace is byte-compared against testdata/entry/c_*.golden.
 
   The banner names the runner the entry CALLS, read from the same `boot`
-  fields and the same `boot.tiers` predicate as `boot_wrapper.jinja`'s call.
+  fields and the same `boot.sched_tasks` predicate as `boot_wrapper.jinja`'s call.
   It used to be the literal `nros_board_native_run_components`, which stopped
   being true of every RTOS board at phase-432 W3.1 and was never the native
   spelling either (that one is `_named`) — issue 1286.
@@ -59,7 +59,7 @@
 *
 * DO NOT EDIT — regenerated at configure time. Routes each launch node
 * to the real executor via its `RCLC_C_COMPONENT` factory/configure seam
-* (no synthesizing interpreter); `{{ (boot.runners.run_levels or boot.runners.run_sched_tasks) if boot.tiers else boot.runners.run_components }}`
+* (no synthesizing interpreter); `{{ (boot.runners.run_levels or boot.runners.run_sched_tasks) if boot.sched_tasks else boot.runners.run_components }}`
 * owns init/spin/shutdown.
 */
 
@@ -201,7 +201,7 @@ static const nros_cpp_mode_age_row_t __nros_mode_ages_{{ mi }}[{{ md.ages | leng
 {%- if m.base_deadlines %}
 /* phase-462 W4c -- the sched-context deadlines the modes move on this
  * executor: table 0 the base's, table k mode k's, each naming the same
- * contexts{% if m.deadline_sc_is_sched_task %} by tier index into __nros_sc_ids{% endif %}. */
+ * contexts{% if m.deadline_sc_is_sched_task %} by sched task index into __nros_sc_ids{% endif %}. */
 static const nros_cpp_mode_deadline_t __nros_mode_deadlines_0[{{ m.base_deadlines | length }}] = {
 {%- for d in m.base_deadlines %}
     { {{ d.sc }}u, {{ d.deadline_us }}u },
@@ -223,9 +223,9 @@ static const nros_cpp_mode_t __nros_modes[{{ m.modes | length }}] = {
 static uint64_t __nros_mode_storage[(({{ m.modes | length }}u + 1u) * (NROS_CPP_MODE_TABLE_STORAGE + {{ m.base_deadlines | length }}u * NROS_CPP_MODE_DEADLINE_STORAGE) + {{ m.modes | selectattr("rows") | list | length }}u * {{ m.rows | length }}u * NROS_CPP_MODE_ROW_STORAGE + {{ m.modes | selectattr("ages") | list | length }}u * {{ m.ages | length }}u * NROS_CPP_MODE_AGE_STORAGE + 7u) / 8u];
 {%- endif %}
 {% endwith %}{% endif %}
-{% if tiers -%}
-/* Phase 274.W2 — per-tier setup functions (one per tier). */
-{% for t in tiers.setups -%}
+{% if sched_tasks -%}
+/* Phase 274.W2 — per-sched-task setup functions (one per sched task). */
+{% for t in sched_tasks.setups -%}
 /* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
 static int32_t __nros_entry_setup_sched_task_{{ t.index }}_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
@@ -249,7 +249,7 @@ static int32_t __nros_entry_setup_sched_task_{{ t.index }}_nodes(void* executor,
     return 0;
 }
 
-/* phase-509 P9b -- a failed setup names its tier and node before the runner
+/* phase-509 P9b -- a failed setup names its sched task and node before the runner
  * fails the boot with its code. */
 static int32_t __nros_entry_setup_sched_task_{{ t.index }}(void* executor) {
     const char* __nros_at = NULL;
@@ -259,20 +259,20 @@ static int32_t __nros_entry_setup_sched_task_{{ t.index }}(void* executor) {
 }
 
 {% endfor -%}
-/* Phase 274.W2 — per-tier groups arrays + tier spec table.
+/* Phase 274.W2 — per-sched-task groups arrays + sched task spec table.
  *
  * issue 1172 — a groups array is FLAT `(node name, node namespace, group)`
  * triples, and `n_groups` counts TRIPLES, not strings. The filter used to
- * match on the group id alone, so two nodes' `ctrl` were one key and a tier
- * naming one of them admitted both. An EMPTY array is the WILDCARD, so a tier
+ * match on the group id alone, so two nodes' `ctrl` were one key and a sched task
+ * naming one of them admitted both. An EMPTY array is the WILDCARD, so a sched task
  * that names groups must never render an empty one. */
-{%- for t in tiers.rows %}
+{%- for t in sched_tasks.rows %}
 {%- if t.groups %}
 static const char* __nros_sched_task_{{ t.index }}_groups[] = {{ '{' }}{% for g in t.groups %}"{{ g[0]|c_str }}", "{{ g[1]|c_str }}", "{{ g[2]|c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
-static const nros_native_sched_task_spec_t __nros_sched_tasks[{{ tiers.n }}] = {
-{%- for t in tiers.rows %}
+static const nros_native_sched_task_spec_t __nros_sched_tasks[{{ sched_tasks.n }}] = {
+{%- for t in sched_tasks.rows %}
     {
         .name = "{{ t.name|c_str }}",
         .groups = {% if t.groups %}__nros_sched_task_{{ t.index }}_groups{% else %}NULL{% endif %},
@@ -302,8 +302,8 @@ static int32_t __nros_entry_setup(void* executor) {
         return (int32_t)NROS_CPP_RET_NOT_INIT;
     }
 {%- if sched %}
-    /* issue 1283 — per-tier sched contexts on the single executor (RFC-0047),
-     * the C spelling of the C++ pack's block: one context per tier, then the
+    /* issue 1283 — per-sched-task sched contexts on the single executor (RFC-0047),
+     * the C spelling of the C++ pack's block: one context per sched task, then the
      * node-name and callback-group tables, all seeded BEFORE any node exists
      * so its entities pick the binding up at register time. */
     uint8_t __nros_sc_ids[{{ sched.n }}] = {0};

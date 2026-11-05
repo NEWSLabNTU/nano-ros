@@ -858,7 +858,7 @@ fn synthesise_self_bringup(
             pkg: comp.name.clone(),
             class,
             name: inst_name,
-            group_tiers: std::collections::BTreeMap::new(),
+            group_tasks: std::collections::BTreeMap::new(),
             retired_group_tiers: Default::default(),
             params: Default::default(),
             params_files: Vec::new(),
@@ -881,7 +881,7 @@ fn synthesise_self_bringup(
                 pkg: comp.name.clone(),
                 class,
                 name: inst_name,
-                group_tiers: std::collections::BTreeMap::new(),
+                group_tasks: std::collections::BTreeMap::new(),
                 retired_group_tiers: Default::default(),
                 params: Default::default(),
                 params_files: Vec::new(),
@@ -946,7 +946,7 @@ fn synthesise_self_bringup(
         domains: Vec::new(),
         bridges: Vec::new(),
         models: Vec::new(),
-        tiers: std::collections::BTreeMap::new(),
+        sched_tasks: std::collections::BTreeMap::new(),
         retired_tiers: Default::default(),
         node_overrides: Vec::new(),
         safety: None,
@@ -1015,7 +1015,7 @@ mod tests {
     /// message the schema gives.
     #[test]
     fn a_retired_manifest_callback_groups_binding_is_refused_by_name() {
-        let groups = serde_json::json!([{"id": "ctrl", "tier": "high"}]);
+        let groups = serde_json::json!([{"id": "ctrl", "sched_task": "high"}]);
         for body in [
             serde_json::json!({"nros": {"component": {"callback_groups": groups}}}),
             serde_json::json!({"nros": {"node": {"callback_groups": groups}}}),

@@ -1,8 +1,8 @@
-//! Phase 228.G fixture — control node (tier `high`).
+//! Phase 228.G fixture — control node (sched task `high`).
 //!
 //! Labels its timer with the `ctrl` callback group; `system.toml` maps that
-//! group to the `high` tier. `nros::node!` emits the `register` symbol the
-//! `nros::main!()` per-tier emit calls. Publishes a monotonic counter on `/ctrl`
+//! group to the `high` sched task. `nros::node!` emits the `register` symbol the
+//! `nros::main!()` per-sched-task emit calls. Publishes a monotonic counter on `/ctrl`
 //! every 10 ms so a subscriber can observe the high-tier cadence (Track D).
 
 #![no_std]
@@ -25,10 +25,10 @@ impl Component for Control {
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("control_node"))?;
-        // issue 0572 — say that this node's register() RAN. A tier that never
+        // issue 0572 — say that this node's register() RAN. A sched task that never
         // dispatches and a node that was never registered on it look identical
         // from outside: the topic is simply silent.
-        log::info!("Control::register on a tier admitting group `ctrl`");
+        log::info!("Control::register on a sched task admitting group `ctrl`");
         node.callback_group("ctrl")?;
         let pub_ctrl = node.create_publisher_for_topic::<Int32>("/ctrl")?;
         let _t = node.create_timer_for_callback_name("on_ctrl", TimerDuration::from_millis(10))?;
@@ -73,12 +73,12 @@ impl ExecutableNode for Control {
             // timer never fired" and "every publish failed" the same
             // observation from outside: `/ctrl` silent, guest console empty.
             // The FIRST tick and every error now say so. Only the first, because
-            // this tier fires every 10 ms and a per-tick line would swamp the
+            // this sched task fires every 10 ms and a per-tick line would swamp the
             // serial console the e2e observers read.
             match ctx.publish_to_topic::<Int32, 8>("/ctrl", &msg) {
                 Ok(()) => {
                     if *state == 0 {
-                        log::info!("on_ctrl: first publish OK (tier `high` is dispatching)");
+                        log::info!("on_ctrl: first publish OK (sched task `high` is dispatching)");
                     }
                 }
                 Err(e) => log::error!("on_ctrl: publish to /ctrl FAILED: {e:?}"),

@@ -196,9 +196,9 @@ pub struct SizingDescriptorArgs {
     /// `codegen entry`'s priority record (`nros_priority_plan.json`) for this
     /// entry.
     ///
-    /// When it names the tiers of a
-    /// board whose runner sizes each tier's executor from its own members, the
-    /// descriptor states one `[[tier]]` row per tier. Absent or unreadable,
+    /// When it names the sched tasks of a
+    /// board whose runner sizes each sched task's executor from its own members, the
+    /// descriptor states one `[[sched_task]]` row per sched task. Absent or unreadable,
     /// nothing is added.
     // Issue 1970.
     #[arg(long, value_name = "PATH", requires = "from_model")]
@@ -409,7 +409,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
     // `write_for_model` checks the declared arrival curve against.
     let mut inventory = inventory;
     inventory.set_board_rx_cost(board_rx_cost(args));
-    let tiers = sched_task_rows_for(args, &inventory);
+    let sched_tasks = sched_task_rows_for(args, &inventory);
     let written = crate::sizing_descriptor::write_for_model_with_sched_tasks(
         &crate::sizing_descriptor::ModelImage {
             build_dir,
@@ -424,7 +424,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
                 args.road.as_deref().unwrap_or(DEFAULT_MODEL_ROAD),
             ),
         },
-        tiers,
+        sched_tasks,
     )?
     .expect("a composed inventory always states its wiring");
     println!("{}", written.path.display());
@@ -436,14 +436,14 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
 
 /// phase-462 W6c -- `[board.rx]` as the configure handed it
 /// (`--board-rx-frame-cost-us` / `--board-rx-floor-us`).
-/// Issue 1970 -- each tier's own `[[tier]]` row, when `--sched-task-record` names a
-/// per-tier-sized tier table. A tier table the inventory cannot describe tier
-/// by tier yields no row, says why, and leaves every tier on the image's
+/// Issue 1970 -- each sched task's own `[[sched_task]]` row, when `--sched-task-record` names a
+/// per-sched-task-sized sched task table. A sched task table the inventory cannot describe sched task
+/// by sched task yields no row, says why, and leaves every sched task on the image's
 /// executor size.
 fn sched_task_rows_for(
     args: &SizingDescriptorArgs,
     inventory: &crate::entity_inventory::EntityInventory,
-) -> Vec<nros_sizing_descriptor::Tier> {
+) -> Vec<nros_sizing_descriptor::SchedTask> {
     let Some(text) = args
         .sched_task_record
         .as_ref()
@@ -451,15 +451,16 @@ fn sched_task_rows_for(
     else {
         return Vec::new();
     };
-    let Some(tiers) = crate::sizing_descriptor::sched_tasks_from_priority_record(&text) else {
+    let Some(sched_tasks) = crate::sizing_descriptor::sched_tasks_from_priority_record(&text)
+    else {
         return Vec::new();
     };
-    match crate::sizing_descriptor::sched_task_rows(inventory, &tiers) {
+    match crate::sizing_descriptor::sched_task_rows(inventory, &sched_tasks) {
         Ok(rows) => rows,
         Err(why) => {
             eprintln!(
                 // See issue 1970.
-                "nros ws sizing-descriptor: no per-tier executor sizing ({why}); every tier keeps \
+                "nros ws sizing-descriptor: no per-sched-task executor sizing ({why}); every sched task keeps \
                  the image's executor size"
             );
             Vec::new()

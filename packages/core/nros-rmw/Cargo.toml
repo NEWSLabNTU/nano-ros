@@ -25,7 +25,7 @@ default = []
 # phase-359 W10 — no `std` feature. A core crate is `core` or `core+alloc`
 # (ARCHITECTURE §2); `alloc` is the one heap axis.
 alloc = ["nros-core/alloc"]
-# phase-359 W10 (backend tier) — pass-through only; see `nros-core`'s row.
+# phase-359 W10 (backend sched task) — pass-through only; see `nros-core`'s row.
 platform-clock = ["nros-core/platform-clock"]
 
 # Synchronization backends (mutually exclusive for mutex implementation)

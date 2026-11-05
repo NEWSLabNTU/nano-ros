@@ -195,7 +195,7 @@ build-fixture-extras:
     fi
     unset NROS_CMAKE_EXTRA_DEFS
 
-# Build every ThreadX Linux tier: core libraries, examples, and test fixtures.
+# Build every ThreadX Linux sched task: core libraries, examples, and test fixtures.
 [group("full-matrix")]
 build-all: build-fixtures
     @echo "ThreadX Linux build-all completed."

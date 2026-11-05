@@ -358,8 +358,8 @@ leaf-row-build-class:
 # Issue 1582 — two images, or two west leaves, that BUILD INTO ONE OUTPUT.
 # `realtime-rust` declared `[image.zephyr]` in two bringups; a generated entry
 # is keyed on the image id, so both west leaves were configured on one
-# `build/zephyr-zenoh/zephyr_entry/` application and the authored-tier image
-# booted the derived-tier content. `check-west-leaf-vocabulary` asks whether a
+# `build/zephyr-zenoh/zephyr_entry/` application and the authored-sched-task image
+# booted the derived-sched-task content. `check-west-leaf-vocabulary` asks whether a
 # NAME is modelled, not whether two names share an input. Static: tracked
 # `system.toml`s + `fixtures-manifest.py west-leaves`, ~0.2 s, self-testing.
 [private]

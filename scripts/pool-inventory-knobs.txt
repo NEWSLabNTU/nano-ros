@@ -83,7 +83,7 @@ NROS_MAX_PARAM_CONSTRAINTS_LEN | element | | bounds a parameter descriptor's con
 NROS_MAX_STRING_VALUE_LEN | element | | bounds a string parameter VALUE — `ParameterValue` is sized by its largest variant, so this is paid by every slot
 NROS_MAX_ARRAY_LEN | element | | bounds an array parameter value; paid by every `ParameterValue`, i.e. every slot
 NROS_MAX_BYTE_ARRAY_LEN | element | | bounds a byte-array parameter value; paid by every `ParameterValue`, i.e. every slot
-NROS_EXECUTOR_ARENA_SIZE | executor | | the executor arena itself; the backing is `EXECUTOR_BACKING` (Rust) or the entry's `__nros_executor_storage` / tier table (C/C++)
+NROS_EXECUTOR_ARENA_SIZE | executor | | the executor arena itself; the backing is `EXECUTOR_BACKING` (Rust) or the entry's `__nros_executor_storage` / sched_task table (C/C++)
 NROS_EXECUTOR_BACKING_U64S | executor | | STATES the boot executor's backing size in words; `EXECUTOR_BACKING` is exactly 8x this
 NROS_EXECUTOR_MAX_CBS | executor | | callback slots inside the executor
 NROS_EXECUTOR_MAX_SC | executor | | sched-context slots inside the executor

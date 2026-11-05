@@ -171,7 +171,7 @@ pub mod metadata_mode;
 /// hosted edges that read `$NROS_PROFILE_OUT` (`nros-cpp`, `nros-board-linux`).
 #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
 pub use nros_node::executor::profile;
-/// phase-509 P10 (RFC-0108) -- the Rust tier runners' level core: one
+/// phase-509 P10 (RFC-0108) -- the Rust sched task runners' level core: one
 /// executor per core, a worker per level.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub mod levels;
@@ -874,8 +874,8 @@ macro_rules! zephyr_component_main {
                 }
             };
             let mut runtime = $crate::__macro::ExecutorNodeRuntime::from_executor(executor);
-            // phase-436 — Zephyr's microsecond park, which the tier runners
-            // install on every tier and this single-executor entry did not.
+            // phase-436 — Zephyr's microsecond park, which the sched task runners
+            // install on every sched task and this single-executor entry did not.
             // Zephyr's `platform.c` always defines both symbols, and this macro
             // only expands in a Zephyr image, so they are plain references.
             {
@@ -1256,10 +1256,10 @@ pub use nros_node::executor::port_park;
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::{MAX_WAKE_SOURCES, NextDeadlineFn, WakeSourceId};
 
-/// issue 1571 — the spawned tiers' executor backing. `nros::main!` emits one
-/// `SchedTaskExecutorBacking` static per tiered entry and hands its slots to the
+/// issue 1571 — the spawned sched tasks' executor backing. `nros::main!` emits one
+/// `SchedTaskExecutorBacking` static per sched-task entry and hands its slots to the
 /// board's `run_sched_tasks`, which refuses a short block through
-/// `check_sched_task_executor_backing` and opens each spawned tier with
+/// `check_sched_task_executor_backing` and opens each spawned sched task with
 /// `Executor::open_with_session_slot`. Gated like the module it names
 /// (`has_rmw` + `alloc` in nros-node).
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
@@ -1268,10 +1268,10 @@ pub use nros_node::executor::{
     SchedTaskExecutorBackingSlot, SchedTaskSetupGate, SchedTaskSetupGuard,
     check_sched_task_executor_backing,
 };
-/// issue 1598 — each spawned tier's TASK memory (stack + control block):
-/// `nros::main!` emits one `SchedTaskMemory` static per spawned tier, sized from
+/// issue 1598 — each spawned sched task's TASK memory (stack + control block):
+/// `nros::main!` emits one `SchedTaskMemory` static per spawned sched task, sized from
 /// its `stack_bytes`, and hands the `SchedTaskMemorySet` rows to a board whose
-/// tier runner creates the task over them (FreeRTOS `xTaskCreateStatic`).
+/// sched task runner creates the task over them (FreeRTOS `xTaskCreateStatic`).
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub use nros_node::executor::{
     SCHED_TASK_TCB_U64S, SchedTaskMemory, SchedTaskMemoryRaw, SchedTaskMemorySet,
@@ -1279,8 +1279,8 @@ pub use nros_node::executor::{
 
 /// phase-509 P7 (RFC-0108 D8) -- which level an executor is, and whether every
 /// level of the image is alive: what a supervisor that owns a route per level
-/// or feeds a watchdog reads, and what a board's tier runner states (the level
-/// count, and each tier's level by [`sched_task_level_by`]). Plain atomics in
+/// or feeds a watchdog reads, and what a board's sched task runner states (the level
+/// count, and each sched task's level by [`sched_task_level_by`]). Plain atomics in
 /// nros-node, so ungated.
 pub use nros_node::executor::{
     MAX_LEVELS, every_level_alive, level_count, level_last_spin_us, level_spins, sched_task_level,
@@ -1580,7 +1580,7 @@ pub mod embedded {
         SourceLocationMetadata, SourceNameKind, SubscriptionTag,
     };
     // Gated where the root gates it — the export follows the capability, not
-    // the tier.
+    // the sched task.
     #[cfg(feature = "alloc")]
     pub use crate::SourceMetadataExport;
 }

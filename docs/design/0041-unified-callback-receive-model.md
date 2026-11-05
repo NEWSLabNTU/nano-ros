@@ -249,7 +249,7 @@ subscription path; only the node layer changes.
 - RFC-0007 (service/action QoS — `KEEP_LAST(10)` default).
 - RFC-0021 / RFC-0036 (spin-driven `Promise`; the deliberate non-blocking
   divergence this RFC preserves).
-- RFC-0015 (priority tiers / reentrant groups — same-thread callback safety).
+- RFC-0015 (priority sched tasks / reentrant groups — same-thread callback safety).
 - RFC-0037 (user API surface — adds the `create_*_with_callback` entries).
 - Code: `executor/spin.rs` (`drive_io` + dispatch), `executor/arena.rs`
   (`ActionClientRawArenaEntry`, `ServiceClientRawArenaEntry`,

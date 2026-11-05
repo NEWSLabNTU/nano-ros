@@ -10,9 +10,9 @@ find_package(std_msgs REQUIRED)
 # Generates the std_msgs C bindings (serialize/deserialize); the auto-link
 # sidecar links the generated `std_msgs__nano_ros_c` interface lib.
 
-# Low-tier telemetry node (C tiers fixture). Publishes a counter on /telem
+# Low-sched-task telemetry node (C sched tasks fixture). Publishes a counter on /telem
 # every 100 ms. CALLBACK_GROUPS declares the "telem" group ID; system.toml
-# [[node_overrides]] maps it to the [tasks.low] tier (RFC-0015 §4.2).
+# [[node_overrides]] maps it to the [tasks.low] sched task (RFC-0015 §4.2).
 nano_ros_auto_add_library(telem_lib STATIC src/Telem.c)
 
 nros_components_register_node(telem_lib

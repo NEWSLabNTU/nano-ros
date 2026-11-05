@@ -9,7 +9,7 @@ rustflags = [
     "-C", "link-arg=--nmagic",
 ]
 
-# Keep the inline executor arena small so two tier executors (boot + spawned)
+# Keep the inline executor arena small so two sched task executors (boot + spawned)
 # fit on the FreeRTOS task stacks (the arena lives inline in each `Executor`).
 [env]
 NROS_EXECUTOR_ARENA_SIZE = "8192"

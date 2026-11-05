@@ -1,13 +1,13 @@
 {#-
-  phase-521 W8 (b), RFC-0113 D9 -- the PX4 entry: a PX4 module whose tiers
+  phase-521 W8 (b), RFC-0113 D9 -- the PX4 entry: a PX4 module whose sched_tasks
   are work items. The context is the C++ pack's `LoweredEntry` (the nodes,
   their seams, the boot config) plus `px4`: the module's `main` and one row
-  per tier with the work queue its rank picked. See `px4.rs` for what is
+  per sched_task with the work queue its rank picked. See `px4.rs` for what is
   decided where; this template is layout only.
 
-  Every tier's setup is rendered with `tiered = true` and the tier's own
-  `executor`, including a plan with no tier table (one `default` tier): a PX4
-  tier always runs its own executor, so there is no global-handle arm here.
+  Every sched_task's setup is rendered with `in_sched_task = true` and the sched_task's own
+  `executor`, including a plan with no sched_task table (one `default` sched_task): a PX4
+  sched_task always runs its own executor, so there is no global-handle arm here.
 -#}
 {%- set c_pkgs = components | selectattr("kind", "eq", "c") | list %}
 {%- set rust_pkgs = components | selectattr("kind", "eq", "rust") | list -%}
@@ -17,8 +17,8 @@
 //   board   = {{ board }}
 //   module  = {{ px4.main }}
 //
-// DO NOT EDIT — regenerated at configure time. One PX4 work item per tier,
-// on the work queue the tier's rank picks; a tier's wait is its work item's
+// DO NOT EDIT — regenerated at configure time. One PX4 work item per sched task,
+// on the work queue the sched task's rank picks; a sched task's wait is its work item's
 // schedule (`nros_px4/sched_task_work_item.hpp`), never a parked thread.
 
 // nano-ros and the components first: PX4's `defines.h` defines `ERROR`.
@@ -70,8 +70,8 @@ static ::{{ s.class }} __nros_comp_{{ loop.index0 }};
 {%- endfor %}
 {%- include "monitor_statics_cpp.jinja" %}
 
-{% for t in px4.tiers -%}
-/* tier[{{ t.index }}] ({{ t.name }}) setup: creates only this tier's nodes, on its executor. */
+{% for t in px4.sched_tasks -%}
+/* sched_task[{{ t.index }}] ({{ t.name }}) setup: creates only this sched task's nodes, on its executor. */
 static int32_t __nros_entry_setup_sched_task_{{ t.index }}_nodes(void* executor, const char** __nros_at) {
     if (executor == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {%- if t.monitors %}
@@ -82,14 +82,14 @@ static int32_t __nros_entry_setup_sched_task_{{ t.index }}_nodes(void* executor,
 {%- for ni in t.nodes %}{% set n = nodes[ni] %}
     {
         *__nros_at = "{{ n.name | c_str }}";
-{%- with dexec = "executor", idx = ni, tiered = true %}
+{%- with dexec = "executor", idx = ni, in_sched_task = true %}
 {%- include "declare_calls.jinja" %}
 {%- include "node_body_cpp.jinja" %}
 {%- endwith %}
     }
 {%- endfor %}
 {%- if t.emits_services %}
-{%- with tiered = true %}
+{%- with in_sched_task = true %}
 {%- include "service_trailer_cpp.jinja" %}
 {%- endwith %}
 {%- endif %}
@@ -107,27 +107,27 @@ static int32_t __nros_entry_setup_sched_task_{{ t.index }}(void* executor) {
 /* The tier table, in open order: tier 0 opens the session, the rest borrow
  * it. Groups are FLAT `(node name, node namespace, group)` triples (issue
  * 1172); an empty array is the wildcard. */
-{%- for t in px4.tiers %}
+{%- for t in px4.sched_tasks %}
 {%- if t.groups %}
 static const char* __nros_sched_task_{{ t.index }}_groups[] = {{ "{" }}{% for g in t.groups %}"{{ g[0] | c_str }}", "{{ g[1] | c_str }}", "{{ g[2] | c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
-static const ::nros_px4::SchedTaskSpec __nros_sched_tasks[{{ px4.tiers | length }}] = {
-{%- for t in px4.tiers %}
+static const ::nros_px4::SchedTaskSpec __nros_sched_tasks[{{ px4.sched_tasks | length }}] = {
+{%- for t in px4.sched_tasks %}
     {"{{ t.name | c_str }}", {% if t.groups %}__nros_sched_task_{{ t.index }}_groups{% else %}nullptr{% endif %}, {% if t.groups %}{{ t.groups | length }}u{% else %}0u{% endif %}, &__nros_entry_setup_sched_task_{{ t.index }}},
 {%- endfor %}
 };
-{%- if px4.tiers | length > 1 %}
+{%- if px4.sched_tasks | length > 1 %}
 
-/* Each borrowed tier's executor storage, as a static the linker places. */
-static ::nros_px4::SchedTaskStorage __nros_sched_task_storage[{{ (px4.tiers | length) - 1 }}];
+/* Each borrowed sched task's executor storage, as a static the linker places. */
+static ::nros_px4::SchedTaskStorage __nros_sched_task_storage[{{ (px4.sched_tasks | length) - 1 }}];
 {%- endif %}
 
 {% include "boot_config.jinja" %}
 
-/* One work item per tier, on the PX4 work queue its rank picks
+/* One work item per sched task, on the PX4 work queue its rank picks
  * (`nros_orchestration_ir::px4::px4_work_queues`, most urgent first). */
-{%- for t in px4.tiers %}
+{%- for t in px4.sched_tasks %}
 class NrosSchedTask_{{ t.name | pkg_ident }} final : public ::nros_px4::SchedTaskWorkItem {
 public:
     /* rank {{ t.rank }} */
@@ -147,19 +147,19 @@ public:
     int print_status() override;
     void request_stop() override;
 
-    /* Open every tier in table order (setups never overlap, issue #144),
+    /* Open every sched task in table order (setups never overlap, issue #144),
      * then start them. */
     int32_t start();
 
-    /* The last tier to stop closes the executors, boot tier last. */
+    /* The last sched task to stop closes the executors, boot sched task last. */
     void stopped();
 
-    /* `ModuleBase::get_instance()` is protected; the tiers ask through this. */
+    /* `ModuleBase::get_instance()` is protected; the sched tasks ask through this. */
     static NrosPx4Entry* instance() { return get_instance(); }
 
 private:
     ::nros_px4::ImageState _image{};
-{%- for t in px4.tiers %}
+{%- for t in px4.sched_tasks %}
     NrosSchedTask_{{ t.name | pkg_ident }} _sched_task_{{ t.index }}{};
 {%- endfor %}
 };
@@ -167,18 +167,18 @@ private:
 int32_t NrosPx4Entry::start() {
     const char* sn = nros_boot_config_node_name(&NROS_BOOT_CONFIG);
     const char* ns = nros_boot_config_namespace(&NROS_BOOT_CONFIG);
-{%- for t in px4.tiers %}
+{%- for t in px4.sched_tasks %}
 {%- if loop.first %}
     int32_t rc = _sched_task_{{ t.index }}.open(__nros_sched_tasks[{{ t.index }}], _image, nullptr, nullptr, sn, ns);
 {%- else %}
     rc = _sched_task_{{ t.index }}.open(__nros_sched_tasks[{{ t.index }}], _image, &__nros_sched_task_storage[{{ t.index - 1 }}], _sched_task_0.session(), sn, ns);
 {%- endif %}
     if (rc != 0) {
-        PX4_ERR("nros tier `{{ t.name | c_str }}` failed to open (%d)", static_cast<int>(rc));
+        PX4_ERR("nros sched task `{{ t.name | c_str }}` failed to open (%d)", static_cast<int>(rc));
         return rc;
     }
 {%- endfor %}
-{%- for t in px4.tiers %}
+{%- for t in px4.sched_tasks %}
     _sched_task_{{ t.index }}.start();
 {%- endfor %}
     return 0;
@@ -187,19 +187,19 @@ int32_t NrosPx4Entry::start() {
 void NrosPx4Entry::request_stop() {
     ModuleBase::request_stop();
     _image.stopping.store(true);
-{%- for t in px4.tiers %}
+{%- for t in px4.sched_tasks %}
     _sched_task_{{ t.index }}.wake_for_stop();
 {%- endfor %}
 }
 
 void NrosPx4Entry::stopped() {
-{%- for t in px4.tiers | reverse %}
+{%- for t in px4.sched_tasks | reverse %}
     _sched_task_{{ t.index }}.close();
 {%- endfor %}
     ::rclcpp::shutdown();
     exit_and_cleanup();
 }
-{%- for t in px4.tiers %}
+{%- for t in px4.sched_tasks %}
 
 void NrosSchedTask_{{ t.name | pkg_ident }}::on_image_stopped() {
     NrosPx4Entry* entry = NrosPx4Entry::instance();
@@ -208,8 +208,8 @@ void NrosSchedTask_{{ t.name | pkg_ident }}::on_image_stopped() {
 {%- endfor %}
 
 int NrosPx4Entry::print_status() {
-    PX4_INFO("{{ px4.tiers | length }} tier(s):{% for t in px4.tiers %} {{ t.name | c_str }}@{{ t.queue }}{% endfor %}");
-{% for t in px4.tiers %}    PX4_INFO("tier {{ t.name | c_str }} runs=%u wake_max_us=%llu", static_cast<unsigned>(_sched_task_{{ t.index }}.runs()), static_cast<unsigned long long>(_sched_task_{{ t.index }}.wake_max_us()));
+    PX4_INFO("{{ px4.sched_tasks | length }} sched task(s):{% for t in px4.sched_tasks %} {{ t.name | c_str }}@{{ t.queue }}{% endfor %}");
+{% for t in px4.sched_tasks %}    PX4_INFO("sched task {{ t.name | c_str }} runs=%u wake_max_us=%llu", static_cast<unsigned>(_sched_task_{{ t.index }}.runs()), static_cast<unsigned long long>(_sched_task_{{ t.index }}.wake_max_us()));
 {% endfor %}    return 0;
 }
 
@@ -238,7 +238,7 @@ int NrosPx4Entry::print_usage(const char* reason) {
     if (reason != nullptr) {
         PX4_WARN("%s\n", reason);
     }
-    PRINT_MODULE_DESCRIPTION("nano-ros image `{{ bringup | c_str }}`: generated entry, one work item per tier.");
+    PRINT_MODULE_DESCRIPTION("nano-ros image `{{ bringup | c_str }}`: generated entry, one work item per sched task.");
     PRINT_MODULE_USAGE_NAME("{{ px4.main }}", "nano-ros");
     PRINT_MODULE_USAGE_COMMAND("start");
     PRINT_MODULE_USAGE_DEFAULT_COMMANDS();

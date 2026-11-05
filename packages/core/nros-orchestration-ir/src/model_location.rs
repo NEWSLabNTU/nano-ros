@@ -635,7 +635,7 @@ fn create_model_write_dir(bringup_dir: &Path) -> Result<PathBuf, String> {
 /// workspace in this repository calls its bringup `demo_bringup`, so a
 /// name-keyed directory under `$OUT_DIR` — which cargo shares across every
 /// test binary of a package — lets one test's model be read as another's
-/// (issue 0825: a model with no `execution.tasks` silently erased tiers three
+/// (issue 0825: a model with no `execution.tasks` silently erased sched tasks three
 /// sibling tests had authored). The hash keeps the human-readable half for
 /// anyone reading the directory, and makes collisions require an actual path
 /// collision.
@@ -1010,7 +1010,7 @@ mod tests {
         // every test binary of a package, and every workspace here names its
         // bringup `demo_bringup`. When the rung was keyed on that name, one
         // test's model was read as another's: the reader got a model with no
-        // `execution.tasks`, and `apply_model_execution` erased the tiers the
+        // `execution.tasks`, and `apply_model_execution` erased the sched tasks the
         // fixture had authored. Three sibling tests failed on a file they never
         // touched.
         with_env(

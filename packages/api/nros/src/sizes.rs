@@ -63,7 +63,7 @@ mod rmw_sizes {
     }
 
     // Issue 1970 -- the same marker for a byte count that is not one type's
-    // size (a tier's executor backing).
+    // size (a sched task's executor backing).
     macro_rules! export_bytes {
         ($vis:vis $name:ident = $bytes:expr) => {
             $vis const $name: usize = $bytes;
@@ -127,12 +127,12 @@ mod rmw_sizes {
     // must be sized for the combined `#[repr(C)]` layout, not bare `Executor`.
     export_size!(pub EXECUTOR_SIZE       = nros_node::ExecutorInlineStorage);
 
-    // Issue 1970 -- each executor tier's own backing, in the tier table's order
-    // (`nros_node::config::SCHED_TASK_SIZINGS`), zero past the last tier and on an
-    // image sized as one executor. Eight is the most a per-tier image carries:
-    // the CLI's descriptor states no tier beyond it. The C/C++ header publishes
+    // Issue 1970 -- each executor sched task's own backing, in the sched task table's order
+    // (`nros_node::config::SCHED_TASK_SIZINGS`), zero past the last sched task and on an
+    // image sized as one executor. Eight is the most a per-sched-task image carries:
+    // the CLI's descriptor states no sched task beyond it. The C/C++ header publishes
     // them as `NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>`, which size the generated
-    // entry's per-tier backing statics.
+    // entry's per-sched-task backing statics.
     export_bytes!(pub SCHED_TASK_BACKING_SIZE_0 = nros_node::sched_task_backing_bytes(0));
     export_bytes!(pub SCHED_TASK_BACKING_SIZE_1 = nros_node::sched_task_backing_bytes(1));
     export_bytes!(pub SCHED_TASK_BACKING_SIZE_2 = nros_node::sched_task_backing_bytes(2));
@@ -143,7 +143,7 @@ mod rmw_sizes {
     export_bytes!(pub SCHED_TASK_BACKING_SIZE_7 = nros_node::sched_task_backing_bytes(7));
 
     // phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- the ONE executor
-    // backing a level runner opens per core: every tier's (level's) members,
+    // backing a level runner opens per core: every sched task's (level's) members,
     // summed. Zero on an image sized as one executor. Published as
     // `NROS_CPP_LEVELS_BACKING_SIZE`, which sizes the generated entry's
     // levels backing.

@@ -9,7 +9,7 @@
       C-ABI runner, read from `boot.runners`, never a class path;
     * defect 2 (pre-escaped literals) — every string is RAW and quoted here
       with `c_str`;
-    * defect 3 (pre-rendered C) — tier rows, the boot blob and each node's
+    * defect 3 (pre-rendered C) — sched_task rows, the boot blob and each node's
       declarations arrive as values, and this file spells them in Zig.
 
   The `app` boot shape's registration is a C macro (`NROS_APP_MAIN_REGISTER_VOID`)
@@ -81,8 +81,8 @@ var __nros_node_{{ loop.index0 }}: c.nros_cpp_node_t = undefined;
     if (c.nros_cpp_lifecycle_autostart(executor, {{ services.lifecycle_code }}) != c.NROS_CPP_RET_OK) return -1;
 {%- endif %}
 {%- endmacro %}
-{% if tiers %}
-{%- for t in tiers.setups %}
+{% if sched_tasks %}
+{%- for t in sched_tasks.setups %}
 fn __nros_entry_setup_sched_task_{{ t.index }}(executor: ?*anyopaque) callconv(.C) i32 {
     if (executor == null) return c.NROS_CPP_RET_NOT_INIT;
 {%- for s in t.nodes %}{{ node_body(nodes[s.node], s.node, s.on_executor) }}{% endfor %}
@@ -90,13 +90,13 @@ fn __nros_entry_setup_sched_task_{{ t.index }}(executor: ?*anyopaque) callconv(.
     return 0;
 }
 {%- endfor %}
-{% for t in tiers.rows %}
+{% for t in sched_tasks.rows %}
 {%- if t.groups %}
 var __nros_sched_task_{{ t.index }}_groups = [_][*c]const u8{ {% for g in t.groups %}"{{ g[0] | c_str }}", "{{ g[1] | c_str }}", "{{ g[2] | c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
 const __nros_sched_tasks = [_]c.nros_native_sched_task_spec_t{
-{%- for t in tiers.rows %}
+{%- for t in sched_tasks.rows %}
     .{
         .name = "{{ t.name | c_str }}",
         .groups = {% if t.groups %}&__nros_sched_task_{{ t.index }}_groups{% else %}null{% endif %},
@@ -159,12 +159,12 @@ var __nros_executor_storage: [(c.NROS_CPP_EXECUTOR_STORAGE_SIZE + 7) / 8]u64 = u
 {% endif %}
 {#- Issues 1598 + 1232 — this fixture does not spell the RTOS's static task
     types (`boot.task_memory`; the C/C++ packs do, through the family header's
-    macros), so it passes NULL: FreeRTOS then `xTaskCreate`s each tier and
+    macros), so it passes NULL: FreeRTOS then `xTaskCreate`s each sched_task and
     Zephyr's runner refuses, naming the missing memory. -#}
 {%- set name = "c.nros_boot_config_node_name(&NROS_BOOT_CONFIG), c.nros_boot_config_namespace(&NROS_BOOT_CONFIG)" %}
 {%- set connect = "" if boot_shape == "host" else "c.NROS_ENTRY_LOCATOR, c.NROS_ENTRY_DOMAIN_ID, " %}
 fn run() i32 {
-{%- if boot.tiers %}
+{%- if boot.sched_tasks %}
     return c.{{ boot.runners.run_sched_tasks }}({{ connect }}{{ name }}, &__nros_sched_tasks, __nros_sched_tasks.len{% if boot.sched_task_storage %}, &__nros_sched_task_executor_storage, @sizeOf(@TypeOf(__nros_sched_task_executor_storage[0])){% endif %}{% if boot.task_memory %}, null{% endif %});
 {%- else %}
     return c.{{ boot.runners.run_components }}({{ connect }}{{ name }}, &__nros_entry_setup{% if boot.component_storage %}, &__nros_executor_storage, @sizeOf(@TypeOf(__nros_executor_storage)){% endif %});

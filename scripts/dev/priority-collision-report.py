@@ -67,8 +67,8 @@ def verdict(plans, plat, prio, above=None):
 def main():
     plans = load_plans()
     pins = scan_pins()
-    rows = [(rel, tier, plat, prio, *verdict(plans, plat, prio, above))
-            for rel, tier, plat, prio, above in pins]
+    rows = [(rel, sched_task, plat, prio, *verdict(plans, plat, prio, above))
+            for rel, sched_task, plat, prio, above in pins]
     bringups = {r[0] for r in rows}
 
     print(f"RFC-0079 collision report — {len(rows)} pin(s) over "
@@ -82,11 +82,11 @@ def main():
 
     print("\n--- pins whose verdict is not 'below bands' ---")
     any_bad = False
-    for rel, tier, plat, prio, v, why in rows:
+    for rel, sched_task, plat, prio, v, why in rows:
         if v == "below bands":
             continue
         any_bad = True
-        print(f"  [{v}] {rel}: tiers.{tier}.{plat} = {prio}")
+        print(f"  [{v}] {rel}: sched tasks.{sched_task}.{plat} = {prio}")
         if why:
             print(f"          {why}")
     if not any_bad:
@@ -95,13 +95,13 @@ def main():
     print("\n--- ambiguous ORDER (same platform, same value, one bringup) ---")
     found = False
     per = {}
-    for rel, tier, plat, prio, _v, _w in rows:
-        per.setdefault(rel, {}).setdefault((plat, prio), []).append(tier)
+    for rel, sched_task, plat, prio, _v, _w in rows:
+        per.setdefault(rel, {}).setdefault((plat, prio), []).append(sched_task)
     for rel, seen in sorted(per.items()):
-        for (plat, prio), tiers in sorted(seen.items()):
-            if len(tiers) > 1:
+        for (plat, prio), sched_tasks in sorted(seen.items()):
+            if len(sched_tasks) > 1:
                 found = True
-                print(f"  {rel}: {plat} {prio} <- {', '.join(tiers)}")
+                print(f"  {rel}: {plat} {prio} <- {', '.join(sched_tasks)}")
     if not found:
         print("  (none)")
 

@@ -1,11 +1,11 @@
-# Phase 228.E.2 fixture — multi-tier FreeRTOS firmware via `nros::main!()`.
+# Phase 228.E.2 fixture — multi-sched-task FreeRTOS firmware via `nros::main!()`.
 #
 # A single thumbv7m-none-eabi workspace: an Entry pkg whose `main.rs` is
 # `nros::main!(launch = "demo_bringup")` with `deploy = "freertos"`, plus two
-# no_std Node pkgs assigned to two tiers, plus a metadata-only bringup with
+# no_std Node pkgs assigned to two sched tasks, plus a metadata-only bringup with
 # `[tasks.high.freertos]` + `[tasks.low.freertos]`. Because the system declares
-# tiers, the macro emits `<Mps2An385>::run_sched_tasks(TIERS, run_plan)` (228.G) which
-# routes to the FreeRTOS per-tier entry (228.E.2). The companion test stages +
+# sched tasks, the macro emits `<Mps2An385>::run_sched_tasks(SCHED_TASKS, run_plan)` (228.G) which
+# routes to the FreeRTOS per-sched-task entry (228.E.2). The companion test stages +
 # rewrites `@NROS_REPO_DIR@` and `cargo build`s for thumbv7m — proving the
 # macro→run_sched_tasks→kernel-link path for FreeRTOS.
 

@@ -317,7 +317,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `tier-has-ci-owner` | every declared CI tier is run by some workflow COMMAND | both `just ci tier1 …` invocations replaced by echo; disk-report.sh/reclaim-disk.sh ARGUMENT strings "before just ci tier1" remain | 0 | the same, with those argument strings reworded too | 1 | **HOLE** |
 | `sched-task-priority-plan` | a tier priority pin respects its port's reserved bands | realtime-c [tiers.high.freertos] priority 3 -> 4 (the transport band) | 1 | — | — | **CLEAN** |
 | `sched-task-priority-plan-image-selftest` | derived Zephyr priority plan vs a built image .config | N/A: recipe is the selftest; the image half needs a built Zephyr .config | — | — | — | **N/A** |
-| `sched-task-spin-gap` | every tier spin loop reaches a scheduling point | FreeRTOS C first tier loop drops nros_sched_task_spin_gap_step (second loop + prototype kept) | 1 | — | — | **CLEAN** |
+| `sched-task-spin-gap` | every sched task spin loop reaches a scheduling point | FreeRTOS C first sched task loop drops nros_sched_task_spin_gap_step (second loop + prototype kept) | 1 | — | — | **CLEAN** |
 | `unsafe-census` | unsafe counts only fall (ratchet) | nros-core gains an unsafe block | 1 | — | — | **CLEAN** |
 | `vendor-fetch-pinned` | every FetchContent in a discovered package is pinned by digest | cpp action_client_pkg CMakeLists FetchContent_Declare by tag | 1 | — | — | **CLEAN** |
 | `wait-evidence-discarded` | a timed-out wait's evidence is not discarded | entry_e2e.rs: wait_for_output_pattern(..).unwrap_or_default() | 1 | — | — | **CLEAN** |

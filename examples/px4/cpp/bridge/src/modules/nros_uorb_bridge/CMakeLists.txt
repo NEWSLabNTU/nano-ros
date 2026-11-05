@@ -165,7 +165,7 @@ nros_px4_add_module(
 	# the image crate `just px4 build-bridge-example` builds, and this list only drives the register call.
 	BACKENDS uorb ${_rmw}
 	# phase-521 W8 (d), RFC-0113 D9 -- the module's entry is GENERATED from
-	# the bringup (one PX4 work item per tier); `uorb_bridge_pkg::UorbBridge`
+	# the bringup (one PX4 work item per sched task); `uorb_bridge_pkg::UorbBridge`
 	# is the only hand-written code. `nros configure` in `examples/px4/cpp/bridge`
 	# writes the SystemModel first (`just px4 build-bridge-example` runs it).
 	BRINGUP  ${_bridge_ws}/uorb_bridge_bringup

@@ -374,14 +374,14 @@ build-fixtures:
         ( cd examples/workspaces/safety
           "$nros_cli" configure >/dev/null )
     fi
-    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry (nros configure only).
+    # phase-276 W2 / #128 half 2 — the RT-sched-tasks workspace's Zephyr Entry (nros configure only).
     # phase-470 W5.b2 — same correction, same reason: `src/zephyr_entry` is gone here too.
     if [ -d examples/workspaces/realtime-rust ]; then
         echo "  → ws-realtime workspace-entry prep (nros configure)"
         ( cd examples/workspaces/realtime-rust
           "$nros_cli" configure >/dev/null )
     fi
-    # issue 1575 — the derived-tier C++ workspace's Zephyr Entry. Its tier table
+    # issue 1575 — the derived-sched-task C++ workspace's Zephyr Entry. Its sched task table
     # is DERIVED from the SystemModel only `nros configure` writes; no native row
     # syncs this workspace as a side effect, and an unsynced configure refuses.
     if [ -d examples/workspaces/derived-sched-tasks-cpp ]; then
@@ -436,7 +436,7 @@ build-fixtures:
         zephyr_leaf_args+=(--filter "$fixture_filter")
     fi
     normal_records=0
-    # Kept until the end: the tier-priority check below judges exactly the
+    # Kept until the end: the sched-task-priority check below judges exactly the
     # images THESE records build (field 12 is each leaf's build dir).
     probe_records="$log_dir/records-$$.tsv"
     # A probe that FAILED is not a probe that found nothing. This was
@@ -480,11 +480,11 @@ build-fixtures:
 
     failures=()
     # issue 1583 — the driver's status is INSPECTED, not fatal here: the
-    # tier-priority gate at the end of this recipe must still report when a
+    # sched-task-priority gate at the end of this recipe must still report when a
     # leaf fails, over the leaves that did build. Before, a red leaf ended the
     # recipe first, so on the tier-2 nightly (red at an unrelated leaf every
     # night of 2026-09-27/28) the gate was placed and never produced a verdict
-    # — the derived-tier red below sat behind it unseen.
+    # — the derived-sched-task red below sat behind it unseen.
     driver_rc=0
     leaf_joblog="$log_dir/sched-task-priority-joblog-$$.tsv"
     if [ "$normal_records" = "1" ]; then
@@ -543,7 +543,7 @@ build-fixtures:
             "$leaf_joblog" "$probe_records" >"$images_list"
         n_all="$(awk -F '\t' 'NF >= 12 && $12 != ""' "$probe_records" | wc -l)"
         n_ok="$(wc -l <"$images_list")"
-        echo "  ✗ Zephyr fixture build FAILED (exit $driver_rc) — judging the tier-priority"
+        echo "  ✗ Zephyr fixture build FAILED (exit $driver_rc) — judging the sched-task-priority"
         echo "    plan over the $n_ok of $n_all image(s) that DID build, so that gate still reports:"
     else
         awk -F '\t' 'NF >= 12 && $12 != "" { print $12 }' "$probe_records" >"$images_list"

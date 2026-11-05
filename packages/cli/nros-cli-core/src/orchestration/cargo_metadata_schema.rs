@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-// Phase 228.E — the per-tier schema types live in the shared
+// Phase 228.E — the per-sched-task schema types live in the shared
 // `nros-orchestration-ir` crate (single source of truth, also consumed by the
 // `nros::main!()` proc-macro). Re-exported here so the rest of the CLI keeps
 // referencing them through `cargo_metadata_schema::` unchanged.
@@ -336,7 +336,7 @@ pub struct ComponentMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remaps: Vec<RemapRule>,
     /// `callback_groups = [{ id, tier }]` — RETIRED. Phase 228.A put the
-    /// group → tier binding here; phase-273 W2 (RFC-0047) moved it to
+    /// group → sched task binding here; phase-273 W2 (RFC-0047) moved it to
     /// `system.toml`'s `[[component]] group_tasks`, and the manifest form was
     /// honoured with a `[WARN]` for one release by a fallback rung in
     /// `sched_task_resolver::collect_callback_groups`. That rung is gone, so the key
@@ -711,7 +711,7 @@ pub struct SystemToml {
     /// `[tiers.*]` is refused, as rlm refuses it, naming the new key and
     /// `play_launch migrate` ([`Self::retired_tiers`]).
     #[serde(default, rename = "tasks", skip_serializing_if = "BTreeMap::is_empty")]
-    pub tiers: BTreeMap<String, SchedTaskDef>,
+    pub sched_tasks: BTreeMap<String, SchedTaskDef>,
     /// `[tiers.*]`, refused since rlm v0.3.11: present only to name its
     /// replacement instead of `deny_unknown_fields`' generic "unknown field".
     #[serde(
@@ -721,7 +721,7 @@ pub struct SystemToml {
         skip_serializing
     )]
     pub retired_tiers: RetiredTable,
-    /// Phase 228.A — `[[node_overrides]]` deployment-time tier reassignment of a
+    /// Phase 228.A — `[[node_overrides]]` deployment-time sched task reassignment of a
     /// node's callback groups (RFC-0015 §4.2), without touching the node package.
     #[serde(
         default,
@@ -1125,14 +1125,14 @@ pub fn retired_callback_groups_message(decls: Option<&[CallbackGroupDecl]>) -> S
     let binding = match decls {
         Some(d) if !d.is_empty() => d
             .iter()
-            .map(|g| format!("{} = \"{}\"", g.id, g.tier))
+            .map(|g| format!("{} = \"{}\"", g.id, g.sched_task))
             .collect::<Vec<_>>()
             .join(", "),
-        _ => "<id> = \"<tier>\"".to_string(),
+        _ => "<id> = \"<task>\"".to_string(),
     };
     format!(
         "`callback_groups` in a node package's `[package.metadata.nros]` is RETIRED \
-         (RFC-0047, phase-273 W2): nothing reads it any more, so the tier binding it states \
+         (RFC-0047, phase-273 W2): nothing reads it any more, so the sched task binding it states \
          would be dropped. Move each `{{ id, tier }}` to the component's entry in the \
          bringup's `system.toml`:\n\n    [[component]]\n    group_tasks = {{ {binding} }}\n\n\
          and delete the manifest key."
@@ -1852,11 +1852,11 @@ pub struct SystemComponentEntry {
     pub pkg: String,
     pub class: String,
     pub name: String,
-    /// Phase 273 (RFC-0047 W2) — callback-group → tier assignment for this component,
+    /// Phase 273 (RFC-0047 W2) — callback-group → sched task assignment for this component,
     /// keyed by the code-declared group name. Deployment policy (workspace-owned),
-    /// replacing the package manifest's `callback_groups` tier binding (now
-    /// refused at parse). A group with no entry runs on the default tier. Empty ⇒
-    /// a cmake component's `CALLBACK_GROUPS` keyword, if any, at the default tier
+    /// replacing the package manifest's `callback_groups` sched task binding (now
+    /// refused at parse). A group with no entry runs on the default sched task. Empty ⇒
+    /// a cmake component's `CALLBACK_GROUPS` keyword, if any, at the default sched task
     /// (`sched_task_resolver::collect_callback_groups`).
     ///
     /// Phase 536 W3 (rlm v0.3.11): the key is `group_tasks`; the pre-rename
@@ -1866,7 +1866,7 @@ pub struct SystemComponentEntry {
         rename = "group_tasks",
         skip_serializing_if = "BTreeMap::is_empty"
     )]
-    pub group_tiers: BTreeMap<String, String>,
+    pub group_tasks: BTreeMap<String, String>,
     /// `group_tiers`, refused since rlm v0.3.11 (see
     /// [`SystemToml::retired_tiers`]).
     #[serde(
@@ -1922,7 +1922,7 @@ pub struct SystemComponentEntry {
     /// frame (`NROS_LEVEL_STACK_BYTES(member)`), so stating it here tightens
     /// (or widens) the level the component lands on. `None` = the port's
     /// per-callback default. Carried to the entry in the nano-ros overlay
-    /// (`nros.toml`, `[component.<name>] stack_bytes`); an authored tier
+    /// (`nros.toml`, `[component.<name>] stack_bytes`); an authored sched task
     /// `stack_bytes` still overrides the derivation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stack_bytes: Option<u32>,
@@ -2069,8 +2069,8 @@ mod tests {
         // Negative control: the same file in the new spelling reads.
         let ok = group.replace("group_tiers", "group_tasks");
         let sys = toml::from_str::<SystemToml>(&ok).expect("the new spelling reads");
-        assert_eq!(sys.tiers.keys().collect::<Vec<_>>(), ["mrm"]);
-        assert_eq!(sys.components[0].group_tiers["main"], "mrm");
+        assert_eq!(sys.sched_tasks.keys().collect::<Vec<_>>(), ["mrm"]);
+        assert_eq!(sys.components[0].group_tasks["main"], "mrm");
     }
 
     /// phase-463 W4 -- `[census] on_missing` / `on_stale`, the two policy keys
@@ -3005,14 +3005,14 @@ name = "talker"
         assert_eq!(v.components.len(), 1);
         assert!(v.domains.is_empty());
         assert!(v.bridges.is_empty());
-        // Phase 228.A — tier surface defaults empty (backward compat).
-        assert!(v.tiers.is_empty());
+        // Phase 228.A — sched task surface defaults empty (backward compat).
+        assert!(v.sched_tasks.is_empty());
         assert!(v.node_overrides.is_empty());
     }
 
     #[test]
     fn system_toml_parses_sched_tasks_and_overrides() {
-        // Phase 228.A (RFC-0015 §4.2) — tier + override schema.
+        // Phase 228.A (RFC-0015 §4.2) — sched task + override schema.
         let raw = r#"
 [system]
 name = "demo"
@@ -3040,11 +3040,11 @@ priority = 1
 
 [[node_overrides]]
 name = "control_node"
-callback_groups = [{ id = "telemetry", tier = "low" }]
+callback_groups = [{ id = "telemetry", task = "low" }]
 "#;
-        let v: SystemToml = toml::from_str(raw).expect("parse tier schema");
+        let v: SystemToml = toml::from_str(raw).expect("parse sched task schema");
 
-        let high = v.tiers.get("high").expect("high tier");
+        let high = v.sched_tasks.get("high").expect("high sched task");
         assert_eq!(high.spin_period_us, Some(1000));
         assert_eq!(high.freertos.as_ref().unwrap().priority, 5);
         assert_eq!(high.freertos.as_ref().unwrap().stack_bytes, Some(8192));
@@ -3054,7 +3054,7 @@ callback_groups = [{ id = "telemetry", tier = "low" }]
             Some("SCHED_FIFO")
         );
         assert_eq!(
-            v.tiers
+            v.sched_tasks
                 .get("low")
                 .unwrap()
                 .freertos
@@ -3066,7 +3066,7 @@ callback_groups = [{ id = "telemetry", tier = "low" }]
 
         let ov = &v.node_overrides[0];
         assert_eq!(ov.name, "control_node");
-        assert_eq!(ov.callback_groups[0].tier, "low");
+        assert_eq!(ov.callback_groups[0].sched_task, "low");
 
         // Round-trips through serde.
         let s = toml::to_string(&v).expect("serialize");
@@ -3219,7 +3219,7 @@ bogus = true
         let err = toml::from_str::<PackageMetadataNros>(raw).expect_err("must not parse");
         let s = err.to_string();
         assert!(
-            s.contains("RETIRED") && s.contains("group_tasks = { <id> = \"<tier>\" }"),
+            s.contains("RETIRED") && s.contains("group_tasks = { <id> = \"<task>\" }"),
             "{s}"
         );
     }

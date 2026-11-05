@@ -61,7 +61,7 @@ python3 scripts/check-book-audience.py --charter
     working example.
 11. **Concepts at the point of need.** Explain a concept only if it is
     uncommon outside nano-ros and central inside it: the bringup, the image,
-    the contract, static pools, the execution tiers. Start from the example in
+    the contract, static pools, the execution sched tasks. Start from the example in
     front of the reader, not from the model. For what a ROS 2 user knows, link
     to the ROS 2 documentation.
 12. **The simplest working path first.** Serial before ethernet, with WiFi

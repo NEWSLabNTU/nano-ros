@@ -3,7 +3,7 @@
 // One wall timer, one publisher. The 100 ms period is the code's own
 // statement of the loop; the contract beside the launch file states the same
 // loop as `paths.on_timer.trigger.timer.rate_hz: 10`, and that is what
-// the tier derivation ranks by.
+// the sched task derivation ranks by.
 
 #include "comfortable_stop_pkg/MrmComfortableStopOperator.hpp"
 

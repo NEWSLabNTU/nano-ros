@@ -1,21 +1,21 @@
 /*
  * sched_task_memory_zephyr.h — issue 1232: how a generated Zephyr entry spells
- * one tier task's memory.
+ * one sched task's memory.
  *
- * The entry declares each SPAWNED tier's thread object and stack, the stack
- * with `K_THREAD_STACK_DEFINE` at the tier's own declared `stack_bytes`, and
+ * The entry declares each SPAWNED sched task's thread object and stack, the stack
+ * with `K_THREAD_STACK_DEFINE` at the sched task's own declared `stack_bytes`, and
  * hands them to `nros_board_zephyr_run_sched_tasks_memory_in` as
- * `nros_sched_task_memory_t` rows (see <rclc/detail/main.h>). Before this every tier
+ * `nros_sched_task_memory_t` rows (see <rclc/detail/main.h>). Before this every sched task
  * thread got the shim's fixed `NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` pool slot, whatever
- * it declared: a tier declaring more ran undersized behind a printk.
+ * it declared: a sched task declaring more ran undersized behind a printk.
  *
- * A tier that declares nothing (`bytes` 0) gets the board default,
+ * A sched task that declares nothing (`bytes` 0) gets the board default,
  * CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE — the same number the pool slot used, so
- * the knob keeps its meaning for undeclared tiers. `K_THREAD_STACK_DEFINE`
+ * the knob keeps its meaning for undeclared sched tasks. `K_THREAD_STACK_DEFINE`
  * applies the architecture's alignment, guard and reserved area; the row
  * carries `K_THREAD_STACK_SIZEOF`, the size the thread can use.
  *
- * Included only by a generated Zephyr tiered entry.
+ * Included only by a generated Zephyr sched-task entry.
  */
 #ifndef NROS_SCHED_TASK_MEMORY_ZEPHYR_H
 #define NROS_SCHED_TASK_MEMORY_ZEPHYR_H
@@ -41,7 +41,7 @@
  * transport drive under it). Never the platform's thread default. The
  * per-callback default is the level knob minus the frame, so a level whose
  * members state nothing gets exactly CONFIG_NROS_ZEPHYR_SCHED_TASK_STACK_SIZE, the
- * stack every tier got before. A generated entry passes a spawned level that
+ * stack every sched task got before. A generated entry passes a spawned level that
  * declares no `stack_bytes` as `NROS_LEVEL_STACK_BYTES(member)`, and the cost
  * report (`scripts/nros-mem-report.py --levels`) checks the static against the
  * same arithmetic.
@@ -78,21 +78,21 @@ BUILD_ASSERT(
 #define NROS_SCHED_TASK_STACK_DEFINE_(sym, size) K_THREAD_STACK_DEFINE(sym, size)
 #endif
 
-/* Tier `i`'s stack and thread object, as file-scope statics named for
+/* Sched task `i`'s stack and thread object, as file-scope statics named for
  * `mem-report`. */
 #define NROS_SCHED_TASK_MEMORY_DEFINE(i, bytes)                                                    \
     static NROS_SCHED_TASK_STACK_DEFINE_(__nros_sched_task_stack_##i,                              \
                                          NROS_SCHED_TASK_STACK_BYTES_(bytes));                     \
     static struct k_thread __nros_sched_task_thread_##i
 
-/* Tier `i`'s row of the `nros_sched_task_memory_t` array. */
+/* Sched task `i`'s row of the `nros_sched_task_memory_t` array. */
 #define NROS_SCHED_TASK_MEMORY(i)                                                                  \
     {                                                                                              \
         (void*)__nros_sched_task_stack_##i, K_THREAD_STACK_SIZEOF(__nros_sched_task_stack_##i),    \
             (void*)&__nros_sched_task_thread_##i                                                   \
     }
 
-/* The boot tier's row: it runs on the `main()` thread and has no memory here. */
+/* The boot sched task's row: it runs on the `main()` thread and has no memory here. */
 #define NROS_SCHED_TASK_MEMORY_NONE                                                                \
     { NULL, 0u, NULL }
 

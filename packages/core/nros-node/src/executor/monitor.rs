@@ -25,7 +25,7 @@
 //!   timer's release jitter (a late start) is not part of it; that is
 //!   `release-jitter-runtime`.
 //! - `deadline-miss-runtime` — a dispatched callback ran past its bound
-//!   SchedContext's `deadline_us`; what ELSE happens is the tier's
+//!   SchedContext's `deadline_us`; what ELSE happens is the sched task's
 //!   [`DeadlineAction`](super::sched_context::DeadlineAction).
 //!
 //! phase10-B3 adds the route rule beside it:
@@ -886,7 +886,7 @@ pub struct ModeTables {
 
 /// phase-462 W4c -- one SchedContext's deadline in one mode.
 ///
-/// The deadline is the one tier fact a switch can apply: the executor reads
+/// The deadline is the one sched task fact a switch can apply: the executor reads
 /// `SchedContext::deadline_us` each time it judges a dispatch. A priority is a
 /// thread's and a reservation is armed at boot, so the bake lists a mode that
 /// moves either instead of baking it.

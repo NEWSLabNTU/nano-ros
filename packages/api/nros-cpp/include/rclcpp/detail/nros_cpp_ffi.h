@@ -109,7 +109,7 @@
  * phase-521 W8 (b) — the budget [`nros_cpp_entry_spin_budget_ms`] answers
  * when every source of work can end the executor's park, in milliseconds.
  *
- * A PX4 tier's park slot reads a bound that reaches this budget as "no
+ * A PX4 sched task's park slot reads a bound that reaches this budget as "no
  * deadline", and clears its work item's schedule instead of arming it
  * (RFC-0113 D9). Equal to `nros_node::ENTRY_IDLE_BUDGET` by the assertion
  * below, so the header constant cannot drift from the executor.
@@ -958,7 +958,7 @@ typedef struct nros_cpp_mode_tables_t {
   /**
    * phase-462 W4c -- when non-NULL, each row's `sc` indexes this array of
    * context ids (the entry's `nros_cpp_create_sched_context_from_policy`
-   * results, by tier); NULL means `sc` IS the id.
+   * results, by sched task); NULL means `sc` IS the id.
    */
   const uint8_t *sc_ids;
   size_t n_sc_ids;
@@ -1706,7 +1706,7 @@ extern const uint32_t NROS_CPP_TRANSPORT_OPS_ABI_VERSION_V1;
  * that takes a BARE `*mut Executor<'static>`: a Rust component's
  * `__nros_component_<pkg>_install(node, executor, self)`.
  *
- * `rclcpp::global_handle()` and every tier's `executor` are `CppContext`s, and
+ * `rclcpp::global_handle()` and every sched task's `executor` are `CppContext`s, and
  * the executor is not at the handle's address: since phase-492 W4 it lives in
  * the embedded `rclc_executor_t`'s storage and the context holds a REFERENCE
  * to it (`CppContext::executor`), so this follows that reference. Taking the
@@ -1804,15 +1804,15 @@ nros_cpp_ret_t nros_cpp_init_rmw(const char *rmw,
                                  void *storage);
 
 /**
- * Issue 1970 -- [`nros_cpp_init`] for one TIER of a per-tier-sized image: the
+ * Issue 1970 -- [`nros_cpp_init`] for one SCHED TASK of a per-sched-task-sized image: the
  * executor is carved from `backing` (`backing_bytes`, 8-aligned) at the sizing
- * the image derived for the tier named `tier`, instead of from the context's
+ * the image derived for the sched task named `sched_task`, instead of from the context's
  * inline tail (which such an image does not carry). Refused -- before a
- * session opens -- for a tier the image sizes nothing for, or a backing below
- * the tier's layout ([`nros_cpp_sched_task_backing_size`] says how many bytes).
+ * session opens -- for a sched task the image sizes nothing for, or a backing below
+ * the sched task's layout ([`nros_cpp_sched_task_backing_size`] says how many bytes).
  *
  * # Safety
- * As [`nros_cpp_init`], plus: `tier` is a valid NUL-terminated string and
+ * As [`nros_cpp_init`], plus: `sched_task` is a valid NUL-terminated string and
  * `backing` points at `backing_bytes` writable, 8-aligned bytes that outlive
  * the executor and are not otherwise accessed.
  */
@@ -1821,20 +1821,20 @@ nros_cpp_ret_t nros_cpp_init_sched_task(const char *locator,
                                         const char *node_name,
                                         const char *namespace_,
                                         void *storage,
-                                        const char *tier,
+                                        const char *sched_task,
                                         void *backing,
                                         size_t backing_bytes);
 
 /**
  * phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- [`nros_cpp_init`]
  * for the ONE executor a level runner opens per core: carved from `backing`
- * (`backing_bytes`, 8-aligned) at the image's levels sizing, every tier's
+ * (`backing_bytes`, 8-aligned) at the image's levels sizing, every sched task's
  * (level's) members summed (`nros_node::levels_executor_sizing`). Refused
- * before a session opens on an image that sizes no tier, or for a backing
+ * before a session opens on an image that sizes no sched task, or for a backing
  * below [`nros_cpp_levels_backing_size`].
  *
  * # Safety
- * As [`nros_cpp_init_sched_task`], without the tier name.
+ * As [`nros_cpp_init_sched_task`], without the sched task name.
  */
 nros_cpp_ret_t nros_cpp_init_levels(const char *locator,
                                     uint8_t domain_id,
@@ -1851,14 +1851,14 @@ nros_cpp_ret_t nros_cpp_init_levels(const char *locator,
 size_t nros_cpp_levels_backing_size(void);
 
 /**
- * Issue 1970 -- the backing bytes the executor of the tier named `tier`
- * carves, or `0` when this image sizes no tier of that name (its executors
+ * Issue 1970 -- the backing bytes the executor of the sched task named `sched_task`
+ * carves, or `0` when this image sizes no sched task of that name (its executors
  * are then the image's, carved inline).
  *
  * # Safety
- * `tier` is NULL or a valid NUL-terminated string.
+ * `sched_task` is NULL or a valid NUL-terminated string.
  */
-size_t nros_cpp_sched_task_backing_size(const char *tier);
+size_t nros_cpp_sched_task_backing_size(const char *sched_task);
 
 /**
  * Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
@@ -1938,7 +1938,7 @@ size_t nros_cpp_executor_storage_size(void);
 /**
  * Issue 1568 — THE refusal for caller-supplied executor storage: `bytes`
  * must be at least [`nros_cpp_executor_storage_size`] and a multiple of 8
- * (it is also the STRIDE between tier blocks, so every block after the first
+ * (it is also the STRIDE between sched task blocks, so every block after the first
  * must stay aligned), and `storage` 8-byte aligned and non-null.
  *
  * Every board runner that takes executor storage from its caller (the
@@ -2674,18 +2674,18 @@ nros_cpp_ret_t nros_cpp_create_sched_context(void *handle,
                                              uint8_t *out_sc_id);
 
 /**
- * RFC-0052 — create a scheduling context from a RAW tier policy, routing
+ * RFC-0052 — create a scheduling context from a RAW sched task policy, routing
  * through the **common backend** [`nros_node::executor::sched_context::SchedContext::from_sched_task_policy`]
  * so the C++ entry codegen never re-derives the class/budget/period/deadline
  * mapping. This is the single-source-of-truth shared with the Rust runtime
  * (`ExecutorNodeRuntime::apply_sched_task_sched_policy`) — the C++ single-executor
  * entry path emits a call to THIS instead of building an
- * `nros_cpp_sched_context_t` field-by-field, so a `real_time` tier lowers to
+ * `nros_cpp_sched_context_t` field-by-field, so a `real_time` sched task lowers to
  * the same Sporadic SC on every language.
  *
  * `class` / `deadline_policy` are NUL-terminated UTF-8 or null (= absent);
  * `period_us` / `budget_us` / `deadline_us` use `0` as the absent sentinel.
- * A tier with no real-time policy yields a `Fifo` SC carrying only `os_pri`
+ * A sched task with no real-time policy yields a `Fifo` SC carrying only `os_pri`
  * (byte-identical to the pre-policy single-executor SC). When the policy is
  * `time_triggered`, the major-frame dispatcher is registered on the executor
  * as a side effect (same as the Rust path).
@@ -2730,7 +2730,7 @@ nros_cpp_ret_t nros_cpp_bind_handle_to_sched_context(void *handle,
  * Covers every component shape (configure-shape C/C++ and rclcpp IS-A-node) since
  * every node funnels through `Executor::node_builder(name).build()` (RFC-0046) and
  * the builder looks up the table there. This dissolves issue #124 at the emit level:
- * rclcpp-shape nodes are seeded here and pick up their tier in the builder.
+ * rclcpp-shape nodes are seeded here and pick up their sched task in the builder.
  *
  * # Safety
  * `handle` must be a context returned by `nros_cpp_init`.
@@ -2786,7 +2786,7 @@ nros_cpp_ret_t nros_cpp_bind_group_sched(void *handle,
  * Set the minimum stack headroom from the stack the thread was created with,
  * using the default fraction.
  *
- * Boards call this BEFORE the tier's `setup()`, which is what makes an
+ * Boards call this BEFORE the sched task's `setup()`, which is what makes an
  * explicit `nros_cpp_executor_set_min_stack_headroom` inside `setup` win:
  * declared beats derived by ordering, with no precedence logic to keep in
  * step. Same shape as `set_spin_nominal_us` (phase-436).
@@ -2807,7 +2807,7 @@ nros_cpp_ret_t nros_cpp_executor_derive_min_stack_headroom(void *handle, size_t 
  * spawned the thread is the only party that knows what it handed over, and
  * on a C++ image that entry is on this side of the ABI.
  *
- * Call from a tier's `setup(executor)`, beside the other declarations the
+ * Call from a sched task's `setup(executor)`, beside the other declarations the
  * generated entry already makes there.
  *
  * # Safety
@@ -2980,7 +2980,7 @@ nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
  * generated entry emits, read by every executor (issue 1971, RFC-0107
  * step 1). Launch rules stay AUTHORITATIVE over `--ros-args -r` rules.
  *
- * Call it once at boot, BEFORE the board runner sets up any tier or the
+ * Call it once at boot, BEFORE the board runner sets up any sched task or the
  * entry builds any node: an rclcpp-shape constructor registers its entities
  * immediately (issue 0255). The generated entry does exactly that.
  *
@@ -3065,7 +3065,7 @@ nros_cpp_ret_t nros_cpp_install_argv_remaps(void *handle,
  *
  * Returns an opaque pointer to the underlying RMW session. Pass this to
  * [`nros_cpp_executor_open_over_session`] to open additional executors that
- * share the same session (the per-tier borrowed-executor model).
+ * share the same session (the per-sched-task borrowed-executor model).
  *
  * The returned pointer is valid as long as the primary executor's storage
  * (`nros_cpp_init` / `out_storage`) lives. NULL is returned on null input.
@@ -3079,8 +3079,8 @@ void *nros_cpp_executor_session_handle(void *executor);
  * Phase 274.W1 (RFC-0015 Model 1) — open a new `Borrowed` executor over a shared session.
  *
  * Opens an executor that **does not own or close** the session on drop (the
- * `Borrowed` session store). This is the per-tier task primitive: the primary
- * executor opened the session once via `nros_cpp_init`; each tier task calls this
+ * `Borrowed` session store). This is the per-sched task primitive: the primary
+ * executor opened the session once via `nros_cpp_init`; each sched task calls this
  * with the primary's session handle to get its own executor over the same session.
  *
  * `node_name` sets the borrowed executor's node identity for graph naming; NULL
@@ -3101,20 +3101,20 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session(void *session_handle,
                                                    void *out_storage);
 
 /**
- * Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one TIER of a
- * per-tier-sized image: the borrowed executor is carved from `backing` at the
- * sizing the image derived for the tier named `tier` (see
+ * Issue 1970 -- [`nros_cpp_executor_open_over_session`] for one SCHED TASK of a
+ * per-sched-task-sized image: the borrowed executor is carved from `backing` at the
+ * sizing the image derived for the sched task named `sched_task` (see
  * [`nros_cpp_init_sched_task`] for what is refused).
  *
  * # Safety
  * As [`nros_cpp_executor_open_over_session`], plus [`nros_cpp_init_sched_task`]'s
- * contract on `tier` and `backing`.
+ * contract on `sched_task` and `backing`.
  */
 nros_cpp_ret_t nros_cpp_executor_open_over_session_sched_task(void *session_handle,
                                                               const char *node_name,
                                                               uint32_t domain_id,
                                                               void *out_storage,
-                                                              const char *tier,
+                                                              const char *sched_task,
                                                               void *backing,
                                                               size_t backing_bytes);
 
@@ -3125,8 +3125,8 @@ nros_cpp_ret_t nros_cpp_executor_open_over_session_sched_task(void *session_hand
  * register on this executor. Pass `n == 0` or `groups == NULL` to clear the
  * filter (wildcard — accept all groups, which is the default).
  *
- * In the per-tier model: call this on a borrowed executor BEFORE registering
- * callbacks so only the tier's groups land here. Mirrors
+ * In the per-sched-task model: call this on a borrowed executor BEFORE registering
+ * callbacks so only the sched task's groups land here. Mirrors
  * `Executor::set_active_groups`.
  *
  * # Safety
@@ -3170,7 +3170,7 @@ nros_cpp_ret_t nros_cpp_executor_level(void *handle, uint8_t *out_level);
  * phase-509 P7 — place this executor at `level` (0 the most urgent), so
  * [`nros_cpp_executor_level`] answers it and its spins check in as it. A
  * runner calls it once per level before the level spins, with the index
- * [`nros_cpp_sched_task_level`] gives its tier. `INVALID_ARGUMENT` at or past
+ * [`nros_cpp_sched_task_level`] gives its sched task. `INVALID_ARGUMENT` at or past
  * `NROS_CPP_MAX_LEVELS`.
  *
  * # Safety
@@ -3213,13 +3213,13 @@ nros_cpp_ret_t nros_cpp_executor_set_lock(void *handle,
 nros_cpp_ret_t nros_cpp_executor_set_thread_id(void *handle, size_t (*thread_id)(void));
 
 /**
- * phase-509 P7 — the level of tier `index` of a runner's `n` tiers: its
+ * phase-509 P7 — the level of sched task `index` of a runner's `n` sched tasks: its
  * urgency order among their kernel priorities, 0 the most urgent, equal
  * priorities in array order. The rule `nros codegen entry` uses for
  * `NROS_ENTRY_LEVEL_OF_<node>`, so the two agree. The priorities are read
  * from the runner's own tier array: `first_priority` points at tier 0's
  * `int64_t` priority and `stride` is the array's element size, so a runner
- * passes `&tiers[0].priority, sizeof(tiers[0])`. `smaller_is_urgent` is the
+ * passes `&sched_tasks[0].priority, sizeof(sched_tasks[0])`. `smaller_is_urgent` is the
  * kernel's direction (Zephyr, ThreadX: true). `-1` on NULL, a zero stride,
  * or an index out of range.
  *
@@ -3370,7 +3370,7 @@ nros_cpp_ret_t nros_cpp_scheduler_set_registering_level(void *scheduler, uint8_t
 
 /**
  * Issue 2018 (RFC-0108 As-built) -- give the registering level its own
- * scheduling context, lowered from its tier's policy by the common backend
+ * scheduling context, lowered from its sched task's policy by the common backend
  * (`SchedContext::from_sched_task_policy`): what the level's setup registers from
  * now on binds to it rather than to the executor's default, which every
  * level on the core shares (`Executor::set_level_sched_context`). Call it
@@ -3566,8 +3566,8 @@ nros_cpp_ret_t nros_cpp_executor_set_park_primitive(void *handle,
  *
  * `hook(ctx)` is called after every signal of this executor's wake object (a
  * backend's arrival, an attributed entity wake), from the signalling context.
- * A PX4 tier binds it to its work item's `ScheduleNow`, so an arrival from
- * ANY backend schedules the tier instead of waiting for its next deadline.
+ * A PX4 sched task binds it to its work item's `ScheduleNow`, so an arrival from
+ * ANY backend schedules the sched task instead of waiting for its next deadline.
  * NULL `hook` clears it.
  *
  * Returns `NROS_CPP_RET_UNSUPPORTED` when this build has no wake object.
@@ -3701,8 +3701,8 @@ nros_cpp_ret_t nros_cpp_executor_clear_release_jitter_stats(void *handle);
 uint64_t nros_cpp_time_ns(void);
 
 /**
- * phase-509 P9b -- report a tier (level) setup that failed: the generated
- * entry's setup wrapper calls this with the tier's name, the node it was
+ * phase-509 P9b -- report a sched task (level) setup that failed: the generated
+ * entry's setup wrapper calls this with the sched task's name, the node it was
  * building (`NULL` when it failed before its first node: the monitor
  * install) and the code it returns, BEFORE handing the code to the runner,
  * which then fails the boot (a level runner does not park a level whose
@@ -3710,9 +3710,9 @@ uint64_t nros_cpp_time_ns(void);
  * `nros_cpp` logger, the channel every other setup refusal uses.
  *
  * # Safety
- * `tier` and `node` are NULL or NUL-terminated strings.
+ * `sched_task` and `node` are NULL or NUL-terminated strings.
  */
-void nros_cpp_report_setup_failure(const char *tier, const char *node, int32_t rc);
+void nros_cpp_report_setup_failure(const char *sched_task, const char *node, int32_t rc);
 
 /**
  * Create a guard condition and register it with the executor.
@@ -5183,7 +5183,7 @@ nros_cpp_ret_t nros_cpp_action_server_for_each_active_goal(void *handle,
 /**
  * Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
  *
- * The C++ tier's binding of `rclc_action_server_goal_exists` /
+ * The C++ sched task's binding of `rclc_action_server_goal_exists` /
  * `ActionServerRawHandle::goal_exists`. TRUE while the goal is active AND
  * while its completed result is still retained, which is rcl's window.
  *
@@ -6182,10 +6182,10 @@ nros_cpp_ret_t nros_cpp_declare_param(void *executor,
  * shim resolves the node itself: the index is the executor's own next node
  * (`nodes().len()` at this call), not a number the build counted. Under
  * RFC-0108's one executor per core, every level's setup registers on the
- * SAME executor, one after another, so a build-time index restarted per tier
+ * SAME executor, one after another, so a build-time index restarted per sched task
  * (what [`nros_cpp_declare_param`] is handed) names node 0 in every level:
  * the second level's seed was refused and its setup failed. A build-time
- * count across tiers would hold only for a runner that sets the levels up in
+ * count across sched tasks would hold only for a runner that sets the levels up in
  * table order on one executor, and only while every earlier component built
  * exactly one node; resolving here holds for any runner, any setup order,
  * and a component that builds two nodes.

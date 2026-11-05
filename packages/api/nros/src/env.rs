@@ -200,7 +200,7 @@ pub fn rename(from: &str, to: &str) -> Result<(), &'static str> {
 /// The process must be single-threaded, or no other thread may read or write
 /// the environment during the call: `setenv` is not thread-safe, which is why
 /// `std::env::set_var` is `unsafe` too. Its callers run in the boot funnel,
-/// before any executor or tier task exists.
+/// before any executor or sched task exists.
 #[cfg(feature = "alloc")]
 pub unsafe fn set_var(name: &str, value: &str) {
     unsafe extern "C" {

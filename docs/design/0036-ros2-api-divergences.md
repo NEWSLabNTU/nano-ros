@@ -92,7 +92,7 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
 
 | ROS 2 | nano-ros | why | owner |
 |---|---|---|---|
-| `rclcpp::spin` with multiple executors / spinner threads | **one `Executor` per RTOS task**, shared by all nodes in that tier; FIFO callback dispatch | avoid OS priority-slot starvation; mixed-criticality via priority tiers | RFC-0002, RFC-0015 |
+| `rclcpp::spin` with multiple executors / spinner threads | **one `Executor` per RTOS task**, shared by all nodes in that sched task; FIFO callback dispatch | avoid OS priority-slot starvation; mixed-criticality via priority sched tasks | RFC-0002, RFC-0015 |
 | blocking `client->async_send_request(...).get()` internally drives the loop | non-blocking `Promise<T>`; **every blocking helper takes the executor and drives it** (`promise.wait(&mut executor, timeout)`) | single source of I/O; reentrancy-safe; reliable RTOS timeouts | RFC-0021 |
 | action client `wait_for_result()` blocks | spin-driven `Promise` poll/`wait(&mut executor)` | same; no deadlock on single-threaded transports | RFC-0021 |
 | `rclcpp::Node` shared via `std::shared_ptr<Node>` (`Arc<Node>` in rclrs) | `&mut Executor` + short-lived `NodeCtx<'_>`; **no `Arc<Node>`**; entities owned, outlive the handle | zero allocation; two live node handles = borrow error by construction | RFC-0022 |

@@ -303,7 +303,7 @@ BASELINE = {
     # The four that remain are real: `extern crate std`, the `cpp_diag!` stdio
     # macro pair (printing IS the hosted thing), and the tier runtime
     # `nros_board_native_run_sched_tasks` with its `NativeSchedTaskSpecC`, which spawns one
-    # `std::thread` per tier. That one is portable in principle — the platform
+    # `std::thread` per sched task. That one is portable in principle — the platform
     # task ABI carries name, stack and priority — but `nros-node`'s
     # allocate-spawn-join helper is `pub(crate)`, so porting it means either
     # exposing that internal surface or writing a THIRD copy of the sequence
@@ -311,7 +311,7 @@ BASELINE = {
     # decision, not a flavour cleanup.
     #
     # phase-359 W10: 5 -> 3 cfg, 16 -> 15 path. `nros_board_native_run_sched_tasks`
-    # spawns one PLATFORM TASK per tier instead of one `std::thread`, so its
+    # spawns one PLATFORM TASK per sched task instead of one `std::thread`, so its
     # gate is `env` (the locator/domain/spin-bound it reads) rather than the
     # flavour. Two fields the API documented as ignored — `priority` ("advisory
     # ... applied by nobody") and `stack_bytes` ("informational on native") —

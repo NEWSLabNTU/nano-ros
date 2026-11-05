@@ -44,7 +44,7 @@ example exists to demonstrate one (D10).
 
 The CI half binds each support cadence of RFC-0114 to a named workflow job,
 because today two of them have none. `cadence = "merge"` (linux, zephyr
-native_sim, threadx-linux) is backed by nothing that runs at merge, and tier
+native_sim, threadx-linux) is backed by nothing that runs at merge, and sched task
 3 by no workflow at all. A cadence the CI cannot afford is lowered in the
 registry, not left unbacked.
 

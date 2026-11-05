@@ -212,7 +212,7 @@ The work, for a phase to pick up:
    - `bins/rtic-run-plan-e2e`;
    - the book's `rtic-integration.md`, `bare-metal.md`,
      `board-support-levels.md` and `troubleshooting-first-10-min.md`;
-   - the CLI, macro and tier-resolver tests;
+   - the CLI, macro and sched-task-resolver tests;
    - `board-support.toml`;
    - the `NanoRosBareMetalPlatform.cmake` comment.
 5. **Retire the word** (D4). Add the refusal row with generated text, a ledger

@@ -1,6 +1,6 @@
 ---
 rfc: 0032
-title: "Entry-Codegen Pipeline — main() emission across frameworks + tiers"
+title: "Entry-Codegen Pipeline — main() emission across frameworks + sched tasks"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-06
@@ -9,7 +9,7 @@ supersedes: []
 superseded-by: null
 ---
 
-# Entry-Codegen Pipeline — `main()` emission across frameworks + tiers
+# Entry-Codegen Pipeline — `main()` emission across frameworks + sched tasks
 
 > **Canonical path (phase-296 R3/R4).** The entry `main()` emission now bakes
 > from the play_launch-resolved **SystemModel** (RFC-0050/0052): the Rust
@@ -22,14 +22,14 @@ superseded-by: null
 > `run_sched_tasks` seam are unchanged; only the plan's *source* moves to the model
 > (`plan_from_model` alongside `plan_from_launch`).
 
-**Status:** Draft (design-of-record for the entry emitter; the multi-tier slice
+**Status:** Draft (design-of-record for the entry emitter; the multi-sched-task slice
 is tracked by Phase 228).
 
 **Scope boundary.** This RFC is the **how-`main()`-is-emitted** doc. It is the
 companion to:
 
-- **RFC-0015** (RTOS orchestration) — the *execution model* (priority tiers, one
-  `Executor` per tier, one shared session). RFC-0015 says *what* runs; this RFC
+- **RFC-0015** (RTOS orchestration) — the *execution model* (priority sched tasks, one
+  `Executor` per sched task, one shared session). RFC-0015 says *what* runs; this RFC
   says *how the entry TU is generated* to make it run. RFC-0015 §3/§11 sketch a
   `cargo nano-ros generate-main` template pipeline that **predates** the
   proc-macro entry codegen and is superseded by this RFC (see the RFC-0015
@@ -58,9 +58,9 @@ A nano-ros binary needs a `main()` (or the framework's boot symbol) that:
 On Linux this is a hand-written `main.rs`. nano-ros generates it from the launch
 tree + `system.toml` so the ROS 2 mental model survives onto RTOS (RFC-0015 §1).
 The generation must cover **five framework shapes** (the boot symbol differs per
-framework) **and** the single-vs-multi-tier execution model — without forking
-into N bespoke generators, and without the multi-tier path perturbing the
-single-tier output that ships today.
+framework) **and** the single-vs-multi-sched-task execution model — without forking
+into N bespoke generators, and without the multi-sched-task path perturbing the
+single-sched-task output that ships today.
 
 ---
 
@@ -176,7 +176,7 @@ pure-cargo path. The linker script is the third leg — the Entry pkg's
 
 ---
 
-## 4. The single-tier contract (today)
+## 4. The single-sched-task contract (today)
 
 `BoardEntry::run<F>(setup: F)` where `F: FnOnce(&mut RuntimeCtx) -> Result<(),E>`.
 The board opens **one** `Executor`, wraps it in `ExecutorNodeRuntime`, hands the
@@ -188,29 +188,29 @@ builds today.
 
 ---
 
-## 5. The multi-tier contract (Phase 228)
+## 5. The multi-sched-task contract (Phase 228)
 
-When the system declares scheduling tiers, codegen emits **one RTOS task +
-`Executor` per tier over one shared session** (RFC-0015 §2.2/§2.3). The board
+When the system declares sched tasks, codegen emits **one RTOS task +
+`Executor` per sched task over one shared session** (RFC-0015 §2.2/§2.3). The board
 seam for this is a sibling entry point:
 
 ```
-<Board>::run_sched_tasks(tiers: &[SchedTaskSpec], setup: F)
+<Board>::run_sched_tasks(sched tasks: &[SchedTaskSpec], setup: F)
     where F: Fn(&mut RuntimeCtx) -> Result<(),E> + Sync
 ```
 
 Contract differences from `run` (and *why*):
 
 - **`setup` is `Fn`, not `FnOnce`, and register-only.** It is invoked **once per
-  tier executor** (each tier registers the whole node set; the executor's
-  `active_groups` filter admits only that tier's callbacks). The closure must
-  *register only* — **the board owns the per-tier spin** so it can install the
+  sched task executor** (each sched task registers the whole node set; the executor's
+  `active_groups` filter admits only that sched task's callbacks). The closure must
+  *register only* — **the board owns the per-sched-task spin** so it can install the
   group filter (`set_active_groups`) before spinning. (In `run`, by contrast,
   `setup` owns the spin.)
-- **One shared session.** The boot task opens the session once; tier tasks borrow
+- **One shared session.** The boot task opens the session once; sched tasks borrow
   it via `Executor::open_with_session(session_ptr)` (the RMW session is a
   process-wide singleton — opening twice fails, RFC-0015 §2.3). The boot task
-  runs the highest-priority tier; the rest are spawned with the platform's task
+  runs the highest-priority sched task; the rest are spawned with the platform's task
   primitive (`nros_platform_task_init` / `nros_freertos_create_task` / …).
 - **`SchedTaskSpec`** (`nros-platform`) carries `{name, groups: &[&str], priority:
   i64, stack_bytes, spin_period_us}`. `priority` is the **raw per-RTOS** value
@@ -219,7 +219,7 @@ Contract differences from `run` (and *why*):
   The RFC-0016 `*_priority_for` mappers are a separate utility for authors who
   prefer a normalized 0–31 scale; the codegen path uses the raw value.
 
-### 5.0 Platform applicability — multi-tier ⟹ MT=1, satisfied by every RTOS
+### 5.0 Platform applicability — multi-sched-task ⟹ MT=1, satisfied by every RTOS
 
 `run_sched_tasks` runs N preemptive spin tasks on one shared zenoh-pico session, which
 requires the session's **internal mutexes** (`Z_FEATURE_MULTI_THREAD=1`). A 2026-06
@@ -227,36 +227,36 @@ study (vs `zenoh_platforms.toml` + the `system/*` backends) established:
 
 - **Every RTOS target already builds MT=1** — POSIX, Zephyr, FreeRTOS, NuttX
   (`system/unix` pthreads), ThreadX (`system/threadx`), ESP-IDF/Orin-SPE
-  (`system/freertos`). So multi-tier needs **no MT change** and adds no
+  (`system/freertos`). So multi-sched-task needs **no MT change** and adds no
   session-MT cost (MT=1 is already paid by the single-session model). The 228.F
   two-executor result generalizes to these.
-- **Bare-metal forces MT=0** (no RTOS / no threading backend). Multi-tier is
+- **Bare-metal forces MT=0** (no RTOS / no threading backend). Multi-sched-task is
   inherently N/A there — there are no preemptive tasks. Bare-metal is
-  `Framework::Rtic`/`Esp32`-bare; its "tiers" are RTIC `#[task(priority)]`
+  `Framework::Rtic`/`Esp32`-bare; its "sched tasks" are RTIC `#[task(priority)]`
   interrupt priorities (framework-owned, §8 item 3), not `run_sched_tasks`.
 
 So the emitter never needs an MT-flip or an MT error gate: the `OwnedSpin`-RTOS
 boards that take the `run_sched_tasks` path are exactly the MT=1 platforms. (This
 corrected RFC-0015 §2.3/§7.1, which had claimed MT=0 for FreeRTOS/NuttX/ThreadX.)
 
-### 5.1 Degenerate gate — single-tier stays byte-identical
+### 5.1 Degenerate gate — single-sched-task stays byte-identical
 
-The emitter chooses the path on **tier presence**:
+The emitter chooses the path on **sched task presence**:
 
 - system has no `[tasks.*]` **or** the resolved table `is_single_sched_task()` (one
-  synthesized `default` tier) → emit the **unchanged `BoardEntry::run`** path.
+  synthesized `default` sched task) → emit the **unchanged `BoardEntry::run`** path.
   Every example today takes this branch; output is byte-identical to pre-228.
 - otherwise → emit `run_sched_tasks(&[SchedTaskSpec{…}, …], run_plan)` with a register-only
   `run_plan`.
 
-This keeps the multi-tier blast radius to systems that opt in (none today): a
-bug in the new path cannot affect a single-tier build.
+This keeps the multi-sched-task blast radius to systems that opt in (none today): a
+bug in the new path cannot affect a single-sched-task build.
 
 ---
 
-## 6. Where tier data enters the emitter — the shared resolver
+## 6. Where sched task data enters the emitter — the shared resolver
 
-The proc-macro must resolve the tier table **at expansion time**, and it must
+The proc-macro must resolve the sched task table **at expansion time**, and it must
 resolve it **identically** to the CLI's `codegen-system` bake (else a binary's
 compile-time entry and its baked `nros-plan.json` disagree). Three sources were
 considered (Phase 228):
@@ -264,11 +264,11 @@ considered (Phase 228):
 1. **Re-read + re-implement in the macro** — duplicates `resolve_sched_tasks`; drifts.
 2. **Read the baked `nros-plan.json`** — true SSoT, but native builds use plain
    `cargo build` with no prior bake step → ordering dependency.
-3. **Shared resolver crate** *(chosen)* — extract the tier schema + `resolve_sched_tasks`
+3. **Shared resolver crate** *(chosen)* — extract the sched task schema + `resolve_sched_tasks`
    into a leaf crate both consumers depend on.
 
 **Decision: a shared leaf crate `nros-orchestration-ir`** (runtime workspace,
-serde + thiserror only) owns the tier schema (`SchedTaskDef`, `SchedTaskRtosSpec`,
+serde + thiserror only) owns the sched task schema (`SchedTaskDef`, `SchedTaskRtosSpec`,
 `CallbackGroupDecl`, `NodeOverride`, `CallbackGroupOverride`) + `resolve_sched_tasks`.
 - `nros-cli-core` path-deps it (re-exports the types; `codegen-system` calls it).
 - `nros-macros` path-deps it (same workspace) and calls the *same* function at
@@ -278,14 +278,14 @@ serde + thiserror only) owns the tier schema (`SchedTaskDef`, `SchedTaskRtosSpec
   callback_groups`, the binding's original home, is retired and refused at
   parse.)
 
-`resolve_sched_tasks` takes the **decomposed** inputs `(tiers, node_overrides,
+`resolve_sched_tasks` takes the **decomposed** inputs `(sched tasks, node_overrides,
 component_names, callback_groups, target_rtos)` rather than a whole `SystemToml`,
 so the leaf crate stays free of the full CLI config type. The macro derives
 `target_rtos` from the resolved board (`native`/`posix` → `posix`, `freertos*` →
 `freertos`, …).
 
 ```
-launch tree + system.toml (tiers + group_tasks)
+launch tree + system.toml (sched tasks + group_tasks)
         │
         ├── nros dev codegen system ──► resolve_sched_tasks ──► nros-plan.json (bake / RFC-0003)
         └── nros::main! (expand) ──► resolve_sched_tasks ──► run / run_sched_tasks emit
@@ -297,20 +297,20 @@ launch tree + system.toml (tiers + group_tasks)
 
 ## 7. Invariants
 
-- **Single-tier byte-identical.** No `[tasks.*]` ⇒ the `run` emit is unchanged.
+- **Single-sched-task byte-identical.** No `[tasks.*]` ⇒ the `run` emit is unchanged.
   (Phase 228 keeps a parity check.)
 - **One node-set SSoT.** Both Rust emitters + the C bake resolve the launch tree
   identically; none invents nodes.
-- **One resolver.** Compile-time (macro) and bake-time (CLI) tier resolution call
+- **One resolver.** Compile-time (macro) and bake-time (CLI) sched task resolution call
   the same `nros-orchestration-ir::resolve_sched_tasks`.
-- **Node-pinned-to-tier (v1).** A node's callback groups must all resolve to one
-  tier (enforced in the resolver). Cross-tier data is `[[shared_state]]`
+- **Node-pinned-to-sched-task (v1).** A node's callback groups must all resolve to one
+  sched task (enforced in the resolver). Cross-sched-task data is `[[shared_state]]`
   (RFC-0015 §8). v2 relaxes with multi-task state-sync.
 - **Raw per-RTOS priority.** Authored in `[tasks.<name>.<rtos>].priority`, emitted
   verbatim into the spawn call; codegen does not auto-flip direction.
-- **Instance identity.** Group → tier bindings are per-*instance*
+- **Instance identity.** Group → sched task bindings are per-*instance*
   (`system.toml [[component]] group_tasks`, RFC-0047 — they were per-*package*
-  manifest metadata until phase-273, a form now refused at parse); tiers +
+  manifest metadata until phase-273, a form now refused at parse); sched tasks +
   `[[node_overrides]]` key by node *instance* name too. The emitter applies
   bindings and overrides by name, and **requires the launch `<node name=…>` to
   equal the `system.toml [[component]].name`** — mismatch is a hard error at emit
@@ -325,27 +325,27 @@ launch tree + system.toml (tiers + group_tasks)
 gate, the `.callback_group()` label, `Executor::session_ptr` /
 `open_with_session` / `set_active_groups`, `SchedTaskSpec` + RFC-0016 maps,
 `LinuxBoard::run_sched_tasks`, and the `nros-orchestration-ir` extraction. Validated by
-`phase228_sched_task_filter.rs` (two executors, one shared session, off-tier callbacks
+`phase228_sched_task_filter.rs` (two executors, one shared session, off-sched-task callbacks
 gated to zero) against real zenohd.
 
 **Decided (2026-06 design discussion):**
 
-- **MT model** — multi-tier ⟹ MT=1, satisfied by every RTOS target with no
+- **MT model** — multi-sched-task ⟹ MT=1, satisfied by every RTOS target with no
   change; bare-metal (MT=0) has no `run_sched_tasks` (§5.0). No MT-flip or error gate.
-- **Testing the emitted multi-tier example** — use an **external-observer E2E**
+- **Testing the emitted multi-sched-task example** — use an **external-observer E2E**
   (spawn the binary, observe topic output, kill it — matches the existing
   Zephyr/FreeRTOS workspace E2E). Do **not** add a bounded-spin mode to
   `run_sched_tasks`. The runtime *mechanism* is already covered by
   `phase228_sched_task_filter.rs`.
-- **Native multi-tier is advisory-priority** — `LinuxBoard::run_sched_tasks` uses
+- **Native multi-sched-task is advisory-priority** — `LinuxBoard::run_sched_tasks` uses
   `std::thread` (default scheduler, no strict preemption); it validates the
-  task-per-tier + filter shape + serves dev ergonomics. Real preemption is
+  task-per-sched-task + filter shape + serves dev ergonomics. Real preemption is
   FreeRTOS/embedded. `SCHED_FIFO` via libc is a later optional add.
-- **Node-pinned-to-tier (v1) accepted** — a node's groups all resolve to one
-  tier; mixed-criticality within one node splits the package or routes through
+- **Node-pinned-to-sched-task (v1) accepted** — a node's groups all resolve to one
+  sched task; mixed-criticality within one node splits the package or routes through
   `[[shared_state]]`. v2 relaxes (§7, RFC-0015 §8).
-- **RTIC / Embassy multi-tier is a non-goal v1** — those frameworks express
-  priority via `#[task(priority)]` / Embassy executors; tiers there map to
+- **RTIC / Embassy multi-sched-task is a non-goal v1** — those frameworks express
+  priority via `#[task(priority)]` / Embassy executors; sched tasks there map to
   framework priorities, not `run_sched_tasks`. `run_sched_tasks` applies only to
   `OwnedSpin`-RTOS boards.
 
@@ -378,14 +378,14 @@ gated to zero) against real zenohd.
    `freertos_run_plan_runtime` only after it lands.
 
 1. **Proc-macro emit** — wire `nros-macros` to `nros-orchestration-ir`, resolve
-   tiers at expansion (keying groups per §7 instance-identity), emit `run_sched_tasks`
-   behind the §5.1 gate with a register-only `run_plan`. Add a multi-tier example
+   sched tasks at expansion (keying groups per §7 instance-identity), emit `run_sched_tasks`
+   behind the §5.1 gate with a register-only `run_plan`. Add a multi-sched-task example
    fixture + the external-observer E2E above.
 2. **FreeRTOS `run_sched_tasks`** — port the native primitive via
    `nros_freertos_create_task` at the raw FreeRTOS priority; this is where real
    preemption is validated on QEMU (MT=1 already, §5.0).
 3. **Spin-period bound check** — emit a warning when `spin_period_us` exceeds the
-   tightest timer period in the tier (RFC-0015 §4.3). Low priority.
+   tightest timer period in the sched task (RFC-0015 §4.3). Low priority.
 
 ## 8a. Embedded board adapter + NodeContext runtime binding (C++ Entry path)
 
@@ -454,8 +454,8 @@ constructs **no** live publishers/subscriptions, on native or embedded.
 - `run_sched_tasks` + `SchedTaskSpec`: `packages/boards/nros-board-linux/src/lib.rs`,
   `packages/platform/nros-platform/src/board/sched_task.rs`.
 - Shared resolver: `packages/core/nros-orchestration-ir/`.
-- Phase tracking: `docs/roadmap/phase-228-per-tier-orchestration-codegen.md`
-  (multi-tier emit); `docs/roadmap/archived/phase-236-cpp-entry-embedded-runtime.md`
+- Phase tracking: `docs/roadmap/phase-228-per-sched_task-orchestration-codegen.md`
+  (multi-sched-task emit); `docs/roadmap/archived/phase-236-cpp-entry-embedded-runtime.md`
   (C++ embedded board adapter + NodeContext runtime, §8a);
   `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` §212.O.1
   (embedded panic + Node-pkg crate-type, §3.1).

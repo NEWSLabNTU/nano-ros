@@ -22,7 +22,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 
 | File | Owns | Per |
 |------|------|-----|
-| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, the board network file holding its address, `os_config = ["board-net.toml"]`, and how it runs, is flashed and is watched, `[image.<id>.run]`, `[image.<id>.flash]`, `[image.<id>.console]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
+| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, sched tasks), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, the board network file holding its address, `os_config = ["board-net.toml"]`, and how it runs, is flashed and is watched, `[image.<id>.run]`, `[image.<id>.flash]`, `[image.<id>.console]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
 | `Cargo.toml` | Rust toolchain facts only: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) the generated entry selects from. No board, no target triple, no deploy block. | Rust project |
 | `CMakeLists.txt` | C/C++ toolchain facts only: targets and language deps, via `find_package(nano_ros)` + `nano_ros_add_executable` / `nano_ros_auto_add_library` + `nros_components_register_node` (`nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry`. No platform, board or RMW `set()`. | C/C++ project |
 | `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros build` (or `nros configure` alone), passed to cargo with `--config`. | image |
@@ -337,7 +337,7 @@ Multi-node RT is declared in `system.toml` (`[tasks.<name>.<rtos>]` +
 
 ### Periodic timers after a stall
 
-If a tier is preempted past several periods of a periodic timer, the backlog is
+If a sched task is preempted past several periods of a periodic timer, the backlog is
 **coalesced, not replayed**: the timer fires ONCE and the missed periods are
 counted. Phase is preserved, so activations stay on the declared cadence grid
 rather than drifting by each stall. This is the default (`TimerOverrunPolicy::Skip`)
@@ -352,7 +352,7 @@ fraction of a period.
 Overruns are counted per timer (`Executor::timer_overruns`) and reported as the
 `timer-overrun-runtime` violation. Watch that rather than a publish-rate check:
 under `CatchUp` a replayed burst makes the achieved rate look nominal — measured
-100.03 Hz on a declared 100 Hz loop while the tier was stalling for up to 611 ms
+100.03 Hz on a declared 100 Hz loop while the sched task was stalling for up to 611 ms
 at a time — so a rate monitor reports health during exactly the fault it exists
 to catch. The rationale and the measurements are in the execution-model
 design record (see [Design background](#design-background)).
@@ -638,6 +638,6 @@ On the `native` host build, `ExecutorConfig::from_env()` reads at process start
 - [RFC-0098: generated leaf build config](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md)
 - [RFC-0031: RMW selection and lowering](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md)
 - [RFC-0109: network config layers](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0109-network-config-layers.md)
-- [RFC-0015: RTOS orchestration (multi-node RT tiers)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0015-rtos-orchestration.md)
+- [RFC-0015: RTOS orchestration (multi-node RT sched tasks)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0015-rtos-orchestration.md)
 - [RFC-0002: RT execution model (timer overrun policy, § 4.4a)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0002-rt-execution-model.md)
 - [RFC-0103: one owner per fact (source lookup ladder)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0103-one-owner-per-fact.md)

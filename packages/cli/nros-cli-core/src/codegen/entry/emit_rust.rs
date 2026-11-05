@@ -16,7 +16,7 @@
 //! invoked it — `nano_ros_entry` passes `--lang` as `c` or `cpp` only, and a
 //! Rust entry reaches the proc-macro through `rust_cargo_application()` — and
 //! what it produced was a strictly POORER entry than the macro's, missing
-//! tiers, lifecycle, param services and executor sizing. A user who found the
+//! sched tasks, lifecycle, param services and executor sizing. A user who found the
 //! flag got an entry that silently ignored half their `system.toml`. What
 //! survives is the renderer, its goldens and the parity gate.
 //!
@@ -82,7 +82,7 @@ struct RustNodeView {
 /// [`refuse_non_owned_spin`]). The three non-owned-spin frameworks stay
 /// proc-macro-only for reasons that differ per framework — RTIC needs
 /// `proc_macro::Span` for the `custom_tasks` splice, Zephyr needs the
-/// backend register and spin-or-tiers tail that `LoweredEntry` does not carry,
+/// backend register and spin-or-sched-tasks tail that `LoweredEntry` does not carry,
 /// ESP32 needs esp-hal's own entry attribute.
 ///
 /// The body installs the same three entry arms the macro does: an
@@ -407,7 +407,7 @@ mod tests {
                     remaps: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
-                    group_tiers: std::collections::BTreeMap::new(),
+                    group_tasks: std::collections::BTreeMap::new(),
                     stack_bytes: None,
                 })
                 .collect(),
@@ -417,7 +417,7 @@ mod tests {
             lifecycle: None,
             param_services: false,
             safety: None,
-            tiers: Default::default(),
+            sched_tasks: Default::default(),
             node_overrides: Vec::new(),
             resolved_sched_tasks: None,
             session: Default::default(),

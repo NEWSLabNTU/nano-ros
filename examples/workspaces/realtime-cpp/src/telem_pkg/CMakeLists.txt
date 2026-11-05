@@ -8,9 +8,9 @@ find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
 
-# Low-tier telemetry node. Publishes a counter on /telem every 100 ms.
+# Low-sched-task telemetry node. Publishes a counter on /telem every 100 ms.
 # CALLBACK_GROUPS declares the "telem" group ID; system.toml
-# [[node_overrides]] maps it to the [tasks.low] tier (RFC-0015 §4.2).
+# [[node_overrides]] maps it to the [tasks.low] sched task (RFC-0015 §4.2).
 nano_ros_auto_add_library(telem_lib STATIC src/Telem.cpp)
 
 nros_components_register_node(telem_lib

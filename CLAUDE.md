@@ -84,7 +84,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 (phase-321 W2.f). RFC-0012 is board/BSP integration and defines no such split.
 
 ## Practices
-- **Run the TIER your change earns, after every task** (RFC-0061 / phase-318).
+- **Run the SCHED TASK your change earns, after every task** (RFC-0061 / phase-318).
   **Never `sudo`** — tell the user.
   - `just ci gate` (was `just ci l1`, still forwards) — **compile + unit, NO
     FIXTURES** (phase-395 W2; renamed phase-410 W4 because it visits no
@@ -101,7 +101,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     `build-test-fixtures`. Nobody noticed for as long as the claim had existed —
     the push lane runs `check-fast` alone — until this lane became a REQUIRED
     status check and every CI run went red on `BuildFailed("Test fixture binary
-    not prebuilt")`. A gate in an affordability tier may resolve a COMPILE-stage
+    not prebuilt")`. A gate in an affordability sched task may resolve a COMPILE-stage
     stamp only if the lane BUILDS it (~13 s); a runtime fixture is banned
     outright.
     **CI runs a SUBSET of it, deliberately, and the subset DIFFERS BY EVENT**
@@ -955,8 +955,8 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `Node::GlobalStorageHolder<0>::storage`, and every RUST board reached an `alloc`
   convenience constructor that `Box::leak`ed it — **invisible to `mem-report`, which
   reads symbols**. The Rust arm is a named `.bss` static now
-  (`nros_node::executor::backing::EXECUTOR_BACKING`, RFC-0002 § 4.4b); a tiered boot's
-  SPAWNED tiers take slots of the entry's `.bss` `SchedTaskExecutorBacking` (issue 1571), so
+  (`nros_node::executor::backing::EXECUTOR_BACKING`, RFC-0002 § 4.4b); a sched-task boot's
+  SPAWNED sched tasks take slots of the entry's `.bss` `SchedTaskExecutorBacking` (issue 1571), so
   the heap arm survives only for an ad-hoc second `Executor::open` and an entry sized
   past the default.
   It is a MOVE, not a saving — the same bytes leave the allocator arena
@@ -976,7 +976,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `app_stack_bytes` that replaced it was **384 KiB by bisection** until issue 1146
   MEASURED it — `uxTaskGetStackHighWaterMark` at the end of the register pass, 8
   in-tree FreeRTOS images, worst peak **36 152 bytes**. Default is **128 KiB** now,
-  charged PER TASK (a tier with `stack_bytes = 0` gets it too), and every image
+  charged PER TASK (a sched task with `stack_bytes = 0` gets it too), and every image
   PRINTS its own peak at boot so the next person reads it instead of copying it.
   Two things the run corrected that reading could not: `Executor::open` costs
   **8 952** bytes, not the "over 160 KiB" three documents claimed; and an
@@ -988,34 +988,34 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   BUILDS — issue 1187 was closed by 1240's both-probes gate, measured on the
   pinned arm-none-eabi 13.2 (six `cpp_*` FreeRTOS images link) — so the C++
   number is available to take, and has not been taken.
-- **Tier and transport priorities land in ONE scheduler — they now share ONE vocabulary,
+- **Sched task and transport priorities land in ONE scheduler — they now share ONE vocabulary,
   RAW FreeRTOS (issue 0623, FIXED).** `FreertosScheduling`'s `zenoh_read_priority` /
   `poll_priority` are raw `0..configMAX_PRIORITIES-1`, the same
   units `[tasks.*.freertos] priority` is written in. Shipped defaults: app **3**,
   transport band **4/4** — transport above the app, no collision. The normalised 0–31
-  scale WAS the defect (a tier written as 5 against a transport reading "16" was above it,
+  scale WAS the defect (a sched task written as 5 against a transport reading "16" was above it,
   not below); `to_freertos_priority` survives as THE single conversion for anyone still
   supplying normalised values, and nothing in the default path calls it. Do NOT "just
-  lower the read task below the tiers": that is the config that starved the RX drain and
+  lower the read task below the sched tasks": that is the config that starved the RX drain and
   froze `rt-eval`'s island 1–3 s on lwIP retransmission. Both orderings are legitimate;
-  choosing by accident is not. Boot prints `report_sched_tasks_above_transport` when a tier meets
+  choosing by accident is not. Boot prints `report_sched_tasks_above_transport` when a sched task meets
   the band floor (`min(read, poll)`; no lease task since zenoh-pico 1.10, RFC-0110 D2). Same defect phase-364 W5 fixed one layer down
   in the platform ABI.
 - **AUTHORED-vs-DERIVED precedence is per FACT, never per TABLE, and it has ONE
   predicate** — `nros_orchestration_ir::derive::placement_is_unauthored`, asked by
   `codegen-system`, `codegen entry` and `nros::main!` (issue 1426). Three sites spelled
-  it themselves as `model.execution.tiers.is_empty()`, which asks about the whole
-  `[tasks.*]` table where the rule is about one tier's placement for one target: so one
+  it themselves as `model.execution.tasks.is_empty()`, which asks about the whole
+  `[tasks.*]` table where the rule is about one sched task's placement for one target: so one
   component binding to one authored `[tasks.ctrl.zephyr]` disabled the derivation for
   every OTHER node, and three nodes with 30/10 Hz contracts sat on the synthesised
-  default tier at Zephyr priority **0**, above the transport that feeds them (1427's
+  default sched task at Zephyr priority **0**, above the transport that feeds them (1427's
   inversion through the guard, not the allocator), silently. Rules: an authored
   `[tasks.<n>.<rtos>]` wins and is REPORTED when it displaces a rank
-  (`DerivedSchedule::shadowed` → stderr + `nros-plan.json`); a tier with **no platform
+  (`DerivedSchedule::shadowed` → stderr + `nros-plan.json`); a sched task with **no platform
   sub-table at all** is an ALLOCATION REQUEST (RFC-0079 — that is also how a
   `group_tasks` binding gets a name to reference without a new `[tasks.*]` key, which
   rlm's `deny_unknown_fields` `SchedTaskDef` would refuse); sub-tables for OTHER boards and
-  not this one stay a refusal; an unbound group gets `derived-<node>`. A named tier gets
+  not this one stay a refusal; an unbound group gets `derived-<node>`. A named sched task gets
   ONE priority (most urgent member) plus a `Degradation` when members disagree.
 - **Zephyr POSIX:** raise `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (zenoh-pico needs ~8+; default 5 fails
   with -80). → platform-implementation-notes.md.
@@ -1148,10 +1148,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   emptying it. `NROS_ZEPHYR_MAX_SCHED_TASKS` has NO such refusal from the language —
   GCC's zero-length-array extension compiles
   `K_THREAD_STACK_ARRAY_DEFINE(x, 0, N)` clean, size 0, no diagnostic — so only
-  a guard stands between a `-D` and an image whose every tier spawn fails. Its
+  a guard stands between a `-D` and an image whose every sched task spawn fails. Its
   case for zero was "64 KiB in EVERY Zephyr image", and `--gc-sections` had
   already dropped it in 87 of 91 built images, the 4 carriers being exactly the
-  4 that declare tiers: zero reclaimed nothing the linker had not. **BOTH gates in
+  4 that declare sched tasks: zero reclaimed nothing the linker had not. **BOTH gates in
   this family had a REACH narrower than the rule they enforce** (0196's shape),
   and issue 1131 hit both at once. `check-c-array-pool-floors` required a knob's
   `#ifndef` and `#define` on ADJACENT LINES, so the two knobs that document

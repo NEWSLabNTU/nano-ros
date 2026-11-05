@@ -315,12 +315,12 @@ range = [1, 255]
 # Linux/macOS under a hosted privilege concern that does not apply to an RTOS.
 # It can now state a band (`zpico_nuttx_set_priority`), and no board calls it
 # yet — deliberately, because measurement showed the value is not issue 0736's
-# answer and which side of the tiers it belongs on is issue 0506's open
+# answer and which side of the sched tasks it belongs on is issue 0506's open
 # question. So this records the CURRENT fact and will change when that is
 # decided.
 reserved.transport = [100, 100]
 
-# Tiers allocate strictly below the transport band. Sharing a priority with it
+# Sched tasks allocate strictly below the transport band. Sharing a priority with it
 # is not an ordering at all — equal-priority FIFO threads round-robin, so which
 # of the app and the link runs first is unspecified.
 pool.app = [1, 99]

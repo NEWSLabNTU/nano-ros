@@ -171,7 +171,7 @@ pub enum DeadlinePolicy {
 /// RFC-0052 / phase-296 W3b.5 — what the executor DOES when a dispatched
 /// callback runs past its bound SC's `deadline_us`. Distinct from
 /// [`DeadlinePolicy`] (which says where the deadline COMES from); this is
-/// the miss REACTION, lowered from the tier table's `deadline_policy`
+/// the miss REACTION, lowered from the sched task table's `deadline_policy`
 /// string (`ignore | warn | skip | fault`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum DeadlineAction {
@@ -190,14 +190,14 @@ pub enum DeadlineAction {
 }
 
 impl DeadlineAction {
-    /// Lower the tier-table string (`[tasks.<t>].deadline_policy`).
+    /// Lower the sched-task-table string (`[tasks.<t>].deadline_policy`).
     /// Unknown strings map to `Ignore` — the bake already validated the
     /// vocabulary; runtime tolerance here avoids a boot-time panic path.
     ///
-    /// phase-462 W2 -- that string is no longer authored per tier and nothing
+    /// phase-462 W2 -- that string is no longer authored per sched task and nothing
     /// else. The launch contract's `on_violation` is now its SOURCE
     /// (`nros-orchestration-ir::violation_agreement`, applied in
-    /// `plan_from_model`), and a tier table that states a different word is a
+    /// `plan_from_model`), and a sched task table that states a different word is a
     /// resolve-time refusal naming both. So these four variants are what the
     /// contract's safety vocabulary reaches the target AS: the word in the
     /// YAML file becomes something the executor does.
@@ -210,7 +210,7 @@ impl DeadlineAction {
         }
     }
 
-    /// The tier-table spelling of this action -- the inverse of
+    /// The sched-task-table spelling of this action -- the inverse of
     /// [`from_sched_task_str`](Self::from_sched_task_str).
     ///
     /// The bake and the runtime share no type (this crate is `no_std` and
@@ -249,7 +249,7 @@ pub struct SchedContext {
     pub deadline_us: OptUs,
     pub deadline_policy: DeadlinePolicy,
     /// Phase 110.F — the OS-level priority this context's callbacks are meant
-    /// to run at: generated entries record their tier's kernel priority here
+    /// to run at: generated entries record their sched task's kernel priority here
     /// (`nros_cpp_create_sched_context_from_policy`). `0` (default) means none.
     ///
     /// Recorded, not acted on by the executor. The opt-in per-callback worker
@@ -451,7 +451,7 @@ pub struct SporadicState {
     pub last_refill_ms: u64,
     /// issue 0736 — consecutive spins in which this SC was skipped for want of
     /// budget. A skip is invisible by construction: `spin_once` `continue`s
-    /// past the entry, so a starved tier looks exactly like an idle one. This
+    /// past the entry, so a starved sched task looks exactly like an idle one. This
     /// counter is what lets it say so. Reset on any dispatch.
     pub consecutive_budget_skips: u32,
     /// issue 0736 — skips and dispatches over a rolling window.
@@ -459,9 +459,9 @@ pub struct SporadicState {
     /// The consecutive counter above catches TOTAL starvation quickly and
     /// misses the commoner shape entirely: a budget that merely THROTTLES.
     /// Measured on nuttx-arm/rust, a 5 ms budget per 10 ms period held the
-    /// tier to about a quarter of its declared rate — skip a few, refill,
+    /// sched task to about a quarter of its declared rate — skip a few, refill,
     /// dispatch, repeat — so no streak ever reached the consecutive threshold
-    /// and the tier was silently 4x slow. A declaration that cannot be met has
+    /// and the sched task was silently 4x slow. A declaration that cannot be met has
     /// to be reported whether it starves or merely throttles.
     pub window_skips: u32,
     pub window_dispatches: u32,
@@ -508,7 +508,7 @@ impl SporadicState {
     /// the budget it exhausts the SC on every single spin no matter what the
     /// callbacks did. Measured on nuttx-arm/rust: `delta_us` 10_000..80_000
     /// against a 5_000 us budget, giving 1200 budget skips against 3 dispatches
-    /// while the sibling tier — identical but declaring no budget — dispatched
+    /// while the sibling sched task — identical but declaring no budget — dispatched
     /// on all 450 of its spins.
     ///
     /// The `delta_us` charge was documented as a "worst-case attribution"
@@ -544,13 +544,13 @@ impl SporadicState {
     /// How many dispatch opportunities before the throttle ratio is judged.
     /// Long enough that a brief burst of skips is not news; short enough to
     /// close inside a short run. 1000 was the first value and it NEVER closed
-    /// on the measured case — that tier misses roughly 240 dispatches over the
+    /// on the measured case — that sched task misses roughly 240 dispatches over the
     /// whole e2e window, so a 1000-opportunity window is larger than the
     /// evidence and the warning existed without ever being reachable, which is
     /// the same silence it was written to break.
     pub const BUDGET_WINDOW: u32 = 200;
     /// Report when more than this share of the window was skipped. A quarter
-    /// is already a tier delivering at 75% of what it declared.
+    /// is already a sched task delivering at 75% of what it declared.
     pub const BUDGET_SKIP_REPORT_PERMILLE: u32 = 250;
 
     /// Close the window if it is full. Returns `Some((skips, total))` when the
@@ -604,7 +604,7 @@ impl SchedContext {
         }
     }
 
-    /// RFC-0052 — the **common backend** that lowers an RTOS-agnostic tier
+    /// RFC-0052 — the **common backend** that lowers an RTOS-agnostic sched task
     /// policy (`[tasks.<t>]` class / budget / period / deadline) to a
     /// [`SchedContext`]. ONE implementation shared by every language: the Rust
     /// runtime (`ExecutorNodeRuntime::apply_sched_task_sched_policy`)
@@ -622,7 +622,7 @@ impl SchedContext {
     /// - `deadline_us` sets the SC deadline; `deadline_policy` its
     ///   [`DeadlineAction`].
     ///
-    /// Returns `None` when the tier declares no class / budget / deadline — the
+    /// Returns `None` when the sched task declares no class / budget / deadline — the
     /// caller keeps the default `Fifo` SC (byte-identical pre-policy behavior).
     /// `os_pri` is intentionally NOT set here (it is an orthogonal per-callback
     /// OS-priority knob the caller applies); this fn covers only the
@@ -801,7 +801,7 @@ mod tests {
         assert_eq!(sc.deadline_policy, DeadlinePolicy::Activated);
     }
 
-    // RFC-0052 — the common-backend tier→SchedContext lowering, shared by the
+    // RFC-0052 — the common-backend sched task→SchedContext lowering, shared by the
     // Rust runtime (`apply_sched_task_sched_policy`) and the C/C++ FFI
     // (`nros_{c,cpp}_create_sched_context_from_policy`). One place, one test.
 

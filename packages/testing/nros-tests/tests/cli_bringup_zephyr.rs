@@ -7,7 +7,7 @@
 //! test inspects the prebuilt baked artifacts (`nros-system/system_config.h`,
 //! `system_config.cmake`) and boots the prebuilt `zephyr.exe` rather than running west
 //! at run time (issue 0034 / 0041). Fixture absent (no west / Zephyr workspace) →
-//! tier-aware skip/fail via the resolver.
+//! sched-task-aware skip/fail via the resolver.
 
 use std::time::Duration;
 

@@ -8,10 +8,10 @@ find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
 
-# Mid-tier auxiliary node. Publishes a counter on /aux every 50 ms.
+# Mid-sched-task auxiliary node. Publishes a counter on /aux every 50 ms.
 # CALLBACK_GROUPS declares the "aux" group ID; system.toml group_tiers maps
-# it to the [tasks.mid] tier (RFC-0015 §4.2). The mid tier is spawned by a
-# spawned tier (boot→mid→low) — the middle hop the #144 chained-spawn fix
+# it to the [tasks.mid] sched task (RFC-0015 §4.2). The mid sched task is spawned by a
+# spawned sched task (boot→mid→low) — the middle hop the #144 chained-spawn fix
 # serializes.
 nano_ros_auto_add_library(aux_lib STATIC src/Aux.cpp)
 

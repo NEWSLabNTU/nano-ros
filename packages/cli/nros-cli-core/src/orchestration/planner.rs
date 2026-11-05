@@ -136,7 +136,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
 
     // Phase 256 W9 — the `nros.toml` overlay is RETIRED. The bringup's `nros.toml`
     // is no longer auto-discovered or read; the typed `system.toml` is the only
-    // config source (capabilities / rmw / build-shape / tiers all resolve from it).
+    // config source (capabilities / rmw / build-shape / sched tasks all resolve from it).
     let system_toml_path = workspace.package_system_toml(&options.system_pkg);
 
     // Phase 261 W4 — validate `[system].features` (typo guard) + warn on deprecated
@@ -660,7 +660,7 @@ fn schema_plan_json(
     declared_concurrency: Option<&BTreeMap<String, Vec<Vec<String>>>>,
 ) -> Result<Value> {
     let components = schema_components(metadata)?;
-    // Phase 256 W4.2 — the planner emits no scheduling tiers: tiers resolve in the
+    // Phase 256 W4.2 — the planner emits no scheduling sched tasks: sched tasks resolve in the
     // codegen tools (`generate`/`bake`) from `system.toml` + node `callback_groups`,
     // which the language-agnostic planner can't see. The plan carries exactly the
     // implicit `default_executor`; every callback binds to it.
@@ -1413,10 +1413,10 @@ fn schema_nodes(
         .collect()
 }
 
-/// Phase 172.G — the implicit single tier. Emitted when nros.toml declares no
+/// Phase 172.G — the implicit single sched task. Emitted when nros.toml declares no
 /// `[[scheduling.contexts]]`, or as the catch-all for callbacks whose `group`
-/// matches no declared tier. Byte-identical to the pre-172.G hardcoded context
-/// so single-tier systems keep their exact plan output.
+/// matches no declared sched task. Byte-identical to the pre-172.G hardcoded context
+/// so single-sched-task systems keep their exact plan output.
 fn default_sched_context() -> Value {
     json!({
         "id": "default_executor",
@@ -1448,9 +1448,9 @@ fn schema_callbacks(instance_id: &str, value: Option<&Value>) -> Vec<Value> {
                     "column": null,
                 })
             });
-            // Phase 256 W4.2 — the planner no longer binds groups to tiers; every
+            // Phase 256 W4.2 — the planner no longer binds groups to sched tasks; every
             // callback runs on the implicit `default_executor`. The `group` name is
-            // preserved for the codegen tools, which resolve tiers from `system.toml`
+            // preserved for the codegen tools, which resolve sched tasks from `system.toml`
             // + node `callback_groups`.
             let group = callback
                 .get("group")
@@ -1505,10 +1505,10 @@ impl CallbackIdLookup {
     }
 }
 
-/// Phase 256 W4.2 — one `sched_bindings` entry per callback. The planner emits no tiers,
+/// Phase 256 W4.2 — one `sched_bindings` entry per callback. The planner emits no sched tasks,
 /// so every callback binds to the implicit `default_executor` with the pre-172.G
 /// `priority: null` + `source: "source_metadata"` shape. The codegen tools rewrite
-/// these bindings when they resolve tiers from `system.toml`.
+/// these bindings when they resolve sched tasks from `system.toml`.
 fn schema_sched_bindings(callbacks: &[Value]) -> Vec<Value> {
     callbacks
         .iter()
@@ -6378,10 +6378,10 @@ topics:
         assert_eq!(re["callbacks"], json!(["c/work"]));
     }
 
-    /// Phase 256 W4.2 — the planner emits no tiers: every callback runs on the
+    /// Phase 256 W4.2 — the planner emits no sched tasks: every callback runs on the
     /// implicit `default_executor`, with the `group` name preserved for the codegen
     /// tools. Each `sched_bindings` entry carries the pre-172.G null-priority /
-    /// source_metadata fallback shape (the codegen tools rewrite it on tier resolve).
+    /// source_metadata fallback shape (the codegen tools rewrite it on sched task resolve).
     #[test]
     fn schema_callbacks_and_bindings_default_to_implicit_executor() {
         let callbacks = json!([

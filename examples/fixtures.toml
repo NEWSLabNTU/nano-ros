@@ -242,12 +242,12 @@ bringup = "src/demo_bringup"
 image = "linux_action_client"
 target_dir = "target-fixtures"
 
-# phase-263 B2 (Track D) — the real-time multi-tier workspace. Pure-cargo
-# `nros::main!(launch = "demo_bringup")` resolves the 2-tier table ([tasks.high] +
-# [tasks.low]) and emits the multi-tier `run_sched_tasks` entry. The high-tier control
-# node publishes `/ctrl` every 10 ms, the low-tier telemetry node `/telem` every
+# phase-263 B2 (Track D) — the real-time multi-sched-task workspace. Pure-cargo
+# `nros::main!(launch = "demo_bringup")` resolves the 2-sched-task table ([tasks.high] +
+# [tasks.low]) and emits the multi-sched-task `run_sched_tasks` entry. The high-sched-task control
+# node publishes `/ctrl` every 10 ms, the low-sched-task telemetry node `/telem` every
 # 100 ms. Consumed by tests/realtime_sched_tasks_e2e.rs: subscribe both, assert the
-# high-tier publishes ~10× the low-tier (both tiers scheduled). 2 nodes × 1 timer =
+# high-sched-task publishes ~10× the low-sched-task (both sched tasks scheduled). 2 nodes × 1 timer =
 # 2 callback entries, under the default MAX_CBS (cf. issue 0095).
 [[workspace_fixture]]
 id = "workspace-rust-native-realtime"
@@ -259,14 +259,14 @@ bringup = "src/demo_bringup"
 image = "linux"
 target_dir = "target-fixtures"
 
-# Issue 1733 — the NATIVE derived-tier Rust image (`derived_bringup`,
+# Issue 1733 — the NATIVE derived-sched-task Rust image (`derived_bringup`,
 # `[image.linux_derived]`): the same two nodes as the row above with no
-# authored tier, so `nros::main!` derives `derived-control_node` and
-# `derived-telem_node` from the contract. Each tier arms a `/diagnostics`
-# reporter; the derived publisher pool counted one, so the control tier lost
+# authored sched task, so `nros::main!` derives `derived-control_node` and
+# `derived-telem_node` from the contract. Each sched task arms a `/diagnostics`
+# reporter; the derived publisher pool counted one, so the control sched task lost
 # `/ctrl` at setup on every boot. Consumed by tests/realtime_sched_tasks_e2e.rs
 # (native/rust-derived): the same `/ctrl` vs `/telem` counter proof as the
-# authored row, which a lost control tier fails with `/ctrl` silent.
+# authored row, which a lost control sched task fails with `/ctrl` silent.
 [[workspace_fixture]]
 id = "workspace-rust-native-realtime-derived"
 platform = "linux"
@@ -431,10 +431,10 @@ target = "armv7a-nuttx-eabihf"
 skip_probe = true
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8230", NROS_DOMAIN_ID = "0" }
 
-# phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-tier RT-tiers Rust NuttX (QEMU
+# phase-281 W3-nuttx (RFC-0015 Model 1) — the 2-sched-task RT-sched-tasks Rust NuttX (QEMU
 # arm-virt) Entry (`realtime-rust/src/nuttx_entry`): `system.toml` declares two
 # `[tasks.*]` with `[tasks.*.nuttx]` priorities, so the macro's generic OwnedSpin
-# arm emits `<QemuArmVirt>::run_sched_tasks` — one `std::thread` per tier over ONE shared
+# arm emits `<QemuArmVirt>::run_sched_tasks` — one `std::thread` per sched task over ONE shared
 # session (NuttX is `std` + zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`); ctrl (10 ms,
 # high) publishes `/ctrl`, telem (100 ms, low) publishes `/telem`. Built by the
 # cargo lane at the `release` profile (177.8.c CGU-miscompile dodge); the connect
@@ -480,10 +480,10 @@ target = "armv7a-nuttx-eabihf"
 skip_probe = true
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8291", NROS_DOMAIN_ID = "0" }
 
-# phase-297 W5 (RFC-0053) — the 2-tier RT-tiers Rust ThreadX-Linux Entry
+# phase-297 W5 (RFC-0053) — the 2-sched-task RT-sched-tasks Rust ThreadX-Linux Entry
 # (`realtime-rust/src/threadx_entry`): the model's
-# `execution.tiers.*.threadx` sub-tables route the macro onto
-# `<ThreadxLinux>::run_sched_tasks` — one ThreadX thread (pthread-backed) per tier
+# `execution.tasks.*.threadx` sub-tables route the macro onto
+# `<ThreadxLinux>::run_sched_tasks` — one ThreadX thread (pthread-backed) per sched task
 # over ONE shared zenoh session, stacks from the shared byte pool
 # (`nros_threadx_create_task`). Hosted simulation, host x86_64 + NSOS host
 # sockets — no QEMU, dials loopback directly (no slirp). Locator port 9091 =
@@ -817,9 +817,9 @@ image = "nuttx"
 build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
 
-# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
-# (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
-# shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1, one pthread per tier). The FIRST
+# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-SCHED-TASKS workspace entry
+# (`realtime-cpp`): ctrl (high sched task, 10 ms) + telem (low sched task, 100 ms) C++ nodes over ONE
+# shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1, one pthread per sched task). The FIRST
 # full nuttx link + runtime proof of the W3(nuttx) run_sched_tasks seam (commit 37cfaf728) — the C++
 # sibling of both workspace-c-nuttx and the Zephyr workspace-realtime-entry-cpp. Kernel-linked
 # via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the baked
@@ -836,8 +836,8 @@ image = "nuttx"
 build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
 
-# #199 follow-up — the rv-virt (riscv32) C++ RT-TIERS workspace entry: the
-# riscv sibling of workspace-cpp-nuttx-realtime (same demo_bringup 2-tier
+# #199 follow-up — the rv-virt (riscv32) C++ RT-SCHED-TASKS workspace entry: the
+# riscv sibling of workspace-cpp-nuttx-realtime (same demo_bringup 2-sched-task
 # plan). Built by `just nuttx build-riscv-c-workspaces`. Consumed by
 # tests/realtime_sched_tasks_cpp_riscv_nuttx_e2e.rs (port 8891).
 [[workspace_fixture]]
@@ -851,9 +851,9 @@ image = "riscv_nuttx"
 build_subdir = "build/nuttx-zenoh-rv-virt-nuttx/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
 
-# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
-# (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
-# shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1, one pthread per tier). The C
+# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-SCHED-TASKS workspace entry
+# (`realtime-c`): ctrl (high sched task, 10 ms) + telem (low sched task, 100 ms) C nodes over ONE
+# shared session via `NuttxBoard::run_sched_tasks` (RFC-0015 Model 1, one pthread per sched task). The C
 # sibling of workspace-cpp-nuttx-realtime and of the pure-C workspace-c-nuttx. Kernel-linked
 # via cargo nros-nuttx-ffi; dials the host router through the slirp gateway 10.0.2.2 at the
 # baked port. Own build_subdir (one board per CMake configure). Consumed by
@@ -869,8 +869,8 @@ image = "nuttx"
 build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
 
-# #199 follow-up — the rv-virt (riscv32) C RT-TIERS workspace entry: the riscv
-# sibling of workspace-c-nuttx-realtime (same demo_bringup 2-tier plan; the
+# #199 follow-up — the rv-virt (riscv32) C RT-SCHED-TASKS workspace entry: the riscv
+# sibling of workspace-c-nuttx-realtime (same demo_bringup 2-sched-task plan; the
 # `[tasks.*.nuttx]` table keys on the RTOS). Built by `just nuttx
 # build-riscv-c-workspaces` (provisions the rv-virt kernel; the recipe exports
 # NUTTX_DIR + the riscv CC). Own build_subdir (one board per CMake configure).
@@ -984,7 +984,7 @@ image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
-# Phase 269 W4 — 2-tier sched-context C++ workspace. [tasks.high]/[tasks.low] + [[node_overrides]]
+# Phase 269 W4 — 2-sched-task sched-context C++ workspace. [tasks.high]/[tasks.low] + [[node_overrides]]
 # bake nros_cpp_create_sched_context + NodeBuilder::sched() calls into the generated entry;
 # ctrl_node binds to the high-priority sched context (10 ms), telem_node to the low-priority
 # sched context (100 ms). Consumed by tests/realtime_sched_tasks_cpp_e2e.rs.
@@ -999,14 +999,14 @@ image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
-# Issue 1733 — the NATIVE derived-tier C++ image: `derived-sched-tasks-cpp`'s four
+# Issue 1733 — the NATIVE derived-sched-task C++ image: `derived-sched-tasks-cpp`'s four
 # components, no authored `[tasks.*]`, a contract, so the C++ entry derives one
-# tier per node and `nros_board_native_run_sched_tasks_in` spawns three of them over
-# the boot executor's session. Every tier arms its own `/diagnostics` reporter,
+# sched task per node and `nros_board_native_run_sched_tasks_in` spawns three of them over
+# the boot executor's session. Every sched task arms its own `/diagnostics` reporter,
 # and the derived `ZPICO_MAX_PUBLISHERS` counted one for the image (4 + 1 for
-# 4 + 4 creates), so 2-3 tiers lost their publisher at setup on EVERY boot and
+# 4 + 4 creates), so 2-3 sched tasks lost their publisher at setup on EVERY boot and
 # the image ran on without them. Consumed by `tests/realtime_sched_tasks_e2e.rs`
-# (native/cpp-derived), which asserts all four nodes tick and no tier setup
+# (native/cpp-derived), which asserts all four nodes tick and no sched task setup
 # failed. The native sibling of `workspace-zephyr-cpp-derived-sched-tasks`.
 [[workspace_fixture]]
 id = "workspace-cpp-native-derived-sched-tasks"
@@ -1052,7 +1052,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 # phase-162 W2 -- the negative control for the row above (`linux_s1_flat`):
-# the same two nodes on ONE authored tier, so the test sees misses and the
+# the same two nodes on ONE authored sched task, so the test sees misses and the
 # zero above means something.
 [[workspace_fixture]]
 id = "workspace-cpp-native-levels-s1-flat"
@@ -1082,7 +1082,7 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 # Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of realtime-cpp.
-# Same 2-tier scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
+# Same 2-sched-task scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
 # components are IS-A-node ComponentNode subclasses (SHAPE rclcpp). The bind_node_name_sched
 # table (W1+W2) covers the rclcpp ctor path without NodeHandle change.
 # Consumed by tests/realtime_sched_tasks_cpp_rclcpp_e2e.rs.
@@ -1098,8 +1098,8 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 # Phase 273 W4 (RFC-0047) — sub-node 2-group realtime workspace. ONE component
-# (subnode_pkg::SubNode) with TWO callback groups: "ctrl" (10 ms, high tier) and
-# "telem" (100 ms, low tier). system.toml group_tasks seeds bind_group_sched for
+# (subnode_pkg::SubNode) with TWO callback groups: "ctrl" (10 ms, high sched task) and
+# "telem" (100 ms, low sched task). system.toml group_tasks seeds bind_group_sched for
 # BOTH groups of the SAME node before construction — the per-group binding capability
 # the per-node-name table cannot express. Consumed by tests/realtime_subnode_cpp_e2e.rs.
 [[workspace_fixture]]
@@ -1114,8 +1114,8 @@ codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 # Phase 273 W4 (RFC-0047) — portability fixture. Same subnode_pkg::SubNode but
-# deployed with "fast"/"bulk" tier names instead of "high"/"low". No change to the
-# component package — tier binding is entirely in deploy_bringup/system.toml.
+# deployed with "fast"/"bulk" sched task names instead of "high"/"low". No change to the
+# component package — sched task binding is entirely in deploy_bringup/system.toml.
 # Proves the RFC-0047 coupling is removed (package portability).
 # Consumed by tests/realtime_subnode_cpp_portable_e2e.rs.
 [[workspace_fixture]]
@@ -1129,21 +1129,21 @@ image = "linux"
 codegen_out = "build-workspace-codegen/deploy_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
-# Phase 274.W3 (RFC-0015 Model 1 embedded) — 2-tier C++ realtime workspace on
+# Phase 274.W3 (RFC-0015 Model 1 embedded) — 2-sched-task C++ realtime workspace on
 # FreeRTOS/mps2-an385 (QEMU). The codegen gate (board_is_freertos_embedded) emits
-# per-tier setup functions + NativeSchedTaskSpec array + nros_app_main calling
+# per-sched-task setup functions + NativeSchedTaskSpec array + nros_app_main calling
 # FreertosBoard::run_sched_tasks, which delegates to nros_board_freertos_run_sched_tasks
-# (nros-board-freertos glue): one RTOS task per tier over one shared session.
-# ctrl (high tier, prio=5, 10 ms) + telem (low tier, prio=2, 100 ms).
+# (nros-board-freertos glue): one RTOS task per sched task over one shared session.
+# ctrl (high sched task, prio=5, 10 ms) + telem (low sched task, prio=2, 100 ms).
 # Consumed by tests/realtime_sched_tasks_cpp_freertos_e2e.rs.
-# issue 0636 gap 2 — the RUST 2-tier realtime workspace on FreeRTOS/mps2-an385
+# issue 0636 gap 2 — the RUST 2-sched-task realtime workspace on FreeRTOS/mps2-an385
 # (QEMU), sibling of workspace-{c,cpp}-freertos-realtime.
 #
-# The Rust FreeRTOS multi-tier path (`Mps2An385Freertos::run_sched_tasks` →
+# The Rust FreeRTOS multi-sched-task path (`Mps2An385Freertos::run_sched_tasks` →
 # `nros-board-freertos`'s `run_sched_tasks_entry`) was exported, reachable from the
 # `nros::main!` macro, and called by NOTHING: every FreeRTOS realtime fixture
 # was C or C++, and the one Rust FreeRTOS entry (`workspaces/rust`) is
-# single-tier `run_entry`. So #0636's boot-tier fix landed on this arm by
+# single-sched-task `run_entry`. So #0636's boot-sched-task fix landed on this arm by
 # reasoning, not measurement. This row is what measures it.
 #
 # A CARGO row, unlike the C/C++ siblings' cmake ones: the entry is `#![no_std]
@@ -1183,7 +1183,7 @@ image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8091", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
-# too slow to finish the session handshake in the e2e budget; the Rust tiers
+# too slow to finish the session handshake in the e2e budget; the Rust sched tasks
 # fixture builds release for the same reason.
 
 # phase-427 W12 (issue 1247) — the FREESTANDING consumer of a `SHAPE rclcpp`
@@ -1200,9 +1200,9 @@ cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", N
 # deploy-side edit (`[tasks.*.freertos]` priorities + `[image.freertos]` in
 # deploy_bringup/system.toml) with no change to the component. That is the same
 # property the native `-portable` row exists to prove, re-measured against a
-# cross toolchain instead of a second tier vocabulary.
+# cross toolchain instead of a second sched task vocabulary.
 #
-# A node whose callback GROUPS span two tiers cannot take `run_sched_tasks` — per-tier
+# A node whose callback GROUPS span two sched tasks cannot take `run_sched_tasks` — per-sched-task
 # setup functions construct whole NODES (`Plan::executor_shape` →
 # `ExecutorShape::SchedContexts`), so this entry is `FreertosBoard::run_components`
 # plus `nros_cpp_create_sched_context_from_policy` / `nros_cpp_bind_group_sched`,
@@ -1229,13 +1229,13 @@ cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", N
 # 8091 `workspace-cpp-freertos-realtime` bakes, so adding a runtime cell later
 # needs no port shuffle.
 
-# phase-281 W2 (RFC-0015 Model 1 embedded) — 2-tier C realtime workspace on
+# phase-281 W2 (RFC-0015 Model 1 embedded) — 2-sched-task C realtime workspace on
 # FreeRTOS/mps2-an385 (QEMU), the C sibling of workspace-cpp-freertos-realtime.
 # The codegen routes embedded-C through the C++ emitter, so the same
-# board_is_freertos_embedded gate emits per-tier setup fns + NativeSchedTaskSpec array +
+# board_is_freertos_embedded gate emits per-sched-task setup fns + NativeSchedTaskSpec array +
 # nros_app_main calling FreertosBoard::run_sched_tasks → nros_board_freertos_run_sched_tasks
-# (the shared C glue), driving C *nodes*: ctrl (high tier, prio=5, 10 ms) + telem
-# (low tier, prio=2, 100 ms). This closes the C × freertos matrix cell.
+# (the shared C glue), driving C *nodes*: ctrl (high sched task, prio=5, 10 ms) + telem
+# (low sched task, prio=2, 100 ms). This closes the C × freertos matrix cell.
 # Consumed by tests/realtime_sched_tasks_c_freertos_e2e.rs.
 [[workspace_fixture]]
 id = "workspace-c-freertos-realtime"
@@ -1248,7 +1248,7 @@ image = "freertos"
 build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7991", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
-# too slow to finish the session handshake in the e2e budget; the C++ tiers
+# too slow to finish the session handshake in the e2e budget; the C++ sched tasks
 # fixture builds release for the same reason.
 
 # phase-263 C2c — the C++ embedded workspace entries (the C++ siblings of the C2a/C2b C
@@ -5683,7 +5683,7 @@ west_build_name = "build-cortex-m-rust-talker-serial-zenoh"
 west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
 conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../packages/boards/nros-board-mps2-an385-zephyr/prj.conf", "../../../../cmake/zephyr/mps2-an385-serial.conf"]
 
-# Issue 2084 -- CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM must move the tier stack pool
+# Issue 2084 -- CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM must move the sched task stack pool
 # (`nros_sched_task_stacks`) as well as the task stacks. The image spawns one level
 # on the pool (that is what keeps the pool in the link) on an mps2_an385 whose
 # devicetree gains a "DTCM" region from the fixture's app.overlay. A LINK
@@ -5943,16 +5943,16 @@ west_id = "zephyr/native_sim/native/64/workspace-mh-robot1-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7492"
 skip_probe = true
 
-# phase-276 W2 / issue #128 half 2 — the RT-TIERS Rust workspace Entry: the
+# phase-276 W2 / issue #128 half 2 — the RT-SCHED-TASKS Rust workspace Entry: the
 # tiers-on-embedded coverage cell. system.toml declares two [tasks.*] with
 # [tasks.*.zephyr] priorities, so the macro emits ZephyrBoard::run_sched_tasks —
-# one k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10
+# one k_thread per sched task over ONE shared session (RFC-0015 Model 1); ctrl (10
 # ms) + telem (100 ms) publish /ctrl + /telem. Distinct zenohd port (7491).
 # Consumed by tests/realtime_sched_tasks_e2e.rs (zephyr_rust cell).
 #
 # phase-470 W5.b2 (issue 1288) — MIGRATED, and this is the row that needed the
 # board-crate features DERIVED: its hand-written entry was the tree's only one
-# naming `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`, and both
+# naming `nros-board-zephyr = { features = ["sched_tasks", "zephyr-edf"] }`, and both
 # are now read off the very `[tasks.*]` block above
 # (`builder::entry::schedule_board_features`). `conf_files` is gone for the
 # reason `workspace-rust-zephyr` states; the Kconfig lives in
@@ -5972,19 +5972,19 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7491"
 skip_probe = true
 
-# issue 1537 — the DERIVED-tier Rust Zephyr image: the only one in the tree
-# whose tier table `nros::main!` derives instead of reading authored
+# issue 1537 — the DERIVED-sched-task Rust Zephyr image: the only one in the tree
+# whose sched task table `nros::main!` derives instead of reading authored
 # `[tasks.*]`. Same workspace and node packages as the row above; the axis is
-# the BRINGUP (`derived_bringup`: a contract, no tiers) and its image's Kconfig
+# the BRINGUP (`derived_bringup`: a contract, no sched tasks) and its image's Kconfig
 # (`[image.zephyr_derived] env NROS_ZENOH_READ_PRIORITY = "100"` -> `CONFIG_NROS_ZENOH_READ_PRIORITY=100`, transport
-# band [4, 9], tier pool [10, 14]). The `workspace-zephyr-c-realtime-smp` row is
+# band [4, 9], sched task pool [10, 14]). The `workspace-zephyr-c-realtime-smp` row is
 # the precedent for a second bringup of one workspace carrying a second image.
 #
 # WHY THE LOWERED BAND IS THE POINT: issue 1537 made the macro allocate derived
 # priorities out of the IMAGE's `.config` instead of the Kconfig defaults
 # projection (pool [5, 14]). On a default-band image the two agree, so a
 # regression back to the projection would pass there. On this one the
-# projection puts the tiers at 5 / 6, inside the transport, and the Zephyr boot
+# projection puts the sched tasks at 5 / 6, inside the transport, and the Zephyr boot
 # report (`nros_zephyr_report_sched_task_vs_transport`) fires — measured, with the
 # macro reverted. Consumed by `sched_dims_applied_e2e`
 # (`SchedDim::DerivedSchedTaskBelowTransport`), which asserts the report is SILENT
@@ -6008,7 +6008,7 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-derived-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7491"
 skip_probe = true
 
-# phase-281 W3b — the RT-TIERS C++ workspace Entry (`[image.zephyr]` of
+# phase-281 W3b — the RT-SCHED-TASKS C++ workspace Entry (`[image.zephyr]` of
 # examples/workspaces/realtime-cpp; its application is GENERATED since
 # phase-470 W5.b3, issue 1288, and carries `PANIC platform` from the image):
 # the FIRST full west
@@ -6016,7 +6016,7 @@ skip_probe = true
 # sibling of the rust realtime entry above; demo_bringup/system.toml
 # declares two [tasks.*] with [tasks.*.zephyr] priorities, so the C++
 # codegen emits a plain int main(void) calling ZephyrBoard::run_sched_tasks
-# (nros_board_zephyr_run_sched_tasks) — one k_thread per tier over ONE shared
+# (nros_board_zephyr_run_sched_tasks) — one k_thread per sched task over ONE shared
 # session (RFC-0015 Model 1); ctrl (10 ms, high) publishes /ctrl, telem (100
 # ms, low) publishes /telem. CONFIG_NROS_CPP_API (prj.conf) compiles the W3a
 # seam. Distinct zenohd port (7691). Consumed by tests/realtime_sched_tasks_e2e.rs
@@ -6044,16 +6044,16 @@ west_id = "zephyr/native_sim/native/64/workspace-realtime-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7691"
 skip_probe = true
 
-# issue 1575 — the DERIVED-tier C++ Zephyr image
+# issue 1575 — the DERIVED-sched-task C++ Zephyr image
 # (examples/workspaces/derived-sched-tasks-cpp/src/zephyr_entry): four components,
-# no authored `[tasks.*]`, a contract; `codegen entry` derives one tier per
+# no authored `[tasks.*]`, a contract; `codegen entry` derives one sched task per
 # node from it. It is the image issue 1551 ran the platform heap dry on, and
 # until this row no lane booted it, so that regression could come back unseen.
 # The C++ sibling of the Rust `workspace-zephyr-rs-realtime-derived` row.
 #
 # The model is a `nros configure` artifact: `just zephyr build-fixtures` syncs this
 # workspace in its workspace-entry prep, and an unsynced configure now REFUSES
-# (issue 1575) instead of deriving zero tiers and booting single-executor.
+# (issue 1575) instead of deriving zero sched tasks and booting single-executor.
 # Consumed by `tests/realtime_sched_tasks_e2e.rs` (zephyr/cpp-derived), which asserts
 # all four nodes tick on the console under a router.
 #
@@ -6076,7 +6076,7 @@ west_zenoh_locator = "tcp/127.0.0.1:7691"
 skip_probe = true
 
 # phase-509 P9 -- the THREE-LEVEL C++ Zephyr image (examples/workspaces/levels-cpp):
-# three components at 50, 20 and 5 Hz, no authored tiers, so the derivation
+# three components at 50, 20 and 5 Hz, no authored sched tasks, so the derivation
 # gives three preemption levels and the runner spawns one worker per level
 # over the core's scheduler. The two less urgent callbacks run 15 and 60 ms
 # with `k_busy_wait`. Consumed by `tests/realtime_sched_tasks_e2e.rs`
@@ -6085,7 +6085,7 @@ skip_probe = true
 # never the reverse) and checks each spawned level's stack is the derived one.
 #
 # Synced in `just zephyr build-fixtures`' workspace-entry prep, as the
-# derived-tiers row above. 7691 is the same cell's port, shared with the two
+# derived-sched-tasks row above. 7691 is the same cell's port, shared with the two
 # rows above for the same reason: one cell, run one image after the other.
 [[workspace_fixture]]
 id = "workspace-zephyr-cpp-levels"
@@ -6126,7 +6126,7 @@ west_id = "zephyr/native_sim/native/64/workspace-violation-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7697"
 skip_probe = true
 
-# phase-281 W3c — the RT-TIERS C workspace Entry (`[image.zephyr]` of
+# phase-281 W3c — the RT-SCHED-TASKS C workspace Entry (`[image.zephyr]` of
 # examples/workspaces/realtime-c's demo_bringup; its application is GENERATED
 # since phase-477 W1, issue 1288): the FIRST full west
 # link + runtime proof of the W3a ZephyrBoard::run_sched_tasks seam for a C node
@@ -6134,7 +6134,7 @@ skip_probe = true
 # c×zephyr cell). demo_bringup/system.toml declares two [tasks.*] with
 # [tasks.*.zephyr] priorities, so the C codegen emits a plain int main(void)
 # calling ZephyrBoard::run_sched_tasks (nros_board_zephyr_run_sched_tasks) — one
-# k_thread per tier over ONE shared session (RFC-0015 Model 1); ctrl (10 ms,
+# k_thread per sched task over ONE shared session (RFC-0015 Model 1); ctrl (10 ms,
 # high) publishes /ctrl, telem (100 ms, low) publishes /telem.
 # CONFIG_NROS_C_API (prj.conf) compiles the W3a seam. Distinct zenohd port
 # (7591). Consumed by tests/realtime_sched_tasks_e2e.rs (zephyr_c cell).
@@ -6167,12 +6167,12 @@ skip_probe = true
 # (phase-477 W1); before, one hand-written entry served both rows and picked
 # the bringup from `CONFIG_SMP`.
 #
-# core 1, not 0, because an UNPINNED tier lands on cpu 0 anyway — measured on
+# core 1, not 0, because an UNPINNED sched task lands on cpu 0 anyway — measured on
 # this board, both ways:
 #
-#     unpinned          -> nros: core pin observed tier=`high` running_on=0
-#     core = 1 declared -> nros: core pin tier=`high` cpu=1
-#                          nros: core pin observed tier=`high` running_on=1
+#     unpinned          -> nros: core pin observed sched_task=`high` running_on=0
+#     core = 1 declared -> nros: core pin sched_task=`high` cpu=1
+#                          nros: core pin observed sched_task=`high` running_on=1
 #
 # The locator is QEMU's user-mode gateway (10.0.2.2). The native_sim rows use
 # 127.0.0.1 because that image shares the host's network; here 127.0.0.1 would

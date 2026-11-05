@@ -8,7 +8,7 @@
 //! feature anywhere. Rust restated every one of them by hand, in the entry's
 //! `Cargo.toml`, where the copies were free to disagree with the declaration.
 //!
-//! The mismatches are not equally loud. A transport-tier or capability
+//! The mismatches are not equally loud. A transport-sched-task or capability
 //! disagreement is a build error. An **edition** disagreement is not: codegen
 //! bakes jazzy `type_hash`es while the runtime speaks humble, so the image
 //! links, boots, and simply fails to interoperate (RFC-0056). That is the
@@ -788,14 +788,14 @@ fn derive(
     //
     // W1 assumed "the board crate carries the RMW". That holds for 18 of the 23
     // board crates and is false for five — `nros-board-zephyr` declares only
-    // `tiers` and `zephyr-edf`, because on Zephyr the RMW rides on the entry's
+    // `sched_tasks` and `zephyr-edf`, because on Zephyr the RMW rides on the entry's
     // own `[features] rmw-zenoh` plus a direct `nros-rmw-zenoh` dep instead.
     // Emitting it unconditionally is not a silent mistake, it is a hard cargo
     // error that killed the whole zephyr fixture lane:
     //
     //     package zephyr_entry_nros_selection depends on `nros-board-zephyr`
     //     with feature `rmw-zenoh` but `nros-board-zephyr` does not have that
-    //     feature. available features: tiers, zephyr-edf
+    //     feature. available features: sched tasks, zephyr-edf
     //
     // When the board has no such feature the facade stays silent about the RMW
     // for that dep — the entry's own selector is then the only one, which is

@@ -2249,14 +2249,14 @@ pub fn write_for_model(img: &ModelImage<'_>) -> eyre::Result<Option<WrittenDescr
     write_model_descriptor(img, None, Vec::new())
 }
 
-/// Issue 1970 -- [`write_for_model`], stating each tier's own `[[tier]]` row
+/// Issue 1970 -- [`write_for_model`], stating each sched task's own `[[sched_task]]` row
 /// ([`sched_task_rows`]) in the same write, so the file is written once per
 /// configure and identical bytes keep their mtime.
 pub fn write_for_model_with_sched_tasks(
     img: &ModelImage<'_>,
-    tiers: Vec<nros_sizing_descriptor::Tier>,
+    sched_tasks: Vec<nros_sizing_descriptor::SchedTask>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
-    write_model_descriptor(img, None, tiers)
+    write_model_descriptor(img, None, sched_tasks)
 }
 
 /// RFC-0100 D12 (issue 1649) — the descriptor for a RUNTIME that several
@@ -2609,7 +2609,7 @@ fn refuse_conflicts(desc: &mut SizingDescriptor, conflicts: &[QosConflict]) {
 fn write_model_descriptor(
     img: &ModelImage<'_>,
     runtime: Option<&RuntimeComposition<'_>>,
-    tiers: Vec<nros_sizing_descriptor::Tier>,
+    sched_tasks: Vec<nros_sizing_descriptor::SchedTask>,
 ) -> eyre::Result<Option<WrittenDescriptor>> {
     let path = match runtime {
         Some(_) => nros_sizing_descriptor::runtime_descriptor_path(img.build_dir),
@@ -2640,7 +2640,7 @@ fn write_model_descriptor(
         }
     };
     let mut desc = desc;
-    desc.tiers = tiers;
+    desc.sched_tasks = sched_tasks;
     let body = nros_sizing_descriptor::render(&desc);
 
     // Issue 0320, the same rule the leaf road holds to and for the same reason:
@@ -6199,31 +6199,31 @@ contracts:
     }
 }
 
-/// Issue 1970 -- the most tiers a per-tier-sized image carries: the C/C++
+/// Issue 1970 -- the most sched tasks a per-sched-task-sized image carries: the C/C++
 /// header publishes `SCHED_TASK_BACKING_SIZE_0..7` (`nros::sizes`).
 pub const MAX_SIZED_SCHED_TASKS: usize = 8;
 
-/// Issue 1970 -- one tier as `codegen entry`'s priority record states it: its
-/// name and the node names it hosts, in the tier table's order.
+/// Issue 1970 -- one sched task as `codegen entry`'s priority record states it: its
+/// name and the node names it hosts, in the sched task table's order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SchedTaskMembers {
     pub name: String,
     pub nodes: Vec<String>,
 }
 
-/// Issue 1970 -- the tiers a `codegen entry` priority record
+/// Issue 1970 -- the sched tasks a `codegen entry` priority record
 /// (`nros_priority_plan.json`, beside the generated TU) names, when the
-/// entry's board runs per-tier-sized tiers; `None` for an entry with no tier
-/// table, or one whose runner has no per-tier twin
-/// (`CAbiRunners::run_sched_tasks_backed`), or more tiers than
+/// entry's board runs per-sched-task-sized sched tasks; `None` for an entry with no sched task
+/// table, or one whose runner has no per-sched-task twin
+/// (`CAbiRunners::run_sched_tasks_backed`), or more sched tasks than
 /// [`MAX_SIZED_SCHED_TASKS`].
 pub fn sched_tasks_from_priority_record(text: &str) -> Option<Vec<SchedTaskMembers>> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
     let key = v.get("sched_task_key")?.as_str()?;
     let family = nros_entry_lower::board_family(key).ok()?;
     family.c_abi_runners()?.run_sched_tasks_backed?;
-    let tiers: Vec<SchedTaskMembers> = v
-        .get("tiers")?
+    let sched_tasks: Vec<SchedTaskMembers> = v
+        .get("sched_tasks")?
         .as_array()?
         .iter()
         .map(|t| {
@@ -6239,27 +6239,27 @@ pub fn sched_tasks_from_priority_record(text: &str) -> Option<Vec<SchedTaskMembe
             Some(SchedTaskMembers { name, nodes })
         })
         .collect::<Option<_>>()?;
-    (!tiers.is_empty() && tiers.len() <= MAX_SIZED_SCHED_TASKS).then_some(tiers)
+    (!sched_tasks.is_empty() && sched_tasks.len() <= MAX_SIZED_SCHED_TASKS).then_some(sched_tasks)
 }
 
-/// Issue 1970 -- the `[[tier]]` rows: each tier's own facts, composed by the
+/// Issue 1970 -- the `[[sched_task]]` rows: each sched task's own facts, composed by the
 /// image's derivation (`EntityInventory::derive`) over the components the
-/// tier hosts, and the parameter store over the nodes it hosts
+/// sched task hosts, and the parameter store over the nodes it hosts
 /// (`ParamDeclarations::sizing`).
 ///
-/// All or nothing (`Err` names why): a tier whose members the inventory does
+/// All or nothing (`Err` names why): a sched task whose members the inventory does
 /// not cover, or whose derivation refuses, leaves the image on one executor
-/// size, which is the shape before this issue rather than a short tier.
+/// size, which is the shape before this issue rather than a short sched task.
 pub fn sched_task_rows(
     inventory: &EntityInventory,
-    tiers: &[SchedTaskMembers],
-) -> Result<Vec<nros_sizing_descriptor::Tier>, String> {
+    sched_tasks: &[SchedTaskMembers],
+) -> Result<Vec<nros_sizing_descriptor::SchedTask>, String> {
     use crate::entity_inventory::Derivation;
     fn bare(s: &str) -> &str {
         s.rsplit('/').next().unwrap_or(s)
     }
-    let mut out = Vec::with_capacity(tiers.len());
-    for t in tiers {
+    let mut out = Vec::with_capacity(sched_tasks.len());
+    for t in sched_tasks {
         let hosts = |name: &str| t.nodes.iter().any(|n| bare(n) == bare(name));
         let rows: Vec<ComponentEntities> = inventory
             .components()
@@ -6273,7 +6273,7 @@ pub fn sched_task_rows(
         };
         if let Some(missing) = t.nodes.iter().find(|n| !covered(n)) {
             return Err(format!(
-                "tier `{}` hosts `{missing}`, which no component of the entity inventory names",
+                "sched task `{}` hosts `{missing}`, which no component of the entity inventory names",
                 t.name
             ));
         }
@@ -6281,7 +6281,7 @@ pub fn sched_task_rows(
         let k = match own.derive() {
             Derivation::Derived(k) => k,
             Derivation::Refused { reason } => {
-                return Err(format!("tier `{}`: {reason}", t.name));
+                return Err(format!("sched task `{}`: {reason}", t.name));
             }
         };
         let mut img = nros_sizing_descriptor::Image::default();
@@ -6312,7 +6312,7 @@ pub fn sched_task_rows(
             .map(|s| s.max_parameters),
             _ => None,
         };
-        out.push(nros_sizing_descriptor::Tier {
+        out.push(nros_sizing_descriptor::SchedTask {
             name: t.name.clone(),
             nodes: t.nodes.clone(),
             subscription_topics,
@@ -6384,7 +6384,7 @@ mod sched_task_row_tests {
         inv
     }
 
-    fn tiers() -> Vec<SchedTaskMembers> {
+    fn sched_tasks() -> Vec<SchedTaskMembers> {
         vec![
             SchedTaskMembers {
                 name: "mrm".into(),
@@ -6399,7 +6399,7 @@ mod sched_task_row_tests {
 
     #[test]
     fn each_sched_task_states_its_own_members_facts() {
-        let rows = sched_task_rows(&island(), &tiers()).unwrap();
+        let rows = sched_task_rows(&island(), &sched_tasks()).unwrap();
         let (mrm, estop) = (&rows[0], &rows[1]);
         assert_eq!(mrm.name, "mrm");
         assert_eq!(mrm.image.node_count().stated(), Some(&2));
@@ -6421,13 +6421,13 @@ mod sched_task_row_tests {
                 + estop.image.callback_slots().stated().unwrap(),
             image
         );
-        // No contract `params:` here, so no tier states a store.
+        // No contract `params:` here, so no sched task states a store.
         assert_eq!(mrm.param_slots, None);
     }
 
     #[test]
     fn a_sched_task_hosting_a_node_the_inventory_does_not_name_is_refused() {
-        let mut t = tiers();
+        let mut t = sched_tasks();
         t[1].nodes.push("ghost".into());
         let e = sched_task_rows(&island(), &t).unwrap_err();
         assert!(e.contains("`ghost`"), "{e}");
@@ -6437,7 +6437,7 @@ mod sched_task_row_tests {
     fn only_a_board_with_a_per_sched_task_runner_reads_the_record() {
         let record = |key: &str| {
             format!(
-                r#"{{"version":1,"sched_task_key":"{key}","tiers":[
+                r#"{{"version":1,"sched_task_key":"{key}","sched_tasks":[
                     {{"name":"estop","members":[["mrm_emergency_stop_operator","main"]]}},
                     {{"name":"mrm","members":[["mrm_handler","main"],
                                               ["mrm_comfortable_stop_operator","main"]]}}]}}"#
@@ -6451,9 +6451,9 @@ mod sched_task_row_tests {
             vec!["mrm_comfortable_stop_operator", "mrm_handler"]
         );
         assert_eq!(sched_tasks_from_priority_record(&record("freertos")), None);
-        // An entry with no tier table writes `"tiers": []`.
+        // An entry with no sched task table writes `"sched_tasks": []`.
         assert_eq!(
-            sched_tasks_from_priority_record(r#"{"sched_task_key":"zephyr","tiers":[]}"#),
+            sched_tasks_from_priority_record(r#"{"sched_task_key":"zephyr","sched_tasks":[]}"#),
             None
         );
     }

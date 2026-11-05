@@ -149,7 +149,7 @@ right wait for a poll-only backend, not a degraded one.
 ### D6 — One session wakes every executor over it
 
 A backend session has ONE wake-callback slot, and several executors can share
-a session (a tiered image's spawned tiers, several C executors over one
+a session (a sched-task image's spawned sched tasks, several C executors over one
 `rclc_support_t`). The slot holds a fan-out (`executor/wake_fanout.rs`): a
 static pool entry keyed by the session whose callback signals every member.
 Each executor joins on install and leaves on teardown; the callback comes off
@@ -176,9 +176,9 @@ The Rust `nros-platform-cffi` shim deliberately does not forward the two
 symbols, because it is linked into every C port and forwarding made an
 optional symbol a required one.
 
-### D8 — Every entry installs the park, not just the tier runners
+### D8 — Every entry installs the park, not just the sched task runners
 
-The tier runners and the single-executor entries are the same wait, so they
+The sched task runners and the single-executor entries are the same wait, so they
 get the same park: Rust board entries (`run_entry`, `boot_hosted`, ThreadX's
 single entry, `zephyr_component_main!`), the C runner
 (`nros_board_rtos_run_components`) and C++ `run_components` (through

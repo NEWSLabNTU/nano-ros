@@ -833,7 +833,7 @@ pub fn answered_cells() -> impl Iterator<Item = &'static Cell> {
 ///
 /// * it DERIVES its cases from `CELLS.filter(|c| consumer_of(c) ==
 ///   Some(..))`, so adding a cell makes it run (the phase-329 W1 shape:
-///   multihost, roundtrip, realtime tiers, entry, workspace features); or
+///   multihost, roundtrip, realtime sched tasks, entry, workspace features); or
 /// * it hand-lists them and asserts the list with [`assert_consumer_cases`],
 ///   so a drift either way is a red, not a cell nobody runs.
 ///
@@ -1519,7 +1519,7 @@ pub fn assert_consumer_config_cases(
 // =============================================================================
 
 /// The scheduler knob whose HONORING (or honest fallback) a sched-dim cell
-/// asserts at boot. Each is a real-time tier attribute the `ws-realtime`
+/// asserts at boot. Each is a real-time sched task attribute the `ws-realtime`
 /// fixtures declare in `system_model.yaml`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum SchedDim {
@@ -1533,17 +1533,17 @@ pub enum SchedDim {
     TimeSlice,
     /// `budget_us`/`period_us` → NuttX `SCHED_SPORADIC`.
     SporadicBudget,
-    /// tier priority → NuttX per-tier `SCHED_FIFO` priority.
+    /// sched task priority → NuttX per-sched-task `SCHED_FIFO` priority.
     SchedTaskPriority,
     /// issue 0260 — `core` verified as PLACEMENT on a MULTI-CORE image: the
-    /// tier is observed running on the cpu it declared.
+    /// sched task is observed running on the cpu it declared.
     ///
     /// Distinct from [`SchedDim::CorePin`], which verifies that the kernel
     /// ACCEPTED the pin. On a uniprocessor image acceptance is true and says
     /// nothing — cpu 0 is the only cpu the tier could be on — so the two dims
     /// assert genuinely different claims and both are worth keeping.
     CorePinPlacement,
-    /// issue 1537 — a DERIVED tier priority lands BELOW the image's own
+    /// issue 1537 — a DERIVED sched task priority lands BELOW the image's own
     /// transport band: the Zephyr boot report
     /// (`nros_zephyr_report_sched_task_vs_transport`) stays silent on an image whose
     /// band differs from the Kconfig defaults projection.
@@ -1600,7 +1600,7 @@ pub const SCHED_CELLS: &[SchedCell] = {
         sched(EdfDeadline, ZephyrNativeSim, Rust, Runtime),
         sched(EdfDeadline, ZephyrNativeSim, Cpp, Runtime),
         sched(EdfDeadline, ZephyrNativeSim, C, Runtime),
-        // NuttX sporadic + tier-priority.
+        // NuttX sporadic + sched-task-priority.
         sched(SporadicBudget, NuttxArm, Cpp, Runtime),
         sched(SchedTaskPriority, NuttxArm, Rust, Runtime),
         // issue 0636 — the C/C++ arm of the same board. `nuttx_run_sched_tasks.c`
@@ -1613,7 +1613,7 @@ pub const SCHED_CELLS: &[SchedCell] = {
         // marker, and this cell is what keeps them from diverging again.
         sched(SchedTaskPriority, NuttxArm, Cpp, Runtime),
         // issue 0636 — the FreeRTOS arm of the same rule. Added with the seam
-        // that made it assertable: this kernel printed no tier-priority marker
+        // that made it assertable: this kernel printed no sched-task-priority marker
         // in either language, so #579 was enforced on NuttX alone and a boot
         // task adopting NO priority at all had no cell that could see it. Both
         // languages, because one seam TU serves both entries.
@@ -1622,7 +1622,7 @@ pub const SCHED_CELLS: &[SchedCell] = {
         // issue 1537 — the ONLY Rust Zephyr image whose tiers `nros::main!`
         // DERIVES (`realtime-rust/src/derived_bringup`), on an image with a
         // lowered transport band. A macro that regressed to the Kconfig
-        // defaults projection puts both tiers inside that band and the boot
+        // defaults projection puts both sched tasks inside that band and the boot
         // report fires; measured, not reasoned.
         sched(
             DerivedSchedTaskBelowTransport,

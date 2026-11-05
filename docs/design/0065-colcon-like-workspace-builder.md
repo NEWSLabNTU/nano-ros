@@ -1125,7 +1125,7 @@ not the bringup and not the board, is where a variant is named.**
 > The generated entry (`build/<platform>-<rmw>/<id>_entry/`, which on the west
 > road is the Zephyr application itself), its selection facade and its cmake
 > target are keyed on the id, not the bringup, so the second build overwrote
-> the first: `realtime-rust`'s authored-tier and derived-tier Zephyr images
+> the first: `realtime-rust`'s authored-sched-task and derived-sched-task Zephyr images
 > both carried whichever `lib.rs` was written last. `nros build` refuses the
 > pair before generating anything (`cmd::build::generated_outputs`, per road;
 > a hand-written application claims nothing), and

@@ -116,7 +116,7 @@ pub static __FORCE_LINK_CFFI: extern "C" fn() = nros_platform_cffi::_nros_force_
 /// funnel can close the RMW session before the process exits.
 ///
 /// The one spelling for every hosted funnel: the Rust board
-/// (`nros-board-linux`, both its single-executor and its tiered path), the
+/// (`nros-board-linux`, both its single-executor and its sched-task path), the
 /// `nros::main!` hosted spin loops, and the native C/C++ runners in
 /// `nros-cpp`. The guard itself is C, in the POSIX port
 /// (`nros_posix_install_termination_guard` in `nros-platform-posix`), because
@@ -178,7 +178,7 @@ pub mod termination {
 /// (`nros_posix_apply_current_deadline` in `nros-platform-posix`), for the
 /// reason [`termination`] gives. It is reached only on a build that selected
 /// that port. A `cfg(unix)` gate is not enough: Zephyr `native_sim`, and the
-/// host tiers of ThreadX and FreeRTOS, target a Linux triple without the POSIX
+/// host sched tasks of ThreadX and FreeRTOS, target a Linux triple without the POSIX
 /// port. Their port defines no `nros_posix_*` symbol, so a reference made the
 /// linker take the POSIX `platform.o` from whichever archive carried one, and
 /// every other symbol in it then collided with the image's own port
@@ -199,7 +199,7 @@ pub mod sched {
 
     /// Ask the kernel to reserve `budget_us` every `period_us` for the calling
     /// thread. Returns `true` when the kernel took it, and `false` otherwise.
-    /// That covers a tier class that asks for no reservation, a refusal (no
+    /// That covers a sched task class that asks for no reservation, a refusal (no
     /// `CAP_SYS_NICE`), and a build whose port has no such kernel facility.
     /// On `false` the caller enforces the budget itself.
     ///

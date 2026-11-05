@@ -1,8 +1,8 @@
-//! Phase 228 — per-tier callback-group filter + shared-session
+//! Phase 228 — per-sched-task callback-group filter + shared-session
 //! acceptance test (228.C runtime gate + 228.E `session_ptr` /
 //! `open_with_session`).
 //!
-//! Two executors run over **one** RMW session (the per-tier model: the
+//! Two executors run over **one** RMW session (the per-sched-task model: the
 //! boot executor owns the session, a second borrows it via
 //! [`Executor::open_with_session`] from [`Executor::session_ptr`]). Each
 //! executor installs a distinct `active_groups` filter, then registers a
@@ -43,7 +43,7 @@ use nros::{
 use nros_tests::fixtures::{ZenohRouter, require_zenohd, zenohd_unique};
 use rstest::rstest;
 
-// Four counters: <node>_<timer>. The gate must keep the off-tier ones
+// Four counters: <node>_<timer>. The gate must keep the off-sched-task ones
 // at zero.
 fn high_node_high() -> &'static Arc<AtomicU32> {
     static I: std::sync::OnceLock<Arc<AtomicU32>> = std::sync::OnceLock::new();
@@ -73,7 +73,7 @@ fn declare_dual_timers(ctx: &mut NodeContext<'_>, node_name: &str) -> NodeResult
     Ok(())
 }
 
-/// Node registered on the boot (high-tier) executor.
+/// Node registered on the boot (high-sched-task) executor.
 struct HighSchedTaskNode;
 impl Component for HighSchedTaskNode {
     const NAME: &'static str = "sched_task_high_node";
@@ -95,7 +95,7 @@ impl ExecutableNode for HighSchedTaskNode {
     }
 }
 
-/// Node registered on the borrowed (low-tier) executor.
+/// Node registered on the borrowed (low-sched-task) executor.
 struct LowSchedTaskNode;
 impl Component for LowSchedTaskNode {
     const NAME: &'static str = "sched_task_low_node";
@@ -140,7 +140,7 @@ fn sched_task_filter_gates_off_sched_task_callbacks_over_shared_session(
     let boot = Executor::open(&cfg).expect("Executor::open failed");
     let mut boot_rt = ExecutorNodeRuntime::from_executor(boot);
 
-    // Second executor borrows the SAME session (per-tier model).
+    // Second executor borrows the SAME session (per-sched-task model).
     let sptr = boot_rt.executor_mut().session_ptr();
     // SAFETY: `sptr` aliases `boot_rt`'s session, which outlives `low_rt`
     // (both live to the end of this test); access is serialized by the
@@ -148,8 +148,8 @@ fn sched_task_filter_gates_off_sched_task_callbacks_over_shared_session(
     let borrowed = unsafe { Executor::open_with_session(sptr) };
     let mut low_rt = ExecutorNodeRuntime::from_executor(borrowed);
 
-    // Install per-tier filters, then register the dual-timer nodes. The
-    // gate drops the off-tier timer at registration.
+    // Install per-sched-task filters, then register the dual-timer nodes. The
+    // gate drops the off-sched-task timer at registration.
     boot_rt
         .executor_mut()
         .set_active_groups(&[("sched_task_high", "/", "high")])
@@ -182,7 +182,7 @@ fn sched_task_filter_gates_off_sched_task_callbacks_over_shared_session(
     let lh = low_node_high().load(Ordering::SeqCst);
     let ll = low_node_low().load(Ordering::SeqCst);
 
-    // Active-tier timers fire; off-tier timers were gated out entirely.
+    // Active-sched-task timers fire; off-sched-task timers were gated out entirely.
     assert!(hh >= 3, "boot/high timer should fire (got {hh})");
     assert_eq!(hl, 0, "boot/low timer must be gated out (got {hl})");
     assert!(ll >= 3, "borrowed/low timer should fire (got {ll})");
@@ -251,13 +251,13 @@ impl ExecutableNode for SharedGroupB {
 }
 
 /// issue 1172 — two nodes declare a callback group with the SAME id (`ctrl`),
-/// and a tier admits exactly one of them.
+/// and a sched task admits exactly one of them.
 ///
 /// This is the case the filter could not express: it matched on the group NAME
 /// alone, so `shared_a`'s `ctrl` and `shared_b`'s `ctrl` were one key and a
-/// tier naming `ctrl` admitted both. The two entry emitters then disagreed
-/// about what to bake, and the C side's rule left a second tier's array EMPTY
-/// — the wildcard — so that tier ran every callback in the image.
+/// sched task naming `ctrl` admitted both. The two entry emitters then disagreed
+/// about what to bake, and the C side's rule left a second sched task's array EMPTY
+/// — the wildcard — so that sched task ran every callback in the image.
 ///
 /// One executor rather than two on purpose: with both nodes registered HERE,
 /// the counters attribute a firing to a NODE, and a filter that over-admits is

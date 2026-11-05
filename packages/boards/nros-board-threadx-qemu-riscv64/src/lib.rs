@@ -228,15 +228,15 @@ impl ThreadxQemuRiscv64 {
         nros_board_threadx::run_bare::<ThreadxQemuRiscv64, Config, F, E>(config, setup)
     }
 
-    /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
-    /// emits `<ThreadxQemuRiscv64>::run_sched_tasks(&overlay, TIERS, SCHED_TASK_BACKING, setup)` for a
-    /// system with more than the synthesized single `default` tier; routes to
-    /// [`nros_board_threadx::run_sched_tasks_entry`] (one `Executor` per tier over one
+    /// Phase 297 W4 (RFC-0053) — multi-sched-task entry. The `nros::main!()` macro
+    /// emits `<ThreadxQemuRiscv64>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)` for a
+    /// system with more than the synthesized single `default` sched task; routes to
+    /// [`nros_board_threadx::run_sched_tasks_entry`] (one `Executor` per sched task over one
     /// shared session). Mirrors `ThreadxLinux::run_sched_tasks`.
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
-        tiers: &'static [nros_platform::SchedTaskSpec<'static>],
-        // issue 1571 — the spawned tiers' executor backing: the entry's
+        sched_tasks: &'static [nros_platform::SchedTaskSpec<'static>],
+        // issue 1571 — the spawned sched tasks' executor backing: the entry's
         // `.bss` `SchedTaskExecutorBacking`, emitted by `nros::main!`.
         sched_task_backing: &'static mut [nros_board_threadx::SchedTaskExecutorBackingSlot],
         setup: F,
@@ -249,7 +249,7 @@ impl ThreadxQemuRiscv64 {
         nros_board_threadx::run_sched_tasks_entry::<ThreadxQemuRiscv64, Config, F, E>(
             config_with_overlay(deploy),
             deploy.boot_config,
-            tiers,
+            sched_tasks,
             sched_task_backing,
             setup,
         )

@@ -173,7 +173,7 @@ def render():
         "## Related",
         "",
         "- [Scheduling Models](../internals/scheduling-models.md) — the",
-        "  narrative: how tiers, transport priorities, and these classes",
+        "  narrative: how sched tasks, transport priorities, and these classes",
         "  land on each kernel",
         "- [RTOS Cooperation](../concepts/rtos-cooperation.md) — spin-loop",
         "  shapes per execution model",

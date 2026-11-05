@@ -65,7 +65,7 @@ pub(crate) struct NodeWake {
     storage: alloc::boxed::Box<[u8]>,
     /// Issue 2225 (RFC-0113 D9) -- a framework scheduler's wake, called after
     /// every [`signal`](Self::signal). The other half of the yielding park
-    /// slot: a PX4 tier is a work item that never waits on this object, so an
+    /// slot: a PX4 sched task is a work item that never waits on this object, so an
     /// arrival that only signals it would be dispatched at the tier's next
     /// deadline. `hook_fn` is the `WakeHookFn` as a `usize`, 0 when unset;
     /// `hook_ctx` is stored before it and cleared after it.

@@ -1,4 +1,4 @@
-//! phase-462 W2 -- the contract's `on_violation` and the tier table's
+//! phase-462 W2 -- the contract's `on_violation` and the sched task table's
 //! `deadline_policy` are two statements about ONE fact, so a divergence is a
 //! build error naming both sites (phase-454 W7's shape, in
 //! [`crate::qos_agreement`]).
@@ -27,20 +27,20 @@
 //! nothing about the model -- so [`ViolationAction::as_sched_task_str`] is the
 //! agreed spelling and both sides have a test pinning it.
 //!
-//! # Why the tier and not the endpoint
+//! # Why the sched task and not the endpoint
 //!
 //! What the executor DOES on a missed deadline is a property of the
 //! SchedContext the callback runs under, not of the endpoint: one SC, one
-//! reaction. So the contract's action lands on the tier that runs the
+//! reaction. So the contract's action lands on the sched task that runs the
 //! declaring node's callbacks (`execution.bindings`), and two nodes on one
-//! tier declaring different actions is a refusal rather than a silent
+//! sched task declaring different actions is a refusal rather than a silent
 //! strongest-wins -- the image would run one of the two contracts and not say
 //! which.
 //!
 //! # When this abstains
 //!
-//! When no contract declares an action at all, or when a tier has no node
-//! bound to it: then there is one producer (the tier table) and nothing to
+//! When no contract declares an action at all, or when a sched task has no node
+//! bound to it: then there is one producer (the sched task table) and nothing to
 //! disagree with, and an authored `deadline_policy` stands.
 
 use std::{collections::BTreeMap, fmt};
@@ -65,7 +65,7 @@ pub enum ViolationAction {
 }
 
 impl ViolationAction {
-    /// The spelling the baked tier table carries and
+    /// The spelling the baked sched task table carries and
     /// `DeadlineAction::from_sched_task_str` reads. The two crates share no type, so
     /// this string IS the interface.
     pub const fn as_sched_task_str(self) -> &'static str {
@@ -76,7 +76,7 @@ impl ViolationAction {
         }
     }
 
-    /// The tier table's own vocabulary. `ignore` is a declaration of NO
+    /// The sched task table's own vocabulary. `ignore` is a declaration of NO
     /// reaction, so it reads as `None` here and never disagrees with a
     /// contract that declares one -- it is the default the executor already
     /// has.
@@ -118,18 +118,18 @@ pub struct ActionSite {
     pub site: String,
 }
 
-/// A tier whose contract-declared action and authored `deadline_policy`
+/// A sched task whose contract-declared action and authored `deadline_policy`
 /// disagree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Disagreement {
-    pub tier: String,
+    pub sched_task: String,
     pub contract: ActionSite,
     pub declared: String,
 }
 
 impl fmt::Display for Disagreement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "tier `{}`:", self.tier)?;
+        writeln!(f, "sched task `{}`:", self.sched_task)?;
         writeln!(
             f,
             "  contract   : `{}` states `{}`",
@@ -137,14 +137,14 @@ impl fmt::Display for Disagreement {
         )?;
         writeln!(
             f,
-            "  tier table : `[tasks.{}] deadline_policy = \"{}\"`",
-            self.tier, self.declared
+            "  sched task table : `[tasks.{}] deadline_policy = \"{}\"`",
+            self.sched_task, self.declared
         )?;
         write!(
             f,
-            "  They are two statements about one fact: the tier string is what the entry bakes \
+            "  They are two statements about one fact: the sched task string is what the entry bakes \
              into the SchedContext and the contract is what every other consumer reads, so \
-             honouring the tier silently would run a reaction the contract does not describe. \
+             honouring the sched task silently would run a reaction the contract does not describe. \
              Change one of them."
         )
     }
@@ -155,14 +155,14 @@ impl fmt::Display for Disagreement {
 pub enum ViolationAgreementError {
     /// `on_violation.reaction` names no node path in the model.
     UnknownReaction { endpoint: String, reaction: String },
-    /// Two nodes on one tier declare different actions. One SchedContext has
+    /// Two nodes on one sched task declare different actions. One SchedContext has
     /// one reaction, so the bake cannot honour both.
     SchedTaskSplit {
-        tier: String,
+        sched_task: String,
         first: ActionSite,
         second: ActionSite,
     },
-    /// The contract and the tier table disagree.
+    /// The contract and the sched task table disagree.
     Divergent(Vec<Disagreement>),
 }
 
@@ -177,22 +177,22 @@ impl fmt::Display for ViolationAgreementError {
                  behaviour."
             ),
             ViolationAgreementError::SchedTaskSplit {
-                tier,
+                sched_task,
                 first,
                 second,
             } => write!(
                 f,
-                "tier `{tier}` runs callbacks whose contracts declare two different violation \
+                "sched task `{sched_task}` runs callbacks whose contracts declare two different violation \
                  actions: `{}` states `{}` and `{}` states `{}`. A SchedContext has ONE deadline \
-                 reaction, so the bake would run one contract and not say which. Split the tier, \
+                 reaction, so the bake would run one contract and not say which. Split the sched task, \
                  or state the same action on both.",
                 first.site, first.action, second.site, second.action
             ),
             ViolationAgreementError::Divergent(ds) => {
                 writeln!(
                     f,
-                    "{} tier(s) disagree between the launch contract's `on_violation` and the \
-                     tier table's `deadline_policy`. The contract is the authoritative producer: \
+                    "{} sched task(s) disagree between the launch contract's `on_violation` and the \
+                     sched task table's `deadline_policy`. The contract is the authoritative producer: \
                      it is what play_launch enforces on the Linux side of the same system, and \
                      an image that reacts differently on target is the divergence this check \
                      exists to refuse.",
@@ -307,27 +307,27 @@ pub fn node_actions(
     Ok(out)
 }
 
-/// The action each tier must run, from the contracts of the nodes bound to it.
+/// The action each sched task must run, from the contracts of the nodes bound to it.
 ///
-/// Tiers with no contracted node are absent from the map: the tier table's own
+/// Sched tasks with no contracted node are absent from the map: the sched task table's own
 /// `deadline_policy` is then the only statement, and it stands.
 pub fn sched_task_actions(
     model: &SystemModel,
 ) -> Result<BTreeMap<String, ActionSite>, ViolationAgreementError> {
     let by_node = node_actions(model)?;
     let mut out: BTreeMap<String, ActionSite> = BTreeMap::new();
-    for (key, tier) in &model.execution.bindings {
+    for (key, sched_task) in &model.execution.bindings {
         let Some(declared) = by_node.get(bound_node(key, model)) else {
             continue;
         };
-        match out.get(tier) {
+        match out.get(sched_task) {
             None => {
-                out.insert(tier.clone(), declared.clone());
+                out.insert(sched_task.clone(), declared.clone());
             }
             Some(held) if held.action == declared.action => {}
             Some(held) => {
                 return Err(ViolationAgreementError::SchedTaskSplit {
-                    tier: tier.clone(),
+                    sched_task: sched_task.clone(),
                     first: held.clone(),
                     second: declared.clone(),
                 });
@@ -337,8 +337,8 @@ pub fn sched_task_actions(
     Ok(out)
 }
 
-/// The tier table this bake must emit: tier name -> the `deadline_policy`
-/// string, taken from the contract and checked against whatever the tier table
+/// The sched task table this bake must emit: sched task name -> the `deadline_policy`
+/// string, taken from the contract and checked against whatever the sched task table
 /// authored.
 ///
 /// This is the whole lowering. `plan_from_model` applies the result to the
@@ -351,11 +351,11 @@ pub fn contract_deadline_policies(
     let actions = sched_task_actions(model)?;
     let mut divergent = Vec::new();
     let mut out = BTreeMap::new();
-    for (tier, contract) in actions {
+    for (sched_task, contract) in actions {
         let declared = model
             .execution
             .tasks
-            .get(&tier)
+            .get(&sched_task)
             .and_then(|t| t.deadline_policy.as_deref());
         match declared {
             // `ignore`, or an unreadable word, is not a competing statement:
@@ -364,7 +364,7 @@ pub fn contract_deadline_policies(
             Some(d) if ViolationAction::from_sched_task_str(d) == Some(contract.action) => {}
             Some(d) if ViolationAction::from_sched_task_str(d).is_some() => {
                 divergent.push(Disagreement {
-                    tier: tier.clone(),
+                    sched_task: sched_task.clone(),
                     contract: contract.clone(),
                     declared: d.to_string(),
                 });
@@ -372,7 +372,7 @@ pub fn contract_deadline_policies(
             }
             _ => {}
         }
-        out.insert(tier, contract.action.as_sched_task_str().to_string());
+        out.insert(sched_task, contract.action.as_sched_task_str().to_string());
     }
     if !divergent.is_empty() {
         return Err(ViolationAgreementError::Divergent(divergent));
@@ -389,7 +389,7 @@ pub fn check_model(model: &SystemModel) -> Result<(), ViolationAgreementError> {
 mod tests {
     use super::*;
 
-    /// A model with one contracted node on one tier. `miss` and `on_violation`
+    /// A model with one contracted node on one sched task. `miss` and `on_violation`
     /// are filled by the callers below.
     fn model_yaml(path_miss: &str, on_violation: &str, sched_task_policy: &str) -> String {
         format!(
@@ -400,7 +400,7 @@ mod tests {
              namespace: /ctrl\ncontracts:\n  node_paths:\n    /ctrl/control_node/tick:\n      \
              output: [/ctrl/control_node/cmd]\n      max_latency_ms: 20.0\n{path_miss}\
              \n  sub_endpoints:\n    /ctrl/control_node/scan:\n      max_age_ms: 100.0\n\
-             {on_violation}\nexecution:\n  bindings:\n    /ctrl/control_node: rt\n  tiers:\n    \
+             {on_violation}\nexecution:\n  bindings:\n    /ctrl/control_node: rt\n  tasks:\n    \
              rt:\n      class: real_time\n{sched_task_policy}"
         )
     }
@@ -439,7 +439,7 @@ mod tests {
         assert_eq!(policies.get("rt").map(String::as_str), Some("warn"));
     }
 
-    /// The negative control the phase asks for: a contract and a tier string
+    /// The negative control the phase asks for: a contract and a sched task string
     /// that disagree refuse, naming both.
     #[test]
     fn a_sched_task_string_that_disagrees_refuses_naming_both() {
@@ -451,8 +451,8 @@ mod tests {
         let err = contract_deadline_policies(&m).expect_err("must refuse");
         let text = err.to_string();
         assert!(text.contains("fault"), "names the contract's word: {text}");
-        assert!(text.contains("warn"), "names the tier's word: {text}");
-        assert!(text.contains("rt"), "names the tier: {text}");
+        assert!(text.contains("warn"), "names the sched task's word: {text}");
+        assert!(text.contains("rt"), "names the sched task: {text}");
     }
 
     /// The same word on both sides is agreement, not a repeat offence.
@@ -494,7 +494,7 @@ mod tests {
     }
 
     /// A model with no `miss` and no `on_violation` states nothing, and the
-    /// tier table stands alone.
+    /// sched task table stands alone.
     #[test]
     fn a_contract_that_declares_nothing_abstains() {
         let m = parse(&model_yaml("", "", "      deadline_policy: skip\n"));

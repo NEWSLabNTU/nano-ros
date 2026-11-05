@@ -318,7 +318,7 @@ ADDED = {
         ret="rmw_ret_t",
         args=("const rmw_session_t *", "uint8_t *", "int32_t *"),
         why=(
-            "RFC-0113 D4: the executor's park ends on the tier's deadline or on "
+            "RFC-0113 D4: the executor's park ends on the sched task's deadline or on "
             "readiness, never inside a transport's receive, so a session states which "
             "form of readiness it has: Notify (the `set_wake_callback` it already "
             "fires) or Waitable (an OS handle the park multiplexes, XRCE's UDP socket "

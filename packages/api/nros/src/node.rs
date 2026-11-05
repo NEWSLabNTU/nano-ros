@@ -767,7 +767,7 @@ pub trait DeclarativeNode {
     /// Set the sticky callback-group label applied to every entity
     /// declared after this call (until changed again). The group is the
     /// symbolic name the node author exposes; `system.toml` maps it to a
-    /// scheduling tier (RFC-0015). Entities declared while no group is set
+    /// scheduling sched task (RFC-0015). Entities declared while no group is set
     /// remain unlabeled (wildcard-eligible).
     #[track_caller]
     fn callback_group(&mut self, group: &str) -> NodeResult<&mut Self>

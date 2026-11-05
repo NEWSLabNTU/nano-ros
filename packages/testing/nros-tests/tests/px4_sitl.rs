@@ -97,7 +97,7 @@ fn field(line: &str, key: &str) -> u64 {
         .unwrap_or_else(|| panic!("`{pat}` is not a number in `{line}`"))
 }
 
-/// Every tier's `runs=` summed, and the largest `wake_max_us=`, from the
+/// Every sched task's `runs=` summed, and the largest `wake_max_us=`, from the
 /// module's `status` output.
 fn sched_task_status(sitl: &Px4Sitl) -> (u64, u64) {
     let out = sitl.shell(&format!("{MODULE} status"));
@@ -166,11 +166,11 @@ fn work_queue_sched_task_wakes_only_for_deadlines_and_arrivals() {
     );
     assert!(
         runs >= ticks,
-        "the tier ran {runs} times for {ticks} timer deadlines: a deadline was missed"
+        "the sched task ran {runs} times for {ticks} timer deadlines: a deadline was missed"
     );
     assert!(
         runs <= ticks + arrivals + WAKE_SLACK,
-        "the tier ran {runs} times for {ticks} deadlines and {arrivals} arrivals: \
+        "the sched task ran {runs} times for {ticks} deadlines and {arrivals} arrivals: \
          {} wake(s) answered neither (RFC-0113 D2)",
         runs - ticks - arrivals
     );

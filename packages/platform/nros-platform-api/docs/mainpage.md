@@ -11,7 +11,7 @@ is documented on the corresponding function declaration below. The
 binary links exactly one platform implementation; resolution is
 performed at link time. There is no runtime registration step.
 
-This sits one tier below the Phase 117 RMW vtable
+This sits one sched task below the Phase 117 RMW vtable
 (`<nros/rmw_vtable.h>`). The RMW layer is a runtime-pluggable struct
 of function pointers because RMW backends genuinely swap per session.
 The platform layer is link-time-bound free symbols because a platform

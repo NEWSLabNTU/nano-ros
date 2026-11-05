@@ -14,11 +14,11 @@
 //!
 //! # The bullet this file does NOT move
 //!
-//! `group_tasks` naming a tier with no `[tasks.<name>]` at all stays a
-//! REFUSAL - rule 4's `None` arm. A typo in a tier name must not silently
-//! become a derived tier, which is the same reason phase-459 W3 chose an
+//! `group_tasks` naming a sched task with no `[tasks.<name>]` at all stays a
+//! REFUSAL - rule 4's `None` arm. A typo in a sched task name must not silently
+//! become a derived sched task, which is the same reason phase-459 W3 chose an
 //! explicit marker over an undeclared name. What changed is that the author now
-//! has somewhere to go: declaring the tier and writing NO platform sub-table is
+//! has somewhere to go: declaring the sched task and writing NO platform sub-table is
 //! rule 2, an allocation request, and needs no new key in the `[tasks.*]`
 //! schema (`ros-launch-manifest`'s `SchedTaskDef` is `deny_unknown_fields`, so a new
 //! key cannot land from this repository).
@@ -40,7 +40,7 @@ use nros_orchestration_ir::derive::{
 };
 
 /// The board these bakes are for. The fixture's `[image.zephyr]` names
-/// `zephyr`, whose descriptor's platform gives this tier key.
+/// `zephyr`, whose descriptor's platform gives this sched task key.
 const TARGET_RTOS: &str = "zephyr";
 
 /// The Zephyr application pool this board's Kconfig resolves to (RFC-0079
@@ -101,36 +101,36 @@ fn entry_plan(fixture: &Fixture, with_system: bool) -> Plan {
     plan
 }
 
-/// `node -> the Zephyr priority its resolved tier carries`.
+/// `node -> the Zephyr priority its resolved sched_task carries`.
 fn priorities(plan: &Plan) -> BTreeMap<String, i64> {
     let table = plan
         .resolved_sched_tasks
         .as_ref()
-        .expect("a tiered entry resolves a tier table");
+        .expect("a sched-task entry resolves a sched task table");
     let mut out = BTreeMap::new();
-    for tier in &table.tiers {
-        for (node, _group) in &tier.members {
-            out.insert(node.clone(), tier.priority);
+    for sched_task in &table.sched_tasks {
+        for (node, _group) in &sched_task.members {
+            out.insert(node.clone(), sched_task.priority);
         }
     }
     out
 }
 
 // ============================================================================
-// bullet 1 - `group_tasks` naming an undeclared tier: still refused
+// bullet 1 - `group_tasks` naming an undeclared sched task: still refused
 // ============================================================================
 
 /// issue 1426 bullet 1, UNCHANGED and deliberately so.
 ///
 /// `group_tasks = { main = "ctrl" }` with no `[tasks.ctrl]` anywhere is a
-/// binding to a tier that does not exist. It was refused before this fix and it
-/// is refused after: the alternative is that `ctrll` becomes a derived tier and
+/// binding to a sched task that does not exist. It was refused before this fix and it
+/// is refused after: the alternative is that `ctrll` becomes a derived sched task and
 /// the author never learns they misspelled `ctrl`.
 ///
 /// The refusal may come from either half of the chain - `nros-launch-resolve`
 /// reading the `system.toml` it was handed, or `apply_model_execution` reading
 /// the model - so this asserts that ONE of them refuses and that the message
-/// names the tier, rather than pinning which.
+/// names the sched task, rather than pinning which.
 #[test]
 fn a_binding_to_an_undeclared_sched_task_is_refused_by_name() {
     let fixture = Fixture::copy("prec-undeclared");
@@ -151,20 +151,20 @@ fn a_binding_to_an_undeclared_sched_task_is_refused_by_name() {
     let text = if resolver_refusal.status.success() {
         // The resolver accepted it; the bake must not.
         bake_into_system(&fixture)
-            .expect_err("a binding to an undeclared tier must not bake")
+            .expect_err("a binding to an undeclared sched task must not bake")
             .to_string()
     } else {
         String::from_utf8_lossy(&resolver_refusal.stderr).to_string()
     };
     assert!(
         text.contains("ctrl"),
-        "the refusal must name the tier the binding could not find, so a typo \
+        "the refusal must name the sched task the binding could not find, so a typo \
          reads as a typo: {text}"
     );
 }
 
 // ============================================================================
-// bullet 2 - a DECLARED tier with no placement: the fix
+// bullet 2 - a DECLARED sched task with no placement: the fix
 // ============================================================================
 
 /// issue 1426 bullet 2, FIXED. `[tasks.ctrl]` declared with no platform
@@ -172,9 +172,9 @@ fn a_binding_to_an_undeclared_sched_task_is_refused_by_name() {
 /// derivation.
 ///
 /// Before: `codegen_system.rs` derived only when `model.execution.tasks` was
-/// empty, so declaring the tier a binding needs was exactly what turned the
-/// derivation off - "a `group_tasks` binding needs a declared tier, and a
-/// declared tier disables derivation", the dead end the issue describes.
+/// empty, so declaring the sched task a binding needs was exactly what turned the
+/// derivation off - "a `group_tasks` binding needs a declared sched task, and a
+/// declared sched task disables derivation", the dead end the issue describes.
 #[test]
 fn a_declared_sched_task_with_no_placement_has_its_priority_allocated() {
     let fixture = Fixture::copy("prec-unplaced");
@@ -187,7 +187,7 @@ fn a_declared_sched_task_with_no_placement_has_its_priority_allocated() {
     let (derived, wanted) = bake(&fixture, true);
     assert!(
         wanted,
-        "an authored tier with no `[tasks.ctrl.{TARGET_RTOS}]` is an unauthored \
+        "an authored sched task with no `[tasks.ctrl.{TARGET_RTOS}]` is an unauthored \
          PLACEMENT, so the derivation must be wanted"
     );
     let spec = derived
@@ -197,7 +197,7 @@ fn a_declared_sched_task_with_no_placement_has_its_priority_allocated() {
     assert!(
         POOL.0 <= spec.priority && spec.priority <= POOL.1,
         "the allocated priority {} must be inside the board's application pool \
-         {POOL:?} - a derived tier may not outrank the transport that feeds it \
+         {POOL:?} - a derived sched task may not outrank the transport that feeds it \
          (issue 1427)",
         spec.priority
     );
@@ -212,7 +212,7 @@ fn a_declared_sched_task_with_no_placement_has_its_priority_allocated() {
         derived.shadowed
     );
 
-    // Four nodes over two ranks bound to ONE tier: the tier is one thread at one
+    // Four nodes over two ranks bound to ONE sched task: the sched task is one thread at one
     // priority, so it takes the more urgent rank and REPORTS the split it lost.
     let collapsed: Vec<&str> = derived
         .degradations
@@ -223,15 +223,18 @@ fn a_declared_sched_task_with_no_placement_has_its_priority_allocated() {
     assert!(
         !collapsed.is_empty(),
         "the 30 Hz and 10 Hz pairs rank differently, so collapsing them into one \
-         authored tier loses the rate-monotonic split and must be recorded: {:?}",
+         authored sched task loses the rate-monotonic split and must be recorded: {:?}",
         derived.degradations
     );
 
-    // And the whole bake installs it on the tier the author wrote, leaving the
+    // And the whole bake installs it on the sched task the author wrote, leaving the
     // head alone.
     let (system, n) = bake_into_system(&fixture).expect("the bake succeeds");
-    assert_eq!(n, 1, "one tier had a priority allocated for it");
-    let def = system.tiers.get("ctrl").expect("`ctrl` survives the merge");
+    assert_eq!(n, 1, "one sched task had a priority allocated for it");
+    let def = system
+        .sched_tasks
+        .get("ctrl")
+        .expect("`ctrl` survives the merge");
     assert_eq!(
         def.class.as_deref(),
         Some("real_time"),
@@ -240,14 +243,14 @@ fn a_declared_sched_task_with_no_placement_has_its_priority_allocated() {
     assert_eq!(
         def.zephyr.as_ref().map(|z| z.priority),
         Some(spec.priority),
-        "the allocated placement is installed on the authored tier: {def:?}"
+        "the allocated placement is installed on the authored sched task: {def:?}"
     );
 }
 
 /// Issue 1967, end to end: `[tasks.ctrl] above = "transport"` written in
 /// the `system.toml` reaches the model through the pinned resolver (rlm
-/// v0.1.67's `SchedTaskDef::above`) and the derivation allocates the tier ABOVE
-/// the reserved transport band; the same tier without the key is allocated
+/// v0.1.67's `SchedTaskDef::above`) and the derivation allocates the sched task ABOVE
+/// the reserved transport band; the same sched task without the key is allocated
 /// in the application pool, below it.
 ///
 /// The plan is the island's (15 preemptive priorities, the zenoh read band
@@ -301,18 +304,18 @@ fn a_sched_task_that_names_the_transport_is_allocated_above_it() {
         if names_it {
             assert!(
                 prio < transport.lo && above_band.contains(&prio),
-                "`above = \"transport\"` allocates the tier above the transport \
+                "`above = \"transport\"` allocates the sched task above the transport \
                  {transport:?} (Zephyr: a smaller number): got {prio}, {:?}",
                 derived.degradations
             );
             assert!(
                 !derived.above_transport.is_empty(),
-                "the tier's leader is recorded as lifted"
+                "the sched task's leader is recorded as lifted"
             );
         } else {
             assert!(
                 prio > transport.hi && plan.app.contains(prio),
-                "without the key the tier stays in the application pool {:?}, below \
+                "without the key the sched task stays in the application pool {:?}, below \
                  the transport {transport:?}: got {prio}",
                 plan.app
             );
@@ -328,7 +331,7 @@ fn a_sched_task_that_names_the_transport_is_allocated_above_it() {
 /// So before this fix the acceptance image was not "built with the wrong
 /// priority" - it could not be built at all. `codegen entry` saw a non-empty
 /// `model.execution.tasks`, skipped the derivation, and handed `resolve_sched_tasks` a
-/// tier with a binding and no placement.
+/// sched task with a binding and no placement.
 #[test]
 fn without_the_allocation_an_unplaced_sched_task_cannot_resolve() {
     use std::collections::BTreeSet;
@@ -351,18 +354,18 @@ fn without_the_allocation_an_unplaced_sched_task_cannot_resolve() {
     let mut groups = collect_callback_groups(&cfg, &system.components);
     for decls in groups.values_mut() {
         for d in decls.iter_mut() {
-            d.tier = "ctrl".to_string();
+            d.sched_task = "ctrl".to_string();
         }
     }
-    let tiers = model
+    let sched_tasks = model
         .execution
         .tasks
         .iter()
         .map(|(name, t)| (name.clone(), sched_task_from_model(t, TARGET_RTOS)))
         .collect();
     let names: BTreeSet<&str> = all.iter().copied().collect();
-    let err = resolve_sched_tasks(&tiers, &[], &names, &groups, TARGET_RTOS)
-        .expect_err("an unplaced tier cannot resolve without an allocation");
+    let err = resolve_sched_tasks(&sched_tasks, &[], &names, &groups, TARGET_RTOS)
+        .expect_err("an unplaced sched task cannot resolve without an allocation");
     assert!(
         matches!(err, SchedTaskResolveError::MissingRtosSpec { .. }),
         "the refusal is the missing sub-table, not something else: {err}"
@@ -376,7 +379,7 @@ fn without_the_allocation_an_unplaced_sched_task_cannot_resolve() {
 }
 
 /// The same shape, through the ENTRY - which is where issue 1426 says a fix has
-/// to land, because a derived tier that reaches only `nros-plan.json` reaches no
+/// to land, because a derived sched task that reaches only `nros-plan.json` reaches no
 /// image. The generated C++ must end in `run_sched_tasks` over the allocated table.
 #[test]
 fn the_entry_runs_an_allocated_authored_sched_task() {
@@ -401,16 +404,16 @@ fn the_entry_runs_an_allocated_authored_sched_task() {
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
         src.contains("::rclcpp::board::ZephyrBoard::run_levels("),
-        "an allocated tier must reach the IMAGE (its levels runner, phase-509 P9), not \
+        "an allocated sched task must reach the IMAGE (its levels runner, phase-509 P9), not \
          just the plan; src:\n{src}"
     );
     assert!(
         !src.contains("run_components("),
-        "a tiered entry must not fall back to run_components; src:\n{src}"
+        "a sched-task entry must not fall back to run_components; src:\n{src}"
     );
     assert!(
         src.contains("\"ctrl\""),
-        "the baked table names the tier the author declared; src:\n{src}"
+        "the baked table names the sched task the author declared; src:\n{src}"
     );
 }
 
@@ -427,7 +430,7 @@ fn the_entry_runs_an_allocated_authored_sched_task() {
 /// and `nros sync` passes `--system` whenever the file exists (`cmd/ws.rs`), so
 /// no supported road produces this pairing. It is asserted here because the
 /// issue lists it, and because the message has to keep naming the component -
-/// that is the only thing distinguishing it from "your tier is misspelled".
+/// that is the only thing distinguishing it from "your sched task is misspelled".
 #[test]
 fn a_binding_that_reached_no_node_is_refused_naming_the_component() {
     let fixture = Fixture::copy("prec-no-system");
@@ -488,7 +491,7 @@ fn an_authored_placement_wins_and_names_the_rank_it_beat() {
                 derived.shadowed
             )
         });
-    assert_eq!(shadow.tier, "ctrl");
+    assert_eq!(shadow.sched_task, "ctrl");
     assert_eq!(
         shadow.authored, 9,
         "the recorded number is the one the author wrote: {shadow:?}"
@@ -500,7 +503,7 @@ fn an_authored_placement_wins_and_names_the_rank_it_beat() {
     );
     assert!(
         !derived.placements.contains_key("ctrl"),
-        "a PLACED tier is never given a second placement: {:?}",
+        "a PLACED sched task is never given a second placement: {:?}",
         derived.placements
     );
 
@@ -517,14 +520,14 @@ fn an_authored_placement_wins_and_names_the_rank_it_beat() {
     want.sort();
     assert_eq!(
         names, want,
-        "every node the author said nothing about gets its own derived tier: \
+        "every node the author said nothing about gets its own derived sched task: \
          {:?}",
         derived.overrides
     );
 }
 
 /// The negative control for the whole file: a workspace whose every node is
-/// bound to an authored, PLACED tier derives NOTHING and prints nothing.
+/// bound to an authored, PLACED sched task derives NOTHING and prints nothing.
 ///
 /// This is what keeps "authored wins" a rule rather than a preference. It is
 /// also the byte-identical guarantee for every workspace that authors its
@@ -543,13 +546,13 @@ fn a_fully_authored_workspace_derives_nothing() {
     let (derived, wanted) = bake(&fixture, true);
     assert!(
         !wanted,
-        "every group names a tier with an authored `[tasks.ctrl.{TARGET_RTOS}]`, \
+        "every group names a sched task with an authored `[tasks.ctrl.{TARGET_RTOS}]`, \
          so there is no unauthored placement and the derivation must not run"
     );
     assert!(
-        derived.tiers.is_empty() && derived.overrides.is_empty(),
+        derived.sched_tasks.is_empty() && derived.overrides.is_empty(),
         "nothing may be derived beside a fully authored table: {:?}",
-        derived.tiers.keys().collect::<Vec<_>>()
+        derived.sched_tasks.keys().collect::<Vec<_>>()
     );
     assert!(
         derived.placements.is_empty(),
@@ -557,7 +560,7 @@ fn a_fully_authored_workspace_derives_nothing() {
         derived.placements
     );
 
-    // The entry agrees: one authored tier, its authored number, all four nodes.
+    // The entry agrees: one authored sched task, its authored number, all four nodes.
     let plan = entry_plan(&fixture, true);
     let prio = priorities(&plan);
     for node in &all {
@@ -568,7 +571,7 @@ fn a_fully_authored_workspace_derives_nothing() {
         );
     }
     assert_eq!(
-        plan.tiers.keys().collect::<Vec<_>>(),
+        plan.sched_tasks.keys().collect::<Vec<_>>(),
         vec!["ctrl"],
         "the authored table is the whole table when it authors every placement"
     );

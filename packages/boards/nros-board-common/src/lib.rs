@@ -38,7 +38,7 @@
 // Phase 313 W6 (#0243) — the ~~`board_init`~~ module (the legacy `Board` / `BoardInit`
 // / `BoardPrint` / `BoardExit` / `BoardEntry` / ~~`DirectExec`~~ traits + the generic
 // direct-exec `run`) is DELETED. The canonical board entry API is now
-// `nros_platform::board` (Rust, session/sizing/tiers-aware) + the `<nros/board.h>`
+// `nros_platform::board` (Rust, session/sizing/sched-tasks-aware) + the `<nros/board.h>`
 // C ABI (`nros-board-cffi`). `ThreadxConfig` (a config trait, never part of
 // ~~`board_init`~~) stays.
 pub mod threadx_config;

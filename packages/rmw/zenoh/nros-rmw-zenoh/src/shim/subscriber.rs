@@ -1178,7 +1178,7 @@ impl ZenohSubscriber {
             super::Ros2Liveliness::publisher_keyexpr_wildcard(topic.domain_id, topic);
         // Allocate a buffer index
         // Issue 1956 -- `bump::claim`, not `fetch_add` + a `fetch_sub` undo: the
-        // undo could move the cursor below a slot another tier had just
+        // undo could move the cursor below a slot another sched task had just
         // claimed, and the next create then got that LIVE ring a second time.
         let Some(buffer_index) = super::bump::claim(&NEXT_BUFFER_INDEX, ZPICO_MAX_SUBSCRIBERS)
         else {

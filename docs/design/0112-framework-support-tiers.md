@@ -174,7 +174,7 @@ kept as a seam that nothing exercises. Today:
 - **`rtic`** meets all four. It stays in Tier 1.
 - **`px4`** meets all five (RFC-0113 D9, phase-521 W8, admitted 2026-11-03),
   as a C++-only framework (`nros::main!` refuses it; the C++ entry codegen
-  emits one PX4 work item per tier):
+  emits one PX4 work item per sched task):
   1. the board is PX4 SITL (`px4_sitl_default`, built from the pinned
      `third-party/px4/PX4-Autopilot` with the example as its external
      modules);
@@ -182,7 +182,7 @@ kept as a seam that nothing exercises. Today:
      by the hosted `px4-sitl` job in `nightly.yml`: a stock PX4 `listener`
      reads a nano-ros publication and nano-ros dispatches commander's
      `vehicle_status`;
-  3. PX4 owns `main` and every thread, and a tier must be a work item on a
+  3. PX4 owns `main` and every thread, and a sched task must be a work item on a
      queue PX4 configures, which a recipe cannot express;
   4. the owner is the maintainer (ruling 2026-11-03);
   5. RFC-0113's coverage section records the bounds under the work-queue

@@ -1,9 +1,9 @@
 /// @file Telem.c
-/// @brief ws-realtime-c — low-tier telemetry node.
+/// @brief ws-realtime-c — low-sched-task telemetry node.
 ///
 /// Publishes a monotonic counter on /telem every 100 ms (std_msgs/Int32,
 /// generated C serializer). The cmake CALLBACK_GROUPS declares the "telem"
-/// group ID; system.toml [[node_overrides]] maps it to the [tasks.low] tier.
+/// group ID; system.toml [[node_overrides]] maps it to the [tasks.low] sched task.
 /// Running at 1/10 the cadence of ctrl_pkg, the e2e test asserts ctrl publishes
 /// at least 3× as many messages as telem in the same window.
 

@@ -3,7 +3,7 @@
 
 `nros_posix_*` names are the POSIX port's own (`nros-platform-posix`). They are
 not part of `<nros/platform.h>`, so no other port defines them. Zephyr
-`native_sim`, and the host tiers of ThreadX and FreeRTOS, target a Linux triple
+`native_sim`, and the host sched_tasks of ThreadX and FreeRTOS, target a Linux triple
 without that port. `cfg(unix)` is therefore true there, and `cfg(unix)` is the
 wrong gate. A reference compiled into such an image makes the linker satisfy
 it from whichever archive carries a POSIX `platform.o`: `nros-rmw-xrce-cffi`
@@ -72,7 +72,7 @@ def rust_findings(rel: str, text: str) -> list[str]:
                 out.append(
                     f"{rel}:{i + 1}: declares {m.group(1)} without "
                     f'#[cfg(feature = "platform-posix")] on its extern block.\n'
-                    f"      Zephyr native_sim and the ThreadX/FreeRTOS host tiers are "
+                    f"      Zephyr native_sim and the ThreadX/FreeRTOS host sched tasks are "
                     f"`unix` with no POSIX port, so the linker pulls the POSIX "
                     f"platform.o and every port symbol collides (issue 2032). Call "
                     f"the gated helper in `nros-platform` (`sched`, `termination`) "

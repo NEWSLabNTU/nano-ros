@@ -1,17 +1,17 @@
-# ws-realtime-cpp — two-node, two-tier realtime demo (C++)
+# ws-realtime-cpp — two-node, two-sched-task realtime demo (C++)
 
-The C++ base of the scheduling-tiers differentiator (RFC-0015 §4.2): a control
-node and a telemetry node run on two priority tiers declared **in config**,
+The C++ base of the scheduling-sched-tasks differentiator (RFC-0015 §4.2): a control
+node and a telemetry node run on two priority sched tasks declared **in config**,
 not in node code.
 
 ## What it shows
 
-| Node | Class | Group → tier | Publishes |
+| Node | Class | Group → sched task | Publishes |
 | --- | --- | --- | --- |
 | `ctrl_node` | `ctrl_pkg::Ctrl` | `ctrl` → `high` (10 ms spin, posix prio 80) | `/ctrl` `std_msgs/Int32` every 10 ms |
 | `telem_node` | `telem_pkg::Telem` | `telem` → `low` (100 ms spin, posix prio 10) | `/telem` every 100 ms |
 
-Tiers live in `src/demo_bringup/system.toml` (`[tasks.high]` / `[tasks.low]` +
+Sched tasks live in `src/demo_bringup/system.toml` (`[tasks.high]` / `[tasks.low]` +
 `[[component]].group_tasks`); the components are configure-shape
 (`Result configure(rclcpp::Node&)`).
 

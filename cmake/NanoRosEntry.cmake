@@ -531,9 +531,9 @@ function(nano_ros_entry)
             # source-tree rung (`<bringup>/config/system_model.yaml`), which no
             # producer writes, and every consumer below then read "no model"
             # as "nothing to do": the entity facts and the census returned
-            # early, and the codegen's own tier derivation found no file and
-            # derived ZERO tiers. The image booted single-executor, which
-            # proves nothing about tiers -- issue 1551's investigation was
+            # early, and the codegen's own sched task derivation found no file and
+            # derived ZERO sched tasks. The image booted single-executor, which
+            # proves nothing about sched tasks -- issue 1551's investigation was
             # misled by exactly that boot. A missing model is a refusal here,
             # not a fallback. The opt-out is explicit and names what it gives
             # up; nothing in the tree sets it.
@@ -551,7 +551,7 @@ function(nano_ros_entry)
                         "It is a BUILD ARTIFACT that only `nros configure` writes "
                         "(phase-330 W4.a). Run it in the workspace, then re-configure:\n"
                         "  nros configure\n"
-                        "Configuring without it used to derive no tiers and size no "
+                        "Configuring without it used to derive no sched tasks and size no "
                         "pools, silently (issue 1575). To configure anyway, knowing "
                         "that, pass -DNROS_ALLOW_UNSYNCED_MODEL=ON.")
                 endif()
@@ -771,7 +771,7 @@ function(nano_ros_entry)
         include("${_link_libs_cmake}")
     endif()
 
-    # Issue 1598 put each spawned tier's task stack in `.bss`, declared by the
+    # Issue 1598 put each spawned sched task's RTOS task stack in `.bss`, declared by the
     # generated entry. On FreeRTOS those stacks used to come out of heap_4, so
     # the heap default still budgeted for them and the bytes were reserved
     # twice: realtime-cpp's `demo_bringup:freertos` overflowed RAM by 151,024
@@ -792,9 +792,9 @@ function(nano_ros_entry)
                 message(FATAL_ERROR
                     "nano_ros_entry(${_NRA_NAME}): this configure already "
                     "sized the shared FreeRTOS kernel's heap for an entry whose "
-                    "tier stacks moved ${_nra_prev} KiB to .bss; this one moves "
+                    "sched task stacks moved ${_nra_prev} KiB to .bss; this one moves "
                     "${_nra_sched_task_bss_kb} KiB. One kernel has one heap, so two "
-                    "tiered entries need two build directories.")
+                    "sched-task entries need two build directories.")
             endif()
             if(NOT _nra_prev)
                 set_property(GLOBAL PROPERTY
@@ -805,15 +805,15 @@ function(nano_ros_entry)
         endif()
     endif()
 
-    # Issue 2017 (RFC-0108 D6) -- a tiered entry is a LEVEL image, and its
+    # Issue 2017 (RFC-0108 D6) -- a sched-task entry is a LEVEL image, and its
     # kernel must not time-slice a level against an equal-priority task in the
     # middle of a callback. `configUSE_TIME_SLICING` is compiled into the
     # kernel, so the entry's sidecar states the fact (`NROS_LEVEL_IMAGE`) and
     # this hands it to every TU that includes `FreeRTOSConfig.h`, which turns
-    # slicing off (on `freertos_config`, issue 1197's carrier). An untiered
+    # slicing off (on `freertos_config`, issue 1197's carrier). A single-executor
     # entry states nothing and keeps the kernel default. One configure builds
-    # one kernel: a level entry beside an untiered one in the same build
-    # directory gives both the level kernel, which the untiered one runs on
+    # one kernel: a level entry beside a single-executor one in the same build
+    # directory gives both the level kernel, which the single-executor one runs on
     # unchanged (its tasks block; slicing only rotated equal priorities).
     if(TARGET ${_NRA_NAME} AND TARGET freertos_config)
         get_target_property(_nra_level_image ${_NRA_NAME} NROS_LEVEL_IMAGE)
@@ -1350,7 +1350,7 @@ function(_nros_entry_invoke_codegen)
     if(_NRX_BOARD)
         list(APPEND _cli_args --board "${_NRX_BOARD}")
     endif()
-    # Issue 1508 - a DERIVED tier table is allocated out of the priority pool
+    # Issue 1508 - a DERIVED sched task table is allocated out of the priority pool
     # the IMAGE's Kconfig resolves (RFC-0079 section 4.1), not the Kconfig
     # defaults. On a Zephyr build `find_package(Zephyr)` has already run
     # Kconfig, so `DOTCONFIG` names this image's `.config`; nowhere else is it
@@ -1544,8 +1544,8 @@ function(_nros_entry_invoke_codegen)
         METADATA  "${_nrx_metadata}"
         WORKSPACE "${_nrx_colcon_ws}"
         RMW       "${_nrx_rmw}"
-        # Issue 1970 -- the tiers `codegen entry` resolved above, so a board
-        # whose runner sizes each tier's executor gets one `[[tier]]` row each.
+        # Issue 1970 -- the sched tasks `codegen entry` resolved above, so a board
+        # whose runner sizes each sched task's executor gets one `[[sched_task]]` row each.
         SCHED_TASK_RECORD "${CMAKE_CURRENT_BINARY_DIR}/nros_priority_plan.json")
     nros_sizing_descriptor_path(_nrx_sizing_path "${CMAKE_BINARY_DIR}" "${_NRX_NAME}")
     nros_sizing_descriptor_read("${_nrx_sizing_path}")
@@ -1567,7 +1567,7 @@ function(_nros_entry_invoke_codegen)
 
     # #182 — the generated TU is a function of the CODEGEN TOOL too, not just
     # its inputs: a `nros` rebuild that changes the emitter (e.g. the fd32a0f75
-    # group-split fallback, the phase-281 tier seams) must re-run this
+    # group-split fallback, the phase-281 sched task seams) must re-run this
     # configure-time codegen, or an existing build dir keeps linking a museum
     # TU while every source-level dep looks current (the #147 resolver probe
     # reads the toolchain dep graph and is equally blind to the tool). Depend

@@ -1,4 +1,4 @@
-// Ctrl.cpp — ws-realtime-cpp high-tier control node.
+// Ctrl.cpp — ws-realtime-cpp high-sched-task control node.
 //
 // Publishes a monotonic Int32 counter on /ctrl every 10 ms via the typed
 // Publisher<std_msgs::msg::Int32> (generated serialization). The

@@ -119,7 +119,7 @@ the arm board above, selected by `deploy = "nuttx-riscv"`, which picks the
 rv-virt `[[board]]` entry of its `nros-board.toml` (riscv toolchain, riscv
 defconfig, `riscv32imac-unknown-nuttx-elf`).
 The C pub/sub pair is exercised end-to-end under
-`qemu-system-riscv32`, and Rust / C / C++ realtime-tiers workspace
+`qemu-system-riscv32`, and Rust / C / C++ realtime-sched-tasks workspace
 runtime lanes cover the multi-tier scheduling path on this board.
 
 ## Testing

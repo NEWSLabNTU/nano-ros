@@ -88,9 +88,9 @@ disagree and there is nothing to add up. What CAN go wrong is a statement that
 reaches no subtraction — a board that reserves the backing and gives nothing
 back — so that is what is checked, in both directions.
 
-NOT IN SCOPE: the spawned tiers' backing (issue 1571). A tiered Rust entry's
+NOT IN SCOPE: the spawned sched_tasks' backing (issue 1571). A sched-task Rust entry's
 `SchedTaskExecutorBacking` static is sized by TYPE (`EXECUTOR_BACKING_DEFAULT_U64S`
-words a slot, one slot per spawned tier) and is emitted by `nros::main!`, not
+words a slot, one slot per spawned sched_task) and is emitted by `nros::main!`, not
 stated by `CONFIG_NROS_EXECUTOR_BACKING_U64S` — so a conf's stated words, and
 therefore this gate's `arena + 8 * words == base`, are unchanged by it. It is a
 move out of the allocator arena like the boot reservation; no in-tree conf

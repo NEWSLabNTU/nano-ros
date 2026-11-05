@@ -399,7 +399,7 @@ class QoS {
 
     /// Phase 282 (#145) — mark this publisher "express": its samples bypass
     /// transport tx batching (sent immediately even when the batching knob
-    /// is on). A transport hint for control-tier / latency-sensitive topics;
+    /// is on). A transport hint for control-sched-task / latency-sensitive topics;
     /// ignored on subscriptions and by backends without batching.
     constexpr QoS& tx_express(bool on) {
         tx_express_ = on ? 1 : 0;

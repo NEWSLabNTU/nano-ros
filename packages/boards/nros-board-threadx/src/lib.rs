@@ -104,7 +104,7 @@ mod entry;
 pub use entry::{run_app_thread, run_bare, run_entry, run_sched_tasks_entry};
 pub use nros_board_common::ThreadxConfig;
 
-/// issue 1571 — the type of one spawned tier's executor backing slot, so a
+/// issue 1571 — the type of one spawned sched task's executor backing slot, so a
 /// board crate that wraps this one's `run_sched_tasks` can name its parameter without
 /// depending on `nros` itself.
 pub use ::nros::SchedTaskExecutorBackingSlot;

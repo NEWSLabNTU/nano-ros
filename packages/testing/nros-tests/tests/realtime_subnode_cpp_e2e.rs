@@ -14,7 +14,7 @@
 //!   ```
 //!
 //! `system.toml [[component]].group_tasks = { ctrl = "high", telem = "low" }` maps
-//! the two groups to the two tiers. The codegen emits BEFORE construction:
+//! the two groups to the two sched tasks. The codegen emits BEFORE construction:
 //!
 //!   ```cpp
 //!   nros_cpp_bind_group_sched(exec, "sub_node", "/", "ctrl",  SC_HIGH);
@@ -22,10 +22,10 @@
 //!   ```
 //!
 //! This is the capability the per-node-name table (phase-272) CANNOT express: two
-//! callbacks of ONE node scheduled on distinct tiers. This test verifies it runs.
+//! callbacks of ONE node scheduled on distinct sched tasks. This test verifies it runs.
 //!
-//! The E2E asserts: the high-tier `/ctrl` (10 ms) publishes ≥3× more messages than
-//! the low-tier `/telem` (100 ms) in the same observation window, confirming both
+//! The E2E asserts: the high-sched-task `/ctrl` (10 ms) publishes ≥3× more messages than
+//! the low-sched-task `/telem` (100 ms) in the same observation window, confirming both
 //! groups of the same node are scheduled at their respective tier cadences.
 //!
 //! Run with: `cargo nextest run -p nros-tests --test realtime_subnode_cpp_e2e`
@@ -37,15 +37,15 @@ use nros_tests::fixtures::{
 use rstest::rstest;
 use std::{process::Command, time::Duration};
 
-/// Phase 273 W4 (RFC-0047) — ONE node's two callback groups schedule on two tiers.
+/// Phase 273 W4 (RFC-0047) — ONE node's two callback groups schedule on two sched tasks.
 ///
 /// `subnode_pkg::SubNode` creates both a "ctrl" group (10 ms) and a "telem" group
-/// (100 ms) in code. `system.toml group_tiers` maps them to the "high" and "low"
-/// tiers. The entry seeds `bind_group_sched` for both groups before construction,
+/// (100 ms) in code. `system.toml group_tasks` maps them to the "high" and "low"
+/// sched tasks. The entry seeds `bind_group_sched` for both groups before construction,
 /// wiring each timer to its sched context.
 ///
-/// Acceptance: `/ctrl` (high-tier, 10 ms) publishes ≥3× more messages than `/telem`
-/// (low-tier, 100 ms) in the same observation window. This confirms per-group binding
+/// Acceptance: `/ctrl` (high-sched-task, 10 ms) publishes ≥3× more messages than `/telem`
+/// (low-sched-task, 100 ms) in the same observation window. This confirms per-group binding
 /// — both callbacks of ONE node run at their declared cadences on distinct tiers.
 #[rstest]
 fn realtime_subnode_cpp_two_groups_on_two_sched_tasks(zenohd_unique: ZenohRouter) {
@@ -67,9 +67,9 @@ fn realtime_subnode_cpp_two_groups_on_two_sched_tasks(zenohd_unique: ZenohRouter
     let mut proc = ManagedProcess::spawn_image(cmd, "realtime-cpp-subnode")
         .expect("spawn realtime-cpp-subnode entry");
 
-    // Anchor on the SLOW tier: once telem (100 ms) has published 5 times, enough
-    // wall time (~0.5 s+) has elapsed for the 10 ms ctrl tier to have published
-    // many more — proving both groups of ONE node are live on distinct tiers.
+    // Anchor on the SLOW sched task: once telem (100 ms) has published 5 times, enough
+    // wall time (~0.5 s+) has elapsed for the 10 ms ctrl sched task to have published
+    // many more — proving both groups of ONE node are live on distinct sched tasks.
     let telem_out = telem
         .wait_for_output_count(
             nros_tests::output::INT32_LISTENER_LOG_PREFIX,
@@ -81,8 +81,8 @@ fn realtime_subnode_cpp_two_groups_on_two_sched_tasks(zenohd_unique: ZenohRouter
             ctrl.kill();
             telem.kill();
             panic!(
-                "low-tier /telem group never reached 5 publishes — \
-                 the 'telem' callback group was not scheduled on its tier"
+                "low-sched-task /telem group never reached 5 publishes — \
+                 the 'telem' callback group was not scheduled on its sched task"
             )
         });
     let ctrl_out = ctrl
@@ -96,8 +96,8 @@ fn realtime_subnode_cpp_two_groups_on_two_sched_tasks(zenohd_unique: ZenohRouter
             ctrl.kill();
             telem.kill();
             panic!(
-                "high-tier /ctrl group produced nothing — \
-                 the 'ctrl' callback group was not scheduled on its tier"
+                "high-sched-task /ctrl group produced nothing — \
+                 the 'ctrl' callback group was not scheduled on its sched task"
             )
         });
 
@@ -112,21 +112,21 @@ fn realtime_subnode_cpp_two_groups_on_two_sched_tasks(zenohd_unique: ZenohRouter
 
     assert!(
         telem_n >= 5,
-        "expected ≥5 low-tier /telem publishes, got {telem_n}"
+        "expected ≥5 low-sched-task /telem publishes, got {telem_n}"
     );
     // 10 ms vs 100 ms ⇒ ~10×; assert a clear ≥3× margin to stay robust against
     // native timer jitter and zenoh delivery batching. This is the RFC-0047 proof:
-    // ONE node's two callback groups scheduled on two distinct tiers.
+    // ONE node's two callback groups scheduled on two distinct sched tasks.
     assert!(
         ctrl_n >= telem_n * 3,
-        "expected the high-tier 'ctrl' group (/ctrl, 10 ms) to publish ≥3× \
-         the low-tier 'telem' group (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} \
+        "expected the high-sched-task 'ctrl' group (/ctrl, 10 ms) to publish ≥3× \
+         the low-sched-task 'telem' group (/telem, 100 ms): ctrl={ctrl_n} telem={telem_n} \
          — per-group binding may not be seeding bind_group_sched correctly (RFC-0047)"
     );
 
     eprintln!(
         "[realtime_subnode_cpp_e2e] PASS: ctrl={ctrl_n} telem={telem_n} \
-         ratio={:.1}× (≥3× required) — one node's two groups on two tiers",
+         ratio={:.1}× (≥3× required) — one node's two groups on two sched tasks",
         ctrl_n as f64 / telem_n.max(1) as f64
     );
 }
