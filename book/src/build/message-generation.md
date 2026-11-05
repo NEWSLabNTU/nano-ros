@@ -38,7 +38,7 @@ The binding generator is part of the `nros` CLI and provides:
    curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
    export PATH="$HOME/.nros/bin:$PATH"
    ```
-   See [Installation](../get-started/installation.md) for the full
+   See [Installation](../start/install.md) for the full
    walkthrough.
 
 3. **A ROS 2 install, sourced for the first build**

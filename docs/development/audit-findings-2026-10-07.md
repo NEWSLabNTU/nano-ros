@@ -101,7 +101,7 @@ Verdicts per row; the hole details and their class are in the issues named above
 | `board-name-reach` | a TARGET-pinned board's name names a part/machine | freertos-posix overlay gains a linker-script pin | 1 | — | — | **CLEAN** |
 | `board-vocabulary` | every board=/deploy= value a workspace states resolves to a known board | esp32-c3 listener system.toml board -> esp32-c3-baremetalx | 1 | — | — | **CLEAN** |
 | `book-identifiers` | every code identifier the book quotes exists in the tree | book quotes `nros_audit_never_existed_fn` | 1 | — | — | **CLEAN** |
-| `book-links` | every relative link in the book resolves | dead relative link in book/src/start/introduction.md | 1 | — | — | **CLEAN** |
+| `book-links` | every relative link in the book resolves | dead relative link in book/src/start/welcome.md | 1 | — | — | **CLEAN** |
 | `build-profile-literals` | no build site names a cargo profile literal | `cargo build --release` in a just/check recipe body | 1 | — | — | **CLEAN** |
 | `build-script-path-resolution` | a build.rs resolving a path-valued SDK var uses nros_build_paths | bare std::env::var("THREADX_DIR") in nros-board-threadx/build.rs | 1 | — | — | **CLEAN** |
 | `build-tool-verbs-exempt` | every nros verb cmake invokes is exempt from the workspace check | drop RmwDispatch from ws_cmd_name's ws-build arm | 1 | — | — | **CLEAN** |

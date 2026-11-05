@@ -266,7 +266,7 @@ recipes (build matrices, CI orchestration) keep their current shape.
 
 The `nros` CLI is released as a GitHub Releases asset (`nros-<host>.tar.zst`,
 carrying the CLI and its SDK root) and installed with `scripts/install.sh` —
-[Installation](../../get-started/installation.html). There is no crates.io,
+[Installation](../../start/install.html). There is no crates.io,
 Arduino zip or ESP-IDF binary channel. (A hidden, maintainer-only
 `nros release` verb exists behind the `release` cargo feature; the default
 build does not carry it.)

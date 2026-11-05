@@ -10,7 +10,7 @@ pages to read, in order.
 
 Every purpose starts the same way:
 
-1. **[Install](../get-started/installation.md)** the `nros` CLI.
+1. **[Install](install.md)** the `nros` CLI.
 2. **[First Project](../get-started/first-project.md)** scaffolds a talker
    for a Cortex-M3 board, runs it in QEMU and shows its messages in ROS 2:
 
@@ -115,7 +115,7 @@ You teach a course or run a lab. Every seat needs the same result, the
 install must be short, and each lab must fit one session.
 
 1. **Install once per seat**:
-   [Installation](../get-started/installation.md). Nothing in the first
+   [Installation](install.md). Nothing in the first
    project needs ROS 2, a router or hardware.
 2. **The first lab** is the first project (above), in C++ or, on the same
    page, in Rust. The output it prints is the result to check on every seat.
@@ -133,7 +133,7 @@ install must be short, and each lab must fit one session.
 
 ## Still not sure?
 
-Read the **[Introduction](introduction.md)** for the one-page overview.
+Read the **[Introduction](welcome.md)** for the one-page overview.
 
 ## Design background
 

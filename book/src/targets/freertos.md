@@ -22,7 +22,7 @@ as reading material; this page scaffolds your own.
 
 ## Setup
 
-With the `nros` CLI on PATH ([Installation](../get-started/installation.md) —
+With the `nros` CLI on PATH ([Installation](../start/install.md) —
 `install.sh` puts it in `~/.nros/bin`), provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
 or `cyclonedds` to match the example you intend to run):
 

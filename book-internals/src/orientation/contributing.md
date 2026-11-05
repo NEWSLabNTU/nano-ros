@@ -6,7 +6,7 @@ This chapter covers the development workflow for nano-ros.
 
 This is the **contributor** setup: a checkout of the repository and the
 CLI built from it. If you only want to *use* nano-ros, install a release
-instead — [Installation](../../get-started/installation.html); every user
+instead — [Installation](../../start/install.html); every user
 chapter of this book assumes the installed CLI and no checkout.
 
 Inside a nano-ros checkout the tree's own build is the only correct
@@ -18,7 +18,7 @@ one that has to compile it
 install, no `~/.nros/bin` PATH skew across worktrees.
 
 The host prerequisites are the ones in
-[Installation § Host prerequisites](../../get-started/installation.html#host-prerequisites)
+[Installation § Host prerequisites](../../start/install.html#host-prerequisites)
 (`python3-dev` is needed here: `bootstrap.sh` builds the launch resolver,
 which embeds CPython to parse ROS launch files).
 

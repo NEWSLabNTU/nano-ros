@@ -26,7 +26,7 @@ hint naming `linux`.
 
 ## Setup
 
-Install the `nros` CLI ([Installation](../get-started/installation.md)),
+Install the `nros` CLI ([Installation](../start/install.md)),
 then provision the native host. For a host build there is no cross-toolchain to fetch — `nros
 setup linux` installs the client stack (and for xrce the
 Micro-XRCE-DDS agent) into a shared store. The zenoh router is NOT
@@ -35,7 +35,7 @@ installed: it comes from a ROS 2 install
 `--rmw cyclonedds` — it needs no daemon. Either way the first build
 generates the messages from your ROS 2 install, so it needs ROS 2 sourced.
 
-With the `nros` CLI on PATH ([Installation](../get-started/installation.md) —
+With the `nros` CLI on PATH ([Installation](../start/install.md) —
 `install.sh` puts it in `~/.nros/bin`):
 
 ```bash

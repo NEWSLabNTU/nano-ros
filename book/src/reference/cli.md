@@ -25,7 +25,7 @@ named release instead of the newest; the repository's GitHub Releases page
 lists them. The release carries the CLI and its SDK root, the library source
 your build compiles (`share/nano-ros` in the install). There is no crates.io,
 Arduino zip or ESP-IDF binary channel. See
-[Installation](../get-started/installation.md).
+[Installation](../start/install.md).
 
 ## Start
 
@@ -139,7 +139,7 @@ fetching. Full explanation:
 Note `setup` does **not** provision a zenoh router: the router is
 ROS's `rmw_zenoh_cpp/rmw_zenohd`, so a zenoh run needs a ROS 2 install;
 Cyclone DDS needs no daemon. See
-[Do I need ROS 2 installed?](../get-started/installation.md#do-i-need-ros-2-installed).
+[Do I need ROS 2 installed?](../start/install.md#do-i-need-ros-2-installed).
 
 ```sh
 nros setup linux --rmw zenoh            # host build (router comes from ROS)

@@ -25,7 +25,7 @@ own kernel build and you want to add ROS 2 communication.
 > nros setup qemu-armv7a-nuttx --rmw zenoh
 > ```
 >
-> (`nros` is the installed CLI — [Installation](../get-started/installation.md).)
+> (`nros` is the installed CLI — [Installation](../start/install.md).)
 >
 > The NuttX-managed road below (`apps/external`, NuttX's own `make`) also
 > needs a NuttX ≥ nuttx-12 checkout of your own with an `apps/` sibling;
