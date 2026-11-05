@@ -31,7 +31,7 @@
   - [Switch the RMW per image](./guide/rmw/switch-the-rmw-per-image.md)
   - [Use a serial link](./guide/rmw/use-a-serial-link.md)
   - [Bridge between backends](./guide/rmw/bridge-between-backends.md)
-  - [TX Throughput & Latency Tuning](./guide/rmw/tune-throughput-and-latency.md)
+  - [Tune throughput and latency](./guide/rmw/tune-throughput-and-latency.md)
   - [QoS, Status Events, and Discovery](./guide/rmw/qos-status-events.md)
 - [Contracts and sizing]()
   - [C / C++ multi-node workspaces](./guide/contracts/cpp-workspaces.md)
