@@ -148,7 +148,6 @@ to and the rung that set it.
 | `NROS_ZENOH_TX_BATCH` | `[image.<id>.knobs.zenoh.tx] batch` | `CONFIG_NROS_ZENOH_TX_BATCH` | Collect publishes and send one batch per flush | platform's |
 | `NROS_ZENOH_TX_BATCH_FLUSH_MS` | `[image.<id>.knobs.zenoh.tx] flush_ms` | `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS` | Flush period (ms): the most a batched sample waits | `50` |
 | `NROS_ZENOH_TX_SPLIT_LOCK` | `[image.<id>.knobs.zenoh.tx] split_lock` | `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK` | Send one batch while publishers fill the next; needs batching | platform's |
-| `NROS_ZENOH_SOCKET_TIMEOUT_MS` | — | `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` | Receive window the read task holds the session socket for (ms) | `100` |
 | `NROS_ZENOH_SUBSCRIBER_RING_DEPTH` | — | — | Samples one subscriber's receive ring holds; a full ring evicts the oldest. Derived from the declared QoS depths when unset | `4` when nothing is declared |
 
 A publisher's `tx_express` QoS flag sends its samples outside the batch.
