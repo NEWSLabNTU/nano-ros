@@ -229,15 +229,6 @@ was = ["communicate/qos-status-events.md"]
 note = "Use QoS, status events and discovery (W6, a how-to); Tutorial 10 (W5) takes its basics, and Appendix A needs an RFC-0124 amendment to name this page"
 
 [[page]]
-old = "getting-started/workspace-cpp.md"
-book = "user"
-path = "guide/contracts/cpp-workspaces.md"
-action = "move"
-batch = "p537-w1-guide"
-was = ["build/cpp-workspaces.md"]
-note = "Contract sections only: W8 moved its layout, node, bringup, image and entry parts into guide/build/organize-a-larger-workspace and guide/build/mix-languages. W7 splits the rest into Declare QoS in a contract, Size an image from its contract, Contracts for a bringup with no launch file and Fix a contract refusal; W5 takes the contract section into Tutorial 8"
-
-[[page]]
 book = "user"
 path = "guide/contracts/declare-qos-in-a-contract.md"
 action = "new phase-537"
@@ -273,6 +264,15 @@ action = "move"
 batch = "p537-w1-guide"
 was = ["realtime/static-memory.md"]
 note = "Measure static memory (W7): the task part; its Sizing the pools section moved to guide/contracts/size-an-image-from-its-contract (W7); W10 moves its background part (The three service inboxes) into background/static-memory-and-pools"
+
+[[page]]
+old = "getting-started/workspace-cpp.md"
+book = "user"
+path = "guide/contracts/cpp-workspaces.md"
+action = "move"
+batch = "p537-w1-guide"
+was = ["build/cpp-workspaces.md"]
+note = "Only the contract walkthrough is left (Contracts for a C or C++ workspace): W7 moved its contract tasks to the four Contracts and sizing how-tos, W8 moved its layout, node, bringup, image and entry parts to guide/build/organize-a-larger-workspace and guide/build/mix-languages. W5 takes the walkthrough into Tutorial 8 and this page merges away"
 
 [[page]]
 old = "user-guide/component-and-entry-pkg.md"
