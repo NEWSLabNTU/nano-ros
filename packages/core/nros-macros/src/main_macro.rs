@@ -966,7 +966,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         })?;
         // phase-509 P4 (RFC-0108 D1) -- an unanalysable callback on a safety
         // image, the same refusal the CLI's entry emitter makes.
-        nros_orchestration_ir::task_record::check_model(&model).map_err(|e| {
+        nros_orchestration_ir::callback_record::check_model(&model).map_err(|e| {
             syn::Error::new(
                 model_lit.span(),
                 format!("nros::main!: model `{}`: {e}", model_path.display()),

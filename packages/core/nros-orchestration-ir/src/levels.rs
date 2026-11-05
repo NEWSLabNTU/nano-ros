@@ -11,7 +11,7 @@
 //!
 //! 1. **Default:** one level per distinct rank. Equal ranks share a level.
 //! 2. **Merge with execution times.** When every callback of the free nodes
-//!    is analysable and carries C (the task record's `exec_us`, or a
+//!    is analysable and carries C (the callback record's `exec_us`, or a
 //!    server's budget), a dynamic program over the band boundaries finds the
 //!    fewest contiguous bands in which every callback still meets its
 //!    deadline under the preemption-threshold response time
@@ -45,7 +45,7 @@
 //!
 //! Here, in `nros-orchestration-ir`, beside the derivation that consumes it.
 //! The analysis needs what only this side has: the board's priority plan,
-//! the authored tiers that pin bands, the task records with their C, and the
+//! the authored tiers that pin bands, the callback records with their C, and the
 //! cap. rlm's ranker orders the work and stays platform-free; moving the
 //! analysis there would make rlm read board facts, or make this crate hand
 //! its bands back across the pin boundary.
@@ -55,9 +55,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 
 use crate::{
+    callback_record::{CallbackRecord, ReleaseKind},
     priority_plan::PriorityPlan,
     rtos_realizer::Degradation,
-    task_record::{ReleaseKind, TaskRecord},
 };
 
 /// The platform's default level cap (RFC-0108 D6), when the image states
@@ -193,7 +193,7 @@ pub struct LevelInput<'a> {
     /// domains (RFC-0108 D3, issue 0259).
     pub core: Option<u32>,
     /// Work this call does not see can preempt on this core: unpinned
-    /// nodes beside placed ones. Their interference is not in `tasks`, so the
+    /// nodes beside placed ones. Their interference is not in `callback_records`, so the
     /// analysed merge (rule 2) could not bound it and stays off, as it does
     /// for a pin.
     pub floating_interference: bool,
@@ -201,8 +201,8 @@ pub struct LevelInput<'a> {
     pub free: &'a [LevelNode],
     /// The authored tiers.
     pub pinned: &'a [PinnedBand],
-    /// Every callback's task record (RFC-0108 D1).
-    pub tasks: &'a [TaskRecord],
+    /// The callback record of every callback (RFC-0108 D1).
+    pub callback_records: &'a [CallbackRecord],
     pub max_levels: u16,
     pub cap_source: &'static str,
     /// `true` when a smaller number is more urgent (Zephyr, ThreadX).
@@ -251,7 +251,7 @@ pub struct Job {
 }
 
 /// The job's C, T and D, or `None` when the record cannot be analysed.
-fn job_of(t: &TaskRecord, rank: usize) -> Option<Job> {
+fn job_of(t: &CallbackRecord, rank: usize) -> Option<Job> {
     let (c, period) = match t.release {
         ReleaseKind::Periodic | ReleaseKind::Sporadic => (t.exec_us?, t.period_us?),
         // A served callback is the periodic task (Q, P) to the analysis.
@@ -507,8 +507,8 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
 
     // Rule 2: the analysed merge, when every free callback has C.
     let free_nodes: BTreeSet<&str> = input.free.iter().map(|n| n.node.as_str()).collect();
-    let free_tasks: Vec<&TaskRecord> = input
-        .tasks
+    let free_records: Vec<&CallbackRecord> = input
+        .callback_records
         .iter()
         .filter(|t| free_nodes.contains(t.node.as_str()))
         .collect();
@@ -517,8 +517,8 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
         free_prios.iter().position(|q| *q == p)
     };
     let jobs: Option<Vec<Job>> =
-        if input.pinned.is_empty() && !input.floating_interference && !free_tasks.is_empty() {
-            free_tasks
+        if input.pinned.is_empty() && !input.floating_interference && !free_records.is_empty() {
+            free_records
                 .iter()
                 .map(|t| job_of(t, rank_index(&t.node)?))
                 .collect()
@@ -754,7 +754,7 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
     // Unanalysable callbacks go to the least urgent rank of their level.
     for l in &mut levels {
         let floor = l.members.iter().map(|m| m.rank).max().unwrap_or(0);
-        for t in input.tasks {
+        for t in input.callback_records {
             if t.release == ReleaseKind::Unanalysable && l.members.iter().any(|m| m.node == t.node)
             {
                 l.best_effort.push((t.callback.clone(), floor));
@@ -783,7 +783,7 @@ pub fn level_of(plan: &LevelPlan) -> BTreeMap<String, usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task_record::{CallbackKind, ReleaseSource};
+    use crate::callback_record::{CallbackKind, ReleaseSource};
 
     fn node(name: &str, priority: i64) -> LevelNode {
         LevelNode {
@@ -796,7 +796,7 @@ mod tests {
     fn input<'a>(
         free: &'a [LevelNode],
         pinned: &'a [PinnedBand],
-        tasks: &'a [TaskRecord],
+        callback_records: &'a [CallbackRecord],
         cap: u16,
     ) -> LevelInput<'a> {
         LevelInput {
@@ -804,7 +804,7 @@ mod tests {
             floating_interference: false,
             free,
             pinned,
-            tasks,
+            callback_records,
             max_levels: cap,
             cap_source: "image",
             low_number_is_high: true,
@@ -820,8 +820,8 @@ mod tests {
             .collect()
     }
 
-    fn timer(node: &str, c: Option<u64>, t: u64) -> TaskRecord {
-        TaskRecord {
+    fn timer(node: &str, c: Option<u64>, t: u64) -> CallbackRecord {
+        CallbackRecord {
             callback: format!("{node}/tick"),
             node: node.to_string(),
             kind: CallbackKind::Timer,

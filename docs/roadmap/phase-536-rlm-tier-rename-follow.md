@@ -1,7 +1,7 @@
 # Phase 536 -- Follow rlm's tier rename
 
 **Status (2026-11-05). IN PROGRESS -- W1 done (#3127); W3 and W4's survey
-done in their pull request; W0, W2 and W4's docs sweep not started.
+done in their pull request; W0 done (the word: sched task); W2 and W4's docs sweep not started.
 Raised by the play_launch side, as phase 534 was, so nano-ros knows what is
 moving, what it owns, and where it is on the critical path.** Decided (user,
 2026-11-05): `tier` is renamed, in its own phase on both sides. **The word
@@ -139,6 +139,17 @@ All senses, docs by place: `docs/issues` 6,585 (of which `archived/`
 
 ### W0 -- The mapping, recorded once
 
+**Progress (2026-11-05): done in its pull request.** Decided (user,
+2026-11-05): a scheduling tier is a **sched task** in nano-ros's own names
+(`sched_task` / `SCHED_TASK` / `SchedTask`, zero occurrences on `main`
+before the rename), not bare "task", which every RTOS port already uses for
+its boot-time app task (`app_task_entry`, `create_app_task`); the app task
+names stay. RFC-0052 "Names" has the rule, the C ABI, C++, Kconfig, Rust,
+generated and on-disk tables, and the kept senses with their reasons;
+RFC-0047 and RFC-0108 carry a status line. The "task record" is the
+**callback record** (`nros_orchestration_ir::callback_record`,
+`CallbackRecord`, the derived schedule's `callback_records`).
+
 When phase 99 T0 fixes the word, write the full old-to-new table for
 nano-ros's own names (the C ABI, the Rust API, Kconfig, generated symbols,
 names on disk) into RFC-0052 "Names", and the "task record" rename if the
@@ -183,6 +194,9 @@ Acceptance:
 - Tell the play_launch side when it merges: rlm's R+1 waits on it.
 
 ### W2 -- nano-ros's own names follow
+
+The table is RFC-0052
+["Names"](../design/0052-system-model-rtos-mapper.md#names-decided-2026-11-05-phase-536-w0).
 
 One vocabulary, as phase 534 W3 decided for `guards`/`ingress`: the own
 names move with rlm's, per W0's table.

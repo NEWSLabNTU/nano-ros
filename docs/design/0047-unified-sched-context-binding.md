@@ -11,7 +11,7 @@ superseded-by: null
 
 # RFC-0047 — Unified sched-context binding via callback groups
 
-> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names move in W2.
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names move in W2: a tier is a **sched task** in nano-ros's own API (`sched_task` / `SchedTask`), recorded in RFC-0052 "Names" (phase 536 W0).
 
 ## Summary
 

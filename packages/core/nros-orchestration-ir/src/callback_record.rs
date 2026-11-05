@@ -1,4 +1,4 @@
-//! phase-509 P4 (RFC-0108 D1) -- the task record: one per callback, derived
+//! phase-509 P4 (RFC-0108 D1) -- the callback record: one per callback, derived
 //! from the contract.
 //!
 //! Every callback the model can see is one dispatchable slot, and each gets a
@@ -39,9 +39,9 @@
 //!
 //! An unanalysable callback is REFUSED on a safety image, an image whose
 //! contract supervises a deadline (a node path carrying `supervise:`,
-//! [`crate::derive::supervised_nodes`]): [`check_model`](crate::task_record::check_model) fails, naming each
+//! [`crate::derive::supervised_nodes`]): [`check_model`](crate::callback_record::check_model) fails, naming each
 //! callback and the two keys that would fix it. On any other image it is
-//! REPORTED: [`unanalysable_degradations`](crate::task_record::unanalysable_degradations), which the derived schedule
+//! REPORTED: [`unanalysable_degradations`](crate::callback_record::unanalysable_degradations), which the derived schedule
 //! carries in its degradation record.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -125,9 +125,9 @@ pub enum ReleaseSource {
     None,
 }
 
-/// One callback's task record (RFC-0108 D1). Times in microseconds.
+/// One callback's record (RFC-0108 D1). Times in microseconds.
 #[derive(Clone, Debug, PartialEq, Serialize)]
-pub struct TaskRecord {
+pub struct CallbackRecord {
     /// `"<node FQN>/<path>"` for a timer, the endpoint ref
     /// `"<node FQN>/<endpoint>"` for every other callback.
     pub callback: String,
@@ -227,9 +227,9 @@ fn input_release(
     Release::NONE
 }
 
-/// The task record of every callback the model names, sorted by callback.
+/// The callback record of every callback the model names, sorted by callback.
 /// `wcet` supplies C where it declares a bound; `None` leaves C absent.
-pub fn task_records(model: &SystemModel, wcet: Option<&WcetProfile>) -> Vec<TaskRecord> {
+pub fn callback_records(model: &SystemModel, wcet: Option<&WcetProfile>) -> Vec<CallbackRecord> {
     let c = &model.contracts;
     let exec_ms = |boundary: &str| wcet.and_then(|w| w.exec_ms(boundary));
 
@@ -306,7 +306,7 @@ pub fn task_records(model: &SystemModel, wcet: Option<&WcetProfile>) -> Vec<Task
         paths.iter().map(|k| exec_ms(k)).sum::<Option<f64>>()
     };
 
-    let mut out: Vec<TaskRecord> = Vec::new();
+    let mut out: Vec<CallbackRecord> = Vec::new();
     let mut push = |callback: String,
                     kind: CallbackKind,
                     r: Release,
@@ -317,7 +317,7 @@ pub fn task_records(model: &SystemModel, wcet: Option<&WcetProfile>) -> Vec<Task
             ReleaseKind::Served => r.budget_period_ms,
             ReleaseKind::Unanalysable => None,
         };
-        out.push(TaskRecord {
+        out.push(CallbackRecord {
             node: node_of(&callback).to_string(),
             callback,
             kind,
@@ -405,7 +405,7 @@ pub fn task_records(model: &SystemModel, wcet: Option<&WcetProfile>) -> Vec<Task
 }
 
 /// What would fix one unanalysable callback, for its report and refusal.
-fn fix_for(t: &TaskRecord) -> String {
+fn fix_for(t: &CallbackRecord) -> String {
     let ep = t
         .callback
         .rsplit_once('/')
@@ -437,7 +437,7 @@ fn fix_for(t: &TaskRecord) -> String {
 
 /// One `unanalysable` degradation per unanalysable callback (RFC-0108 D1):
 /// what an image WITHOUT `supervise:` reports.
-pub fn unanalysable_degradations(records: &[TaskRecord]) -> Vec<Degradation> {
+pub fn unanalysable_degradations(records: &[CallbackRecord]) -> Vec<Degradation> {
     records
         .iter()
         .filter(|t| t.release == ReleaseKind::Unanalysable)
@@ -462,10 +462,10 @@ pub struct UnanalysableOnSafetyImage {
     /// The node FQNs whose contract supervises a deadline.
     pub supervised: BTreeSet<String>,
     /// Every unanalysable callback, by record.
-    pub unanalysable: Vec<TaskRecord>,
+    pub unanalysable: Vec<CallbackRecord>,
 }
 
-fn render_refusal(supervised: &BTreeSet<String>, unanalysable: &[TaskRecord]) -> String {
+fn render_refusal(supervised: &BTreeSet<String>, unanalysable: &[CallbackRecord]) -> String {
     let mut s = format!(
         "RFC-0108 D1: this image supervises a deadline (`supervise:` on {}), and {} \
          callback(s) have nothing that bounds their arrivals. An input with unbounded \
@@ -494,10 +494,10 @@ fn render_refusal(supervised: &BTreeSet<String>, unanalysable: &[TaskRecord]) ->
 /// `Ok` with the records on every image that supervises nothing, or whose
 /// callbacks are all analysable. The report for the first case is
 /// [`unanalysable_degradations`]; the derived schedule carries it.
-pub fn check_model(model: &SystemModel) -> Result<Vec<TaskRecord>, UnanalysableOnSafetyImage> {
-    let records = task_records(model, None);
+pub fn check_model(model: &SystemModel) -> Result<Vec<CallbackRecord>, UnanalysableOnSafetyImage> {
+    let records = callback_records(model, None);
     let supervised = crate::derive::supervised_nodes(model);
-    let unanalysable: Vec<TaskRecord> = records
+    let unanalysable: Vec<CallbackRecord> = records
         .iter()
         .filter(|t| t.release == ReleaseKind::Unanalysable)
         .cloned()
@@ -620,7 +620,7 @@ mod tests {
         m
     }
 
-    fn get<'a>(r: &'a [TaskRecord], cb: &str) -> &'a TaskRecord {
+    fn get<'a>(r: &'a [CallbackRecord], cb: &str) -> &'a CallbackRecord {
         r.iter()
             .find(|t| t.callback == cb)
             .unwrap_or_else(|| panic!("no record for {cb}: {r:#?}"))
@@ -629,7 +629,7 @@ mod tests {
     /// Acceptance: each release kind is derived from a fixture contract.
     #[test]
     fn each_release_kind_is_derived_from_the_contract() {
-        let r = task_records(&fixture(), None);
+        let r = callback_records(&fixture(), None);
         assert_eq!(r.len(), 8, "{r:#?}");
 
         let tick = get(&r, "/n/tick");
@@ -741,11 +741,11 @@ mod tests {
             .into_iter()
             .collect(),
         };
-        let r = task_records(&fixture(), Some(&profile));
+        let r = callback_records(&fixture(), Some(&profile));
         assert_eq!(get(&r, "/n/by_gap").exec_us, Some(1_500));
         assert_eq!(get(&r, "/n/tick").exec_us, None);
         assert!(
-            task_records(&fixture(), None)
+            callback_records(&fixture(), None)
                 .iter()
                 .all(|t| t.exec_us.is_none())
         );
@@ -814,7 +814,7 @@ mod tests {
         let tick = model.contracts.node_paths.get_mut("/n/tick").unwrap();
         tick.trigger = Some(EffectiveTrigger::Input(vec![s("unbounded")]));
         tick.input = vec![s("/n/unbounded")];
-        let r = task_records(&model, None);
+        let r = callback_records(&model, None);
         assert_eq!(get(&r, "/n/ask").release, ReleaseKind::Unanalysable);
         let d = unanalysable_degradations(&r);
         let ask = d.iter().find(|d| d.node == "/n/ask").expect("reported");
@@ -836,7 +836,7 @@ mod tests {
             .get_mut("/n/unbounded")
             .unwrap()
             .budget_period_ms = Some(40.0);
-        let r = task_records(&model, None);
+        let r = callback_records(&model, None);
         let ask = get(&r, "/n/ask");
         assert_eq!(
             (ask.release, ask.period_us),

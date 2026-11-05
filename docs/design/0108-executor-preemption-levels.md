@@ -12,6 +12,8 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
+> **Phase 536 W0 (2026-11-05):** the per-callback "task record" is the **callback record** (`nros_orchestration_ir::callback_record`, `CallbackRecord`), so "task" is free for the scheduling unit rlm names; an authored tier is a **sched task** in nano-ros's own names. The table is RFC-0052 "Names".
+
 **Status:** Accepted (2026-10-24). Phase 509 built every step (P1-P11, P9b)
 and the island ran on derived levels with its board check green (I1-I4).
 Follow-ups are issues 2016-2021.
@@ -59,7 +61,7 @@ This RFC separates the two:
 - **N is derived:** one level per distinct rank by default; merged by the
   preemption-threshold rule when per-callback execution times exist; capped
   by a per-image level count. Every member that loses its rank is reported.
-- **Each callback carries a task record** (release kind, deadline, budget).
+- **Each callback carries a callback record** (release kind, deadline, budget).
   Event callbacks with no rate must declare a budget or a minimum
   inter-arrival time. On a safety image (one whose contract supervises a
   deadline) the build refuses them; elsewhere it reports them as
@@ -165,7 +167,7 @@ needs a stack and a small worker record.
 
 ### D1 -- The task model
 
-Every callback (one dispatchable slot) gets a task record. It is derived from
+Every callback (one dispatchable slot) gets a callback record. It is derived from
 the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
 
 | release kind | parameters | contract source | analysed as |
@@ -216,7 +218,7 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
   image that supervises a deadline has already claimed a timing reaction that
   an input with unbounded arrivals can break (its callbacks add blocking and
   interference no analysis can bound).
-- **As built in P4** (`nros-orchestration-ir::task_record`; rlm v0.1.68).
+- **As built in P4** (`nros-orchestration-ir::callback_record`; rlm v0.1.68).
   Five points the table above left open:
   - **Inputs are subscriptions and service servers.** Both take the keys
     (`sub.<e>` and `srv.<e>`: `min_interarrival`, `budget` +
@@ -235,7 +237,7 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
   - **D** is the least `max_latency` of the paths the callback runs (and a
     server's `max_response`) when stated, else implicit: T, T_min or P. C is
     the summed RFC-0078 bounds of those paths when every one declares one.
-  - **Where:** the refusal is `task_record::check_model`, on all three bake
+  - **Where:** the refusal is `callback_record::check_model`, on all three bake
     roads (`codegen entry`, `codegen-system`, `nros::main!`), beside the FTTI
     check. The report is an `unanalysable` degradation in the derived
     schedule's record (`DerivedSchedule::tasks` carries the records). The
@@ -424,7 +426,7 @@ left open:
 
 - **Where the analysis lives (decided):** `nros-orchestration-ir`, beside
   the derivation that consumes it. It needs the board's plan, the authored
-  pins, the task records and the cap, none of which rlm's platform-free
+  pins, the callback records and the cap, none of which rlm's platform-free
   ranker holds.
 - **Until P9 a derived level runs as one derived tier** at the band's most
   urgent priority: `derived-<node>` for a level of one node (unchanged from
@@ -474,7 +476,7 @@ left open:
   three locked items of RFC-0107's concurrency table (arena at runtime,
   parameter store, violation ring) take a real spinlock.
 - **Uniform multiprocessors** (big.LITTLE): one ISA, different speeds. The
-  task record's C is stated for a reference core and scaled per core type
+  callback record's C is stated for a reference core and scaled per core type
   (`C / s_k`); the per-core analysis uses the scaled value.
 - **Different ISAs or non-coherent memory** (Cortex-M7 + M4; Orin A78 + R52;
   host + MCU): separate images, separate executors, joined by a transport. An
@@ -1181,7 +1183,7 @@ do not depend on RFC-0107 steps 4-6; P6 onward do.
    before a less urgent C already pending in the same pass. Measures the cost
    of re-probing unattributed slots (XRCE, uORB) after every callback, which
    settles the deferred re-probe question.
-4. **P4. The task record.** `nros-orchestration-ir` carries (kind, T or
+4. **P4. The callback record.** `nros-orchestration-ir` carries (kind, T or
    T_min, D, C, server Q/P) per callback from the contract; the `unanalysable`
    degradation, and the refusal on a safety image. rlm PR for
    `min_interarrival` and `budget` on inputs, a tag, and a pin move (the rlm
@@ -1370,7 +1372,7 @@ The first draft's open questions, as decided:
 
 8. **The response-time analysis lives in `nros-orchestration-ir`**
    (decided in P5, which first needed it): the derivation that consumes it
-   runs there and holds the plan, the pins, the task records and the cap.
+   runs there and holds the plan, the pins, the callback records and the cap.
 
 ### Deferred
 
@@ -1389,7 +1391,7 @@ The first draft's open questions, as decided:
   phase-509.
 - 2026-10-21: P2 built; D2 amended: the rank is seeded per node, not per
   callback group (the derivation ranks nodes).
-- 2026-10-21: P4 built; D1 amended with the task record as built: inputs
+- 2026-10-21: P4 built; D1 amended with the callback record as built: inputs
   are subscriptions and servers, a rate bound is `max_rate_hz` or the topic's
   `rate_hz`, a client response inherits its requests' release, implicit
   deadlines, and where the refusal and the report live (rlm v0.1.68).
