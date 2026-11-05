@@ -78,6 +78,17 @@ OWN_TREE = re.compile(r"^https://github\.com/NEWSLabNTU/nano-ros/(?:blob|tree)/m
 # A SUMMARY.md entry whose title ends "(…, dormant)" or "(…, retired)".
 PARKED = re.compile(r"\[[^\]]*\((?:[^)]*,\s*)?(?:dormant|retired)\)\]\(\./([^)]+)\)", re.I)
 
+# A fenced code block (``` or ~~~, up to three spaces of indent) is shown as
+# text: mdbook renders no link inside one, so nothing in it is a link to judge.
+# phase-537 W0's page templates (`writing-the-book.md`) carry placeholder
+# targets such as `[<page>](<link>)` in exactly this form.
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?^ {0,3}\1[`~]*[ \t]*$", re.M | re.S)
+
+
+def unfenced(text: str) -> str:
+    """`text` with every fenced code block blanked, line count kept."""
+    return FENCE_RE.sub(lambda m: "\n" * m.group(0).count("\n"), text)
+
 
 # RFC-0123 D7: where each book's pages are served, relative to the site root.
 DEPLOY = (("internals/", "book-internals/src"), ("", "book/src"))
@@ -108,6 +119,9 @@ def cross_book_sources(rel: str, link: str) -> list[str]:
 
 def self_test() -> None:
     """Both link spellings are read (issue 1615)."""
+    fenced = "a [x](./real.md)\n```markdown\n[p](<link>)\n```\nb [y](./also.md)\n"
+    assert [m.group(1) for m in LINK_RE.finditer(unfenced(fenced))] == ["./real.md", "./also.md"]
+    assert unfenced(fenced).count("\n") == fenced.count("\n")
     assert [m.group(1) for m in REFDEF_RE.finditer("x\n[r]: ./p.md#a\n")] == ["./p.md"]
     assert [m.group(1) for m in LINK_RE.finditer("[t](./q.md)")] == ["./q.md"]
     url = "https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/x.md"
@@ -144,7 +158,7 @@ def main() -> int:
     own = 0
     for rel in listed:
         page = repo_root / rel
-        text = page.read_text()
+        text = unfenced(page.read_text())
         for match in [*LINK_RE.finditer(text), *REFDEF_RE.finditer(text)]:
             link = match.group(1)
             tree = OWN_TREE.match(link)
