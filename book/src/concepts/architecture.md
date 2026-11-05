@@ -58,7 +58,7 @@ Each Node picks its backend at build time. That compile-time selection
 replaces standard ROS 2's runtime `RMW_IMPLEMENTATION` plugin loader,
 which is not available on many embedded targets. A single binary can
 link multiple backends and bridge between them — see
-[Cross-backend Bridges](../communicate/bridges.md).
+[Cross-backend Bridges](../guide/rmw/bridge-between-backends.md).
 
 For user-facing backend selection, see
 [Choosing an RMW Backend](../tutorial/pick-the-rmw.md). For design
@@ -109,7 +109,7 @@ types work across Rust, C, and C++ APIs.
 
 ## Where to Go Next
 
-- New user: [Setup Compared to Standard ROS 2](../from-ros2/setup-compared.md).
-- Application author: [Configuration](../build/configuration.md).
+- New user: [Setup Compared to Standard ROS 2](../guide/port/setup-compared.md).
+- Application author: [Configuration](../guide/build/configure-an-image.md).
 - Platform porter: [Porting Overview](../extending/overview.md).
 - Contributor changing internals: [Design Overview](design-overview.md).

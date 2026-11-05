@@ -420,5 +420,5 @@ end-to-end.
 
 - [Install + first build](../start/install.md) — full setup walkthrough
 - [First Node — Rust](../tutorial/add-a-second-node.md) — the canonical Rust starter
-- [Troubleshooting](../operate/troubleshooting.md) — broader
+- [Troubleshooting](../guide/deploy/troubleshoot.md) — broader
   issue-by-issue reference for post-first-build problems

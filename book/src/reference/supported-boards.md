@@ -39,8 +39,8 @@ path you would take to bring nano-ros up on it.
 |--------------|----------------------|--------------------|------------|--------------------|--------------------|
 | STMicro      | STM32F4-Discovery    | STM32F407          | Cortex-M4F | bare               | [Worked example](../extending/stm32f4-out-of-tree.md), an out-of-tree board package |
 | STMicro      | STM32H7-Nucleo       | STM32H743          | Cortex-M7F | FreeRTOS / Zephyr  | FreeRTOS or Zephyr starter, with an overlay on `nros-board-freertos` |
-| STMicro      | Pixhawk 4 (FMUv5)    | STM32F765          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../targets/px4.md) |
-| STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../targets/px4.md) |
+| STMicro      | Pixhawk 4 (FMUv5)    | STM32F765          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../guide/platforms/px4.md) |
+| STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../guide/platforms/px4.md) |
 | Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr             | Zephyr starter with `-b nrf52840dk_nrf52840` |
 | Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr             | Zephyr starter with `-b nrf5340dk_nrf5340_cpuapp` |
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr             | Zephyr starter with `-b lpcxpresso55s69_cpu0` |
@@ -70,13 +70,13 @@ To add a board, as a package of your own or contributed to nano-ros, see
   libc required; bare-metal Cortex-A is not in the coverage matrix.
 - **PX4 boards**: NuttX is the underlying kernel; the PX4 module
   template is the canonical entry path — see
-  [PX4 Autopilot](../targets/px4.md).
+  [PX4 Autopilot](../guide/platforms/px4.md).
 
 ## See also
 
 - [Board Support Levels](board-support-levels.md) — what each status word
   means.
-- [Embedded Starters](../targets/freertos.md) — per-RTOS
+- [Embedded Starters](../guide/platforms/freertos.md) — per-RTOS
   walkthrough.
 - [Platform Differences](./platform-differences.md) — per-platform
   capability deltas.

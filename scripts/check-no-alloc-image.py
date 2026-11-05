@@ -343,7 +343,7 @@ BOOK_CLAIMS = (
         "why": "`Seq<T, N>` is inline storage; a property of the value type",
     },
     {
-        "file": "book/src/build/cpp-workspaces.md",
+        "file": "book/src/guide/contracts/cpp-workspaces.md",
         "text": "no-alloc trampoline",
         "kind": "type-level",
         "why": "a C++ template trampoline with `this` as ctx — no storage is "
@@ -357,7 +357,7 @@ BOOK_CLAIMS = (
         "stack frame), not a statement about the linked image",
     },
     {
-        "file": "book/src/realtime/rt-analysis.md",
+        "file": "book/src/guide/realtime/analyze-timing.md",
         "text": "No heap in RT code",
         "kind": "rationale",
         "why": "a clippy disallowed-methods entry a user writes",

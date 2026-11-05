@@ -28,7 +28,7 @@ Before importing a board crate, the consumer needs:
 export ZEPHYR_EXTRA_MODULES="$(nros locate nano-ros)"
 ```
 
-The release you installed is the pin ([Pinning a version](../get-started/installation-details.md#pinning-a-version)); nothing in your `west.yml` names nano-ros.
+The release you installed is the pin ([Pinning a version](../guide/build/install-options.md#pinning-a-version)); nothing in your `west.yml` names nano-ros.
 
 ## The one-call pattern
 

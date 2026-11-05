@@ -569,4 +569,4 @@ just freertos trace talker     # Capture + convert
 - [FreeRTOS LAN9118 debugging](../../book-internals/src/testing/lan9118-reference.md)
 - [Schedulability analysis (archived)](archived/schedulability-analysis.md)
 - [WCET analysis (archived)](archived/wcet-analysis.md)
-- [Real-time analysis (book)](../../book/src/realtime/rt-analysis.md)
+- [Real-time analysis (book)](../../book/src/guide/realtime/analyze-timing.md)

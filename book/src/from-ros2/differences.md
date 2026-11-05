@@ -135,7 +135,7 @@ trade-off for desktop ROS 2.
 A binary can still link **multiple** backends and run them in
 parallel — one node on backend A, another on backend B,
 the executor draining both each tick. The
-[Cross-backend Bridges](../communicate/bridges.md)
+[Cross-backend Bridges](../guide/rmw/bridge-between-backends.md)
 chapter walks the build knobs (`NROS_RMW=...` primary
 selector, explicit per-backend `register()`, `NROS_RMW=
 none` cmake escape hatch) and the three shipped examples.
@@ -224,7 +224,7 @@ because an `Ok` from a call that put nothing on the wire is the one thing a
 caller uses this function to rule out. `AUTOMATIC` and `NONE` answer `Ok`
 everywhere: there was nothing to assert.
 
-See [Status events](../communicate/qos-status-events.md) for the runtime-event
+See [Status events](../guide/rmw/qos-status-events.md) for the runtime-event
 side of liveliness, deadline, and message-lost.
 
 **Per-backend coverage** is documented in

@@ -33,12 +33,12 @@ Pick your row:
 
 | Your build | How nano-ros plugs in | Shell in the repo | Start here |
 | --- | --- | --- | --- |
-| Zephyr (`west`) | west module | `zephyr/` (`module.yml`, `Kconfig`, `CMakeLists.txt`) | [Zephyr (west module)](zephyr.md) |
-| NuttX (`make` + Kconfig) | `apps/external/` app | `integrations/nuttx/` (`Make.defs`, `Kconfig`, `Makefile`) | [NuttX (apps/external)](nuttx.md) |
+| Zephyr (`west`) | west module | `zephyr/` (`module.yml`, `Kconfig`, `CMakeLists.txt`) | [Zephyr (west module)](../guide/platforms/zephyr.md) |
+| NuttX (`make` + Kconfig) | `apps/external/` app | `integrations/nuttx/` (`Make.defs`, `Kconfig`, `Makefile`) | [NuttX (apps/external)](../guide/platforms/nuttx.md) |
 | ESP-IDF (`idf.py`) | *retired* — `integrations/nano-ros/` is gone | none ships today | [ESP32 (ESP-IDF component) — retired](../migrating/esp32.md); for an ESP32-C3 use [ESP32 (esp-hal)](../migrating/esp32.md) |
-| FreeRTOS, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-freertos.cmake` | [Build as a CMake subdirectory](../build/cmake-subdirectory.md), [FreeRTOS (QEMU)](./freertos.md) |
-| ThreadX, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-threadx.cmake` | [Build as a CMake subdirectory](../build/cmake-subdirectory.md), [ThreadX](./threadx.md) |
-| PX4 (`make px4_…`) | `EXTERNAL_MODULES_LOCATION` copy-out | `integrations/px4/module-template/` | [PX4 (integration shell)](px4.md) |
+| FreeRTOS, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-freertos.cmake` | [Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md), [FreeRTOS (QEMU)](../guide/platforms/freertos.md) |
+| ThreadX, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-threadx.cmake` | [Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md), [ThreadX](../guide/platforms/threadx.md) |
+| PX4 (`make px4_…`) | `EXTERNAL_MODULES_LOCATION` copy-out | `integrations/px4/module-template/` | [PX4 (integration shell)](../guide/platforms/px4.md) |
 | PlatformIO (`pio run`) | library + pre-build codegen script | `library.json` (repo root) + `integrations/platformio/` | `integrations/platformio/README.md` in the repo |
 | IDE project (no CMake) | emitted drop-in sources | *planned* — no shell ships today | see note below |
 
@@ -58,7 +58,7 @@ Notes on the rows that need them:
   shim sources + an integration README) is designed but **not shipped
   yet**. Today, the practical route is your IDE's external-CMake or
   makefile support driving the
-  [CMake subdirectory](../build/cmake-subdirectory.md) path.
+  [CMake subdirectory](../guide/build/cmake-subdirectory.md) path.
 
 In every row the division of labor is the same: **your build owns
 compile and link; nano-ros owns the adapter shell and the host-time
@@ -129,14 +129,14 @@ talkers live, and its chapter:
 
 | platform | `nros setup <board>` | copy-out talkers under | chapter |
 |---|---|---|---|
-| Linux host | `linux` | [`examples/linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux) | [Native host build](linux-host.md) |
-| FreeRTOS (QEMU MPS2-AN385) | `mps2-an385-freertos` | [`examples/mps2-an385-freertos`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos) | [FreeRTOS](freertos.md) |
-| NuttX (Arm) | `qemu-armv7a-nuttx` | [`examples/qemu-armv7a-nuttx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx) | [NuttX](nuttx.md) |
-| NuttX (RISC-V) | `rv-virt-nuttx` | [`examples/rv-virt-nuttx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-nuttx) | [NuttX](nuttx.md) |
-| ThreadX (Linux sim) | `threadx-linux` | [`examples/threadx-linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux) | [ThreadX](threadx.md) |
-| ThreadX (QEMU RISC-V 64) | `rv-virt-threadx` | [`examples/rv-virt-threadx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-threadx) | [ThreadX](threadx.md) |
-| Zephyr | `zephyr` | [`examples/zephyr`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr) | [Zephyr](zephyr.md) |
-| Bare-metal Cortex-M3 | `mps2-an385-baremetal` | [`examples/mps2-an385-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal) | [Bare-metal](bare-metal.md) |
+| Linux host | `linux` | [`examples/linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux) | [Native host build](../guide/platforms/linux-host.md) |
+| FreeRTOS (QEMU MPS2-AN385) | `mps2-an385-freertos` | [`examples/mps2-an385-freertos`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos) | [FreeRTOS](../guide/platforms/freertos.md) |
+| NuttX (Arm) | `qemu-armv7a-nuttx` | [`examples/qemu-armv7a-nuttx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx) | [NuttX](../guide/platforms/nuttx.md) |
+| NuttX (RISC-V) | `rv-virt-nuttx` | [`examples/rv-virt-nuttx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-nuttx) | [NuttX](../guide/platforms/nuttx.md) |
+| ThreadX (Linux sim) | `threadx-linux` | [`examples/threadx-linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux) | [ThreadX](../guide/platforms/threadx.md) |
+| ThreadX (QEMU RISC-V 64) | `rv-virt-threadx` | [`examples/rv-virt-threadx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-threadx) | [ThreadX](../guide/platforms/threadx.md) |
+| Zephyr | `zephyr` | [`examples/zephyr`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr) | [Zephyr](../guide/platforms/zephyr.md) |
+| Bare-metal Cortex-M3 | `mps2-an385-baremetal` | [`examples/mps2-an385-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal) | [Bare-metal](../guide/platforms/bare-metal.md) |
 | Arm FVP (Cortex-A SMP) | `zephyr` + the Arm FVP (`nros setup --tool arm-fvp`, x86_64 only) | — | [ARM FVP](arm-fvp.md) |
 
 Each platform directory holds one copy-out talker per language, at
@@ -182,15 +182,15 @@ and links in as a library, the same as every other row in the table.
 
 ## Where to go next
 
-- Zephyr workspace: [Zephyr (west module)](zephyr.md)
-- NuttX board: [NuttX (apps/external)](nuttx.md)
+- Zephyr workspace: [Zephyr (west module)](../guide/platforms/zephyr.md)
+- NuttX board: [NuttX (apps/external)](../guide/platforms/nuttx.md)
 - ESP32-C3: [ESP32 (esp-hal)](../migrating/esp32.md) — bare-metal. The ESP-IDF
   component shell is [retired](../migrating/esp32.md)
-- PX4 firmware: [PX4 (integration shell)](px4.md)
+- PX4 firmware: [PX4 (integration shell)](../guide/platforms/px4.md)
 - Plain CMake host (FreeRTOS, ThreadX, POSIX):
-  [Build as a CMake subdirectory](../build/cmake-subdirectory.md)
+  [Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md)
 - Deploy targets and `system.toml`:
-  [Deployment Workflow](../operate/deployment.md)
+  [Deployment Workflow](../guide/deploy/deploy-to-production.md)
 - A project with several nodes or boards:
   [Growing your workspace](../tutorial/grow-your-workspace.md)
 - If the first build fails:

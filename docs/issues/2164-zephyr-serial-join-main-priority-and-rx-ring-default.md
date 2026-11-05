@@ -82,6 +82,6 @@ Kconfig -- issue 2179.
 **Item 2 -- still open.** No lane joins a serial zenoh image into a live
 domain, so the RX ring default stays 1024 and documented. Not attempted
 here: an emulated UART at line rate under load (QEMU ignores the baud rate,
-per `book/src/communicate/serial-transport.md`) would not reproduce the
+per `book/src/guide/rmw/use-a-serial-link.md`) would not reproduce the
 ISR-vs-read-task race the island measured, so its high water would not be
 evidence for a default.

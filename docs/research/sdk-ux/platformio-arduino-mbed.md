@@ -401,7 +401,7 @@ mbed-tools compile -m K64F -t GCC_ARM
 ```
 
 **nano-ros, FreeRTOS QEMU example, today** (counted from
-`book/src/targets/freertos.md` lines 27-115):
+`book/src/guide/platforms/freertos.md` lines 27-115):
 
 ```bash
 just setup                                # 1: install everything (~20 min)
@@ -421,7 +421,7 @@ which features to set in Cargo.toml (`rmw-zenoh,platform-freertos,...`),
 what `config.toml` keys exist, and how to handle the
 `[patch.crates-io]` block.
 
-`book/src/targets/freertos.md` is **576 lines**. PlatformIO's
+`book/src/guide/platforms/freertos.md` is **576 lines**. PlatformIO's
 Quickstart is ~300 lines and covers more boards. The ratio is the
 proxy metric for onboarding ceremony.
 

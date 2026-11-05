@@ -230,7 +230,7 @@ ESP32-C3.
 
 ## TX tuning benchmarks
 
-The user page [TX Throughput & Latency Tuning](../../communicate/tx-tuning.html)
+The user page [TX Throughput & Latency Tuning](../../guide/rmw/tune-throughput-and-latency.html)
 states the per-platform tx defaults. The measurements behind them:
 `packages/testing/nros-bench/stress-zenoh-zephyr/` (streaming) and
 `packages/testing/nros-tests/tests/w1_zephyr_tx_throughput_measure.rs`

@@ -1,0 +1,372 @@
+# Cross-backend bridges
+
+<!-- type: how-to · level: 3 -->
+
+Most nano-ros applications pick one RMW backend at compile
+time and never look back. A cross-backend bridge is the one
+case where a single binary needs **two** backends in parallel
+— one node receiving on backend A, another publishing on
+backend B, the executor draining both each tick.
+
+Typical reasons:
+
+- **Drone link.** A flight controller speaks XRCE-DDS over a
+  serial radio link; the ground-station LAN runs standard
+  DDS. A bridge forwards telemetry verbatim between the two.
+- **Field gateway.** Sensor pods talk zenoh-pico over an
+  unreliable Wi-Fi mesh; the ROS 2 datacenter side wants
+  Cyclone DDS. A bridge republishes after a session-buffered
+  drop check.
+- **Safety carve-out.** Mission-critical traffic stays on
+  the deterministic backend; introspection / logging
+  republishes to a best-effort backend so dashboards never
+  starve the critical pipeline.
+
+This chapter walks the model, the build knobs, and what in
+the tree demonstrates each.
+
+## The mental model — `rclcpp::Node`, twice
+
+nano-ros mirrors rclcpp:
+
+```
+Executor exec;                   // owns the primary session
+Node ingress = exec.node_builder("ingress").rmw("xrce").build();
+Node egress  = exec.node_builder("egress").rmw("cyclonedds").build();
+auto sub = ingress.create_subscription<Foo>(...);
+auto pub = egress.create_publisher<Foo>(...);
+```
+
+The executor opens one primary session at `open*` time. Each
+extra `node_builder(...).rmw(name)` call:
+
+1. Looks up `name` in the registry of linked backends.
+2. If `name == primary_rmw` and the locator matches → the
+   Node binds to the primary session (slot 0). No second
+   session opened.
+3. Else → opens a fresh session through that backend's
+   `open_with_rmw` and stores it in `extra_sessions[N-1]`.
+   The new Node's `session_idx = N`.
+
+`spin_once()` drains every session in turn. Handles created
+through a multi-Session Node route through
+the node's resolved session record instead of the legacy support/session
+pointer kept for single-backend callers.
+
+`NodeRecord.session_idx` is the dispatch key. Print it to
+verify which session each Node landed on:
+
+```rust
+exec.node(node_in).unwrap().session_idx   // 0 = primary
+exec.node(node_out).unwrap().session_idx  // 1 = first extra
+```
+
+## Build knobs — three audiences, three shapes
+
+### Rust binary
+
+Add both backend crates to `Cargo.toml` and call each
+`register()` early in `main`:
+
+```toml
+[dependencies]
+nros            = { ..., features = ["rmw-cffi"] }
+nros-rmw-zenoh  = { ... }
+nros-rmw-xrce-cffi = { ... }
+```
+
+```rust
+fn main() {
+    nros_rmw_zenoh::register().expect("register zenoh");
+    nros_rmw_xrce_cffi::register().expect("register xrce");
+    let mut exec = nros::Executor::open_with_rmw("zenoh",
+        &nros::ExecutorConfig::from_env())?;
+    let ingress = exec.node_builder("ingress").rmw("zenoh").build()?;
+    let egress  = exec.node_builder("egress").rmw("xrce").build()?;
+    // ...
+}
+```
+
+**Why explicit `register()`?** Stable Rust drops un-referenced
+rlib CGUs from the final link even when the backend's
+`#[used] static RMW_INIT_ENTRIES` exists. The `register()`
+call doubles as the symbol reference that drags the rlib in
+**and** the registration trigger. C / C++ builds dodge this
+because `--whole-archive` pulls every section unconditionally.
+
+### C binary
+
+`NROS_RMW=none` switches off the root CMake's
+RMW auto-pull. Pull each backend's staticlib through
+`corrosion_import_crate` and wrap with `--whole-archive` so
+the registry walker finds both names:
+
+```cmake
+set(NROS_RMW none)
+add_subdirectory(${nano_ros_root} nano_ros)
+
+corrosion_import_crate(
+    MANIFEST_PATH ${nano_ros_root}/Cargo.toml
+    CRATES nros-rmw-xrce-cffi
+    NO_DEFAULT_FEATURES
+    FEATURES std)
+corrosion_import_crate(
+    MANIFEST_PATH ${nano_ros_root}/Cargo.toml
+    CRATES nros-rmw-zenoh-staticlib
+    NO_DEFAULT_FEATURES
+    FEATURES "platform-posix;ros-humble")
+
+target_link_libraries(my_bridge PRIVATE
+    NanoRos::NanoRos
+    -Wl,--whole-archive
+    nros_rmw_xrce_cffi-static
+    nros_rmw_zenoh_staticlib-static
+    -Wl,--no-whole-archive)
+```
+
+Then declare + call the register functions early in
+`main`:
+
+```c
+extern int8_t nros_rmw_xrce_register(void);
+extern int8_t nros_rmw_zenoh_register(void);
+
+int main(int argc, char** argv) {
+    if (nros_rmw_xrce_register() != 0)  return 1;
+    if (nros_rmw_zenoh_register() != 0) return 1;
+    // ... rclc_support_init / rclc_executor_init / rclc_executor_node_init
+}
+```
+
+`rclc_executor_node_init` honours per-Node `rmw_name` +
+`locator` via the `rcl_node_options_t` struct; the executor
+sets `node.executor` so subsequent `nros_*_init` calls
+(publisher, subscription, service, action) route to the right
+session.
+
+### C++ binary
+
+Same CMake shape as C. The C++ surface (`nros-cpp`) is a
+thin header layer; the linker work is identical. Use the
+`Executor::node_builder(name)` chain:
+
+```cpp
+auto exec = rclcpp::Executor::open_with_rmw("zenoh", cfg);
+auto ingress = exec.node_builder("ingress").rmw("zenoh").build();
+auto egress  = exec.node_builder("egress").rmw("xrce").build();
+auto pub = egress.create_publisher<std_msgs::String>("/chatter");
+exec.register_subscription_on<std_msgs::String>(ingress, "/chatter",
+    [&pub](const auto& msg) { pub->publish(msg); });
+```
+
+### A bridged domain's RMW file, from C / C++
+
+A Rust bridge entry gets each `[[domain]]`'s `config` file through
+`nros-bridge.toml`. A hand-written C or C++ multi-session caller
+(`nros_cpp_init_multi`, `rclc_init_multi`) asks for the same table at
+configure time and hands it to the session spec:
+
+```cmake
+nros_session_properties_header(
+    BRINGUP ${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup
+    DOMAIN  zen
+    SYMBOL  zen_props
+    OUT     ${CMAKE_BINARY_DIR}/gen/zen_props.h)   # ROW_TYPE rclc_session_property_t for rclc
+```
+
+```cpp
+#include "zen_props.h"   // static const nros_cpp_session_property_t zen_props[N]; zen_props_LEN
+
+NrosCppSessionSpec specs[2] = {
+    {"uorb", "", 0, "bridge_in", nullptr, nullptr, 0},
+    {"zenoh", "", 0, "bridge_out", nullptr, zen_props, zen_props_LEN},
+};
+nros_cpp_init_multi(specs, 2, storage);
+```
+
+The file is lowered on the host, exactly as for the Rust road:
+a zenoh JSON5 file becomes its session keys, a Cyclone
+XML file travels whole under `config`. Editing the file re-runs the
+configure. `rclcpp::SessionSpec::with_properties(rows)` sets it on the C++
+`MultiExecutor` wrapper.
+
+## `NROS_RMW` environment variable
+
+When a binary links multiple backends, **set `NROS_RMW` to
+pin the primary** before `open()`:
+
+```sh
+NROS_RMW=zenoh ./my_bridge
+```
+
+The C-side `rclc_support_init` reads it and routes
+`Executor::open` through `open_with_rmw(name, ...)`. Without
+this, the linkme walker returns whichever backend's ctor
+fired first, which is non-deterministic across link
+orderings. The bridge then opens *another* session against
+the same backend when the per-Node `.rmw(name)` matches the
+unintended primary — and most singleton-state backends
+(XRCE-DDS-Client's uxrSession, zenoh-pico's global
+`g_session`) refuse a second open.
+
+The Rust path mirrors this: `Executor::open` consults
+`$NROS_RMW` first; the per-Node `resolve_session_slot`
+detects the primary-name match and returns slot 0 instead
+of opening a duplicate.
+
+## Memory + WCET budget
+
+Each extra session adds:
+
+- One `ConcreteSession` (RMW-specific; see [RMW
+  Backends](../../internals/rmw/backend-host-language-policy.html#real-time-budget-per-backend)
+  for sizing).
+- One `register_wake_signal_on_extra` wake-callback slot
+  (`std` only; bare-metal targets share the primary wake).
+- One round-trip through `spin_once` per backend per tick.
+
+The bridge's per-tick WCET is the **sum** across linked
+backends:
+
+```
+bridge_wcet = Σ poll_wcet_i + Σ dispatch_wcet_j
+```
+
+Read the per-backend numbers in the [Real-time budget per
+backend](../../internals/rmw/backend-host-language-policy.html#real-time-budget-per-backend)
+table and add them up — there is no parallelism between
+backends inside a single executor.
+
+For deadline-critical bridges, partition by SchedContext
+instead of running everything on the default Fifo slot:
+
+```rust
+let ingress = exec.node_builder("ingress")
+    .rmw("xrce")
+    .sched(critical_sc)   // RT priority
+    .build()?;
+let egress = exec.node_builder("egress")
+    .rmw("cyclonedds")
+    .sched(best_effort_sc)
+    .build()?;
+```
+
+Each Node's callbacks run in its sched context's rank order inside the
+executor. For the slow backend not to delay the fast one at all, put the
+two Nodes in different sched tasks (a sched task is one thread at its own priority;
+executor preemption levels generalise it), so the fast Node's sched task
+preempts the slow one's.
+
+## Shipped examples
+
+### Declarative: `examples/workspaces/bridge-cyclonedds/` and `bridge-xrce/`
+
+Start here. A bridge is a `[[bridge]]` row in the workspace's
+`system.toml`, between two `[[domain]]` rows naming the backends — no
+`build.rs` and no user bridge code. The build resolves each topic name
+to its ROS type and the generated entry runs the forwarder (`open_multi`
+over both sessions, one `PubSubBridge` per row):
+
+```toml
+[[domain]]
+name = "zen"; rmw = "zenoh"; id = 0
+[[domain]]
+name = "dds"; rmw = "cyclonedds"; id = 5
+[[bridge]]
+name = "gw"; from = "zenoh:zen"; to = "cyclonedds:dds"
+```
+
+- [`bridge-cyclonedds/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/bridge-cyclonedds)
+  forwards zenoh `/chatter` onto Cyclone DDS, where a stock
+  `rmw_cyclonedds_cpp` peer receives it.
+- [`bridge-xrce/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/bridge-xrce) is the XRCE
+  variant: the egress `[[domain]]` carries the Micro-XRCE-DDS Agent's
+  `locator`, and XRCE registers types lazily, so nothing is staged.
+
+Each workspace's README has the build and run lines. Both are fixture
+rows and are exercised end to end by the
+`declarative_bridge_zenoh_to_{cyclonedds,xrce}` tests.
+
+### Imperative: the e2e gateway fixtures
+
+The hand-written form above — `open_with_rmw` for the primary session
+plus `node_builder(..).rmw(..)` for the second — has no example of its
+own. The nearest worked code is the two gateway binaries the mixed-RMW
+e2e tests run,
+[`bridge-zenoh-to-xrce-fwd`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/testing/nros-tests/bins/bridge-zenoh-to-xrce-fwd)
+and
+[`bridge-zenoh-to-cyclonedds-fwd`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/testing/nros-tests/bins/bridge-zenoh-to-cyclonedds-fwd).
+They are test fixtures, not copy-out projects, but each is one short
+`main.rs`: register both backends, open two sessions, forward raw bytes
+from a zenoh subscription to a raw publisher on the other backend.
+
+The Cyclone one shows the **one structural difference** between the two
+egresses. Cyclone rejects a raw publisher whose topic type has no
+registered `dds_topic_descriptor_t`, so the egress type's schema is
+staged **before** the raw publisher is created:
+
+```rust
+// The Cyclone backend installs the registrar during its register():
+nros_rmw_cyclonedds_sys::register()?;
+// Stage std_msgs/msg/String's schema (NUL-terminated key — it is handed
+// straight to Cyclone's C descriptor table):
+nros_rmw::register_type_descriptor(
+    "std_msgs/msg/String\0",
+    &[nros_serdes::schema::Field { name: "data\0", ty: FieldType::String, offset: 0 }],
+)?;
+// The raw publisher itself names the DDS-mangled type:
+let pub_out = node_out.create_publisher_raw("/chatter", "std_msgs::msg::dds_::String_", hash)?;
+```
+
+XRCE registers lazily from name+hash; Cyclone needs the descriptor up
+front. The backend links the vendored CycloneDDS (no `-DNROS_RMW`
+needed for a Rust binary — the `nros-rmw-cyclonedds-sys` dep is the
+selection).
+
+### Not demonstrated: a time-triggered bridge
+
+A bridge can run under an ARINC-653-style time-triggered cyclic
+schedule (ingress and egress in non-overlapping windows of a major frame,
+via `Executor::apply_time_triggered_schedule`), but **no shipped example
+combines a bridge with time-triggered windows**, and none demonstrates TT
+windows at all; the window gate is covered only by `nros-node` executor
+unit tests. The API is unchanged:
+`Executor::apply_time_triggered_schedule` (validates the windows, sets the
+major frame and returns one `SchedContextId` per window to bind handles
+to), or `register_time_triggered_dispatcher` plus a `SchedContext`'s
+`tt_window_offset_us` / `tt_window_duration_us` by hand — the rustdoc on
+those two methods is the reference.
+
+## Coverage matrix
+
+Bridges are workspaces: a `[[bridge]]` row in a workspace's
+`system.toml`, listed under `workspaces/` in the
+[examples README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
+There is no separate bridge category and no per-RMW directory — a bridge
+spans RMW backends by nature, so RMW is not a directory axis.
+
+## Troubleshooting
+
+Bridge-specific failures are below. For a backend that will not open a
+session at all, oversized messages and other general problems, see
+[Troubleshooting](../deploy/troubleshoot.md).
+
+| Symptom | Likely cause |
+|---------|--------------|
+| `Transport(ConnectionFailed)` on `open_with_rmw("X", ...)` | Backend X's rlib not pulled into the link line. Rust: add a `register()` call. C / C++: confirm `--whole-archive` wraps the staticlib. |
+| Second node's `.rmw("zenoh")` returns `Transport(...)` | Both nodes try to open against the same singleton-state backend. Set `NROS_RMW=zenoh` so the primary lands on zenoh + the second Node hits the session-cache (slot 0) instead of double-opening. |
+| `rclc_publisher_init_default -> -7` after `rclc_executor_node_init` | Stale build — the C-side multi-Session dispatch predates nros-v0.5.0; rebuild `nros-c` after updating. |
+| `Bridge spinning` marker never reaches piped test harness | Add `setvbuf(stdout, NULL, _IOLBF, 0)` at the top of `main`. glibc full-buffers piped stdout; line-buffering surfaces readiness markers before the long-lived `spin_period` loop. |
+
+## See also
+
+- [Choosing an RMW Backend](../../tutorial/pick-the-rmw.md) — single-
+  backend selection criteria.
+- [RMW Backends — Host-Language
+  Policy](../../internals/rmw/backend-host-language-policy.html) — registry +
+  per-backend sizing.
+
+## Design background
+
+- [RFC-0108: executor preemption levels](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0108-executor-preemption-levels.md)
+- [RFC-0109: network config layers](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0109-network-config-layers.md)
