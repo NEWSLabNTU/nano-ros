@@ -377,7 +377,11 @@ Two questions, two owners:
 
 Applied so far:
 - RTIC (no row) moved to Internals in #3145.
-- PX4 waits for a registry row that states its SITL evidence.
+- PX4 SITL has its registry row and a `px4` probe track (#3150). The track
+  waits on [issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md)
+  (the release ships no PX4 POSIX archives), and the page stays in User guide ›
+  Platforms meanwhile, by maintainer ruling (2026-11-05): an exception to
+  Principle 3 that ends when the track replays.
 - Arm FVP leaves the user book (no replaying track, RFC-0115 D4).
 
 ### D9 — Length budgets, no stubs, languages in tabs
@@ -494,8 +498,8 @@ reader takes the Tutorial's project next.
 - **How the docs job gets the contract reference.** The job builds no CLI today,
   so it either fetches ros-launch-manifest at the pinned tag or reads a
   committed, gated copy.
-- **PX4's place.** It depends on the registry row, whether a framework
-  integration with no board crate can have one, and on RFC-0114's row schema.
+- **PX4's place.** Settled 2026-11-05: an `external` registry row, and the page
+  in User guide › Platforms while issue 2289 is open (D8).
 - **Background versus Internals.** The boundary needs one rule. The proposal: a
   page whose reader writes an application stays in Background; a page whose
   reader changes nano-ros goes to Internals.
@@ -545,6 +549,7 @@ no current source.
      Verified in emulator: Bare-metal Cortex-M3 · FreeRTOS on mps2-an385 · Zephyr on mps2-an385 ·
        NuttX Arm and RISC-V · ThreadX RISC-V 64
      Twin and hardware: Nucleo-F767ZI · Raspberry Pi Pico W
+     Framework integration: PX4 SITL (← targets/px4; waits on issue 2289 for its probe track)
      (Arm FVP: out of the user book until a track replays it, RFC-0115 D4)
      A Zephyr app you build with west (← targets/zephyr-west-app) · Flash a real board (**new**)
      (← targets/{linux-host,bare-metal,freertos,zephyr,nuttx,threadx,arm-fvp,nucleo-f767zi},
@@ -591,6 +596,8 @@ task for every language.
 
 ## Changelog
 
+- 2026-11-05 — PX4 SITL placed in User guide › Platforms, waiting on issue
+  2289 (maintainer ruling).
 - 2026-11 — Retitled as the book charter. Principles, Topic levels and
   Reconciled RFCs added, consolidating the book rules of RFC-0116, 0115, 0114,
   0117, 0103, 0089, 0121, 0122 and 0123. D8 now admits by RFC-0115 D4 and
