@@ -284,6 +284,6 @@ demo talker. If it does not appear in 30 seconds:
 ## Design background
 
 - [RFC-0121: workspace-first project layout](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
-- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+- [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
   The copy-out talker kept for each platform and language, and the language
   workspaces that hold the paired examples.

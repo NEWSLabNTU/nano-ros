@@ -328,6 +328,6 @@ For Cortex-M3 with an RTOS, switch to the
 
 ## Design background
 
-- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+- [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
   The copy-out talker per platform and language, and the paired examples,
   variants and configurations as image rows of behaviour bringups.

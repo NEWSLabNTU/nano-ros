@@ -88,7 +88,7 @@ def old_spellings() -> list[str]:
 # steps still inside probe fences are front-door gaps (no user verb yet: the
 # SDK manifest), listed in phase-532 W9. They are counted, not exempted: the
 # count may only fall.
-PROBE_FENCE_BASELINE = 1
+PROBE_FENCE_BASELINE = 0
 PROBE_FENCE = re.compile(r"^\s*(?:>\s*)*(?:```|~~~)\S*.*\bprobe=")
 
 

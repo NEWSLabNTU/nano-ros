@@ -364,6 +364,6 @@ The copy-out talkers, each the same project as the one this page scaffolds:
 
 ## Design background
 
-- RFC-0122: behaviour bringups, single-node witnesses, and cadence-backed CI.
+- [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
   The copy-out talker per platform and language, and the paired examples as
   image rows of behaviour bringups.

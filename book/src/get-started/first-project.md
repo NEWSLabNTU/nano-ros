@@ -161,5 +161,5 @@ shape, and so is every command after it.
 
 The chapter follows [RFC-0116](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0116-adoption-purposes-and-front-doors.md)
 D5 and D6 and [RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
-D4 and D5. Its pointer to the copy-out talker follows RFC-0122 (behaviour
+D4 and D5. Its pointer to the copy-out talker follows [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) (behaviour
 bringups, single-node witnesses, and cadence-backed CI) D3.
