@@ -26,7 +26,7 @@ writing. Those phases keep their chapters, at the new paths:
 | Renode and Wokwi twin chapters | [phase-524](phase-524-emulator-twins.md) W4b |
 | Old CLI spellings in the tree's docs | [phase-526](archived/phase-526-cli-two-tier-restructure.md) W4 |
 | `nros configure` vocabulary in docs | [phase-530](phase-530-nros-configure-single-pass.md) W8 |
-| Runner and command package docs | [phase-527](phase-527-cli-extension-packages.md) W7 |
+| Runner and command package docs | [phase-527](archived/phase-527-cli-extension-packages.md) W7 |
 
 To avoid conflicts, every move is driven by the page map (W0). An in-flight
 branch rebases over a move by running `scripts/book-move.py --rewrite`, which

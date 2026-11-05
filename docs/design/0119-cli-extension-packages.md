@@ -17,7 +17,7 @@ superseded-by: null
 flasher, and how the result is distributed. Siblings:
 [RFC-0117](0117-cli-command-tiers.md) (the command tree) and
 [RFC-0118](0118-target-execution-model.md) (what a runner is asked to do).
-Implemented by [phase-527](../roadmap/phase-527-cli-extension-packages.md)
+Implemented by [phase-527](../roadmap/archived/phase-527-cli-extension-packages.md)
 (the kinds, the build role, dispatch, the first command packages), with the
 first-party runners in [phase-528](../roadmap/phase-528-run-on-host-and-emulator.md)
 and [phase-529](../roadmap/archived/phase-529-flash-monitor-bench.md).

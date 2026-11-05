@@ -7,7 +7,7 @@ processes and emulators, and the host and emulator runners of
 
 Depends on:
 
-- [phase-527](phase-527-cli-extension-packages.md) W1 to W3, for the kinds,
+- [phase-527](archived/phase-527-cli-extension-packages.md) W1 to W3, for the kinds,
   the host build role and `nros-extension`;
 - [phase-522](archived/phase-522-support-registry-primitives.md)'s generator, for W2 (landed; the phase is archived).
 
