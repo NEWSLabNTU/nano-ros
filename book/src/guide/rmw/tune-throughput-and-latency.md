@@ -175,7 +175,7 @@ with `nros build posix`.
 | What you see | What to change |
 | --- | --- |
 | Large messages never arrive | raise `frag_max_size`: the message exceeds the reassembly limit |
-| A subscription receives truncated data, or a large-type subscription fails to create | the receive slot is too small; see [Measure static memory](../contracts/measure-static-memory.md#sizing-the-pools) |
+| A subscription receives truncated data, or a large-type subscription fails to create | the receive slot is too small; see [Size an image from its contract](../contracts/size-an-image-from-its-contract.md#which-knobs-the-build-derives) |
 | Service calls with large replies time out | raise `get_reply_buf_size` |
 | Several concurrent service calls fail | raise `NROS_ZENOH_MAX_PENDING_GETS` |
 | An entity create fails at run time | a pool is full; the [Static pool inventory](../../reference/static-pool-inventory.md) names the knob that sizes it |
