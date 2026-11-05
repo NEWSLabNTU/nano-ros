@@ -27,7 +27,7 @@ shape every place where the surface diverges.
   [`rmw_zenoh`](https://github.com/ros2/rmw_zenoh) ROS 2 RMW. A
   nano-ros publisher and an `rclcpp` subscriber on the same zenohd
   router exchange messages without a bridge — see
-  [ROS 2 Interoperability](../communicate/ros2-interop.md).
+  [ROS 2 Interoperability](../tutorial/talk-to-ros2.md).
 
 ## Where it diverges, and why
 

@@ -10,10 +10,10 @@ existing `rclcpp`, `rclc`, or `rclrs` node toward nano-ros.
 
 | You have (ROS 2) | You get (nano-ros) | Where |
 |---|---|---|
-| colcon workspace (`src/*`) | nano-ros workspace: Node pkgs + one declarative Bringup pkg, whose `system.toml` carries one `[image.<id>]` row per deploy target. The binary is generated, not written | [Growing your workspace](../build/growing-your-workspace.md) |
-| `package.xml` | kept, verbatim. What it deploys to is not in it — that is the bringup's `system.toml` | [Anatomy](../get-started/anatomy.md) |
-| `.launch.xml` / `.launch.py` | kept — `nros configure` resolves them into a SystemModel the image bakes in | [Add a launch file](../build/growing-your-workspace.md#3-add-a-launch-file-when-you-need-one) |
-| `ros2 launch pkg file` | `nros build <image>`, then run its binary — the launch product is compiled in | [Add an image](../build/growing-your-workspace.md#4-add-an-image) |
+| colcon workspace (`src/*`) | nano-ros workspace: Node pkgs + one declarative Bringup pkg, whose `system.toml` carries one `[image.<id>]` row per deploy target. The binary is generated, not written | [Growing your workspace](../tutorial/grow-your-workspace.md) |
+| `package.xml` | kept, verbatim. What it deploys to is not in it — that is the bringup's `system.toml` | [Anatomy](../tutorial/what-you-just-built.md) |
+| `.launch.xml` / `.launch.py` | kept — `nros configure` resolves them into a SystemModel the image bakes in | [Add a launch file](../tutorial/grow-your-workspace.md#3-add-a-launch-file-when-you-need-one) |
+| `ros2 launch pkg file` | `nros build <image>`, then run its binary — the launch product is compiled in | [Add an image](../tutorial/grow-your-workspace.md#4-add-an-image) |
 | `colcon build` | `nros build <image>` — it generates the root and hands off to `cmake` / `cargo` / `west`. Running those yourself still works when you point them at the generated build root, and `colcon build` still works for POSIX C++ workspaces | [C/C++ workspaces](../build/cpp-workspaces.md) |
 | `rosdep install` | `nros setup <board> --rmw <rmw>` | [Install](../start/install.md) |
 | `RMW_IMPLEMENTATION=…` at runtime | compile-time backend, one line: `[system] rmw = "…"` in the bringup's `system.toml`, then `nros build` | [Switching RMW](../communicate/switching-rmw.md) |
@@ -73,7 +73,7 @@ the policies it can enforce. Unsupported QoS is reported at entity
 creation instead of being silently downgraded.
 
 See [QoS, Status Events, and Discovery](../communicate/qos-status-events.md)
-and [Choosing an RMW Backend](../communicate/choosing-an-rmw.md).
+and [Choosing an RMW Backend](../tutorial/pick-the-rmw.md).
 
 ## Message Generation
 

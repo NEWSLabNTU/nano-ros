@@ -25,7 +25,7 @@ vtable with that registry before `main`.
 
 Unlike the platform axis, RMW is **not** mutually exclusive — Phase
 104 lets one binary register multiple backends (bridge nodes). See
-[Choosing an RMW Backend](../communicate/choosing-an-rmw.md).
+[Choosing an RMW Backend](../tutorial/pick-the-rmw.md).
 
 ### Platform (pick one)
 

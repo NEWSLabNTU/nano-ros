@@ -6,7 +6,7 @@ Every nano-ros binary picks its RMW (ROS Middleware) backend at **build
 time**. There are three: **Cyclone DDS**, **Zenoh** (zenoh-pico), and
 **XRCE-DDS**. This page helps you pick one and explains how each backend
 connects your device to a ROS 2 network. The mechanics of changing your
-pick are in [Switching RMW Backends](switching-rmw.md).
+pick are in [Switching RMW Backends](../communicate/switching-rmw.md).
 
 ## Start with Cyclone DDS
 
@@ -47,7 +47,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd
 
 That invocation works on any host with `rmw_zenoh_cpp` installed,
 regardless of where ROS 2 lives — never hard-code an install path to
-the router binary. See [ROS 2 Interop](ros2-interop.md)
+the router binary. See [ROS 2 Interop](talk-to-ros2.md)
 for the full three-terminal walkthrough.
 
 ## XRCE-DDS — smallest footprint, serial transport
@@ -60,7 +60,7 @@ Choose the **XRCE-DDS** backend when:
   their number follows the entities you declare.)
 - You need a **serial (UART)** transport — the only backend that works
   on an MCU with no networking hardware. See
-  [Serial Transport](./serial-transport.md).
+  [Serial Transport](../communicate/serial-transport.md).
 - You are joining an existing micro-ROS / DDS deployment: the agent
   bridges to any DDS-based RMW.
 
@@ -301,9 +301,9 @@ integration with ROS 2 desktop nodes, and development under QEMU.
 You do not have to pick exactly one per system: a single binary can
 link **multiple backends** and bridge between them, for example zenoh
 devices to a Cyclone DDS stack, or XRCE devices to a Zenoh network — see
-[Cross-backend Bridges](bridges.md).
+[Cross-backend Bridges](../communicate/bridges.md).
 
-Once you have picked, [Switching RMW Backends](switching-rmw.md)
+Once you have picked, [Switching RMW Backends](../communicate/switching-rmw.md)
 shows the exact edits per build system.
 
 ## Design background

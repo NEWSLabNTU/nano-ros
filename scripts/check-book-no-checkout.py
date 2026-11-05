@@ -36,7 +36,7 @@ Only FENCED code is read: prose may say "you do not need `activate.sh`". The
 Run:  python3 scripts/check-book-no-checkout.py [--selftest]
 
 The self-test runs on every invocation and must FAIL a planted
-`git clone …/nano-ros.git` in `first-project.md`.
+`git clone …/nano-ros.git` in `run-a-talker.md`.
 """
 
 import argparse
@@ -119,9 +119,9 @@ def run(pages: dict[str, str]) -> list[str]:
 
 
 def selftest(verbose: bool = False) -> int:
-    first = "book/src/get-started/first-project.md"
+    first = "book/src/tutorial/run-a-talker.md"
     cases = [
-        ("planted clone in first-project.md fails",
+        ("planted clone in run-a-talker.md fails",
          {first: "```sh\ngit clone https://github.com/NEWSLabNTU/nano-ros.git\n```\n"}, True),
         ("bootstrap.sh fails", {first: "```sh\n./scripts/bootstrap.sh\n```\n"}, True),
         ("source activate.sh fails", {first: "```sh\nsource ./activate.sh\n```\n"}, True),

@@ -103,7 +103,7 @@ fact. If it names a path on your disk, it is a deploy fact.
 ## When `nros build` drives the build
 
 The rows above are for a project whose build already exists. A nano-ros
-workspace ([Growing your workspace](../build/growing-your-workspace.md)) has
+workspace ([Growing your workspace](../tutorial/grow-your-workspace.md)) has
 no build of its own to integrate into: `nros build` generates each image's
 entry and the build root that compiles it under `build/`, then runs the
 platform's own tool on it. Which tool follows from the image:
@@ -192,7 +192,7 @@ and links in as a library, the same as every other row in the table.
 - Deploy targets and `system.toml`:
   [Deployment Workflow](../operate/deployment.md)
 - A project with several nodes or boards:
-  [Growing your workspace](../build/growing-your-workspace.md)
+  [Growing your workspace](../tutorial/grow-your-workspace.md)
 - If the first build fails:
   [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md)
 

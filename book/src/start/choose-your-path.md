@@ -11,7 +11,7 @@ pages to read, in order.
 Every purpose starts the same way:
 
 1. **[Install](install.md)** the `nros` CLI.
-2. **[First Project](../get-started/first-project.md)** scaffolds a talker
+2. **[First Project](../tutorial/run-a-talker.md)** scaffolds a talker
    for a Cortex-M3 board, runs it in QEMU and shows its messages in ROS 2:
 
    ```bash
@@ -22,7 +22,7 @@ Every purpose starts the same way:
    ```
 
    No QEMU or ROS 2? The same chapter runs it on your Linux host.
-3. **[Anatomy of What You Just Built](../get-started/anatomy.md)**
+3. **[Anatomy of What You Just Built](../tutorial/what-you-just-built.md)**
    explains the workspace in nano-ros's own terms. You do not need to open
    the bringup package before you have seen it run.
 
@@ -78,7 +78,7 @@ with no network.
 - **Comparisons.** [Differences from Standard ROS
   2](../from-ros2/differences.md),
   [nano-ros vs micro-ROS](../from-ros2/vs-micro-ros.md),
-  [Choosing an RMW Backend](../communicate/choosing-an-rmw.md) and the
+  [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) and the
   generated [Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md).
 
 ## Field solutions: a working system per customer
@@ -94,12 +94,12 @@ you need it publishing data that a ROS 2 system can see, quickly.
    chapter has a QEMU flow that works without hardware.
 3. **Run it on the target.** [The target model](../targets/target-model.md)
    and [`nros run`](../targets/run.md) for a host process or an emulator.
-4. **Talk to ROS 2.** [Choosing an RMW](../communicate/choosing-an-rmw.md)
-   and [ROS 2 Interoperability](../communicate/ros2-interop.md). Cyclone DDS
+4. **Talk to ROS 2.** [Choosing an RMW](../tutorial/pick-the-rmw.md)
+   and [ROS 2 Interoperability](../tutorial/talk-to-ros2.md). Cyclone DDS
    talks to `rmw_cyclonedds_cpp` directly, with no router. Zenoh needs the
    ROS 2 router (`rmw_zenoh_cpp`) on the host.
 5. **Grow the system.** More nodes, parameters and images:
-   [Growing your workspace](../build/growing-your-workspace.md),
+   [Growing your workspace](../tutorial/grow-your-workspace.md),
    and [Mixed-language workspaces](../build/mixed-language.md) for
    other languages. Bridging several networks:
    [Cross-backend Bridges](../communicate/bridges.md).
@@ -120,7 +120,7 @@ install must be short, and each lab must fit one session.
 2. **The first lab** is the first project (above), in C++ or, on the same
    page, in Rust. The output it prints is the result to check on every seat.
 3. **Concepts for the lecture.**
-   [Anatomy](../get-started/anatomy.md),
+   [Anatomy](../tutorial/what-you-just-built.md),
    [Architecture Overview](../concepts/architecture.md) and
    [Execution Model and Two-Layer API](../concepts/two-layer-api.md).
 4. **Embedded labs without hardware.** Each platform chapter runs its
@@ -128,7 +128,7 @@ install must be short, and each lab must fit one session.
    [FreeRTOS](../targets/freertos.md) or
    [bare-metal](../targets/bare-metal.md).
 5. **Labs that talk to ROS 2.**
-   [Choosing an RMW](../communicate/choosing-an-rmw.md); Cyclone DDS needs no
+   [Choosing an RMW](../tutorial/pick-the-rmw.md); Cyclone DDS needs no
    router, which keeps a lab machine simple.
 
 ## Still not sure?

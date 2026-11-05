@@ -96,7 +96,7 @@ cell_table = "board-support-cells.toml"
 crate = "nros-board-linux"
 matrix_platform = "Linux"
 board_keys = ["linux"]
-book_run = "get-started/first-project.md#run"
+book_run = "tutorial/run-a-talker.md#run"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -585,7 +585,7 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 
 [[probe]]
 track = "first-project"
-chapter = "get-started/first-project.md"
+chapter = "tutorial/run-a-talker.md"
 variant = "qemu"
 weekly = false
 row = "nros-board-mps2-an385@QemuBaremetal"
@@ -595,7 +595,7 @@ notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the instal
 
 [[probe]]
 track = "linux"
-chapter = "get-started/first-project.md"
+chapter = "tutorial/run-a-talker.md"
 variant = "linux"
 weekly = true
 row = "nros-board-linux@Linux"

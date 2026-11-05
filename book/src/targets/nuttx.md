@@ -426,7 +426,7 @@ openocd -f board/<your-board>.cfg -c "program build/nuttx verify reset exit"
   one `libnros_c.a` build via the external-app shell.
 - DDS on NuttX: bump the netbuffer Kconfig knobs (similar to the
   Zephyr DDS profile under
-  [Choosing an RMW Backend](../communicate/choosing-an-rmw.md)).
+  [Choosing an RMW Backend](../tutorial/pick-the-rmw.md)).
 - Build nano-ros's own NuttX QEMU tests without a NuttX-managed
   workspace: [NuttX in-tree examples (contributor)](../internals/platform/nuttx-in-tree.html).
 

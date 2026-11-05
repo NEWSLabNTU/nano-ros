@@ -97,7 +97,7 @@ nano-ros calls them too. The migration is a rename only where the shape differs.
 - [Build / config / deploy workflow comparison](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/research/build-config-deploy-comparison.md)
   — historical comparison of the three workflow axes vs micro-ROS, Zenoh-pico,
   embedded DDS, and Arduino-ROS.
-- [Choosing an RMW Backend](../communicate/choosing-an-rmw.md) — the
+- [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) — the
   backend capability matrix.
 - [Production Readiness Checklist](../realtime/production-readiness.md)
   — pilot-deployment validation.

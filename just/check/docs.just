@@ -147,7 +147,7 @@ book-probe-tracks:
 # lives in internals/ — exempt by SECTION, never by a file list — and the
 # parked ESP32 pages (SUMMARY "(…, dormant)") are skipped. The book cloned a
 # tag 663 commits behind main for weeks. Self-test (a planted
-# `git clone …/nano-ros.git` in first-project.md must fail) runs every call.
+# `git clone …/nano-ros.git` in run-a-talker.md must fail) runs every call.
 # Buildless, ~0.1 s.
 [private]
 book-no-checkout:

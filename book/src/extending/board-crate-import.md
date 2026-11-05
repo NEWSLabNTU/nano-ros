@@ -79,7 +79,7 @@ This replaced a second AUTHORED file per board (`board.cmake`, 14 `NROS_BOARD_*`
 The one-call pattern still gives the consumer escape hatches:
 
 - **Pin a different Zephyr board id.** Pass `-DBOARD=<other>` on the CMake / `west build` command line; `nano_ros_use_board()` notices the user value and emits a warning rather than clobbering it.
-- **Pick a different RMW.** Pass `-DNROS_RMW=<rmw>` (`zenoh`, `xrce`, or `cyclonedds` -- see [Choosing an RMW](../communicate/choosing-an-rmw.md)). The board crate's default is used only when nothing is set.
+- **Pick a different RMW.** Pass `-DNROS_RMW=<rmw>` (`zenoh`, `xrce`, or `cyclonedds` -- see [Choosing an RMW](../tutorial/pick-the-rmw.md)). The board crate's default is used only when nothing is set.
 - **Layer extra Kconfig / DTS.** Set `EXTRA_CONF_FILE` and `DTC_OVERLAY_FILE` *after* the call to `nano_ros_use_board()`. They will be applied on top of the board crate's contributions, not in place of them.
 
 ```cmake

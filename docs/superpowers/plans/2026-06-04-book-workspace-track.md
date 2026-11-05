@@ -77,7 +77,7 @@ Replace the row:
 ```
 with:
 ```
-| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [the workspace track](../../../book/src/build/growing-your-workspace.md). |
+| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [the workspace track](../../../book/src/tutorial/grow-your-workspace.md). |
 ```
 
 - [ ] **Step 3: Fix `creating-examples.md` matrix sentence (line 18)**
@@ -161,7 +161,7 @@ into the Entry pkg directly.
 `<arg>`, `<node>`, `<param>`, `<remap>`, `<group>`, `<include>`, with
 `$(find <pkg>)` / `$(var)` / `$(env)` substitutions. Stock nav2/Autoware
 XML pastes in and Just Works (Python `.launch.py` is not supported yet).
-See [the workspace bringup tutorial](../../../book/src/build/growing-your-workspace.md).
+See [the workspace bringup tutorial](../../../book/src/tutorial/grow-your-workspace.md).
 ````
 
 - [ ] **Step 5: Fix the `nros::main!` forms block (lines 72–95)**
@@ -214,7 +214,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 3: Terminology drift sweep across other pages
 
 **Files:**
-- Modify (as hits dictate): `book/src/build/growing-your-workspace.md`, `book/src/operate/deployment.md`, `book/src/extending/board-trait.md`, `book/src/from-ros2/vs-micro-ros.md`, any other hit.
+- Modify (as hits dictate): `book/src/tutorial/grow-your-workspace.md`, `book/src/operate/deployment.md`, `book/src/extending/board-trait.md`, `book/src/from-ros2/vs-micro-ros.md`, any other hit.
 
 - [ ] **Step 1: Find all remaining stale terms book-wide**
 
@@ -276,7 +276,7 @@ In the `nros build` section, change the framing to: "`nros build` **delegates** 
 
 - [ ] **Step 5: Add a `system.toml` cross-reference note**
 
-Where root `nros.toml` is introduced, add one sentence: "Multi-node *topology* (which nodes, their wiring, per-target overrides) lives in a Bringup pkg's `system.toml` — see [Bringup](../../../book/src/build/growing-your-workspace.md). The root `nros.toml` carries deploy *targets* (`[deploy.<name>]`)." Do **not** delete `nros.toml` references.
+Where root `nros.toml` is introduced, add one sentence: "Multi-node *topology* (which nodes, their wiring, per-target overrides) lives in a Bringup pkg's `system.toml` — see [Bringup](../../../book/src/tutorial/grow-your-workspace.md). The root `nros.toml` carries deploy *targets* (`[deploy.<name>]`)." Do **not** delete `nros.toml` references.
 
 - [ ] **Step 6: Verify every documented verb exists in the shipped binary**
 
@@ -297,7 +297,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 5: New page — "From an app node to a workspace"
 
 **Files:**
-- Create: `book/src/build/growing-your-workspace.md`
+- Create: `book/src/tutorial/grow-your-workspace.md`
 
 - [ ] **Step 1: Write the page**
 
@@ -327,7 +327,7 @@ Expected: both exist.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/build/growing-your-workspace.md
+git add book/src/tutorial/grow-your-workspace.md
 git commit -m "docs(book): add 'From an app node to a workspace' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -338,7 +338,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 6: New page — "Prepare node packages"
 
 **Files:**
-- Create: `book/src/build/growing-your-workspace.md`
+- Create: `book/src/tutorial/grow-your-workspace.md`
 
 - [ ] **Step 1: Write the page**
 
@@ -371,7 +371,7 @@ Expected: both match.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/build/growing-your-workspace.md
+git add book/src/tutorial/grow-your-workspace.md
 git commit -m "docs(book): add 'Prepare node packages' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -382,7 +382,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 7: New page — "Bringup: launch + system.toml"
 
 **Files:**
-- Create: `book/src/build/growing-your-workspace.md`
+- Create: `book/src/tutorial/grow-your-workspace.md`
 
 **Note:** This page cites `examples/templates/multi-node-workspace/` (Task 10). If Task 10 runs after, leave the link in place — Task 11 link-checks the whole book.
 
@@ -431,7 +431,7 @@ Expected: exists.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/build/growing-your-workspace.md
+git add book/src/tutorial/grow-your-workspace.md
 git commit -m "docs(book): add 'Bringup: launch + system.toml' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -442,7 +442,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 8: New page — "Entry package: boot on a board"
 
 **Files:**
-- Create: `book/src/build/growing-your-workspace.md`
+- Create: `book/src/tutorial/grow-your-workspace.md`
 
 - [ ] **Step 1: Write the page**
 
@@ -479,7 +479,7 @@ Expected: both match.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add book/src/build/growing-your-workspace.md
+git add book/src/tutorial/grow-your-workspace.md
 git commit -m "docs(book): add 'Entry package: boot on a board' tutorial page
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -496,10 +496,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 After the `Your own message package` line and before `Troubleshooting — First 10 Minutes`, add:
 ```
-- [From an app node to a workspace](../../../book/src/build/growing-your-workspace.md)
-- [Prepare node packages](../../../book/src/build/growing-your-workspace.md)
-- [Bringup: launch + system.toml](../../../book/src/build/growing-your-workspace.md)
-- [Entry package: boot on a board](../../../book/src/build/growing-your-workspace.md)
+- [From an app node to a workspace](../../../book/src/tutorial/grow-your-workspace.md)
+- [Prepare node packages](../../../book/src/tutorial/grow-your-workspace.md)
+- [Bringup: launch + system.toml](../../../book/src/tutorial/grow-your-workspace.md)
+- [Entry package: boot on a board](../../../book/src/tutorial/grow-your-workspace.md)
 ```
 
 - [ ] **Step 2: Verify each linked file exists**

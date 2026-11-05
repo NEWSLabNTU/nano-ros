@@ -216,7 +216,7 @@ quality on every axis where nano-ros can be validated externally.
   background + response-time formulas.
 - [Formal Verification](../internals/testing/verification.html) — Kani + Verus harnesses.
 - [Safety Protocol](safety-protocol.md) — E2E CRC + sequence tracking.
-- [Choosing an RMW Backend](../communicate/choosing-an-rmw.md) — backend
+- [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) — backend
   capability matrix.
 - [Supported Boards](../reference/supported-boards.md) — per-board
   status + caveats.

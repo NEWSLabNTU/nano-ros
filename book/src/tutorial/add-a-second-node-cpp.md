@@ -6,7 +6,7 @@ Build, run, and verify a single nano-ros publisher node on Linux from
 C++. The node is a C++ library built with CMake, in the ament shape; the
 program around it is generated. Uses the Zenoh backend.
 
-> **Stuck?** See [Troubleshooting — First 10 Minutes](first-10-minutes.md) for the common first-build errors.
+> **Stuck?** See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md) for the common first-build errors.
 
 ## Prereqs
 
@@ -51,7 +51,7 @@ bringup with no launch file of its own, since the build generates it.
 and one `[image.<id>]` per target naming its `board`. No line of the node
 package names a platform, a board or an RMW, so moving the talker to a board
 is another `[image.<id>]` block in the bringup;
-[First Node — C](first-node-c.md#the-bringup-package) shows the file in full.
+[First Node — C](add-a-second-node-c.md#the-bringup-package) shows the file in full.
 The `package.xml` `<nano_ros deploy=… board=… rmw=…/>` export that used to
 carry that tuple is retired and refused.
 
@@ -243,14 +243,14 @@ talker. If it does not appear in 30 seconds:
    program stops, naming the step.
 2. `-3` / `-100` on stderr both mean the transport did not open: check
    `NROS_LOCATOR` and the router's port.
-3. See [Troubleshooting — First 10 Minutes](first-10-minutes.md).
+3. See [Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md).
 
 ## Next
 
 - Add a subscriber: from the workspace root,
   `nros new cpp_listener_node --lang cpp --template listener --to cpp_talker_node_bringup`
   adds a second node package and its component row
-  ([Growing your workspace](../build/growing-your-workspace.md)).
+  ([Growing your workspace](grow-your-workspace.md)).
 - Services, actions and several C++ node packages in one workspace:
   the C++ language workspace,
   [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp),

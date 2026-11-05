@@ -54,11 +54,11 @@ fn main() {
 ```
 
 The same program in C and C++ is in the First Node guides:
-[Rust](../get-started/first-node-rust.md) ·
-[C](../get-started/first-node-c.md) ·
-[C++](../get-started/first-node-cpp.md).
+[Rust](../tutorial/add-a-second-node.md) ·
+[C](../tutorial/add-a-second-node-c.md) ·
+[C++](../tutorial/add-a-second-node-cpp.md).
 When a project grows beyond one node, continue with
-[Multi-Node Project Layout](../build/growing-your-workspace.md).
+[Multi-Node Project Layout](../tutorial/grow-your-workspace.md).
 
 ## What you get
 
@@ -74,7 +74,7 @@ When a project grows beyond one node, continue with
   `system.toml`, then build again.
 - **Fits a microcontroller.** The core is `no_std`, with the `alloc` and
   `std` features opt-in, and runs on a bare-metal Cortex-M3. Whether your
-  image needs an allocator depends on the backend you choose: [Choosing an RMW Backend](../communicate/choosing-an-rmw.md)
+  image needs an allocator depends on the backend you choose: [Choosing an RMW Backend](../tutorial/pick-the-rmw.md)
   says which does.
 - **Rust, C or C++.** The core is Rust, with C and C++ APIs over it; the C
   API follows rclc conventions. One workspace can mix all three.

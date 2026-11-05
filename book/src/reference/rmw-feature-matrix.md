@@ -92,6 +92,6 @@ Per-policy semantics: [RMW vs upstream §7](../extending/rmw-vs-upstream.md).
 
 ## Related
 
-- [Choosing an RMW Backend](../communicate/choosing-an-rmw.md) — the
+- [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) — the
   decision tree, and how each backend works
 - [Support Status](support-status.md) — versions, pins, and CI tiers

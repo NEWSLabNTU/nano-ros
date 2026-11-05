@@ -310,7 +310,7 @@ BOOK_CLAIMS = (
         "covers": "names the checked image",
     },
     {
-        "file": "book/src/communicate/choosing-an-rmw.md",
+        "file": "book/src/tutorial/pick-the-rmw.md",
         "text": "not heap-free: each allocation goes through",
         "kind": "disclaimer",
         "why": "says XRCE is NOT heap-free (it replaced 'no heap required', "
