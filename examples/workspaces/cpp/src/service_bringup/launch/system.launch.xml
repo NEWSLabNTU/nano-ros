@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- The whole pair, for the workspace metadata probe. No image runs it:
+     each image is one role (RFC-0122 D1). -->
+<launch>
+  <node pkg="service_server_pkg" exec="add_server" name="add_server"/>
+  <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
+</launch>

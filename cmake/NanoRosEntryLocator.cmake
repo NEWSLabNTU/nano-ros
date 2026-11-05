@@ -109,7 +109,11 @@ set(NROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
 # instead of just a platform.
 #
 # Precedence, entry lane:
-#   `NROS_ENTRY_LOCATOR` (the `-D` cache override every RTOS fixture row passes)
+#   the image's own `locator` (`_nros_image_locator`, set by `nano_ros_entry`
+#   from the generated root's per-entry `LOCATOR` — phase-535 W3: images of one
+#   configure dial different routers, so it outranks the configure-wide `-D`,
+#   and a `-D` that disagrees is reported, not silently dropped)
+#   > `NROS_ENTRY_LOCATOR` (the `-D` cache override every RTOS fixture row passes)
 #   > board threadx-linux > the board's own gateway (RFC-0103 D10)
 #   > the QEMU-slirp default.
 #
@@ -155,7 +159,15 @@ function(_nros_resolve_entry_locator lane platform board out_var)
     endif()
 
     if(lane STREQUAL "entry")
-        if(DEFINED NROS_ENTRY_LOCATOR)
+        if(NOT "${_nros_image_locator}" STREQUAL "")
+            set(_loc "${_nros_image_locator}")
+            if(DEFINED NROS_ENTRY_LOCATOR AND NOT "${NROS_ENTRY_LOCATOR}" STREQUAL ""
+               AND NOT NROS_ENTRY_LOCATOR STREQUAL _nros_image_locator)
+                message(STATUS
+                    "nano-ros: this entry's image states locator ${_nros_image_locator}; "
+                    "it outranks -DNROS_ENTRY_LOCATOR=${NROS_ENTRY_LOCATOR} for this entry")
+            endif()
+        elseif(DEFINED NROS_ENTRY_LOCATOR)
             set(_loc "${NROS_ENTRY_LOCATOR}")
         elseif(board STREQUAL "threadx-linux")
             set(_loc "${NROS_LOCATOR_ENTRY_THREADX_LINUX}")

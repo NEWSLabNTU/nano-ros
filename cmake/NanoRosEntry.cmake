@@ -292,7 +292,7 @@ function(nano_ros_entry)
     # HOST is kept solely to fail loudly for a pre-phase-326 caller.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC;DOMAIN_ID;IMAGE"
+        "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC;DOMAIN_ID;IMAGE;LOCATOR;IMAGE_NET"
         "SOURCES;DEPLOY;LAUNCH_ARGS"
         ${ARGN})
 
@@ -996,6 +996,15 @@ function(nano_ros_entry)
         # carriers. Both are now rungs of `_nros_resolve_entry_locator()`, which
         # preserves each lane's own answers rather than merging them (they cite
         # different networks; see NanoRosEntryLocator.cmake).
+        # Phase-535 W3 — the image's own locator and network, which the
+        # generated root emits per entry (`LOCATOR` / `IMAGE_NET`): the pair
+        # images of one bringup share this configure. Set in THIS function's
+        # scope, so they shadow the configure-wide values for this entry only;
+        # the resolver and `nros_image_net` read them from here.
+        set(_nros_image_locator "${_NRA_LOCATOR}")
+        if(_NRA_IMAGE_NET)
+            set(NROS_IMAGE_NET "${_NRA_IMAGE_NET}")
+        endif()
         _nros_resolve_entry_locator(entry
             "${NROS_PLATFORM}" "${NROS_BOARD}" _nra_locator)
         target_compile_definitions(${_NRA_NAME} PRIVATE

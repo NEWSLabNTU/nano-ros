@@ -15,8 +15,9 @@ use nros_tests::{
     fixtures::{
         QemuProcess, RequireFixture, ZenohRouter, freertos, is_qemu_available,
         is_qemu_riscv64_available, nuttx, threadx_linux, threadx_riscv64,
-        zenohd_unavailable_reason,
+        workspace_image::PairRole, zenohd_unavailable_reason,
     },
+    matrix::Lang as MLang,
     output::{ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER},
     platform,
     process::ManagedProcess,
@@ -420,42 +421,42 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
     match (platform, lang, variant) {
         // FreeRTOS — Rust
         (Platform::Freertos, Lang::Rust, Variant::Pubsub) => BinaryPair {
-            first_builder: freertos::build_freertos_talker,
-            second_builder: freertos::build_freertos_listener,
+            first_builder: || freertos::pair_image(MLang::Rust, PairRole::Talker),
+            second_builder: || freertos::pair_image(MLang::Rust, PairRole::Listener),
         },
         (Platform::Freertos, Lang::Rust, Variant::Service) => BinaryPair {
-            first_builder: freertos::build_freertos_service_server,
-            second_builder: freertos::build_freertos_service_client,
+            first_builder: || freertos::pair_image(MLang::Rust, PairRole::ServiceServer),
+            second_builder: || freertos::pair_image(MLang::Rust, PairRole::ServiceClient),
         },
         (Platform::Freertos, Lang::Rust, Variant::Action) => BinaryPair {
-            first_builder: freertos::build_freertos_action_server,
-            second_builder: freertos::build_freertos_action_client,
+            first_builder: || freertos::pair_image(MLang::Rust, PairRole::ActionServer),
+            second_builder: || freertos::pair_image(MLang::Rust, PairRole::ActionClient),
         },
         // FreeRTOS — C
         (Platform::Freertos, Lang::C, Variant::Pubsub) => BinaryPair {
-            first_builder: freertos::build_freertos_c_talker,
-            second_builder: freertos::build_freertos_c_listener,
+            first_builder: || freertos::pair_image(MLang::C, PairRole::Talker),
+            second_builder: || freertos::pair_image(MLang::C, PairRole::Listener),
         },
         (Platform::Freertos, Lang::C, Variant::Service) => BinaryPair {
-            first_builder: freertos::build_freertos_c_service_server,
-            second_builder: freertos::build_freertos_c_service_client,
+            first_builder: || freertos::pair_image(MLang::C, PairRole::ServiceServer),
+            second_builder: || freertos::pair_image(MLang::C, PairRole::ServiceClient),
         },
         (Platform::Freertos, Lang::C, Variant::Action) => BinaryPair {
-            first_builder: freertos::build_freertos_c_action_server,
-            second_builder: freertos::build_freertos_c_action_client,
+            first_builder: || freertos::pair_image(MLang::C, PairRole::ActionServer),
+            second_builder: || freertos::pair_image(MLang::C, PairRole::ActionClient),
         },
         // FreeRTOS — C++
         (Platform::Freertos, Lang::Cpp, Variant::Pubsub) => BinaryPair {
-            first_builder: freertos::build_freertos_cpp_talker,
-            second_builder: freertos::build_freertos_cpp_listener,
+            first_builder: || freertos::pair_image(MLang::Cpp, PairRole::Talker),
+            second_builder: || freertos::pair_image(MLang::Cpp, PairRole::Listener),
         },
         (Platform::Freertos, Lang::Cpp, Variant::Service) => BinaryPair {
-            first_builder: freertos::build_freertos_cpp_service_server,
-            second_builder: freertos::build_freertos_cpp_service_client,
+            first_builder: || freertos::pair_image(MLang::Cpp, PairRole::ServiceServer),
+            second_builder: || freertos::pair_image(MLang::Cpp, PairRole::ServiceClient),
         },
         (Platform::Freertos, Lang::Cpp, Variant::Action) => BinaryPair {
-            first_builder: freertos::build_freertos_cpp_action_server,
-            second_builder: freertos::build_freertos_cpp_action_client,
+            first_builder: || freertos::pair_image(MLang::Cpp, PairRole::ActionServer),
+            second_builder: || freertos::pair_image(MLang::Cpp, PairRole::ActionClient),
         },
 
         // NuttX — Rust
@@ -1073,6 +1074,10 @@ fn listener_ready_marker(platform: Platform, lang: Lang) -> &'static str {
         (Platform::Freertos, Lang::Rust) | (Platform::ThreadxLinux, Lang::Rust) => {
             "Application setup complete"
         }
+        // phase-535 W3 — the FreeRTOS C++ pair cell runs the workspace
+        // listener (`examples/workspaces/cpp`), which prints the tutorial's
+        // subscription line and no "Waiting for messages" banner.
+        (Platform::Freertos, Lang::Cpp) => nros_tests::output::LISTENER_READY_MARKER,
         _ => "Waiting for messages",
     }
 }

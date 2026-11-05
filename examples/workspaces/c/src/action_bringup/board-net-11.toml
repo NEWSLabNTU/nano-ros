@@ -1,0 +1,5 @@
+# QEMU network for the image that states it in `os_config` (RFC-0109 D4).
+# The two images of a pair take distinct hosts, so their zenoh ZIDs differ.
+[eth0]
+network = "qemu"
+host = 11

@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
+</launch>

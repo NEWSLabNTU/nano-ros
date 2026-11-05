@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- The whole pair, for the workspace metadata probe. No image runs it:
+     each image is one role (RFC-0122 D1). -->
+<launch>
+  <node pkg="talker_pkg" exec="talker" name="talker"/>
+  <node pkg="listener_pkg" exec="listener" name="listener"/>
+</launch>

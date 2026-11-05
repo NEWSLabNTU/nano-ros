@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>action_bringup</name>
+  <version>0.1.0</version>
+  <description>The action pair of the c workspace, one image per role (phase-535).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>action_server_pkg</exec_depend>
+  <exec_depend>action_client_pkg</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

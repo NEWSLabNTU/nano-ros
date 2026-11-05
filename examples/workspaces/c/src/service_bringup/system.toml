@@ -1,0 +1,39 @@
+# phase-535 (RFC-0122 D1) — the service pair as images: one image per
+# (platform, role, rmw), ids `<platform>_<role>[_<rmw>]`. The test-side map
+# from a matrix cell to these ids is `nros_tests::fixtures::workspace_image`.
+# `locator` is the cell's `alloc::port_of` on QEMU's SLIRP host; the test
+# `pair_image_rows_dial_their_allocator_port` holds it there.
+
+[system]
+name = "c_service"
+rmw = "zenoh"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "service_server_pkg"
+class = "service_server_pkg::AddServer"
+name = "add_server"
+
+[[component]]
+pkg = "service_client_pkg"
+class = "service_client_pkg::AddClient"
+name = "add_client"
+
+[image_defaults]
+rmw = "zenoh"
+
+[image.freertos_service_server]
+board = "mps2-an385-freertos"
+launch = "service_server.launch.xml"
+locator = "tcp/10.0.2.2:7910"
+os_config = ["board-net-10.toml"]
+
+[image.freertos_service_client]
+board = "mps2-an385-freertos"
+launch = "service_client.launch.xml"
+locator = "tcp/10.0.2.2:7910"
+os_config = ["board-net-11.toml"]
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

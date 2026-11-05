@@ -53,11 +53,6 @@ pub fn is_cmake_available() -> bool {
 // =============================================================================
 
 static FREERTOS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Resolve the prebuilt firmware image for one `examples/mps2-an385-freertos/rust/<name>`
 /// Entry pkg.
@@ -129,36 +124,6 @@ pub fn build_freertos_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-pub fn build_freertos_listener() -> TestResult<&'static Path> {
-    FREERTOS_LISTENER_BINARY
-        .get_or_try_init(|| build_rust_example("listener", "qemu-freertos-listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_service_server() -> TestResult<&'static Path> {
-    FREERTOS_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_rust_example("service-server", "qemu-freertos-service-server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_service_client() -> TestResult<&'static Path> {
-    FREERTOS_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_rust_example("service-client", "qemu-freertos-service-client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_action_server() -> TestResult<&'static Path> {
-    FREERTOS_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_rust_example("action-server", "qemu-freertos-action-server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_action_client() -> TestResult<&'static Path> {
-    FREERTOS_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_rust_example("action-client", "qemu-freertos-action-client"))
-        .map(|p| p.as_path())
-}
-
 // =============================================================================
 // Phase 169.4b — FreeRTOS Rust DDS fixture builders deleted alongside
 // the Rust DDS retirement (Phase 169.2 deleted the example crates).
@@ -169,18 +134,8 @@ pub fn build_freertos_action_client() -> TestResult<&'static Path> {
 // =============================================================================
 
 static FREERTOS_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static FREERTOS_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static FREERTOS_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Build a FreeRTOS CMake example (C or C++).
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
@@ -206,68 +161,48 @@ pub fn build_freertos_cpp_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-pub fn build_freertos_cpp_listener() -> TestResult<&'static Path> {
-    FREERTOS_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "listener", "cpp_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_cpp_service_server() -> TestResult<&'static Path> {
-    FREERTOS_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-server", "cpp_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_cpp_service_client() -> TestResult<&'static Path> {
-    FREERTOS_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-client", "cpp_service_client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_cpp_action_server() -> TestResult<&'static Path> {
-    FREERTOS_CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-server", "cpp_action_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_cpp_action_client() -> TestResult<&'static Path> {
-    FREERTOS_CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-client", "cpp_action_client"))
-        .map(|p| p.as_path())
-}
-
 pub fn build_freertos_c_talker() -> TestResult<&'static Path> {
     FREERTOS_C_TALKER_BINARY
         .get_or_try_init(|| build_cmake_example("c", "talker", "c_talker"))
         .map(|p| p.as_path())
 }
 
-pub fn build_freertos_c_listener() -> TestResult<&'static Path> {
-    FREERTOS_C_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "listener", "c_listener"))
-        .map(|p| p.as_path())
-}
+// =============================================================================
+// phase-535 W3 — the example PAIRS are workspace images
+// =============================================================================
 
-pub fn build_freertos_c_service_server() -> TestResult<&'static Path> {
-    FREERTOS_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-server", "c_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_c_service_client() -> TestResult<&'static Path> {
-    FREERTOS_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-client", "c_service_client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_c_action_server() -> TestResult<&'static Path> {
-    FREERTOS_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-server", "c_action_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_freertos_c_action_client() -> TestResult<&'static Path> {
-    FREERTOS_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-client", "c_action_client"))
-        .map(|p| p.as_path())
+/// One role of a `(FreertosMps2, lang, Zenoh)` pair cell: its workspace image
+/// (RFC-0122 D1/D4), resolved by `fixtures::workspace_image` — the one place
+/// that knows the mapping — and cached for the process. The talker LEAF
+/// (`examples/mps2-an385-freertos/<lang>/talker`) is the platform's road
+/// witness (RFC-0122 D3); the pair cells run the workspace talker.
+pub fn pair_image(
+    lang: crate::matrix::Lang,
+    role: crate::fixtures::workspace_image::PairRole,
+) -> TestResult<&'static Path> {
+    use std::{collections::HashMap, sync::Mutex};
+    type Key = (u16, &'static str);
+    static CACHE: Mutex<Option<HashMap<Key, &'static Path>>> = Mutex::new(None);
+    let key = (lang.port_index(), role.token());
+    if let Some(p) = CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .get(&key)
+    {
+        return Ok(p);
+    }
+    let path = crate::fixtures::workspace_image::resolve_coord(
+        crate::matrix::PlatformId::FreertosMps2,
+        lang,
+        crate::matrix::Rmw::Zenoh,
+        role,
+    )?;
+    let leaked: &'static Path = Box::leak(path.into_boxed_path());
+    CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(key, leaked);
+    Ok(leaked)
 }
