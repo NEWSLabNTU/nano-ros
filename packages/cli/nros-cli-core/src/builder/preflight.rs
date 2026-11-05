@@ -74,7 +74,7 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
             // A prebuilt `rust-std` exists, so "is it installed" is the right
             // question and `rustup target add` is the answer.
             Provisioning::Rustup => {
-                if !rust_target_installed(target) {
+                if !rust_target_installed(target, root) {
                     out.push(Missing {
                         what: format!("Rust target `{target}` (board `{}`)", board.names[0]),
                         remedy: format!("rustup target add {target}"),
@@ -101,7 +101,7 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
             // default did not, and would have passed one whose nightly lacked it.
             Provisioning::BuildStd => {
                 let channel = board_rust_channel(board, nano_ros_root);
-                if !rust_component_installed("rust-src", channel.as_deref()) {
+                if !rust_component_installed("rust-src", channel.as_deref(), root) {
                     let on = channel
                         .as_deref()
                         .map(|c| format!(" --toolchain {c}"))
@@ -153,6 +153,7 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
 #[must_use]
 pub fn check_zephyr_rust(
     board: &BoardDescriptor,
+    root: &Path,
     missing_prereqs: impl Fn(&[String]) -> Vec<String>,
 ) -> Vec<Missing> {
     let mut out = Vec::new();
@@ -160,7 +161,7 @@ pub fn check_zephyr_rust(
         return out;
     };
     if let Some(target) = z.rust_target_for_host()
-        && !rust_target_installed(&target)
+        && !rust_target_installed(&target, root)
     {
         out.push(Missing {
             what: format!(
@@ -171,7 +172,7 @@ pub fn check_zephyr_rust(
         });
     }
     for c in &z.rust_components {
-        if !rust_component_installed(c, None) {
+        if !rust_component_installed(c, None, root) {
             out.push(Missing {
                 what: format!(
                     "rustup component `{c}` (a Rust image on board `{}`)",
@@ -311,17 +312,37 @@ pub(crate) fn board_rust_channel(
         .flatten()
 }
 
-/// Whether `rustup` reports a COMPONENT as installed (on `toolchain`, or the
-/// default when `None`).
+/// A `rustup` command that answers for the toolchain cargo will BUILD with in
+/// `root` (issue 2288).
+///
+/// rustup picks its toolchain from the CURRENT DIRECTORY: `RUSTUP_TOOLCHAIN`,
+/// then the nearest `rust-toolchain.toml` above the cwd, then the default. The
+/// build's cargo runs in the image's workspace, so that is the directory to ask
+/// from. A bare `rustup` asked the caller's cwd instead, and the Zephyr fixture
+/// driver runs `nros build` from the west workspace, OUTSIDE every checkout:
+/// there rustup answered for the default `stable` (minimal profile, no
+/// `x86_64-unknown-none`, no clippy) while the build would use the pinned
+/// `1.99.0`, which has both. The tier-2 nightly refused three Rust native_sim
+/// entries on that false answer.
+pub(crate) fn rustup_in(root: &Path) -> std::process::Command {
+    let mut c = std::process::Command::new("rustup");
+    if root.is_dir() {
+        c.current_dir(root);
+    }
+    c
+}
+
+/// Whether `rustup` reports a COMPONENT as installed (on `toolchain`, or else
+/// on the toolchain `root` resolves to -- [`rustup_in`]).
 ///
 /// Same false-negative-is-safe rule as [`rust_target_installed`]: no rustup ⇒
 /// report installed and let the build speak.
-fn rust_component_installed(component: &str, toolchain: Option<&str>) -> bool {
+fn rust_component_installed(component: &str, toolchain: Option<&str>, root: &Path) -> bool {
     let mut args = vec!["component", "list", "--installed"];
     if let Some(t) = toolchain {
         args.extend(["--toolchain", t]);
     }
-    let Ok(out) = std::process::Command::new("rustup").args(&args).output() else {
+    let Ok(out) = rustup_in(root).args(&args).output() else {
         return true;
     };
     if !out.status.success() {
@@ -338,7 +359,7 @@ fn rust_component_installed(component: &str, toolchain: Option<&str>) -> bool {
 /// a nix shell), this reports installed and lets the build speak for itself.
 /// Preflight exists to give a better message than the compiler, never to refuse
 /// a build the compiler would have accepted.
-/// The installed-target list, probed ONCE per process.
+/// The installed-target list, probed ONCE per process and directory.
 ///
 /// `None` means the probe could not answer -- no `rustup` on PATH, or it
 /// failed. Both callers then report the target as installed, because inventing
@@ -352,27 +373,38 @@ fn rust_component_installed(component: &str, toolchain: Option<&str>) -> bool {
 /// measured as absent. Caching does not make the probe more accurate; it makes
 /// the process SELF-CONSISTENT, which is what a caller comparing two answers
 /// actually needs. Issue 0726's class.
-fn installed_rust_targets() -> &'static Option<Vec<String>> {
-    static CACHE: std::sync::OnceLock<Option<Vec<String>>> = std::sync::OnceLock::new();
-    CACHE.get_or_init(|| {
-        let out = std::process::Command::new("rustup")
-            .args(["target", "list", "--installed"])
-            .output()
-            .ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        Some(
-            String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .map(|l| l.trim().to_string())
-                .collect(),
-        )
-    })
+///
+/// Keyed by the directory asked from (issue 2288): two workspaces in one
+/// process may pin different toolchains, and each answer is about its own.
+fn installed_rust_targets(root: &Path) -> Option<Vec<String>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Option<Vec<String>>>>,
+    > = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    let mut map = cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    map.entry(root.to_path_buf())
+        .or_insert_with(|| {
+            let out = rustup_in(root)
+                .args(["target", "list", "--installed"])
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None;
+            }
+            Some(
+                String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .collect(),
+            )
+        })
+        .clone()
 }
 
-fn rust_target_installed(target: &str) -> bool {
-    match installed_rust_targets() {
+fn rust_target_installed(target: &str, root: &Path) -> bool {
+    match installed_rust_targets(root) {
         // Cannot answer -- see above.
         None => true,
         Some(list) => list.iter().any(|l| l == target),
@@ -531,7 +563,7 @@ mod tests {
         //
         // Issue 0726's class exactly: a forked process that failed to START
         // under a fan-out, reported as a finding about the source tree.
-        let installed = rust_target_installed("nros-not-a-real-triple");
+        let installed = rust_target_installed("nros-not-a-real-triple", tmp.path());
         let m = check(&b, tmp.path(), None);
         if installed {
             // No rustup on this host: the check reports installed by design
@@ -578,7 +610,7 @@ mod tests {
         // ...and with NO checkout to read the list from, the old conservative
         // behaviour stands rather than a silent pass.
         let blind = check(&b, ws.path(), None);
-        if !rust_target_installed("armv7a-nuttx-eabihf") {
+        if !rust_target_installed("armv7a-nuttx-eabihf", ws.path()) {
             assert!(
                 blind
                     .iter()
@@ -691,7 +723,7 @@ mod tests {
         let z = board.zephyr.as_mut().unwrap();
         z.rust_target = Some("nros-not-a-real-triple".into());
         z.rust_components = vec!["nros-not-a-real-component".into()];
-        let got = check_zephyr_rust(&board, |keys| keys.to_vec());
+        let got = check_zephyr_rust(&board, &root, |keys| keys.to_vec());
         assert_eq!(got.len(), 3, "{got:?}");
         assert_eq!(got[0].remedy, "rustup target add nros-not-a-real-triple");
         assert_eq!(
@@ -709,6 +741,24 @@ mod tests {
         z.rust_target = None;
         z.rust_prereqs.clear();
         z.rust_components.clear();
-        assert!(check_zephyr_rust(&board, |keys| keys.to_vec()).is_empty());
+        assert!(check_zephyr_rust(&board, &root, |keys| keys.to_vec()).is_empty());
+    }
+
+    /// Issue 2288 -- every rustup probe asks from the image's WORKSPACE, where
+    /// cargo resolves its `rust-toolchain.toml`, never from the caller's cwd.
+    ///
+    /// Asserted on the command rather than on rustup's answer: under `cargo
+    /// test` rustup's proxy exports `RUSTUP_TOOLCHAIN` to this process, which
+    /// outranks the directory, so an answer-level test would pass with or
+    /// without the fix. The runner's `nros` is not under that proxy, which is
+    /// why the nightly saw the default toolchain.
+    #[test]
+    fn rustup_is_asked_from_the_workspace_it_builds() {
+        let ws = tempfile::tempdir().unwrap();
+        assert_eq!(rustup_in(ws.path()).get_current_dir(), Some(ws.path()));
+        // A root that does not exist (a plan for a workspace not yet created)
+        // keeps the caller's cwd rather than failing to spawn.
+        let gone = ws.path().join("absent");
+        assert_eq!(rustup_in(&gone).get_current_dir(), None);
     }
 }

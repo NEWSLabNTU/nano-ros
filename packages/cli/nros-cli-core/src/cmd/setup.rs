@@ -1276,7 +1276,10 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         );
         if !args.dry_run {
             for target in &meta.rust_targets {
-                let status = Command::new("rustup")
+                // Issue 2288 -- onto the toolchain the checkout pins, which is
+                // the one its builds use; a bare `rustup` added it to whatever
+                // the caller's cwd resolved to.
+                let status = crate::builder::preflight::rustup_in(&root)
                     .args(["target", "add", target])
                     .status()
                     .wrap_err("spawn rustup (is it on PATH?)")?;
