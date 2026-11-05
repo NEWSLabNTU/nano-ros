@@ -3387,7 +3387,6 @@ fn generate_facade_crates(
         }
     }
 
-    let facade_root = build_root.join("nros-selection");
     for (pkg_name, pkg_dir) in &candidates {
         // The CARGO manifest — NOT `WsPkg::manifest`, which is the ament
         // `package.xml`, and which the cargo-only members do not have at all.
@@ -3401,7 +3400,7 @@ fn generate_facade_crates(
             &cargo_toml,
             &bringup.dir,
             &sys,
-            &facade_root,
+            build_root,
             sdk_root,
         )
         .wrap_err_with(|| format!("sync: facade for {pkg_name}"))?
@@ -9316,7 +9315,7 @@ mod generated_freshness_tests {
         )
         .unwrap();
         // A sibling sync also writes that is NOT a message crate: never checked.
-        let facade = root.join("generated/nros-selection");
+        let facade = root.join("generated/nros-derived");
         fs::create_dir_all(&facade).unwrap();
         fs::write(facade.join("Cargo.toml"), "[package]\nname = \"sel\"\n").unwrap();
 
@@ -9447,7 +9446,7 @@ mod generated_freshness_tests {
         synced_workspace(t.path());
         assert!(is_generated_msg_crate(&t.path().join("generated/my_msgs")));
         assert!(!is_generated_msg_crate(
-            &t.path().join("generated/nros-selection")
+            &t.path().join("generated/nros-derived")
         ));
     }
 

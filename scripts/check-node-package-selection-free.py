@@ -9,7 +9,9 @@ selection crate, because the image's generated entry is what names the board
 (RFC-0121 D6). Two dependency spellings carry a selection into a node package:
 
   * a `<pkg>_nros_selection` crate — the generated selection package of the
-    standalone shape (RFC-0098 D6, `leaf_system::selection_crate_name`);
+    standalone shape (RFC-0098 D6, `leaf_system::selection_crate_name`), or
+    a `<entry>_nros_derived` crate — an OWNED entry's adapter (RFC-0071 D13,
+    `entry_names::adapter_crate_name`), which a node package never needs;
   * an `nros-board-*` crate — the board itself, by hand.
 
 Either, in any dependency table of the manifest (`[dependencies]`,
@@ -76,7 +78,8 @@ def tracked_files():
 def offending(name):
     """Is the dependency KEY `name` a selection or board crate?"""
     n = name.replace("-", "_")
-    return n.endswith("_nros_selection") or n.startswith("nros_board_")
+    return (n.endswith("_nros_selection") or n.endswith("_nros_derived")
+            or n.startswith("nros_board_"))
 
 
 def manifest_names(doc):
@@ -193,8 +196,10 @@ def self_test():
     expect(judge(violations(files, t.get), base) == ([], base),
            "a migrated manifest whose row stayed fails as stale")
     expect(offending("qemu-bsp-talker_nros_selection") and offending("nros_board_zephyr")
-           and not offending("nros-board") and not offending("nros_selection_tool"),
-           "the two spellings, and only those")
+           and offending("demo_entry_nros_derived")
+           and not offending("nros-board") and not offending("nros_selection_tool")
+           and not offending("nros_derived_tool"),
+           "the three spellings, and only those")
     return ok
 
 

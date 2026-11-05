@@ -68,16 +68,9 @@ pub enum Origin {
 }
 
 /// The package name `nros build` gives the entry it generates for
-/// `[image.<id>]` — `linux_robot1` → `linux_robot1_entry`.
-///
-/// Lives here, not in the CLI's builder, because [`for_entry`] (and so
-/// `nros::main!`, which cannot depend on the CLI) must map a generated entry
-/// back to its image by the SAME rule the builder named it by. Two copies of
-/// this rule would be a generated entry that cannot find its own image.
-#[must_use]
-pub fn entry_package_name(image_id: &str) -> String {
-    format!("{}_entry", image_id.replace(['-', '.', '/'], "_"))
-}
+/// `[image.<id>]`. Defined in [`crate::entry_names`], beside the owned
+/// entry's adapter name; re-exported here for [`for_entry`]'s callers.
+pub use crate::entry_names::entry_package_name;
 
 /// The generated selection package a package `pkg` depends on —
 /// `qemu-bsp-talker` → `qemu_bsp_talker_nros_selection`.

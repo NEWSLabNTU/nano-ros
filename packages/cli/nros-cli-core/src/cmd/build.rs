@@ -1169,6 +1169,32 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     ),
                 };
 
+                // RFC-0071 D13 — an OWNED entry (materialised, `nros new
+                // entry`) takes its derived features and registration from
+                // its adapter crate. Written here as well as by `nros
+                // configure`, so a build straight after `nros materialize`
+                // finds it (the heal the generated entry no longer needs).
+                // Write-if-changed, so an up-to-date adapter costs nothing.
+                if generated.dir.is_none() && manifest_dir == hand_written {
+                    let toml_path = bringup_dir.join("system.toml");
+                    let raw = std::fs::read_to_string(&toml_path)
+                        .map_err(|e| eyre::eyre!("reading {}: {e}", toml_path.display()))?;
+                    let sys = toml::from_str::<
+                        crate::orchestration::cargo_metadata_schema::SystemToml,
+                    >(&raw)
+                    .map_err(|e| eyre::eyre!("parsing {}: {e}", toml_path.display()))?;
+                    crate::orchestration::facade::write_facade(
+                        &want_entry,
+                        &hand_written,
+                        &hand_written.join("Cargo.toml"),
+                        &bringup_dir,
+                        &sys,
+                        &root.join("generated"),
+                        nano_ros_root.as_deref(),
+                    )
+                    .map_err(|e| eyre::eyre!("writing the adapter for `{qual}`: {e}"))?;
+                }
+
                 cargo_roots.push(manifest_dir.clone());
                 record_dirs.push(image_dir.join("target"));
 
@@ -4541,159 +4567,6 @@ fn generate_entry(
         Some(f) => format!("{bringup}:{f}"),
         None => bringup.to_string(),
     };
-    // DEFERRED, not immediate — the fatal below fires AFTER the entry package is
-    // written. See the block comment there.
-    let mut facade_missing_fatal: Option<String> = None;
-    let facade_dir = {
-        let d = root
-            .join("generated/nros-selection")
-            .join(crate::builder::entry::package_name(image_id));
-        if d.is_dir() {
-            Some(d)
-        } else {
-            // SAY SO. The facade carries the RMW, the ROS edition and the
-            // capability features, and the Entry is emitted without any of them
-            // when it is missing — silently, until the build fails somewhere
-            // that names none of it. Issue 0937 was one of these: the NuttX
-            // Entry reached the tree's single `#[global_allocator]` only through
-            // the facade, so a missing facade surfaced as
-            //
-            //     error: no global memory allocator found but one is required
-            //
-            // several hundred lines into a cross build, and the nightly cell
-            // stayed red while the same Entry built fine in the workspace next
-            // door, which happened to have one.
-            //
-            // WARN or FAIL, decided by what the facade would have CARRIED —
-            // phase-413 W2.
-            //
-            // "An unsynced workspace is a tolerable state" is true exactly when
-            // the facade adds nothing the Entry cannot do without. It is false
-            // the moment the system declares a CAPABILITY: those reach the
-            // Entry only through the facade's `nros` feature list, so building
-            // without it produces an Entry that provably cannot be correct, and
-            // the failure lands somewhere that names neither sync nor the
-            // facade. `host-tests` spent four runs on the far end of that:
-            //
-            //   error[E0080]: evaluation panicked: this system declares
-            //   `[param_services]` but this `nros` build does not carry the
-            //   `param-services` feature
-            //     --> build/posix-zenoh/linux_rust_qos_entry/src/main.rs:9:1
-            //
-            // — a const-eval panic in a generated `main.rs`, six lines below
-            // this very warning in the same log. The warning was right and
-            // nobody read it, which is what a warning is worth on a build that
-            // continues.
-            //
-            // The RMW and ROS edition USED to stay a warning, on the grounds
-            // that "both have defaults the Entry can build against". Issue 0831
-            // took that away and the warning did not follow.
-            //
-            // The board crate's `default = ["rmw-zenoh"]` was that default. It
-            // is gone: 0831 made the facade the ONE place that names the RMW,
-            // so `builder::entry` now emits the board dep
-            // `default-features = false` (cargo cannot subtract a default —
-            // issue 0270 — so both declarations have to be silent about it).
-            // Measured on this tree, `[image.linux_cyclonedds] rmw =
-            // "cyclonedds"` with no facade:
-            //
-            //     nros-board-linux = { path = "…", default-features = false }
-            //
-            // No `rmw-*` at all, and no `ethernet` / `image-runtime` either —
-            // the facade is what re-supplies the board's non-RMW defaults. So
-            // the Entry that warning lets through has NO backend, NO ROS
-            // edition and none of the board's own defaults, while the message
-            // says "nothing else is lost". That is 0831's shape exactly, one
-            // door over: `[image.<id>].rmw` is declared, cannot take effect,
-            // and the build says so in a line that reads like reassurance.
-            //
-            // So there is no tolerable case left, and the split goes away. The
-            // heal below is what makes that affordable — it WRITES the facade
-            // from the entry just generated, so nothing is refused that can be
-            // repaired, and only a facade that cannot be written is fatal.
-            // `declares_capability` survives because it makes the refusal name
-            // the right remedy.
-            let declares_capability = declared_capabilities(bringup_dir);
-
-            if !declares_capability.is_empty() {
-                // RECORDED, and raised after `builder::entry::write` below.
-                //
-                // Bailing HERE deadlocks a fresh checkout, and it did: this
-                // check shipped as an immediate `bail!` and `host-tests` went
-                // from a const-eval panic to
-                //
-                //   Error: nros build: `linux_rust_qos` needs a selection
-                //   facade and there is none at …
-                //
-                // which is this message — correct, and unescapable. `nros sync`
-                // writes a facade per ENTRY PACKAGE, and the entry package is
-                // GENERATED BY THIS FUNCTION: the workspace root lists
-                // `build/posix-zenoh/<entry>` as a cargo member, but the
-                // directory is untracked, so on a clone sync finds no
-                // `Cargo.toml` there and skips it (`ws.rs`: `if
-                // !cargo_toml.is_file() { continue; }`). Bail before writing
-                // the entry and sync can never see it, so the facade can never
-                // exist, so the build can never proceed.
-                //
-                // The pre-existing WARNING was self-healing for exactly this
-                // reason — it wrote a featureless Entry, the next sync saw the
-                // package and produced the facade, and the build after that was
-                // correct. That is what "an unsynced workspace is a state the
-                // build is documented to tolerate" bought, and turning the
-                // warning into an immediate error spent it without noticing.
-                //
-                // So: generate the entry (cheap, and it is what unblocks sync),
-                // THEN refuse to go further. Loud at the point of decision, and
-                // the remedy it names actually works.
-                facade_missing_fatal = Some(format!(
-                    // See issue 0937.
-                    "nros build: `{image_id}` needs a selection facade and there is none at {}.\n\
-                     \n\
-                     Its system declares {} — capabilities reach the Entry ONLY through the\n\
-                     facade's `nros` feature list, so building without it yields an Entry that\n\
-                     cannot be correct. The failure would surface later as a const-eval panic\n\
-                     in a generated `main.rs` naming neither sync nor this facade.\n\
-                     \n\
-                     The entry package HAS been generated, so `nros configure` can see it now.\n\
-                     Run `nros configure` in the workspace, then build again (or `just build\n\
-                     <scope>`, which runs codegen for you).",
-                    d.display(),
-                    declares_capability
-                        .iter()
-                        .map(|c| format!("`[{c}]`"))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                ));
-            } else {
-                // Issue 0831. Same deferral, same self-heal, different reason:
-                // the facade carries the RMW this image DECLARED and the ROS
-                // edition, and since 0831 the Entry has no other way to get
-                // either.
-                facade_missing_fatal = Some(format!(
-                    // See issue 0831.
-                    "nros build: `{image_id}` needs a selection facade and there is none at {}.\n\
-                     \n\
-                     The facade is the one place that names {} and the ROS edition: the\n\
-                     generated entry declares its board crate `default-features = false`\n\
-                     precisely so the facade can name the backend once, so\n\
-                     without it the entry links NO RMW backend, no ROS edition and none of\n\
-                     the board's own defaults. It would compile and then refuse to select a\n\
-                     backend at run time, in a build directory named for the one it declared.\n\
-                     \n\
-                     The entry package HAS been generated, so `nros configure` can see it now.\n\
-                     Run `nros configure` in the workspace, then build again (or `just build\n\
-                     <scope>`, which runs codegen for you).",
-                    d.display(),
-                    match image.rmw.as_deref() {
-                        Some(r) => format!("this image's `rmw = \"{r}\"`"),
-                        None => "the bringup's `[system] rmw`".to_string(),
-                    },
-                ));
-            }
-            None
-        }
-    };
-
     // Most specific first: the image id IS the deploy key when an image is
     // named after a board, but `[image.linux_service_server]` is not, and
     // `[image.robot1]` is not — so the board and platform back it up. ONE list,
@@ -4735,7 +4608,8 @@ fn generate_entry(
         before_boot: image.before_boot.clone(),
         nodes,
         nano_ros_root: nros_root.to_path_buf(),
-        facade_dir,
+        // Derived below, once the board crate is known.
+        selection: None,
         // A `[[bridge]]` in the bringup makes the macro emit a call into
         // `nros_bridge`; nothing in the package graph implies it, and the
         // hand-written bridge entries listed it by hand.
@@ -4840,6 +4714,33 @@ fn generate_entry(
         facts.board_features.sort();
         facts.board_features.dedup();
     }
+    // RFC-0071 D13 — the entry states its own features and registration; no
+    // selection package is written for it. Read from the bringup's
+    // `system.toml`, the declaration the image belongs to.
+    {
+        let toml_path = bringup_dir.join("system.toml");
+        let raw = std::fs::read_to_string(&toml_path)
+            .map_err(|e| eyre::eyre!("reading {}: {e}", toml_path.display()))?;
+        let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+            .map_err(|e| eyre::eyre!("parsing {}: {e}", toml_path.display()))?;
+        let board_dir = facts.board_crate.as_ref().map(|k| {
+            nros_root.join(
+                facts
+                    .crate_path
+                    .clone()
+                    .unwrap_or_else(|| format!("packages/boards/{k}")),
+            )
+        });
+        spec.selection = Some(
+            crate::orchestration::facade::entry_selection(
+                &crate::builder::entry::package_name(image_id),
+                &sys,
+                nros_root,
+                board_dir.as_deref(),
+            )
+            .map_err(|e| eyre::eyre!("deriving the selection for `{image_id}`: {e}"))?,
+        );
+    }
     let parent = entry_dir_for_deps
         .parent()
         .expect("generated_entry_dir always has a coordinate parent")
@@ -4853,121 +4754,7 @@ fn generate_entry(
             .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
     }
 
-    // NOW refuse — the entry package exists, so `nros sync` can produce the
-    // facade this build needed. Raising it earlier deadlocks a clone: sync
-    // keys facades off the entry package, and this function is what writes it.
-    if let Some(msg) = facade_missing_fatal {
-        // SELF-HEAL, because CI only ever gets one pass.
-        //
-        // Deferring the refusal until after the entry was written (the previous
-        // fix) made a DEVELOPER's tree recoverable: sync could finally see the
-        // entry package, so the next `nros build` succeeded. It did nothing for
-        // CI, and `host-tests` proved it — the run does
-        //
-        //     just _codegen        (sync: no entry yet, so no facade)
-        //     nros build           (writes the entry, then refuses)
-        //
-        // and there is no second sync, so the lane failed on the same message
-        // with the fix in place. A fresh checkout every run means the two-pass
-        // recovery never happens.
-        //
-        // But nothing here actually needs sync. `write_facade` wants the entry
-        // name, its directory, its manifest, the system and the facade root —
-        // and we hold all five, because we just generated the entry. The one
-        // input sync was missing is the thing this function produces.
-        //
-        // So: write the facade, then regenerate the entry with it. The second
-        // write is not optional — the first ran with `facade_dir = None`, so
-        // the entry carries no dependency on the facade crate, and a facade no
-        // entry depends on selects nothing (cargo feature unification is the
-        // whole mechanism). Two file writes, one build, no second invocation.
-        //
-        // Still fatal if the facade cannot be written: that is a real problem
-        // and the message already names it.
-        //
-        // Issue 0831 — this now runs for EVERY missing facade, not only the
-        // capability case. Once the board dep is emitted
-        // `default-features = false`, a facade-less entry has no backend at
-        // all, so there is nothing left for a warning to be tolerant of; and
-        // healing is two file writes against inputs this function already
-        // holds, so nothing that can be repaired is refused.
-        //
-        // The heal's own failure is REPORTED, not swallowed. It used to be
-        // `.ok().flatten()`, which was tolerable while this ran only for a
-        // workspace that declares capabilities; now that every missing facade
-        // comes through here, "could not write it" is a message a user will
-        // actually meet, and `resolve_rmw` refusing an unknown `rmw` is one of
-        // the ways to get it. Naming sync when the real answer is a typo in
-        // `[image.<id>] rmw` is the diagnostic this issue is about.
-        let facade_root = facade_root(root);
-        let entry_name = crate::builder::entry::package_name(image_id);
-        let healed = write_entry_facade(&entry_name, &dir, bringup_dir, &facade_root);
-
-        let healed = match healed {
-            Ok(Some(f)) => Some(f),
-            Ok(None) => None,
-            Err(e) => eyre::bail!("{msg}\n\nWriting it here failed too: {e}"),
-        };
-        let Some(_) = healed else {
-            eyre::bail!("{msg}");
-        };
-        eprintln!(
-            "nros build: wrote the missing selection facade for `{image_id}` from the entry \
-             just generated, and regenerated the entry against it."
-        );
-        spec.facade_dir = Some(facade_root.join(&entry_name));
-        crate::builder::entry::write(&spec, &facts, &parent)
-            .map_err(|e| eyre::eyre!("regenerating the entry for `{image_id}`: {e}"))?;
-    } else if spec.facade_dir.is_some() {
-        // Issue 1962 — a facade that EXISTS is rewritten too, every build.
-        //
-        // The heal above used to be the only writer this function had, so a
-        // facade was written once — the first build that found none — and
-        // then reused by every build after it, whatever generator wrote it.
-        // `nros sync` does not refresh it either: sync writes a facade per
-        // Rust package it can SEE, and a generated entry under
-        // `build/<coordinate>/` is not one of them. When the generator grew
-        // the `__nros_register_backends!` / `__nros_register_type!` macros
-        // (RFC-0071 D11) the bridge workspaces kept a 2026-10-15 facade
-        // without them, and their entries stopped compiling:
-        //
-        //     error[E0433]: cannot find `__nros_register_backends` in
-        //     `linux_entry_nros_selection`
-        //
-        // `write_facade` writes only what changed, so this costs nothing on an
-        // up-to-date tree, and the entry already depends on this directory, so
-        // it needs no second write.
-        let entry_name = crate::builder::entry::package_name(image_id);
-        write_entry_facade(&entry_name, &dir, bringup_dir, &facade_root(root))
-            .map_err(|e| eyre::eyre!("refreshing the selection facade for `{image_id}`: {e}"))?;
-    }
-
     Ok(GeneratedEntry { dir: Some(dir) })
-}
-
-/// Write the selection facade for the generated entry at `dir` from the
-/// bringup's `system.toml` — the heal for a missing one, and the refresh for
-/// one an older generator wrote (issue 1962).
-fn write_entry_facade(
-    entry_name: &str,
-    dir: &Path,
-    bringup_dir: &Path,
-    facade_root: &Path,
-) -> Result<Option<crate::orchestration::facade::Facade>> {
-    let raw = std::fs::read_to_string(bringup_dir.join("system.toml"))
-        .map_err(|e| eyre::eyre!("reading {}: {e}", bringup_dir.join("system.toml").display()))?;
-    let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
-        .map_err(|e| eyre::eyre!("parsing the bringup's system.toml: {e}"))?;
-    crate::orchestration::facade::write_facade(
-        entry_name,
-        dir,
-        &dir.join("Cargo.toml"),
-        bringup_dir,
-        &sys,
-        facade_root,
-        // A generated entry names every runtime crate by path.
-        None,
-    )
 }
 
 /// What [`generate_entry`] produced for one image.
@@ -6226,12 +6013,6 @@ fn names_west_build_dir(west_extra: &[String]) -> bool {
     })
 }
 
-/// The directory the build's missing-facade HEAL writes selection facades
-/// under — `generated/nros-selection/`, keyed by the ENTRY name alone.
-fn facade_root(root: &Path) -> PathBuf {
-    root.join("generated/nros-selection")
-}
-
 /// Every path an image's build GENERATES that is keyed on its image id,
 /// workspace-relative — or nothing, when a hand-written application suppresses
 /// generation.
@@ -6252,7 +6033,8 @@ fn facade_root(root: &Path) -> PathBuf {
 ///   "contributes nothing");
 /// * on the west road an `[image.<id>] entry` names the application, and
 ///   `generate_entry` is never called;
-/// * cargo and west write the entry package and (on a heal) its facade;
+/// * cargo and west write the entry package (it has no selection package
+///   since RFC-0071 D13);
 ///   cmake emits a target of that name into the root at `build/<cmake-coord>/`.
 fn generated_outputs(
     root: &Path,
@@ -6270,10 +6052,9 @@ fn generated_outputs(
     let rel = |p: PathBuf| p.strip_prefix(root).map(Path::to_path_buf).unwrap_or(p);
     match driver {
         Driver::West if image.entry.is_some() => Vec::new(),
-        Driver::Cargo | Driver::West => vec![
-            rel(generated_entry_dir(root, platform, image, image_id)),
-            rel(facade_root(root).join(&pkg)),
-        ],
+        Driver::Cargo | Driver::West => {
+            vec![rel(generated_entry_dir(root, platform, image, image_id))]
+        }
         Driver::CMake => vec![
             PathBuf::from("build")
                 .join(cmake_coordinate(platform, image, bringup_dir))
@@ -7555,57 +7336,6 @@ domain_id = 0
         let junk = bringup_with("this is not toml {{{");
         assert!(declared_capabilities(junk.path()).is_empty());
     }
-
-    /// Issue 1962 — a facade an OLDER generator wrote is rewritten, not
-    /// reused. The bridge workspaces kept a 2026-10-15 facade with no
-    /// registration macros, and `nros::main!` could not find them.
-    #[test]
-    fn a_stale_facade_is_rewritten_by_the_current_generator() {
-        let ws = tempfile::tempdir().unwrap();
-        let root = ws.path();
-        let nros = root.join("nros");
-        std::fs::create_dir_all(&nros).unwrap();
-        std::fs::write(
-            nros.join("Cargo.toml"),
-            "[package]\nname = \"nros\"\n\n[features]\nros-humble = []\n",
-        )
-        .unwrap();
-        let bringup = root.join("src/demo_bringup");
-        std::fs::create_dir_all(&bringup).unwrap();
-        std::fs::write(
-            bringup.join("system.toml"),
-            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
-             [image.linux]\nboard = \"linux\"\n",
-        )
-        .unwrap();
-        let entry = root.join("build/posix-zenoh/linux_entry");
-        std::fs::create_dir_all(&entry).unwrap();
-        std::fs::write(
-            entry.join("Cargo.toml"),
-            "[package]\nname = \"linux_entry\"\nversion = \"0.1.0\"\n\n\
-             [dependencies]\nnros = { path = \"../../../nros\" }\n",
-        )
-        .unwrap();
-        let facades = facade_root(root);
-        let stale = facades.join("linux_entry/src/lib.rs");
-        std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
-        std::fs::write(
-            &stale,
-            "//! This crate is intentionally empty.\n#![no_std]\n",
-        )
-        .unwrap();
-
-        let f = write_entry_facade("linux_entry", &entry, &bringup, &facades)
-            .unwrap()
-            .expect("an image claims the entry: a facade");
-        assert!(f.changed, "the stale facade must be rewritten");
-        let lib = std::fs::read_to_string(&stale).unwrap();
-        assert!(
-            lib.contains("macro_rules! __nros_register_backends")
-                && lib.contains("macro_rules! __nros_register_type"),
-            "the rewritten facade carries the registration macros:\n{lib}"
-        );
-    }
 }
 
 #[cfg(test)]
@@ -8859,7 +8589,7 @@ mod generated_output_collision_tests {
     /// application, so both west leaves were configured on ONE generated
     /// directory, and the authored-tier image booted `derived-telem_node`.
     #[test]
-    fn two_bringups_generating_one_id_collide_on_the_entry_and_the_facade() {
+    fn two_bringups_generating_one_id_collide_on_the_entry() {
         let t = tempfile::tempdir().unwrap();
         let z = img("zephyr");
         let claims = vec![
@@ -8876,10 +8606,7 @@ mod generated_output_collision_tests {
         let paths: Vec<String> = got.iter().map(|(p, _)| p.display().to_string()).collect();
         assert_eq!(
             paths,
-            vec![
-                "build/zephyr-zenoh/zephyr_entry".to_string(),
-                "generated/nros-selection/zephyr_entry".to_string(),
-            ],
+            vec!["build/zephyr-zenoh/zephyr_entry".to_string()],
             "{got:?}"
         );
         for (_, q) in &got {
