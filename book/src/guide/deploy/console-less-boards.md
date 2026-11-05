@@ -97,6 +97,6 @@ with the probe detached, using the two records above, before filing it.
 
 ## See also
 
-- [Serial Transport](../rmw/use-a-serial-link.md), including the two settings a
+- [Use a serial link](../rmw/use-a-serial-link.md), including the two settings a
   Zephyr board joining over a UART needs.
 - [Logging](log-and-observe.md), for the log levels the boot record counts.
