@@ -10,7 +10,10 @@
 #   cargo build -p <entry> ... OR cmake --build ... --target <entry>
 #
 # Usage, from anywhere in the repo checkout:
-#   scripts/build/workspace-fixtures-build.sh <platform> [lang] [--id <id>]
+#   scripts/build/workspace-fixtures-build.sh <platform> [lang] [--id <id>] [--plan]
+#
+# `--plan` prints how the matched rows partition into build units (see
+# "Parallel fan-out" below and `workspace-fixture-units.py`) and builds nothing.
 #
 # Two ways to narrow to ONE manifest row, and they do NOT mean the same thing
 # (issue 0406):
@@ -36,6 +39,7 @@ fi
 
 id_filter="${NROS_FIXTURE_ID:-}"
 id_filter_source="env"
+plan_only=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --id)
@@ -52,9 +56,13 @@ while [ $# -gt 0 ]; do
             id_filter_source="flag"
             shift
             ;;
+        --plan)
+            plan_only=1
+            shift
+            ;;
         *)
             echo "workspace-fixtures-build.sh: unknown option: $1" >&2
-            echo "usage: workspace-fixtures-build.sh <platform> [lang] [--id <id>]" >&2
+            echo "usage: workspace-fixtures-build.sh <platform> [lang] [--id <id>] [--plan]" >&2
             exit 2
             ;;
     esac
@@ -332,9 +340,23 @@ build_workspace() {
 
         # BAKE path only: a pure-cargo `nros::main!` entry (no codegen_out)
         # bakes the system in the proc-macro, so it skips codegen-system.
+        #
+        # phase-535 W3 — under a lock on the output dir. Rows of one bringup
+        # share `codegen_out` and may now run in different build units at once
+        # (`workspace-fixture-units.py` deliberately does not join on it: no
+        # build reads it, and joining would chain every image of a bringup).
+        # The lock is the one step that writes it; it lives under the build
+        # root, never in the workspace, so it is no unignored write.
         if [ -n "$codegen_out" ]; then
             echo "     nros dev codegen system --bringup $bringup --out $codegen_out"
-            "$nros_cli" dev codegen system --bringup "$bringup" --out "$codegen_out" >/dev/null
+            local cg_lock_dir cg_lock
+            cg_lock_dir="$(nros_build_root)/workspace-fixtures-locks"
+            mkdir -p "$cg_lock_dir"
+            cg_lock="$cg_lock_dir/$(printf '%s' "$repo_root/$dir/$codegen_out" | sha1sum | cut -c1-16).lock"
+            (
+                flock 9
+                "$nros_cli" dev codegen system --bringup "$bringup" --out "$codegen_out" >/dev/null
+            ) 9>"$cg_lock"
         fi
 
         if [ "$lang" = "rust" ]; then
@@ -599,10 +621,10 @@ build_workspace() {
     return "$row_rc"
 }
 
-# Group-worker re-entry (parallel fan-out below): when NROS_WS_RECORDS_FILE is
-# set, this invocation IS one group worker — build the file's records serially
-# (they share a workspace dir: one `nros configure`, one .cargo/config.toml, one
-# cmake build tree — intra-group parallelism would race) and exit.
+# Unit-worker re-entry (parallel fan-out below): when NROS_WS_RECORDS_FILE is
+# set, this invocation IS one build-unit worker — build the file's records
+# serially (they write a common build tree or generated entry, which is what
+# put them in one unit — see `workspace-fixture-units.py`) and exit.
 if [ -n "${NROS_WS_RECORDS_FILE:-}" ]; then
     while IFS= read -r record; do
         [ -n "$record" ] || continue
@@ -640,6 +662,11 @@ if [ "${#live_records[@]}" -eq 0 ]; then
         exit 0
     fi
     echo "No workspace fixtures matched platform=$platform${lang_filter:+ lang=$lang_filter}."
+    exit 0
+fi
+
+if [ "$plan_only" = "1" ]; then
+    printf '%s\n' "${live_records[@]}" | python3 "$repo_root/scripts/build/workspace-fixture-units.py" plan
     exit 0
 fi
 
@@ -683,9 +710,27 @@ done
 bash "$repo_root/scripts/build/census-prepass.sh" --only images --platform "$platform" \
     ${lang_filter:+--lang "$lang_filter"} ${id_filter:+--id "$id_filter"}
 
+# phase-535 W3 — the BUILD UNITS: rows joined when they write a common build
+# tree or generated entry (`workspace-fixture-units.py` states the rule and
+# tests it). Units are independent of each other; rows inside one stay serial.
+# This used to be one group per workspace DIRECTORY, which serialised every row
+# of a workspace — fine at 2-3 rows, and 63 % slower than the leaves it replaced
+# once the phase-535 pilot put 9-11 images in one workspace.
+mapfile -t unit_lines < <(printf '%s\n' "${live_records[@]}" \
+    | python3 "$repo_root/scripts/build/workspace-fixture-units.py" group)
+[ "${#unit_lines[@]}" -eq "${#live_records[@]}" ] || {
+    echo "workspace-fixtures-build.sh: unit partition returned ${#unit_lines[@]} of ${#live_records[@]} rows" >&2
+    exit 2
+}
+unit_count=0
+for line in "${unit_lines[@]}"; do
+    u="${line%%$'\t'*}"
+    if [ "$((u + 1))" -gt "$unit_count" ]; then unit_count=$((u + 1)); fi
+done
+
 pinned_make="$(nros dev sdk path make)/bin/make"
 use_pool=0
-if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "${#group_dirs[@]}" -gt 1 ] && \
+if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "$unit_count" -gt 1 ] && \
    [ -x "$pinned_make" ] && "$pinned_make" --version | head -1 | grep -q "4.4"; then
     use_pool=1
 fi
@@ -717,9 +762,9 @@ if [ -x "$pinned_ninja_dir/ninja" ]; then
 fi
 export PATH="$pinned_tool_path:$PATH"
 
-# Parallel fan-out — one make target per WORKSPACE DIR (rows within a dir stay
-# serial inside their group worker), scheduled by pinned make 4.4's fifo
-# jobserver with the full NROS_BUILD_JOBS budget as the token pool. The
+# Parallel fan-out — one make target per BUILD UNIT (rows within a unit stay
+# serial inside their worker), scheduled by pinned make 4.4's fifo jobserver
+# with the full NROS_BUILD_JOBS budget as the token pool. The
 # recipes run bare `cmake --build`/`cargo build` (CMAKE_BUILD_PARALLEL_LEVEL
 # is unset for the pool path), so every ninja/cargo joins the pool and total
 # concurrency stays at the budget no matter how many groups run at once.
@@ -733,20 +778,22 @@ mkdir -p "$work_root"
 stamp="$(date +%Y%m%d-%H%M%S)-$$"
 makefile="$work_root/ws-$platform-$stamp.mk"
 group_targets=()
-gi=0
-for dir in "${group_dirs[@]}"; do
+for ((gi = 0; gi < unit_count; gi++)); do
     group_file="$work_root/ws-$platform-$stamp-group-$gi.records"
     : > "$group_file"
-    for record in "${live_records[@]}"; do
-        IFS=$'\x1f' read -r _ _ rdir _ <<< "$record"
-        [ "$rdir" = "$dir" ] && printf '%s\n' "$record" >> "$group_file"
+    gdesc=""
+    for line in "${unit_lines[@]}"; do
+        [ "${line%%$'\t'*}" = "$gi" ] || continue
+        record="${line#*$'\t'}"
+        printf '%s\n' "$record" >> "$group_file"
+        IFS=$'\x1f' read -r rid _ rdir _ <<< "$record"
+        if [ -z "$gdesc" ]; then gdesc="$rdir: $rid"; else gdesc="$gdesc $rid"; fi
     done
-    group_targets+=("ws-group-$gi|$group_file|$dir")
-    gi=$((gi + 1))
+    group_targets+=("ws-group-$gi|$group_file|$gdesc")
 done
 
 {
-    printf '# Generated by workspace-fixtures-build.sh (%s groups)\n' "${#group_dirs[@]}"
+    printf '# Generated by workspace-fixtures-build.sh (%s build units)\n' "$unit_count"
     printf 'SHELL := /bin/bash\n'
     printf '.SHELLFLAGS := -eu -o pipefail -c\n'
     printf '.DELETE_ON_ERROR:\n'
@@ -777,7 +824,7 @@ done
         # A stricter parser meeting a caller that always passed placeholders is
         # the entire bug, and the fix belongs on the caller: it should never
         # have been sending arguments it did not have.
-        printf '\t+@echo "== workspace group: %s =="; env -u CMAKE_BUILD_PARALLEL_LEVEL NROS_WS_RECORDS_FILE=%q bash %q %q' \
+        printf '\t+@echo "== workspace unit: %s =="; env -u CMAKE_BUILD_PARALLEL_LEVEL NROS_WS_RECORDS_FILE=%q bash %q %q' \
             "$gdir" "$gfile" "$0" "$platform"
         # Explicit `if`, not `[ … ] && printf`: under `set -e` a failing test
         # in an AND-list is a non-zero status that aborts the script, and the
@@ -788,7 +835,7 @@ done
     done
 } > "$makefile"
 
-echo "workspace-fixtures-build: ${#live_records[@]} row(s) in ${#group_dirs[@]} workspace group(s), pool=$pool_jobs (fifo)"
+echo "workspace-fixtures-build: ${#live_records[@]} row(s) in $unit_count build unit(s) over ${#group_dirs[@]} workspace(s), pool=$pool_jobs (fifo)"
 # issue 0762 — THIS is the make that outlived its launcher on 2026-08-23,
 # still building for ten minutes after the top-level `just` was killed. Under
 # the guard it shares the outermost launcher's process group (passthrough), and
