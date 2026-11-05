@@ -220,23 +220,15 @@ that runs it.
 
 ## Run on the Linux simulator
 
-`threadx-linux` is an ordinary host process — no QEMU. First the router
-(ROS's `rmw_zenohd`), on the port your image's `locator` names — 7447 when
-it names none, as a scaffolded image; 9000 in the example above:
-
-```bash probe=60 probe-run=60 probe-keep variant=linux,linux-c
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=60 variant=linux,linux-c
-Started Zenoh router with id
-```
-
-Then the image, from the workspace root:
+`threadx-linux` is an ordinary host process, with no QEMU. Run it from the
+workspace root, with ROS 2 sourced: the image dials a router on this machine
+(port 7447 when its `locator` names none, as a scaffolded image does; 9000 in
+the example above), so `nros run` starts that router, ROS's `rmw_zenohd`, and
+stops it with the image. Don't start a router of your own on the same port;
+to use one you already have, pass `--router <its locator>`.
 
 ```bash probe=70 probe-run=120 variant=linux,linux-c
+source /opt/ros/humble/setup.bash
 nros run tx_node
 ```
 

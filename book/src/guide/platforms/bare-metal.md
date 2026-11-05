@@ -131,16 +131,10 @@ backend or panic handler: those are the generated entry's dependencies. So
 changing `board =` to `"mps2-an385-freertos"` and building again builds the
 FreeRTOS image with no other edit.
 
-QEMU Slirp networking — no host TAP / bridge / sudo. The zenoh
-default port is 7447; this example dials **10500** (the `locator`
-above), so start the router (ROS's `rmw_zenohd`) on that port:
-
-```bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10500"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-or edit the `locator` above to the port you prefer.
+QEMU Slirp networking: no host TAP, bridge or sudo. The guest reaches the
+host as `10.0.2.2`, so `nros run` starts the router on the host's port 10500
+(the `locator` above) when it boots the image. Change the port in the
+`locator`; nothing else moves.
 
 ## Build
 
@@ -181,34 +175,24 @@ cargo already looks for them — a parent directory or `$CARGO_HOME`. See
 
 ## Run on QEMU
 
-Three terminals: the router, the board, and a stock ROS 2 peer.
+Two terminals: the board, and a stock ROS 2 peer.
 
-**1. The router** — ROS's `rmw_zenohd`, on the port your image's `locator`
-names (Slirp forwards the guest's `10.0.2.2:<p>` to the host's `<p>`). The
-scaffold states no `locator`, so the board dials `10.0.2.2:7447`; the example
-above dials 10500. It must listen on `0.0.0.0` for the Slirp gateway:
-
-```bash probe=60 probe-run=60 probe-keep
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=60
-Started Zenoh router with id
-```
-
-**2. The board** — from the workspace root:
+**1. The board**, from the workspace root. Source ROS 2 first: the router
+`nros run` starts is ROS's `rmw_zenohd`.
 
 ```bash probe=70 probe-run=120 probe-keep
+source /opt/ros/humble/setup.bash
 nros run bm_node
 ```
 
 `nros run` rebuilds if anything changed, then boots the talker in QEMU with the
 board's runner: the patched `qemu-system-arm` that `nros setup
-mps2-an385-baremetal` provisioned into the SDK store, the LAN9118 on Slirp, and
-`-icount shift=auto`, which keeps the board's timer in step with Slirp's I/O.
-It streams the semihosting console until you press Ctrl-C.
+mps2-an385-baremetal` provisioned into the SDK store, with `-icount
+shift=auto`, which keeps the board's timer in step with the host. The
+scaffold's image names no `locator`, so it talks to the router over the
+board's serial port: `nros run` connects that port to a terminal device on the
+host and starts the router on it. It streams the semihosting console until
+you press Ctrl-C, which stops QEMU and the router together.
 
 Expected serial-over-semihosting output:
 
@@ -218,7 +202,12 @@ Publishing: 'Hello World: 2'
 ...
 ```
 
-**3. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
+With the `tcp/10.0.2.2:10500` locator of [Configure](#configure), `nros run`
+starts the router on the host's port 10500 instead, so don't start one of your
+own: a second router on the same port stops the first run. To use a router
+you already have, pass `--router <its locator>`.
+
+**2. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
 echo` defaults to RELIABLE, so the QoS-mismatched echo silently delivers
 nothing. Force best-effort to receive:
 
@@ -240,8 +229,9 @@ seconds), expect `Publishing: 'Hello World: 1'` on semihosting
 stdout — the count starts at 1, matching the official ROS 2 demo
 talker. If no `Publishing:` line:
 
-1. Router not running — talker spins on smoltcp poll until
-   killed.
+1. The router did not start — `nros run` says so and names its
+   log under `build/nros/run/`. A router you started yourself on the
+   same port is the usual cause.
 2. No network on the guest — if you boot the ELF with your own QEMU
    line, an explicit `-nic`/`-netdev` that does not reach the LAN9118
    (or `-nic none`, `-nodefaults`) leaves it unwired. The board's
