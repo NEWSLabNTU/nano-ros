@@ -442,14 +442,69 @@ pub fn search_path_over(
     workspace: &Path,
     env_value: Option<&str>,
 ) -> SearchPath {
+    search_path_over_scoped(
+        nano_ros_root,
+        sources,
+        workspace,
+        env_value,
+        InTreeScope::Whole,
+    )
+}
+
+/// How much of the implicit nano-ros root (root 0) a lookup walks.
+///
+/// Only the IMPLICIT in-tree root narrows. Roots the user names
+/// (`--base-paths`, `package_paths`, [`PACKAGE_PATH_ENV`]) and the workspace
+/// keep their full walk, so an override a user writes is found exactly as it
+/// is at the build edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InTreeScope {
+    /// The whole checkout: what build discovery and `nros sync` need, since
+    /// boards, message packages and RMW providers live all over it.
+    #[default]
+    Whole,
+    /// Only [`IN_TREE_RUNNERS_DIR`], where the checkout's own runner packages
+    /// live — the root a runner lookup needs. A whole-checkout walk is ~2,000
+    /// directories and a few thousand stat calls, which `nros run` paid on every
+    /// launch (phase-528 W5: with the test harness's cells starting together,
+    /// it outran their readiness windows). It also reached test-only runner
+    /// fixtures under `packages/cli`, which no user `nros run` should see.
+    Runners,
+}
+
+/// Where a nano-ros tree keeps its runner packages (RFC-0119 D8).
+pub const IN_TREE_RUNNERS_DIR: &str = "packages/runners";
+
+/// [`search_path_over`] with the in-tree root narrowed to `scope`.
+///
+/// The narrowed root is what the nested-source rule compares against, so a
+/// workspace inside the checkout but outside [`IN_TREE_RUNNERS_DIR`] keeps
+/// its own root under [`InTreeScope::Runners`] instead of being dropped as
+/// "already walked". A tree with no [`IN_TREE_RUNNERS_DIR`] (a layout this
+/// rule does not know) is walked whole.
+pub fn search_path_over_scoped(
+    nano_ros_root: Option<&Path>,
+    sources: &SearchPath,
+    workspace: &Path,
+    env_value: Option<&str>,
+    scope: InTreeScope,
+) -> SearchPath {
     let mut out = SearchPath::default();
 
     if let Some(r) = nano_ros_root {
-        push_root(&mut out, r.to_path_buf(), RootOrigin::NanoRosTree, None);
+        let root = match scope {
+            InTreeScope::Runners if r.join(IN_TREE_RUNNERS_DIR).is_dir() => {
+                r.join(IN_TREE_RUNNERS_DIR)
+            }
+            _ => r.to_path_buf(),
+        };
+        push_root(&mut out, root, RootOrigin::NanoRosTree, None);
         // A released toolchain's first-party runner and command packages,
         // prebuilt, beside its SDK root (RFC-0119 D4, phase-527 W6). Part of
         // the underlay, so a user's package overlays it under the same rules
-        // as one in a checkout's `packages/runners`.
+        // as one in a checkout's `packages/runners`. Keyed on the ORIGINAL
+        // root: a release's `packages/runners` holds only nros-extension, so
+        // narrowing root 0 must not drop the shipped packages.
         if let Some(packages) = nros_launcher::checkout::shipped_packages_beside(r) {
             push_root(&mut out, packages, RootOrigin::NanoRosTree, None);
         }
@@ -2673,6 +2728,128 @@ mod tests {
         let canon = |p: &Path| p.canonicalize().unwrap();
         assert_eq!(path.roots[1].path, canon(&ws.path().join("a")));
         assert_eq!(path.roots[2].path, canon(&ws.path().join("b")));
+    }
+
+    /// phase-528 W5 — a runner lookup walks only the in-tree runner packages.
+    /// The whole-checkout walk opened every `package.xml` in the tree; this one
+    /// must open none outside [`IN_TREE_RUNNERS_DIR`], and still find the
+    /// runner there.
+    #[test]
+    fn a_runner_lookup_walks_only_the_in_tree_runner_packages() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let runner = repo.path().join(IN_TREE_RUNNERS_DIR).join("r_native");
+        write(
+            &runner.join("package.xml"),
+            &provider_xml("r_native", "runner", "native"),
+        );
+        let elsewhere = [
+            repo.path().join("packages/rmw/acme/package.xml"),
+            repo.path()
+                .join("packages/cli/tests/fixtures/fake_runner/package.xml"),
+            repo.path().join("examples/linux/rust/talker/package.xml"),
+        ];
+        for (i, x) in elsewhere.iter().enumerate() {
+            write(x, &provider_xml(&format!("p{i}"), "runner", "native"));
+        }
+        let sources = source_roots(ws.path(), &[], &[]).unwrap();
+
+        let narrowed = search_path_over_scoped(
+            Some(repo.path()),
+            &sources,
+            ws.path(),
+            None,
+            InTreeScope::Runners,
+        );
+        assert_eq!(narrowed.roots[0].origin, RootOrigin::NanoRosTree);
+        assert_eq!(
+            narrowed.roots[0].path,
+            repo.path().join(IN_TREE_RUNNERS_DIR)
+        );
+        let scan = scan_search_path(&narrowed).unwrap();
+        assert_eq!(scan.inputs, vec![runner.join("package.xml")]);
+        assert_eq!(scan.providers.len(), 1);
+        assert_eq!(scan.providers[0].dir, runner);
+
+        // The whole walk, for contrast, is what build discovery keeps.
+        let whole = search_path_over(Some(repo.path()), &sources, ws.path(), None);
+        assert_eq!(
+            scan_search_path(&whole).unwrap().inputs.len(),
+            1 + elsewhere.len()
+        );
+    }
+
+    /// A released toolchain's `packages/runners` holds only nros-extension; its
+    /// runners are the shipped packages beside the SDK root (phase-527 W6).
+    /// Narrowing root 0 keeps that second underlay root, keyed on the original
+    /// root, so a release's `nros run` still finds `native`.
+    #[test]
+    fn narrowing_keeps_a_releases_shipped_packages() {
+        use nros_launcher::checkout::{SHIPPED_PACKAGES_SUBDIR, SHIPPED_SUBDIR};
+        let prefix = tempfile::tempdir().unwrap();
+        let sdk = prefix.path().join(SHIPPED_SUBDIR);
+        write(
+            &sdk.join(IN_TREE_RUNNERS_DIR)
+                .join("nros-extension/Cargo.toml"),
+            "[package]\n",
+        );
+        let shipped = prefix.path().join(SHIPPED_PACKAGES_SUBDIR);
+        let native = shipped.join("nros_runner_native");
+        write(
+            &native.join("package.xml"),
+            &provider_xml("nros_runner_native", "runner", "native"),
+        );
+        let ws = tempfile::tempdir().unwrap();
+        let sources = source_roots(ws.path(), &[], &[]).unwrap();
+        let p =
+            search_path_over_scoped(Some(&sdk), &sources, ws.path(), None, InTreeScope::Runners);
+        assert_eq!(p.roots[0].path, sdk.join(IN_TREE_RUNNERS_DIR));
+        assert_eq!(p.roots[1].path, shipped);
+        assert_eq!(p.roots[1].origin, RootOrigin::NanoRosTree);
+        let scan = scan_search_path(&p).unwrap();
+        assert_eq!(scan.providers.len(), 1);
+        assert_eq!(scan.providers[0].dir, native);
+    }
+
+    /// Only the IMPLICIT in-tree root narrows. A workspace inside the checkout
+    /// (outside its runner packages) keeps its own root, so a runner it
+    /// overrides is still found; a tree with no runner directory walks whole.
+    #[test]
+    fn narrowing_keeps_user_roots_and_a_tree_without_runner_packages() {
+        let repo = tempfile::tempdir().unwrap();
+        fs::create_dir_all(repo.path().join(IN_TREE_RUNNERS_DIR)).unwrap();
+        let ws = repo.path().join("examples/ws");
+        write(
+            &ws.join("src/my_native/package.xml"),
+            &provider_xml("my_native", "runner", "native"),
+        );
+        let sources = source_roots(&ws, &[], &[]).unwrap();
+        let narrowed =
+            search_path_over_scoped(Some(repo.path()), &sources, &ws, None, InTreeScope::Runners);
+        assert_eq!(
+            narrowed.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![RootOrigin::NanoRosTree, RootOrigin::Workspace],
+        );
+        let scan = scan_search_path(&narrowed).unwrap();
+        assert_eq!(scan.providers.len(), 1);
+        // The whole walk drops the nested workspace as already walked.
+        let whole = search_path_over(Some(repo.path()), &sources, &ws, None);
+        assert_eq!(
+            whole.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![RootOrigin::NanoRosTree],
+        );
+
+        let bare = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let sources = source_roots(other.path(), &[], &[]).unwrap();
+        let p = search_path_over_scoped(
+            Some(bare.path()),
+            &sources,
+            other.path(),
+            None,
+            InTreeScope::Runners,
+        );
+        assert_eq!(p.roots[0].path, bare.path());
     }
 
     /// The default source roots are the workspace and its `package_paths`,

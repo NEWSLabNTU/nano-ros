@@ -476,11 +476,11 @@ pub fn locate_runner(
     // The same source roots the implicit build walks (`--base-paths`), and
     // scanned with their origins, so the source-root duplicate rule applies
     // here as it does at the build edge (phase-527 W2d).
-    let path =
-        crate::cmd::ws::provider_search_path_for(ws, base_paths).map_err(|e| LocateError {
-            code: exit::PLAN_UNRESOLVED,
-            message: format!("{e:#}"),
-        })?;
+    // The implicit in-tree root narrows to its runner packages (phase-528 W5).
+    let path = crate::cmd::ws::runner_search_path_for(ws, base_paths).map_err(|e| LocateError {
+        code: exit::PLAN_UNRESOLVED,
+        message: format!("{e:#}"),
+    })?;
     let scan = cargo_nano_ros::provider_scan::scan_search_path(&path)
         .map_err(|e| failed(e.to_string()))?;
     let r = resolve_runner_with(&scan, name, &policy).map_err(|e| match e {
