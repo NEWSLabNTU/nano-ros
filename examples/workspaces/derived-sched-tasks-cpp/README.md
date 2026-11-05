@@ -1,4 +1,4 @@
-# ws-derived-sched-tasks-cpp - four C++ components, no authored tiers (phase-459 W0)
+# ws-derived-sched-tasks-cpp - four C++ components, no authored sched tasks (phase-459 W0)
 
 The fixture every phase-459 wave's gate runs against. It mirrors the shape of
 the Autoware Safety Island: four `SHAPE rclcpp` components, one wall timer
@@ -6,15 +6,15 @@ each, two at 30 Hz and two at 10 Hz, registered with `CALLBACK_GROUPS main`
 and NOTHING else. `demo_bringup/system.toml` declares no `[tasks.*]` and no
 `group_tasks`; the rates live in the contract beside the launch file.
 
-`examples/workspaces/realtime-cpp` is the authored-tier neighbour (every tier
-written three times: tier, RTOS sub-table, binding). This workspace is what the
+`examples/workspaces/realtime-cpp` is the authored-sched-task neighbour (every sched task
+written three times: sched task, RTOS sub-table, binding). This workspace is what the
 rate-monotonic derivation (`nros-orchestration-ir::derive`) has to reach from
 what a cmake image actually authors - issue 1426 measured that today it does
 not.
 
 ## What it declares
 
-| Node | Package | Timer | Contract path | Expected derived tier |
+| Node | Package | Timer | Contract path | Expected derived sched task |
 | --- | --- | --- | --- | --- |
 | `mrm_emergency_stop_operator` | `emergency_stop_pkg` | 33 ms | `on_timer` at 30 Hz | most urgent |
 | `stop_mode_operator` | `stop_mode_pkg` | 33 ms | `on_timer` at 30 Hz | most urgent |
@@ -22,7 +22,7 @@ not.
 | `mrm_handler` | `mrm_handler_pkg` | 100 ms | `on_timer` at 10 Hz | one below |
 
 Equal periods share one rank (the pinned ranker gives one fine group one rank),
-so the expected table is two tiers of two members, 30 Hz before 10 Hz.
+so the expected table is two sched tasks of two members, 30 Hz before 10 Hz.
 
 The group `main` is declared in cmake and never created in code: node-level
 placement, which is the island's case and the one W6 keeps legal.
@@ -38,7 +38,7 @@ placement, which is the island's case and the one W6 keeps legal.
   numbers differ on purpose, so that ranking by the floor would invert the
   schedule; see the comment there (issue 1372 / phase-459 W7).
 * `src/demo_bringup/system.toml` - the four `[[component]]` rows and the
-  images. No tiers, no bindings.
+  images. No sched tasks, no bindings.
 
 ## Configure
 

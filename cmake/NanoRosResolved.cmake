@@ -143,7 +143,7 @@ endfunction()
 # Zephyr entry (`rust_cargo_application()`, no `nano_ros_entry()`) has none:
 # the seed IS its only producer. So the first configure's answer was the
 # image's answer forever -- `resolved.cmake` was not even a configure
-# dependency -- and `realtime-rust`'s derived-tier image kept a three-slot
+# dependency -- and `realtime-rust`'s derived-sched-task image kept a three-slot
 # publisher pool after `nros build` had re-resolved four, failing
 # `PublisherCreationFailed` at boot. Measured: the build dir configured at
 # 09:34, the resolve rewritten at 09:56, ninja ran no configure.

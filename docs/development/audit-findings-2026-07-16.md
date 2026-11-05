@@ -79,7 +79,7 @@ Classification: all **new** (no baseline).
   `cargo tree` graph read, or the sanctioned diagnostic-verbatim compile;
   fixture `build_*` helpers all resolve prebuilt + error toward
   `just build-test-fixtures`. **E3** — no phase-numbered test names. **G2** —
-  walk-ups are the sanctioned 3-tier resolver fallback / documented Pattern A.
+  walk-ups are the sanctioned 3-sched-task resolver fallback / documented Pattern A.
   **B7** (sampled) — hits are `cargo:` build-script lines or gated.
 - **C4 (RFC-0049)** — adoption clean: schema `deny_unknown_fields`, tri-state
   env front-end, `KnobSource` provenance, capability downgrade+warn;

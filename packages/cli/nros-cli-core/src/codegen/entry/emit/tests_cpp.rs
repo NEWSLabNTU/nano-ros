@@ -48,7 +48,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
                 remaps: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
-                group_tiers: std::collections::BTreeMap::new(),
+                group_tasks: std::collections::BTreeMap::new(),
                 stack_bytes: None,
             })
             .collect(),
@@ -58,7 +58,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
         lifecycle: None,
         param_services: false,
         safety: None,
-        tiers: Default::default(),
+        sched_tasks: Default::default(),
         node_overrides: Vec::new(),
         resolved_sched_tasks: None,
         session: Default::default(),
@@ -87,7 +87,7 @@ fn fixture_plan_typed(nodes: &[(&str, &str, &str, &str, &str)]) -> Plan {
                 remaps: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
-                group_tiers: std::collections::BTreeMap::new(),
+                group_tasks: std::collections::BTreeMap::new(),
                 stack_bytes: None,
             })
             .collect(),
@@ -97,7 +97,7 @@ fn fixture_plan_typed(nodes: &[(&str, &str, &str, &str, &str)]) -> Plan {
         lifecycle: None,
         param_services: false,
         safety: None,
-        tiers: Default::default(),
+        sched_tasks: Default::default(),
         node_overrides: Vec::new(),
         resolved_sched_tasks: None,
         session: Default::default(),
@@ -164,7 +164,7 @@ fn metadata_probe_reuses_the_setup_body_and_swaps_the_tail() {
     assert!(!src.contains("NROS_BOOT_CONFIG"), "{src}");
     assert!(
         !src.contains("run_sched_tasks"),
-        "probe records every tier:\n{src}"
+        "probe records every sched task:\n{src}"
     );
 }
 
@@ -241,13 +241,13 @@ fn typed_emit_sched_task_remaps_are_installed_before_every_sched_task_setup() {
     let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].remaps = vec![("a".into(), "/x".into())];
     plan.nodes[1].remaps = vec![("b".into(), "/y".into())];
-    let src = emit_typed(&plan).expect("typed cpp tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp sched task emit ok");
     assert!(
         src.contains("__nros_launch_remaps[2]"),
-        "one table for both tiers; src:\n{src}"
+        "one table for both sched tasks; src:\n{src}"
     );
     assert!(!src.contains("nros_cpp_declare_remap"));
-    // phase-509 P10 -- the native tier runner is its levels runner.
+    // phase-509 P10 -- the native sched task runner is its levels runner.
     assert_launch_table_installed_before_the_runner(&src, "run_levels");
 }
 
@@ -267,7 +267,7 @@ fn typed_emit_no_remaps_no_declare_calls() {
 }
 
 /// Issue 1971 -- the launch remap table is installed in the entry point,
-/// before the runner, so before the runner calls any (tier) setup.
+/// before the runner, so before the runner calls any (sched task) setup.
 fn assert_launch_table_installed_before_the_runner(src: &str, runner: &str) {
     let install_at = src
         .find("nros_cpp_set_launch_remaps(__nros_launch_remaps")
@@ -609,14 +609,14 @@ fn typed_emit_rclcpp_empty_launch_identity_is_unset() {
     );
 }
 
-/// Issue 1456 — the TIERED arm builds its handle from the tier's executor,
+/// Issue 1456 — the SCHED-TASK arm builds its handle from the sched task's executor,
 /// and it needs the identity for the same reason the single-executor arm
 /// does. One `if` in the template selects the executor expression, so a
 /// fix applied to one arm and not the other is exactly the shape this
 /// pins shut.
 #[test]
 fn typed_emit_rclcpp_launch_identity_reaches_the_sched_task_arm() {
-    // The node keeps its declared NAME (`ctrl`) because a tier's members
+    // The node keeps its declared NAME (`ctrl`) because a sched task's members
     // are matched by name; the namespace is what moves.
     let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "freertos".into();
@@ -624,10 +624,10 @@ fn typed_emit_rclcpp_launch_identity_reaches_the_sched_task_arm() {
         n.shape = Some("rclcpp".into());
     }
     plan.nodes[0].namespace = Some("/island".into());
-    let src = emit_typed(&plan).expect("tiered rclcpp emit ok");
+    let src = emit_typed(&plan).expect("sched-task rclcpp emit ok");
     assert!(
         src.contains("::rclcpp::NodeHandle __h(executor, \"ctrl\", \"/island\");"),
-        "the tiered arm must carry the launch identity too;\n{src}"
+        "the sched-task arm must carry the launch identity too;\n{src}"
     );
     assert!(
         src.contains("::rclcpp::NodeHandle __h(executor, \"telem\", nullptr);"),
@@ -1018,7 +1018,7 @@ fn fixture_plan_with_sched_tasks() -> Plan {
     plan.nodes[1].callback_groups = vec!["telem_grp".into()];
     plan.nodes[1].sched_context = Some(1);
     plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
-        tiers: vec![high_sched_task, low_sched_task],
+        sched_tasks: vec![high_sched_task, low_sched_task],
     });
     plan
 }
@@ -1053,16 +1053,16 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
     );
 }
 
-/// phase-509 P9b -- a tier's seeds NAME their node, never an index: a
-/// level runner (one executor per core) builds every tier's nodes on the same
-/// executor, a tier runner on one executor each, and the shim resolves the
+/// phase-509 P9b -- a sched task's seeds NAME their node, never an index: a
+/// level runner (one executor per core) builds every sched task's nodes on the same
+/// executor, a sched task runner on one executor each, and the shim resolves the
 /// index from the executor it seeds.
 #[test]
 fn typed_emit_sched_task_seeds_name_their_node() {
     let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].params = vec![("period".into(), "10".into())];
     plan.nodes[1].params = vec![("period".into(), "100".into())];
-    let src = emit_typed(&plan).expect("typed cpp tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp sched task emit ok");
 
     assert!(
         src.contains("nros_cpp_declare_node_param(executor, \"ctrl\", \"period\", \"10\")"),
@@ -1081,8 +1081,8 @@ fn typed_emit_sched_task_seeds_name_their_node() {
 #[test]
 fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
     // Phase 282 follow-up (RFC-0047) — ONE node with callback groups on TWO
-    // tiers (`group_tasks = { ctrl = "high", telem = "low" }`) cannot use
-    // run_sched_tasks: per-tier setup fns construct whole nodes, so the node
+    // sched tasks (`group_tasks = { ctrl = "high", telem = "low" }`) cannot use
+    // run_sched_tasks: per-sched-task setup fns construct whole nodes, so the node
     // landed on the last tier and both timers ran at that cadence
     // (regression caught by realtime_subnode_cpp_e2e: ctrl=6 telem=5).
     // Such plans must keep the single-executor sched-context path.
@@ -1128,7 +1128,7 @@ fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
     )]);
     plan.nodes[0].callback_groups = vec!["ctrl".into(), "telem".into()];
     plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
-        tiers: vec![high_sched_task, low_sched_task],
+        sched_tasks: vec![high_sched_task, low_sched_task],
     });
     let src = emit_typed(&plan).expect("typed cpp group-split emit ok");
 
@@ -1153,12 +1153,12 @@ fn typed_emit_group_split_node_falls_back_to_sched_context_path() {
 
 #[test]
 fn typed_emit_sched_tasks_native_uses_run_sched_tasks_path() {
-    // Phase 274.W2 — native board + multi-tier emits per-tier setup functions +
+    // Phase 274.W2 — native board + multi-sched-task emits per-sched-task setup functions +
     // run_sched_tasks call instead of the old sched-context wiring.
     let plan = fixture_plan_with_sched_tasks();
-    let src = emit_typed(&plan).expect("typed cpp tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp sched task emit ok");
 
-    // Per-tier setup functions emitted.
+    // Per-sched-task setup functions emitted.
     assert!(
         src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
@@ -1167,7 +1167,7 @@ fn typed_emit_sched_tasks_native_uses_run_sched_tasks_path() {
         src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
         "expected tier-1 setup fn; got:\n{src}"
     );
-    // Each setup fn creates only its tier's nodes via create_node_on.
+    // Each setup fn creates only its sched task's nodes via create_node_on.
     assert!(
         src.contains("::rclcpp::create_node_on(__nros_node_0, executor, \"ctrl\", \"/\")"),
         "ctrl node must use create_node_on in tier-0 setup; src:\n{src}"
@@ -1183,11 +1183,11 @@ fn typed_emit_sched_tasks_native_uses_run_sched_tasks_path() {
     );
     assert!(
         src.contains("\"high\""),
-        "high tier name in spec table; src:\n{src}"
+        "high sched task name in spec table; src:\n{src}"
     );
     assert!(
         src.contains("\"low\""),
-        "low tier name in spec table; src:\n{src}"
+        "low sched task name in spec table; src:\n{src}"
     );
     assert!(src.contains("80LL"), "high priority 80LL; src:\n{src}");
     assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
@@ -1213,7 +1213,7 @@ fn typed_emit_sched_tasks_native_uses_run_sched_tasks_path() {
 
 #[test]
 fn typed_emit_sched_tasks_embedded_uses_sched_context_path() {
-    // Phase 272/273 (W2) — a sched-context embedded board (ThreadX) + multi-tier
+    // Phase 272/273 (W2) — a sched-context embedded board (ThreadX) + multi-sched-task
     // still uses sched-context wiring (bind_node_name_sched + bind_group_sched) because
     // run_sched_tasks is limited to native + FreeRTOS + Zephyr + NuttX (phase-281 W3/W3a).
     // ThreadX keeps board_is_embedded=true && !run_sched_tasks → the single-executor
@@ -1274,24 +1274,24 @@ fn typed_emit_sched_tasks_embedded_uses_sched_context_path() {
     plan.nodes[1].callback_groups = vec!["telem_grp".into()];
     plan.nodes[1].sched_context = Some(1);
     plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
-        tiers: vec![high_sched_task, low_sched_task],
+        sched_tasks: vec![high_sched_task, low_sched_task],
     });
-    let src = emit_typed(&plan).expect("typed cpp embedded tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp embedded sched task emit ok");
     // Sched-context IDs array declared.
     assert!(
         src.contains("uint8_t __nros_sc_ids[2] = {0};"),
-        "embedded tier must emit sc_ids array; got:\n{src}"
+        "embedded sched task must emit sc_ids array; got:\n{src}"
     );
-    // High tier: no RT class → Fifo SC via the common-backend call, carrying
+    // High sched task: no RT class → Fifo SC via the common-backend call, carrying
     // only os_pri=80 (nullptr/0 = absent policy). RFC-0052: the codegen
-    // forwards RAW tier fields; the lowering lives in the FFI backend.
+    // forwards RAW sched task fields; the lowering lives in the FFI backend.
     assert!(
         src.contains(
             "nros_cpp_create_sched_context_from_policy(__exec, nullptr, 0ull, 0ull, 0ull, nullptr, 80u, &__nros_sc_ids[0])"
         ),
         "expected tier 0 from_policy call (Fifo, os_pri=80); got:\n{src}"
     );
-    // Bind seeds for each tiered node.
+    // Bind seeds for each sched-task node.
     assert!(
         src.contains("nros_cpp_bind_node_name_sched(__exec, \"ctrl\", \"/\", __nros_sc_ids[0])"),
         "ctrl must be seeded; src:\n{src}"
@@ -1311,7 +1311,7 @@ fn typed_emit_sched_tasks_embedded_uses_sched_context_path() {
 fn typed_emit_single_executor_forwards_real_time_sched_task_to_backend() {
     // Phase 297 W1 / RFC-0052 (common backend) — the single-executor
     // sched-context path (ThreadX + group-split) forwards a `real_time`
-    // tier's RAW class/budget/period/deadline to
+    // sched task's RAW class/budget/period/deadline to
     // `nros_cpp_create_sched_context_from_policy`, whose backend
     // (`SchedContext::from_sched_task_policy`) does the class→Sporadic lowering —
     // the SAME one the Rust runtime uses. The codegen re-derives nothing.
@@ -1343,10 +1343,10 @@ fn typed_emit_single_executor_forwards_real_time_sched_task_to_backend() {
     plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
     plan.nodes[0].sched_context = Some(0);
     plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
-        tiers: vec![rt_sched_task],
+        sched_tasks: vec![rt_sched_task],
     });
-    let src = emit_typed(&plan).expect("typed cpp real_time tier emit ok");
-    // RFC-0052 common backend: the codegen forwards the RAW tier fields to
+    let src = emit_typed(&plan).expect("typed cpp real_time sched task emit ok");
+    // RFC-0052 common backend: the codegen forwards the RAW sched task fields to
     // `nros_cpp_create_sched_context_from_policy`; the class→Sporadic +
     // budget/period lowering happens in the FFI backend
     // (`SchedContext::from_sched_task_policy`), unit-tested in nros-node. The
@@ -1355,7 +1355,7 @@ fn typed_emit_single_executor_forwards_real_time_sched_task_to_backend() {
         src.contains(
             "nros_cpp_create_sched_context_from_policy(__exec, \"real_time\", 20000ull, 3000ull, 15000ull, \"fault\", 90u, &__nros_sc_ids[0])"
         ),
-        "real_time tier must forward raw fields to the backend; got:\n{src}"
+        "real_time sched task must forward raw fields to the backend; got:\n{src}"
     );
     assert!(
         !src.contains("__sc.class_"),
@@ -1365,15 +1365,15 @@ fn typed_emit_single_executor_forwards_real_time_sched_task_to_backend() {
 
 #[test]
 fn typed_emit_sched_tasks_freertos_embedded_uses_run_sched_tasks_path() {
-    // Phase 274.W3 — FreeRTOS embedded board + multi-tier emits per-tier setup
+    // Phase 274.W3 — FreeRTOS embedded board + multi-sched-task emits per-sched-task setup
     // functions + FreertosBoard::run_sched_tasks via nros_app_main +
     // NROS_APP_MAIN_REGISTER_VOID (NOT the sched-context path, NOT int main).
     let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "freertos".into(); // FreertosBoard
 
-    let src = emit_typed(&plan).expect("typed cpp freertos tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp freertos sched task emit ok");
 
-    // Per-tier setup functions emitted.
+    // Per-sched-task setup functions emitted.
     assert!(
         src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
@@ -1428,13 +1428,13 @@ fn typed_emit_a_member_stack_reaches_its_level() {
         let name = n.name.clone().unwrap_or_else(|| n.exec.clone());
         n.stack_bytes = Some(if name == "ctrl" { 6000 } else { 7000 });
     }
-    let spawned = &plan.resolved_sched_tasks.as_ref().unwrap().tiers[1];
+    let spawned = &plan.resolved_sched_tasks.as_ref().unwrap().sched_tasks[1];
     let member = if spawned.members[0].0 == "ctrl" {
         6000
     } else {
         7000
     };
-    let src = emit_typed(&plan).expect("typed cpp zephyr tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp zephyr sched task emit ok");
     assert!(
         src.contains(&format!(
             "NROS_SCHED_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES({member}u));"
@@ -1445,15 +1445,15 @@ fn typed_emit_a_member_stack_reaches_its_level() {
 
 #[test]
 fn typed_emit_sched_tasks_zephyr_embedded_uses_run_sched_tasks_path() {
-    // phase-281 W3a — Zephyr embedded board + multi-tier emits per-tier setup
+    // phase-281 W3a — Zephyr embedded board + multi-sched-task emits per-sched-task setup
     // functions + ZephyrBoard::run_sched_tasks via a plain `int main(void)` (the Zephyr
     // kernel calls main directly — NO nros_app_main, NO sched-context path).
     let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "zephyr".into(); // ZephyrBoard
 
-    let src = emit_typed(&plan).expect("typed cpp zephyr tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp zephyr sched task emit ok");
 
-    // Per-tier setup functions emitted.
+    // Per-sched-task setup functions emitted.
     assert!(
         src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
@@ -1468,7 +1468,7 @@ fn typed_emit_sched_tasks_zephyr_embedded_uses_run_sched_tasks_path() {
         "expected 2-element NativeSchedTaskSpec array; src:\n{src}"
     );
     // ZephyrBoard::run_levels called (not LinuxBoard / FreertosBoard):
-    // phase-509 P9, each tier row is one level over the core's scheduler.
+    // phase-509 P9, each sched task row is one level over the core's scheduler.
     assert!(
         src.contains("::rclcpp::board::ZephyrBoard::run_levels("),
         "main must call ZephyrBoard::run_levels; src:\n{src}"
@@ -1514,16 +1514,16 @@ fn typed_emit_sched_tasks_zephyr_embedded_uses_run_sched_tasks_path() {
 
 #[test]
 fn typed_emit_sched_tasks_nuttx_embedded_uses_run_sched_tasks_path() {
-    // phase-281 W3 (nuttx) — NuttX embedded board + multi-tier emits per-tier
+    // phase-281 W3 (nuttx) — NuttX embedded board + multi-sched-task emits per-sched-task
     // setup functions + NuttxBoard::run_sched_tasks via nros_app_main +
     // NROS_APP_MAIN_REGISTER_VOID (the NuttX startup path calls app_main, like
     // FreeRTOS — NOT Zephyr's int main(void), NOT the sched-context path).
     let mut plan = fixture_plan_with_sched_tasks();
     plan.board = "nuttx".into(); // NuttxBoard
 
-    let src = emit_typed(&plan).expect("typed cpp nuttx tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp nuttx sched task emit ok");
 
-    // Per-tier setup functions emitted.
+    // Per-sched-task setup functions emitted.
     assert!(
         src.contains("static int32_t __nros_entry_setup_sched_task_0(void* executor)"),
         "expected tier-0 setup fn; got:\n{src}"
@@ -1571,7 +1571,7 @@ fn typed_emit_sched_tasks_nuttx_embedded_uses_run_sched_tasks_path() {
 
 #[test]
 fn typed_emit_sched_tasks_rclcpp_embedded_node_is_seeded() {
-    // Phase 272 (W2) — rclcpp-shape tiered node on an embedded board IS seeded
+    // Phase 272 (W2) — rclcpp-shape sched-task node on an embedded board IS seeded
     // via bind_node_name_sched (the #124 dissolve). Native boards use run_sched_tasks
     // instead; this test covers the embedded (sched-context) path.
     use nros_orchestration_ir::{ResolvedSchedTask, ResolvedSchedTaskTable};
@@ -1605,13 +1605,13 @@ fn typed_emit_sched_tasks_rclcpp_embedded_node_is_seeded() {
     plan.nodes[0].callback_groups = vec!["ctrl_grp".into()];
     plan.nodes[0].sched_context = Some(0);
     plan.resolved_sched_tasks = Some(ResolvedSchedTaskTable {
-        tiers: vec![high_sched_task],
+        sched_tasks: vec![high_sched_task],
     });
-    let src = emit_typed(&plan).expect("rclcpp embedded tier emit ok");
+    let src = emit_typed(&plan).expect("rclcpp embedded sched task emit ok");
     // rclcpp-shape node MUST be seeded (the #124 proof, embedded path).
     assert!(
         src.contains("nros_cpp_bind_node_name_sched(__exec, \"ctrl\", \"/\", __nros_sc_ids[0])"),
-        "rclcpp-shape tiered node must be seeded via bind_node_name_sched; src:\n{src}"
+        "rclcpp-shape sched-task node must be seeded via bind_node_name_sched; src:\n{src}"
     );
     // rclcpp construction path unchanged (placement-new with handle).
     assert!(
@@ -1668,31 +1668,31 @@ fn typed_emit_no_sched_tasks_uses_plain_create_node() {
         "talker_pkg::Talker",
         "talker_pkg/Talker.hpp",
     )]);
-    let src = emit_typed(&plan).expect("typed cpp no-tier emit ok");
+    let src = emit_typed(&plan).expect("typed cpp no-sched-task emit ok");
     assert!(
         !src.contains("__nros_sc_ids"),
-        "no-tier plan must not emit sc_ids"
+        "no-sched-task plan must not emit sc_ids"
     );
     assert!(
         !src.contains("nros_cpp_create_sched_context"),
-        "no-tier plan must not emit sched_context_create"
+        "no-sched-task plan must not emit sched_context_create"
     );
     assert!(
         !src.contains("nros_cpp_bind_node_name_sched"),
-        "no-tier plan must not emit bind_node_name_sched"
+        "no-sched-task plan must not emit bind_node_name_sched"
     );
     assert!(
         src.contains("::rclcpp::create_node(__nros_node_0, \"talker\", \"/\")"),
-        "no-tier plan must use plain create_node"
+        "no-sched-task plan must use plain create_node"
     );
     assert!(
         !src.contains(".sched("),
-        "no-tier plan must not use NodeBuilder sched"
+        "no-sched-task plan must not use NodeBuilder sched"
     );
 }
 
 /// Issue 1443 — the C++ pack passes the PLAN's namespace to `create_node`
-/// (single executor) and `create_node_on` (a tier's own), instead of
+/// (single executor) and `create_node_on` (a sched task's own), instead of
 /// relying on either function's `nullptr` default.
 ///
 /// Same three inputs and one answer as the C pack's twin: a real namespace
@@ -1729,13 +1729,13 @@ fn typed_emit_creates_each_node_at_its_plan_namespace() {
     }
 }
 
-/// The tiered arm of the same rule — `create_node_on`, one tier each.
+/// The sched-task arm of the same rule — `create_node_on`, one sched task each.
 #[test]
 fn typed_emit_sched_task_creates_each_node_at_its_plan_namespace() {
     let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[0].namespace = Some("/island".into());
     // nodes[1] keeps `None`, so both arms appear in one render.
-    let src = emit_typed(&plan).expect("typed cpp tiered emit ok");
+    let src = emit_typed(&plan).expect("typed cpp sched-task emit ok");
     assert!(
         src.contains("::rclcpp::create_node_on(__nros_node_0, executor, \"ctrl\", \"/island\")"),
         "tier-0 node must be created under its plan namespace; src:\n{src}"
@@ -1777,7 +1777,7 @@ fn every_board_family_derives_its_boot_shape_once() {
 /// already defines one.
 ///
 /// ThreadX is the one board the two former branch chains disagreed about,
-/// and it is kept out of the per-tier chain by `Plan::executor_shape`: the
+/// and it is kept out of the per-sched-task chain by `Plan::executor_shape`: the
 /// board has no `run_sched_tasks` (issue 1286). Pinning it
 /// here means the shared derivation is right about it on its own terms,
 /// rather than by an argument about a condition elsewhere.
@@ -1810,9 +1810,9 @@ fn boards_with_run_sched_tasks_still_emit_their_own_wrapper() {
     ] {
         let mut plan = fixture_plan_with_sched_tasks();
         plan.board = board.into();
-        let src =
-            emit_typed(&plan).unwrap_or_else(|e| panic!("{board} multi-tier emit failed: {e}"));
-        // phase-509 P9/P10 -- every board's tier runner is its levels
+        let src = emit_typed(&plan)
+            .unwrap_or_else(|e| panic!("{board} multi-sched-task emit failed: {e}"));
+        // phase-509 P9/P10 -- every board's sched task runner is its levels
         // runner.
         let runner = "::run_levels(";
         assert!(src.contains(runner), "{board} must still call {runner}");
@@ -2107,7 +2107,7 @@ fn typed_emit_monitor_rows_match_namespaced_nodes() {
     );
 }
 
-/// phase-509 P9b -- a tier setup that fails names its tier and the node it
+/// phase-509 P9b -- a sched task setup that fails names its sched task and the node it
 /// was building (`nros_cpp_report_setup_failure`) before it returns the code
 /// the runner fails the boot with.
 #[test]
@@ -2117,22 +2117,22 @@ fn typed_emit_sched_task_setup_reports_its_failing_node() {
     let src = emit_typed(&plan).expect("levels emit ok");
     let body = src
         .find("static int32_t __nros_entry_setup_sched_task_1_nodes(void* executor, const char** __nros_at)")
-        .expect("the tier's node body");
+        .expect("the sched task's node body");
     let wrapper = src
         .find("static int32_t __nros_entry_setup_sched_task_1(void* executor)")
-        .expect("the tier's setup");
+        .expect("the sched task's setup");
     assert!(
         src[body..wrapper].contains("*__nros_at = \"telem\";"),
         "the body names the node it builds; src:\n{src}"
     );
     assert!(
         src[wrapper..].contains("nros_cpp_report_setup_failure(\"low\", __nros_at, rc);"),
-        "the wrapper reports tier and node on failure; src:\n{src}"
+        "the wrapper reports sched task and node on failure; src:\n{src}"
     );
 }
 
 /// phase-509 P9b -- on a level runner (Zephyr: one executor per core) every
-/// tier's setup registers on the SAME executor, so a table per tier would be
+/// sched task's setup registers on the SAME executor, so a table per sched task would be
 /// installed once per level, each replacing the last, and only the last
 /// level's rows would be judged. The image's rows are ONE table, installed by
 /// the boot level's setup (tier 0, which runs first), and no other level
@@ -2224,25 +2224,25 @@ fn rust_node_install_receives_the_unwrapped_executor() {
     );
 }
 
-/// Issue 1535 — the tiered path hands each tier's own `executor`, which is a
+/// Issue 1535 — the sched-task path hands each sched task's own `executor`, which is a
 /// context too.
 #[test]
 fn rust_node_install_on_a_sched_task_receives_the_unwrapped_executor() {
     let mut plan = fixture_plan_with_sched_tasks();
     plan.nodes[1].lang = Some(Lang::Rust);
-    let src = emit_typed(&plan).expect("tiered rust-node cpp emit ok");
+    let src = emit_typed(&plan).expect("sched-task rust-node cpp emit ok");
     assert!(
         src.contains("static int32_t __nros_entry_setup_sched_task_1(void* executor)"),
-        "expected the tiered path;\n{src}"
+        "expected the sched-task path;\n{src}"
     );
     assert!(
         src.contains("void* __rexec = ::nros_cpp_executor_inner(executor);"),
-        "a tier's handle must be unwrapped before a Rust install;\n{src}"
+        "a sched task's handle must be unwrapped before a Rust install;\n{src}"
     );
     assert!(
         src.contains("__nros_component_telem_pkg_install(nullptr, __rexec, nullptr);")
             && !src.contains("_install(nullptr, executor,"),
-        "the Rust install must receive the unwrapped tier executor;\n{src}"
+        "the Rust install must receive the unwrapped sched task executor;\n{src}"
     );
 }
 

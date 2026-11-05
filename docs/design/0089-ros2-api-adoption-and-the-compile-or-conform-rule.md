@@ -450,7 +450,7 @@ on both compilers this tree gates with. Nothing compiles-and-differs.
 
 What breaks is the READER. Given `create_subscription_in(…)` at a call site,
 the name does not say which family the call joined, and the answer changes the
-entity's storage, its scheduling tier, and which of two overload sets a later
+entity's storage, its sched task, and which of two overload sets a later
 edit will land in. One overload carried **both** meanings at once:
 
 ```cpp
@@ -1708,7 +1708,7 @@ the capability they name does not exist.** Measured, not reviewed:
 * **RFC-0047 is `docs/design/0047-unified-sched-context-binding.md`, "Unified
   sched-context binding via callback groups".** Its normative content is that a
   callback binds to a sched-context at the granularity ROS 2 uses — the CALLBACK
-  GROUP — with group structure in code and group→tier policy in `system.toml`.
+  GROUP — with group structure in code and group→sched task policy in `system.toml`.
   Grepping it for a second node identity returns nothing. Its one sentence about
   several nodes is a CITATION OF RFC-0046, not a claim of its own.
 * **`ComponentNode` owns exactly one node.** `component_node.hpp:734` is
@@ -2148,7 +2148,7 @@ capability to preserve:
 * `ComponentNode` holds exactly one `Node node_` and takes exactly one `name`.
   There is no second identity anywhere in the class.
 * RFC-0047 is *"Unified sched-context binding via callback groups"*; its
-  "sub-node splitting" means per-callback-group tiering INSIDE one node, and
+  "sub-node splitting" means per-callback-group sched-task binding INSIDE one node, and
   the word "node" is singular throughout.
 * Both subnode packages are one node with two groups —
   `ComponentNode(h, "sub_node")` once, then two `create_callback_group` calls.

@@ -6,7 +6,7 @@
 
 namespace telem_pkg {
 
-/// Low-tier telemetry node. Publishes a monotonic counter on /telem every
+/// Low-sched-task telemetry node. Publishes a monotonic counter on /telem every
 /// 100 ms. Bound to the low-priority sched context by the C++ codegen path
 /// (NodeBuilder::sched). Runs at 1/10 the cadence of ctrl_pkg; the e2e test
 /// asserts ctrl publishes ≥3× as many messages as telem.

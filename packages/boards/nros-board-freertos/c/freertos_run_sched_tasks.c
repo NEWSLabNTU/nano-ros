@@ -1,11 +1,11 @@
 /*
- * freertos_run_sched_tasks.c — Phase 274.W3: C++ embedded multi-tier entry for FreeRTOS.
+ * freertos_run_sched_tasks.c — Phase 274.W3: C++ embedded multi-sched-task entry for FreeRTOS.
  *
  * Implements `nros_board_freertos_run_sched_tasks`, the FreeRTOS analog of the native
  * `nros_board_native_run_sched_tasks`: opens ONE RMW session on the calling task (the
- * startup.c `app_task_entry`), runs the boot tier's setup, then CHAIN-spawns the
- * remaining tiers (each with a borrowed executor sharing the session) so their
- * setups serialize (issue #144), and runs the boot tier on the caller.
+ * startup.c `app_task_entry`), runs the boot sched task's setup, then CHAIN-spawns the
+ * remaining sched tasks (each with a borrowed executor sharing the session) so their
+ * setups serialize (issue #144), and runs the boot sched task on the caller.
  *
  * Called from `FreertosBoard::run_sched_tasks` (main.hpp) via the generated
  * `nros_app_main` (RFC-0015 Model 1 embedded, RFC-0043 typed path).
@@ -63,11 +63,11 @@ extern int nros_cpp_executor_set_park_primitive(void* executor, int8_t (*park)(v
 extern int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us);
 extern uint64_t nros_platform_wake_park_granularity_us(void);
 
-/* issue 0636 option 3 — the tier spin loop's scheduled gap.
+/* issue 0636 option 3 — the sched task spin loop's scheduled gap.
  *
- * ONE implementation, shared with the Rust tier runners
+ * ONE implementation, shared with the Rust sched task runners
  * (`nros_platform::board::sched_task`): a second spelling per language is how the
- * tier-priority marker drifted, which is most of what this issue was. Pass 0
+ * sched-task-priority marker drifted, which is most of what this issue was. Pass 0
  * on the first call and keep the returned value; the sleep, when the rule
  * calls for one, happens inside. State is an opaque u64 rather than a struct
  * so there is no hand-mirrored FFI layout to drift (three prior incidents). */
@@ -142,13 +142,13 @@ static void freertos_install_park(void* executor, const char* sched_task_name) {
     }
     if (nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us, wake,
                                              nros_platform_wake_park_granularity_us()) != 0) {
-        nros_board_freertos_console_write("nros: park primitive NOT installed tier=`");
+        nros_board_freertos_console_write("nros: park primitive NOT installed sched_task=`");
         nros_board_freertos_console_write((sched_task_name != NULL) ? sched_task_name : "?");
         nros_board_freertos_console_write("` — falling back to the millisecond wake path\n");
     }
 }
 
-/* --- Local tier-spec type ---
+/* --- Local sched-task-spec type ---
  *
  * Mirror of nros_native_sched_task_spec_t (rclc/detail/main.h). Layout MUST match: same
  * field order, same types, same ABI (verified by the C++ caller casting
@@ -201,7 +201,7 @@ typedef struct {
     const char* deadline_policy;
 } nros_sched_task_spec_t;
 
-/* Issue 1598 — one tier task's memory, owned by the generated entry. Mirror of
+/* Issue 1598 — one sched task's memory, owned by the generated entry. Mirror of
  * `nros_sched_task_memory_t` in <rclc/detail/main.h> (this TU is compiled where no
  * nros header is in reach — the cargo lane's `build.rs` glue). Three pointer-
  * sized fields, so the layout cannot drift by padding; the assert pins it.
@@ -218,10 +218,10 @@ typedef struct {
 _Static_assert(sizeof(nros_sched_task_memory_t) == 3u * sizeof(void*),
                "nros_sched_task_memory_t mirrors <rclc/detail/main.h>: three pointer-sized fields");
 
-/* --- Per-tier task context ---
+/* --- Per-sched task context ---
  *
  * Heap-allocated by the boot task before xTaskCreate; lives for the firmware
- * lifetime (the spawned task never returns). executor_storage is this tier's
+ * lifetime (the spawned task never returns). executor_storage is this sched task's
  * block of the CALLER's storage (issue 1568 — a file-scope static in the
  * generated entry, not a heap block), passed to
  * nros_cpp_executor_open_over_session. */
@@ -233,7 +233,7 @@ typedef struct {
     uint64_t spin_period_us;
     nros_sched_task_setup_fn_t setup;
     void* executor_storage;
-    /* issue #144 — chained spawn tail: the tiers still to bring up AFTER this
+    /* issue #144 — chained spawn tail: the sched tasks still to bring up AFTER this
      * one. This task spawns rest[0] (carrying rest[1..]) only after its own
      * setup returns, so no two setups overlap on the shared session. */
     const nros_sched_task_spec_t* rest;
@@ -245,18 +245,18 @@ typedef struct {
     size_t storage_stride;
     /* issue 1598 — the task memory for rest[0] (rest[k] at rest_task_memory[k]),
      * carried down the chain beside the specs it belongs to; NULL when the
-     * caller supplied none (an `_in` / `_ns` entry), which keeps those tiers on
+     * caller supplied none (an `_in` / `_ns` entry), which keeps those sched tasks on
      * `xTaskCreate`. */
     const nros_sched_task_memory_t* rest_task_memory;
-    /* issue 0636 — the tier's identity and declared priority, so the task can
+    /* issue 0636 — the sched task's identity and declared priority, so the task can
      * ANNOUNCE what it got (#579). The task already holds the priority from
      * `xTaskCreate`; what was missing was any way to say so. */
     const char* name;
     uint32_t priority;
     /* issue 1250 — the EFFECTIVE stack this task was created with, in bytes
-     * (`stack_words * 4`), NOT the tier spec's declared `stack_bytes`: an
+     * (`stack_words * 4`), NOT the sched task spec's declared `stack_bytes`: an
      * unset spec still gets the 256 KiB default below, and a headroom bound
-     * derived from `0` would leave the rule off on exactly the tiers that
+     * derived from `0` would leave the rule off on exactly the sched tasks that
      * declared nothing. `freertos_spawn_next_sched_task` assigns it and
      * `freertos_sched_task` reads it; both arrived in a6aa0f721 and the field
      * itself did not, so every FreeRTOS image — C and C++ alike — failed to
@@ -273,10 +273,10 @@ typedef struct {
  * `_FALLBACK_MARKER` — keep in lockstep.
  *
  * issue 0636 — a FUNCTION, called by the spawn path AND the boot path, because
- * the boot tier is no longer `tiers[0]`. It is now the LEAST urgent tier, and
- * in `realtime-cpp`'s bringup that is `low` — the one tier that declares
+ * the boot sched task is no longer `sched_tasks[0]`. It is now the LEAST urgent sched task, and
+ * in `realtime-cpp`'s bringup that is `low` — the one sched task that declares
  * `core = 0`. With the announcement living only in the spawn path, moving that
- * tier onto the boot task made the dim vanish from the console, and the
+ * sched task onto the boot task made the dim vanish from the console, and the
  * `CorePin/freertos/cpp` cell reported it as silently dropped. It was: by this
  * file, not by the kernel.
  *
@@ -289,21 +289,21 @@ static void freertos_apply_core_pin(TaskHandle_t task, const char* name, uint32_
     const char* tname = (name != NULL) ? name : "?";
 #if defined(configUSE_CORE_AFFINITY) && (configUSE_CORE_AFFINITY == 1)
     vTaskCoreAffinitySet(task, (UBaseType_t)1u << (core_plus1 - 1u));
-    nros_board_freertos_console_write("nros: core pin tier=`");
+    nros_board_freertos_console_write("nros: core pin sched_task=`");
     nros_board_freertos_console_write(tname);
     nros_board_freertos_console_write("`\n");
 #else
-    nros_board_freertos_console_write("nros: core pin FAILED tier=`");
+    nros_board_freertos_console_write("nros: core pin FAILED sched_task=`");
     nros_board_freertos_console_write(tname);
     nros_board_freertos_console_write("` — FreeRTOS build lacks configUSE_CORE_AFFINITY "
-                                      "(uniprocessor), tier runs unpinned\n");
+                                      "(uniprocessor), sched task runs unpinned\n");
     (void)task;
 #endif
 }
 
 /* Render an unsigned decimal into `buf` and return a pointer to the first
  * digit. This TU has no stdio ON PURPOSE — the console is a semihosting string
- * writer, not a printf — so the tier-priority marker below formats its own
+ * writer, not a printf — so the sched-task-priority marker below formats its own
  * number instead of pulling newlib's formatting into every FreeRTOS image.
  * `buf` must hold at least 11 bytes (10 digits + NUL). */
 static const char* freertos_u32_dec(uint32_t v, char* buf, size_t len) {
@@ -316,14 +316,14 @@ static const char* freertos_u32_dec(uint32_t v, char* buf, size_t len) {
     return &buf[i];
 }
 
-/* issue 0636 / #579 — adopt the tier's declared priority on the CALLING task
+/* issue 0636 / #579 — adopt the sched task's declared priority on the CALLING task
  * and ANNOUNCE the outcome, for the SPAWN path and the BOOT path alike.
  *
- * Until this existed, FreeRTOS printed no tier-priority marker in either
- * language, so #579's rule ("every DECLARING tier adopts its priority or says
+ * Until this existed, FreeRTOS printed no sched-task-priority marker in either
+ * language, so #579's rule ("every DECLARING sched task adopts its priority or says
  * why") was enforced on NuttX only and this kernel was silently exempt. That is
- * how the boot task came to adopt no priority at all: spawned tiers get theirs
- * from `xTaskCreate`, the boot tier got nothing, and with nothing printing
+ * how the boot task came to adopt no priority at all: spawned sched tasks get theirs
+ * from `xTaskCreate`, the boot sched task got nothing, and with nothing printing
  * there was no cell that could notice. The literals match
  * `nros_tests::output::FREERTOS_SCHED_TASK_PRIORITY_MARKER` / `_FAILED_MARKER` and
  * are the same strings the NuttX seam prints — keep all three in lockstep.
@@ -334,7 +334,7 @@ static const char* freertos_u32_dec(uint32_t v, char* buf, size_t len) {
  *
  * A caller passing 0 is treated as "undeclared, keep what was inherited", the
  * same convention the NuttX helper uses. NOTE that unlike SCHED_FIFO, 0 is a
- * LEGAL FreeRTOS priority (the idle band), so a tier that genuinely declares
+ * LEGAL FreeRTOS priority (the idle band), so a sched task that genuinely declares
  * `priority = 0` is indistinguishable from one that declared nothing. Both
  * arms share the hole; it is recorded rather than given a second convention
  * here, because a per-kernel spelling of "declared" is how these two seams
@@ -347,19 +347,19 @@ static int freertos_apply_sched_task_priority(const char* name, uint32_t priorit
     char numbuf[12];
     const char* pstr = freertos_u32_dec(priority, numbuf, sizeof(numbuf));
     if (priority >= (uint32_t)configMAX_PRIORITIES) {
-        /* Fail-loud (RFC-0052): the tier DECLARED a priority this build cannot
+        /* Fail-loud (RFC-0052): the sched task DECLARED a priority this build cannot
          * express. vTaskPrioritySet would clamp it silently, which makes a
          * mis-authored table look honored. */
-        nros_board_freertos_console_write("nros: tier priority FAILED tier=`");
+        nros_board_freertos_console_write("nros: sched task priority FAILED sched_task=`");
         nros_board_freertos_console_write(tname);
         nros_board_freertos_console_write("` prio=");
         nros_board_freertos_console_write(pstr);
-        nros_board_freertos_console_write(" — exceeds configMAX_PRIORITIES, tier does NOT "
+        nros_board_freertos_console_write(" — exceeds configMAX_PRIORITIES, sched task does NOT "
                                           "hold its declared priority\n");
         return 0;
     }
     vTaskPrioritySet(NULL, (UBaseType_t)priority);
-    nros_board_freertos_console_write("nros: tier priority set tier=`");
+    nros_board_freertos_console_write("nros: sched task priority set sched_task=`");
     nros_board_freertos_console_write(tname);
     nros_board_freertos_console_write("` prio=");
     nros_board_freertos_console_write(pstr);
@@ -367,22 +367,22 @@ static int freertos_apply_sched_task_priority(const char* name, uint32_t priorit
     return 1;
 }
 
-/* issue 0636 — a tier that never STARTS is the same silent drop as a tier that
+/* issue 0636 — a sched task that never STARTS is the same silent drop as a sched task that
  * never adopts its priority, and the chain hid it: `freertos_sched_task` ignores
  * the downstream spawn's return on purpose (a failed child must not stop this
- * tier spinning its own work), so an out-of-heap `xTaskCreate` lost a whole
- * tier without a word. Continuing to spin stays correct; being quiet about it
+ * sched task spinning its own work), so an out-of-heap `xTaskCreate` lost a whole
+ * sched task without a word. Continuing to spin stays correct; being quiet about it
  * does not. Announced through the same fail-loud channel as the dims. */
 static void freertos_announce_spawn_failure(const char* name, const char* why) {
-    nros_board_freertos_console_write("nros: tier spawn FAILED tier=`");
+    nros_board_freertos_console_write("nros: sched task spawn FAILED sched_task=`");
     nros_board_freertos_console_write((name != NULL) ? name : "?");
     nros_board_freertos_console_write("` — ");
     nros_board_freertos_console_write(why);
-    nros_board_freertos_console_write(", tier does NOT start\n");
+    nros_board_freertos_console_write(", sched task does NOT start\n");
 }
 
 /* Forward decl — freertos_sched_task and freertos_spawn_next_sched_task are mutually
- * recursive (each tier's task spawns the next tier via this helper). */
+ * recursive (each sched task's RTOS task spawns the next sched task via this helper). */
 static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
                                     const nros_sched_task_spec_t* remaining, size_t n_remaining,
                                     unsigned char* storage, size_t storage_stride,
@@ -391,18 +391,18 @@ static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_i
 /* Minimum spin delay: 1 ms (FreeRTOS tick resolution on MPS2-AN385). */
 #define SPIN_PERIOD_FLOOR_MS 1u
 
-/* freertos_sched_task — body of each non-boot tier task.
+/* freertos_sched_task — body of each non-boot sched task.
  *
- * Opens a borrowed executor over the shared session, gates it to the tier's
- * callback groups, calls the tier's setup function, then spins forever at
- * the tier's declared period. On failure: idles (never deletes itself — the
+ * Opens a borrowed executor over the shared session, gates it to the sched task's
+ * callback groups, calls the sched task's setup function, then spins forever at
+ * the sched task's declared period. On failure: idles (never deletes itself — the
  * boot task is the session owner and must outlive all borrowed executors). */
 static void freertos_sched_task(void* arg) {
     nros_freertos_sched_task_ctx_t* ctx = (nros_freertos_sched_task_ctx_t*)arg;
 
-    /* issue 0636 / #579 — this tier already holds its declared priority from
+    /* issue 0636 / #579 — this sched task already holds its declared priority from
      * `xTaskCreate`; re-applying through the shared helper is what makes it
-     * SAY so, on the same line the boot tier uses. */
+     * SAY so, on the same line the boot sched task uses. */
     (void)freertos_apply_sched_task_priority(ctx->name, ctx->priority);
 
     /* Open a borrowed executor that shares the primary session. The primary
@@ -412,44 +412,44 @@ static void freertos_sched_task(void* arg) {
                                                  ctx->executor_storage);
     if (rc != 0) {
         /* Cannot open the borrowed executor; idle forever (boot task continues).
-         * NOTE (issue #144): the spawn of the next tier sits AFTER this tier's
-         * setup, so failing here HALTS the chain — ctx->rest (this tier's
-         * downstream tiers) will not start. Intentional (a tier that can't open
+         * NOTE (issue #144): the spawn of the next sched task sits AFTER this sched task's
+         * setup, so failing here HALTS the chain — ctx->rest (this sched task's
+         * downstream sched tasks) will not start. Intentional (a sched task that can't open
          * its executor means a degraded deploy), but it is a fault-isolation
-         * change from the pre-#144 loop-spawn where tiers came up independently. */
+         * change from the pre-#144 loop-spawn where sched tasks came up independently. */
         for (;;) {
             vTaskDelay(pdMS_TO_TICKS(1000u));
         }
     }
 
-    /* Gate this executor to its tier's callback groups. */
+    /* Gate this executor to its sched task's callback groups. */
     if (ctx->n_groups > 0 && ctx->groups != NULL) {
         nros_cpp_executor_set_active_groups(ctx->executor_storage, ctx->groups, ctx->n_groups);
     }
 
     /* phase-436 follow-up — declare a default stack-headroom bound from the
-     * stack this tier's task was actually created with. The executor cannot
+     * stack this sched task's RTOS task was actually created with. The executor cannot
      * derive one itself (`check_stack_headroom`: it never sees `stack_bytes`),
      * but this layer can, because it just spawned the task with that size.
      *
      * BEFORE `setup()` deliberately: an explicit
-     * `nros_cpp_executor_set_min_stack_headroom` inside the tier's setup then
+     * `nros_cpp_executor_set_min_stack_headroom` inside the sched task's setup then
      * overwrites this, so declared beats derived by ordering alone.
      *
-     * Spawned tiers only. The boot tier runs on the caller (`app_task_entry`, a
+     * Spawned sched tasks only. The boot sched task runs on the caller (`app_task_entry`, a
      * 512 KiB stack this layer never sized), so a bound derived from its spec
      * would be measured against the wrong stack. */
     if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage, ctx->stack_bytes) != 0) {
         /* Same fail-loud rule as a spawn failure above: a bound that was never
          * set leaves `stack-headroom-runtime` off, and a monitor that silently
          * fails to arm is indistinguishable from a healthy system. */
-        nros_board_freertos_console_write("nros: stack-headroom bound NOT set tier=`");
+        nros_board_freertos_console_write("nros: stack-headroom bound NOT set sched_task=`");
         nros_board_freertos_console_write((ctx->name != NULL) ? ctx->name : "?");
         nros_board_freertos_console_write("` — the rule stays off\n");
     }
     freertos_install_park(ctx->executor_storage, ctx->name);
 
-    /* Run the tier's node-setup function. */
+    /* Run the sched task's node-setup function. */
     if (ctx->setup != NULL) {
         rc = ctx->setup(ctx->executor_storage);
         if (rc != 0) {
@@ -464,15 +464,15 @@ static void freertos_sched_task(void* arg) {
         }
     }
 
-    /* issue #144 — this tier's setup is done, so bringing up the next tier can
+    /* issue #144 — this sched task's setup is done, so bringing up the next sched task can
      * no longer race our declares: spawn rest[0] (carrying rest[1..]). A failed
-     * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
+     * DOWNSTREAM spawn must NOT stop this sched task spinning its own work, so ignore
      * the return (freertos_spawn_next_sched_task frees what it allocated on failure). */
     (void)freertos_spawn_next_sched_task(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
                                    ctx->n_rest, ctx->rest_storage, ctx->storage_stride,
                                    ctx->rest_task_memory);
 
-    /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
+    /* Spin loop. Pass the sched task period as the spin_once timeout — a BLOCKING
      * read (issue #126 defect B): timeout 0 returns immediately and never drives
      * the zenoh-pico session's TX/handshake from the spin path, so the shared
      * session never connects. `run_components` (`component_spin_loop`) and the
@@ -484,7 +484,7 @@ static void freertos_sched_task(void* arg) {
     /* issue 0636 option 3 — every iteration reaches a scheduling point. The
      * executor's own wait is skipped whenever a wake already fired, so under
      * sustained traffic this loop would otherwise never block, and a task that
-     * never blocks never lets a lower-priority tier run.
+     * never blocks never lets a lower-priority sched task run.
      *
      * This REPLACES an unconditional `vTaskDelay(1)`, which was the same
      * guarantee hand-rolled for one kernel: it paid a tick on EVERY iteration,
@@ -500,7 +500,7 @@ static void freertos_sched_task(void* arg) {
     }
 }
 
-/* freertos_spawn_next_sched_task — issue #144 chained tier spawn.
+/* freertos_spawn_next_sched_task — issue #144 chained sched task spawn.
  *
  * Spawns exactly ONE FreeRTOS task for remaining[0], handing it remaining[1..]
  * as its own `rest` so the chain continues once its setup completes. Empty
@@ -520,17 +520,17 @@ static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_i
     }
     const nros_sched_task_spec_t* t = &remaining[0];
 
-    /* Issue 1568 — this tier's executor is the caller's block, never a heap
+    /* Issue 1568 — this sched task's executor is the caller's block, never a heap
      * block: the storage is the generated entry's `.bss` static, sized by the
      * build and placed by the linker. */
     void* sched_task_exec = storage;
     memset(sched_task_exec, 0, storage_stride);
 
-    /* Allocate the tier task context (lives for firmware lifetime). */
+    /* Allocate the sched task context (lives for firmware lifetime). */
     nros_freertos_sched_task_ctx_t* ctx =
         (nros_freertos_sched_task_ctx_t*)nros_platform_alloc(sizeof(nros_freertos_sched_task_ctx_t));
     if (ctx == NULL) {
-        freertos_announce_spawn_failure(t->name, "tier context allocation failed");
+        freertos_announce_spawn_failure(t->name, "sched task context allocation failed");
         return -1;
     }
 
@@ -550,17 +550,17 @@ static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_i
     ctx->name = t->name;
     ctx->priority = (uint32_t)((t->priority < 0) ? 0 : t->priority);
 
-    /* Stack size: use the tier spec's stack_bytes if set; else 256 KiB
-     * (issue #126 defect A — VERIFIED). A spawned tier task opens a borrowed
+    /* Stack size: use the sched task spec's stack_bytes if set; else 256 KiB
+     * (issue #126 defect A — VERIFIED). A spawned sched task opens a borrowed
      * executor and runs its spin/dispatch; that overflows 64 KiB (HardFault:
      * Prefetch Abort at tskSTACK_FILL_BYTE right after a context switch). At
      * 256 KiB the firmware runs the full run_sched_tasks path with no fault under
-     * QEMU mps2-an385. The boot tier keeps the 512 KiB app_task stack.
+     * QEMU mps2-an385. The boot sched task keeps the 512 KiB app_task stack.
      * RFC-0052 W2: `[tasks.*.freertos].stack_bytes` now propagates through
      * emit_cpp (the pre-W2 literal hardcoded 0), so a configured stack is
      * honored; this default covers unset specs. */
     uint32_t stack_words = (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
-    /* Issue 1598 — the entry owns this tier's stack: its size is what the
+    /* Issue 1598 — the entry owns this sched task's stack: its size is what the
      * entry DECLARED (the 256 KiB default above moved to the emitter, which
      * states it where it is reserved, and the port's floor was applied there
      * too — issue 0667). The fallback above is only the `_in`/`_ns` road. */
@@ -570,12 +570,12 @@ static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_i
 
     /* The EFFECTIVE stack, not the declared one: an unset `stack_bytes` still
      * gets 256 KiB above, and a bound derived from `0` would leave the
-     * stack-headroom rule off on exactly the tiers that declared nothing and
+     * stack-headroom rule off on exactly the sched tasks that declared nothing and
      * therefore most need a default. The field is otherwise unread — nothing
      * assigned it before this. */
     ctx->stack_bytes = (size_t)stack_words * 4u;
 
-    /* Raw FreeRTOS priority from the tier spec (the system.toml [tasks.*.freertos]
+    /* Raw FreeRTOS priority from the sched task spec (the system.toml [tasks.*.freertos]
      * priority is the numeric FreeRTOS value; clamp to configMAX_PRIORITIES-1). */
     UBaseType_t prio = (t->priority > 0)
                            ? (UBaseType_t)(t->priority < (int64_t)(configMAX_PRIORITIES)
@@ -623,43 +623,43 @@ static int freertos_spawn_next_sched_task(void* session_handle, uint8_t domain_i
  * network is up (startup.c app_task_entry brought up LAN9118 + lwIP + zenoh
  * read task), and we are executing inside the app task.
  *
- * The `tiers` array is laid out identically to nros_native_sched_task_spec_t (the
+ * The `sched_tasks` array is laid out identically to nros_native_sched_task_spec_t (the
  * caller casts NativeSchedTaskSpec* → nros_native_sched_task_spec_t* → nros_sched_task_spec_t*;
  * all three structs have the same ABI on 32-bit ARM).
  *
  * `locator`      — zenoh connect endpoint (baked by cmake, e.g. tcp/10.0.2.2:PORT)
  * `domain_id`    — ROS domain ID (compile-time NROS_ENTRY_DOMAIN_ID)
  * `session_name` — primary session / node name; NULL or empty → "node"
- * `tiers`        — tier-spec array, highest-priority-first (codegen order)
- * `n_sched_tasks`      — number of tiers (>= 1)
+ * `sched_tasks`        — sched-task-spec array, highest-priority-first (codegen order)
+ * `n_sched_tasks`      — number of sched tasks (>= 1)
  *
- * Returns: this function normally never returns (the boot tier spins forever).
+ * Returns: this function normally never returns (the boot sched task spins forever).
  * Returns a non-zero error code only if the primary session open or a task
  * creation fails. */
 int32_t nros_board_freertos_run_sched_tasks(const char* locator, uint8_t domain_id,
-                                      const char* session_name, const nros_sched_task_spec_t* tiers,
+                                      const char* session_name, const nros_sched_task_spec_t* sched_tasks,
                                       size_t n_sched_tasks);
 int32_t nros_board_freertos_run_sched_tasks_ns(const char* locator, uint8_t domain_id,
                                          const char* session_name, const char* node_namespace,
-                                         const nros_sched_task_spec_t* tiers, size_t n_sched_tasks);
+                                         const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 int32_t nros_board_freertos_run_sched_tasks_in(const char* locator, uint8_t domain_id,
                                          const char* session_name, const char* node_namespace,
-                                         const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                         const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                          void* executor_storage, size_t storage_stride);
 int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8_t domain_id,
                                                const char* session_name, const char* node_namespace,
-                                               const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                               const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                                void* executor_storage, size_t storage_stride,
                                                const nros_sched_task_memory_t* task_memory);
 
 int32_t nros_board_freertos_run_sched_tasks(const char* locator, uint8_t domain_id,
-                                      const char* session_name, const nros_sched_task_spec_t* tiers,
+                                      const char* session_name, const nros_sched_task_spec_t* sched_tasks,
                                       size_t n_sched_tasks) {
     /* Issue 1442 — delegates with a NULL namespace, which is "this image
      * declares none" and resolves to the root. Kept as its own symbol because
      * it is the one a pre-1442 generated entry TU calls, and an entry TU
      * outlives the library it was generated against (issue 1050's rule). */
-    return nros_board_freertos_run_sched_tasks_ns(locator, domain_id, session_name, NULL, tiers, n_sched_tasks);
+    return nros_board_freertos_run_sched_tasks_ns(locator, domain_id, session_name, NULL, sched_tasks, n_sched_tasks);
 }
 
 /*
@@ -676,20 +676,20 @@ int32_t nros_board_freertos_run_sched_tasks(const char* locator, uint8_t domain_
  * There is no environment rung on FreeRTOS, so the bake IS the answer here; the
  * locator and the domain stay the board's, baked by cmake. Issue 1434 drew the
  * same line one runner over (`nros_board_rtos_run_components_ns`); this is that
- * change on the tiered path.
+ * change on the sched-task path.
  *
- * What it names is the SESSION. Each tier's own nodes carry their own
+ * What it names is the SESSION. Each sched task's own nodes carry their own
  * `(name, namespace, group)` triples in the spec array (issue 1172) and are
  * untouched.
  */
 int32_t nros_board_freertos_run_sched_tasks_ns(const char* locator, uint8_t domain_id,
                                          const char* session_name, const char* node_namespace,
-                                         const nros_sched_task_spec_t* tiers, size_t n_sched_tasks) {
-    if (tiers == NULL || n_sched_tasks == 0) {
+                                         const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks) {
+    if (sched_tasks == NULL || n_sched_tasks == 0) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
     /* Issue 1568 — kept for an entry TU generated before
-     * `nros_board_freertos_run_sched_tasks_in` existed. It takes every tier's storage
+     * `nros_board_freertos_run_sched_tasks_in` existed. It takes every sched task's storage
      * in ONE heap block up front, at the library's own size, and hands it to
      * the runner — so it fails before any session opens rather than part-way
      * down the spawn chain (issue 1551's lesson), and it can no longer be
@@ -698,26 +698,26 @@ int32_t nros_board_freertos_run_sched_tasks_ns(const char* locator, uint8_t doma
     void* storage = nros_platform_alloc(n_sched_tasks * stride);
     if (storage == NULL) {
         nros_board_freertos_console_write(
-            "nros: freertos run_sched_tasks: the tiers' executor storage does not fit heap_4; "
+            "nros: freertos run_sched_tasks: the sched tasks' executor storage does not fit heap_4; "
             "regenerate the entry (nros_board_freertos_run_sched_tasks_in takes it as a static) "
             "or raise NROS_FREERTOS_HEAP_KB\n");
         return -1; /* NROS_CPP_RET_ERROR */
     }
     int32_t rc = nros_board_freertos_run_sched_tasks_in(locator, domain_id, session_name, node_namespace,
-                                                  tiers, n_sched_tasks, storage, stride);
+                                                  sched_tasks, n_sched_tasks, storage, stride);
     nros_platform_dealloc(storage);
     return rc;
 }
 
 /*
  * Issue 1568 — the runner, over caller-supplied executor storage, and the one a
- * generated tiered freertos entry calls (`CAbiRunners::takes_executor_storage`).
+ * generated sched-task freertos entry calls (`CAbiRunners::takes_executor_storage`).
  * Zephyr's shape (issue 1551), so the three RTOS runners take storage one way.
  *
  * `executor_storage` holds `n_sched_tasks` blocks of `storage_stride` bytes; block 0
- * is the boot tier's executor and blocks 1.. are the spawned tiers', in chain
+ * is the boot sched task's executor and blocks 1.. are the spawned sched tasks', in chain
  * order. The generated entry passes a file-scope static sized from the
- * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own tier count, so the
+ * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own sched task count, so the
  * bytes are `.bss` the linker places and `mem-report` names instead of
  * `n_sched_tasks` heap blocks nothing priced. A block the linked library says is too
  * small or misaligned is REFUSED before a byte is written.
@@ -726,25 +726,25 @@ int32_t nros_board_freertos_run_sched_tasks_ns(const char* locator, uint8_t doma
  */
 int32_t nros_board_freertos_run_sched_tasks_in(const char* locator, uint8_t domain_id,
                                          const char* session_name, const char* node_namespace,
-                                         const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                         const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                          void* executor_storage, size_t storage_stride) {
     /* Issue 1598 — kept for an entry TU generated before
      * `nros_board_freertos_run_sched_tasks_memory_in` existed: no task memory, so its
-     * tiers' stacks stay `xTaskCreate` blocks of heap_4. */
+     * sched tasks' stacks stay `xTaskCreate` blocks of heap_4. */
     return nros_board_freertos_run_sched_tasks_memory_in(locator, domain_id, session_name, node_namespace,
-                                                  tiers, n_sched_tasks, executor_storage, storage_stride,
+                                                  sched_tasks, n_sched_tasks, executor_storage, storage_stride,
                                                   NULL);
 }
 
-/* The boot tier's index: the LEAST urgent tier, i.e. the last of a table the
+/* The boot sched task's index: the LEAST urgent sched task, i.e. the last of a table the
  * emitter sorts highest-priority-first (issue 0636 — see the long note at the
  * call site). An unsorted table falls back to index 0 and says so. */
-static size_t freertos_boot_sched_task_index(const nros_sched_task_spec_t* tiers, size_t n_sched_tasks) {
+static size_t freertos_boot_sched_task_index(const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks) {
     for (size_t i = 1u; i < n_sched_tasks; ++i) {
-        if (tiers[i].priority > tiers[i - 1u].priority) {
+        if (sched_tasks[i].priority > sched_tasks[i - 1u].priority) {
             nros_board_freertos_console_write(
-                "nros: tier table is not sorted highest-priority-first — "
-                "boot tier falls back to index 0 (issue 0636)\n");
+                "nros: sched task table is not sorted highest-priority-first — "
+                "boot sched task falls back to index 0 (issue 0636)\n");
             return 0u;
         }
     }
@@ -753,24 +753,24 @@ static size_t freertos_boot_sched_task_index(const nros_sched_task_spec_t* tiers
 
 /*
  * Issue 1598 — the runner, over caller-supplied executor storage AND
- * caller-supplied task memory, and the one a generated tiered FreeRTOS entry
+ * caller-supplied task memory, and the one a generated sched-task FreeRTOS entry
  * calls (`CAbiRunners::sched_task_memory`).
  *
- * `task_memory` is indexed by TIER (`task_memory[i]` is `tiers[i]`'s), NULL
- * for "none" — then every tier task is `xTaskCreate`d as before. When given,
- * every SPAWNED tier must have a stack and a TCB, and the boot tier (which runs
+ * `task_memory` is indexed by SCHED TASK (`task_memory[i]` is `sched_tasks[i]`'s), NULL
+ * for "none" — then every sched task is `xTaskCreate`d as before. When given,
+ * every SPAWNED sched task must have a stack and a TCB, and the boot sched task (which runs
  * on the caller's task) must have none: the entry and this runner agree on
- * which tier boots, and a disagreement is REFUSED before the session opens
- * rather than discovered as a tier with no stack. Each spawned tier is then
+ * which sched task boots, and a disagreement is REFUSED before the session opens
+ * rather than discovered as a sched task with no stack. Each spawned sched task is then
  * `xTaskCreateStatic` over the entry's statics: no heap_4 block, and an image
  * whose stacks do not fit RAM fails at link.
  */
 int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8_t domain_id,
                                                const char* session_name, const char* node_namespace,
-                                               const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                               const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                                void* executor_storage, size_t storage_stride,
                                                const nros_sched_task_memory_t* task_memory) {
-    if (tiers == NULL || n_sched_tasks == 0 || executor_storage == NULL) {
+    if (sched_tasks == NULL || n_sched_tasks == 0 || executor_storage == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
     if (nros_cpp_executor_storage_check(executor_storage, storage_stride) != 0) {
@@ -781,19 +781,19 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
     }
     unsigned char* storage = (unsigned char*)executor_storage;
 
-    /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
+    /* --- Choose the boot sched task: the LEAST urgent one (issue 0636) --- */
     /*
-     * This was `&tiers[0]`, which the emitter documents as the MOST urgent
-     * tier ("sorted highest-priority-first", rclcpp/detail/main.hpp), and FreeRTOS is a
+     * This was `&sched_tasks[0]`, which the emitter documents as the MOST urgent
+     * sched task ("sorted highest-priority-first", rclcpp/detail/main.hpp), and FreeRTOS is a
      * bigger-number-wins kernel. The boot task owns the session and spins
-     * forever, so making it outrank the tiers it spawned starves them: FreeRTOS
+     * forever, so making it outrank the sched tasks it spawned starves them: FreeRTOS
      * runs the highest-priority READY task and a spin loop does not reliably
      * stop being ready. `17666723d` removed this arrangement from the Rust
-     * NuttX/Linux arms and left `freertos` on `tiers[0]`; that is this half.
+     * NuttX/Linux arms and left `freertos` on `sched_tasks[0]`; that is this half.
      *
-     * The least urgent tier is the LAST element of a descending table, which
-     * also leaves the remaining tiers CONTIGUOUS — required here, because the
-     * chain-spawn hands each tier a `rest` SLICE and skipping an interior index
+     * The least urgent sched task is the LAST element of a descending table, which
+     * also leaves the remaining sched tasks CONTIGUOUS — required here, because the
+     * chain-spawn hands each sched task a `rest` SLICE and skipping an interior index
      * would change that protocol. That is why this does not call
      * `nros_platform::boot_sched_task_index` (the Rust NuttX/Linux arms do): same
      * rule, different mechanics forced by the chain.
@@ -807,7 +807,7 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
      * Issue 1598 — chosen BEFORE the session opens now, because the entry's
      * task memory is checked against it.
      */
-    const size_t boot_idx = freertos_boot_sched_task_index(tiers, n_sched_tasks);
+    const size_t boot_idx = freertos_boot_sched_task_index(sched_tasks, n_sched_tasks);
     if (task_memory != NULL) {
         for (size_t i = 0u; i < n_sched_tasks; ++i) {
             const nros_sched_task_memory_t* m = &task_memory[i];
@@ -815,16 +815,16 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
             if (i == boot_idx) {
                 if (m->stack != NULL || m->tcb != NULL) {
                     nros_board_freertos_console_write(
-                        "nros: freertos run_sched_tasks: the entry gave the BOOT tier a task stack "
+                        "nros: freertos run_sched_tasks: the entry gave the BOOT sched task a task stack "
                         "(it runs on the caller's task) — the entry and this runner disagree "
-                        "about which tier boots; refused\n");
+                        "about which sched task boots; refused\n");
                     return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
                 }
                 continue;
             }
             if (!has || m->stack_bytes < (size_t)configMINIMAL_STACK_SIZE * sizeof(StackType_t)) {
                 freertos_announce_spawn_failure(
-                    tiers[i].name, "the entry's task memory is missing or below "
+                    sched_tasks[i].name, "the entry's task memory is missing or below "
                                    "configMINIMAL_STACK_SIZE; refused before the session opens");
                 return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
             }
@@ -842,7 +842,7 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
      * session name gets one line up. */
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
-    /* Block 0 of the caller's storage is the boot tier's executor. */
+    /* Block 0 of the caller's storage is the boot sched task's executor. */
     void* boot_storage = storage;
     memset(boot_storage, 0, storage_stride);
 
@@ -851,55 +851,55 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
         return (int32_t)rc;
     }
 
-    /* Retrieve the session handle so non-boot tiers can borrow it. The handle
+    /* Retrieve the session handle so non-boot sched tasks can borrow it. The handle
      * remains valid as long as boot_storage lives (it lives forever — the boot
      * spin loop never returns). */
     void* session_handle = nros_cpp_executor_session_handle(boot_storage);
 
-    /* --- Run boot tier (tiers[0]) setup on THIS task FIRST --- */
-    /* issue #144 — boot setup runs BEFORE any tier spawn (previously this
-     * spawned ALL of tiers[1..] BEFORE boot setup, so it had the boot↔tier
+    /* --- Run boot sched task (sched_tasks[0]) setup on THIS task FIRST --- */
+    /* issue #144 — boot setup runs BEFORE any sched task spawn (previously this
+     * spawned ALL of sched_tasks[1..] BEFORE boot setup, so it had the boot↔sched task
      * race too). Entity declares carry an interest handshake; concurrent
      * declares from two threads race it, and the losing publisher's write
      * filter stays closed (every put silently dropped). Running boot's
-     * declares first, then CHAINING the remaining spawns (boot spawns tiers[1]
-     * only; each tier spawns the next after its own setup returns), makes setup
+     * declares first, then CHAINING the remaining spawns (boot spawns sched_tasks[1]
+     * only; each sched task spawns the next after its own setup returns), makes setup
      * order total (boot, t1, t2, …) so no two declares overlap. Spins still
-     * overlap the next tier's setup, which is SAFE — a spin exchanges
+     * overlap the next sched task's setup, which is SAFE — a spin exchanges
      * keepalives/data, not declares. */
 
-    /* The boot tier was chosen above, before the session opened (issue 1598). */
-    const nros_sched_task_spec_t* boot = &tiers[boot_idx];
+    /* The boot sched task was chosen above, before the session opened (issue 1598). */
+    const nros_sched_task_spec_t* boot = &sched_tasks[boot_idx];
     /* Everything except `boot`; both arrangements leave a contiguous run. */
-    const nros_sched_task_spec_t* rest_first = (boot_idx == 0u) ? &tiers[1] : &tiers[0];
+    const nros_sched_task_spec_t* rest_first = (boot_idx == 0u) ? &sched_tasks[1] : &sched_tasks[0];
     const size_t n_rest = n_sched_tasks - 1u;
 
-    /* issue 0636 — announce the boot tier's placement dim too.
+    /* issue 0636 — announce the boot sched task's placement dim too.
      *
-     * The boot tier is now the LEAST urgent tier rather than `tiers[0]`, and in
-     * `realtime-cpp`'s bringup that is `low`, the one tier declaring `core = 0`.
-     * The spawn path announces the dim for the tiers it creates; the boot tier
+     * The boot sched task is now the LEAST urgent sched task rather than `sched_tasks[0]`, and in
+     * `realtime-cpp`'s bringup that is `low`, the one sched task declaring `core = 0`.
+     * The spawn path announces the dim for the sched tasks it creates; the boot sched task
      * is created by nobody, so without this the declared pin disappears from
      * the console and RFC-0052's fail-loud rule is broken by this file. NULL
-     * task = pin the CALLING task, which is what the boot tier runs on. */
+     * task = pin the CALLING task, which is what the boot sched task runs on. */
     freertos_apply_core_pin(NULL, boot->name, boot->core_plus1);
 
-    /* No derived stack-headroom bound for the boot tier here, unlike Zephyr.
+    /* No derived stack-headroom bound for the boot sched task here, unlike Zephyr.
      * It runs on the caller (`app_task_entry`), and FreeRTOS offers no way to ask a
      * task how large its stack IS — `uxTaskGetStackHighWaterMark` reports what
      * is left, not what it was taken against, which is the same asymmetry
      * `check_stack_headroom` cites for why the bound must be declared. Zephyr
      * can answer (CONFIG_MAIN_STACK_SIZE) and so derives there; hardcoding
      * startup.c's 512 KiB here would be a second copy of a number that file
-     * owns. A boot tier that wants the rule declares it in `setup()`. */
+     * owns. A boot sched task that wants the rule declares it in `setup()`. */
 
-    /* Gate the boot executor to its tier's callback groups. */
+    /* Gate the boot executor to its sched task's callback groups. */
     if (boot->n_groups > 0 && boot->groups != NULL) {
         nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
     }
     freertos_install_park(boot_storage, boot->name);
 
-    /* Boot tier node setup. */
+    /* Boot sched task node setup. */
     if (boot->setup != NULL) {
         rc = boot->setup(boot_storage);
         if (rc != 0) {
@@ -908,35 +908,35 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
         }
     }
 
-    /* issue 0636 — the boot tier adopts its OWN declared priority, and does it
+    /* issue 0636 — the boot sched task adopts its OWN declared priority, and does it
      * BEFORE the spawn below. Two separate defects meet here:
      *
      *   1. It adopted nothing at all. `nros_freertos_set_current_task_priority`
-     *      was called only from the Rust arm, so a C or C++ boot tier kept
+     *      was called only from the Rust arm, so a C or C++ boot sched task kept
      *      whatever priority `app_task_entry` was created at and its declared
-     *      `[tasks.*.freertos] priority` did not hold for the tier the boot
+     *      `[tasks.*.freertos] priority` did not hold for the sched task the boot
      *      task actually runs.
-     *   2. The ORDER. `boot` is the LEAST urgent tier, so every tier spawned
+     *   2. The ORDER. `boot` is the LEAST urgent sched task, so every sched task spawned
      *      below outranks it; FreeRTOS is preemptive, so the first
      *      `xTaskCreate` takes the CPU away at once and anything sitting after
      *      it runs only once that task first blocks. That is exactly how the
-     *      NuttX arm lost this marker (8 pass / 4 fail over 12 runs) — the tier
+     *      NuttX arm lost this marker (8 pass / 4 fail over 12 runs) — the sched task
      *      was configured correctly and could not say so.
      *
-     * Nothing here needs the children to exist and no other tier task exists
+     * Nothing here needs the children to exist and no other sched task exists
      * yet to be starved by a self-demotion, so this runs while the boot task
      * still owns the CPU. #144 is untouched: boot's DECLARES already ran. */
     (void)freertos_apply_sched_task_priority(boot->name,
                                        (uint32_t)((boot->priority < 0) ? 0 : boot->priority));
 
-    /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
+    /* --- Kick off the chained spawn (sched_tasks[1] carrying sched_tasks[2..]) --- */
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
-     * helper never touches) and return error. Downstream tier tasks handle
+     * helper never touches) and return error. Downstream sched tasks handle
      * their own spawn failures by logging + continuing to spin. */
-    /* The task memory runs parallel to `tiers`, so `rest_first`'s is at the
+    /* The task memory runs parallel to `sched_tasks`, so `rest_first`'s is at the
      * same offset (issue 1598). */
     const nros_sched_task_memory_t* rest_mem =
-        (task_memory != NULL) ? task_memory + (size_t)(rest_first - tiers) : NULL;
+        (task_memory != NULL) ? task_memory + (size_t)(rest_first - sched_tasks) : NULL;
     int src = freertos_spawn_next_sched_task(session_handle, domain_id, rest_first, n_rest,
                                        storage + storage_stride, storage_stride, rest_mem);
     if (src != 0) {
@@ -944,7 +944,7 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
         return -1;
     }
 
-    /* Boot tier spin loop — runs forever on embedded firmware. Blocking-read
+    /* Boot sched task spin loop — runs forever on embedded firmware. Blocking-read
      * spin_once (period as timeout) so the boot session's zenoh handshake is
      * driven from the spin path (issue #126 defect B); timeout 0 did not
      * connect. Mirrors run_components / the Rust run_sched_tasks_entry. */
@@ -955,7 +955,7 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
     /* issue 0636 option 3 — every iteration reaches a scheduling point. The
      * executor's own wait is skipped whenever a wake already fired, so under
      * sustained traffic this loop would otherwise never block, and a task that
-     * never blocks never lets a lower-priority tier run.
+     * never blocks never lets a lower-priority sched task run.
      *
      * This REPLACES an unconditional `vTaskDelay(1)`, which was the same
      * guarantee hand-rolled for one kernel: it paid a tick on EVERY iteration,
@@ -979,7 +979,7 @@ int32_t nros_board_freertos_run_sched_tasks_memory_in(const char* locator, uint8
 /* phase-509 P10 (RFC-0108 "As built in P9b") -- the LEVELS runner.          */
 /* ------------------------------------------------------------------------- */
 
-/* One tier's executor backing, owned by the generated entry. Mirror of
+/* One sched task's executor backing, owned by the generated entry. Mirror of
  * `nros_sched_task_backing_t` in <rclc/detail/main.h>. */
 typedef struct {
     void* backing;
@@ -1024,7 +1024,7 @@ static uintptr_t freertos_thread_id(void) {
 static const nros_sched_task_spec_t* freertos_level_sched_tasks;
 static size_t freertos_level_n_sched_tasks;
 
-/* The level of tier `t`: its urgency order among the rows, FreeRTOS's
+/* The level of sched task `t`: its urgency order among the rows, FreeRTOS's
  * bigger-is-urgent (the rule `NROS_ENTRY_LEVEL_OF_<node>` is generated by). */
 static uint8_t freertos_sched_task_level(const nros_sched_task_spec_t* t) {
     if (freertos_level_sched_tasks == NULL || t < freertos_level_sched_tasks ||
@@ -1091,7 +1091,7 @@ static void freertos_level_task(void* arg) {
     if (rc != 0 || owner == NULL) {
         freertos_fail_boot(ctx->name, "did not open", rc);
     }
-    /* Gate this level's registrations to its tier's callback groups (the
+    /* Gate this level's registrations to its sched task's callback groups (the
      * gate applies at registration, so each level sets it before its setup). */
     if (ctx->n_groups > 0 && ctx->groups != NULL) {
         nros_cpp_executor_set_active_groups(owner, ctx->groups, ctx->n_groups);
@@ -1171,16 +1171,16 @@ static int freertos_spawn_next_level(void* scheduler, const nros_sched_task_spec
 
 int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id,
                                           const char* session_name, const char* node_namespace,
-                                          const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                          const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                           void* executor_storage, size_t storage_stride,
                                           const nros_sched_task_backing_t* backings,
                                           const nros_sched_task_memory_t* task_memory,
                                           void* scheduler_backing, size_t scheduler_bytes);
 
 /*
- * phase-509 P10 (RFC-0108) -- the runner a generated tiered FreeRTOS entry
- * calls (`CAbiRunners::run_levels`): each row of `tiers` is one LEVEL (a
- * derived level, or an authored tier, which is one band), over ONE executor
+ * phase-509 P10 (RFC-0108) -- the runner a generated sched-task FreeRTOS entry
+ * calls (`CAbiRunners::run_levels`): each row of `sched_tasks` is one LEVEL (a
+ * derived level, or an authored sched task, which is one band), over ONE executor
  * (block 0 of `executor_storage`, the boot level's) and one scheduler in the
  * entry's `scheduler_backing`. The boot level is the LEAST urgent (the last
  * row, issue 0636) and runs on the caller's task; every other level is a
@@ -1193,12 +1193,12 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
  */
 int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id,
                                           const char* session_name, const char* node_namespace,
-                                          const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                          const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                           void* executor_storage, size_t storage_stride,
                                           const nros_sched_task_backing_t* backings,
                                           const nros_sched_task_memory_t* task_memory,
                                           void* scheduler_backing, size_t scheduler_bytes) {
-    if (tiers == NULL || n_sched_tasks == 0 || n_sched_tasks > 32u || executor_storage == NULL ||
+    if (sched_tasks == NULL || n_sched_tasks == 0 || n_sched_tasks > 32u || executor_storage == NULL ||
         scheduler_backing == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
@@ -1208,7 +1208,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
             "different NROS_CPP_EXECUTOR_STORAGE_SIZE than the linked library\n");
         return -3;
     }
-    const size_t boot_idx = freertos_boot_sched_task_index(tiers, n_sched_tasks);
+    const size_t boot_idx = freertos_boot_sched_task_index(sched_tasks, n_sched_tasks);
     if (boot_idx != n_sched_tasks - 1u) {
         /* The chain below hands each level a contiguous `rest` slice ending
          * before the boot row; an unsorted table cannot be placed. */
@@ -1231,7 +1231,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
             if (m->stack == NULL || m->tcb == NULL ||
                 m->stack_bytes < (size_t)configMINIMAL_STACK_SIZE * sizeof(StackType_t)) {
                 freertos_announce_spawn_failure(
-                    tiers[i].name, "the entry's task memory is missing or below "
+                    sched_tasks[i].name, "the entry's task memory is missing or below "
                                    "configMINIMAL_STACK_SIZE; refused before the session opens");
                 return -3;
             }
@@ -1267,7 +1267,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
             return -1;
         }
     }
-    freertos_level_sched_tasks = tiers;
+    freertos_level_sched_tasks = sched_tasks;
     freertos_level_n_sched_tasks = n_sched_tasks;
     void* scheduler = nros_cpp_scheduler_open(0u, (uint8_t)n_sched_tasks, boot_storage,
                                               scheduler_backing, scheduler_bytes);
@@ -1288,7 +1288,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
         nros_board_freertos_console_write("\n");
     }
 
-    const nros_sched_task_spec_t* boot = &tiers[boot_idx];
+    const nros_sched_task_spec_t* boot = &sched_tasks[boot_idx];
     freertos_apply_core_pin(NULL, boot->name, boot->core_plus1);
     if (boot->n_groups > 0 && boot->groups != NULL) {
         nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
@@ -1311,7 +1311,7 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
     (void)freertos_apply_sched_task_priority(boot->name,
                                        (uint32_t)((boot->priority < 0) ? 0 : boot->priority));
 
-    (void)freertos_spawn_next_level(scheduler, &tiers[0], n_sched_tasks - 1u, task_memory);
+    (void)freertos_spawn_next_level(scheduler, &sched_tasks[0], n_sched_tasks - 1u, task_memory);
     {
         char nb[12];
         nros_board_freertos_console_write("nros: multi-level run — ");

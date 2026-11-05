@@ -767,7 +767,7 @@ int8_t nros_platform_task_init(void* task, void* attr, void* (*entry)(void*), vo
      * This is issue 0852 one field over. The ABI defines `name` as "Task name
      * for the kernel's own tables and crash dumps", every caller already
      * supplies one -- `PlatformTask::spawn_with` fills `attr.name`, and the
-     * C++ tier spawn builds "nros-sched-task-<tier>" for it -- and the FreeRTOS port
+     * C++ sched task spawn builds "nros-sched-task-<sched task>" for it -- and the FreeRTOS port
      * passes it straight to `xTaskCreate`. Only this port dropped it, and
      * Zephyr is not a kernel with no name concept: CONFIG_THREAD_NAME and
      * `k_thread_name_set` have been there all along.
@@ -1032,7 +1032,7 @@ int8_t nros_platform_mutex_init(void* m) {
     /* RFC-0034 D6 -- allocations here go through `nros_platform_alloc`, NOT
      * `k_malloc` directly. On Zephyr both reach `_system_heap` today, so the
      * distinction looks cosmetic; it is not. The funnel is what lets the arena's
-     * ALGORITHM be swapped (a constant-time allocator for the real-time tier)
+     * ALGORITHM be swapped (a constant-time allocator for the real-time sched task)
      * without hunting every allocation site in the tree. A direct `k_malloc` here
      * would keep allocating from the kernel heap after the funnel moved, silently
      * splitting the one arena D6 exists to keep whole. */
@@ -1469,15 +1469,15 @@ uint64_t nros_platform_wake_park_granularity_us(void) {
 }
 
 /* phase-521 W4 (RFC-0113 D3/D4) — the park over the wake object AND the RMW
- * sessions' sockets: what a tier waits on when a session's readiness is a
+ * sessions' sockets: what a sched task waits on when a session's readiness is a
  * zsock descriptor (XRCE over UDP). The same shape as the POSIX park, with an
  * eventfd where POSIX has a self-pipe.
  *
  * Chosen over Zephyr's socket service (`NET_SOCKET_SERVICE`, the Notify form):
  * that service is EXPERIMENTAL on the 3.7 line, its define macro changes
  * between 3.7 and 4.x, and its one dispatcher thread defaults to the LOWEST
- * preemptible priority, so a busy application tier would delay every
- * session's wake behind it. Here the tier waits on its own sockets at its own
+ * preemptible priority, so a busy application sched task would delay every
+ * session's wake behind it. Here the sched task waits on its own sockets at its own
  * priority, and nothing else runs on its behalf.
  *
  * `zsock_poll` takes milliseconds; the remainder is rounded UP, and the
@@ -1486,7 +1486,7 @@ uint64_t nros_platform_wake_park_granularity_us(void) {
  * eventfds this returns -1 and the executor keeps the semaphore park. */
 #ifdef NROS_ZEPHYR_HANDLE_PARK
 /* The most handles one park multiplexes: the executor's own cap, one per
- * session of a tier, with room to spare. More is refused (-1), never
+ * session of a sched task, with room to spare. More is refused (-1), never
  * truncated, because a dropped handle is a missed wake. */
 #define NROS_ZEPHYR_PARK_MAX_HANDLES 8
 

@@ -310,10 +310,10 @@ that states either is refused.)
 In planned mode this maps to the `PlanSchedContext` the planner carries
 (RFC-0015/0016). **Multi-node RT home (decided 2026-06):** the *node* declares its
 callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
-`system.toml` owns tier definitions + group→tier assignment
-(`[tasks.<name>.<rtos>]` priority/stack + `[[node_overrides]]` deploy-time tier reassignment) and
+`system.toml` owns sched task definitions + group→sched task assignment
+(`[tasks.<name>.<rtos>]` priority/stack + `[[node_overrides]]` deploy-time sched task reassignment) and
 `[[shared_state]]`. See RFC-0015 (Phase 212 reconciliation). Schema/loader is
-tracked by phase-227; the per-tier codegen by phase-228.
+tracked by phase-227; the per-sched-task codegen by phase-228.
 
 ## 8. RMW selection & retired files
 
@@ -352,7 +352,7 @@ scope, issue 0079; `[[scheduling.contexts]]` → `[tiers]`, decision A); (2) **r
 (4) treat transport/network as part of the **`deploy` class**, not a separate file surface;
 (5) make the `deploy`-class precedence (`[..deploy.<t>]` projection vs `system.toml
 [image.<id>]`) explicit. Option *scope* classes: **node** (identity/params/remaps/qos/
-callback-groups), **system** (topology/capabilities/tiers — agnostic),
+callback-groups), **system** (topology/capabilities/sched tasks — agnostic),
 **deploy** (target/board/build-tuning + net + rmw/domain/locator overrides),
 **build/capability** (lowered, not authored).
 

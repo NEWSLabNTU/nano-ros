@@ -2,7 +2,7 @@
 """Exemptions keyed on EXACTLY what their rationale names — phase-472 W8.
 
 An exemption states a reason about one thing ("`scripts/install.sh` may fetch
-`nros`", "this single-executor loop has no second tier to starve"). The audit
+`nros`", "this single-executor loop has no second sched_task to starve"). The audit
 found nine gates whose exemption MATCHED more than that thing, so it covered
 the neighbouring case for free:
 

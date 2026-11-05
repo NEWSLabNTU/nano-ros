@@ -27,7 +27,7 @@ name = "nros_board_freertos"
 log = { version = "0.4", default-features = false }
 # run_sched_tasks_entry wires the nros_log dispatcher at boot (mirrors the
 # nros-board-linux/zephyr funnels); without it a Node pkg's `log_info!`
-# is silently dropped on FreeRTOS multi-tier entries.
+# is silently dropped on FreeRTOS multi-sched-task entries.
 # issue 0710 follow-up — a board IS the platform console, so it turns on the
 # dispatch auto-install. Cargo unifies the feature into any image holding this
 # crate; consumers with no port (host tools, the test harness) never get the
@@ -101,7 +101,7 @@ default = []
 # Issue 2017 (RFC-0108 D6) -- this image runs LEVELS, so its kernel is built
 # with configUSE_TIME_SLICING 0 (build.rs defines NROS_FREERTOS_LEVEL_IMAGE on
 # every TU that includes FreeRTOSConfig.h). `nros build` turns it on through
-# the board crate for a multi-tier schedule (`schedule_board_features`).
+# the board crate for a multi-sched-task schedule (`schedule_board_features`).
 level-image = []
 # `reference-mps2` removed (issue 1309). It named an optional dep that formed a
 # package cycle; its re-export was retired by phase-313 and nothing enabled the

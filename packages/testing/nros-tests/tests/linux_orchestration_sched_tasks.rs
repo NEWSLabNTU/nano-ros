@@ -1,15 +1,15 @@
-//! Multi-tier `nros::main!()` emit round-trip (RFC-0032 §5).
+//! Multi-sched-task `nros::main!()` emit round-trip (RFC-0032 §5).
 //!
-//! When `system.toml` declares `[tasks.*]`, the macro resolves a tier table and
-//! emits `<LinuxBoard>::run_sched_tasks(TIERS, run_plan)`; with the tier blocks
-//! stripped it falls back to the legacy single-tier `BoardEntry::run`.
+//! When `system.toml` declares `[tasks.*]`, the macro resolves a sched task table and
+//! emits `<LinuxBoard>::run_sched_tasks(SCHED_TASKS, run_plan)`; with the sched task blocks
+//! stripped it falls back to the legacy single-sched-task `BoardEntry::run`.
 //!
 //! Both shapes are **build-stage fixtures** (`compile-check-fixtures.sh`, run by
 //! `build-test-fixtures`): `orch_sched_tasks_multi` (verbatim fixture) and
 //! `orch_sched_tasks_single` (the same fixture with the `cases/orch_sched_tasks_single/`
 //! overlay, a bringup `system.toml` without the `[tasks.*]` tables). The tests assert/run the prebuilt `demo_entry` binaries instead of
 //! running `cargo build` at run time (issue 0034 / AGENTS.md "No compilation
-//! inside tests"). The boot lifecycle (no router) or the per-tier run marker
+//! inside tests"). The boot lifecycle (no router) or the per-sched-task run marker
 //! (live router) is the proof the emitted code took the right branch.
 
 fn multi_sched_task_bin() -> nros_tests::TestResult<std::path::PathBuf> {
@@ -28,11 +28,11 @@ fn single_sched_task_bin() -> nros_tests::TestResult<std::path::PathBuf> {
 
 #[test]
 fn multi_sched_task_main_macro_emits_run_sched_tasks_and_compiles() -> nros_tests::TestResult<()> {
-    // The build of `orch_sched_tasks_multi` IS the multi-tier emit compile proof.
+    // The build of `orch_sched_tasks_multi` IS the multi-sched-task emit compile proof.
     let bin = multi_sched_task_bin()?;
     assert!(
         bin.exists(),
-        "multi-tier fixture binary missing: {}",
+        "multi-sched-task fixture binary missing: {}",
         bin.display()
     );
     Ok(())
@@ -63,7 +63,7 @@ fn launch_arm_resolves_the_bringup() -> nros_tests::TestResult<()> {
     assert_eq!(
         invocation,
         ["nros::main!(launch = \"demo_bringup\");"],
-        "the `orch_sched_tasks_multi` fixture must compile the LAUNCH arm — it is the multi-tier \
+        "the `orch_sched_tasks_multi` fixture must compile the LAUNCH arm — it is the multi-sched-task \
          compile proof of it ({})",
         main_rs.display()
     );
@@ -78,11 +78,11 @@ fn launch_arm_resolves_the_bringup() -> nros_tests::TestResult<()> {
 
 #[test]
 fn multi_sched_task_binary_boots_into_run_sched_tasks() -> nros_tests::TestResult<()> {
-    // Proof the macro emitted `run_sched_tasks` AND the boot tier executed: the binary
-    // emits a `multi-tier` marker either way — `multi-tier entry needs a live
-    // session` (no router → abort) or `multi-tier run — N tier(s)` (a router was
-    // reachable → it entered the per-tier run, then forever-spins). The
-    // single-tier path emits NEITHER, so the `multi-tier` substring is the
+    // Proof the macro emitted `run_sched_tasks` AND the boot sched task executed: the binary
+    // emits a `multi-sched_task` marker either way — `multi-sched-task entry needs a live
+    // session` (no router → abort) or `multi-sched-task run — N sched task(s)` (a router was
+    // reachable → it entered the per-sched-task run, then forever-spins). The
+    // single-sched-task path emits NEITHER, so the `multi-sched_task` substring is the
     // branch-specific signal. Router presence is environmental (an orphaned /
     // other-user zenohd can be scouted), so wrap in `timeout` and accept both.
     let bin = multi_sched_task_bin()?;
@@ -95,8 +95,8 @@ fn multi_sched_task_binary_boots_into_run_sched_tasks() -> nros_tests::TestResul
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        combined.contains("multi-tier"),
-        "binary did not reach the run_sched_tasks boot path (no multi-tier marker).\noutput:\n{combined}",
+        combined.contains("multi-sched_task"),
+        "binary did not reach the run_sched_tasks boot path (no multi-sched-task marker).\noutput:\n{combined}",
     );
     Ok(())
 }
@@ -104,7 +104,7 @@ fn multi_sched_task_binary_boots_into_run_sched_tasks() -> nros_tests::TestResul
 #[test]
 fn multi_sched_task_binary_runs_both_sched_tasks_with_router() -> nros_tests::TestResult<()> {
     // With a live zenohd the binary gets past `Executor::open`, spawns the low
-    // tier, and the boot tier prints the `multi-tier run — N tier(s)` marker
+    // sched task, and the boot sched task prints the `multi-sched_task run — N sched_task(s)` marker
     // before its forever-spin (the timeout kills it).
     nros_tests::fixtures::require_zenohd();
     let bin = multi_sched_task_bin()?;
@@ -124,11 +124,11 @@ fn multi_sched_task_binary_runs_both_sched_tasks_with_router() -> nros_tests::Te
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        combined.contains("nros: multi-tier run — 2 tier(s)"),
-        "binary did not enter the per-tier run with a live session.\noutput:\n{combined}",
+        combined.contains("nros: multi-sched-task run — 2 sched task(s)"),
+        "binary did not enter the per-sched-task run with a live session.\noutput:\n{combined}",
     );
     assert!(
-        !combined.contains("multi-tier entry needs a live session"),
+        !combined.contains("multi-sched-task entry needs a live session"),
         "binary aborted at session open despite a live router.\noutput:\n{combined}",
     );
     Ok(())
@@ -136,8 +136,8 @@ fn multi_sched_task_binary_runs_both_sched_tasks_with_router() -> nros_tests::Te
 
 #[test]
 fn single_sched_task_system_takes_the_legacy_boardentry_run_path() -> nros_tests::TestResult<()> {
-    // The `[tasks.*]`-stripped variant must fall back to the legacy single-tier
-    // `BoardEntry::run` emit (macro gate G.4): it emits NO `multi-tier` marker
+    // The `[tasks.*]`-stripped variant must fall back to the legacy single-sched-task
+    // `BoardEntry::run` emit (macro gate G.4): it emits NO `multi-sched_task` marker
     // (the branch-distinguishing invariant) AND reaches the lifecycle — either
     // `application complete` (a router was reachable → ran to completion) or
     // `proceeding with NullNodeRuntime` (no router → legacy fallback). Both are
@@ -152,13 +152,13 @@ fn single_sched_task_system_takes_the_legacy_boardentry_run_path() -> nros_tests
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        !combined.contains("multi-tier"),
-        "tiers-stripped binary emitted a multi-tier marker — the gate leaked into run_sched_tasks.\noutput:\n{combined}",
+        !combined.contains("multi-sched_task"),
+        "sched-tasks-stripped binary emitted a multi-sched-task marker — the gate leaked into run_sched_tasks.\noutput:\n{combined}",
     );
     assert!(
         combined.contains("application complete")
             || combined.contains("proceeding with NullNodeRuntime"),
-        "tiers-stripped binary did not reach the legacy BoardEntry::run lifecycle.\noutput:\n{combined}",
+        "sched-tasks-stripped binary did not reach the legacy BoardEntry::run lifecycle.\noutput:\n{combined}",
     );
     Ok(())
 }
@@ -166,7 +166,7 @@ fn single_sched_task_system_takes_the_legacy_boardentry_run_path() -> nros_tests
 /// The `orch_sched_tasks_single` overlay (`cases/orch_sched_tasks_single/`, a file since
 /// issue 1656 — it was a `sed` inside `compile-check-fixtures.sh`, outside the
 /// row's signature) is the template's bringup `system.toml` up to its first
-/// `[tasks.` table and nothing else, so the two rows differ ONLY in the tier
+/// `[tasks.` table and nothing else, so the two rows differ ONLY in the sched task
 /// tables. Reads sources only.
 #[test]
 fn single_sched_task_overlay_is_the_template_without_its_sched_task_tables() {
@@ -179,15 +179,15 @@ fn single_sched_task_overlay_is_the_template_without_its_sched_task_tables() {
     let overlay = read("cases/orch_sched_tasks_single/src/demo_bringup/system.toml.case");
     let (head, _sched_tasks) = template
         .split_once("\n[tasks.")
-        .expect("the multi-tier template declares `[tasks.*]` tables");
+        .expect("the multi-sched-task template declares `[tasks.*]` tables");
     assert_eq!(
         overlay.trim_end(),
         head.trim_end(),
-        "the single-tier overlay drifted from src/demo_bringup/system.toml: it must be \
+        "the single-sched-task overlay drifted from src/demo_bringup/system.toml: it must be \
          the template up to (not including) its first `[tasks.` table"
     );
     assert!(
         !overlay.lines().any(|l| l.starts_with("[tasks.")),
-        "the single-tier overlay declares a tier table"
+        "the single-sched-task overlay declares a sched task table"
     );
 }

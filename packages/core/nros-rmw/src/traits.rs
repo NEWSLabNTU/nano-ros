@@ -1615,7 +1615,7 @@ impl QoSProfile {
 
     /// Phase 282 (#145) — mark this publisher's samples "express": they
     /// bypass transport tx batching (sent immediately even when the batching
-    /// knob is on). A transport hint for control-tier / latency-sensitive
+    /// knob is on). A transport hint for control-sched-task / latency-sensitive
     /// topics; ignored on subscriptions and by backends without batching.
     pub const fn tx_express(mut self, express: bool) -> Self {
         self.tx_express = express;
@@ -1818,7 +1818,7 @@ pub fn validate_locator(locator: &str) -> Result<(), &'static str> {
 
 /// phase-521 W3 (RFC-0113 D4) — how a session reports that data arrived.
 ///
-/// The executor's park ends for exactly two reasons: the tier's next deadline,
+/// The executor's park ends for exactly two reasons: the sched task's next deadline,
 /// or readiness. This is the readiness half, in one of two forms, and the
 /// executor picks its wait from it rather than blocking inside the transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

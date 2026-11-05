@@ -56,7 +56,7 @@
 
 // phase-359 W10 — the ONE Rust-side spawn helper for the task ABI this crate
 // defines. It lived in `nros-node::executor::platform_task`, private, which
-// meant the second Rust caller (`nros-cpp`'s native tier runtime) could only
+// meant the second Rust caller (`nros-cpp`'s native sched task runtime) could only
 // reach it by exposing a core crate's internals or by writing a third copy of
 // allocate-spawn-join — `nros-board-nuttx` already holds a second. A helper for
 // an ABI belongs with the ABI.

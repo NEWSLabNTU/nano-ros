@@ -40,7 +40,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 /* Phase 274.W2 — nros_native_sched_task_spec_t + nros_board_native_run_sched_tasks
- * (C ABI board runner for multi-tier native entries). */
+ * (C ABI board runner for multi-sched-task native entries). */
 #include "rclc/detail/main.h"
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0) // hosted-family: hosted-console
@@ -116,7 +116,7 @@ namespace board {
 namespace detail {
 
 /// phase-436 (RFC-0106 D8) — install the port's microsecond park on the
-/// single-executor entry, as every tier runner installs it on its tiers.
+/// single-executor entry, as every sched task runner installs it on its sched tasks.
 /// Before this the C++ `run_components` parked on the millisecond
 /// `wake_wait_ms` floor and claimed that floor as its jitter granularity,
 /// whatever the port's tick was (issue 1242).
@@ -196,12 +196,12 @@ inline int32_t component_spin_loop() {
 // the C header both entry languages reach. See `<rclc/detail/main.h>` for the
 // override contract.
 
-/// Phase 274.W2 (RFC-0015 Model 1) — per-tier spec for
+/// Phase 274.W2 (RFC-0015 Model 1) — per-sched-task spec for
 /// `LinuxBoard::run_sched_tasks`. Layout mirrors `nros_native_sched_task_spec_t` in
 /// `<rclcpp/detail/nros_cpp_ffi.h>` (included transitively via `<rclcpp/rclcpp.hpp>`);
 /// the `run_sched_tasks` static method casts between the two.
 ///
-/// `name`           — tier name (null-terminated), informational.
+/// `name`           — sched task name (null-terminated), informational.
 /// `groups`         — FLAT `(node name, node namespace, group)` triples: 3 ×
 ///                    `n_groups` null-terminated strings. NULL / 0 means
 ///                    wildcard (accept all groups).
@@ -212,10 +212,10 @@ inline int32_t component_spin_loop() {
 ///                    byte-identical to `nros_native_sched_task_spec_t`.
 /// `priority`       — raw POSIX nice level adjustment (advisory on Linux).
 /// `stack_bytes`    — informational on native (`std::thread` manages the stack).
-/// `spin_period_us` — a level's park bound (the level runner); the tier runner
+/// `spin_period_us` — a level's park bound (the level runner); the sched task runner
 ///                    parks until the next deadline or arrival and ignores it.
-/// `setup`          — called once on the tier thread (after `set_active_groups`)
-///                    with the tier executor handle; returns 0 on success.
+/// `setup`          — called once on the sched task thread (after `set_active_groups`)
+///                    with the sched task executor handle; returns 0 on success.
 /// `core_plus1` — RFC-0052 W2: CPU pin + 1; 0 = unpinned.
 /// `preempt_threshold` — ThreadX-only (bake-validated); -1 = unset.
 /// `sched_task_class`/`period_us`/`budget_us`/`deadline_us`/`deadline_policy` —
@@ -334,45 +334,45 @@ class LinuxBoard {
         return run_components("node", nullptr, static_cast<Setup&&>(setup));
     }
 
-    /// Phase 274.W2 (RFC-0015 Model 1) — multi-tier native entry.
+    /// Phase 274.W2 (RFC-0015 Model 1) — multi-sched-task native entry.
     ///
     /// Delegates to the C-ABI seam `nros_board_native_run_sched_tasks` which opens
     /// ONE RMW session on the boot thread, spawns one `std::thread` per
-    /// non-boot tier (each with a **borrowed** executor sharing the one session),
-    /// and runs per-tier `setup` + `spin_once` loops at their declared periods.
+    /// non-boot sched task (each with a **borrowed** executor sharing the one session),
+    /// and runs per-sched-task `setup` + `spin_once` loops at their declared periods.
     ///
     /// `session_name` sets the primary session / node name; NULL or empty →
     /// `"node"` (the unified default). `tiers` must be a non-null array of
     /// `n_sched_tasks` `NativeSchedTaskSpec` entries sorted highest-priority-first (the
     /// codegen emitter produces them in that order). Returns 0 on clean exit
     /// (NROS_ENTRY_SPIN_MS elapsed) or the first non-zero setup / spin code.
-    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* tiers,
+    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
         // Issue 1442 — delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
-        return run_sched_tasks(session_name, nullptr, tiers, n_sched_tasks);
+        return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
     /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// Issue 1434 gave `run_components` this argument and carved the sched-task
     /// path out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
     /// It is the BAKED rung of RFC-0045's precedence model A, and this board is
     /// HOSTED, so `$NROS_NODE_NAMESPACE` still outranks it.
     ///
-    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// What it names is the SESSION. Each sched task's own nodes carry their own
     /// `(name, namespace, group)` triples in `NativeSchedTaskSpec::groups` (issue
     /// 1172) and are untouched.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks) {
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks) {
         // NativeSchedTaskSpec and nros_native_sched_task_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is
         // safe; both structs are plain C-compatible aggregates.
         return ::nros_board_native_run_sched_tasks_ns(
             session_name, node_namespace,
-            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers), n_sched_tasks);
+            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks), n_sched_tasks);
     }
 
     /// Issue 1597 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage, the
@@ -380,34 +380,34 @@ class LinuxBoard {
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes; the
     /// generated entry passes a file-scope static sized from the per-build
-    /// `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own tier count, so every
-    /// tier's executor is linker-placed `.bss` rather than a stack object. A
+    /// `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own sched task count, so every
+    /// sched task's executor is linker-placed `.bss` rather than a stack object. A
     /// short stride is refused. See `nros_board_native_run_sched_tasks_in` in
     /// `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_native_run_sched_tasks_in(
             session_name, node_namespace,
-            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers), n_sched_tasks,
+            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks), n_sched_tasks,
             executor_storage, storage_stride);
     }
 
     /// phase-509 P10 (RFC-0108) — the levels runner a generated hosted entry
-    /// calls: each row of `tiers` is one level, a worker thread over the
+    /// calls: each row of `sched_tasks` is one level, a worker thread over the
     /// core's ONE executor (block 0 of `executor_storage`, carved from
     /// `backings` when the build sizes its levels). `task_memory` is NULL on
     /// the host. See `nros_board_native_run_levels_in` in
     /// `<rclc/detail/main.h>`.
     static int32_t run_levels(const char* session_name, const char* node_namespace,
-                              const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                              const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                               void* executor_storage, size_t storage_stride,
                               const ::nros_sched_task_backing_t* backings,
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_native_run_levels_in(
             session_name, node_namespace,
-            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers), n_sched_tasks,
+            reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks), n_sched_tasks,
             executor_storage, storage_stride, backings, task_memory, scheduler_backing,
             scheduler_bytes);
     }
@@ -465,7 +465,7 @@ extern "C" const char* nros_runtime_locator_override(void);
 // issue 0758 -- acquire the wall-clock epoch (CONFIG_NROS_SNTP_EPOCH) between
 // network-up and the first component. Defined in the Zephyr module's
 // `nros_platform_zephyr_shims.c`, which decides whether the image asked for
-// one; unconditional here for the reason it is unconditional in the tiered
+// one; unconditional here for the reason it is unconditional in the sched-task
 // entries (`zephyr_run_sched_tasks.c`, `entry_sched_tasks.rs`).
 extern "C" void nros_zephyr_epoch_acquire_configured(void);
 #endif
@@ -501,7 +501,7 @@ class ZephyrBoard {
         // issue 0758 -- the single-executor entry never made this call, so an
         // image built with CONFIG_NROS_SNTP_EPOCH through the generated C++
         // `run_components` entry booted with no epoch and stamped boot-relative
-        // time: only the TIERED entries acquired one. Same window as there:
+        // time: only the SCHED-TASK entries acquired one. Same window as there:
         // network up, no component constructed, nothing stamped yet.
         nros_zephyr_epoch_acquire_configured();
 #endif
@@ -549,31 +549,31 @@ class ZephyrBoard {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 
-    /// phase-281 W3a (RFC-0015 Model 1) — multi-tier Zephyr embedded entry.
+    /// phase-281 W3a (RFC-0015 Model 1) — multi-sched-task Zephyr embedded entry.
     ///
     /// Delegates to `nros_board_zephyr_run_sched_tasks` (defined in nros-board-zephyr,
     /// compiled into the Zephyr `app` library) which opens ONE RMW session on
-    /// the caller's thread, spawns one `k_thread` per non-boot tier (each with a
-    /// **borrowed** executor sharing the session), and runs per-tier `setup` +
+    /// the caller's thread, spawns one `k_thread` per non-boot sched task (each with a
+    /// **borrowed** executor sharing the session), and runs per-sched-task `setup` +
     /// `spin_once` loops at their declared periods. Zephyr owns boot +
     /// networking, so there is no explicit network bring-up.
     ///
     /// `session_name` sets the primary session / node name; NULL or empty →
-    /// `"node"`. `tiers` must be a non-null array of `n_sched_tasks` `NativeSchedTaskSpec`
+    /// `"node"`. `sched_tasks` must be a non-null array of `n_sched_tasks` `NativeSchedTaskSpec`
     /// entries sorted highest-priority-first (the codegen emitter produces them
     /// in that order). `locator` and `domain_id` come from `NROS_ENTRY_LOCATOR`
     /// / `NROS_ENTRY_DOMAIN_ID` (compile-time baked by cmake). Never returns on
-    /// success (the boot-tier spin loop runs forever on embedded firmware).
-    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* tiers,
+    /// success (the boot-sched-task spin loop runs forever on embedded firmware).
+    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
         // Issue 1442 — delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
-        return run_sched_tasks(session_name, nullptr, tiers, n_sched_tasks);
+        return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
     /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// Issue 1434 gave `run_components` this argument and carved the sched-task
     /// path out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
@@ -581,81 +581,81 @@ class ZephyrBoard {
     /// locator and the domain stay `NROS_ENTRY_LOCATOR` /
     /// `NROS_ENTRY_DOMAIN_ID`, baked by cmake.
     ///
-    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// What it names is the SESSION. Each sched task's own nodes carry their own
     /// `(name, namespace, group)` triples in `NativeSchedTaskSpec::groups` (issue
     /// 1172) and are untouched.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks) {
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks) {
         // NativeSchedTaskSpec and nros_native_sched_task_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
         return ::nros_board_zephyr_run_sched_tasks_ns(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks);
     }
 
     /// Issue 1551 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage.
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes,
-    /// 8-byte aligned; block `i` is tier `i`'s executor. The generated entry
+    /// 8-byte aligned; block `i` is sched task `i`'s executor. The generated entry
     /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
-    /// and its own tier count, so the storage is linker-placed `.bss` rather
+    /// and its own sched task count, so the storage is linker-placed `.bss` rather
     /// than `n_sched_tasks` heap blocks out of `CONFIG_NROS_ZEPHYR_HEAP_SIZE`. See
     /// `nros_board_zephyr_run_sched_tasks_in` in `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_zephyr_run_sched_tasks_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride);
     }
 
     /// Issue 1232 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage AND
-    /// each tier task's memory (`task_memory[i]` is `tiers[i]`'s thread +
-    /// stack, sized from its declared `stack_bytes`; the boot tier's is
+    /// each sched task's memory (`task_memory[i]` is `sched_tasks[i]`'s thread +
+    /// stack, sized from its declared `stack_bytes`; the boot sched task's is
     /// empty). See `nros_board_zephyr_run_sched_tasks_memory_in` in `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride,
                                    const ::nros_sched_task_memory_t* task_memory) {
         return ::nros_board_zephyr_run_sched_tasks_memory_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, task_memory);
     }
 
-    /// Issue 1970 — [`run_sched_tasks`] for a per-tier-sized image: `backings[i]` is
-    /// tier `i`'s own executor backing (`NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>` bytes),
+    /// Issue 1970 — [`run_sched_tasks`] for a per-sched-task-sized image: `backings[i]` is
+    /// sched task `i`'s own executor backing (`NROS_CPP_SCHED_TASK_BACKING_SIZE_<i>` bytes),
     /// and the `storage_stride` blocks hold the contexts. See
     /// `nros_board_zephyr_run_sched_tasks_backed_in` in `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride,
                                    const ::nros_sched_task_backing_t* backings,
                                    const ::nros_sched_task_memory_t* task_memory) {
         return ::nros_board_zephyr_run_sched_tasks_backed_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory);
     }
 
     /// phase-509 P9 (RFC-0108) — the levels runner a generated entry calls:
-    /// each row of `tiers` is one level, `scheduler_backing` is the entry's
+    /// each row of `sched_tasks` is one level, `scheduler_backing` is the entry's
     /// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static the core's scheduler lives
     /// in, and `backings` is the core executor's levels backing (P9b: one
     /// executor per core, a level is a worker over it), or NULL when the
     /// build sizes none. See `nros_board_zephyr_run_levels_in` in
     /// `<rclc/detail/main.h>`.
     static int32_t run_levels(const char* session_name, const char* node_namespace,
-                              const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                              const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                               void* executor_storage, size_t storage_stride,
                               const ::nros_sched_task_backing_t* backings,
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_zephyr_run_levels_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory,
             scheduler_backing, scheduler_bytes);
     }
@@ -769,32 +769,32 @@ class NuttxBoard {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 
-    /// phase-281 W3 (nuttx) (RFC-0015 Model 1) — multi-tier NuttX embedded entry.
+    /// phase-281 W3 (nuttx) (RFC-0015 Model 1) — multi-sched-task NuttX embedded entry.
     ///
     /// Delegates to `nros_board_nuttx_run_sched_tasks` (defined in
     /// nros-board-nuttx-qemu, compiled into the NuttX kernel image by the
     /// board's build.rs seam) which opens ONE RMW session on the caller's
-    /// thread, spawns one `pthread` per non-boot tier (each with a **borrowed**
-    /// executor sharing the session), and runs per-tier `setup` + `spin_once`
+    /// thread, spawns one `pthread` per non-boot sched task (each with a **borrowed**
+    /// executor sharing the session), and runs per-sched-task `setup` + `spin_once`
     /// loops at their declared periods. NuttX owns boot + networking (eth0 is
     /// up before `app_main`), so there is no explicit network bring-up.
     ///
     /// `session_name` sets the primary session / node name; NULL or empty →
-    /// `"node"`. `tiers` must be a non-null array of `n_sched_tasks` `NativeSchedTaskSpec`
+    /// `"node"`. `sched_tasks` must be a non-null array of `n_sched_tasks` `NativeSchedTaskSpec`
     /// entries sorted highest-priority-first (the codegen emitter produces them
     /// in that order). `locator` and `domain_id` come from `NROS_ENTRY_LOCATOR`
     /// / `NROS_ENTRY_DOMAIN_ID` (compile-time baked by cmake). Never returns on
-    /// success (the boot-tier spin loop runs forever on embedded firmware).
-    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* tiers,
+    /// success (the boot-sched-task spin loop runs forever on embedded firmware).
+    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
         // Issue 1442 — delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
-        return run_sched_tasks(session_name, nullptr, tiers, n_sched_tasks);
+        return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
     /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// Issue 1434 gave `run_components` this argument and carved the sched-task
     /// path out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
@@ -802,16 +802,16 @@ class NuttxBoard {
     /// locator and the domain stay `NROS_ENTRY_LOCATOR` /
     /// `NROS_ENTRY_DOMAIN_ID`, baked by cmake.
     ///
-    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// What it names is the SESSION. Each sched task's own nodes carry their own
     /// `(name, namespace, group)` triples in `NativeSchedTaskSpec::groups` (issue
     /// 1172) and are untouched.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks) {
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks) {
         // NativeSchedTaskSpec and nros_native_sched_task_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
         return ::nros_board_nuttx_run_sched_tasks_ns(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks);
     }
 
@@ -819,35 +819,35 @@ class NuttxBoard {
     /// method `ZephyrBoard::run_sched_tasks` took first (issue 1551).
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes,
-    /// 8-byte aligned; block 0 is the boot tier's executor. The generated entry
+    /// 8-byte aligned; block 0 is the boot sched task's executor. The generated entry
     /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
-    /// and its own tier count, so the storage is linker-placed `.bss` rather
+    /// and its own sched task count, so the storage is linker-placed `.bss` rather
     /// than `n_sched_tasks` blocks out of the NuttX heap. The linked library refuses a block
     /// smaller than this build's executor. See
     /// `nros_board_nuttx_run_sched_tasks_in` in `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_nuttx_run_sched_tasks_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride);
     }
 
     /// phase-509 P10 (RFC-0108) — the levels runner a generated entry calls:
-    /// each row of `tiers` is one level over the core's ONE executor, the
+    /// each row of `sched_tasks` is one level over the core's ONE executor, the
     /// least urgent adopted on the calling thread and every other a SCHED_FIFO
     /// pthread on `task_memory[i]`'s stack. See
     /// `nros_board_nuttx_run_levels_in` in `<rclc/detail/main.h>`.
     static int32_t run_levels(const char* session_name, const char* node_namespace,
-                              const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                              const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                               void* executor_storage, size_t storage_stride,
                               const ::nros_sched_task_backing_t* backings,
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_nuttx_run_levels_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory,
             scheduler_backing, scheduler_bytes);
     }
@@ -1015,29 +1015,29 @@ class FreertosBoard {
         return run_components(NROS_ENTRY_LOCATOR, "node", static_cast<Setup&&>(setup));
     }
 
-    /// Phase 274.W3 (RFC-0015 Model 1) — multi-tier FreeRTOS embedded entry.
+    /// Phase 274.W3 (RFC-0015 Model 1) — multi-sched-task FreeRTOS embedded entry.
     ///
     /// Delegates to `nros_board_freertos_run_sched_tasks` (defined in nros-board-freertos)
     /// which opens ONE RMW session on the caller's task, spawns one FreeRTOS task
-    /// per non-boot tier (each with a **borrowed** executor sharing the session),
-    /// and runs per-tier `setup` + `spin_once` loops at their declared periods.
+    /// per non-boot sched task (each with a **borrowed** executor sharing the session),
+    /// and runs per-sched-task `setup` + `spin_once` loops at their declared periods.
     ///
     /// `session_name` sets the primary session / node name; NULL or empty → `"node"`.
-    /// `tiers` must be a non-null array of `n_sched_tasks` `NativeSchedTaskSpec` entries sorted
-    /// highest-priority-first (the codegen emitter produces them in that order).
-    /// `locator` and `domain_id` come from `NROS_ENTRY_LOCATOR` /
-    /// `NROS_ENTRY_DOMAIN_ID` (compile-time baked by cmake). Never returns on
-    /// success (the boot-tier spin loop runs forever on embedded firmware).
-    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* tiers,
+    /// `sched_tasks` must be a non-null array of `n_sched_tasks` `NativeSchedTaskSpec` entries
+    /// sorted highest-priority-first (the codegen emitter produces them in that order). `locator`
+    /// and `domain_id` come from `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` (compile-time baked
+    /// by cmake). Never returns on success (the boot-sched-task spin loop runs forever on embedded
+    /// firmware).
+    static int32_t run_sched_tasks(const char* session_name, const NativeSchedTaskSpec* sched_tasks,
                                    size_t n_sched_tasks) {
         // Issue 1442 — delegates to the namespaced overload with `nullptr`,
         // which is the root: what this arity has always resolved to.
-        return run_sched_tasks(session_name, nullptr, tiers, n_sched_tasks);
+        return run_sched_tasks(session_name, nullptr, sched_tasks, n_sched_tasks);
     }
 
     /// Issue 1442 — [`run_sched_tasks`] with the primary session's NAMESPACE.
     ///
-    /// Issue 1434 gave `run_components` this argument and carved the tiered
+    /// Issue 1434 gave `run_components` this argument and carved the sched-task
     /// path out; this closes it. `node_namespace` is what the generated entry
     /// reads out of `.nros_boot_config` with `nros_boot_config_namespace()`;
     /// NULL or empty means the image declares none, which resolves to the ROOT.
@@ -1045,16 +1045,16 @@ class FreertosBoard {
     /// locator and the domain stay `NROS_ENTRY_LOCATOR` /
     /// `NROS_ENTRY_DOMAIN_ID`, baked by cmake.
     ///
-    /// What it names is the SESSION. Each tier's own nodes carry their own
+    /// What it names is the SESSION. Each sched task's own nodes carry their own
     /// `(name, namespace, group)` triples in `NativeSchedTaskSpec::groups` (issue
     /// 1172) and are untouched.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks) {
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks) {
         // NativeSchedTaskSpec and nros_native_sched_task_spec_t have identical layout by
         // construction (same field order, same types, same ABI). The cast is safe.
         return ::nros_board_freertos_run_sched_tasks_ns(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks);
     }
 
@@ -1062,50 +1062,50 @@ class FreertosBoard {
     /// method `ZephyrBoard::run_sched_tasks` took first (issue 1551).
     ///
     /// `executor_storage` is `n_sched_tasks` blocks of `storage_stride` bytes,
-    /// 8-byte aligned; block 0 is the boot tier's executor. The generated entry
+    /// 8-byte aligned; block 0 is the boot sched task's executor. The generated entry
     /// passes a file-scope static sized from `NROS_CPP_EXECUTOR_STORAGE_SIZE`
-    /// and its own tier count, so the storage is linker-placed `.bss` rather
+    /// and its own sched task count, so the storage is linker-placed `.bss` rather
     /// than `n_sched_tasks` blocks out of heap_4. The linked library refuses a block
     /// smaller than this build's executor. See
     /// `nros_board_freertos_run_sched_tasks_in` in `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride) {
         return ::nros_board_freertos_run_sched_tasks_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride);
     }
 
     /// Issue 1598 — [`run_sched_tasks`] over CALLER-SUPPLIED executor storage AND
-    /// each tier task's memory (`task_memory[i]` is `tiers[i]`'s stack + TCB;
-    /// the boot tier's is empty). Every spawned tier is `xTaskCreateStatic`d
-    /// over the entry's statics, so no tier stack comes out of heap_4. See
+    /// each sched task's memory (`task_memory[i]` is `sched_tasks[i]`'s stack + TCB;
+    /// the boot sched task's is empty). Every spawned sched task is `xTaskCreateStatic`d
+    /// over the entry's statics, so no sched task stack comes out of heap_4. See
     /// `nros_board_freertos_run_sched_tasks_memory_in` in `<rclc/detail/main.h>`.
     static int32_t run_sched_tasks(const char* session_name, const char* node_namespace,
-                                   const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                                   const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                                    void* executor_storage, size_t storage_stride,
                                    const ::nros_sched_task_memory_t* task_memory) {
         return ::nros_board_freertos_run_sched_tasks_memory_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, task_memory);
     }
 
     /// phase-509 P10 (RFC-0108) — the levels runner a generated entry calls:
-    /// each row of `tiers` is one level over the core's ONE executor, the
+    /// each row of `sched_tasks` is one level over the core's ONE executor, the
     /// least urgent adopted on the calling task and every other a worker
     /// task on `task_memory[i]`. See `nros_board_freertos_run_levels_in` in
     /// `<rclc/detail/main.h>`.
     static int32_t run_levels(const char* session_name, const char* node_namespace,
-                              const NativeSchedTaskSpec* tiers, size_t n_sched_tasks,
+                              const NativeSchedTaskSpec* sched_tasks, size_t n_sched_tasks,
                               void* executor_storage, size_t storage_stride,
                               const ::nros_sched_task_backing_t* backings,
                               const ::nros_sched_task_memory_t* task_memory,
                               void* scheduler_backing, size_t scheduler_bytes) {
         return ::nros_board_freertos_run_levels_in(
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
-            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(tiers),
+            node_namespace, reinterpret_cast<const ::nros_native_sched_task_spec_t*>(sched_tasks),
             n_sched_tasks, executor_storage, storage_stride, backings, task_memory,
             scheduler_backing, scheduler_bytes);
     }

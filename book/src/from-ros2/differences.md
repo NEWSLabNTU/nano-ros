@@ -81,7 +81,7 @@ have to bound by hand. Offering both means the application picks.
 does not offer one. A future polled by tokio or Embassy runs when THAT
 scheduler decides, so nano-ros could not state when a callback runs or at
 what priority, and the real-time promise is the first thing nano-ros offers.
-Concurrent waits are written as callbacks on tiers instead, each tier an OS
+Concurrent waits are written as callbacks on sched tasks instead, each sched task an OS
 thread at a priority nano-ros derives.
 
 ### 4. Heap is optional

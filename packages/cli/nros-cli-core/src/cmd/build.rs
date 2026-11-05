@@ -4453,13 +4453,13 @@ fn generate_entry(
     //
     // A refusal here is REPORTED and not fatal: the macro resolves the same
     // table and will refuse with the same reason, at the point where the user
-    // can read it against their own tier table. Deriving no features from a
+    // can read it against their own sched task table. Deriving no features from a
     // table that did not resolve is then a compile error naming the missing
     // `run_sched_tasks`, which is the loud half of the asymmetry that function
     // describes.
     let plan_rtos = nros_entry_lower::sched_task_rtos_key_for(&plan.board);
     if let Err(e) = crate::codegen::entry::resolve_plan_sched(&mut plan, plan_rtos) {
-        eprintln!("nros build: warning: cannot resolve tiers for `{image_id}`: {e}");
+        eprintln!("nros build: warning: cannot resolve sched tasks for `{image_id}`: {e}");
     }
 
     // Issue 1706 -- a launch `<param>` seeds the parameter store through the
@@ -4686,7 +4686,7 @@ fn generate_entry(
     // phase-470 W5.b2 (issue 1288) — the board-crate features this IMAGE's
     // schedule implies, on top of whatever its descriptor declares. The
     // descriptor's `board_features` is a property of the BOARD and cannot say
-    // this: `tiers` is true of an image whose bringup declares them and false of
+    // this: `sched_tasks` is true of an image whose bringup declares them and false of
     // its sibling on the same board. `builder::entry::schedule_board_features`
     // owns the derivation and the case against declaring it instead.
     if let Some(krate) = facts.board_crate.clone() {
@@ -6024,7 +6024,7 @@ fn names_west_build_dir(west_extra: &[String]) -> bool {
 /// last writer wins: `realtime-rust`'s `demo_bringup` and `derived_bringup`
 /// both declared `[image.zephyr]`, both west leaves configured
 /// `APPLICATION_SOURCE_DIR = …/build/zephyr-zenoh/zephyr_entry`, and the
-/// authored-tier image booted `derived-telem_node`.
+/// authored-sched-task image booted `derived-telem_node`.
 ///
 /// The predicate is the build's own, per road:
 ///
@@ -8587,7 +8587,7 @@ mod generated_output_collision_tests {
     /// The reported shape: `realtime-rust`'s `demo_bringup` and
     /// `derived_bringup` both declared `[image.zephyr]` with no hand-written
     /// application, so both west leaves were configured on ONE generated
-    /// directory, and the authored-tier image booted `derived-telem_node`.
+    /// directory, and the authored-sched-task image booted `derived-telem_node`.
     #[test]
     fn two_bringups_generating_one_id_collide_on_the_entry() {
         let t = tempfile::tempdir().unwrap();

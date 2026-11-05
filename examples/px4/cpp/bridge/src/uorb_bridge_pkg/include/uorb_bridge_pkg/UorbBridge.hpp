@@ -19,7 +19,7 @@
  *   `uorb_bridge_bringup`; this component is the only hand-written code. The
  *   entry opens the image's PRIMARY session, uORB (the bringup's `rmw`), and
  *   the component's second node opens the outward one by name
- *   (`NodeBuilder::rmw`). A `debug_key_value` arrival schedules the tier's
+ *   (`NodeBuilder::rmw`). A `debug_key_value` arrival schedules the sched task's
  *   work item from the publisher's context and dispatches `on_sample`; there
  *   is no polling interval.
  *

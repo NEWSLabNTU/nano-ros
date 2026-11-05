@@ -1,6 +1,6 @@
 # Node interface contract for budget.launch.xml (phase-162 W1).
 #
-# Both nodes are pinned to authored tiers by system.toml (`capped` and the
+# Both nodes are pinned to authored sched tasks by system.toml (`capped` and the
 # lower `background`), so their rates derive nothing; `load_boot` is the boot
 # level.
 

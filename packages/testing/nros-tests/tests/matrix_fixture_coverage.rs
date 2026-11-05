@@ -644,7 +644,7 @@ fn interop_bindings_g3_build_recipe_names_its_module() {
     }
     assert!(
         bad.is_empty(),
-        "interop G3 (tier/recipe) violations:\n{}",
+        "interop G3 (sched task/recipe) violations:\n{}",
         bad.join("\n")
     );
 }

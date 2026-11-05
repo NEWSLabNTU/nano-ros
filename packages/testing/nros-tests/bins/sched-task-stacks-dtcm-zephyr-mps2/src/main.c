@@ -1,9 +1,9 @@
 /*
- * Issue 2084 -- tier stacks in DTCM, link-layout witness.
+ * Issue 2084 -- sched task stacks in DTCM, link-layout witness.
  *
- * Spawns one level on the nano-ros shim's tier pool
+ * Spawns one level on the nano-ros shim's sched task pool
  * (`nros_zephyr_sched_task_create`), which is what keeps `nros_sched_task_stacks` in
- * the link: --gc-sections drops the pool from an image that spawns no tier.
+ * the link: --gc-sections drops the pool from an image that spawns no sched task.
  * A second level runs on a DECLARED stack, spelled the way a generated C/C++
  * entry spells it (`NROS_SCHED_TASK_MEMORY_DEFINE`,
  * <rclc/detail/sched_task_memory_zephyr.h>), which must follow the same rule.

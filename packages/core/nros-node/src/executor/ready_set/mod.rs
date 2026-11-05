@@ -295,7 +295,7 @@ impl<const N: usize> ReadySet for EdfReadySet<N> {
 /// three-bucket set this replaces did.
 ///
 /// It replaced ~~`BucketedFifoSet<3, N>`~~, whose bucket was the sched context's
-/// `Priority` alone: every callback of one tier sat in `Normal` and ran in
+/// `Priority` alone: every callback of one sched task sat in `Normal` and ran in
 /// registration order, whatever rank the contract gave its node. The level is
 /// [`Priority::dispatch_level`](super::sched_context::Priority::dispatch_level),
 /// which keeps the three buckets as three reserved levels.

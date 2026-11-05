@@ -44,7 +44,7 @@ use nros_tests::{
 };
 use std::{path::Path, process::Command, time::Duration};
 
-/// `levels-cpp`'s `capped` tier (`[tasks.capped.posix]`): the reservation the
+/// `levels-cpp`'s `capped` sched task (`[tasks.capped.posix]`): the reservation the
 /// budget image's `load_capped` level runs under.
 const CAPPED_BUDGET_US: u64 = 2_000;
 const CAPPED_PERIOD_US: u64 = 10_000;
@@ -251,7 +251,7 @@ fn linux_level_budget_overrun_is_throttled_by_the_kernel() {
     require_kernel_accepted(&console, entry);
     if let Some(l) = console
         .lines()
-        .find(|l| l.contains("deadline budget FAILED tier=`capped`"))
+        .find(|l| l.contains("deadline budget FAILED sched_task=`capped`"))
     {
         nros_tests::unmet!(
             "this lane claims rt-sched, but the kernel refused the SCHED_DEADLINE \
@@ -261,8 +261,8 @@ fn linux_level_budget_overrun_is_throttled_by_the_kernel() {
     }
     fail_on_boot_failure(&console);
     for marker in [
-        "nros: deadline budget set tier=`capped` 2000us/10000us",
-        "nros: level budget tier=`capped` 2000us/10000us enforced by the KERNEL",
+        "nros: deadline budget set sched_task=`capped` 2000us/10000us",
+        "nros: level budget sched_task=`capped` 2000us/10000us enforced by the KERNEL",
     ] {
         assert!(
             console.contains(marker),

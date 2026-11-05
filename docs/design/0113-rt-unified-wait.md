@@ -13,7 +13,7 @@ superseded-by: null
 # RFC-0113 — The real-time promise, and the one wait that keeps it
 
 **Status:** Draft (2026-10-31), approved by the maintainer the same day. Written before any code. It sets a support
-rule that outranks RFC-0112's tiers, and it gives the executor one way of
+rule that outranks RFC-0112's sched tasks, and it gives the executor one way of
 waiting for every platform and every RMW. Implemented by
 [phase-521](../roadmap/archived/phase-521-rt-unified-wait.md).
 
@@ -22,7 +22,7 @@ waiting for every platform and every RMW. Implemented by
 The real-time promise is the first thing nano-ros offers. From this RFC on, a
 way of running nano-ros is SUPPORTED only if nano-ros can make that promise in
 it. The promise holds only where nano-ros decides which callback runs and at
-what priority: its own runtime (tiers on OS threads, `nros::main!`, the
+what priority: its own runtime (sched tasks on OS threads, `nros::main!`, the
 runners, `spin`), and a Tier 1 framework whose scheduling nano-ros generates
 and can analyse (RTIC).
 
@@ -33,10 +33,10 @@ Two consequences follow.
    that shape the host's scheduler decides when callbacks run, so no response
    time, jitter or priority bound can be stated. The surfaces that exist only
    for it are deleted (D7).
-2. **The runtime waits one way, everywhere.** Each tier thread waits on its
+2. **The runtime waits one way, everywhere.** Each sched task thread waits on its
    own wait object, at its own priority, and that object fires for exactly two
-   reasons: data for this tier arrived, or this tier's next deadline came due.
-   No tier ever polls, busy-waits, or blocks inside a transport's `recv`. Every
+   reasons: data for this sched task arrived, or this sched task's next deadline came due.
+   No sched task ever polls, busy-waits, or blocks inside a transport's `recv`. Every
    backend reports arrivals through one RMW slot in one of two forms, and every
    backend's deadline names a real event.
 
@@ -49,15 +49,15 @@ Measured on main, 2026-10-31:
   always pending and a `spin_async` with no sleep function yields forever. With
   `spin_async_with_sleep` it sleeps, but in the host's timer, on the host's
   thread, at the host's priority.
-- **The same constant wakes every idle zenoh tier every 3.3 s.** Since
+- **The same constant wakes every idle zenoh sched task every 3.3 s.** Since
   zenoh-pico 1.10 (RFC-0110), a THREAD-mode build sends keep-alives and checks
   the lease on zenoh-pico's own executor thread. The nano-ros executor has
   nothing to do at that deadline. It is a wasted wake on every microcontroller.
 - **Poll-only backends block inside `recv`.** XRCE and uORB cannot end a park
-  (RFC-0106 D5), so a tier waits in the transport's receive. That wait has
+  (RFC-0106 D5), so a sched task waits in the transport's receive. That wait has
   1 ms granularity, and a guard condition triggered from another thread can
   only be noticed between 10 ms slices (`POLL_ONLY_WAKE_SLICE_MS`, deleted in
-  phase-521 W6). Neither is a bound a real-time tier can be designed against.
+  phase-521 W6). Neither is a bound a real-time sched task can be designed against.
 - **A foreign loop cannot carry the promise.** tokio is work-stealing with no
   priorities; Qt and GLib run one main thread; an Embassy schedule is the
   user's own. The integration contract RFC-0112 opened (issues 2143–2146)
@@ -74,7 +74,7 @@ runs next and at what priority, and can state the bounds in D2 for it.
 
 | Shape (RFC-0112 vocabulary) | Supported | Why |
 |---|---|---|
-| A: nano-ros owns the loop (`owned-spin`, the runners, `spin*`) | yes | tiers map onto OS threads with real priorities (RFC-0002, RFC-0108) |
+| A: nano-ros owns the loop (`owned-spin`, the runners, `spin*`) | yes | sched tasks map onto OS threads with real priorities (RFC-0002, RFC-0108) |
 | C: a framework owns scheduling, and nano-ros generates the mapping (RTIC; PX4 work queues, D9) | yes, while Tier 1 admission holds | the priority mapping is generated and the framework's model is analysable |
 | B: a host drives the executor (tokio, Embassy task, Qt, GLib, Arduino `loop()`, a hand-written PX4 work item) | **no** | the host decides when callbacks run |
 
@@ -84,41 +84,41 @@ gains this as a fifth criterion).
 
 ### D2 — What the promise states
 
-For every tier of a supported image:
+For every sched task of a supported image:
 
 1. **It never busy-waits.** Between dispatches its thread is blocked in the
    platform's wait, and the idle wake count is zero apart from D2.3's reasons.
 2. **It waits on its own wait object, at its own priority.** Priority comes
    from the thread that waits, never from the object.
-3. **It wakes for exactly two reasons:** data that this tier owns arrived, or
-   this tier's next deadline came due. A guard condition's trigger is an
+3. **It wakes for exactly two reasons:** data that this sched task owns arrived, or
+   this sched task's next deadline came due. A guard condition's trigger is an
    arrival.
 4. **Wake latency is bounded by the port, not by nano-ros.** An arrival
    reaches dispatch within the OS's wake latency. A deadline is honoured to the
    port's declared granularity, rounded up and recorded (RFC-0106 D3, D9).
-5. **An arrival wakes the tier that owns it.** Where a backend attributes its
+5. **An arrival wakes the sched task that owns it.** Where a backend attributes its
    arrivals, that is exact (phase-397). Where it cannot, the wake fans out to
-   the tiers over that session, each tier's dispatch still runs at its own
+   the sched tasks over that session, each sched task's dispatch still runs at its own
    priority, and the fan-out is documented per backend as a known cost.
-   **Its bound:** one arrival wakes at most every other tier on that session
-   (N − 1 for N tiers), and each such wake is one thread wake plus one
+   **Its bound:** one arrival wakes at most every other sched task on that session
+   (N − 1 for N sched tasks), and each such wake is one thread wake plus one
    non-blocking pass that finds nothing of its own, never a wait. Measured on
-   Linux at 5–7.5 µs of the woken tier's CPU (stated bound: 100 µs); measured,
+   Linux at 5–7.5 µs of the woken sched task's CPU (stated bound: 100 µs); measured,
    not asserted, at 6.8–9.4 µs over live zenoh before zenoh attributed
    (phase-436). The non-attributing backend in the tree is uORB (all three
    entity slots NULL); zenoh, XRCE and Cyclone attribute.
-6. **No tier blocks inside a transport.** The transport is drained
+6. **No sched task blocks inside a transport.** The transport is drained
    non-blockingly after a wake.
 
-### D3 — One wait object per tier, two reasons to fire
+### D3 — One wait object per sched task, two reasons to fire
 
-RFC-0106's park becomes the only wait: `park_until(deadline)` on the tier's
+RFC-0106's park becomes the only wait: `park_until(deadline)` on the sched task's
 own wait object, ended early by readiness. The deadline is the RFC-0106 D1
 minimum, which stays internal. Nothing outside the runtime reads it.
 
 The platform primitive is unchanged where a port has one (`k_sem_take`,
 `xSemaphoreTake`, `tx_semaphore_get`, `sem_clockwait`). On POSIX and NuttX, a
-tier that has a waitable source (D4) parks in `ppoll` over its own `eventfd`
+sched task that has a waitable source (D4) parks in `ppoll` over its own `eventfd`
 plus those sources, with the deadline as the timeout. That is the one platform
 whose wait must multiplex OS handles. Zephyr joins it if phase-521 W4 picks
 the Waitable form there.
@@ -154,7 +154,7 @@ deliver Notify without the RMW knowing the board.
 | XRCE over zsock (Zephyr) | Waitable through `zsock_poll` over the socket plus an `eventfd` park, unless a receive callback proves cheaper; phase-521 W4 measures and picks |
 | XRCE over serial / custom transport | Notify through `rx_notify` |
 | smoltcp on bare metal | Notify from the NIC RX interrupt |
-| uORB on PX4 | Notify through the `SubscriptionCallback` glue (`px4_callback_glue.cpp`), bound per subscription to the owning tier's work item |
+| uORB on PX4 | Notify through the `SubscriptionCallback` glue (`px4_callback_glue.cpp`), bound per subscription to the owning sched task's work item |
 | uORB polling build (`NROS_RMW_UORB_BUILD_PX4_GLUE=OFF`) | none: refused under D5, kept only as a host test double |
 
 ### D5 — No silent fallback
@@ -221,10 +221,10 @@ These stay, because nano-ros's own runtime uses them:
 
 PX4 opens nano-ros to drone applications, so it is supported, and under D1
 that means Shape C: nano-ros generates the mapping and states the bounds.
-Each tier maps onto a PX4 work queue, whose thread carries a real priority
-(`px4::wq_configurations`), and a tier's wait is that work item's schedule.
+Each sched task maps onto a PX4 work queue, whose thread carries a real priority
+(`px4::wq_configurations`), and a sched task's wait is that work item's schedule.
 uORB arrivals reach it through `SubscriptionCallback` (D4's Notify), and a
-deadline through `ScheduleDelayed`/`ScheduleOnInterval`. A PX4 tier never
+deadline through `ScheduleDelayed`/`ScheduleOnInterval`. A PX4 sched task never
 polls `orb_check` in a loop. The hand-written `ScheduledWorkItem` modules in
 `examples/px4/cpp/*` are replaced by the generated entry. RFC-0112 D3's
 five admission criteria apply: an in-tree board (PX4 SITL), a delivering CI
@@ -233,43 +233,43 @@ a named owner, and the D2 bounds measured under the work-queue scheduler.
 
 **Rulings (maintainer, 2026-11-03).**
 
-- **A PX4 tier waits through a yielding park slot.** No next-deadline hook is
+- **A PX4 sched task waits through a yielding park slot.** No next-deadline hook is
   added and no executor API widens; D7 stands. The executor already calls its
-  park slot with the bound in microseconds. A PX4 tier's park slot arms
+  park slot with the bound in microseconds. A PX4 sched task's park slot arms
   `ScheduleDelayed(us)` (or `ScheduleClear()` when there is no deadline) and
   returns a "yielded" code, so `spin_once` returns to the work queue instead
   of blocking. The code is `NROS_PLATFORM_PARK_YIELDED` (2) in the park ABI
   (`nros/platform.h`, `nros_node::PARK_YIELDED`); a wake already pending when
   the slot yields keeps the pass running. A uORB arrival's wake callback is
-  bound to the tier's `ScheduleNow()`.
+  bound to the sched task's `ScheduleNow()`.
 - **Owner.** The maintainer owns PX4 as a Tier 1 framework (RFC-0112 D3's
   named-owner criterion), recorded here and in PX4's entry in
   `board-support.toml`.
 
 The work queues come from one rank-ordered table,
-`nros_orchestration_ir::px4::PX4_WORK_QUEUES`: the most urgent tier takes
+`nros_orchestration_ir::px4::PX4_WORK_QUEUES`: the most urgent sched task takes
 `rate_ctrl`, then `hp_default`, `nav_and_controllers` and `lp_default`. More
-tiers than queues is refused at generation, never shared (phase-521 W8 a).
+sched tasks than queues is refused at generation, never shared (phase-521 W8 a).
 
 The entry is generated C++ (phase-521 W8 b): `nros dev codegen entry`'s PX4
 emitter (`codegen/entry/px4.rs`) renders a PX4 module with one
-`nros_px4::SchedTaskWorkItem` subclass per tier on the queue its rank picks, and
+`nros_px4::SchedTaskWorkItem` subclass per sched task on the queue its rank picks, and
 the work item is the runtime half (`integrations/px4/include/nros_px4/
-sched_task_work_item.hpp`). The boot tier opens the session and the others borrow
-it, as on every tier runner. A `Run()` is one pass whose first park answers
+sched_task_work_item.hpp`). The boot sched task opens the session and the others borrow
+it, as on every sched task runner. A `Run()` is one pass whose first park answers
 EXPIRED, so it drains and dispatches without blocking, then passes until the
 park slot yields: the slot arms `ScheduleDelayed(bound)`, or
 `ScheduleClear()` when no deadline falls inside the executor's idle budget
-(`NROS_CPP_ENTRY_IDLE_BUDGET_MS`). Arrivals reach the tier through
+(`NROS_CPP_ENTRY_IDLE_BUDGET_MS`). Arrivals reach the sched task through
 `SchedTaskWorkItem::notify()`, which a clear cannot lose, and they reach `notify()`
 through the slot's wake half: `nros_cpp_executor_set_wake_hook`, a hook the
 executor's wake object calls on every signal, ahead of the platform signal
 (issue 2225, maintainer ruling 2026-11-03). Every backend's arrival therefore
-schedules the tier — uORB's from the publisher's context, zenoh's and XRCE's
+schedules the sched task — uORB's from the publisher's context, zenoh's and XRCE's
 from their transport threads — and an attributed arrival signals only the
-owning tier's wake object, so only that tier runs. A node whose groups span
-two tiers is refused: a work item per tier has no shared executor to carry a
-sched context per tier.
+owning sched task's wake object, so only that sched task runs. A node whose groups span
+two sched tasks is refused: a work item per sched task has no shared executor to carry a
+sched context per sched task.
 
 ### D10 — `nros::setup!` retires
 
@@ -292,14 +292,14 @@ deleted receive-blocking wait.
 | XRCE over UDP, POSIX / NuttX | Waitable (socket fd) | phase-521 W3 |
 | XRCE over zsock, Zephyr | Waitable (`zsock_poll`) | native_sim arrival→dispatch p50 0.4–1.1 ms (was 3.2–6.3 ms); mps2/an385 (in-kernel IP stack, QEMU 11): 10 executor switch-ins over five 1 s expiries, dispatch on the tick |
 | XRCE over lwIP (FreeRTOS), NetX Duo (ThreadX) | Notify (stack receive callback) | p50 2.2–4.0 ms (was 72–253 ms); NetX 1.8 ms |
-| C++ native tier runner, `rclc_executor_spin_period` | parks on the wake object | `node_guard_condition.c`: a trigger in the period gap dispatched 0 ms after it lands (was: next period) |
+| C++ native sched task runner, `rclc_executor_spin_period` | parks on the wake object | `node_guard_condition.c`: a trigger in the period gap dispatched 0 ms after it lands (was: next period) |
 | zenoh CALLER mode, ThreadX | Notify — the link's TCP socket notifies through `nros_platform_tcp_set_rx_notify` (NetX Duo's receive notify; on threadx-linux a lowest-priority NSOS watcher thread), and `zp_next_wake_ms` is real in the multi-thread build | idle threadx-linux listener, 10 s: 4,599 context switches against 53,061 with the blind `z_sleep_ms`; `rtos_e2e` pubsub/service/action pass on threadx-linux and rv-virt-threadx |
 | esp32-c3 bare metal | **retired** (phase-521 W6) — no RX interrupt or one-shot behind a wake object; every board name is refused naming D5 | `nros_entry_lower::REMOVED_BOARD_KEYS` |
 | XRCE over a board's custom transport (mps2-an385 UART0, `talker-xrce`) | Notify (`nros_rmw_xrce_set_custom_transport_rx_notify`, from `UARTRX0`) | 1 Hz talker, QEMU 9.0.2, 20 s: 42 one-shot arms (1,832 with the receive-blocking drain) |
 | XRCE over a custom transport with no receive notification | **refused** at open (D5) | `readiness_park::a_session_with_no_readiness_form_is_refused_at_open` (a stub backend stating none, with and without a wake slot) |
 | RTIC images (mps2-an385, LAN9118) | Notify — an RTIC hardware task bound to `ETHERNET` posts the wake object; the run loop parks with the entry budget (SysTick one-shot at the next deadline) | idle `qemu-rtic-listener`, QEMU 9.0.2, 20 s: 0 SysTick one-shots and 2 host CPU ticks (the router's keep-alive arrives first); the retired 1 ms dual-timer tick woke it 20,000 times. `test_qemu_rtic_{pubsub,service,action,mixed_priority_pubsub}_e2e` pass |
 | uORB polling build | none: refused under D5 | host test double only |
-| uORB, PX4 glue build | Notify — each subscription's `uORB::SubscriptionCallback` (publisher's context) fires the per-entity callback, so only the owning tier's executor wake is signalled, and that wake's hook calls the tier's `SchedTaskWorkItem::notify()` (phase-521 W8 d, issue 2225) | PX4 SITL: the generated `nros_uorb_demo` dispatches `vehicle_status` on arrival on its work item; `px4_uorb_interop_e2e` passes. The glue had never been linked before (issue 2218, archived) |
+| uORB, PX4 glue build | Notify — each subscription's `uORB::SubscriptionCallback` (publisher's context) fires the per-entity callback, so only the owning sched task's executor wake is signalled, and that wake's hook calls the sched task's `SchedTaskWorkItem::notify()` (phase-521 W8 d, issue 2225) | PX4 SITL: the generated `nros_uorb_demo` dispatches `vehicle_status` on arrival on its work item; `px4_uorb_interop_e2e` passes. The glue had never been linked before (issue 2218, archived) |
 
 Measured on Linux over `rmw_zenohd` (`entity_wake`, `required-features-tests`
 lane, 2026-11-02): an idle entry with one 1 s timer runs 4 spins in 3.5 s and
@@ -336,19 +336,19 @@ that is not measuring the receive path fails.
 D2.5's fan-out, measured on Linux (`sched_task_wake_fanout`,
 `required-features-tests` lane, 2026-11-03) over a stub backend registered
 under its own name in two shapes that differ only in the entity slot: four
-tiers share one session, each on its own thread parked in a 1 s spin, and
+sched tasks share one session, each on its own thread parked in a 1 s spin, and
 200 arrivals land for the lowest. Without attribution (the slot NULL, the
 arrival a session wake, uORB's shape) one arrival wakes 2.99–3.00 of the 3
-high tiers, at 5.0–7.5 µs of each woken tier's CPU (three runs; the bound the
+high sched tasks, at 5.0–7.5 µs of each woken sched task's CPU (three runs; the bound the
 test states is 100 µs). With attribution (the slot filled, the arrival
 naming its entity) it wakes none of them: each parks its whole budget, and
-the low tier is woken by its own arrival.
+the low sched task is woken by its own arrival.
 
 Under PX4's work-queue scheduler (D9; PX4 v1.17.0 SITL,
 `px4_sitl::work_queue_sched_task_wakes_only_for_deadlines_and_arrivals`, the
 hosted `px4-sitl` nightly job, 2026-11-03): the generated `nros_uorb_demo`
-runs one tier, a 1 s timer and a `vehicle_status` subscription, as a PX4
-work item. The tier counts its own runs and the component its dispatches;
+runs one sched task, a 1 s timer and a `vehicle_status` subscription, as a PX4
+work item. The sched task counts its own runs and the component its dispatches;
 over a 10 s window, in each of three runs, the work item ran 30 times for 10
 deadlines and 20 arrivals: no run answered neither (the retired 10 ms slice
 would add ~1,000). Arrival→dispatch is measured on the real clock from the
@@ -387,8 +387,8 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
   arrival through a port-owned foreign-wake bridge (issue 2217).
 - 2026-11-03 — D9: the park slot gains its wake half. The executor's wake
   object calls a hook (`nros_cpp_executor_set_wake_hook`) on every signal,
-  and a PX4 tier binds it to `notify()`, so a networked backend's arrival
-  schedules the tier instead of waiting for its next deadline. uORB's own
+  and a PX4 sched task binds it to `notify()`, so a networked backend's arrival
+  schedules the sched task instead of waiting for its next deadline. uORB's own
   arrival target (`nros_rmw_uorb_set_arrival_target`) is retired into it
   (issue 2225).
 - 2026-11-03 — Stable: phase-521 is complete and archived. Every
@@ -399,16 +399,16 @@ polled `uart_poll_in` + `k_yield` path is retired (phase-521 W6).
   by the hosted `px4-sitl` nightly job; PX4 admitted to Tier 1 in RFC-0112 D3
   (phase-521 W8 e/f).
 - 2026-11-03 — D4/D9: uORB states Notify. Its glue is linked (a weak stub
-  had shadowed it) and bound to the owning tier's work item. The PX4 firmware
+  had shadowed it) and bound to the owning sched task's work item. The PX4 firmware
   example runs on the generated entry (phase-521 W8 d).
-- 2026-11-03 — D9: the generated PX4 entry and its tier work item land
+- 2026-11-03 — D9: the generated PX4 entry and its sched task work item land
   (phase-521 W8 b).
 - 2026-11-03 — D9: the yielding park slot's code, `NROS_PLATFORM_PARK_YIELDED`,
   lands in the park ABI (phase-521 W8 c).
 - 2026-11-03 — D2.5's fan-out bound stated and measured
   (`sched_task_wake_fanout`); the open question closes. Zephyr arrival→dispatch
   measured on mps2/an385 (phase-521 W7).
-- 2026-11-03 — D9: the maintainer's rulings recorded (a PX4 tier waits
+- 2026-11-03 — D9: the maintainer's rulings recorded (a PX4 sched task waits
   through a yielding park slot; the maintainer owns PX4), and the work-queue
   table landed (`px4` joins `FRAMEWORKS`, phase-521 W8 a).
 - 2026-11-03 — Zephyr idle-wake measured on mps2/an385, zenoh and XRCE

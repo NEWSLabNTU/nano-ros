@@ -120,7 +120,7 @@ impl RegisteredNode {
                 remaps: Vec::new(),
                 callback_groups: Vec::new(),
                 sched_context: None,
-                group_tiers: std::collections::BTreeMap::new(),
+                group_tasks: std::collections::BTreeMap::new(),
                 stack_bytes: None,
             }],
             // The generated TU is a function of the CLI ARGUMENTS alone — it
@@ -131,7 +131,7 @@ impl RegisteredNode {
             lifecycle: None,
             param_services: false,
             safety: None,
-            tiers: Default::default(),
+            sched_tasks: Default::default(),
             node_overrides: Vec::new(),
             resolved_sched_tasks: None,
             // Issue 0794 — `nano_ros_node_register` has no syntax for a domain,

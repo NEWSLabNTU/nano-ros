@@ -1,4 +1,4 @@
-# Issue 2084 -- a link-layout witness: one level spawned on the shim's tier
+# Issue 2084 -- a link-layout witness: one level spawned on the shim's sched task
 # pool and one on a declared stack (the generated C/C++ entry's spelling),
 # with CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM on a devicetree that has a "DTCM"
 # region (app.overlay carves one out of mps2_an385's SRAM). The test

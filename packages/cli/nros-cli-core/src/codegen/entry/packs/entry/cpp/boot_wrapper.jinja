@@ -9,7 +9,7 @@
   return the board's `int32_t` directly.
 
   The board CALL is assembled here rather than handed over pre-rendered: it is
-  three already-correct values (the board family, whether the plan runs tiers,
+  three already-correct values (the board family, whether the plan runs sched_tasks,
   how many) laid out, which is the line `render.rs` draws. Only the HOST board
   resolves its locator at run time, so it is the one `run_components` that
   takes no locator argument.
@@ -20,22 +20,22 @@
   does `run_sched_tasks`; the C pack's wrapper says what that cost. Here it is one
   more header overload per board class, so the call NAME does not move.
 
-  Issue 1551 — when the runner takes the tiers' executor storage
+  Issue 1551 — when the runner takes the sched_tasks' executor storage
   (`boot.sched_task_storage`, i.e. `CAbiRunners::sched_tasks_take_static_storage`), the
-  wrapper emits it here as a file-scope static and passes it with its per-tier
+  wrapper emits it here as a file-scope static and passes it with its per-sched_task
   stride. The runner then allocates no executor from the platform heap.
 
-  Issue 1568 — every RTOS board's tier runner takes storage this way now
+  Issue 1568 — every RTOS board's sched task runner takes storage this way now
   (FreeRTOS and NuttX joined Zephyr). The single-executor `run_components`
   needs nothing here: `Board::run_components` already reaches the same `.bss`
   shape through `Node::GlobalStorageHolder<0>::storage`, and `rclcpp::init` asks
   the linked library the same question the runners do.
 -#}
 {%- if boot.sched_task_storage -%}
-/* Issues 1551 + 1568 — every tier's executor storage, one block per tier, as a
+/* Issues 1551 + 1568 — every sched task's executor storage, one block per sched task, as a
  * file-scope static the linker places and `mem-report` names. The runner used
  * to take each block out of the platform heap, and nothing multiplied the
- * storage by the tier count against it. The size is this build's own
+ * storage by the sched task count against it. The size is this build's own
  * NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory: without it there
  * is no honest size to write. The runner asks the linked library whether the
  * block is big enough and refuses it if not. */
@@ -49,11 +49,11 @@ static uint64_t __nros_sched_task_executor_storage[{{ boot.n_sched_tasks }}][(NR
 {%- endif %}
 
 {% if boot.task_memory -%}
-/* Issue 1598 — each spawned tier's TASK memory (stack + control block), as
+/* Issue 1598 — each spawned sched task's TASK memory (stack + control block), as
  * statics the linker places and prices: an image whose stacks do not fit RAM
  * fails at LINK, not at boot as a heap allocation failure. Sized from each
- * tier's `stack_bytes` (or the stated default) and raised to the port's floor
- * by the header's macro. The boot tier runs on the caller's task and has none. */
+ * sched task's `stack_bytes` (or the stated default) and raised to the port's floor
+ * by the header's macro. The boot sched task runs on the caller's task and has none. */
 #include <{{ boot.task_memory.header }}>
 {% for r in boot.task_memory.rows %}{% if r.spawned %}NROS_SCHED_TASK_MEMORY_DEFINE({{ r.index }}, {% if r.derived %}NROS_LEVEL_STACK_BYTES({{ r.member_bytes }}u){% else %}{{ r.bytes }}u{% endif %});
 {% endif %}{% endfor %}static const nros_sched_task_memory_t __nros_sched_task_memory[{{ boot.n_sched_tasks }}] = {
@@ -61,14 +61,14 @@ static uint64_t __nros_sched_task_executor_storage[{{ boot.n_sched_tasks }}][(NR
 {% endfor %}};
 
 {% if boot.runners.run_sched_tasks_backed and not boot.runners.run_levels -%}
-/* Issue 1970 — each tier's OWN executor backing, when this build sizes its
- * executors per tier: the per-build header then publishes NROS_CPP_SCHED_TASK_COUNT
- * and one NROS_CPP_SCHED_TASK_BACKING_SIZE_<i> per tier (tier-table order), the
- * contexts above carry no inline backing, and the runner hands tier i's
- * executor `__nros_sched_task_backing_<i>`. A build that sizes no tier (or a tier
+/* Issue 1970 — each sched task's OWN executor backing, when this build sizes its
+ * executors per sched task: the per-build header then publishes NROS_CPP_SCHED_TASK_COUNT
+ * and one NROS_CPP_SCHED_TASK_BACKING_SIZE_<i> per sched task (sched-task-table order), the
+ * contexts above carry no inline backing, and the runner hands sched task i's
+ * executor `__nros_sched_task_backing_<i>`. A build that sizes no sched task (or a sched task
  * table other than this entry's) publishes no matching count, and the entry
- * keeps the whole-image executor per tier. The library refuses a backing short
- * of its tier's layout before that tier opens. */
+ * keeps the whole-image executor per sched task. The library refuses a backing short
+ * of its sched task's layout before that sched task opens. */
 #if defined(NROS_CPP_SCHED_TASK_COUNT) && NROS_CPP_SCHED_TASK_COUNT == {{ boot.n_sched_tasks }}
 #define NROS_ENTRY_SCHED_TASKS_BACKED 1
 {% for r in boot.task_memory.rows %}static uint64_t __nros_sched_task_backing_{{ r.index }}[NROS_CPP_SCHED_TASK_BACKING_SIZE_{{ r.index }} / 8u];
@@ -107,7 +107,7 @@ static const nros_sched_task_backing_t __nros_level_backings[1] = {
 {% include "launch_remap_table.jinja" -%}
 {% include "session_properties_table.jinja" -%}
 {%- set call -%}
-{%- if boot.tiers -%}
+{%- if boot.sched_tasks -%}
 {{ family | cpp_board_class }}::run_sched_tasks(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u{% if boot.sched_task_storage %}, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]){% endif %}{% if boot.task_memory %}, __nros_sched_task_memory{% endif %})
 {%- elif boot_shape == "host" -%}
 {{ family | cpp_board_class }}::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
@@ -115,13 +115,13 @@ static const nros_sched_task_backing_t __nros_level_backings[1] = {
 {{ family | cpp_board_class }}::run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), &__nros_entry_setup)
 {%- endif -%}
 {%- endset -%}
-{%- set levels = boot.tiers and boot.sched_task_storage and boot.runners.run_levels -%}
+{%- set levels = boot.sched_tasks and boot.sched_task_storage and boot.runners.run_levels -%}
 {%- if levels -%}
 {%- set call -%}
 {{ family | cpp_board_class }}::run_levels(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), NROS_ENTRY_LEVEL_BACKINGS, {% if boot.task_memory %}__nros_sched_task_memory{% else %}nullptr{% endif %}, __nros_scheduler_0, sizeof(__nros_scheduler_0))
 {%- endset -%}
 {%- endif -%}
-{%- set backed = not levels and boot.tiers and boot.sched_task_storage and boot.task_memory and boot.runners.run_sched_tasks_backed -%}
+{%- set backed = not levels and boot.sched_tasks and boot.sched_task_storage and boot.task_memory and boot.runners.run_sched_tasks_backed -%}
 {%- set backed_call -%}
 {{ family | cpp_board_class }}::run_sched_tasks(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_sched_tasks, {{ boot.n_sched_tasks }}u, __nros_sched_task_executor_storage, sizeof(__nros_sched_task_executor_storage[0]), __nros_sched_task_backings, __nros_sched_task_memory)
 {%- endset -%}

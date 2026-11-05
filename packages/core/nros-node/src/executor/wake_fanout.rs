@@ -2,7 +2,7 @@
 //!
 //! A backend session has ONE wake-callback slot (`Session::set_wake_callback`).
 //! Before this module, the executor that installed into it was the only one an
-//! arrival could wake. Every board's spawned tiers open over the boot
+//! arrival could wake. Every board's spawned sched tasks open over the boot
 //! executor's session (`Executor::open_with_session_*`), and several C
 //! executors can share one `rclc_support_t` session. So those executors' wake
 //! objects were never signalled. With a park primitive installed they slept
@@ -25,7 +25,7 @@
 //! An entry is keyed by the session's address. The owner of an OWNED session
 //! claims an entry while its executor value may still move, so it re-keys the
 //! entry when it hands the session's final address out
-//! (`Executor::session_ptr`), which is what every tier is opened over.
+//! (`Executor::session_ptr`), which is what every sched task is opened over.
 //!
 //! The cost is that every arrival wakes every member: the callback does not
 //! say which executor the data is for. A member woken for another's data
@@ -42,7 +42,7 @@ use portable_atomic::{AtomicBool, AtomicPtr, AtomicU32, Ordering::SeqCst};
 /// the executor falls back to installing its own context directly, which is
 /// the behaviour every executor had before this module.
 pub(crate) const MAX_FANOUTS: usize = 4;
-/// Executors per shared session: the boot executor plus its spawned tiers,
+/// Executors per shared session: the boot executor plus its spawned sched tasks,
 /// or the C executors over one support context. A member past this does not
 /// join and is treated as having no async wake, so it never parks blind.
 pub(crate) const MAX_FANOUT_MEMBERS: usize = 8;
@@ -288,7 +288,7 @@ mod tests {
         assert!(find(key).is_none());
     }
 
-    /// The owner tears its callback down while tiers are still joined: they
+    /// The owner tears its callback down while sched tasks are still joined: they
     /// read as not live (so the executor stops parking on a wake nothing will
     /// signal), and their later `leave` cannot touch the entry's next tenant.
     #[test]
@@ -300,10 +300,10 @@ mod tests {
         let p = Probe {
             hits: AtomicUsize::new(0),
         };
-        let tier = f.join(ctx(&p)).unwrap();
-        assert!(tier.is_live());
+        let sched_task = f.join(ctx(&p)).unwrap();
+        assert!(sched_task.is_live());
         f.release(spin);
-        assert!(!tier.is_live(), "a released entry is not a live wake");
+        assert!(!sched_task.is_live(), "a released entry is not a live wake");
 
         // The next tenant of the same entry.
         static KEY2: u8 = 0;
@@ -316,7 +316,7 @@ mod tests {
             hits: AtomicUsize::new(0),
         };
         let fresh = g.join(ctx(&q)).unwrap();
-        tier.leave(spin);
+        sched_task.leave(spin);
         assert_eq!(
             g.member_count(),
             1,

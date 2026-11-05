@@ -26,22 +26,22 @@
 //!   runtime proof: `sched_setaffinity(cpu 0)` succeeds on any LINUX host —
 //!   the call does not exist on macOS, which is why the board is `linux`).
 //! - **StrictCountOne** — exactly one accept marker (zephyr EDF; threadx
-//!   preempt-threshold / time-slice — the fixture bakes exactly one such tier).
+//!   preempt-threshold / time-slice — the fixture bakes exactly one such sched task).
 //! - **EachSchedTaskOrFailNote** — accept marker OR loud failure note, per DECLARING
-//!   TIER and per DECLARED VALUE (nuttx tier-priority). Phase-358 W4 replaced
-//!   the whole-log ~~`AcceptOrFailNote`~~ with this: one tier's line satisfied it
+//!   SCHED TASK and per DECLARED VALUE (nuttx sched-task-priority). Phase-358 W4 replaced
+//!   the whole-log ~~`AcceptOrFailNote`~~ with this: one sched task's line satisfied it
 //!   for the entire image, so the cell stayed green through issue 0579 while
-//!   the boot tier's declared priority was dropped. A per-tier dim needs a
-//!   per-tier assert.
+//!   the boot sched task's declared priority was dropped. A per-sched-task dim needs a
+//!   per-sched-task assert.
 //! - **ReportSilent** (issue 1537) — the INVERSE shape: a line that must NOT
-//!   appear. The derived-tier cell boots the one Rust Zephyr image whose tiers
+//!   appear. The derived-sched-task cell boots the one Rust Zephyr image whose sched tasks
 //!   `nros::main!` derives, on a lowered transport band, and asserts the Zephyr
 //!   boot report stays silent. Absence is only evidence with positives beside
 //!   it, and the shape asserts them: the BUILT `.config` carries the lowered
 //!   band (else the image cannot tell the two allocations apart), the image
-//!   runs the MULTI-TIER entry with the expected tier count (a single-executor
+//!   runs the MULTI-SCHED-TASK entry with the expected sched task count (a single-executor
 //!   image never calls the report — the first build of this fixture was one,
-//!   and a silence-only assert passed it), every node's tier dispatched, and
+//!   and a silence-only assert passed it), every node's sched task dispatched, and
 //!   the report's "NOT checked" line is absent (so a band WAS recorded to judge
 //!   against).
 //!
@@ -155,21 +155,21 @@ enum Shape {
     AcceptOrFallback { expect: Arm },
     /// Accept marker present (the fallback is a real degrade we don't expect).
     AcceptOnly,
-    /// Exactly one accept marker (the fixture bakes exactly one such tier).
+    /// Exactly one accept marker (the fixture bakes exactly one such sched task).
     StrictCountOne,
-    /// issue 0579 / phase-358 W4 — EVERY listed `(tier, declared priority)`
+    /// issue 0579 / phase-358 W4 — EVERY listed `(sched_task, declared priority)`
     /// adopted its OWN declared value, or said loudly why not.
     ///
     /// Replaces ~~`AcceptOrFailNote`~~, which asked only whether the accept marker
     /// or the failure note appeared ANYWHERE in the log, so on a fixture with
-    /// several declaring tiers it only ever proved that SOME tier adopted
+    /// several declaring sched tasks it only ever proved that SOME sched task adopted
     /// SOMETHING. That is how #579 lived: the spawned `low`
-    /// tier printed the marker while the boot tier's declared 110 was parsed,
+    /// sched task printed the marker while the boot sched task's declared 110 was parsed,
     /// carried to the board and dropped, with this cell green throughout. A
-    /// per-tier dim needs a per-tier assert (the issue-0196 class — gate
+    /// per-sched-task dim needs a per-sched-task assert (the issue-0196 class — gate
     /// coverage narrower than the rule it enforces).
     EachSchedTaskOrFailNote {
-        tiers: &'static [(&'static str, u32)],
+        sched_tasks: &'static [(&'static str, u32)],
         fail_marker: &'static str,
     },
     /// issue 1537 — `ex.accept` must be ABSENT, and three things must be true
@@ -179,16 +179,16 @@ enum Shape {
     ///   Kconfig that makes this image's priority plan differ from the defaults
     ///   projection. A fragment that stopped applying would leave a default
     ///   band, where the two allocations agree and silence proves nothing;
-    /// * the image ran `ZephyrBoard::run_sched_tasks` over `tiers` tiers
+    /// * the image ran `ZephyrBoard::run_sched_tasks` over `sched_tasks` sched tasks
     ///   ([`zephyr_multi_sched_task_entry_up_line`], printed AFTER the report) — a
     ///   single-executor image never reaches the report, so without this its
     ///   silence is indistinguishable from a pass;
     /// * every node in `dispatching` printed its dispatch line
-    ///   ([`sched_task_dispatch_marker`]), so each node's tier ran;
+    ///   ([`sched_task_dispatch_marker`]), so each node's sched task ran;
     /// * `not_checked` is absent, so the report had a transport band to judge
     ///   against rather than skipping the judgement.
     ReportSilent {
-        tiers: usize,
+        sched_tasks: usize,
         dispatching: &'static [&'static str],
         dotconfig_line: &'static str,
         not_checked: &'static str,
@@ -227,17 +227,17 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             // issue 0655 — flipped Fallback -> Accept, which is exactly the
             // deliberate edit this field exists to force. The arm changed
             // because the BUG was fixed, not because the assert was loosened:
-            // the board now pins a spawned tier in its `k_thread_create` ->
+            // the board now pins a spawned sched task in its `k_thread_create` ->
             // `k_thread_start` window (Zephyr refuses a cpu mask on a started
             // thread), the image sets CONFIG_SCHED_CPU_MASK, and the fixture
-            // declares the `core` on the SPAWNED `high` tier rather than the
-            // boot tier, which has no such window. Still uniprocessor: this
+            // declares the `core` on the SPAWNED `high` sched task rather than the
+            // boot sched task, which has no such window. Still uniprocessor: this
             // proves the API is used CORRECTLY, not multi-core placement,
             // which is #260's remaining SMP-fixture item.
             shape: AcceptOrFallback {
                 expect: Arm::Accept,
             },
-            note: "spawned tier pinned before start (#655); uniprocessor, so this proves the \
+            note: "spawned sched task pinned before start (#655); uniprocessor, so this proves the \
                    call is correct, not SMP placement",
         },
         (SD::CorePinPlacement, MP::ZephyrNativeSim, ML::C) => Exec {
@@ -252,10 +252,10 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             timeout_secs: 90,
             // The OBSERVED marker, not the acceptance one. That is the whole
             // difference between this cell and the CorePin cells: they assert
-            // the kernel took the pin, this asserts the tier RAN where it asked.
+            // the kernel took the pin, this asserts the sched task RAN where it asked.
             stem: "nros: core pin observed",
             // The EXACT line, not the marker prefix: the prefix matches
-            // `running_on=0` too, and 0 is where an unpinned tier lands anyway,
+            // `running_on=0` too, and 0 is where an unpinned sched task lands anyway,
             // so asserting the prefix would assert nothing.
             accept: ZEPHYR_CORE_PIN_OBSERVED_CPU1,
             fallback: None,
@@ -357,22 +357,22 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             boot: NuttxQemu,
             router: Router::Baked("0.0.0.0"),
             timeout_secs: 90,
-            stem: "nros: tier priority",
+            stem: "nros: sched task priority",
             accept: NUTTX_SCHED_TASK_PRIORITY_MARKER,
             fallback: None,
-            // issue 0579 — BOTH tiers, named, with the priority each one
+            // issue 0579 — BOTH sched tasks, named, with the priority each one
             // declares in `realtime-rust/src/demo_bringup/system.toml`:
-            // `high` is tiers[0] (the boot tier, 110) and `low` is spawned
+            // `high` is sched_tasks[0] (the boot sched task, 110) and `low` is spawned
             // (100). Before W4 only `low` ever printed.
             shape: EachSchedTaskOrFailNote {
-                tiers: &[("high", 99), ("low", 98)],
+                sched_tasks: &[("high", 99), ("low", 98)],
                 fail_marker: NUTTX_SCHED_TASK_PRIORITY_FAILED_MARKER,
             },
-            note: "per-tier SCHED_FIFO priority applied for EVERY declaring tier, \
-                   boot tier included (#579)",
+            note: "per-sched-task SCHED_FIFO priority applied for EVERY declaring sched task, \
+                   boot sched task included (#579)",
         },
         (SD::SchedTaskPriority, MP::NuttxArm, ML::Cpp) => Exec {
-            // Same bringup and the same two tiers as the Rust cell above — the
+            // Same bringup and the same two sched tasks as the Rust cell above — the
             // C/C++ arm of one board, so the expectations are identical by
             // construction rather than by a second table. If these ever have to
             // differ, the arms have diverged and that is the finding.
@@ -380,21 +380,21 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             boot: NuttxQemu,
             router: Router::Baked("0.0.0.0"),
             timeout_secs: 90,
-            stem: "nros: tier priority",
+            stem: "nros: sched task priority",
             accept: NUTTX_SCHED_TASK_PRIORITY_MARKER,
             fallback: None,
             shape: EachSchedTaskOrFailNote {
-                tiers: &[("high", 99), ("low", 98)],
+                sched_tasks: &[("high", 99), ("low", 98)],
                 fail_marker: NUTTX_SCHED_TASK_PRIORITY_FAILED_MARKER,
             },
-            note: "issue 0636 — the C arm reports per-tier priority too, boot tier \
+            note: "issue 0636 — the C arm reports per-sched-task priority too, boot sched task \
                    included; it applied them at pthread_create and printed nothing",
         },
         // issue 0636 — the FreeRTOS arm of the same rule, added WITH the seam
         // that made it assertable. Until then this kernel printed no
-        // tier-priority marker in either language, so #579 was enforced on
+        // sched-task-priority marker in either language, so #579 was enforced on
         // NuttX alone and the boot task's missing adopt had nothing watching
-        // it. Three tiers here, not two: `mid` declares a
+        // it. Three sched tasks here, not two: `mid` declares a
         // `[tasks.mid.freertos] priority` where it declares no NuttX one, so
         // the FreeRTOS projection keeps all three.
         (SD::SchedTaskPriority, MP::FreertosMps2, ML::Cpp) => Exec {
@@ -402,38 +402,38 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             boot: FreertosQemu,
             router: Router::Baked("0.0.0.0"),
             timeout_secs: 90,
-            stem: "nros: tier priority",
+            stem: "nros: sched task priority",
             accept: FREERTOS_SCHED_TASK_PRIORITY_MARKER,
             fallback: None,
             shape: EachSchedTaskOrFailNote {
-                tiers: &[("high", 3), ("mid", 2), ("low", 1)],
+                sched_tasks: &[("high", 3), ("mid", 2), ("low", 1)],
                 fail_marker: FREERTOS_SCHED_TASK_PRIORITY_FAILED_MARKER,
             },
-            note: "issue 0636 — every declaring tier reports its RAW FreeRTOS priority, \
-                   boot tier included; the boot task adopted none at all before this",
+            note: "issue 0636 — every declaring sched task reports its RAW FreeRTOS priority, \
+                   boot sched task included; the boot task adopted none at all before this",
         },
         (SD::SchedTaskPriority, MP::FreertosMps2, ML::C) => Exec {
             // Same seam TU (freertos_run_sched_tasks.c serves the C and C++ entries
-            // alike) but a DIFFERENT bringup, and the tier list follows the
+            // alike) but a DIFFERENT bringup, and the sched task list follows the
             // bringup, not the seam: `realtime-c/src/demo_bringup` declares
             // only `high` and `low` — there is no `[tasks.mid]` there at all,
             // where `realtime-cpp` has one. Asserting the C++ cell's three
-            // tiers here fails on a `mid` that was never emitted, which is a
+            // sched tasks here fails on a `mid` that was never emitted, which is a
             // broken expectation and not a dropped dim. Read the emitted
             // `__nros_sched_tasks[]` before changing either list.
             resolver: || build_freertos_workspace_c_realtime_entry().map(|p| p.to_path_buf()),
             boot: FreertosQemu,
             router: Router::Baked("0.0.0.0"),
             timeout_secs: 90,
-            stem: "nros: tier priority",
+            stem: "nros: sched task priority",
             accept: FREERTOS_SCHED_TASK_PRIORITY_MARKER,
             fallback: None,
             shape: EachSchedTaskOrFailNote {
-                tiers: &[("high", 3), ("low", 2)],
+                sched_tasks: &[("high", 3), ("low", 2)],
                 fail_marker: FREERTOS_SCHED_TASK_PRIORITY_FAILED_MARKER,
             },
             note: "issue 0636 — the C entry shares the C++ entry's seam TU; its bringup \
-                   declares two tiers, so two is the whole rule here",
+                   declares two sched tasks, so two is the whole rule here",
         },
         (SD::PreemptThreshold, MP::ThreadxLinux, ML::Rust) => Exec {
             resolver: || build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -444,7 +444,7 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             accept: THREADX_PREEMPT_MARKER,
             fallback: None,
             shape: StrictCountOne,
-            note: "tx_thread_preemption_change applied for the one declaring tier",
+            note: "tx_thread_preemption_change applied for the one declaring sched task",
         },
         (SD::TimeSlice, MP::ThreadxLinux, ML::Rust) => Exec {
             resolver: || build_threadx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
@@ -455,13 +455,13 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             accept: THREADX_TIME_SLICE_MARKER,
             fallback: None,
             shape: StrictCountOne,
-            note: "tx_thread_time_slice_change applied for the one declaring tier",
+            note: "tx_thread_time_slice_change applied for the one declaring sched task",
         },
-        // issue 1537 — the derived-tier Rust image on a lowered transport band
+        // issue 1537 — the derived-sched-task Rust image on a lowered transport band
         // (`realtime-rust/src/derived_bringup`, `[image.zephyr_derived] env`).
         //
         // WHAT THIS CATCHES, MEASURED: with `nros::main!` reverted to the
-        // Kconfig defaults projection, this image derives its tiers at 5 / 6 —
+        // Kconfig defaults projection, this image derives its sched tasks at 5 / 6 —
         // inside the transport band [4, 9] — and the boot report fires. Allocated
         // out of the image's own `.config` they land at 10 / 11 and the report
         // is silent. A default-band image would pass either way, which is why
@@ -476,18 +476,18 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             accept: ZEPHYR_SCHED_TASK_MEETS_TRANSPORT_MARKER,
             fallback: None,
             shape: ReportSilent {
-                // One derived tier per node: `derived-control_node` (100 Hz)
+                // One derived sched task per node: `derived-control_node` (100 Hz)
                 // and `derived-telem_node` (10 Hz).
-                tiers: 2,
+                sched_tasks: 2,
                 // The node packages' OWN dispatch lines: ctrl_pkg names `high`
                 // and telem_pkg `low` in their log text. Those are literals in
-                // the node code, not the derived tier names — which is fine,
-                // because the claim is only that each node's tier RAN.
+                // the node code, not the derived sched task names — which is fine,
+                // because the claim is only that each node's sched task RAN.
                 dispatching: &["high", "low"],
                 dotconfig_line: "CONFIG_NROS_ZENOH_READ_PRIORITY=100",
                 not_checked: ZEPHYR_SCHED_TASK_NOT_CHECKED_MARKER,
             },
-            note: "issue 1537 — a DERIVED tier on a lowered-band image must be allocated out \
+            note: "issue 1537 — a DERIVED sched task on a lowered-band image must be allocated out \
                    of the image's .config (10/11), not the Kconfig defaults projection (5/6, \
                    inside the transport); a regression makes the boot report fire",
         },
@@ -509,7 +509,7 @@ fn edf(resolver: Resolver) -> Exec {
         accept: ZEPHYR_EDF_DEADLINE_MARKER,
         fallback: None,
         shape: Shape::StrictCountOne,
-        note: "k_thread_deadline_set for exactly the one real_time deadline tier (W5.5/W5.8)",
+        note: "k_thread_deadline_set for exactly the one real_time deadline sched task (W5.5/W5.8)",
     }
 }
 
@@ -602,7 +602,7 @@ fn run_cell(cell: &SchedCell) {
     // issue 1729 — `require`, never a local `skip!`: an out-of-lane coordinate
     // already skips INSIDE the resolver (`[SKIPPED:lane]`), so an `Err` that
     // reaches here is about an IN-LANE fixture, and a STALE one laundered into
-    // a skip let this test pass with the derived-tier cell never booted.
+    // a skip let this test pass with the derived-sched-task cell never booted.
     let entry = (ex.resolver)().require(&format!("{platform} {lang} {:?} realtime", cell.dim));
 
     // Router: ephemeral (posix) or the allocator's baked RealtimeSchedTasks port.
@@ -635,33 +635,38 @@ fn run_cell(cell: &SchedCell) {
     // Boot the guest and collect the log up to the wait target (`ex.stem`).
     // issue 0636 — what this cell must WAIT for is its assert shape, not the
     // stem. `wait_for_output_pattern` returns at the FIRST match and the arms
-    // below then kill QEMU, so a per-tier rule ("each declaring tier reports")
+    // below then kill QEMU, so a per-sched-task rule ("each declaring sched task reports")
     // was reading a log cut right after tier one; later tiers appeared only
     // when they happened to land in the same buffer flush. Measured on the
-    // freertos/cpp cell: `mid` missing in 2 of 8 runs with the tier itself
+    // freertos/cpp cell: `mid` missing in 2 of 8 runs with the sched task itself
     // perfectly healthy. A short read that reads as a dropped dim is the most
     // expensive kind of wrong, so the wait now names every marker it needs —
-    // either arm per tier, since a loud failure IS a report.
+    // either arm per sched task, since a loud failure IS a report.
     let wait_groups: Vec<Vec<String>> = match ex.shape {
-        Shape::EachSchedTaskOrFailNote { tiers, fail_marker } => tiers
+        Shape::EachSchedTaskOrFailNote {
+            sched_tasks,
+            fail_marker,
+        } => sched_tasks
             .iter()
-            .map(|(tier, prio)| {
+            .map(|(sched_task, prio)| {
                 vec![
-                    nros_tests::output::sched_task_priority_line(ex.accept, tier, *prio),
-                    nros_tests::output::sched_task_priority_line(fail_marker, tier, *prio),
+                    nros_tests::output::sched_task_priority_line(ex.accept, sched_task, *prio),
+                    nros_tests::output::sched_task_priority_line(fail_marker, sched_task, *prio),
                 ]
             })
             .collect(),
-        // issue 1537 — wait for the tiers to RUN, not for the report: the
+        // issue 1537 — wait for the sched tasks to RUN, not for the report: the
         // report is the line that must not appear, so waiting on it would
         // always time out on a passing image.
         Shape::ReportSilent {
-            tiers, dispatching, ..
-        } => std::iter::once(vec![zephyr_multi_sched_task_entry_up_line(tiers)])
+            sched_tasks,
+            dispatching,
+            ..
+        } => std::iter::once(vec![zephyr_multi_sched_task_entry_up_line(sched_tasks)])
             .chain(
                 dispatching
                     .iter()
-                    .map(|tier| vec![sched_task_dispatch_marker(tier)]),
+                    .map(|sched_task| vec![sched_task_dispatch_marker(sched_task)]),
             )
             .collect(),
         _ => vec![vec![ex.stem.to_string()]],
@@ -760,13 +765,13 @@ fn run_cell(cell: &SchedCell) {
             let observed = match (accepted, fb) {
                 (true, false) => Arm::Accept,
                 (false, true) => Arm::Fallback,
-                // Both arms in one log: some declaring tier was honored and
+                // Both arms in one log: some declaring sched task was honored and
                 // another was not. Every fixture here is uniformly capable or
                 // uniformly not, so this is not a state any current image can
                 // reach — and if one does, it is a finding, not a pass.
                 (true, true) => panic!(
                     "{silence}[{platform} {lang} {:?}] BOTH the accept marker (`{}`) and the \
-                     fallback note (`{}`) appear — this image honored the dim for some tiers \
+                     fallback note (`{}`) appear — this image honored the dim for some sched tasks \
                      and not others, which no current fixture should do. Expected a uniform \
                      {}. {}\nlog:\n{log}",
                     cell.dim,
@@ -807,48 +812,55 @@ fn run_cell(cell: &SchedCell) {
             assert_eq!(
                 hits, 1,
                 "{silence}[{platform} {lang} {:?}] expected exactly 1 `{}` (the single \
-                 declaring tier), saw {hits}. {}\nlog:\n{log}",
+                 declaring sched task), saw {hits}. {}\nlog:\n{log}",
                 cell.dim, ex.accept, ex.note
             );
             report_arm(platform, lang, cell.dim, Arm::Accept.as_str());
         }
-        Shape::EachSchedTaskOrFailNote { tiers, fail_marker } => {
-            // issue 0579 — assert per DECLARING TIER. Each tier must produce
+        Shape::EachSchedTaskOrFailNote {
+            sched_tasks,
+            fail_marker,
+        } => {
+            // issue 0579 — assert per DECLARING SCHED TASK. Each sched task must produce
             // its own line naming its own declared priority, so neither a
-            // sibling tier's line nor a right-tier/wrong-value line satisfies
+            // sibling sched task's line nor a right-sched-task/wrong-value line satisfies
             // it.
-            let missing: Vec<String> = tiers
+            let missing: Vec<String> = sched_tasks
                 .iter()
-                .filter(|(tier, prio)| {
-                    let ok = nros_tests::output::sched_task_priority_line(ex.accept, tier, *prio);
-                    let loud =
-                        nros_tests::output::sched_task_priority_line(fail_marker, tier, *prio);
+                .filter(|(sched_task, prio)| {
+                    let ok =
+                        nros_tests::output::sched_task_priority_line(ex.accept, sched_task, *prio);
+                    let loud = nros_tests::output::sched_task_priority_line(
+                        fail_marker,
+                        sched_task,
+                        *prio,
+                    );
                     !log.contains(&ok) && !log.contains(&loud)
                 })
-                .map(|(tier, prio)| format!("`{tier}` prio={prio}"))
+                .map(|(sched_task, prio)| format!("`{sched_task}` prio={prio}"))
                 .collect();
             assert!(
                 missing.is_empty(),
-                "{silence}[{platform} {lang} {:?}] {} of {} declaring tiers produced NEITHER \
+                "{silence}[{platform} {lang} {:?}] {} of {} declaring sched tasks produced NEITHER \
                  `{}` NOR `{fail_marker}` with their own declared priority: {} — accepted and \
                  dropped (RFC-0052 fail-loud). {}\nlog:\n{log}",
                 cell.dim,
                 missing.len(),
-                tiers.len(),
+                sched_tasks.len(),
                 ex.accept,
                 missing.join(", "),
                 ex.note
             );
 
-            // Per-TIER dim, so there is no single arm: report the split. A
-            // sweep where every tier silently moved to the fail-note arm is a
+            // Per-SCHED-TASK dim, so there is no single arm: report the split. A
+            // sweep where every sched task silently moved to the fail-note arm is a
             // real degrade that the assert above tolerates by design (it is
             // the fail-loud contract), and this is what makes it visible.
-            let honored = tiers
+            let honored = sched_tasks
                 .iter()
-                .filter(|(tier, prio)| {
+                .filter(|(sched_task, prio)| {
                     log.contains(&nros_tests::output::sched_task_priority_line(
-                        ex.accept, tier, *prio,
+                        ex.accept, sched_task, *prio,
                     ))
                 })
                 .count();
@@ -857,14 +869,14 @@ fn run_cell(cell: &SchedCell) {
                 lang,
                 cell.dim,
                 &format!(
-                    "{honored}/{} tiers ACCEPT, {} FALLBACK",
-                    tiers.len(),
-                    tiers.len() - honored
+                    "{honored}/{} sched tasks ACCEPT, {} FALLBACK",
+                    sched_tasks.len(),
+                    sched_tasks.len() - honored
                 ),
             );
         }
         Shape::ReportSilent {
-            tiers,
+            sched_tasks,
             dispatching,
             dotconfig_line,
             not_checked,
@@ -888,33 +900,33 @@ fn run_cell(cell: &SchedCell) {
                 ex.note
             );
 
-            // 2. The MULTI-TIER entry ran, so the report was called — it runs
+            // 2. The MULTI-SCHED-TASK entry ran, so the report was called — it runs
             //    in `run_sched_tasks` after the session opens and before this line.
-            let up = zephyr_multi_sched_task_entry_up_line(tiers);
+            let up = zephyr_multi_sched_task_entry_up_line(sched_tasks);
             assert!(
                 log.contains(&up),
                 "{silence}[{platform} {lang} {:?}] no `{up}` line — the image did not run \
-                 `ZephyrBoard::run_sched_tasks` over {tiers} DERIVED tiers, so the transport report \
+                 `ZephyrBoard::run_sched_tasks` over {sched_tasks} DERIVED sched tasks, so the transport report \
                  was never called and its silence proves nothing. Did `nros::main!` derive a \
                  table (it needs the contract AND each node's callback group), and did \
-                 `nros build` enable nros-board-zephyr's `tiers` feature for it? {}\nlog:\n{log}",
+                 `nros build` enable nros-board-zephyr's `sched_tasks` feature for it? {}\nlog:\n{log}",
                 cell.dim,
                 ex.note
             );
 
-            // 3. Every node's tier dispatched.
+            // 3. Every node's sched task dispatched.
             let not_run: Vec<&str> = dispatching
                 .iter()
                 .copied()
-                .filter(|tier| !log.contains(&sched_task_dispatch_marker(tier)))
+                .filter(|sched_task| !log.contains(&sched_task_dispatch_marker(sched_task)))
                 .collect();
             assert!(
                 not_run.is_empty(),
-                "{silence}[{platform} {lang} {:?}] tier(s) {not_run:?} never dispatched \
-                 (no `{}` line) — the report is judged before any tier runs, so an image \
-                 that did not reach its tiers says nothing about it. {}\nlog:\n{log}",
+                "{silence}[{platform} {lang} {:?}] sched task(s) {not_run:?} never dispatched \
+                 (no `{}` line) — the report is judged before any sched task runs, so an image \
+                 that did not reach its sched tasks says nothing about it. {}\nlog:\n{log}",
                 cell.dim,
-                sched_task_dispatch_marker("<tier>"),
+                sched_task_dispatch_marker("<sched task>"),
                 ex.note
             );
 
@@ -922,7 +934,7 @@ fn run_cell(cell: &SchedCell) {
             assert!(
                 !log.contains(not_checked),
                 "{silence}[{platform} {lang} {:?}] the boot report says it did NOT check the \
-                 tiers (`{not_checked}`): no transport task was recorded at an explicit \
+                 sched tasks (`{not_checked}`): no transport task was recorded at an explicit \
                  priority, so its silence below would be vacuous. {}\nlog:\n{log}",
                 cell.dim,
                 ex.note
@@ -932,7 +944,7 @@ fn run_cell(cell: &SchedCell) {
             assert!(
                 !accepted,
                 "{silence}[{platform} {lang} {:?}] the Zephyr boot report FIRED \
-                 (`{}`): a derived tier ties or outranks this image's transport band. On \
+                 (`{}`): a derived sched task ties or outranks this image's transport band. On \
                  this lowered-band image that is exactly what `nros::main!` produces when it \
                  allocates out of the Kconfig DEFAULTS projection instead of the image's own \
                  `.config` — issue 1537 regressed (see `zephyr_image_plan_from_env` in \
@@ -943,7 +955,7 @@ fn run_cell(cell: &SchedCell) {
                 platform,
                 lang,
                 cell.dim,
-                "SILENT (derived tiers below the transport)",
+                "SILENT (derived sched tasks below the transport)",
             );
         }
     }
@@ -953,7 +965,7 @@ fn run_cell(cell: &SchedCell) {
 /// log, the image exits, or `timeout` passes; return the log either way.
 ///
 /// `ZephyrProcess::wait_for_pattern` returns at ONE pattern, and a
-/// `ReportSilent` cell needs several (each tier's dispatch line) before its
+/// `ReportSilent` cell needs several (each sched task's dispatch line) before its
 /// absence assertion is worth making.
 fn zephyr_wait_each(z: &mut ZephyrProcess, groups: &[Vec<String>], timeout: Duration) -> String {
     let deadline = Instant::now() + timeout;
@@ -1017,8 +1029,10 @@ fn nuttx_level_budget_overrun_is_throttled_by_the_kernel() {
         let _router = ZenohRouter::start_on("0.0.0.0", port)
             .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
         let groups: Vec<Vec<String>> = vec![
-            vec!["nros: level budget tier=`high` 5000us/10000us enforced by the KERNEL".into()],
-            vec!["nros: sporadic budget throttled by the KERNEL tier=`high`".into()],
+            vec![
+                "nros: level budget sched_task=`high` 5000us/10000us enforced by the KERNEL".into(),
+            ],
+            vec!["nros: sporadic budget throttled by the KERNEL sched_task=`high`".into()],
             vec![second_overrun.into()],
         ];
         let mut q = QemuProcess::start_nuttx_virt(&entry, true)

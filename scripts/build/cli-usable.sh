@@ -12,7 +12,7 @@
 # a bare worktree.
 #
 # None of them treated a STALE binary the same way, and that asymmetry has no
-# defence. `check-fast` is contractually the source-free, CLI-free tier, so a
+# defence. `check-fast` is contractually the source-free, CLI-free sched task, so a
 # gate there does not OWN the CLI and cannot demand one; and running a gate
 # against a binary built from other sources is worse than not running it, because
 # the verdict is about a program that no longer exists in the tree.

@@ -6,7 +6,7 @@
 //!
 //! 1. an image with two modes bakes two variants of its monitor table, the
 //!    base's rows with each mode's numbers (W4a/W4b);
-//! 2. and two SchedContext deadline sets: each mode's derived tier deadlines,
+//! 2. and two SchedContext deadline sets: each mode's derived sched task deadlines,
 //!    the base's first, so entering the base again restores it (W4c);
 //! 3. what a second table COSTS is its spec rows and its deadline rows --
 //!    never a cell, which every variant shares with the base -- so
@@ -96,7 +96,7 @@ fn groups() -> BTreeMap<String, Vec<CallbackGroupDecl>> {
         vec![CallbackGroupDecl {
             id: id.to_string(),
             r#type: "MutuallyExclusive".to_string(),
-            tier: id.to_string(),
+            sched_task: id.to_string(),
         }]
     };
     BTreeMap::from([
@@ -114,8 +114,12 @@ fn two_modes_bake_two_monitor_variants_and_two_deadline_sets() {
     let rate = |i: usize| variants[i].1[0].min_rate_hz_milli;
     assert_eq!((rate(0), rate(1)), (50_000, 100_000), "each mode's numbers");
 
-    let d = mode_sched_task_deadlines(&m, "posix", &groups()).expect("tiers lower");
-    assert_eq!(d.tiers, ["derived-control_node"], "only the moved tier");
+    let d = mode_sched_task_deadlines(&m, "posix", &groups()).expect("sched tasks lower");
+    assert_eq!(
+        d.sched_tasks,
+        ["derived-control_node"],
+        "only the moved sched task"
+    );
     assert_eq!(
         d.deadlines,
         [vec![5_000], vec![8_000], vec![2_000]],

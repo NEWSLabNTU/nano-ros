@@ -49,7 +49,7 @@ struct ComponentMeta {
     #[serde(default)]
     shape: Option<String>,
     /// Phase 269 (W4) — callback group IDs from `nano_ros_node_register(CALLBACK_GROUPS …)`.
-    /// Empty for nodes that don't declare groups (single-tier; no sched binding).
+    /// Empty for nodes that don't declare groups (single-sched-task; no sched binding).
     #[serde(default)]
     callback_groups: Vec<String>,
 }
@@ -214,7 +214,7 @@ mod tests {
                     remaps: Vec::new(),
                     callback_groups: Vec::new(),
                     sched_context: None,
-                    group_tiers: std::collections::BTreeMap::new(),
+                    group_tasks: std::collections::BTreeMap::new(),
                     stack_bytes: None,
                 })
                 .collect(),
@@ -224,7 +224,7 @@ mod tests {
             lifecycle: None,
             param_services: false,
             safety: None,
-            tiers: Default::default(),
+            sched_tasks: Default::default(),
             node_overrides: Vec::new(),
             resolved_sched_tasks: None,
             session: Default::default(),

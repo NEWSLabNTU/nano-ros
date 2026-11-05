@@ -46,7 +46,7 @@ nros-pkg-index = { path = "../../cli/nros-pkg-index" }
 # affordable HERE, and a heavy dependency lands in every downstream user's
 # entry build, which is the force behind issue 0083 above.
 nros-entry-lower = { path = "../../cli/nros-entry-lower" }
-# Phase 228.G — shared per-tier schema + resolver. Same crate the CLI's
+# Phase 228.G — shared per-sched-task schema + resolver. Same crate the CLI's
 # codegen-system uses, so the macro's compile-time tier resolution can't drift
 # from the bake path (RFC-0032 §6). Proc-macro deps are host-only.
 nros-orchestration-ir = { workspace = true }

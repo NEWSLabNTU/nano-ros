@@ -253,8 +253,8 @@ let egress = exec.node_builder("egress")
 
 Each Node's callbacks run in its sched context's rank order inside the
 executor. For the slow backend not to delay the fast one at all, put the
-two Nodes in different tiers (a tier is one thread at its own priority;
-executor preemption levels generalise it), so the fast Node's tier
+two Nodes in different sched tasks (a sched task is one thread at its own priority;
+executor preemption levels generalise it), so the fast Node's sched task
 preempts the slow one's.
 
 ## Shipped examples

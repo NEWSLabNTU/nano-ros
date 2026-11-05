@@ -1,9 +1,9 @@
-# realtime-cpp-subnode-portable — tier names are deployment-owned
+# realtime-cpp-subnode-portable — sched task names are deployment-owned
 
 The portability proof for `realtime-cpp-subnode`:
 the **identical** `SubNode` component (same groups `ctrl`/`telem`, same
-topics) runs under a bringup whose tiers are named **`fast`/`bulk`** instead
-of `high`/`low`. The package carries only group IDs — tier names belong to the
+topics) runs under a bringup whose sched tasks are named **`fast`/`bulk`** instead
+of `high`/`low`. The package carries only group IDs — sched task names belong to the
 deployment.
 
 ## What it shows
@@ -34,7 +34,7 @@ FreeRTOS/mps2-an385 — `arm-none-eabi-g++`, `thumbv7m-none-eabi`, no OS
 underneath. Nothing in `src/subnode_pkg/` changes: the move is
 `[tasks.fast.freertos]` / `[tasks.bulk.freertos]` priorities plus the image
 block, all in `deploy_bringup/system.toml`. That is the portability claim of
-this workspace measured against a cross toolchain rather than a second tier
+this workspace measured against a cross toolchain rather than a second sched task
 vocabulary.
 
 Why it is worth a fixture: RFC-0089 correction 1 measured that deriving
@@ -48,8 +48,8 @@ source ./activate.sh
 nros build freertos
 ```
 
-`SubNode`'s two callback groups land on two tiers, and a node whose groups span
-tiers cannot take `run_sched_tasks` (per-tier setup functions construct whole *nodes*)
+`SubNode`'s two callback groups land on two sched tasks, and a node whose groups span
+sched tasks cannot take `run_sched_tasks` (per-sched-task setup functions construct whole *nodes*)
 — so the generated entry is `FreertosBoard::run_components` plus
 `nros_cpp_create_sched_context_from_policy` / `nros_cpp_bind_group_sched`, a
 different shape from the `workspace-{c,cpp}-freertos-realtime` entries.

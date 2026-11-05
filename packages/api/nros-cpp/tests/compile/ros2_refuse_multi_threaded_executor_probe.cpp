@@ -1,7 +1,7 @@
 // NEGATIVE probe — phase-488, `rclcpp::executors::MultiThreadedExecutor`.
 //
 // The name exists so a ported `main` fails HERE, with RFC-0002's reason and the
-// alternative (`SingleThreadedExecutor`, or a tier per parallel workload),
+// alternative (`SingleThreadedExecutor`, or a sched task per parallel workload),
 // rather than on "'executors' has not been declared". Declaring one is the
 // error. `just check cpp` requires this TU to FAIL with the refusal text; the
 // positive half is `rclcpp-examples/ported/multithreaded_executor.cpp`, which

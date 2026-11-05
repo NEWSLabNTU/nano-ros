@@ -137,25 +137,25 @@ impl nros_platform::BoardEntry for NuttxQemu {
     }
 }
 
-/// phase-281 W3-nuttx (RFC-0015 Model 1) — the multi-tier inherent entry the
-/// `nros::main!` generic OwnedSpin arm targets. For a multi-tier plan the macro
-/// emits `<NuttxQemu>::run_sched_tasks(&deploy, TIERS, SCHED_TASK_BACKING, closure)` (exactly as it does
+/// phase-281 W3-nuttx (RFC-0015 Model 1) — the multi-sched-task inherent entry the
+/// `nros::main!` generic OwnedSpin arm targets. For a multi-sched-task plan the macro
+/// emits `<NuttxQemu>::run_sched_tasks(&deploy, SCHED_TASKS, SCHED_TASK_BACKING, closure)` (exactly as it does
 /// `LinuxBoard::run_sched_tasks` for native); this merges the deploy overlay (the
-/// same [`entry_net_init`] the single-tier `run{,_with_deploy}` paths use) and
+/// same [`entry_net_init`] the single-sched-task `run{,_with_deploy}` paths use) and
 /// then delegates to the NuttX family driver's
 /// [`nros_board_nuttx::run_sched_tasks`], which opens the ONE session and runs one
-/// executor per tier over it (a `std::thread` per tier — NuttX is `std` +
+/// executor per sched task over it (a `std::thread` per sched task — NuttX is `std` +
 /// zenoh-pico `Z_FEATURE_MULTI_THREAD = 1`).
 ///
 /// Gated `target_os = "nuttx"` for the same reason as the [`nros_platform::BoardEntry`]
 /// impl below: `entry_net_init` + `nros_board_nuttx::run_sched_tasks` are NuttX-only,
-/// and the multi-tier entry is reachable only in a real NuttX build.
+/// and the multi-sched-task entry is reachable only in a real NuttX build.
 #[cfg(target_os = "nuttx")]
 impl NuttxQemu {
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
-        tiers: &[nros_platform::SchedTaskSpec<'_>],
-        // issue 1571 — the spawned tiers' executor backing: the entry's
+        sched_tasks: &[nros_platform::SchedTaskSpec<'_>],
+        // issue 1571 — the spawned sched tasks' executor backing: the entry's
         // `.bss` `SchedTaskExecutorBacking`, emitted by `nros::main!`.
         sched_task_backing: &'static mut [nros_board_nuttx::SchedTaskExecutorBackingSlot],
         setup: F,
@@ -169,7 +169,7 @@ impl NuttxQemu {
             deploy.boot_config,
             cfg.locator(),
             cfg.domain_id(),
-            tiers,
+            sched_tasks,
             sched_task_backing,
             setup,
         )

@@ -1,7 +1,7 @@
 # nano-ros gates: platform
 #
 # Per-platform and per-board rules -- Zephyr, NuttX, FreeRTOS,
-# ThreadX, ESP32 -- plus the tier and Kconfig plumbing.
+# ThreadX, ESP32 -- plus the sched task and Kconfig plumbing.
 #
 # One of the topic files `just/check.just` imports. The names stay FLAT -- a
 # gate is still `just check <name>` -- because `import` merges definitions
@@ -127,7 +127,7 @@ board-descriptor-single-source:
 # and one was declared — and that one only because its id had been wedged into
 # the `zephyr` descriptor's `names` array for want of anywhere else to put it.
 #
-# An undeclared board cannot be given a tier, an owner or a demotion, and
+# An undeclared board cannot be given a sched task, an owner or a demotion, and
 # `check-board-tiers` cannot see it. `qemu_cortex_a53` took this route for
 # months.
 [private]
@@ -355,7 +355,7 @@ example-platform-not-shadowed:
 # sessions went into finding that once. The answer is a compile-time guard in
 # the CALLER's translation unit; it exists in all four producers and nothing
 # kept it there. Source-level by necessity: the generated headers are build
-# artifacts and an affordability tier may not resolve one, but "does every
+# artifacts and an affordability sched task may not resolve one, but "does every
 # producer still emit the define AND still compare against it" is exactly the
 # regression that would silently disarm it.
 [private]
@@ -494,7 +494,7 @@ platform-port-arms:
 
 # Issue 2032's second route — a `nros_posix_*` name (the POSIX port's own, not
 # `<nros/platform.h>`) reached from code gated only on `cfg(unix)`. Zephyr
-# native_sim and the RTOS host tiers are `unix` without that port, so the
+# native_sim and the RTOS host sched tasks are `unix` without that port, so the
 # linker fetched the POSIX `platform.o` again, four minutes after the first fix.
 # Rust extern blocks must carry `feature = "platform-posix"`. Buildless; it
 # self-tests on every run.
@@ -717,7 +717,7 @@ no-std-stdio:
 
 # phase-521 W6 (RFC-0113 D2) — an entry loop asks the executor for its spin
 # budget instead of passing a literal. The literal was 10 ms in every entry, so
-# an idle tier woke 100 times a second whatever its park could do. Buildless;
+# an idle sched task woke 100 times a second whatever its park could do. Buildless;
 # `--self-test` runs the matcher over synthetic calls, single- and multi-line.
 [group("ci")]
 entry-spin-budget:
@@ -904,8 +904,8 @@ rtos-target-os:
 rust-stdio-on-zephyr:
     @python3 scripts/check-rust-stdio-on-zephyr.py
 
-# RFC-0079 — a tier priority pin must respect its port's declared address plan.
-# Scheduling priority is ONE space shared by application tiers and system tasks;
+# RFC-0079 — a sched task priority pin must respect its port's declared address plan.
+# Scheduling priority is ONE space shared by application sched tasks and system tasks;
 # pins were hand-chosen into it with no record of what was already there, and
 # 34 of 38 in the tree were colliding, preempting, or on a port that declares
 # nothing. A pin landing ON a reserved band FAILS; one that merely outranks a
@@ -940,7 +940,7 @@ sched-task-priority-plan-image config="":
 sched-task-priority-plan-image-selftest:
     @python3 scripts/check-sched-task-priority-plan-image.py --selftest
 
-# Issue 0636 option 3 — every tier spin loop reaches a scheduling point.
+# Issue 0636 option 3 — every sched task spin loop reaches a scheduling point.
 [group("check")]
 sched-task-spin-gap:
     @python3 scripts/check-sched-task-spin-gap.py

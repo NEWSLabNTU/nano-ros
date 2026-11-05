@@ -469,7 +469,7 @@ configuration-on-target defect (the 0814 class), as it misses every
 platform-specific one; **tier 2** misses configuration × platform interactions
 until the nightly pairing runs.
 
-## Amendment (2026-10-31, phase-466 W5) — realtime-tiers cells are covered PER CELL in 2n
+## Amendment (2026-10-31, phase-466 W5) — realtime-sched-tasks cells are covered PER CELL in 2n
 
 Phase-330 handed phase-466 one acceptance box: a verdict from
 `realtime_sched_tasks_e2e` and `sched_dims_applied_e2e` on every RTOS cell. That is a

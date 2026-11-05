@@ -17,7 +17,7 @@ superseded-in-part-by: [rfc-0079, rfc-0110]
 > config now lives in `nros.toml` `[node.rt]` for direct-mode embedded apps
 > (RFC-0004 §7). Multi-node RT is **decided** (2026-06): node declares callback
 > groups; `system.toml [tasks.<name>.<rtos>]` + `[[node_overrides]]` reassignment
-> own tier config (RFC-0015 reconciliation); schema/codegen tracked by phase-227 /
+> own sched task config (RFC-0015 reconciliation); schema/codegen tracked by phase-227 /
 > Phase 94. The per-RTOS priority-mapping survey below is unaffected and current.
 
 ## Overview
@@ -269,8 +269,8 @@ Regardless of user customization, these invariants must hold:
   direction mapping (FreeRTOS: higher=more, ThreadX: lower=more).
 
   > **RETIRED as a user-facing concept — RFC-0079.** The normalized scale was
-  > issue 0623's defect rather than a convenience over it: tier priorities and
-  > transport priorities land in ONE kernel scheduler, so a tier written `5`
+  > issue 0623's defect rather than a convenience over it: sched task priorities and
+  > transport priorities land in ONE kernel scheduler, so a sched task written `5`
   > against a transport band reading `16` was ABOVE it, not below, and the two
   > numbers looked comparable while meaning opposite things. `[tasks.*]` now
   > carries no number at all — the user declares a timing contract and the

@@ -12,7 +12,7 @@
 //! inspects the prebuilt `run_plan.rs` rather than running cargo at run time
 //! (issue 0034 / AGENTS.md "No compilation inside tests"). Fixture absent
 //! (thumbv7m target / arm-none-eabi-gcc / FreeRTOS+lwIP not provisioned) →
-//! tier-aware skip/fail via the resolver.
+//! sched-task-aware skip/fail via the resolver.
 
 use std::{fs, path::PathBuf};
 

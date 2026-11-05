@@ -837,7 +837,7 @@ impl Image {
     }
 
     /// Issue 1655 — Scheduling contexts the executor creates — `max_sc`: slot 0 plus the
-    /// larger of the authored tier count and the node count. The SCHEDULE
+    /// larger of the authored sched task count and the node count. The SCHEDULE
     /// (`execution.tasks`) is an input no endpoint row carries.
     pub fn sched_context_count(&self) -> Fact<usize> {
         fact(
@@ -1677,45 +1677,45 @@ pub struct SizingDescriptor {
     pub params: Params,
     #[serde(default)]
     pub policy: Policy,
-    /// Issue 1970 -- `[[tier]]`: one row per executor tier of a tiered entry,
-    /// each stating its OWN members' facts, so a tier's executor is sized for
+    /// Issue 1970 -- `[[sched_task]]`: one row per executor sched task of a sched-task entry,
+    /// each stating its OWN members' facts, so a sched task's executor is sized for
     /// what it hosts rather than for the image. ADDITIVE like `[params]`
     /// ([`crate::SCHEMA_VERSION`] stays): a descriptor without the section
-    /// parses unchanged and states no tier, which every consumer reads as "the
+    /// parses unchanged and states no sched task, which every consumer reads as "the
     /// image's one executor size", the answer it had before.
-    #[serde(default, rename = "tier")]
-    pub tiers: Vec<Tier>,
+    #[serde(default, rename = "sched_task")]
+    pub sched_tasks: Vec<SchedTask>,
 }
 
-/// Issue 1970 -- `[[tier]]`, one executor tier of the entry.
+/// Issue 1970 -- `[[sched_task]]`, one executor sched task of the entry.
 ///
-/// A row is written only when every fact a tier's executor is sized from
-/// composed for it; a tier the producer could not describe is left out, and
-/// a consumer that finds no row for a tier sizes it as the image (the inline
-/// executor). There is no per-field refusal here: a tier sized from part of
+/// A row is written only when every fact a sched task's executor is sized from
+/// composed for it; a sched task the producer could not describe is left out, and
+/// a consumer that finds no row for a sched task sizes it as the image (the inline
+/// executor). There is no per-field refusal here: a sched task sized from part of
 /// its facts would be the short executor this section exists to avoid.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Tier {
-    /// The tier's name, as the resolved tier table and the entry spell it.
+pub struct SchedTask {
+    /// The sched task's name, as the resolved sched task table and the entry spell it.
     pub name: String,
-    /// The node names the tier hosts (sorted).
+    /// The node names the sched task hosts (sorted).
     #[serde(default)]
     pub nodes: Vec<String>,
     /// The topics of the subscriptions those nodes register (sorted), which
-    /// select the tier's rows out of `[[endpoint]]` for the arena's receive
+    /// select the sched task's rows out of `[[endpoint]]` for the arena's receive
     /// regions.
     #[serde(default)]
     pub subscription_topics: Vec<String>,
-    /// Parameters the tier's nodes declare: the tier executor's store slots.
+    /// Parameters the sched task's nodes declare: the sched task executor's store slots.
     pub param_slots: Option<usize>,
-    /// The tier's own `[image]` counts, composed by the same derivation as
-    /// the image's over the tier's members only.
+    /// The sched task's own `[image]` counts, composed by the same derivation as
+    /// the image's over the sched task's members only.
     #[serde(default)]
     pub image: Image,
 }
 
-impl Tier {
+impl SchedTask {
     pub(crate) const FIELDS: &'static [&'static str] = &["param_slots"];
 
     pub(crate) fn raw_value(&self, field: &str) -> Option<String> {
@@ -1745,7 +1745,7 @@ impl SizingDescriptor {
             types: Types::default(),
             params: Params::default(),
             policy: Policy::default(),
-            tiers: Vec::new(),
+            sched_tasks: Vec::new(),
         }
     }
 
@@ -1779,7 +1779,7 @@ impl SizingDescriptor {
         self.types.validate()?;
         self.params.validate()?;
         self.policy.validate()?;
-        for t in &self.tiers {
+        for t in &self.sched_tasks {
             t.image.validate()?;
         }
         Ok(())

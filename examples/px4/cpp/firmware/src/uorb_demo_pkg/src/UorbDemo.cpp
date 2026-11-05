@@ -107,8 +107,8 @@ void UorbDemo::on_tick() {
         PX4_INFO("published debug_key_value key=nros value=%.1f (%u samples)",
                  static_cast<double>(msg.value), static_cast<unsigned>(published_));
     }
-    // Every 10 ticks: what this tier dispatched, and how promptly. Read by
-    // `nros-tests --test px4_sitl` against the tier's own `runs=` count.
+    // Every 10 ticks: what this sched task dispatched, and how promptly. Read by
+    // `nros-tests --test px4_sitl` against the sched task's own `runs=` count.
     if ((published_ % 10) == 0) {
         PX4_INFO("stats: ticks=%u status=%u jitter_max_us=%llu", static_cast<unsigned>(published_),
                  static_cast<unsigned>(received_), static_cast<unsigned long long>(jitter_max_us_));

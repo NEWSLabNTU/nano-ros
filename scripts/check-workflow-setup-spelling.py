@@ -7,7 +7,7 @@ The two spellings look interchangeable and are not:
     just setup zephyr     -> dispatcher: runs `_setup-common`, THEN `just zephyr setup`
     just zephyr setup     -> the module recipe ALONE
 
-`_setup-common` is where the host facts every tier asserts get provisioned --
+`_setup-common` is where the host facts every sched_task asserts get provisioned --
 cross Rust targets, pinned corrosion, the in-tree CLI, `nros-launch-resolve`,
 clang-format. The module spelling skips all of it silently: the recipe exists,
 it succeeds, and the lane fails later on a precondition nothing provisioned.
@@ -54,7 +54,7 @@ import workflow_commands  # noqa: E402  phase-472 W1 — workflows AND composite
 # `just zephyr setup --skip-sdk` -- existed because the dispatcher took a scope
 # and nothing else, so a call that had to pass a FLAG had no dispatcher spelling
 # available. phase-422 W3 gave `setup` a variadic tail (and re-homes a
-# leading-dash value that `just` binds to `tier`), which made
+# leading-dash value that `just` binds to `sched_task`), which made
 # `just setup zephyr --skip-sdk` work; phase-422 W4 converted the three nightly
 # zephyr jobs, and the exemption went with them rather than outliving its cause.
 #

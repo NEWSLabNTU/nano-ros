@@ -14,14 +14,14 @@
 # stresses the right thing for the residue's actual cause — a harness SHORT READ
 # (ce152db1f) is a buffering race, and buffer timing moves with load.
 #
-# Reads the cell's OWN `A/B tiers ACCEPT` line rather than the aggregate test
+# Reads the cell's OWN `A/B sched tasks ACCEPT` line rather than the aggregate test
 # result — `sched_dims_applied` is one test over many cells, and a SKIPPED cell
 # would otherwise read as a pass (the absorbing-verdict trap, issue 0445). B is
-# per-cell (the bringup's tier count, not the seam's), so it is read from the
+# per-cell (the bringup's sched task count, not the seam's), so it is read from the
 # line instead of being asserted here: freertos-cpp declares 3, freertos-c and
 # both nuttx arms declare 2. A PARTIAL line (`2/3`) is a FAIL — matching only
-# "tiers ACCEPT" would score it as a pass, which is the same
-# one-tier-satisfies-the-image mistake phase-358 W4 fixed in the assert itself.
+# "sched tasks ACCEPT" would score it as a pass, which is the same
+# one-sched-task-satisfies-the-image mistake phase-358 W4 fixed in the assert itself.
 #
 # The rates this issue accumulated before it existed went 1/5 -> 3/5 -> 4/6 ->
 # "16/20" and were each read as progress; the corrected reading was that the
@@ -51,10 +51,10 @@ for i in $(seq 1 "$N"); do
     _hit=0
     while IFS= read -r line; do
         case "$line" in
-          *"[$CELL SchedTaskPriority] "*"tiers ACCEPT"*) ;;
+          *"[$CELL SchedTaskPriority] "*"sched tasks ACCEPT"*) ;;
           *) continue ;;
         esac
-        # `…] A/B tiers ACCEPT` — take the field after the bracket, split on `/`.
+        # `…] A/B sched tasks ACCEPT` — take the field after the bracket, split on `/`.
         counts="${line#*"[$CELL SchedTaskPriority] "}"
         counts="${counts%% *}"
         got="${counts%%/*}"; want="${counts##*/}"
@@ -68,7 +68,7 @@ EOF
     else
         fail=$((fail+1)); verdict=FAIL
         # Diagnostic only — a failure here costs context, not a verdict.
-        printf '%s\n' "$out" | grep -iE "$CELL SchedTaskPriority|tier .low.|tier .mid.|tier .high." | head -4 >&2 || true
+        printf '%s\n' "$out" | grep -iE "$CELL SchedTaskPriority|sched task .low.|sched task .mid.|sched task .high." | head -4 >&2 || true
     fi
     echo "run $i: $verdict (load $load)"
 done

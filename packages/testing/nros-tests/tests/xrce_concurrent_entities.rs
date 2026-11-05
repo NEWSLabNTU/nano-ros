@@ -1,8 +1,8 @@
 //! Issue 1734 — concurrent entity creation on ONE XRCE session, while another
 //! thread drives it.
 //!
-//! A multi-tier image shares one session across its tier threads, and each
-//! tier creates its entities and spins on its own thread. The XRCE shim had no
+//! A multi-sched-task image shares one session across its sched task threads, and each
+//! sched task creates its entities and spins on its own thread. The XRCE shim had no
 //! lock: its slot claims were the find-then-mark issue 1711 fixed in the zenoh
 //! shim, and every create runs Micro XRCE-DDS-Client (`uxr_buffer_create_*`,
 //! `uxr_run_session_until_all_status`) on the shared `uxrSession`, which is not
@@ -150,8 +150,8 @@ fn concurrent_creates_on_one_xrce_session_succeed_on_distinct_slots() {
         let all_created = Arc::new(Barrier::new(THREADS));
         let stop_driving = Arc::new(AtomicBool::new(false));
 
-        // The spinning tier: drives the session the whole time the others
-        // create on it, as a tier executor does.
+        // The spinning sched task: drives the session the whole time the others
+        // create on it, as a sched task executor does.
         let driver = {
             let (start, stop) = (start.clone(), stop_driving.clone());
             thread::spawn(move || {

@@ -219,8 +219,8 @@ function(nros_system_generate bringup_pkg)
     # Issue 1312 — this used to be spliced into `--target "zephyr-${_rmw}"`, a
     # string synthesised HERE that names no `[image.*]` / `[deploy.*]` block in
     # any bringup. `--target` selects a block, so everything it selects — the
-    # tier sub-table above all — fell back to the system-wide default, and for
-    # the tier resolver that default is the HOST: a tiered Zephyr image baked
+    # sched task sub-table above all — fell back to the system-wide default, and for
+    # the sched task resolver that default is the HOST: a sched-task Zephyr image baked
     # through this module got `[tasks.*.posix]` priorities. The fix is not to
     # read "zephyr" back out of the string (that is the substring guess the
     # issue-1285 follow-up removed) but to name the IMAGE, which this configure
@@ -277,7 +277,7 @@ function(nros_system_generate bringup_pkg)
         set(_entry_dir "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 
-    # Issue 1508 - a derived tier table in `nros-plan.json` is allocated out of
+    # Issue 1508 - a derived sched task table in `nros-plan.json` is allocated out of
     # THIS image's priority pool, the same one `nros dev codegen entry` allocates
     # the running table from (NanoRosEntry.cmake), so the record and the image
     # agree. Kconfig has run by the time a module is configured.

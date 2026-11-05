@@ -2,7 +2,7 @@
 <package format="3">
   <name>demo_bringup</name>
   <version>0.1.0</version>
-  <description>phase-459 W0 - bringup for the four-component derived-tiers C++ workspace (ws-derived-sched-tasks-cpp).</description>
+  <description>phase-459 W0 - bringup for the four-component derived-sched-tasks C++ workspace (ws-derived-sched-tasks-cpp).</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
   <export>

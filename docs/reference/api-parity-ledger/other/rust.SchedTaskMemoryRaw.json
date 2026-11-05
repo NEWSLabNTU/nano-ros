@@ -1,5 +1,5 @@
 {
   "key": "rust:SchedTaskMemoryRaw",
   "verdict": "divergence",
-  "why": "issue 1598 -- one tier task's memory as a board receives it (raw pointers + sizes, `Copy`); exclusive because `SchedTaskMemorySet::take` hands the rows out once. `NONE` means \"the port's default\". See `rust:SchedTaskMemory`."
+  "why": "issue 1598 -- one sched task's memory as a board receives it (raw pointers + sizes, `Copy`); exclusive because `SchedTaskMemorySet::take` hands the rows out once. `NONE` means \"the port's default\". See `rust:SchedTaskMemory`."
 }

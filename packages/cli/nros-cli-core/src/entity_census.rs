@@ -221,7 +221,7 @@ impl Verdict {
             }
             Verdict::TypeMismatch => "the bound inventory priced the wrong type",
             Verdict::PeriodMismatch => {
-                "the tier derivation and the rate hierarchy read the declared rate"
+                "the sched task derivation and the rate hierarchy read the declared rate"
             }
             Verdict::ParamMissingInContract => {
                 "the store has no slot counted for it; the phase-446 refusal, one build earlier"

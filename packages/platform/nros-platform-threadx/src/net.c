@@ -198,11 +198,11 @@ void nros_platform_tcp_close(void *sock_raw) {
 /* Whether `fd` has data to read right now (zero-timeout select).
  *
  * RFC-0110 D4. zenoh-pico 1.9 runs its read path as an executor future, and on
- * ThreadX that executor runs inside `zpico_spin_once`, on a tier thread, under
- * the executor's lock. A receive that BLOCKS there holds that tier for the
- * socket's receive timeout and every other tier out of the executor — and on
+ * ThreadX that executor runs inside `zpico_spin_once`, on a sched task thread, under
+ * the executor's lock. A receive that BLOCKS there holds that sched task for the
+ * socket's receive timeout and every other sched task out of the executor — and on
  * the Linux host port it is a host syscall, which the ThreadX scheduler still
- * counts as the thread running, so lower tiers starve outright (phase-297 W5).
+ * counts as the thread running, so lower sched tasks starve outright (phase-297 W5).
  * So the read the future makes asks first, the same zero-timeout check
  * `zpico_spin_once` made before 1.9 in front of `zp_read`. The Linux host port's
  * BSD fds are host fds, which that check used host `select` on; NetX Duo on a

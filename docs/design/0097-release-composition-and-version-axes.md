@@ -98,7 +98,7 @@ only orchestration file naming `nros_serdes`, and what it does is emit
 filed under `orchestration/`, not a dependency — the line holds.
 
 **`nros_orchestration_ir` does not move, and does not need to.** Its own header:
-*"the small set of `system.toml` types that describe scheduling tiers […]
+*"the small set of `system.toml` types that describe sched tasks […]
 depended on by BOTH"*. It is build-time IR, not something user firmware links
 against, so it has no bearing on whether emitted code matches a runtime.
 

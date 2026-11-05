@@ -1,24 +1,24 @@
 /*
- * nuttx_run_sched_tasks.c — phase-281 W3 (nuttx): C++ embedded multi-tier entry for NuttX.
+ * nuttx_run_sched_tasks.c — phase-281 W3 (nuttx): C++ embedded multi-sched-task entry for NuttX.
  *
  * Implements `nros_board_nuttx_run_sched_tasks`, the NuttX analog of the FreeRTOS
  * `nros_board_freertos_run_sched_tasks` and the Zephyr `nros_board_zephyr_run_sched_tasks`:
  * opens ONE RMW session on the calling thread (the NuttX `app_main` thread — an
- * already-running post-boot task), runs the boot tier's setup, then CHAIN-spawns
- * the remaining tiers (each with a borrowed executor sharing the one session) so
- * their setups serialize (issue #144), and runs the boot tier on the caller.
+ * already-running post-boot task), runs the boot sched task's setup, then CHAIN-spawns
+ * the remaining sched tasks (each with a borrowed executor sharing the one session) so
+ * their setups serialize (issue #144), and runs the boot sched task on the caller.
  *
  * NuttX deltas vs the FreeRTOS / Zephyr mirrors:
- *   - NuttX is POSIX, so non-boot tiers spawn via `pthread_create` (NOT
- *     xTaskCreate / k_thread and NOT a tier shim): each tier gets its own
- *     `pthread_attr_t` with `pthread_attr_setstacksize` (tier.stack_bytes, else
+ *   - NuttX is POSIX, so non-boot sched tasks spawn via `pthread_create` (NOT
+ *     xTaskCreate / k_thread and NOT a sched task shim): each sched task gets its own
+ *     `pthread_attr_t` with `pthread_attr_setstacksize` (sched task.stack_bytes, else
  *     a 16 KiB default — the executor working set is heap-allocated via
- *     `nros_platform_alloc`, so the tier stack only carries call frames) and
- *     `SCHED_FIFO` + `pthread_attr_setschedparam` at the tier's RAW NuttX
+ *     `nros_platform_alloc`, so the sched task stack only carries call frames) and
+ *     `SCHED_FIFO` + `pthread_attr_setschedparam` at the sched task's RAW NuttX
  *     priority (`[tasks.*.nuttx].priority` verbatim), with
  *     `PTHREAD_EXPLICIT_SCHED` so the attr's policy/priority actually take;
- *   - the boot tier adopts its declared RAW priority on the caller thread via
- *     `pthread_setschedparam(pthread_self(), SCHED_FIFO, …)` (the spawned tiers
+ *   - the boot sched task adopts its declared RAW priority on the caller thread via
+ *     `pthread_setschedparam(pthread_self(), SCHED_FIFO, …)` (the spawned sched tasks
  *     get theirs at `pthread_create`);
  *   - NuttX owns boot + networking: the board FFI `main` brings up `eth0`
  *     (virtio-net) BEFORE `app_main` runs (phase-280), so there is no network
@@ -62,11 +62,11 @@ extern int nros_cpp_executor_set_active_groups(void* executor, const char* const
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
-/* issue 0636 option 3 — the tier spin loop's scheduled gap.
+/* issue 0636 option 3 — the sched task spin loop's scheduled gap.
  *
- * ONE implementation, shared with the Rust tier runners
+ * ONE implementation, shared with the Rust sched task runners
  * (`nros_platform::board::sched_task`): a second spelling per language is how the
- * tier-priority marker drifted, which is most of what this issue was. Pass 0
+ * sched-task-priority marker drifted, which is most of what this issue was. Pass 0
  * on the first call and keep the returned value; the sleep, when the rule
  * calls for one, happens inside. State is an opaque u64 rather than a struct
  * so there is no hand-mirrored FFI layout to drift (three prior incidents). */
@@ -102,18 +102,18 @@ extern void nros_platform_dealloc(void* ptr);
 extern size_t nros_cpp_executor_storage_size(void);
 extern int nros_cpp_executor_storage_check(const void* storage, size_t bytes);
 
-/* --- Per-tier pthread stack ---
+/* --- Per-sched-task pthread stack ---
  *
  * The borrowed executor's working set (the executor block above, which is the
  * caller's storage — issue 1568 — plus zenoh-pico's heap buffers) lives off
- * the stack, so a tier pthread's stack only
+ * the stack, so a sched task pthread's stack only
  * carries call frames — 16 KiB is a sane default. `[tasks.*.nuttx].stack_bytes`
  * overrides it when set. NOTE (mirrors the freertos seam's stack note): this
  * default is untuned for the full run_sched_tasks path under QEMU; runtime-proving
  * (the next wave) may need to raise it. */
 #define NROS_NUTTX_SCHED_TASK_STACK_BYTES 16384u
 
-/* --- Local tier-spec type ---
+/* --- Local sched-task-spec type ---
  *
  * Mirror of nros_native_sched_task_spec_t (rclc/detail/main.h). Layout MUST match: same
  * field order, same types, same ABI (verified by the C++ caller casting
@@ -147,11 +147,11 @@ typedef struct {
     const char* deadline_policy;
 } nros_sched_task_spec_t;
 
-/* --- Per-tier thread context ---
+/* --- Per-sched-task thread context ---
  *
  * Heap-allocated by the spawning thread before pthread_create; lives for the
  * firmware lifetime (the spawned thread never returns). executor_storage is
- * this tier's block of the CALLER's storage (issue 1568 — a file-scope static
+ * this sched task's block of the CALLER's storage (issue 1568 — a file-scope static
  * in the generated entry, not a heap block), passed to
  * nros_cpp_executor_open_over_session. */
 typedef struct {
@@ -162,7 +162,7 @@ typedef struct {
     uint64_t spin_period_us;
     nros_sched_task_setup_fn_t setup;
     void* executor_storage;
-    /* issue #144 — chained spawn tail: the tiers still to bring up AFTER this
+    /* issue #144 — chained spawn tail: the sched tasks still to bring up AFTER this
      * one. This thread spawns rest[0] (carrying rest[1..]) only after its own
      * setup returns, so no two setups overlap on the shared session. */
     const nros_sched_task_spec_t* rest;
@@ -172,7 +172,7 @@ typedef struct {
      * issue 1551). */
     unsigned char* rest_storage;
     size_t storage_stride;
-    /* phase-296 W5.9 — tier identity + sporadic policy, carried so the tier
+    /* phase-296 W5.9 — sched task identity + sporadic policy, carried so the sched task
      * thread can self-apply SCHED_SPORADIC (mirrors the zephyr ctx append). */
     const char* name;
     const char* sched_task_class;
@@ -180,12 +180,12 @@ typedef struct {
     uint64_t period_us;
     int64_t priority;
     /* phase-296 W5.11 — placement dim: CPU pin + 1 (0 = unpinned), carried so
-     * the spawned tier thread can self-apply its core affinity. */
+     * the spawned sched task thread can self-apply its core affinity. */
     uint32_t core_plus1;
 } nros_nuttx_sched_task_ctx_t;
 
 /* Forward decl — nuttx_sched_task_thread and nuttx_spawn_next_sched_task are mutually
- * recursive (each tier's thread spawns the next tier via this helper). */
+ * recursive (each sched task's thread spawns the next sched task via this helper). */
 static int nuttx_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
                                  const nros_sched_task_spec_t* remaining, size_t n_remaining,
                                  unsigned char* storage, size_t storage_stride);
@@ -193,7 +193,7 @@ static int nuttx_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
 /* Minimum spin delay: 1 ms. */
 #define SPIN_PERIOD_FLOOR_MS 1u
 
-/* Clamp a raw tier priority (int64 from the tier spec) to the SCHED_FIFO range
+/* Clamp a raw sched task priority (int64 from the sched task spec) to the SCHED_FIFO range
  * NuttX accepts, so pthread_attr_setschedparam / pthread_setschedparam never
  * reject it. */
 static int nuttx_clamp_priority(int64_t p) {
@@ -210,8 +210,8 @@ static int nuttx_clamp_priority(int64_t p) {
 
 /* phase-296 W5.9 — NuttX kernel-native SPORADIC SERVER (the budget dim's
  * first `Native` realization, RFC-0052). Applies SCHED_SPORADIC on the
- * CALLING thread when the tier is real-time with BOTH a budget and a
- * replenishment period: runs at the tier priority while `budget_us` of CPU
+ * CALLING thread when the sched task is real-time with BOTH a budget and a
+ * replenishment period: runs at the sched task priority while `budget_us` of CPU
  * remains in each `period_us` window, dropping to the low background
  * priority when exhausted (POSIX sporadic server; NuttX implements it when
  * CONFIG_SCHED_SPORADIC=y). The marker prints ONLY when the kernel actually
@@ -238,7 +238,7 @@ int nros_nuttx_apply_current_sporadic(const char* name, const char* sched_task_c
      *
      * `sched_ss_max_repl` bounds how many replenishments may be IN FLIGHT.
      * NuttX allocates one per suspend/resume of the thread (sched_sporadic.c
-     * `sporadic_alloc_repl`), and an executor tier suspends every spin — 1000us
+     * `sporadic_alloc_repl`), and an executor sched task suspends every spin — 1000us
      * here. With one slot, the second suspend finds none free, and the kernel's
      * documented fall-back is to DO NOTHING:
      *
@@ -247,26 +247,26 @@ int nros_nuttx_apply_current_sporadic(const char* name, const char* sched_task_c
      *     //  failure from the standpoint of higher level logic."
      *
      * The consumed budget is then never replenished, so the thread stays at
-     * `sched_ss_low_priority` — which is the FLOOR, below every other tier —
-     * for the rest of its life. Measured: the 10ms `high` tier published at
-     * ~1 Hz while the 100ms `low` tier ran at ~10 Hz, an inversion of ~70x.
+     * `sched_ss_low_priority` — which is the FLOOR, below every other sched task —
+     * for the rest of its life. Measured: the 10ms `high` sched task published at
+     * ~1 Hz while the 100ms `low` sched task ran at ~10 Hz, an inversion of ~70x.
      *
      * 1 is only correct for a thread that runs exactly once per period and is
-     * never preempted inside it, which no spin-loop tier is. The kernel's own
+     * never preempted inside it, which no spin-loop sched task is. The kernel's own
      * bound is the right ceiling to ask for: it is what this build's config
      * sized the array to, and `sporadic_alloc_repl` DEBUGASSERTs against
      * exactly this value.
      *
-     * Latent until #636 — the boot tier's path does not apply sporadic at all,
-     * and `high` WAS the boot tier until `boot_sched_task_index` made the least
-     * urgent tier the session owner. Moving it to the spawned path reached
+     * Latent until #636 — the boot sched task's path does not apply sporadic at all,
+     * and `high` WAS the boot sched task until `boot_sched_task_index` made the least
+     * urgent sched task the session owner. Moving it to the spawned path reached
      * this line for the first time.
      *
      * HONEST SCOPE: this is NOT the cause of issue 0736, which is what found
      * it. Measured on nuttx-arm/rust: 1 -> CONFIG (3) left the symptom bit for
      * bit unchanged (ctrl 2, telem 21), and disabling SCHED_SPORADIC outright
      * did not fix it either (ctrl 5, telem 13 — still inverted). 0736 turned
-     * out to be the tier's TIMER under-firing, not its scheduling. The line is
+     * out to be the sched task's TIMER under-firing, not its scheduling. The line is
      * corrected anyway because 1 is wrong on its own terms.
      */
     sp.sched_ss_max_repl = CONFIG_SCHED_SPORADIC_MAXREPL;
@@ -276,19 +276,19 @@ int nros_nuttx_apply_current_sporadic(const char* name, const char* sched_task_c
     sp.sched_ss_init_budget.tv_nsec = (long)(budget_us % 1000000u) * 1000L;
     int rc = pthread_setschedparam(pthread_self(), SCHED_SPORADIC, &sp);
     if (rc == 0) {
-        printf("nros: sporadic budget set tier=`%s` %lluus/%lluus\n", (name != NULL) ? name : "?",
+        printf("nros: sporadic budget set sched_task=`%s` %lluus/%lluus\n", (name != NULL) ? name : "?",
                (unsigned long long)budget_us, (unsigned long long)period_us);
         return 1;
     }
-    printf("nros: sporadic budget FAILED tier=`%s` rc=%d — tier stays SCHED_FIFO "
+    printf("nros: sporadic budget FAILED sched_task=`%s` rc=%d — sched task stays SCHED_FIFO "
            "(executor Sporadic SchedContext is the enforcement)\n",
            (name != NULL) ? name : "?", rc);
 #else
-    /* Fail-loud (RFC-0052): the tier DECLARED a sporadic budget but this
+    /* Fail-loud (RFC-0052): the sched task DECLARED a sporadic budget but this
      * kernel was built without CONFIG_SCHED_SPORADIC — the declared policy
      * cannot be honored natively. The executor's cooperative Sporadic
-     * SchedContext (W3a) is the enforcement; say so once per tier. */
-    printf("nros: sporadic budget declared for tier=`%s` but kernel lacks "
+     * SchedContext (W3a) is the enforcement; say so once per sched task. */
+    printf("nros: sporadic budget declared for sched_task=`%s` but kernel lacks "
            "CONFIG_SCHED_SPORADIC — executor SchedContext only\n",
            (name != NULL) ? name : "?");
     (void)priority;
@@ -298,7 +298,7 @@ int nros_nuttx_apply_current_sporadic(const char* name, const char* sched_task_c
 
 /* phase-296 W5.11 — NuttX SMP core affinity (the placement dim's `Native`
  * realization, RFC-0052). Pins the CALLING thread to `core_plus1 - 1` when a
- * tier declares a `core` (core_plus1 > 0 — the emit_c/macro `core + 1` encoding,
+ * sched task declares a `core` (core_plus1 > 0 — the emit_c/macro `core + 1` encoding,
  * 0 = unpinned). The marker prints ONLY when the kernel accepted the pin; a
  * uniprocessor build (no CONFIG_SMP) or a rejection falls back LOUDLY — the
  * placement is NEVER silently dropped (the prior behavior: the ABI carried
@@ -318,22 +318,22 @@ int nros_nuttx_apply_current_affinity(const char* name, uint32_t core_plus1) {
     CPU_SET(cpu, &set);
     int rc = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
     if (rc == 0) {
-        printf("nros: core pin tier=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
+        printf("nros: core pin sched_task=`%s` cpu=%d\n", (name != NULL) ? name : "?", cpu);
         return 1;
     }
-    printf("nros: core pin FAILED tier=`%s` cpu=%d rc=%d — tier runs unpinned\n",
+    printf("nros: core pin FAILED sched_task=`%s` cpu=%d rc=%d — sched task runs unpinned\n",
            (name != NULL) ? name : "?", cpu, rc);
 #else
-    /* Fail-loud (RFC-0052): the tier DECLARED a `core` but this kernel was
+    /* Fail-loud (RFC-0052): the sched task DECLARED a `core` but this kernel was
      * built without CONFIG_SMP — no affinity API to honor it. */
-    printf("nros: core pin FAILED tier=`%s` cpu=%d — kernel lacks CONFIG_SMP, "
-           "tier runs unpinned\n",
+    printf("nros: core pin FAILED sched_task=`%s` cpu=%d — kernel lacks CONFIG_SMP, "
+           "sched task runs unpinned\n",
            (name != NULL) ? name : "?", cpu);
 #endif
     return 0;
 }
 
-/* issue 0750 — report where the tier ACTUALLY runs, not just that the kernel
+/* issue 0750 — report where the sched task ACTUALLY runs, not just that the kernel
  * took the mask.
  *
  * The pin markers above say `pthread_setaffinity_np` returned 0. On a
@@ -356,7 +356,7 @@ void nros_nuttx_report_observed_cpu(const char* name) {
 #ifdef CONFIG_SMP
     int observed = sched_getcpu();
     if (observed >= 0) {
-        printf("nros: core pin observed tier=`%s` running_on=%d\n", (name != NULL) ? name : "?",
+        printf("nros: core pin observed sched_task=`%s` running_on=%d\n", (name != NULL) ? name : "?",
                observed);
     }
 #else
@@ -364,10 +364,10 @@ void nros_nuttx_report_observed_cpu(const char* name) {
 #endif
 }
 
-/* phase-302 W3 (issue 0263) — adopt the tier's declared SCHED_FIFO priority
+/* phase-302 W3 (issue 0263) — adopt the sched task's declared SCHED_FIFO priority
  * on the CALLING thread. The C arm applies priority at pthread_create time;
  * the Rust arm spawns via std::thread (no priority attr) and self-applies
- * through this helper at tier entry — one implementation, one marker. The
+ * through this helper at sched task entry — one implementation, one marker. The
  * printf literal MUST match `nros_tests::output::NUTTX_SCHED_TASK_PRIORITY_MARKER`. */
 int nros_nuttx_apply_current_priority(const char* name, uint32_t priority);
 int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
@@ -378,11 +378,11 @@ int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
     sp.sched_priority = (int)priority;
     int rc = pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
     if (rc == 0) {
-        printf("nros: tier priority set tier=`%s` prio=%d\n", (name != NULL) ? name : "?",
+        printf("nros: sched task priority set sched_task=`%s` prio=%d\n", (name != NULL) ? name : "?",
                (int)priority);
         return 1;
     }
-    printf("nros: tier priority FAILED tier=`%s` prio=%d rc=%d — tier runs at inherited "
+    printf("nros: sched task priority FAILED sched_task=`%s` prio=%d rc=%d — sched task runs at inherited "
            "priority\n",
            (name != NULL) ? name : "?", (int)priority, rc);
     return 0;
@@ -397,15 +397,15 @@ int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
  * `pthread_attr_t` layout that must not be mirrored stays inside the POSIX port
  * — which is where it always belonged, and which NuttX runs. */
 
-/* nuttx_sched_task_thread — body of each non-boot tier thread.
+/* nuttx_sched_task_thread — body of each non-boot sched task thread.
  *
- * Opens a borrowed executor over the shared session, gates it to the tier's
- * callback groups, calls the tier's setup function, spawns the next tier
- * (issue #144), then spins forever at the tier's declared period. On failure:
+ * Opens a borrowed executor over the shared session, gates it to the sched task's
+ * callback groups, calls the sched task's setup function, spawns the next sched task
+ * (issue #144), then spins forever at the sched task's declared period. On failure:
  * parks (never returns — the boot thread is the session owner and must outlive
  * all borrowed executors). Signature is `void* (*)(void*)` to match
  * pthread_create's entry type. */
-/* issue 0736 — REPORT when the kernel sporadic server is throttling this tier.
+/* issue 0736 — REPORT when the kernel sporadic server is throttling this sched task.
  *
  * The issue's own conclusion is that the residual rate shortfall isolates to
  * NuttX's `SCHED_SPORADIC` server (4/4 FAIL with `apply_sched_task_sporadic`, 3/3 PASS
@@ -425,9 +425,9 @@ int nros_nuttx_apply_current_priority(const char* name, uint32_t priority) {
  * conclusion already for resting on an experiment with no control. This asks the
  * kernel what priority the thread is at, and reports the answer.
  *
- * Reported ONCE per tier. A tier that dips to the floor for one period and one
+ * Reported ONCE per sched task. A sched task that dips to the floor for one period and one
  * that never recovers are the same first message; the second is visible as the
- * message arriving early and the tier's rate never improving. Repeating it every
+ * message arriving early and the sched task's rate never improving. Repeating it every
  * spin would bury the run in output at 1000 Hz.
  */
 static void nros_nuttx_report_sporadic_throttle(const char* name, int declared_priority,
@@ -443,8 +443,8 @@ static void nros_nuttx_report_sporadic_throttle(const char* name, int declared_p
     int floor_prio = sched_get_priority_min(SCHED_FIFO);
     if (now.sched_priority <= floor_prio && declared_priority > floor_prio) {
         *already_reported = 1;
-        printf("nros: sporadic budget throttled by the KERNEL tier=`%s` prio=%d (declared %d) — "
-               "the SCHED_SPORADIC budget is exhausted and this tier is running at the floor\n",
+        printf("nros: sporadic budget throttled by the KERNEL sched_task=`%s` prio=%d (declared %d) — "
+               "the SCHED_SPORADIC budget is exhausted and this sched task is running at the floor\n",
                (name != NULL) ? name : "?", now.sched_priority, declared_priority);
     }
 #else
@@ -456,7 +456,7 @@ static void nros_nuttx_report_sporadic_throttle(const char* name, int declared_p
 
 /* Issue 2018 -- the same report for the Rust level runner
  * (`nros-board-nuttx`), which calls it after each of a level's passes: one
- * implementation, one marker. `priority` is the tier's declared value,
+ * implementation, one marker. `priority` is the sched task's declared value,
  * clamped here as at spawn. */
 int nros_nuttx_report_current_sporadic_throttle(const char* name, int64_t priority,
                                                 int* already_reported);
@@ -476,18 +476,18 @@ static void* nuttx_sched_task_thread(void* arg) {
      * caller: the C arm set priorities at `pthread_create` time and printed
      * nothing, so the whole language arm was invisible to the `SchedTaskPriority`
      * dim. Its own doc comment says the helper is "one implementation, one
-     * marker" shared with the Rust arm, and the Rust arm calls it at tier
+     * marker" shared with the Rust arm, and the Rust arm calls it at sched task
      * entry — so does this one now.
      *
      * Re-applying the priority the attribute already set is deliberate and
      * cheap: it is the same value, so the call is a no-op in effect, and it is
      * the only point where this thread can say what it actually got. #579's
-     * rule is that every DECLARING tier prints its own marker; a tier that was
-     * configured correctly and says so is what separates that from a tier
+     * rule is that every DECLARING sched task prints its own marker; a sched task that was
+     * configured correctly and says so is what separates that from a sched task
      * nobody scheduled. */
     (void)nros_nuttx_apply_current_priority(ctx->name, ctx->priority);
 
-    /* phase-296 W5.9 — upgrade this tier thread to the kernel sporadic
+    /* phase-296 W5.9 — upgrade this sched task thread to the kernel sporadic
      * server when its policy declares budget+period (else it keeps the
      * SCHED_FIFO priority set at pthread_create). */
     (void)nros_nuttx_apply_current_sporadic(ctx->name, ctx->sched_task_class, ctx->budget_us,
@@ -495,7 +495,7 @@ static void* nuttx_sched_task_thread(void* arg) {
     /* phase-296 W5.11 — placement dim: pin to the declared core (fail-loud). */
     (void)nros_nuttx_apply_current_affinity(ctx->name, ctx->core_plus1);
     /* issue 0750 — and say where it LANDED, after the pin and before any work.
-     * Only the spawned tiers report: the boot tier is already running when the
+     * Only the spawned sched tasks report: the boot sched task is already running when the
      * mask is applied, so its placement says more about when it was asked than
      * about whether the pin worked. */
     nros_nuttx_report_observed_cpu(ctx->name);
@@ -507,8 +507,8 @@ static void* nuttx_sched_task_thread(void* arg) {
                                                  ctx->executor_storage);
     if (rc != 0) {
         /* Cannot open the borrowed executor; park forever (boot thread
-         * continues). NOTE (issue #144): the spawn of the next tier sits AFTER
-         * this tier's setup, so failing here HALTS the chain — ctx->rest will
+         * continues). NOTE (issue #144): the spawn of the next sched task sits AFTER
+         * this sched task's setup, so failing here HALTS the chain — ctx->rest will
          * not start. Intentional (a degraded deploy), but a fault-isolation
          * change from the pre-#144 loop-spawn. */
         for (;;) {
@@ -516,12 +516,12 @@ static void* nuttx_sched_task_thread(void* arg) {
         }
     }
 
-    /* Gate this executor to its tier's callback groups. */
+    /* Gate this executor to its sched task's callback groups. */
     if (ctx->n_groups > 0 && ctx->groups != NULL) {
         nros_cpp_executor_set_active_groups(ctx->executor_storage, ctx->groups, ctx->n_groups);
     }
 
-    /* Run the tier's node-setup function. */
+    /* Run the sched task's node-setup function. */
     if (ctx->setup != NULL) {
         rc = ctx->setup(ctx->executor_storage);
         if (rc != 0) {
@@ -534,18 +534,18 @@ static void* nuttx_sched_task_thread(void* arg) {
         }
     }
 
-    /* issue #144 — this tier's setup is done, so bringing up the next tier can
+    /* issue #144 — this sched task's setup is done, so bringing up the next sched task can
      * no longer race our declares: spawn rest[0] (carrying rest[1..]). A failed
-     * DOWNSTREAM spawn must NOT stop this tier spinning its own work, so ignore
+     * DOWNSTREAM spawn must NOT stop this sched task spinning its own work, so ignore
      * the return (nuttx_spawn_next_sched_task frees what it allocated on failure). */
     (void)nuttx_spawn_next_sched_task(ctx->session_handle, (uint8_t)ctx->domain_id, ctx->rest,
                                 ctx->n_rest, ctx->rest_storage, ctx->storage_stride);
 
-    /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
+    /* Spin loop. Pass the sched task period as the spin_once timeout — a BLOCKING
      * read drives the shared session's TX/handshake from the spin path and
      * yields the CPU cooperatively (on NuttX `zpico_spin_once` paces with
      * z_sleep_ms; the preemptive scheduler releases the CPU to the zenoh-pico
-     * read/lease tasks). Mirrors the Rust nuttx run_sched_tasks tier loop. */
+     * read/lease tasks). Mirrors the Rust nuttx run_sched_tasks sched task loop. */
     uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
@@ -553,7 +553,7 @@ static void* nuttx_sched_task_thread(void* arg) {
     /* issue 0636 option 3 — every iteration reaches a scheduling point. The
      * executor's own wait is skipped whenever a wake already fired, so under
      * sustained traffic this loop would otherwise never block, and under
-     * SCHED_FIFO a thread that never blocks never lets a lower-priority tier
+     * SCHED_FIFO a thread that never blocks never lets a lower-priority sched task
      * run. The gap costs nothing while the spins do block. */
     uint64_t gap_state = 0;
     /* issue 0736 — see nros_nuttx_report_sporadic_throttle. */
@@ -571,7 +571,7 @@ static void* nuttx_sched_task_thread(void* arg) {
     return NULL;
 }
 
-/* nuttx_spawn_next_sched_task — issue #144 chained tier spawn.
+/* nuttx_spawn_next_sched_task — issue #144 chained sched task spawn.
  *
  * Spawns exactly ONE pthread for remaining[0], handing it remaining[1..] as its
  * own `rest` so the chain continues once its setup completes. Empty `remaining`
@@ -590,13 +590,13 @@ static int nuttx_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
     }
     const nros_sched_task_spec_t* t = &remaining[0];
 
-    /* Issue 1568 — this tier's executor is the caller's block, never a heap
+    /* Issue 1568 — this sched task's executor is the caller's block, never a heap
      * block: the storage is the generated entry's `.bss` static, sized by the
      * build and placed by the linker. */
     void* sched_task_exec = storage;
     memset(sched_task_exec, 0, storage_stride);
 
-    /* Allocate the tier thread context (lives for firmware lifetime). */
+    /* Allocate the sched task thread context (lives for firmware lifetime). */
     nros_nuttx_sched_task_ctx_t* ctx =
         (nros_nuttx_sched_task_ctx_t*)nros_platform_alloc(sizeof(nros_nuttx_sched_task_ctx_t));
     if (ctx == NULL) {
@@ -622,9 +622,9 @@ static int nuttx_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
     ctx->priority = t->priority;
     ctx->core_plus1 = t->core_plus1;
 
-    /* Build the tier pthread attributes: detached (never joined — the tier
-     * thread spins forever), an explicit stack size (tier.stack_bytes, else the
-     * 16 KiB default), and SCHED_FIFO at the tier's RAW NuttX priority with
+    /* Build the sched task pthread attributes: detached (never joined — the sched task
+     * thread spins forever), an explicit stack size (sched task.stack_bytes, else the
+     * 16 KiB default), and SCHED_FIFO at the sched task's RAW NuttX priority with
      * PTHREAD_EXPLICIT_SCHED so the policy/priority actually apply (default is
      * PTHREAD_INHERIT_SCHED → the creator's params). */
     pthread_attr_t attr;
@@ -662,34 +662,34 @@ static int nuttx_spawn_next_sched_task(void* session_handle, uint8_t domain_id,
  * up (the board FFI main brought up virtio-net before app_main — phase-280), and
  * we are executing on the app_main thread.
  *
- * The `tiers` array is laid out identically to nros_native_sched_task_spec_t (the
+ * The `sched_tasks` array is laid out identically to nros_native_sched_task_spec_t (the
  * caller casts NativeSchedTaskSpec* → nros_native_sched_task_spec_t* → nros_sched_task_spec_t*).
  *
  * `locator`      — zenoh connect endpoint (compile-time NROS_ENTRY_LOCATOR)
  * `domain_id`    — ROS domain ID (compile-time NROS_ENTRY_DOMAIN_ID)
  * `session_name` — primary session / node name; NULL or empty → "node"
- * `tiers`        — tier-spec array, highest-priority-first (codegen order)
- * `n_sched_tasks`      — number of tiers (>= 1)
+ * `sched_tasks`        — sched-task-spec array, highest-priority-first (codegen order)
+ * `n_sched_tasks`      — number of sched tasks (>= 1)
  *
- * Returns: normally never returns (the boot tier spins forever). Returns a
+ * Returns: normally never returns (the boot sched task spins forever). Returns a
  * non-zero error code only if the primary session open or a spawn fails. */
 int32_t nros_board_nuttx_run_sched_tasks(const char* locator, uint8_t domain_id, const char* session_name,
-                                   const nros_sched_task_spec_t* tiers, size_t n_sched_tasks);
+                                   const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 int32_t nros_board_nuttx_run_sched_tasks_ns(const char* locator, uint8_t domain_id,
                                       const char* session_name, const char* node_namespace,
-                                      const nros_sched_task_spec_t* tiers, size_t n_sched_tasks);
+                                      const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks);
 int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_id,
                                       const char* session_name, const char* node_namespace,
-                                      const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                      const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                       void* executor_storage, size_t storage_stride);
 
 int32_t nros_board_nuttx_run_sched_tasks(const char* locator, uint8_t domain_id, const char* session_name,
-                                   const nros_sched_task_spec_t* tiers, size_t n_sched_tasks) {
+                                   const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks) {
     /* Issue 1442 - delegates with a NULL namespace, which is "this image
      * declares none" and resolves to the root. Kept as its own symbol because
      * it is the one a pre-1442 generated entry TU calls, and an entry TU
      * outlives the library it was generated against (issue 1050's rule). */
-    return nros_board_nuttx_run_sched_tasks_ns(locator, domain_id, session_name, NULL, tiers, n_sched_tasks);
+    return nros_board_nuttx_run_sched_tasks_ns(locator, domain_id, session_name, NULL, sched_tasks, n_sched_tasks);
 }
 
 /*
@@ -706,20 +706,20 @@ int32_t nros_board_nuttx_run_sched_tasks(const char* locator, uint8_t domain_id,
  * There is no environment rung on NuttX, so the bake IS the answer here; the
  * locator and the domain stay the board's, baked by cmake. Issue 1434 drew the
  * same line one runner over (`nros_board_rtos_run_components_ns`); this is that
- * change on the tiered path.
+ * change on the sched-task path.
  *
- * What it names is the SESSION. Each tier's own nodes carry their own
+ * What it names is the SESSION. Each sched task's own nodes carry their own
  * `(name, namespace, group)` triples in the spec array (issue 1172) and are
  * untouched.
  */
 int32_t nros_board_nuttx_run_sched_tasks_ns(const char* locator, uint8_t domain_id,
                                       const char* session_name, const char* node_namespace,
-                                      const nros_sched_task_spec_t* tiers, size_t n_sched_tasks) {
-    if (tiers == NULL || n_sched_tasks == 0) {
+                                      const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks) {
+    if (sched_tasks == NULL || n_sched_tasks == 0) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
     /* Issue 1568 — kept for an entry TU generated before
-     * `nros_board_nuttx_run_sched_tasks_in` existed. It takes every tier's storage
+     * `nros_board_nuttx_run_sched_tasks_in` existed. It takes every sched task's storage
      * in ONE heap block up front, at the library's own size, and hands it to
      * the runner — so it fails before any session opens rather than part-way
      * down the spawn chain (issue 1551's lesson), and it can no longer be
@@ -727,27 +727,27 @@ int32_t nros_board_nuttx_run_sched_tasks_ns(const char* locator, uint8_t domain_
     const size_t stride = nros_cpp_executor_storage_size();
     void* storage = nros_platform_alloc(n_sched_tasks * stride);
     if (storage == NULL) {
-        printf("nros: nuttx run_sched_tasks: %u tiers x %u bytes of executor storage do not fit "
+        printf("nros: nuttx run_sched_tasks: %u sched tasks x %u bytes of executor storage do not fit "
                "the heap; regenerate the entry (nros_board_nuttx_run_sched_tasks_in takes them as "
                "a static)\n",
                (unsigned)n_sched_tasks, (unsigned)stride);
         return -1; /* NROS_CPP_RET_ERROR */
     }
     int32_t rc = nros_board_nuttx_run_sched_tasks_in(locator, domain_id, session_name, node_namespace,
-                                               tiers, n_sched_tasks, storage, stride);
+                                               sched_tasks, n_sched_tasks, storage, stride);
     nros_platform_dealloc(storage);
     return rc;
 }
 
 /*
  * Issue 1568 — the runner, over caller-supplied executor storage, and the one a
- * generated tiered nuttx entry calls (`CAbiRunners::takes_executor_storage`).
+ * generated sched-task nuttx entry calls (`CAbiRunners::takes_executor_storage`).
  * Zephyr's shape (issue 1551), so the three RTOS runners take storage one way.
  *
  * `executor_storage` holds `n_sched_tasks` blocks of `storage_stride` bytes; block 0
- * is the boot tier's executor and blocks 1.. are the spawned tiers', in chain
+ * is the boot sched task's executor and blocks 1.. are the spawned sched tasks', in chain
  * order. The generated entry passes a file-scope static sized from the
- * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own tier count, so the
+ * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE` and its own sched task count, so the
  * bytes are `.bss` the linker places and `mem-report` names instead of
  * `n_sched_tasks` heap blocks nothing priced. A block the linked library says is too
  * small or misaligned is REFUSED before a byte is written.
@@ -756,9 +756,9 @@ int32_t nros_board_nuttx_run_sched_tasks_ns(const char* locator, uint8_t domain_
  */
 int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_id,
                                       const char* session_name, const char* node_namespace,
-                                      const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                      const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                       void* executor_storage, size_t storage_stride) {
-    if (tiers == NULL || n_sched_tasks == 0 || executor_storage == NULL) {
+    if (sched_tasks == NULL || n_sched_tasks == 0 || executor_storage == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
     if (nros_cpp_executor_storage_check(executor_storage, storage_stride) != 0) {
@@ -781,7 +781,7 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
      * session name gets one line up. */
     const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
 
-    /* Block 0 of the caller's storage is the boot tier's executor. */
+    /* Block 0 of the caller's storage is the boot sched task's executor. */
     void* boot_storage = storage;
     memset(boot_storage, 0, storage_stride);
 
@@ -790,63 +790,63 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
         return (int32_t)rc;
     }
 
-    /* Retrieve the session handle so non-boot tiers can borrow it. The handle
+    /* Retrieve the session handle so non-boot sched tasks can borrow it. The handle
      * remains valid as long as boot_storage lives (it lives forever — the boot
      * spin loop never returns). */
     void* session_handle = nros_cpp_executor_session_handle(boot_storage);
 
-    /* --- Choose the boot tier: the LEAST urgent one (issue 0636) --- */
+    /* --- Choose the boot sched task: the LEAST urgent one (issue 0636) --- */
     /*
-     * This used to be `&tiers[0]`, which the emitter documents as the MOST
-     * urgent tier ("sorted highest-priority-first", rclcpp/detail/main.hpp). The boot
+     * This used to be `&sched_tasks[0]`, which the emitter documents as the MOST
+     * urgent sched task ("sorted highest-priority-first", rclcpp/detail/main.hpp). The boot
      * thread owns the session and spins forever, so making it outrank every
-     * tier it spawned starves them: under SCHED_FIFO on a uniprocessor guest a
+     * sched task it spawned starves them: under SCHED_FIFO on a uniprocessor guest a
      * lower-priority peer runs only when the holder BLOCKS, and a spin loop
      * does not reliably block. `17666723d` removed that arrangement from the
      * Rust arm (`nros_platform::boot_sched_task_index`); this file kept it, so the
-     * two language arms disagreed about which tier owns the session on one
+     * two language arms disagreed about which sched task owns the session on one
      * board.
      *
      * The array is sorted DESCENDING by raw priority and NuttX is
-     * bigger-is-more-urgent, so the least urgent tier is the LAST element and
-     * the remaining tiers stay CONTIGUOUS — which is what lets the existing
+     * bigger-is-more-urgent, so the least urgent sched task is the LAST element and
+     * the remaining sched tasks stay CONTIGUOUS — which is what lets the existing
      * chain-spawn walk them unchanged.
      *
      * That relies on the emitter's ordering, so it is CHECKED rather than
      * assumed: a table that is not non-increasing means the contract changed,
      * and the failure it would otherwise produce is silent starvation seconds
      * later on one platform. Report and continue with index 0 — the behaviour
-     * before this change — rather than pick a tier from an ordering nobody
+     * before this change — rather than pick a sched task from an ordering nobody
      * guaranteed.
      */
     size_t boot_idx = n_sched_tasks - 1u;
     for (size_t i = 1u; i < n_sched_tasks; ++i) {
-        if (tiers[i].priority > tiers[i - 1u].priority) {
-            printf("nros: tier table is not sorted highest-priority-first — "
-                   "boot tier falls back to index 0 (issue 0636)\n");
+        if (sched_tasks[i].priority > sched_tasks[i - 1u].priority) {
+            printf("nros: sched task table is not sorted highest-priority-first — "
+                   "boot sched task falls back to index 0 (issue 0636)\n");
             boot_idx = 0u;
             break;
         }
     }
-    const nros_sched_task_spec_t* boot = &tiers[boot_idx];
-    /* The tiers the boot thread must spawn: everything except `boot`. Both
+    const nros_sched_task_spec_t* boot = &sched_tasks[boot_idx];
+    /* The sched tasks the boot thread must spawn: everything except `boot`. Both
      * arrangements leave a contiguous run. */
-    const nros_sched_task_spec_t* rest_first = (boot_idx == 0u) ? &tiers[1] : &tiers[0];
+    const nros_sched_task_spec_t* rest_first = (boot_idx == 0u) ? &sched_tasks[1] : &sched_tasks[0];
     const size_t n_rest = n_sched_tasks - 1u;
 
-    /* issue #144 — boot setup runs BEFORE any tier spawn: concurrent entity
+    /* issue #144 — boot setup runs BEFORE any sched task spawn: concurrent entity
      * declares from two threads race the zenoh-pico interest handshake, and the
      * losing publisher's write filter stays closed (every put silently
      * dropped). Running boot's declares first, then CHAINING the remaining
      * spawns, makes setup order total (boot, t1, t2, …) so no two declares
      * overlap. */
 
-    /* Gate the boot executor to its tier's callback groups. */
+    /* Gate the boot executor to its sched task's callback groups. */
     if (boot->n_groups > 0 && boot->groups != NULL) {
         nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
     }
 
-    /* Boot tier node setup. */
+    /* Boot sched task node setup. */
     if (boot->setup != NULL) {
         rc = boot->setup(boot_storage);
         if (rc != 0) {
@@ -855,10 +855,10 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
         }
     }
 
-    /* The boot thread runs its chosen tier itself — adopt that tier's declared
+    /* The boot thread runs its chosen sched task itself — adopt that sched task's declared
      * RAW priority
-     * (the spawned tiers already got theirs at pthread_create; without this the
-     * boot tier keeps the app_main-thread default and the declared tier QoS
+     * (the spawned sched tasks already got theirs at pthread_create; without this the
+     * boot sched task keeps the app_main-thread default and the declared sched task QoS
      * would not hold for it).
      *
      * issue 0636 — this runs BEFORE the spawn below. NOT because it fixes the
@@ -866,44 +866,44 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
      * is what actually failed here) the cell is 12/12 with this block back
      * AFTER the spawn. It stays here because the window it closes is real, and
      * because a dim applied behind a spawn that preempts you is only ever
-     * correct by luck. `boot` is the LEAST urgent tier, so every tier this thread
+     * correct by luck. `boot` is the LEAST urgent sched task, so every sched task this thread
      * spawns outranks it: on the realtime-cpp table (`high` 110, `low` 100,
      * `low` == boot) the child is created at SCHED_FIFO 110 and preempts this
      * thread the instant `pthread_create` returns, at the default app_main
      * priority. Anything sitting after the spawn therefore runs only once the
      * child first blocks. That is a real window; it was NOT the reported
      * failure, which was the test reader returning at the first marker and
-     * killing QEMU (so whichever tier printed SECOND read as dropped, and
+     * killing QEMU (so whichever sched task printed SECOND read as dropped, and
      * moving this block merely swapped which one that was). Nothing here needs the children to
-     * exist, and no other tier thread exists yet to be starved by a
+     * exist, and no other sched task thread exists yet to be starved by a
      * self-demotion, so the dims are applied while this thread still owns the
      * CPU. #144's ordering is untouched: boot's DECLARES already ran above.
      *
      * The Rust arm does the mirror of this and is green (67/67) for the mirror
-     * reason: it spawns EVERY tier from this thread in a loop, so it must keep
+     * reason: it spawns EVERY sched task from this thread in a loop, so it must keep
      * its inherited priority across the whole loop or it never gets the CPU
      * back to finish spawning. This arm chain-spawns — exactly one create, and
-     * tier N brings up tier N+1 — so there is no later spawn to protect. */
+     * sched task N brings up sched task N+1 — so there is no later spawn to protect. */
     /* issue 0636 coverage — through the shared helper, so the boot tier prints
-     * its marker like every other declaring tier (#579). This was an inline
+     * its marker like every other declaring sched task (#579). This was an inline
      * `pthread_setschedparam` that reported nothing, which is how the boot
-     * tier could be the ONLY tier whose priority nobody could confirm from the
-     * console — on the arm where the boot tier is also the one this issue kept
+     * sched task could be the ONLY sched task whose priority nobody could confirm from the
+     * console — on the arm where the boot sched task is also the one this issue kept
      * finding starved. The helper clamps and reports; it no-ops on priority 0
      * (undeclared), which is the same "keep what was inherited" the inline
      * version produced. */
     (void)nros_nuttx_apply_current_priority(boot->name,
                                             (uint32_t)nuttx_clamp_priority(boot->priority));
-    /* phase-296 W5.9 — boot tier upgrades to the kernel sporadic server too,
+    /* phase-296 W5.9 — boot sched task upgrades to the kernel sporadic server too,
      * when declared (overrides the FIFO adopt above). */
     (void)nros_nuttx_apply_current_sporadic(boot->name, boot->sched_task_class, boot->budget_us,
                                             boot->period_us, boot->priority);
-    /* phase-296 W5.11 — placement dim: pin the boot tier too (fail-loud). */
+    /* phase-296 W5.11 — placement dim: pin the boot sched task too (fail-loud). */
     (void)nros_nuttx_apply_current_affinity(boot->name, boot->core_plus1);
 
-    /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
+    /* --- Kick off the chained spawn (sched_tasks[1] carrying sched_tasks[2..]) --- */
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
-     * helper never touches) and return error. Downstream tier threads handle
+     * helper never touches) and return error. Downstream sched task threads handle
      * their own spawn failures by parking + continuing to spin. */
     int src = nuttx_spawn_next_sched_task(session_handle, domain_id, rest_first, n_rest,
                                     storage + storage_stride, storage_stride);
@@ -912,7 +912,7 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
         return -1;
     }
 
-    /* Boot tier spin loop — runs forever. Blocking-read spin_once (period as
+    /* Boot sched task spin loop — runs forever. Blocking-read spin_once (period as
      * timeout) so the boot session's zenoh handshake is driven from the spin
      * path and the CPU yields cooperatively (mirrors the Rust nuttx run_sched_tasks
      * boot loop). */
@@ -923,7 +923,7 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
     /* issue 0636 option 3 — every iteration reaches a scheduling point. The
      * executor's own wait is skipped whenever a wake already fired, so under
      * sustained traffic this loop would otherwise never block, and under
-     * SCHED_FIFO a thread that never blocks never lets a lower-priority tier
+     * SCHED_FIFO a thread that never blocks never lets a lower-priority sched task
      * run. The gap costs nothing while the spins do block. */
     uint64_t gap_state = 0;
     for (;;) {
@@ -942,7 +942,7 @@ int32_t nros_board_nuttx_run_sched_tasks_in(const char* locator, uint8_t domain_
 /* phase-509 P10 (RFC-0108 "As built in P9b") -- the LEVELS runner.          */
 /* ------------------------------------------------------------------------- */
 
-/* One tier's executor backing and one tier task's memory, owned by the
+/* One sched task's executor backing and one sched task's memory, owned by the
  * generated entry. Mirrors of <rclc/detail/main.h>. NuttX has no control
  * block to hand over (`tcb` is NULL): the stack is the whole of it. */
 typedef struct {
@@ -999,7 +999,7 @@ static uintptr_t nuttx_thread_id(void) {
 static const nros_sched_task_spec_t* nuttx_level_sched_tasks;
 static size_t nuttx_level_n_sched_tasks;
 
-/* The level of tier `t`: its urgency order among the rows, NuttX's
+/* The level of sched task `t`: its urgency order among the rows, NuttX's
  * bigger-is-urgent SCHED_FIFO. */
 static uint8_t nuttx_sched_task_level(const nros_sched_task_spec_t* t) {
     if (nuttx_level_sched_tasks == NULL || t < nuttx_level_sched_tasks ||
@@ -1064,7 +1064,7 @@ static uint8_t nuttx_level_sched_policy(void* scheduler, const nros_sched_task_s
         return 0;
     }
     if (sc != 0u && t->budget_us != 0u && t->period_us != 0u) {
-        printf("nros: level budget tier=`%s` %lluus/%lluus enforced by the %s\n",
+        printf("nros: level budget sched_task=`%s` %lluus/%lluus enforced by the %s\n",
                (t->name != NULL) ? t->name : "?", (unsigned long long)t->budget_us,
                (unsigned long long)t->period_us, kernel ? "KERNEL" : "EXECUTOR");
     }
@@ -1181,15 +1181,15 @@ static void nuttx_spawn_next_level(void* scheduler, const nros_sched_task_spec_t
 
 int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
                                        const char* session_name, const char* node_namespace,
-                                       const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                       const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                        void* executor_storage, size_t storage_stride,
                                        const nros_sched_task_backing_t* backings,
                                        const nros_sched_task_memory_t* task_memory,
                                        void* scheduler_backing, size_t scheduler_bytes);
 
 /*
- * phase-509 P10 (RFC-0108) -- the runner a generated tiered NuttX entry calls
- * (`CAbiRunners::run_levels`): each row of `tiers` is one LEVEL over ONE
+ * phase-509 P10 (RFC-0108) -- the runner a generated sched-task NuttX entry calls
+ * (`CAbiRunners::run_levels`): each row of `sched_tasks` is one LEVEL over ONE
  * executor (block 0 of `executor_storage`) and one scheduler in the entry's
  * `scheduler_backing`. The boot level is the LEAST urgent (the last row) and
  * runs on the caller's thread; every other level is a SCHED_FIFO pthread over
@@ -1201,12 +1201,12 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
  */
 int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
                                        const char* session_name, const char* node_namespace,
-                                       const nros_sched_task_spec_t* tiers, size_t n_sched_tasks,
+                                       const nros_sched_task_spec_t* sched_tasks, size_t n_sched_tasks,
                                        void* executor_storage, size_t storage_stride,
                                        const nros_sched_task_backing_t* backings,
                                        const nros_sched_task_memory_t* task_memory,
                                        void* scheduler_backing, size_t scheduler_bytes) {
-    if (tiers == NULL || n_sched_tasks == 0 || n_sched_tasks > 32u || executor_storage == NULL ||
+    if (sched_tasks == NULL || n_sched_tasks == 0 || n_sched_tasks > 32u || executor_storage == NULL ||
         scheduler_backing == NULL) {
         return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
     }
@@ -1217,7 +1217,7 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
         return -3;
     }
     for (size_t i = 1u; i < n_sched_tasks; ++i) {
-        if (tiers[i].priority > tiers[i - 1u].priority) {
+        if (sched_tasks[i].priority > sched_tasks[i - 1u].priority) {
             printf("nros: nuttx run_levels: the level table is not sorted "
                    "highest-priority-first; refused\n");
             return -3;
@@ -1227,7 +1227,7 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
     if (task_memory != NULL) {
         for (size_t i = 0u; i < n_sched_tasks; ++i) {
             const nros_sched_task_memory_t* m = &task_memory[i];
-            const char* tn = (tiers[i].name != NULL) ? tiers[i].name : "?";
+            const char* tn = (sched_tasks[i].name != NULL) ? sched_tasks[i].name : "?";
             if (i == boot_idx) {
                 if (m->stack != NULL) {
                     printf("nros: nuttx run_levels: the entry gave the BOOT level `%s` a stack "
@@ -1269,7 +1269,7 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
             return -1;
         }
     }
-    nuttx_level_sched_tasks = tiers;
+    nuttx_level_sched_tasks = sched_tasks;
     nuttx_level_n_sched_tasks = n_sched_tasks;
     void* scheduler = nros_cpp_scheduler_open(0u, (uint8_t)n_sched_tasks, boot_storage, scheduler_backing,
                                               scheduler_bytes);
@@ -1282,7 +1282,7 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
     printf("nros: scheduler core=0 levels=%u backing=%u\n", (unsigned)n_sched_tasks,
            (unsigned)scheduler_bytes);
 
-    const nros_sched_task_spec_t* boot = &tiers[boot_idx];
+    const nros_sched_task_spec_t* boot = &sched_tasks[boot_idx];
     if (boot->n_groups > 0 && boot->groups != NULL) {
         nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
     }
@@ -1307,12 +1307,12 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
     if (nros_nuttx_apply_current_sporadic(boot->name, boot->sched_task_class, boot->budget_us,
                                           boot->period_us, boot->priority) == 1 &&
         boot_sc != 0u && nros_cpp_sched_context_defer_budget_to_kernel(scheduler, boot_sc) == 0) {
-        printf("nros: level budget tier=`%s` handed to the KERNEL\n",
+        printf("nros: level budget sched_task=`%s` handed to the KERNEL\n",
                (boot->name != NULL) ? boot->name : "?");
     }
     (void)nros_nuttx_apply_current_affinity(boot->name, boot->core_plus1);
 
-    nuttx_spawn_next_level(scheduler, &tiers[0], n_sched_tasks - 1u, task_memory);
+    nuttx_spawn_next_level(scheduler, &sched_tasks[0], n_sched_tasks - 1u, task_memory);
     printf("nros: multi-level run — %u level(s) over one executor\n", (unsigned)n_sched_tasks);
 
     uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);

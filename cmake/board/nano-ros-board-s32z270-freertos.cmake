@@ -40,7 +40,7 @@ set(_NROS_FREERTOS_SHARED_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/network_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_sched_tasks.c"
-    # phase-432 W3.1 — the C-ABI single-executor runner, beside the tiers one.
+    # phase-432 W3.1 — the C-ABI single-executor runner, beside the sched tasks one.
     # SHARED by every RTOS board (`nros_board_rtos_run_components`), which is
     # why it comes from the common dir rather than the family one. The CMake
     # lane compiles this glue itself (the cargo lane gets it via `build.rs`),

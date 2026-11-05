@@ -88,7 +88,7 @@ pub struct Args {
     // it cannot answer. `zephyr/cmake/nros_system_generate.cmake` answered it
     // anyway, with `--target zephyr-<rmw>` synthesised from Kconfig, and that
     // names no block in any bringup: everything `--target` selects fell back
-    // to the system-wide default, and for the tier resolver that default is
+    // to the system-wide default, and for the sched task resolver that default is
     // the HOST, so a Zephyr image baked here read `[tasks.*.posix]`.
     //
     // Same flag name and same resolver as `nros image-facts --for-entry` (and
@@ -159,7 +159,7 @@ pub struct Args {
 
     /// The image's Zephyr `.config`. Refused for a non-Zephyr target.
     ///
-    /// A derived tier table (no authored `[tasks.*]`) is allocated out of the
+    /// A derived sched task table (no authored `[tasks.*]`) is allocated out of the
     /// priority pool this image's Kconfig resolves rather than the
     /// Kconfig-defaults projection, so `nros-plan.json` records the numbers
     /// the image's entry runs. The Zephyr module passes `${DOTCONFIG}`.
@@ -217,7 +217,7 @@ fn entry_identity(value: &str, workspace: &Path) -> (PathBuf, String) {
 /// hand-run form of 1312: the value is a key into `[image.*]`,
 /// and a key no block carries used to fall through every per-target reader to
 /// the system-wide default, so `--target zephyr-cyclonedds` on the island baked
-/// the HOST's tier table into a Zephyr image with nothing said. The refusal
+/// the HOST's sched task table into a Zephyr image with nothing said. The refusal
 /// lists the keys the bringup does declare, with each one's board, because the
 /// author's mistake is almost always to have typed the board or the platform
 /// where the block key goes.
@@ -251,7 +251,7 @@ fn resolve_target_block(
         None => {
             eprintln!(
                 "codegen-system: NOTE — no `[image.*]` in {} claims the entry `{entry_pkg}`, \
-                 so this bake takes the system-wide defaults, including the HOST tier \
+                 so this bake takes the system-wide defaults, including the HOST sched task \
                  tables. Name it from the image this build is: `entry = \"{entry_pkg}\"`.",
                 bringup_dir.display()
             );
@@ -302,7 +302,7 @@ fn declared_target_block(target: &str, system: &SystemToml, bringup_dir: &Path) 
         // See issue 1312, phase-459 W5.
         "codegen-system --target `{target}`: no `[image.{target}]` block \
          in {}/system.toml. `--target` names a BLOCK KEY, not a board id or a platform-rmw \
-         pair; a key no block carries used to resolve every per-target fact, the tier RTOS \
+         pair; a key no block carries used to resolve every per-target fact, the sched task RTOS \
          first among them, to the HOST. {declared}",
         bringup_dir.display()
     );
@@ -423,12 +423,12 @@ pub fn run(args: Args) -> Result<()> {
 
     let component_kinds = classify_components(&cfg, &bringup.system.components);
 
-    // Phase 228.B (RFC-0015) — resolve the per-tier table. Node packages declare
+    // Phase 228.B (RFC-0015) — resolve the per-sched-task table. Node packages declare
     // their callback groups in metadata; the system's `[tasks.*]` +
-    // `[[node_overrides]]` map them to RTOS tasks. No tiers/groups declared →
-    // the single `default` tier (today's single-task output, unchanged).
+    // `[[node_overrides]]` map them to RTOS tasks. No sched tasks/groups declared →
+    // the single `default` sched task (today's single-task output, unchanged).
     let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
-    // Issue 1285 follow-up — the tier RTOS is read from the BOARD CATALOG, which
+    // Issue 1285 follow-up — the sched task RTOS is read from the BOARD CATALOG, which
     // is loaded only when the target actually names a board. With no board
     // id (no `--target`/`--for-entry`, or an entry no image claims) nothing is
     // looked up, so those bakes need no SDK root.
@@ -482,8 +482,8 @@ pub fn run(args: Args) -> Result<()> {
         ros_edition.as_str()
     );
     // RFC-0052 W1 — a SystemModel's execution layer replaces the authored
-    // tier tables before resolution (checked artifact wins; fail-loud on
-    // bindings that name unknown components/groups/tiers). `bringup` is a
+    // sched task tables before resolution (checked artifact wins; fail-loud on
+    // bindings that name unknown components/groups/sched tasks). `bringup` is a
     // borrow into `cfg`; model mode clones the entry so the substitution
     // stays local to this bake.
     let bringup_owned;
@@ -497,11 +497,11 @@ pub fn run(args: Args) -> Result<()> {
     )> = Vec::new();
     let mut model_transports: Vec<crate::orchestration::plan::PlanTransport> = Vec::new();
     // phase-462 W4c -- each mode's switch budget, and the model it is checked
-    // against once the tier table (whose spin periods bound it) is resolved.
+    // against once the sched task table (whose spin periods bound it) is resolved.
     let mut model_mode_switch: Vec<(u32, String)> = Vec::new();
     let mut switch_model: Option<ros_launch_manifest_model::SystemModel> = None;
     // phase-509 P8 -- the model whose client/server pairs are checked against
-    // the tier table once it is resolved.
+    // the sched task table once it is resolved.
     let mut call_model: Option<ros_launch_manifest_model::SystemModel> = None;
     // R-code.2 — convention discovery: with no explicit `--model`, a committed
     // `<bringup>/config/system_model.yaml` IS the model. Users (and every
@@ -534,7 +534,7 @@ pub fn run(args: Args) -> Result<()> {
     // `nros-plan.json` so `nros explain` can show them. Declared out here
     // because the derivation happens inside the model-ingest arm below while
     // the plan is written after it. Empty unless the schedule was DERIVED;
-    // declared tiers realize nothing and produce no verdicts.
+    // declared sched tasks realize nothing and produce no verdicts.
     let mut sched_warnings: Vec<crate::orchestration::plan::PlanSchedWarning> = Vec::new();
     let bringup = if let Some(model_path) = &discovered_model {
         // phase-460 W1 (issue 1420) -- verify at this door, for the explicit
@@ -577,10 +577,10 @@ pub fn run(args: Args) -> Result<()> {
                 (rows, ages)
             })
             .collect();
-        // phase-462 W4c -- a mode's derived tier deadlines are NOT baked on this
+        // phase-462 W4c -- a mode's derived sched task deadlines are NOT baked on this
         // road: `system_monitors.rs` is installed by whichever entry includes
         // it, on sched contexts that entry creates, so no context id is known
-        // here. Say so per moved tier rather than drop it.
+        // here. Say so per moved sched task rather than drop it.
         if !model_modes.is_empty() {
             let moved = nros_orchestration_ir::mode_variants::mode_sched_task_deadlines(
                 &model,
@@ -588,9 +588,9 @@ pub fn run(args: Args) -> Result<()> {
                 &callback_groups,
             )
             .map_err(|e| eyre::eyre!("codegen-system: {e}"))?;
-            for t in &moved.tiers {
+            for t in &moved.sched_tasks {
                 eprintln!(
-                    "codegen-system: a mode moves tier `{t}`'s deadline; not lowered on this \
+                    "codegen-system: a mode moves sched task `{t}`'s deadline; not lowered on this \
                      road (the entry that includes system_monitors.rs owns its sched contexts)"
                 );
             }
@@ -674,7 +674,7 @@ pub fn run(args: Args) -> Result<()> {
             &callback_groups,
         )?;
         eprintln!(
-            "codegen-system: execution layer from SystemModel {} ({} tier(s), {} binding(s))",
+            "codegen-system: execution layer from SystemModel {} ({} sched task(s), {} binding(s))",
             model_path.display(),
             model.execution.tasks.len(),
             model.execution.bindings.len(),
@@ -686,7 +686,7 @@ pub fn run(args: Args) -> Result<()> {
         // a question about the TABLE where the rule is about a FACT: one
         // component binding to one authored `[tasks.ctrl.zephyr]` disabled the
         // derivation for every OTHER node in the image, leaving each on the
-        // synthesised default tier with its rate contract unread. Authored
+        // synthesised default sched task with its rate contract unread. Authored
         // still wins, per fact, and says so — the precedence is stated once, on
         // `placement_is_unauthored`, and all three sites that used to spell it
         // themselves now ask it.
@@ -728,7 +728,7 @@ pub fn run(args: Args) -> Result<()> {
             if derived > 0 {
                 eprintln!(
                     // The RFC-0052 realizer.
-                    "codegen-system: derived {derived} scheduling tier(s) from model \
+                    "codegen-system: derived {derived} scheduling sched task(s) from model \
                      contracts (every one of them a placement no \
                      `[tasks.*.{target_rtos}]` authored)"
                 );
@@ -765,7 +765,7 @@ pub fn run(args: Args) -> Result<()> {
     };
     let sched_task_table =
         resolve_system_sched_tasks(&bringup.system, &callback_groups, &target_rtos)
-            .map_err(|e| eyre::eyre!("tier resolution: {e}"))?;
+            .map_err(|e| eyre::eyre!("sched task resolution: {e}"))?;
     // RFC-0052 W2 — bake-time reject for knobs the selected target can't honor.
     nros_orchestration_ir::validate_sched_task_platform_applicability(
         &sched_task_table,
@@ -774,7 +774,7 @@ pub fn run(args: Args) -> Result<()> {
     .map_err(|e| eyre::eyre!(e))?;
     // phase-509 P8 (RFC-0108 D8.3) -- a blocking call whose server cannot
     // preempt the client, the same refusal the entry road and `nros::main!`
-    // make. Until P9 a level is a tier.
+    // make. Until P9 a level is a sched task.
     if let Some(model) = &call_model {
         let levels = nros_orchestration_ir::blocking_calls::ImageLevels::from_sched_tasks(
             &sched_task_table,
@@ -806,11 +806,11 @@ pub fn run(args: Args) -> Result<()> {
         }
     }
     // phase-462 W4c -- a mode's switch must fit its reaction budget at the
-    // slowest tier's spin (the same refusal `nros::main!` and the entry road
+    // slowest sched task's spin (the same refusal `nros::main!` and the entry road
     // make).
     if let Some(model) = &switch_model {
         let periods: Vec<(String, u64)> = sched_task_table
-            .tiers
+            .sched_tasks
             .iter()
             .map(|t| {
                 (
@@ -1381,10 +1381,10 @@ struct PlanDoc<'a> {
     /// the legacy [[transport]] system.toml read on the canonical path).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     transports: Vec<crate::orchestration::plan::PlanTransport>,
-    /// Phase 228.B — resolved per-tier table. Omitted in the single-tier
+    /// Phase 228.B — resolved per-sched-task table. Omitted in the single-sched-task
     /// degenerate case so the bake output stays byte-identical to pre-228.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tiers: Vec<PlanSchedTaskDoc<'a>>,
+    sched_tasks: Vec<PlanSchedTaskDoc<'a>>,
     /// Issue 0259 — what the realizer concluded while deriving this schedule.
     /// Omitted when empty so a plan with no verdicts stays byte-identical to
     /// one produced before this field existed.
@@ -1400,7 +1400,7 @@ struct PlanSchedTaskDoc<'a> {
     stack_bytes: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     spin_period_us: Option<u64>,
-    // RFC-0052 / phase-296 W2 — the full tier surface rides the plan (the
+    // RFC-0052 / phase-296 W2 — the full sched task surface rides the plan (the
     // pre-W2 doc silently dropped everything below).
     #[serde(skip_serializing_if = "Option::is_none")]
     core: Option<u32>,
@@ -1480,12 +1480,12 @@ fn render_plan_json(
         })
         .collect();
 
-    // Degenerate single-tier → omit (keeps pre-228 bake output byte-identical).
-    let tiers: Vec<PlanSchedTaskDoc> = if sched_task_table.is_single_sched_task() {
+    // Degenerate single-sched-task → omit (keeps pre-228 bake output byte-identical).
+    let sched_tasks: Vec<PlanSchedTaskDoc> = if sched_task_table.is_single_sched_task() {
         Vec::new()
     } else {
         sched_task_table
-            .tiers
+            .sched_tasks
             .iter()
             .map(|t| PlanSchedTaskDoc {
                 name: &t.name,
@@ -1524,7 +1524,7 @@ fn render_plan_json(
         monitors,
         age_monitors: ages,
         transports,
-        tiers,
+        sched_tasks,
         sched_warnings,
     };
     let mut s = serde_json::to_string_pretty(&doc).wrap_err("serialize plan json")?;
@@ -1672,9 +1672,11 @@ fn emit_px4(out_dir: &Path, bringup: &BringupPackageEntry) -> Result<()> {
         &bringup.system.components,
     );
     // PX4 side-car plan: no NrosConfig here (callback groups unavailable), so
-    // the tier table is the degenerate single tier (omitted from the json).
+    // the sched task table is the degenerate single sched task (omitted from the json).
     let px4_sched_tasks = resolve_system_sched_tasks(&bringup.system, &BTreeMap::new(), "posix")
-        .unwrap_or(ResolvedSchedTaskTable { tiers: Vec::new() });
+        .unwrap_or(ResolvedSchedTaskTable {
+            sched_tasks: Vec::new(),
+        });
     write_if_changed(
         &out_dir.join("nros-plan.json"),
         &render_plan_json(
@@ -1976,7 +1978,7 @@ structure:
     }
 
     /// Phase 228.B — two pinned nodes (control_node → high, telem_node → low)
-    /// the system maps to `[tasks.*]` (v1 node-pinned-to-tier). The binding is
+    /// the system maps to `[tasks.*]` (v1 node-pinned-to-sched-task). The binding is
     /// `[[component]] group_tasks` (RFC-0047), never the node manifest.
     fn write_sched_task_workspace(dir: &Path) {
         fs::write(
@@ -2066,9 +2068,9 @@ launch = "system.launch.xml"
 "#,
         )
         .unwrap();
-        // R-code.1 — tiers now ride the committed model (discovery consumes it),
+        // R-code.1 — sched tasks now ride the committed model (discovery consumes it),
         // and so do the bindings: the resolver projects `group_tasks` into
-        // `execution.bindings` (`<node FQN>/<group>: <tier>`).
+        // `execution.bindings` (`<node FQN>/<group>: <sched_task>`).
         fs::create_dir_all(dir.join("demo_bringup/config")).unwrap();
         fs::write(
             dir.join("demo_bringup/config/system_model.yaml"),
@@ -2088,7 +2090,7 @@ structure:
       pkg: telem_pkg
       exec: telem_node
 execution:
-  tiers:
+  tasks:
     high:
       spin_period: 1000us
       posix:
@@ -2128,22 +2130,22 @@ execution:
         .expect("codegen runs");
 
         let plan = fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap();
-        // High tier (priority 80) ordered before low (10); members carried.
-        assert!(plan.contains("\"tiers\""), "plan: {plan}");
+        // High sched task (priority 80) ordered before low (10); members carried.
+        assert!(plan.contains("\"sched_tasks\""), "plan: {plan}");
         assert!(plan.contains("\"name\": \"high\""), "plan: {plan}");
         assert!(plan.contains("\"priority\": 80"));
         assert!(plan.contains("\"spin_period_us\": 1000"));
         assert!(plan.contains("\"group\": \"ctrl\""));
         let hi = plan.find("\"high\"").unwrap();
         let lo = plan.find("\"low\"").unwrap();
-        assert!(hi < lo, "high tier must precede low (priority order)");
+        assert!(hi < lo, "high sched task must precede low (priority order)");
     }
 
     /// RFC-0047 — a node manifest still carrying the retired `callback_groups`
-    /// tier binding stops `codegen-system` with an error that names the package
+    /// sched task binding stops `codegen-system` with an error that names the package
     /// and spells the `group_tasks` line to write. Its one reader (a `[WARN]`ing
     /// fallback rung in `collect_callback_groups`) is gone, so accepting the key
-    /// would drop the binding and run every group on the default tier.
+    /// would drop the binding and run every group on the default sched task.
     #[test]
     fn codegen_system_refuses_a_manifest_callback_groups_binding() {
         crate::test_support::isolate_model_discovery();
@@ -2182,11 +2184,11 @@ execution:
     /// `write_sched_task_workspace`, re-pointed at a ZEPHYR image (issue 1312).
     ///
     /// The bringup gains an `[image.*]` whose board the catalog resolves to
-    /// Zephyr and which CLAIMS the west application beside it, and every tier
+    /// Zephyr and which CLAIMS the west application beside it, and every sched task
     /// states BOTH a `posix` and a `zephyr` priority — so which sub-table the
     /// bake read is readable off the output rather than inferred. The model
     /// carries them too, because a model's execution layer REPLACES the
-    /// authored tiers before resolution (RFC-0052 W1).
+    /// authored sched tasks before resolution (RFC-0052 W1).
     fn write_zephyr_sched_task_workspace(dir: &Path) {
         write_sched_task_workspace(dir);
         // The west application. Its NAME is what the image claims; this is the
@@ -2253,7 +2255,7 @@ structure:
       pkg: telem_pkg
       exec: telem_node
 execution:
-  tiers:
+  tasks:
     high:
       spin_period: 1000us
       posix:
@@ -2281,7 +2283,7 @@ execution:
     /// difference is how the image was named. The second half was the DEFECT,
     /// asserted rather than described: `zephyr-zenoh` names no block, so every
     /// `--target`-driven answer fell back to the system-wide default, and the
-    /// tier resolver's default is `posix`. phase-459 W5 made that form a
+    /// sched task resolver's default is `posix`. phase-459 W5 made that form a
     /// refusal, so the second half now asserts the refusal - through the whole
     /// verb, not just `resolve_target_block`, so the bake is proven to stop
     /// before it writes a plan.
@@ -2446,7 +2448,7 @@ structure:
       type: example_interfaces/srv/AddTwoInts
       server: [/control_node/add]
 execution:
-  tiers:
+  tasks:
     high:
       spin_period: 1000us
       posix:
@@ -2558,7 +2560,7 @@ launch = "system.launch.xml"
 "#,
         )
         .unwrap();
-        // The nodes' callback groups, with no tier: the shape the derivation
+        // The nodes' callback groups, with no sched task: the shape the derivation
         // keys on. A workspace that derives its schedule states its groups
         // without binding them - here through the cmake `CALLBACK_GROUPS`
         // keyword's `nros-metadata.json` (`metadata_callback_groups`), since
@@ -2581,13 +2583,13 @@ launch = "system.launch.xml"
 "#,
         )
         .unwrap();
-        // Contracts, no tiers: control is a tight 5 ms / 100 Hz loop, telem a
+        // Contracts, no sched tasks: control is a tight 5 ms / 100 Hz loop, telem a
         // slack 100 ms / 10 Hz loop - the DAG ranking must place control above.
         //
         // phase-495 W2 - each loop carries its `trigger` and NO publisher rate
         // promise. The shared derivation reads the rate off the trigger and
         // refuses to guess one from an empty `input`, so a fixture written the
-        // old way now derives no tier at all; that refusal is the wave.
+        // old way now derives no sched task at all; that refusal is the wave.
         fs::write(
             dir.join("demo_bringup/config/system_model.yaml"),
             r#"
@@ -2633,10 +2635,10 @@ contracts:
     }
 
     /// phase-296 W5.12 — end-to-end DERIVED-schedule bake: the full
-    /// `codegen-system` verb turns a tier-less, contract-only model into
-    /// resolved `derived-<node>` tiers with distinct priorities (control's
+    /// `codegen-system` verb turns a single-executor, contract-only model into
+    /// resolved `derived-<node>` sched tasks with distinct priorities (control's
     /// tighter deadline ranks it above telem), through the SAME
-    /// resolve→plan pipeline an authored tier table uses. Proves the RFC-0052
+    /// resolve→plan pipeline an authored sched task table uses. Proves the RFC-0052
     /// realizer path from the verb, not just the `derive_execution_from_contracts`
     /// unit (W5.6).
     #[test]
@@ -2662,22 +2664,22 @@ contracts:
         .expect("codegen runs on a contract-only model");
 
         let plan = fs::read_to_string(out.join("nros-system/nros-plan.json")).unwrap();
-        // Both nodes derived a tier (their declared callback groups bound to it).
+        // Both nodes derived a sched task (their declared callback groups bound to it).
         assert!(
             plan.contains("derived-control_node"),
-            "control derived a tier: {plan}"
+            "control derived a sched task: {plan}"
         );
         assert!(
             plan.contains("derived-telem_node"),
-            "telem derived a tier: {plan}"
+            "telem derived a sched task: {plan}"
         );
         // Priority order: control's 5 ms deadline outranks telem's 100 ms, so
-        // its derived tier is emitted first (highest-priority-first).
+        // its derived sched task is emitted first (highest-priority-first).
         let ctrl = plan.find("derived-control_node").unwrap();
         let telem = plan.find("derived-telem_node").unwrap();
         assert!(
             ctrl < telem,
-            "the tighter-deadline control tier must precede telem (priority order): {plan}"
+            "the tighter-deadline control sched task must precede telem (priority order): {plan}"
         );
     }
 

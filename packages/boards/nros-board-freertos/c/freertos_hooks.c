@@ -63,7 +63,7 @@ static void semihost_write0(const char *s) {
 /* phase-370 — the family console hook `freertos_run_sched_tasks.c` reports through.
  *
  * That TU used to call `semihosting_write0` directly, which tied a file about
- * FreeRTOS tiers to one board family's debug transport. On a Cortex-M board
+ * FreeRTOS sched tasks to one board family's debug transport. On a Cortex-M board
  * under QEMU the console IS semihosting, so this is a one-line forward; the
  * POSIX simulator board defines the same symbol over `stderr`. Exactly one
  * strong definition per image, because exactly one board TU is compiled. */
@@ -128,7 +128,7 @@ void freertos_assert_failed(const char *file, int line) {
 
 /* ---- Static allocation (issue 1598) ----
  *
- * `configSUPPORT_STATIC_ALLOCATION 1` is on so a tier task's stack and TCB can
+ * `configSUPPORT_STATIC_ALLOCATION 1` is on so a sched task's stack and TCB can
  * be statics the generated entry owns (`xTaskCreateStatic`) instead of heap_4
  * blocks nothing priced at link. With it on, the kernel asks the APPLICATION
  * for its own two tasks' memory too, and both hooks are mandatory — omitting

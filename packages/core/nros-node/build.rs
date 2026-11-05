@@ -276,7 +276,7 @@ fn subs_arena(
         .filter_map(|t| t.rsplit_once('='))
         .filter_map(|(head, d)| {
             let (ty, topic) = head.split_once('|').unwrap_or((head, ""));
-            // Issue 1970 -- a TIER's arena counts only the subscriptions its
+            // Issue 1970 -- a SCHED TASK's arena counts only the subscriptions its
             // members register, picked out by topic.
             if let Some(topics) = topics
                 && !topics.iter().any(|t| t == topic.trim())
@@ -471,7 +471,7 @@ fn main() {
     );
     // issue 1198 -- scheduling-context slots. Slot 0 is the reserved default
     // Fifo context; the schedule creates the rest, and the image's own
-    // inventory derives how many (1 + the larger of its authored tier count and
+    // inventory derives how many (1 + the larger of its authored sched task count and
     // its node count). The literal 8 is what stands when nothing derived, and
     // it was every image's answer until phase-448 W6. Too small is a
     // `NodeError::NoSchedContextSlot` at `create_sched_context`, which names
@@ -852,7 +852,7 @@ fn main() {
     //
     // Issue 1971 -- and so the floor applies only where the demand is UNKNOWN
     // (`ARENA_FLOOR` and the rule are in `build/arena_floor.rs`): an image or
-    // a tier whose entities are declared is sized to its model, unfloored.
+    // a sched task whose entities are declared is sized to its model, unfloored.
     // issue 0900 — the budget for the two entry SHAPES, summed over how many
     // slots each may occupy, instead of charging every slot the larger one.
     // With `action_clients == max_cbs` (the default) the second term is zero
@@ -1109,7 +1109,7 @@ fn main() {
     // derives. `None` when the image declared nothing (or only part of it): the
     // worst case below is then a BUDGET over `max_cbs` slots, not a claim about
     // this image, and a stated arena below a budget is the ordinary reason the
-    // knob exists (the FreeRTOS tier fixtures state 8192 against 74,240).
+    // knob exists (the FreeRTOS sched task fixtures state 8192 against 74,240).
     //
     // `Some(n)` is the sum over what the image DECLARES, before the floor --
     // the floor is policy, not need. It is emitted as `arena_model::REQUIRED`
@@ -1119,7 +1119,7 @@ fn main() {
     // instead of `NodeError::BufferTooSmall` at the first registration that
     // does not fit.
     // Issue 1970 -- the arithmetic as a function of the counts and the rows, so
-    // a TIER's arena (its own members' counts, its own subscriptions' rows) is
+    // a SCHED TASK's arena (its own members' counts, its own subscriptions' rows) is
     // priced by exactly the code that prices the image's.
     let arena_required = |counts: [Option<usize>; 7],
                           rows: Option<&[SubEndpoint]>,
@@ -1209,15 +1209,15 @@ fn main() {
         n => n,
     };
 
-    // Issue 1970 -- each executor TIER's own sizing, from the descriptor's
-    // `[[tier]]` rows. Empty (every executor sized as the image, inline, as
-    // before) unless EVERY tier composed and no rung STATES one of the sizes
-    // the tiers would otherwise derive: a stated `MAX_CBS` / `MAX_NODES` /
-    // arena is the author's number for the image's one executor, and a tier
+    // Issue 1970 -- each executor SCHED TASK's own sizing, from the descriptor's
+    // `[[sched_task]]` rows. Empty (every executor sized as the image, inline, as
+    // before) unless EVERY sched task composed and no rung STATES one of the sizes
+    // the sched tasks would otherwise derive: a stated `MAX_CBS` / `MAX_NODES` /
+    // arena is the author's number for the image's one executor, and a sched task
     // derived beside it would be smaller than what the author asked for.
     let sched_task_sizings = sched_task_sizings(
         sizing.as_ref(),
-        // Issue 1971 -- a tier's arena is its own model, unfloored.
+        // Issue 1971 -- a sched task's arena is its own model, unfloored.
         &|counts, rows, topics| sched_task_arena(arena_required(counts, rows, Some(topics))),
         rx_buf_size,
         rx_recv_size,
@@ -1252,9 +1252,9 @@ fn main() {
          (set via NROS_EXECUTOR_MAX_SC, default 8). Phase 110.B.\n\
          pub const MAX_SC: usize = {max_sc};\n\
          \n\
-         /// Issue 1970 -- each executor tier's own sizing, from the sizing \
-         descriptor's `[[tier]]` rows. Empty when the image is not tiered, \
-         or a tier did not compose, or a rung states an executor size: every \
+         /// Issue 1970 -- each executor sched task's own sizing, from the sizing \
+         descriptor's `[[sched_task]]` rows. Empty when the image is not sched-task, \
+         or a sched task did not compose, or a rung states an executor size: every \
          executor is then the image's, carved inline.\n\
          pub const SCHED_TASK_SIZINGS: &[SchedTaskSizing] = {sched_task_sizings_src};\n\
          \n\
@@ -2199,12 +2199,12 @@ fn declared_fact(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
-/// Issue 1970 -- the image's arena arithmetic, handed a tier's counts, its
+/// Issue 1970 -- the image's arena arithmetic, handed a sched task's counts, its
 /// subscriptions' descriptor rows and their topics.
 type SchedTaskArena<'a> =
     dyn Fn([Option<usize>; 7], Option<&[SubEndpoint]>, &[String]) -> Option<usize> + 'a;
 
-/// Issue 1970 -- one tier's derived executor sizing, as `build.rs` states it.
+/// Issue 1970 -- one sched task's derived executor sizing, as `build.rs` states it.
 struct SchedTaskSizingRow {
     name: String,
     cbs: usize,
@@ -2213,17 +2213,17 @@ struct SchedTaskSizingRow {
     params: Option<usize>,
 }
 
-/// Issue 1970 -- each `[[tier]]` row priced into an executor sizing, or none
+/// Issue 1970 -- each `[[sched_task]]` row priced into an executor sizing, or none
 /// at all.
 ///
-/// All or nothing: a tiered entry carves EVERY tier's backing from these rows,
-/// so a tier that cannot be priced leaves the whole image on the inline
+/// All or nothing: a sched-task entry carves EVERY sched task's backing from these rows,
+/// so a sched task that cannot be priced leaves the whole image on the inline
 /// executor (each block the image's size, the shape before this issue) rather
-/// than one tier on each road. Each skip is a warning naming why.
+/// than one sched task on each road. Each skip is a warning naming why.
 ///
-/// `arena` is the image's own arithmetic over the tier's counts and the rows of
+/// `arena` is the image's own arithmetic over the sched task's counts and the rows of
 /// the subscriptions its members register (the caller's closure). It is the
-/// tier's model, unfloored: a tier's demand is derived (issue 1971).
+/// sched task's model, unfloored: a sched task's demand is derived (issue 1971).
 fn sched_task_sizings(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
     arena: &SchedTaskArena<'_>,
@@ -2234,11 +2234,11 @@ fn sched_task_sizings(
     let Some(desc) = desc else {
         return Vec::new();
     };
-    if desc.tiers.is_empty() {
+    if desc.sched_tasks.is_empty() {
         return Vec::new();
     }
     // A STATED size is the author's: it outranks a derived one, for the image
-    // and so for its tiers. A rung that delivers the image's OWN derived value
+    // and so for its sched tasks. A rung that delivers the image's OWN derived value
     // (the cmake entity inventory forwards `MAX_CBS` / `MAX_NODES` as env
     // carriers, equal to the descriptor's `[image]` fact) states nothing.
     for (knob, own) in derived {
@@ -2247,15 +2247,15 @@ fn sched_task_sizings(
         if v != probe && v != 0 && Some(v) != *own {
             println!(
                 "cargo::warning=nros-node: `{knob}` is stated ({v}), so the image's {} \
-                 tiers keep the image's executor size each (issue 1970: a tier is sized \
+                 sched tasks keep the image's executor size each (issue 1970: a sched task is sized \
                  from its own members only when nothing states the size)",
-                desc.tiers.len()
+                desc.sched_tasks.len()
             );
             return Vec::new();
         }
     }
-    let mut out = Vec::with_capacity(desc.tiers.len());
-    for t in &desc.tiers {
+    let mut out = Vec::with_capacity(desc.sched_tasks.len());
+    for t in &desc.sched_tasks {
         let img = &t.image;
         let counts = [
             img.subscription_entities().stated().copied(),
@@ -2266,8 +2266,8 @@ fn sched_task_sizings(
             img.service_client_entities().stated().copied(),
             img.guard_condition_entities().stated().copied(),
         ];
-        // The tier's rows: the image's `[[endpoint]]` table with every
-        // subscription the tier does not register taken out.
+        // The sched task's rows: the image's `[[endpoint]]` table with every
+        // subscription the sched task does not register taken out.
         let mut own = desc.clone();
         own.endpoints.retain(|ep| {
             ep.kind != nros_sizing_descriptor::EndpointKind::Subscription
@@ -2281,9 +2281,9 @@ fn sched_task_sizings(
             img.node_count().stated().copied(),
         ) else {
             println!(
-                "cargo::warning=nros-node: tier `{}` states too little to size its own \
+                "cargo::warning=nros-node: sched task `{}` states too little to size its own \
                  executor (its entity counts, callback slots and node count must all \
-                 compose), so every tier keeps the image's executor size (issue 1970)",
+                 compose), so every sched task keeps the image's executor size (issue 1970)",
                 t.name
             );
             return Vec::new();

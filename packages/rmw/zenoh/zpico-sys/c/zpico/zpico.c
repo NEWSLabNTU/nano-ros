@@ -276,7 +276,7 @@ typedef struct {
  * FreeRTOS board's `zenoh_read_priority` default has always been.
  *
  * This is a default, not a policy. Whether transport should outrank the
- * application's RT tiers is a per-system decision with real costs on both sides
+ * application's RT sched tasks is a per-system decision with real costs on both sides
  * (issues 0506 and 0623) — the point of these knobs is that the decision can be
  * MADE, which on Zephyr it previously could not be. */
 #ifndef ZPICO_READ_TASK_PRIORITY
@@ -915,10 +915,10 @@ static inline void _zpico_notify_spin(struct zpico_session* s) {
 
 // ============================================================================
 // phase-279 (#145) — dedicated tx-flush thread. Flushing from the executor/
-// tier threads measured WORSE-or-equal vs no batching: the flush blocks its
+// sched task threads measured WORSE-or-equal vs no batching: the flush blocks its
 // caller on the socket for up to a recv window, stalling the very timers that
 // generate the puts. On multi-threaded platforms a dedicated low-duty thread
-// absorbs those waits instead; tier threads only ever append to the batch.
+// absorbs those waits instead; sched task threads only ever append to the batch.
 // ThreadX deliberately runs no background tasks (read-task starvation — see
 // zpico_open), so it keeps the spin-driven flush. Single-threaded platforms
 // have no tasks at all.
@@ -1489,8 +1489,8 @@ int32_t zpico_ring_push_bytes(zpico_ring_desc_t* r, const uint8_t* payload, size
  * there was not ("both callers run on the read task"). With
  * Z_FEATURE_LOCAL_SUBSCRIBER a `z_put` delivers to a subscriber on the same
  * session SYNCHRONOUSLY, on the PUBLISHER's task, and zenoh-pico calls the
- * handler outside every session lock. So a tier that publishes a topic another
- * tier subscribes to pushes into that ring while the read task pushes remote
+ * handler outside every session lock. So a sched task that publishes a topic another
+ * sched task subscribes to pushes into that ring while the read task pushes remote
  * samples into it too. The tail update is a load and a later store: a producer
  * preempted between the two stores a STALE tail after the other has advanced
  * it, the consumer has meanwhile drained past it, and `head` is now AHEAD of
@@ -1911,24 +1911,24 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
 /* issue 0736 — NuttX's raw-priority sibling of `zpico_posix_set_priority`.
  *
  * Separate function on purpose. The Zephyr helper takes a NORMALISED 0-31
- * priority and maps it across `CONFIG_NUM_PREEMPT_PRIORITIES`; NuttX tier
+ * priority and maps it across `CONFIG_NUM_PREEMPT_PRIORITIES`; NuttX sched task
  * priorities are authored RAW (`[tasks.*.nuttx] priority = 110`) and go
  * verbatim into `pthread_attr_setschedparam`, which is the vocabulary issue
- * 0623 settled on after a normalised scale silently inverted a tier against
+ * 0623 settled on after a normalised scale silently inverted a sched task against
  * the transport band. Two scales through one function is how that happened;
  * this keeps NuttX in the units its callers already write.
  *
  * `sched_get_priority_{min,max}` are safe to call here — the NuttX board's own
- * tier spawn already uses them (`nuttx_clamp_priority`), unlike Zephyr where
+ * sched task spawn already uses them (`nuttx_clamp_priority`), unlike Zephyr where
  * they sit behind an experimental Kconfig.
  *
- * SCHED_FIFO, not SCHED_RR: the tiers are FIFO, and mixing policies across one
+ * SCHED_FIFO, not SCHED_RR: the sched tasks are FIFO, and mixing policies across one
  * priority ORDER only matters among equals. The read task blocks in `recvfrom`
  * with a timeout, so it is not the never-yielding thread the Zephyr helper's
  * round-robin choice guards against.
  *
  * PTHREAD_EXPLICIT_SCHED is load-bearing, for the same reason it is in the
- * Zephyr arm and in the board's tier spawn: the default is
+ * Zephyr arm and in the board's sched task spawn: the default is
  * PTHREAD_INHERIT_SCHED, under which the policy and param below are IGNORED and
  * the thread silently takes the creator's priority. That silent inheritance is
  * the defect this is fixing — do not reintroduce it one layer down.
@@ -1950,7 +1950,7 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * same scheduler is issue 0623 verbatim, and
  * `scripts/lib/priority_plan.py:resolve_zephyr_plan` MODELLED THIS FUNCTION —
  * so `check-sched-task-priority-plan-image` certified a band no image ever had while
- * `realtime-c`'s `system.toml` authored tier values against that fiction.
+ * `realtime-c`'s `system.toml` authored sched task values against that fiction.
  * The band now has exactly one spelling: `NROS_PLATFORM_PRIORITY_MAX`, mapped
  * by `nros_zephyr_native_priority`. */
 #endif /* ZENOH_ZEPHYR */
@@ -2017,7 +2017,7 @@ static void zpico_posix_fifo_set_priority(pthread_attr_t* attr, uint32_t raw) {
     }
     if (!zpico_posix_rt_permitted()) {
         /* Leave the attribute alone: the tasks inherit, exactly as before this
-         * arm existed. The tier path has already printed the one line naming
+         * arm existed. The sched task path has already printed the one line naming
          * `setcap cap_sys_nice+ep`, so saying it again per task would be noise
          * about a fact the operator has been told. */
         return;
@@ -2084,7 +2084,7 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes) {
     // sentence was written for the POSIX hosts that share this branch and then
     // applied to an RTOS, so the transport tasks on every Zephyr image ran at
     // whatever the default happened to be, with no way to state otherwise —
-    // which made issue 0506's question (what preempts the RT tiers?)
+    // which made issue 0506's question (what preempts the RT sched tasks?)
     // unanswerable on this platform.
     //
     // PTHREAD_EXPLICIT_SCHED is load-bearing: the default is
@@ -2143,8 +2143,8 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes) {
     // the attribute is simply ignored at spawn — the same best-effort contract
     // every other port here already has.
     //
-    // Refusing to ask had a cost that only appeared once TIER priorities became
-    // real (issue 0765): the tiers run SCHED_FIFO while the read and lease
+    // Refusing to ask had a cost that only appeared once SCHED TASK priorities became
+    // real (issue 0765): the sched tasks run SCHED_FIFO while the read and lease
     // tasks stay on SCHED_OTHER, and a SCHED_FIFO thread outranks every
     // SCHED_OTHER thread unconditionally. So the app preempted the link it
     // publishes over, with no way for an operator to state otherwise — issue
@@ -2153,7 +2153,7 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes) {
      * `pthread_attr_t`. `NROS_PLATFORM_PRIORITY_RAW` because this is a RAW
      * SCHED_FIFO value from the board's reserved band, not a value on the
      * normalised cross-RTOS band — the same vocabulary issue 0623 settled on
-     * after a normalised scale silently inverted a tier against the transport. */
+     * after a normalised scale silently inverted a sched task against the transport. */
     nros_platform_task_attr_init(&g_default_read_nros_attr);
     if (read_priority != 0u) {
         g_default_read_nros_attr.priority = NROS_PLATFORM_PRIORITY_RAW(read_priority);
@@ -2492,7 +2492,7 @@ int32_t zpico_open(zpico_session_t* session) {
      * `nros_platform_task_init`. Pointing at `read_task_attr` handed it a
      * `pthread_attr_t`, whose bytes at the `priority` offset are 0 whatever was
      * requested — decoded as band value 0, the LEAST urgent RT priority, so the
-     * transport landed at SCHED_FIFO 1 below every tier and 90/40/5 all
+     * transport landed at SCHED_FIFO 1 below every sched task and 90/40/5 all
      * produced identical kernel tables. */
     s->read_nros_attr = g_default_read_nros_attr;
     if (s->read_task_configured) {
@@ -2832,7 +2832,7 @@ void zpico_close(zpico_session_t* session) {
 // ============================================================================
 //
 // Every declare used to FIND a free slot (`!active`), declare into it, and only
-// then set `active = true`. With one zenoh session shared by several tier
+// then set `active = true`. With one zenoh session shared by several sched task
 // threads (RFC-0015 Model 1), two concurrent declares found the SAME slot and
 // both wrote into it: measured under ASan on `derived-sched-tasks-cpp`, one thread's
 // failure path (`_z_undeclare_publisher`) freed the keyexpr string the other
@@ -2872,7 +2872,7 @@ static inline void zpico_slot_unlock(struct zpico_session* s) {
 // session's `_declaration_cache` list with no lock. Two threads declaring or
 // undeclaring at once tear that list: issue 1711's own regression test
 // SIGSEGVed 3 of 100 runs inside `_z_prune_declaration`, and helgrind saw the
-// push race between two tier setups (issue 1733).
+// push race between two sched task setups (issue 1733).
 //
 // Every call into that path from this file -- `z_declare_*`, `z_undeclare_*`,
 // the liveliness token/subscriber pair, `z_get` and `z_liveliness_get` (both
@@ -2889,7 +2889,7 @@ static inline void zpico_slot_unlock(struct zpico_session* s) {
 // the entity-id counter atomic (issue 1749). This lock is KEPT anyway: it is
 // one uncontended take per declare, and it still serializes the rest of
 // zenoh-pico's declare path (registration lists, write filters, interests)
-// against concurrent tier setups, which nobody has audited lock by lock.
+// against concurrent sched task setups, which nobody has audited lock by lock.
 // Order: this lock, then `_mutex_transport` -- the replay never takes this one.
 static inline void zpico_declare_lock(struct zpico_session* s) {
 #if Z_FEATURE_MULTI_THREAD == 1
@@ -3504,7 +3504,7 @@ int32_t zpico_undeclare_subscriber(zpico_session_t* session, int32_t handle) {
 // read reports itself sleeping because `Z_RUNTIME_IDLE_READ_TASK_SLEEP` is 1 in
 // a CALLER build), so a quiet link costs one step. On ThreadX (RFC-0110 D4) the
 // fork's multi-thread `zp_spin_once` takes the executor's lock with a TRY-lock:
-// a tier that loses the race returns at once, because the winner is draining —
+// a sched task that loses the race returns at once, because the winner is draining —
 // the single-reader rule of issue #247, now enforced by zenoh-pico's own lock.
 #if defined(ZENOH_THREADX)
 // phase-521 W6 (RFC-0113 D4) — the link's TCP socket, or NULL when the session
@@ -3562,12 +3562,12 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
      * dedicated tx-flush thread: ThreadX + single-threaded). zenoh-pico's flush HOLDS the
      * transport tx mutex across the whole socket send (fd wait included), so
      * puts cannot append while a flush is in flight — the batch only
-     * accumulates BETWEEN flushes. Flushing on every spin (1 ms tiers) ships
+     * accumulates BETWEEN flushes. Flushing on every spin (1 ms sched tasks) ships
      * <=1 message per send and the flushes themselves compete with puts for
      * the send window, which MEASURED WORSE than no batching (4.7-4.9 vs 8.6
      * msg/s on the W1 harness). Flushing at a bounded cadence lets puts pile
      * into the write buffer cheaply and ships them as ONE send per interval.
-     * Racy across tier threads sharing this session is benign (worst case one
+     * Racy across sched task threads sharing this session is benign (worst case one
      * extra flush). zenoh-pico's implicit flushes (buffer overflow, any
      * transport message) still bound memory + sit-time independently of this
      * cadence. The cadence state is per-session (was function-local statics). */
@@ -3598,8 +3598,8 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     // phase-297 W5 — the timed wait MUST be `z_sleep_ms` (tx_thread_sleep),
     // never a host select(): a host syscall blocks the pthread while the ThreadX
     // scheduler still counts this thread as running, so under strict priority
-    // scheduling every other tier thread starves. Sleep first (a REAL ThreadX
-    // yield — lower-priority tiers run inside it), then drain what is already
+    // scheduling every other sched task thread starves. Sleep first (a REAL ThreadX
+    // yield — lower-priority sched tasks run inside it), then drain what is already
     // there; the socket shim's reads do not block (RFC-0110 D4).
     if (timeout_ms > 0) {
         z_sleep_ms(timeout_ms);

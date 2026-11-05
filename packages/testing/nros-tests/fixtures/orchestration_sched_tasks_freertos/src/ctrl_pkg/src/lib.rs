@@ -1,4 +1,4 @@
-//! Phase 228.E.2 fixture — control node (tier `high`).
+//! Phase 228.E.2 fixture — control node (sched task `high`).
 
 #![no_std]
 

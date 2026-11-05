@@ -90,14 +90,14 @@ WCET, not the sum across all ready callbacks.
 If max-callback dispatch latency is still too high in this profile
 (e.g., a single callback is slow), the remaining bound is that one
 callback's WCET — split the slow callback, or move it to its own
-tier/task (see [Scheduling Models](scheduling-models.md)).
+sched task/task (see [Scheduling Models](scheduling-models.md)).
 
 ### WCET-bounded real-time
 
 Don't hand-write the spin loop. Give each callback that needs its own bound a
-tier of its own in the launch contracts: `nros::main!` runs every tier as a
+sched task of its own in the launch contracts: `nros::main!` runs every sched task as a
 task at the priority nano-ros derives for it. WCET analysis then applies to
-each tier's callbacks, not to one spin loop that serves them all.
+each sched task's callbacks, not to one spin loop that serves them all.
 
 ### Time-triggered cyclic
 

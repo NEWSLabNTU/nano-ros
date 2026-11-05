@@ -149,7 +149,7 @@ void _z_task_exit(void) {
 }
 
 /* RFC-0110 — task identity for zenoh-pico 1.9's executor. In CALLER mode the
- * executor runs inside `zpico_spin_once` on a tier thread, and recognises that
+ * executor runs inside `zpico_spin_once` on a sched task thread, and recognises that
  * thread through `_z_task_current_id` while it spins (RFC-0110 D4). */
 _z_task_id_t _z_task_get_id(const _z_task_t *task) {
     return (void *)&task->threadx_thread;

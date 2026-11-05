@@ -13,7 +13,7 @@
 // broken layout identically (issue 0351's thesis).
 //
 // No PX4 work item here: the module, its work item and its work queue
-// are GENERATED from `uorb_demo_bringup` (one work item per tier). A
+// are GENERATED from `uorb_demo_bringup` (one work item per sched task). A
 // `vehicle_status` arrival schedules that work item from the publisher's
 // context and dispatches `on_status`; the 1 s timer is its only deadline.
 #pragma once

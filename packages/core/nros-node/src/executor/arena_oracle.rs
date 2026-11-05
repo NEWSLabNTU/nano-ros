@@ -30,7 +30,7 @@
 //! | Rust `open_in` over a runtime slice / runtime sizing | runtime values | NO — runtime |
 //!
 //! The runtime arms are not faked. Their arena is a value, not a constant, and
-//! an executor there may hold a SUBSET of the image (a tier), so the
+//! an executor there may hold a SUBSET of the image (a sched task), so the
 //! image-wide model is not even the right bound. What they get is the
 //! registration-time refusal every arm already has: `arena_alloc` and
 //! `arena_alloc_with_trailing` report the entity, the shortfall and the knob

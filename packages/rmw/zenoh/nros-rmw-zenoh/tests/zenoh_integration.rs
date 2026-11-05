@@ -1670,8 +1670,8 @@ fn refused_service_takes_name_the_size_they_needed() {
 
 /// Issue 1711 — concurrent declares on ONE session never share a slot.
 ///
-/// A multi-tier image shares one zenoh session across its tier threads
-/// (RFC-0015 Model 1), and each tier declares its entities at boot. The shim
+/// A multi-sched-task image shares one zenoh session across its sched task threads
+/// (RFC-0015 Model 1), and each sched task declares its entities at boot. The shim
 /// used to FIND a free slot, declare into it, and only then mark it active, so
 /// two threads declaring at once took the same slot: one's failure path freed
 /// the keyexpr the other had just allocated there, which ASan reported as a
@@ -1687,7 +1687,7 @@ fn concurrent_declares_on_one_session_never_share_a_slot() {
     let router = router();
     let locator = format!("{}\0", router.locator());
     let ctx = nros_rmw_zenoh::zpico::Context::new(locator.as_bytes()).expect("open the session");
-    // The tiers reach the session through a raw handle the same way; the
+    // The sched tasks reach the session through a raw handle the same way; the
     // context outlives every thread (they are joined below).
     let shared = &ctx as *const nros_rmw_zenoh::zpico::Context as usize;
 

@@ -1,22 +1,22 @@
-//! Shared per-tier orchestration IR — schema + resolver (RFC-0015).
+//! Shared per-sched-task orchestration IR — schema + resolver (RFC-0015).
 //!
 //! This leaf crate holds the small set of `system.toml` types that
-//! describe scheduling tiers + the [`resolve_sched_tasks`] algorithm that
+//! describe scheduling sched tasks + the [`resolve_sched_tasks`] algorithm that
 //! lowers them (with `[[node_overrides]]` applied) into an ordered,
-//! per-RTOS **resolved tier table**. It is depended on by BOTH:
+//! per-RTOS **resolved sched task table**. It is depended on by BOTH:
 //!
 //! - the `nros` CLI (`nros-cli-core`), whose `codegen-system` bakes the
 //!   resolved table into `nros-plan.json`, and
 //! - the `nros::main!()` proc-macro (`nros-macros`), which resolves the
-//!   same table at compile time to emit one task/`Executor` per tier.
+//!   same table at compile time to emit one task/`Executor` per sched task.
 //!
 //! Keeping the schema + resolver here is the single source of truth so
 //! the build-time and codegen paths can never drift. The crate is pure
 //! host code (serde + thiserror); it carries no runtime/`no_std`
 //! dependencies.
 //!
-//! The all-default-tier degenerate case (no `[tasks.*]`, no callback
-//! groups) resolves to a single synthesized `"default"` tier — the
+//! The all-default-sched-task degenerate case (no `[tasks.*]`, no callback
+//! groups) resolves to a single synthesized `"default"` sched task — the
 //! single-task shape that ships today.
 //!
 //! ## Board key mapping
@@ -33,7 +33,7 @@ use thiserror::Error;
 // phase-296 W5.13 follow-up — the RTOS realizer + its model→MapperInput adapter
 // moved here from `nros-cli-core` so BOTH consumers (the CLI's codegen-system
 // AND the `nros::main!` proc-macro) can DERIVE a schedule from the contract
-// layer, not just resolve authored tiers. No behavior change vs the old
+// layer, not just resolve authored sched tasks. No behavior change vs the old
 // `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
 /// phase-509 P8 (RFC-0108 D8.3) — refuse a blocking call to a level that
 /// cannot preempt the client.
@@ -102,22 +102,22 @@ pub mod router_rule;
 // build (`NROS_SESSION_PROPERTIES`).
 pub mod session_properties;
 // phase-459 W4 (issue 1427, RFC-0079) - the board's priority ADDRESS PLAN,
-// which the realizer allocates a derived tier out of. Without it `realize_rtos`
+// which the realizer allocates a derived sched task out of. Without it `realize_rtos`
 // mapped dense rank 0 onto the kernel's most urgent number, which on Zephyr
 // sits above the transport threads that feed the application.
 pub mod priority_plan;
-// phase-521 W8 (a) (RFC-0113 D9) - the PX4 work queues a tier maps onto.
+// phase-521 W8 (a) (RFC-0113 D9) - the PX4 work queues a sched task maps onto.
 pub mod px4;
 pub mod rtos_realizer;
 pub mod sidecar_slots;
-// RFC-0079's table - a tier's spin period, derived from its members' releases.
+// RFC-0079's table - a sched task's spin period, derived from its members' releases.
 /// phase-509 P4 (RFC-0108 D1) — the callback record per callback, and the
 /// refusal of an unanalysable input on a safety image.
 pub mod callback_record;
 pub mod spin_period;
-// phase-462 W2 - the contract's `on_violation` and a tier's `deadline_policy`
+// phase-462 W2 - the contract's `on_violation` and a sched task's `deadline_policy`
 // are two statements about one fact, in `qos_agreement`'s shape. Here for the
-// same reason that one is: both producers of a baked tier table must ask, and
+// same reason that one is: both producers of a baked sched task table must ask, and
 // the proc-macro road cannot dep `nros-cli-core`.
 pub mod violation_agreement;
 /// RFC-0078 — declared WCETs, keyed per named measurement profile.
@@ -153,7 +153,7 @@ pub mod wcet;
 /// the accepted SET and its spelling, which is why parsing lives here.
 ///
 /// `px4` (phase-521 W8, RFC-0113 D9): PX4 owns `main` and every thread, so a
-/// PX4 image's entry is GENERATED C++ (one `ScheduledWorkItem` per tier, on the
+/// PX4 image's entry is GENERATED C++ (one `ScheduledWorkItem` per sched task, on the
 /// work queue [`px4::px4_work_queues`] picks), and `nros::main!` has no shape
 /// for it — see [`CPP_ONLY_FRAMEWORKS`].
 pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "px4"];
@@ -163,7 +163,7 @@ pub const FRAMEWORKS: &[&str] = &["owned-spin", "rtic", "zephyr", "px4"];
 /// Rust emit shape (`nros-macros` holds that both ways).
 pub const CPP_ONLY_FRAMEWORKS: &[(&str, &str)] = &[(
     "px4",
-    "a PX4 image's entry is generated C++ (one `px4::ScheduledWorkItem` per tier, \
+    "a PX4 image's entry is generated C++ (one `px4::ScheduledWorkItem` per sched task, \
      each on its own PX4 work queue), because PX4 owns `main` and every thread \
      (RFC-0113 D9); `nros::main!` has no PX4 shape",
 )];
@@ -480,7 +480,7 @@ pub fn board_path_keys() -> impl Iterator<Item = &'static str> {
 }
 
 // =============================================================================
-// system.toml schema (tier subset)
+// system.toml schema (sched task subset)
 // =============================================================================
 
 /// Read a µs-valued `[tasks.*]` duration key: a duration string WITH a unit
@@ -540,7 +540,7 @@ where
     }
 }
 
-/// `[tasks.<name>]` — a symbolic priority tier (RFC-0015 §4.2). Carries the
+/// `[tasks.<name>]` — a symbolic priority sched task (RFC-0015 §4.2). Carries the
 /// RTOS-agnostic `spin_period` plus a per-RTOS sub-table
 /// (`[tasks.<name>.<rtos>]`) giving the concrete priority/stack for each target.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -558,9 +558,9 @@ pub struct SchedTaskDef {
     // group runs under (absorbed from the retired `[[scheduling.contexts]]`
     // overlay). Per-RTOS placement (priority/stack) stays in the `<rtos>`
     // sub-tables; these describe HOW it is scheduled, identically on every RTOS.
-    // All optional → a plain priority tier (today's shape) is byte-identical.
+    // All optional → a plain priority sched task (today's shape) is byte-identical.
     /// Scheduling class — the plan's `SchedClass` (snake_case): `"best_effort"` |
-    /// `"real_time"` (default for a priority tier) | `"time_triggered"` |
+    /// `"real_time"` (default for a priority sched task) | `"time_triggered"` |
     /// `"interrupt"`. The W4.2 codegen lowering validates + maps it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<String>,
@@ -595,10 +595,10 @@ pub struct SchedTaskDef {
     /// (default) | `"warn"` | `"skip"` | `"fault"`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_policy: Option<String>,
-    /// CPU core to pin the tier task to (SMP); `None` ⇒ unpinned.
+    /// CPU core to pin the sched task to (SMP); `None` ⇒ unpinned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<u32>,
-    /// `above = "transport"` (RFC-0079 section 6, issue 1967): the tier is
+    /// `above = "transport"` (RFC-0079 section 6, issue 1967): the sched task is
     /// allocated above the port's reserved transport band. rlm's
     /// `ReservedBand`, a closed set, so a misspelt band is a parse error here
     /// as it is in rlm's reader. A system fact, so it lives on the head, never
@@ -629,7 +629,7 @@ pub struct SchedTaskRtosSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preempt_threshold: Option<i64>,
     /// Round-robin time slice in µs (#0266): time-slicing among same-priority
-    /// tiers. ThreadX-only today (bake-validated); `None` = FIFO-until-block.
+    /// sched tasks. ThreadX-only today (bake-validated); `None` = FIFO-until-block.
     #[serde(
         default,
         rename = "time_slice",
@@ -659,7 +659,7 @@ pub struct SchedTaskRtosSpec {
     // `ros_launch_manifest_sched::TaskPlatformSpec`, which the resolver parses
     // the SAME `[tasks.*]` block into, has had these all along: two mirrors
     // drifted and the narrower one defined what users could write.
-    /// CPU core to pin this tier's task to on THIS platform (SMP).
+    /// CPU core to pin this sched task's RTOS task to on THIS platform (SMP).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<u32>,
     /// Relative deadline (µs) on THIS platform, tighter than the generic head.
@@ -691,10 +691,10 @@ pub struct SchedTaskRtosSpec {
     pub period_us: Option<u64>,
 }
 
-/// One callback group and the tier it runs on (Phase 228.A, RFC-0015 §4.1).
+/// One callback group and the sched task it runs on (Phase 228.A, RFC-0015 §4.1).
 ///
-/// Authored as `[[component]] group_tasks = { <id> = "<tier>" }` in
-/// `system.toml` (RFC-0047) or, at the default tier, by the cmake
+/// Authored as `[[component]] group_tasks = { <id> = "<sched_task>" }` in
+/// `system.toml` (RFC-0047) or, at the default sched task, by the cmake
 /// `CALLBACK_GROUPS` keyword. Its original spelling — a node manifest's
 /// `callback_groups = [{ id, tier }]` — is retired and refused at parse.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -703,13 +703,15 @@ pub struct CallbackGroupDecl {
     /// Logical id within the node (e.g. `"ctrl_loop"`, `"telemetry"`).
     pub id: String,
     /// `"MutuallyExclusive"` (default) or `"Reentrant"`. v1 treats every group
-    /// as mutually-exclusive within its tier task; the field is recorded for
+    /// as mutually-exclusive within its sched task; the field is recorded for
     /// the future multi-worker executor.
     #[serde(default = "default_cbg_type")]
     pub r#type: String,
-    /// Symbolic tier name resolved against the system's `[tasks.*]`.
-    #[serde(default = "default_sched_task_name")]
-    pub tier: String,
+    /// Symbolic sched task name resolved against the system's `[tasks.*]`.
+    /// Read under its retired manifest spelling `tier` too, so the refusal of
+    /// that form can spell the `group_tasks` line that replaces it.
+    #[serde(default = "default_sched_task_name", alias = "tier")]
+    pub sched_task: String,
 }
 
 fn default_cbg_type() -> String {
@@ -720,7 +722,7 @@ fn default_sched_task_name() -> String {
     DEFAULT_SCHED_TASK.to_string()
 }
 
-/// `[[node_overrides]]` row — reassigns a node's callback groups to tiers
+/// `[[node_overrides]]` row — reassigns a node's callback groups to sched tasks
 /// at deploy time without touching the node package.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -731,32 +733,34 @@ pub struct NodeOverride {
     pub callback_groups: Vec<CallbackGroupOverride>,
 }
 
-/// A single `id → tier` reassignment inside a `[[node_overrides]]`.
+/// A single `id → sched_task` reassignment inside a `[[node_overrides]]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CallbackGroupOverride {
     pub id: String,
-    pub tier: String,
+    /// Authored as `task` (rlm's word, phase 536); `tier` is read as well.
+    #[serde(rename = "task", alias = "tier")]
+    pub sched_task: String,
 }
 
 // =============================================================================
-// resolved tier table
+// resolved sched task table
 // =============================================================================
 
-/// The synthesized tier used when a callback group names no tier (or none are
+/// The synthesized sched task used when a callback group names no sched task (or none are
 /// declared at all). It needs no `[tasks.default]` table.
 pub const DEFAULT_SCHED_TASK: &str = "default";
 
-/// issue 1426 — install an ALLOCATED `[tasks.<name>.<rtos>]` on a tier whose
+/// issue 1426 — install an ALLOCATED `[tasks.<name>.<rtos>]` on a sched task whose
 /// head the AUTHOR wrote.
 ///
-/// One spelling for all three roads that patch a tier table
+/// One spelling for all three roads that patch a sched task table
 /// (`codegen-system`, `codegen entry`, `nros::main!`), because the only reason
 /// this is a separate step from [`sched_task_from_model`] is that the head facts stay
 /// authored while the address is allocated.
 ///
 /// Never overwrites. `derive::placement_is_unauthored` rule 2 only produces a
-/// placement for a tier that authors NONE, so an occupied slot here would mean
+/// placement for a sched task that authors NONE, so an occupied slot here would mean
 /// the precedence was computed against a different table than the one being
 /// patched — and the authored value has to survive that bug rather than be
 /// replaced by it.
@@ -795,12 +799,12 @@ where
         .map(|id| CallbackGroupDecl {
             id: id.as_ref().to_string(),
             r#type: default_cbg_type(),
-            tier: DEFAULT_SCHED_TASK.to_string(),
+            sched_task: DEFAULT_SCHED_TASK.to_string(),
         })
         .collect()
 }
 
-/// One resolved tier: a concrete RTOS task to emit.
+/// One resolved sched task: a concrete RTOS task to emit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedSchedTask {
     pub name: String,
@@ -813,7 +817,7 @@ pub struct ResolvedSchedTask {
     pub time_slice_us: Option<u64>,
     pub sched_class: Option<String>,
     // Phase 256 W4 — the RTOS-agnostic real-time policy (from `SchedTaskDef`), carried
-    // through so the planner can lower a tier to a `PlanSchedContext` (the home the
+    // through so the planner can lower a sched task to a `PlanSchedContext` (the home the
     // retired `[[scheduling.contexts]]` overlay used to fill).
     pub class: Option<String>,
     pub period_us: Option<u64>,
@@ -821,41 +825,41 @@ pub struct ResolvedSchedTask {
     pub deadline_us: Option<u64>,
     pub deadline_policy: Option<String>,
     pub core: Option<u32>,
-    /// `(node_name, callback_group_id)` pairs assigned to this tier, sorted.
+    /// `(node_name, callback_group_id)` pairs assigned to this sched task, sorted.
     pub members: Vec<(String, String)>,
 }
 
-/// The ordered tier table for one deploy target.
+/// The ordered sched task table for one deploy target.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResolvedSchedTaskTable {
-    /// Tiers ordered by RAW numeric `priority`, DESCENDING. The system owner
+    /// Sched tasks ordered by RAW numeric `priority`, DESCENDING. The system owner
     /// authors numbers in the target RTOS's own direction and v1 does not
-    /// invert (see `resolve_sched_tasks`), so `tiers[0]` — the BOOT tier every
-    /// `run_sched_tasks` runs first — is the semantically-HIGHEST tier only on
+    /// invert (see `resolve_sched_tasks`), so `sched_tasks[0]` — the BOOT sched task every
+    /// `run_sched_tasks` runs first — is the semantically-HIGHEST sched task only on
     /// bigger-number-wins RTOSes (posix/FreeRTOS/NuttX). On
-    /// lower-number-wins RTOSes (Zephyr, ThreadX) `tiers[0]` is the
-    /// LOWEST-priority tier (issue 0251 — deliberate, comments must not
+    /// lower-number-wins RTOSes (Zephyr, ThreadX) `sched_tasks[0]` is the
+    /// LOWEST-priority sched task (issue 0251 — deliberate, comments must not
     /// claim otherwise).
-    pub tiers: Vec<ResolvedSchedTask>,
+    pub sched_tasks: Vec<ResolvedSchedTask>,
 }
 
 impl ResolvedSchedTaskTable {
-    /// True when this is the single-task degenerate case (one tier, the
+    /// True when this is the single-task degenerate case (one sched task, the
     /// synthesized `default`). Codegen uses this to skip multi-task scaffolding.
     pub fn is_single_sched_task(&self) -> bool {
-        self.tiers.len() == 1 && self.tiers[0].name == DEFAULT_SCHED_TASK
+        self.sched_tasks.len() == 1 && self.sched_tasks[0].name == DEFAULT_SCHED_TASK
     }
 
-    /// True when at least one node has callback groups on MORE THAN ONE tier
+    /// True when at least one node has callback groups on MORE THAN ONE sched task
     /// (the RFC-0047 sub-node capability: `group_tasks = { ctrl = "high",
     /// telem = "low" }`). Such a node cannot be expressed by the run_sched_tasks
-    /// shape (per-tier executors construct whole nodes), so entry codegen must
+    /// shape (per-sched-task executors construct whole nodes), so entry codegen must
     /// keep the single-executor sched-context path (`bind_group_sched`) for
     /// the plan.
     pub fn has_group_split_node(&self) -> bool {
         let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
-        for (ti, tier) in self.tiers.iter().enumerate() {
-            for (node, _group) in &tier.members {
+        for (ti, sched_task) in self.sched_tasks.iter().enumerate() {
+            for (node, _group) in &sched_task.members {
                 match seen.get(node.as_str()) {
                     Some(&first_ti) if first_ti != ti => return true,
                     Some(_) => {}
@@ -872,42 +876,42 @@ impl ResolvedSchedTaskTable {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum SchedTaskResolveError {
     #[error(
-        "callback group `{node}/{group}` names tier `{tier}`, which has no `[tasks.{tier}]` definition"
+        "callback group `{node}/{group}` names sched task `{sched_task}`, which has no `[tasks.{sched_task}]` definition"
     )]
     UnknownSchedTask {
         node: String,
         group: String,
-        tier: String,
+        sched_task: String,
     },
-    /// issue 1426 — a tier that names NO platform at all is not this error: it
+    /// issue 1426 — a sched task that names NO platform at all is not this error: it
     /// is an allocation request, and [`derive::placement_is_unauthored`] rule 2
     /// fills its placement from the contract. This variant is reached when the
-    /// tier DOES author placement, for other targets, and the author has to say
+    /// sched task DOES author placement, for other targets, and the author has to say
     /// which of the two they meant.
     #[error(
-        "tier `{tier}` has no `[tasks.{tier}.{rtos}]` sub-table for the target RTOS. \
+        "sched task `{sched_task}` has no `[tasks.{sched_task}.{rtos}]` sub-table for the target RTOS. \
          It does carry a sub-table for another platform, so its priority is AUTHORED \
-         and this target was left out - add `[tasks.{tier}.{rtos}]`, or remove every \
+         and this target was left out - add `[tasks.{sched_task}.{rtos}]`, or remove every \
          platform sub-table to have the priority allocated from the contract instead \
-         (RFC-0079). (If no member of this tier carries a rate in the contract, there \
+         (RFC-0079). (If no member of this sched task carries a rate in the contract, there \
          is nothing to allocate from either.)"
     )]
-    MissingRtosSpec { tier: String, rtos: String },
-    /// Issue 1285 follow-up. The target board has no RTOS family (tier key
+    MissingRtosSpec { sched_task: String, rtos: String },
+    /// Issue 1285 follow-up. The target board has no RTOS family (sched task key
     /// `""`, `nros_entry_lower::NO_RTOS_SCHED_TASK_KEY`). This is its own variant
     /// because `MissingRtosSpec` would print `[tasks.x.]` and advise adding a
     /// sub-table that does not exist.
     #[error(
-        "tier `{tier}` is declared, but the target board has no RTOS family, so there \
-         is no `[tasks.{tier}.<rtos>]` sub-table to read and no task to run the tier \
-         on. Tiers need a board whose platform is an RTOS or the host."
+        "sched task `{sched_task}` is declared, but the target board has no RTOS family, so there \
+         is no `[tasks.{sched_task}.<rtos>]` sub-table to read and no task to run the sched task \
+         on. Sched tasks need a board whose platform is an RTOS or the host."
     )]
-    NoRtosFamily { tier: String },
+    NoRtosFamily { sched_task: String },
     #[error("`[[node_overrides]]` targets node `{node}` which is not a component in the system")]
     UnknownOverrideNode { node: String },
 }
 
-/// Pick a tier's per-RTOS spec by target name.
+/// Pick a sched task's per-RTOS spec by target name.
 fn rtos_spec<'a>(def: &'a SchedTaskDef, rtos: &str) -> Option<&'a SchedTaskRtosSpec> {
     match rtos {
         "freertos" => def.freertos.as_ref(),
@@ -919,26 +923,26 @@ fn rtos_spec<'a>(def: &'a SchedTaskDef, rtos: &str) -> Option<&'a SchedTaskRtosS
     }
 }
 
-/// Resolve a system's tiers against the per-node callback groups for one
+/// Resolve a system's sched tasks against the per-node callback groups for one
 /// target RTOS.
 ///
 /// Inputs are the decomposed `system.toml` pieces so both the CLI (which
 /// holds a full `SystemToml`) and the proc-macro (which parses a leaner
 /// view) can call this without sharing the whole config type:
-/// - `tiers` — the `[tasks.*]` table.
+/// - `sched_tasks` — the `[tasks.*]` table.
 /// - `node_overrides` — the `[[node_overrides]]` rows.
 /// - `component_names` — the system's component *instance* names, used to
 ///   validate override targets.
 /// - `callback_groups` — component-instance-name → its declared groups
 ///   (`[[component]] group_tasks`, or the cmake `CALLBACK_GROUPS` keyword).
 pub fn resolve_sched_tasks(
-    tiers: &BTreeMap<String, SchedTaskDef>,
+    sched_tasks: &BTreeMap<String, SchedTaskDef>,
     node_overrides: &[NodeOverride],
     component_names: &BTreeSet<&str>,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
     target_rtos: &str,
 ) -> Result<ResolvedSchedTaskTable, SchedTaskResolveError> {
-    // Per-node group→tier overrides from the system.
+    // Per-node group→sched task overrides from the system.
     let mut overrides: BTreeMap<(&str, &str), &str> = BTreeMap::new();
     for ov in node_overrides {
         if !component_names.contains(ov.name.as_str()) {
@@ -947,62 +951,64 @@ pub fn resolve_sched_tasks(
             });
         }
         for cg in &ov.callback_groups {
-            overrides.insert((ov.name.as_str(), cg.id.as_str()), cg.tier.as_str());
+            overrides.insert((ov.name.as_str(), cg.id.as_str()), cg.sched_task.as_str());
         }
     }
 
-    // (node, group) → effective tier (override wins over the node's declaration).
+    // (node, group) → effective sched task (override wins over the node's declaration).
     let mut members_by_sched_task: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
     for (node, groups) in callback_groups {
         for g in groups {
-            let tier = overrides
+            let sched_task = overrides
                 .get(&(node.as_str(), g.id.as_str()))
                 .copied()
-                .unwrap_or(g.tier.as_str());
+                .unwrap_or(g.sched_task.as_str());
             members_by_sched_task
-                .entry(tier.to_string())
+                .entry(sched_task.to_string())
                 .or_default()
                 .push((node.clone(), g.id.clone()));
         }
     }
 
-    // Phase 273 W4 (RFC-0047): the v1 node-pinned-to-tier rule is lifted.
-    // A single node may now have callback groups in different tiers (sub-node
-    // tiering). Each group is individually bound to its sched context via
+    // Phase 273 W4 (RFC-0047): the v1 node-pinned-to-sched-task rule is lifted.
+    // A single node may now have callback groups in different sched tasks (sub-node
+    // sched-task binding). Each group is individually bound to its sched context via
     // bind_group_sched; the caller is responsible for thread-safety when groups
-    // in different tiers run concurrently (RFC-0047 §3).
+    // in different sched tasks run concurrently (RFC-0047 §3).
 
-    // Degenerate: nothing declared → a single synthesized default tier.
+    // Degenerate: nothing declared → a single synthesized default sched task.
     if members_by_sched_task.is_empty() {
         return Ok(ResolvedSchedTaskTable {
-            tiers: vec![default_sched_task(Vec::new())],
+            sched_tasks: vec![default_sched_task(Vec::new())],
         });
     }
 
     let mut out = Vec::with_capacity(members_by_sched_task.len());
     for (name, mut members) in members_by_sched_task {
         members.sort();
-        if name == DEFAULT_SCHED_TASK && !tiers.contains_key(DEFAULT_SCHED_TASK) {
-            // The default tier needs no `[tasks.default]` table.
+        if name == DEFAULT_SCHED_TASK && !sched_tasks.contains_key(DEFAULT_SCHED_TASK) {
+            // The default sched task needs no `[tasks.default]` table.
             out.push(default_sched_task(members));
             continue;
         }
-        let def = tiers.get(&name).ok_or_else(|| {
+        let def = sched_tasks.get(&name).ok_or_else(|| {
             let (node, group) = members.first().cloned().unwrap_or_default();
             SchedTaskResolveError::UnknownSchedTask {
                 node,
                 group,
-                tier: name.clone(),
+                sched_task: name.clone(),
             }
         })?;
         let spec = rtos_spec(def, target_rtos).ok_or_else(|| {
-            // Issue 1285 follow-up — `""` is the tier key of a board with NO
+            // Issue 1285 follow-up — `""` is the sched task key of a board with NO
             // RTOS family, not a sub-table someone forgot to write.
             if target_rtos.is_empty() {
-                SchedTaskResolveError::NoRtosFamily { tier: name.clone() }
+                SchedTaskResolveError::NoRtosFamily {
+                    sched_task: name.clone(),
+                }
             } else {
                 SchedTaskResolveError::MissingRtosSpec {
-                    tier: name.clone(),
+                    sched_task: name.clone(),
                     rtos: target_rtos.to_string(),
                 }
             }
@@ -1028,7 +1034,7 @@ pub fn resolve_sched_tasks(
     // Highest RTOS priority first. (The system owner authors numbers correct for
     // the target RTOS's direction; v1 does not invert.)
     out.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.name.cmp(&b.name)));
-    Ok(ResolvedSchedTaskTable { tiers: out })
+    Ok(ResolvedSchedTaskTable { sched_tasks: out })
 }
 
 fn default_sched_task(members: Vec<(String, String)>) -> ResolvedSchedTask {
@@ -1100,14 +1106,14 @@ pub fn level_worker_frame_bytes(rtos: &str, runner: LevelRunner) -> Option<u32> 
     }
 }
 
-/// Issue 2019 -- derive the stack of every tier (level) that authors none
-/// from its members: the largest `member_stacks` entry among the tier's
+/// Issue 2019 -- derive the stack of every sched task (level) that authors none
+/// from its members: the largest `member_stacks` entry among the sched task's
 /// members (`system.toml [[component]] stack_bytes`, keyed by component name)
-/// plus the Rust runner's [`level_worker_frame_bytes`]. A tier none of whose members states a
+/// plus the Rust runner's [`level_worker_frame_bytes`]. A sched task none of whose members states a
 /// stack keeps `None` (the port's default, which is the per-callback default
 /// plus the frame), and an authored `stack_bytes` is the expert override.
 /// The Rust pack's spelling of the C headers' `NROS_LEVEL_STACK_BYTES(member)`.
-/// Returns how many tiers were derived.
+/// Returns how many sched tasks were derived.
 pub fn derive_level_stacks(
     table: &mut ResolvedSchedTaskTable,
     member_stacks: &BTreeMap<String, u32>,
@@ -1117,24 +1123,24 @@ pub fn derive_level_stacks(
         return 0;
     };
     let mut derived = 0;
-    for tier in &mut table.tiers {
-        if tier.stack_bytes.is_some() {
+    for sched_task in &mut table.sched_tasks {
+        if sched_task.stack_bytes.is_some() {
             continue;
         }
-        let member = tier
+        let member = sched_task
             .members
             .iter()
             .filter_map(|(node, _)| member_stacks.get(node).copied())
             .max();
         if let Some(m) = member {
-            tier.stack_bytes = Some(m.saturating_add(frame));
+            sched_task.stack_bytes = Some(m.saturating_add(frame));
             derived += 1;
         }
     }
     derived
 }
 
-/// Reject tier knobs the SELECTED target cannot honor — a bake-time error,
+/// Reject sched task knobs the SELECTED target cannot honor — a bake-time error,
 /// never a silent ignore (the domain-0 lesson). Shared by the CLI codegen
 /// path and the `nros::main!` proc-macro so both bakes agree.
 ///
@@ -1149,10 +1155,10 @@ pub fn validate_sched_task_platform_applicability(
     target_rtos: &str,
 ) -> Result<(), String> {
     let posix_family = matches!(target_rtos, "posix" | "native" | "nuttx");
-    for t in &table.tiers {
+    for t in &table.sched_tasks {
         if t.preempt_threshold.is_some() && target_rtos != "threadx" {
             return Err(format!(
-                "tier '{}': preempt_threshold is ThreadX-only, but the selected \
+                "sched task '{}': preempt_threshold is ThreadX-only, but the selected \
                  target is '{target_rtos}' — remove it from [tasks.{}.{target_rtos}] \
                  (other platforms' sub-tables may keep theirs)",
                 t.name, t.name
@@ -1160,20 +1166,20 @@ pub fn validate_sched_task_platform_applicability(
         }
         // #0266 — time_slice_us has a per-thread consumer only on ThreadX
         // (`tx_thread_create` slice param); the other RTOSes' time-slicing is a
-        // GLOBAL kernel config, not a per-tier knob, so a per-tier value there
+        // GLOBAL kernel config, not a per-sched-task knob, so a per-sched-task value there
         // would be a silent drop. Reject until a per-platform consumer lands.
         if t.time_slice_us.is_some() && target_rtos != "threadx" {
             return Err(format!(
-                "tier '{}': time_slice_us is ThreadX-only today (per-thread \
+                "sched task '{}': time_slice_us is ThreadX-only today (per-thread \
                  round-robin), but the selected target is '{target_rtos}' — remove \
                  it from [tasks.{}.{target_rtos}] (other RTOSes' time-slicing is a \
-                 global kernel config, not a per-tier knob; issue #0266)",
+                 global kernel config, not a per-sched-task knob; issue #0266)",
                 t.name, t.name
             ));
         }
         if t.sched_class.is_some() && !posix_family {
             return Err(format!(
-                "tier '{}': sched_class applies to POSIX-family targets only, \
+                "sched task '{}': sched_class applies to POSIX-family targets only, \
                  but the selected target is '{target_rtos}'",
                 t.name
             ));
@@ -1183,7 +1189,7 @@ pub fn validate_sched_task_platform_applicability(
         // silently-dead knob. Reject until a consumer lands (phase-162).
         if t.sched_class.is_some() {
             return Err(format!(
-                "tier '{}': sched_class is accepted by no runtime yet (nuttx runs \
+                "sched task '{}': sched_class is accepted by no runtime yet (nuttx runs \
                  SCHED_FIFO regardless; issue 0264) — remove it until a consumer \
                  lands",
                 t.name
@@ -1192,13 +1198,13 @@ pub fn validate_sched_task_platform_applicability(
         match t.class.as_deref() {
             Some("interrupt") => {
                 return Err(format!(
-                    "tier '{}': class = \"interrupt\" is not supported (RFC-0052 v1)",
+                    "sched task '{}': class = \"interrupt\" is not supported (RFC-0052 v1)",
                     t.name
                 ));
             }
             Some("time_triggered") if t.period_us.is_none() => {
                 return Err(format!(
-                    "tier '{}': class = \"time_triggered\" requires period_us",
+                    "sched task '{}': class = \"time_triggered\" requires period_us",
                     t.name
                 ));
             }
@@ -1209,9 +1215,9 @@ pub fn validate_sched_task_platform_applicability(
 }
 
 // ---------------------------------------------------------------------------
-// RFC-0052 — SystemModel → orchestration-ir tier conversion.
+// RFC-0052 — SystemModel → orchestration-ir sched task conversion.
 //
-// The resolved model's tier schema (`ros_launch_manifest_sched::TaskDef`)
+// The resolved model's sched task schema (`ros_launch_manifest_sched::TaskDef`)
 // differs from this crate's `SchedTaskDef` in two deliberate seams; conversion is
 // the contract. Both the CLI's `codegen-system --model` and the
 // `nros::main!(model = …)` proc-macro call this, so the mapping has ONE home.
@@ -1236,11 +1242,11 @@ fn rtos_spec_from_model(spec: &ros_launch_manifest_sched::TaskPlatformSpec) -> S
     }
 }
 
-/// Convert one resolved-model tier into the orchestration-ir shape for a
+/// Convert one resolved-model sched task into the orchestration-ir shape for a
 /// target RTOS.
 ///
 /// Two seams (the schemas differ here on purpose):
-/// - `core` lives per-platform in the model but at the tier head in the ir —
+/// - `core` lives per-platform in the model but at the sched task head in the ir —
 ///   hoisted from the SELECTED target's sub-table.
 /// - a per-platform `deadline_us` override (model) tightens the generic head
 ///   deadline.
@@ -1333,7 +1339,7 @@ mod tests {
         }
     }
 
-    /// Mirror-drift guard: every field of the shared-schema tier must survive
+    /// Mirror-drift guard: every field of the shared-schema sched task must survive
     /// `sched_task_from_model`. If either schema grows a field, this test is the
     /// tripwire — extend the conversion AND this fixture together.
     #[test]
@@ -1425,11 +1431,11 @@ mod tests {
         items.iter().copied().collect()
     }
 
-    fn cbg(id: &str, tier: &str) -> CallbackGroupDecl {
+    fn cbg(id: &str, sched_task: &str) -> CallbackGroupDecl {
         CallbackGroupDecl {
             id: id.to_string(),
             r#type: "MutuallyExclusive".to_string(),
-            tier: tier.to_string(),
+            sched_task: sched_task.to_string(),
         }
     }
 
@@ -1457,41 +1463,41 @@ mod tests {
     /// `resolve_sched_tasks` returns highest RAW priority FIRST, and the system owner
     /// authors numbers correct for the target RTOS's direction (v1 does not
     /// invert). Three boards no longer care: NuttX, Linux and FreeRTOS choose
-    /// their boot tier with `nros_platform::boot_sched_task_index`, which computes
-    /// the least urgent tier from the priorities and the kernel's direction.
+    /// their boot sched task with `nros_platform::boot_sched_task_index`, which computes
+    /// the least urgent sched task from the priorities and the kernel's direction.
     ///
-    /// ThreadX and Zephyr still take `tiers[0]`, and that is correct ONLY
+    /// ThreadX and Zephyr still take `sched_tasks[0]`, and that is correct ONLY
     /// because both are smaller-number-wins kernels and this sort is
-    /// DESCENDING — so `tiers[0]` is the numerically-largest, i.e. the least
-    /// urgent. Their chain-spawn walks `&tiers[1..]`, so making the index
+    /// DESCENDING — so `sched_tasks[0]` is the numerically-largest, i.e. the least
+    /// urgent. Their chain-spawn walks `&sched_tasks[1..]`, so making the index
     /// computed there is a restructure rather than a one-line change; pinning
     /// the property they depend on is the cheaper half and it is the half that
     /// was missing.
     ///
     /// If this sort ever became ascending, those three boards would follow it
-    /// correctly and these two would silently boot the MOST urgent tier —
+    /// correctly and these two would silently boot the MOST urgent sched task —
     /// reintroducing 0636's starvation on exactly the two kernels that have no
     /// `SchedTaskPriority` cell. That is a coincidence holding up a fix, so it is
     /// stated here as an assertion.
     #[test]
     fn resolve_sched_tasks_returns_highest_priority_first() {
-        let mut tiers = BTreeMap::new();
-        tiers.insert("low".to_string(), posix_sched_task(100, None, None));
-        tiers.insert("high".to_string(), posix_sched_task(110, None, None));
-        tiers.insert("mid".to_string(), posix_sched_task(105, None, None));
+        let mut sched_tasks = BTreeMap::new();
+        sched_tasks.insert("low".to_string(), posix_sched_task(100, None, None));
+        sched_tasks.insert("high".to_string(), posix_sched_task(110, None, None));
+        sched_tasks.insert("mid".to_string(), posix_sched_task(105, None, None));
         let mut cbgs = BTreeMap::new();
         cbgs.insert(
             "n".to_string(),
             vec![cbg("a", "high"), cbg("b", "mid"), cbg("c", "low")],
         );
 
-        let table = resolve_sched_tasks(&tiers, &[], &names(&["n"]), &cbgs, "posix").unwrap();
-        let order: Vec<i64> = table.tiers.iter().map(|t| t.priority).collect();
+        let table = resolve_sched_tasks(&sched_tasks, &[], &names(&["n"]), &cbgs, "posix").unwrap();
+        let order: Vec<i64> = table.sched_tasks.iter().map(|t| t.priority).collect();
         assert_eq!(
             order,
             vec![110, 105, 100],
             "resolve_sched_tasks must return highest RAW priority first — ThreadX and \
-             Zephyr take tiers[0] as the boot tier and depend on it being the \
+             Zephyr take sched_tasks[0] as the boot sched task and depend on it being the \
              LEAST urgent, which on those smaller-number-wins kernels is only \
              true while this order is descending (issue 0636)"
         );
@@ -1524,14 +1530,15 @@ mod tests {
             ..Default::default()
         };
 
-        let mut tiers = BTreeMap::new();
-        tiers.insert("control".to_string(), def);
+        let mut sched_tasks = BTreeMap::new();
+        sched_tasks.insert("control".to_string(), def);
         let mut cbgs = BTreeMap::new();
         cbgs.insert("control_node".to_string(), vec![cbg("loop", "control")]);
         let table =
-            resolve_sched_tasks(&tiers, &[], &names(&["control_node"]), &cbgs, "posix").unwrap();
+            resolve_sched_tasks(&sched_tasks, &[], &names(&["control_node"]), &cbgs, "posix")
+                .unwrap();
 
-        let t = &table.tiers[0];
+        let t = &table.sched_tasks[0];
         assert_eq!(t.name, "control");
         assert_eq!(t.priority, 80); // per-RTOS placement
         assert_eq!(t.class.as_deref(), Some("time_triggered")); // agnostic policy
@@ -1662,7 +1669,7 @@ mod tests {
         }
     }
 
-    /// A parsed tier serializes back to the form the strict reader accepts.
+    /// A parsed sched task serializes back to the form the strict reader accepts.
     #[test]
     fn sched_task_durations_round_trip_with_units() {
         let src = r#"
@@ -1672,11 +1679,11 @@ mod tests {
             priority = 80
             time_slice = "2000us"
         "#;
-        let tier: SchedTaskDef = toml::from_str(src).unwrap();
-        let text = toml::to_string(&tier).unwrap();
+        let sched_task: SchedTaskDef = toml::from_str(src).unwrap();
+        let text = toml::to_string(&sched_task).unwrap();
         assert!(text.contains(r#"spin_period = "250us""#), "{text}");
         assert!(!text.contains("_us"), "{text}");
-        assert_eq!(toml::from_str::<SchedTaskDef>(&text).unwrap(), tier);
+        assert_eq!(toml::from_str::<SchedTaskDef>(&text).unwrap(), sched_task);
     }
 
     #[test]
@@ -1690,7 +1697,7 @@ mod tests {
         )
         .unwrap();
         assert!(table.is_single_sched_task());
-        assert_eq!(table.tiers[0].name, DEFAULT_SCHED_TASK);
+        assert_eq!(table.sched_tasks[0].name, DEFAULT_SCHED_TASK);
     }
 
     #[test]
@@ -1707,91 +1714,91 @@ mod tests {
         .unwrap();
         assert!(table.is_single_sched_task());
         assert_eq!(
-            table.tiers[0].members,
+            table.sched_tasks[0].members,
             vec![("control_node".to_string(), "loop".to_string())]
         );
     }
 
     #[test]
     fn resolves_two_sched_tasks_ordered_by_priority() {
-        let mut tiers = BTreeMap::new();
-        tiers.insert(
+        let mut sched_tasks = BTreeMap::new();
+        sched_tasks.insert(
             "high".to_string(),
             posix_sched_task(80, Some(1000), Some(8192)),
         );
-        tiers.insert("low".to_string(), posix_sched_task(10, None, None));
+        sched_tasks.insert("low".to_string(), posix_sched_task(10, None, None));
         let mut cbgs = BTreeMap::new();
         cbgs.insert("control_node".to_string(), vec![cbg("ctrl", "high")]);
         cbgs.insert("telem_node".to_string(), vec![cbg("telem", "low")]);
         let table = resolve_sched_tasks(
-            &tiers,
+            &sched_tasks,
             &[],
             &names(&["control_node", "telem_node"]),
             &cbgs,
             "posix",
         )
         .unwrap();
-        assert_eq!(table.tiers.len(), 2);
-        assert_eq!(table.tiers[0].name, "high"); // highest priority first
-        assert_eq!(table.tiers[0].priority, 80);
-        assert_eq!(table.tiers[0].spin_period_us, Some(1000));
-        assert_eq!(table.tiers[1].name, "low");
+        assert_eq!(table.sched_tasks.len(), 2);
+        assert_eq!(table.sched_tasks[0].name, "high"); // highest priority first
+        assert_eq!(table.sched_tasks[0].priority, 80);
+        assert_eq!(table.sched_tasks[0].spin_period_us, Some(1000));
+        assert_eq!(table.sched_tasks[1].name, "low");
     }
 
     /// Phase 273 W4 (RFC-0047): a single node is now ALLOWED to have callback
-    /// groups in different tiers (sub-node tiering). The old v1 NodeSpansSchedTasks
-    /// error is lifted. Both groups must appear in the resolved tier table.
+    /// groups in different sched tasks (sub-node sched-task binding). The old v1 NodeSpansSchedTasks
+    /// error is lifted. Both groups must appear in the resolved sched task table.
     #[test]
     fn node_spanning_sched_tasks_is_allowed() {
-        let mut tiers = BTreeMap::new();
-        tiers.insert("high".to_string(), posix_sched_task(80, None, None));
-        tiers.insert("low".to_string(), posix_sched_task(10, None, None));
+        let mut sched_tasks = BTreeMap::new();
+        sched_tasks.insert("high".to_string(), posix_sched_task(80, None, None));
+        sched_tasks.insert("low".to_string(), posix_sched_task(10, None, None));
         let mut cbgs = BTreeMap::new();
         cbgs.insert(
             "sub_node".to_string(),
             vec![cbg("ctrl", "high"), cbg("telem", "low")],
         );
         let table =
-            resolve_sched_tasks(&tiers, &[], &names(&["sub_node"]), &cbgs, "posix").unwrap();
-        // Both groups resolved: high tier contains (sub_node, ctrl), low tier contains (sub_node, telem).
-        let high = table.tiers.iter().find(|t| t.name == "high").unwrap();
-        let low = table.tiers.iter().find(|t| t.name == "low").unwrap();
+            resolve_sched_tasks(&sched_tasks, &[], &names(&["sub_node"]), &cbgs, "posix").unwrap();
+        // Both groups resolved: high sched task contains (sub_node, ctrl), low sched task contains (sub_node, telem).
+        let high = table.sched_tasks.iter().find(|t| t.name == "high").unwrap();
+        let low = table.sched_tasks.iter().find(|t| t.name == "low").unwrap();
         assert!(
             high.members
                 .contains(&("sub_node".to_string(), "ctrl".to_string())),
-            "ctrl group must be in high tier"
+            "ctrl group must be in high sched task"
         );
         assert!(
             low.members
                 .contains(&("sub_node".to_string(), "telem".to_string())),
-            "telem group must be in low tier"
+            "telem group must be in low sched task"
         );
     }
 
     #[test]
     fn node_override_moves_a_group_to_another_sched_task() {
-        let mut tiers = BTreeMap::new();
-        tiers.insert("high".to_string(), posix_sched_task(80, None, None));
-        tiers.insert("low".to_string(), posix_sched_task(10, None, None));
+        let mut sched_tasks = BTreeMap::new();
+        sched_tasks.insert("high".to_string(), posix_sched_task(80, None, None));
+        sched_tasks.insert("low".to_string(), posix_sched_task(10, None, None));
         let overrides = vec![NodeOverride {
             name: "telem_node".to_string(),
             callback_groups: vec![CallbackGroupOverride {
                 id: "telem".to_string(),
-                tier: "low".to_string(),
+                sched_task: "low".to_string(),
             }],
         }];
         let mut cbgs = BTreeMap::new();
         cbgs.insert("control_node".to_string(), vec![cbg("ctrl", "high")]);
         cbgs.insert("telem_node".to_string(), vec![cbg("telem", "high")]);
         let table = resolve_sched_tasks(
-            &tiers,
+            &sched_tasks,
             &overrides,
             &names(&["control_node", "telem_node"]),
             &cbgs,
             "posix",
         )
         .unwrap();
-        let low = table.tiers.iter().find(|t| t.name == "low").unwrap();
+        let low = table.sched_tasks.iter().find(|t| t.name == "low").unwrap();
         assert_eq!(
             low.members,
             vec![("telem_node".to_string(), "telem".to_string())]
@@ -1818,8 +1825,8 @@ mod tests {
 
     #[test]
     fn missing_rtos_spec_errors() {
-        let mut tiers = BTreeMap::new();
-        tiers.insert(
+        let mut sched_tasks = BTreeMap::new();
+        sched_tasks.insert(
             "high".to_string(),
             SchedTaskDef {
                 // only freertos declared; resolving for posix must fail.
@@ -1839,7 +1846,7 @@ mod tests {
         );
         let mut cbgs = BTreeMap::new();
         cbgs.insert("control_node".to_string(), vec![cbg("ctrl", "high")]);
-        let err = resolve_sched_tasks(&tiers, &[], &names(&["control_node"]), &cbgs, "posix")
+        let err = resolve_sched_tasks(&sched_tasks, &[], &names(&["control_node"]), &cbgs, "posix")
             .unwrap_err();
         assert!(matches!(err, SchedTaskResolveError::MissingRtosSpec { .. }));
     }
@@ -1937,7 +1944,9 @@ mod applicability_tests {
     use super::*;
 
     fn table(t: ResolvedSchedTask) -> ResolvedSchedTaskTable {
-        ResolvedSchedTaskTable { tiers: vec![t] }
+        ResolvedSchedTaskTable {
+            sched_tasks: vec![t],
+        }
     }
 
     fn base() -> ResolvedSchedTask {
@@ -1985,7 +1994,7 @@ mod applicability_tests {
         // phase-302 W2 originally rejected `core` on threadx/posix — then
         // 296-W5.13 landed BOTH consumers (sched_setaffinity on posix,
         // tx_thread_smp_core_exclude on threadx) while the wave was in
-        // flight, so every tiered platform now has a kernel-applied or
+        // flight, so every sched-task platform now has a kernel-applied or
         // loud-fallback consumer and the pin is accepted everywhere.
         let mut t = base();
         t.core = Some(1);
@@ -2006,7 +2015,7 @@ mod applicability_tests {
         assert!(validate_sched_task_platform_applicability(&table(t2), "posix").is_ok());
     }
 
-    /// Issue 2019 -- a tier that authors no stack takes its largest stated
+    /// Issue 2019 -- a sched task that authors no stack takes its largest stated
     /// member's plus the worker frame; one whose members state none, an
     /// authored one, and a host keep theirs.
     #[test]
@@ -2024,21 +2033,21 @@ mod applicability_tests {
         let stacks: BTreeMap<String, u32> =
             [("a".to_string(), 2048), ("b".to_string(), 6144)].into();
         let mut t = ResolvedSchedTaskTable {
-            tiers: vec![urgent.clone(), lazy.clone(), authored.clone()],
+            sched_tasks: vec![urgent.clone(), lazy.clone(), authored.clone()],
         };
         assert_eq!(derive_level_stacks(&mut t, &stacks, "zephyr"), 1);
-        assert_eq!(t.tiers[0].stack_bytes, Some(6144 + 51_200));
-        assert_eq!(t.tiers[1].stack_bytes, None, "no member states one");
+        assert_eq!(t.sched_tasks[0].stack_bytes, Some(6144 + 51_200));
+        assert_eq!(t.sched_tasks[1].stack_bytes, None, "no member states one");
         assert_eq!(
-            t.tiers[2].stack_bytes,
+            t.sched_tasks[2].stack_bytes,
             Some(9000),
             "the authored override wins"
         );
         let mut host = ResolvedSchedTaskTable {
-            tiers: vec![urgent],
+            sched_tasks: vec![urgent],
         };
         assert_eq!(derive_level_stacks(&mut host, &stacks, "posix"), 0);
-        assert_eq!(host.tiers[0].stack_bytes, None);
+        assert_eq!(host.sched_tasks[0].stack_bytes, None);
     }
 
     /// Issue 2019 -- the Rust pack derives over the Rust runner's measured
@@ -2057,7 +2066,7 @@ mod applicability_tests {
         ] {
             let mut t = table(urgent.clone());
             assert_eq!(derive_level_stacks(&mut t, &stacks, rtos), 1);
-            assert_eq!(t.tiers[0].stack_bytes, Some(2048 + frame), "{rtos}");
+            assert_eq!(t.sched_tasks[0].stack_bytes, Some(2048 + frame), "{rtos}");
             assert_eq!(
                 level_worker_frame_bytes(rtos, LevelRunner::Rust),
                 Some(frame)

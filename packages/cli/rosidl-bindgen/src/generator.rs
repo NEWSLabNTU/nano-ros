@@ -773,7 +773,7 @@ fn generate_cargo_toml(
     // arm of its own; the feature was built here purely to forward the flavour
     // to nros-core / nros-serdes (and, transitively, to every message crate it
     // depends on). That is how a leaf asking for `alloc` still ended up with a
-    // hosted core — the same defect the RMW backends had, one tier down and
+    // hosted core — the same defect the RMW backends had, one sched task down and
     // multiplied by every regenerated crate on every host.
     //
     // The two `cargo_nros.toml.jinja` copies carry the matching comment. They

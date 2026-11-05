@@ -43,7 +43,7 @@
 //! (phase-359; `check-std-census` holds `nros-node` at zero `std::` paths).
 //! The hosted EDGE that reads `$NROS_PROFILE_OUT` (`nros-cpp`'s init, the Linux
 //! funnel) supplies both through [`install`]: a `thread_key` that tells
-//! concurrently-dispatching tier threads apart, and a `sink` that writes the
+//! concurrently-dispatching sched task threads apart, and a `sink` that writes the
 //! rendered document where the switch named.
 //!
 //! Host only: no RTOS umbrella resolves `profile-mode`
@@ -112,9 +112,9 @@ type InFlight = (usize, u64, BTreeSet<String>);
 struct State {
     rows: Vec<Row>,
     /// Per thread key: the node the API layer made current, and the row this
-    /// thread registered last. Per THREAD, not per process: a tiered native
-    /// boot runs each tier's setup on its own task, concurrently, and a global
-    /// cursor attributed one tier's timer to another tier's node (measured on
+    /// thread registered last. Per THREAD, not per process: a sched-task native
+    /// boot runs each sched task's setup on its own task, concurrently, and a global
+    /// cursor attributed one sched task's timer to another sched task's node (measured on
     /// `examples/workspaces/derived-sched-tasks-cpp`, the first run of this module).
     cursors: BTreeMap<usize, (Option<String>, Option<usize>)>,
     in_flight: BTreeMap<usize, InFlight>,

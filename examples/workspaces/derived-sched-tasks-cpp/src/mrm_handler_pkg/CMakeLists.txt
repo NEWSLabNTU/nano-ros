@@ -11,7 +11,7 @@ find_package(std_msgs REQUIRED)
 # phase-459 W0 - mrm_handler: one wall timer (100 ms, 10 Hz) publishing
 # std_msgs/Int32 on /system/fail_safe/mrm_state. CALLBACK_GROUPS declares the one
 # group the derivation keys on; the group is never created in code, so the
-# whole node is placed on the derived tier (node-level placement). No
+# whole node is placed on the derived sched task (node-level placement). No
 # system.toml row binds it and no [tasks.*] names a priority: the rate in
 # demo_bringup/launch/system.contract.yaml is the only scheduling input.
 nano_ros_auto_add_library(mrm_handler_lib STATIC src/MrmHandler.cpp)

@@ -344,7 +344,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
     if (rc != 0) {
         /* phase-364 W1 — NOMEM, not ERROR. `pthread_create` fails with EAGAIN
          * when the system is out of thread resources, and issue 0246 is exactly
-         * that: a TRANSIENT failure on NuttX under load, which the tier spawn
+         * that: a TRANSIENT failure on NuttX under load, which the sched task spawn
          * retries. A caller that reads this as permanent turns a momentary
          * shortage into a dead feature. */
         return NROS_PLATFORM_RET_NOMEM;
@@ -360,7 +360,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
      * did before this field existed.
      *
      * NuttX runs this port, and phase-296/issue 0263 already established that a
-     * tier self-applies its priority at entry through
+     * sched task self-applies its priority at entry through
      * `nros_nuttx_apply_current_priority`; this covers the create-time case the
      * ABI can express portably. */
     if (a != NULL) {
@@ -394,7 +394,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
                     && (got_policy != SCHED_FIFO || got.sched_priority != native)) {
                     fprintf(stderr,
                             "[warn] nros: task `%s` asked for SCHED_FIFO %d and the kernel "
-                            "gave it policy=%d priority=%d. A transport or tier that lands "
+                            "gave it policy=%d priority=%d. A transport or sched task that lands "
                             "BELOW what it declared inverts the ordering it exists to "
                             "state (issue 0803).\n",
                             (a->name != NULL) ? a->name : "?", native, got_policy,
@@ -405,13 +405,13 @@ int8_t nros_platform_task_init(void *task, void *attr,
              *
              * This used to be `(void) pthread_setschedparam(...)`. On a Linux
              * host without `CAP_SYS_NICE` (or an `RLIMIT_RTPRIO` allowance)
-             * every one of those calls returns EPERM, so a tier that declared
+             * every one of those calls returns EPERM, so a sched task that declared
              * `priority = 80` ran at the default policy and NOTHING said so —
              * eleven such pins exist in the tree. Silently honouring a
              * scheduling declaration that was not applied is the same
              * silent-drop shape RFC-0052 makes fail-loud everywhere else.
              *
-             * Once per process, not per task: an image with six tiers would
+             * Once per process, not per task: an image with six sched tasks would
              * otherwise print six identical lines saying one thing about the
              * process. `pthread_setschedparam` is called under the spawn path,
              * which is already serialised by the caller, so a plain static is
@@ -429,10 +429,10 @@ int8_t nros_platform_task_init(void *task, void *attr,
                     if (prio_rc == EPERM) {
                         fprintf(stderr,
                                 "[warn] nros: SCHED_FIFO priority %d was REFUSED (EPERM) — this "
-                                "process may not request real-time scheduling, so every tier's "
+                                "process may not request real-time scheduling, so every sched task's "
                                 "declared priority is INERT and the kernel runs them all at the "
                                 "default policy.\n"
-                                "       Grant the capability to the binary that runs the tiers:\n"
+                                "       Grant the capability to the binary that runs the sched tasks:\n"
                                 "           sudo setcap cap_sys_nice+ep <the executable>\n"
                                 "       (re-run it after EVERY rebuild — a file capability is "
                                 "bound to the file's CONTENTS and cannot survive a replaced "
@@ -441,7 +441,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
                     } else {
                         fprintf(stderr,
                                 "[warn] nros: SCHED_FIFO priority %d was refused (rc=%d) — the "
-                                "tier runs at its inherited priority.\n",
+                                "sched task runs at its inherited priority.\n",
                                 native, prio_rc);
                     }
                 }
@@ -454,7 +454,7 @@ int8_t nros_platform_task_init(void *task, void *attr,
              * NuttX config or SCHED_FIFO's numeric value there is not what the
              * comparison assumed. A diagnostic that cries wolf costs more than
              * the silence it replaces; the evidence that mattered came from the
-             * cell's own assertion naming which tier lost its marker. */
+             * cell's own assertion naming which sched task lost its marker. */
         }
     }
 
@@ -923,7 +923,7 @@ int8_t nros_platform_wake_signal_from_isr(void *w) {
 }
 
 /* phase-521 W3 (RFC-0113 D3) — the park over the wake object AND the RMW
- * sessions' OS handles: what a tier waits on when a session's readiness is a
+ * sessions' OS handles: what a sched task waits on when a session's readiness is a
  * file descriptor (XRCE's UDP socket) rather than a wake callback.
  *
  * The semaphore cannot be polled, so the wake object gains a self-pipe the
@@ -947,7 +947,7 @@ extern int ppoll(struct pollfd *fds, nfds_t nfds, const struct timespec *tmo_p,
 #endif
 
 /* The most handles one park multiplexes: the executor's own cap, one per
- * session of a tier, with room to spare. More is refused (-1), never
+ * session of a sched task, with room to spare. More is refused (-1), never
  * truncated, because a dropped handle is a missed wake. */
 #define NROS_POSIX_PARK_MAX_HANDLES 8
 
@@ -1132,19 +1132,19 @@ static const char *severity_label_log(uint8_t s) {
 
 static pthread_mutex_t s_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/* RFC-0079 / issue 0765 — adopt a tier's declared priority on the CALLING
+/* RFC-0079 / issue 0765 — adopt a sched task's declared priority on the CALLING
  * thread, and SAY what happened.
  *
  * The sibling of `nros_nuttx_apply_current_priority` and
  * `freertos_apply_sched_task_priority`: one implementation per port, one marker, and
  * a refusal that is reported rather than absorbed. It exists because the Linux
- * board spawns its tiers with `std::thread::scope`, which never reaches this
+ * board spawns its sched tasks with `std::thread::scope`, which never reaches this
  * file's `task_init` — so the attribute path that gives NuttX its priorities
- * cannot reach a native tier, and eleven `[tasks.*.posix] priority` pins in the
+ * cannot reach a native sched task, and eleven `[tasks.*.posix] priority` pins in the
  * tree were inert with nothing saying so.
  *
  * `priority` is the RAW SCHED_FIFO value, the vocabulary issue 0623 settled on
- * after a normalised scale silently inverted a tier against the transport band.
+ * after a normalised scale silently inverted a sched task against the transport band.
  * 0 means "undeclared" — keep what was inherited, as on NuttX.
  *
  * Returns 1 when applied, 0 otherwise. Never fatal: an unprivileged host is the
@@ -1170,8 +1170,8 @@ int nros_posix_apply_current_priority(const char *name, uint32_t priority) {
     sp.sched_priority = want;
     int rc = pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
     if (rc == 0) {
-        printf("nros: tier priority set tier=`%s` prio=%d\n", tname, want);
-        /* A tier's spin loop never returns, and stdout to a PIPE is
+        printf("nros: sched task priority set sched_task=`%s` prio=%d\n", tname, want);
+        /* A sched task's spin loop never returns, and stdout to a PIPE is
          * block-buffered — so without this the marker sits in a buffer that is
          * flushed at exit, i.e. never, and every piped reader (every e2e
          * harness) sees nothing. Measured: invisible under a plain pipe,
@@ -1186,16 +1186,16 @@ int nros_posix_apply_current_priority(const char *name, uint32_t priority) {
             reported = 1;
             fprintf(stderr,
                     "[warn] nros: SCHED_FIFO is REFUSED for this process (EPERM), so every "
-                    "tier's declared priority is INERT and the kernel runs them all at the "
-                    "default policy. Tier ordering is then whatever SCHED_OTHER decides.\n"
-                    "       Grant the capability to the binary that runs the tiers:\n"
+                    "sched task's declared priority is INERT and the kernel runs them all at the "
+                    "default policy. Sched task ordering is then whatever SCHED_OTHER decides.\n"
+                    "       Grant the capability to the binary that runs the sched tasks:\n"
                     "           sudo setcap cap_sys_nice+ep <executable>\n"
                     "       Re-run it after EVERY rebuild: a file capability is bound to the "
                     "file's CONTENTS, so replacing the binary drops it. Or raise "
                     "RLIMIT_RTPRIO for the user.\n");
         }
     }
-    printf("nros: tier priority FAILED tier=`%s` prio=%d rc=%d — tier runs at inherited "
+    printf("nros: sched task priority FAILED sched_task=`%s` prio=%d rc=%d — sched task runs at inherited "
            "priority\n",
            tname, want, rc);
     fflush(stdout); /* see the note above */
@@ -1247,14 +1247,14 @@ int nros_posix_deadline_attr(const char *sched_task_class, uint64_t budget_us, u
 }
 
 /* Issue 2018 -- put the CALLING thread (a level's) under SCHED_DEADLINE
- * with its tier's budget (`nros_posix_deadline_attr`). The kernel then
+ * with its sched task's budget (`nros_posix_deadline_attr`). The kernel then
  * enforces the budget: a level that runs past it is throttled until its next
  * period. Returns 1 when the kernel accepted it, 0 otherwise -- the level then
  * keeps its SCHED_FIFO priority (or the default policy) and the executor's
  * cooperative budget is the enforcement. Never fatal, like the priority
  * above: an unprivileged host (no CAP_SYS_NICE) is the common case, and the
  * operator gets one line naming the fix, plus a per-level line. Marker:
- * `nros: deadline budget set tier=...`. Linux only; elsewhere it says so. */
+ * `nros: deadline budget set sched_task=...`. Linux only; elsewhere it says so. */
 int nros_posix_apply_current_deadline(const char *name, const char *sched_task_class,
                                       uint64_t budget_us, uint64_t period_us,
                                       uint64_t deadline_us);
@@ -1289,7 +1289,7 @@ int nros_posix_apply_current_deadline(const char *name, const char *sched_task_c
     attr.sched_deadline = dl;
     attr.sched_period = pd;
     if (syscall(SYS_sched_setattr, 0, &attr, 0u) == 0) {
-        printf("nros: deadline budget set tier=`%s` %lluus/%lluus (deadline %lluus)\n", tname,
+        printf("nros: deadline budget set sched_task=`%s` %lluus/%lluus (deadline %lluus)\n", tname,
                (unsigned long long) budget_us, (unsigned long long) period_us,
                (unsigned long long) (dl / 1000u));
         fflush(stdout);
@@ -1310,7 +1310,7 @@ int nros_posix_apply_current_deadline(const char *name, const char *sched_task_c
                     "domain: SCHED_DEADLINE needs the whole domain.)\n");
         }
     }
-    printf("nros: deadline budget FAILED tier=`%s` errno=%d%s -- the executor enforces the "
+    printf("nros: deadline budget FAILED sched_task=`%s` errno=%d%s -- the executor enforces the "
            "budget\n",
            tname, err, (err == EBUSY) ? " (admission: the CPU bandwidth is taken)" : "");
     fflush(stdout);
@@ -1319,7 +1319,7 @@ int nros_posix_apply_current_deadline(const char *name, const char *sched_task_c
     (void) rt;
     (void) dl;
     (void) pd;
-    printf("nros: deadline budget declared for tier=`%s` but this platform has no "
+    printf("nros: deadline budget declared for sched_task=`%s` but this platform has no "
            "kernel deadline reservation -- the executor enforces the budget\n",
            tname);
     fflush(stdout);

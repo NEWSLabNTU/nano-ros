@@ -115,7 +115,7 @@ fn fvp_ws_entry_two_sched_task_publishes() {
         .expect("spawn just zephyr run-fvp-ws-entry");
 
     // Budget 180 s to the first `[telem] tick=` — the SLOWER marker (100 ms
-    // tier), so by the time it prints the 10 ms ctrl tier has ticked ~10x.
+    // sched task), so by the time it prints the 10 ms ctrl sched task has ticked ~10x.
     // Covers a `west build -t run` reconfigure (~60 s warm) + FVP boot +
     // Cyclone participant/thread setup under fast-sim (publishes start
     // <1 s sim-time after boot). Drop kills the FVP process group on
@@ -132,7 +132,7 @@ fn fvp_ws_entry_two_sched_task_publishes() {
     // faster, so its marker must already be in the accumulated output.
     assert!(
         output.contains(CTRL_MARKER),
-        "telem published but ctrl marker `{CTRL_MARKER}` missing — high tier \
+        "telem published but ctrl marker `{CTRL_MARKER}` missing — high sched task \
          not publishing (run_sched_tasks/priority regression?):\n{output}"
     );
 

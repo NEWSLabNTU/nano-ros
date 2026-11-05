@@ -13,15 +13,15 @@ superseded-by: null
 
 > **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names move in W2.
 
-> **Canonical path (phase-296 R3/R4).** Tier tables, bindings, and budgets
+> **Canonical path (phase-296 R3/R4).** Sched task tables, bindings, and budgets
 > now come from the play_launch-resolved **SystemModel** (RFC-0050/0052):
 > `codegen-system --model` / `nano_ros_add_executable(... MODEL …)` /
-> `nros::main!(model = …)` resolve the tiers through the shared
+> `nros::main!(model = …)` resolve the sched tasks through the shared
 > `nros_orchestration_ir::sched_task_from_model` + `resolve_sched_tasks`. The launch-tree
 > + `system.toml [tasks.*]` orchestration this RFC describes is
 > **transitional** — deprecated in R3, removed in R4 once consumers migrate.
-> The tier *schema* and resolver are unchanged; only the input surface moves
-> from `system.toml` to `execution.tiers` in the resolved model.
+> The sched task *schema* and resolver are unchanged; only the input surface moves
+> from `system.toml` to `execution.tasks` in the resolved model.
 
 **Status:** Stable (execution model); manifest homes reconciled to Phase 212 (see banner)
 **Companion roadmap:** [Phase 94](../roadmap/archived/phase-94-rtos-orchestration.md)
@@ -32,50 +32,50 @@ superseded-by: null
 > **superseded** by the Phase 212 surfaces; read the manifest sections as:
 > - **Callback groups** are declared by the *node* (it owns its callbacks):
 >   `[package.metadata.nros.node]` (Rust) / `nano_ros_node_register(...)` (C/C++).
-> - **Tier definitions + group→tier reassignment** are *deployment*-owned, in
+> - **Sched task definitions + group→sched task reassignment** are *deployment*-owned, in
 >   `system.toml`: `[tasks.<name>.<rtos>]` (priority/stack) + `[[node_overrides]]`
->   (the node declares each group's default tier; the system overrides per deploy).
+>   (the node declares each group's default sched task; the system overrides per deploy).
 > - **Shared state** → `system.toml [[shared_state]]`, codegen-emitted accessors.
 >
 > The **execution model is unchanged and current**: one binary, one RTOS task per
-> priority tier (each owning one `Executor`), one shared session per binary;
-> all-default-tier degenerates to a single task/Executor (today's shipped case).
-> Per-tier codegen is tracked by **Phase 228** (Phase 94/126 shipped only the
-> single-tier degenerate case). **Per-group registration decided 2026-06:**
-> Model 1 (one RTOS task/`Executor` per tier — true preemption, no_std-capable);
+> priority sched task (each owning one `Executor`), one shared session per binary;
+> all-default-sched-task degenerates to a single task/Executor (today's shipped case).
+> Per-sched-task codegen is tracked by **Phase 228** (Phase 94/126 shipped only the
+> single-sched-task degenerate case). **Per-group registration decided 2026-06:**
+> Model 1 (one RTOS task/`Executor` per sched task — true preemption, no_std-capable);
 > a `.callback_group("id")` builder labels callbacks, the executor's
-> `active_groups` filter gates registration per tier, and v1 is **node-pinned-to-
-> tier** (a node's groups must all be one tier — enforced by the resolver). See
+> `active_groups` filter gates registration per sched task, and v1 is **node-pinned-to-
+> sched task** (a node's groups must all be one sched task — enforced by the resolver). See
 > phase-228 §228.C. Config authority: RFC-0004; workspace layout: RFC-0024;
 > codegen timing: RFC-0003 §7.
 >
 > **Model 1 is the single execution model for ALL languages (decided 2026-07).**
 > Rust (`nros::main!`) already runs Model 1 via `run_sched_tasks`. C/C++ diverged with a
 > single-`Executor` + per-callback `sched_context` binding (phase-272/273); that is
-> **reconciled onto Model 1** — C/C++ get per-tier executors too. The **user surface
+> **reconciled onto Model 1** — C/C++ get per-sched-task executors too. The **user surface
 > is the callback-group model of RFC-0047 / phase-273** (code-declared
-> `create_callback_group("id")` + `create_*_in`, group→tier in `system.toml
+> `create_callback_group("id")` + `create_*_in`, group→sched task in `system.toml
 > [[component]].group_tasks`), identical across languages; only the backend
-> converges. **`sched_context` is re-scoped** (2026-07): it is NOT the tiering
-> mechanism under Model 1 (the *tier task* is), but an **optional intra-tier fine-
-> scheduling knob** (sporadic-server / per-callback priority *within* one tier task,
-> RFC-0017) + the single-`Executor`/no-tier fallback — kept, re-homed, not removed.
-> **RTOS integration:** a tier = one RTOS task (native `std::thread`, FreeRTOS
+> converges. **`sched_context` is re-scoped** (2026-07): it is NOT the sched-task binding
+> mechanism under Model 1 (the *sched task* is), but an **optional intra-sched-task fine-
+> scheduling knob** (sporadic-server / per-callback priority *within* one sched task,
+> RFC-0017) + the single-`Executor`/no-sched-task fallback — kept, re-homed, not removed.
+> **RTOS integration:** a sched task = one RTOS task (native `std::thread`, FreeRTOS
 > `xTaskCreate`, Zephyr `k_thread`, NuttX task, ThreadX `tx_thread`, RTIC task),
 > reusing the RFC-0016 0–31→native priority mappers + the one-shared-session
 > (Borrowed store) model the Rust boards already have; the C/C++ boards gain a
-> `run_sched_tasks` mirror. **Sub-node splitting** (a node with groups on different tiers):
+> `run_sched_tasks` mirror. **Sub-node splitting** (a node with groups on different sched tasks):
 > the phase-273 **single-`Executor`** path supports it now (the `NodeSpansSchedTasks` v1
 > guard was lifted — each callback binds its own group `sched_context`, proven by
 > `realtime_subnode_cpp_e2e`). Under **Model 1** it needs the node to register on
-> **multiple tier-executors** (each gating its groups) with sound per-executor
-> entity creation — that is **v2**; Model-1 v1 re-applies node-pinned-to-tier via
+> **multiple sched-task-executors** (each gating its groups) with sound per-executor
+> entity creation — that is **v2**; Model-1 v1 re-applies node-pinned-to-sched-task via
 > the resolver. So the convergence (phase-274) trades 273's single-executor sub-node
 > for the unified model until Model-1 v2 restores it. Staged: phase-273 (group
 > surface + single-executor sub-node, all langs) →
 > **phase-274 W1–W2** (C/C++ Model 1 native) → **phase-274 W3** (C/C++ Model 1
 > embedded — FreeRTOS/Zephyr/NuttX/ThreadX per-RTOS tasks) → sub-node v2 +
-> `sched_context` intra-tier. Binding-vs-execution split: RFC-0047. (An earlier
+> `sched_context` intra-sched-task. Binding-vs-execution split: RFC-0047. (An earlier
 > draft called the embedded wave "phase-275"; that number was reassigned to the
 > #102 example-fixture work by the 2026-07 renumber (`93946185e`) — embedded
 > C/C++ convergence is phase-274 W3. **Rust caveat:** the Rust `nros::main!`
@@ -91,7 +91,7 @@ superseded-by: null
 > §3's "cargo-nano-ros codegen orchestrator" box and §10.2's spawn sketch as the
 > *execution-model intent*; the concrete emitter mechanics (frameworks, the
 > `BoardEntry::run` vs `run_sched_tasks` contract, the shared `nros-orchestration-ir`
-> tier resolver) live in RFC-0032.
+> sched task resolver) live in RFC-0032.
 
 ---
 
@@ -118,14 +118,14 @@ Run `play_launch_parser` w/ user-supplied launch arguments at build time. Freeze
 
 Rationale: pure-declarative variant rejects too much real-world launch-file content; runtime-arg-table variant inflates code size for marginal benefit on resource-constrained MCUs.
 
-### 2.2 Execution model — priority-tier (Apex.OS / `ara::exec` style)
+### 2.2 Execution model — priority-sched-task (Apex.OS / `ara::exec` style)
 
-Codegen emits **one RTOS task per declared priority tier**, each owning one `nros::Executor`. Manifest assigns each node (or each callback group of each node) to a tier.
+Codegen emits **one RTOS task per declared priority sched task**, each owning one `nros::Executor`. Manifest assigns each node (or each callback group of each node) to a sched task.
 
 Degenerate cases (no rewrite of codegen needed):
 
-- All nodes default tier → 1 task = single shared executor (matches nano-ros today and autoware sentinel).
-- Each node distinct tier → N tasks = mirrors Linux per-node-process model.
+- All nodes default sched task → 1 task = single shared executor (matches nano-ros today and autoware sentinel).
+- Each node distinct sched task → N tasks = mirrors Linux per-node-process model.
 - Mixed → matches Apex.OS / AUTOSAR `ara::exec` style.
 
 Picks up REP-2014 (callback-group priority) data model statically at build time.
@@ -140,16 +140,16 @@ Picks up REP-2014 (callback-group priority) data model statically at build time.
 > `system/threadx`, FreeRTOS/ESP32 via `system/freertos`). **`Z_FEATURE_MULTI_THREAD=0`
 > is forced only on bare-metal** (no RTOS, no threading backend — `build.rs`).
 > `ffi-sync` (`critical_section`) is the bare-metal/RTIC mixed-priority path, not a
-> FreeRTOS/NuttX/ThreadX path. **Consequence for per-tier (RFC-0032 §5):** the
+> FreeRTOS/NuttX/ThreadX path. **Consequence for per-sched-task (RFC-0032 §5):** the
 > multi-task model needs MT=1 internal mutexes; that requirement is satisfied on
 > every RTOS target with no change, since MT=1 is already the default there.
-> Bare-metal has no preemptive tasks, so multi-tier is inherently N/A there (its
-> "tiers" are RTIC interrupt priorities, framework-owned).
+> Bare-metal has no preemptive tasks, so multi-sched-task is inherently N/A there (its
+> "sched tasks" are RTIC interrupt priorities, framework-owned).
 
-- Platforms with `Z_FEATURE_MULTI_THREAD=1` (**all RTOS**: POSIX, Zephyr, FreeRTOS, NuttX, ThreadX, ESP-IDF): rely on zenoh-pico internal mutexes (`_z_session_t::_mutex_inner`, per-transport TX mutex, cancellation mutex). This is what the per-tier model (one shared session, N preemptive spin tasks) builds on.
+- Platforms with `Z_FEATURE_MULTI_THREAD=1` (**all RTOS**: POSIX, Zephyr, FreeRTOS, NuttX, ThreadX, ESP-IDF): rely on zenoh-pico internal mutexes (`_z_session_t::_mutex_inner`, per-transport TX mutex, cancellation mutex). This is what the per-sched-task model (one shared session, N preemptive spin tasks) builds on.
 - Platforms with `Z_FEATURE_MULTI_THREAD=0` (**bare-metal only**): single execution context; `ffi-sync` wraps FFI in `critical_section::with()` for RTIC mixed-priority. No `run_sched_tasks` here.
 
-Per-tier session model rejected:
+Per-sched-task session model rejected:
 
 - N× RAM cost (~2 KB batch buffer + declaration tables × N).
 - Loopback A→B traffic must transit zenohd (no intra-process shortcut in zenoh-pico).
@@ -191,10 +191,10 @@ Codegen + runtime hooks land in existing `nano-ros` and `play_launch` workspaces
 │  ├── discover per-package nros.toml                          │
 │  ├── merge record.json + per-package manifests               │
 │  ├── verify: every node has crate + entry fn                 │
-│  ├── verify: tier assignments cover all callbacks            │
+│  ├── verify: sched task assignments cover all callbacks            │
 │  ├── apply remaps + namespaces to topic/service strings      │
 │  ├── emit shared_context C ABI + Rust + C++ headers          │
-│  ├── emit per-tier task entry fns                            │
+│  ├── emit per-sched task entry fns                            │
 │  ├── emit toplevel main() (platform-specific)                │
 │  └── emit Cargo workspace deps glue                          │
 └──────────────────────────────────────────────────────────────┘
@@ -228,8 +228,8 @@ Per-package TOML at `<pkg>/nros.toml` (or referenced from `package.xml` `<export
 
 | Manifest kind       | Owner                  | What it declares                                                                                                                        | Why here                                                                                                       |
 | ------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **Node manifest**   | Package author         | Logical structure: crate, entry fn, callback groups (id + type + symbolic tier name), entity bindings                                   | Author knows the node's own concurrency requirements; doesn't know deployment target                           |
-| **System manifest** | Deployer (board owner) | RTOS-specific physical: `tiers.<name>.<rtos>` priority/stack/scheduler tables, startup_order, launch_args, shared_state, node_overrides | Same node package can deploy to FreeRTOS / Zephyr / NuttX with different RTOS pri numbers; only deployer knows |
+| **Node manifest**   | Package author         | Logical structure: crate, entry fn, callback groups (id + type + symbolic sched task name), entity bindings                                   | Author knows the node's own concurrency requirements; doesn't know deployment target                           |
+| **System manifest** | Deployer (board owner) | RTOS-specific physical: `sched_tasks.<name>.<rtos>` priority/stack/scheduler tables, startup_order, launch_args, shared_state, node_overrides | Same node package can deploy to FreeRTOS / Zephyr / NuttX with different RTOS pri numbers; only deployer knows |
 
 This mirrors ROS 2 launch-file philosophy: package = reusable component; launch file = deployment-specific composition.
 
@@ -237,10 +237,10 @@ Codegen requires exactly **one system manifest** per build target. Node manifest
 
 ### 4.1 Node manifest example
 
-> **Superseded binding (RFC-0047).** The symbolic `tier` on a node manifest's callback group,
-> shown below, is the original design. phase-273 moved the group → tier binding to the
-> deployment — `system.toml` `[[component]] group_tasks = { <id> = "<tier>" }` — so a node package
-> names no tier. The Cargo spelling of this field (`[package.metadata.nros.node] callback_groups`)
+> **Superseded binding (RFC-0047).** The symbolic `sched_task` on a node manifest's callback group,
+> shown below, is the original design. phase-273 moved the group → sched task binding to the
+> deployment — `system.toml` `[[component]] group_tasks = { <id> = "<sched_task>" }` — so a node package
+> names no sched task. The Cargo spelling of this field (`[package.metadata.nros.node] callback_groups`)
 > was honoured for one release with a warning and is now refused at parse.
 
 ```toml
@@ -253,16 +253,16 @@ name = "control_node"            # matches launch file Node(name=...)
 crate = "my_robot_control"
 entry = "register_control_node"  # fn(executor: &mut Executor) -> Result<()>
 
-# Symbolic tiers only — physical mapping in system manifest.
+# Symbolic sched tasks only — physical mapping in system manifest.
 [[node.callback_groups]]
 id = "ctrl_loop"
 type = "MutuallyExclusive"
-tier = "high"                    # symbolic name; system manifest binds to RTOS
+sched task = "high"                    # symbolic name; system manifest binds to RTOS
 
 [[node.callback_groups]]
 id = "telemetry"
 type = "Reentrant"
-tier = "low"
+sched task = "low"
 
 [[node.bindings.timers]]
 name = "control_tick"
@@ -289,7 +289,7 @@ schema = "nano-ros/orchestration/v1"
 kind = "system"
 target_rtos = "freertos"         # selects which [tasks.<X>.<rtos>] sub-table is consumed
 
-# Symbolic tier table. Each tier MUST have a sub-table for the active target_rtos.
+# Symbolic sched task table. Each sched task MUST have a sub-table for the active target_rtos.
 [tasks.high]
 spin_period = "1000us"
 [tasks.high.freertos]
@@ -323,13 +323,13 @@ spin_period = "100000us"
 priority = 1
 stack_bytes = 4096
 
-# Optional node-level overrides — system can override the symbolic tier
+# Optional node-level overrides — system can override the symbolic sched task
 # of a specific callback group declared in a node manifest.
 [[node_overrides]]
 name = "control_node"
 [[node_overrides.callback_groups]]
 id = "telemetry"
-tier = "low"
+sched task = "low"
 
 # Cross-node startup ordering (lifecycle activation).
 startup_order = ["sensing_node", "control_node"]
@@ -361,10 +361,10 @@ target_param = "control_node.gain"
 
 ### 4.3 Invariants enforced by codegen
 
-- Every node in launch tree (`record.json`) must have a discoverable node manifest, OR an implicit default applied (`tier = "normal"`, single MutuallyExclusive group covering all entities).
-- Every callback group's symbolic `tier` must resolve in system manifest's `[tasks.*]` table.
+- Every node in launch tree (`record.json`) must have a discoverable node manifest, OR an implicit default applied (`sched_task = "normal"`, single MutuallyExclusive group covering all entities).
+- Every callback group's symbolic `sched_task` must resolve in system manifest's `[tasks.*]` table.
 - For the active `target_rtos`, every `[tasks.<X>]` must have a `[tasks.<X>.<target_rtos>]` sub-table.
-- Tier task `spin_period_us` must be ≤ tightest timer period in its group set.
+- Sched task `spin_period_us` must be ≤ tightest timer period in its group set.
 - `startup_order` entries must exist in launch tree.
 - Binding entity names (`timers.name`, `subscriptions.topic`, `services.name`) reconciled with launch tree at build time; mismatches reported as build errors.
 - Per-RTOS priority bounds enforced (FreeRTOS 0..configMAX-1, ThreadX 0..31, NuttX 1..255, Zephyr per CONFIG*NUM*\*, POSIX 1..99).
@@ -388,7 +388,7 @@ Source: `rclcpp/include/rclcpp/callback_group.hpp`. Default group per node = Mut
 
 | System                            | Pattern                                                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Apex.OS / cbg_executor**        | One executor per priority tier, each bound to thread w/ SCHED_FIFO. Nodes register groups w/ specific tier executor. https://github.com/ros2/examples/tree/rolling/rclcpp/executors/cbg_executor |
+| **Apex.OS / cbg_executor**        | One executor per priority sched task, each bound to thread w/ SCHED_FIFO. Nodes register groups w/ specific sched task executor. https://github.com/ros2/examples/tree/rolling/rclcpp/executors/cbg_executor |
 | **ros-realtime/reference-system** | Single-threaded executor per "node bucket" + separate sensor input thread. https://github.com/ros-realtime/reference-system                                                                      |
 | **Autoware.Universe**             | Dedicated MutuallyExclusive group per timer vs subscription set; keeps planning loops out of TF callback contention.                                                                             |
 | **Nav2**                          | Dedicated group per action server (long execute callback); separate group for parameter callbacks.                                                                                               |
@@ -400,11 +400,11 @@ Stock launch files (`launch_ros.actions.Node`) carry `parameters`, `remappings`,
 
 Codegen consumes manifest, emits per group:
 
-- One RTOS task = one priority tier (groups sharing tier coexist in one task).
+- One RTOS task = one priority sched task (groups sharing sched task coexist in one task).
 - One `Executor` per task; group's callbacks pre-registered.
 - Group type (Mutex vs Reentrant) → codegen picks executor semantics. nano-ros today is single-threaded; Reentrant within one task = serial anyway. Cross-task Reentrant = needs MultiThreadedExecutor support (future work, not v1).
 
-**v1 scope:** all groups effectively MutuallyExclusive within their tier-task. Reentrant becomes meaningful only when we ship a multi-worker executor (post-v1).
+**v1 scope:** all groups effectively MutuallyExclusive within their sched-task. Reentrant becomes meaningful only when we ship a multi-worker executor (post-v1).
 
 ---
 
@@ -425,23 +425,23 @@ Reference: autoware-nano-ros sentinel (1472 lines).
 | Feature                                                 | Codegen supplies                                        |
 | ------------------------------------------------------- | ------------------------------------------------------- |
 | Conditional node inclusion (`IfCondition`, env-derived) | Yes — frozen graph omits disabled nodes                 |
-| Composable node groups                                  | Yes — manifest tier groups                              |
+| Composable node groups                                  | Yes — manifest sched task groups                              |
 | Per-node namespace / remap                              | Yes — applied at codegen string-interp time             |
 | Lifecycle activation order                              | Yes — `startup_order:` manifest field                   |
 | Action server/client setup                              | Yes — manifest entity binding                           |
-| Multi-rate timer scheduling                             | Yes — per-tier `spin_period_us` + per-timer `period_ms` |
-| Cross-node dep declaration                              | Yes — `startup_order` + tier dep graph                  |
+| Multi-rate timer scheduling                             | Yes — per-sched-task `spin_period_us` + per-timer `period_ms` |
+| Cross-node dep declaration                              | Yes — `startup_order` + sched task dep graph                  |
 | Per-namespace parameter override                        | Yes — launch file `parameters:` flows through           |
 
 ### Flexibility lost (codegen cannot easily do)
 
 - **Inline closure-captured shared state** (e.g. `SafetyIsland` `RefCell` holding all 11 algorithm structs). Codegen sharing model resolved in §9 (manifest-declared `shared_state:` + C-ABI accessors).
-- **Cross-callback ad-hoc state mutation** in one timer body — autoware sentinel sequences MRM watchdog → handler → operators → cmd_gate → validator inline. If split across tiers, ordering becomes async. Mitigation: keep tightly-coupled algorithms in one tier (which collapses to today's pattern).
-- **Verification-friendliness:** Kani harness on hand-written `main` is straightforward (single control flow). Codegen-emitted multi-task code complicates harness scope. Mitigation: codegen emits same shape as hand-written when degenerate (single-tier).
+- **Cross-callback ad-hoc state mutation** in one timer body — autoware sentinel sequences MRM watchdog → handler → operators → cmd_gate → validator inline. If split across sched tasks, ordering becomes async. Mitigation: keep tightly-coupled algorithms in one sched task (which collapses to today's pattern).
+- **Verification-friendliness:** Kani harness on hand-written `main` is straightforward (single control flow). Codegen-emitted multi-task code complicates harness scope. Mitigation: codegen emits same shape as hand-written when degenerate (single-sched-task).
 
 ### Net assessment
 
-Single-tier codegen output ≡ hand-written single-`main` shape (modulo formatting). All hand-written advantages preserved when user does not opt into multi-tier. Multi-tier opt-in unlocks ROS 2 launch features. **No loss in degenerate case; gain everywhere else.**
+Single-sched-task codegen output ≡ hand-written single-`main` shape (modulo formatting). All hand-written advantages preserved when user does not opt into multi-sched-task. Multi-sched-task opt-in unlocks ROS 2 launch features. **No loss in degenerate case; gain everywhere else.**
 
 ---
 
@@ -469,9 +469,9 @@ Single-tier codegen output ≡ hand-written single-`main` shape (modulo formatti
 - `spin_once(N)` decomposed in `zpico.rs:571–620` into loop of guarded `spin_once(0)` so critical section never spans whole timeout.
 - Session footprint: 1× declaration tables (32 pub / 32 sub / 16 queryable defaults), 1× batch buffer (`Z_BATCH_UNICAST_SIZE` = 2048 B default), 1× peer state.
 
-### 7.3 Per-tier session cost (rejected)
+### 7.3 Per-sched-task session cost (rejected)
 
-- N× session footprint. On 192 KB SRAM Cortex-M with 4 tiers ≈ prohibitive.
+- N× session footprint. On 192 KB SRAM Cortex-M with 4 sched tasks ≈ prohibitive.
 - A→B loopback transits zenohd (no intra-process shortcut in zenoh-pico). Real RTT + bandwidth cost.
 - N TLS/TCP control blocks in smoltcp.
 - N discovery announcements visible to network.
@@ -479,7 +479,7 @@ Single-tier codegen output ≡ hand-written single-`main` shape (modulo formatti
 
 ### 7.4 Worked example — autoware sentinel on FreeRTOS
 
-- All 11 algos in `tier: normal` (degenerate — single tier, single executor).
+- All 11 algos in `sched_task: normal` (degenerate — single sched task, single executor).
 - Shared session w/ `ffi-sync`. Critical section per FFI call ≈ <10 µs at 25 MHz Cortex-M3.
 - 30 Hz timer (33 ms period) → ISR-disabled fraction ≪ 0.1%.
 - ROS 2 control loop budget ≈ 1 ms typical → headroom ample.
@@ -551,11 +551,11 @@ namespace nros::shared {
 
 ### 8.3 Sync strategy — `tier_aware`
 
-Codegen analyzes manifest tier graph + accessor declarations:
+Codegen analyzes manifest sched task graph + accessor declarations:
 
-- **All accessors in same tier** → no lock. Single-task access. Equivalent to today's `RefCell` in autoware sentinel.
-- **Accessors span tiers** → wrap in `nros-platform` mutex abstraction. On `MULTI_THREAD=1` platforms (POSIX/Zephyr/ESP-IDF) this resolves to a native mutex; on `MULTI_THREAD=0` (bare-metal/FreeRTOS/NuttX/ThreadX) it resolves to `critical_section::with()`. Same per-platform mapping table as §7.1.
-- **Cross-tier `*_modify(fn)` mutator** chosen over separate get/set to avoid TOCTOU. Closure runs under lock.
+- **All accessors in same sched task** → no lock. Single-task access. Equivalent to today's `RefCell` in autoware sentinel.
+- **Accessors span sched tasks** → wrap in `nros-platform` mutex abstraction. On `MULTI_THREAD=1` platforms (POSIX/Zephyr/ESP-IDF) this resolves to a native mutex; on `MULTI_THREAD=0` (bare-metal/FreeRTOS/NuttX/ThreadX) it resolves to `critical_section::with()`. Same per-platform mapping table as §7.1.
+- **Cross-sched-task `*_modify(fn)` mutator** chosen over separate get/set to avoid TOCTOU. Closure runs under lock.
 - **Action item:** if no `nros-platform` mutex abstraction exists yet, Phase 94.D adds it (mirrors `PlatformYield` from Phase 79).
 
 ### 8.4 Discovery & symbol resolution
@@ -565,12 +565,12 @@ Codegen analyzes manifest tier graph + accessor declarations:
 ### 8.5 Verification implications
 
 - Static layout + static accessor set → Kani harness can model the shared-state machine exactly as today's hand-written `RefCell`.
-- Single-tier degenerate case = identical IR to hand-written, identical proofs.
-- Multi-tier: harness must consider preemption points around `*_modify` blocks. Existing nano-ros Phase 40 buffer-state-machine harness pattern applies.
+- Single-sched-task degenerate case = identical IR to hand-written, identical proofs.
+- Multi-sched-task: harness must consider preemption points around `*_modify` blocks. Existing nano-ros Phase 40 buffer-state-machine harness pattern applies.
 
 ### 8.6 Worked example — autoware sentinel migration
 
-Hand-written sentinel `SafetyIsland` becomes manifest-declared `shared_state.safety_island`. All 11 algos remain in a single tier (default `normal`) → codegen emits single-task degenerate, no locks, behaviorally identical to today. If user later reassigns control_node to `tier: high`, codegen automatically inserts cross-tier sync around `safety_island_modify`.
+Hand-written sentinel `SafetyIsland` becomes manifest-declared `shared_state.safety_island`. All 11 algos remain in a single sched task (default `normal`) → codegen emits single-task degenerate, no locks, behaviorally identical to today. If user later reassigns control_node to `sched_task: high`, codegen automatically inserts cross-sched-task sync around `safety_island_modify`.
 
 Phase 94.B validation criterion: codegen output must produce a binary that passes the existing autoware-sentinel integration tests bit-for-bit-equivalent in behavior. Hand-written `main.rs` retained as reference + parity oracle until all sentinel tests green against generated output; then deprecated, then removed.
 
@@ -656,14 +656,14 @@ fn nros_main() -> ! {
 ### 9.6 Open subitems
 
 - **Schema validation at runtime.** Should `apply_runtime_param_overrides` reject typed mismatches (string in `--gain:=foo` for an `f32` param)? Lean yes, log + ignore, never panic.
-- **Atomicity.** All overrides applied before tier tasks spawn — no mid-run race.
+- **Atomicity.** All overrides applied before sched tasks spawn — no mid-run race.
 - **Per-platform impl scope.** v1 ships POSIX + Zephyr (settings) + a board-crate trait `BoardArgsSource` w/ empty default. Other platforms get default empty until user supplies.
 
 ---
 
 ## 10. RTOS execution model mapping
 
-Tier-task → RTOS task spawn rules. See `book/src/realtime/scheduling-models.md` for full per-RTOS scheduling details.
+Sched-task → RTOS task spawn rules. See `book/src/realtime/scheduling-models.md` for full per-RTOS scheduling details.
 
 ### 10.1 Per-RTOS quick reference
 
@@ -676,9 +676,9 @@ Tier-task → RTOS task spawn rules. See `book/src/realtime/scheduling-models.md
 | **NuttX**             | 1..255                                                                      | Higher = higher    | SCHED_FIFO (also RR, SPORADIC)     | bytes (POSIX `pthread_attr_setstacksize`)           | `sched_yield()`                                                                      | POSIX mutex w/ `PTHREAD_PRIO_INHERIT` or `PTHREAD_PRIO_PROTECT` |
 | **RTIC** (bare-metal) | 0..NVIC_PRIO_BITS (typically 0..15)                                         | **Lower = higher** | Hardware NVIC, compile-time fixed  | static link section                                 | N/A (no thread context)                                                              | SRP — compile-time ceiling, zero runtime overhead               |
 
-### 10.2 Tier → RTOS task spawn (codegen output sketch)
+### 10.2 Sched task → RTOS task spawn (codegen output sketch)
 
-For each tier in the system manifest, codegen emits one task spawn matching the active `target_rtos`:
+For each sched task in the system manifest, codegen emits one task spawn matching the active `target_rtos`:
 
 | Target   | Spawn call                                                                                                        | Body                                                                                                                                     |
 | -------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -691,22 +691,22 @@ For each tier in the system manifest, codegen emits one task spawn matching the 
 
 ### 10.3 Direction-flip handling
 
-Nano-ros tier semantics: **higher tier name = more critical** (tiers `low` < `normal` < `high` < `critical`). Codegen translates to RTOS native direction:
+Nano-ros sched task semantics: **higher sched task name = more critical** (sched tasks `low` < `normal` < `high` < `critical`). Codegen translates to RTOS native direction:
 
 - POSIX/FreeRTOS/NuttX: critical → high numeric.
 - ThreadX/Zephyr-preempt/RTIC: critical → **low** numeric.
 
-Manifest writer specifies the **per-RTOS numeric value directly** (no auto-flip), to keep the schema explicit and avoid hidden bugs from misinterpreting "higher = more important". Codegen just plugs the number into the spawn call. Validation: codegen warns if `tiers.critical.<rtos>.priority` is numerically lower (or higher, per RTOS) than `tiers.normal.<rtos>.priority` in a way that contradicts the symbolic tier order. Warning, not error — power users may have legitimate reasons.
+Manifest writer specifies the **per-RTOS numeric value directly** (no auto-flip), to keep the schema explicit and avoid hidden bugs from misinterpreting "higher = more important". Codegen just plugs the number into the spawn call. Validation: codegen warns if `sched_tasks.critical.<rtos>.priority` is numerically lower (or higher, per RTOS) than `sched_tasks.normal.<rtos>.priority` in a way that contradicts the symbolic sched task order. Warning, not error — power users may have legitimate reasons.
 
 ### 10.4 Stack sizing
 
-System manifest `tiers.<X>.<rtos>.stack_bytes` always in **bytes**. Codegen converts to RTOS-native unit:
+System manifest `sched_tasks.<X>.<rtos>.stack_bytes` always in **bytes**. Codegen converts to RTOS-native unit:
 
 - FreeRTOS: divides by `sizeof(StackType_t)` (4 on Cortex-M) for `xTaskCreate` word count.
 - Zephyr: passes to `K_THREAD_STACK_DEFINE` directly.
 - Others: bytes directly.
 
-Per-tier-task minimum stack must hold: `Executor` frame + worst-case callback depth + zenoh-pico FFI shim + RTOS overhead. Suggested defaults in node manifests (set by author who knows callback complexity):
+Per-sched-task minimum stack must hold: `Executor` frame + worst-case callback depth + zenoh-pico FFI shim + RTOS overhead. Suggested defaults in node manifests (set by author who knows callback complexity):
 
 - Sensing/IO group: 4096 B
 - Control loop group: 8192 B
@@ -716,11 +716,11 @@ System manifest can override per-deploy.
 
 ### 10.5 Multi-core
 
-All current targets single-core. SMP support deferred. Manifest schema allows future `tiers.<X>.cpu_affinity` field without breaking existing manifests.
+All current targets single-core. SMP support deferred. Manifest schema allows future `sched_tasks.<X>.cpu_affinity` field without breaking existing manifests.
 
-### 10.6 Mutex / cross-tier sync
+### 10.6 Mutex / cross-sched-task sync
 
-§8.3 cross-tier shared-state lock uses a `nros-platform` mutex abstraction:
+§8.3 cross-sched-task shared-state lock uses a `nros-platform` mutex abstraction:
 
 | Target            | Backing primitive                         | Priority inheritance                           |
 | ----------------- | ----------------------------------------- | ---------------------------------------------- |
@@ -739,7 +739,7 @@ Codegen picks per `target_rtos` automatically. Action item: if `nros-platform` m
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `nros-platform-freertos` | DEFAULT_PRIORITY=3, DEFAULT_STACK_DEPTH=5120 hardcoded; codegen needs config-toml-style override hook (Phase 76 already added cargo config.toml plumbing for FreeRTOS) |
 | `nros-platform-threadx`  | No task creation in platform layer; board crate handles. Codegen emits board-style task creation                                                                       |
-| `nros-platform-zephyr`   | Static `K_THREAD_STACK_ARRAY`; pool needs sizing for max tier count (compile-time configurable)                                                                        |
+| `nros-platform-zephyr`   | Static `K_THREAD_STACK_ARRAY`; pool needs sizing for max sched task count (compile-time configurable)                                                                        |
 | `nros-platform-nuttx`    | Delegates to POSIX. Codegen calls POSIX path directly                                                                                                                  |
 | `nros-platform-posix`    | Generic POSIX. No tuning needed                                                                                                                                        |
 | RTIC                     | Per-task priority via `#[task(priority = N)]` macro — codegen emits the macro                                                                                          |
@@ -756,8 +756,8 @@ Inventory of existing components vs work required. Goal: maximize reuse, identif
 | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `play_launch_parser` `RecordJson`                                                              | **Stable**. Fields: `node[]`, `container[]`, `lifecycle_node[]`, `load_node[]`, `scopes[]` (tree), `variables` (resolved launch args). 260 tests. 100% Autoware compatible. | **Reuse as-is** — primary parser-side IR. No new parser needed.                                                            |
 | `play_launch_parser` IR module (`#[cfg(feature = "ir")]` `LaunchProgram`/`Action`/`Condition`) | Built but not in CLI by default. Preserves unevaluated substitution chains.                                                                                                 | **Future use** — for hybrid runtime arg eval (post-v1).                                                                    |
-| `ros-launch-manifest-types::Manifest`                                                          | Defines `args/nodes/topics/services/actions/includes/paths`. Rich `EndpointProps` (rate, jitter, freshness, drop budget). YAML-only today.                                  | **Extend** — add `tier`, `callback_groups`, `shared_state`, `target_rtos` fields. Convert to TOML or support both formats. |
-| `ros-launch-manifest-check` 14 SMT-backed validation rules                                     | Z3 + petgraph. Validates QoS, rate, latency, drop budgets.                                                                                                                  | **Reuse** — extend rule set for tier/group invariants from §4.3.                                                           |
+| `ros-launch-manifest-types::Manifest`                                                          | Defines `args/nodes/topics/services/actions/includes/paths`. Rich `EndpointProps` (rate, jitter, freshness, drop budget). YAML-only today.                                  | **Extend** — add `sched_task`, `callback_groups`, `shared_state`, `target_rtos` fields. Convert to TOML or support both formats. |
+| `ros-launch-manifest-check` 14 SMT-backed validation rules                                     | Z3 + petgraph. Validates QoS, rate, latency, drop budgets.                                                                                                                  | **Reuse** — extend rule set for sched task/group invariants from §4.3.                                                           |
 | `play_launch_wasm_codegen` + `wasm_runtime`                                                    | Compiles `LaunchProgram` → WASM, executes producing `RecordJson`.                                                                                                           | **Skip for v1.** Build-time freeze doesn't need WASM. May enable post-v1 hybrid runtime arg eval.                          |
 | `play_launch_container` (C++)                                                                  | Observable composable node container w/ event publishing.                                                                                                                   | **N/A on RTOS.** Linux-only; codegen subsumes container concept via tier.                                                  |
 | `play_launch_interception` (LD_PRELOAD)                                                        | rcl hook-based observability for monitoring.                                                                                                                                | **N/A on RTOS** (no LD_PRELOAD). Future: nano-ros could expose equivalent in-binary instrumentation.                       |
@@ -772,7 +772,7 @@ Inventory of existing components vs work required. Goal: maximize reuse, identif
 | `cargo-nano-ros::package_discovery`                                                         | Walks workspace, parses Cargo.toml + package.xml.                                      | **Reuse** — extend to discover `nros.toml` files in same walk.                                                                                           |
 | `rosidl-codegen` Askama template engine                                                     | Jinja-style w/ Rust expressions. Templates for Rust msg/srv/action, C, C++ headers.    | **Reuse** — write new templates: `main.rs.jinja`, `sched_task.rs.jinja`, `shared_context.h.jinja`, `shared_context.rs.jinja`, `shared_context.hpp.jinja`. |
 | `rosidl-parser`                                                                             | `.msg/.srv/.action` lexer + parser.                                                    | **Reuse as-is** — orthogonal; orchestration codegen consumes its outputs but doesn't extend.                                                             |
-| `nros-c/build.rs` size-probing pattern (Phase 87)                                           | `nros_sizes_build::find_dep_rlib` extracts `__NROS_SIZE_*` symbols → header constants. | **Reuse pattern** — add probes for per-tier executor sizing in generated main.                                                                           |
+| `nros-c/build.rs` size-probing pattern (Phase 87)                                           | `nros_sizes_build::find_dep_rlib` extracts `__NROS_SIZE_*` symbols → header constants. | **Reuse pattern** — add probes for per-sched-task executor sizing in generated main.                                                                           |
 | `nros-cpp/build.rs` storage-derivation                                                      | Computes `CppContext` upper bound from `nros` rlib symbols.                            | **Reuse** — same pattern for shared-context size in generated header.                                                                                    |
 | Zephyr CMake `nros_generate_interfaces()`                                                   | Discovers `.msg/.srv/.action`, invokes `nros-codegen`, links into Zephyr `app` target. | **Mirror as `nros_generate_orchestration()`** — new CMake fn invoking `cargo-nano-ros generate-main`.                                                    |
 | Zephyr Kconfig (`CONFIG_NROS_*`)                                                            | Selects API (C/C++/Rust), RMW backend, zenoh-pico features.                            | **Extend** — add `CONFIG_NROS_ORCHESTRATION_SCHED_TASKS_MAX` etc.                                                                                              |
@@ -785,12 +785,12 @@ Inventory of existing components vs work required. Goal: maximize reuse, identif
 | `nros-node::Node::create_publisher/subscriber/timer/service/action_*`         | Complete typed API. Returns `Result<Handle, NodeError>`.                                                                                             | **Reuse** — codegen calls these directly inside generated `register_X()` fns.                                                                                                            |
 | `nros-node::parameter_services` (Phase 86)                                    | 6 standard services (`get/set/list/describe/get_types/set_atomically`). `nros_params::ParameterServer` typed store. `MAX_PARAMS_PER_REQUEST=64`.     | **Reuse** — runtime arg overrides write into existing ParameterServer pre-spawn.                                                                                                         |
 | `nros-node::lifecycle` (Phase 86, REP-2002)                                   | `LifecyclePollingNode` + `register_on_{configure,activate,deactivate,cleanup,shutdown,error}`. State machine.                                        | **Reuse** — codegen wires `startup_order` into `activate()` calls w/ ack-poll.                                                                                                           |
-| `nros-platform-api::PlatformYield`                                            | Exists as trait. POSIX/Zephyr/FreeRTOS/NuttX/ThreadX impls.                                                                                          | **Reuse** — codegen calls in generated tier-task spin loops.                                                                                                                             |
+| `nros-platform-api::PlatformYield`                                            | Exists as trait. POSIX/Zephyr/FreeRTOS/NuttX/ThreadX impls.                                                                                          | **Reuse** — codegen calls in generated sched-task spin loops.                                                                                                                             |
 | `nros-platform-api::PlatformThreading`                                        | Trait defines `task_init/task_join/mutex_init/mutex_lock/condvar_*`. Currently inherent impls per platform; Phase 84.F4 will migrate to trait impls. | **Reuse** — codegen calls `<P as PlatformThreading>::task_init` for tier spawn, `mutex_lock`/`unlock` for cross-tier sync. **Action:** confirm Phase 84.F4 ordering vs orchestration v1. |
 | `zpico-platform-shim` FFI exports                                             | Auto-generated C wrappers calling Rust trait methods.                                                                                                | **Reuse** — no changes needed.                                                                                                                                                           |
-| Board crate `run(config, closure)` pattern (`nros-board-mps2-an385-freertos`, etc.) | User passes closure; board does HW init + scheduler start.                                                                                           | **Reuse** — codegen-emitted `main` calls board's `run()` w/ generated closure (which spawns tier tasks).                                                                                 |
+| Board crate `run(config, closure)` pattern (`nros-board-mps2-an385-freertos`, etc.) | User passes closure; board does HW init + scheduler start.                                                                                           | **Reuse** — codegen-emitted `main` calls board's `run()` w/ generated closure (which spawns sched tasks).                                                                                 |
 | `nros-rmw-zenoh::ffi-sync` (Phase 61)                                         | Wraps zenoh-pico FFI in `critical_section::with()` on MT=0 platforms. Bounded ~µs.                                                                   | **Reuse** — codegen enables `ffi-sync` feature flag on MT=0 platforms. No code change.                                                                                                   |
-| Composable node container concept                                             | Doesn't exist yet on nano-ros.                                                                                                                       | **Build new** — Phase 94.F: tier ≡ container.                                                                                                                                            |
+| Composable node container concept                                             | Doesn't exist yet on nano-ros.                                                                                                                       | **Build new** — Phase 94.F: sched task ≡ container.                                                                                                                                            |
 | Multi-worker `Executor` (Reentrant group)                                     | Doesn't exist. Single-task `spin_once` only.                                                                                                         | **Build new** — Phase 94.H, post-v1, MT=1 platforms only.                                                                                                                                |
 
 ### 11.4 Greenfield (must build)
@@ -799,15 +799,15 @@ Components with no existing infrastructure to reuse:
 
 1. **`nros.toml` schema crate** (`nros-orchestration-manifest`, in play_launch workspace) — TOML serde types, validation, merger of node + system manifests. Mirrors `ros-launch-manifest-types` but for our extended schema. **~500 LOC est.**
 2. **`cargo nano-ros generate-main` subcommand** — consumes `record.json` + workspace `nros.toml` files → emits orchestration crate w/ generated `main.rs`, `sched_task_*.rs`, `shared_context.{h,rs,hpp}`, plus build.rs probes. **~1500 LOC est.**
-3. **Tier resolver** — symbolic tier name → per-RTOS numeric (validated against per-RTOS bounds), spin period bound check, callback-set partition by tier, group→tier index. **~300 LOC est.**
+3. **Sched task resolver** — symbolic sched task name → per-RTOS numeric (validated against per-RTOS bounds), spin period bound check, callback-set partition by sched task, group→sched task index. **~300 LOC est.**
 4. **Per-package `nros.toml` discoverer** — walks workspace, picks up node manifests, detects exactly-one system manifest per build target. Extends `cargo-nano-ros::package_discovery`. **~150 LOC est.**
-5. **Shared-context emitter** — analyzes `[[shared_state]]` accessor sets, picks sync mode (no lock vs cross-tier mutex), emits `#[repr(C)]` struct + `_get/_set/_modify` C-ABI accessors in 3 languages. **~600 LOC est.**
+5. **Shared-context emitter** — analyzes `[[shared_state]]` accessor sets, picks sync mode (no lock vs cross-sched-task mutex), emits `#[repr(C)]` struct + `_get/_set/_modify` C-ABI accessors in 3 languages. **~600 LOC est.**
 6. **`BoardArgsSource` trait + per-platform impls** — POSIX argv parser (priority), Zephyr settings backend (priority), default empty for FreeRTOS/NuttX/ThreadX/bare-metal (board overrides). **~400 LOC est.**
 7. **Runtime arg → ParameterServer wiring** — pre-spawn pass that reads `BoardArgsSource` and calls `ParameterServer::set` for each `class = "parameter"` arg. **~150 LOC est.**
 8. **`PlatformMutex` (if not subsumed by `PlatformThreading`)** — confirm trait surface w/ Phase 84.F4 owner. Possibly zero new code if `PlatformThreading::mutex_*` suffices. **0–200 LOC.**
 9. **Lifecycle activation orchestrator** — pre-spawn pass that walks `startup_order`, calls `activate()` per node, polls for `STATE_ACTIVE` w/ timeout. **~200 LOC est.**
 10. **`Executor::open_with_session(shared)` API** — variant of `Executor::open` that accepts pre-opened session instead of opening one. **~150 LOC est.**
-11. **`ros-launch-manifest-types` extension** — add tier/callback_group/shared_state fields. **~200 LOC est.** (or fork into separate crate to avoid Linux-side impact).
+11. **`ros-launch-manifest-types` extension** — add sched task/callback_group/shared_state fields. **~200 LOC est.** (or fork into separate crate to avoid Linux-side impact).
 
 **Total greenfield estimate: ~4000 LOC** across nano-ros + play_launch (manifest crate extension).
 

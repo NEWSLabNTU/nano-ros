@@ -57,9 +57,9 @@ breaking (`changelog.d`); the codegen version moves with them.
 
 The timing contract bounds what a device's own tasks may do, and says
 nothing about what a remote publisher may send it. On a device whose
-transport band sits above its application tiers — the correct default —
+transport band sits above its application sched tasks — the correct default —
 that omission is a hole: a peer publishing faster than the device can
-drain preempts every real-time tier on it, and no local scheduling
+drain preempts every real-time sched task on it, and no local scheduling
 configuration can prevent that.
 
 This RFC defines an **ingress declaration** on subscriptions, expressed
@@ -77,15 +77,15 @@ cadence taken from an on-target guest clock:
 
 - Under a ~2 kHz flood the island stalls **9-11 times per 30 s run**,
   worst gap **335-511 ms**, against declared periods of 10-100 ms. Every
-  application tier gaps at the same instant.
+  application sched task gaps at the same instant.
 - A Tonbandgeraet trace during a burst attributes the CPU: `zpico_read`
   (the zenoh-pico session read loop) holds **72-81%**, all three
-  application tiers together get **2.3-3.0%**. lwIP's `tcpip_thread`
+  application sched tasks together get **2.3-3.0%**. lwIP's `tcpip_thread`
   stays under 2% — so this is the rmw drain, not the TCP/IP stack.
 - The chain the island exists to serve degrades with it: **12.8-18.5%**
   of peer commands delivered against a ~30% sampling ceiling.
 
-The tiers are below the transport band by design, and for good reason:
+The sched tasks are below the transport band by design, and for good reason:
 the inverse ordering starves the RX drain and produces multi-second lwIP
 retransmission freezes (the defect fixed in d708d8c5b). So the band
 cannot be demoted — its *volume* has to be bounded instead.
@@ -159,8 +159,8 @@ nodes:
   so an unstated burst cannot be written at all.
 
 Both are properties of what the device can *absorb*, so they belong with
-the subscription rather than in the tier table: two subscriptions on one
-tier can have very different ingress costs.
+the subscription rather than in the sched task table: two subscriptions on one
+sched task can have very different ingress costs.
 
 **Nothing downstream waits on this.** The enforcement half takes a rate and a
 burst, however they arrive: the router rule is emitted from what the resolver
@@ -363,7 +363,7 @@ the bound costs fewer tokens.
 
 The device half bounds the **read task's loop** — `_zp_unicast_read_task`,
 which is the loop the image actually executes — pausing after N frames so
-the tiers regain the CPU at a known granularity.
+the sched tasks regain the CPU at a known granularity.
 
 ```c
 if (++frames >= NROS_RX_TASK_BUDGET_FRAMES) { frames = 0; z_sleep_us(rest); }
@@ -491,7 +491,7 @@ topic share the router's `data` queue. Priority is the right tool for the
 and is complementary to this RFC rather than an alternative: it reorders
 the link, it cannot reduce a decode cost the device pays per message.
 
-Mapping the contract's criticality tiers onto zenoh priority classes is
+Mapping the contract's criticality sched tasks onto zenoh priority classes is
 left to a follow-up; an env-gated A/B moved chain delivery 13-17% →
 17-19% but was too noisy on an ad-hoc harness to claim.
 
@@ -507,7 +507,7 @@ left to a follow-up; an env-gated A/B moved chain delivery 13-17% →
   configuration — see open question 6. 446 ms is outside the range
   observed since, so the result is probably real, but it is weaker
   evidence than it reads.)
-- **Demoting the transport band below the tiers.** This is the
+- **Demoting the transport band below the sched tasks.** This is the
   configuration d708d8c5b fixed; it starves the RX drain into
   multi-second RTO freezes.
 - **A pure rate cap, no burst term.** Refuted by the cap-at-offered-rate
@@ -588,17 +588,17 @@ Both constraints fall out of the same two lines, and both are per-platform via
    threshold, so rare huge bursts become regular moderate ones.
 
 Both are resolve-time checks against numbers the contract already carries —
-tier periods and deadlines — plus `c`.
+sched task periods and deadlines — plus `c`.
 
 **As implemented (phase-462 W6c).** Constraint 1 is checked for EVERY declared
 subscriber, not only the heaviest. Constraint 2 uses the derived FRAMES (the
 heaviest subscriber's burst — the run the read task actually takes) and the
-tightest AUTHORED tier, with `slack = D - B`: `D` the tier's `deadline`, else
-its `period`; `B` its `budget`. A tier that states no `budget` contributes its
+tightest AUTHORED sched task, with `slack = D - B`: `D` the sched task's `deadline`, else
+its `period`; `B` its `budget`. A sched task that states no `budget` contributes its
 whole deadline — an upper bound of its slack, so a refusal is sound and a pass
-is reported as "within the deadline". Every tier is read as sharing the read
+is reported as "within the deadline". Every sched task is read as sharing the read
 task's core (the model places none), the stricter reading; a platform
-sub-table's tighter deadline is not read. An image whose tiers state no
+sub-table's tighter deadline is not read. An image whose sched tasks state no
 `deadline`/`period` has no slack to compute: constraint 2 is reported as NOT
 CHECKED, with the reason, rather than checked against a guessed slack. An
 absent `floor_us` is taken as 0, which can only under-state the occupancy, and
@@ -607,7 +607,7 @@ the refusal says so.
 ### Caveats
 
 `c` and the 11 ms floor are from ONE lane, ONE payload size, and three budget
-points. The floor is unexplained (plausibly the tier's own work plus scheduler
+points. The floor is unexplained (plausibly the sched task's own work plus scheduler
 latency) and is carried as an empirical term rather than modelled. Message size
 almost certainly enters `c` — a larger payload costs more to decode — so `c` may
 need to be per (platform, type) rather than per platform; nothing here measures
@@ -712,8 +712,8 @@ that, and a design that assumes one `c` per board should say so.
 - 2026-10-18 — phase-462 W6c: the per-board `c` (`[board.rx]`) and both
   resolve-time constraints landed; "As implemented" under "What validates a
   declaration" records the readings the RFC left open (every subscriber for
-  constraint 1, the tightest authored tier and `D - B` for constraint 2, NOT
-  CHECKED when no tier states timing).
+  constraint 1, the tightest authored sched task and `D - B` for constraint 2, NOT
+  CHECKED when no sched task states timing).
 - 2026-08 — initial draft, from the #0506 investigation (trace
   attribution, router pacing probe, drain budget probe).
 - 2026-08-23 — the DECLARATION is marked a proposal pending a

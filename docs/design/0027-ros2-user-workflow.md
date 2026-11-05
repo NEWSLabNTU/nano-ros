@@ -97,7 +97,7 @@ nano-ros should mirror the composable model statically:
 - Node package provides a registration entry point.
 - System package provides launch files and RTOS deployment metadata.
 - Generated orchestration crate provides the only `main()`.
-- The RTOS "container" is a priority tier: one executor/task per tier.
+- The RTOS "container" is a priority sched task: one executor/task per sched task.
 
 ### Node API Examples
 
@@ -702,7 +702,7 @@ Layer split:
 ```text
 nros-node           node/executor/entities
 nros-c / nros-cpp   language bindings
-nros-orchestration  System, InstanceSpec, tiers, callback binding, C ABI glue
+nros-orchestration  System, InstanceSpec, sched tasks, callback binding, C ABI glue
 nros-cli            metadata/plan/check/build commands
 generated package   typed tables and small registration functions
 ```
@@ -783,7 +783,7 @@ pub struct InstanceSpec<'a> {
 
 pub struct SchedContextSpec<'a> {
     pub id: &'a str,
-    pub tier: &'a str,
+    pub sched task: &'a str,
     pub class: SchedClass,
     pub priority: Priority,
     pub period_us: Option<u32>,
@@ -827,7 +827,7 @@ Target-specific entry differences stay behind `#[nros::entry]` or generated
 platform modules:
 
 - native/POSIX: normal `fn main()` for tests and smoke runs;
-- FreeRTOS/ThreadX/Zephyr: RTOS startup hook creates tier tasks;
+- FreeRTOS/ThreadX/Zephyr: RTOS startup hook creates sched tasks;
 - RTIC: codegen emits compile-time task macros and per-task priorities;
 - bare metal: one loop or interrupt-driven task table.
 
@@ -927,7 +927,7 @@ attach them to bug reports.
 - manifest endpoint-to-source-entity bindings;
 - unresolved source names plus launch-resolved graph names;
 - message/service/action type-support set;
-- tier and `SchedContext` mapping;
+- sched task and `SchedContext` mapping;
 - selected deployment config/overlay;
 - selected transport backend and effective compile-time transport options;
 - resolved RTOS priority/stack/scheduler policy;
@@ -999,7 +999,7 @@ The plan should preserve traceability between all layers:
       "callback": "control_tick",
       "callback_group": "control_loop",
       "sched_context": "front_control_loop",
-      "tier": "high"
+      "sched task": "high"
     }
   ]
 }
@@ -1029,7 +1029,7 @@ nano-ros scheduling policy became one RTOS execution plan.
   interface cache;
 - lifecycle nodes are rejected for MVP with a direct unsupported-feature
   diagnostic;
-- every callback group maps to a tier;
+- every callback group maps to a sched task;
 - every callback/entity binding maps to a valid `SchedContext`;
 - active RTOS priority/stack fields exist and are in bounds;
 - platform-specific deadline/budget/period values are internally consistent;
@@ -1037,8 +1037,8 @@ nano-ros scheduling policy became one RTOS execution plan.
   launch manifest rate, freshness, and path-latency requirements;
 - remaps and namespaces resolve before codegen;
 - parameter files can be represented by nano-ros parameter APIs;
-- tier spin period is compatible with timer periods;
-- shared state access either stays single-tier or has a lock strategy.
+- sched task spin period is compatible with timer periods;
+- shared state access either stays single-sched-task or has a lock strategy.
 
 ### 5. Build
 
@@ -1049,14 +1049,14 @@ nano-ros scheduling policy became one RTOS execution plan.
 - generated source metadata refresh/check step;
 - collective interface binding cache for Rust/C/C++;
 - one registration call per component;
-- one executor per tier;
+- one executor per sched task;
 - one generated `SchedContext` creation/binding table per executor;
 - shared session setup;
 - parameter/default override setup;
 - generated shared-context C/Rust/C++ headers;
 - Cargo/CMake glue for all component packages.
 
-Single-tier output should collapse to the hand-written nano-ros shape:
+Single-sched-task output should collapse to the hand-written nano-ros shape:
 
 ```rust
 let mut executor = Executor::open(&config)?;
@@ -1067,14 +1067,14 @@ loop {
 }
 ```
 
-Multi-tier output:
+Multi-sched-task output:
 
 ```text
 main
   open shared session
-  spawn tier high   -> Executor::open_with_session(shared)
-  spawn tier normal -> Executor::open_with_session(shared)
-  spawn tier low    -> Executor::open_with_session(shared)
+  spawn sched task high   -> Executor::open_with_session(shared)
+  spawn sched task normal -> Executor::open_with_session(shared)
+  spawn sched task low    -> Executor::open_with_session(shared)
   idle/join
 ```
 
@@ -1198,13 +1198,13 @@ startup_order = ["control_node"]
 component = "control_pkg/control_node"
 callback_group = "control_loop"
 sched_context = "control_loop"
-tier = "high"
+sched task = "high"
 
 [[instance_bindings]]
 instance = "/front/front_control"
 callback_group = "control_loop"
 sched_context = "front_control_loop"
-tier = "high"
+sched task = "high"
 ```
 
 `component_bindings` apply to every launch instance of the component.
@@ -1289,7 +1289,7 @@ deadline = "10000us"
 component = "control_pkg/control_node"
 callback_group = "control_loop"
 sched_context = "control_loop"
-tier = "control"
+sched task = "control"
 ```
 
 `nros-plan.json`, generated:
@@ -1336,7 +1336,7 @@ Ownership split:
 | Node source/API    | node IDs, entity IDs, callback IDs, topic names, message types | none                                                    |
 | Source metadata    | generated proof of what source creates                       | none                                                    |
 | Per-node manifest  | component linkage, logical callback groups, optional hints    | avoid hard RTOS values                                  |
-| System config      | tier names, callback-to-`SchedContext` binding intent         | selected overlay                                        |
+| System config      | sched task names, callback-to-`SchedContext` binding intent         | selected overlay                                        |
 | Platform overlay   | deadlines, budgets, periods, OS priorities, stack sizes       | concrete RTOS numbers and policy names                 |
 | Generated package  | checked constants and tables                                 | compiled result of selected config, not hand-authored   |
 
@@ -1355,7 +1355,7 @@ spin_period = "1000us"
 
 [[sched_contexts]]
 id = "control_loop"
-tier = "control"
+sched task = "control"
 class = "Edf"
 priority = "Critical"
 period = "10000us"
@@ -1397,11 +1397,11 @@ schema yet. A later revision can lift stable transport knobs into typed
 
 Rules:
 
-- logical IDs (`tier`, `sched_context`, `callback_group`) are stable and can be
+- logical IDs (`sched_task`, `sched_context`, `callback_group`) are stable and can be
   referenced by launch-derived plans;
 - numeric RTOS values live in the selected platform overlay;
-- current `[scheduling]` config keys can be treated as the single-tier legacy
-  form and normalized into `tiers.default` plus transport task settings;
+- current `[scheduling]` config keys can be treated as the single-sched-task legacy
+  form and normalized into `sched_tasks.default` plus transport task settings;
 - `nros check` resolves the overlay before codegen and rejects missing or
   impossible values;
 - `nros check` compares selected scheduling policy against ROS manifest
@@ -1490,7 +1490,7 @@ Generated main should execute the frozen plan in a deterministic order:
 
 ```text
 open platform/session
-create tiers/executors
+create sched tasks/executors
 create sched contexts
 instantiate node instances with final params/remaps
 bind callbacks to sched contexts
@@ -1541,11 +1541,11 @@ enough trace data from the start.
 | Component entity metadata is not emitted                                    | Generate topic/timer/sub/service metadata from macros/build scripts for `nros check`             |
 | Anonymous callback creation would bypass orchestration                      | Require stable IDs on all component-mode entity creation APIs                                    |
 | Component export can be forgotten                                           | Make package discovery fail clearly when no `nros` component export exists                       |
-| `Executor::open_with_session(shared)` not available as safe API             | Add safe shared-session constructor for per-tier executors                                       |
-| Timer registration has no sched-context/tier binding variant                | Add `register_timer_on(sc_id, ...)` and C/C++ wrappers                                           |
+| `Executor::open_with_session(shared)` not available as safe API             | Add safe shared-session constructor for per-sched-task executors                                       |
+| Timer registration has no sched-context/sched task binding variant                | Add `register_timer_on(sc_id, ...)` and C/C++ wrappers                                           |
 | Namespaces/remaps are not first-class component inputs                      | Add `ComponentContext` name resolver and remap-aware create helpers                              |
 | Runtime params exist but plan-time parameter injection is not unified       | Add boot-time parameter override loader from generated plan/runtime args                         |
-| Shared state is ad hoc in hand-written apps                                 | Generate shared-context structs/accessors with tier-aware locking                                |
+| Shared state is ad hoc in hand-written apps                                 | Generate shared-context structs/accessors with sched-task-aware locking                                |
 | Generated code cannot create/bind SC tables from config                     | Add plan-to-`create_sched_context` and handle binding codegen                                    |
 
 ### Build and colcon
@@ -1566,7 +1566,7 @@ enough trace data from the start.
 | Gap                                                           | Needed                                                                                   |
 |---------------------------------------------------------------|------------------------------------------------------------------------------------------|
 | `record.json` is process-oriented                             | Add nano-ros normalization layer to produce `nros-plan.json`                             |
-| Launch composable containers are Linux runtime concepts       | Map containers/load nodes to static components/tier groups                               |
+| Launch composable containers are Linux runtime concepts       | Map containers/load nodes to static components/sched task groups                               |
 | ROS launch manifest describes graph but not source reality    | Compare resolved manifest endpoints against generated source metadata                    |
 | Python launch freeze can include unsupported runtime behavior | Classify graph-shaping args as build-time only; reject unsupported dynamic cases clearly |
 | No stable embedded codegen subcommand                         | Keep codegen in `nros`; call play_launch parser/manifest crates directly                 |
@@ -1575,7 +1575,7 @@ enough trace data from the start.
 
 | Gap                                                                     | Needed                                                                                                   |
 |-------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
-| Existing launch manifest describes graph contracts, not RTOS deployment | Add `nros.toml` schema or extend manifest types with tiers/callback groups/shared state                  |
+| Existing launch manifest describes graph contracts, not RTOS deployment | Add `nros.toml` schema or extend manifest types with sched tasks/callback groups/shared state                  |
 | Scheduling parameters have no stable owner                             | Put board/RTOS numbers in system config overlays; keep node manifests logical                          |
 | Callback groups are source-code concepts in rclcpp                      | Declare grouping policy in `nros.toml`; validate members against generated source metadata               |
 | Entity binding can drift from source                                    | Treat source metadata as truth; compare launch manifest and config bindings against it                  |
@@ -1588,14 +1588,14 @@ enough trace data from the start.
 | play_launch monitoring assumes Linux processes | Add nano-ros telemetry events from generated binary                                              |
 | RTOS logs are board-specific                   | Normalize QEMU/serial/RTT/native logs behind `nros monitor`                                      |
 | No device lifecycle control                    | Add minimal start/stop/restart only where platform supports it; otherwise expose reset/flash/run |
-| No plan/runtime correlation                    | Emit node/tier/callback IDs into firmware and monitor output                                     |
+| No plan/runtime correlation                    | Emit node/sched task/callback IDs into firmware and monitor output                                     |
 
 ## v0 Scope
 
 Start with the smallest workflow that proves the model:
 
 - Rust components only.
-- Single-tier executor only.
+- Single-sched-task executor only.
 - `record.json` from play_launch.
 - Source metadata from Rust `ComponentContext` host metadata mode.
 - ROS launch manifest endpoint check for publishers/subscriptions.
@@ -1625,7 +1625,7 @@ Explicitly defer:
 - incremental build optimization;
 - hardened metadata-mode sandboxing;
 - polished `nros explain` diagnostics;
-- multi-tier shared session;
+- multi-sched-task shared session;
 - runtime parameter override persistence;
 - generated shared state;
 - monitor UI parity with play_launch.

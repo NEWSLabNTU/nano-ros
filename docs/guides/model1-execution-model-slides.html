@@ -198,9 +198,9 @@
       <h2 class="mt">Three rules. That's it.</h2>
       <div class="props mt">
         <div>
-          <div class="n">01 · tier → task</div>
-          <div class="t">One RTOS task per priority tier</div>
-          <div class="d">Not per node, not per callback — so a tier costs exactly one OS priority slot.</div>
+          <div class="n">01 · sched task → task</div>
+          <div class="t">One RTOS task per priority sched task</div>
+          <div class="d">Not per node, not per callback — so a sched task costs exactly one OS priority slot.</div>
         </div>
         <div>
           <div class="n">02 · task → executor</div>
@@ -210,11 +210,11 @@
         <div>
           <div class="n">03 · gating</div>
           <div class="t">active_groups filter</div>
-          <div class="d">Every task runs the same setup; the filter admits only its tier's callback groups.</div>
+          <div class="d">Every task runs the same setup; the filter admits only its sched task's callback groups.</div>
         </div>
       </div>
       <div class="stack mt">
-        <div class="layer"><div class="lab">Tiers</div><div class="body"><span class="chip crit">high · prio 80</span><span class="chip">low · prio 10</span></div></div>
+        <div class="layer"><div class="lab">Sched tasks</div><div class="body"><span class="chip crit">high · prio 80</span><span class="chip">low · prio 10</span></div></div>
         <div class="arrow">↓ one RTOS task each</div>
         <div class="layer"><div class="lab">Tasks</div><div class="body"><span class="chip tk">Executor</span><span class="chip tk">Executor</span></div></div>
         <div class="arrow">↓ all borrow one handle</div>
@@ -243,7 +243,7 @@
         </div>
         <div class="conn"><span class="card">N : 1</span><span class="ar">→</span><span class="how">system.toml</span></div>
         <div class="cbox">
-          <div class="who">nano-ros</div><div class="term">tier</div>
+          <div class="who">nano-ros</div><div class="term">sched task</div>
           <div class="ex">high · prio 80</div>
           <div class="role">at what priority</div>
         </div>
@@ -255,10 +255,10 @@
         </div>
       </div>
       <div class="demo-map mt">
-        <div class="maprow"><span class="step"><b>on_ctrl</b> <span class="sep">∈</span> group <b>"ctrl"</b> <span class="sep">→</span> tier <span class="t">high</span> <span class="sep">→</span> <span class="t">task_sched_task_high</span> (prio 80, 10 ms)</span></div>
-        <div class="maprow"><span class="step"><b>on_telem</b> <span class="sep">∈</span> group <b>"telem"</b> <span class="sep">→</span> tier <span class="t">low</span> <span class="sep">→</span> <span class="t">task_sched_task_low</span> (prio 10, 100 ms)</span></div>
+        <div class="maprow"><span class="step"><b>on_ctrl</b> <span class="sep">∈</span> group <b>"ctrl"</b> <span class="sep">→</span> sched task <span class="t">high</span> <span class="sep">→</span> <span class="t">task_sched_task_high</span> (prio 80, 10 ms)</span></div>
+        <div class="maprow"><span class="step"><b>on_telem</b> <span class="sep">∈</span> group <b>"telem"</b> <span class="sep">→</span> sched task <span class="t">low</span> <span class="sep">→</span> <span class="t">task_sched_task_low</span> (prio 10, 100 ms)</span></div>
       </div>
-      <div class="note amber"><span class="tag">why not 1 thread per callback</span><div>That would burn one OS priority slot per callback — Cortex-M0+ has ~4 total. Model 1 bundles callbacks by priority need into <strong>one thread per tier</strong>; the thread cooperatively runs all its callbacks. Kernel preempts <em>between</em> tiers, executor schedules <em>within</em>.</div></div>
+      <div class="note amber"><span class="tag">why not 1 thread per callback</span><div>That would burn one OS priority slot per callback — Cortex-M0+ has ~4 total. Model 1 bundles callbacks by priority need into <strong>one thread per sched task</strong>; the thread cooperatively runs all its callbacks. Kernel preempts <em>between</em> sched tasks, executor schedules <em>within</em>.</div></div>
     </div>
   </section>
 
@@ -302,12 +302,12 @@
     </div>
   </section>
 
-  <!-- 4 · DECLARE TIERS -->
+  <!-- 4 · DECLARE SCHED TASKS -->
   <section class="slide">
     <div class="inner">
       <div class="eyebrow">step 2 — deploy config</div>
-      <h2 class="mt">system.toml maps group → tier</h2>
-      <p class="sub">One manifest binds each node's group to a named tier, and defines each tier's priority + spin period. This is the deployment SSoT (RFC-0047).</p>
+      <h2 class="mt">system.toml maps group → sched task</h2>
+      <p class="sub">One manifest binds each node's group to a named sched task, and defines each sched task's priority + spin period. This is the deployment SSoT (RFC-0047).</p>
       <div class="panel mt">
         <div class="cap"><span>demo_bringup/system.toml</span><span class="lang">verbatim · ws-realtime-rust</span></div>
 <pre>[[component]]
@@ -331,7 +331,7 @@ spin_period_us = <span class="lit">1000</span>
 spin_period_us = <span class="lit">10000</span>
 [tasks.low.posix]   priority = <span class="lit">10</span></pre>
       </div>
-      <div class="note"><span class="tag">key idea</span><div>Tiers are declared <strong>per RTOS</strong> in sub-tables. Same nodes, same groups — retarget by picking which sub-table the codegen reads. (See the deploy slide.)</div></div>
+      <div class="note"><span class="tag">key idea</span><div>Sched tasks are declared <strong>per RTOS</strong> in sub-tables. Same nodes, same groups — retarget by picking which sub-table the codegen reads. (See the deploy slide.)</div></div>
     </div>
   </section>
 
@@ -340,7 +340,7 @@ spin_period_us = <span class="lit">10000</span>
     <div class="inner">
       <div class="eyebrow">step 3 — entry</div>
       <h2 class="mt">The binary entry is one line</h2>
-      <p class="sub">Codegen reads the manifest, resolves the tier table, and emits <code>run_sched_tasks</code>. The author writes only the launch reference.</p>
+      <p class="sub">Codegen reads the manifest, resolves the sched task table, and emits <code>run_sched_tasks</code>. The author writes only the launch reference.</p>
       <div class="grid2 mt">
         <div class="panel">
           <div class="cap"><span>linux_entry/src/main.rs</span><span class="lang">rust</span></div>
@@ -354,7 +354,7 @@ spin_period_us = <span class="lit">10000</span>
           <span class="lit">"demo_bringup:system.launch.xml"</span>);</pre>
         </div>
       </div>
-      <div class="note"><span class="tag">what it expands to</span><div>Both macros resolve the 2-tier table and emit the multi-tier <code>run_sched_tasks</code> entry — <strong>one priority task per tier</strong> — instead of the single-tier <code>run</code>. All-default-tier collapses back to one task = the shipped simple case.</div></div>
+      <div class="note"><span class="tag">what it expands to</span><div>Both macros resolve the 2-sched-task table and emit the multi-sched-task <code>run_sched_tasks</code> entry — <strong>one priority task per sched task</strong> — instead of the single-sched-task <code>run</code>. All-default-sched-task collapses back to one task = the shipped simple case.</div></div>
     </div>
   </section>
 
@@ -362,7 +362,7 @@ spin_period_us = <span class="lit">10000</span>
   <section class="slide">
     <div class="inner">
       <div class="eyebrow">under the macro</div>
-      <h2 class="mt">Each tier is a SchedTaskSpec + a spin loop</h2>
+      <h2 class="mt">Each sched task is a SchedTaskSpec + a spin loop</h2>
       <div class="grid2 mt">
         <div class="panel">
           <div class="cap"><span>nros-platform · board/sched_task.rs</span><span class="lang">real struct</span></div>
@@ -375,13 +375,13 @@ spin_period_us = <span class="lit">10000</span>
 }</pre>
         </div>
         <div class="panel">
-          <div class="cap"><span>emitted per-tier task body</span><span class="lang">shape</span></div>
-<pre><span class="fn">run_sched_tasks</span>(TIERS, setup) {
+          <div class="cap"><span>emitted per-sched task body</span><span class="lang">shape</span></div>
+<pre><span class="fn">run_sched_tasks</span>(SCHED TASKS, setup) {
   <span class="kw">let</span> shared = open_shared_session();   <span class="cmt">// once</span>
-  <span class="kw">for</span> tier <span class="kw">in</span> TIERS {
-    spawn(tier.priority, tier.stack, || {
+  <span class="kw">for</span> sched task <span class="kw">in</span> SCHED TASKS {
+    spawn(sched task.priority, sched task.stack, || {
       <span class="kw">let mut</span> ex = Executor::<span class="fn">open_with_session</span>(shared);
-      ex.<span class="fn">set_active_groups</span>(tier.groups);  <span class="cmt">// gate</span>
+      ex.<span class="fn">set_active_groups</span>(sched task.groups);  <span class="cmt">// gate</span>
       <span class="fn">setup</span>(&amp;<span class="kw">mut</span> ex);                     <span class="cmt">// only its groups take</span>
       <span class="kw">loop</span> { ex.<span class="fn">spin_once</span>(N); <span class="fn">platform_yield</span>(); }
     });
@@ -397,7 +397,7 @@ spin_period_us = <span class="lit">10000</span>
   <section class="slide">
     <div class="inner">
       <div class="eyebrow">§ scheduler integration</div>
-      <h2 class="mt">A tier = one native RTOS task</h2>
+      <h2 class="mt">A sched task = one native RTOS task</h2>
       <p class="sub">Same loop body everywhere; only the spawn call and yield primitive change. Priorities come straight from the <code>[tasks.*.&lt;rtos&gt;]</code> sub-table.</p>
       <div class="tbl-wrap panel mt">
         <table>
@@ -421,9 +421,9 @@ spin_period_us = <span class="lit">10000</span>
     <div class="inner">
       <div class="eyebrow">§ how it hits deadlines</div>
       <h2 class="mt">Cooperative within · preemptive across</h2>
-      <p class="sub"><strong>Within</strong> a tier: run-to-completion, no mid-callback preemption (no per-callback stacks in <code>no_std</code>). <strong>Across</strong> tiers: the RTOS preempts a lower tier the instant a higher tier wakes. Real preemption from the kernel, not the executor.</p>
+      <p class="sub"><strong>Within</strong> a sched task: run-to-completion, no mid-callback preemption (no per-callback stacks in <code>no_std</code>). <strong>Across</strong> sched tasks: the RTOS preempts a lower sched task the instant a higher sched task wakes. Real preemption from the kernel, not the executor.</p>
       <div class="panel mt">
-        <div class="cap"><span>scheduler trace — high tier preempts, returns</span><span class="lang">illustrative</span></div>
+        <div class="cap"><span>scheduler trace — high sched task preempts, returns</span><span class="lang">illustrative</span></div>
         <div class="trace">
           <div class="trow"><div class="tl">high<span class="pr">prio 80 · 1 ms</span></div>
             <div class="lane"><div class="blk high" style="left:180px;width:52px;">tick</div><div class="blk high" style="left:480px;width:52px;">tick</div></div></div>
@@ -434,7 +434,7 @@ spin_period_us = <span class="lit">10000</span>
         </div>
         <div class="tnote"><span><span class="sw high"></span> high preempts</span><span><span class="sw norm"></span> normal work</span><span><span class="sw low"></span> best-effort</span></div>
       </div>
-      <div class="note amber"><span class="tag">the tradeoff</span><div>A 50 ms callback <em>will</em> block a 1 ms-deadline callback <strong>if they share a tier</strong>. Hard real-time ⇒ put them on different tiers and let the kernel preempt. Cost: a few OS priority slots — never one per callback.</div></div>
+      <div class="note amber"><span class="tag">the tradeoff</span><div>A 50 ms callback <em>will</em> block a 1 ms-deadline callback <strong>if they share a sched task</strong>. Hard real-time ⇒ put them on different sched tasks and let the kernel preempt. Cost: a few OS priority slots — never one per callback.</div></div>
     </div>
   </section>
 
@@ -463,7 +463,7 @@ spin_period_us = <span class="lit">10000</span>
 <pre class="tree"><span class="d">nros-macros/</span>
 └─ main_macro.rs   <span class="c"># nros::main! → run_sched_tasks</span>
 <span class="d">nros-platform/</span>
-└─ board/<span class="a">tier.rs</span>    <span class="c"># SchedTaskSpec + prio mappers</span>
+└─ board/<span class="a">sched task.rs</span>    <span class="c"># SchedTaskSpec + prio mappers</span>
    board/runtime.rs <span class="c"># run_sched_tasks, spawn/yield</span>
 <span class="d">nros-node/</span>
 └─ executor/
@@ -486,9 +486,9 @@ spin_period_us = <span class="lit">10000</span>
       <div class="props mt">
         <div><div class="n">portable</div><div class="t">One model, 3 languages, 5 RTOSes</div><div class="d">Rust / C / C++ nodes; POSIX · Zephyr · FreeRTOS · NuttX · ThreadX + bare-metal RTIC.</div></div>
         <div><div class="n">cheap</div><div class="t">Policy in user space</div><div class="d">One readiness bit per callback; a few OS priority slots total — never one slot per callback.</div></div>
-        <div><div class="n">real-time</div><div class="t">Kernel does preemption</div><div class="d">Split hot paths across tiers → the RTOS fixed-priority scheduler enforces deadlines.</div></div>
+        <div><div class="n">real-time</div><div class="t">Kernel does preemption</div><div class="d">Split hot paths across sched tasks → the RTOS fixed-priority scheduler enforces deadlines.</div></div>
       </div>
-      <p class="sub mt">Author names a group → <code>system.toml</code> maps it to a tier → codegen emits one RTOS task per tier over one shared session, gated by <code>active_groups</code>. Proven native (C/C++/Rust, ctrl≈5.5× telem); boots on QEMU mps2-an385.</p>
+      <p class="sub mt">Author names a group → <code>system.toml</code> maps it to a sched task → codegen emits one RTOS task per sched task over one shared session, gated by <code>active_groups</code>. Proven native (C/C++/Rust, ctrl≈5.5× telem); boots on QEMU mps2-an385.</p>
       <div class="note"><span class="tag">sources</span><div>RFC-0015 rt-orchestration · RFC-0002 rt-execution-model · RFC-0047 sched-context · examples/workspaces/ws-realtime-{rust,cpp,c}</div></div>
     </div>
   </section>

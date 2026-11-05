@@ -5684,7 +5684,7 @@ fn narrowed_generated_entries(
     narrowed
 }
 
-/// Every `execution.tasks.<tier>[.<scope>].<dim>` leaf a model declares.
+/// Every `execution.tasks.<sched_task>[.<scope>].<dim>` leaf a model declares.
 ///
 /// Issue 0380 — the committed SystemModel is the SSoT for scheduling dims the
 /// resolver's inputs cannot express (`zephyr.deadline_us`,
@@ -5709,17 +5709,19 @@ fn execution_sched_task_dims(yaml: &str) -> BTreeSet<String> {
     };
     // `execution.tasks` since model schema 5 (rlm v0.3.11); a model committed
     // before it spells the table `execution.tiers`.
-    let Some(tiers) = doc
+    let Some(sched_tasks) = doc
         .get("execution")
         .and_then(|e| e.get("tasks").or_else(|| e.get("tiers")))
     else {
         return out;
     };
-    let serde_yaml_ng::Value::Mapping(tiers) = tiers else {
+    let serde_yaml_ng::Value::Mapping(sched_tasks) = sched_tasks else {
         return out;
     };
-    for (tier, body) in tiers {
-        let Some(tier) = tier.as_str() else { continue };
+    for (sched_task, body) in sched_tasks {
+        let Some(sched_task) = sched_task.as_str() else {
+            continue;
+        };
         let serde_yaml_ng::Value::Mapping(body) = body else {
             continue;
         };
@@ -5733,12 +5735,12 @@ fn execution_sched_task_dims(yaml: &str) -> BTreeSet<String> {
                 serde_yaml_ng::Value::Mapping(scope) => {
                     for (dim, _) in scope {
                         if let Some(dim) = dim.as_str() {
-                            out.insert(format!("{tier}.{k}.{dim}"));
+                            out.insert(format!("{sched_task}.{k}.{dim}"));
                         }
                     }
                 }
                 _ => {
-                    out.insert(format!("{tier}.{k}"));
+                    out.insert(format!("{sched_task}.{k}"));
                 }
             }
         }

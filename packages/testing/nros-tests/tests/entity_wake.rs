@@ -201,7 +201,7 @@ fn a_shared_session_member_is_not_woken_by_another_members_arrivals(zenohd_uniqu
     let locator = zenohd_unique.locator();
     let domain = u32::from(nros_tests::unique_ros_domain_id());
 
-    // `owner` opens the session; `other` joins it (the tier-task shape), so
+    // `owner` opens the session; `other` joins it (the sched-task shape), so
     // both are members of the session's wake fan-out.
     let mut owner = open(&locator, "entity_wake_owner", domain);
     let onode = owner
@@ -1034,7 +1034,7 @@ fn an_idle_zenoh_entry_wakes_only_for_its_deadlines(zenohd_unique: ZenohRouter) 
 ///
 /// A framework whose tier is a scheduled item, not a parked thread (a PX4
 /// work item), never waits on the executor's wake object, so an arrival that
-/// only signals it would be dispatched at the tier's next deadline. The hook
+/// only signals it would be dispatched at the sched task's next deadline. The hook
 /// `set_wake_hook` installs is called after every signal of that object. Here
 /// a zenoh arrival must reach it with nobody spinning the executor, and a
 /// cleared hook must not be called.
@@ -1071,7 +1071,7 @@ fn a_zenoh_arrival_calls_the_wake_hook_without_a_spin(zenohd_unique: ZenohRouter
     while HOOKS.load(Ordering::SeqCst) == 0 {
         assert!(
             start.elapsed() < ARRIVAL_BUDGET,
-            "no wake-hook call within {ARRIVAL_BUDGET:?} of publishing: a PX4 tier would hear \
+            "no wake-hook call within {ARRIVAL_BUDGET:?} of publishing: a PX4 sched task would hear \
              this arrival only at its next deadline"
         );
         publisher.publish_serialized(PAYLOAD).expect("publish");

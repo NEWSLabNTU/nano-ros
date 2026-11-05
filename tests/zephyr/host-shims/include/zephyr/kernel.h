@@ -145,9 +145,9 @@ static inline int k_mutex_init(struct k_mutex* mutex) {
 #define K_THREAD_STACK_ARRAY_DEFINE(sym, nmemb, size) \
     static char __attribute__((aligned(4096))) sym[nmemb][size]
 
-/* Issue 1232 — the tier spawn paths name the stack TYPE and the two
+/* Issue 1232 — the sched task spawn paths name the stack TYPE and the two
  * architecture constants a caller-supplied stack is checked against. Values
- * are the native_sim ones (no reserved area); the tier pool is stubbed below. */
+ * are the native_sim ones (no reserved area); the sched task pool is stubbed below. */
 typedef char k_thread_stack_t;
 #define ARCH_STACK_PTR_ALIGN 16
 #define K_THREAD_STACK_RESERVED 0

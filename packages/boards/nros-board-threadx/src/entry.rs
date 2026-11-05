@@ -166,7 +166,7 @@ unsafe extern "C" {
     /// `= priority` (no threshold); `>= 0` is the native non_preempt_scope
     /// value. Returns 0 on success, -1 on failure.
     /// `time_slice_us` (#0266): 0 ⇒ `TX_NO_TIME_SLICE` (FIFO-until-block, the
-    /// ThreadX default); nonzero requests round-robin among same-priority tiers
+    /// ThreadX default); nonzero requests round-robin among same-priority sched tasks
     /// (converted µs→ticks in the C shim where the tick constant lives).
     fn nros_threadx_create_task(
         name: *const u8,
@@ -178,11 +178,11 @@ unsafe extern "C" {
         time_slice_us: core::ffi::c_ulong,
     ) -> core::ffi::c_int;
 
-    /// Re-prioritize the CALLING thread to a tier's sched values (W5). The
-    /// boot tier runs on the app thread, created at the fixed
-    /// `nros_board_app_priority()` — without this, a boot tier whose declared
-    /// priority is numerically above a spawned tier's silently inverts the
-    /// tiers (the W5 e2e caught exactly that: app@4 starved `high`@5).
+    /// Re-prioritize the CALLING thread to a sched task's sched values (W5). The
+    /// boot sched task runs on the app thread, created at the fixed
+    /// `nros_board_app_priority()` — without this, a boot sched task whose declared
+    /// priority is numerically above a spawned sched task's silently inverts the
+    /// sched tasks (the W5 e2e caught exactly that: app@4 starved `high`@5).
     /// `preempt_threshold < 0` ⇒ `= priority`. Returns 0 on success.
     fn nros_threadx_set_current_priority(
         priority: core::ffi::c_uint,
@@ -202,7 +202,7 @@ unsafe extern "C" {
     fn nros_threadx_apply_current_time_slice(time_slice_us: core::ffi::c_ulong)
     -> core::ffi::c_int;
 
-    /// Allocate `bytes` from the shared ThreadX byte pool (W4 — per-tier heap
+    /// Allocate `bytes` from the shared ThreadX byte pool (W4 — per-sched-task heap
     /// context). Mirrors the FreeRTOS `nros_platform_alloc`. NULL on failure.
     fn nros_threadx_alloc(bytes: core::ffi::c_ulong) -> *mut c_void;
 
@@ -217,7 +217,7 @@ unsafe extern "C" {
 // ---- ThreadX byte-pool peak reporter (issue 1145) ----
 //
 // The byte pool is the WHOLE allocator on this port: it hands out the boot app
-// thread's stack, every tier stack, zenoh-pico's buffers and nano-ros's own
+// thread's stack, every sched task stack, zenoh-pico's buffers and nano-ros's own
 // allocations, plus NetX's packet pool and stacks on the boards that have one.
 // `BYTE_POOL_BASE_SIZE` in `threadx_hooks.c` is 4 MiB and nothing derived it —
 // the SUBTRAHEND paired against the `.bss` executor backing is carefully
@@ -337,7 +337,7 @@ where
     // ThreadX refuses to delete a thread that is not terminated, and a thread
     // terminates by RETURNING from its entry. Returning also leaves the stack
     // allocated, which is true of every thread on this port — nothing here frees
-    // a tier stack either.
+    // a sched task stack either.
 }
 
 /// Spawn the byte-pool peak reporter. Failure is reported and never fatal: a
@@ -360,29 +360,29 @@ fn start_pool_peak_reporter<B: BoardPrint>() {
 }
 
 // ============================================================================
-// Phase 297 W4 (RFC-0053) — ThreadX multi-tier `run_sched_tasks`.
+// Phase 297 W4 (RFC-0053) — ThreadX multi-sched-task `run_sched_tasks`.
 //
-// phase-509 P10 (RFC-0108 "As built in P9b"): each tier is one LEVEL over the
+// phase-509 P10 (RFC-0108 "As built in P9b"): each sched task is one LEVEL over the
 // core's ONE executor (`nros::levels::LevelCore`), locked by the port's
-// recursive TX_INHERIT mutex with `tx_thread_identify` as the thread id. The boot tier (`tiers[0]` — the numerically-largest =
+// recursive TX_INHERIT mutex with `tx_thread_identify` as the thread id. The boot sched task (`sched_tasks[0]` — the numerically-largest =
 // LOWEST ThreadX priority; the sort does not invert per RTOS direction,
 // issue 0251) runs on the
-// `tx_application_define` app thread; each remaining tier is spawned via the
+// `tx_application_define` app thread; each remaining sched task is spawned via the
 // W2 `nros_threadx_create_task` shim (byte-pool stack). Spawns are CHAINED —
-// a tier spawns the next only after its own `setup` returns — so no two
-// tiers' entity declares race the shared zenoh-pico session's interest
-// handshake (issue #144). Each spawned tier calls `apply_sched_task_sched_policy`
+// a sched task spawns the next only after its own `setup` returns — so no two
+// sched tasks' entity declares race the shared zenoh-pico session's interest
+// handshake (issue #144). Each spawned sched task calls `apply_sched_task_sched_policy`
 // (the common backend, W1) on its own executor.
 // ============================================================================
 
-/// Boot context for the multi-tier path, written into `CTX_STORAGE` by
+/// Boot context for the multi-sched-task path, written into `CTX_STORAGE` by
 /// [`run_sched_tasks_entry`] and read once on the app thread.
 struct SchedTasksContext<C, F> {
     config: C,
     boot_config: Option<&'static BakedBootConfig>,
-    tiers: &'static [SchedTaskSpec<'static>],
-    /// issue 1571 — the spawned tiers' executor backing, the entry's `.bss`
-    /// `SchedTaskExecutorBacking`; moved down the spawn chain one slot per tier.
+    sched_tasks: &'static [SchedTaskSpec<'static>],
+    /// issue 1571 — the spawned sched tasks' executor backing, the entry's `.bss`
+    /// `SchedTaskExecutorBacking`; moved down the spawn chain one slot per sched task.
     sched_task_backing: &'static mut [::nros::SchedTaskExecutorBackingSlot],
     setup: F,
 }
@@ -391,7 +391,7 @@ struct SchedTasksContext<C, F> {
 /// Allocated with [`nros_threadx_alloc`], read + freed by [`level_task_entry`].
 struct LevelTaskCtx<F> {
     core: ::nros::levels::LevelCore,
-    tier: SchedTaskSpec<'static>,
+    sched_task: SchedTaskSpec<'static>,
     /// Levels still to spawn AFTER this one — the chained-spawn tail (#144).
     rest: &'static [SchedTaskSpec<'static>],
     /// The whole table, which the levels are counted over.
@@ -431,37 +431,37 @@ unsafe impl Sync for ExecMutex {}
 static EXEC_MUTEX: ExecMutex = ExecMutex(core::cell::UnsafeCell::new([0; 32]));
 
 /// Lower a `SchedTaskSpec` onto the executor runtime: the active-groups filter + the
-/// common-backend `apply_sched_task_sched_policy` (W1). Shared by the boot tier and
-/// every spawned tier so the lowering never diverges.
+/// common-backend `apply_sched_task_sched_policy` (W1). Shared by the boot sched task and
+/// every spawned sched task so the lowering never diverges.
 fn apply_sched_task(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
-    tier: &SchedTaskSpec<'static>,
+    sched_task: &SchedTaskSpec<'static>,
 ) {
     // issue 1172 — `Err` means the filter did not fit, and
     // `set_active_groups` has already cleared it and left filtering ON,
-    // so this tier registers NOTHING rather than registering on a
-    // quietly narrower set. Nothing here can return an error (the tier
+    // so this sched task registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the sched task
     // runner is `-> ()`), so the fail-closed state IS the report.
-    let _ = crt.executor_mut().set_active_groups(tier.groups);
-    // phase-436 W7 — one site, shared by the boot tier and every spawned tier,
+    let _ = crt.executor_mut().set_active_groups(sched_task.groups);
+    // phase-436 W7 — one site, shared by the boot sched task and every spawned sched task,
     // so the park never diverges from the rest of the lowering.
     install_park(crt);
     crt.apply_sched_task_sched_policy(
-        tier.class,
-        tier.period_us,
-        tier.budget_us,
-        tier.deadline_us,
-        tier.deadline_policy,
+        sched_task.class,
+        sched_task.period_us,
+        sched_task.budget_us,
+        sched_task.deadline_us,
+        sched_task.deadline_policy,
     );
 }
 
-/// phase-296 W5.13 — the placement dim: self-pin the CALLING tier thread to its
-/// declared `core` via `tx_thread_smp_core_exclude` (no-op when the tier
+/// phase-296 W5.13 — the placement dim: self-pin the CALLING sched task thread to its
+/// declared `core` via `tx_thread_smp_core_exclude` (no-op when the sched task
 /// declares no core). Never silently drops: on a non-SMP ThreadX build the
 /// shim returns 0 and the loud fallback note fires. Called from BOTH the boot
-/// and every spawned tier so the placement lowering never diverges.
-fn apply_sched_task_core_exclude<B: BoardPrint>(tier: &SchedTaskSpec<'static>) {
-    let Some(core) = tier.core else {
+/// and every spawned sched task so the placement lowering never diverges.
+fn apply_sched_task_core_exclude<B: BoardPrint>(sched_task: &SchedTaskSpec<'static>) {
+    let Some(core) = sched_task.core else {
         return;
     };
     let core_plus1 = core.saturating_add(1) as core::ffi::c_uint;
@@ -470,15 +470,15 @@ fn apply_sched_task_core_exclude<B: BoardPrint>(tier: &SchedTaskSpec<'static>) {
     if accepted == 1 {
         // Literal mirrors `nros_tests::output::THREADX_CORE_PIN_MARKER`.
         B::println(format_args!(
-            "nros: core pin tier=`{}` cpu={}",
-            tier.name, core
+            "nros: core pin sched_task=`{}` cpu={}",
+            sched_task.name, core
         ));
     } else {
         // Literal mirrors `nros_tests::output::THREADX_CORE_PIN_FALLBACK_MARKER`.
         B::println(format_args!(
-            "nros: core pin FAILED tier=`{}` cpu={} — ThreadX build lacks TX_THREAD_SMP, \
-             tier runs unpinned",
-            tier.name, core
+            "nros: core pin FAILED sched_task=`{}` cpu={} — ThreadX build lacks TX_THREAD_SMP, \
+             sched task runs unpinned",
+            sched_task.name, core
         ));
     }
 }
@@ -499,13 +499,16 @@ where
     F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
     E: core::fmt::Debug,
 {
-    let Some((tier, rest)) = remaining.split_first() else {
+    let Some((sched_task, rest)) = remaining.split_first() else {
         return Ok(());
     };
     let size = core::mem::size_of::<LevelTaskCtx<F>>();
     let ptr = unsafe { nros_threadx_alloc(size as core::ffi::c_ulong) as *mut LevelTaskCtx<F> };
     if ptr.is_null() {
-        B::println(format_args!("nros: level `{}` ctx alloc failed", tier.name));
+        B::println(format_args!(
+            "nros: level `{}` ctx alloc failed",
+            sched_task.name
+        ));
         return Err(());
     }
     unsafe {
@@ -513,7 +516,7 @@ where
             ptr,
             LevelTaskCtx::<F> {
                 core,
-                tier: *tier,
+                sched_task: *sched_task,
                 rest,
                 all,
                 setup,
@@ -521,14 +524,14 @@ where
         );
     }
     // Raw per-RTOS priority; `preempt_threshold` < 0 sentinel ⇒ = priority.
-    let prio = tier.priority.clamp(0, u32::MAX as i64) as core::ffi::c_uint;
-    let pt: core::ffi::c_int = match tier.preempt_threshold {
+    let prio = sched_task.priority.clamp(0, u32::MAX as i64) as core::ffi::c_uint;
+    let pt: core::ffi::c_int = match sched_task.preempt_threshold {
         Some(v) => v.clamp(0, u32::MAX as i64) as core::ffi::c_int,
         None => -1,
     };
-    let stack_bytes = tier.stack_bytes as core::ffi::c_ulong;
+    let stack_bytes = sched_task.stack_bytes as core::ffi::c_ulong;
     // #0266 — round-robin time slice (0 ⇒ TX_NO_TIME_SLICE = FIFO).
-    let time_slice_us = tier.time_slice_us.unwrap_or(0) as core::ffi::c_ulong;
+    let time_slice_us = sched_task.time_slice_us.unwrap_or(0) as core::ffi::c_ulong;
     let rc = unsafe {
         nros_threadx_create_task(
             c"nros_level".as_ptr().cast(),
@@ -541,24 +544,27 @@ where
         )
     };
     if rc != 0 {
-        B::println(format_args!("nros: failed to spawn level `{}`", tier.name));
+        B::println(format_args!(
+            "nros: failed to spawn level `{}`",
+            sched_task.name
+        ));
         unsafe { nros_threadx_free(ptr as *mut c_void) };
         return Err(());
     }
-    if tier.preempt_threshold.is_some() {
+    if sched_task.preempt_threshold.is_some() {
         // phase-296 W5.10 — non_preempt_scope trace marker. Literal mirrors
         // `nros_tests::output::THREADX_PREEMPT_MARKER`.
         B::println(format_args!(
-            "nros: preempt threshold set tier=`{}` {}",
-            tier.name, pt
+            "nros: preempt threshold set sched_task=`{}` {}",
+            sched_task.name, pt
         ));
     }
-    if let Some(ts) = tier.time_slice_us {
+    if let Some(ts) = sched_task.time_slice_us {
         // phase-296 #0266 — literal mirrors
         // `nros_tests::output::THREADX_TIME_SLICE_MARKER`.
         B::println(format_args!(
-            "nros: time slice set tier=`{}` {}us",
-            tier.name, ts
+            "nros: time slice set sched_task=`{}` {}us",
+            sched_task.name, ts
         ));
     }
     Ok(())
@@ -586,14 +592,17 @@ where
     let arg = input as *mut LevelTaskCtx<F>;
     let LevelTaskCtx {
         core,
-        tier,
+        sched_task,
         rest,
         all,
         setup,
     } = unsafe { core::ptr::read(arg) };
     unsafe { nros_threadx_free(arg as *mut c_void) };
-    B::println(format_args!("nros: tier `{}` thread up", tier.name));
-    apply_sched_task_core_exclude::<B>(&tier);
+    B::println(format_args!(
+        "nros: sched task `{}` thread up",
+        sched_task.name
+    ));
+    apply_sched_task_core_exclude::<B>(&sched_task);
     // This level's row is the one before `rest` in `all`.
     let level = level_of_suffix(all, &all[all.len().saturating_sub(rest.len() + 1)..]);
     // SAFETY: once, on this level's own thread.
@@ -602,7 +611,7 @@ where
         Err(e) => {
             B::println(format_args!(
                 "nros: level `{}` did not open ({:?}): failing the boot",
-                tier.name, e
+                sched_task.name, e
             ));
             B::exit_failure();
         }
@@ -610,7 +619,7 @@ where
     // SAFETY: the runtime reference lives inside the closure only.
     let rc = unsafe {
         core.with_runtime(|crt| {
-            let _ = crt.executor_mut().set_active_groups(tier.groups);
+            let _ = crt.executor_mut().set_active_groups(sched_task.groups);
             let mut runtime = RuntimeCtx::with_runtime(crt);
             (setup)(&mut runtime)
         })
@@ -618,25 +627,25 @@ where
     if let Err(e) = rc {
         B::println(format_args!(
             "nros: level `{}` setup failed: {:?}: failing the boot",
-            tier.name, e
+            sched_task.name, e
         ));
         B::exit_failure();
     }
     if spawn_next_level::<B, C, F, E>(core, all, rest, setup).is_err() {
         B::println(format_args!(
             "nros: level `{}` could not spawn the next level: failing the boot",
-            tier.name
+            sched_task.name
         ));
         B::exit_failure();
     }
-    let period_ms = (tier.spin_period_us / 1000).max(1);
+    let period_ms = (sched_task.spin_period_us / 1000).max(1);
     B::println(format_args!(
-        "nros: tier `{}` setup complete — spinning at {} ms",
-        tier.name, period_ms
+        "nros: sched task `{}` setup complete — spinning at {} ms",
+        sched_task.name, period_ms
     ));
     let period = core::time::Duration::from_millis(period_ms);
     // issue 0636 option 3 — every iteration reaches a scheduling point.
-    let mut gap = ::nros_platform::SchedTaskSpinGap::new(tier.spin_period_us);
+    let mut gap = ::nros_platform::SchedTaskSpinGap::new(sched_task.spin_period_us);
     loop {
         let iter = gap.mark();
         // SAFETY: `worker` is this thread's, from `open_level`.
@@ -645,9 +654,9 @@ where
     }
 }
 
-/// App-thread body for the multi-tier path (mirrors [`run_app_thread`] but per
-/// tier). Boots the one session, runs `tiers[0]` (boot tier) setup, CHAIN-spawns
-/// `tiers[1..]`, then spins the boot tier forever. Diverges.
+/// App-thread body for the multi-sched-task path (mirrors [`run_app_thread`] but per
+/// sched task). Boots the one session, runs `sched_tasks[0]` (boot sched task) setup, CHAIN-spawns
+/// `sched_tasks[1..]`, then spins the boot sched task forever. Diverges.
 ///
 /// # Safety
 /// `arg` must point at a valid `SchedTasksContext<C, F>` in `CTX_STORAGE` from
@@ -662,14 +671,16 @@ where
     let ctx = unsafe { &mut *(arg as *mut SchedTasksContext<C, F>) };
     let config = unsafe { core::ptr::read(&ctx.config) };
     let boot_config = ctx.boot_config;
-    let tiers = ctx.tiers;
+    let sched_tasks = ctx.sched_tasks;
     let spin_ms = config.entry_spin_ms();
     // issue 1571 — MOVED out, so exactly one owner of the slots ever exists.
     let sched_task_backing = core::mem::take(&mut ctx.sched_task_backing);
     let setup = ctx.setup;
 
-    if tiers.is_empty() {
-        B::println(format_args!("nros: run_sched_tasks called with no tiers"));
+    if sched_tasks.is_empty() {
+        B::println(format_args!(
+            "nros: run_sched_tasks called with no sched tasks"
+        ));
         B::exit_failure();
     }
 
@@ -710,17 +721,17 @@ where
 
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
 
-    // Boot tier = tiers[0]. NOTE `resolve_sched_tasks` sorts descending by RAW
+    // Boot sched task = sched_tasks[0]. NOTE `resolve_sched_tasks` sorts descending by RAW
     // priority number without per-RTOS inversion, so on ThreadX (lower =
-    // higher) tiers[0] is the numerically-largest = LOWEST-priority tier.
+    // higher) sched_tasks[0] is the numerically-largest = LOWEST-priority sched task.
     // Its declares still run FIRST, before any spawn (#144), so no
     // concurrent declare can race the handshake.
-    let boot_sched_task = &tiers[0];
-    // W5 — adopt the boot tier's ThreadX priority: the app thread was
+    let boot_sched_task = &sched_tasks[0];
+    // W5 — adopt the boot sched task's ThreadX priority: the app thread was
     // created at the fixed `nros_board_app_priority()`; keeping that would
-    // let the boot tier outrank every spawned tier regardless of the
+    // let the boot sched task outrank every spawned sched task regardless of the
     // declared numbers (the e2e's app@4 starved the spawned high@5 to zero
-    // publishes). Non-fatal on error: the tiers still run, mis-ranked.
+    // publishes). Non-fatal on error: the sched tasks still run, mis-ranked.
     let boot_prio = boot_sched_task.priority.clamp(0, u32::MAX as i64) as core::ffi::c_uint;
     let boot_pt: core::ffi::c_int = match boot_sched_task.preempt_threshold {
         Some(v) => v.clamp(0, u32::MAX as i64) as core::ffi::c_int,
@@ -728,7 +739,7 @@ where
     };
     if unsafe { nros_threadx_set_current_priority(boot_prio, boot_pt) } != 0 {
         B::println(format_args!(
-            "nros: boot tier `{}` priority change failed; tiers may be mis-ranked",
+            "nros: boot sched task `{}` priority change failed; sched tasks may be mis-ranked",
             boot_sched_task.name
         ));
     } else if boot_sched_task.preempt_threshold.is_some() {
@@ -737,7 +748,7 @@ where
         // the W5.5 marker discipline). Literal mirrors
         // `nros_tests::output::THREADX_PREEMPT_MARKER`.
         B::println(format_args!(
-            "nros: preempt threshold set tier=`{}` {}",
+            "nros: preempt threshold set sched_task=`{}` {}",
             boot_sched_task.name, boot_pt
         ));
     }
@@ -746,7 +757,7 @@ where
     if let Some(ts) = boot_sched_task.time_slice_us {
         if unsafe { nros_threadx_apply_current_time_slice(ts as core::ffi::c_ulong) } == 1 {
             B::println(format_args!(
-                "nros: time slice set tier=`{}` {}us",
+                "nros: time slice set sched_task=`{}` {}us",
                 boot_sched_task.name, ts
             ));
         }
@@ -754,16 +765,16 @@ where
     // phase-509 P10 -- the core's level runtime: the port's recursive
     // TX_INHERIT mutex as the executor's lock, before any second thread can
     // reach it (one level needs none).
-    if tiers.len() > ::nros::MAX_LEVELS {
+    if sched_tasks.len() > ::nros::MAX_LEVELS {
         B::println(format_args!(
-            "nros: {} tiers is past the {} levels a core holds",
-            tiers.len(),
+            "nros: {} sched tasks is past the {} levels a core holds",
+            sched_tasks.len(),
             ::nros::MAX_LEVELS
         ));
         B::exit_failure();
     }
     let mutex = EXEC_MUTEX.0.get() as *mut c_void;
-    if tiers.len() > 1
+    if sched_tasks.len() > 1
         && (unsafe { nros_threadx_exec_lock_size() } > core::mem::size_of::<[u64; 32]>()
             || unsafe { nros_platform_mutex_rec_init(mutex) } != 0)
     {
@@ -772,14 +783,14 @@ where
         ));
         B::exit_failure();
     }
-    let n_levels = u8::try_from(tiers.len()).unwrap_or(u8::MAX);
+    let n_levels = u8::try_from(sched_tasks.len()).unwrap_or(u8::MAX);
     // SAFETY: no second thread exists yet; the mutex is a static the kernel
     // initialised above; `tx_thread_identify` names the calling thread.
     let core = match unsafe {
         ::nros::levels::LevelCore::new(
             crt,
             n_levels,
-            level_of_suffix(tiers, tiers),
+            level_of_suffix(sched_tasks, sched_tasks),
             mutex,
             nros_platform_mutex_rec_lock,
             nros_platform_mutex_rec_unlock,
@@ -803,23 +814,23 @@ where
         })
     };
     if let Err(e) = rc {
-        B::println(format_args!("Application error (boot tier): {:?}", e));
+        B::println(format_args!("Application error (boot sched task): {:?}", e));
         B::exit_failure();
     }
     // The boot level's executor backing is the session's own; one executor
-    // serves every level, so the spawned tiers' slots go unused.
+    // serves every level, so the spawned sched tasks' slots go unused.
     let _ = sched_task_backing;
 
-    if spawn_next_level::<B, C, F, E>(core, tiers, &tiers[1..], setup).is_err() {
+    if spawn_next_level::<B, C, F, E>(core, sched_tasks, &sched_tasks[1..], setup).is_err() {
         B::exit_failure();
     }
 
     B::println(format_args!(
         "nros: multi-level run — {} level(s) over one executor",
-        tiers.len()
+        sched_tasks.len()
     ));
     B::println(format_args!(
-        "Multi-tier setup complete — entering boot-tier spin loop."
+        "Multi-sched-task setup complete — entering boot-sched-task spin loop."
     ));
     let period = core::time::Duration::from_millis((boot_sched_task.spin_period_us / 1000).max(1));
     let mut gap = ::nros_platform::SchedTaskSpinGap::new(boot_sched_task.spin_period_us);
@@ -876,20 +887,20 @@ impl SpinDeadline {
     }
 }
 
-/// Phase 297 W4 — multi-tier entry for the ThreadX family. The `nros::main!`
-/// macro emits `<Board>::run_sched_tasks(&overlay, TIERS, SCHED_TASK_BACKING, setup)` whenever a system
-/// declares more than the synthesized single `default` tier; the per-board ZST
+/// Phase 297 W4 — multi-sched-task entry for the ThreadX family. The `nros::main!`
+/// macro emits `<Board>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)` whenever a system
+/// declares more than the synthesized single `default` sched task; the per-board ZST
 /// routes here. Mirrors [`run_entry`] (build the boot context into
 /// `CTX_STORAGE`, push the network config + app callback through the C glue,
-/// `tx_kernel_enter()`) but runs one `Executor` per tier over one shared
+/// `tx_kernel_enter()`) but runs one `Executor` per sched task over one shared
 /// session (see `app_task_entry_sched_tasks`).
 ///
-/// `tiers` is the macro-baked `&'static [SchedTaskSpec]`; `setup` is the
-/// register-only closure (invoked once per tier — `Fn + Copy`).
+/// `sched_tasks` is the macro-baked `&'static [SchedTaskSpec]`; `setup` is the
+/// register-only closure (invoked once per sched task — `Fn + Copy`).
 pub fn run_sched_tasks_entry<B, C, F, E>(
     config: C,
     boot_config: Option<&'static BakedBootConfig>,
-    tiers: &'static [SchedTaskSpec<'static>],
+    sched_tasks: &'static [SchedTaskSpec<'static>],
     sched_task_backing: &'static mut [::nros::SchedTaskExecutorBackingSlot],
     setup: F,
 ) -> core::result::Result<(), E>
@@ -915,13 +926,15 @@ where
     ::nros_platform_cffi::log::init_default();
     B::println(format_args!(""));
     B::println(format_args!("========================================"));
-    B::println(format_args!("  nros ThreadX Platform (multi-tier)"));
+    B::println(format_args!("  nros ThreadX Platform (multi-sched-task)"));
     B::println(format_args!("========================================"));
     B::init_hardware();
 
     // issue 1571 — the one refusal, before the kernel starts: every spawned
-    // tier needs a slot of the entry's `.bss` backing.
-    if let Err(short) = ::nros::check_sched_task_executor_backing(tiers.len(), sched_task_backing) {
+    // sched task needs a slot of the entry's `.bss` backing.
+    if let Err(short) =
+        ::nros::check_sched_task_executor_backing(sched_tasks.len(), sched_task_backing)
+    {
         B::println(format_args!("nros: {}", short));
         B::exit_failure();
     }
@@ -950,7 +963,7 @@ where
             SchedTasksContext {
                 config,
                 boot_config,
-                tiers,
+                sched_tasks,
                 sched_task_backing,
                 setup,
             },
@@ -982,7 +995,7 @@ where
             cfg.mac().as_ptr(),
             iface_ptr,
         );
-        // The multi-tier app callback runs `app_task_entry_sched_tasks` (which
+        // The multi-sched-task app callback runs `app_task_entry_sched_tasks` (which
         // diverges); the `void(*)(void*)` app-callback shape is preserved.
         nros_threadx_set_app_callback(
             app_task_entry_sched_tasks_trampoline::<B, C, F, E>,
@@ -1212,7 +1225,7 @@ where
     B::println(format_args!("nros entry ready"));
 
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
-    // phase-436 — the single-executor entry parks like the tier runners do.
+    // phase-436 — the single-executor entry parks like the sched task runners do.
     install_park(&mut crt);
     let mut runtime = RuntimeCtx::with_runtime(&mut crt);
 

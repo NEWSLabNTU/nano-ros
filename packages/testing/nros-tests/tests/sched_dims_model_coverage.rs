@@ -13,7 +13,7 @@
 //!
 //! Post phase-330 (RFC-0063) the SystemModel is a BUILD ARTIFACT — never
 //! committed — so the dims are authored in `system.toml`'s
-//! `[tasks.<tier>.<rtos>]` blocks (and lower into the model from there). THAT file
+//! `[tasks.<sched_task>.<rtos>]` blocks (and lower into the model from there). THAT file
 //! is the SSoT this gate reads. A stripped dim now fails HERE, in a tier-1 host
 //! test that runs before any QEMU boot, instead of silently no-op'ing downstream.
 //!
@@ -38,8 +38,8 @@ use std::{collections::BTreeMap, path::PathBuf};
 fn workspace_system_toml(lang: Lang, dim: SchedDim) -> PathBuf {
     let bringup = match dim {
         SchedDim::CorePinPlacement => "src/smp_bringup/system.toml",
-        // issue 1537 — the derived-tier image has its own bringup, because
-        // what it must NOT declare (tiers) is what `demo_bringup` does declare.
+        // issue 1537 — the derived-sched-task image has its own bringup, because
+        // what it must NOT declare (sched tasks) is what `demo_bringup` does declare.
         SchedDim::DerivedSchedTaskBelowTransport => "src/derived_bringup/system.toml",
         _ => "src/demo_bringup/system.toml",
     };
@@ -58,7 +58,7 @@ fn workspace_system_toml(lang: Lang, dim: SchedDim) -> PathBuf {
         .join(bringup)
 }
 
-/// The `[tasks.<tier>.<rtos>]` sub-table key a platform's kernel dims live under.
+/// The `[tasks.<sched_task>.<rtos>]` sub-table key a platform's kernel dims live under.
 fn rtos_key(p: PlatformId) -> &'static str {
     match p {
         PlatformId::ZephyrNativeSim => "zephyr",
@@ -124,8 +124,8 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
     }
 }
 
-/// issue 1537 — the inverse of a declared dim: the derived-tier cell's bringup
-/// must AUTHOR no tiers (else `nros::main!` reads them and never derives, and
+/// issue 1537 — the inverse of a declared dim: the derived-sched-task cell's bringup
+/// must AUTHOR no sched tasks (else `nros::main!` reads them and never derives, and
 /// the cell's runtime assert passes over a code path it never exercised), must
 /// state the rates the derivation ranks by (the contract beside the launch
 /// file), and its image must lower the band (`[image.<id>.knobs.zenoh] read_priority`). Each problem is a string naming what is wrong.
@@ -138,7 +138,7 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
             system_toml.display()
         ));
     }
-    // A node with no callback group gets no derived tier, and a table where
+    // A node with no callback group gets no derived sched task, and a table where
     // every node is groupless derives NOTHING — the image boots
     // single-executor and never calls the boot report. Measured: that is what
     // this bringup's first version built.
@@ -162,7 +162,7 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
         if !grouped {
             out.push(format!(
                 "component {:?} names no callback group (`group_tasks`) — it would get no \
-                 derived tier",
+                 derived sched task",
                 c.get("name").and_then(|n| n.as_str()).unwrap_or("?")
             ));
         }
@@ -202,23 +202,23 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
 }
 
 /// Is `key` declared for `rtos` anywhere in the parsed system.toml — either under
-/// a `[tasks.<tier>.<rtos>]` sub-table (kernel-scoped) or directly on a
-/// `[tasks.<tier>]` table (generic, applies to every platform)?
+/// a `[tasks.<sched_task>.<rtos>]` sub-table (kernel-scoped) or directly on a
+/// `[tasks.<sched_task>]` table (generic, applies to every platform)?
 fn key_declared(doc: &toml::Value, rtos: &str, key: &str) -> bool {
     // Phase 536 W3: `[tasks.*]`; the pre-rename `[tiers.*]` is refused since
     // rlm v0.3.11, so no tracked file can declare a dim under it.
-    let Some(tiers) = doc.get("tasks").and_then(|t| t.as_table()) else {
+    let Some(sched_tasks) = doc.get("tasks").and_then(|t| t.as_table()) else {
         return false;
     };
-    for (_sched_task_name, tier) in tiers {
-        let Some(sched_task_tbl) = tier.as_table() else {
+    for (_sched_task_name, sched_task) in sched_tasks {
+        let Some(sched_task_tbl) = sched_task.as_table() else {
             continue;
         };
-        // Generic dim on [tasks.<tier>] — applies to all platforms.
+        // Generic dim on [tasks.<sched task>] — applies to all platforms.
         if sched_task_tbl.get(key).is_some() {
             return true;
         }
-        // Kernel-scoped dim on [tasks.<tier>.<rtos>].
+        // Kernel-scoped dim on [tasks.<sched task>.<rtos>].
         if sched_task_tbl
             .get(rtos)
             .and_then(|r| r.as_table())

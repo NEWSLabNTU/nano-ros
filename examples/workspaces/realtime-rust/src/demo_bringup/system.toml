@@ -3,7 +3,7 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
-# Phase 273 W2 (RFC-0047): the group→tier binding is [[component]].group_tasks,
+# Phase 273 W2 (RFC-0047): the group→sched task binding is [[component]].group_tasks,
 # the one source both the CLI resolver (collect_callback_groups) and the
 # nros::main!() proc-macro read. The package-manifest `callback_groups` form it
 # replaced is retired: a node Cargo.toml still carrying it is refused at parse.
@@ -19,7 +19,7 @@ class = "telem_pkg::Telem"
 name = "telem_node"
 group_tasks = { telem = "low" }
 
-# Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
+# Two priority sched tasks (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).
 # phase-330 W1 (RFC-0063) — THE DIMS LIVE HERE NOW.
 #
@@ -58,10 +58,10 @@ core = 0
 # 5 outranked the transport, undeclared. Resolve for any image:
 #   python3 scripts/check-sched-task-priority-plan-image.py <build>/zephyr/.config
 priority = 9
-# issue 0655 — the zephyr `core` lives on THIS tier, not on `low`, because
+# issue 0655 — the zephyr `core` lives on THIS sched task, not on `low`, because
 # `high` is SPAWNED. Zephyr accepts a cpu mask only on a thread that has not
-# started, so the board pins a spawned tier in its `k_thread_create` ->
-# `k_thread_start` window. `low` is the BOOT tier: the kernel started it before
+# started, so the board pins a spawned sched task in its `k_thread_create` ->
+# `k_thread_start` window. `low` is the BOOT sched task: the kernel started it before
 # nros ran, it has no such window, and a `core` declared there can only ever
 # produce the loud fallback. Declared here, the dim is actually honored.
 core = 0
@@ -71,12 +71,12 @@ deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority). `[tasks.*.nuttx]` flips the macro's generic OwnedSpin arm onto
 # `<QemuArmVirt>::run_sched_tasks` (RFC-0015 Model 1), one std::thread (NuttX pthread)
-# per tier over one shared session.
+# per sched task over one shared session.
 [tasks.high.nuttx]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
-# reserved transport band. A tier that outranks the link cannot be drained
-# or refilled by it (issue 0623, measured again in 0736); a tier that needs
-# the other side must SAY so with `above = "transport"` on the tier.
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
 priority = 99
 # NUTTX-SCOPED sporadic policy (both fields required): engages NuttX
 # SCHED_SPORADIC without flipping other platforms into cooperative gating.
@@ -93,15 +93,15 @@ period = "10000us"
 priority = 15
 # issue 0636 gap 2 — RAW FreeRTOS priority (0..configMAX_PRIORITIES-1; the MPS2
 # board builds with 8, so 0..7). Bigger is more urgent, which is why the BOOT
-# tier on this board is `low` and not `high`: `resolve_sched_tasks` sorts descending
-# by raw number and the boot tier is the least urgent one, so `high` (ctrl,
+# sched task on this board is `low` and not `high`: `resolve_sched_tasks` sorts descending
+# by raw number and the boot sched task is the least urgent one, so `high` (ctrl,
 # 10 ms) is chain-spawned. Mirrors the `realtime-cpp` bringup's freertos
 # numbers so the two language arms are comparable.
 [tasks.high.freertos]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
-# reserved transport band. A tier that outranks the link cannot be drained
-# or refilled by it (issue 0623, measured again in 0736); a tier that needs
-# the other side must SAY so with `above = "transport"` on the tier.
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
 priority = 3
 
 [tasks.low]
@@ -110,29 +110,29 @@ spin_period = "10000us"
 priority = 10
 [tasks.low.zephyr]
 priority = 10
-# issue 0655 — no `core` here on purpose: `low` is the BOOT tier on zephyr and
+# issue 0655 — no `core` here on purpose: `low` is the BOOT sched task on zephyr and
 # Zephyr cannot pin an already-started thread. The declaration moved to
 # `[tasks.high.zephyr]`, which is spawned. (The nuttx/threadx `core` below stay
 # — those boards apply placement through their own mechanisms.)
 [tasks.low.nuttx]
 # RFC-0079 — 99, not 100. 100 is the priority zenoh-pico's read and lease
 # threads INHERIT from the thread that opens the session (app_main's
-# SCHED_PRIORITY_DEFAULT), so a tier at 100 shares a priority with the link it
+# SCHED_PRIORITY_DEFAULT), so a sched task at 100 shares a priority with the link it
 # publishes over — and equal-priority SCHED_FIFO threads round-robin, which is
-# not an ordering. One step below keeps the tier order (high 110 > low 99)
+# not an ordering. One step below keeps the sched task order (high 110 > low 99)
 # and vacates the band. Declared in the port's [board.priority_plan];
 # `check-sched-task-priority-plan` rejects a pin that lands on it.
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
-# reserved transport band. A tier that outranks the link cannot be drained
-# or refilled by it (issue 0623, measured again in 0736); a tier that needs
-# the other side must SAY so with `above = "transport"` on the tier.
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
 priority = 98
 core = 0
 [tasks.low.freertos]
 priority = 2
 # No `core` here: mps2-an385 is uniprocessor, so a declared pin can only
 # produce the loud fallback (RFC-0052). `realtime-cpp` declares one on its
-# `low` tier precisely to exercise that fallback; this arm asserts tier
+# `low` sched task precisely to exercise that fallback; this arm asserts sched task
 # PRIORITY, so it does not need a second copy of that experiment.
 [tasks.low.threadx]
 # RFC-0079 — allocated from the port's `pool.app` [15, 31], strictly LESS
@@ -163,7 +163,7 @@ board = "freertos"
 panic = "own"
 # issue 1581 — the ONLY carrier of this image's locator: the FreeRTOS board reads
 # no `NROS_LOCATOR`, so an image that states none dials the board default
-# `tcp/10.0.2.2:7447` and every tier cell fails `Executor::open` before a tier
+# `tcp/10.0.2.2:7447` and every sched task cell fails `Executor::open` before a sched task
 # runs. Lost when phase-383 W10.a deleted `freertos_realtime_entry`. Port 7891 =
 # `port_of(FreertosMps2, Rust, RealtimeSchedTasks)`, which the test's router binds and
 # the resolver asserts against this line. Gate: `check-image-locator-bake`.
@@ -200,10 +200,10 @@ locator = "tcp/127.0.0.1:9091"
 #
 # This is the image whose BOARD CRATE FEATURES are derived rather than declared.
 # The deleted entry carried
-# `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }` by hand — the only
+# `nros-board-zephyr = { features = ["sched_tasks", "zephyr-edf"] }` by hand — the only
 # one in the tree that did — and both are now read off the `[tasks.*]` block
-# above: `tiers` because the resolved table is not the degenerate single
-# `default` tier (the same predicate `nros::main!` uses to emit
+# above: `sched_tasks` because the resolved table is not the degenerate single
+# `default` sched task (the same predicate `nros::main!` uses to emit
 # `ZephyrBoard::run_sched_tasks`), `zephyr-edf` because `[tasks.high]` is
 # `class = "real_time"` and `[tasks.high.zephyr]` carries a `deadline`. There is
 # no `board_features` key to author, deliberately — see
@@ -216,7 +216,7 @@ locator = "tcp/10.0.2.2:7471"
 # Rust global allocator both allocate from it). 256 KiB on native_sim (host
 # RAM); every e2e run scores it against the image's MEASURED heap peak, so an
 # outgrown value fails a cell by name. Moved from the board's prj-zenoh.conf.
-# phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their
+# phase-276 W2 / phase-481 W3 -- the sched tasks need tx windows well inside their
 # period: Zephyr zsock serializes send behind the read task's recv window
 # (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
 [image.zephyr.knobs.zenoh]

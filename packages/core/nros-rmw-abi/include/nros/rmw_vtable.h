@@ -1571,7 +1571,7 @@ typedef struct nros_rmw_vtable_t {
     /** phase-521 W3 (RFC-0113 D4) — how this session reports an arrival.
      *
      *  Optional, appended. The executor's park ends on exactly two things:
-     *  the tier's deadline, or readiness. This slot says which form of
+     *  the sched task's deadline, or readiness. This slot says which form of
      *  readiness the session has, so the park can be ended by data rather
      *  than the executor blocking inside the transport's own receive:
      *

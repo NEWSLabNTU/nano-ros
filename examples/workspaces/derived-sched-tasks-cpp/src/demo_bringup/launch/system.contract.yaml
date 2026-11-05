@@ -2,9 +2,9 @@
 #
 # The provider sidecar: `<stem>.contract.yaml` beside `<stem>.launch.xml`,
 # folded into the SystemModel by the pinned resolver. It states, per node, the
-# one timer path each component runs and what that tick publishes. The tier
+# one timer path each component runs and what that tick publishes. The sched task
 # derivation reads the TIMER rates; nothing else in this workspace states a
-# rate, a priority or a tier.
+# rate, a priority or a sched task.
 #
 # THE TWO NUMBERS DIFFER ON PURPOSE (phase-459 W7, issue 1372). Each node's
 # `paths.on_timer.trigger.timer.rate_hz` is when its callback fires, and that

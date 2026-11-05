@@ -67,9 +67,9 @@ Streaming (tight-loop publisher, 5000 messages, deep-ring listener):
 | `TX_BATCH` | no | ~136 msg/s | ~15× |
 | `TX_BATCH` + `TX_SPLIT_LOCK` | **yes (27.7 s)** | **~181 msg/s** | **~20×** |
 
-Timer-paced tiers (100 Hz control + 10 Hz telemetry, one session,
+Timer-paced sched tasks (100 Hz control + 10 Hz telemetry, one session,
 harness): defaults 8.6 msg/s total → batch + flush thread 34.1 → + split lock
-43.2, with the 10 Hz tier at its ideal rate. Delivery integrity is validated
+43.2, with the 10 Hz sched task at its ideal rate. Delivery integrity is validated
 in every configuration.
 
 Express-vs-batched (same batching image, 200 messages at 5 ms pacing, native):
@@ -174,7 +174,7 @@ auto pub = node.create_publisher<Twist>("/cmd_vel", rclcpp::QoS().tx_express(tru
   pays the socket-window wait itself. Reserve it for topics whose *rate* is
   low but whose *latency* matters.
 - **Don't flush from your own timers/executor threads.** The dedicated flush
-  thread exists because flushing from tier threads stalls the very timers
+  thread exists because flushing from sched task threads stalls the very timers
   that generate the puts (measured slower than no batching).
 
 The benchmarks behind these defaults live in the tree: see

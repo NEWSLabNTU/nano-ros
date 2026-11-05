@@ -368,7 +368,7 @@ build-fixture-extras:
     bash scripts/build/fixtures-build.sh freertos cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS
 
-# Build every FreeRTOS tier: core libraries, examples, and test fixtures.
+# Build every FreeRTOS sched task: core libraries, examples, and test fixtures.
 [group("full-matrix")]
 build-all: build-fixtures
     @echo "FreeRTOS build-all completed."
@@ -415,10 +415,10 @@ test verbose="": build-fixtures
     #
     # Issue 1658 — and `realtime_sched_tasks_e2e`, whose FreeRTOS rows are the cells
     # that boot the cmake-built WORKSPACE entries (`workspace-{c,cpp}-freertos-
-    # realtime`, built above by `build-examples`) and assert every tier ticks on
+    # realtime`, built above by `build-examples`) and assert every sched task ticks on
     # the serial console. That is the road issue 1657 broke: those images opened
     # a zenoh session and then deadlocked, and `realtime_sched_tasks` names it in 8 s
-    # ("tier `ctrl` never published"). Nothing that runs on a schedule selected
+    # ("sched task `ctrl` never published"). Nothing that runs on a schedule selected
     # the target, so it sat on main until a hand reproduction. It is ONE test
     # iterating every platform's rows, so no name filter can narrow it; a row
     # whose fixture this job did not build reports itself as skipped in the

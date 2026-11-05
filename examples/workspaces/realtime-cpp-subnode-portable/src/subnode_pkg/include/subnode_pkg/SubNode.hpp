@@ -7,8 +7,8 @@
 namespace subnode_pkg {
 
 /// Portability copy of SubNode (RFC-0047). IDENTICAL to
-/// ws-realtime-cpp-subnode's SubNode. Deployed here with "fast"/"bulk" tier names
-/// instead of "high"/"low" — no package change, tier binding from system.toml.
+/// ws-realtime-cpp-subnode's SubNode. Deployed here with "fast"/"bulk" sched task names
+/// instead of "high"/"low" — no package change, sched task binding from system.toml.
 class SubNode : public ::rclcpp::NodeWithTimers<2> {
     ::rclcpp::Publisher<std_msgs::msg::Int32> ctrl_pub_;
     ::rclcpp::Publisher<std_msgs::msg::Int32> telem_pub_;

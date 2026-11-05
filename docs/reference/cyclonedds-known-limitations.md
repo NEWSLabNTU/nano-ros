@@ -369,7 +369,7 @@ wrong for months. Current status is generated, not asserted here — see
 by `just check board-registry`.)*
 
 - **`nros-board-fvp-aemv8r-smp` — tier 3, build-only.** The board exists and
-  Cyclone runs on it: phase-298 booted the two-tier workspace Entry on
+  Cyclone runs on it: phase-298 booted the two-sched-task workspace Entry on
   `FVP_BaseR_AEMv8R`, brought up ethernet and published `/ctrl` + `/telem`. But
   no CI lane boots it (cost and x86_64-only hosting, not a licence — the model
   is a pinned public download, `nros setup --tool arm-fvp`); the runtime gate is

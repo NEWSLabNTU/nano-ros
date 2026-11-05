@@ -252,13 +252,13 @@ schedulability. Research shows it can reduce RAM requirements by 30–50%
 compared to pure FPP, because fewer threads need independent stacks for
 preemption frames.
 
-**nano-ros on ThreadX**: multi-tier `run_sched_tasks` is real — one executor per tier over one shared session, with
-per-tier stacks allocated from the ThreadX byte pool via
-`nros_threadx_create_task`. The tier's `preempt_threshold` is passed
+**nano-ros on ThreadX**: multi-sched-task `run_sched_tasks` is real — one executor per sched task over one shared session, with
+per-sched-task stacks allocated from the ThreadX byte pool via
+`nros_threadx_create_task`. The sched task's `preempt_threshold` is passed
 natively at `tx_thread_create` (a `-1` sentinel means "use the
-priority", i.e. normal preemption). Tiers are resolved descending by
+priority", i.e. normal preemption). Sched tasks are resolved descending by
 raw priority number, so on ThreadX (lower number = higher priority)
-`tiers[0]` is the lowest-priority tier; the boot tier runs first and
+`sched_tasks[0]` is the lowest-priority sched task; the boot sched task runs first and
 re-prioritizes itself to its declared priority.
 
 ### NuttX
@@ -338,7 +338,7 @@ threads, preemptive threads, and EDF in a single system.
 | **Mutual exclusion** | k_mutex with priority inheritance |
 | **Meta-IRQ** | Ultra-high-priority threads that preempt even cooperative threads |
 
-Zephyr's scheduling model has three tiers:
+Zephyr's scheduling model has three sched tasks:
 
 ```
 Priority Number Line:
@@ -444,6 +444,6 @@ priorities.
 
 ## Design background
 
-- [RFC-0053: ThreadX multi-tier execution](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0053-threadx-multi-tier-execution.md)
+- [RFC-0053: ThreadX multi-sched-task execution](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0053-threadx-multi-tier-execution.md)
 - [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
   Example variants as node packages with their own image rows.

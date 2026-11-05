@@ -327,8 +327,8 @@ function(nros_sizing_descriptor_from_model _out_var)
     endif()
 
     # Issue 1970 -- `codegen entry`'s priority record, which names this
-    # entry's tiers: on a board whose runner sizes each tier's executor from its
-    # own members, the CLI states one `[[tier]]` row per tier. Rewritten by
+    # entry's sched tasks: on a board whose runner sizes each sched task's executor from its
+    # own members, the CLI states one `[[sched_task]]` row per sched task. Rewritten by
     # every `codegen entry`, so it is current whenever this configure ran the
     # codegen; absent (no entry codegen yet) passes nothing.
     set(_sched_task_arg "")

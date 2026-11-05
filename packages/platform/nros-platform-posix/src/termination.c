@@ -57,7 +57,7 @@ static volatile sig_atomic_t s_termination_requested = 0;
 /* phase-521 W6 (RFC-0113 D2) — the wake objects a termination posts.
  *
  * A hosted spin loop polls `nros_posix_termination_requested()` between
- * spins, and a spin now parks until the tier's next deadline instead of for a
+ * spins, and a spin now parks until the sched task's next deadline instead of for a
  * fixed 10 ms. A flag alone would be seen only when that park ends, so the
  * handler also posts every live wake object: each parked executor returns,
  * sees the flag and closes its session.

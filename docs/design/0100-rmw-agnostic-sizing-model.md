@@ -1436,7 +1436,7 @@ has no workspace rows, so no model-road image exists there.
 The class the fix closed: of the entities the runtime creates from config
 rather than from a component constructor, only `[[bridge]]` was missing from
 a probe-stated inventory. The parameter services and store, lifecycle (with
-`~/transition_event`), `/parameter_events`, tier scheduling contexts, action
+`~/transition_event`), `/parameter_events`, sched task scheduling contexts, action
 expansions and a contracted image's monitors and reporter already rode
 `ImageFrame` or the derivation. A bridge's rows now come from the runtime's own
 `nros-bridge.toml`, and its backends reach `backend_count`. Details are in

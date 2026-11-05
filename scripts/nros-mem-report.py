@@ -179,8 +179,8 @@ def lang_of(raw):
 #
 # Some RAM has an owner a reader would name before any crate: the executor's
 # storage, which RFC-0002 § 4.4b places with the CALLER — the C entry's
-# `__nros_executor_storage`, the C/C++ tier table, the C++ boot storage, the
-# Rust boot and tier backings — and the codegen'd component storage. Filed
+# `__nros_executor_storage`, the C/C++ sched task table, the C++ boot storage, the
+# Rust boot and sched task backings — and the codegen'd component storage. Filed
 # under whatever crate or language emitted it, the one pool every embedded
 # image is dominated by was spread over `(C / asm / no path)`, a Rust crate
 # that does not own it (`nros`, issue 1147), and the user's entry crate.
@@ -211,7 +211,7 @@ STORAGE_ROLES = [
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/boot_wrapper.jinja",
         "static uint64_t __nros_sched_task_executor_storage[",
     ),
-    # phase-521 W8 (b) -- the PX4 entry: each borrowed tier's executor, and
+    # phase-521 W8 (b) -- the PX4 entry: each borrowed sched task's executor, and
     # the component slots it shares in spelling with the C++ entry.
     (
         "executor storage",
@@ -568,7 +568,7 @@ def ram_section_total(sections):
     Zephyr image keeps much of its RAM elsewhere — a `.noinit."<file>".N`
     section per source file (the kernel heap, every `K_THREAD_STACK_DEFINE`),
     `*_area` iterable sections, `.got` on native_sim. Measured on the
-    derived-tiers C++ native_sim image: 355,824 bytes "by section" against
+    derived-sched_tasks C++ native_sim image: 355,824 bytes "by section" against
     626,641 attributed to symbols, an unattributed gap of -76.1 % — a NEGATIVE
     figure, which a reader rightly takes as a broken tool and then distrusts
     every other line of. `W` + `A` is what the loader and the linker script
@@ -1902,15 +1902,15 @@ def level_costs(elf, sizes_header=None):
         return {"elf": elf, "problem": f"no {PRIORITY_RECORD} near the image"}
     with open(record_path, encoding="utf8") as fh:
         record = json.load(fh)
-    tiers = record.get("tiers") or []
+    sched_tasks = record.get("sched_tasks") or []
     res = {"elf": elf, "record": record_path, "levels": [], "cores": [], "checks": []}
-    if not tiers:
+    if not sched_tasks:
         res["note"] = "one level: the image spawns no worker, so it has no level statics"
         return res
     smaller = record.get("plan", {}).get("direction", "") in ("smaller-is-urgent", "smaller")
     family = (record.get("sched_task_key") or "").split("/")[0]
-    # The runner boots tiers[0] on Zephyr, the last row on FreeRTOS and NuttX.
-    boot = len(tiers) - 1 if family in ("freertos", "nuttx") else 0
+    # The runner boots sched_tasks[0] on Zephyr, the last row on FreeRTOS and NuttX.
+    boot = len(sched_tasks) - 1 if family in ("freertos", "nuttx") else 0
     kconfig, kconfig_src = read_kconfig(elf)
     res["kconfig"] = {"source": kconfig_src, **kconfig}
     level_default, frame, knob_src = level_knobs(family, kconfig)
@@ -1922,8 +1922,8 @@ def level_costs(elf, sizes_header=None):
     symbols = read_symbol_table(elf)
     regions = read_memory_regions(elf)
     ptr = elf_pointer_bytes(elf)
-    n = len(tiers)
-    levels = level_order([t["priority"] for t in tiers], smaller)
+    n = len(sched_tasks)
+    levels = level_order([t["priority"] for t in sched_tasks], smaller)
 
     def check(what, measured, expected):
         res["checks"].append(
@@ -1950,7 +1950,7 @@ def level_costs(elf, sizes_header=None):
     if one_executor and "NROS_CPP_LEVELS_BACKING_SIZE" in sizes:
         check("core executor backing (NROS_CPP_LEVELS_BACKING_SIZE)", levels_backing[1],
               sizes["NROS_CPP_LEVELS_BACKING_SIZE"])
-    for i, t in enumerate(tiers):
+    for i, t in enumerate(sched_tasks):
         members = [m[0] if isinstance(m, list) else m for m in t.get("members", [])]
         row = {
             "row": i,

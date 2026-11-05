@@ -142,7 +142,7 @@ These are not zone-controller-specific but use the same AURIX MCU family and hav
 
 ### Where nano-ros Fits
 
-nano-ros targets the **zone controller tier** — MCU-class hardware running an RTOS with real-time constraints and severe memory budgets. This is the exact environment zone controllers operate in.
+nano-ros targets the **zone controller sched task** — MCU-class hardware running an RTOS with real-time constraints and severe memory budgets. This is the exact environment zone controllers operate in.
 
 ```
 ┌───────────────────────────────────────────────────────────┐
@@ -302,7 +302,7 @@ demonstrating ROS 2 over TSN. It uses:
 
 This demo proves the concept but runs on **Linux, not an RTOS**. It cannot meet the
 hard real-time guarantees of a zone controller. A nano-ros + RTOS implementation
-would bring this to the MCU tier with deterministic scheduling.
+would bring this to the MCU sched task with deterministic scheduling.
 
 ### Taiwanese SDV Platforms
 

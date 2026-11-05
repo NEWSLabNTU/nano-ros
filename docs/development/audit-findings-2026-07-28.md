@@ -119,7 +119,7 @@ test FILES **2 → 0**.
 ## P3 (6, not filed)
 
 - `parameter_services.rs:337` — discarded `set()`/`declare()` Results + no rollback after the pre-check (the refuted P1's residue).
-- `nros-cpp/src/lib.rs:2131` unconditional `eprintln!` multi-tier banner; `nros-node/src/executor/types.rs:358,369` one-shot deprecation warnings.
+- `nros-cpp/src/lib.rs:2131` unconditional `eprintln!` multi-sched-task banner; `nros-node/src/executor/types.rs:358,369` one-shot deprecation warnings.
 - `rtos_e2e.rs:303,:489-503` — `skip_reason` now returns `None` unconditionally, so the `eprintln!("[SKIP]")` + `return` branch is dead, but its 15-line doc-comment still documents a live silent-PASS path and the marker (`[SKIP]`) doesn't match the harness's `[SKIPPED]`.
 - `packages/cli/rosidl-codegen/src/config.rs:455` — `fn mode_phase1_gate()` (E3), exercising `StorageMode::is_phase1_supported` — the phase number is baked into a *public* signature.
 - `cmake_minimum_required` drift — 252 files at 3.22, 61 at 3.20, 9 at 3.16, one at **3.8** (rejected outright by CMake 4). The 3.20 cluster is Zephyr-facing and defensible but undocumented.

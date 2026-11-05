@@ -173,7 +173,7 @@ impl Default for Clock {
 
 /// The platform's wall clock, or `None` when this build has no port to ask.
 ///
-/// phase-359 W10 (backend tier). `nros-core` sits BELOW `nros-platform`, so it
+/// phase-359 W10 (backend sched task). `nros-core` sits BELOW `nros-platform`, so it
 /// cannot depend on it — it declares the two ABI symbols directly, exactly as
 /// `nros-node` already does for `nros_platform_clock_ns` ("every platform port
 /// exports it through the same linkage contract"). The feature is what promises

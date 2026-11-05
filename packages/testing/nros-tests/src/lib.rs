@@ -913,7 +913,7 @@ pub fn count_pattern(output: &str, pattern: &str) -> usize {
 /// encodes its own timer progress in the payload, so the max delivered value
 /// tracks how many times that tier's timer fired — independent of how many
 /// individual samples were counted (which zenoh delivery batching / drops
-/// distort). Comparing two tiers' max values is a deterministic period-ratio
+/// distort). Comparing two sched tasks' max values is a deterministic period-ratio
 /// proof where a sample-count heuristic only approximates it.
 pub fn max_int_after(output: &str, pattern: &str) -> Option<i64> {
     output

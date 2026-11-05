@@ -4,7 +4,7 @@
 //! A LEVEL is a contiguous band of ranks that one worker dispatches without
 //! preempting itself; levels preempt each other through the kernel. Until the
 //! scheduler/worker split (P6) and the level runners (P9) land, a derived
-//! level is realised as one derived tier: one thread at the band's most
+//! level is realised as one derived sched task: one thread at the band's most
 //! urgent priority, whose members dispatch in rank order inside it (P2).
 //!
 //! # The rules (RFC-0108 D4)
@@ -29,8 +29,8 @@
 //! 5. **Report:** one `level-budget` degradation per member that loses its
 //!    rank, naming the cap, the rank it would have had and the band it
 //!    shares.
-//! 6. **Authored tiers are pins:** each is one band at its own priority, and
-//!    the derivation bands only the nodes no tier binds. A free band never
+//! 6. **Authored sched tasks are pins:** each is one band at its own priority, and
+//!    the derivation bands only the nodes no sched task binds. A free band never
 //!    spans a pin's priority.
 //! 7. (The cost report is P9's.)
 //! 8. **Equal kernel priorities merge** on a time-slicing kernel
@@ -45,7 +45,7 @@
 //!
 //! Here, in `nros-orchestration-ir`, beside the derivation that consumes it.
 //! The analysis needs what only this side has: the board's priority plan,
-//! the authored tiers that pin bands, the callback records with their C, and the
+//! the authored sched tasks that pin bands, the callback records with their C, and the
 //! cap. rlm's ranker orders the work and stays platform-free; moving the
 //! analysis there would make rlm read board facts, or make this crate hand
 //! its bands back across the pin boundary.
@@ -75,8 +75,8 @@ pub fn default_max_levels(target_rtos: &str, plan: &PriorityPlan) -> u16 {
 
 /// Does this kernel time-slice threads of equal priority (RFC-0108 D4 rule
 /// 8, D6)? FreeRTOS does by default (`configUSE_TIME_SLICING`). Linux and
-/// NuttX levels run `SCHED_FIFO`, never `SCHED_RR`; Zephyr's tiers run with
-/// `CONFIG_TIMESLICE_SIZE` 0; ThreadX's tier threads take no time slice.
+/// NuttX levels run `SCHED_FIFO`, never `SCHED_RR`; Zephyr's sched tasks run with
+/// `CONFIG_TIMESLICE_SIZE` 0; ThreadX's sched task threads take no time slice.
 pub fn time_slices_equal_priorities(target_rtos: &str) -> bool {
     target_rtos == "freertos"
 }
@@ -93,11 +93,11 @@ pub struct LevelNode {
     pub protected: Option<&'static str>,
 }
 
-/// An authored tier: a pinned band (RFC-0108 D4 rule 6).
+/// An authored sched task: a pinned band (RFC-0108 D4 rule 6).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PinnedBand {
-    pub tier: String,
-    /// The tier's kernel priority: authored, or allocated from its most
+    pub sched_task: String,
+    /// The sched task's kernel priority: authored, or allocated from its most
     /// urgent member (issue 1426 rule 2).
     pub priority: i64,
     /// Its members, each at its own allocated priority (its rank).
@@ -139,8 +139,8 @@ pub struct LevelMember {
     pub rank: u8,
     /// Its allocated kernel priority.
     pub priority: i64,
-    /// The authored tier that pins it, `None` for a derived member.
-    pub tier: Option<String>,
+    /// The authored sched task that pins it, `None` for a derived member.
+    pub sched_task: Option<String>,
 }
 
 /// One preemption level (RFC-0108 D3).
@@ -154,8 +154,8 @@ pub struct Level {
     pub threshold: u8,
     /// The members, most urgent first.
     pub members: Vec<LevelMember>,
-    /// The authored tiers this level is (empty for a derived level).
-    pub tiers: Vec<String>,
+    /// The authored sched tasks this level is (empty for a derived level).
+    pub sched_tasks: Vec<String>,
     /// Unanalysable callbacks of its members, each dispatched at the band's
     /// least urgent rank (RFC-0108 D1): `(callback, rank)`.
     pub best_effort: Vec<(String, u8)>,
@@ -164,7 +164,7 @@ pub struct Level {
 impl Level {
     /// The free (unpinned) members.
     pub fn derived_members(&self) -> impl Iterator<Item = &LevelMember> {
-        self.members.iter().filter(|m| m.tier.is_none())
+        self.members.iter().filter(|m| m.sched_task.is_none())
     }
 }
 
@@ -197,9 +197,9 @@ pub struct LevelInput<'a> {
     /// analysed merge (rule 2) could not bound it and stays off, as it does
     /// for a pin.
     pub floating_interference: bool,
-    /// The nodes no authored tier binds.
+    /// The nodes no authored sched task binds.
     pub free: &'a [LevelNode],
-    /// The authored tiers.
+    /// The authored sched tasks.
     pub pinned: &'a [PinnedBand],
     /// The callback record of every callback (RFC-0108 D1).
     pub callback_records: &'a [CallbackRecord],
@@ -485,7 +485,7 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
             node: format!("max_levels = {}", input.max_levels),
             dim: "level-budget",
             reason: format!(
-                "the cap of {} level(s) cannot be met: {} authored tier(s) are pins \
+                "the cap of {} level(s) cannot be met: {} authored sched task(s) are pins \
                  (RFC-0108 D4 rule 6) and the derived nodes between them need {} \
                  level(s) at least, so this core runs {} levels",
                 input.max_levels,
@@ -629,7 +629,7 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
                 node: n.node.clone(),
                 rank: rank_of(n.priority),
                 priority: n.priority,
-                tier: None,
+                sched_task: None,
             })
             .collect();
         levels.push(Level {
@@ -637,7 +637,7 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
             priority: free_prios[b.top],
             threshold: rank_of(free_prios[b.top]),
             members,
-            tiers: Vec::new(),
+            sched_tasks: Vec::new(),
             best_effort: Vec::new(),
         });
     }
@@ -649,7 +649,7 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
                 node: n.node.clone(),
                 rank: rank_of(n.priority),
                 priority: n.priority,
-                tier: Some(pin.tier.clone()),
+                sched_task: Some(pin.sched_task.clone()),
             })
             .collect();
         members.sort_by_key(|m| m.rank);
@@ -658,12 +658,12 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
             priority: pin.priority,
             threshold: members.first().map_or(0, |m| m.rank),
             members,
-            tiers: vec![pin.tier.clone()],
+            sched_tasks: vec![pin.sched_task.clone()],
             best_effort: Vec::new(),
         });
     }
     levels.sort_by(|a, b| {
-        urgent_first(&a.priority, &b.priority).then(b.tiers.len().cmp(&a.tiers.len()))
+        urgent_first(&a.priority, &b.priority).then(b.sched_tasks.len().cmp(&a.sched_tasks.len()))
     });
 
     // Rule 8: one level per kernel priority on a time-slicing kernel.
@@ -688,9 +688,9 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
                     prev.members.extend(l.members);
                     prev.members.sort_by_key(|m| m.rank);
                     prev.threshold = prev.members.first().map_or(prev.threshold, |m| m.rank);
-                    for t in l.tiers {
-                        if !prev.tiers.contains(&t) {
-                            prev.tiers.push(t);
+                    for t in l.sched_tasks {
+                        if !prev.sched_tasks.contains(&t) {
+                            prev.sched_tasks.push(t);
                         }
                     }
                 }
@@ -701,7 +701,7 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
     }
 
     // Rule 5: every free member that loses its rank. (A pinned member's
-    // loss is the authored tier's, reported by tier derivation rule 2.)
+    // loss is the authored sched task's, reported by sched task derivation rule 2.)
     for (k, l) in levels.iter().enumerate() {
         let lead = l
             .members
@@ -845,7 +845,7 @@ mod tests {
     }
 
     /// Rule 1: equal ranks share a level, so two equal-rank nodes plus one
-    /// other give 2 levels (rule 4 of tier derivation gave 3 tiers).
+    /// other give 2 levels (rule 4 of sched task derivation gave 3 sched tasks).
     #[test]
     fn two_equal_rank_nodes_and_one_other_give_two_levels() {
         let free = [node("/a", 5), node("/b", 5), node("/c", 6)];
@@ -1021,14 +1021,14 @@ mod tests {
         );
     }
 
-    /// An authored tier is a pin: its members form one band at its own
+    /// An authored sched task is a pin: its members form one band at its own
     /// priority, the free nodes are banded around it, and a free band never
     /// spans it.
     #[test]
     fn an_authored_sched_task_is_a_pin() {
         let free = [node("/a", 5), node("/c", 9)];
         let pinned = [PinnedBand {
-            tier: "mid".to_string(),
+            sched_task: "mid".to_string(),
             priority: 7,
             members: vec![node("/m1", 7), node("/m2", 8)],
         }];
@@ -1038,7 +1038,7 @@ mod tests {
             members(&plan),
             vec![vec!["/a"], vec!["/m1", "/m2"], vec!["/c"]]
         );
-        assert_eq!(plan.levels[1].tiers, vec!["mid".to_string()]);
+        assert_eq!(plan.levels[1].sched_tasks, vec!["mid".to_string()]);
         assert!(
             plan.degradations
                 .iter()
@@ -1046,7 +1046,7 @@ mod tests {
             "{:?}",
             plan.degradations
         );
-        // No free member lost a rank; the pin's members are the tier's report.
+        // No free member lost a rank; the pin's members are the sched task's report.
         assert!(
             level_budget(&plan)
                 .iter()
@@ -1060,7 +1060,7 @@ mod tests {
     fn two_levels_at_one_kernel_priority_merge_on_a_time_slicing_kernel() {
         let free = [node("/a", 3), node("/b", 2)];
         let pinned = [PinnedBand {
-            tier: "ctl".to_string(),
+            sched_task: "ctl".to_string(),
             priority: 3,
             members: vec![node("/p", 3)],
         }];
@@ -1071,7 +1071,7 @@ mod tests {
         inp.time_slicing = true;
         let sliced = derive_levels(&inp);
         assert_eq!(members(&sliced), vec![vec!["/p", "/a"], vec!["/b"]]);
-        assert_eq!(sliced.levels[0].tiers, vec!["ctl".to_string()]);
+        assert_eq!(sliced.levels[0].sched_tasks, vec!["ctl".to_string()]);
         assert!(sliced.degradations.iter().any(|d| d.dim == "level"));
     }
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""RFC-0079 — a tier priority pin must respect its port's address plan.
+"""RFC-0079 — a sched_task priority pin must respect its port's address plan.
 
 Two checks, and the second is the one that keeps the first honest:
 
 1. **Pins against the plan.** A `[tasks.<name>.<platform>] priority = N` that
-   lands in a RESERVED band is an ERROR — it puts an application tier on top of
+   lands in a RESERVED band is an ERROR — it puts an application sched_task on top of
    a system task that has to keep running for the application to work. A pin
    that is more urgent than a reserved band is a WARNING today: RFC-0079 makes
    that legal only by NAMING the band (`above = "transport"`), and that syntax
@@ -104,7 +104,7 @@ def main():
     cross_reference(plans, errors)
 
     checked, declared, deferred = 0, [], {}
-    for rel, tier, plat, prio, above in scan_pins():
+    for rel, sched_task, plat, prio, above in scan_pins():
         plan = plans.get(plat)
         if plan is None:
             unplanned[plat] = unplanned.get(plat, 0) + 1
@@ -117,13 +117,13 @@ def main():
             deferred.setdefault(plat, {"n": 0, "plan": plan})["n"] += 1
             continue
         checked += 1
-        where = f"{rel}: tiers.{tier}.{plat} = {prio}"
+        where = f"{rel}: sched tasks.{sched_task}.{plat} = {prio}"
         bigger = plan.get("direction") == "bigger-is-urgent"
         for name, (lo, hi) in plan["reserved"].items():
             if lo <= prio <= hi:
                 errors.append(
                     f"{where} lands ON the reserved `{name}` band "
-                    f"[{lo}, {hi}] — an application tier cannot share a "
+                    f"[{lo}, {hi}] — an application sched task cannot share a "
                     f"priority with a system task it depends on "
                     f"({plan['source']})")
             elif (prio > hi) if bigger else (prio < lo):
@@ -134,18 +134,18 @@ def main():
                     # and a reader of the build log should see it.
                     declared.append(
                         f"{where} preempts `{name}` [{lo}, {hi}] BY DECLARATION "
-                        f"(`above = \"{name}\"`): this tier can outrun the "
+                        f"(`above = \"{name}\"`): this sched task can outrun the "
                         "link it publishes over, and inbound traffic waits on "
                         "it.")
                 else:
                     errors.append(
                         f"{where} is MORE URGENT than the reserved `{name}` "
-                        f"band [{lo}, {hi}] and does not say so. A tier that "
+                        f"band [{lo}, {hi}] and does not say so. A sched task that "
                         f"outranks the transport cannot be drained or refilled "
                         f"by it (issue 0623, measured again in 0736).\n"
                         f"      Either move it into the pool "
-                        f"{plan['pool']}, or state the choice on the tier:\n"
-                        f"          [tasks.{tier}]\n"
+                        f"{plan['pool']}, or state the choice on the sched task:\n"
+                        f"          [tasks.{sched_task}]\n"
                         f"          above = \"{name}\"")
 
     for d in declared:

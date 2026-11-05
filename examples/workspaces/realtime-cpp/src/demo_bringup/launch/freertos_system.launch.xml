@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<!-- Phase 274.W3 / phase-144 (#144) — 3-node, 3-tier C++ entry on
+<!-- Phase 274.W3 / phase-144 (#144) — 3-node, 3-sched-task C++ entry on
      FreeRTOS/mps2. Node `name`s must match system.toml [[component]].name
-     (RFC-0032 §7). aux_node is the mid tier (spawned by a spawned tier) that
+     (RFC-0032 §7). aux_node is the mid sched task (spawned by a spawned sched task) that
      proves the #144 chained-spawn fix.
 
      Its own launch, not the shared 2-node `system.launch.xml`: aux_pkg builds

@@ -1,4 +1,4 @@
-//! Tier resolver — re-export shim (Phase 228.E).
+//! Sched task resolver — re-export shim (Phase 228.E).
 //!
 //! The resolver + its result types moved to the shared
 //! [`nros_orchestration_ir`] crate so the `nros::main!()` proc-macro can run
@@ -7,7 +7,7 @@
 //! references stay valid.
 //!
 //! The one shape change: [`resolve_sched_tasks`] now takes the decomposed
-//! `system.toml` pieces (`tiers`, `node_overrides`, `component_names`,
+//! `system.toml` pieces (`sched_tasks`, `node_overrides`, `component_names`,
 //! `callback_groups`) instead of a whole `SystemToml`, so the leaf crate stays
 //! free of the full CLI config type. See [`crate::cmd::codegen_system`] for the
 //! call site that adapts a `SystemToml` to it.
@@ -27,12 +27,12 @@ use std::{
 };
 
 /// Phase 228 / 256 W4.2 / 273 W2 — collect each system component's declared
-/// callback-group → tier bindings, keyed by the system `[[component]].name`
+/// callback-group → sched task bindings, keyed by the system `[[component]].name`
 /// (the instance name `ResolvedSchedTask.members` use).
 /// Shared by the C bake (`codegen_system`) and the Rust codegen (`generate`).
 ///
-/// Phase 273 (RFC-0047 W2): `[[component]].group_tiers` is the source of truth
-/// for the group → tier binding. The package manifest's `callback_groups` tier
+/// Phase 273 (RFC-0047 W2): `[[component]].group_tasks` is the source of truth
+/// for the group → sched task binding. The package manifest's `callback_groups` sched task
 /// field it replaced was honoured for one release and is now RETIRED — refused
 /// at parse (`ComponentMetadata::retired_callback_groups`), so it is no rung.
 ///
@@ -47,15 +47,15 @@ pub fn collect_callback_groups(
     let from_metadata = metadata_callback_groups(&cfg.workspace_root);
     let mut map = BTreeMap::new();
     for c in components {
-        // Phase 273 (W2): prefer system.toml [[component]].group_tiers (RFC-0047).
-        if !c.group_tiers.is_empty() {
+        // Phase 273 (W2): prefer system.toml [[component]].group_tasks (RFC-0047).
+        if !c.group_tasks.is_empty() {
             let groups: Vec<CallbackGroupDecl> = c
-                .group_tiers
+                .group_tasks
                 .iter()
-                .map(|(id, tier)| CallbackGroupDecl {
+                .map(|(id, sched_task)| CallbackGroupDecl {
                     id: id.clone(),
                     r#type: "MutuallyExclusive".to_string(),
-                    tier: tier.clone(),
+                    sched_task: sched_task.clone(),
                 })
                 .collect();
             map.insert(c.name.clone(), groups);
@@ -92,12 +92,12 @@ pub fn collect_callback_groups(
 /// `${CMAKE_BINARY_DIR}/nros-metadata.json` (`NanoRosNodeRegister.cmake`,
 /// `_nros_metadata_emit`). Until this wave that file had exactly one consumer,
 /// `codegen entry`'s `metadata::enrich_plan`, and `codegen-system` knew only two
-/// sources - `[[component]].group_tiers`, which a workspace deriving its
+/// sources - `[[component]].group_tasks`, which a workspace deriving its
 /// schedule deliberately does not write, and the package manifest's (since
 /// retired) `callback_groups`, read through `cfg.component_packages`, which is
 /// empty for every workspace without a root `Cargo.toml`. So a C++ image
 /// authored the keyword and every one of its nodes still arrived at
-/// `derive_sched_tasks_from_contracts` groupless, went onto the default tier, and the
+/// `derive_sched_tasks_from_contracts` groupless, went onto the default sched task, and the
 /// derived schedule was empty. Issue 1426 measured that on the Autoware Safety
 /// Island; this is the reader that closes it.
 ///
@@ -260,7 +260,7 @@ pub fn resolve_system_sched_tasks(
     let component_names: BTreeSet<&str> =
         system.components.iter().map(|c| c.name.as_str()).collect();
     resolve_sched_tasks(
-        &system.tiers,
+        &system.sched_tasks,
         &system.node_overrides,
         &component_names,
         callback_groups,
@@ -276,7 +276,7 @@ pub fn resolve_system_sched_tasks(
 /// `None` when there is no target, or when the target names no image (or an
 /// image with no board). The second case used to be every bake the Zephyr module made
 /// — `nros_system_generate()` passed a `--target zephyr-<rmw>` it had
-/// synthesised from Kconfig — so a tiered Zephyr image read the host's tier
+/// synthesised from Kconfig — so a sched-task Zephyr image read the host's sched task
 /// tables (issue 1312, FIXED). The module names its ENTRY now
 /// (`codegen-system --for-entry`) and the image that claims it answers here.
 pub fn target_board_id(system: &SystemToml, target: Option<&str>) -> Option<(String, String)> {
@@ -318,7 +318,7 @@ pub fn derive_target_rtos(
 /// The PLATFORM the selected target's image runs on, from the BOARD CATALOG.
 ///
 /// Issue 1397 — the resolution [`derive_target_rtos`] is a view of. A bake
-/// needs more than the tier key: the executor capacity check needs the
+/// needs more than the sched task key: the executor capacity check needs the
 /// platform's NAME (the RFC-0049 platforms-tree vocabulary, for the `max_cbs`
 /// ladder) and whether the board honors per-entry sizing. Those used to be
 /// read out of the `--target` BLOCK NAME, which is a third vocabulary and
@@ -474,7 +474,7 @@ mod tests {
 
         /// Ids the substring match answered wrongly. `native_sim/native/64`
         /// is a Zephyr board (`packages/boards/zephyr`), and `native` in its
-        /// name is the ROLE (a host process), not the platform. So its tiers
+        /// name is the ROLE (a host process), not the platform. So its sched tasks
         /// are Zephyr `k_thread`s and read `[tasks.*.zephyr]`.
         #[test]
         fn substring_victims_read_their_platform() {
@@ -523,7 +523,7 @@ mod tests {
     };
 
     /// Phase 273 (W2) — `collect_callback_groups` reads the binding from
-    /// `[[component]].group_tiers`. An empty `NrosConfig` (no component
+    /// `[[component]].group_tasks`. An empty `NrosConfig` (no component
     /// packages) is sufficient: the manifest's `callback_groups` is refused at
     /// parse, so no rung consults `cfg.component_packages`.
     #[test]
@@ -536,7 +536,7 @@ mod tests {
             pkg: "ctrl_pkg".to_string(),
             class: "ctrl_pkg::Ctrl".to_string(),
             name: "ctrl_node".to_string(),
-            group_tiers: gt,
+            group_tasks: gt,
             retired_group_tiers: Default::default(),
             params: Default::default(),
             params_files: Vec::new(),
@@ -547,10 +547,10 @@ mod tests {
         let map = collect_callback_groups(&cfg, &components);
         let decls = map.get("ctrl_node").expect("ctrl_node must be in map");
         assert_eq!(decls.len(), 2);
-        // Both groups resolved from group_tiers.
+        // Both groups resolved from group_tasks.
         let by_id: BTreeMap<&str, &str> = decls
             .iter()
-            .map(|d| (d.id.as_str(), d.tier.as_str()))
+            .map(|d| (d.id.as_str(), d.sched_task.as_str()))
             .collect();
         assert_eq!(by_id["ctrl"], "high");
         assert_eq!(by_id["telem"], "low");
@@ -596,26 +596,26 @@ priority = 10
             .expect("resolve_system_sched_tasks");
         assert!(
             !table.is_single_sched_task(),
-            "two-tier plan must not be single-tier"
+            "two-sched-task plan must not be single-sched-task"
         );
         // highest-priority-first: high (80) = idx 0, low (10) = idx 1.
-        assert_eq!(table.tiers[0].name, "high");
-        assert_eq!(table.tiers[1].name, "low");
+        assert_eq!(table.sched_tasks[0].name, "high");
+        assert_eq!(table.sched_tasks[1].name, "low");
         assert!(
-            table.tiers[0]
+            table.sched_tasks[0]
                 .members
                 .contains(&("ctrl_node".to_string(), "ctrl".to_string())),
-            "ctrl_node/ctrl must be in high tier"
+            "ctrl_node/ctrl must be in high sched task"
         );
         assert!(
-            table.tiers[1]
+            table.sched_tasks[1]
                 .members
                 .contains(&("telem_node".to_string(), "telem".to_string())),
-            "telem_node/telem must be in low tier"
+            "telem_node/telem must be in low sched task"
         );
     }
     /// Phase 273 W4 (RFC-0047) — sub-node: ONE component with TWO groups on TWO
-    /// tiers must resolve without error (NodeSpansSchedTasks v1 constraint lifted).
+    /// sched tasks must resolve without error (NodeSpansSchedTasks v1 constraint lifted).
     #[test]
     fn resolve_system_sched_tasks_sub_node_two_groups_two_sched_tasks() {
         let system_toml_str = r#"
@@ -645,19 +645,19 @@ priority = 10
         let callback_groups = collect_callback_groups(&cfg, &system.components);
         let table = resolve_system_sched_tasks(&system, &callback_groups, "posix")
             .expect("sub-node must resolve");
-        assert!(!table.is_single_sched_task(), "must be multi-tier");
-        let high = table.tiers.iter().find(|t| t.name == "high").unwrap();
-        let low = table.tiers.iter().find(|t| t.name == "low").unwrap();
-        // Same node, both groups resolved to different tiers (the RFC-0047 sub-node proof).
+        assert!(!table.is_single_sched_task(), "must be multi-sched-task");
+        let high = table.sched_tasks.iter().find(|t| t.name == "high").unwrap();
+        let low = table.sched_tasks.iter().find(|t| t.name == "low").unwrap();
+        // Same node, both groups resolved to different sched tasks (the RFC-0047 sub-node proof).
         assert!(
             high.members
                 .contains(&("sub_node".to_string(), "ctrl".to_string())),
-            "sub_node/ctrl must be in high tier"
+            "sub_node/ctrl must be in high sched task"
         );
         assert!(
             low.members
                 .contains(&("sub_node".to_string(), "telem".to_string())),
-            "sub_node/telem must be in low tier"
+            "sub_node/telem must be in low sched task"
         );
     }
 
@@ -700,7 +700,7 @@ priority = 10
                 pkg: pkg.to_string(),
                 class: format!("{pkg}::C"),
                 name: name.to_string(),
-                group_tiers: BTreeMap::new(),
+                group_tasks: BTreeMap::new(),
                 retired_group_tiers: Default::default(),
                 params: Default::default(),
                 params_files: Vec::new(),
@@ -834,7 +834,7 @@ priority = 10
             assert_eq!(decls.len(), 1);
             assert_eq!(decls[0].id, "main");
             assert_eq!(
-                decls[0].tier, DEFAULT_SCHED_TASK,
+                decls[0].sched_task, DEFAULT_SCHED_TASK,
                 "the keyword says WHICH groups exist, never where they run"
             );
         }
@@ -849,16 +849,16 @@ priority = 10
                 &doc(&[("ctrl_node", &["main", "telem"])]),
             );
             let mut c = component("ctrl_pkg", "ctrl_node");
-            c.group_tiers.insert("main".to_string(), "high".to_string());
+            c.group_tasks.insert("main".to_string(), "high".to_string());
             let map = collect_callback_groups(&cfg_at(tmp.path()), &[c]);
             let decls = map.get("ctrl_node").expect("bound");
             assert_eq!(decls.len(), 1, "only the authored binding: {decls:?}");
-            assert_eq!(decls[0].tier, "high");
+            assert_eq!(decls[0].sched_task, "high");
         }
 
         /// A component the metadata does not name is untouched - it stays
         /// groupless and `derive_sched_tasks_from_contracts` keeps it on the default
-        /// tier with the note issue 1371 persists.
+        /// sched task with the note issue 1371 persists.
         #[test]
         fn a_component_the_metadata_does_not_name_stays_groupless() {
             let tmp = tempfile::tempdir().expect("tempdir");

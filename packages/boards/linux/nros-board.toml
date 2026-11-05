@@ -63,12 +63,12 @@ threads = true
 # Kconfig, so the band is a literal the checker can judge with nothing but the
 # repo.
 #
-# The transport band sits at the TOP, and the tiers below it. That direction is
-# the one thing this port could not express until issue 0765: tier priorities
+# The transport band sits at the TOP, and the sched tasks below it. That direction is
+# the one thing this port could not express until issue 0765: sched task priorities
 # were advisory, so nothing was applied and there was no ordering to get wrong.
-# Once they became real the default was the WRONG way round — a SCHED_FIFO tier
+# Once they became real the default was the WRONG way round — a SCHED_FIFO sched task
 # outranks every SCHED_OTHER thread unconditionally, and zenoh-pico's read and
-# lease tasks are SCHED_OTHER, so every tier preempted the link it publishes
+# lease tasks are SCHED_OTHER, so every sched task preempted the link it publishes
 # over with no arrangement in which it did not.
 [board.priority_plan]
 sched_task_key = "posix"
@@ -81,7 +81,7 @@ range = [1, 99]
 # places them at the floor, 90, leaving room above for anything an operator
 # deliberately puts higher.
 reserved.transport = [90, 99]
-# What tiers may be allocated. The existing pins (10, 40, 80) already live here
+# What sched tasks may be allocated. The existing pins (10, 40, 80) already live here
 # — this plan describes where they were, it does not move them.
 pool.app = [1, 89]
 
@@ -90,7 +90,7 @@ pool.app = [1, 89]
 #
 # `scripts/dev/priority-thread-probe.py <pid>` enumerates a live image's
 # threads out of `/proc/<pid>/task/*/stat` and classifies each against this
-# plan. On the native realtime entry it finds four, all ours: the boot tier on
+# plan. On the native realtime entry it finds four, all ours: the boot sched task on
 # the main thread, `nros-sched-task-high`, and zenoh-pico's read and lease tasks.
 # Nothing else in the process holds a real-time priority, so there is no
 # foreign band to reserve.
@@ -115,7 +115,7 @@ reserved.foreign = []
 #
 # How many records `nros_log` holds while another thread is delivering one
 # (issue 2000): a record that finds the hold queue full is DROPPED and counted.
-# The builtin is 4, an MCU's number. A hosted image runs its tiers, its
+# The builtin is 4, an MCU's number. A hosted image runs its sched tasks, its
 # transport and its timers on separate threads that all log, so contention is
 # the ordinary case here, not the exception: `nros-node`'s lib tests lost 16
 # records at once under load at depth 4. Each slot is a full record (a

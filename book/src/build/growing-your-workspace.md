@@ -481,7 +481,7 @@ yourself works too. Where each binary lands is
 
 The generated entry is one `nros::main!(…)` call, and the macro does a lot: it
 opens the executor at the size the image declares, registers every node in the
-launch file, and adds the lifecycle, parameter services and tiers the system
+launch file, and adds the lifecycle, parameter services and sched tasks the system
 asks for. Take the smallest step that does what you need:
 
 | You need | Use | Entry stays generated |

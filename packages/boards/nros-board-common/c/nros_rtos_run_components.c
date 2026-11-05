@@ -9,7 +9,7 @@
  *
  * ## Why ONE file and ONE symbol, where `run_sched_tasks` has three
  *
- * `run_sched_tasks` is genuinely per-RTOS: it spawns a task per tier, and a
+ * `run_sched_tasks` is genuinely per-RTOS: it spawns a task per sched task, and a
  * FreeRTOS task, a Zephyr `k_thread` and a NuttX pthread are three different
  * things. `run_components` is the SINGLE-EXECUTOR path — open, set up, spin,
  * shut down, all on the caller's thread — and there is nothing in it that
@@ -30,11 +30,11 @@
  * was not new capability, because `nros_board_freertos_run_sched_tasks` is 666 lines
  * of C. That inference does not hold, and the correction is worth keeping here
  * rather than only in the roadmap: `run_sched_tasks` and `run_components` are two
- * different architectures. The tiers path IS C underneath a four-line C++
+ * different architectures. The sched tasks path IS C underneath a four-line C++
  * veneer; `FreertosBoard::run_components` is fully implemented in the C++
  * header with no C function beneath it, and the one C-ABI `run_components`
  * that does exist — native's — is Rust. This is also the DOMINANT embedded
- * path: `run_sched_tasks` is reached only when a plan declares tiers.
+ * path: `run_sched_tasks` is reached only when a plan declares sched tasks.
  *
  * ## What made it possible
  *
@@ -129,7 +129,7 @@ extern void nros_board_network_wait(void);
 #endif
 
 /* phase-436 — the port's microsecond park, installed on this entry's executor
- * as the tier runners install it on theirs. The C runner's copy of
+ * as the sched task runners install it on theirs. The C runner's copy of
  * `rclcpp::board::detail::install_platform_park` in `<rclcpp/detail/main.hpp>`, which
  * states the rule (RFC-0106 D7); that header is C++ and not on this file's
  * include path.
@@ -317,7 +317,7 @@ int32_t nros_board_rtos_run_components_ns(const char* locator, uint8_t domain_id
  * Issue 1568 — the runner over CALLER-SUPPLIED executor storage, and the one a
  * generated C entry calls (`CAbiRunners::takes_executor_storage`).
  *
- * The same method as every tiered runner (`nros_board_<rtos>_run_sched_tasks_in`)
+ * The same method as every sched-task runner (`nros_board_<rtos>_run_sched_tasks_in`)
  * with one block: the entry emits a file-scope `.bss` static sized from the
  * per-build `NROS_CPP_EXECUTOR_STORAGE_SIZE`, so the linker places it and
  * `mem-report` names it — the C twin of the C++ entry's
@@ -346,7 +346,7 @@ int32_t nros_board_rtos_run_components_in(const char* locator, uint8_t domain_id
 
     NROS_RUN_NETWORK_WAIT();
 #ifdef __ZEPHYR__
-    /* issue 0758 -- the epoch, in the window the tiered entries use: network
+    /* issue 0758 -- the epoch, in the window the sched-task entries use: network
      * up, no component constructed. The C++ `ZephyrBoard::run_components`
      * makes the same call; neither made it before, so an image entering here
      * with CONFIG_NROS_SNTP_EPOCH stamped boot-relative time. */

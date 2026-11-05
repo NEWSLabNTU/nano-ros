@@ -1552,7 +1552,7 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
 /// `create_publisher_in_group`) to label entities with a group name.
 ///
 /// The group is just a name — the actual `SchedContext` binding is seeded at
-/// boot by `Executor::bind_group_sched` (from `system.toml group_tiers`, phase
+/// boot by `Executor::bind_group_sched` (from `system.toml group_tasks`, phase
 /// 273 W2) and resolved at entity-registration time by
 /// `apply_node_default_sched` (phase 273 W1).  No concurrency type (Mutually-
 /// Exclusive vs Reentrant) is stored here — that is RFC-0047 OQ1 follow-up.

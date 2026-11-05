@@ -15,7 +15,7 @@
 //!    board's own plain functions (`#[unsafe(no_mangle)] extern "C"`), so a
 //!    C / C++ application can call into a Rust board. It is a thin 1:1 mirror
 //!    of the C ABI with NO trait dependency — the header is the SSoT, and the
-//!    canonical *Rust* board API (session / executor sizing / tiers) is the
+//!    canonical *Rust* board API (session / executor sizing / sched tasks) is the
 //!    separate, Rust-rich `nros_platform::board` surface.
 //!
 //! # The config pointer
@@ -58,7 +58,7 @@ pub use generated::*;
 /// symbols directly. This macro is the Rust convenience path — a thin **1:1
 /// mirror** of those symbols over functions the board already has, with **no
 /// trait dependency** (the canonical *Rust* board API — session, executor
-/// sizing, tiers — is [`nros_platform::board`]; that is a distinct, Rust-rich
+/// sizing, sched tasks — is [`nros_platform::board`]; that is a distinct, Rust-rich
 /// surface, not this flat C ABI).
 ///
 /// # Arguments (named)

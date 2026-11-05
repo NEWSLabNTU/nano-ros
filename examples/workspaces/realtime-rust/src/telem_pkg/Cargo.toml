@@ -3,12 +3,12 @@ name = "telem_pkg"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Node pkg — telemetry on the low-priority tier (100 ms)."
+description = "Node pkg — telemetry on the low-priority sched task (100 ms)."
 
 [lib]
 path = "src/lib.rs"
 
-# phase-263 B2 — telemetry runs on the `low` tier, bound like ctrl_pkg's group
+# phase-263 B2 — telemetry runs on the `low` sched task, bound like ctrl_pkg's group
 # in the bringup's `system.toml` (`group_tasks`); the two nodes resolve to two
 # POSIX-priority tasks.
 [package.metadata.nros.node]

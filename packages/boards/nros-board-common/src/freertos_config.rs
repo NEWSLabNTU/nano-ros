@@ -47,10 +47,10 @@ pub const fn to_freertos_priority(normalized: u8) -> u32 {
 /// urgent — the same units a `[tasks.<name>.freertos] priority` is written in
 /// (issue 0623).
 ///
-/// They were on a normalized 0–31 scale, and that was the defect: a tier and a
+/// They were on a normalized 0–31 scale, and that was the defect: a sched task and a
 /// transport task both end up at `xTaskCreate` in ONE priority space, so an
 /// author comparing `priority = 5` against a transport band that read "16"
-/// concluded the tier was below it when it was above. Two numbers that are
+/// concluded the sched task was below it when it was above. Two numbers that are
 /// compared must be in one unit.
 ///
 /// The normalized band still exists as an INPUT spelling — see
@@ -112,7 +112,7 @@ impl Default for FreertosScheduling {
 ///
 /// The default is **128 KiB, and it is MEASURED** (issue 1146). Every FreeRTOS
 /// task stack here is drawn from the FreeRTOS heap (heap_4, `ucHeap[]` in
-/// `.bss`, sized in `nros-board-freertos/build.rs`), and a spawned tier whose
+/// `.bss`, sized in `nros-board-freertos/build.rs`), and a spawned sched task whose
 /// `stack_bytes` is 0 gets this number too — so it is charged once per task,
 /// not once per image.
 ///
@@ -129,7 +129,7 @@ impl Default for FreertosScheduling {
 /// | rust/action-server | 5 040 | 8 952 | **36 152** |
 /// | rust/action-client | 5 040 | 8 952 | 33 584 |
 /// | workspaces/rust (2 nodes) | 3 208 | 10 752 | 23 296 |
-/// | workspaces/realtime-rust (2 tiers) | 3 208 | — | 22 184 boot / 22 368 tier |
+/// | workspaces/realtime-rust (2 sched tasks) | 3 208 | — | 22 184 boot / 22 368 sched task |
 ///
 /// So the worst in-tree peak is **36 152 bytes** and this default is 3.6x it.
 /// Reproduce it from any image's own boot output: `report_stack_peak` in
@@ -189,11 +189,11 @@ pub const fn app_stack_bytes(kb: Option<&str>) -> u32 {
 
 /// App-sized task stacks the default heap budgets for.
 ///
-/// Three: the boot task plus two spawned tiers. `app_stack_bytes` is charged
-/// **per TASK** — a tier whose `[tasks.*] stack_bytes` is 0 takes the app
-/// default too — so a tiered image multiplies this term rather than sharing it.
+/// Three: the boot task plus two spawned sched tasks. `app_stack_bytes` is charged
+/// **per TASK** — a sched task whose `[tasks.*] stack_bytes` is 0 takes the app
+/// default too — so a sched-task image multiplies this term rather than sharing it.
 /// The deepest in-tree image (`examples/workspaces/realtime-rust`) declares two
-/// tiers; three is one more than anything shipped, and a deeper image raises
+/// sched tasks; three is one more than anything shipped, and a deeper image raises
 /// `NROS_FREERTOS_HEAP_KB` with its own `heap peak` line as the evidence.
 pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 
@@ -205,9 +205,9 @@ pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 /// `nros_node::executor::backing::EXECUTOR_BACKING`, so the FIRST executor an
 /// image opens costs the heap NOTHING and this budget has no term for it. That
 /// is what makes the default independent of a size the board cannot see (issue
-/// 1197's whole subject). A TIERED boot opens one executor per tier, and
+/// 1197's whole subject). A SCHED-TASK boot opens one executor per sched task, and
 /// `backing::take` is a latch — the second and later ones fell through to
-/// `Box::leak` out of this heap. **Neither in-tree tier road does any more**:
+/// `Box::leak` out of this heap. **Neither in-tree sched task road does any more**:
 /// the C/C++ runners take the entry's `__nros_sched_task_executor_storage` (issue
 /// 1568) and the Rust `run_sched_tasks` the entry's `SchedTaskExecutorBacking` (issue
 /// 1571), both `.bss`. What still reaches this term is an older C/C++ entry
@@ -215,7 +215,7 @@ pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 /// entry sized past the reservation — so the term is kept, and the MEASUREMENT
 /// below predates both moves (re-measure before lowering it).
 ///
-/// MEASURED: `examples/workspaces/realtime-rust` (2 tiers) peaks at **389,064**
+/// MEASURED: `examples/workspaces/realtime-rust` (2 sched tasks) peaks at **389,064**
 /// bytes of heap against **176,920** for the worst single-executor image
 /// (`rust/action-client`), both at a 131,072-byte app stack. The difference
 /// beyond the second task's stack is **93,216** bytes — a default-sized backing
@@ -317,13 +317,13 @@ pub const C_CARRIER_APP_STACK_BYTES: u32 = 65_536;
 /// ```
 ///
 /// ONE app-sized task, not [`DEFAULT_HEAP_APP_TASK_SLOTS`]: on the C/C++
-/// carrier only the app task's stack comes from heap_4 — tier task stacks and
-/// TCBs are the entry's statics since issue 1598 — and no tier executor's
+/// carrier only the app task's stack comes from heap_4 — sched task stacks and
+/// TCBs are the entry's statics since issue 1598 — and no sched task executor's
 /// backing reaches the heap since issue 1568. At the carrier's 65,536-byte
 /// stack this is **655,360** bytes (640 KiB), which is what
 /// `FreeRTOSConfig.h`'s `NROS_FREERTOS_DDS_HEAP_KB` states; a test below holds
 /// the header to it. It replaced a 3 MiB budget nobody had measured. NOT minus
-/// the `.bss` tier stacks (issue 1598): the derivation never contained them.
+/// the `.bss` sched task stacks (issue 1598): the derivation never contained them.
 pub const fn default_dds_heap_bytes(app_stack_bytes: u32) -> usize {
     app_stack_bytes as usize + DEFAULT_HEAP_DDS_WORKING_SET_BYTES
 }

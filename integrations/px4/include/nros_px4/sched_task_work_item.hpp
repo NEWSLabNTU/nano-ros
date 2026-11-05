@@ -1,12 +1,12 @@
-// phase-521 W8 (b), RFC-0113 D9 -- a PX4 tier is a work item.
+// phase-521 W8 (b), RFC-0113 D9 -- a PX4 sched task is a work item.
 //
 // The generated PX4 entry (`nros dev codegen entry --lang cpp` for a PX4 module)
-// emits one `SchedTaskWorkItem` subclass per tier, constructed on the work queue
-// `nros_orchestration_ir::px4::px4_work_queues` picks for the tier's rank. This
-// header is the runtime half: it opens the tier's executor, installs the
-// tier's park slot, and drives one executor pass per `Run()`.
+// emits one `SchedTaskWorkItem` subclass per sched task, constructed on the work queue
+// `nros_orchestration_ir::px4::px4_work_queues` picks for the sched task's rank. This
+// header is the runtime half: it opens the sched task's executor, installs the
+// sched task's park slot, and drives one executor pass per `Run()`.
 //
-// A tier never parks a thread. Its wait is the work item's schedule:
+// A sched task never parks a thread. Its wait is the work item's schedule:
 //
 //   * a DEADLINE -- the executor calls the park slot with the bound it would
 //     have slept (timers, the session's next internal event). The slot arms
@@ -19,7 +19,7 @@
 //     of the executor's wake object. Every backend reaches that object: uORB
 //     from the publisher's context through its per-entity callback (issue
 //     2218), zenoh and XRCE from their transport threads. An attributed
-//     arrival signals only the owning tier's object, so only that tier runs.
+//     arrival signals only the owning sched task's object, so only that sched task runs.
 //
 // `Run()` is therefore: one pass that does not wait (the slot answers EXPIRED
 // to the first park of a run, so the pass drains and dispatches without
@@ -50,7 +50,7 @@
 namespace nros_px4
 {
 
-/// One tier of a generated PX4 entry, in the shape the other runners' tier
+/// One sched task of a generated PX4 entry, in the shape the other runners' sched task
 /// tables have (`NativeSchedTaskSpec`): the groups are FLAT `(node name, node
 /// namespace, group)` triples, `n_groups` counts triples, and an empty array is
 /// the wildcard (issue 1172).
@@ -61,13 +61,13 @@ struct SchedTaskSpec {
 	int32_t (*setup)(void *executor);
 };
 
-/// The executor storage a borrowed tier opens into: this build's own
+/// The executor storage a borrowed sched task opens into: this build's own
 /// `NROS_CPP_EXECUTOR_STORAGE_SIZE`, rounded to 8.
 struct alignas(8) SchedTaskStorage {
 	uint64_t words[(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 };
 
-/// What the tiers of one image share: the stop request and how many tiers are
+/// What the sched tasks of one image share: the stop request and how many sched tasks are
 /// still running, so the last one to stop is the one that cleans up.
 struct ImageState {
 	px4::atomic<bool> stopping{false};
@@ -77,13 +77,13 @@ struct ImageState {
 class SchedTaskWorkItem : public px4::ScheduledWorkItem
 {
 public:
-	/// Open this tier's executor and run its setup.
+	/// Open this sched task's executor and run its setup.
 	///
-	/// The BOOT tier (`session == nullptr`) opens the image's session through
-	/// `rclcpp::init_in`, so its executor is the global one; every other tier
+	/// The BOOT sched task (`session == nullptr`) opens the image's session through
+	/// `rclcpp::init_in`, so its executor is the global one; every other sched task
 	/// borrows that session into `storage` (`nros_cpp_executor_open_over_session`),
-	/// exactly as the RTOS tier runners do. Setups run one after another, never
-	/// overlapping (issue #144): the caller opens the tiers in table order.
+	/// exactly as the RTOS sched task runners do. Setups run one after another, never
+	/// overlapping (issue #144): the caller opens the sched tasks in table order.
 	int32_t open(const SchedTaskSpec &spec, ImageState &image, SchedTaskStorage *storage, void *session,
 		     const char *session_name, const char *node_namespace)
 	{
@@ -134,7 +134,7 @@ public:
 			return prc;
 		}
 
-		// Issue 2225 -- every arrival for this tier, from any backend,
+		// Issue 2225 -- every arrival for this sched task, from any backend,
 		// schedules THIS work item: the wake half of the yielding park slot.
 		const nros_cpp_ret_t hrc = nros_cpp_executor_set_wake_hook(_executor, &SchedTaskWorkItem::notify_trampoline, this);
 
@@ -154,14 +154,14 @@ public:
 		return 0;
 	}
 
-	/// The session the boot tier opened, for the tiers that borrow it.
+	/// The session the boot sched task opened, for the sched tasks that borrow it.
 	void *session() const { return _executor ? nros_cpp_executor_session_handle(_executor) : nullptr; }
 
-	/// First run: the tier's first pass, which also drives the session's
+	/// First run: the sched task's first pass, which also drives the session's
 	/// handshake.
 	void start() { ScheduleNow(); }
 
-	/// An arrival for this tier: run it. Every wake source of a PX4 tier
+	/// An arrival for this sched task: run it. Every wake source of a PX4 sched task
 	/// comes through here rather than calling `ScheduleNow()` itself, because
 	/// the park slot's `ScheduleClear()` also removes a run already queued,
 	/// and `_notified` is how the slot learns one was (issue 2218 binds
@@ -184,8 +184,8 @@ public:
 	/// The image is stopping: run once more to see it.
 	void wake_for_stop() { ScheduleNow(); }
 
-	/// Close the executor. Called by the last tier to stop, borrowed tiers
-	/// first and the boot tier last (it owns the session).
+	/// Close the executor. Called by the last sched task to stop, borrowed sched tasks
+	/// first and the boot sched task last (it owns the session).
 	void close()
 	{
 		if (_executor != nullptr) {
@@ -201,7 +201,7 @@ public:
 
 	bool is_boot() const { return !_borrowed; }
 
-	/// How many times this tier's work item has run a pass (stop excluded).
+	/// How many times this sched task's work item has run a pass (stop excluded).
 	uint32_t runs() const { return _runs.load(); }
 
 	/// The longest real time, in microseconds, from an arrival's `notify()`
@@ -212,8 +212,8 @@ public:
 protected:
 	SchedTaskWorkItem(const char *item_name, const px4::wq_config_t &queue) : ScheduledWorkItem(item_name, queue) {}
 
-	/// Called by the last tier to stop, once every tier has cleared its
-	/// schedule. The generated module closes the tiers and calls
+	/// Called by the last sched task to stop, once every sched task has cleared its
+	/// schedule. The generated module closes the sched tasks and calls
 	/// `exit_and_cleanup()` here.
 	virtual void on_image_stopped() = 0;
 
@@ -239,7 +239,7 @@ protected:
 		}
 
 		// Every wake that reaches the executor, counted for the idle-wake
-		// witness (phase-521 W8 (e), RFC-0113 D2): a tier woken only by its
+		// witness (phase-521 W8 (e), RFC-0113 D2): a sched task woken only by its
 		// deadlines and its arrivals runs no more often than they occur.
 		_runs.fetch_add(1);
 		const uint64_t woke_ns = _notify_ns.load();
@@ -268,7 +268,7 @@ protected:
 
 			if (rc != NROS_CPP_RET_OK && !_reported) {
 				_reported = true;
-				PX4_ERR("nros tier `%s`: spin_once failed (%d)", _spec->name, static_cast<int>(rc));
+				PX4_ERR("nros sched task `%s`: spin_once failed (%d)", _spec->name, static_cast<int>(rc));
 			}
 
 			if (_yielded) {
@@ -286,7 +286,7 @@ private:
 	/// due, and the queue's other items deserve their turn.
 	static constexpr unsigned kMaxPassesPerRun = 16;
 
-	/// The tier's park slot (`ParkUntilFn`). `bound_us` is the executor's
+	/// The sched task's park slot (`ParkUntilFn`). `bound_us` is the executor's
 	/// next wake bound, relative, already rounded to the granularity above.
 	static int8_t park(void *ctx, uint64_t bound_us)
 	{
@@ -302,7 +302,7 @@ private:
 
 		if (bound_us >= self->_budget_us && self->_idle_budget) {
 			// No deadline inside the idle budget: only an arrival wakes this
-			// tier, through `notify()`. `ScheduleClear()` also drops a run
+			// sched task, through `notify()`. `ScheduleClear()` also drops a run
 			// queued since this one started, so one that `notify()` queued
 			// is put back.
 			self->ScheduleClear();

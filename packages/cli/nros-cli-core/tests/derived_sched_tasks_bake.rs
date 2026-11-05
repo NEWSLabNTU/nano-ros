@@ -9,7 +9,7 @@
 //!
 //! What issue 1426 measured on exactly that shape: the derivation is complete
 //! code with tests, and no authored input reaches it. `codegen-system`
-//! collected groups from `[[component]].group_tiers` (which a workspace
+//! collected groups from `[[component]].group_tasks` (which a workspace
 //! deriving its schedule does not write) and from `cfg.component_packages`
 //! (empty for every workspace with no root `Cargo.toml`), so all four nodes
 //! arrived at `derive_sched_tasks_from_contracts` groupless, every one of them went
@@ -50,7 +50,7 @@ use nros_orchestration_ir::{
 use ros_launch_manifest_model::SystemModel;
 
 /// The board this bake is for. The fixture's `[image.zephyr]` names
-/// `zephyr`, whose descriptor's platform gives this tier key.
+/// `zephyr`, whose descriptor's platform gives this sched task key.
 const TARGET_RTOS: &str = "zephyr";
 
 /// The fixture's own `system.toml`, as the bake loads it.
@@ -68,8 +68,8 @@ fn derive(fixture: &Fixture, model: &SystemModel, system: &SystemToml) -> Derive
     derive_sched_tasks_from_contracts(model, TARGET_RTOS, &groups)
 }
 
-/// `node name -> the Zephyr priority its derived tier carries`, from the
-/// schedule's overrides and tiers. Read as an ORDER, never as a number.
+/// `node name -> the Zephyr priority its derived sched_task carries`, from the
+/// schedule's overrides and sched tasks. Read as an ORDER, never as a number.
 fn priorities(derived: &DerivedSchedule) -> BTreeMap<String, i64> {
     let mut out = BTreeMap::new();
     for ov in &derived.overrides {
@@ -77,12 +77,12 @@ fn priorities(derived: &DerivedSchedule) -> BTreeMap<String, i64> {
             .callback_groups
             .first()
             .expect("a derived override binds at least one group")
-            .tier;
-        let tier = derived.tiers.get(sched_task_name).unwrap_or_else(|| {
-            panic!("override names tier `{sched_task_name}`, which is not derived")
+            .sched_task;
+        let sched_task = derived.sched_tasks.get(sched_task_name).unwrap_or_else(|| {
+            panic!("override names sched task `{sched_task_name}`, which is not derived")
         });
-        let spec = tier.zephyr.as_ref().unwrap_or_else(|| {
-            panic!("tier `{sched_task_name}` has no [tasks.*.zephyr] sub-table")
+        let spec = sched_task.zephyr.as_ref().unwrap_or_else(|| {
+            panic!("sched task `{sched_task_name}` has no [tasks.*.zephyr] sub-table")
         });
         out.insert(ov.name.clone(), spec.priority);
     }
@@ -142,14 +142,14 @@ fn the_cmake_keyword_makes_the_fixture_derive_a_schedule() {
     let ranks: std::collections::BTreeSet<i64> = prio.values().copied().collect();
     assert_eq!(ranks.len(), 2, "two ranks over four nodes: {prio:?}");
 
-    // Every derived tier is a real `[tasks.*]` row the rest of the pipeline can
+    // Every derived sched task is a real `[tasks.*]` row the rest of the pipeline can
     // consume, carrying the Zephyr sub-table the target selects. phase-509 P5
-    // (RFC-0108 D4 rule 1): one LEVEL per distinct rank, not a tier per node,
+    // (RFC-0108 D4 rule 1): one LEVEL per distinct rank, not a sched task per node,
     // so the four nodes at two ranks are two levels of two nodes each.
     assert_eq!(
-        derived.tiers.keys().collect::<Vec<_>>(),
+        derived.sched_tasks.keys().collect::<Vec<_>>(),
         ["derived-level-0", "derived-level-1"],
-        "`derive_sched_tasks_from_contracts` derives a tier per level"
+        "`derive_sched_tasks_from_contracts` derives a sched task per level"
     );
     let [levels] = derived.levels.as_slice() else {
         panic!("one plan, nothing placed: {:?}", derived.levels)
@@ -169,8 +169,8 @@ fn the_bake_reports_the_derived_sched_tasks_and_binds_every_node() {
     let model = resolve_model(&fixture.bringup(), false);
     let mut system = system_toml(&fixture.bringup());
     assert!(
-        system.tiers.is_empty(),
-        "the fixture authors no tier; derivation only runs on an empty table"
+        system.sched_tasks.is_empty(),
+        "the fixture authors no sched task; derivation only runs on an empty table"
     );
 
     let cfg = NrosConfig::from_workspace(&fixture.bake_workspace()).expect("workspace");
@@ -179,8 +179,8 @@ fn the_bake_reports_the_derived_sched_tasks_and_binds_every_node() {
         model_ingest::derive_execution_from_contracts(&mut system, &model, TARGET_RTOS, &groups)
             .expect("the derived bake succeeds");
 
-    // phase-509 P5: two levels (one per rank), not a tier per node.
-    assert_eq!(derived, 2, "`derived {derived} scheduling tier(s)`");
+    // phase-509 P5: two levels (one per rank), not a sched task per node.
+    assert_eq!(derived, 2, "`derived {derived} sched task(s)`");
     assert!(
         warnings.is_empty(),
         "no path declares a deadline or a budget, so the realizer weakens no \
@@ -188,7 +188,7 @@ fn the_bake_reports_the_derived_sched_tasks_and_binds_every_node() {
     );
     // The bake writes the derivation back as ordinary rows, which is what makes
     // `resolve_system_sched_tasks` -> `run_sched_tasks` consume it unchanged.
-    assert_eq!(system.tiers.len(), 2);
+    assert_eq!(system.sched_tasks.len(), 2);
     assert_eq!(
         system.node_overrides.len(),
         4,
@@ -262,7 +262,7 @@ fn the_derived_table_lands_below_the_transport_band() {
         assert!(
             *p > transport.hi,
             "{node} at {p} is at least as urgent as the transport's least urgent \
-             thread ({}) - a derived tier must never preempt the link it publishes \
+             thread ({}) - a derived sched task must never preempt the link it publishes \
              over (issues 0623, 1427)",
             transport.hi
         );
@@ -296,7 +296,7 @@ fn the_derived_table_lands_below_the_transport_band() {
 /// This is the state issue 1426 measured. It must still be a groupless note
 /// per node and an empty schedule, because the fix is a new SOURCE and not a
 /// new default: a node that declares no group has nothing for the gating
-/// executor to bind, and inventing a group for it would place code on a tier
+/// executor to bind, and inventing a group for it would place code on a sched task
 /// nobody asked for.
 #[test]
 fn without_the_keyword_every_node_is_groupless_and_nothing_derives() {
@@ -306,9 +306,9 @@ fn without_the_keyword_every_node_is_groupless_and_nothing_derives() {
     let derived = derive(&fixture, &model, &system);
 
     assert!(
-        derived.tiers.is_empty() && derived.overrides.is_empty(),
+        derived.sched_tasks.is_empty() && derived.overrides.is_empty(),
         "nothing may be derived: {:?}",
-        derived.tiers.keys().collect::<Vec<_>>()
+        derived.sched_tasks.keys().collect::<Vec<_>>()
     );
     let mut notes: Vec<&str> = derived
         .groupless_notes
@@ -339,14 +339,14 @@ fn edit_contract(fixture: &Fixture, from: &str, to: &str, count: usize) {
     fs::write(&path, raw.replace(from, to)).expect("write the fixture's contract");
 }
 
-/// `node name -> the derived tier's period (us)`.
+/// `node name -> the derived sched_task's period (us)`.
 fn periods(derived: &DerivedSchedule) -> BTreeMap<String, Option<u64>> {
     derived
         .overrides
         .iter()
         .map(|ov| {
-            let tier = &ov.callback_groups[0].tier;
-            (ov.name.clone(), derived.tiers[tier].period_us)
+            let sched_task = &ov.callback_groups[0].sched_task;
+            (ov.name.clone(), derived.sched_tasks[sched_task].period_us)
         })
         .collect()
 }

@@ -5,7 +5,7 @@
 //! the other half: the bake knows how fast the executor can SEE a fault (the
 //! monitor rows it bakes), how long the reaction path may take (its
 //! `max_latency_ms`) and how long that path may wait to be released (its timer
-//! period, or the period of the tier that runs it). When those three add up to
+//! period, or the period of the sched task that runs it). When those three add up to
 //! more than the hazard's `ftti_ms`, the image cannot keep the promise, and
 //! that is a build error naming every term -- the same fail-loud shape as
 //! [`crate::qos_agreement`] and [`crate::violation_agreement`].
@@ -309,7 +309,7 @@ fn node_of(reference: &str) -> &str {
 }
 
 /// How long `path` may wait to be released: a timer's period (plus its
-/// stated jitter), else the period of the tier that runs its first input's
+/// stated jitter), else the period of the sched task that runs its first input's
 /// node.
 fn release(model: &SystemModel, path: &PathContract) -> Option<(f64, String)> {
     if let EffectiveTrigger::Timer { .. } = path.effective_trigger()
@@ -322,7 +322,7 @@ fn release(model: &SystemModel, path: &PathContract) -> Option<(f64, String)> {
         ));
     }
     let node = node_of(path.input.first()?);
-    let tier = model
+    let sched_task = model
         .execution
         .bindings
         .iter()
@@ -338,10 +338,15 @@ fn release(model: &SystemModel, path: &PathContract) -> Option<(f64, String)> {
             bound == node
         })
         .map(|(_, t)| t)?;
-    let ms = model.execution.tasks.get(tier)?.period?.as_millis_f64();
+    let ms = model
+        .execution
+        .tasks
+        .get(sched_task)?
+        .period?
+        .as_millis_f64();
     Some((
         ms,
-        format!("tier `{tier}`'s period, which releases node `{node}`"),
+        format!("sched task `{sched_task}`'s period, which releases node `{node}`"),
     ))
 }
 
@@ -479,9 +484,14 @@ pub(crate) mod tests {
 
     /// A sensor publishing `/scan`, a handler subscribing it, and a hazard on
     /// `/scan` whose reaction is the handler's stop path. `extra` lands under
-    /// `contracts:`; `hazard` is the hazard body; `tiers` goes under
+    /// `contracts:`; `hazard` is the hazard body; `sched_tasks` goes under
     /// `execution:`.
-    pub(crate) fn model_yaml(sub_age: &str, path_extra: &str, hazard: &str, tiers: &str) -> String {
+    pub(crate) fn model_yaml(
+        sub_age: &str,
+        path_extra: &str,
+        hazard: &str,
+        sched_tasks: &str,
+    ) -> String {
         format!(
             "meta:\n  version: 1\n\
              structure:\n  scopes:\n    demo.launch.xml:\n      file: demo.launch.xml\n  \
@@ -496,8 +506,8 @@ pub(crate) mod tests {
              \n  node_paths:\n    /handler/stop_path:\n      input: [/handler/scan]\n      \
              output: [/handler/stop]\n      max_latency_ms: 20.0\n{path_extra}\
              \n  hazards:\n    demo.launch.xml/scan_lost:\n{hazard}\
-             \nexecution:\n  bindings:\n    /handler: rt\n  tiers:\n    rt:\n      \
-             class: real_time\n{tiers}"
+             \nexecution:\n  bindings:\n    /handler: rt\n  tasks:\n    rt:\n      \
+             class: real_time\n{sched_tasks}"
         )
     }
 
@@ -514,7 +524,7 @@ pub(crate) mod tests {
     }
 
     /// The terms add up the way the module says: silence on the guard (100)
-    /// + the reaction path (20) + its tier's period (10).
+    /// + the reaction path (20) + its sched task's period (10).
     #[test]
     fn a_budget_is_detection_plus_reaction_plus_release() {
         let m = parse(&model_yaml(
@@ -550,7 +560,7 @@ pub(crate) mod tests {
             "silence-runtime",
             "/handler/scan",
             "/handler/stop_path",
-            "tier `rt`",
+            "sched task `rt`",
         ] {
             assert!(text.contains(needle), "names `{needle}`: {text}");
         }

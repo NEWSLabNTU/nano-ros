@@ -3,8 +3,8 @@
   executor, inside the setup function that is about to create that executor's
   nodes. `m` is the table (its rows), `mexec` the executor
   expression the caller hands in: the process-global handle in the single
-  setup, the tier's own `executor` in a tiered one. Designated initialisers
-  for the same reason the tier table uses them (see entry.cpp.jinja).
+  setup, the sched_task's own `executor` in a sched-task one. Designated initialisers
+  for the same reason the sched_task table uses them (see entry.cpp.jinja).
 
   Whitespace: this comment closes WITHOUT the dash so the newline after it
   survives -- it is the line break between the statement the caller rendered

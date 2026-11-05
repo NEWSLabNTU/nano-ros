@@ -83,9 +83,9 @@ ros-launch-manifest-types = { git = "https://github.com/NEWSLabNTU/ros-launch-ma
 ros-launch-manifest-model = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.3.12" }
 ros-launch-manifest-sched = { git = "https://github.com/NEWSLabNTU/ros-launch-manifest.git", tag = "v0.3.12" }
 
-# Phase 228.E — shared per-tier orchestration schema + resolver (RFC-0015),
+# Phase 228.E — shared per-sched-task orchestration schema + resolver (RFC-0015),
 # from the runtime workspace at `packages/core/`. Same crate the
-# `nros::main!()` proc-macro consumes, so tier resolution can't drift between
+# `nros::main!()` proc-macro consumes, so sched task resolution can't drift between
 # the CLI bake path and the codegen path.
 nros-orchestration-ir = { path = "../../core/nros-orchestration-ir" }
 # RFC-0109 D8 (phase-514 W3) — a backend's `session-json5` config file is

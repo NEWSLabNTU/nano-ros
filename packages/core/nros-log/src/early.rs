@@ -35,7 +35,7 @@
 //!   `nros::zephyr_component_main!`) emits `rust_main` directly, because Zephyr
 //!   owns the C `main` and a Rust staticlib cannot take it over. That is why
 //!   `nros-board-zephyr` has only `run_sched_tasks` to install from, and why a
-//!   single-tier pure-Rust Zephyr image published no sink list for two phases
+//!   single-sched-task pure-Rust Zephyr image published no sink list for two phases
 //!   (issue 1123) while its `log::info!`s worked fine.
 //! * a `[[bridge]]` system replaces the register/spin body with
 //!   `nros_bridge::run_from_config_str`, so it reaches no board either.

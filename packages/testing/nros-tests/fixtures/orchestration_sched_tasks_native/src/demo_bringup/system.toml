@@ -3,12 +3,12 @@ name = "demo"
 rmw = "zenoh"
 domain_id = 0
 
-# issue 0438 — `group_tasks` is what BINDS a callback group to a tier
+# issue 0438 — `group_tasks` is what BINDS a callback group to a sched task
 # (phase-273 W2 / RFC-0047 moved this out of the package manifest and into the
 # deployment config). Without it the `[tasks.*]` tables below are declared and
 # unreferenced: `resolve_sched_tasks` builds membership only from bindings, finds
-# none, and returns the degenerate single synthesized `default` tier — so the
-# macro emits the SINGLE-tier path and the two authored tiers vanish without a
+# none, and returns the degenerate single synthesized `default` sched task — so the
+# macro emits the SINGLE-sched-task path and the two authored sched tasks vanish without a
 # word. This fixture once carried the pre-273 form (`callback_groups` in each
 # node package's `Cargo.toml`), which nothing read; that form is now refused.
 [[component]]
@@ -31,7 +31,7 @@ group_tasks = { telem = "low" }
 [image.demo]
 board = "linux"
 
-# Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
+# Two priority sched tasks (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).
 [tasks.high]
 spin_period = "1000us"

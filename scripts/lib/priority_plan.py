@@ -156,7 +156,7 @@ def load_plans():
             raise SystemExit(
                 f"two boards claim sched_task_key {key!r} with DIFFERENT plans:\n"
                 f"  {prev['source']}\n  {plan['source']}\n"
-                "One tier key is one address space; if these ports really "
+                "One sched task key is one address space; if these ports really "
                 "differ, they need different keys.")
         plans[key] = plan
     return plans
@@ -167,21 +167,21 @@ ABOVE_RE = re.compile(r'^above\s*=\s*"([A-Za-z0-9_]+)"')
 
 
 def scan_pins():
-    """-> [(path, tier, platform, priority, above)] over every system.toml.
+    """-> [(path, sched_task, platform, priority, above)] over every system.toml.
 
-    `above` is the band this tier DELIBERATELY outranks, declared on the tier
+    `above` is the band this sched_task DELIBERATELY outranks, declared on the sched_task
     (RFC-0079 §6) and inherited by each of its per-platform pins:
 
         [tasks.safety]
         above = "transport"      # states the choice once, for every port
 
-    It sits on the tier rather than the platform table because it is a
+    It sits on the sched_task rather than the platform table because it is a
     statement about the SYSTEM, not about one kernel's numbering — the same
     reason the timing contract lives there.
     """
     pins = []
     for f in sorted(tracked(ROOT / "examples", name="system.toml")):
-        tier = plat = None
+        sched_task = plat = None
         above = {}
         for raw in f.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
@@ -189,23 +189,23 @@ def scan_pins():
                 continue
             m = SCHED_TASK_PLAT_RE.match(line)
             if m:
-                tier, plat = m.group(1), m.group(2)
+                sched_task, plat = m.group(1), m.group(2)
                 continue
             m = SCHED_TASK_RE.match(line)
             if m:
-                tier, plat = m.group(1), None
+                sched_task, plat = m.group(1), None
                 continue
             if line.startswith("["):
-                tier = plat = None
+                sched_task = plat = None
                 continue
             m = ABOVE_RE.match(line)
-            if m and tier and plat is None:
-                above[tier] = m.group(1)
+            if m and sched_task and plat is None:
+                above[sched_task] = m.group(1)
                 continue
             m = PRIO_RE.match(line)
-            if m and tier and plat:
-                pins.append((f.relative_to(ROOT), tier, plat,
-                             int(m.group(1)), above.get(tier)))
+            if m and sched_task and plat:
+                pins.append((f.relative_to(ROOT), sched_task, plat,
+                             int(m.group(1)), above.get(sched_task)))
     return pins
 
 
@@ -230,7 +230,7 @@ def scan_pins():
 #                                             POSIX_TO_ZEPHYR_PRIORITY, SCHED_RR:
 #                                             NUM_PREEMPT - prio - 1
 #
-# Tiers are RAW k_thread priorities, so the band has to end in k_thread units
+# Sched tasks are RAW k_thread priorities, so the band has to end in k_thread units
 # for `reserved.transport` to mean anything against them.
 
 ZPICO_BAND_MAX = 31
@@ -421,7 +421,7 @@ def zpico_band_to_posix(band, num_preempt):
     issue 0852 — this used to mirror `zpico_posix_set_priority`, a 0-31 map
     that wrote into a `pthread_attr_t` NOTHING ON ZEPHYR EVER READ. So this
     gate certified a band no image ever had, while `realtime-c`'s `system.toml`
-    authored tier values against that fiction and the declared ordering was in
+    authored sched_task values against that fiction and the declared ordering was in
     fact inverted. A static gate that models dead code cannot see the bug it
     exists to catch; that function is now deleted and this mirrors the live one
     (`nros-platform-zephyr/src/platform.c:nros_zephyr_native_priority`):
@@ -456,7 +456,7 @@ def resolve_zephyr_plan(dotconfig):
     phase-459 W4 (issue 1427) - this formula now has a SECOND implementation,
     in Rust: `packages/core/nros-orchestration-ir/src/priority_plan.rs`
     (`zephyr_plan` / `PriorityPlan::from_zephyr_dotconfig`), because the
-    realizer allocates a derived tier out of `pool.app` and cannot shell out to
+    realizer allocates a derived sched_task out of `pool.app` and cannot shell out to
     a script from inside a proc-macro. That is two implementations of ONE
     formula, and the split is only safe while one of them is a TEST of the
     other: this module stays the CHECKER. `check-sched-task-priority-plan-image.py`
@@ -504,7 +504,7 @@ def resolve_zephyr_plan(dotconfig):
         # Zephyr's usable k_thread range: negatives are cooperative.
         "range": (-num_coop, num_preempt - 1),
         "reserved": {"transport": (ks[0], ks[-1])},
-        # Tiers allocate strictly LESS urgent than the transport — numerically
+        # Sched tasks allocate strictly LESS urgent than the transport — numerically
         # larger here.
         "pool": {"app": (ks[-1] + 1, num_preempt - 1)},
         "detail": bands,

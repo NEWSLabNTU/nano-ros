@@ -271,14 +271,14 @@ Result: three workspaces become zero, with strictly more coverage.
 
 ### Realtime is a dimension, not a feature or a case set
 
-`ws-realtime-*` declares one system — ctrl @10 ms on a high tier, telem @100 ms
-on a low tier — and projects it onto each RTOS's native scheduler:
+`ws-realtime-*` declares one system — ctrl @10 ms on a high sched task, telem @100 ms
+on a low sched task — and projects it onto each RTOS's native scheduler:
 
 ```toml
 [[component]] group_tasks = { ctrl = "high" }
 [tasks.high]        spin_period = "10000us"
 [tasks.high.posix]  priority = 80        # POSIX priority
-[tasks.high.zephyr] priority = 5         # RAW Zephyr priority, k_thread per tier
+[tasks.high.zephyr] priority = 5         # RAW Zephyr priority, k_thread per sched task
 [tasks.high.nuttx]  ...                  # SCHED_FIFO
 ```
 
@@ -288,7 +288,7 @@ byte-identical to the base and separated only by a `CMAKE_TOOLCHAIN_FILE` block
 the language workspaces already carry. 8 workspaces collapse to 3 (phase-331 W6).
 
 Merging the tiers into the language workspaces themselves is deliberately NOT
-proposed: the 86 `execution.tiers` dims are the hand-authored data issue 0380
+proposed: the 86 `execution.tasks` dims are the hand-authored data issue 0380
 destroyed twice, and re-resolving every realtime model is exactly that hazard.
 Revisit once RFC-0063 makes models build artifacts.
 

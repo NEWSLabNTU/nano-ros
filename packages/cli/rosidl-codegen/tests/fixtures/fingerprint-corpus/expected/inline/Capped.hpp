@@ -72,7 +72,7 @@ struct Capped {
     /// charges a flat 512 bytes per nested message and a flat default capacity
     /// per string, and always returns a value, so it can never say "unbounded"
     /// and can be SMALLER than the real bound (issue 0964). Kept because
-    /// `Subscription<M>`, `Client<Svc>` and the action tiers all stack buffers
+    /// `Subscription<M>`, `Client<Svc>` and the action sched tasks all stack buffers
     /// on it. Anything sizing a RECEIVE buffer wants RX_MAX_SERIALIZED_SIZE
     /// below.
     static constexpr size_t SERIALIZED_SIZE_MAX = 18132;

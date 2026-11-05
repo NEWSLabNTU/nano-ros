@@ -4,7 +4,7 @@
 //! phase-509 P6 (RFC-0108 D3, D7; amended RFC-0107 step 4) -- the scheduler /
 //! worker split.
 //!
-//! RFC-0107's per-tier dispatcher was one value that both ORDERED ready work
+//! RFC-0107's per-sched-task dispatcher was one value that both ORDERED ready work
 //! and was the unit of PREEMPTION. RFC-0108 splits it in two:
 //!
 //! - a per-core [`Scheduler`]: the ordered ready set over the core's callback

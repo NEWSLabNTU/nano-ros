@@ -31,7 +31,7 @@ fn probe_rlib() -> Result<PathBuf, nros_sizes_build::Error> {
 /// does not build, so the probe's `nros-node` used to price a sizing
 /// descriptor's `in_place` subscription rows at a full receive region while
 /// the linked `nros-node` priced them at the entry struct alone. The sizes it
-/// measures (`NROS_CPP_LEVELS_BACKING_SIZE`, the tier backings) then disagreed
+/// measures (`NROS_CPP_LEVELS_BACKING_SIZE`, the sched task backings) then disagreed
 /// with the executor the image links, and the larger one was the static
 /// paid for. The callers (`nros-c`, `nros-cpp`) depend on `nros-rmw`
 /// directly, so cargo hands their build scripts its `links` metadata.

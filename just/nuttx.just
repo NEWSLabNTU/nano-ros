@@ -149,7 +149,7 @@ build-examples:
     # kernel). Same release profile (lto=true) as the Rust entry. Consumed by
     # tests/entry_e2e.rs (nuttx_arm_c cell) (cross-process /chatter delivery, baked slirp locator 8330).
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx c
-    # phase-281 W3-nuttx — the C++ realtime tiers workspace (realtime-cpp nuttx entry),
+    # phase-281 W3-nuttx — the C++ realtime sched tasks workspace (realtime-cpp nuttx entry),
     # consumed by realtime_sched_tasks_e2e (nuttx_arm_cpp cell). Was previously built by no verb (only its
     # e2e builder triggered it); build it here alongside the rust + c workspace lanes.
     CC_armv7a_nuttx_eabi=arm-none-eabi-gcc NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx)" bash scripts/build/workspace-fixtures-build.sh nuttx cpp
@@ -438,7 +438,7 @@ build-riscv-c:
     unset NROS_CMAKE_EXTRA_DEFS
     echo "NuttX riscv C examples built!"
 
-# #199 follow-up — rv-virt (riscv32) C WORKSPACE fixtures (the RT-tiers entry).
+# #199 follow-up — rv-virt (riscv32) C WORKSPACE fixtures (the RT-sched-tasks entry).
 # Mirrors the arm `workspace-fixtures-build.sh nuttx c` invocation with the
 # riscv toolchain; provisions the rv-virt kernel like build-riscv-c (the shared
 # tree holds one board config at a time).

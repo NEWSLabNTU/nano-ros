@@ -14,7 +14,7 @@
 # Issue 0570 fixed the constant (5 -> 14, i.e. 20 -> 56 bytes). Issue 0583 is what
 # happened next: the leaf target dirs still held a `std` compiled days earlier
 # against the 20-byte mirror, and nothing rebuilt it. The boot task's spawn
-# returned to ~0, silently. The observable was a tier that "stopped scheduling".
+# returned to ~0, silently. The observable was a sched task that "stopped scheduling".
 #
 # `workspace-fixture-signature.sh` now hashes the pin, so the STAMP is honest —
 # but a stale stamp only forces `cargo build` to run again, and that reuses the

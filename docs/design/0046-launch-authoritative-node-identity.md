@@ -43,7 +43,7 @@ Node identity is sourced inconsistently today:
 
 So C/C++ are already launch-driven but Rust names live in node code, the launch `name=` has no
 authority over a Rust node, and there is no single precedence rule. The launch name *is* parsed
-(for tier/param assignment) but never overrides the code's `create_node` name. Multi-node entries
+(for sched task/param assignment) but never overrides the code's `create_node` name. Multi-node entries
 also collapse to one graph node (#105) regardless.
 
 ## Design
@@ -114,7 +114,7 @@ CMake target (C/C++). It identifies *which code* runs; it is not the node's grap
   that sets a *different* `name=` now wins (new, desired).
 - C/C++ observable behavior unchanged (still launch-named); only the resolution moves to the shared
   site.
-- No change to `exec=`/entity selection or to tier/param assignment (which already key off the
+- No change to `exec=`/entity selection or to sched task/param assignment (which already key off the
   launch node instance).
 
 ## Cross-references

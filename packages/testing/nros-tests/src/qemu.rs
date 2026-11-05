@@ -713,11 +713,11 @@ impl QemuProcess {
     ///
     /// issue 0636 — the wait to use when the rule is "each of these must
     /// report". [`Self::wait_for_output_pattern`] returns at the first match,
-    /// which for a per-tier rule means the assertion runs against a log that
+    /// which for a per-sched-task rule means the assertion runs against a log that
     /// was cut mid-boot; the failure then reads as a dropped dim rather than as
     /// a short read, which is the most expensive kind of wrong.
     /// Each GROUP must be satisfied by ANY of its alternatives — the shape a
-    /// per-tier rule actually has, where a tier may report either its accept
+    /// per-sched-task rule actually has, where a sched task may report either its accept
     /// marker or its loud-failure marker and both count as "it reported".
     /// A single-element group degenerates to "this must appear".
     pub fn wait_for_output_each(
@@ -806,7 +806,7 @@ impl QemuProcess {
     /// issue 0636 — [`Self::wait_for_output_pattern`] stops at the FIRST match
     /// and then the caller kills QEMU, so a test whose rule needs SEVERAL
     /// distinct markers only sees the later ones if they happened to land in
-    /// the same buffer flush. That is a coin flip, not a wait: the multi-tier
+    /// the same buffer flush. That is a coin flip, not a wait: the multi-sched-task
     /// sched-dim cells assert one marker PER TIER, and the third tier's line
     /// went missing in 2 of 8 runs purely because the reader had already
     /// returned. Waiting on a predicate lets the caller say "all of them".

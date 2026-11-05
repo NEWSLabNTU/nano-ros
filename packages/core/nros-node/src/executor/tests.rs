@@ -2981,7 +2981,7 @@ fn a_yielding_park_returns_spin_once_with_the_next_wake_bound() {
 
 /// A wake already pending when the slot yields keeps the pass running: the
 /// work is here now, and returning would leave it waiting for the framework's
-/// next run of the tier.
+/// next run of the sched task.
 #[test]
 fn a_yielding_park_with_a_pending_wake_keeps_the_pass() {
     use portable_atomic::{AtomicU32, Ordering};
@@ -3666,7 +3666,7 @@ fn the_quantization_audit_sees_the_declared_cadence_not_the_park_bound() {
     // is the case to test: a 33 ms timer under a 50 ms budget (the retired
     // ~~`spin_default`~~'s). If the
     // audit followed the cap it would compare 33 ms against 33 ms — an exact
-    // multiple — and stay silent on a tier whose grid genuinely quantizes.
+    // multiple — and stay silent on a sched task whose grid genuinely quantizes.
     executor
         .register_timer(TimerDuration::from_millis(33), || {})
         .unwrap();
@@ -7284,7 +7284,7 @@ fn a_triggered_guard_beside_an_idle_subscription_fires_under_trigger_any() {
 /// The node-level verb is not a rename of the executor one: it binds the
 /// node, so the guard takes that node's default `SchedContext` like every other
 /// handle the node creates. That is the whole content of "the node owns it" for
-/// a callback sharing one executor with every other tier in the image.
+/// a callback sharing one executor with every other sched task in the image.
 #[test]
 fn a_node_created_guard_condition_fires_and_is_bound_to_its_node() {
     let session = MockSession::new();
@@ -10745,7 +10745,7 @@ fn deadline_warn_reports_without_skipping() {
 
 private_test_clock!(stalled_timer_clock);
 
-/// Issue #505 — a stalled tier must SAY it dropped activations.
+/// Issue #505 — a stalled sched task must SAY it dropped activations.
 ///
 /// The rate rule cannot: `check_rate` samples publish counts over a ~5 s
 /// window, so an isolated stall is a fraction of a percent, and under
@@ -10903,7 +10903,7 @@ fn spin_quantization_audit_runs_once_on_the_first_timed_spin() {
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         !executor.spin_quantization_checked,
-        "a zero timeout says nothing about the tier's spin period"
+        "a zero timeout says nothing about the sched task's spin period"
     );
 
     let _ = executor.spin_once(core::time::Duration::from_millis(5));
@@ -11457,7 +11457,7 @@ fn registering_past_capacity_reports_the_knob_and_frees_on_removal() {
 /// How many times the accepted-goal hook fired, and for which goal.
 ///
 /// Statics rather than a captured counter because the hook is an
-/// `extern "C" fn` — the same constraint that makes the C and C++ tiers pass a
+/// `extern "C" fn` — the same constraint that makes the C and C++ sched tasks pass a
 /// context pointer. The test is single-threaded and resets both up front.
 static ACCEPTED_CALLS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 static ACCEPTED_UUID_FIRST_BYTE: core::sync::atomic::AtomicU8 =
@@ -11620,7 +11620,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
 static LATE_GOAL_CALLS: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 static LAST_GOAL_CONTEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 
-/// Stands in for `goal_callback_trampoline` in the C++ tier: it READS the
+/// Stands in for `goal_callback_trampoline` in the C++ sched task: it READS the
 /// registered context, which after the owner is destroyed is freed storage.
 unsafe extern "C" fn accept_and_record_context(
     _goal_id: *const nros_core::GoalUuid,
@@ -12038,7 +12038,7 @@ fn release_jitter_starts_empty_and_clears() {
 }
 
 /// The measurement must live on the path the C++ entry actually drives.
-/// nros-cpp paces its tiers with a `spin_once` loop, not `spin_period`, so a
+/// nros-cpp paces its sched tasks with a `spin_once` loop, not `spin_period`, so a
 /// probe on `spin_period` alone records zero forever on that lane -- issue
 /// 0736's mistake one layer up.
 #[test]
@@ -12080,7 +12080,7 @@ fn a_zero_timeout_spin_claims_no_cadence() {
 
 /// `spin_once`'s argument is a blocking BOUND, not a cadence. nros-cpp's tier
 /// loops pass a fixed 10 ms and then pace themselves with `platform_sleep_us`,
-/// so the rule was judging every tier against 10 ms whatever period the
+/// so the rule was judging every sched task against 10 ms whatever period the
 /// contract declared. A declared cadence must win.
 #[test]
 fn a_declared_cadence_wins_over_the_spin_timeout() {
@@ -12107,7 +12107,7 @@ fn an_undeclared_cadence_falls_back_to_the_timeout() {
 
 private_test_clock!(sched_task_slower_cadence_clock);
 
-/// The bug this fixes, end to end: a 1 kHz tier that actually wakes every
+/// The bug this fixes, end to end: a 1 kHz sched task that actually wakes every
 /// 10 ms is nine periods late every time, and against the old 10 ms yardstick
 /// it looked perfectly on time.
 ///
@@ -12677,7 +12677,7 @@ fn no_headroom_bound_is_never_blind() {
 // ===========================================================================
 // phase-436 E4 — on a painted Zephyr stack the headroom query is a byte scan
 // over every UNUSED byte (`z_stack_space_get`), and the rule used to run it on
-// every spin. ASI's control tier runs on a 512 KiB main stack every 5 ms. The
+// every spin. ASI's control sched task runs on a 512 KiB main stack every 5 ms. The
 // high-water mark only grows, so a throttled check sees the same low; it only
 // sees it later.
 // ===========================================================================
@@ -17015,7 +17015,7 @@ fn raw_action_endpoints_are_keyed_on_their_own_hashes() {
     }
 }
 
-/// A default sink (the Zephyr tier runner's) installs only into an empty
+/// A default sink (the Zephyr sched task runner's) installs only into an empty
 /// slot: a sink the application installed first is kept.
 #[cfg(feature = "trace-callbacks")]
 #[test]

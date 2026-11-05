@@ -82,7 +82,7 @@ Three private structs, no shared definition, one port for which the parameter is
 mandatory and two for which it is inert. The consequences are concrete:
 
 * **A portable caller cannot set a stack size.** That is why W7 wrote a C shim:
-  a Rust tier spawn needed 64 KiB and the ABI had no way to say so.
+  a Rust sched task spawn needed 64 KiB and the ABI had no way to say so.
 * **W10's `PlatformTask::spawn` passes `NULL`** — correct on four ports, and a
   guaranteed `-1` on ThreadX. Neither feature that uses it is enabled on ThreadX
   today, so this is latent rather than broken, but it is broken by construction.
@@ -112,7 +112,7 @@ value. The bare-metal port says so in a comment it cannot say in its return:
 ```
 
 That distinction is not academic. Issue 0246 is a **transient** `pthread_create`
-failure on NuttX under load, which the tier spawn retries. W10's worker pool has
+failure on NuttX under load, which the sched task spawn retries. W10's worker pool has
 to decide whether a refusal is permanent, cannot ask, and therefore records
 every refusal as permanent — disabling a priority level for the process on what
 may have been a momentary ENOMEM.
@@ -157,7 +157,7 @@ numeric priority". The natives are not comparable:
 | POSIX / NuttX `SCHED_FIFO` | higher = more urgent | `1..99` (platform-dependent) |
 | Zephyr | lower = more urgent; negative = cooperative | `-CONFIG_NUM_COOP..CONFIG_NUM_PREEMPT` |
 
-A tier priority is authored once, in `system.toml`, and deployed to several of
+A sched task priority is authored once, in `system.toml`, and deployed to several of
 these. The same number means "most urgent" on ThreadX and "least urgent" on
 FreeRTOS. Nothing in the ABI records which convention a port uses.
 
@@ -260,7 +260,7 @@ maps onto its preemptive band and reserves negatives for cooperative.
 
 Keep a raw escape (`NROS_PLATFORM_TASK_PRIORITY_RAW(n)`) for expert use, because
 tuning a specific RTOS against its own documentation is legitimate and the
-normalised band should not make it impossible. The tier vocabulary in
+normalised band should not make it impossible. The sched task vocabulary in
 `system.toml` targets the normalised band; a per-platform override stays
 per-platform, which is what `[tasks.<name>.nuttx] priority` already does.
 

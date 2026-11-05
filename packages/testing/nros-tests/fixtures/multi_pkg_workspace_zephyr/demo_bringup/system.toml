@@ -24,7 +24,7 @@ name = "listener"
 # (`codegen-system --for-entry`, the spelling `nros image-facts` and
 # `nros ws board-facts` already use) and this is the key that answers it;
 # without it the bake resolves no image and silently takes the HOST defaults,
-# tier sub-table included. The id is not derivable from the app's name —
+# sched task sub-table included. The id is not derivable from the app's name —
 # a generated entry would be `zephyr_native_sim_entry`, and this one is
 # hand-written — which is exactly the case `entry =` exists for.
 [image.zephyr_native_sim]

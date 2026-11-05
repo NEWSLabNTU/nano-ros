@@ -5,15 +5,15 @@
 
 include!(concat!(env!("OUT_DIR"), "/nros_node_config.rs"));
 
-/// Issue 1970 -- one executor tier's own sizing, as `build.rs` derived it from
-/// the sizing descriptor's `[[tier]]` row: the callback slots, node slots and
-/// arena its members need, and the parameters they declare (`None`: the tier
+/// Issue 1970 -- one executor sched task's own sizing, as `build.rs` derived it from
+/// the sizing descriptor's `[[sched_task]]` row: the callback slots, node slots and
+/// arena its members need, and the parameters they declare (`None`: the sched task
 /// stated no count, so it carves the image's store). Read through
 /// [`SCHED_TASK_SIZINGS`]; `crate::executor::sched_task_sizing` turns a row into the
 /// `ExecutorSizing` its executor is carved at.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SchedTaskSizing {
-    /// The tier's name, as the entry's tier table spells it.
+    /// The sched task's name, as the entry's sched task table spells it.
     pub name: &'static str,
     pub cbs: usize,
     pub arena: usize,
@@ -52,7 +52,7 @@ pub struct SchedTaskSizing {
 /// (unfloored since issue 1971, and `executor::arena_oracle` refuses at
 /// compile time to let a stated knob sit below it), and every per-entry executor gets all of it.
 ///
-/// **That over-provisions a TIERED boot**, where one tier holds a subset of the
+/// **That over-provisions a SCHED-TASK boot**, where one sched task holds a subset of the
 /// image and now carries the whole model. Deliberate, and the direction is the
 /// safe one: the alternative needs the ENTRY's own per-kind counts where the
 /// macro emits the sizing, and those do not reach it today (issue 1290 records

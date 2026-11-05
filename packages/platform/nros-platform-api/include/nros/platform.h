@@ -24,7 +24,7 @@
  * `c_stub_platform.rs`).
  *
  * Companion to the canonical-C-ABI RMW vtable (`<nros/rmw_vtable.h>`); the
- * platform layer sits one tier below RMW.
+ * platform layer sits one sched task below RMW.
  *
  * # Return-value conventions
  *
@@ -283,7 +283,7 @@ size_t nros_platform_heap_used_bytes(void);
  *  with `k_current_get()`), whereas answering for an arbitrary task needs a
  *  native handle this ABI does not carry -- on Zephyr the task storage is a
  *  `pthread_t` and the mapping to `k_thread *` is not public. A task
- *  reporting its own headroom is also the shape the callers want: each tier
+ *  reporting its own headroom is also the shape the callers want: each sched task
  *  says how much of its own stack it has ever needed.
  *
  *  `0` means "this port does not instrument it", matching
@@ -405,7 +405,7 @@ uint64_t nros_platform_time_now_ns(void);
  * by the posix and zephyr ports, a PRIVATE struct in the freertos and esp-idf
  * ports, and MANDATORY on threadx (a `NULL` was a hard failure). Three struct
  * types, no shared definition, and therefore no portable way to ask for a stack
- * size — which is why phase-359 W7 wrote a bespoke C shim to spawn a NuttX tier
+ * size — which is why phase-359 W7 wrote a bespoke C shim to spawn a NuttX sched task
  * with a 64 KiB stack, and why W10's generic spawn passes `NULL` and would fail
  * on ThreadX.
  *
@@ -445,7 +445,7 @@ typedef struct {
      *  phase-364 W5. This was "platform-native", and the natives disagree: `0`
      *  is the HIGHEST priority on ThreadX and the LOWEST on FreeRTOS, while
      *  Zephyr runs lower-is-more-urgent with negatives reserved for cooperative
-     *  threads. A tier priority is authored ONCE, in `system.toml`, and
+     *  threads. A sched task priority is authored ONCE, in `system.toml`, and
      *  deployed to several of them — so the same number meant "run me first" on
      *  one board and "run me last" on another, with nothing in the ABI
      *  recording which convention a port used.
@@ -473,7 +473,7 @@ typedef struct {
  * The band is deliberately small. It is a portable ORDERING, not a claim that
  * every RTOS has 256 usable levels — ThreadX ships 32 by default, FreeRTOS's
  * `configMAX_PRIORITIES` is commonly 5 to 32, and a map that pretended
- * otherwise would collapse distinct tiers onto one level without saying so. */
+ * otherwise would collapse distinct sched tasks onto one level without saying so. */
 #define NROS_PLATFORM_PRIORITY_MIN      0
 #define NROS_PLATFORM_PRIORITY_MAX      255
 /** Keep the creating task's priority. */

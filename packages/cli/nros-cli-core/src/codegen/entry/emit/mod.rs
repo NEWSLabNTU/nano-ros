@@ -137,8 +137,8 @@ pub fn emit_typed_image_lowered(
     )
 }
 
-/// phase-462 W4c -- what a contract's modes do to the tiers: each mode's
-/// derived tier deadlines and its switch budget.
+/// phase-462 W4c -- what a contract's modes do to the sched tasks: each mode's
+/// derived sched task deadlines and its switch budget.
 #[derive(Debug, Clone, Default)]
 pub struct ModeSchedTask {
     pub deadlines: nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines,
@@ -296,7 +296,7 @@ pub(crate) fn admit_and_lower(
     let lowered = lower_image(plan, opts)?;
 
     if manifest.c_abi_runners
-        && lowered.tiers.is_some()
+        && lowered.sched_tasks.is_some()
         && lowered
             .boot
             .as_ref()
@@ -304,7 +304,7 @@ pub(crate) fn admit_and_lower(
     {
         return Err(format!(
             "typed entry emit (`{pack}` pack): board `{}` has a C-ABI `run_components` \
-             but no C-ABI `run_sched_tasks`, so a tiered entry has no runner to call",
+             but no C-ABI `run_sched_tasks`, so a sched-task entry has no runner to call",
             plan.board
         ));
     }

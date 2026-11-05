@@ -1,6 +1,6 @@
 // SubNode.cpp — portability copy (RFC-0047).
 // IDENTICAL to ws-realtime-cpp-subnode's SubNode.cpp.
-// The tier names used at runtime come from deploy_bringup/system.toml
+// The sched task names used at runtime come from deploy_bringup/system.toml
 // ("fast"/"bulk") — no change to this file proves portability.
 #include "subnode_pkg/SubNode.hpp"
 

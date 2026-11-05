@@ -104,7 +104,7 @@ pub fn reset() {
 /// Open a node and make it current. Returns false if the recorder is full —
 /// never silently drops, because a dropped node makes every entity after it
 /// vanish from the count. A node already open under this name is made current
-/// again (issue 1419: a tiered Rust entry creates each node once per tier).
+/// again (issue 1419: a sched-task Rust entry creates each node once per sched task).
 ///
 /// phase-428 W6 remainder: `#[must_use]` because the doc comment above states
 /// the consequence of ignoring the answer and `bool` says nothing at a call
@@ -122,9 +122,9 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
     state().with(|st| {
         let id = String::from(name);
         // Issue 1419 — a node of this name is already open: make it current
-        // again. A tiered Rust entry runs a component's `register()` once per
-        // tier executor, so the same node is created once per tier, and each
-        // tier's run declares only the entities its groups admit. Re-opening
+        // again. A sched-task Rust entry runs a component's `register()` once per
+        // sched task executor, so the same node is created once per sched task, and each
+        // sched task's run declares only the entities its groups admit. Re-opening
         // is what makes the census their union rather than a panic on tier 2.
         if st.recorder.has_node(&id) {
             st.current_node = Some(id);
@@ -395,10 +395,10 @@ mod tests {
     // for. Production never contends — see the module doc.
     static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    /// Issue 1419 -- a tiered Rust entry runs a component's `register()` once
-    /// per tier executor, so the SAME node is opened once per tier. Re-opening
+    /// Issue 1419 -- a sched-task Rust entry runs a component's `register()` once
+    /// per sched task executor, so the SAME node is opened once per sched task. Re-opening
     /// makes it current again: one node row, holding the union of what each
-    /// tier declared. Red before (measured): the second `begin_node` returned
+    /// sched task declared. Red before (measured): the second `begin_node` returned
     /// false, which the hook turns into a panic on tier 2.
     #[test]
     fn reopening_a_node_makes_it_current_again() {
@@ -434,7 +434,7 @@ mod tests {
             ..json.find("\"source_default_name\":\"telem\"").unwrap()];
         assert!(
             ctrl.contains("\"period_ms\":10,") && ctrl.contains("\"period_ms\":20,"),
-            "both tiers' timers on the one node: {ctrl}"
+            "both sched tasks' timers on the one node: {ctrl}"
         );
         reset();
     }

@@ -11,8 +11,8 @@ namespace stop_mode_pkg {
 ///
 /// The component declares `CALLBACK_GROUPS main` in its CMakeLists and creates
 /// no group in code: with exactly one declared group the whole node is placed
-/// on the tier the rate-monotonic derivation assigns from the contract's
-/// 30 Hz timer path. No tier, priority or period is written anywhere but the
+/// on the sched task the rate-monotonic derivation assigns from the contract's
+/// 30 Hz timer path. No sched task, priority or period is written anywhere but the
 /// timer call below and the contract beside the launch file.
 class StopModeOperator : public ::rclcpp::NodeWithTimers<1> {
     ::rclcpp::Publisher<std_msgs::msg::Int32> pub_;

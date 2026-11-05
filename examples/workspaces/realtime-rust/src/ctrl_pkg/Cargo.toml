@@ -3,15 +3,15 @@ name = "ctrl_pkg"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Node pkg — control loop on the high-priority tier (10 ms)."
+description = "Node pkg — control loop on the high-priority sched task (10 ms)."
 
 [lib]
 path = "src/lib.rs"
 
 # phase-263 B2 — the control node's code declares its callback group with
-# `node.callback_group("ctrl")`; WHICH tier that group runs on is deployment
+# `node.callback_group("ctrl")`; WHICH sched task that group runs on is deployment
 # policy, bound in the bringup's `system.toml` (`[[component]] group_tasks`,
-# RFC-0047), which `nros::main!()` resolves against `[tasks.<tier>]` to emit
+# RFC-0047), which `nros::main!()` resolves against `[tasks.<sched_task>]` to emit
 # `run_sched_tasks` (RFC-0015 / RFC-0032).
 [package.metadata.nros.node]
 class = "ctrl_pkg::Control"

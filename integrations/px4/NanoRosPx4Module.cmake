@@ -179,7 +179,7 @@ set(_NROS_PX4_INCLUDES
     "${NROS_REPO_DIR}/packages/core/nros-rmw-abi/include"
     "${NROS_REPO_DIR}/packages/platform/nros-platform-api/include"
     # phase-521 W8 (b) -- `nros_px4/sched_task_work_item.hpp`, the runtime half of
-    # the generated entry: one PX4 work item per tier (RFC-0113 D9).
+    # the generated entry: one PX4 work item per sched task (RFC-0113 D9).
     "${NROS_REPO_DIR}/integrations/px4/include")
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
@@ -279,7 +279,7 @@ nros_assert_archive_pairs_with_header(
 #                          [LAUNCH <file>] COMPONENTS <pkg>:<exec>:<class>:<header>...)
 #
 # phase-521 W8 (d), RFC-0113 D9 -- the module's entry, generated at configure:
-# one PX4 work item per tier (`nros dev codegen entry --px4-main`). The model
+# one PX4 work item per sched task (`nros dev codegen entry --px4-main`). The model
 # is the bringup's, which `nros sync` writes; COMPONENTS state what the cmake
 # metadata states for a workspace entry (each launch node's class and header),
 # because a PX4 module registers no component library of its own.
@@ -462,7 +462,7 @@ function(nros_px4_add_module)
                 # real PX4 headers rather than the mock ABI the unit smoke uses.
                 # phase-521 W8 (d): the push-wake glue is always linked
                 # here, so the session states Notify (RFC-0113 D4) and the
-                # generated entry binds each tier's subscriptions to it.
+                # generated entry binds each sched task's subscriptions to it.
                 COMPILE_FLAGS -DNROS_RMW_UORB_USE_PX4_HEADER=1 -DNROS_RMW_UORB_PX4_GLUE=1
                 SRCS
                     ${NROS_RMW_UORB_SOURCES}

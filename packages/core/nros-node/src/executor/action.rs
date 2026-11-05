@@ -980,7 +980,7 @@ impl<'s> Executor<'s> {
 /// registered them is gone, so a `send_goal` query still reaches its entry.
 /// (`release_action_server_raw`, resolution 2, is what removes them.)
 /// What must not survive is the DISPATCH: the registered `context` is the
-/// address of the owner's storage (for the C++ tier, the `storage_` member of
+/// address of the owner's storage (for the C++ sched task, the `storage_` member of
 /// a destroyed `rclcpp_action::Server<A>`), so calling the real trampoline
 /// after destruction reads freed memory.
 ///
@@ -1004,7 +1004,7 @@ unsafe extern "C" fn detached_goal_callback(
 /// no user state, so a client holding a goal accepted before the server was
 /// destroyed learns that the goal ended instead of waiting for a result nobody
 /// will ever complete. Rejecting would leave it hanging on a server that
-/// cannot answer. This is also what the C++ tier already does for a server
+/// cannot answer. This is also what the C++ sched task already does for a server
 /// with no cancel callback installed (`cancel_callback_trampoline`).
 unsafe extern "C" fn detached_cancel_callback(
     _goal_id: *const nros_core::GoalUuid,
@@ -1158,7 +1158,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// `entry_index` must be the index of an entry registered by
     /// [`register_action_client_raw`](Executor::register_action_client_raw) —
-    /// the DEFAULT-sized entry point, which is the only one the C and C++ tiers
+    /// the DEFAULT-sized entry point, which is the only one the C and C++ sched tasks
     /// use and the same assumption
     /// [`action_client_core_mut`](Executor::action_client_core_mut) makes on
     /// every poll.

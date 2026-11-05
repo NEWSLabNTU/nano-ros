@@ -185,7 +185,7 @@ impl Default for ContractReporter {
 /// topic match at create time, so a table installed later monitors nothing.
 /// `nros::main!` emits this ahead of the parameter services and the node
 /// registrations on every executor it builds (the single one, and each
-/// tier's).
+/// sched task's).
 ///
 /// The tables are refused, not truncated, when they exceed the executor's
 /// `MAX_MONITORS` / `MAX_AGE_MONITORS` (the baked tables also carry a

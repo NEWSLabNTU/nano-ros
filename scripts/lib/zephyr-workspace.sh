@@ -231,7 +231,7 @@ nros_zephyr_ws_resolve_or_default() {
 # Everything that writes or reads a west build dir — the fixture builder, the
 # FVP recipes, the test resolvers (`nros_tests::zephyr::zephyr_build_root`, the
 # Rust twin, pinned by `build_root_derivation.sh`), the foreign-checkout gate,
-# the tier-priority image sweep — asks THIS. The west-leaf routing (issue 1016)
+# the sched-task-priority image sweep — asks THIS. The west-leaf routing (issue 1016)
 # keys on the build-dir NAME and is unaffected: the name is unchanged, only the
 # directory holding it moved.
 #

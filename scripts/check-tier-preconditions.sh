@@ -345,7 +345,7 @@ unset _pre_make
 
 # 8b. clang-format, and this one DOES fail (phase-466).
 #
-#     `check fast` runs `c-fmt` and `cpp-fmt`, every tier runs `check fast`, so
+#     `check fast` runs `c-fmt` and `cpp-fmt`, every sched task runs `check fast`, so
 #     a tier without clang-format cannot pass — that is settled, and the only
 #     question is when you find out. It used to be `_setup-common`, which made
 #     it fatal for every `just setup <scope>` including the ones that format
@@ -361,7 +361,7 @@ unset _pre_make
 #
 #     The resolver is the one the format recipes use, so this cannot check a
 #     different binary than they will (the phase-422 W2 lesson).
-probe "clang-format is not available, and every tier runs check-fast -> c-fmt/cpp-fmt" \
+probe "clang-format is not available, and every sched task runs check-fast -> c-fmt/cpp-fmt" \
     "just setup-clang-format   (needs the unzip that [prereq.unzip] declares)" \
     bash -c '. scripts/dev/clang-format.sh && nros_clang_format >/dev/null'
 

@@ -39,7 +39,7 @@ superseded-by: null
 | Doc                                                          | Layer                                                                                | Status                     |
 |--------------------------------------------------------------|--------------------------------------------------------------------------------------|----------------------------|
 | [`0016-rtos-scheduling-features.md`](0016-rtos-scheduling-features.md) | OS-thread-level config (zpico / network / app-task priorities via `config.toml`)     | Phase 76 (FreeRTOS landed) |
-| [`0015-rtos-orchestration.md`](0015-rtos-orchestration.md)             | Tier-task spawn from launch manifests; cross-tier mutex; multi-tier executor binding | Future phase               |
+| [`0015-rtos-orchestration.md`](0015-rtos-orchestration.md)             | Sched-task spawn from launch manifests; cross-sched-task mutex; multi-sched-task executor binding | Future phase               |
 | **This doc**                                                 | **Intra-executor scheduling** — how `spin_once` selects + dispatches ready callbacks | **Phase 110 (proposed)**   |
 
 The three layers stack:
@@ -48,7 +48,7 @@ The three layers stack:
 launch manifest                      ← 0015-rtos-orchestration.md (future)
    │
    ▼
-tier task (OS thread)                ← 0016-rtos-scheduling-features.md
+sched task (OS thread)                ← 0016-rtos-scheduling-features.md
    │ pri=N, sched_policy=FIFO, stack=4K
    ▼
 Executor (this doc)                  ← 0002-rt-execution-model.md
@@ -315,7 +315,7 @@ pub enum DrainMode {
 
 ### 4.4a Periodic-timer overrun policy (issue 0505)
 
-A periodic timer whose tier is preempted past several of its periods has a
+A periodic timer whose sched task is preempted past several of its periods has a
 backlog. What happens to it is a semantics decision, and it belongs here rather
 than in whichever line of the dispatcher happens to implement it.
 
@@ -362,8 +362,8 @@ below.
 **Overrun is counted and reported, not just handled.** Each timer carries a
 saturating `overruns`, and dropped activations reach the same violation ring as
 the rate/age/latency/deadline rules as `timer-overrun-runtime` (`fqn` = the bound
-SchedContext/tier name, `measured` = overruns accrued in the window, `declared` =
-tolerated count, 0 by default). The check runs after dispatch, so a stalling tier
+SchedContext/sched task name, `measured` = overruns accrued in the window, `declared` =
+tolerated count, 0 by default). The check runs after dispatch, so a stalling sched task
 reports in the same cycle. Without it a replayed burst SATISFIES a rate check
 while being exactly the failure that check exists for.
 
@@ -372,7 +372,7 @@ callback signature stays `FnMut()`, so the counter is queryable rather than
 pushed into user code (Zephyr passes an expiry count into the handler; taking
 that route here would have been a breaking change for no gain the counter does
 not already give). Making the policy declarable in launch-level scheduling
-metadata — a tier dim, `real_time` class implying `Skip` — is deliberately NOT
+metadata — a sched task dim, `real_time` class implying `Skip` — is deliberately NOT
 decided here; it belongs with the contract schema.
 
 **Resolution.** Periods are microseconds end to end. They were milliseconds at
@@ -386,7 +386,7 @@ FreeRTOS lane, a mid tier declared at 33.333 ms: rate error −0.99 % before,
 +0.01 % after.
 
 Still true and deliberately not fixed: a period that is not a multiple of its
-tier's spin period quantizes to the spin grid (33 ms on a 5 ms spin alternates
+sched task's spin period quantizes to the spin grid (33 ms on a 5 ms spin alternates
 35/30 ms, mean 33.07). The long-run rate is right and no activation is dropped,
 so no rule fires — correctly — but the jitter is predictable at resolve time and
 would be better as a resolver warning than a surprise on target.
@@ -436,11 +436,11 @@ the static is uninitialised) for parts with tightly-coupled memory;
 `-1` = derive) resizes it, or removes it entirely at `0`, because the RTOS half
 of the move — lowering the allocator arena by the same amount — is per-image
 (issue 1145). The heap arm remains for a second executor opened through an
-`alloc` constructor and for an entry sized past the reservation. A tiered boot's
-SPAWNED tiers are not that second executor: the entry owns their backing too —
-`nros::main!` emits one `SchedTaskExecutorBacking<N>` static (N = tiers − 1, each slot
+`alloc` constructor and for an entry sized past the reservation. A sched-task boot's
+SPAWNED sched tasks are not that second executor: the entry owns their backing too —
+`nros::main!` emits one `SchedTaskExecutorBacking<N>` static (N = sched tasks − 1, each slot
 exactly `ExecutorSizing::DEFAULT.u64_len()` words) and every board's `run_sched_tasks`
-hands a spawned tier its slot (`Executor::open_with_session_slot`), the Rust twin
+hands a spawned sched task its slot (`Executor::open_with_session_slot`), the Rust twin
 of the C/C++ pack's `__nros_sched_task_executor_storage` (issues 1568, 1571).
 
 **An image that pays for the static out of the allocator arena STATES the size
@@ -471,7 +471,7 @@ rejected an unconditional `.bss` store for exactly that reason. An executor
 whose backing carved no store still builds one from the heap, with issue 1706's
 named refusal. So the store follows every placement rule above: it is in
 `EXECUTOR_BACKING`, in every C/C++ `nros_executor_t` (`NROS_EXECUTOR_SIZE`), and
-in every tier slot, all sized by the one `ExecutorSizing::DEFAULT.u64_len()`.
+in every sched task slot, all sized by the one `ExecutorSizing::DEFAULT.u64_len()`.
 Its shape reaches the C/C++ sizes probe as `DEP_NROS_NODE_PARAM_STORE_SHAPE`.
 
 **What this does NOT buy, contrary to the original text.** It does not shrink a
@@ -504,7 +504,7 @@ settles it: `SubInfoEntry::sampled_len` records pre-sampled data that must
 survive the LET window, so the buffer cannot be reused by another subscription
 in the meantime. Sharing would also require mutual exclusion across
 receive→deserialize, which couples the WCET of unrelated topics and introduces
-a priority-inversion channel between tiers — the opposite of § 4.2's intent. And
+a priority-inversion channel between sched tasks — the opposite of § 4.2's intent. And
 it does not even pay: sized to the largest type it saves the difference between
 `max` and `sum`, which for a typical island graph is a few KiB against the loss
 of per-topic independence.
@@ -706,11 +706,11 @@ On single-thread MCU: `Executor::open()` (current API) returns one in-tree execu
 | `SchedClass::Sporadic` (user-space) | Atomic budget + `k_timer` for refill. ✅.                                                                                |
 | `SchedClass::Sporadic` (native OS)  | ❌ Emulate.                                                                                                              |
 | Multi-executor                      | One Zephyr thread per Executor; pin via `k_thread_cpu_pin` on SMP. ✅.                                                   |
-| Best-effort tier                    | `BestEffort` SC binds to a low-priority `k_work_q` thread. ✅ clean.                                                     |
+| Best-effort sched task                    | `BestEffort` SC binds to a low-priority `k_work_q` thread. ✅ clean.                                                     |
 | Budget refill timer                 | `k_timer` (ISR-context expiry) → `k_work_submit` to executor wq. ✅.                                                     |
 | Deadline timer source               | `k_cycle_get_32` (cycle-precision). ✅.                                                                                  |
 
-**Verdict.** Excellent fit. Zephyr's `k_work_q` is the cleanest "best-effort tier sink" of any RTOS we target — `BestEffort` `SchedContext` can map directly. Tickless kernel keeps refill timers cheap. Cooperative + preemptive split gives a natural "executor cooperative, network IRQ preemptive" arrangement.
+**Verdict.** Excellent fit. Zephyr's `k_work_q` is the cleanest "best-effort sched task sink" of any RTOS we target — `BestEffort` `SchedContext` can map directly. Tickless kernel keeps refill timers cheap. Cooperative + preemptive split gives a natural "executor cooperative, network IRQ preemptive" arrangement.
 
 ### 5.4 FreeRTOS
 
@@ -753,7 +753,7 @@ On single-thread MCU: `Executor::open()` (current API) returns one in-tree execu
 | `SchedClass::Sporadic` (user-space) | Per-SC budget atomic + `xTimerCreate` for refill posted via `xTimerPendFunctionCall`. ✅.              |
 | `SchedClass::Sporadic` (native OS)  | ❌ Emulate.                                                                                            |
 | Multi-executor                      | One FreeRTOS task per Executor; affinity via `xTaskCreateAffinitySet` on SMP V11+. ✅.                 |
-| Best-effort tier                    | Dedicated low-prio task + `xQueue` of work descriptors (no first-class work queue type). ✅ via idiom. |
+| Best-effort sched task                    | Dedicated low-prio task + `xQueue` of work descriptors (no first-class work queue type). ✅ via idiom. |
 | Budget refill timer                 | `xTimerCreate` (callback on daemon task; routes to executor via `xTimerPendFunctionCall`). ✅.         |
 | Deadline timer source               | Tick-granular by default; sub-tick needs hardware timer or DWT cycle counter on Cortex-M.              |
 
@@ -765,7 +765,7 @@ On single-thread MCU: `Executor::open()` (current API) returns one in-tree execu
 
 **Priority space.** 0..31 default (`TX_MAX_PRIORITIES` configurable up to 1024). **Direction-flipped: 0 = highest** (same as Cortex-M NVIC, opposite of POSIX/FreeRTOS/NuttX). Ready queue = 32-entry array of FIFO buckets, one per priority.
 
-**Preemption threshold.** `tx_thread_preemption_change(thread, threshold, ...)` — thread w/ priority `P` and threshold `T ≤ P` can be preempted only by threads w/ priority `< T`. If `T == P` (default), normal preemption. If `T < P`, a *band* of higher-priority threads is suppressed → **non-preemptive groups** (Saksena-Wang scheduling). Useful for "all Normal-tier threads non-preemptive among themselves but preemptable by Critical".
+**Preemption threshold.** `tx_thread_preemption_change(thread, threshold, ...)` — thread w/ priority `P` and threshold `T ≤ P` can be preempted only by threads w/ priority `< T`. If `T == P` (default), normal preemption. If `T < P`, a *band* of higher-priority threads is suppressed → **non-preemptive groups** (Saksena-Wang scheduling). Useful for "all Normal-sched-task threads non-preemptive among themselves but preemptable by Critical".
 
 **Time slicing.** `tx_thread_time_slice_change(thread, slice, ...)` per-thread, in ticks. `0` = disabled (default).
 
@@ -841,7 +841,7 @@ On single-thread MCU: `Executor::open()` (current API) returns one in-tree execu
 | `SchedClass::Edf` (native OS)       | ❌ No OS.                                                                                                                                                         |
 | `SchedClass::Sporadic` (user-space) | Atomic budget counter (`AtomicI32::fetch_sub`); SysTick or dedicated TIMx ISR refills period. ✅.                                                                 |
 | `SchedClass::Sporadic` (native OS)  | ❌ Emulate.                                                                                                                                                       |
-| Multi-executor (NVIC tiers)         | RTIC-style: each SchedContext = task at distinct NVIC priority. Critical / Normal / BestEffort = 3 NVIC slots regardless of callback count. ✅ optional (future). |
+| Multi-executor (NVIC sched tasks)         | RTIC-style: each SchedContext = task at distinct NVIC priority. Critical / Normal / BestEffort = 3 NVIC slots regardless of callback count. ✅ optional (future). |
 | Budget refill timer                 | SysTick, TIMx, RISC-V `mtimecmp`. ✅.                                                                                                                             |
 | Deadline timer source               | `DWT->CYCCNT` (sub-µs), `mcycle` CSR. ✅ excellent precision.                                                                                                     |
 | Idle                                | `wfi`. ✅ already wired.                                                                                                                                          |
@@ -860,15 +860,15 @@ Cross-platform consolidation. ✅ = fits natively / cleanly. ⚠️ = fits w/ ca
 | `SchedClass::Edf` (native OS)        | ✅ `SCHED_DEADLINE` opt-in        | ❌                                             | ⚠️ tiebreaker only              | ❌                                           | ❌                                   | ❌                               |
 | `SchedClass::Sporadic` (user-space)  | ✅                                | ✅                                             | ✅                             | ✅                                           | ✅                                   | ✅                               |
 | `SchedClass::Sporadic` (native OS)   | ❌ (POSIX has spec, Linux unimpl) | ✅ **`SCHED_SPORADIC`**                        | ❌                             | ❌                                           | ❌                                   | ❌                               |
-| Multi-executor (per-thread OS pri)   | ✅ pthread × FIFO prio            | ✅ pthread × FIFO prio                         | ✅ Zephyr threads              | ✅ FreeRTOS tasks                            | ✅ TX threads                        | ⚠️ RTIC-style NVIC tiers (future) |
+| Multi-executor (per-thread OS pri)   | ✅ pthread × FIFO prio            | ✅ pthread × FIFO prio                         | ✅ Zephyr threads              | ✅ FreeRTOS tasks                            | ✅ TX threads                        | ⚠️ RTIC-style NVIC sched tasks (future) |
 | Budget refill timer                  | ✅ `timerfd`                      | ✅ `timer_create`                              | ✅ `k_timer` → `k_work_submit` | ✅ `xTimerCreate` + `xTimerPendFunctionCall` | ✅ `tx_timer_create`                 | ✅ SysTick / TIMx / `mtimecmp`   |
 | Deadline timer (high-res)            | ✅ ns hrtimer                     | ⚠️ tick (1 ms); fine w/ `CONFIG_SCHED_TICKLESS` | ✅ `k_cycle_get_32`            | ⚠️ tick; sub-tick needs HW timer              | ⚠️ tick; sub-tick via DWT             | ✅ DWT / mcycle (sub-µs)         |
 | ISR-safe activation source           | `eventfd` / signal                | POSIX timer / signal                           | `k_sem_give` / `k_work_submit` | `xQueueSendFromISR`                          | `tx_event_flags_set`                 | `critical_section` enqueue       |
 | Idle / wake                          | `clock_nanosleep(ABSTIME)`        | same                                           | `k_sem_take` w/ timeout        | `xQueueReceive` w/ timeout                   | `tx_event_flags_get` w/ wait         | `wfi`                            |
 | PI mutex                             | ✅ `PTHREAD_PRIO_INHERIT`, set by the port (glibc condvars still wake FIFO, not by priority) | ✅ `PTHREAD_PRIO_INHERIT`, set by the port; needs `CONFIG_PRIORITY_INHERITANCE`, which the in-tree defconfigs set (issue 1907) | ✅ `k_mutex` automatic         | ✅ `xSemaphoreCreateMutex`                   | ✅ `tx_mutex_create(... TX_INHERIT)` | n/a (single thread)              |
-| Best-effort tier                     | ⚠️ separate process / SCHED_IDLE   | ⚠️ low-prio thread                              | ✅ **`k_work_q` first-class**  | ⚠️ low-prio task + `xQueue` idiom             | ⚠️ low-prio thread                    | ⚠️ tail of priority bitmap        |
+| Best-effort sched task                     | ⚠️ separate process / SCHED_IDLE   | ⚠️ low-prio thread                              | ✅ **`k_work_q` first-class**  | ⚠️ low-prio task + `xQueue` idiom             | ⚠️ low-prio thread                    | ⚠️ tail of priority bitmap        |
 | OS pri slots used (default model)    | **1**                             | **1**                                          | **1**                          | **1**                                        | **1**                                | **1**                            |
-| OS pri slots used (multi-executor)   | 2-3 (RT/normal/BE)                | 2-3                                            | 2-3                            | 2-3                                          | 2-3                                  | 2-3 NVIC tiers                   |
+| OS pri slots used (multi-executor)   | 2-3 (RT/normal/BE)                | 2-3                                            | 2-3                            | 2-3                                          | 2-3                                  | 2-3 NVIC sched tasks                   |
 | OS pri slots if PiCAS-native         | up to 99                          | up to 255                                      | up to 31                       | up to `configMAX_PRIORITIES`                 | up to 32                             | up to NVIC bits (4 on M0+!)      |
 
 ### Key takeaways
@@ -877,7 +877,7 @@ Cross-platform consolidation. ✅ = fits natively / cleanly. ⚠️ = fits w/ ca
 2. **Default model uses 1 OS priority slot per Executor.** Bucketed multi-executor at most 3 slots. PiCAS-style per-callback OS priority would saturate **4 NVIC levels on Cortex-M0+** instantly — disqualifying as a foundation.
 3. **NuttX is the most RT-feature-complete**: native `SCHED_SPORADIC`, native PI mutex, POSIX timers, configurable tickless. Phase 110.E (`SchedClass::Sporadic` native) should land first on NuttX.
 4. **Linux `SCHED_DEADLINE`** is the only kernel-side bandwidth enforcer for the executor as a whole. Worth a `ExecutorConfig::os_policy = OsPolicy::Deadline { runtime, deadline, period }` knob.
-5. **Zephyr `k_work_q`** is the cleanest `BestEffort` tier sink. Recommend it as the default `BestEffort` mapping on Zephyr.
+5. **Zephyr `k_work_q`** is the cleanest `BestEffort` sched task sink. Recommend it as the default `BestEffort` mapping on Zephyr.
 6. **ThreadX preemption threshold** lets us implement HSE-style "Critical bucket non-preemptive among themselves but preempts Normal" without re-shuffling priorities.
 7. **Bare-metal (Cortex-M, RISC-V)** has the *fewest* OS pri slots but the *best* timing precision (cycle counter sub-µs). Default cooperative single-thread + `wfi` idle fits naturally — the current `nros-board-mps2-an385` pattern generalizes.
 8. **All platforms support PI mutex** in some form — `nros-platform`'s mutex abstraction (already planned in `0015-rtos-orchestration.md` § 10.6) covers cross-executor sync.

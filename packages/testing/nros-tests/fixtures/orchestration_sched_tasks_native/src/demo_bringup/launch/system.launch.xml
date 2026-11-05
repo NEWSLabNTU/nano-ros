@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- Phase 228.G fixture — 2-node, 2-tier launch. The node `name`s must match
+<!-- Phase 228.G fixture — 2-node, 2-sched-task launch. The node `name`s must match
      the system.toml `[[component]].name`s (RFC-0032 §7 instance identity). -->
 <launch>
     <node pkg="ctrl_pkg" exec="control_node" name="control_node"/>

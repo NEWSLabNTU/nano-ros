@@ -79,8 +79,8 @@ pub enum ModeError {
     /// would give).
     Rows { mode: String, reason: String },
     /// phase-462 W4c -- the mode's derived schedule has a different set of
-    /// tiers from the base's. Tier threads are created once at boot, so a
-    /// mode may change a tier's deadline but not which tiers exist.
+    /// sched tasks from the base's. Sched task threads are created once at boot, so a
+    /// mode may change a sched task's deadline but not which sched tasks exist.
     SchedTaskSetChanged {
         mode: String,
         added: Vec<String>,
@@ -93,7 +93,7 @@ pub enum ModeError {
         mode: String,
         reaction: String,
         budget_ms: u32,
-        tier: String,
+        sched_task: String,
         period_us: u64,
     },
 }
@@ -150,9 +150,9 @@ impl fmt::Display for ModeError {
                 removed,
             } => write!(
                 f,
-                "mode `{mode}` changes which tiers the contract derives (added: [{}], \
-                 removed: [{}]). Tier threads are created once at boot, so a mode may \
-                 change a tier's deadline but not whether the tier exists: keep the base's \
+                "mode `{mode}` changes which sched tasks the contract derives (added: [{}], \
+                 removed: [{}]). Sched task threads are created once at boot, so a mode may \
+                 change a sched task's deadline but not whether the sched task exists: keep the base's \
                  callback groups and paths, and override their numbers in the mode",
                 added.join(", "),
                 removed.join(", ")
@@ -161,13 +161,13 @@ impl fmt::Display for ModeError {
                 mode,
                 reaction,
                 budget_ms,
-                tier,
+                sched_task,
                 period_us,
             } => write!(
                 f,
                 "mode `{mode}`: its reaction path `{reaction}` allows {budget_ms} ms for the \
-                 switch, but tier `{tier}` spins every {period_us} us and an executor enters a \
-                 mode at its next spin. Shorten that tier's period or widen the reaction's \
+                 switch, but sched task `{sched_task}` spins every {period_us} us and an executor enters a \
+                 mode at its next spin. Shorten that sched task's period or widen the reaction's \
                  `max_latency`"
             ),
         }
@@ -492,10 +492,10 @@ pub fn render_mode_tables_rs(
     out
 }
 
-/// phase-462 W4c -- every DERIVED tier's deadline in one model, µs (0 = the
-/// tier states none), keyed by tier name.
+/// phase-462 W4c -- every DERIVED sched task's deadline in one model, µs (0 = the
+/// sched task states none), keyed by sched task name.
 ///
-/// Only a derived tier's deadline is the contract's: an authored
+/// Only a derived sched task's deadline is the contract's: an authored
 /// `[tasks.*]` table states its own, which a mode override of a path's
 /// latency does not move. So a model whose placement is authored derives
 /// nothing here, and its modes bake no deadline rows.
@@ -509,7 +509,7 @@ pub fn derived_sched_task_deadlines(
         return BTreeMap::new();
     }
     crate::derive::derive_sched_tasks_from_contracts(model, target_rtos, callback_groups)
-        .tiers
+        .sched_tasks
         .into_iter()
         .map(|(name, def)| {
             let spec = match target_rtos {
@@ -534,7 +534,7 @@ pub fn derived_sched_task_deadlines(
         .collect()
 }
 
-/// phase-462 W4c -- one derived tier's timing, as a mode compares it.
+/// phase-462 W4c -- one derived sched task's timing, as a mode compares it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchedTaskTiming {
     /// µs; 0 = none.
@@ -543,29 +543,29 @@ pub struct SchedTaskTiming {
     pub period_us: u64,
     /// µs; 0 = none.
     pub budget_us: u64,
-    /// The allocated priority on this target, when the tier has one.
+    /// The allocated priority on this target, when the sched task has one.
     pub priority: Option<i64>,
 }
 
-/// phase-462 W4c -- each mode's derived tier deadlines, and the tiers whose
+/// phase-462 W4c -- each mode's derived sched task deadlines, and the sched tasks whose
 /// deadline differs in ANY mode.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModeSchedTaskDeadlines {
-    /// The tiers a mode moves, in name order. A mode table carries one row per
-    /// tier here, the base included, so switching back restores the base.
-    pub tiers: Vec<String>,
-    /// `deadlines[0]` is the base, `deadlines[id]` mode `id`: each tier of
-    /// [`Self::tiers`] in the same order, µs (0 = none).
+    /// The sched tasks a mode moves, in name order. A mode table carries one row per
+    /// sched task here, the base included, so switching back restores the base.
+    pub sched_tasks: Vec<String>,
+    /// `deadlines[0]` is the base, `deadlines[id]` mode `id`: each sched task of
+    /// [`Self::sched_tasks`] in the same order, µs (0 = none).
     pub deadlines: Vec<Vec<u64>>,
-    /// What a mode changes about a tier that the executor cannot apply at a
+    /// What a mode changes about a sched task that the executor cannot apply at a
     /// switch (priority, period, budget), as `"mode `m`: <why>"`.
     pub not_lowered: Vec<String>,
 }
 
-/// phase-462 W4c -- the per-mode deadlines of every derived tier, refusing a
-/// mode whose derived tier SET differs from the base's.
+/// phase-462 W4c -- the per-mode deadlines of every derived sched task, refusing a
+/// mode whose derived sched task SET differs from the base's.
 ///
-/// The deadline is the one tier fact a switch can apply: the executor reads
+/// The deadline is the one sched task fact a switch can apply: the executor reads
 /// a SchedContext's `deadline_us` when it judges a dispatch, so replacing it
 /// at the next spin takes effect for the next callback. A priority, period or
 /// budget a mode moves is LISTED, not applied: a priority is a thread's,
@@ -574,7 +574,7 @@ pub struct ModeSchedTaskDeadlines {
 /// # Errors
 ///
 /// [`ModeError::SchedTaskSetChanged`] for the first mode that adds or removes a
-/// derived tier; any [`apply_mode`] refusal.
+/// derived sched task; any [`apply_mode`] refusal.
 pub fn mode_sched_task_deadlines(
     model: &SystemModel,
     target_rtos: &str,
@@ -604,7 +604,7 @@ pub fn mode_sched_task_deadlines(
             let x = &t[name];
             let mut note = |what: &str, from: String, to: String| {
                 not_lowered.push(format!(
-                    "mode `{m}`: tier `{name}` {what} {from} -> {to} is not applied at a \
+                    "mode `{m}`: sched task `{name}` {what} {from} -> {to} is not applied at a \
                      switch (set once at boot); the mode keeps {from}"
                 ));
             };
@@ -632,7 +632,7 @@ pub fn mode_sched_task_deadlines(
         }
         per_mode.push(t);
     }
-    let tiers: Vec<String> = base
+    let sched_tasks: Vec<String> = base
         .iter()
         .filter(|(name, b)| {
             per_mode
@@ -642,12 +642,12 @@ pub fn mode_sched_task_deadlines(
         .map(|(name, _)| name.clone())
         .collect();
     let row = |t: &BTreeMap<String, SchedTaskTiming>| -> Vec<u64> {
-        tiers.iter().map(|n| t[n].deadline_us).collect()
+        sched_tasks.iter().map(|n| t[n].deadline_us).collect()
     };
     let mut deadlines = vec![row(&base)];
     deadlines.extend(per_mode.iter().map(row));
     Ok(ModeSchedTaskDeadlines {
-        tiers,
+        sched_tasks,
         deadlines,
         not_lowered,
     })
@@ -676,14 +676,14 @@ pub fn mode_switch_budget_ms(model: &SystemModel, mode: &str) -> Option<(String,
 ///
 /// An executor enters a requested mode at its NEXT spin, so the switch's
 /// on-target latency is bounded by the longest spin period among the
-/// executors that switch. `periods` is each tier's `(name, period_us)`, 0 for
-/// a tier that states none. A tier with no period has no bound, so a mode
+/// executors that switch. `periods` is each sched task's `(name, period_us)`, 0 for
+/// a sched task that states none. A sched task with no period has no bound, so a mode
 /// with a budget is then NOT CHECKED and says so in the returned notes rather
 /// than passing; the run-time rule still judges it.
 ///
 /// # Errors
 ///
-/// [`ModeError::SwitchTooSlow`] for the first mode the slowest tier misses.
+/// [`ModeError::SwitchTooSlow`] for the first mode the slowest sched task misses.
 pub fn check_switch_latency(
     model: &SystemModel,
     periods: &[(String, u64)],
@@ -693,21 +693,21 @@ pub fn check_switch_latency(
         let Some((reaction, budget_ms)) = mode_switch_budget_ms(model, &m) else {
             continue;
         };
-        if let Some((tier, _)) = periods.iter().find(|(_, p)| *p == 0) {
+        if let Some((sched_task, _)) = periods.iter().find(|(_, p)| *p == 0) {
             notes.push(format!(
-                "mode `{m}`: switch latency not checked at build time -- tier `{tier}` states \
+                "mode `{m}`: switch latency not checked at build time -- sched task `{sched_task}` states \
                  no period, so its next spin is unbounded"
             ));
             continue;
         }
-        if let Some((tier, period_us)) = periods.iter().max_by_key(|(_, p)| *p)
+        if let Some((sched_task, period_us)) = periods.iter().max_by_key(|(_, p)| *p)
             && *period_us > u64::from(budget_ms) * 1_000
         {
             return Err(ModeError::SwitchTooSlow {
                 mode: m,
                 reaction,
                 budget_ms,
-                tier: tier.clone(),
+                sched_task: sched_task.clone(),
                 period_us: *period_us,
             });
         }
@@ -738,15 +738,15 @@ pub fn mode_switch_rows(model: &SystemModel) -> Vec<(u32, String)> {
 }
 
 /// phase-462 W4c -- [`ModeSchedTaskDeadlines`] as one executor's deadline rows:
-/// `sc_of(tier)` names the context a tier runs under on this executor, or
-/// `None` when the tier is not this executor's (its rows are skipped).
+/// `sc_of(sched_task)` names the context a sched task runs under on this executor, or
+/// `None` when the sched task is not this executor's (its rows are skipped).
 #[must_use]
 pub fn deadline_rows(
     d: &ModeSchedTaskDeadlines,
     sc_of: impl Fn(&str) -> Option<u8>,
 ) -> Vec<Vec<(u8, u32)>> {
     let mine: Vec<(usize, u8)> = d
-        .tiers
+        .sched_tasks
         .iter()
         .enumerate()
         .filter_map(|(i, t)| sc_of(t).map(|sc| (i, sc)))
@@ -799,10 +799,10 @@ pub fn mode_const_name(name: &str) -> String {
 mod tests {
     use super::*;
 
-    /// phase-462 W4c -- two timer nodes whose callback groups name no tier,
-    /// so the contract derives one tier each; `modes` lands under
+    /// phase-462 W4c -- two timer nodes whose callback groups name no sched task,
+    /// so the contract derives one sched task each; `modes` lands under
     /// `contracts.modes`, `extra` under `contracts:`.
-    fn tiered(modes: &str, extra: &str) -> SystemModel {
+    fn sched_task_model(modes: &str, extra: &str) -> SystemModel {
         let yaml = format!(
             r#"
 meta:
@@ -838,7 +838,7 @@ contracts:
 {modes}
 "#
         );
-        SystemModel::from_yaml_str(&yaml).expect("tiered fixture")
+        SystemModel::from_yaml_str(&yaml).expect("sched-task fixture")
     }
 
     fn groups() -> BTreeMap<String, Vec<CallbackGroupDecl>> {
@@ -846,7 +846,7 @@ contracts:
             vec![CallbackGroupDecl {
                 id: id.to_string(),
                 r#type: "MutuallyExclusive".to_string(),
-                tier: id.to_string(),
+                sched_task: id.to_string(),
             }]
         };
         BTreeMap::from([
@@ -865,12 +865,12 @@ contracts:
         )
     }
 
-    /// A mode that tightens one path's latency moves that tier's derived
-    /// deadline, and only that tier carries rows -- the base's value first,
+    /// A mode that tightens one path's latency moves that sched task's derived
+    /// deadline, and only that sched task carries rows -- the base's value first,
     /// so switching back restores it.
     #[test]
     fn a_mode_moves_the_derived_deadline_of_the_sched_task_it_tightens() {
-        let m = tiered(
+        let m = sched_task_model(
             &format!(
                 "    tight:\n      overrides:\n{}",
                 latency("/control_node/loop", "2ms")
@@ -878,7 +878,7 @@ contracts:
             "",
         );
         let d = mode_sched_task_deadlines(&m, "posix", &groups()).expect("lowers");
-        assert_eq!(d.tiers, ["derived-control_node"]);
+        assert_eq!(d.sched_tasks, ["derived-control_node"]);
         assert_eq!(d.deadlines, [vec![5_000], vec![2_000]]);
     }
 
@@ -886,12 +886,12 @@ contracts:
     /// deadline, bake no deadline rows; an authored placement derives none.
     #[test]
     fn no_mode_or_no_moved_deadline_means_no_rows() {
-        let none = tiered("    {}", "");
+        let none = sched_task_model("    {}", "");
         assert_eq!(
             mode_sched_task_deadlines(&none, "posix", &groups()).unwrap(),
             ModeSchedTaskDeadlines::default()
         );
-        let rate_only = tiered(
+        let rate_only = sched_task_model(
             &format!(
                 "    quiet:\n      overrides:\n{}",
                 ov(
@@ -905,7 +905,7 @@ contracts:
             "",
         );
         let d = mode_sched_task_deadlines(&rate_only, "posix", &groups()).unwrap();
-        assert!(d.tiers.is_empty(), "{d:?}");
+        assert!(d.sched_tasks.is_empty(), "{d:?}");
     }
 
     /// The rendered tables carry each mode's deadline rows -- the base's in
@@ -929,25 +929,25 @@ contracts:
             assert!(text.contains(want), "missing `{want}` in:\n{text}");
         }
         let d = ModeSchedTaskDeadlines {
-            tiers: vec!["a".into(), "b".into()],
+            sched_tasks: vec!["a".into(), "b".into()],
             deadlines: vec![vec![1, 2], vec![3, 4]],
             not_lowered: Vec::new(),
         };
         assert_eq!(
             deadline_rows(&d, |t| (t == "b").then_some(7)),
             [vec![(7, 2)], vec![(7, 4)]],
-            "only this executor's tiers"
+            "only this executor's sched tasks"
         );
         assert!(deadline_rows(&d, |_| None).is_empty());
     }
 
-    /// A switch budget below the slowest tier's period refuses; at or above
-    /// it passes; a tier with no period is stated as not checked.
+    /// A switch budget below the slowest sched task's period refuses; at or above
+    /// it passes; a sched task with no period is stated as not checked.
     #[test]
     fn a_switch_slower_than_its_reaction_budget_refuses() {
         let reaction = "  scope_paths:\n    //enter_safe:\n      input: [/cmd]\n      \
                         output: [/cmd]\n      max_latency_ms: 50.0\n";
-        let m = tiered(
+        let m = sched_task_model(
             &format!(
                 "    safe:\n      reaction: //enter_safe\n      overrides:\n{}",
                 latency("/control_node/loop", "2ms")
@@ -961,7 +961,7 @@ contracts:
         let slow = [("ctrl".to_string(), 10_000), ("telem".to_string(), 100_000)];
         let e = check_switch_latency(&m, &slow).unwrap_err();
         assert!(
-            matches!(&e, ModeError::SwitchTooSlow { tier, period_us: 100_000, .. } if tier == "telem"),
+            matches!(&e, ModeError::SwitchTooSlow { sched_task, period_us: 100_000, .. } if sched_task == "telem"),
             "{e}"
         );
         let fast = [("ctrl".to_string(), 10_000), ("telem".to_string(), 50_000)];

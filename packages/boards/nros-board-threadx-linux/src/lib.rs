@@ -210,16 +210,16 @@ impl ThreadxLinux {
         nros_board_threadx::run_bare::<ThreadxLinux, Config, F, E>(Config::default(), setup)
     }
 
-    /// Phase 297 W4 (RFC-0053) — multi-tier entry. The `nros::main!()` macro
-    /// emits `<ThreadxLinux>::run_sched_tasks(&overlay, TIERS, SCHED_TASK_BACKING, setup)` whenever a
-    /// system declares more than the synthesized single `default` tier; this
+    /// Phase 297 W4 (RFC-0053) — multi-sched-task entry. The `nros::main!()` macro
+    /// emits `<ThreadxLinux>::run_sched_tasks(&overlay, SCHED_TASKS, SCHED_TASK_BACKING, setup)` whenever a
+    /// system declares more than the synthesized single `default` sched task; this
     /// routes to [`nros_board_threadx::run_sched_tasks_entry`], which runs one
-    /// `Executor` per tier over one shared session. Mirrors
+    /// `Executor` per sched task over one shared session. Mirrors
     /// `Mps2An385::run_sched_tasks` (the FreeRTOS analogue).
     pub fn run_sched_tasks<F, E>(
         deploy: &nros_platform::DeployOverlay,
-        tiers: &'static [nros_platform::SchedTaskSpec<'static>],
-        // issue 1571 — the spawned tiers' executor backing: the entry's
+        sched_tasks: &'static [nros_platform::SchedTaskSpec<'static>],
+        // issue 1571 — the spawned sched tasks' executor backing: the entry's
         // `.bss` `SchedTaskExecutorBacking`, emitted by `nros::main!`.
         sched_task_backing: &'static mut [nros_board_threadx::SchedTaskExecutorBackingSlot],
         setup: F,
@@ -233,7 +233,7 @@ impl ThreadxLinux {
         nros_board_threadx::run_sched_tasks_entry::<ThreadxLinux, Config, F, E>(
             config_with_overlay(deploy),
             deploy.boot_config,
-            tiers,
+            sched_tasks,
             sched_task_backing,
             setup,
         )

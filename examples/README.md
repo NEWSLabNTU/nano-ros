@@ -430,11 +430,11 @@ Every workspace has its own README; one line each. Recount with
 | `bridge-xrce/` | the same declarative bridge, XRCE variant (zenoh → XRCE Agent → DDS) |
 | `launch/` | advanced launch composition — topology lives in the launch XML (launch v1) |
 | `managed/` | the lifecycle shape `features/` cannot hold: a C++ node that manages ITSELF |
-| `realtime-c/` | two nodes on two scheduling tiers (`/ctrl` 10 ms high, `/telem` 100 ms low) from config |
-| `realtime-cpp/` | the C++ base of the same two-tier scheduling differentiator (RFC-0015 §4.2) |
+| `realtime-c/` | two nodes on two sched tasks (`/ctrl` 10 ms high, `/telem` 100 ms low) from config |
+| `realtime-cpp/` | the C++ base of the same two-sched-task scheduling differentiator (RFC-0015 §4.2) |
 | `realtime-cpp-subnode-portable/` | the identical `SubNode` under tiers renamed `fast`/`bulk` — tier names are deployment-owned |
-| `realtime-rust/` | the Rust projection of the scheduling-tiers differentiator |
-| `derived-sched-tasks-cpp/` | four C++ components and **no authored tiers** — the Safety-Island-shaped sizing fixture |
+| `realtime-rust/` | the Rust projection of the scheduling-sched-tasks differentiator |
+| `derived-sched-tasks-cpp/` | four C++ components and **no authored sched tasks** — the Safety-Island-shaped sizing fixture |
 | `sizing/` | a node the SystemModel cannot count (six timers, no subscription) — the executor-sizing showcase |
 
 ### `templates/` — multi-platform copy-out recipes

@@ -10,7 +10,7 @@ find_package(std_msgs REQUIRED)
 
 # Portability copy of subnode_pkg (RFC-0047).
 # IDENTICAL to ws-realtime-cpp-subnode/src/subnode_pkg/CMakeLists.txt.
-# The CALLBACK_GROUPS declares "ctrl" and "telem" group IDs; the tier names
+# The CALLBACK_GROUPS declares "ctrl" and "telem" group IDs; the sched task names
 # ("fast" / "bulk") are in deploy_bringup/system.toml — not here.
 # This proves the package is portable across workspaces (RFC-0047 coupling removed).
 nano_ros_auto_add_library(subnode_lib STATIC src/SubNode.cpp)

@@ -481,7 +481,7 @@ endmacro()
 # (it expands in the component's TU, the only one that sees this target's
 # definitions) and holds `create_callback_group` to it: a group created and not
 # declared, or declared and never created (with more than one declared), halts
-# boot naming both. The keyword already reaches the tier derivation through
+# boot naming both. The keyword already reaches the sched task derivation through
 # `nros-metadata.json`; this is the same list reaching the code it describes.
 #
 # Through a target PROPERTY, appended per registration, so an EXISTING_TARGET

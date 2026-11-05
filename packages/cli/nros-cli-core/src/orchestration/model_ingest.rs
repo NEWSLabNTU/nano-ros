@@ -7,7 +7,7 @@
 //! `nros-plan.json`, same `run_sched_tasks` output as the `system.toml`-authored
 //! equivalent, by construction.
 //!
-//! Schema note: the tier tables exist twice by design — the shared
+//! Schema note: the sched task tables exist twice by design — the shared
 //! `ros-launch-manifest-sched::TaskDef` (authoring + model schema, both
 //! projects vendor it) and `nros-orchestration-ir::SchedTaskDef` (the no_std
 //! resolver input the proc-macro also uses). This module is the ONE
@@ -84,7 +84,7 @@ fn bare(fqn: &str) -> &str {
     fqn.rsplit('/').next().unwrap_or(fqn)
 }
 
-/// Apply the model's execution layer onto the bringup system: tiers
+/// Apply the model's execution layer onto the bringup system: sched tasks
 /// replace `[tasks.*]`, bindings become `[[node_overrides]]` rows.
 ///
 /// Binding keys are `<node FQN>` (whole node → every declared group) or
@@ -97,7 +97,7 @@ pub fn apply_model_execution(
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
 ) -> Result<()> {
-    system.tiers = model
+    system.sched_tasks = model
         .execution
         .tasks
         .iter()
@@ -107,9 +107,9 @@ pub fn apply_model_execution(
     let component_names: Vec<&str> = system.components.iter().map(|c| c.name.as_str()).collect();
 
     let mut overrides: BTreeMap<String, Vec<CallbackGroupOverride>> = BTreeMap::new();
-    for (key, tier) in &model.execution.bindings {
-        if !model.execution.tasks.contains_key(tier) {
-            bail!("SystemModel binding '{key}' references undeclared tier '{tier}'");
+    for (key, sched_task) in &model.execution.bindings {
+        if !model.execution.tasks.contains_key(sched_task) {
+            bail!("SystemModel binding '{key}' references undeclared sched task '{sched_task}'");
         }
         // `<FQN>/<group>` vs `<FQN>`: the segment before the last is the
         // node when the last segment matches one of its declared groups.
@@ -125,7 +125,7 @@ pub fn apply_model_execution(
                 if declared.is_empty() {
                     bail!(
                         "SystemModel binding '{key}': node '{node_level}' declares no \
-                         callback groups to bind (whole-node tiering needs at least \
+                         callback groups to bind (whole-node sched-task binding needs at least \
                          the node's group declarations in its package metadata)"
                     );
                 }
@@ -159,7 +159,7 @@ pub fn apply_model_execution(
         for g in groups {
             entry.push(CallbackGroupOverride {
                 id: g,
-                tier: tier.clone(),
+                sched_task: sched_task.clone(),
             });
         }
     }
@@ -168,7 +168,7 @@ pub fn apply_model_execution(
     // A binding that names no component already bails above. The reverse never
     // did: a `[[component]]` that declares `group_tasks` and matches NO launch
     // node produces no binding at all, so there is nothing here to reject, and
-    // the node quietly runs on the default tier.
+    // the node quietly runs on the default sched task.
     //
     // That is not hypothetical. `[[component]].name` is an instance id that must
     // be unique across a bringup, while the launch node keeps the plain role
@@ -176,7 +176,7 @@ pub fn apply_model_execution(
     // names differ from all 8 of its launch node names. The params projection
     // survived only because rlm v0.1.2 added a package-based fallback and emits
     // a diagnostic when even that misses; `group_tasks` has neither. The first
-    // consolidated workspace to declare one would have lost its tiers with no
+    // consolidated workspace to declare one would have lost its sched tasks with no
     // trace.
     //
     // The matching rule itself belongs upstream (the resolver decides which node
@@ -198,7 +198,7 @@ pub fn apply_model_execution(
     let renamed: Vec<String> = system
         .components
         .iter()
-        .filter(|c| !c.group_tiers.is_empty() && !bound.contains(c.name.as_str()))
+        .filter(|c| !c.group_tasks.is_empty() && !bound.contains(c.name.as_str()))
         .filter_map(|c| {
             let node = model
                 .structure
@@ -216,7 +216,7 @@ pub fn apply_model_execution(
             "these `[[component]]`s declare `group_tasks` that reached no node, while a node \
              of the SAME PACKAGE is in the resolved model: {}. A component binds to a launch \
              node by NAME (`[[component]].name` vs the node's `name=`), so a component renamed \
-             for workspace-wide uniqueness stops matching its own node and its tiers fall back \
+             for workspace-wide uniqueness stops matching its own node and its sched tasks fall back \
              to the default silently — issue 0398. Give the node the component's name, or bind \
              it with an explicit `[[node_overrides]]`. (A component whose package has no node \
              here is simply absent from this variant, and is not an error.)",
@@ -235,7 +235,7 @@ pub fn apply_model_execution(
 }
 
 /// phase-296 W5.5 follow-up — the RFC-0052 realizer as the DERIVED-schedule
-/// path: when the model declares NO `execution.tasks`, derive per-node tiers
+/// path: when the model declares NO `execution.tasks`, derive per-node sched tasks
 /// from the contract layer (`node_paths` + criticality) via the shared
 /// platform-agnostic core + the RTOS realizer, and synthesize them into the
 /// bringup as ordinary `[tasks.*]` + `[[node_overrides]]` rows so the ENTIRE
@@ -246,18 +246,18 @@ pub fn apply_model_execution(
 /// to run only when `model.execution.tasks` was empty and to ASSIGN over
 /// whatever was there; it now runs whenever
 /// [`nros_orchestration_ir::derive::placement_is_unauthored`] holds and MERGES:
-/// derived `derived-<node>` tiers are added, allocated placements are installed
-/// on the authored tiers that asked for one, and an authored placement that
+/// derived `derived-<node>` sched tasks are added, allocated placements are installed
+/// on the authored sched tasks that asked for one, and an authored placement that
 /// beat a rank is printed. With an empty authored table `extend` is `assign`,
-/// so the no-tier road is unchanged.
+/// so the no-sched-task road is unchanged.
 ///
 /// The board capability (`SchedCaps`) honors the per-deploy `edf` knob
 /// (`Deploy.extra["edf"]`, RFC-0052 §"CAPS provenance"): entries carrying the
 /// knob must agree, else the bake fails loud. Every degradation the realizer
 /// records is printed — a guarantee weakening is never silent.
 ///
-/// Returns the number of tiers this call ALLOCATED a priority for — derived
-/// tiers plus authored tiers whose placement it filled (0 = nothing schedulable;
+/// Returns the number of sched tasks this call ALLOCATED a priority for — derived
+/// sched tasks plus authored sched tasks whose placement it filled (0 = nothing schedulable;
 /// the bake proceeds exactly as before).
 pub fn derive_execution_from_contracts(
     system: &mut SystemToml,
@@ -269,7 +269,7 @@ pub fn derive_execution_from_contracts(
 }
 
 /// [`derive_execution_from_contracts`], allocating out of the priority plan the
-/// caller resolved from the image's `.config` (issue 1508); `None` is the tier
+/// caller resolved from the image's `.config` (issue 1508); `None` is the sched task
 /// key's projection.
 pub fn derive_execution_in_plan(
     system: &mut SystemToml,
@@ -315,7 +315,7 @@ pub fn derive_execution_in_plan(
     for name in &derived.groupless_notes {
         eprintln!(
             "codegen-system: derived-schedule note — node '{}' declares no \
-             callback groups; it stays on the default tier",
+             callback groups; it stays on the default sched task",
             name
         );
     }
@@ -326,9 +326,9 @@ pub fn derive_execution_in_plan(
         let reason = format!(
             "`[tasks.{}]` authors priority {} for this board, so it wins; the \
              contract's rank would have allocated {}. Remove every platform \
-             sub-table from that tier to have the priority allocated instead \
+             sub-table from that sched task to have the priority allocated instead \
              (RFC-0079).",
-            s.tier, s.authored, s.allocated
+            s.sched_task, s.authored, s.allocated
         );
         eprintln!(
             "codegen-system: authored priority wins — {} [priority]: {reason}",
@@ -340,14 +340,14 @@ pub fn derive_execution_in_plan(
             reason,
         });
     }
-    let n = derived.tiers.len() + derived.placements.len();
-    // MERGE, never assign (issue 1426). A derived tier is named
+    let n = derived.sched_tasks.len() + derived.placements.len();
+    // MERGE, never assign (issue 1426). A derived sched task is named
     // `derived-<node>`, which no author writes, so `extend` cannot clobber an
-    // authored row; a placement is installed on the authored tier that asked
+    // authored row; a placement is installed on the authored sched task that asked
     // for it, leaving its head facts alone.
-    system.tiers.extend(derived.tiers);
-    for (tier, spec) in derived.placements {
-        if let Some(def) = system.tiers.get_mut(&tier) {
+    system.sched_tasks.extend(derived.sched_tasks);
+    for (sched_task, spec) in derived.placements {
+        if let Some(def) = system.sched_tasks.get_mut(&sched_task) {
             nros_orchestration_ir::install_placement(def, target_rtos, spec);
         }
     }
@@ -1246,7 +1246,7 @@ mod tests {
         let err = apply_model_execution(&mut system, &model, "posix", &BTreeMap::new())
             .unwrap_err()
             .to_string();
-        assert!(err.contains("undeclared tier 'high'"), "got: {err}");
+        assert!(err.contains("undeclared sched task 'high'"), "got: {err}");
     }
 
     fn contract_model() -> ros_launch_manifest_model::SystemModel {
@@ -1309,7 +1309,7 @@ mod tests {
             vec![CallbackGroupDecl {
                 id: "main".to_string(),
                 r#type: "MutuallyExclusive".to_string(),
-                tier: "default".to_string(),
+                sched_task: "default".to_string(),
             }],
         );
         groups
@@ -1323,23 +1323,23 @@ mod tests {
 
         let n = derive_execution_from_contracts(&mut system, &model, "zephyr", &ctrl_groups())
             .expect("derivation succeeds");
-        assert_eq!(n.0, 1, "one contracted node → one derived tier");
+        assert_eq!(n.0, 1, "one contracted node → one derived sched task");
         // Issue 0259 — a well-formed contracted node with no declared WCETs
         // produces no verdicts: the realizer has nothing to judge.
         assert!(n.1.is_empty(), "unexpected verdicts: {:?}", n.1);
 
-        let tier = system
-            .tiers
+        let sched_task = system
+            .sched_tasks
             .get("derived-ctrl")
-            .expect("derived tier present");
+            .expect("derived sched task present");
         assert_eq!(
-            tier.class.as_deref(),
+            sched_task.class.as_deref(),
             Some("real_time"),
             "deadline ⇒ real_time"
         );
-        assert_eq!(tier.deadline_us, Some(5_000));
-        assert_eq!(tier.period_us, Some(10_000), "100 Hz → 10 ms period");
-        let z = tier
+        assert_eq!(sched_task.deadline_us, Some(5_000));
+        assert_eq!(sched_task.period_us, Some(10_000), "100 Hz → 10 ms period");
+        let z = sched_task
             .zephyr
             .as_ref()
             .expect("zephyr sub-table on a zephyr bake");
@@ -1348,11 +1348,11 @@ mod tests {
             "generic policy carries the semantics"
         );
 
-        // Binding: the node's declared group is reassigned to the derived tier.
+        // Binding: the node's declared group is reassigned to the derived sched task.
         assert_eq!(system.node_overrides.len(), 1);
         assert_eq!(system.node_overrides[0].name, "ctrl");
         assert_eq!(
-            system.node_overrides[0].callback_groups[0].tier,
+            system.node_overrides[0].callback_groups[0].sched_task,
             "derived-ctrl"
         );
     }
@@ -1362,11 +1362,11 @@ mod tests {
         let mut system: SystemToml =
             toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
         let model = contract_model();
-        // No callback groups declared → nothing to bind → no derived tier.
+        // No callback groups declared → nothing to bind → no derived sched task.
         let n = derive_execution_from_contracts(&mut system, &model, "zephyr", &BTreeMap::new())
             .expect("derivation succeeds");
         assert_eq!(n.0, 0);
-        assert!(system.tiers.is_empty());
+        assert!(system.sched_tasks.is_empty());
     }
 }
 
@@ -1386,7 +1386,7 @@ pub use nros_orchestration_ir::contract_monitors::{
 /// SILENCE window the executor leases the input against (`max_age_ms`, the
 /// same number [`AgeRow`] bakes -- there is no second declaration), and the
 /// ACTION the reaction path runs under, which reaches the executor as the
-/// tier's `deadline_policy` string. No new baked table: both halves ride
+/// sched task's `deadline_policy` string. No new baked table: both halves ride
 /// tables the image already carries, which is why this wave adds no bytes to
 /// an image that declares nothing.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -1410,7 +1410,7 @@ pub struct ViolationRow {
 ///
 /// - `reaction` names no node path -- raised by
 ///   [`nros_orchestration_ir::violation_agreement::node_actions`], which is
-///   where the same join is made for the tier lowering.
+///   where the same join is made for the sched task lowering.
 /// - the endpoint declares `on_violation` and no `max_age_ms`. Then nothing
 ///   can DETECT the violation: the age rule has no bound and the silence lease
 ///   has no window, so the declared reaction would never fire and the image

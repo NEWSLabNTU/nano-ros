@@ -30,7 +30,7 @@ superseded-by: null
 >
 > Configuration authority is RFC-0004; RMW selection is RFC-0031. **Embedded-MCU
 > multi-pkg composition is also decided** (2026-06): one binary links N node-pkg
-> staticlibs + a generated Entry; one Executor per priority tier + one shared
+> staticlibs + a generated Entry; one Executor per priority sched task + one shared
 > session (RFC-0015); codegen is ahead-of-vendor with a configure-time convenience
 > hook (RFC-0003 §7). Multi-node RT config has a home (RFC-0015 reconciliation /
 > RFC-0004 §7). Genuinely-open items now narrow to **cross-language workflow**

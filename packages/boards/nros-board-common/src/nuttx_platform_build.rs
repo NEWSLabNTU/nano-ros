@@ -147,7 +147,7 @@ pub fn run_platform() {
 /// `nros_board_nuttx_run_sched_tasks`, so this seam must be whole-archived into the
 /// final NuttX kernel image.
 ///
-/// Each of `seam_srcs` is a calling board crate's run-tiers C file (kept in the board
+/// Each of `seam_srcs` is a calling board crate's run-sched-tasks C file (kept in the board
 /// crate's `c/`, next to the board that owns the entry). The seam
 /// forward-declares every FFI symbol it uses (`nros_cpp_*`, `nros_platform_*`)
 /// so it needs only the NuttX headers (`pthread.h` / `sched.h`) on the include

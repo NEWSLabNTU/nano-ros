@@ -2,7 +2,7 @@
 //!
 //! Drives the SAME rule the build script runs (`build/arena_floor.rs`,
 //! included here by `#[path]` exactly as `build.rs` includes it): a declared
-//! image's arena and a tier's arena are their model, unfloored, and an
+//! image's arena and a sched task's arena are their model, unfloored, and an
 //! undeclared image's worst-case budget is floored as before.
 
 #[path = "../build/arena_floor.rs"]
@@ -10,7 +10,7 @@ mod arena_floor;
 
 use arena_floor::{ARENA_FLOOR, arena_for_demand, sched_task_arena};
 
-/// The safety island's `estop` tier (RFC-0107): its model is 7,500 B, and the
+/// The safety island's `estop` sched task (RFC-0107): its model is 7,500 B, and the
 /// floor raised it to 8,192.
 const ESTOP_MODEL: usize = 7_500;
 

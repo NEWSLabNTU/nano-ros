@@ -890,7 +890,7 @@ mod enabled {
     /// Record the domain the boot-config resolver settled on, and its rung.
     ///
     /// Issue 1550. LAST writer wins, like [`note_cpp_init_ret`]: an image may
-    /// resolve once per component or tier, and every resolution in one image
+    /// resolve once per component or sched task, and every resolution in one image
     /// reads the same inputs.
     pub fn note_domain(domain_id: u32, source: super::KnobSource) {
         NROS_BOOT_REPORT.domain_id.store(

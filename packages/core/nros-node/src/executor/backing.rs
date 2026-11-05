@@ -120,7 +120,7 @@ use super::storage::ExecutorSizing;
 /// executor's worth.
 ///
 /// One executor, not a multiple, because an entry opens ONE through this road:
-/// a tiered boot's SPAWNED tiers take their slots from the entry's own
+/// a sched-task boot's SPAWNED sched tasks take their slots from the entry's own
 /// [`SchedTaskExecutorBacking`] instead (issue 1571), each slot this many words.
 ///
 /// Named by the GENERATED file when nothing overrides the size, so it is unused
@@ -195,7 +195,7 @@ static TAKEN: AtomicBool = AtomicBool::new(false);
 ///
 /// * the reservation is switched off (`NROS_EXECUTOR_BACKING_U64S=0`);
 /// * another executor already took it (a second `Executor::open` in one
-///   process — a tiered boot's spawned tiers no longer come here, they take
+///   process — a sched-task boot's spawned sched tasks no longer come here, they take
 ///   the entry's [`SchedTaskExecutorBacking`], issue 1571);
 /// * this executor is sized past the reservation (a fat entry).
 ///
@@ -239,21 +239,21 @@ pub(crate) fn is_taken() -> bool {
 }
 
 // ============================================================================
-// issue 1571 — the SPAWNED tiers' executor backing, as the entry's own static
+// issue 1571 — the SPAWNED sched tasks' executor backing, as the entry's own static
 // ============================================================================
 //
-// A tiered boot opens one executor per tier. The boot tier takes
+// A sched-task boot opens one executor per sched task. The boot sched task takes
 // `EXECUTOR_BACKING` through `Executor::open` like any single-executor entry;
-// every OTHER tier used to reach `default_backing` too, find the latch already
+// every OTHER sched task used to reach `default_backing` too, find the latch already
 // taken, and `Box::leak` a default-sized block — correctly sized, but invisible
 // to `mem-report` and drawn from the allocator arena, where issue 1568 had just
-// moved every C and C++ RTOS executor (tier and single) OUT of it.
+// moved every C and C++ RTOS executor (sched task and single) OUT of it.
 //
-// The fix is the C/C++ METHOD, not a second one: the tier count is known when
+// The fix is the C/C++ METHOD, not a second one: the sched task count is known when
 // the entry is generated, so the entry (`nros::main!`) emits ONE named static of
 // `N - 1` slots — the C pack's `__nros_sched_task_executor_storage` — and the board's
-// `run_sched_tasks` hands each spawned tier its slot. The slot is typed, so its size is
-// the executor's exact need by construction: the tier opens with
+// `run_sched_tasks` hands each spawned sched task its slot. The slot is typed, so its size is
+// the executor's exact need by construction: the sched task opens with
 // `ExecutorSizing::DEFAULT` (see `Executor::open_with_session_slot`) and the slot
 // is `ExecutorSizing::DEFAULT.u64_len()` words — the same const the boot
 // reservation above is judged against, so there is ONE spelling of "a default
@@ -264,15 +264,15 @@ pub(crate) fn is_taken() -> bool {
 // `configTOTAL_HEAP_SIZE`, the NuttX kernel heap, the ThreadX byte pool) and
 // become linker-visible `.bss`.
 
-/// issue 1571 — one spawned tier executor's backing: exactly the words an
+/// issue 1571 — one spawned sched task executor's backing: exactly the words an
 /// executor opened with [`ExecutorSizing::DEFAULT`] carves.
 pub type SchedTaskExecutorBackingSlot = [MaybeUninit<u64>; EXECUTOR_BACKING_DEFAULT_U64S];
 
-/// issue 1571 — the spawned tiers' executor backing, `N` slots in ONE named
+/// issue 1571 — the spawned sched tasks' executor backing, `N` slots in ONE named
 /// static that the ENTRY owns.
 ///
-/// `nros::main!` emits one per tiered entry, with `N` = the tier count minus the
-/// boot tier (which takes the `EXECUTOR_BACKING` road), and passes
+/// `nros::main!` emits one per sched-task entry, with `N` = the sched task count minus the
+/// boot sched task (which takes the `EXECUTOR_BACKING` road), and passes
 /// [`take`](Self::take) to the board's `run_sched_tasks`. The board then refuses a
 /// short block with [`check_sched_task_executor_backing`] — the Rust twin of the C
 /// library's `nros_cpp_executor_storage_check`.
@@ -327,11 +327,11 @@ impl<const N: usize> SchedTaskExecutorBacking<N> {
     }
 }
 
-/// issue 1571 — the tier backing a board was handed does not cover the tiers it
+/// issue 1571 — the sched task backing a board was handed does not cover the sched tasks it
 /// must spawn. Carries both counts so the refusal names them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchedTaskBackingShort {
-    /// Tiers the board spawns (every tier but the boot one).
+    /// Sched tasks the board spawns (every sched task but the boot one).
     pub spawned: usize,
     /// Slots it was handed.
     pub slots: usize,
@@ -341,8 +341,8 @@ impl core::fmt::Display for SchedTaskBackingShort {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "tier executor backing holds {} slot(s) but {} spawned tier(s) need one each \
-             — the entry's `SchedTaskExecutorBacking` was sized for a different tier table, \
+            "sched task executor backing holds {} slot(s) but {} spawned sched task(s) need one each \
+             — the entry's `SchedTaskExecutorBacking` was sized for a different sched task table, \
              or taken twice (issue 1571)",
             self.slots, self.spawned
         )
@@ -350,9 +350,9 @@ impl core::fmt::Display for SchedTaskBackingShort {
 }
 
 /// issue 1571 — the ONE refusal every board's `run_sched_tasks` makes before it opens
-/// anything: `n_sched_tasks` tiers run, one on the boot executor, so `n_sched_tasks - 1`
+/// anything: `n_sched_tasks` sched tasks run, one on the boot executor, so `n_sched_tasks - 1`
 /// must each find a slot. Checked up front rather than at each spawn, so a
-/// short block never leaves a half-spawned tier chain.
+/// short block never leaves a half-spawned sched task chain.
 pub fn check_sched_task_executor_backing(
     n_sched_tasks: usize,
     backing: &[SchedTaskExecutorBackingSlot],
@@ -368,17 +368,17 @@ pub fn check_sched_task_executor_backing(
 }
 
 /// Issue 1733 — the ONE gate a tier runner holds across each tier's
-/// open-and-`setup` so no two tiers declare entities on the shared session at
+/// open-and-`setup` so no two sched tasks declare entities on the shared session at
 /// once.
 ///
-/// Every tier executor borrows the boot executor's ONE RMW session, and a
-/// tier's `setup` declares its nodes and entities on it. The backend's
+/// Every sched task executor borrows the boot executor's ONE RMW session, and a
+/// sched task's `setup` declares its nodes and entities on it. The backend's
 /// entity-creation path is not reentrant across threads: zenoh's
 /// `ZenohSession::create_*` takes `&mut self` and mutates the per-node
 /// liveliness table, and issue 0447 measured the topic-binding scramble that
 /// concurrent declares cause. The RTOS runners serialize by CHAINING the
-/// spawns (issue #144: tier N+1 starts only after tier N's setup returned);
-/// a runner that spawns every tier at once holds this instead. Setup runs once
+/// spawns (issue #144: sched task N+1 starts only after sched task N's setup returned);
+/// a runner that spawns every sched task at once holds this instead. Setup runs once
 /// per boot and off the hot path, so a sleeping spin costs nothing that
 /// matters, and the spin loops that follow stay fully concurrent.
 ///
@@ -437,7 +437,7 @@ impl Drop for SchedTaskSetupGuard<'_> {
 }
 
 // ---------------------------------------------------------------------------
-// issue 1598 — each spawned tier's TASK memory (stack + control block), the
+// issue 1598 — each spawned sched task's TASK memory (stack + control block), the
 // same "entry declares, board uses" method one step further: the executor
 // backing above is in `.bss`, and so now is the task that runs it.
 // ---------------------------------------------------------------------------
@@ -451,7 +451,7 @@ impl Drop for SchedTaskSetupGuard<'_> {
 /// this one number is a bound and the stack beside it is exact.
 pub const SCHED_TASK_TCB_U64S: usize = 64;
 
-/// issue 1598 — one spawned tier's task memory as a board receives it: raw,
+/// issue 1598 — one spawned sched task's RTOS task memory as a board receives it: raw,
 /// `Copy`, no lifetime. The ENTRY owns the bytes ([`SchedTaskMemory`]); the
 /// handout is once-only ([`SchedTaskMemorySet::take`]), which is what makes the
 /// raw pointers exclusive.
@@ -459,7 +459,7 @@ pub const SCHED_TASK_TCB_U64S: usize = 64;
 pub struct SchedTaskMemoryRaw {
     /// The stack: `stack_bytes` bytes, 64-byte aligned.
     pub stack: *mut u8,
-    /// The stack's size in bytes — the tier's declared `stack_bytes` (or the
+    /// The stack's size in bytes — the sched task's declared `stack_bytes` (or the
     /// family default), rounded up to whole words.
     pub stack_bytes: usize,
     /// The control-block region: `tcb_bytes` bytes, 64-byte aligned.
@@ -469,8 +469,8 @@ pub struct SchedTaskMemoryRaw {
 }
 
 impl SchedTaskMemoryRaw {
-    /// "This tier has no task memory from the entry": the port keeps its own
-    /// default (Zephyr's pool slot for a tier that declared no `stack_bytes`).
+    /// "This sched task has no task memory from the entry": the port keeps its own
+    /// default (Zephyr's pool slot for a sched task that declared no `stack_bytes`).
     pub const NONE: Self = Self {
         stack: core::ptr::null_mut(),
         stack_bytes: 0,
@@ -484,8 +484,8 @@ impl SchedTaskMemoryRaw {
 unsafe impl Send for SchedTaskMemoryRaw {}
 unsafe impl Sync for SchedTaskMemoryRaw {}
 
-/// issue 1598 — one spawned tier's stack and control block, as ONE named static
-/// the entry owns. `STACK_U64S` is the tier's stack in 8-byte words;
+/// issue 1598 — one spawned sched task's stack and control block, as ONE named static
+/// the entry owns. `STACK_U64S` is the sched task's stack in 8-byte words;
 /// `TCB_U64S` the control-block region, [`SCHED_TASK_TCB_U64S`] by default and
 /// `0` for a kernel whose control block the port keeps itself (Zephyr's
 /// `struct k_thread`, issue 1232 — a Rust entry cannot size it).
@@ -529,7 +529,7 @@ impl<const STACK_U64S: usize, const TCB_U64S: usize> SchedTaskMemory<STACK_U64S,
     }
 }
 
-/// issue 1598 — the spawned tiers' task memory, `N` rows in spawn (chain)
+/// issue 1598 — the spawned sched tasks' task memory, `N` rows in spawn (chain)
 /// order, behind a once-only latch.
 pub struct SchedTaskMemorySet<const N: usize> {
     taken: portable_atomic::AtomicBool,
@@ -537,7 +537,7 @@ pub struct SchedTaskMemorySet<const N: usize> {
 }
 
 impl<const N: usize> SchedTaskMemorySet<N> {
-    /// `const`, for a `static` initialiser over the per-tier statics.
+    /// `const`, for a `static` initialiser over the per-sched-task statics.
     pub const fn new(rows: [SchedTaskMemoryRaw; N]) -> Self {
         Self {
             taken: portable_atomic::AtomicBool::new(false),
@@ -564,7 +564,7 @@ mod tests {
     /// threads released together each count themselves in and out of the
     /// critical section; any overlap (a second holder) is recorded. A
     /// `SchedTaskSetupGate::enter` that admitted concurrently is exactly the native
-    /// C++ runner before the issue: four tier setups declaring at once.
+    /// C++ runner before the issue: four sched task setups declaring at once.
     #[test]
     fn sched_task_setup_gate_admits_one_holder_at_a_time() {
         use std::sync::{
@@ -672,13 +672,13 @@ mod tests {
         );
     }
 
-    /// issue 1571 — the entry's tier backing goes out ONCE, whole, and each
+    /// issue 1571 — the entry's sched task backing goes out ONCE, whole, and each
     /// slot is exactly one default executor's worth. Its own static, so unlike
     /// the boot reservation's test it needs no virgin process.
     #[test]
     fn sched_task_backing_is_handed_out_once_and_each_slot_is_one_default_executor() {
-        static TIERS: SchedTaskExecutorBacking<3> = SchedTaskExecutorBacking::new();
-        let slots = TIERS.take();
+        static SCHED_TASKS: SchedTaskExecutorBacking<3> = SchedTaskExecutorBacking::new();
+        let slots = SCHED_TASKS.take();
         assert_eq!(slots.len(), 3, "the first taker gets every slot");
         assert_eq!(
             core::mem::size_of::<SchedTaskExecutorBackingSlot>(),
@@ -686,12 +686,12 @@ mod tests {
             "a slot is exactly what a DEFAULT-sized executor carves"
         );
         assert!(
-            TIERS.take().is_empty(),
+            SCHED_TASKS.take().is_empty(),
             "a second taker must get nothing — two `&'static mut` to one slot is UB"
         );
     }
 
-    /// issue 1598 — a tier's task memory is exactly the declared stack plus the
+    /// issue 1598 — a sched task's RTOS task memory is exactly the declared stack plus the
     /// stated control-block bound, aligned for a thread stack, and handed out
     /// ONCE: a second take is empty, never a second task on the same stack.
     #[test]
@@ -717,7 +717,7 @@ mod tests {
         );
     }
 
-    /// issue 1571 — the one refusal: every tier but the boot one needs a slot.
+    /// issue 1571 — the one refusal: every sched task but the boot one needs a slot.
     #[test]
     fn sched_task_backing_refuses_a_block_short_of_the_spawned_sched_tasks() {
         static TWO: SchedTaskExecutorBacking<2> = SchedTaskExecutorBacking::new();
@@ -726,7 +726,7 @@ mod tests {
         assert_eq!(
             check_sched_task_executor_backing(1, &[]),
             Ok(()),
-            "boot tier only"
+            "boot sched task only"
         );
         assert_eq!(
             check_sched_task_executor_backing(4, two),

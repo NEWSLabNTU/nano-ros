@@ -266,7 +266,7 @@ endif()
 if(CONFIG_NROS_ZEPHYR_TASK_SLOTS)
     zephyr_compile_definitions(NROS_ZEPHYR_MAX_THREADS=${CONFIG_NROS_ZEPHYR_TASK_SLOTS})
 endif()
-# The RT-tier pool (`nros_zephyr_sched_task_create`). Both tokens are
+# The RT-sched-task pool (`nros_zephyr_sched_task_create`). Both tokens are
 # #ifndef-guarded in the shim and, until phase-412, had no producer: the
 # spawn-failure and oversize-stack diagnostics named knobs nothing could set.
 if(CONFIG_NROS_ZEPHYR_MAX_SCHED_TASKS)
@@ -278,7 +278,7 @@ endif()
 if(CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM)
     zephyr_compile_definitions(NROS_ZEPHYR_STACKS_IN_DTCM=1)
 endif()
-# Issue 2084 -- the tier/level stacks (the shim's `nros_sched_task_stacks` pool and a
+# Issue 2084 -- the sched task/level stacks (the shim's `nros_sched_task_stacks` pool and a
 # generated C entry's per-level `K_THREAD_STACK_DEFINE`), on their own knob.
 if(CONFIG_NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM)
     zephyr_compile_definitions(NROS_ZEPHYR_SCHED_TASK_STACKS_IN_DTCM=1)
@@ -324,14 +324,14 @@ if(CONFIG_CAN)
     )
 endif()
 
-# phase-281 W3a — C/C++ multi-tier Zephyr entry seam
+# phase-281 W3a — C/C++ multi-sched-task Zephyr entry seam
 # (`nros_board_zephyr_run_sched_tasks`, packages/boards/nros-board-zephyr/c/). A
-# generated Zephyr C/C++ tiers entry emits `ZephyrBoard::run_sched_tasks(...)` which
+# generated Zephyr C/C++ sched tasks entry emits `ZephyrBoard::run_sched_tasks(...)` which
 # calls this C seam; it opens ONE RMW session and spawns one `k_thread` per
-# non-boot tier via the `nros_zephyr_sched_task_create` shim above (RFC-0015
+# non-boot sched task via the `nros_zephyr_sched_task_create` shim above (RFC-0015
 # Model 1). It references nros_cpp_* (the typed runtime in nros-c / nros-cpp),
 # so compile it only when the C or C++ API is present; it is inert (its symbol
-# unreferenced) for single-tier / run_components entries. Added once here — the
+# unreferenced) for single-sched-task / run_components entries. Added once here — the
 # C++ API path always co-builds nros-c, so a single gate avoids adding the same
 # source twice.
 if(CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API)

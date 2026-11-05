@@ -163,8 +163,8 @@ fn main() {
     //      in `nros_board_common::freertos_config::default_heap_bytes`. The
     //      FreeRTOS task stacks are allocated *from* this heap (heap_4), so the
     //      budget is a SUM of the things in it — app-sized task stacks (one per
-    //      TIER), a spare-executor term (a tiered boot's executors past the
-    //      first USED to land here; since issues 1568/1571 both tier roads
+    //      SCHED TASK), a spare-executor term (a sched-task boot's executors past the
+    //      first USED to land here; since issues 1568/1571 both sched task roads
     //      take `.bss` from the entry, see `DEFAULT_HEAP_SPARE_EXECUTOR_BYTES`), and the
     //      lwIP + zenoh-pico working set — and each of those terms is measured
     //      on running images and documented where it is defined.
@@ -236,7 +236,7 @@ fn main() {
     // by being handed to the same function, which is the property that was
     // missing.
     // Issue 2017 (RFC-0108 D6) -- a LEVEL image (the `level-image` feature,
-    // which `nros build` turns on for a multi-tier schedule) gets a kernel
+    // which `nros build` turns on for a multi-sched-task schedule) gets a kernel
     // that does not time-slice: FreeRTOSConfig.h reads
     // `NROS_FREERTOS_LEVEL_IMAGE`. Same carrier as the heap, every TU.
     let level_image = env::var("CARGO_FEATURE_LEVEL_IMAGE").is_ok();
@@ -362,8 +362,8 @@ fn main() {
     // init + FFI surface Rust calls; both invoke
     // `nros_board_*` weak hooks the overlay implements (152.1.B.2).
     // `c/freertos_run_sched_tasks.c` (Phase 274.W3) implements
-    // `nros_board_freertos_run_sched_tasks` for embedded C/C++ multi-tier entries
-    // (RFC-0015 Model 1): one FreeRTOS task per tier over one shared session.
+    // `nros_board_freertos_run_sched_tasks` for embedded C/C++ multi-sched-task entries
+    // (RFC-0015 Model 1): one FreeRTOS task per sched task over one shared session.
     // nros-cpp C FFI symbols are forward-declared and resolved at link time.
     let mut glue = cc::Build::new();
     configure_cflags(&mut glue);

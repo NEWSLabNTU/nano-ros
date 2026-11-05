@@ -55,20 +55,21 @@ fn entry_plan(fixture: &Fixture, groups: &[&str]) -> Plan {
     let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
     let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
     metadata::enrich_plan(&mut plan, &index).expect("enrich from the cmake metadata");
-    resolve_plan_sched(&mut plan, BOARD).expect("resolve (and, with no authored tier, derive)");
+    resolve_plan_sched(&mut plan, BOARD)
+        .expect("resolve (and, with no authored sched task, derive)");
     plan
 }
 
-/// `node -> the Zephyr priority its resolved tier carries`.
+/// `node -> the Zephyr priority its resolved sched_task carries`.
 fn priorities(plan: &Plan) -> BTreeMap<String, i64> {
     let table = plan
         .resolved_sched_tasks
         .as_ref()
-        .expect("a derived entry resolves a tier table");
+        .expect("a derived entry resolves a sched task table");
     let mut out = BTreeMap::new();
-    for tier in &table.tiers {
-        for (node, _group) in &tier.members {
-            out.insert(node.clone(), tier.priority);
+    for sched_task in &table.sched_tasks {
+        for (node, _group) in &sched_task.members {
+            out.insert(node.clone(), sched_task.priority);
         }
     }
     out
@@ -83,7 +84,7 @@ fn the_entry_derives_its_sched_tasks_and_emits_run_sched_tasks() {
 
     assert!(
         plan.is_multi_sched_task(),
-        "the derived table is not the single synthesised default tier: {:?}",
+        "the derived table is not the single synthesised default sched task: {:?}",
         plan.resolved_sched_tasks
     );
     let prio = priorities(&plan);
@@ -104,7 +105,7 @@ fn the_entry_derives_its_sched_tasks_and_emits_run_sched_tasks() {
         assert!(
             POOL.0 <= *p && *p <= POOL.1,
             "{node} at {p} is outside the board's application pool {POOL:?}; a \
-             derived tier must not outrank the transport that feeds it (issue 1427)"
+             derived sched task must not outrank the transport that feeds it (issue 1427)"
         );
     }
 
@@ -116,10 +117,10 @@ fn the_entry_derives_its_sched_tasks_and_emits_run_sched_tasks() {
     );
     assert!(
         !src.contains("run_components("),
-        "a derived multi-tier entry must not fall back to run_components; src:\n{src}"
+        "a derived multi-sched-task entry must not fall back to run_components; src:\n{src}"
     );
     // phase-509 P5 (RFC-0108 D4 rule 1): one level per distinct rank, so the
-    // four nodes at two ranks run as two derived tiers, each with its
+    // four nodes at two ranks run as two derived sched tasks, each with its
     // allocated priority in the baked table.
     assert!(
         src.contains("__nros_sched_tasks[2]"),
@@ -128,41 +129,41 @@ fn the_entry_derives_its_sched_tasks_and_emits_run_sched_tasks() {
     for node in FAST.iter().chain(SLOW.iter()) {
         assert!(
             src.contains(&format!("\"{node}\"")),
-            "tier table names {node}; src:\n{src}"
+            "sched task table names {node}; src:\n{src}"
         );
     }
 
-    // The tier table is emitted most-urgent-first in the RESOLVER's order, and
+    // The sched task table is emitted most-urgent-first in the RESOLVER's order, and
     // every priority in it is a pool address.
     let table = plan.resolved_sched_tasks.as_ref().unwrap();
-    for tier in &table.tiers {
+    for sched_task in &table.sched_tasks {
         assert!(
-            POOL.0 <= tier.priority && tier.priority <= POOL.1,
-            "tier {} at {} is outside {POOL:?}",
-            tier.name,
-            tier.priority
+            POOL.0 <= sched_task.priority && sched_task.priority <= POOL.1,
+            "sched task {} at {} is outside {POOL:?}",
+            sched_task.name,
+            sched_task.priority
         );
         assert_eq!(
-            tier.members.len(),
+            sched_task.members.len(),
             2,
             "a derived level holds both nodes of its rank: {:?}",
-            tier.members
+            sched_task.members
         );
     }
 }
 
 /// The negative control, and the reason the derivation is a new SOURCE rather
 /// than a new default: with no `CALLBACK_GROUPS` in the metadata, nothing is
-/// derived and the entry stays exactly what it was - one executor, no tiers.
+/// derived and the entry stays exactly what it was - one executor, no sched tasks.
 #[test]
 fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
     let fixture = Fixture::copy("entry-no-keyword");
     let plan = entry_plan(&fixture, &[]);
 
     assert!(
-        plan.tiers.is_empty() && plan.node_overrides.is_empty(),
+        plan.sched_tasks.is_empty() && plan.node_overrides.is_empty(),
         "nothing may be derived: {:?}",
-        plan.tiers.keys().collect::<Vec<_>>()
+        plan.sched_tasks.keys().collect::<Vec<_>>()
     );
     assert!(
         plan.resolved_sched_tasks.is_none(),
@@ -173,7 +174,7 @@ fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
         !src.contains("run_sched_tasks") && !src.contains("run_levels"),
-        "without a declared group there is no tier to run; src:\n{src}"
+        "without a declared group there is no sched task to run; src:\n{src}"
     );
     assert!(
         src.contains("run_components"),
@@ -184,12 +185,12 @@ fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
 /// An AUTHORED placement still wins, and it wins for the NODE THAT AUTHORED IT
 /// and no other.
 ///
-/// This test used to assert `plan.tiers.keys() == ["ctrl"]` - "the authored
+/// This test used to assert `plan.sched_tasks.keys() == ["ctrl"]` - "the authored
 /// table is the whole table; nothing was derived beside it" - which is the
 /// defect issue 1426 names in its second bullet, written down as an
 /// expectation. One component binding to one `[tasks.ctrl.zephyr]` disabled the
 /// derivation for the other three, so three nodes with 30/10 Hz contracts and a
-/// declared group landed on the synthesised default tier at Zephyr priority 0,
+/// declared group landed on the synthesised default sched task at Zephyr priority 0,
 /// i.e. ABOVE the transport threads that feed them (issue 1427's inversion,
 /// reached through the guard rather than through the allocator).
 ///
@@ -203,7 +204,7 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
     let meta = fixture.configure(&["main"]);
     let bringup = fixture.bringup();
     // The authored form RFC-0079 retires, written the way it is written today:
-    // the tier, its per-RTOS priority, and the binding on the component.
+    // the sched task, its per-RTOS priority, and the binding on the component.
     fixture.author(
         "ctrl",
         &["mrm_handler"],
@@ -213,9 +214,9 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
     let model = resolve_model_path(&bringup, true);
     let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
     assert!(
-        plan.tiers.contains_key("ctrl"),
-        "the authored tier reaches the plan: {:?}",
-        plan.tiers.keys().collect::<Vec<_>>()
+        plan.sched_tasks.contains_key("ctrl"),
+        "the authored sched task reaches the plan: {:?}",
+        plan.sched_tasks.keys().collect::<Vec<_>>()
     );
     let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
     metadata::enrich_plan(&mut plan, &index).expect("enrich");
@@ -227,12 +228,12 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
         "rule 1: the authored priority is honoured verbatim: {prio:?}"
     );
     assert!(
-        plan.tiers.contains_key("ctrl"),
-        "the authored tier survives the merge: {:?}",
-        plan.tiers.keys().collect::<Vec<_>>()
+        plan.sched_tasks.contains_key("ctrl"),
+        "the authored sched task survives the merge: {:?}",
+        plan.sched_tasks.keys().collect::<Vec<_>>()
     );
     // Rule 4 for the three nodes nobody wrote anything about: each gets its own
-    // allocated tier, inside the pool, and NOT the default tier's 0.
+    // allocated sched task, inside the pool, and NOT the default sched task's 0.
     let mut derived_members: Vec<&str> = prio
         .keys()
         .map(String::as_str)
@@ -248,21 +249,21 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
     want.sort_unstable();
     assert_eq!(
         derived_members, want,
-        "every node the author said nothing about is allocated a tier: {prio:?}"
+        "every node the author said nothing about is allocated a sched task: {prio:?}"
     );
     for node in &derived_members {
         let p = prio[*node];
         assert!(
             POOL.0 <= p && p <= POOL.1,
             "{node} at {p} must be inside the board's application pool {POOL:?}, \
-             not on the default tier above the transport: {prio:?}"
+             not on the default sched task above the transport: {prio:?}"
         );
     }
     // The rate-monotonic order still holds among them: the 30 Hz node outranks
     // the 10 Hz one (Zephyr counts down).
     assert!(
         prio["mrm_emergency_stop_operator"] < prio["mrm_comfortable_stop_operator"],
-        "rate-monotonic among the allocated tiers: {prio:?}"
+        "rate-monotonic among the allocated sched tasks: {prio:?}"
     );
 }
 
@@ -272,14 +273,14 @@ fn an_authored_placement_wins_only_for_the_node_that_authored_it() {
 /// still no `[tasks.*]`.
 ///
 /// Before the fix the entry derived NOTHING here - `derive_entry_sched_tasks` keyed
-/// on cmake groups alone - so resolution failed on the bindings' tier names,
-/// `schedule_board_features` withheld `tiers`, and a generated Rust Zephyr
+/// on cmake groups alone - so resolution failed on the bindings' sched task names,
+/// `schedule_board_features` withheld `sched_tasks`, and a generated Rust Zephyr
 /// entry whose macro DID derive a table could not compile
 /// (`no associated function run_sched_tasks`). Measured on
 /// `realtime-rust/src/derived_bringup`'s image.
 #[test]
 fn a_group_sched_tasks_only_image_derives_like_the_macro_does() {
-    let fixture = Fixture::copy("group-tiers");
+    let fixture = Fixture::copy("group-sched_tasks");
     let bringup = fixture.bringup();
     let system = bringup.join("system.toml");
     let mut raw = fs::read_to_string(&system).expect("read system.toml");
@@ -294,15 +295,15 @@ fn a_group_sched_tasks_only_image_derives_like_the_macro_does() {
     let model = resolve_model_path(&bringup, true);
     let mut plan = plan_from_model(&model, Some(BOARD.to_string())).expect("plan from the model");
     assert!(
-        plan.tiers.is_empty(),
-        "nothing is authored, so nothing reaches the plan's tier table"
+        plan.sched_tasks.is_empty(),
+        "nothing is authored, so nothing reaches the plan's sched task table"
     );
     // No `enrich_plan`: a Rust image has no cmake metadata to enrich from.
     resolve_plan_sched(&mut plan, BOARD).expect("resolve (and derive)");
 
     assert!(
         plan.is_multi_sched_task(),
-        "a group_tiers-only image derives a multi-tier table: {:?}",
+        "a group_tasks-only image derives a multi-tier table: {:?}",
         plan.resolved_sched_tasks
     );
     let prio = priorities(&plan);
@@ -317,8 +318,8 @@ fn a_group_sched_tasks_only_image_derives_like_the_macro_does() {
 }
 
 /// RFC-0079's table, the `spin_period_us` row - the safety island's shape: one
-/// authored, unplaced tier holding every component (`group_tasks`), with no
-/// `spin_period`. The tier's spin period is its fastest member's release, the
+/// authored, unplaced sched task holding every component (`group_tasks`), with no
+/// `spin_period`. The sched task's spin period is its fastest member's release, the
 /// 30 Hz pair's 33,333 us, not the C runner's 1 ms floor.
 fn one_sched_task_plan(fixture: &Fixture, sched_task_toml: &str) -> eyre::Result<Plan> {
     let meta = fixture.configure(&["main"]);
@@ -333,12 +334,15 @@ fn one_sched_task_plan(fixture: &Fixture, sched_task_toml: &str) -> eyre::Result
 }
 
 fn the_sched_task(plan: &Plan) -> &nros_orchestration_ir::ResolvedSchedTask {
-    let table = plan.resolved_sched_tasks.as_ref().expect("a tier table");
+    let table = plan
+        .resolved_sched_tasks
+        .as_ref()
+        .expect("a sched task table");
     table
-        .tiers
+        .sched_tasks
         .iter()
         .find(|t| t.name == "app")
-        .expect("the authored tier `app`")
+        .expect("the authored sched task `app`")
 }
 
 #[test]
@@ -373,11 +377,11 @@ fn a_slower_authored_spin_period_is_refused() {
     );
 }
 
-/// phase-509 P2 (RFC-0108 D2) - the island's shape again: one authored tier
+/// phase-509 P2 (RFC-0108 D2) - the island's shape again: one authored sched task
 /// holding every component, so one thread. The entry seeds each node's
 /// contract rank, normalised (0 the most urgent), before the node is created,
 /// so the executor dispatches the 30 Hz pair before the 10 Hz pair inside the
-/// one tier instead of in registration order.
+/// one sched task instead of in registration order.
 #[test]
 fn a_one_sched_task_entry_seeds_each_nodes_rank() {
     let fixture = Fixture::copy("rank-seeded");
@@ -391,7 +395,7 @@ fn a_one_sched_task_entry_seeds_each_nodes_rank() {
     let derivation =
         nros_cli_core::codegen::entry::resolve_plan_sched_recorded(&mut plan, BOARD, None)
             .expect("resolve")
-            .expect("the unplaced tier is allocated, so the entry derived");
+            .expect("the unplaced sched task is allocated, so the entry derived");
     let direction = nros_orchestration_ir::priority_plan::PriorityPlan::for_target(BOARD).direction;
     let ranks = derivation.node_ranks(direction);
     let rank_of = |node: &str| {

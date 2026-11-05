@@ -36,7 +36,7 @@ how the executor orders ready work:
 | `Sporadic` | `Fifo`, plus a budget per replenishment period | a callback whose CPU share must be capped |
 | `BestEffort` | last, after every other bucket | logging, telemetry |
 
-A tier or level's `class = "real_time"` is the deployment-side spelling. On
+A sched task or level's `class = "real_time"` is the deployment-side spelling. On
 Linux it also selects `SCHED_DEADLINE` for a level that states a budget (see
 below). Time-triggered windows are a gate on a context
 (`tt_window_offset_us` / `tt_window_duration_us`), not a class.
@@ -64,12 +64,12 @@ kernel preempts a less urgent level mid-callback when the urgent one wakes.
 
 ## Who enforces a budget
 
-A level whose tier states a budget and a period has exactly one enforcer. The kernel takes it where the kernel can; otherwise the
+A level whose sched task states a budget and a period has exactly one enforcer. The kernel takes it where the kernel can; otherwise the
 executor enforces the same numbers at callback boundaries. The runner prints
 which:
 
 ```text
-nros: level budget tier=`capped` 2000us/10000us enforced by the KERNEL
+nros: level budget sched_task=`capped` 2000us/10000us enforced by the KERNEL
 ```
 
 | Platform | Kernel mechanism | When the kernel enforces it |

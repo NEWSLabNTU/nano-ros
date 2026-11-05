@@ -224,13 +224,13 @@ When the stack overflows, it corrupts adjacent memory including lwIP's global `t
 nros: app task stack peak 36160 of 131072 bytes (94912 free) — raise with NROS_FREERTOS_APP_STACK_KB / `[node.rt] app_stack_bytes`
 ```
 
-The knob is `app_stack_bytes` (`nros_board_common::freertos_config`), default **131072** (128 KiB); override it at build time with `NROS_FREERTOS_APP_STACK_KB=<kib>`, or per tier with `[node.rt] app_stack_bytes`.
+The knob is `app_stack_bytes` (`nros_board_common::freertos_config`), default **131072** (128 KiB); override it at build time with `NROS_FREERTOS_APP_STACK_KB=<kib>`, or per sched task with `[node.rt] app_stack_bytes`.
 
 > **Corrected 2026-09-07 (issue 1146).** This step used to read *"set `APP_TASK_STACK` to 16384 words (64 KB)"*, then (phase-392 W6) *"the default is 393216"*. `APP_TASK_STACK` was **deleted in phase-76**; the 384 KiB that replaced it was never derived from anything. It is 128 KiB now, from `uxTaskGetStackHighWaterMark` on 8 in-tree images whose worst peak is 36 152 bytes — the table is on `freertos_config::app_stack_bytes`. The C/C++ carrier's mirror in `cmake/templates/freertos_app_config.c.in` is still 524288, and that file says why (its C++ half cannot be built — issue 1187).
 
 **And the fault does not have to announce itself as "Invalid mbox"** (measured, issue 1146). An `action-server` built 4 KiB under its measured peak died with `*** MALLOC FAILED ***` instead: heap_4 hands out the task stack, so the overflow smashes the next heap block's header before `configCHECK_FOR_STACK_OVERFLOW 2` gets a context switch to check the pattern. `*** MALLOC FAILED ***`, "Invalid mbox" and `*** STACK OVERFLOW: ***` are three faces of one fault here.
 
-**Note**: The FreeRTOS heap (`configTOTAL_HEAP_SIZE`, 2 MiB on the zenoh images) has room. The constraint is the per-task stack — and it is charged PER TASK: a tier whose `stack_bytes` is 0 gets the app default too, so a 2-tier image reserved 768 KiB of that heap before issue 1146 and reserves 256 KiB after.
+**Note**: The FreeRTOS heap (`configTOTAL_HEAP_SIZE`, 2 MiB on the zenoh images) has room. The constraint is the per-task stack — and it is charged PER TASK: a sched task whose `stack_bytes` is 0 gets the app default too, so a 2-sched-task image reserved 768 KiB of that heap before issue 1146 and reserves 256 KiB after.
 
 ### Manual-polling action server must call `try_handle_get_result()` explicitly
 

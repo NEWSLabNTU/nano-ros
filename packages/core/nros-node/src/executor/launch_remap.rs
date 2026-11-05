@@ -5,12 +5,12 @@
 //! executor. Before this every executor carved a RAM table of 16 rules
 //! (`RemapRule`, 404 B each on thumbv7em: 6,464 B per backing) and the
 //! generated C/C++ entry filled it with one `nros_cpp_declare_remap` call per
-//! rule, on every tier's executor. Now codegen emits the rules once, as a
+//! rule, on every sched task's executor. Now codegen emits the rules once, as a
 //! `static const` array of string pointers, and hands it to the runtime once
 //! ([`set_launch_remaps`], `nros_cpp_set_launch_remaps`) before any tier is
 //! set up. Every executor reads that table; none copies it.
 //!
-//! Layering is unchanged: these rules are the AUTHORITATIVE tier of
+//! Layering is unchanged: these rules are the AUTHORITATIVE sched task of
 //! [`crate::names::resolve_name_layered`], and `--ros-args -r` rules (still in
 //! the executor's RAM table, see `ExecutorSizing::remaps`) are the fallback.
 //!
@@ -115,7 +115,7 @@ static LEN: AtomicUsize = AtomicUsize::new(0);
 /// handle).
 ///
 /// Call it ONCE, at boot, before any executor registers an entity -- the
-/// generated entry calls it before the board runner sets up any tier, because
+/// generated entry calls it before the board runner sets up any sched task, because
 /// an rclcpp-shape constructor registers its entities immediately (issue
 /// 0255). A row that does not read (NULL or non-UTF-8 string) refuses the
 /// whole table and installs nothing.

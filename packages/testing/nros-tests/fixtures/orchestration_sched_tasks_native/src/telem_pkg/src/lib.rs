@@ -1,4 +1,4 @@
-//! Phase 228.G fixture — telemetry node (tier `low`).
+//! Phase 228.G fixture — telemetry node (sched task `low`).
 
 #![no_std]
 

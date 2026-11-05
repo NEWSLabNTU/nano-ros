@@ -65,7 +65,7 @@ pub(crate) type GroupSchedEntry = (
 );
 /// Issue 0436 — `(rmw name, locator)` for one extra session.
 pub(crate) type ExtraSessionId = (heapless::String<32>, heapless::String<128>);
-/// Phase 228.C — one callback-group name in a tier executor's filter.
+/// Phase 228.C — one callback-group name in a sched task executor's filter.
 pub(crate) type GroupName = heapless::String<32>;
 
 /// The node half of an [`ActiveGroup`] key: a hash of `(name, namespace)`.
@@ -81,7 +81,7 @@ pub(crate) type GroupName = heapless::String<32>;
 /// probability is around 3e-17.
 ///
 /// ONE home, deliberately. Both ends of the comparison call this —
-/// `set_active_groups` hashing what the tier declared, and `create_entity`
+/// `set_active_groups` hashing what the sched task declared, and `create_entity`
 /// hashing the node an entity belongs to. Two hashers that agree by
 /// inspection is exactly the defect class issue 1172 is filed under.
 pub(crate) fn node_identity_hash(name: &str, namespace: &str) -> u64 {
@@ -101,11 +101,11 @@ pub(crate) fn node_identity_hash(name: &str, namespace: &str) -> u64 {
     h
 }
 
-/// One entry of a tier's active-group filter: `(node identity hash, group)`.
+/// One entry of a sched task's active-group filter: `(node identity hash, group)`.
 ///
 /// issue 1172 — the filter used to be the GROUP NAME ALONE, which cannot tell
 /// node A's `ctrl` from node B's `ctrl`. Two nodes may legitimately declare the
-/// same group id on different tiers and nothing rejects it, so a tier filter
+/// same group id on different sched tasks and nothing rejects it, so a sched task filter
 /// was admitting entities it did not own. The sibling table for the
 /// sched-context path (`group_sched_table`, `bind_group_sched`) has been
 /// node-qualified all along; only this one was not.
@@ -305,7 +305,7 @@ pub(crate) struct ExecutorSlices<'s> {
     ///
     /// Issue 1971 -- [`ExecutorSizing::remaps`] slots, the RUNTIME table
     /// (`--ros-args -r` and hand-declared rules). It was a fixed 16 here,
-    /// 6,464 B on thumbv7em in every backing, once per tier on a tiered image,
+    /// 6,464 B on thumbv7em in every backing, once per sched task on a sched-task image,
     /// holding the launch's rules too; those are now one flash table every
     /// executor reads (`super::launch_remap`), and bare metal carves 0.
     pub(crate) remaps: &'s mut [Option<RemapRule>],
@@ -586,7 +586,7 @@ pub struct ExecutorSizing {
     /// phase-382's W3' notes: a fixed `MAX_PARAMETERS` region adds the whole
     /// store (280,832 B on armv7m at the default 32 slots) to every image's
     /// backing — Rust `EXECUTOR_BACKING`, every C/C++ `rclc_executor_t`, every
-    /// tier slot — which is issue 1702's rejected `.bss` static, everywhere.
+    /// sched task slot — which is issue 1702's rejected `.bss` static, everywhere.
     pub params: usize,
     /// Issue 1971 -- RUNTIME remap-table slots: `--ros-args -r` rules and
     /// rules a hand-written caller declares with `declare_remap`. The launch
@@ -630,7 +630,7 @@ impl ExecutorSizing {
     /// ```
     ///
     /// Opt-in, deliberately: an executor that holds a SUBSET of the image (one
-    /// tier of a tiered boot) legitimately carries less than the whole model,
+    /// sched task of a sched-task boot) legitimately carries less than the whole model,
     /// and only its author knows which kind it is. See
     /// [`arena_oracle`](super::arena_oracle) for the arms and why each is or is
     /// not checked here.
@@ -664,17 +664,17 @@ pub struct ExecutorInlineStorage {
     /// The carved backing the executor's slices borrow (the buffer's tail).
     ///
     /// Issue 1970 -- [`INLINE_BACKING_U64S`] words: the image's whole
-    /// executor, or none at all on a tiered image, whose tiers each carve a
+    /// executor, or none at all on a sched-task image, whose sched tasks each carve a
     /// backing of their own size ([`sched_task_sizing`]).
     pub backing: [MaybeUninit<u64>; INLINE_BACKING_U64S],
 }
 
 /// Issue 1970 -- the sizing an inline backing is carved at: the image's
 /// ([`ExecutorSizing::DEFAULT`]), or `None` on an image whose executors are
-/// sized per tier ([`crate::config::SCHED_TASK_SIZINGS`] is non-empty). There the
-/// inline backing is EMPTY -- one whole-image backing per tier context is the
+/// sized per sched task ([`crate::config::SCHED_TASK_SIZINGS`] is non-empty). There the
+/// inline backing is EMPTY -- one whole-image backing per sched task context is the
 /// cost this issue removes -- and an executor opened over a context alone
-/// (`rclc_executor_init`, `nros_cpp_init`) is refused, naming the per-tier
+/// (`rclc_executor_init`, `nros_cpp_init`) is refused, naming the per-sched-task
 /// road, rather than carved short.
 pub const INLINE_SIZING: Option<ExecutorSizing> = if crate::config::SCHED_TASK_SIZINGS.is_empty() {
     Some(ExecutorSizing::DEFAULT)
@@ -688,9 +688,9 @@ pub const INLINE_BACKING_U64S: usize = match INLINE_SIZING {
     None => 0,
 };
 
-/// Issue 1970 -- the [`ExecutorSizing`] one tier's executor is carved at: its
+/// Issue 1970 -- the [`ExecutorSizing`] one sched task's executor is carved at: its
 /// own callback slots, node slots, arena and declared parameters, and the
-/// image's scheduling-context count. A tier that declares parameters on an
+/// image's scheduling-context count. A sched task that declares parameters on an
 /// image that carves no store carves none either (the store is built from
 /// the heap there, as it is for the image's one executor).
 pub const fn sched_task_executor_sizing(t: &crate::config::SchedTaskSizing) -> ExecutorSizing {
@@ -706,13 +706,13 @@ pub const fn sched_task_executor_sizing(t: &crate::config::SchedTaskSizing) -> E
             Some(_) => store,
         },
         // Issue 1971 -- the runtime table is the image's, per executor: the
-        // launch's rules are the shared flash table, not a per-tier count.
+        // launch's rules are the shared flash table, not a per-sched-task count.
         remaps: MAX_REMAPS,
     }
 }
 
-/// Issue 1970 -- the sizing of the tier named `name`, `None` when the image
-/// sizes no tier of that name.
+/// Issue 1970 -- the sizing of the sched task named `name`, `None` when the image
+/// sizes no sched task of that name.
 pub fn sched_task_sizing(name: &str) -> Option<ExecutorSizing> {
     crate::config::SCHED_TASK_SIZINGS
         .iter()
@@ -720,13 +720,13 @@ pub fn sched_task_sizing(name: &str) -> Option<ExecutorSizing> {
         .map(sched_task_executor_sizing)
 }
 
-/// Issue 1970 -- the backing bytes the `index`-th tier's executor carves, `0`
-/// past the last tier. What `nros::sizes::SCHED_TASK_BACKING_SIZE_<i>` publishes to
+/// Issue 1970 -- the backing bytes the `index`-th sched task's executor carves, `0`
+/// past the last sched task. What `nros::sizes::SCHED_TASK_BACKING_SIZE_<i>` publishes to
 /// the C/C++ header.
 pub const fn sched_task_backing_bytes(index: usize) -> usize {
-    let tiers = crate::config::SCHED_TASK_SIZINGS;
-    if index < tiers.len() {
-        sched_task_executor_sizing(&tiers[index]).u64_len() * 8
+    let sched_tasks = crate::config::SCHED_TASK_SIZINGS;
+    if index < sched_tasks.len() {
+        sched_task_executor_sizing(&sched_tasks[index]).u64_len() * 8
     } else {
         0
     }
@@ -734,18 +734,18 @@ pub const fn sched_task_backing_bytes(index: usize) -> usize {
 
 /// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- the sizing of the
 /// ONE executor a level runner opens per core: every level's callbacks, nodes,
-/// arena and declared parameters, summed over the image's tiers (each row of
-/// the tier table is one level). `None` when the image sizes no tier.
+/// arena and declared parameters, summed over the image's sched tasks (each row of
+/// the sched task table is one level). `None` when the image sizes no sched task.
 pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
-    let tiers = crate::config::SCHED_TASK_SIZINGS;
-    if tiers.is_empty() {
+    let sched_tasks = crate::config::SCHED_TASK_SIZINGS;
+    if sched_tasks.is_empty() {
         return None;
     }
     let store = nros_params::IMPLIED_STORE_SLOTS;
     let (mut cbs, mut arena, mut nodes, mut params) = (0usize, 0usize, 0usize, 0usize);
     let mut i = 0;
-    while i < tiers.len() {
-        let t = &tiers[i];
+    while i < sched_tasks.len() {
+        let t = &sched_tasks[i];
         cbs += t.cbs;
         arena += t.arena;
         nodes += t.nodes;
@@ -755,13 +755,13 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
         };
         i += 1;
     }
-    // Issue 2041 -- each tier's arena carries the per-EXECUTOR base overhead
-    // once (`arena_model::BASE_OVERHEAD`), because issue 1970 sized a tier as
+    // Issue 2041 -- each sched task's arena carries the per-EXECUTOR base overhead
+    // once (`arena_model::BASE_OVERHEAD`), because issue 1970 sized a sched task as
     // its own executor. The levels share ONE executor, so the base is paid
     // once: summing it per level handed the island's executor 29,820 B where
     // the image's own model (`NROS_EXECUTOR_ARENA_SIZE`) is 25,724 -- exactly
     // the two extra bases. See [`levels_arena_bytes`].
-    let arena = levels_arena_bytes(arena, tiers.len());
+    let arena = levels_arena_bytes(arena, sched_tasks.len());
     // One executor dispatches at most one ready word of slots; a level image
     // past it is refused at registration, loudly, as any executor is.
     let max_cbs = super::spin::MAX_CALLBACK_SLOTS;
@@ -776,9 +776,9 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
 }
 
 /// Issue 2041 -- the ONE level executor's arena from the sum of its `levels`
-/// tiers' arenas: every tier's model includes the per-executor base overhead,
+/// sched tasks' arenas: every sched task's model includes the per-executor base overhead,
 /// and one executor pays it once, so `levels - 1` of them come off. With the
-/// tiers partitioning the image's entities this is the image's own model, the
+/// sched tasks partitioning the image's entities this is the image's own model, the
 /// number `NROS_EXECUTOR_ARENA_SIZE` derives to.
 pub(crate) const fn levels_arena_bytes(sched_task_arena_sum: usize, levels: usize) -> usize {
     let extra = crate::config::arena_model::BASE_OVERHEAD * levels.saturating_sub(1);
@@ -786,7 +786,7 @@ pub(crate) const fn levels_arena_bytes(sched_task_arena_sum: usize, levels: usiz
 }
 
 /// phase-509 P9b item 4 -- the backing bytes [`levels_executor_sizing`]
-/// carves, `0` on an image that sizes no tier. What
+/// carves, `0` on an image that sizes no sched task. What
 /// `nros::sizes::LEVELS_BACKING_SIZE` publishes to the C/C++ header.
 pub const fn levels_backing_bytes() -> usize {
     match levels_executor_sizing() {
@@ -987,7 +987,7 @@ mod tests {
     use super::*;
 
     /// Issue 2041 -- the level executor pays the per-executor base once. Three
-    /// tiers priced as the reference island's (each with its own base) sum to
+    /// sched tasks priced as the reference island's (each with its own base) sum to
     /// the image's model plus two bases; the levels arena is the image's.
     #[test]
     fn the_levels_arena_pays_the_executor_base_once() {
@@ -1565,7 +1565,7 @@ mod tests {
         );
     }
 
-    /// Issue 1970 -- a tier's sizing is its own counts, the image's
+    /// Issue 1970 -- a sched task's sizing is its own counts, the image's
     /// scheduling contexts, and its declared parameters capped at the store
     /// the image carves (none when the image carves none).
     #[test]
@@ -1580,7 +1580,7 @@ mod tests {
         let s = sched_task_executor_sizing(&t);
         assert_eq!((s.cbs, s.arena, s.nodes), (3, 8192, 2));
         // Issue 1971 -- the runtime remap table is the image's default on
-        // every tier; the launch's rules are the shared flash table.
+        // every sched task; the launch's rules are the shared flash table.
         assert_eq!(s.remaps, MAX_REMAPS);
         assert_eq!(s.sc, crate::config::MAX_SC);
         let store = nros_params::IMPLIED_STORE_SLOTS;
@@ -1588,15 +1588,15 @@ mod tests {
         let unstated =
             sched_task_executor_sizing(&crate::config::SchedTaskSizing { params: None, ..t });
         assert_eq!(unstated.params, store);
-        // A smaller tier is a smaller backing.
+        // A smaller sched task is a smaller backing.
         let image = ExecutorSizing::DEFAULT;
         if image.cbs >= 3 && image.arena >= 8192 && image.nodes >= 2 {
             assert!(s.u64_len() <= image.u64_len());
         }
     }
 
-    /// Issue 1970 -- an image that sizes no tier keeps its inline backing,
-    /// and publishes no tier backing.
+    /// Issue 1970 -- an image that sizes no sched task keeps its inline backing,
+    /// and publishes no sched task backing.
     #[test]
     fn an_image_sized_as_one_executor_keeps_the_inline_backing() {
         if crate::config::SCHED_TASK_SIZINGS.is_empty() {

@@ -1,14 +1,14 @@
 {#-
   One node's construction, inside the `{ }` its caller opened.
 
-  A partial rather than two copies: the tiered setup functions and the single
+  A partial rather than two copies: the sched-task setup functions and the single
   setup function differ ONLY in which executor expression they hand the node
-  (`executor`, the tier's own, versus the process-global handle), and that
+  (`executor`, the sched_task's own, versus the process-global handle), and that
   difference is one `if` here instead of ~60 duplicated lines there. `n.decls`
   is written by the caller, because the two callers indent it identically but
   emit it before different things.
 
-  `tiered` is what selects the expression. It is a fact about WHERE this body
+  `in_sched_task` is what selects the expression. It is a fact about WHERE this body
   is being rendered, not about the node, so the caller puts it in scope (with
   `idx`, the node's position in `nodes`, which names its static storage) —
   phase-494: it rode on a Rust-built node view until the view went away.
@@ -52,7 +52,7 @@
   refuses a context outright (`-4`), so a missed unwrap fails loudly.
 #}
 {%- if n.kind == "rust" %}
-        void* __rexec = ::nros_cpp_executor_inner({% if tiered %}executor{% else %}::rclcpp::global_handle(){% endif %});
+        void* __rexec = ::nros_cpp_executor_inner({% if in_sched_task %}executor{% else %}::rclcpp::global_handle(){% endif %});
         if (__rexec == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
         int32_t crc = __nros_component_{{ n.pkg | pkg_ident }}_install(nullptr, __rexec, nullptr);
         if (crc != 0) return crc;
@@ -64,7 +64,7 @@
 {%- endfor %}
         };
 {%- endif %}
-        ::rclcpp::NodeHandle __h({% if tiered %}executor{% else %}::rclcpp::global_handle(){% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %}{% if n.qos_overrides %}, __nros_qos_{{ idx }}, {{ n.qos_overrides | length }}{% endif %});
+        ::rclcpp::NodeHandle __h({% if in_sched_task %}executor{% else %}::rclcpp::global_handle(){% endif %}, {% if n.launch_name %}"{{ n.launch_name | c_str }}"{% else %}nullptr{% endif %}, {% if n.launch_namespace %}"{{ n.launch_namespace | c_str }}"{% else %}nullptr{% endif %}{% if n.qos_overrides %}, __nros_qos_{{ idx }}, {{ n.qos_overrides | length }}{% endif %});
         if (!__h.valid()) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
 {%- if n.declared_callback_groups %}
         /* phase-459 W6 -- the registration's CALLBACK_GROUPS, held against the code. */
@@ -81,7 +81,7 @@
             return __nros_comp_{{ idx }}->error_code();
         }
 {%- else %}
-{%- if tiered %}
+{%- if in_sched_task %}
         ::rclcpp::Result r = ::rclcpp::create_node_on(__nros_node_{{ idx }}, executor, "{{ n.name | c_str }}", "{{ n.namespace | c_str }}");
 {%- else %}
         ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_{{ idx }}, "{{ n.name | c_str }}", "{{ n.namespace | c_str }}");

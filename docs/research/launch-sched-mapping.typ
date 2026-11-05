@@ -60,7 +60,7 @@ diverge on the parts that cannot.
   dn,
   bx(c_sh)[*`ros-launch-manifest` (rlm)* — _"what does it need, and where does it run?"_ #h(1fr) #lbl[shared · both runtimes vendor]\
     Adds the *declarative* half: per-scope timing/QoS *contracts* + the deployment
-    (`system.toml`: tiers, targets). `resolve` merges these into the *SystemModel*
+    (`system.toml`: sched tasks, targets). `resolve` merges these into the *SystemModel*
     — three layers, #box[L1 *Structure*] · #box[L2 *Contracts*] · #box[L3 *Execution*] —
     and refuses to emit one that fails a check ("valid by construction").],
   dn,
@@ -300,7 +300,7 @@ legal sequence — first within a *segment* (`fine_group`), then within the same
 divide — and if it still overflows, clamps the lowest classes onto `band.min`,
 emitting `BandTooNarrow`. The invariant it protects: compression may introduce
 *ties, never inversions* — two nodes may end up equal, but a lower-ranked node never
-overtakes a higher one. Output is a `SCHED_FIFO` tier per node; unranked nodes get
+overtakes a higher one. Output is a `SCHED_FIFO` sched task per node; unranked nodes get
 `SCHED_OTHER`. It stays fixed-priority — it does *not* emit `SCHED_DEADLINE` (EDF).
 
 #note[Worked example (from the crate's pinned test).][Chain `sensing_to_actuation`,
@@ -332,10 +332,10 @@ skipping — hence *cooperative*. It backfills what the kernel lacks.]
 *Build-time wiring.* Codegen bakes a `&[SchedTaskSpec]` slice — `class`, `period_us`,
 `budget_us`, `deadline_us`, `deadline_policy`, `priority`, `preempt_threshold`,
 `core` — into the image. `nros::main!` calls `Board::run_sched_tasks`, which spawns one
-task per tier and splits each `SchedTaskSpec`:
+task per sched task and splits each `SchedTaskSpec`:
 
 #grid(columns: (1fr, 1fr), gutter: 8pt,
-  bx(c_nr)[*(a) priority → kernel.* The tier's `priority` is handed to the native
+  bx(c_nr)[*(a) priority → kernel.* The sched task's `priority` is handed to the native
     task-create. On *ThreadX*, *FreeRTOS*, and *Zephyr* this is a real kernel task
     and the priority is the actual scheduling priority (ThreadX also carries a
     *preemption threshold*). The value is the *raw* per-kernel number — the author
@@ -362,13 +362,13 @@ Linux-vs-RTOS line:
 #table(columns: (auto, 1fr, 1fr), inset: 5.5pt, align: (left, left, left), stroke: 0.4pt + luma(165),
   table.header([*Target*], [*Priority (preemption)*], [*Budget / deadline / TT*]),
   [ThreadX, FreeRTOS, Zephyr], [*native kernel priority* (real preemption)], [cooperative in `spin_once`],
-  [NuttX, native/POSIX (incl. Linux)], [*advisory only* — tiers are ordinary scoped OS threads; priority is not pushed to the kernel], [cooperative in `spin_once`],
+  [NuttX, native/POSIX (incl. Linux)], [*advisory only* — sched tasks are ordinary scoped OS threads; priority is not pushed to the kernel], [cooperative in `spin_once`],
 )
 #set text(size: 10pt)
 
 So on ThreadX/FreeRTOS/Zephyr the priority order is genuinely enforced by the
 kernel *and* the budget/deadline shape is enforced cooperatively. On NuttX and
-native/POSIX the tiers run as plain threads and only the cooperative layer is
+native/POSIX the sched tasks run as plain threads and only the cooperative layer is
 active — nano-ros-on-Linux is for functional testing, not RT guarantees; hard
 priority on Linux is `play_launch`'s job via the band realizer above. Two loose
 ends on the record: the RFC-0016 priority-*normalization* helpers (mapping a 0–31
@@ -379,7 +379,7 @@ outside tests, so native Linux issues no RT syscalls today.
 
 == Design trajectory (RFC-0052, Draft)
 
-The implemented RTOS realizer keys off the tier `class`. The design generalizes it
+The implemented RTOS realizer keys off the sched task `class`. The design generalizes it
 to a *six-dimension* requirement per causal segment — `activation`, `urgency`,
 `deadline`, `budget`, `non_preempt_scope`, `placement` — each resolved at build time
 against a board's declared capabilities to `Native | Backfill | Degrade(recorded)`,
@@ -387,7 +387,7 @@ against a board's declared capabilities to `Native | Backfill | Degrade(recorded
 recorded as a degradation, never silently dropped), over a three-layer stack: an
 L1 host-side realizer (6-dim × board `CAPS`), a thin L2 `PlatformSched` board trait,
 and the portable L3 executor. The unit becomes the *causal segment* — one executor,
-run-to-completion — with the current fixed-priority tier table as the fallback. The
+run-to-completion — with the current fixed-priority sched task table as the fallback. The
 shared `chain_aware_rank` core feeds both.
 
 #v(3pt)

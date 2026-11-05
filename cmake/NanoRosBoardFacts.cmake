@@ -68,7 +68,7 @@ function(nros_resolve_board_facts)
     # `find_package(nano_ros)` parsed into `NROS_DEPLOY`). Forwarding it is
     # what keeps a multi-deploy `system.toml` from becoming an AMBIGUITY
     # refusal — which this file used to turn into a silent skip, dropping the
-    # tier/sizing facts out of the image with a STATUS line at best (a
+    # sched task/sizing facts out of the image with a STATUS line at best (a
     # configure error since issue 0941).
     set(_deploy "${_A_DEPLOY}")
     # phase-484 W2b — a standalone leaf's `NROS_DEPLOY` is its PLATFORM token

@@ -144,8 +144,8 @@ run; W5 is READ, and it is not yet a verdict on every RTOS cell.**
     Not executed (out of the pairwise lane): `zephyr/{cpp,cpp-derived,cpp-levels}`,
     `freertos/cpp`.
   - `sched_dims_applied` executes 14 of 17 cells, across Zephyr, NuttX,
-    FreeRTOS and threadx-linux, and every arm it reports ACCEPTs (TierPriority
-    on NuttX and FreeRTOS: 2/2 tiers, 0 FALLBACK). It is RED on one cell,
+    FreeRTOS and threadx-linux, and every arm it reports ACCEPTs (SchedTaskPriority
+    on NuttX and FreeRTOS: 2/2 sched tasks, 0 FALLBACK). It is RED on one cell,
     `CorePinPlacement/zephyr/c`: no `qemu-system-aarch64` on the runner
     (issue 2113, an unmet precondition, not a scheduling defect). Not
     executed: `CorePin/freertos/cpp`, `EdfDeadline/zephyr/cpp`,
@@ -381,7 +381,7 @@ exit 78 before reaching anything else. Nobody has claimed it.
 | [#1651](../issues/archived/1651-host-tests-red-or-cancelled-on-most-pushes.md) | RESOLVED 2026-10-23: `host-tests` and tier 1 both went green on `main`; its later reds are other defects, each named in its resolution. |
 | [#1878](../issues/archived/1878-metadata-probe-cmake-mirror-race.md) | RESOLVED as a duplicate of issue 1858 (`0fc6da85d6`). The cmake metadata probe's stale sizes-header mirror stopped tier 1 and tier 2 at `check fast` (`sizes-header-mirrors`) before any cell. The cause was a shared probe cargo dir whose key left out the late-applied `panic-platform` feature. |
 | [#1915](../issues/archived/1915-cli-test-mutates-home-races-locate.md) | RESOLVED. Once tier 2 got past its build (run 38663782341), `check-cli-tests` was red on `board_facts`' agreeing-duplicates test. A `doctor` test set the process-wide `$HOME`, and the store root derives from it. So the two ladder walks on the runner, which holds the FreeRTOS kernel in the store and not as a submodule, resolved one kernel two ways. The store root is now a parameter, and the test no longer moves `$HOME`. The other red in that run, `template-copy-out`, is issue 1914. |
-| [#1911](../issues/archived/1911-sizes-mirror-gate-judges-unbuilt-dirs.md) | RESOLVED. `sizes-header-mirrors` runs in `check fast` at the head of `just build`, before anything is rebuilt. In the persistent fixture tree it called a probe mirror stale when only a sibling build dir had rewritten their shared source after a core-size change. So both tiers of run 38637410239 stopped before the build. The mirror command now records each run, and the gate fails only a mirror whose last run postdates its source; the rest are reported as pending. |
+| [#1911](../issues/archived/1911-sizes-mirror-gate-judges-unbuilt-dirs.md) | RESOLVED. `sizes-header-mirrors` runs in `check fast` at the head of `just build`, before anything is rebuilt. In the persistent fixture tree it called a probe mirror stale when only a sibling build dir had rewritten their shared source after a core-size change. So both sched tasks of run 38637410239 stopped before the build. The mirror command now records each run, and the gate fails only a mirror whose last run postdates its source; the rest are reported as pending. |
 | [#1905](../issues/archived/1905-gate-self-tests-write-job-env.md) | RESOLVED. `fixture-tree.sh --self-test`, reached by `check fast` inside `just build tier1`, appended a sandbox `NROS_FIXTURE_TREE` to the job's `$GITHUB_ENV`. Every step after the build then read a deleted temp tree, so tier 1 built everything and reached no cell (run 38615001083). The gate runner now unsets the job files, and both self-tests that reached a writer isolate themselves. |
 
 ## W5 -- the RTOS realtime cells (from phase-330, 2026-10-14)

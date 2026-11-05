@@ -18,7 +18,7 @@ default = []
 # phase-361 W2 (revised) — `std` does NOT imply `alloc`. On embedded, both are
 # opted into EXPLICITLY, per package, by the end user; a dep that needs the heap
 # must make the user say `alloc`, never turn it on behind their back.
-# phase-359 W10 (backend tier) — this used to forward `nros-node/std`, which made
+# phase-359 W10 (backend sched task) — this used to forward `nros-node/std`, which made
 # THIS crate the reason `nros-core/std` was on in every native graph: a leaf
 # that asked for `alloc` still got the std flavour of the core because a
 # backend it linked asked for it. `Clock::system()` was the one thing that

@@ -60,7 +60,7 @@ No-selftest NOT justified: atomic-sync-writes, board-facts-delivery, book-identi
 
 ## Bucket 05 — 18 confirmed (1 P1, 14 P2, 3 P3) / 6 suspected / 7 unevaluable / 20 clean
 P1  check-test-precondition-guards.py       shape2 LIVE: exempts helper returning real value "because caller will skip!" — unchecked. zenoh_integration.rs router()->Option prints [SKIP] returns None; 5 tests `let Some(_) = router() else { return }` => PASS having run nothing. check-tests-can-fail misses it too.
-P2  check-sched-task-spin-gap.py                  shape1: file-level `extern` prototype satisfies rule alone; removing gap from BOTH zephyr tier loops stays green.
+P2  check-sched-task-spin-gap.py                  shape1: file-level `extern` prototype satisfies rule alone; removing gap from BOTH zephyr sched task loops stays green.
 P2  check-wait-evidence-discarded.py        shape1 LIVE: misses .or_else(..).unwrap_or_default() chain (~10 live); baseline never forced down (slack lets regrow).
 P2  check-zenohd-router-skips.py            shape1 LIVE: reads packages/testing only; 6 ZenohRouter::start*().expect() in packages/rmw/zenoh tests.
 P2  check-zenoh-platform-macros.py          shape1: misses config/{bare-metal,generic}, runner.rs use_bare_metal, zephyr cmake 3rd producer.

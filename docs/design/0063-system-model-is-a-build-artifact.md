@@ -22,7 +22,7 @@ opposite lifecycles:
 | Content | Where it comes from | If deleted |
 | --- | --- | --- |
 | `structure`, `deploy`, `meta.inputs` | `resolve(launch + system config)` | regenerates identically |
-| `execution.tiers` dims (`zephyr.deadline_us`, `nuttx.budget_us`/`period_us`, `threadx.preempt_threshold`/`time_slice_us`, per-platform `core`) | **hand-authored in the model** | gone forever |
+| `execution.tasks` dims (`zephyr.deadline_us`, `nuttx.budget_us`/`period_us`, `threadx.preempt_threshold`/`time_slice_us`, per-platform `core`) | **hand-authored in the model** | gone forever |
 
 Two live conventions therefore contradict each other:
 
@@ -62,7 +62,7 @@ process someone must remember not to run.
 
 **The dims need a home in the system config.** This is issue 0380's
 "direction A", and this RFC makes it mandatory rather than one option of three:
-per-platform scoped tier dims must be expressible in user-maintained
+per-platform scoped sched task dims must be expressible in user-maintained
 configuration, or the decision above cannot hold. The resolver already carries
 `posix.core` / `sched_class`; this widens the same table.
 
@@ -133,7 +133,7 @@ read the marker.
 
 ## Open questions
 
-- **Config surface for the dims.** Exact schema for per-platform scoped tiers
+- **Config surface for the dims.** Exact schema for per-platform scoped sched tasks
   in the system config, and whether it lives in `system.toml`'s
   `nros_orchestration_ir` schema or beside it.
   *Answered (phase-330 W1):* in `system.toml`'s `[tasks.<name>.<rtos>]`

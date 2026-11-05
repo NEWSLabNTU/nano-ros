@@ -1,5 +1,5 @@
 {
   "key": "rust:Executor::set_level",
   "verdict": "extension",
-  "why": "phase-509 P7 (RFC-0108 D8) -- a board's tier runner places each tier's executor at its level (until P9 a level is a tier). rclrs has no levels."
+  "why": "phase-509 P7 (RFC-0108 D8) -- a board's sched task runner places each sched task's executor at its level (until P9 a level is a sched task). rclrs has no levels."
 }

@@ -23,7 +23,7 @@ tracked by [phase-509](../roadmap/archived/phase-509-executor-preemption-levels.
 **Amends:** [RFC-0002](0002-rt-execution-model.md) (dispatch order inside an
 executor becomes the contract's rank, not registration order) and RFC-0107
 (shared executor core; branch `docs/rfc-0107-shared-executor-core`, steps 1-3
-merged, steps 4-6 open): its per-tier dispatcher is split into one scheduler
+merged, steps 4-6 open): its per-sched-task dispatcher is split into one scheduler
 per core plus one worker per preemption level. **Builds on:**
 [RFC-0079](0079-priority-is-allocated-not-authored.md) (the rank and the
 priority address plan) and [RFC-0106](0106-executor-park.md) (how a worker
@@ -35,7 +35,7 @@ root, at `origin/main` 6c63994586 unless stated).
 
 ## Summary
 
-Today a nano-ros "tier" is a whole executor on its own thread. The tier is at
+Today a nano-ros "sched task" is a whole executor on its own thread. The sched task is at
 once the unit of ORDERING (which ready callback runs next) and the unit of
 PREEMPTION (which running callback can be interrupted). Two consequences:
 
@@ -43,7 +43,7 @@ PREEMPTION (which running callback can be interrupted). Two consequences:
    rank order, so the ranks RFC-0079 derives are invisible to the dispatcher
    unless every rank gets its own executor.
 2. Every rank that wants to preempt another pays for a whole executor:
-   +7,096 B of DTCM per extra tier on the safety island [M], plus a 16 KiB
+   +7,096 B of DTCM per extra sched task on the safety island [M], plus a 16 KiB
    stack.
 
 This RFC separates the two:
@@ -94,9 +94,9 @@ works in phases:
 
 What generated code puts into those keys:
 
-- Codegen makes **one sched context per tier**, not per node or group
+- Codegen makes **one sched context per sched task**, not per node or group
   (`packages/cli/nros-cli-core/src/codegen/entry/lower.rs:560-575`). The
-  tier's kernel priority goes into `os_pri`; nothing sets `Priority`.
+  sched task's kernel priority goes into `os_pri`; nothing sets `Priority`.
 - `SchedContext::from_sched_task_policy` leaves `priority` at its default
   (`sched_context.rs:584-618`; the default is `Priority::Normal`,
   `sched_context.rs:549`), and it never produces the `Edf` class.
@@ -116,9 +116,9 @@ The Autoware safety island (S32K344, Zephyr) runs three components with three
 distinct ranks [M] (`nros_priority_plan.json` of the island board build,
 2026-10-16): `mrm_handler` 5, `mrm_emergency_stop_operator` 7,
 `mrm_comfortable_stop_operator` 8 (pool `app [5,14]`, transport `[4,4]`,
-smaller is more urgent). The island authors one tier, `[tasks.mrm]`, and binds
-all three components to it. That is rule 2 of tier derivation
-(`packages/core/nros-orchestration-ir/src/derive.rs:611-680`): one tier, one
+smaller is more urgent). The island authors one sched task, `[tasks.mrm]`, and binds
+all three components to it. That is rule 2 of sched task derivation
+(`packages/core/nros-orchestration-ir/src/derive.rs:611-680`): one sched task, one
 thread, at the most urgent member's priority.
 
 - The handler is supervised (`call_mrm`, 149 ms budget) and carries a 100 ms
@@ -134,28 +134,28 @@ thread, at the most urgent member's priority.
 
 ### 3. Rule 4 over-splits
 
-When a group names no tier, rule 4 gives each NODE its own tier,
+When a group names no sched task, rule 4 gives each NODE its own sched task,
 `derived-<node>` (`derive.rs:530-608`; the name at `:534`). Equal ranks pay a
 thread each and gain nothing the fixed-priority analysis can see: two threads
 at one priority on a FIFO kernel behave like one thread with both groups. The
-`derived-sched-tasks-cpp` fixture gets four tiers for two ranks.
+`derived-sched-tasks-cpp` fixture gets four sched tasks for two ranks.
 
-### 4. What a tier costs
+### 4. What a sched task costs
 
 | item | value | kind |
 | --- | ---: | --- |
-| island DTCM, one tier (nano-ros 77e4175e77) | 103,224 B | [M] island board build |
-| second tier (`estop` = emergency operator alone) | +7,096 B | [M] island phase-13 measurement |
+| island DTCM, one sched task (nano-ros 77e4175e77) | 103,224 B | [M] island board build |
+| second sched task (`estop` = emergency operator alone) | +7,096 B | [M] island phase-13 measurement |
 | of which: backings / `CppContext` / thread object / monitor rows | +3,904 / +2,680 / +272 / +240 B | [M] ELF symbol diff |
 | DTCM ceiling (131,072 B minus the 8 KiB guard) | 122,880 B | [C] island `linker/dtcm-headroom.ld:8` |
-| spawned-tier stack on Zephyr | 16,384 B (SRAM) | [C] `zephyr/Kconfig:435` `NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` |
+| spawned-sched-task stack on Zephyr | 16,384 B (SRAM) | [C] `zephyr/Kconfig:435` `NROS_ZEPHYR_SCHED_TASK_STACK_SIZE` |
 | island SRAM in use | 280,680 of 327,680 B | [M] island board build |
-| spawned-tier stack on FreeRTOS (default) | 262,144 B | [C] `packages/cli/nros-entry-lower/src/lib.rs:201` |
-| RFC-0107's baseline (d5fe58a518): one / two tiers | 112,464 / 127,400 B | [M] RFC-0107 |
+| spawned-sched-task stack on FreeRTOS (default) | 262,144 B | [C] `packages/cli/nros-entry-lower/src/lib.rs:201` |
+| RFC-0107's baseline (d5fe58a518): one / two sched tasks | 112,464 / 127,400 B | [M] RFC-0107 |
 
 RFC-0107 steps 1-3 removed most of the duplicated image-wide state. What is
-left per tier is still a whole executor value, a whole backing, a thread, and
-a stack. Three ranks on the island as three tiers would be about 117.4 KB of
+left per sched task is still a whole executor value, a whole backing, a thread, and
+a stack. Three ranks on the island as three sched tasks would be about 117.4 KB of
 DTCM [E: 103,224 + 2 x 7,096] against 122,880 B, and 313.4 KB of SRAM
 [E: 280,680 + 2 x 16,384] against 327,680 B.
 
@@ -254,7 +254,7 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
 - **The key comes from codegen,** per node, as the rank, normalised so that 0
   is the most urgent whatever the kernel's direction; every callback group of
   the node shares it. (Amended in P2: the first draft said per callback group,
-  but the derivation ranks nodes, and one tier's single sched context cannot
+  but the derivation ranks nodes, and one sched task's single sched context cannot
   carry several ranks. Codegen seeds each ranked node by name before it is
   created, `nros_cpp_bind_node_rank`.) The C and C++ `Priority` API
   (Critical / Normal / BestEffort) keeps working as three reserved ranks:
@@ -281,7 +281,7 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
 - **Non-preemptive within a level** (run to completion), as today.
 
 This is step 1 of the plan, and it is useful with one thread: it makes the
-island's single tier dispatch in rank order without any second thread.
+island's single sched task dispatch in rank order without any second thread.
 
 ### D3 -- Preemption: N levels over one ready set
 
@@ -298,7 +298,7 @@ island's single tier dispatch in rank order without any second thread.
   which every callback's threshold is the most urgent rank of its band:
   - N = 1: fixed-priority non-preemptive (the island today, once D2 lands);
   - N = number of distinct ranks: fixed-priority fully preemptive (the
-    "one tier per distinct priority" rule);
+    "one sched task per distinct priority" rule);
   - 1 < N < ranks: non-preemptive groups (Saksena and Wang 2000).
 - **Decision: contiguous bands are the level model.** Each worker owns a
   consecutive range of ranks; its kernel priority is fixed; every member's
@@ -384,7 +384,7 @@ N is a pure function of the contract, the priority plan and the image's cap,
 so it is reproducible and reviewable at codegen time.
 
 1. **Default:** one level per distinct rank on the core. Equal ranks share a
-   level. This replaces rule 4's one-tier-per-node.
+   level. This replaces rule 4's one-sched-task-per-node.
 2. **Merge with execution times** (C stated for every callback involved):
    find the fewest contiguous bands for which every callback with a deadline
    still meets it under D3's response time. With r ranks (r is at most the pool
@@ -405,7 +405,7 @@ so it is reproducible and reviewable at codegen time.
 5. **Report:** one `level-budget` degradation per member that loses its rank,
    naming the cap, the rank it would have had, and the band it shares. This
    also replaces rule 2's first-member-only report (section 2).
-6. **Authored still wins.** An authored tier (rules 1-3) is a pin: its members
+6. **Authored still wins.** An authored sched task (rules 1-3) is a pin: its members
    form one band at the authored priority, and derivation fills only what is
    unbound. `stack_bytes`, `core` and a priority pin stay expert overrides
    (RFC-0079 primitive reduction).
@@ -416,7 +416,7 @@ so it is reproducible and reviewable at codegen time.
    does not depend on build order.
 8. **Equal kernel priorities are merged.** On a time-slicing kernel (FreeRTOS
    with `configUSE_TIME_SLICING`, Linux `SCHED_RR`) two levels or authored
-   tiers that would run at one kernel priority become one level (decided).
+   sched tasks that would run at one kernel priority become one level (decided).
    Separate threads at one priority buy no preemption between them, only
    memory, and slicing would preempt a callback mid-run. Real-time levels run
    with time slicing off (D6).
@@ -428,12 +428,12 @@ left open:
   the derivation that consumes it. It needs the board's plan, the authored
   pins, the callback records and the cap, none of which rlm's platform-free
   ranker holds.
-- **Until P9 a derived level runs as one derived tier** at the band's most
+- **Until P9 a derived level runs as one derived sched task** at the band's most
   urgent priority: `derived-<node>` for a level of one node (unchanged from
   rule 4), `derived-level-<k>` for several, with their tightest period and
   deadline. A per-node sporadic budget is dropped on a shared level, with a
   `budget` degradation.
-- **Rule 2** engages only when no tier is authored and every derived
+- **Rule 2** engages only when no sched task is authored and every derived
   callback is analysable with C. A callback's response time depends only on
   its own band, so the program is O(r^2) band analyses. The response time
   examines every job of the level-i busy period; a served callback is
@@ -449,8 +449,8 @@ left open:
 - **Rule 6:** pins count toward the cap; a free band never spans a pin's
   priority, so the pins can force more levels than the cap, which one
   `level-budget` line reports.
-- **Rule 8** applies on FreeRTOS only. A derived band at an authored tier's
-  priority joins it (its groups bind to that tier); two authored tiers at
+- **Rule 8** applies on FreeRTOS only. A derived band at an authored sched task's
+  priority joins it (its groups bind to that sched task); two authored sched tasks at
   one priority are one level in the record, two threads until P9.
 - **D1's placement** of an unanalysable callback at the least urgent level
   of its band is recorded per level (`best_effort`, at the band's least
@@ -472,7 +472,7 @@ left open:
 - **SMP (one ISA, coherent memory):** one immutable executor core (RFC-0107's
   `ExecutorCore`, read-only after boot) shared by every core; per core a
   scheduler (ready set, callback slots, release and budget accounting, arena
-  partition) and its levels. A tier becomes a **(core, level)** pair. The
+  partition) and its levels. A sched task becomes a **(core, level)** pair. The
   three locked items of RFC-0107's concurrency table (arena at runtime,
   parameter store, violation ring) take a real spinlock.
 - **Uniform multiprocessors** (big.LITTLE): one ISA, different speeds. The
@@ -511,7 +511,7 @@ Each platform publishes a capability table that the derivation reads:
 
 - **Ties on time-slicing kernels (decided).** FreeRTOS time-slices equal
   priorities by default (`configUSE_TIME_SLICING`), Linux under `SCHED_RR`.
-  Levels and authored tiers that share a kernel priority are merged into one
+  Levels and authored sched tasks that share a kernel priority are merged into one
   level (D4 rule 8), and real-time levels run with time slicing off:
   `SCHED_FIFO`, never `SCHED_RR`, on Linux and NuttX, and
   `configUSE_TIME_SLICING = 0` on FreeRTOS images with levels.
@@ -522,7 +522,7 @@ Each platform publishes a capability table that the derivation reads:
 
 ### D7 -- Waking a level
 
-RFC-0106 D6 wakes every executor over a session on every arrival: with N tiers
+RFC-0106 D6 wakes every executor over a session on every arrival: with N sched tasks
 an arrival costs N-1 spurious wakeups (7-9 us each on the host [M, RFC-0106]).
 With levels the wake goes through the per-core scheduler: an arrival whose
 slot is attributed (RFC-0084) wakes only the worker of its band; an
@@ -578,20 +578,20 @@ These hold for every image, and they block the first board run with N > 1.
    client waits, so the grammar gained `call: blocking | async` on a
    `cli.<e>` endpoint and on `actions.<a>` (every client it lists). Only a
    stated `blocking` is refused: at the client's own level as a deadlock,
-   at a level that cannot preempt it (less urgent, or another tier at the
+   at a level that cannot preempt it (less urgent, or another sched task at the
    same kernel priority) as an inversion. An unstated call to such a server
    is reported, never refused, so existing contracts build unchanged. Until
-   P9 a level is a tier of the resolved table and a tierless image is one
-   level; a node no tier of a multi-tier image holds is reported, and a
+   P9 a level is a sched task of the resolved table and a single-executor image is one
+   level; a node no sched task of a multi-sched-task image holds is reported, and a
    server outside the image is not checked. The check runs on the three
-   bake roads after each resolves its tier table.
+   bake roads after each resolves its sched task table.
 4. **Shared state between levels** follows RFC-0107's concurrency table; with
    levels on one core a critical section suffices, on SMP a spinlock.
 
 **As built in P7** (`nros-node` `executor/level_liveness.rs`, the C/C++
 FFI, `nros_priority_plan.h`). An executor's worker carries its level; until
-P9 a tier's level is its urgency order among the image's tiers, equal
-priorities in table order, and the Zephyr runners place each tier's
+P9 a sched task's level is its urgency order among the image's sched tasks, equal
+priorities in table order, and the Zephyr runners place each sched task's
 executor by that rule while the header writes `NROS_ENTRY_LEVEL_OF_<node>`
 by it. The "every level alive" aggregate is a per-image registry that
 every spin checks into (the levels are separate executors until P9, so the
@@ -602,7 +602,7 @@ spin-hook ABI: a supervisor wraps the spin and reads the handle's level.
 **As built in P9** (`zephyr_run_sched_tasks.c`, the `nros_cpp_*` scheduler FFI,
 the entry packs, `sched_task_memory_zephyr.h`, `scripts/nros-mem-report.py
 --levels`). The Zephyr runner spawns one worker thread per level (each row
-of the entry's table is a derived level, or an authored tier, which is one
+of the entry's table is a derived level, or an authored sched task, which is one
 band) over a per-core scheduler record: `nros_cpp_scheduler_open(core,
 n_levels, owner, backing, bytes)` over the session the boot level opened,
 `nros_cpp_level_adopt` for the boot level and `nros_cpp_level_open` for
@@ -789,7 +789,7 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   clock first, charged per callback by the worker that ran it.
 - **As landed in item 4.** The Zephyr runner opens ONE executor per core:
   `nros_cpp_init_levels` carves it from the entry's levels backing
-  (`NROS_CPP_LEVELS_BACKING_SIZE`: the tier table's sizings summed), the
+  (`NROS_CPP_LEVELS_BACKING_SIZE`: the sched task table's sizings summed), the
   runner installs the port's recursive priority-inheriting mutex
   (`nros_cpp_executor_set_lock`) and its thread identity
   (`nros_cpp_executor_set_thread_id`, `k_current_get`), and the scheduler
@@ -804,36 +804,36 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   handle (`nros_cpp_scheduler_owner`), and the worker loops on
   `nros_cpp_level_spin_once`. A level owns the slots its setup registered
   (`Executor::set_registering_level`, stamped in the slot tag): authored
-  tiers carry no ranks, so a band of dispatch levels cannot separate them,
+  sched tasks carry no ranks, so a band of dispatch levels cannot separate them,
   and each level keeps the callbacks P9 gave its executor. Within a level
   the dispatch order is still the ranked one. The entry emits one executor
-  block and one levels backing (C and C++ packs; the two Zephyr tier
+  block and one levels backing (C and C++ packs; the two Zephyr sched task
   goldens change accordingly), and `NROS_CPP_SCHEDULER_BACKING_SIZE(n)`
   reserves 8 pointers + 40 bytes per seat. Cost on `levels-cpp`
   (native_sim, `.bss`): 43,736 B -> 22,280 B. A spawned level costs its
   seat (104 B), its thread object (176 B) and its stack, plus one platform
   wake object from the heap; the stack-headroom rule stays the executor's
-  own worker's. The levels backing is the per-tier sizings summed, 5,296 B
+  own worker's. The levels backing is the per-sched-task sizings summed, 5,296 B
   above the one-level derivation (13,112 B); deriving it jointly is left to
   the sizing descriptor.
-- **As fixed after item 4 (the island board).** Two things a per-tier
+- **As fixed after item 4 (the island board).** Two things a per-sched-task
   setup kept per executor were wrong once every level's setup registers on
   the one executor, and a setup failure was silent:
   - *Launch parameters.* The entry seeded each node's parameters with a
-    build-time node index that restarted per tier (issue 1272:
+    build-time node index that restarted per sched task (issue 1272:
     `nros_cpp_declare_param(executor, k, ...)`, `k` the node's position in
-    its tier), so every level named node 0 and the shim refused the second
+    its sched task), so every level named node 0 and the shim refused the second
     level's seed. The entry now names the node
     (`nros_cpp_declare_node_param(executor, "<node>", ...)`) and the shim
     resolves the index from the executor it seeds: its next node. Chosen
-    over a build-time count across tiers, which would hold only for a runner
+    over a build-time count across sched tasks, which would hold only for a runner
     that sets the levels up in table order on one executor and only while
     every earlier component built exactly one node; resolving at the call
     holds for either runner and any setup order. A seed for another node on
     the index the previous seed took (that node was never built) is refused,
     which keeps issue 1272's guard. The node's rank
     (`nros_cpp_bind_node_rank`) was already keyed by name and namespace.
-  - *Monitor tables.* Each tier installed its own table on its executor;
+  - *Monitor tables.* Each sched task installed its own table on its executor;
     on one executor each install replaced the last, so only the last
     level's rows were judged. A level image now lowers ONE table (every
     level's monitor, age and hazard rows and the mode variants over them),
@@ -844,7 +844,7 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
     which also halted the spawn chain (the next level spawns after this
     one's setup), and the boot level's returned to `main()`: the image ran
     half up with nothing to say so. Policy now: the generated setup names
-    its tier and the node it was building (`nros_cpp_report_setup_failure`,
+    its sched task and the node it was building (`nros_cpp_report_setup_failure`,
     error level), the runner prints the level and code
     ("nros: level N (<name>) setup failed (rc=..): failing the boot") and
     FAILS THE BOOT with `k_panic()` (`nros_zephyr_fail_boot`), so the
@@ -861,7 +861,7 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   budgets, one transport driver, per-worker band park; (4) the runner, FFI
   and cost report: `level_open` opens a worker over the core's executor.
 
-**As built in P10** (amended RFC-0107 step 6). Every tier runner is a level
+**As built in P10** (amended RFC-0107 step 6). Every sched task runner is a level
 runner: one executor per core, the least urgent level adopted on the calling
 thread (it owns the session and drives the transport), every other level a
 worker thread over the same executor, spawned in a chain so no two setups
@@ -906,7 +906,7 @@ executor's lock and the thread identity:
 - **Derived stacks.** FreeRTOS and NuttX derive like Zephyr
   (`SchedTaskMemory::derives_level_stacks`): a spawned level that declares
   no `stack_bytes` is `NROS_LEVEL_STACK_BYTES(0)`, the per-callback default
-  plus a 4,096 B worker frame, which together are the stack every tier got
+  plus a 4,096 B worker frame, which together are the stack every sched task got
   before (FreeRTOS 256 KiB, `NROS_FREERTOS_LEVEL_STACK_DEFAULT`; NuttX
   16 KiB, `NROS_NUTTX_LEVEL_STACK_DEFAULT`). NuttX now takes its levels'
   stacks from the entry (`sched_task_memory_nuttx.h`), which it did not
@@ -918,13 +918,13 @@ executor's lock and the thread identity:
   component's `name`, and a spawned level that declares no `stack_bytes`
   is `NROS_LEVEL_STACK_BYTES(member)` over its largest member's stated
   stack (`0u` when none states one: the per-callback default). An authored
-  tier `stack_bytes` stays the expert override. The Rust pack derives the
+  sched task `stack_bytes` stays the expert override. The Rust pack derives the
   same way (`nros_orchestration_ir::derive_level_stacks`, called by
   `nros::main!`): a level none of whose members states a stack keeps the
-  port's default, otherwise its tier's `stack_bytes` becomes the largest
+  port's default, otherwise its sched task's `stack_bytes` becomes the largest
   member's plus the port's worker frame, which sizes the Zephyr entry
   static and the ThreadX byte-pool stack. The priority record carries each
-  tier's `member_stack_bytes`, and `mem-report --levels` checks every
+  sched task's `member_stack_bytes`, and `mem-report --levels` checks every
   spawned level's static against the same rule per family (Zephyr's
   `.config` knobs; FreeRTOS's and NuttX's header defaults, the last row
   booting on both).
@@ -977,9 +977,9 @@ executor's lock and the thread identity:
   2.35 us (raw `k_mutex` pair 1.74 us; the difference is the shim call and
   the executor's lock indirection) [M].
 - **The Rust Linux, FreeRTOS and NuttX arms** (issue 2016) run on
-  `LevelCore` too, so every tier runner in the tree is a level runner. Each
-  keeps its boot choice (the least urgent tier owns the session) and its
-  chained setups. The tiers' per-executor scheduling policy
+  `LevelCore` too, so every sched task runner in the tree is a level runner. Each
+  keeps its boot choice (the least urgent sched task owns the session) and its
+  chained setups. The sched tasks' per-executor scheduling policy
   (`apply_sched_task_sched_policy`) is the boot level's alone now, since the levels
   share one executor, as on Zephyr and ThreadX; the kernel facts stay per
   level thread (priority, core pin, NuttX's `SCHED_SPORADIC` server on the
@@ -987,7 +987,7 @@ executor's lock and the thread identity:
   all three. The hosted Linux arm ends its run (a termination signal or
   `NROS_ENTRY_SPIN_MS`) by joining the level threads and taking the runtime
   back (`LevelCore::into_runtime`, the lock removed) to close the session.
-- **A level's own sched context** (issue 2018). A level's tier policy
+- **A level's own sched context** (issue 2018). A level's sched task policy
   (class, budget, period, deadline) lowers through
   `SchedContext::from_sched_task_policy` onto a context of the level's own
   (`Executor::set_level_sched_context`; C ABI
@@ -1007,7 +1007,7 @@ executor's lock and the thread identity:
   never skipped for want of budget by the executor. Where the kernel does
   not enforce it, the executor's cooperative budget is the enforcement,
   with the same numbers. The runner prints which
-  (`nros: level budget tier=... enforced by the KERNEL|EXECUTOR`). The
+  (`nros: level budget sched_task=... enforced by the KERNEL|EXECUTOR`). The
   choice is to defer rather than to double-account: two enforcers of one
   budget throttle a level twice, once demoted by the kernel and once
   skipped by the executor on refill boundaries that do not line up.
@@ -1059,14 +1059,14 @@ executor's lock and the thread identity:
   keeps the kernel default, 1. The setting is compiled into the kernel, so the
   image states the fact and the kernel build reads it as
   `NROS_FREERTOS_LEVEL_IMAGE` (the boards' `FreeRTOSConfig.h`, including the
-  POSIX simulator's own file). Two roads deliver it: a tiered C/C++ entry's
+  POSIX simulator's own file). Two roads deliver it: a sched-task C/C++ entry's
   link-libs sidecar sets `NROS_LEVEL_IMAGE` on the executable and
   `nano_ros_entry` defines it on `freertos_config` (issue 1197's carrier, the
-  one every kernel TU reads); a multi-tier Rust schedule gets the board
+  one every kernel TU reads); a multi-sched-task Rust schedule gets the board
   crate's `level-image` feature from `nros build`
   (`schedule_board_features`, the same predicate as `nros::main!`'s
-  multi-tier arm), and `nros-board-freertos`'s build.rs defines it on every
-  `cc::Build`. A tiered entry refuses to build against a slicing kernel
+  multi-sched-task arm), and `nros-board-freertos`'s build.rs defines it on every
+  `cc::Build`. A sched-task entry refuses to build against a slicing kernel
   (`sched_task_memory_freertos.h`; a host with its own config states
   `NROS_FREERTOS_ALLOW_TIME_SLICING` to keep it), and both level runners say
   what the kernel was built with (`nros: kernel time slicing OFF`). With
@@ -1088,7 +1088,7 @@ executor's lock and the thread identity:
   retired once the scheduler/worker split lands (alternative 4).
 - **RFC-0079 (priority is allocated).** Unchanged as the source of the rank
   and the address plan. What changes is what a rank is realised as: today a
-  rank becomes a thread only through a tier; here a rank is the ordering key
+  rank becomes a thread only through a sched task; here a rank is the ordering key
   and a band of ranks becomes a level. The pool width still bounds N. The
   derived-only fields it lists (`preempt_threshold`, `time_slice_us`) get
   their derivation here: the threshold is the most urgent rank of the band,
@@ -1100,27 +1100,27 @@ executor's lock and the thread identity:
   - Steps 1-3 (arena floor, launch remaps in flash, extra sessions; merged)
     are unaffected.
   - Its classification table and concurrency rules stand.
-  - **Step 4 is amended:** the per-tier `Dispatcher` splits into a per-core
+  - **Step 4 is amended:** the per-sched-task `Dispatcher` splits into a per-core
     `Scheduler` (ready set, callback slots, release and budget accounting) and
     a per-level `Worker` (thread, stack, current dispatch, park state). With
     one level the pair is RFC-0107's dispatcher.
-  - **Steps 5 and 6 are amended:** the runners spawn levels instead of tiers,
+  - **Steps 5 and 6 are amended:** the runners spawn levels instead of sched tasks,
     and the FFI is `nros_cpp_scheduler_open(core)` plus
     `nros_cpp_level_open(scheduler, level)` instead of
-    `nros_cpp_dispatcher_open(core, tier)`. Generated sizes become
+    `nros_cpp_dispatcher_open(core, sched_task)`. Generated sizes become
     `NROS_CPP_CORE_BACKING_SIZE`, `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` and
     a per-level stack.
   - When RFC-0107 lands on `main`, its steps 4-6 get a pointer to this RFC.
 
 ## Alternatives considered
 
-1. **A whole executor per tier (today).** It works and is what the island
-   measured: +7,096 B DTCM [M] per extra tier at 77e4175e77, +14,936 B [M] at
+1. **A whole executor per sched task (today).** It works and is what the island
+   measured: +7,096 B DTCM [M] per extra sched task at 77e4175e77, +14,936 B [M] at
    RFC-0107's baseline, plus a stack. RFC-0107 reduces the DTCM part to a
    dispatcher, but each executor keeps its own ready set, so the order across
-   tiers is the kernel's and the order inside is registration order (section
+   sched tasks is the kernel's and the order inside is registration order (section
    1). Rejected as the unit of preemption; kept as the shape of an authored
-   tier until it migrates.
+   sched task until it migrates.
 2. **Work stealing** (per-worker deques, idle workers steal). It optimises
    throughput. It loses the global priority order: an urgent item can sit in a
    busy worker's deque while another worker runs less urgent stolen work, a
@@ -1169,7 +1169,7 @@ and dependencies are in
 do not depend on RFC-0107 steps 4-6; P6 onward do.
 
 1. **P1. Report every member that loses its rank.** `derive.rs:631-649` emits
-   one degradation per disagreeing member. Test: an authored tier with members
+   one degradation per disagreeing member. Test: an authored sched task with members
    at 5, 7 and 8 yields two lines.
 2. **P2. Rank-ordered ready set, one thread.** Codegen seeds a rank per
    node (normalised, 0 most urgent) before the node is created; `nros-node` replaces the three-bucket FIFO with a multi-level
@@ -1266,7 +1266,7 @@ do not depend on RFC-0107 steps 4-6; P6 onward do.
   2020, work in progress) introduce the rclc executor with a user-defined
   order and trigger conditions. Lange's callback-group-level executor
   (ROSCon 2018 lightning talk) maps callback groups to separate executors
-  on separate threads, which is today's tier.
+  on separate threads, which is today's sched task.
 - **Limited priority levels.** Katcher, Sathaye and Strosnider (IEEE TC 1995)
   bound the schedulability loss when tasks must share fewer priority levels.
 - **Preemption thresholds and limited preemption.** Wang and Saksena (RTCSA
@@ -1411,7 +1411,7 @@ The first draft's open questions, as decided:
   failure fails the boot.
 - 2026-10-24: the island measured the lock on target (I4): `k_mutex` pair
   1.74 us, the installed recursive pair 8.63 us, `L_max` 77.5 us.
-- 2026-10-24: P10 built: every C-ABI tier runner (Zephyr, Linux, FreeRTOS,
+- 2026-10-24: P10 built: every C-ABI sched task runner (Zephyr, Linux, FreeRTOS,
   NuttX) and the Rust Zephyr and ThreadX runners run levels over one executor
   per core; the Rust level core is `nros::levels::LevelCore`; the Zephyr lock
   is a bare `k_mutex` (2.35 us per pair on target). The Rust Linux, FreeRTOS

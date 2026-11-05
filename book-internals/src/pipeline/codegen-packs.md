@@ -121,7 +121,7 @@ one renderer (`codegen/entry/emit/mod.rs`) lowers the plan once into
 1. `packs/entry/<surface>/entry.<ext>.jinja` over `LoweredEntry`. Nodes (with
    their component kind, resolved name and namespace, params, remaps, QoS),
    board family and boot shape, the C-ABI runner names, the executor layout
-   (one executor, sched contexts, or per-tier setups), tier rows, the boot
+   (one executor, sched contexts, or per-sched-task setups), sched task rows, the boot
    blob and the monitor tables all arrive computed and RAW — a template decides
    where a value goes and spells it, never how to quote it;
 2. `packs/entry/<surface>/pack.toml` — the extension, whether the TU is

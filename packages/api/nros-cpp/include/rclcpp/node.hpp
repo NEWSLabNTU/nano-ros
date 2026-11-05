@@ -557,12 +557,13 @@ inline void report_callback_group_mismatch(const char* node_name, const char* ho
                       : "[nros] FATAL: node \"%s\" never created callback group \"%.*s\", which "
                         "its registration's CALLBACK_GROUPS \"%s\" declares.\n",
               node, len, group, declared);
-    ::fprintf(stderr,
-              "      The tier derivation ranks the declared list and the executor binds what the "
-              "code creates, so the two must name the same groups (ONE declared group and none "
-              "created is node-level placement, and is allowed). Fix the "
-              "nano_ros_node_register(... CALLBACK_GROUPS ...) line or the create_callback_group "
-              "call.\n");
+    ::fprintf(
+        stderr,
+        "      The sched task derivation ranks the declared list and the executor binds what the "
+        "code creates, so the two must name the same groups (ONE declared group and none "
+        "created is node-level placement, and is allowed). Fix the "
+        "nano_ros_node_register(... CALLBACK_GROUPS ...) line or the create_callback_group "
+        "call.\n");
 #endif
 }
 
@@ -2579,8 +2580,8 @@ class Node {
     ///
     /// phase-459 W6 -- inside a component's construction, a name its
     /// registration's `CALLBACK_GROUPS` did not declare is a named boot failure
-    /// (`DECLARED_CALLBACK_GROUP_MISMATCH`): the tier derivation ranked the
-    /// declared list, so an undeclared group would run on a tier nobody ranked.
+    /// (`DECLARED_CALLBACK_GROUP_MISMATCH`): the sched task derivation ranked the
+    /// declared list, so an undeclared group would run on a sched task nobody ranked.
     /// The token is still returned, so the constructor's remaining calls are
     /// well-formed; the latch halts boot after it.
     ::rclcpp::CallbackGroup create_callback_group(const char* name) {
@@ -2606,7 +2607,7 @@ class Node {
     /// keeps every callback mutually exclusive, so the kind asks for nothing
     /// that is not already true. `automatically_add_to_executor_with_node` is
     /// accepted for the same reason: the node's callbacks are on its executor.
-    /// Named groups (the tier derivation's) are `create_callback_group("name")`.
+    /// Named groups (the sched task derivation's) are `create_callback_group("name")`.
     ::rclcpp::CallbackGroup::SharedPtr
     create_callback_group(::rclcpp::CallbackGroupType type,
                           bool automatically_add_to_executor_with_node = true) {
@@ -3583,13 +3584,13 @@ inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns 
 
 /// Phase 274.W2 — create a node on an explicit executor handle.
 ///
-/// Used by per-tier setup functions (emitted by `nros codegen entry --lang
-/// cpp` for multi-tier workspaces) where each tier's setup runs on the
-/// tier's borrowed executor, not the global one. The executor handle is the
-/// `void*` passed to the tier's `setup(void* executor)` callback.
+/// Used by per-sched-task setup functions (emitted by `nros codegen entry --lang
+/// cpp` for multi-sched-task workspaces) where each sched task's setup runs on the
+/// sched task's borrowed executor, not the global one. The executor handle is the
+/// `void*` passed to the sched task's `setup(void* executor)` callback.
 ///
 /// @param out              Receives the initialized node.
-/// @param executor_handle  Explicit executor handle (from a tier setup param).
+/// @param executor_handle  Explicit executor handle (from a sched task setup param).
 /// @param name             Node name.
 /// @param ns               Node namespace; nullptr or "" = unset (inherit the
 ///                         executor's), "/" = the root (issue 1473).

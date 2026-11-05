@@ -693,7 +693,7 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # `multi_pkg_workspace_mixed` fixture, examples/linux/rust talker/listener
 # CycloneDDS path) depends on. Header/config-only at install time: a small
 # CMake superproject staged into `~/.nros/sdk/corrosion/share/corrosion/`
-# (well under the 500 MB / 5 min `default` tier policy in
+# (well under the 500 MB / 5 min `default` sched task policy in
 # `book-internals/src/dev-env/sdk-tiers.md`, idempotent — `just workspace install-corrosion`
 # already gates on a `.installed-version` stamp). Source-built only — upstream
 # `corrosion-rs/corrosion` releases ship source tarballs, not prebuilt binaries

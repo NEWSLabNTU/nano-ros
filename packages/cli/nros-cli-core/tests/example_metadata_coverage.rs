@@ -243,7 +243,7 @@ fn every_declared_component_language_has_a_producer() {
     );
 }
 
-/// phase-459 W0 - the derived-tiers fixture is what every later wave's gate
+/// phase-459 W0 - the derived-sched-tasks fixture is what every later wave's gate
 /// runs against, so this pins the two inputs those gates assume it carries.
 ///
 /// `examples/workspaces/derived-sched-tasks-cpp` mirrors the Autoware Safety Island:
@@ -267,7 +267,7 @@ fn every_declared_component_language_has_a_producer() {
 /// 2. The launch file and its `system.contract.yaml` sidecar resolve through
 ///    the pinned resolver into a model with four nodes, four timer-driven
 ///    paths (empty `input`) whose `trigger.timer.rate_hz` is the 30/10 Hz the
-///    ranker orders by, and no execution tiers - the input shape `derive_sched_tasks_from_contracts`
+///    ranker orders by, and no execution sched tasks - the input shape `derive_sched_tasks_from_contracts`
 ///    keys on.
 #[test]
 fn derived_sched_tasks_cpp_fixture_declares_four_groupful_components_and_resolves() {
@@ -336,7 +336,7 @@ fn derived_sched_tasks_cpp_fixture_declares_four_groupful_components_and_resolve
         .collect();
     assert!(
         authored.is_empty(),
-        "the fixture authors no tier and no binding; found {authored:?}"
+        "the fixture authors no sched task and no binding; found {authored:?}"
     );
 
     let model = resolve_through_pinned_resolver(&root, &ws.join("src/demo_bringup"), "system");
@@ -348,7 +348,7 @@ fn derived_sched_tasks_cpp_fixture_declares_four_groupful_components_and_resolve
     );
     assert!(
         model.execution.tasks.is_empty(),
-        "no execution tier may reach the model from a workspace that authors none: {:?}",
+        "no execution sched task may reach the model from a workspace that authors none: {:?}",
         model.execution.tasks.keys().collect::<Vec<_>>()
     );
     for (_, node, endpoint, rate) in EXPECTED {

@@ -215,7 +215,7 @@ stand for any number of queued messages.
 
 ### 4.5 The token also names the owner
 
-Several executors can share one session (a tiered image's spawned tiers; C
+Several executors can share one session (a sched-task image's spawned sched tasks; C
 executors over one support context). RFC-0106 D6 wakes them all through a
 fan-out, because the session callback cannot say whose data arrived. The
 per-entity slot's `ctx` is the REGISTERING executor's, so an arrival wakes

@@ -8,7 +8,7 @@
 //! disagreed with play_launch's on `exclusive: [[a, b], [c]]`; it passed
 //! `chains: Vec::new()`, so the "chain-aware" tier order was the
 //! criticality-bucket fallback on every image this repository has ever
-//! built. The tier a node got on Zephyr and the `SCHED_FIFO` priority it
+//! built. The sched task a node got on Zephyr and the `SCHED_FIFO` priority it
 //! got on Linux were computed from different inputs and agreed by
 //! coincidence. This module is now the adapter around the shared function
 //! and holds no rule of its own but one (`DeriveFacts`, below).

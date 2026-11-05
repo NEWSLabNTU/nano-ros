@@ -6,7 +6,7 @@
 # `BoardExit` / `BoardEntry` / `DirectExec`) + the generic direct-exec `run`
 # lived in `nros_board_common::board_init` and were deleted in favour of TWO
 # canonical board APIs: the Rust-rich `nros_platform::board` surface (session /
-# executor sizing / tiers) and the `<nros/board.h>` C ABI (`nros-board-cffi`,
+# executor sizing / sched tasks) and the `<nros/board.h>` C ABI (`nros-board-cffi`,
 # emitted via `nros_board_export!`). This gate keeps board_init from creeping
 # back — a new board that reaches for `nros_board_common::BoardInit` etc. must
 # instead impl `nros_platform::board::*` (Rust) or export the C ABI.

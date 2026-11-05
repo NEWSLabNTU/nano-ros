@@ -3,14 +3,14 @@ name = "realtime_c_demo"
 rmw = "zenoh"
 domain_id = 0
 
-# Phase 269 W4 (RFC-0015 §4.2) — C two-tier realtime demo.
-# The ctrl node publishes /ctrl every 10 ms (high tier);
-# the telem node publishes /telem every 100 ms (low tier).
-# Phase 273 W2 (RFC-0047): group→tier binding moved from [[node_overrides]] to
+# Phase 269 W4 (RFC-0015 §4.2) — C two-sched-task realtime demo.
+# The ctrl node publishes /ctrl every 10 ms (high sched task);
+# the telem node publishes /telem every 100 ms (low sched task).
+# Phase 273 W2 (RFC-0047): group→sched task binding moved from [[node_overrides]] to
 # [[component]].group_tasks (deployment config, not package manifest).
 # CALLBACK_GROUPS in cmake declares the group IDs; group_tasks here assigns
-# them to the named tiers. nros dev codegen emits nros_cpp_create_sched_context +
-# nros_cpp_bind_group_sched to bind each group to its priority tier.
+# them to the named sched tasks. nros dev codegen emits nros_cpp_create_sched_context +
+# nros_cpp_bind_group_sched to bind each group to its priority sched task.
 [[component]]
 pkg = "ctrl_pkg"
 class = "ctrl_pkg::Ctrl"
@@ -36,7 +36,7 @@ spin_period = "10000us"
 priority = 80
 # phase-281 W3c — RAW Zephyr priority (preemptive; lower number = higher priority).
 # Consumed by the zephyr_entry projection: [tasks.*.zephyr] flips the C codegen onto
-# ZephyrBoard::run_sched_tasks (RFC-0015 Model 1), one k_thread per tier.
+# ZephyrBoard::run_sched_tasks (RFC-0015 Model 1), one k_thread per sched task.
 [tasks.high.zephyr]
 # RFC-0079 §4.1 — allocated from the DERIVED pool.app, strictly less urgent
 # than the transport band. Zephyr's band is not a literal: the zenoh read/lease
@@ -53,21 +53,21 @@ priority = 9
 deadline = "10000us"
 # phase-281 W3-nuttx — RAW NuttX SCHED_FIFO priority (higher number = higher
 # priority; verbatim into pthread_attr_setschedparam). `[tasks.*.nuttx]` flips the
-# C codegen onto NuttxBoard::run_sched_tasks (RFC-0015 Model 1), one pthread per tier.
+# C codegen onto NuttxBoard::run_sched_tasks (RFC-0015 Model 1), one pthread per sched task.
 # phase-331 W6 / issue 0395 — RAW FreeRTOS priority, restored with the C arm's
 # freertos bake (same consolidation dropped it here).
 [tasks.high.freertos]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
-# reserved transport band. A tier that outranks the link cannot be drained
-# or refilled by it (issue 0623, measured again in 0736); a tier that needs
-# the other side must SAY so with `above = "transport"` on the tier.
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
 priority = 3
 
 [tasks.high.nuttx]
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
-# reserved transport band. A tier that outranks the link cannot be drained
-# or refilled by it (issue 0623, measured again in 0736); a tier that needs
-# the other side must SAY so with `above = "transport"` on the tier.
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
 priority = 99
 
 [tasks.low]
@@ -82,15 +82,15 @@ priority = 10
 [tasks.low.nuttx]
 # RFC-0079 — 99, not 100. 100 is the priority zenoh-pico's read and lease
 # threads INHERIT from the thread that opens the session (app_main's
-# SCHED_PRIORITY_DEFAULT), so a tier at 100 shares a priority with the link it
+# SCHED_PRIORITY_DEFAULT), so a sched task at 100 shares a priority with the link it
 # publishes over — and equal-priority SCHED_FIFO threads round-robin, which is
-# not an ordering. One step below keeps the tier order (high 110 > low 99)
+# not an ordering. One step below keeps the sched task order (high 110 > low 99)
 # and vacates the band. Declared in the port's [board.priority_plan];
 # `check-sched-task-priority-plan` rejects a pin that lands on it.
 # RFC-0079 — allocated from the port's `pool.app`, strictly BELOW the
-# reserved transport band. A tier that outranks the link cannot be drained
-# or refilled by it (issue 0623, measured again in 0736); a tier that needs
-# the other side must SAY so with `above = "transport"` on the tier.
+# reserved transport band. A sched task that outranks the link cannot be drained
+# or refilled by it (issue 0623, measured again in 0736); a sched task that needs
+# the other side must SAY so with `above = "transport"` on the sched task.
 priority = 98
 
 
@@ -125,7 +125,7 @@ os_config = ["prj-zenoh.conf"]
 # package carried is gone: `smp_bringup` declares its own image.
 panic = "platform"
 
-# phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their
+# phase-276 W2 / phase-481 W3 -- the sched tasks need tx windows well inside their
 # period: Zephyr zsock serializes send behind the read task's recv window
 # (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
 # is the image's (RFC-0098 D10), rendered into Kconfig by the module.

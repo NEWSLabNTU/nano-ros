@@ -22,7 +22,7 @@
 //!
 //! # Companion
 //!
-//! Platform sits one tier below RMW. The Phase 117 RMW vtable
+//! Platform sits one sched task below RMW. The Phase 117 RMW vtable
 //! (`<nros/rmw_vtable.h>`) is a runtime-pluggable struct; the
 //! platform layer is link-time-bound free symbols. Different choice
 //! because RMW backends genuinely swap per session (zenoh vs cyclonedds

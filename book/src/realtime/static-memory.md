@@ -45,7 +45,7 @@ The `RAM by owner` table puts every byte under the owner you would name:
 * `[executor storage]` — the executor's backing, whichever language placed it:
   the C/C++ entry's `__nros_executor_storage` / `__nros_sched_task_executor_storage`,
   the C++ boot storage `Node::GlobalStorageHolder<0>::storage`, and the Rust
-  `EXECUTOR_BACKING` / `__NROS_SCHED_TASK_EXECUTOR_BACKING`. In a tiered image this
+  `EXECUTOR_BACKING` / `__NROS_SCHED_TASK_EXECUTOR_BACKING`. In a sched-task image this
   is usually the largest single owner.
 * `[component storage]` — the generated per-component storage
   (`__nros_comp_buf_N` for C++, `__NROS_COMPONENT_<pkg>_SLOT_STORE` for Rust).

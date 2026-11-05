@@ -5,7 +5,7 @@
 //! projected the plan into their OWN view structs (~~`CEntryView`~~ and four
 //! siblings, ~~`CppEntryView`~~ and six), and a seventh family of shared views
 //! lived in `mod.rs`. Read side by side they were one projection written
-//! twice — same tier setups, same per-executor index, same rows, binds, boot
+//! twice — same sched task setups, same per-executor index, same rows, binds, boot
 //! config and services — differing only where a language spells something.
 //! This is that projection, once. Its output is the TEMPLATE CONTEXT: a pack
 //! reads `LoweredEntry` directly, and spells what it reads through its own
@@ -18,7 +18,7 @@
 //!   blind to the image: a Rust-only board key (`esp32-qemu`) is legal here.
 //! * [`lower_image`] — that, plus the IMAGE a C-ABI entry pack needs. Fails on
 //!   what the plan cannot express (an unknown board, a C++ component with no
-//!   class, a tier field the tier ABI has no slot for, a boot-config string
+//!   class, a sched task field the sched task ABI has no slot for, a boot-config string
 //!   longer than its C buffer).
 //!
 //! The types live in `nros-entry-lower` (the crate the proc-macro can afford,
@@ -73,9 +73,9 @@ pub struct LowerOptions<'a> {
         Vec<model_ingest::MonitorRow>,
         Vec<model_ingest::AgeRow>,
     )],
-    /// phase-462 W4c -- each mode's derived tier deadlines
+    /// phase-462 W4c -- each mode's derived sched task deadlines
     /// (`mode_variants::mode_sched_task_deadlines`), lowered per executor onto the
-    /// sched context each moved tier runs under there.
+    /// sched context each moved sched task runs under there.
     pub mode_deadlines: Option<&'a nros_orchestration_ir::mode_variants::ModeSchedTaskDeadlines>,
     /// phase-462 W4c -- each mode's `(switch_budget_ms, reaction)`, in mode-id
     /// order (`mode_variants::mode_switch_rows`).
@@ -93,16 +93,16 @@ pub struct LowerOptions<'a> {
     pub session_properties: &'a [(String, String)],
 }
 
-/// phase-462 W4c -- how one executor names the sched context a tier runs
-/// under: `Context(id)` maps one tier to a context id (a tier executor's
-/// default, 0), `SchedTaskIndex` maps every tier of the table to its index into
+/// phase-462 W4c -- how one executor names the sched context a sched task runs
+/// under: `Context(id)` maps one sched task to a context id (a sched task executor's
+/// default, 0), `SchedTaskIndex` maps every sched task of the table to its index into
 /// the setup's `__nros_sc_ids`, `None` bakes no deadline rows.
 #[derive(Clone, Copy)]
 enum DeadlineSc<'t> {
     None,
     Context(&'t str, u8),
     SchedTaskIndex(&'t ResolvedSchedTaskTable),
-    /// phase-509 P9b -- every tier of the table is a level on ONE executor,
+    /// phase-509 P9b -- every sched task of the table is a level on ONE executor,
     /// whose one scheduling context is 0.
     Shared(&'t ResolvedSchedTaskTable),
 }
@@ -258,7 +258,7 @@ pub fn lower_entry(plan: &Plan) -> LoweredEntry {
 /// # Errors
 ///
 /// A message naming what the plan cannot express — the board key, the node,
-/// the tier or the boot-config field — in the order a reader would fix them.
+/// the sched task or the boot-config field — in the order a reader would fix them.
 pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry, String> {
     // Issue 1285 — an unknown board key is refused HERE, naming the known
     // ones, before anything reads the family.
@@ -325,63 +325,63 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
     }
 
     // issue 1283 — the branch is the PLAN's (`Plan::executor_shape`): a
-    // multi-tier plan takes `run_sched_tasks` unless a node's groups span tiers or
+    // multi-sched-task plan takes `run_sched_tasks` unless a node's groups span sched tasks or
     // the board has none, which keep the single-executor sched-context path.
     //
     // phase-308 W1 — the one refinement is the PROBE's: it always takes the
-    // single-setup shape. Tiers would be worse than irrelevant —
+    // single-setup shape. Sched tasks would be worse than irrelevant —
     // `create_entity` early-returns for entities whose callback group is
-    // inactive on the running tier, so a per-tier probe would UNDER-count
+    // inactive on the running sched task, so a per-sched-task probe would UNDER-count
     // exactly what the sidecar exists to count.
     let shape = match (plan.executor_shape(), opts.probe) {
-        (ExecutorShape::Tiers, Some(_)) => ExecutorShape::SchedContexts,
+        (ExecutorShape::SchedTasks, Some(_)) => ExecutorShape::SchedContexts,
         (shape, _) => shape,
     };
 
-    if shape == ExecutorShape::Tiers {
-        let tiers = plan
+    if shape == ExecutorShape::SchedTasks {
+        let sched_tasks = plan
             .resolved_sched_tasks
             .as_ref()
-            .expect("Tiers implies a table");
+            .expect("Sched tasks implies a table");
         // phase-509 P9b (RFC-0108 "As built in P9b") -- a family whose runner
-        // spawns LEVELS opens ONE executor per core, and every tier's setup
+        // spawns LEVELS opens ONE executor per core, and every sched task's setup
         // registers on it: what an executor holds once (its monitor tables)
         // is lowered once, for the whole image.
         //
-        // Issue 2021 -- after phase-509 P10 every family with a C-ABI tier
-        // runner has a level runner, so this is the only tiered shape left.
-        // A family that gained a tier runner without one would need the
-        // per-tier tables back; it is refused by name instead.
+        // Issue 2021 -- after phase-509 P10 every family with a C-ABI sched task
+        // runner has a level runner, so this is the only sched-task shape left.
+        // A family that gained a sched task runner without one would need the
+        // per-sched-task tables back; it is refused by name instead.
         if !family
             .c_abi_runners()
             .is_some_and(|r| r.run_levels.is_some() && r.sched_tasks_take_static_storage())
         {
             return Err(format!(
-                "typed entry emit: board `{}` has a tier runner but no level runner; \
+                "typed entry emit: board `{}` has a sched task runner but no level runner; \
                  the entry packs emit only the level shape (one executor per core, \
                  issue 2021)",
                 plan.board
             ));
         }
-        e.tiers = Some(lower_sched_tasks(plan, tiers, opts)?);
+        e.sched_tasks = Some(lower_sched_tasks(plan, sched_tasks, opts)?);
         e.monitor_table = e
-            .tiers
+            .sched_tasks
             .as_ref()
             .and_then(|t| t.setups.first())
             .and_then(|s| s.monitors.clone());
     } else {
         if shape == ExecutorShape::SchedContexts {
-            let tiers = plan
+            let sched_tasks = plan
                 .resolved_sched_tasks
                 .as_ref()
                 .expect("SchedContexts implies a table");
-            e.sched = Some(lower_sched(tiers, plan));
+            e.sched = Some(lower_sched(sched_tasks, plan));
         }
         let nodes: Vec<String> = plan.nodes.iter().map(plan_node_fqn).collect();
         let sc = match (shape, plan.resolved_sched_tasks.as_ref()) {
             (ExecutorShape::SchedContexts, Some(t)) => DeadlineSc::SchedTaskIndex(t),
             (_, Some(t)) if t.is_single_sched_task() => t
-                .tiers
+                .sched_tasks
                 .first()
                 .map_or(DeadlineSc::None, |only| DeadlineSc::Context(&only.name, 0)),
             _ => DeadlineSc::None,
@@ -440,10 +440,10 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
             let runners: LoweredRunners =
                 family.c_abi_runners().map(Into::into).unwrap_or_default();
             let raw = family.c_abi_runners();
-            let tiered = e.tiers.is_some();
-            // Issues 1598 + 1232 — the spawned tiers' task memory, sized from
-            // each tier row's `stack_bytes` by the family's one lowering.
-            let task_memory = e.tiers.as_ref().and_then(|t| {
+            let in_sched_task = e.sched_tasks.is_some();
+            // Issues 1598 + 1232 — the spawned sched tasks' task memory, sized from
+            // each sched task row's `stack_bytes` by the family's one lowering.
+            let task_memory = e.sched_tasks.as_ref().and_then(|t| {
                 let mem = raw.and_then(|r| r.sched_task_memory)?;
                 let bytes: Vec<u64> = t.rows.iter().map(|r| r.stack_bytes).collect();
                 // Issue 2019 -- each level's largest stated member stack.
@@ -451,9 +451,9 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
                     .resolved_sched_tasks
                     .as_ref()
                     .map(|rt| {
-                        rt.tiers
+                        rt.sched_tasks
                             .iter()
-                            .map(|tier| member_stack_bytes(plan, tier))
+                            .map(|sched_task| member_stack_bytes(plan, sched_task))
                             .collect()
                     })
                     .unwrap_or_default();
@@ -461,12 +461,12 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
             });
             e.boot = Some(LoweredBoot {
                 task_memory,
-                sched_task_storage: tiered
+                sched_task_storage: in_sched_task
                     && raw.is_some_and(|r| r.sched_tasks_take_static_storage()),
-                component_storage: !tiered
+                component_storage: !in_sched_task
                     && raw.is_some_and(|r| r.components_take_static_storage()),
-                n_sched_tasks: e.tiers.as_ref().map_or(0, |t| t.n),
-                tiers: tiered,
+                n_sched_tasks: e.sched_tasks.as_ref().map_or(0, |t| t.n),
+                sched_tasks: in_sched_task,
                 runners,
             });
         }
@@ -474,56 +474,61 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
     Ok(e)
 }
 
-/// Issue 2019 -- the largest stack a member of `tier` states
+/// Issue 2019 -- the largest stack a member of `sched_task` states
 /// (`system.toml [[component]] stack_bytes`), `0` when none does: the
 /// `member` of `NROS_LEVEL_STACK_BYTES(member)`.
 pub(crate) fn member_stack_bytes(
     plan: &Plan,
-    tier: &nros_orchestration_ir::ResolvedSchedTask,
+    sched_task: &nros_orchestration_ir::ResolvedSchedTask,
 ) -> u64 {
     plan.nodes
         .iter()
-        .filter(|n| tier.members.iter().any(|(m, _)| m == node_name(n)))
+        .filter(|n| sched_task.members.iter().any(|(m, _)| m == node_name(n)))
         .filter_map(|n| n.stack_bytes)
         .map(u64::from)
         .max()
         .unwrap_or(0)
 }
 
-/// The level layout: one setup per tier (level), all on the core's one
-/// executor, and the tier table.
+/// The level layout: one setup per sched task (level), all on the core's one
+/// executor, and the sched task table.
 fn lower_sched_tasks(
     plan: &Plan,
-    tiers: &ResolvedSchedTaskTable,
+    sched_tasks: &ResolvedSchedTaskTable,
     opts: &LowerOptions<'_>,
 ) -> Result<LoweredSchedTasks, String> {
     // #0266 — the ThreadX round-robin time slice has a per-thread consumer only
-    // on the Rust `nros::main!` ThreadX arm today. The C tier ABI
+    // on the Rust `nros::main!` ThreadX arm today. The C sched task ABI
     // (`nros_native_sched_task_spec_t`) carries no time-slice field, so a lowered
     // row has no slot for it, and rather than silently drop a declared value
     // the lowering fails loud.
-    if let Some(t) = tiers.tiers.iter().find(|t| t.time_slice_us.is_some()) {
+    if let Some(t) = sched_tasks
+        .sched_tasks
+        .iter()
+        .find(|t| t.time_slice_us.is_some())
+    {
         return Err(format!(
-            "tier '{}': time_slice_us is not yet supported on the C/C++ codegen \
+            "sched task '{}': time_slice_us is not yet supported on the C/C++ codegen \
              path (#0266) — declare it only on a Rust `nros::main!` ThreadX entry, \
              or file the C consumer",
             t.name
         ));
     }
 
-    // node name → tier index, for per-tier node filtering.
-    let node_to_sched_task: HashMap<&str, usize> = tiers
-        .tiers
+    // node name → sched task index, for per-sched-task node filtering.
+    let node_to_sched_task: HashMap<&str, usize> = sched_tasks
+        .sched_tasks
         .iter()
         .enumerate()
-        .flat_map(|(ti, tier)| {
-            tier.members
+        .flat_map(|(ti, sched_task)| {
+            sched_task
+                .members
                 .iter()
                 .map(move |(node, _)| (node.as_str(), ti))
         })
         .collect();
 
-    // phase-509 P9b -- every node some tier places, for the image's one
+    // phase-509 P9b -- every node some sched task places, for the image's one
     // table.
     let all_members: Vec<String> = plan
         .nodes
@@ -531,19 +536,19 @@ fn lower_sched_tasks(
         .filter(|n| node_to_sched_task.contains_key(node_name(n)))
         .map(plan_node_fqn)
         .collect();
-    let setups: Vec<SchedTaskSetup> = tiers
-        .tiers
+    let setups: Vec<SchedTaskSetup> = sched_tasks
+        .sched_tasks
         .iter()
         .enumerate()
-        .map(|(ti, tier)| SchedTaskSetup {
+        .map(|(ti, sched_task)| SchedTaskSetup {
             index: ti,
-            name: tier.name.clone(),
+            name: sched_task.name.clone(),
             nodes: plan
                 .nodes
                 .iter()
                 .enumerate()
                 .filter(|(_, n)| node_to_sched_task.get(node_name(n)).copied() == Some(ti))
-                // issue 1272 — the node's position among this tier's
+                // issue 1272 — the node's position among this sched task's
                 // nodes. phase-509 P9b: no longer what a parameter seed
                 // is keyed by (the seed names its node and the shim
                 // resolves the index), since on one executor per core
@@ -558,12 +563,12 @@ fn lower_sched_tasks(
             monitors: if ti == 0 {
                 // phase-509 P9b -- ONE table for the one executor, every
                 // level's rows, installed by the boot level's setup
-                // (tiers[0], which runs first and alone). A table per
+                // (sched_tasks[0], which runs first and alone). A table per
                 // level would be installed on the same executor once per
                 // level, each REPLACING the last: only the last level's
                 // rows would be judged, and the earlier levels'
                 // publishers would keep cells nothing reads.
-                monitor_table(opts, DeadlineSc::Shared(tiers), |node| {
+                monitor_table(opts, DeadlineSc::Shared(sched_tasks), |node| {
                     all_members.iter().any(|n| n == node)
                 })
             } else {
@@ -572,25 +577,25 @@ fn lower_sched_tasks(
         })
         .collect();
 
-    let groups = sched_task_group_keys(tiers, plan);
-    let rows = tiers
-        .tiers
+    let groups = sched_task_group_keys(sched_tasks, plan);
+    let rows = sched_tasks
+        .sched_tasks
         .iter()
         .enumerate()
-        .map(|(ti, tier)| SchedTaskRow {
+        .map(|(ti, sched_task)| SchedTaskRow {
             index: ti,
-            name: tier.name.clone(),
+            name: sched_task.name.clone(),
             groups: groups[ti].clone(),
-            priority: tier.priority,
-            stack_bytes: tier.stack_bytes.unwrap_or(0) as u64,
-            spin_period_us: tier.spin_period_us.unwrap_or(0),
-            core_plus1: tier.core.map(|c| c + 1).unwrap_or(0),
-            preempt_threshold: tier.preempt_threshold.unwrap_or(-1),
-            class: tier.class.clone(),
-            period_us: tier.period_us.unwrap_or(0),
-            budget_us: tier.budget_us.unwrap_or(0),
-            deadline_us: tier.deadline_us.unwrap_or(0),
-            deadline_policy: tier.deadline_policy.clone(),
+            priority: sched_task.priority,
+            stack_bytes: sched_task.stack_bytes.unwrap_or(0) as u64,
+            spin_period_us: sched_task.spin_period_us.unwrap_or(0),
+            core_plus1: sched_task.core.map(|c| c + 1).unwrap_or(0),
+            preempt_threshold: sched_task.preempt_threshold.unwrap_or(-1),
+            class: sched_task.class.clone(),
+            period_us: sched_task.period_us.unwrap_or(0),
+            budget_us: sched_task.budget_us.unwrap_or(0),
+            deadline_us: sched_task.deadline_us.unwrap_or(0),
+            deadline_policy: sched_task.deadline_policy.clone(),
         })
         .collect();
 
@@ -612,13 +617,13 @@ fn lower_sched_tasks(
     }
 
     Ok(LoweredSchedTasks {
-        n: tiers.tiers.len(),
+        n: sched_tasks.sched_tasks.len(),
         setups,
         rows,
     })
 }
 
-/// The namespace of the plan node a tier member names (`"/"` if none does).
+/// The namespace of the plan node a sched task member names (`"/"` if none does).
 fn member_namespace(plan: &Plan, member: &str) -> String {
     plan.nodes
         .iter()
@@ -629,31 +634,31 @@ fn member_namespace(plan: &Plan, member: &str) -> String {
 }
 
 /// The `(node name, namespace, group)` key for every group admitted on each
-/// tier — ONE derivation.
+/// sched task — ONE derivation.
 ///
 /// issue 1172 — this used to be written twice and differently. `emit_c` deduped
-/// ACROSS tiers, so a group named by two tiers left the SECOND tier's array
+/// ACROSS sched tasks, so a group named by two sched tasks left the SECOND sched task's array
 /// empty; an empty array is the WILDCARD (`main.h`: "NULL / 0 means wildcard"),
-/// so that tier stopped filtering and ran every callback in the image at its
-/// own priority. `emit_cpp` deduped WITHIN each tier and kept empty ids.
-/// With the node in the key there is nothing to dedup across tiers: two nodes'
+/// so that sched task stopped filtering and ran every callback in the image at its
+/// own priority. `emit_cpp` deduped WITHIN each sched task and kept empty ids.
+/// With the node in the key there is nothing to dedup across sched tasks: two nodes'
 /// `ctrl` are two different keys.
 ///
 /// The namespace MUST be the one the entry creates the node with — a filter
 /// naming a namespace the node does not have matches nothing.
 pub(crate) fn sched_task_group_keys(
-    tiers: &ResolvedSchedTaskTable,
+    sched_tasks: &ResolvedSchedTaskTable,
     plan: &Plan,
 ) -> Vec<Vec<(String, String, String)>> {
-    tiers
-        .tiers
+    sched_tasks
+        .sched_tasks
         .iter()
-        .map(|tier| {
-            let mut keys: Vec<(String, String, String)> = tier
+        .map(|sched_task| {
+            let mut keys: Vec<(String, String, String)> = sched_task
                 .members
                 .iter()
                 // An empty group id names no group and never did; emitting it
-                // would make the tier match an entity whose group is "".
+                // would make the sched task match an entity whose group is "".
                 .filter(|(_, group)| !group.is_empty())
                 .map(|(node, group)| (node.clone(), member_namespace(plan, node), group.clone()))
                 .collect();
@@ -668,21 +673,21 @@ pub(crate) fn sched_task_group_keys(
 /// The sched-context wiring for [`ExecutorShape::SchedContexts`] — ONE
 /// derivation (issue 1283). It used to live in `emit_cpp` alone, so the C pack
 /// had nothing to render and emitted nothing.
-fn lower_sched(tiers: &ResolvedSchedTaskTable, plan: &Plan) -> LoweredSched {
+fn lower_sched(sched_tasks: &ResolvedSchedTaskTable, plan: &Plan) -> LoweredSched {
     LoweredSched {
-        n: tiers.tiers.len(),
-        contexts: tiers
-            .tiers
+        n: sched_tasks.sched_tasks.len(),
+        contexts: sched_tasks
+            .sched_tasks
             .iter()
             .enumerate()
-            .map(|(ti, tier)| SchedContext {
+            .map(|(ti, sched_task)| SchedContext {
                 index: ti,
-                class: tier.class.clone(),
-                period_us: tier.period_us.unwrap_or(0),
-                budget_us: tier.budget_us.unwrap_or(0),
-                deadline_us: tier.deadline_us.unwrap_or(0),
-                deadline_policy: tier.deadline_policy.clone(),
-                os_pri: tier.priority.clamp(0, 255) as u8,
+                class: sched_task.class.clone(),
+                period_us: sched_task.period_us.unwrap_or(0),
+                budget_us: sched_task.budget_us.unwrap_or(0),
+                deadline_us: sched_task.deadline_us.unwrap_or(0),
+                deadline_policy: sched_task.deadline_policy.clone(),
+                os_pri: sched_task.priority.clamp(0, 255) as u8,
             })
             .collect(),
         node_binds: plan
@@ -696,17 +701,20 @@ fn lower_sched(tiers: &ResolvedSchedTaskTable, plan: &Plan) -> LoweredSched {
                 })
             })
             .collect(),
-        group_binds: tiers
-            .tiers
+        group_binds: sched_tasks
+            .sched_tasks
             .iter()
             .enumerate()
-            .flat_map(|(ti, tier)| {
-                tier.members.iter().map(move |(node, group)| GroupBind {
-                    namespace: member_namespace(plan, node),
-                    name: node.clone(),
-                    group: group.clone(),
-                    sched_task_index: ti,
-                })
+            .flat_map(|(ti, sched_task)| {
+                sched_task
+                    .members
+                    .iter()
+                    .map(move |(node, group)| GroupBind {
+                        namespace: member_namespace(plan, node),
+                        name: node.clone(),
+                        group: group.clone(),
+                        sched_task_index: ti,
+                    })
             })
             .collect(),
     }
@@ -725,7 +733,7 @@ fn plan_node_fqn(n: &PlanNode) -> String {
 }
 
 // The node half of an endpoint ref — issue 1676 made it ONE spelling, shared
-// with the `nros::main!` tier slice.
+// with the `nros::main!` sched task slice.
 use nros_orchestration_ir::contract_monitors::row_node_fqn;
 
 /// The monitor rows whose node `keep` admits, in row order; `None` when there
@@ -794,7 +802,7 @@ fn monitor_table(
         .collect::<Vec<HazardRow>>();
     // phase-462 W4b -- each mode's numbers for the rows kept above, by the
     // same predicate, so a variant is row for row this table.
-    // phase-462 W4c -- the deadline rows of the tiers THIS executor runs.
+    // phase-462 W4c -- the deadline rows of the sched tasks THIS executor runs.
     let deadline_rows = opts
         .mode_deadlines
         .map(|d| {
@@ -802,11 +810,13 @@ fn monitor_table(
                 DeadlineSc::None => None,
                 DeadlineSc::Context(name, id) => (t == name).then_some(id),
                 DeadlineSc::SchedTaskIndex(table) => table
-                    .tiers
+                    .sched_tasks
                     .iter()
                     .position(|x| x.name == t)
                     .and_then(|i| u8::try_from(i).ok()),
-                DeadlineSc::Shared(table) => table.tiers.iter().any(|x| x.name == t).then_some(0),
+                DeadlineSc::Shared(table) => {
+                    table.sched_tasks.iter().any(|x| x.name == t).then_some(0)
+                }
             })
         })
         .unwrap_or_default();

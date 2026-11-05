@@ -548,7 +548,7 @@ pub fn config_header(
     // node of a launch on ONE zenoh-pico session, so in-process node-to-node delivery —
     // pub→sub AND client query→queryable — depends on these flags. With them 0 the
     // loopback path (src/session/loopback.c) is compiled out and same-session callbacks
-    // never fire. Enabled on EVERY target, embedded included: the multi-tier entries
+    // never fire. Enabled on EVERY target, embedded included: the multi-sched-task entries
     // (FreeRTOS `run_sched_tasks_entry`, Zephyr `run_sched_tasks`) put all nodes of a launch on one
     // shared session, so intra-image pub→sub is the norm on embedded, not a host-only
     // convenience — and a vanilla zenohd never echoes a put back to the session it came
@@ -1491,7 +1491,7 @@ int32_t zpico_init(void);\n";
         assert!(header.contains("#define Z_FEATURE_ENCODING_VALUES 1"));
         assert!(header.contains("#define Z_FEATURE_AUTO_RECONNECT 1"));
         // issue 0096 — same-session loopback is ON everywhere, embedded included:
-        // the multi-tier entries share one session across all tiers, and zenohd
+        // the multi-sched-task entries share one session across all sched tasks, and zenohd
         // never echoes a put back to its source session (issue 0317), so without
         // the loopback no intra-image route can deliver (the silent gate→actuator
         // drop on FreeRTOS).

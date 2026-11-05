@@ -2,7 +2,7 @@
   "key": "rust:Executor::spin_async",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "RFC-0113 D1/D7 (2026-10-31): a way of running nano-ros is supported only if nano-ros keeps its real-time promise there, i.e. decides which callback runs and at what priority. rclrs drives `spin_async` on async-std/tokio, whose scheduler would decide when callbacks run, so no response-time, jitter or priority bound could be stated. Ours existed (issues 2145, 2144, 2143 made it sleep until an arrival or the next deadline) and was deleted by phase-521 W1, with `spin_async_with_sleep`, the readiness notifier and the public next deadline. The blocking `spin` / `spin_once` on a tier's own OS thread is the whole model.",
+  "why": "RFC-0113 D1/D7 (2026-10-31): a way of running nano-ros is supported only if nano-ros keeps its real-time promise there, i.e. decides which callback runs and at what priority. rclrs drives `spin_async` on async-std/tokio, whose scheduler would decide when callbacks run, so no response-time, jitter or priority bound could be stated. Ours existed (issues 2145, 2144, 2143 made it sleep until an arrival or the next deadline) and was deleted by phase-521 W1, with `spin_async_with_sleep`, the readiness notifier and the public next deadline. The blocking `spin` / `spin_once` on a sched task's own OS thread is the whole model.",
   "retired_names": [
     "spin_async_with_sleep"
   ]

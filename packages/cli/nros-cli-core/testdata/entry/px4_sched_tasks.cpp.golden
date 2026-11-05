@@ -4,8 +4,8 @@
 //   board   = px4
 //   module  = nros_demo
 //
-// DO NOT EDIT — regenerated at configure time. One PX4 work item per tier,
-// on the work queue the tier's rank picks; a tier's wait is its work item's
+// DO NOT EDIT — regenerated at configure time. One PX4 work item per sched task,
+// on the work queue the sched task's rank picks; a sched task's wait is its work item's
 // schedule (`nros_px4/sched_task_work_item.hpp`), never a parked thread.
 
 // nano-ros and the components first: PX4's `defines.h` defines `ERROR`.
@@ -30,7 +30,7 @@ static ::ctrl_pkg::CTRL __nros_comp_0;
 static ::rclcpp::Node __nros_node_1;
 static ::telem_pkg::TELEM __nros_comp_1;
 
-/* tier[0] (high) setup: creates only this tier's nodes, on its executor. */
+/* sched_task[0] (high) setup: creates only this sched task's nodes, on its executor. */
 static int32_t __nros_entry_setup_sched_task_0_nodes(void* executor, const char** __nros_at) {
     if (executor == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
     {
@@ -56,7 +56,7 @@ static int32_t __nros_entry_setup_sched_task_0(void* executor) {
     return rc;
 }
 
-/* tier[1] (low) setup: creates only this tier's nodes, on its executor. */
+/* sched_task[1] (low) setup: creates only this sched task's nodes, on its executor. */
 static int32_t __nros_entry_setup_sched_task_1_nodes(void* executor, const char** __nros_at) {
     if (executor == nullptr) return static_cast<int32_t>(::rclcpp::ErrorCode::NotInitialized);
     {
@@ -92,7 +92,7 @@ static const ::nros_px4::SchedTaskSpec __nros_sched_tasks[2] = {
     {"low", __nros_sched_task_1_groups, 1u, &__nros_entry_setup_sched_task_1},
 };
 
-/* Each borrowed tier's executor storage, as a static the linker places. */
+/* Each borrowed sched task's executor storage, as a static the linker places. */
 static ::nros_px4::SchedTaskStorage __nros_sched_task_storage[1];
 
 /* Phase 266 (RFC-0045) — baked boot config: post-link readable + session name. */
@@ -112,7 +112,7 @@ __attribute__((section(".nros_boot_config"), used))
 };
 
 
-/* One work item per tier, on the PX4 work queue its rank picks
+/* One work item per sched task, on the PX4 work queue its rank picks
  * (`nros_orchestration_ir::px4::px4_work_queues`, most urgent first). */
 class NrosSchedTask_high final : public ::nros_px4::SchedTaskWorkItem {
 public:
@@ -140,14 +140,14 @@ public:
     int print_status() override;
     void request_stop() override;
 
-    /* Open every tier in table order (setups never overlap, issue #144),
+    /* Open every sched task in table order (setups never overlap, issue #144),
      * then start them. */
     int32_t start();
 
-    /* The last tier to stop closes the executors, boot tier last. */
+    /* The last sched task to stop closes the executors, boot sched task last. */
     void stopped();
 
-    /* `ModuleBase::get_instance()` is protected; the tiers ask through this. */
+    /* `ModuleBase::get_instance()` is protected; the sched tasks ask through this. */
     static NrosPx4Entry* instance() { return get_instance(); }
 
 private:
@@ -161,12 +161,12 @@ int32_t NrosPx4Entry::start() {
     const char* ns = nros_boot_config_namespace(&NROS_BOOT_CONFIG);
     int32_t rc = _sched_task_0.open(__nros_sched_tasks[0], _image, nullptr, nullptr, sn, ns);
     if (rc != 0) {
-        PX4_ERR("nros tier `high` failed to open (%d)", static_cast<int>(rc));
+        PX4_ERR("nros sched task `high` failed to open (%d)", static_cast<int>(rc));
         return rc;
     }
     rc = _sched_task_1.open(__nros_sched_tasks[1], _image, &__nros_sched_task_storage[0], _sched_task_0.session(), sn, ns);
     if (rc != 0) {
-        PX4_ERR("nros tier `low` failed to open (%d)", static_cast<int>(rc));
+        PX4_ERR("nros sched task `low` failed to open (%d)", static_cast<int>(rc));
         return rc;
     }
     _sched_task_0.start();
@@ -199,9 +199,9 @@ void NrosSchedTask_low::on_image_stopped() {
 }
 
 int NrosPx4Entry::print_status() {
-    PX4_INFO("2 tier(s): high@rate_ctrl low@hp_default");
-    PX4_INFO("tier high runs=%u wake_max_us=%llu", static_cast<unsigned>(_sched_task_0.runs()), static_cast<unsigned long long>(_sched_task_0.wake_max_us()));
-    PX4_INFO("tier low runs=%u wake_max_us=%llu", static_cast<unsigned>(_sched_task_1.runs()), static_cast<unsigned long long>(_sched_task_1.wake_max_us()));
+    PX4_INFO("2 sched task(s): high@rate_ctrl low@hp_default");
+    PX4_INFO("sched task high runs=%u wake_max_us=%llu", static_cast<unsigned>(_sched_task_0.runs()), static_cast<unsigned long long>(_sched_task_0.wake_max_us()));
+    PX4_INFO("sched task low runs=%u wake_max_us=%llu", static_cast<unsigned>(_sched_task_1.runs()), static_cast<unsigned long long>(_sched_task_1.wake_max_us()));
     return 0;
 }
 
@@ -230,7 +230,7 @@ int NrosPx4Entry::print_usage(const char* reason) {
     if (reason != nullptr) {
         PX4_WARN("%s\n", reason);
     }
-    PRINT_MODULE_DESCRIPTION("nano-ros image `demo_bringup`: generated entry, one work item per tier.");
+    PRINT_MODULE_DESCRIPTION("nano-ros image `demo_bringup`: generated entry, one work item per sched task.");
     PRINT_MODULE_USAGE_NAME("nros_demo", "nano-ros");
     PRINT_MODULE_USAGE_COMMAND("start");
     PRINT_MODULE_USAGE_DEFAULT_COMMANDS();

@@ -1,7 +1,7 @@
 # Node interface contract for system.launch.xml (issue 1537).
 #
-# The rates the tier derivation ranks by. Nothing else in this bringup states
-# a rate, a priority or a tier: `nros::main!` DERIVES the schedule from these
+# The rates the sched task derivation ranks by. Nothing else in this bringup states
+# a rate, a priority or a sched task: `nros::main!` DERIVES the schedule from these
 # two rates (rate-monotonic, ctrl above telem) and allocates the priorities out
 # of the IMAGE's own plan. The numbers match the code's timers (ctrl_pkg 10 ms,
 # telem_pkg 100 ms).

@@ -5,17 +5,17 @@
  * The entry declares each SPAWNED level's stack as a static and hands it to
  * `nros_board_nuttx_run_levels_in` as an `nros_sched_task_memory_t` row (see
  * <rclc/detail/main.h>); the runner gives it to the level's pthread with
- * `pthread_attr_setstack`. Before this every tier stack was a kernel
+ * `pthread_attr_setstack`. Before this every sched task stack was a kernel
  * allocation of the declared size (or a 16 KiB default), invisible to the link
  * and to `mem-report`. NuttX has no control block to hand over: the row's
  * `tcb` is NULL and the stack is the whole of it.
  *
  * A level that declares no `stack_bytes` gets `NROS_LEVEL_STACK_BYTES(0)`: the
  * per-callback default plus the worker's own frame, which together are
- * NROS_NUTTX_LEVEL_STACK_DEFAULT, the 16 KiB every tier got before. Zephyr's
+ * NROS_NUTTX_LEVEL_STACK_DEFAULT, the 16 KiB every sched task got before. Zephyr's
  * and FreeRTOS's headers state the same rule over their own knobs.
  *
- * Included only by a generated NuttX tiered entry.
+ * Included only by a generated NuttX sched-task entry.
  */
 #ifndef NROS_SCHED_TASK_MEMORY_NUTTX_H
 #define NROS_SCHED_TASK_MEMORY_NUTTX_H

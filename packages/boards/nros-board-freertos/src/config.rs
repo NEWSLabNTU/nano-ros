@@ -171,7 +171,7 @@ impl Config {
     /// POLL_TASK_PRIORITY; 12 ≈ 2.7 → 3, the historical
     /// APP_TASK_PRIORITY). The previous flooring map sent 16 → 3,
     /// which dropped the zenoh read/lease/poll tasks BELOW
-    /// `TCPIP_THREAD_PRIO` (4) and below typical application tiers,
+    /// `TCPIP_THREAD_PRIO` (4) and below typical application sched tasks,
     /// so under inbound load the RX drain starved, the LAN9118 path
     /// dropped frames, and every publisher stalled on lwIP's
     /// retransmission timeout (observed as 1-3 s island-wide stalls).

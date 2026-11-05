@@ -25,7 +25,7 @@ extern int32_t __nros_c_component_telem_pkg_configure(const nros_cpp_node_t* nod
 static nros_cpp_node_t __nros_node_0;
 static nros_cpp_node_t __nros_node_1;
 
-/* Phase 274.W2 — per-tier setup functions (one per tier). */
+/* Phase 274.W2 — per-sched-task setup functions (one per sched task). */
 /* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
 static int32_t __nros_entry_setup_sched_task_0_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
@@ -40,7 +40,7 @@ static int32_t __nros_entry_setup_sched_task_0_nodes(void* executor, const char*
     return 0;
 }
 
-/* phase-509 P9b -- a failed setup names its tier and node before the runner
+/* phase-509 P9b -- a failed setup names its sched task and node before the runner
  * fails the boot with its code. */
 static int32_t __nros_entry_setup_sched_task_0(void* executor) {
     const char* __nros_at = NULL;
@@ -63,7 +63,7 @@ static int32_t __nros_entry_setup_sched_task_1_nodes(void* executor, const char*
     return 0;
 }
 
-/* phase-509 P9b -- a failed setup names its tier and node before the runner
+/* phase-509 P9b -- a failed setup names its sched task and node before the runner
  * fails the boot with its code. */
 static int32_t __nros_entry_setup_sched_task_1(void* executor) {
     const char* __nros_at = NULL;
@@ -72,12 +72,12 @@ static int32_t __nros_entry_setup_sched_task_1(void* executor) {
     return rc;
 }
 
-/* Phase 274.W2 — per-tier groups arrays + tier spec table.
+/* Phase 274.W2 — per-sched-task groups arrays + sched task spec table.
  *
  * issue 1172 — a groups array is FLAT `(node name, node namespace, group)`
  * triples, and `n_groups` counts TRIPLES, not strings. The filter used to
- * match on the group id alone, so two nodes' `ctrl` were one key and a tier
- * naming one of them admitted both. An EMPTY array is the WILDCARD, so a tier
+ * match on the group id alone, so two nodes' `ctrl` were one key and a sched task
+ * naming one of them admitted both. An EMPTY array is the WILDCARD, so a sched task
  * that names groups must never render an empty one. */
 static const char* __nros_sched_task_0_groups[] = {"ctrl", "/", "ctrl_grp", };
 static const char* __nros_sched_task_1_groups[] = {"telem", "/", "telem_grp", };
@@ -132,10 +132,10 @@ __attribute__((section(".nros_boot_config"), used))
 .rmw        = "",
 };
 
-/* Issues 1551 + 1568 — every tier's executor storage, one block per tier, as a
+/* Issues 1551 + 1568 — every sched task's executor storage, one block per sched task, as a
  * file-scope static the linker places and `mem-report` names. The runner used
  * to take each block out of the platform heap, and nothing multiplied the
- * storage by the tier count against it. The size is this build's own
+ * storage by the sched task count against it. The size is this build's own
  * NROS_CPP_EXECUTOR_STORAGE_SIZE, so the include is mandatory: without it there
  * is no honest size to write. The runner asks the linked library whether the
  * block is big enough and refuses it if not. */
@@ -144,11 +144,11 @@ __attribute__((section(".nros_boot_config"), used))
  * executor per core, so ONE block: every level works on it. */
 static uint64_t __nros_sched_task_executor_storage[1][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 
-/* Issue 1598 — each spawned tier's TASK memory (stack + control block), as
+/* Issue 1598 — each spawned sched task's TASK memory (stack + control block), as
  * statics the linker places and prices: an image whose stacks do not fit RAM
  * fails at LINK, not at boot as a heap allocation failure. Sized from each
- * tier's `stack_bytes` (or the stated default) and raised to the port's floor
- * by the header's macro. The boot tier runs on the caller's task and has none. */
+ * sched task's `stack_bytes` (or the stated default) and raised to the port's floor
+ * by the header's macro. The boot sched task runs on the caller's task and has none. */
 #include <rclc/detail/sched_task_memory_zephyr.h>
 NROS_SCHED_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES(0u));
 static const nros_sched_task_memory_t __nros_sched_task_memory[2] = {

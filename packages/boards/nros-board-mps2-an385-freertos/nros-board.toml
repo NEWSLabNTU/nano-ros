@@ -114,7 +114,7 @@ threads = true
 # an approximation: a larger payload almost certainly costs more per frame. It
 # derives a declared subscriber `arrival_curve` into the read-task budget and refuses
 # one this board cannot satisfy (`rate_hz <= 10^6 / c`,
-# `c x burst + floor <= tier slack`). A fact, not a knob: no compiler reads it.
+# `c x burst + floor <= sched_task slack`). A fact, not a knob: no compiler reads it.
 [board.rx]
 frame_cost_us = 940
 floor_us = 11000

@@ -56,7 +56,7 @@ def _run_codegen():
     #   * `--framework` is not a flag `codegen-system` defines. The bake reads
     #     the framework from the workspace, not from PIO.
     #   * `--target platformio` named an `[image.*]` / `[deploy.*]` block no
-    #     bringup declares, and an unknown block is taken SILENTLY: the tier
+    #     bringup declares, and an unknown block is taken SILENTLY: the sched task
     #     resolver answers with the host's table (issue 1312). The question a
     #     framework hook can actually answer is which image claims the
     #     application directory — `--for-entry`, the same spelling the ESP-IDF

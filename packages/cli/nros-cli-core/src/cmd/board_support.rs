@@ -365,7 +365,7 @@ mod tests {
             .iter()
             .any(|w| r.status.starts_with(w));
             assert!(ok, "{}: `{}` is not a D10 status word", r.key, r.status);
-            assert!(!r.status.to_lowercase().contains("tier"), "{}", r.key);
+            assert!(!r.status.to_lowercase().contains("sched_task"), "{}", r.key);
         }
     }
 

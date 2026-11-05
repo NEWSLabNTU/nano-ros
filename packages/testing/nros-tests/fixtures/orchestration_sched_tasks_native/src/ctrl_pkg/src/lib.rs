@@ -1,8 +1,8 @@
-//! Phase 228.G fixture — control node (tier `high`).
+//! Phase 228.G fixture — control node (sched task `high`).
 //!
 //! Labels its timer with the `ctrl` callback group; `system.toml` maps that
-//! group to the `high` tier. `nros::node!` emits the `register` symbol the
-//! `nros::main!()` per-tier emit calls.
+//! group to the `high` sched task. `nros::node!` emits the `register` symbol the
+//! `nros::main!()` per-sched-task emit calls.
 
 #![no_std]
 

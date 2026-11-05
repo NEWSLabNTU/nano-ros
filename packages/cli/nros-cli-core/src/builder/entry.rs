@@ -269,7 +269,7 @@ pub fn package_name(image_id: &str) -> String {
 ///
 /// Exactly one entry in the tree named board-crate features by hand —
 /// `examples/workspaces/realtime-rust/src/zephyr_entry`, as
-/// `nros-board-zephyr = { features = ["tiers", "zephyr-edf"] }`, now deleted —
+/// `nros-board-zephyr = { features = ["sched_tasks", "zephyr-edf"] }`, now deleted —
 /// and a generated entry had no way to say it. The declarative answer would be a new
 /// `[image.<id>] board_features` key; it was REJECTED because both features are
 /// functions of a fact the bringup already states, and a second statement of one
@@ -279,8 +279,8 @@ pub fn package_name(image_id: &str) -> String {
 ///
 /// | feature | condition | the consumer's own test |
 /// | --- | --- | --- |
-/// | `tiers` | the resolved table is not the degenerate single `default` tier | `nros::main!`'s Zephyr arm: `let multi_sched_task = resolved_sched_tasks.filter(\|t\| !t.is_single_sched_task())`, and `Some(_)` is the arm that emits `ZephyrBoard::run_sched_tasks` — which is itself `#[cfg(feature = "tiers")]` |
-/// | `zephyr-edf` | some tier is `class = "real_time"` AND carries a `deadline` | `nros_board_zephyr::entry_sched_tasks::apply_sched_task_deadline`'s body: `if tier.class == Some("real_time") { if let Some(us) = tier.deadline_us { … } }` |
+/// | `sched_tasks` | the resolved table is not the degenerate single `default` sched task | `nros::main!`'s Zephyr arm: `let multi_sched_task = resolved_sched_tasks.filter(\|t\| !t.is_single_sched_task())`, and `Some(_)` is the arm that emits `ZephyrBoard::run_sched_tasks` — which is itself `#[cfg(feature = "sched_tasks")]` |
+/// | `zephyr-edf` | some sched task is `class = "real_time"` AND carries a `deadline` | `nros_board_zephyr::entry_sched_tasks::apply_sched_task_deadline`'s body: `if sched_task.class == Some("real_time") { if let Some(us) = sched_task.deadline_us { … } }` |
 ///
 /// The table this reads is the one `plan_from_model` + `resolve_plan_sched`
 /// produce, from `model.execution.tasks` lowered for the image's own RTOS key —
@@ -293,8 +293,8 @@ pub fn package_name(image_id: &str) -> String {
 ///
 /// * **False negative** (the macro emits `run_sched_tasks`, this says no feature) — a
 ///   COMPILE error in the generated entry, naming the missing method. Loud.
-/// * **False positive** (feature on, macro takes the single-tier arm) — a wider
-///   dep graph (`tiers` pulls `nros-log` + `nros-platform-cffi`) and dead code
+/// * **False positive** (feature on, macro takes the single-sched-task arm) — a wider
+///   dep graph (`sched_tasks` pulls `nros-log` + `nros-platform-cffi`) and dead code
 ///   the linker drops. `zephyr-edf` additionally cannot misbehave against the
 ///   Kconfig: `nros_zephyr_set_current_deadline` is compiled to a no-op RETURNING
 ///   0 without `CONFIG_SCHED_DEADLINE`, and the caller logs its marker only on a
@@ -313,10 +313,10 @@ pub fn package_name(image_id: &str) -> String {
 /// `realtime-rust`, `realtime-c` x2 (`demo_bringup` + `smp_bringup`),
 /// `realtime-cpp`, `realtime-cpp-subnode-portable`, and those two fixtures.
 ///
-/// * **No false negative is possible.** A table is multi-tier only when some
-///   callback group binds to a tier other than `default`, and `resolve_sched_tasks`
-///   refuses a group naming a tier the system did not declare
-///   (`SchedTaskResolveError::UnknownSchedTask`). So "wants `tiers`" implies "declares
+/// * **No false negative is possible.** A table is multi-sched-task only when some
+///   callback group binds to a sched task other than `default`, and `resolve_sched_tasks`
+///   refuses a group naming a sched task the system did not declare
+///   (`SchedTaskResolveError::UnknownSchedTask`). So "wants `sched_tasks`" implies "declares
 ///   `[tasks.*]`", by construction rather than by survey. Of the seven, four
 ///   have a Zephyr image — `realtime-rust` and `realtime-c` x2 and
 ///   `realtime-cpp` — and `realtime-rust`'s is the only RUST one; the other
@@ -343,29 +343,29 @@ pub fn package_name(image_id: &str) -> String {
 /// Only a feature the board crate actually DECLARES is emitted, for the reason
 /// [`crate::orchestration::facade::crate_declares_feature`] gives: a missing
 /// feature is a build the user can fix, a bogus one fails cargo resolution
-/// outright. `tiers` and `zephyr-edf` exist on `nros-board-zephyr` alone today,
+/// outright. `sched_tasks` and `zephyr-edf` exist on `nros-board-zephyr` alone today,
 /// so the guard is also what keeps this from naming them at a board that has
 /// never heard of them — this function needs no board branch of its own.
 #[must_use]
 pub fn schedule_board_features(
-    tiers: Option<&nros_orchestration_ir::ResolvedSchedTaskTable>,
+    sched_tasks: Option<&nros_orchestration_ir::ResolvedSchedTaskTable>,
     declares: impl Fn(&str) -> bool,
 ) -> Vec<String> {
-    let Some(table) = tiers.filter(|t| !t.is_single_sched_task()) else {
+    let Some(table) = sched_tasks.filter(|t| !t.is_single_sched_task()) else {
         return Vec::new();
     };
     let mut out = Vec::new();
-    if declares("tiers") {
-        out.push("tiers".to_string());
+    if declares("sched_tasks") {
+        out.push("sched_tasks".to_string());
     }
     let wants_edf = table
-        .tiers
+        .sched_tasks
         .iter()
         .any(|t| t.class.as_deref() == Some("real_time") && t.deadline_us.is_some());
     if wants_edf && declares("zephyr-edf") {
         out.push("zephyr-edf".to_string());
     }
-    // Issue 2017 (RFC-0108 D6) -- a multi-tier schedule runs the LEVEL
+    // Issue 2017 (RFC-0108 D6) -- a multi-sched-task schedule runs the LEVEL
     // runner, and a board whose kernel is built per image (the FreeRTOS
     // family, through its build.rs) stops time-slicing for it.
     if declares("level-image") {
@@ -1494,7 +1494,7 @@ mod tests {
 
     // ---- phase-470 W5.b2: the derived board features (issue 1288) ----------
 
-    fn tier(name: &str, class: Option<&str>, deadline_us: Option<u64>) -> ResolvedSchedTask {
+    fn sched_task(name: &str, class: Option<&str>, deadline_us: Option<u64>) -> ResolvedSchedTask {
         ResolvedSchedTask {
             name: name.to_string(),
             priority: 0,
@@ -1515,7 +1515,7 @@ mod tests {
 
     /// The board crate that actually has these two features.
     fn zephyr_board(f: &str) -> bool {
-        matches!(f, "tiers" | "zephyr-edf")
+        matches!(f, "sched_tasks" | "zephyr-edf")
     }
 
     #[test]
@@ -1524,14 +1524,14 @@ mod tests {
         // these by hand: `[tasks.high] class = "real_time"` +
         // `[tasks.high.zephyr] deadline = "10000us"`, plus a plain `low`.
         let table = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("high", Some("real_time"), Some(10_000)),
-                tier("low", None, None),
+            sched_tasks: vec![
+                sched_task("high", Some("real_time"), Some(10_000)),
+                sched_task("low", None, None),
             ],
         };
         assert_eq!(
             schedule_board_features(Some(&table), zephyr_board),
-            vec!["tiers".to_string(), "zephyr-edf".to_string()]
+            vec!["sched_tasks".to_string(), "zephyr-edf".to_string()]
         );
     }
 
@@ -1542,14 +1542,14 @@ mod tests {
         // deadline that call can do nothing, so naming the feature would be a
         // dep edge standing in for a fact nobody stated.
         let table = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("high", Some("real_time"), None),
-                tier("low", None, None),
+            sched_tasks: vec![
+                sched_task("high", Some("real_time"), None),
+                sched_task("low", None, None),
             ],
         };
         assert_eq!(
             schedule_board_features(Some(&table), zephyr_board),
-            vec!["tiers".to_string()]
+            vec!["sched_tasks".to_string()]
         );
     }
 
@@ -1557,27 +1557,31 @@ mod tests {
     fn a_deadline_on_a_non_real_time_sched_task_does_not_reach_for_edf() {
         // Same reason, the other half of the consumer's own condition.
         let table = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("high", Some("best_effort"), Some(10_000)),
-                tier("low", None, None),
+            sched_tasks: vec![
+                sched_task("high", Some("best_effort"), Some(10_000)),
+                sched_task("low", None, None),
             ],
         };
         assert_eq!(
             schedule_board_features(Some(&table), zephyr_board),
-            vec!["tiers".to_string()]
+            vec!["sched_tasks".to_string()]
         );
     }
 
     #[test]
     fn the_degenerate_single_default_sched_task_is_not_a_sched_task_image() {
-        // `resolve_sched_tasks` synthesises exactly one `default` tier whenever a
+        // `resolve_sched_tasks` synthesises exactly one `default` sched task whenever a
         // node declares callback groups without a `[tiers]` table. The macro's
         // Zephyr arm filters that case out with `is_single_sched_task()` and takes
-        // the plain register+spin path, so the board needs no `tiers`. Six of
+        // the plain register+spin path, so the board needs no `sched_tasks`. Six of
         // the seven Rust Zephyr entries are this case and none names the
         // feature.
         let table = ResolvedSchedTaskTable {
-            tiers: vec![tier(nros_orchestration_ir::DEFAULT_SCHED_TASK, None, None)],
+            sched_tasks: vec![sched_task(
+                nros_orchestration_ir::DEFAULT_SCHED_TASK,
+                None,
+                None,
+            )],
         };
         assert!(schedule_board_features(Some(&table), zephyr_board).is_empty());
         // And an image whose model resolved no table at all.
@@ -1587,14 +1591,14 @@ mod tests {
     #[test]
     fn a_board_crate_that_declares_neither_feature_is_named_nothing() {
         // The guard is what keeps this function free of a per-board branch:
-        // `tiers` / `zephyr-edf` live on `nros-board-zephyr` alone, and a
+        // `sched_tasks` / `zephyr-edf` live on `nros-board-zephyr` alone, and a
         // feature a crate does not declare is a cargo RESOLUTION error, not a
-        // warning — so emitting one would break every non-Zephyr tiered image
-        // (freertos, nuttx, threadx all run tiers without these names).
+        // warning — so emitting one would break every non-Zephyr sched-task image
+        // (freertos, nuttx, threadx all run sched tasks without these names).
         let table = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("high", Some("real_time"), Some(10_000)),
-                tier("low", None, None),
+            sched_tasks: vec![
+                sched_task("high", Some("real_time"), Some(10_000)),
+                sched_task("low", None, None),
             ],
         };
         assert!(schedule_board_features(Some(&table), |_| false).is_empty());
@@ -1603,7 +1607,7 @@ mod tests {
     /// The two feature NAMES are literals here, and `declares` makes a wrong
     /// one silent rather than loud — which is the one way this derivation can
     /// rot. The asymmetry the doc-comment describes does not cover a RENAME:
-    /// drop `tiers` and the macro's `run_sched_tasks` call fails to compile (loud),
+    /// drop `sched_tasks` and the macro's `run_sched_tasks` call fails to compile (loud),
     /// but drop `zephyr-edf` and the image simply stops asking the kernel for
     /// EDF and falls through to the cooperative monitor, with no diagnostic
     /// anywhere. So the names are asserted against the crate that owns them,
@@ -1617,7 +1621,7 @@ mod tests {
             "nros-board-zephyr not at {}",
             board.display()
         );
-        for f in ["tiers", "zephyr-edf"] {
+        for f in ["sched_tasks", "zephyr-edf"] {
             assert!(
                 crate::orchestration::facade::crate_declares_feature(&board, f),
                 "`nros-board-zephyr` no longer declares `{f}`; \
@@ -1627,8 +1631,8 @@ mod tests {
         }
     }
 
-    /// Issue 2017 -- a multi-tier schedule is a LEVEL image, and a FreeRTOS
-    /// board crate turns the kernel's time slicing off for it; a single-tier
+    /// Issue 2017 -- a multi-sched-task schedule is a LEVEL image, and a FreeRTOS
+    /// board crate turns the kernel's time slicing off for it; a single-sched-task
     /// one keeps the default. Asserted against the crates that own the
     /// feature, through the same reader the derivation uses.
     #[test]
@@ -1636,13 +1640,17 @@ mod tests {
         let boards =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../packages/boards");
         let multi = ResolvedSchedTaskTable {
-            tiers: vec![
-                tier("high", Some("real_time"), None),
-                tier("low", None, None),
+            sched_tasks: vec![
+                sched_task("high", Some("real_time"), None),
+                sched_task("low", None, None),
             ],
         };
         let single = ResolvedSchedTaskTable {
-            tiers: vec![tier(nros_orchestration_ir::DEFAULT_SCHED_TASK, None, None)],
+            sched_tasks: vec![sched_task(
+                nros_orchestration_ir::DEFAULT_SCHED_TASK,
+                None,
+                None,
+            )],
         };
         for b in [
             "nros-board-freertos",

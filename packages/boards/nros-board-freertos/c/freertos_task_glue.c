@@ -52,7 +52,7 @@ int nros_freertos_create_task(
 /*
  * Issue 1598 — create a FreeRTOS task over CALLER-OWNED memory: the Rust
  * `nros::main!` entry's `SchedTaskMemory` static (stack + control-block region),
- * so a tier's stack is `.bss` the linker prices instead of a heap_4 block.
+ * so a sched task's stack is `.bss` the linker prices instead of a heap_4 block.
  *
  * `tcb_bytes` is the region the entry reserved for the control block, an upper
  * bound stated in Rust (`SCHED_TASK_TCB_U64S`) because Rust cannot name a C
@@ -89,10 +89,10 @@ int nros_freertos_create_task_static(void (*entry)(void*), const char* name, voi
  * Set the CALLING task's priority (raw FreeRTOS units), clamped to
  * configMAX_PRIORITIES - 1 (the shared FreeRTOSConfig.h defines a live
  * configASSERT, so an out-of-range value must not reach
- * vTaskPrioritySet). Used by the multi-tier boot path: the boot task is
- * created at the generic app priority but then RUNS tiers[0] (the
- * highest tier), so it must assume that tier's declared priority the
- * same way a spawned tier task is born with its own.
+ * vTaskPrioritySet). Used by the multi-sched-task boot path: the boot task is
+ * created at the generic app priority but then RUNS sched_tasks[0] (the
+ * highest sched task), so it must assume that sched task's declared priority the
+ * same way a spawned sched task is born with its own.
  */
 void nros_freertos_set_current_task_priority(uint32_t priority)
 {

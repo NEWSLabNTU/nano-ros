@@ -494,7 +494,7 @@ pub enum CallbackGroupKind {
 /// 172.B callback chains: every chain becomes one mutually-exclusive group
 /// (its stages serialize), and every callback outside any chain becomes its
 /// own reentrant group (no coupling detected → concurrent-safe). 172.G
-/// assigns scheduling tiers on top of this grouping.
+/// assigns scheduling sched tasks on top of this grouping.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanCallbackGroup {
