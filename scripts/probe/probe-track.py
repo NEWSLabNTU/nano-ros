@@ -20,6 +20,10 @@ cannot list different tracks.
                               as shell assignments `NROS_TWIN_<FIELD>=<quoted>`,
                               list fields space-joined; nothing for a track
                               that is not a twin's
+  probe-track.py --lang <track>
+                              print the language tab (rust | c | cpp) the
+                              track replays a tabbed chapter in (phase-537
+                              W2); nothing for a track that picks none
   probe-track.py --awaits <track>
                               print the CLI work the track's chapter is written
                               ahead of (phase-532), "; "-joined; nothing when
@@ -47,6 +51,13 @@ def main(argv: list[str]) -> int:
                 for k, v in (t.get("twin") or {}).items():
                     v = " ".join(v) if isinstance(v, list) else v
                     print(f"NROS_TWIN_{k.upper()}={shlex.quote(v)}")
+                return 0
+        print(f"probe: unknown track '{argv[1]}'", file=sys.stderr)
+        return 2
+    if len(argv) == 2 and argv[0] == "--lang":
+        for t in tracks():
+            if t["track"] == argv[1]:
+                print(t.get("lang", ""))
                 return 0
         print(f"probe: unknown track '{argv[1]}'", file=sys.stderr)
         return 2

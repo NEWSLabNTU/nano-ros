@@ -300,6 +300,8 @@ def render_probe_json(reg: Registry) -> str:
             t["offline"] = True
         if p.get("budget_minutes"):
             t["budget_minutes"] = int(p["budget_minutes"])
+        if p.get("lang"):
+            t["lang"] = p["lang"]
         if p.get("awaits"):
             t["awaits"] = list(p["awaits"])
         twin = getattr(reg, "twins", {}).get(p["track"])

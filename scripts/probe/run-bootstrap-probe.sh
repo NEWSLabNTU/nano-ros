@@ -187,6 +187,11 @@ PROBE_OFFLINE="${track_rest%%$'\t'*}"
 # the wall clock runs from the first `nros setup` step, every step after it
 # prints the elapsed time, and the step that ends past the budget fails.
 PROBE_BUDGET_MIN="${track_rest#*$'\t'}"
+# phase-537 W2 (RFC-0124 D9) — the language a track replays a chapter's tabbed
+# steps in (extract-book-steps.py --lang); "" for a chapter with no tabs.
+if ! PROBE_LANG="$(python3 "$SCRIPT_DIR/probe-track.py" --lang "$PROBE_PLATFORM")"; then
+    exit 2
+fi
 CLOCK_ARGS=()
 if [[ -n "$PROBE_BUDGET_MIN" ]]; then
     CLOCK_ARGS=(--clock-from "nros setup" --clock-budget "$((PROBE_BUDGET_MIN * 60))")
@@ -330,6 +335,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --prelude "$REPO_ROOT/scripts/lib/deadline.sh" \
     --prelude "$SCRIPT_DIR/probe-run.sh" \
     ${PROBE_VARIANT:+--variant "$PROBE_VARIANT"} \
+    ${PROBE_LANG:+--lang "$PROBE_LANG"} \
     ${TWIN_SUBST[@]+"${TWIN_SUBST[@]}"} \
     ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
     ${CLOCK_ARGS[@]+"${CLOCK_ARGS[@]}"} \
