@@ -1,9 +1,10 @@
 # Phase 535 — Example pairs into the language workspaces, single-node witnesses, and cadence-backed CI
 
-**Status (2026-11-05). OPEN — W0 answered (issue 2253 fixed on the way,
-#3106); W1 merged (#3107); W0.b (one program per role) done: C (#3112),
-C++ (#3120), Rust (#3124); W2 (the resolver and the isolation lookup) in
-review.**
+**Status (2026-11-05). STOPPED at W3 for a maintainer decision.** W0
+answered (issue 2253 fixed on the way, #3106). W1 merged (#3107). W0.b done:
+C (#3112), C++ (#3120), Rust (#3124). W2 merged (#3125). The W3 pilot was
+measured; it saves build CPU but costs wall clock, which is under the 10 %
+bar (data below). The pilot itself is draft PR #3129.
 Implements [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
 D1 to D9, with its amendments to RFC-0026, RFC-0051, RFC-0061, RFC-0066,
 RFC-0114 and RFC-0121 D8.
@@ -215,6 +216,36 @@ check covers the launch file.
 - The ratchet is green.
 - The measured saving is recorded, whatever it is.
 - A saving under 10 % stops the phase for a maintainer decision before W4.
+
+**Result (2026-11-05): under the bar. Stopped for a maintainer decision.**
+Measured with the new `measure-fixture-build.sh --platform freertos
+--no-sccache`, cold, two runs before and three after. Full table and
+analysis: [phase-535-w3-pilot.md](data/phase-535-w3-pilot.md).
+
+| | before (mean) | after (mean) | change |
+| --- | --- | --- | --- |
+| wall | 771 s | 1258 s | **+63 %** |
+| CPU (user+sys) | 4306 s | 3719 s | **-14 %** (-20 % excluding the run that met heavy host load) |
+
+- **The CPU saving is the C/C++ side.** One configure per language builds the
+  kernel, lwIP and the C glue once. The second image of a configure is a link
+  of about 8 s.
+- **Rust gains nothing.** The leaves already shared a cargo group, and the
+  images do not (issue 0616).
+- **The wall clock is worse because `workspace-fixtures-build.sh` runs a
+  workspace's rows serially.** The leaves ran in parallel.
+- **Options for the maintainer:**
+  1. Make the builder group by configure rather than by workspace directory,
+     then re-measure. This is the likely way past the bar.
+  2. Accept the CPU saving and the wall clock cost.
+  3. Keep the pairs as leaves and drop D1 for the pairs.
+- **Found on the way:** the CMake road needs a per-entry locator and network
+  for any multi-image RTOS configure. Two consequences:
+  - #3129 adds `LOCATOR` and `IMAGE_NET` per entry.
+  - Moved leaves must be deleted with their rows, which
+    `check-example-build-coverage` enforces.
+- **The pilot works.** `rtos_e2e`'s 10 FreeRTOS cells passed on the pilot
+  fixtures with unchanged case names.
 
 ### W4 — The merge boards: linux, zephyr native_sim, threadx-linux
 
