@@ -177,6 +177,13 @@ batch = "p537-w6"
 note = "Use Cyclone DDS (W6): select and configure it for an image"
 
 [[page]]
+book = "user"
+path = "guide/rmw/use-xrce-dds.md"
+action = "new phase-537"
+batch = "p537-w6"
+note = "Use XRCE-DDS (W6): the agent, the transport and selection for an image"
+
+[[page]]
 old = "user-guide/rmw-switching.md"
 book = "user"
 path = "guide/rmw/switch-the-rmw-per-image.md"
