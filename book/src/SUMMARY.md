@@ -37,7 +37,6 @@
   - [Role reference](./guide/build/roles.md)
   - [Mixed-language workspaces](./guide/build/mix-languages.md)
   - [Configuration](./guide/build/configure-an-image.md)
-    - [Building and Configuring](./build/build-and-configure.md)
   - [Build Profiles](./guide/build/build-profiles.md)
   - [Profiling Your Build](./guide/build/build-profiling.md)
   - [Integrating into a Vendored Tree](./guide/build/existing-cmake-or-vendor-tree.md)
@@ -57,11 +56,6 @@
   - [Real-Time Analysis](./guide/realtime/analyze-timing.md)
 - [Deploy and debug]()
   - [Deployment Workflow](./guide/deploy/deploy-to-production.md)
-    - [The Target Model](./targets/target-model.md)
-    - [Running an Image: `nros run`](./targets/run.md)
-    - [Run Plans](./targets/run-plans.md)
-    - [Flashing and Monitoring a Board](./targets/flash-and-monitor.md)
-    - [Your Bench: `nros bench`](./targets/bench.md)
   - [Production Readiness Checklist](./guide/deploy/production-readiness.md)
   - [Logging](./guide/deploy/log-and-observe.md)
   - [Observing a Board With No Console](./guide/deploy/console-less-boards.md)
@@ -131,8 +125,6 @@
 # Extending nano-ros
 
 - [Overview](./extending/overview.md)
-  - [Runner packages](./extending/runner-packages.md)
-  - [Command packages](./extending/command-packages.md)
 - [Custom Board Package](./extending/custom-board.md)
 - [Vendor Overlay Board Crate](./extending/vendor-overlay.md)
 - [Importing a Board Crate](./extending/board-crate-import.md)
