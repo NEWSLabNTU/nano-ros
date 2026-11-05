@@ -930,6 +930,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             });
             missing.extend(crate::builder::preflight::check_zephyr_rust(
                 descriptor,
+                &root,
                 |keys| {
                     index
                         .as_ref()
