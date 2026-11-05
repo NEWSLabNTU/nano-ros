@@ -61,6 +61,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import board_registry  # noqa: E402
 import book_charter  # noqa: E402
+import book_tabs  # noqa: E402
 REGISTRY = "packages/boards/board-support.toml"
 SUMMARY = "book/src/SUMMARY.md"
 
@@ -85,11 +86,18 @@ def mdbook_id(text: str) -> str:
 def sections(page: str) -> dict[str, tuple[str, str]]:
     """{id: (heading text, section body)} for every heading outside a fence.
 
-    Repeated ids get mdbook's `-1`, `-2` suffixes."""
+    Repeated ids get mdbook's `-1`, `-2` suffixes. A language tab group's
+    tab headings are not headings in the rendered page (RFC-0124 D9)."""
     lines = page.splitlines()
     heads = []
     in_fence = False
+    try:
+        tab_lines = book_tabs.structure_lines(page)
+    except book_tabs.TabError:
+        tab_lines = set()
     for n, line in enumerate(lines):
+        if n in tab_lines:
+            continue
         if FENCE.match(line):
             in_fence = not in_fence
             continue
@@ -216,6 +224,12 @@ def selftest(verbose: bool = False) -> int:
     sub_heading = dict(pages)
     sub_heading["book/src/getting-started/a.md"] = (
         "# A\n\n## Run on QEMU\n\n### Step 1\n\n```sh\nx\n```\n")
+    # a fence in a language tab is in its section; a `## Rust` tab heading is
+    # not a heading of the rendered page, so it does not end the section
+    in_tabs = dict(pages)
+    in_tabs["book/src/getting-started/a.md"] = (
+        "# A\n\n## Run on QEMU\n\n<!-- tabs -->\n\n## Rust\n\n```sh\nx\n```\n\n"
+        "## C\n\n```sh\ny\n```\n\n<!-- /tabs -->\n")
     cases = [
         ("good rows pass", errs([qemu, hw]), False),
         ("a board's run block removed from its chapter fails", errs([qemu], no_run), True),
@@ -224,6 +238,7 @@ def selftest(verbose: bool = False) -> int:
         ("a run section with no command fails", errs([qemu], no_fence), True),
         ("a fence under the NEXT heading does not count", errs([qemu], fence_in_next), True),
         ("a fence under a sub-heading counts", errs([qemu], sub_heading), False),
+        ("a fence in a language tab counts", errs([qemu], in_tabs), False),
         ("a real board with no flash block fails",
          errs([{k: v for k, v in hw.items() if k != "book_flash"}]), True),
         ("a hardware run without real_hardware fails",
