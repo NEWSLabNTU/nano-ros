@@ -131,8 +131,10 @@ _examples-leaves:
     # carries BOTH the node logic and the entry, so one `nros configure` per role
     # covers what used to need two (the `[patch.crates-io]` block and the
     # `generated/` msg crates moved in with the entry).
-    for example in \
-        talker listener service-server service-client action-server action-client; do
+    # phase-535 W3 — only the talker WITNESS is still a leaf (RFC-0122 D3); the
+    # other five roles are image rows of `examples/workspaces/rust`, which the
+    # workspace builder configures itself.
+    for example in talker; do
         dir="examples/mps2-an385-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null
