@@ -274,6 +274,25 @@ else
     fail "an unseeded placeholder read under a DERIVED answer did not stop the configure (rc=$Z_RC):
 $CONFIGURE_OUT"
 fi
+# Ruling R53, by BEHAVIOUR: the dir is a clean dir's failed FIRST configure (a
+# cache, no build.ninja), the state this FATAL nearly always leaves. The printed
+# remedy, run literally, must configure it.
+check
+REMEDY="$(flat "$CONFIGURE_OUT" | sed -n "s/.*Re-run this build's configure (\`\([^\`]*\)\`).*/\1/p" | head -1)"
+if [ -f "$TEST_TMPDIR/derived-build/CMakeCache.txt" ] && [ ! -f "$TEST_TMPDIR/derived-build/build.ninja" ] \
+   && [ -n "$REMEDY" ]; then
+    REMEDY_RC=0
+    # shellcheck disable=SC2086 # the printed command, word-split as a user would
+    REMEDY_OUT="$($REMEDY 2>&1)" || REMEDY_RC=$?
+    if [ "$REMEDY_RC" -eq 0 ] && [ -f "$TEST_TMPDIR/derived-build/build.ninja" ]; then
+        log_success "and the printed remedy (\`$REMEDY\`) configures the failed dir"
+    else
+        fail "the printed remedy \`$REMEDY\` did not configure the failed dir (rc=$REMEDY_RC):
+$REMEDY_OUT"
+    fi
+else
+    fail "case Z did not leave a failed first configure with a printed remedy (remedy='$REMEDY')"
+fi
 check
 if ! nros_grep_q -F 'never smaller' <<<"$CONFIGURE_OUT"; then
     log_success "and no message claims the defaults are never too small"
@@ -307,11 +326,11 @@ ZW_RC=0
 ZW_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/zw-build" \
     -DPROBE_DERIVED=ON -DZEPHYR_BASE=/zephyr 2>&1)" || ZW_RC=$?
 check
-if [ "$ZW_RC" -ne 0 ] && nros_grep_q -F "Re-run this build's configure (\`west build -d $TEST_TMPDIR/zw-build\`)" <<<"$(flat "$ZW_OUT")" \
+if [ "$ZW_RC" -ne 0 ] && nros_grep_q -F "Re-run this build's configure (\`west build -d $TEST_TMPDIR/zw-build --cmake\`)" <<<"$(flat "$ZW_OUT")" \
    && ! nros_grep_q -F 'Run `nros configure' <<<"$(flat "$ZW_OUT")"; then
-    log_success "a Zephyr build with no CLI is told to re-run west build"
+    log_success "a Zephyr build with no CLI is told to re-run west build --cmake (R53: a bare west build skips cmake with no build.ninja)"
 else
-    fail "the Zephyr no-CLI remedy is not \`west build -d <dir>\` (rc=$ZW_RC):
+    fail "the Zephyr no-CLI remedy is not \`west build -d <dir> --cmake\` (rc=$ZW_RC):
 $ZW_OUT"
 fi
 
@@ -973,7 +992,7 @@ CONFIGURE_OUT="$(cmake -G Ninja -S "$SRC" -B "$TEST_TMPDIR/stale-build" \
     -DNROS_CONFIGURED_PROJECT=/proj -DNROS_CONFIGURED_IMAGE=img 2>&1)" || STALE_RC=$?
 check
 if [ "$STALE_RC" -eq 0 ] && nros_grep_q 'PROBE_READ=placeholder' <<<"$CONFIGURE_OUT" \
-   && nros_grep_q -F 'Run `nros configure /proj --image img` before the configure' <<<"$(flat "$CONFIGURE_OUT")"; then
+   && nros_grep_q -F 'Run `nros configure /proj --image img`, then `nros build --workspace /proj img`' <<<"$(flat "$CONFIGURE_OUT")"; then
     log_success "a stale configure seeds nothing, and the configure says what to run"
 else
     fail "A STALE CONFIGURE WAS PROMISED (rc=$STALE_RC): the cmake road must seed only

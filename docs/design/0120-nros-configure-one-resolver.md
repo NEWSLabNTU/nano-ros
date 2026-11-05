@@ -310,10 +310,15 @@ comparison, and is never re-converged either:
   this one. The fragment now holds the new answer, so the next configure
   reads it.
 
-Each of these names the road's own remedy: `nros configure ...` where the CLI
-drives the road (`nros_configured_locate` resolved a CLI), and otherwise -- a
-guest application, a host with no CLI -- re-running this build's configure
-(`cmake <build-dir>`, or `west build -d <build-dir>` on Zephyr).
+Each of these names the road's own remedy, and the remedy is a command that
+re-runs cmake on that dir. These FATALs nearly always fire in a clean dir's
+failed FIRST configure, which leaves a cache with `CMAKE_PROJECT_NAME` and no
+`build.ninja`; a bare `west build -d <dir>` then passes no cmake options, skips
+cmake and fails at ninja. So: where the CLI drives the road
+(`nros_configured_locate` resolved a CLI), `nros configure ...` then
+`nros build ...`, which re-passes the image's cmake options when `build.ninja`
+is absent; otherwise -- a guest application, a host with no CLI --
+`cmake <build-dir>`, or `west build -d <build-dir> --cmake` on Zephyr.
 
 ### D6 — The four cases, closed
 

@@ -873,9 +873,16 @@ configure), so those entries are dropped before the comparison.
 - **R52: an unseeded FATAL names the road's own remedy.** `nros configure ...`
   only where a CLI drives the road (`nros_configured_locate` publishes
   `NROS_CONFIGURED_COMMAND` only once a CLI resolves); otherwise re-run this
-  build's configure, `cmake <build-dir>` or `west build -d <build-dir>`.
+  build's configure, `cmake <build-dir>` or `west build -d <build-dir> --cmake`.
+- **R53: that remedy must re-run cmake on the dir the FATAL leaves.** It
+  nearly always fires in a clean dir's failed first configure (a cache, no
+  `build.ninja`), where a bare `west build -d <dir>` skips cmake and fails at
+  ninja. Zephyr with no CLI: `west build -d <dir> --cmake`; plain cmake:
+  `cmake <dir>`; CLI-driven: `nros configure ...` then `nros build ...`
+  (R51 re-passes the cmake options there). `cmake-resolved-seed` case Z runs
+  the printed `cmake <dir>` on that state and asserts it configures.
 
-Gates for this wave: `cmake-resolved-seed` (60 checks, incl. a real
+Gates for this wave: `cmake-resolved-seed` (61 checks, incl. a real
 `check-knob-one-pass.py` run over a dir the suite configured and a no-op
 build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
 `cmake-entity-inventory`, `cmake-message-bounds`, `configure-hook`,

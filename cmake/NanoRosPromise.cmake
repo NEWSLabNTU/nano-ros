@@ -89,11 +89,16 @@
 #
 # Every FATAL leaves this configure's answer in the fragment, so the next
 # configure reads it consistently. The remedy it names is the ROAD's own
-# (Ruling R52): `nros configure ...` where the CLI drives the road (the
-# `NROS_CONFIGURED_COMMAND` property, which `nros_configured_locate` publishes
-# only once it has resolved a CLI), and otherwise -- a guest application, a host
-# with no CLI -- re-running this build's configure (`cmake <build-dir>`, or
-# `west build -d <build-dir>` on Zephyr).
+# (Ruling R52), and it is a command that RE-RUNS cmake on this dir (Ruling
+# R53): the FATAL nearly always fires in a clean dir's FAILED FIRST configure,
+# which leaves a cache with `CMAKE_PROJECT_NAME` and no `build.ninja`, where a
+# plain `west build -d <dir>` passes no cmake options, skips cmake and dies at
+# ninja. So: where the CLI drives the road (`NROS_CONFIGURED_COMMAND` /
+# `NROS_CONFIGURED_BUILD_COMMAND`, which `nros_configured_locate` publishes only
+# once it has resolved a CLI), `nros configure ...` then `nros build ...` (which
+# re-passes the image's cmake options when `build.ninja` is absent, R51);
+# otherwise -- a guest application, a host with no CLI -- `cmake <build-dir>`,
+# or `west build -d <build-dir> --cmake` on Zephyr.
 #
 # A placeholder says so on a line of its own (`nros_promise_placeholder_line`),
 # and a reader that wrote a default itself because the fragment was absent says
@@ -353,13 +358,21 @@ function(_nros_promise_check_one _path)
         "configure used the seed, so the build is not allowed to proceed on it.")
 endfunction()
 
-# _nros_promise_unseeded_remedy(<cmd_out> <again_out>) -- Ruling R52. <cmd_out>
-# is the command to run before configuring again, empty when no CLI drives this
-# road; <again_out> is how THIS build configures again.
+# _nros_promise_unseeded_remedy(<cmd_out> <again_out>) -- Rulings R52/R53.
+# <cmd_out> is the CLI remedy, empty when no CLI drives this road; <again_out>
+# is the command that re-runs cmake on THIS dir (see the header for why
+# `--cmake`).
 function(_nros_promise_unseeded_remedy _cmd_out _again_out)
-    get_property(_cmd GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
+    get_property(_configure GLOBAL PROPERTY NROS_CONFIGURED_COMMAND)
+    get_property(_build GLOBAL PROPERTY NROS_CONFIGURED_BUILD_COMMAND)
+    set(_cmd "")
+    if(NOT "${_configure}" STREQUAL "" AND NOT "${_build}" STREQUAL "")
+        set(_cmd "`${_configure}`, then `${_build}`")
+    elseif(NOT "${_configure}" STREQUAL "")
+        set(_cmd "`${_configure}`")
+    endif()
     if(DEFINED ZEPHYR_BASE AND NOT "${ZEPHYR_BASE}" STREQUAL "")
-        set(_again "west build -d ${CMAKE_BINARY_DIR}")
+        set(_again "west build -d ${CMAKE_BINARY_DIR} --cmake")
     else()
         set(_again "cmake ${CMAKE_BINARY_DIR}")
     endif()
@@ -378,8 +391,8 @@ function(_nros_promise_check_unseeded _path _label)
         set(_fix "Re-run this build's configure (`${_again}`)")
         set(_fix_before "Configure again (`${_again}`) to read the composed answer")
     else()
-        set(_fix "Run `${_cmd}`, then configure again (`${_again}`)")
-        set(_fix_before "Run `${_cmd}` before the configure for derived sizes in one pass")
+        set(_fix "Run ${_cmd}")
+        set(_fix_before "Run ${_cmd} for derived sizes in one pass")
     endif()
     if(_kind STREQUAL "absent" OR _kind STREQUAL "placeholder")
         set(_derived FALSE)
