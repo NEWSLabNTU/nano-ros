@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-03). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 not landed.** Implements
+**Status (2026-11-05). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 partial: step 1 (native cells) landed, step 2 (QEMU cells, tier 2) pending on the CI runner.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../design/0119-cli-extension-packages.md) D8.
@@ -447,6 +447,101 @@ Acceptance:
 Decision step: if the verb's overhead breaks the 5 % bound on short cells,
 fix the cost in the verb (lazy resolution, no rebuild check under `--plan`),
 never by giving the harness a private path.
+
+Status: **partial.** Step 1 (native cells) landed. Step 2 (QEMU cells,
+serial included now that issue 2231 is fixed) is pending. Its tier-2 lane
+cannot run on the development host in reasonable time, so its before/after
+runs are dispatched on the CI runner (`run-matrix.yml`, tier-2 lane, `main`
+against the step-2 branch). The `qemu-system-` gate lands with step 2.
+
+Step 1, what landed:
+
+- `nros_tests::run::host_image` writes a RunPlan for the `native` runner
+  and returns `nros run --plan <file> --workspace <dir> --nano-ros-path
+  <root> --router none`. The image's arguments go in `passthrough`. A
+  native_sim seed goes in `args.seed`, and the C images' `stdbuf -oL -eL`
+  in `args.prefix`. Environment and working directory move to the verb's
+  process, so leased ports, domain ids and the DDS pin reach the image
+  unchanged. The plan directory is also the verb's workspace, so cells
+  running the same image never share a run directory.
+- `ManagedProcess::spawn_image` (and `spawn`) and `ZephyrProcess`'s
+  native_sim branch go through it: 275 call sites in 64 test files.
+- These stay on a direct spawn, deliberately: the tests that measure an
+  image's own signal handling and exit status through its pid
+  (`linux_api` ×2, `rust_multi_node_per_node_graph` ×2), the rt_sched
+  chrt/docker launcher, PX4 SITL, the slirp topology and the QEMU sites.
+- Four verb fixes, each found by a measurement:
+  - The console tee drains before exit.
+  - A runner lookup walks only the in-tree `packages/runners`, plus a
+    release's shipped packages. It used to walk the whole checkout:
+    443 `package.xml` opens and 12k statx per launch. With the lane's cells
+    starting together, that outran 5–8 s readiness windows in 26 cells.
+    Commands and build discovery keep the full walk.
+  - A teardown asks `kill(-pgid, 0)` before scanning `/proc`.
+  - `run::image_pid` lets the native_sim heap gate read the image rather
+    than the verb.
+
+Measured (tier 1, `lane=tier1` fixtures freshly built, no fixture older
+than its sources):
+
+- **Pass set.** BEFORE (direct spawns): 3167 pass, 4 real reds. The final
+  AFTER: 3185 pass, 0 real reds, lane green. Every BEFORE pass still
+  passes; the one name missing was renamed on `main` in between
+  (`declared_qos::…ingress…` → `…arrival_curve…`). The final AFTER ran
+  before the teardown fix, a verb change that touches only the exit path,
+  measured below.
+- **The AFTER runs before it.** The first had 26 cells red on the
+  whole-checkout runner scan. The second had 15 cells time out together
+  in one contiguous window: every one of them passed solo or as a group,
+  including `actions::test_action_binaries_exist`, which spawns nothing.
+  It also had 3 `zephyr` `xrce_c_*` reds from the heap gate reading the
+  verb's pid. The XRCE reds in those runs (`large_msg` ×2, `zephyr`
+  `xrce_c_*`) came with 4 untouched `xrce_*` feature-lane tests red in the
+  same run, so they are infra (the agent), not the harness. All pass now.
+- **Wall time.** The lane's per-cell times cannot resolve 5 % on this
+  host: the load ran 30–385 and two AFTER runs moved the converted cells by
+  +10 % and −47 % at the median. So the bound was measured as an
+  interleaved A/B on the same fixtures: 27 cells of `multi_node`,
+  `custom_msg`, `actions` and `error_handling`, 3 runs of each harness,
+  median per cell. Total 43.1 s → 42.6 s (−1.2 %), per-cell median +0.9 %.
+  Without the teardown fix it was +10.7 % and +9.6 % (the multi-process
+  `multi_node` cells +40 %), which is why the fix is a verb change.
+  Per launch, against a direct run of the same image: +5 ms to exit, +5 ms
+  to the first console byte, 19 ms to stop on one SIGTERM.
+
+  The shortest cells (median of 3, before → after):
+
+  | cell | before (s) | after (s) |
+  | --- | --- | --- |
+  | `custom_msg::test_custom_msg_no_router` | 0.17 | 0.21 |
+  | `custom_msg::test_status_message_with_string` | 0.18 | 0.24 |
+  | `error_handling::test_connection_timeout_listener` | 0.18 | 0.22 |
+  | `custom_msg::test_sensor_reading_structure` | 0.19 | 0.20 |
+  | `custom_msg::test_custom_msg_serialization` | 0.22 | 0.21 |
+  | `actions::test_action_server_starts` | 0.38 | 0.35 |
+  | `actions::goal_order_reaches_the_server` | 0.39 | 0.41 |
+  | `error_handling::test_minimal_runtime` | 0.89 | 0.86 |
+  | `multi_node::test_concurrent_startup` | 1.39 | 1.43 |
+  | `multi_node::test_many_to_many` | 2.26 | 2.43 |
+
+  Cells under 0.3 s move by up to +60 ms, +20 % to +34 % relative. That is
+  the run-to-run spread at that size, and the 5 % bound is read on cells
+  that launch an image for longer than that.
+
+Known gap: **a verb killed outright orphans its image.** The runner dies
+with the verb (`PR_SET_PDEATHSIG`), but the image is the runner's child and
+carries no such flag: `nros_extension::runner::exec` cannot set it, because
+the crate is `#![forbid(unsafe_code)]`. The harness avoids the gap itself.
+`run::stop` SIGKILLs the groups under the verb first, then the verb, and a
+dying test binary sends the verb SIGTERM (`set_orphan_group_suicide`),
+which it turns into a teardown. A SIGKILL from anywhere else still
+orphans the image. Two ways to close it:
+
+- runner → image PDEATHSIG through an allowed API: a small unsafe-allowed
+  helper crate, or the runner doing it in its own crate, as
+  `nros_runner_serial` does;
+- the verb keeping the image in a group the caller can kill: the harness
+  killing the process group, extended to every caller.
 
 ## Acceptance
 
