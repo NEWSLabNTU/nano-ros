@@ -143,9 +143,14 @@ export NROS_REPO_DIR NROS_REPO_ROOT
 export NROS_CLI="$nros_cli"
 export NROS_CLI_BIN="$nros_cli"
 
-if [ "${NROS_JOBSERVER:-}" = "1" ] || [ -n "${NROS_WS_RECORDS_FILE:-}" ]; then
-    # Jobserver-fed paths (the phase-176 outer pool, or a group worker under
-    # this script's own fifo fan-out below): leave CMAKE_BUILD_PARALLEL_LEVEL
+# shellcheck source=scripts/build/jobserver-pool.sh
+source "$repo_root/scripts/build/jobserver-pool.sh"
+
+if [ "${NROS_JOBSERVER:-}" = "1" ] || [ -n "${NROS_WS_RECORDS_FILE:-}" ] \
+    || nros_inherited_jobserver; then
+    # Jobserver-fed paths (the phase-176 outer pool, a group worker under
+    # this script's own fifo fan-out below, or a stage that joins an inherited
+    # pool — phase-535 W3): leave CMAKE_BUILD_PARALLEL_LEVEL
     # unset so ninja runs bare and JOINS the token pool — an explicit -j would
     # opt it out and multiply the load by the group count.
     unset CMAKE_BUILD_PARALLEL_LEVEL
@@ -835,7 +840,17 @@ done
     done
 } > "$makefile"
 
-echo "workspace-fixtures-build: ${#live_records[@]} row(s) in $unit_count build unit(s) over ${#group_dirs[@]} workspace(s), pool=$pool_jobs (fifo)"
+# phase-535 W3 — a stage running beside another under one outer pool joins it
+# (`nros_inherited_jobserver`) rather than opening a second scheduler.
+mapfile -t pool_make_args < <(nros_pool_make_args "$pool_jobs")
+pool_env_unset=()
+if nros_inherited_jobserver; then
+    pool_desc="joined the inherited fifo pool"
+else
+    pool_desc="pool=$pool_jobs (fifo)"
+    pool_env_unset=(-u MAKEFLAGS -u CARGO_MAKEFLAGS)
+fi
+echo "workspace-fixtures-build: ${#live_records[@]} row(s) in $unit_count build unit(s) over ${#group_dirs[@]} workspace(s), $pool_desc"
 # issue 0762 — THIS is the make that outlived its launcher on 2026-08-23,
 # still building for ten minutes after the top-level `just` was killed. Under
 # the guard it shares the outermost launcher's process group (passthrough), and
@@ -846,5 +861,5 @@ source "$repo_root/scripts/build/subtree-guard.sh"
 nros_guard_exec workspace-fixtures \
     python3 "$repo_root/scripts/build/make-stall-watchdog.py" \
     --label "workspace-fixtures $platform" --diag-dir "$work_root" -- \
-    env -u MAKEFLAGS -u CARGO_MAKEFLAGS "$pinned_make" -j"$pool_jobs" --jobserver-style=fifo -f "$makefile"
+    env "${pool_env_unset[@]}" "$pinned_make" "${pool_make_args[@]}" -f "$makefile"
 rm -f "$makefile" "$work_root/ws-$platform-$stamp"-group-*.records

@@ -73,18 +73,31 @@ doctor:
 build: build-examples
     @echo "FreeRTOS examples built."
 
-# Build FreeRTOS QEMU MPS2-AN385 Rust examples
+# Build FreeRTOS QEMU MPS2-AN385 examples: the Rust leaves, then every
+# FreeRTOS workspace row.
 [group("main")]
 build-examples:
     #!/usr/bin/env bash
     set -e
-    source scripts/build/cargo.sh
-    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     # issue 0650 — first step of the lane: clear last run's skip notes, so a
     # lane that is complete this time is not reported SKIPPED from history.
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     nros_lane_skip_reset freertos
+    just freertos _examples-leaves
+    just freertos build-workspace-fixtures
+    echo "FreeRTOS QEMU examples built!"
+
+# The Rust example LEAVES of `build-examples` (phase-535 W3 split them from
+# the workspace stage so `build-fixtures` can run the two side by side).
+[private]
+_examples-leaves:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
     source scripts/build/cargo.sh
     # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
     # `include`, made EXPLICIT. This lane already got the file, but only as a
@@ -143,6 +156,15 @@ build-examples:
     # `target-zenoh` half was the dead one), and the loop is gone.
     NROS_CARGO_PROFILE="$(nros_cargo_platform_profile freertos)" \
         bash scripts/build/fixtures-build.sh freertos rust zenoh
+
+# Every FreeRTOS workspace row: the `freertos` board's, then the
+# `freertos-posix` board's (`build-fixtures-posix`).
+[group("examples")]
+build-workspace-fixtures:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    nros_locate_sdk_trees  # phase-484 W2 — the trees W3c stopped exporting
     # Every `freertos` workspace row, ALL languages, in ONE call (phase-535 W3):
     # the builder fans its rows out by build unit (one cmake configure, or one
     # cargo target dir — `scripts/build/workspace-fixture-units.py`) under one
@@ -158,9 +180,13 @@ build-examples:
     # which is issue #405's shape and what `matrix_fixture_coverage`'s recipe-graph
     # gate names. The board still lives under `just freertos` (PlatformId
     # ::FreertosPosix maps to this module), so the calls belong here rather than in
-    # a module of their own.
-    bash scripts/build/workspace-fixtures-build.sh freertos-posix
-    echo "FreeRTOS QEMU examples built!"
+    # a module of their own. Through `build-fixtures-posix`, which checks the one
+    # tree that board needs; this recipe used to call the builder directly as
+    # well, so `build-fixtures` built the freertos-posix rows twice.
+    #
+    # Serial after the freertos rows, never beside them: both run under the
+    # builder's one `workspace-fixtures` subtree guard.
+    just freertos build-fixtures-posix
 
 # phase-370 W3 — the POSIX-simulator board's C and C++ cyclonedds workspace
 # rows (`platform = "freertos-posix"` in examples/fixtures.toml).
@@ -194,16 +220,47 @@ build-fixtures-posix:
 
 # Build all example binaries used as test fixtures (Rust + C + C++).
 [group("full-matrix")]
-build-fixtures: build-examples build-fixture-extras build-fixtures-posix
+build-fixtures:
     #!/usr/bin/env bash
     bash scripts/dev/deprecated-scope-alias.sh freertos build-fixtures "just build freertos"
     set -e
+    # shellcheck source=scripts/build/lane-skip.sh
+    source scripts/build/lane-skip.sh
+    nros_lane_skip_reset freertos
+    # phase-535 W3 — the LEAF stage and the WORKSPACE stage run side by side,
+    # as two units of ONE token pool. They used to run one after the other, so
+    # the workspace builder's long C/C++ configure chains started only after
+    # the last leaf had linked. Each stage JOINS this pool
+    # (`NROS_INHERIT_JOBSERVER=1`, `nros_inherited_jobserver`), so the two
+    # never hold more than the budget between them — there is no second
+    # scheduler. What they write is disjoint: the leaves build into their own
+    # dirs and `build/{cargo-fixtures,corrosion-cargo}/freertos`; a workspace
+    # cmake row into `<ws>/build/<coord>/cmake` (its cargo targets included)
+    # and a workspace rust row into `<ws>/target-fixtures/*`. The one file both
+    # write, the central `nros-patch.toml`, is an atomic write-if-changed.
+    # Without a pool (`NROS_JOBSERVER=1`, or no pinned make 4.4) the units run
+    # serially, leaves first, which is the old order.
+    # (The trailing space inside each quote keeps the recipe name a bare token
+    # for the recipe-graph gate in `matrix_fixture_coverage.rs`.)
+    # shellcheck source=scripts/build/jobserver-pool.sh
+    source scripts/build/jobserver-pool.sh
+    printf '%s\n' \
+        "NROS_INHERIT_JOBSERVER=1 just freertos _fixture-leaves " \
+        "NROS_INHERIT_JOBSERVER=1 just freertos build-workspace-fixtures " \
+        | nros_pool_run freertos-stages
     # issue 0650 — the ONE place this lane says it built its fixtures, and it
     # refuses to when a step was skipped. Before this the claim was an
     # unconditional echo, so a lane with no toolchain printed it anyway.
-    # shellcheck source=scripts/build/lane-skip.sh
-    source scripts/build/lane-skip.sh
     nros_lane_skip_flush freertos "FreeRTOS test fixtures built."
+
+# The leaf stage of `build-fixtures`: the Rust leaves, then the extras (the
+# C/C++ leaves and the smoke rows).
+[private]
+_fixture-leaves:
+    #!/usr/bin/env bash
+    set -e
+    just freertos _examples-leaves
+    just freertos build-fixture-extras
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
 # `build-examples`.
