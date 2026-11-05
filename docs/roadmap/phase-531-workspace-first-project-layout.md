@@ -1,7 +1,9 @@
 # Phase 531 — Workspace-first project layout: bringup-only `system.toml`, one build road, the leaf shape retired
 
 **Status (2026-11-05). OPEN — W1 (the measurement) and W2 (the gates and the
-sync warning) done; W3 next.**
+sync warning) done; W3 and W4 in progress; W5 step 1 (the design: the
+generated entry drops its selection package, an owned entry keeps a renamed
+adapter) in review.**
 Implements [RFC-0121](../design/0121-workspace-first-project-layout.md) D1 to
 D8, with its amendments to RFC-0098, RFC-0116 D6, RFC-0026/0066, RFC-0100,
 RFC-0118 D2 and RFC-0120.
@@ -263,10 +265,51 @@ Every image builds through the generated entry. A node package is a library;
 its `main` is generated. The hooked roads of RFC-0120 D8 (west, CMake) build
 the generated entry, which records its bringup.
 
-**Acceptance:** each platform family's single-node example builds and runs
-through the workspace road, with images whose section sizes match the
-standalone build's within the phase-445 tolerance. `rg selection_crate_name`
-finds only the code W7 deletes.
+The generated entry has no selection package (maintainer decision,
+2026-11-05; RFC-0071 D13, RFC-0121 D6 as amended). Its `Cargo.toml` names the
+board crate and the backend crate(s) with the features the package carried
+(`facade::derive`), and the backend registration of RFC-0071 D11 is written
+into its source above `nros::main!`. An entry a person owns (materialised,
+`nros new entry`, the seven fixture `*_entry` packages) keeps a generated
+adapter crate, renamed `<entry>_nros_derived`, so its derivation stays live
+(RFC-0065 D5). C and C++ images are unaffected: they register through the
+generated `nros_app_register_backends()` and never used the Rust package.
+
+Steps, each its own pull request:
+
+1. **Design** (docs only): RFC-0071 D13, RFC-0098 D6 and RFC-0121 D6
+   amended; this item and W7 step 3 rewritten.
+2. **The generated entry states its own selection; the owned entry's
+   adapter is renamed.** `builder::entry` renders the derived features on its
+   dependency lines and the two registration macros into its source.
+   `nros::main!` has one call shape, `__nros_register_backends!(…)` by bare
+   name, and emits a `use` of the adapter's macros when the manifest names
+   one. `EntrySpec::facade_dir` and the facade heal and refresh in
+   `cmd/build.rs` are deleted. `facade::write_facade` writes
+   `<entry>_nros_derived` under `generated/nros-derived/`, named by
+   `entry_names::adapter_crate_name`. `nros materialize` turns the generated
+   entry's stated features back into an adapter dependency, and `nros new
+   entry` names the adapter.
+3. **W1 findings 3 and 4 move to the model road.** The payload classes and
+   the take buffer are derived for a bringup image (today
+   `cmd/build.rs::derived_pool_env` passes `Refused`, and issue 1125 measured
+   131,072 B of `.bss` from the payload-class default), and `entities =
+   "census"` is read from a bringup's `[[component]]` row.
+4. **One road per platform family.** Each family's single-node example builds
+   and runs through the workspace road, with section sizes compared against
+   the standalone build (`just mem-report`).
+
+**Acceptance:**
+
+- each platform family's single-node example builds and runs through the
+  workspace road, with images whose section sizes match the standalone build's
+  within the phase-445 tolerance (numbers recorded here);
+- a generated entry names no adapter crate (no `*_nros_derived` and no
+  `*_nros_selection` dependency), and nothing writes one for it;
+- an owned entry's adapter has one name, from one function
+  (`entry_names::adapter_crate_name`), and a materialised entry still follows
+  an RMW or edition change in `system.toml` on its next build;
+- `selection_crate_name` survives only for the leaf road W7 step 3 deletes.
 
 ### W6 — Migrate the tree
 
@@ -299,8 +342,17 @@ order, each step with its own PR and gate run:
 1. the `[deploy.*]` manifest metadata and `synthesise_self_bringup`;
 2. `synthesise_self_model` and the launchless-package detection in
    `launch_synth.rs`;
-3. the `<pkg>_nros_selection` crate (`leaf_system::selection_crate_name`,
-   `LEAF_SELECTION_DIR`) and the macro path that emits it;
+3. the leaf's `<pkg>_nros_selection` crate: `LEAF_SELECTION_DIR`,
+   `facade::write_leaf_selection`, `leaf_settings::write_selection` and its
+   helpers (`write_entry_selection` among them),
+   `cmd/build.rs::check_leaf_selection`, `leaf_system::selection_crate_name`,
+   and the macro's `leaf_selection_crate` / `reroot_through` (the board-path
+   re-root). The generated entry left the package in W5. The seven fixture
+   `*_entry` packages reach their board through that re-root today, so they
+   move onto the owned-entry adapter here (they name their board crate and
+   depend on `<entry>_nros_derived`) and stay as owned-entry coverage. The
+   adapter itself (`write_facade`, `adapter_crate_name`) is not the leaf's and
+   stays (RFC-0071 D13);
 4. `--from-leaf`, `write_for_leaf` and the leaf rows of
    `NanoRosSizingDescriptor.cmake`; RFC-0100's road table loses its leaf rows;
 5. the leaf-only halves of `leaf_settings`, `leaf_system`, `leaf_kconfig`,
@@ -318,7 +370,8 @@ order, each step with its own PR and gate run:
    workspace-first tree, as D13 proved the scaffold it replaces. The book
    pages that name it (`integration-zephyr.md`, `workspace-cpp.md`,
    `workspace-entry-pkg.md`, `user-guide/component-and-entry-pkg.md`) move to
-   that flow in W8;
+   that flow in W8. The adapter crate stays: a materialised entry
+   uses it too (RFC-0071 D13);
 9. W2's warning becomes a refusal.
 
 Each deletion is listed in `book/src/migrating/retired-names.md` with its

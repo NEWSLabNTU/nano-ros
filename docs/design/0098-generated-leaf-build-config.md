@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Stable (2026-10-14; amended 2026-10-26 — a message `<depend>` is one edit for Rust, phase-517 W8). Phase-445, its home phase, is complete and archived. Every decision D1-D12 is implemented, and D1's path defers to RFC-0103 D7. History: Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package.)
+**Status:** Stable (2026-10-14; amended 2026-10-26 — a message `<depend>` is one edit for Rust, phase-517 W8). Phase-445, its home phase, is complete and archived. Every decision D1-D12 is implemented, and D1's path defers to RFC-0103 D7. History: Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package. 2026-11-05 — D6's selection package retires for generated entries and leaves: the generated entry states the board, backend and features itself, and an owned entry keeps the renamed adapter `<entry>_nros_derived`, RFC-0071 D13, phase-531 W5.)
 
 Home phase: [phase-445](../roadmap/archived/phase-445-board-choice-generates-leaf-config.md).
 
@@ -149,6 +149,13 @@ entry (RFC-0065 D4, `build/<coord>/<entry>/Cargo.toml`) and the generated
 `<entry>_nros_selection` package, which pull the board crate the `[image]`
 names. No user manifest names a board crate, so switching board touches no
 `Cargo.toml`.
+
+> **Amended 2026-11-05 (phase-531 W5, RFC-0071 D13):** the generated entry no
+> longer has a selection package. Its own regenerated `Cargo.toml` names the
+> board crate and the backend with the features the package carried. An entry
+> a person owns keeps a generated adapter crate for those features, renamed
+> `<entry>_nros_derived`. The rule stands: no user manifest names a board
+> crate's RMW, edition or capability features.
 
 **D7 — every entity-derived pool is derived on the cargo road too, including
 `ZPICO_MAX_QUERYABLES` — per image.** It is withheld today because a cargo leaf
@@ -454,6 +461,16 @@ network.
 > (2026-11-03):** every image builds through the generated entry, and the
 > plain `cargo build` flow this paragraph kept retires with the standalone
 > package shape (phase-531).
+>
+> **And the leaf's selection package retires (2026-11-05, phase-531 W5,
+> RFC-0071 D13).** It existed so that a hand-written manifest never changes on
+> a board, RMW or edition switch. Under one build road every image's manifest
+> is generated, so the generated entry names its board crate, backend and their
+> features directly, and its registration is written into its own source. The
+> leaf's package goes with the leaf shape (phase-531 W7 step 3). An entry a
+> person owns (materialised, or from `nros new entry`) still cannot change its
+> manifest per image, so it keeps the workspace facade under its new name,
+> `<entry>_nros_derived`.
 
 Rejected: making every single-package leaf a generated entry. It meets D6 but
 removes the documented plain-cargo flow for the most common example shape.
