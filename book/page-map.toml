@@ -163,6 +163,13 @@ was = ["communicate/ros2-interop.md"]
 note = "Tutorial 10, Talk to ROS 2: W5 adds the basics of guide/rmw/qos-status-events"
 
 [[page]]
+book = "user"
+path = "guide/rmw/configure-zenoh.md"
+action = "new phase-537"
+batch = "p537-w6"
+note = "Configure zenoh (W6): router, locators, client mode, a session file; from the zenoh task parts of tutorial/pick-the-rmw and the serial and tuning pages"
+
+[[page]]
 old = "user-guide/rmw-switching.md"
 book = "user"
 path = "guide/rmw/switch-the-rmw-per-image.md"
