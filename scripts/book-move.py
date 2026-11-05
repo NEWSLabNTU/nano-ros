@@ -22,8 +22,17 @@ leave a tree in the same state:
 * every `book/src/<old>` literal in tracked text files (scripts, recipes,
   workflows, docs) is rewritten to the page's current location. Archived
   records, the changelog and the map's own docs are left as history;
+* every `book/src`-relative page path the board registry holds
+  (`book_run`, `book_flash`, a probe track's `chapter`, in
+  `packages/boards/board-support.toml` and the views generated from it) is
+  rewritten to the page's current location, keeping its `#anchor`, and the
+  registry's generators re-run;
 * each moved page gets an `[output.html.redirect]` row in its old book's
-  `book.toml`.
+  `book.toml` for every URL it has had (its seeded `old` and each `was`), and
+  an existing row that still names a URL the page has left is repointed.
+
+A page moved a second time keeps its seeded `old` and lists the path it
+leaves in `was` (phase-537 W1); the move starts from wherever it is now.
 
 `merge-into` rows are reported, never automated: merging two pages is an edit
 a person makes (W5). After the merge, delete the merged page and run
@@ -111,7 +120,7 @@ def pending(pages: list[bp.Page], batch: str | None) -> list[bp.Page]:
             continue
         if p.verb in ("move", "split") and p.target.exists():
             continue
-        if p.verb == "merge-into" and not (p.old and (USER_SRC / p.old).exists()):
+        if p.verb == "merge-into" and p.current() is None:
             continue
         out.append(p)
     return out
@@ -119,11 +128,13 @@ def pending(pages: list[bp.Page], batch: str | None) -> list[bp.Page]:
 
 def describe(p: bp.Page) -> str:
     dst = f"{p.book}:{p.path}"
+    cur = p.current()
+    here = str(cur.relative_to(USER_SRC)) if cur is not None and USER_SRC.resolve() in cur.resolve().parents else p.old
     if p.verb in ("move", "split"):
         extra = f"  (then split into internals:{p.arg})" if p.verb == "split" else ""
-        return f"mv    {p.old} -> {dst}{extra}"
+        return f"mv    {here} -> {dst}{extra}"
     if p.verb == "merge-into":
-        return f"MERGE {p.old} -> user:{p.arg}  (manual, W5)"
+        return f"MERGE {here} -> user:{p.arg}  (manual: fold it in, delete it, run --rewrite)"
     if p.verb == "new":
         return f"stub  {dst}  (owner {p.arg})"
     if p.verb == "import":
@@ -190,8 +201,12 @@ def apply(pages: list[bp.Page], batch: str) -> int:
     for p in todo:
         print(f"  {describe(p)}")
         if p.verb in ("move", "split"):
+            src = p.current()
+            if src is None:
+                print(f"book-move: {p.path}: none of {p.formers} exists; nothing to move", file=sys.stderr)
+                return 1
             p.target.parent.mkdir(parents=True, exist_ok=True)
-            git("mv", rel(USER_SRC / p.old), rel(p.target))
+            git("mv", rel(src), rel(p.target))
             moved.append(p)
         elif p.verb == "new":
             write_stub(p)
@@ -199,6 +214,11 @@ def apply(pages: list[bp.Page], batch: str) -> int:
             import_doc(p)
     add_redirects(moved)
     repair(pages)
+    regenerate(pages)
+    return 0
+
+
+def regenerate(pages: list[bp.Page]) -> None:
     # A generated page's content is its generator's output, never the link
     # repair's: re-run EVERY generator the map names, so each committed page is
     # exactly what `--check` regenerates. Not only the moved pages' generators:
@@ -207,7 +227,6 @@ def apply(pages: list[bp.Page], batch: str) -> int:
     for script in sorted({p.generated for p in pages if p.generated}):
         print(f"  regen {script}")
         subprocess.run([sys.executable, str(ROOT / script)], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-    return 0
 
 
 # ------------------------------------------------------------------ SUMMARY
@@ -228,8 +247,8 @@ def old_titles() -> dict[pathlib.Path, str]:
 
 
 def page_title(p: bp.Page, cur: pathlib.Path, titles: dict[pathlib.Path, str]) -> str:
-    for key in (cur.resolve(), (USER_SRC / p.old).resolve() if p.old else None):
-        if key is not None and key in titles:
+    for key in [cur.resolve()] + [(USER_SRC / f).resolve() for f in reversed(p.formers)]:
+        if key in titles:
             return titles[key]
     first = cur.read_text().lstrip().splitlines()[:1]
     if first and first[0].startswith("# "):
@@ -253,7 +272,7 @@ def render_summary(book: str, pages: list[bp.Page], titles: dict[pathlib.Path, s
     in_region = {(src / m.group(2)).resolve() for m in map(SUMMARY_ENTRY.match, region) if m}
     out = ["# Summary", ""]
     placed: set[pathlib.Path] = set()
-    for i, (d, heading) in enumerate(bp.PARTS[book]):
+    for d, heading in bp.PARTS[book]:
         rows = []
         for p in pages:
             if p.book != book or p.part != d or p.verb == "merge-into":
@@ -263,25 +282,36 @@ def render_summary(book: str, pages: list[bp.Page], titles: dict[pathlib.Path, s
                 continue
             placed.add(cur.resolve())
             rows.append((p, cur))
-        if book == "user" and i == 0:
-            # mdBook prefix chapters: the introduction sits above the first part.
-            for p, cur in rows:
-                out.append(f"[{page_title(p, cur, titles)}](./{cur.relative_to(src)})")
-            out.append("")
-            continue
+        # RFC-0124 D1: a part with groups (the User guide) lists its loose
+        # pages first, then each group as an unlinked heading entry (an mdBook
+        # draft chapter) with its pages nested under it, in GROUPS order. A
+        # page sits in its group only once it is at its target.
+        groups = bp.GROUPS.get(book, {}).get(d, [])
+        order = {g: n for n, (g, _) in enumerate(groups)}
+
+        def group_of(p: bp.Page, cur: pathlib.Path) -> str | None:
+            return p.group if cur.resolve() == p.target.resolve() else None
+
+        rows.sort(key=lambda r: -1 if group_of(*r) is None else order[group_of(*r)])
         body = []
+        last_group = None
         for p, cur in rows:
             if cur.resolve() in in_region:
                 continue
-            body.append(f"- [{page_title(p, cur, titles)}](./{cur.relative_to(src)})")
+            g = group_of(p, cur)
+            indent = "  " if g else ""
+            if g and g != last_group:
+                body.append(f"- [{dict(groups)[g]}]()")
+            last_group = g
+            body.append(f"{indent}- [{page_title(p, cur, titles)}](./{cur.relative_to(src)})")
             # A page waiting to be merged into this one keeps a line nested
-            # under it until W5 folds it in, so the half-migrated book still
+            # under it until it is folded in, so the half-migrated book still
             # reaches it.
             for q in pages:
-                if q.book == book and q.verb == "merge-into" and q.arg == p.path and q.old:
-                    old = USER_SRC / q.old
-                    if old.exists():
-                        body.append(f"  - [{page_title(q, old, titles)}](./{old.relative_to(src)})")
+                if q.book == book and q.verb == "merge-into" and q.arg == p.path:
+                    old = q.current()
+                    if old is not None:
+                        body.append(f"{indent}  - [{page_title(q, old, titles)}](./{old.relative_to(src)})")
         if d == "reference" and region:
             body.extend(region)
         if body:
@@ -312,10 +342,11 @@ def stale_summaries(pages: list[bp.Page]) -> list[str]:
 
 
 def locate_old(pages: list[bp.Page], file: pathlib.Path) -> pathlib.Path:
-    """Where `file` was before its batch ran (itself, if it never moved)."""
+    """Where `file` was before its batch ran (itself, if it never moved): the
+    latest path it had, since that is where its links were last written."""
     for p in pages:
-        if p.old and p.target.resolve() == file.resolve():
-            return USER_SRC / p.old
+        if p.formers and p.target.resolve() == file.resolve():
+            return USER_SRC / p.formers[-1]
         if p.verb == "import" and p.target.resolve() == file.resolve():
             return p.source
     return file
@@ -338,7 +369,7 @@ def resolve_via_map(pages: list[bp.Page], old_target: pathlib.Path) -> pathlib.P
         old_rel = str(old_target.resolve().relative_to(USER_SRC.resolve()))
     except ValueError:
         return None
-    p = bp.by_old(pages).get(old_rel)
+    p = bp.by_former(pages).get(old_rel)
     if p is None:
         return None
     if p.verb == "merge-into":
@@ -466,12 +497,11 @@ def repair_doc_links(pages: list[bp.Page]) -> int:
 def repair_literals(pages: list[bp.Page]) -> int:
     moves = {}
     for p in pages:
-        if not p.old:
-            continue
-        cur = p.current() if p.verb != "merge-into" else resolve_via_map(pages, USER_SRC / p.old)
-        if cur is None or cur.resolve() == (USER_SRC / p.old).resolve():
-            continue
-        moves["book/src/" + p.old] = rel(cur)
+        for f in p.formers:
+            cur = p.current() if p.verb != "merge-into" else resolve_via_map(pages, USER_SRC / f)
+            if cur is None or cur.resolve() == (USER_SRC / f).resolve():
+                continue
+            moves["book/src/" + f] = rel(cur)
     stubs = set()
     for p in pages:
         if p.verb == "import" and p.target.exists():
@@ -494,23 +524,125 @@ def repair_literals(pages: list[bp.Page]) -> int:
     return n
 
 
+# ----------------------------------------------------------------- registry
+
+# Files that hold a page path relative to book/src/ in a `book_run`,
+# `book_flash` or `chapter` field: the board registry (RFC-0114) and the
+# views gen-board-support.py writes from it. The views are regenerated after
+# the registry changes; rewriting them too keeps a tree consistent even when
+# a generator cannot run.
+REGISTRY_FILES = (
+    "packages/boards/board-support.toml",
+    "packages/boards/board-support-status.json",
+    "scripts/probe/probe-tracks.json",
+)
+REGISTRY_FIELD = re.compile(
+    r'(?P<pre>"?\b(?:book_run|book_flash|chapter)"?\s*[:=]\s*")(?P<path>[^"#\s]+\.md)(?P<anchor>#[^"]*)?(?P<post>")')
+
+
+def registry_path(pages: list[bp.Page], page: str) -> str | None:
+    """The book/src-relative path a registry field naming `page` should
+    hold now, or None to leave it. A field naming a page that has left the
+    user book is left for its owner to fix: the registry names user chapters."""
+    if (USER_SRC / page).exists():
+        return None
+    dest = resolve_via_map(pages, USER_SRC / page)
+    if dest is None or USER_SRC.resolve() not in dest.resolve().parents:
+        return None
+    return str(dest.resolve().relative_to(USER_SRC.resolve()))
+
+
+def remap_registry_text(pages: list[bp.Page], text: str) -> tuple[str, int]:
+    n = 0
+
+    def sub(m: re.Match) -> str:
+        nonlocal n
+        new = registry_path(pages, m.group("path"))
+        if new is None or new == m.group("path"):
+            return m.group(0)
+        n += 1
+        return f"{m.group('pre')}{new}{m.group('anchor') or ''}{m.group('post')}"
+
+    return REGISTRY_FIELD.sub(sub, text), n
+
+
+def repair_registry(pages: list[bp.Page]) -> int:
+    """Rewrite the registry's book-relative page fields through the map
+    (phase-537 W1; phase-532 did this by hand, twice). Returns the number of
+    fields changed."""
+    total = 0
+    for name in REGISTRY_FILES:
+        path = ROOT / name
+        if not path.exists():
+            continue
+        text = path.read_text()
+        new, n = remap_registry_text(pages, text)
+        if n:
+            path.write_text(new)
+            total += n
+    return total
+
+
 # ---------------------------------------------------------------- redirects
 
+REDIRECT_ROW = re.compile(r'^"/(?P<src>[^"]+)" = "(?P<dst>[^"#]*)(?P<anchor>#[^"]*)?"\s*$')
 
-def add_redirects(moved: list[bp.Page]) -> None:
-    """Add a redirect row for each page's old URL, unless one exists (a hand
-    row, e.g. one naming an anchor in the merge target, is kept)."""
-    existing = BOOK_TOML["user"].read_text()
+
+def url_for(p: bp.Page) -> str:
+    return DEPLOY[p.book] + str(pathlib.PurePosixPath(p.path).with_suffix(".html"))
+
+
+def stale_redirect(pages: list[bp.Page], src_url: str, dst: str) -> str | None:
+    """If the redirect `src_url -> dst` names a page that has since moved
+    again, the deploy URL it should name now; else None."""
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(src_url), dst))
+    page = source_of_url(target)
+    if page is None or page.exists():
+        return None
+    try:
+        page_rel = str(page.resolve().relative_to(USER_SRC.resolve()))
+    except ValueError:
+        return None
+    p = bp.by_former(pages).get(page_rel)
+    if p is None:
+        return None
+    if p.verb == "merge-into":
+        p = next((q for q in pages if q.book == "user" and q.path == p.arg and q.verb != "merge-into"), None)
+    if p is None or not (p.target.exists() or p.generated):
+        return None
+    return url_for(p)
+
+
+def add_redirects(moved: list[bp.Page], pages: list[bp.Page] | None = None) -> None:
+    """Add a redirect row for every URL each page has had (seeded `old` and
+    each `was`), unless one exists (a hand row, e.g. one naming an anchor in
+    the merge target, is kept). With `pages`, a row that names a URL the page
+    has since left is repointed at where it is now, keeping its anchor, so no
+    redirect chains through a page that no longer exists."""
+    toml = BOOK_TOML["user"]
+    if pages is not None:
+        lines = toml.read_text().splitlines(keepends=True)
+        for i, line in enumerate(lines):
+            m = REDIRECT_ROW.match(line.rstrip("\n"))
+            if not m:
+                continue
+            new_url = stale_redirect(pages, m.group("src"), m.group("dst"))
+            if new_url is None:
+                continue
+            rel_dst = os.path.relpath(new_url, os.path.dirname(m.group("src")) or ".")
+            lines[i] = f'"/{m.group("src")}" = "{rel_dst}{m.group("anchor") or ""}"\n'
+        toml.write_text("".join(lines))
+    existing = toml.read_text()
     rows = []
     for p in moved:
-        old_url = str(pathlib.PurePosixPath(p.old).with_suffix(".html"))
-        if f'"/{old_url}"' in existing:
-            continue
-        new_url = DEPLOY[p.book] + str(pathlib.PurePosixPath(p.path).with_suffix(".html"))
-        rows.append(f'"/{old_url}" = "{os.path.relpath(new_url, os.path.dirname(old_url) or ".")}"')
+        new_url = url_for(p)
+        for f in p.formers:
+            old_url = str(pathlib.PurePosixPath(f).with_suffix(".html"))
+            if old_url == new_url or f'"/{old_url}"' in existing or any(r.startswith(f'"/{old_url}"') for r in rows):
+                continue
+            rows.append(f'"/{old_url}" = "{os.path.relpath(new_url, os.path.dirname(old_url) or ".")}"')
     if not rows:
         return
-    toml = BOOK_TOML["user"]
     text = toml.read_text()
     header = "[output.html.redirect]"
     if header not in text:
@@ -521,20 +653,70 @@ def add_redirects(moved: list[bp.Page]) -> None:
     toml.write_text(text)
 
 
+# ---------------------------------------------------------------- self-test
+
+
+def self_test() -> None:
+    """Run on every invocation, in a scratch tree: a page moved twice is
+    found at its latest path, and the registry's book-relative fields follow
+    it with their anchors (phase-537 W1)."""
+    import tempfile
+
+    global USER_SRC
+    saved = (USER_SRC, dict(bp.BOOKS))
+    with tempfile.TemporaryDirectory() as tmp:
+        user = pathlib.Path(tmp) / "src"
+        USER_SRC = bp.BOOKS["user"] = user
+        bp.BOOKS["internals"] = pathlib.Path(tmp) / "internals"
+        try:
+            P = bp.Page
+            pages = [
+                P(book="user", path="guide/platforms/a.md", action="move", batch="b", old="old/a.md", was=("targets/a.md",)),
+                P(book="user", path="tutorial/b.md", action="move", batch="b", old="get-started/b.md"),
+                P(book="user", path="guide/deploy/d.md", action="move", batch="b", old="operate/d.md"),
+                P(book="user", path="guide/deploy/d.md", action="merge-into guide/deploy/d.md", batch="b", old="targets/stub.md"),
+            ]
+            (user / "targets").mkdir(parents=True)
+            (user / "targets/a.md").write_text("# A\n")
+            assert pages[0].current() == user / "targets/a.md", "a page moved twice starts from its latest path"
+            assert "mv    targets/a.md -> user:guide/platforms/a.md" in describe(pages[0]), describe(pages[0])
+            (user / "targets/a.md").unlink()
+            for f in ("guide/platforms/a.md", "tutorial/b.md", "guide/deploy/d.md"):
+                (user / f).parent.mkdir(parents=True, exist_ok=True)
+                (user / f).write_text("# x\n")
+            toml = ('book_run = "targets/a.md#run-on-qemu"\nbook_flash = "old/a.md#flash"\n'
+                    'chapter = "get-started/b.md"\nbook_run = "targets/stub.md#x"\nbook_run = "elsewhere/z.md#q"\n')
+            got, n = remap_registry_text(pages, toml)
+            want = ('book_run = "guide/platforms/a.md#run-on-qemu"\nbook_flash = "guide/platforms/a.md#flash"\n'
+                    'chapter = "tutorial/b.md"\nbook_run = "guide/deploy/d.md#x"\nbook_run = "elsewhere/z.md#q"\n')
+            assert (got, n) == (want, 4), f"self-test: registry remap gave {got!r} ({n})"
+            js = '{"chapter": "targets/a.md", "chapter_build": "build-board", "book_run": "get-started/b.md#run"}'
+            got, n = remap_registry_text(pages, js)
+            assert got == '{"chapter": "guide/platforms/a.md", "chapter_build": "build-board", "book_run": "tutorial/b.md#run"}', got
+            assert stale_redirect(pages, "old/a.html", "../targets/a.html") == "guide/platforms/a.html"
+            assert stale_redirect(pages, "x/y.html", "../tutorial/b.html") is None, "a live redirect is kept"
+        finally:
+            USER_SRC = saved[0]
+            bp.BOOKS.clear()
+            bp.BOOKS.update(saved[1])
+
+
 # --------------------------------------------------------------------- main
 
 
-def repair(pages: list[bp.Page]) -> None:
+def repair(pages: list[bp.Page]) -> int:
     # Every mapped page whose old file is gone (moved, or merged by hand in
     # W5) keeps its old URL. Idempotent: existing rows are left alone.
-    add_redirects([p for p in pages if p.old and p.verb in ("move", "split", "merge-into")
-                   and not (USER_SRC / p.old).exists()])
+    add_redirects([p for p in pages if p.formers and p.verb in ("move", "split", "merge-into")
+                   and not any((USER_SRC / f).exists() for f in p.formers)], pages)
     write_summaries(pages)
     n_links = repair_links(pages)
     n_lit = repair_literals(pages)
     n_doc = repair_doc_links(pages)
+    n_reg = repair_registry(pages)
     print(f"book-move: SUMMARY rebuilt; {n_links} link(s) repaired; {n_lit} file(s) with path literals "
-          f"rewritten; {n_doc} doc link(s) repointed")
+          f"rewritten; {n_doc} doc link(s) repointed; {n_reg} registry field(s) remapped")
+    return n_reg
 
 
 def main() -> int:
@@ -546,6 +728,7 @@ def main() -> int:
     g.add_argument("--summary", action="store_true")
     g.add_argument("--check-summary", action="store_true")
     a = ap.parse_args()
+    self_test()
     pages = bp.load()
     errs = bp.check(pages)
     if errs:
@@ -563,7 +746,8 @@ def main() -> int:
         for s in stale:
             print(f"{s}: differs from the page map; run scripts/book-move.py --summary")
         return 1 if stale else 0
-    repair(pages)
+    if repair(pages):
+        regenerate(pages)
     return 0
 
 

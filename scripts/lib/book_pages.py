@@ -1,15 +1,19 @@
 """The page map of both books, in one place (RFC-0123 D2, phase-532 W0).
 
 `book/page-map.toml` holds one row per page of the nano-ros Book (`book/`)
-and nano-ros Internals (`book-internals/`): where the page is today (`old`),
-which book and path it belongs at (`book`, `path`), what phase-532 does to it
+and nano-ros Internals (`book-internals/`): where the page was when the map
+was seeded (`old`), where it lived between later moves (`was`, oldest first),
+which book and path it belongs at (`book`, `path`), what is done to it
 (`action`) and in which work item (`batch`). Gates and generators that need to
 know "which pages are the user book" or "where did this page go" ask this
 module instead of hardcoding `book/src/<dir>/*.md` globs.
 
-A page's *current* location is `old` until its batch has run and `path`
-after; `current()` answers by looking at the tree, so the same map serves
-every step of the migration without a "done" flag to keep in sync.
+A page's *current* location is `old` (or its latest `was`) until its batch
+has run and `path` after; `current()` answers by looking at the tree, so the
+same map serves every step of the migration without a "done" flag to keep in
+sync. A page moved a second time (phase-537 W1) keeps its seeded `old`, so
+generators that name it by that path need no edit, and gains the path it
+leaves as the last entry of `was`.
 """
 
 from __future__ import annotations
@@ -53,6 +57,23 @@ PARTS = {
         ("release", "Release"),
     ],
 }
+# RFC-0124 D1: the User guide's task groups, one subdirectory each. SUMMARY
+# renders a group as an unnumbered heading entry with its pages nested under
+# it, in this order; pages in a part directory with no group stay flat.
+GROUPS = {
+    "user": {
+        "guide": [
+            ("rmw", "RMW and communication"),
+            ("contracts", "Contracts and sizing"),
+            ("build", "Build and configure"),
+            ("platforms", "Platforms"),
+            ("realtime", "Real-time"),
+            ("deploy", "Deploy and debug"),
+            ("port", "Port from ROS 2"),
+        ],
+    },
+    "internals": {},
+}
 ACTIONS = ("keep", "move", "merge-into", "split", "new", "import")
 
 
@@ -62,9 +83,27 @@ class Page:
     path: str  # path under BOOKS[book] after phase-532
     action: str  # keep | move | merge-into <p> | split <p> | new <owner>
     batch: str
-    old: str | None = None  # path under book/src today; None for a new page
+    old: str | None = None  # path under book/src when the map was seeded; None for a new page
     generated: str | None = None
     note: str | None = None
+    was: tuple[str, ...] = ()  # later user-book paths it left, oldest first
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "was", tuple(self.was or ()))
+
+    @property
+    def formers(self) -> list[str]:
+        """Every user-book path the page has had before `path`, oldest first:
+        its seeded `old`, then each `was`. Each keeps a redirect and is
+        followed by the link and literal repair."""
+        return ([self.old] if self.old else []) + [w for w in self.was if w != self.path]
+
+    @property
+    def group(self) -> str | None:
+        """The User guide group directory (`guide/<group>/page.md`), if any."""
+        bits = self.path.split("/")
+        names = {g for g, _ in GROUPS.get(self.book, {}).get(bits[0], [])}
+        return bits[1] if len(bits) > 2 and bits[1] in names else None
 
     @property
     def verb(self) -> str:
@@ -110,8 +149,9 @@ class Page:
             return self.target
         if self.verb == "import":
             return None  # not a book page until its batch runs; see `source`
-        if self.old and (BOOKS["user"] / self.old).exists():
-            return BOOKS["user"] / self.old
+        for f in reversed(self.formers):  # the latest path it had first
+            if (BOOKS["user"] / f).exists():
+                return BOOKS["user"] / f
         return None
 
 
@@ -196,7 +236,7 @@ def relink(text: str, seeded_old: str) -> str:
     pages = load()
     here = page_file(seeded_old)
     seeded_dir = BOOKS["user"] / pathlib.PurePosixPath(seeded_old).parent
-    olds = by_old(pages)
+    olds = by_former(pages)
 
     def sub(m):
         target = m.group(2)
@@ -247,9 +287,19 @@ def by_old(pages: list[Page]) -> dict[str, Page]:
     return {p.old: p for p in pages if p.old}
 
 
+def by_former(pages: list[Page]) -> dict[str, Page]:
+    """Every former user-book path (seeded `old` and each `was`) -> its row.
+    A link or literal naming any path a page once had follows it here."""
+    out: dict[str, Page] = {}
+    for p in pages:
+        for f in p.formers:
+            out.setdefault(f, p)
+    return out
+
+
 def new_path(old: str, pages: list[Page] | None = None) -> tuple[str, str] | None:
     """(book, path) a page that lived at book/src/<old> belongs at, or None."""
-    p = by_old(pages if pages is not None else load()).get(old)
+    p = by_former(pages if pages is not None else load()).get(old)
     if p is None:
         return None
     if p.verb == "merge-into" and p.arg:
@@ -281,8 +331,8 @@ def user_page_paths(pages: list[Page] | None = None) -> set[str]:
         if p.book != "user":
             continue
         out.add(f"book/src/{p.path}")
-        if p.old:
-            out.add(f"book/src/{p.old}")
+        for f in p.formers:
+            out.add(f"book/src/{f}")
     return out
 
 
@@ -317,10 +367,12 @@ def check(pages: list[Page]) -> list[str]:
             errs.append(f"{where}: `{p.verb}` needs an argument")
         if p.verb == "keep" and p.old != p.path:
             errs.append(f"{p.old}: `keep` but path differs ({p.path}); use `move`")
-        if p.old:
-            if p.old in seen_old:
-                errs.append(f"{p.old}: two rows")
-            seen_old.add(p.old)
+        for f in p.formers:
+            if f in seen_old:
+                errs.append(f"{f}: two rows")
+            seen_old.add(f)
+        if p.was and not p.old:
+            errs.append(f"{p.path}: `was` needs an `old` path")
         if p.verb == "merge-into":
             if p.arg != p.path:
                 errs.append(f"{p.old}: merge-into {p.arg} but path is {p.path}")
