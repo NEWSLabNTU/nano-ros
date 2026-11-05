@@ -36,8 +36,16 @@
 # cmake only links it — and the platform shim now follows the same rule.
 #
 # ---------------------------------------------------------------------------
-# Prerequisites — build these first; this module only LINKS them
+# Prerequisites — this module only LINKS them
 # ---------------------------------------------------------------------------
+#
+# From an INSTALLED toolchain: nothing. The release ships both archives and the
+# placed headers prebuilt under `<sdk-root>/prebuilt/px4-posix/`
+# (phase-541, `scripts/stage-px4-posix-archives.sh`), and this module reads
+# them when its root is an SDK root (no `.git`). A bridge module (a networked
+# BACKENDS) still needs its own archive, from a checkout.
+#
+# From a CHECKOUT, build these first:
 #
 #   python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c \
 #       --dest build/nros-px4/placed -- \
@@ -77,7 +85,67 @@ endif()
 # under either, the archive cargo just built was "not found" and the headers
 # paired against were another build's.
 include("${NROS_REPO_DIR}/cmake/NanoRosLocate.cmake")
-nros_locate_artifact(_NROS_PX4_CPP_A_DEFAULT cpp-archive PROFILE release CONTEXT "NanoRosPx4Module")
+
+# --- Checkout, or an installed toolchain? -----------------------------------
+#
+# phase-541 (RFC-0097 D13, RFC-0039 "Installed toolchain", issue 2289). A
+# released toolchain ships the two archives and the placed headers PREBUILT,
+# under `<sdk-root>/prebuilt/px4-posix/` (`scripts/stage-px4-posix-archives.sh`),
+# because an installed SDK root has no checkout to run cargo in. A checkout
+# keeps building them itself, exactly as before.
+#
+# Which root this is decides the defaults; there is no precedence between the
+# two. A checkout (it has `.git`, a directory or a worktree's file) never reads
+# a prebuilt dir, so one a contributor staged by hand cannot shadow the tree
+# they are editing. An SDK root (no `.git`: `stage-sdk-root.sh` ships it from
+# `git archive`) reads only the prebuilt dir. Explicit `-D…` / env overrides
+# beat both, as they always have.
+set(_NROS_PX4_PREBUILT_DIR "${NROS_REPO_DIR}/prebuilt/px4-posix")
+set(_NROS_PX4_PREBUILT_STAMP "${_NROS_PX4_PREBUILT_DIR}/nros-px4-prebuilt.toml")
+if(EXISTS "${NROS_REPO_DIR}/.git")
+    set(_NROS_PX4_INSTALLED FALSE)
+else()
+    set(_NROS_PX4_INSTALLED TRUE)
+endif()
+set(_NROS_PX4_USE_PREBUILT FALSE)
+if(_NROS_PX4_INSTALLED AND EXISTS "${_NROS_PX4_PREBUILT_STAMP}")
+    set(_NROS_PX4_USE_PREBUILT TRUE)
+endif()
+
+# The feature set the uORB archive is built with: ONE spelling, read by the
+# remedy below and by `scripts/stage-px4-posix-archives.sh`, which greps this
+# exact line (keep it on one line).
+set(_NROS_PX4_UORB_FEATURES "alloc,env,log,panic-platform,rmw-cffi,platform-posix")
+
+if(_NROS_PX4_USE_PREBUILT)
+    set(_NROS_PX4_CPP_A_DEFAULT "${_NROS_PX4_PREBUILT_DIR}/lib/libnros_cpp.a")
+    set(_NROS_PX4_PLATFORM_A_DEFAULT "${_NROS_PX4_PREBUILT_DIR}/lib/libnros_platform_posix.a")
+    set(_NROS_PX4_HEADER_DIR_DEFAULT "${_NROS_PX4_PREBUILT_DIR}/placed")
+
+    # The prebuilt dir must belong to THIS toolchain. The release stages it from
+    # the same commit as the SDK root and copies the manifest's `nano_ros` into
+    # the stamp, so the two agree by construction. This catches a prebuilt dir
+    # carried into another toolchain's prefix, before the pairing check below
+    # reports it as a less legible header/archive mismatch.
+    file(STRINGS "${_NROS_PX4_PREBUILT_STAMP}" _px4_stamp_line REGEX "^nano_ros = ")
+    set(_px4_manifest "${NROS_REPO_DIR}/../nros/manifest.toml")
+    if(EXISTS "${_px4_manifest}")
+        file(STRINGS "${_px4_manifest}" _px4_manifest_line REGEX "^nano_ros = ")
+        if(NOT _px4_stamp_line STREQUAL _px4_manifest_line)
+            message(FATAL_ERROR
+                "NanoRosPx4Module: the prebuilt PX4 POSIX archives belong to another toolchain.\n"
+                "    ${_NROS_PX4_PREBUILT_STAMP}: ${_px4_stamp_line}\n"
+                "    ${_px4_manifest}: ${_px4_manifest_line}\n"
+                "Reinstall the nros toolchain this SDK root came with; its release stages "
+                "both from one commit.")
+        endif()
+    endif()
+    message(STATUS "nano-ros: PX4 POSIX archives: prebuilt, from ${_NROS_PX4_PREBUILT_DIR}")
+else()
+    nros_locate_artifact(_NROS_PX4_CPP_A_DEFAULT cpp-archive PROFILE release CONTEXT "NanoRosPx4Module")
+    set(_NROS_PX4_PLATFORM_A_DEFAULT "${NROS_REPO_DIR}/build/nros-platform-posix/libnros_platform_posix.a")
+    set(_NROS_PX4_HEADER_DIR_DEFAULT "${NROS_REPO_DIR}/build/nros-px4/placed")
+endif()
 
 # Issue 1824 — the headers come from the directory the archive's own cargo run
 # PLACED them in, never the target dir's `nros-{c,cpp}-generated/`, which every
@@ -89,7 +157,7 @@ if(DEFINED NROS_PX4_HEADER_DIR AND NOT NROS_PX4_HEADER_DIR STREQUAL "")
 elseif(NOT "$ENV{NROS_PX4_HEADER_DIR}" STREQUAL "")
     set(_NROS_PX4_HEADER_DIR "$ENV{NROS_PX4_HEADER_DIR}")
 else()
-    set(_NROS_PX4_HEADER_DIR "${NROS_REPO_DIR}/build/nros-px4/placed")
+    set(_NROS_PX4_HEADER_DIR "${_NROS_PX4_HEADER_DIR_DEFAULT}")
 endif()
 nros_locate_artifact(_NROS_PX4_C_INCLUDE c-include PLACED_DIR "${_NROS_PX4_HEADER_DIR}" CONTEXT "NanoRosPx4Module")
 nros_locate_artifact(_NROS_PX4_CPP_INCLUDE cpp-include PLACED_DIR "${_NROS_PX4_HEADER_DIR}" CONTEXT "NanoRosPx4Module")
@@ -102,7 +170,23 @@ nros_locate_artifact(_NROS_PX4_C_CONFIG_HEADER c-config-header PLACED_DIR "${_NR
 # had).
 # profile-literal-ok: prebuilt archive — the instruction that builds it
 set(_NROS_PX4_UORB_ARCHIVE_CMD
-    "python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest ${_NROS_PX4_HEADER_DIR} -- cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release --message-format=json-render-diagnostics")
+    "python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest ${_NROS_PX4_HEADER_DIR} -- cargo build -p nros-cpp --no-default-features --features ${_NROS_PX4_UORB_FEATURES} --release --message-format=json-render-diagnostics")
+set(_NROS_PX4_PLATFORM_ARCHIVE_CMD
+    "cmake -S ${NROS_REPO_DIR}/packages/platform/nros-platform-posix -B ${NROS_REPO_DIR}/build/nros-platform-posix && cmake --build ${NROS_REPO_DIR}/build/nros-platform-posix")
+if(_NROS_PX4_USE_PREBUILT)
+    # phase-541 — nothing to build: the release shipped these. A remedy that
+    # ran cargo inside the SDK root would be a contributor step (RFC-0117).
+    set(_NROS_PX4_UORB_ARCHIVE_CMD
+        "(nothing to build: this installed toolchain ships them prebuilt under ${_NROS_PX4_PREBUILT_DIR}; reinstall the toolchain if they are damaged)")
+    set(_NROS_PX4_PLATFORM_ARCHIVE_CMD "${_NROS_PX4_UORB_ARCHIVE_CMD}")
+elseif(_NROS_PX4_INSTALLED)
+    # An SDK root with no prebuilt dir: a toolchain released before phase-541,
+    # or a source export. Say both ways out rather than a build command against
+    # a root that is not a checkout.
+    set(_NROS_PX4_UORB_ARCHIVE_CMD
+        "(this SDK root, ${NROS_REPO_DIR}, ships no prebuilt PX4 POSIX archives at ${_NROS_PX4_PREBUILT_DIR}. Install an nros toolchain released with them (phase-541 onward), or build from a nano-ros checkout, where this module names the build commands)")
+    set(_NROS_PX4_PLATFORM_ARCHIVE_CMD "${_NROS_PX4_UORB_ARCHIVE_CMD}")
+endif()
 
 # --- Resolve the two prebuilt archives --------------------------------------
 function(_nros_px4_resolve_archive OUT_VAR CACHE_VAR ENV_VAR DEFAULT_PATH BUILD_HINT)
@@ -120,7 +204,7 @@ function(_nros_px4_resolve_archive OUT_VAR CACHE_VAR ENV_VAR DEFAULT_PATH BUILD_
         message(FATAL_ERROR
             "nros_px4_add_module: required nano-ros archive not found:\n"
             "    ${_p}\n"
-            "Build it first:\n"
+            "To get it:\n"
             "    ${BUILD_HINT}\n"
             "or point at an existing one with -D${CACHE_VAR}=<path> / ${ENV_VAR}=<path>.")
     endif()
@@ -137,8 +221,8 @@ _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
     "${_NROS_PX4_UORB_ARCHIVE_CMD}")
 
 _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFORM_ARCHIVE
-    "${NROS_REPO_DIR}/build/nros-platform-posix/libnros_platform_posix.a"
-    "cmake -S ${NROS_REPO_DIR}/packages/platform/nros-platform-posix -B ${NROS_REPO_DIR}/build/nros-platform-posix && cmake --build ${NROS_REPO_DIR}/build/nros-platform-posix")
+    "${_NROS_PX4_PLATFORM_A_DEFAULT}"
+    "${_NROS_PX4_PLATFORM_ARCHIVE_CMD}")
 
 # The NETWORKED backends this helper knows, in ONE place. Three sites read it —
 # the BACKENDS dispatch, the unknown-backend error, and the archive precheck
@@ -488,6 +572,25 @@ function(nros_px4_add_module)
         endif()
     endforeach()
 
+    # phase-541 — the archive an installed toolchain ships is uORB-only (its
+    # stamp says `networked_backends = []`, and the release refuses to stage
+    # one that carries any). A bridge module needs an archive with its
+    # networked backend compiled in, which only a checkout builds. Said here,
+    # at configure, rather than by the llvm-nm precheck below, which a host
+    # with no Rust toolchain skips.
+    if(_networked_backends AND _NROS_PX4_USE_PREBUILT
+            AND _NROS_PX4_CPP_A STREQUAL _NROS_PX4_CPP_A_DEFAULT)
+        string(REPLACE ";" " " _nets "${_networked_backends}")
+        message(FATAL_ERROR
+            "nros_px4_add_module(${NPX_MODULE}): BACKENDS names '${_nets}', but the "
+            "PX4 POSIX archive this toolchain ships is uORB-only:\n"
+            "    ${_NROS_PX4_CPP_A}\n"
+            "A uORB->RMW bridge links an archive with its networked backend compiled "
+            "in; build one from a nano-ros checkout (`just px4 build-bridge-example`) "
+            "and point at it with -DNROS_CPP_ARCHIVE=<path> / NROS_CPP_ARCHIVE=<path> "
+            "and -DNROS_PX4_HEADER_DIR=<its placed headers>.")
+    endif()
+
     px4_add_module(${_fwd})
 
     if(NOT TARGET ${NPX_MODULE})
@@ -699,6 +802,14 @@ function(nros_px4_add_module)
                     "-DNROS_CPP_ARCHIVE=<path> / NROS_CPP_ARCHIVE=<path>.")
             endif()
         endforeach()
+    elseif(_NROS_PX4_USE_PREBUILT AND _NROS_PX4_CPP_A STREQUAL _NROS_PX4_CPP_A_DEFAULT)
+        # phase-541 — an installed toolchain's host usually has no Rust, so no
+        # llvm-nm. The shipped archive's backend set was checked when it was
+        # staged (no networked backend; the stamp says so), and a networked
+        # BACKENDS against it was refused above, so (a) and (b) hold already.
+        message(STATUS
+            "nros_px4_add_module: the prebuilt archive is uORB-only, checked at "
+            "release (${_NROS_PX4_PREBUILT_STAMP})")
     else()
         message(STATUS
             "nros_px4_add_module: llvm-nm not found via rustc sysroot; "

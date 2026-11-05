@@ -5,16 +5,15 @@ status: open
 type: enhancement
 area: release, px4, cmake, book
 purpose: [field, industrial]
-related: [phase-537, phase-527]
+related: [phase-537, phase-527, phase-541]
 found: 2026-11-05
 ---
 
-**Home: none yet.** Phases 527, 528 and 531 do not cover it (CLI/build owner,
-2026-11-05). The recommendation is a release-packaging work item: ship the
-archives prebuilt, as `nros toolchain stage-packages` ships command packages.
-Until a phase takes it, the book's PX4 page stays in User guide › Platforms,
-waiting on this issue (maintainer ruling, 2026-11-05), and its `px4` probe
-track carries an `awaits` naming it.
+**Home: [phase-541](../roadmap/phase-541-px4-posix-prebuilt-archives.md).**
+The maintainer chose option 1 below (2026-11-06): the release ships the
+archives prebuilt (RFC-0097 D13). Until phase-541 merges, the book's PX4 page
+stays in User guide › Platforms, waiting on this issue (maintainer ruling,
+2026-11-05), and its `px4` probe track carries an `awaits` naming it.
 
 ## Measured
 

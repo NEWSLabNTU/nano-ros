@@ -297,6 +297,51 @@ report what a build will need.
 And `nros doctor` with no workspace should verify the INSTALL — launcher, store,
 pin resolution — rather than requiring a workspace it does not have.
 
+## D13 — Build inputs a user build LINKS ship prebuilt: the PX4 POSIX archives
+
+*Added 2026-11-06 (phase-541, issue 2289). Maintainer decision: option A,
+ship them prebuilt; a user build verb (`nros px4 deps`) was rejected.*
+
+A PX4 external module does not compile nano-ros's runtime inside PX4's cmake
+(PX4's warning set does not survive it, RFC-0039). `NanoRosPx4Module.cmake`
+LINKS two archives and compiles against the config headers that came out of
+the same cargo run. A checkout builds them; an installed SDK root has nothing to
+build them with that is not a contributor step (cargo inside the SDK root,
+RFC-0117). So the toolchain artifact carries them, built by the release job from
+the commit it records, for the one host target the release has:
+
+```text
+share/nano-ros/prebuilt/px4-posix/
+  lib/libnros_cpp.a              nros-cpp, uORB feature set, no networked backend
+  lib/libnros_platform_posix.a   the C platform shim
+  placed/nros-c-generated/rclc/detail/nros_config_generated.h
+  placed/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h
+  nros-px4-prebuilt.toml         nano_ros commit, target, features, rustc
+```
+
+Measured on x86_64-unknown-linux-gnu, rustc 1.99.0: `libnros_cpp.a`
+14,954,910 B, `libnros_platform_posix.a` 56,198 B; the directory is 15.06 MB
+uncompressed and adds 4.08 MB to the zstd asset.
+
+The feature set has one spelling, `_NROS_PX4_UORB_FEATURES` in the module, which
+`scripts/stage-px4-posix-archives.sh` reads. The module reads the prebuilt dir
+only when its root is an SDK root (no `.git`), never in a checkout, so a stale
+prebuilt dir cannot shadow a tree someone is editing.
+
+**Why the archives cannot disagree with the toolchain.** Same job, same commit
+as the SDK root. The stamp's `nano_ros` is copied from `share/nros/manifest.toml`
+and the module compares the two at configure, so a prebuilt dir carried into
+another prefix is refused naming both commits. The headers pair with the archive
+by content (`nros_assert_archive_pairs_with_header`), checked at staging and at
+every configure. The archives contain no PX4 code (the uORB backend compiles in
+PX4's own build from the SDK root's sources), so they are tied to the host ABI
+(glibc floor of the release runner), not to a PX4 version.
+
+**Scope.** POSIX SITL only. A uORB-to-RMW bridge links a networked backend and
+still builds its archive from a checkout; the module refuses a networked
+`BACKENDS` against the shipped archive. Prebuilt NuttX archives for Pixhawk
+boards are per-board cross builds and a separate question (issue 2289).
+
 ## Order of work
 
 1. **D5** — index out of the binary. Smallest, removes 70/60d of release

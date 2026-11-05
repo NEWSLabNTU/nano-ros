@@ -76,6 +76,12 @@
 #                                     descriptor, `bin/`): the nano-ros
 #                                     underlay `nros run` resolves a runner
 #                                     from (RFC-0119 D4, phase-527 W6)
+#   share/nano-ros/prebuilt/px4-posix/
+#                                     the PX4 POSIX (SITL) archives and their
+#                                     placed headers, prebuilt, so a PX4
+#                                     external module builds against an
+#                                     installed toolchain with no cargo step
+#                                     (RFC-0097 D13, phase-541)
 #   share/nros/nros-sdk-index.toml    a released `nros` has no checkout to find
 #                                     an index in, so `nros setup <board>` fails
 #                                     outright without this (phase-431 W5,
@@ -313,6 +319,19 @@ jobs:
           # part of the nano-ros root, so a user's package overlays it under
           # the same rules as one in a checkout (W2b/W2c).
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" toolchain stage-packages "$stage"
+          # phase-541 (RFC-0097 D13, issue 2289) — the PX4 POSIX build inputs,
+          # PREBUILT: the uORB `libnros_cpp.a`, `libnros_platform_posix.a` and
+          # the placed config headers from the same cargo run, into
+          # `share/nano-ros/prebuilt/px4-posix/`. A PX4 external module links
+          # them (`NanoRosPx4Module.cmake`); without them an installed
+          # toolchain's PX4 configure stops at "required nano-ros archive not
+          # found", whose only fix was a cargo build inside the SDK root. Built
+          # here, after the manifest, because the stamp copies the manifest's
+          # `nano_ros` commit — that is what the module checks the archives
+          # against. The script verifies header/archive pairing itself.
+          bash scripts/stage-px4-posix-archives.sh "$stage"
+          test -f "$stage/share/nano-ros/prebuilt/px4-posix/lib/libnros_cpp.a"
+          test -f "$stage/share/nano-ros/prebuilt/px4-posix/lib/libnros_platform_posix.a"
           test -x "$stage/share/nros/packages/nros_runner_qemu/bin/nros-runner-qemu"
           test -x "$stage/share/nros/packages/nros_runner_native/bin/nros-runner-native"
           # Prefix-rooted, the mirror shape every other dist in the index uses,
@@ -374,6 +393,15 @@ jobs:
           # protocol's handshake (RFC-0119 D6).
           "$RUNNER_TEMP/probe/sdk/nros/${{ inputs.version }}/share/nros/packages/nros_runner_native/bin/nros-runner-native" describe
           "$installed" dev ws providers | grep -q "nros_runner_native"
+          # phase-541 — the PX4 POSIX archives landed in the SDK root the
+          # installed binary answers, and their stamp names the commit the
+          # manifest does (the check `NanoRosPx4Module.cmake` makes at a PX4
+          # configure).
+          px4_pre="$(env -u NROS_REPO_DIR "$installed" sdk-root)/prebuilt/px4-posix"
+          test -f "$px4_pre/lib/libnros_cpp.a"
+          test -f "$px4_pre/lib/libnros_platform_posix.a"
+          grep -x "$(grep '^nano_ros = ' "$RUNNER_TEMP/probe/sdk/nros/${{ inputs.version }}/share/nros/manifest.toml")" \
+              "$px4_pre/nros-px4-prebuilt.toml"
           # RFC-0097 D7 — the manifest must survive the install and be READ back
           # by the installed binary, from the file, at the prefix it landed in.
           # An asset whose manifest the CLI cannot read is an asset for which
