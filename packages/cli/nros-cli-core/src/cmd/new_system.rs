@@ -335,6 +335,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             // edits it to drop the `_pkg` suffix.
             name: pkg.clone(),
             group_tiers: std::collections::BTreeMap::new(),
+            retired_group_tiers: Default::default(),
             params: Default::default(),
             params_files: Vec::new(),
             entities: None,
@@ -406,6 +407,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         bridges: Vec::new(),
         models: Vec::new(),
         tiers: std::collections::BTreeMap::new(),
+        retired_tiers: Default::default(),
         node_overrides: Vec::new(),
         safety: None,
         retired_param_services: Default::default(),

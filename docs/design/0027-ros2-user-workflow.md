@@ -11,7 +11,7 @@ superseded-by: null
 
 # ROS 2 User Workflow for nano-ros
 
-> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` still read this release with a `deprecated-spelling` warning, and rlm R+1 refuses them. The prose and nano-ros's own names move in W2.
+> **Phase 536 W1 (rlm v0.3.10):** the `system.toml` keys are `[tasks.<name>]` and `[[component]] group_tasks` (a tier is a task, play_launch phase 99); the examples here use them. `[tiers.*]` and `group_tiers` are refused since rlm v0.3.11 (phase 536 W3), naming the new key and `play_launch migrate`. The prose and nano-ros's own names move in W2.
 
 **Status:** Stable (origin/rationale doc — current layout authority is RFC-0024/0025)
 **Related:** [Phase 123](../roadmap/archived/phase-123-build-and-api-revision.md), [RTOS orchestration](0015-rtos-orchestration.md), [Colcon build type](archived/colcon-nano-ros-build-type.md)

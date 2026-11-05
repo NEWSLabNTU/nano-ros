@@ -99,7 +99,7 @@ pub fn apply_model_execution(
 ) -> Result<()> {
     system.tiers = model
         .execution
-        .tiers
+        .tasks
         .iter()
         .map(|(name, t)| (name.clone(), tier_from_model(t, target_rtos)))
         .collect();
@@ -108,7 +108,7 @@ pub fn apply_model_execution(
 
     let mut overrides: BTreeMap<String, Vec<CallbackGroupOverride>> = BTreeMap::new();
     for (key, tier) in &model.execution.bindings {
-        if !model.execution.tiers.contains_key(tier) {
+        if !model.execution.tasks.contains_key(tier) {
             bail!("SystemModel binding '{key}' references undeclared tier '{tier}'");
         }
         // `<FQN>/<group>` vs `<FQN>`: the segment before the last is the
@@ -235,7 +235,7 @@ pub fn apply_model_execution(
 }
 
 /// phase-296 W5.5 follow-up — the RFC-0052 realizer as the DERIVED-schedule
-/// path: when the model declares NO `execution.tiers`, derive per-node tiers
+/// path: when the model declares NO `execution.tasks`, derive per-node tiers
 /// from the contract layer (`node_paths` + criticality) via the shared
 /// platform-agnostic core + the RTOS realizer, and synthesize them into the
 /// bringup as ordinary `[tasks.*]` + `[[node_overrides]]` rows so the ENTIRE
@@ -243,7 +243,7 @@ pub fn apply_model_execution(
 /// consumes them unchanged.
 ///
 /// issue 1426 — AUTHORED still wins, per FACT rather than per TABLE. This used
-/// to run only when `model.execution.tiers` was empty and to ASSIGN over
+/// to run only when `model.execution.tasks` was empty and to ASSIGN over
 /// whatever was there; it now runs whenever
 /// [`nros_orchestration_ir::derive::placement_is_unauthored`] holds and MERGES:
 /// derived `derived-<node>` tiers are added, allocated placements are installed

@@ -675,13 +675,13 @@ pub fn run(args: Args) -> Result<()> {
         eprintln!(
             "codegen-system: execution layer from SystemModel {} ({} tier(s), {} binding(s))",
             model_path.display(),
-            model.execution.tiers.len(),
+            model.execution.tasks.len(),
             model.execution.bindings.len(),
         );
         // phase-296 W5.5 follow-up — an UNAUTHORED placement is derived from
         // the contract layer via the RFC-0052 realizer.
         //
-        // issue 1426 — this asked `model.execution.tiers.is_empty()`, which is
+        // issue 1426 — this asked `model.execution.tasks.is_empty()`, which is
         // a question about the TABLE where the rule is about a FACT: one
         // component binding to one authored `[tasks.ctrl.zephyr]` disabled the
         // derivation for every OTHER node in the image, leaving each on the
@@ -2524,7 +2524,7 @@ execution:
     }
 
     /// phase-296 W5.12 — a workspace whose committed model declares NO
-    /// `execution.tiers`, only the CONTRACT layer (`node_paths` deadlines +
+    /// `execution.tasks`, only the CONTRACT layer (`node_paths` deadlines +
     /// pub rates). Same two pkgs (callback groups declared) as
     /// `write_tiered_workspace`.
     fn write_derived_workspace(dir: &Path) {

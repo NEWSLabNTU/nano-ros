@@ -354,7 +354,7 @@ pub fn contract_deadline_policies(
     for (tier, contract) in actions {
         let declared = model
             .execution
-            .tiers
+            .tasks
             .get(&tier)
             .and_then(|t| t.deadline_policy.as_deref());
         match declared {

@@ -1,6 +1,7 @@
 # Phase 536 -- Follow rlm's tier rename
 
-**Status (2026-11-05). IN PROGRESS -- W1 in review; W0, W2-W4 not started.
+**Status (2026-11-05). IN PROGRESS -- W1 done (#3127); W3 and W4's survey
+done in their pull request; W0, W2 and W4's docs sweep not started.
 Raised by the play_launch side, as phase 534 was, so nano-ros knows what is
 moving, what it owns, and where it is on the critical path.** Decided (user,
 2026-11-05): `tier` is renamed, in its own phase on both sides. **The word
@@ -229,6 +230,31 @@ Acceptance:
   control, as phase 534's
   `a_schema_3_model_lowers_to_the_same_tables_as_schema_4`.
 
+**Progress (2026-11-05): done in its pull request.** rlm `v0.3.11`
+(`dd3763f`, R+1: `[tiers.*]` / `group_tiers` refused, model schema 5) and
+`packages/cli/third-party/play_launch` at 0.28.0 (`dd660b2d`, a
+fast-forward of `b5243446`). The model's task table is `execution.tasks`:
+the field reads in `nros-orchestration-ir` (`derive.rs`, `ftti_budget.rs`,
+`violation_agreement.rs`), `nros-macros` (`main_macro.rs`), `nros-cli-core`
+(`codegen_system.rs`, `codegen/entry/mod.rs`, `entity_inventory.rs`,
+`model_ingest.rs`, tests) and `nros-launch-resolve` moved. The strict reader
+(`cargo_metadata_schema::SystemToml`) drops W1's serde aliases and refuses
+the old keys as rlm does, by name: `[tiers]` is a `RETIRED_SYSTEM_TABLES`
+row (so the overlay, leaf and `nros::main!` readers refuse it too), a
+component's `group_tiers` is `RETIRED_GROUP_TIERS`; each message names the
+new key and `play_launch migrate`
+(`the_retired_tiers_keys_are_refused_naming_tasks_and_migrate`,
+`a_component_group_tiers_is_refused_naming_group_tasks`). Non-Rust readers:
+`cmd/ws.rs`'s committed-model dim guard reads `execution.tasks` (falling
+back to a pre-schema-5 model's `execution.tiers`); no CMake or Python tool
+reads the model's task table (`scripts/lib/priority_plan.py` reads a
+`system.toml`, now `[tasks.*]` only). Acceptance test:
+`a_schema_4_model_and_its_schema_5_twin_emit_the_same_entry`
+(`nros-cli-core/tests/derived_tiers_precedence.rs`): the resolved task table
+and the emitted typed C++ entry (its task table, priorities and executor
+backing sizes) are identical for a model and its schema-4 twin, and the
+negative control moves the authored priority and sees the entry move.
+
 ### W4 -- Nothing authored needs the refusal; docs say the new word
 
 - Re-run W1's survey just before the R+1 bump: no `system.toml` writes
@@ -238,6 +264,11 @@ Acceptance:
 
 Acceptance: `git grep -i tier` outside `archived/` returns only the other
 senses listed above and the retired-names tables.
+
+**Survey (2026-11-05, W3 branch):** no tracked `system.toml` writes
+`[tiers.*]` or `group_tiers`; comments, examples, the FreeRTOS config
+template, `zephyr/Kconfig` and the RFCs that spelled a key `[tiers.*]` now
+write `[tasks.*]`. The docs sweep waits for W2's names.
 
 ## Order
 

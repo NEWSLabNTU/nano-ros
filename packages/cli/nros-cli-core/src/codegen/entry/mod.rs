@@ -605,7 +605,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     // the plan yet, and the SystemModel carries none.
     let mut tiers: BTreeMap<String, TierDef> = model
         .execution
-        .tiers
+        .tasks
         .iter()
         .map(|(name, t)| {
             (
@@ -765,7 +765,7 @@ fn derive_entry_tiers(
         return Ok(None);
     }
     let model = crate::orchestration::model_ingest::load_model(&plan.launch_file)?;
-    // issue 1426 — the guard was `!model.execution.tiers.is_empty()`, i.e. a
+    // issue 1426 — the guard was `!model.execution.tasks.is_empty()`, i.e. a
     // question about the TABLE. The rule is about a FACT, and it is stated once:
     // `placement_is_unauthored` (rules 1-4). Authored placements still win and
     // are never overwritten below.

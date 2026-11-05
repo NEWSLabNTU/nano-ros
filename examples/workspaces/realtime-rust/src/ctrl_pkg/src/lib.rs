@@ -51,7 +51,7 @@ impl ExecutableNode for Control {
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_ctrl" {
             // Issue 2018 -- on NuttX the `high` level declares a 5 ms budget
-            // per 10 ms (`[tiers.high.nuttx]`), which the kernel's
+            // per 10 ms (`[tasks.high.nuttx]`), which the kernel's
             // SCHED_SPORADIC server enforces. One tick in fifty runs for
             // 8 ms, past the budget, so the kernel demotes the level to its
             // floor priority and the runner reports it ("throttled by the

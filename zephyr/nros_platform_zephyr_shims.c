@@ -506,7 +506,7 @@ int nros_zephyr_report_tier_vs_transport(const char* tier, size_t tier_len, int3
         printk(" (floor %d)%s\n", floor,
                nros_reserved_tasks_dropped > 0 ? " - more tasks not recorded" : "");
         printk("  Intended? then nothing to do. Both numbers are RAW Zephyr k_thread "
-               "priorities, the units a `[tiers.<name>.zephyr] priority` is written "
+               "priorities, the units a `[tasks.<name>.zephyr] priority` is written "
                "in. If NOT intended: a tier at or above the transport starves the RX "
                "drain (issues 0506, 0623); a derived tier is allocated below it out of "
                "the image's own .config (issues 1508, 1537).\n");
@@ -837,7 +837,7 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
 /* ── RT-tier task spawn (issue #128 / RFC-0015 Model 1) ─────────────
  *
  * One `k_thread` per priority tier, RAW Zephyr priority (negatives =
- * cooperative — the `[tiers.<name>.zephyr].priority` value verbatim,
+ * cooperative — the `[tasks.<name>.zephyr].priority` value verbatim,
  * which the POSIX pthread shim above cannot express). Static pool:
  * tier count is a compile-time property of the baked system, so a
  * small fixed pool avoids CONFIG_DYNAMIC_THREAD. C-ABI-shaped so the

@@ -132,7 +132,7 @@ fn dim_keys(d: SchedDim) -> &'static [&'static [&'static str]] {
 fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) -> Vec<String> {
     let bringup = system_toml.parent().expect("system.toml has a parent");
     let mut out = Vec::new();
-    if doc.get("tasks").or_else(|| doc.get("tiers")).is_some() {
+    if doc.get("tasks").is_some() {
         out.push(format!(
             "{} declares a `[tasks]` table — the macro would READ it and never derive",
             system_toml.display()
@@ -205,12 +205,9 @@ fn derived_bringup_problems(system_toml: &std::path::Path, doc: &toml::Value) ->
 /// a `[tasks.<tier>.<rtos>]` sub-table (kernel-scoped) or directly on a
 /// `[tasks.<tier>]` table (generic, applies to every platform)?
 fn key_declared(doc: &toml::Value, rtos: &str, key: &str) -> bool {
-    // Phase 536 W1: `[tasks.*]`; the pre-rename `[tiers.*]` still reads.
-    let Some(tiers) = doc
-        .get("tasks")
-        .or_else(|| doc.get("tiers"))
-        .and_then(|t| t.as_table())
-    else {
+    // Phase 536 W3: `[tasks.*]`; the pre-rename `[tiers.*]` is refused since
+    // rlm v0.3.11, so no tracked file can declare a dim under it.
+    let Some(tiers) = doc.get("tasks").and_then(|t| t.as_table()) else {
         return false;
     };
     for (_tier_name, tier) in tiers {

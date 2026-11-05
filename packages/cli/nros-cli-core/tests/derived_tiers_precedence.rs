@@ -171,7 +171,7 @@ fn a_binding_to_an_undeclared_tier_is_refused_by_name() {
 /// sub-table is rule 2: an ALLOCATION REQUEST, not a table that disables the
 /// derivation.
 ///
-/// Before: `codegen_system.rs` derived only when `model.execution.tiers` was
+/// Before: `codegen_system.rs` derived only when `model.execution.tasks` was
 /// empty, so declaring the tier a binding needs was exactly what turned the
 /// derivation off - "a `group_tasks` binding needs a declared tier, and a
 /// declared tier disables derivation", the dead end the issue describes.
@@ -284,7 +284,7 @@ fn a_tier_that_names_the_transport_is_allocated_above_it() {
 
         let model = resolve_model(&fixture.bringup(), true);
         assert_eq!(
-            model.execution.tiers["ctrl"].above,
+            model.execution.tasks["ctrl"].above,
             names_it.then_some(ReservedBand::Transport),
             "the key reaches the model as written"
         );
@@ -327,7 +327,7 @@ fn a_tier_that_names_the_transport_is_allocated_above_it() {
 ///
 /// So before this fix the acceptance image was not "built with the wrong
 /// priority" - it could not be built at all. `codegen entry` saw a non-empty
-/// `model.execution.tiers`, skipped the derivation, and handed `resolve_tiers` a
+/// `model.execution.tasks`, skipped the derivation, and handed `resolve_tiers` a
 /// tier with a binding and no placement.
 #[test]
 fn without_the_allocation_an_unplaced_tier_cannot_resolve() {
@@ -354,7 +354,7 @@ fn without_the_allocation_an_unplaced_tier_cannot_resolve() {
     }
     let tiers = model
         .execution
-        .tiers
+        .tasks
         .iter()
         .map(|(name, t)| (name.clone(), tier_from_model(t, TARGET_RTOS)))
         .collect();
@@ -570,4 +570,60 @@ fn a_fully_authored_workspace_derives_nothing() {
         vec!["ctrl"],
         "the authored table is the whole table when it authors every placement"
     );
+}
+
+/// phase-536 W3 (acceptance) -- a model saved before rlm v0.3.11 (schema 4:
+/// the task table is `execution.tiers`) and the same system written as
+/// schema 5 (`execution.tasks`) produce the same build artifacts: the resolved
+/// task table and the emitted entry are identical. The negative control moves
+/// the authored priority in the schema-4 twin, and the entry moves with it.
+#[test]
+fn a_schema_4_model_and_its_schema_5_twin_emit_the_same_entry() {
+    let fixture = Fixture::copy("schema-5-twin");
+    let meta = fixture.configure(&["main"]);
+    let all: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
+    fixture.author(
+        "ctrl",
+        &all,
+        "[tasks.ctrl]\n[tasks.ctrl.zephyr]\npriority = 8\n",
+    );
+    let new_path = resolve_model_path(&fixture.bringup(), true);
+    let new_text = std::fs::read_to_string(&new_path).expect("read the resolved model");
+    assert!(
+        new_text.contains("\n  tasks:\n") && !new_text.contains("\n  tiers:\n"),
+        "rlm v0.3.11 writes the schema-5 key:\n{new_text}"
+    );
+    assert!(new_text.contains("version: 5"), "{new_text}");
+    let old_text = new_text
+        .replacen("\n  tasks:\n", "\n  tiers:\n", 1)
+        .replacen("version: 5", "version: 4", 1);
+
+    let artifacts = |text: &str, name: &str| {
+        let path = new_path.with_file_name(name);
+        std::fs::write(&path, text).expect("write the twin");
+        let mut plan =
+            plan_from_model(&path, Some(TARGET_RTOS.to_string())).expect("plan from the model");
+        let index = metadata::ComponentIndex::load(&meta).expect("the cmake metadata loads");
+        metadata::enrich_plan(&mut plan, &index).expect("enrich from the cmake metadata");
+        resolve_plan_sched(&mut plan, TARGET_RTOS).expect("resolve the authored table");
+        let table = format!("{:?}", plan.resolved_tiers);
+        let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
+        // The provenance header names the model file, which differs by
+        // construction; everything the entry builds from must not.
+        let src: String = src
+            .lines()
+            .filter(|l| !l.starts_with("//   launch  ="))
+            .collect::<Vec<_>>()
+            .join("\n");
+        (table, src)
+    };
+    let new = artifacts(&new_text, "schema5.yaml");
+    let old = artifacts(&old_text, "schema4.yaml");
+    assert!(new.0.contains("priority: 8"), "{}", new.0);
+    assert_eq!(old, new, "the schema-4 model emits the schema-5 entry");
+
+    let moved_text = old_text.replacen("priority: 8", "priority: 9", 1);
+    assert_ne!(moved_text, old_text, "the control edits the twin");
+    let moved = artifacts(&moved_text, "schema4-moved.yaml");
+    assert_ne!(moved.1, new.1, "the entry must move with the priority");
 }

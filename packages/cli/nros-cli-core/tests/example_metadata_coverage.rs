@@ -347,9 +347,9 @@ fn derived_tiers_cpp_fixture_declares_four_groupful_components_and_resolves() {
         model.structure.nodes.keys().collect::<Vec<_>>()
     );
     assert!(
-        model.execution.tiers.is_empty(),
+        model.execution.tasks.is_empty(),
         "no execution tier may reach the model from a workspace that authors none: {:?}",
-        model.execution.tiers.keys().collect::<Vec<_>>()
+        model.execution.tasks.keys().collect::<Vec<_>>()
     );
     for (_, node, endpoint, rate) in EXPECTED {
         let fqn = format!("/{node}");

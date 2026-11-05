@@ -808,7 +808,7 @@ pub struct EntityInventory {
     /// still have its parameter store sized, and the reverse.
     params: ParamDeclarations,
     /// Issue 1198 -- how many SCHEDULING TIERS the bringup authors
-    /// (`execution.tiers`), which is a different declaration from the entity
+    /// (`execution.tasks`), which is a different declaration from the entity
     /// one and the only artifact that says anything about scheduling contexts.
     /// Zero for an inventory built from a probe, which sees no model.
     ///
@@ -1243,7 +1243,7 @@ impl TierSlack {
     pub fn tightest(model: &ros_launch_manifest_model::SystemModel) -> Option<Self> {
         model
             .execution
-            .tiers
+            .tasks
             .iter()
             .filter_map(|(name, t)| {
                 let deadline_us = t.deadline.or(t.period)?.as_micros();
@@ -1459,7 +1459,7 @@ impl ImageFrame {
             // service families are what the runtime creates FOR the image,
             // while this is what the integrator authored about how it runs
             // (RFC-0016 tiers, `[tasks.*]` in `system.toml`).
-            tiers: model.execution.tiers.len(),
+            tiers: model.execution.tasks.len(),
             // phase-496 W1 -- the contract-monitor tables, counted by the
             // functions the entry emitters bake them with. An inconsistent
             // model is the emitters' refusal to make, loudly, at codegen; here
@@ -7532,7 +7532,7 @@ contracts:
     fn a_burst_longer_than_the_tightest_tier_slack_is_refused() {
         // `ctrl`: 10 ms period, 2 ms budget, so 8000 us of slack; `slow` is
         // looser and does not bind.
-        let tiers = "execution:\n  tiers:\n    ctrl: { period: 10ms, budget: 2ms }\n    \
+        let tiers = "execution:\n  tasks:\n    ctrl: { period: 10ms, budget: 2ms }\n    \
                      slow: { period: 100ms, budget: 5ms }\n";
         let mut inv = arrival_model(tiers);
         assert_eq!(
@@ -7581,7 +7581,7 @@ contracts:
 
         // A tier with no `budget` is checked against its whole deadline -- an
         // upper bound of its slack, and SAID so.
-        let mut loose = arrival_model("execution:\n  tiers:\n    ctrl: { period: 10ms }\n");
+        let mut loose = arrival_model("execution:\n  tasks:\n    ctrl: { period: 10ms }\n");
         loose.set_board_rx_cost(cost(300, Some(3_000)));
         let line = loose
             .check_rx_arrival()
@@ -7615,7 +7615,7 @@ contracts:
         let line = check.statement().expect("stated, never silent");
         assert!(line.contains("NOT CHECKED"), "{line}");
         // A tier with neither deadline nor period has no slack either.
-        let classless = arrival_model("execution:\n  tiers:\n    ctrl: { class: best_effort }\n");
+        let classless = arrival_model("execution:\n  tasks:\n    ctrl: { class: best_effort }\n");
         assert_eq!(classless.tightest_tier, None);
     }
 

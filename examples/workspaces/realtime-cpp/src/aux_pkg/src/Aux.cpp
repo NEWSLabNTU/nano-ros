@@ -4,7 +4,7 @@
 // Publisher<std_msgs::msg::Int32> (generated serialization). Runs on the `mid`
 // tier (RFC-0015 Model 1, one tier task per tier). Which tier is the bringup's
 // call, not this node's — `demo_bringup/system.toml` carries
-// `group_tiers = { aux = "mid" }`, and the `[tiers.mid.*]` blocks beside it say
+// `group_tasks = { aux = "mid" }`, and the `[tasks.mid.*]` blocks beside it say
 // what `mid` means on each platform. The mid tier is spawned by a spawned tier
 // (boot→mid→low) — a `[aux] tick` proves the #144 chained spawn serialized the
 // declares so this tier's publisher write filter opened.

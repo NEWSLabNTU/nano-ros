@@ -707,17 +707,20 @@ pub struct SystemToml {
     /// The system owner maps the symbolic task names a node's callback groups
     /// reference to per-RTOS task knobs. Empty → the single-task degenerate case.
     ///
-    /// Phase 536 W1 (rlm v0.3.10): the key is `[tasks.*]`; the pre-rename
-    /// `[tasks.*]` is still read this release (rlm's resolver warns
-    /// `deprecated-spelling` and `play_launch migrate` rewrites it), and rlm
-    /// R+1 refuses it. The Rust field keeps its name until W2.
+    /// Phase 536 W3 (rlm v0.3.11): the key is `[tasks.*]`. The pre-rename
+    /// `[tiers.*]` is refused, as rlm refuses it, naming the new key and
+    /// `play_launch migrate` ([`Self::retired_tiers`]).
+    #[serde(default, rename = "tasks", skip_serializing_if = "BTreeMap::is_empty")]
+    pub tiers: BTreeMap<String, TierDef>,
+    /// `[tiers.*]`, refused since rlm v0.3.11: present only to name its
+    /// replacement instead of `deny_unknown_fields`' generic "unknown field".
     #[serde(
         default,
-        rename = "tasks",
-        alias = "tiers",
-        skip_serializing_if = "BTreeMap::is_empty"
+        rename = "tiers",
+        deserialize_with = "refuse_retired_tiers",
+        skip_serializing
     )]
-    pub tiers: BTreeMap<String, TierDef>,
+    pub retired_tiers: RetiredTable,
     /// Phase 228.A — `[[node_overrides]]` deployment-time tier reassignment of a
     /// node's callback groups (RFC-0015 §4.2), without touching the node package.
     #[serde(
@@ -1090,6 +1093,18 @@ fn refuse_retired_transport<'de, D: serde::Deserializer<'de>>(
     _: D,
 ) -> Result<RetiredTable, D::Error> {
     refuse_retired::<D>("transport")
+}
+
+fn refuse_retired_tiers<'de, D: serde::Deserializer<'de>>(_: D) -> Result<RetiredTable, D::Error> {
+    refuse_retired::<D>("tiers")
+}
+
+fn refuse_retired_group_tiers<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<RetiredTable, D::Error> {
+    Err(serde::de::Error::custom(
+        nros_orchestration_ir::retired_tables::RETIRED_GROUP_TIERS,
+    ))
 }
 
 fn refuse_retired_deploy<'de, D: serde::Deserializer<'de>>(_: D) -> Result<RetiredTable, D::Error> {
@@ -1844,16 +1859,23 @@ pub struct SystemComponentEntry {
     /// a cmake component's `CALLBACK_GROUPS` keyword, if any, at the default tier
     /// (`tier_resolver::collect_callback_groups`).
     ///
-    /// Phase 536 W1 (rlm v0.3.10): the key is `group_tasks`; the pre-rename
-    /// `group_tasks` is still read this release. The Rust field keeps its
-    /// name until W2.
+    /// Phase 536 W3 (rlm v0.3.11): the key is `group_tasks`; the pre-rename
+    /// `group_tiers` is refused naming it ([`Self::retired_group_tiers`]).
     #[serde(
         default,
         rename = "group_tasks",
-        alias = "group_tiers",
         skip_serializing_if = "BTreeMap::is_empty"
     )]
     pub group_tiers: BTreeMap<String, String>,
+    /// `group_tiers`, refused since rlm v0.3.11 (see
+    /// [`SystemToml::retired_tiers`]).
+    #[serde(
+        default,
+        rename = "group_tiers",
+        deserialize_with = "refuse_retired_group_tiers",
+        skip_serializing
+    )]
+    pub retired_group_tiers: RetiredTable,
     /// phase-330 W4 — deployment-time parameter values for this component's
     /// node, equivalent to an inline `<param>` in the launch file.
     ///
@@ -2016,6 +2038,39 @@ mod tests {
                 nros_lib.display()
             );
         }
+    }
+
+    /// phase-536 W3 -- the strict reader refuses rlm v0.3.11's retired keys
+    /// as rlm does, naming the new key and `play_launch migrate` (one case per
+    /// key); the new spelling reads.
+    #[test]
+    fn the_retired_tiers_keys_are_refused_naming_tasks_and_migrate() {
+        use super::SystemToml;
+        let head = "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+        let tiers = format!("{head}[tiers.mrm]\nspin_period = \"1ms\"\n");
+        let e = toml::from_str::<SystemToml>(&tiers)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("`[tiers]` is retired"), "{e}");
+        assert!(e.contains("`[tasks.<name>]`"), "{e}");
+        assert!(e.contains("play_launch migrate"), "{e}");
+
+        let group = format!(
+            "{head}[[component]]\npkg = \"p\"\nclass = \"p::C\"\nname = \"n\"\n\
+             group_tiers = {{ main = \"mrm\" }}\n[tasks.mrm]\n"
+        );
+        let e = toml::from_str::<SystemToml>(&group)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("`[[component]] group_tiers` is retired"), "{e}");
+        assert!(e.contains("`group_tasks`"), "{e}");
+        assert!(e.contains("play_launch migrate"), "{e}");
+
+        // Negative control: the same file in the new spelling reads.
+        let ok = group.replace("group_tiers", "group_tasks");
+        let sys = toml::from_str::<SystemToml>(&ok).expect("the new spelling reads");
+        assert_eq!(sys.tiers.keys().collect::<Vec<_>>(), ["mrm"]);
+        assert_eq!(sys.components[0].group_tiers["main"], "mrm");
     }
 
     /// phase-463 W4 -- `[census] on_missing` / `on_stale`, the two policy keys

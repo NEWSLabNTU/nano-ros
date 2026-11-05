@@ -3,7 +3,7 @@
 ///
 /// Publishes a monotonic counter on /ctrl every 10 ms (std_msgs/Int32,
 /// generated C serializer). The cmake CALLBACK_GROUPS declares the "ctrl"
-/// group ID; system.toml [[node_overrides]] maps it to the [tiers.high] tier.
+/// group ID; system.toml [[node_overrides]] maps it to the [tasks.high] tier.
 /// The generated entry creates this node on the high-priority sched context, so
 /// every entity the component creates on it lands there (RFC-0015 §4.2).
 

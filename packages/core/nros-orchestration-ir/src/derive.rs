@@ -1,6 +1,6 @@
 //! phase-296 W5.13 follow-up — the DERIVED-schedule core (RFC-0052).
 //!
-//! When a resolved `SystemModel` declares NO `execution.tiers`, the schedule is
+//! When a resolved `SystemModel` declares NO `execution.tasks`, the schedule is
 //! DERIVED from the contract layer: `mapper_input_from_model` → `chain_aware_rank`
 //! → `realize_rtos` produce a per-node RTOS realization, which this module
 //! synthesizes into ordinary `[tasks.*]` (`derived-<node>`) + `[[node_overrides]]`
@@ -122,7 +122,7 @@ pub fn tiers_named_above_transport(
 ) -> std::collections::BTreeSet<String> {
     model
         .execution
-        .tiers
+        .tasks
         .iter()
         .filter(|(_, t)| {
             names_the_transport(t) && t.platform(target_rtos).is_none() && !authors_any_placement(t)
@@ -275,7 +275,7 @@ pub struct ShadowedPlacement {
 /// placement for this target? THE predicate that decides whether a derivation
 /// runs, in one spelling.
 ///
-/// Before this, three sites asked `model.execution.tiers.is_empty()` instead —
+/// Before this, three sites asked `model.execution.tasks.is_empty()` instead —
 /// `cmd::codegen_system`, `codegen::entry::derive_entry_tiers` and the
 /// `nros::main!` macro — and that question is about the TABLE where the rule is
 /// about a FACT. Precedence, stated once and per fact:
@@ -314,7 +314,7 @@ pub fn placement_is_unauthored(
     callback_groups
         .values()
         .flatten()
-        .any(|g| match model.execution.tiers.get(&g.tier) {
+        .any(|g| match model.execution.tasks.get(&g.tier) {
             // Rule 4 (and an undeclared name, which `apply_model_execution`
             // refuses before this ever matters).
             None => true,
@@ -599,7 +599,7 @@ fn derive_tiers_with_caps(
         // `placement_is_unauthored`; this is where they are applied.
         let mut unbound: Vec<&CallbackGroupDecl> = Vec::new();
         for g in groups.iter() {
-            match model.execution.tiers.get(&g.tier) {
+            match model.execution.tasks.get(&g.tier) {
                 // Rule 4 — the group names no tier (`DEFAULT_TIER`), or names
                 // one `apply_model_execution` will refuse as undeclared.
                 None => unbound.push(g),
@@ -994,7 +994,7 @@ mod tests {
     use crate::{CallbackGroupDecl, resolve_tiers};
 
     /// A contract-only model: control is a tight 5 ms / 100 Hz loop, telem a
-    /// slack 100 ms / 10 Hz loop, NO `execution.tiers`.
+    /// slack 100 ms / 10 Hz loop, NO `execution.tasks`.
     ///
     /// phase-495 W1 - each timer path carries its `trigger` (rlm v0.1.37,
     /// design issue #52): the timer's rate lives on the path, and an empty
@@ -1345,7 +1345,7 @@ mod tests {
     fn a_tier_that_names_the_transport_is_lifted_with_its_leader_only() {
         let mut m = contract_model();
         supervise(&mut m, "/control_node/loop");
-        m.execution.tiers.insert("mrm".into(), Default::default());
+        m.execution.tasks.insert("mrm".into(), Default::default());
         let mut g = BTreeMap::new();
         g.insert("control_node".into(), vec![cbg("main", "mrm")]);
         g.insert("telem_node".into(), vec![cbg("main", "mrm")]);
@@ -1616,7 +1616,7 @@ mod tests {
     #[test]
     fn every_member_that_loses_its_rank_is_reported() {
         let mut m = three_rank_model();
-        m.execution.tiers.insert("mrm".into(), Default::default());
+        m.execution.tasks.insert("mrm".into(), Default::default());
         let mut g = BTreeMap::new();
         for node in ["control_node", "telem_node", "slow_node"] {
             // Two groups on one node bound to the tier are still one member.
@@ -1677,7 +1677,7 @@ mod tests {
     fn a_named_tier_without_supervision_is_lifted_and_reserves_no_supervisor() {
         let m = {
             let mut m = contract_model();
-            m.execution.tiers.insert("fast".into(), Default::default());
+            m.execution.tasks.insert("fast".into(), Default::default());
             m
         };
         let mut g = groups();
@@ -1693,7 +1693,7 @@ mod tests {
     #[test]
     fn naming_the_transport_on_a_plan_without_one_degrades() {
         let mut m = contract_model();
-        m.execution.tiers.insert("fast".into(), Default::default());
+        m.execution.tasks.insert("fast".into(), Default::default());
         let mut g = groups();
         g.insert("telem_node".into(), vec![cbg("main", "fast")]);
         let mut plan = island_plan();

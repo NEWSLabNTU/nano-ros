@@ -338,7 +338,7 @@ fn release(model: &SystemModel, path: &PathContract) -> Option<(f64, String)> {
             bound == node
         })
         .map(|(_, t)| t)?;
-    let ms = model.execution.tiers.get(tier)?.period?.as_millis_f64();
+    let ms = model.execution.tasks.get(tier)?.period?.as_millis_f64();
     Some((
         ms,
         format!("tier `{tier}`'s period, which releases node `{node}`"),

@@ -54,6 +54,13 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
                       `locator`, and `attach` in `[image.<id>.run] nic`",
     },
     RetiredTable {
+        key: "tiers",
+        by: "rlm v0.3.11, phase-536 W3",
+        replacement: "the scheduling unit is a task (play_launch phase 99): write \
+                      `[tasks.<name>]` (and `[tasks.<name>.<target>]`), or run \
+                      `play_launch migrate <system.toml> --write` to rewrite the file",
+    },
+    RetiredTable {
         key: "transport",
         by: "RFC-0109 D6, phase-514",
         replacement: "a session is a `[[domain]]` (its `rmw`, `id`, and `config = \
@@ -62,6 +69,12 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
                       `locator` are its implicit default domain",
     },
 ];
+
+/// The refusal of a `[[component]]`'s `group_tiers` (rlm v0.3.11, phase-536
+/// W3), the component-key half of the `tiers` row above.
+pub const RETIRED_GROUP_TIERS: &str = "`[[component]] group_tiers` is retired (rlm v0.3.11, \
+    phase-536 W3): the scheduling unit is a task (play_launch phase 99): write `group_tasks`, \
+    or run `play_launch migrate <system.toml> --write` to rewrite the file";
 
 /// One retired key of an `[image.<id>]` / `[image_defaults]` table.
 pub type RetiredImageKey = RetiredTable;
@@ -134,12 +147,32 @@ pub fn refuse_retired_tables(doc: &toml::Table, file: &Path) -> Result<(), Strin
             return Err(format!("{}: {msg}", file.display()));
         }
     }
+    let components = doc.get("component").and_then(toml::Value::as_array);
+    if components.is_some_and(|cs| cs.iter().any(|c| c.get("group_tiers").is_some())) {
+        return Err(format!("{}: {RETIRED_GROUP_TIERS}", file.display()));
+    }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-536 W3 -- a `[[component]]`'s `group_tiers` is refused naming
+    /// `group_tasks` and `migrate`; `group_tasks` is not.
+    #[test]
+    fn a_component_group_tiers_is_refused_naming_group_tasks() {
+        let p = Path::new("bringup/system.toml");
+        let old: toml::Table =
+            toml::from_str("[[component]]\nname = \"n\"\ngroup_tiers = { g = \"a\" }\n").unwrap();
+        let e = refuse_retired_tables(&old, p).unwrap_err();
+        assert!(e.contains("`[[component]] group_tiers` is retired"), "{e}");
+        assert!(e.contains("write `group_tasks`"), "{e}");
+        assert!(e.contains("play_launch migrate"), "{e}");
+        let new: toml::Table =
+            toml::from_str("[[component]]\nname = \"n\"\ngroup_tasks = { g = \"a\" }\n").unwrap();
+        assert!(refuse_retired_tables(&new, p).is_ok());
+    }
 
     #[test]
     fn each_retired_table_is_refused_naming_its_replacement() {
@@ -154,6 +187,11 @@ mod tests {
                 "[system]\nname = \"s\"\n[deploy.native]\nkind = \"self\"\n",
                 "deploy",
                 "[image.<id>]",
+            ),
+            (
+                "[system]\nname = \"s\"\n[tiers.mrm]\nspin_period = \"1ms\"\n",
+                "tiers",
+                "`[tasks.<name>]`",
             ),
         ] {
             let doc: toml::Table = toml::from_str(src).unwrap();

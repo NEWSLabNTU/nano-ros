@@ -566,7 +566,7 @@ config NROS_ZEPHYR_MAX_TIERS
     range 1 64
     help
       NROS_ZEPHYR_MAX_TIERS in zephyr/nros_platform_zephyr_shims.c — how many
-      `[tiers.*]` threads `nros_zephyr_tier_task_create` can spawn from its
+      `[tasks.*]` threads `nros_zephyr_tier_task_create` can spawn from its
       static pool. A tier past the pool fails to spawn and the image logs
       "pool exhausted? CONFIG_NROS_ZEPHYR_MAX_TIERS". Total cost is
       NROS_ZEPHYR_MAX_TIERS x NROS_ZEPHYR_TIER_STACK_SIZE, paid only by an
