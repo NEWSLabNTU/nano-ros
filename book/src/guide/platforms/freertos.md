@@ -245,7 +245,7 @@ session open typically takes 10–15 s. If no `Publishing:` line in
 3. Bridge tip: `ros2 topic echo /chatter` from a stock ROS 2
    install (with `RMW_IMPLEMENTATION=rmw_zenoh_cpp`) confirms
    end-to-end interop.
-4. See [Troubleshooting — First 10 Minutes](../../get-started/first-10-minutes.md).
+4. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
 
 ## Run on the POSIX simulator
 

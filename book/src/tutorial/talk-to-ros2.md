@@ -167,7 +167,7 @@ These are the interop-specific failures. For problems that are not about
 the ROS 2 side (build failures, sessions that never open, transport
 errors), see [Troubleshooting](../guide/deploy/troubleshoot.md); for a
 first run, see
-[Troubleshooting — First 10 Minutes](../get-started/first-10-minutes.md).
+[Troubleshooting — First 10 Minutes](../reference/troubleshooting-index.md).
 
 **Topic not visible in `ros2 topic list`:**
 Ensure both nano-ros and ROS 2 use the same domain ID and that

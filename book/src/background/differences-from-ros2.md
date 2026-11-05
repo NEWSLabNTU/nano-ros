@@ -148,7 +148,7 @@ your application links against.
 
 nano-ros's `nros build` (Rust) and
 `nano_ros_generate_interfaces()` (C / C++ via CMake — one of five
-entry points; see the [spelling table](../build/message-generation.md#which-cmake-spelling-one-table)) write message
+entry points; see the [spelling table](../reference/message-generation.md#which-cmake-spelling-one-table)) write message
 type definitions *into your build tree*. No `_msgs` library, no ament
 overlay, no colcon workspace required.
 

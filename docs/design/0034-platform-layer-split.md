@@ -325,11 +325,11 @@ scope (the lint excludes the vendored submodule).
 - RFC-0001 [architecture-overview](0001-architecture-overview.md) — layer map.
 - RFC-0003 [rtos-integration-pattern](0003-rtos-integration-pattern.md) —
   per-RTOS adapter pattern; §9 std/alloc-per-platform policy.
-- [platform-c-abi.md](../../book/src/extending/platform-c-abi.md) — the
+- [platform-c-abi.md](../../book/src/reference/platform-c-abi.md) — the
   symbol contract + port-authoring guide + drift gate.
 - [issue 0006](../issues/archived/0006-rtos-dual-heap.md) — the dual-heap / unified
   stats item this RFC's alloc unification resolves.
 - [phase-230](../roadmap/archived/phase-230-platform-layer-split.md) — work breakdown.
 
-[platform-c-abi.md]: ../../book/src/extending/platform-c-abi.md
+[platform-c-abi.md]: ../../book/src/reference/platform-c-abi.md
 [issue 0006]: ../issues/archived/0006-rtos-dual-heap.md
