@@ -27,6 +27,10 @@ import book_tabs
 
 TYPES = ("tutorial", "how-to", "explanation", "reference")
 LEVELS = (1, 2, 3, 4)
+# RFC-0124 Topic levels: the name of each level, as the rendered badge shows it
+# (scripts/mdbook-level-badge.py).
+LEVEL_NAMES = {1: "First contact", 2: "Building real applications", 3: "Production and tuning",
+               4: "Extending nano-ros"}
 
 DECL = re.compile(r"^<!--\s*type:\s*([\w-]+)\s*·\s*level:\s*(\d)(?:\s*·\s*topic:\s*([\w./-]+))?\s*-->\s*$")
 ANY_DECL = re.compile(r"^<!--\s*type:")
