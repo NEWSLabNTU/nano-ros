@@ -138,6 +138,13 @@ zephyr-west-app-flash: (platform "zephyr-west-app-flash")
 [group("main")]
 zephyr-west-app-rust: (platform "zephyr-west-app-rust")
 
+# book/src/targets/px4.md — the reader's own PX4-Autopilot, the module template
+# copied out of the SDK root, `make px4_sitl_default`, then a headless SITL boot
+# and `nano_ros_app start` (RFC-0115 D4: PX4 SITL has no twin). Awaits a
+# user-tier build of the module's nano-ros archives (its registry `awaits`).
+[group("main")]
+px4: (platform "px4")
+
 # phase-524 W4a — the Nucleo-F767ZI's Renode twin (no chapter yet, W4b): the
 # Zephyr chapter's setup blocks, then the board's serial C talker built through
 # the leaf road, booted in Renode, and heard by `ros2 topic echo` over a
