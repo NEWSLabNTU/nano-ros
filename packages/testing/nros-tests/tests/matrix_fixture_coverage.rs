@@ -100,11 +100,19 @@ struct CoordRows {
 /// in-Rust parser counted. That is the point — a coordinate no build produces
 /// cannot satisfy `every_runtime_cell_has_a_fixture_row`, which claims the cell
 /// is BUILT. (There are none today; the semantics matter for the next one.)
-fn is_pair_image_row(dir: &str, id: &str) -> bool {
-    use nros_tests::fixtures::baked_locator::row_str;
+///
+/// phase-531 W6 — a witness migrated in place (`examples/<plat>/<lang>/talker`
+/// as a one-node workspace) is the second such shape; both are answered by
+/// `workspace_image::workspace_row_models_example_cell`, keyed on the row's
+/// directory so a linux witness (no `west_role`) is recognised as well.
+fn models_example_cell(dir: &str, id: &str) -> bool {
+    use nros_tests::fixtures::{baked_locator::row_str, workspace_image};
+    if workspace_image::is_witness_workspace(dir) {
+        return true;
+    }
     match (row_str(id, "bringup"), row_str(id, "image")) {
         (Some(bringup), Some(image)) => {
-            nros_tests::fixtures::workspace_image::parse_image(dir, &bringup, &image).is_some()
+            workspace_image::workspace_row_models_example_cell(dir, &bringup, &image)
         }
         _ => false,
     }
@@ -141,12 +149,13 @@ fn fixture_coords() -> (BTreeMap<Coord, CoordRows>, Vec<String>) {
             "unexpected `coords` record shape (expected 9 \\x1f-separated fields): {line:?}"
         );
         let (table, p, l, r, dir, id) = (f[0], f[1], f[2], f[3], f[4], f[5]);
-        // phase-535 W4 (RFC-0122 D1) — a pair IMAGE row models its Example
+        // phase-535 W4 (RFC-0122 D1) — a pair IMAGE row (and, since
+        // phase-531 W6, a witness migrated in place) models its Example
         // cell, not a Workspace one: the example pairs live in the language
         // workspaces now, and `workspace_image::parse_image` is the one place
         // that recognises them. Without this a Cyclone pair image on a board
         // with no Cyclone Workspace cell (threadx-linux) reads as an orphan.
-        let is_ws = table == "workspace_fixture" && !is_pair_image_row(dir, id);
+        let is_ws = table == "workspace_fixture" && !models_example_cell(dir, id);
         match (platform_from_str(p), lang_from_str(l), rmw_from_str(r)) {
             (Some(p), Some(l), Some(r)) => {
                 let kind = if is_ws { "Workspace" } else { "Example" };

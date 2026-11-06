@@ -229,6 +229,36 @@ const CONFIGS: [Config; 4] = [
     Config::CustomTransport,
 ];
 
+/// Phase-531 W6 (RFC-0121 D8, RFC-0122 amendment) — whether a workspace at
+/// `dir` is a single-node WITNESS migrated in place: `examples/<plat>/<lang>/<name>`,
+/// with `<plat>` neither `workspaces` nor `templates` and `<lang>` one of
+/// `rust`, `c` or `cpp`.
+///
+/// W6 turns `examples/<plat>/<lang>/talker` (and `custom-platform`) into a
+/// one-node workspace where it stands, so its fixture rows become
+/// `[[workspace_fixture]]` rows. Its program and its cell do not change: it is
+/// still the `Kind::Example` cell's image, exactly as a pair image in a language
+/// workspace is (see [`workspace_row_models_example_cell`]). The test keys on
+/// the DIRECTORY because that is the one fact every witness row states. A west
+/// row's `west_role` would also work, but a linux row has none.
+pub fn is_witness_workspace(dir: &str) -> bool {
+    let parts: Vec<&str> = dir.trim_end_matches('/').split('/').collect();
+    matches!(
+        parts.as_slice(),
+        ["examples", plat, "rust" | "c" | "cpp", name]
+            if !matches!(*plat, "workspaces" | "templates") && !name.is_empty()
+    )
+}
+
+/// Whether a `[[workspace_fixture]]` row models its coordinate's `Kind::Example`
+/// cell rather than a `Kind::Workspace` one. There are two such shapes: a pair
+/// image of a language workspace ([`parse_image`], phase-535 W4), and a witness
+/// migrated in place ([`is_witness_workspace`], phase-531 W6). Every other
+/// workspace row (`demo_bringup`, a feature image) is a Workspace cell's.
+pub fn workspace_row_models_example_cell(dir: &str, bringup: &str, image: &str) -> bool {
+    is_witness_workspace(dir) || parse_image(dir, bringup, image).is_some()
+}
+
 /// The inverse of [`workspace_image`]: a manifest row's (dir, bringup, image)
 /// back to the cell coordinate and role, or `None` when the row is not a pair
 /// image (`demo_bringup`'s rows, a feature image, …). Exactly one parse may
@@ -443,6 +473,49 @@ mod tests {
 
     fn pair_cells() -> impl Iterator<Item = &'static Cell> {
         CELLS.iter().filter(|c| is_pair_cell(c))
+    }
+
+    /// A witness migrated in place is recognised by its directory alone, and
+    /// nothing that is a language workspace, a template or a deeper package is.
+    #[test]
+    fn a_witness_workspace_is_recognised_by_its_directory() {
+        for dir in [
+            "examples/zephyr/c/talker",
+            "examples/zephyr/rust/talker/",
+            "examples/linux/cpp/talker",
+            "examples/linux/c/custom-platform",
+            "examples/zephyr-nucleo-f767zi/c/talker",
+        ] {
+            assert!(is_witness_workspace(dir), "{dir} should be a witness");
+            assert!(workspace_row_models_example_cell(
+                dir,
+                "src/x_bringup",
+                "zephyr"
+            ));
+        }
+        for dir in [
+            "examples/workspaces/rust",
+            "examples/workspaces/c/talker",
+            "examples/templates/rust/talker",
+            "examples/zephyr/python/talker",
+            "examples/zephyr/c",
+            "examples/zephyr/c/talker/src/talker_pkg",
+            "packages/testing/zephyr/c/talker",
+            "examples/workspaces/features",
+        ] {
+            assert!(!is_witness_workspace(dir), "{dir} should not be a witness");
+        }
+        // A demo_bringup row stays a Workspace cell's; a pair image an Example's.
+        assert!(!workspace_row_models_example_cell(
+            "examples/workspaces/rust",
+            "src/demo_bringup",
+            "zephyr"
+        ));
+        assert!(workspace_row_models_example_cell(
+            "examples/workspaces/rust",
+            "src/pubsub_bringup",
+            "zephyr_listener_xrce"
+        ));
     }
 
     /// Every role of every pair cell has an image, unless the cell's platform
