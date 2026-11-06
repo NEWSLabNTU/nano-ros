@@ -19,6 +19,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 z="$root/scripts/zephyr"
+# shellcheck source=scripts/lib/grep-q.sh
+source "$root/scripts/lib/grep-q.sh"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -46,7 +48,7 @@ for s in "${rust_only[@]}" cortex-a9-rust-patch; do
     run bash "$z/$s.sh" "$c_ws"
     [ "$rc" -eq 0 ] || fail "$s on a C-only workspace exited $rc:
 $out"
-    grep -qi "no zephyr-lang-rust module\|no rust module" <<<"$out" ||
+    nros_grep_q -i "no zephyr-lang-rust module\|no rust module" <<<"$out" ||
         fail "$s skipped the absent module without saying so:
 $out"
 done
@@ -58,7 +60,7 @@ for s in aarch64-rust-patch cortex-r-rust-patch cargo-features-patch cortex-a9-r
     run bash "$z/$s.sh" "$bare"
     [ "$rc" -ne 0 ] || fail "$s accepted a directory with no zephyr/:
 $out"
-    grep -q "missing zephyr/" <<<"$out" || fail "$s failed without naming zephyr/:
+    nros_grep_q "missing zephyr/" <<<"$out" || fail "$s failed without naming zephyr/:
 $out"
 done
 
@@ -74,17 +76,17 @@ for s in aarch64-rust-patch cortex-r-rust-patch cortex-a9-rust-patch; do
     run bash "$z/$s.sh" "$r_ws"
     [ "$rc" -eq 0 ] || fail "$s on a workspace WITH the module exited $rc:
 $out"
-    grep -q '^\[apply\]' <<<"$out" || fail "$s applied nothing to an unpatched module:
+    nros_grep_q '^\[apply\]' <<<"$out" || fail "$s applied nothing to an unpatched module:
 $out"
     run bash "$z/$s.sh" "$r_ws"
     [ "$rc" -eq 0 ] || fail "$s second run exited $rc:
 $out"
-    if grep -q '^\[apply\]' <<<"$out"; then
+    if nros_grep_q '^\[apply\]' <<<"$out"; then
         fail "$s is not idempotent:
 $out"
     fi
 done
-grep -q 'aarch64-unknown-none' "$r_ws/modules/lang/rust/CMakeLists.txt" ||
+nros_grep_q 'aarch64-unknown-none' "$r_ws/modules/lang/rust/CMakeLists.txt" ||
     fail "aarch64-rust-patch left no AArch64 case in CMakeLists.txt"
 
 # 4. A RELATIVE workspace, from a cwd that is not the SDK root. Both line sets
@@ -97,14 +99,14 @@ mkdir -p "$caller/ws/zephyr"
 for line in 3.7 4.4; do
     rc=0
     out="$(cd "$caller" && bash "$z/patches/$line.sh" ws 2>&1)" || rc=$?
-    if grep -q "doesn't look like a Zephyr workspace" <<<"$out"; then
+    if nros_grep_q "doesn't look like a Zephyr workspace" <<<"$out"; then
         fail "patches/$line.sh resolved a relative workspace against the SDK root:
 $out"
     fi
-    grep -qF "$caller/ws/" <<<"$out" ||
+    nros_grep_q -F "$caller/ws/" <<<"$out" ||
         fail "patches/$line.sh never named the caller's workspace $caller/ws:
 $out"
-    if grep -qF "$root/ws/" <<<"$out"; then
+    if nros_grep_q -F "$root/ws/" <<<"$out"; then
         fail "patches/$line.sh named a workspace under the SDK root:
 $out"
     fi
