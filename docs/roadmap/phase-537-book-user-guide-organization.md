@@ -359,7 +359,7 @@ absent (gate `zephyr-patch-set-workspace`). Filed, not fixed:
 --out-of-tree` needs a checkout),
 [2292](../issues/2292-new-board-for-platform-writes-no-package-xml.md) (`new
 board --for-platform` writes no `package.xml`),
-[2293](../issues/2293-config-explain-misses-out-of-tree-platforms.md) (`config
+[2293](../issues/archived/2293-config-explain-misses-out-of-tree-platforms.md) (`config
 explain` misses workspace and scaffolded platforms),
 [2294](../issues/2294-extension-scaffold-check-step-is-dev-tier.md) (scaffolds
 name `nros dev`/`just` check steps; no user-tier check verb is planned), and

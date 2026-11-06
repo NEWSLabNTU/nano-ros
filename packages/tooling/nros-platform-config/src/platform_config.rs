@@ -2056,7 +2056,7 @@ impl PlatformsTree {
         })
     }
 
-    /// The default search path: `$NROS_PLATFORM_PATH` entries first (colon
+    /// The default search path: `$NROS_PLATFORMS_DIR` entries first (colon
     /// separated, so a porter can prepend their own tree), then the two in-tree
     /// homes. `packages/platform` comes before `config` so a descriptor that
     /// has moved beside its crate wins over a stale copy left behind.

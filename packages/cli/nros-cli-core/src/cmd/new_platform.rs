@@ -124,6 +124,10 @@ pub mod sleep {{
 # Debug with: `nros config explain --platform {name}`.
 # Schema + loader: nros-board-common/src/platform_config.rs.
 
+# The names this platform answers to; names[0] is canonical. The directory
+# is only where the file lives.
+names = ["{name}"]
+
 # Inherit a sibling platform family's config (e.g. "bare-metal"):
 # inherits = "bare-metal"
 
