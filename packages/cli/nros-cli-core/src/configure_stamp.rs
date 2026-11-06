@@ -422,8 +422,17 @@ fn configured_model_dir(flags: &OutputFlags, env: &[(String, Option<String>)]) -
 /// see an `rm -rf generated`.
 fn missing_output(project: &Path, image: &str, model_dir: Option<&Path>) -> Result<Option<String>> {
     use nros_orchestration_ir::leaf_system;
+    // A package-only leaf (a `package.xml` and no `system.toml`) is configured
+    // under the project key, and configure still writes its `generated/<pkg>`
+    // path-deps. Deleting them must make that stamp stale too, otherwise the
+    // next configure says "up to date (0 image(s))" and the build fails on a
+    // missing `generated/<pkg>/Cargo.toml` (the fixture build's codegen-stamp
+    // wipe does exactly that delete). It has no image, so it has no model to
+    // check.
     if image == PROJECT_KEY {
-        return Ok(None);
+        return Ok(crate::cmd::build::leaf_outputs_missing(project, false)
+            .into_iter()
+            .next());
     }
     if image.contains(':') {
         return crate::cmd::build::workspace_model_missing(project, image, model_dir);
@@ -1474,6 +1483,47 @@ mod tests {
             currency(
                 &p,
                 "img",
+                false,
+                &real_env(),
+                &OutputFlags::defaults(),
+                None,
+                &nothing_moved,
+                &still_refuses,
+            )
+            .unwrap()
+        };
+        assert_eq!(ask(), Currency::Current);
+        std::fs::remove_dir_all(p.join("generated")).unwrap();
+        assert_eq!(
+            ask(),
+            Currency::Stale(
+                "configure output missing: the generated message crate `std_msgs` \
+                 (generated/std_msgs)"
+                    .into()
+            )
+        );
+    }
+
+    /// The same for a package-only leaf, which has no `system.toml` and is
+    /// stamped under the project key: deleting its `generated/<pkg>` must
+    /// not leave configure "up to date (0 image(s))".
+    #[test]
+    fn deleted_generated_crate_is_stale_for_a_package_only_leaf() {
+        let p = tmp("deleted-generated-project");
+        std::fs::write(
+            p.join("Cargo.toml"),
+            "[package]\nname = \"t\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+             std_msgs = { path = \"generated/std_msgs\" }\n",
+        )
+        .unwrap();
+        let crate_dir = p.join("generated/std_msgs");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\n").unwrap();
+        record(&p, PROJECT_KEY, &stamp_for(&p)).unwrap();
+        let ask = || {
+            currency(
+                &p,
+                PROJECT_KEY,
                 false,
                 &real_env(),
                 &OutputFlags::defaults(),
