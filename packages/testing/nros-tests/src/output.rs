@@ -1144,6 +1144,19 @@ pub fn zephyr_multi_sched_task_entry_up_line(sched_tasks: usize) -> String {
     format!("{ZEPHYR_MULTI_SCHED_TASK_ENTRY_UP_MARKER}{sched_tasks} sched tasks")
 }
 
+/// The branch signal of the native multi-sched-task entry
+/// (`nros-board-linux`'s `run_sched_tasks`). Both of its boot outcomes carry it —
+/// `multi-sched-task entry needs a live session` (no router, abort) and
+/// `multi-sched-task run — N sched task(s)` (router reachable) — and the
+/// single-sched-task `BoardEntry::run` path carries neither, so its presence is
+/// which branch the macro emitted.
+///
+/// A constant because the literal drifted: phase-536 renamed the board's
+/// strings to `multi-sched-task` and the test's to `multi-sched_task`, so the
+/// positive assertion failed on every run and the NEGATIVE one (the
+/// single-sched-task path must not print it) passed vacuously.
+pub const MULTI_SCHED_TASK_MARKER: &str = "multi-sched-task";
+
 /// Emitted by the NuttX board seam (`nuttx_run_sched_tasks.c`,
 /// `nros_nuttx_apply_current_sporadic` — shared by the C/C++ AND Rust sched task
 /// arms) when the kernel actually accepted SCHED_SPORADIC for a sched task
