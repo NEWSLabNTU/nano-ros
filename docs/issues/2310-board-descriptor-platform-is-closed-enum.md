@@ -4,7 +4,7 @@ title: "A board descriptor's `platform` is a closed enum, so no board can name a
 status: open
 type: bug
 area: cli, boards, platform
-related: [2292, 2291, phase-537]
+related: [2292, 2291]
 found: 2026-11-07
 ---
 
