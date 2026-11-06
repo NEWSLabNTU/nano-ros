@@ -207,7 +207,7 @@ NROS_RMW=zenoh ./my_bridge
 
 Each extra session adds its backend's poll and dispatch time to every spin,
 because one executor drains the sessions in turn. For a bridge with a
-deadline, put the fast side's node in a higher-priority tier; see
+deadline, put the fast side's node in a higher-priority sched task; see
 [Pick a scheduling model](../realtime/pick-a-scheduling-model.md).
 
 ## If it doesn't work
