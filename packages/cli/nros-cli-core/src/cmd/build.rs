@@ -3001,7 +3001,7 @@ pub fn run(args: Args) -> Result<()> {
     // configure is C1 too, so a `<depend>` added since the last configure
     // (package.xml and Cargo.toml are stamp inputs) reaches its managed row
     // and its generated crate there; build no longer runs that step itself.
-    let root = configure_implicitly(&args)?;
+    let root = configure_implicitly(&args, "build")?;
 
     // RFC-0104 D5 / issue 1780 — the generated message crates are the LOCAL
     // half, a function of the host's ament install. The configure stamp keys
@@ -3094,7 +3094,9 @@ pub fn run(args: Args) -> Result<()> {
 /// never skipped, because a west or cmake leaf's selection marker moves only
 /// through configure. `--board` names an image, so it is resolved to that
 /// image here exactly as planning resolves it.
-pub(crate) fn configure_implicitly(args: &Args) -> Result<PathBuf> {
+///
+/// `verb` is the front door's own (`build`, `run`), for a refusal to name.
+pub(crate) fn configure_implicitly(args: &Args, verb: &str) -> Result<PathBuf> {
     let root = match &args.workspace {
         Some(w) => w.clone(),
         None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
@@ -3115,7 +3117,7 @@ pub(crate) fn configure_implicitly(args: &Args) -> Result<PathBuf> {
         }
         None => args.images.clone(),
     };
-    crate::cmd::configure::ensure_current(&root, &images, args.dry_run, args.offline)?;
+    crate::cmd::configure::ensure_current(&root, &images, args.dry_run, args.offline, verb)?;
     Ok(root)
 }
 

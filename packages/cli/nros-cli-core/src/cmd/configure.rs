@@ -91,18 +91,20 @@ pub(crate) fn configure_with(args: Args, held: Option<&std::ffi::OsStr>) -> Resu
         return Ok(Outcome::default());
     }
     let named: Vec<String> = args.sync.image.iter().cloned().collect();
-    configure_project(&project, args.sync, &named, args.force)
+    configure_project(&project, args.sync, &named, args.force, "configure")
 }
 
 /// Configure `project` for `images` (empty: every image the project
 /// declares) unless every one is already current. `nros build` and `nros run`
 /// call this before they plan (RFC-0120 D3); `dry_run` is theirs, handed to
-/// stage 4 unchanged.
+/// stage 4 unchanged. `verb` is the caller's own (`build`, `run`): a refusal
+/// tells the reader to run `nros <verb>` again, the command they typed.
 pub fn ensure_current(
     project: &Path,
     images: &[String],
     dry_run: bool,
     offline: bool,
+    verb: &str,
 ) -> Result<()> {
     ensure_current_with(
         project,
@@ -110,6 +112,7 @@ pub fn ensure_current(
         dry_run,
         offline,
         std::env::var_os(HELD_VAR).as_deref(),
+        verb,
     )
 }
 
@@ -129,6 +132,7 @@ pub(crate) fn ensure_current_with(
     dry_run: bool,
     offline: bool,
     held: Option<&std::ffi::OsStr>,
+    verb: &str,
 ) -> Result<()> {
     let project = project_root(Some(project))?;
     // Ruling R20: a parent configure of THIS project holds its lock and is
@@ -164,7 +168,7 @@ pub(crate) fn ensure_current_with(
         }
         return Ok(());
     }
-    configure_project(&project, sync, images, false).map(|_| ())
+    configure_project(&project, sync, images, false, verb).map(|_| ())
 }
 
 /// Ruling R43 — the `(stamp key, reason)` of every image a configure of
@@ -211,6 +215,7 @@ fn configure_project(
     mut sync: ws::SyncArgs,
     named: &[String],
     force: bool,
+    verb: &str,
 ) -> Result<Outcome> {
     // Ruling R45: the interface search path is an ARGUMENT, derived once
     // here, and never read from or written to the process environment.
@@ -240,6 +245,7 @@ fn configure_project(
         std::env::var_os(configure_stamp::AMENT_VAR).is_some(),
         std::env::var_os(configure_stamp::LAUNCH_RESOLVE_VAR).is_some()
             || configure_stamp::current_launch_resolver().is_some(),
+        verb,
     )? {
         set_env(var, Some(value.as_os_str()));
     }
@@ -345,7 +351,8 @@ fn configure_project(
 ///   recorded path, through the ladder's explicit rung, if it still exists.
 ///
 /// With `AMENT_PREFIX_PATH` unset and NO stamp recorded at all there is
-/// nothing to reuse, so configure refuses, naming the setup step. A stamp
+/// nothing to reuse, so configure refuses: source ROS 2 and run `nros <verb>`
+/// again, `verb` being the command the reader typed (issue 2279). A stamp
 /// that recorded no prefix (a run that had none) is a record: nothing to
 /// restore, and no refusal.
 #[cfg(test)]
@@ -355,12 +362,25 @@ pub(crate) fn recorded_env_to_restore(
     ament_set: bool,
     resolver_found: bool,
 ) -> Result<Vec<(&'static str, std::ffi::OsString)>> {
+    recorded_env_to_restore_for(project, keys, ament_set, resolver_found, "configure")
+}
+
+/// [`recorded_env_to_restore`] for a refusal reached from `nros <verb>`.
+#[cfg(test)]
+pub(crate) fn recorded_env_to_restore_for(
+    project: &Path,
+    keys: &[&str],
+    ament_set: bool,
+    resolver_found: bool,
+    verb: &str,
+) -> Result<Vec<(&'static str, std::ffi::OsString)>> {
     recorded_env_to_restore_with(
         project,
         interface_search_path_for(project).as_deref(),
         keys,
         ament_set,
         resolver_found,
+        verb,
     )
 }
 
@@ -371,6 +391,7 @@ pub(crate) fn recorded_env_to_restore_with(
     keys: &[&str],
     ament_set: bool,
     resolver_found: bool,
+    verb: &str,
 ) -> Result<Vec<(&'static str, std::ffi::OsString)>> {
     if ament_set && resolver_found {
         return Ok(Vec::new());
@@ -379,12 +400,13 @@ pub(crate) fn recorded_env_to_restore_with(
         // Ruling R44: only a C1 with a message package to generate needs
         // ament; a project with none configures on any host.
         if !ament_set && ws::has_messages_to_generate(project, search) {
-            // RFC-0120 D2: no record → refuse, naming the setup step.
+            // RFC-0120 D2: no record → refuse. Issue 2279: the remedy is a
+            // command to retype, the one the reader ran.
             eyre::bail!(
-                "configure: `{}` is unset and no configure of `{}` has recorded one to reuse. \
-                 Run the setup step once from a shell that has ROS 2: \
-                 `source /opt/ros/<distro>/setup.bash` (or your overlay's `install/setup.bash`), \
-                 then `nros configure`; later runs without a sourced shell reuse what it records.",
+                "configure: `{}` is unset, and `{}` has no earlier configure that recorded one. \
+                 Source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your \
+                 overlay's `install/setup.bash`) and run `nros {verb}` again; later shells need \
+                 not source it.",
                 configure_stamp::AMENT_VAR,
                 project.display()
             );
@@ -650,7 +672,8 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (project, held) = (project.to_path_buf(), held.to_path_buf());
         thread::spawn(move || {
-            let r = ensure_current_with(&project, &[], false, true, Some(held.as_os_str()));
+            let r =
+                ensure_current_with(&project, &[], false, true, Some(held.as_os_str()), "build");
             let _ = tx.send(r);
         });
         rx.recv_timeout(wait).ok()
@@ -743,6 +766,10 @@ mod tests {
     /// RFC-0120 D2 (Ruling R32): nothing recorded and nothing in the
     /// environment — refuse, naming the setup step, rather than run C1 with
     /// no ament. A stamp that recorded NO prefix is still a record.
+    ///
+    /// Issue 2279: the refusal names the remedy as a command to retype, the
+    /// verb the reader ran (`nros run` and `nros build` configure implicitly),
+    /// and never "the setup step", which reads as `nros setup`.
     #[test]
     fn no_record_and_no_env_refuses_naming_the_setup_step() {
         let p = crate::test_support::scratch_dir("configure-no-ament");
@@ -750,11 +777,18 @@ mod tests {
         std::fs::create_dir_all(&p).unwrap();
         // A package with a message dependency: C1 has messages to generate.
         std::fs::write(p.join("package.xml"), package_xml("talker", &["std_msgs"])).unwrap();
-        let err = recorded_env_to_restore(&p, &["linux"], false, true)
-            .expect_err("no record and no AMENT_PREFIX_PATH must refuse");
-        let msg = format!("{err:#}");
-        assert!(msg.contains("AMENT_PREFIX_PATH"), "{msg}");
-        assert!(msg.contains("setup.bash"), "{msg}");
+        for verb in ["run", "build", "configure"] {
+            let err = recorded_env_to_restore_for(&p, &["linux"], false, true, verb)
+                .expect_err("no record and no AMENT_PREFIX_PATH must refuse");
+            let msg = format!("{err:#}");
+            assert!(msg.contains("AMENT_PREFIX_PATH"), "{msg}");
+            assert!(msg.contains("source /opt/ros/<distro>/setup.bash"), "{msg}");
+            assert!(msg.contains(&format!("run `nros {verb}` again")), "{msg}");
+            assert!(!msg.contains("setup step"), "{msg}");
+            for other in ["run", "build", "configure"].iter().filter(|o| **o != verb) {
+                assert!(!msg.contains(&format!("`nros {other}`")), "{verb}: {msg}");
+            }
+        }
         // With the variable set there is nothing to reuse and nothing to refuse.
         assert!(
             recorded_env_to_restore(&p, &["linux"], true, true)
