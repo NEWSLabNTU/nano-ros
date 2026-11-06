@@ -200,6 +200,6 @@ if sub.supports_event(EventKind::RequestedDeadlineMissed) {
   generated list of events and QoS policies per backend.
 - [Talk to ROS 2](../../tutorial/talk-to-ros2.md): QoS on the wire
   between nano-ros and ROS 2.
-- [RTOS cooperation](../../background/rtos-cooperation.md): the per-spin
+- [The execution model](../../background/execution-model.md#what-one-spin-does): the per-spin
   callback limit that event callbacks share.
 - [How nano-ros differs from ROS 2](../../background/differences-from-ros2.md).

@@ -289,27 +289,6 @@ BOOK_CLAIMS = (
         "covers": "Executor::spin_once, spin_some and spin_forever are all linked",
     },
     {
-        "file": "book/src/background/dispatch-strategy.md",
-        "text": "keeping dispatch heap-free",
-        "kind": "image",
-        "backed_by": HEAP_FREE_POC,
-        "covers": "the executor open + component install + spin path",
-    },
-    {
-        "file": "book/src/background/dispatch-strategy.md",
-        "text": "(Heap-free here is a checked property of the",
-        "kind": "image",
-        "backed_by": HEAP_FREE_POC,
-        "covers": "the scoping sentence itself: executor path yes, transport no",
-    },
-    {
-        "file": "book/src/background/dispatch-strategy.md",
-        "text": "`heap-free-poc-mps2`",
-        "kind": "image",
-        "backed_by": HEAP_FREE_POC,
-        "covers": "names the checked image",
-    },
-    {
         "file": "book/src/tutorial/pick-the-rmw.md",
         "text": "not heap-free: each allocation goes through",
         "kind": "disclaimer",
@@ -350,8 +329,8 @@ BOOK_CLAIMS = (
         "created, by construction of the call",
     },
     {
-        "file": "book/src/background/dispatch-strategy.md",
-        "text": "task's stack frame, no heap, no boxing",
+        "file": "book/src/background/execution-model.md",
+        "text": "stack frame, no heap, no boxing, so closures stay",
         "kind": "type-level",
         "why": "where an inline closure's captures live (the spin task's "
         "stack frame), not a statement about the linked image",
