@@ -109,7 +109,7 @@ Genuinely stale; fix:
   - Keep root `nros.toml` references (correct); add a short note pointing to
     `<bringup>/system.toml` for multi-node topology and link the new track.
   - Do not import the design-doc §2 "never a build verb" claim.
-- **`book/src/background/vs-micro-ros.md`** (lines 36–37): leave the
+- **`book/src/background/differences-from-ros2.md`** (lines 36–37): leave the
   `nros.toml`/deploy wording (it's accurate) but align any "Component" term.
 
 ### B2. New Getting Started track (4 pages)

@@ -124,9 +124,8 @@ port of `rclcpp`, and some things you rely on in ROS 2 work differently:
   run on your computer and see the board's nodes. Runtime introspection on the
   board itself is limited.
 
-[Differences from standard ROS 2](../background/differences-from-ros2.md)
-gives each difference and its reason, and
-[nano-ros vs micro-ROS](../background/vs-micro-ros.md) compares nano-ros with
+[How nano-ros differs from ROS 2 and micro-ROS](../background/differences-from-ros2.md)
+gives each difference and its reason, and compares nano-ros with micro-ROS,
 the other ROS 2 stack for microcontrollers.
 
 ## Does it run on my board?

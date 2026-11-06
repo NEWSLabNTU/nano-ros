@@ -176,8 +176,7 @@ nodes directly.
 ## See also
 
 - [Port a C++ node](port-a-cpp-node.md).
-- [How nano-ros differs from ROS 2](../../background/differences-from-ros2.md)
-  and [nano-ros and micro-ROS](../../background/vs-micro-ros.md).
+- [How nano-ros differs from ROS 2 and micro-ROS](../../background/differences-from-ros2.md).
 - [Switch the RMW per image](../rmw/switch-the-rmw-per-image.md) and
   [Bridge between backends](../rmw/bridge-between-backends.md).
 

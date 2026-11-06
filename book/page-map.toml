@@ -530,7 +530,7 @@ path = "guide/port/port-a-cpp-node.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["from-ros2/porting-a-cpp-node.md"]
-note = "Port a C++ node (W8): the porting steps with real before/after edits. Its rclcpp-surface table and the measured ros2/examples table went to reference/cpp-api (rclcpp compatibility); its actions section was already there. The Node::ok, SharedPtr and TimerBase explanations are condensed into If it doesn't work; W10 may take their why into background/differences-from-ros2"
+note = "Port a C++ node (W8): the porting steps with real before/after edits. Its rclcpp-surface table and the measured ros2/examples table went to reference/cpp-api (rclcpp compatibility); its actions section was already there. The Node::ok, SharedPtr and TimerBase explanations are condensed into If it doesn't work; W10 took their why into background/differences-from-ros2 (Where C++ code behaves differently)"
 
 [[page]]
 old = "start-here/migration-guide.md"
@@ -539,7 +539,7 @@ path = "guide/port/move-a-ros2-project.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["from-ros2/migration-guide.md"]
-note = "Move a ROS 2 project over (W8): one how-to with guide/port/setup-compared merged in; a short concept map stays as the page's orientation, and the full comparison is W10's background/differences-from-ros2"
+note = "Move a ROS 2 project over (W8): one how-to with guide/port/setup-compared merged in; a short concept map stays as the page's orientation, and the full comparison is background/differences-from-ros2 (W10)"
 
 [[page]]
 old = "start-here/setup-compared-to-ros2.md"
@@ -548,7 +548,7 @@ path = "guide/port/move-a-ros2-project.md"
 action = "merge-into guide/port/move-a-ros2-project.md"
 batch = "p537-w8"
 was = ["from-ros2/setup-compared.md", "guide/port/setup-compared.md"]
-note = "merged by W8 into Move a ROS 2 project over, as its install, provision and RMW steps; its What stays familiar / What changes lists are left for W10's background/differences-from-ros2 (recover them from this page as W1 left it)"
+note = "merged by W8 into Move a ROS 2 project over, as its install, provision and RMW steps; W10 took its What stays familiar / What changes lists into background/differences-from-ros2"
 
 [[page]]
 old = "getting-started/how-integration-works.md"
@@ -661,16 +661,16 @@ path = "background/differences-from-ros2.md"
 action = "move"
 batch = "p537-w1-background"
 was = ["from-ros2/differences.md"]
-note = "How nano-ros differs from ROS 2 and micro-ROS (W10): background/vs-micro-ros merges into it"
+note = "How nano-ros differs from ROS 2 and micro-ROS (W10): background/vs-micro-ros merged in, with the What stays familiar / What changes lists of the old guide/port/setup-compared and the Node::ok, Node::SharedPtr and TimerBase reasons of the old port page. The parameter detail (/parameter_events, list bounds, the C and Rust forms) is cut for reference/cpp-api"
 
 [[page]]
 old = "concepts/comparison-vs-microros.md"
 book = "user"
-path = "background/vs-micro-ros.md"
-action = "move"
-batch = "p537-w1-background"
-was = ["from-ros2/vs-micro-ros.md"]
-note = "W10 merges it into background/differences-from-ros2"
+path = "background/differences-from-ros2.md"
+action = "merge-into background/differences-from-ros2.md"
+batch = "p537-w10"
+was = ["from-ros2/vs-micro-ros.md", "background/vs-micro-ros.md"]
+note = "merged by W10 into How nano-ros differs from ROS 2 and micro-ROS, as Compared with micro-ROS. Cut as unverified or hand-typed status: first-release dates, code-size estimates, Kani/Verus counts, governance and commercial-support rows, the source-only release claim (the CLI ships as a GitHub release with prebuilt SDK packages)"
 
 [[page]]
 old = "reference/cli.md"

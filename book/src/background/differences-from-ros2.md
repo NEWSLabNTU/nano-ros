@@ -1,422 +1,234 @@
-# Differences from standard ROS 2
+# How nano-ros differs from ROS 2 and micro-ROS
 
 <!-- type: explanation · level: 3 -->
 
-Coming from `rclcpp`, `rclrs`, or `rclc`? This page calls out where
-nano-ros looks the same, where it diverges, and the reason behind each
-choice. It is an *orientation* page — the per-language API references
-([Rust](../reference/rust-api.md) / [C](../reference/c-api.md) /
-[C++](../reference/cpp-api.md)) cover the surface itself.
-
-The short version: nano-ros keeps ROS 2's vocabulary (Node, Publisher,
-Subscription, Service, Client, ActionServer, ActionClient, Timer,
-Executor, QoS, message codegen) so existing nodes port cleanly. The
-trade-offs that come from running on a Cortex-M3 with 64 KB of heap
-shape every place where the surface diverges.
-
-## Same vocabulary, same wire format
-
-- ROS 2 entity model unchanged. A node owns publishers, subscriptions,
-  services, clients, action servers, action clients, timers, and
-  parameters.
-- Topic / service / action names follow ROS 2 conventions
-  (`/talker_node/chatter`, `/add_two_ints`, `/fibonacci`).
-- Message types stay rosidl-shaped (`std_msgs/msg/Int32`,
-  `geometry_msgs/msg/Twist`, …). CDR encoding on the wire.
-- Default backend (`nros-rmw-zenoh`) is bit-compatible with the upstream
-  [`rmw_zenoh`](https://github.com/ros2/rmw_zenoh) ROS 2 RMW. A
-  nano-ros publisher and an `rclcpp` subscriber on the same zenohd
-  router exchange messages without a bridge — see
-  [ROS 2 Interoperability](../tutorial/talk-to-ros2.md).
-
-## Where it diverges, and why
-
-### 1. The executor is the entry point
-
-Standard ROS 2 starts with a global init (`rclcpp::init` /
-`rclrs::Context::default_from_env` / `rclc_support_init`) followed by
-node creation, then optionally an executor.
-
-nano-ros inverts this: an `Executor` opens the RMW session and owns the
-runtime budget. Every node, publisher, subscription, service, client,
-action handle, and timer is allocated *out of the executor's arena*.
-
-```text
-Executor::open(&config) → Node → Publisher / Subscription / Service / Client / Timer
-```
-
-**Why.** The arena is fixed-size and known at compile time
-(`NROS_EXECUTOR_ARENA_SIZE` / `NROS_EXECUTOR_MAX_CBS`). On a 64 KB
-heap MCU we cannot afford the indirection of a global allocator behind
-every `create_publisher` call. The executor-as-arena pattern moves the
-size negotiation up to the application's startup code, where it
-belongs.
-
-### 2. Both manual-poll and callback paths are first-class
-
-`rclcpp` is callback-only — every subscription needs a callback, the
-executor dispatches them. `rclrs` <0.7 was manual-poll only. `rclc`
-exposes both but treats manual-poll as the second-class path.
-
-nano-ros treats them as equals. A subscription created via
-`node.create_subscription(...)` exposes `take()`. A subscription
-registered via `executor.node_mut(nid).create_subscription::<M, _>("/topic", callback)`
-runs the callback during `spin_once`. Pick whichever fits the control loop.
-
-A C++ callback may also take upstream's `const rclcpp::MessageInfo&` as its
-second argument (hosted builds). A C++ poll subscription has
-upstream's polling form, `sub.take(msg, info)`, on hosted and freestanding
-builds. The fields are what the backend reports per sample, so on
-XRCE and uORB they are all zero. `info.is_reported()` (a nano-ros extension)
-says whether the backend reported metadata for that sample at all.
-
-**Why.** Embedded apps often want the predictability of an explicit
-poll inside a real-time loop. Callback dispatch is great for
-event-driven services but adds indirection that real-time engineers
-have to bound by hand. Offering both means the application picks.
-
-### 3. No foreign async runtime, on purpose
-
-`rclrs` 0.7+ added `spin_async` beside its synchronous executor. nano-ros
-does not offer one. A future polled by tokio or Embassy runs when THAT
-scheduler decides, so nano-ros could not state when a callback runs or at
-what priority, and the real-time promise is the first thing nano-ros offers.
-Concurrent waits are written as callbacks on tiers instead, each tier an OS
-thread at a priority nano-ros derives.
-
-### 4. Heap is optional
-
-ROS 2 RMW implementations all assume `std` + a heap. Even rclrs's
-`no_std` story is "soon".
-
-nano-ros runs in three modes that map onto target capability:
-
-| Mode | Cargo features | What works |
-|------|----------------|------------|
-| `std` | `std` (default on POSIX) | Everything. POSIX threading, full async runtime. |
-| `no_std + alloc` | `alloc` + a `#[global_allocator]` | Everything except features that need `std::sync::Mutex`. Used by FreeRTOS / NuttX / ThreadX / Zephyr. |
-| `no_std` cooperative | no `std`/`alloc` platform threading (bare-metal board crates) | Cooperative single-task — no threading at all. Used by bare-metal MPS2-AN385. |
-
-**Why.** Heap presence is not a binary "embedded yes/no" — it is a
-spectrum. Stm32-class boards have a heap; Cortex-M0+-class might not.
-The feature axis lets the same application code target both.
-
-### 5. Backend selection at compile time, not runtime
-
-Standard ROS 2 uses an `RMW_IMPLEMENTATION` env var read at process
-start. The plugin loader pulls a shared library, dispatches calls
-through C function pointers.
-
-nano-ros bakes the backend in at compile time. The consuming
-`Cargo.toml` adds the backend crate directly (`nros-rmw-zenoh` /
-`nros-rmw-cyclonedds` / `nros-rmw-xrce-cffi`) alongside `nros` with the
-`rmw-cffi` feature; CMake options (`-DNROS_RMW=zenoh`) decide it
-for C/C++ builds. The backend's `#[ctor]` registers its vtable with
-the `nros-rmw-cffi` runtime registry before `main`.
-
-**Why.**
-
-- **Dead-code elimination.** A 32 KB Flash budget cannot afford to
-  link every backend's C client and pick at runtime. Linking only the
-  selected backend cuts the binary substantially (the three backends
-  differ by an order of magnitude in linked C footprint — measure your
-  own image with `size`; no benchmarked figure exists).
-- **No plugin loader.** Most embedded targets have no `dlopen`. The
-  cost of the plugin abstraction is a permanent overhead with no
-  payoff there.
-- **Cross-compile sanity.** `RMW_IMPLEMENTATION` baked into the binary
-  means the build system already knows which backend's C client to
-  link — no separate "find shared library at runtime" step.
-
-The trade-off is real: changing backends requires a rebuild. This is
-the right trade-off for the embedded use case; it would be the wrong
-trade-off for desktop ROS 2.
-
-A binary can still link **multiple** backends and run them in
-parallel — one node on backend A, another on backend B,
-the executor draining both each tick. The
-[Cross-backend Bridges](../guide/rmw/bridge-between-backends.md)
-chapter walks the build knobs (`NROS_RMW=...` primary
-selector, explicit per-backend `register()`, `NROS_RMW=
-none` cmake escape hatch) and the three shipped examples.
-
-### 6. Message codegen lands inside your build, not a sibling library
-
-Standard ROS 2 uses `ament` + `rosidl` to compile message packages
-(`std_msgs`, `geometry_msgs`, …) into separate shared libraries that
-your application links against.
-
-nano-ros's `nros build` (Rust) and
-`nano_ros_generate_interfaces()` (C / C++ via CMake — one of five
-entry points; see the [spelling table](../reference/message-generation.md#which-cmake-spelling-one-table)) write message
-type definitions *into your build tree*. No `_msgs` library, no ament
-overlay, no colcon workspace required.
-
-**Why.** An embedded cross-build has no ROS 2 runtime to link against, so
-the types are generated into the build instead of installed as libraries.
-The message *definitions* still come from your ROS 2 install: `nros build`
-reads them through `AMENT_PREFIX_PATH`, which you source once per project
-(the first configure records it), so the generated layouts and type hashes
-are the ones your ROS 2 peers use.
-
-### 7. QoS profile is the full DDS field set; backends advertise per-policy support
-
-Standard ROS 2 supports the full DDS QoS profile family
-(`reliability`, `durability`, `history`, `depth`, `deadline`,
-`lifespan`, `liveliness`, `liveliness_lease_duration`,
-`avoid_ros_namespace_conventions`) and performs profile *matching*
-between endpoints.
-
-nano-ros's `rmw_qos_profile_t` carries the same field set; standard
-profile constants (`NROS_RMW_QOS_PROFILE_DEFAULT`, `_SENSOR_DATA`,
-`_SERVICES_DEFAULT`, `_PARAMETERS`, `_SYSTEM_DEFAULT`) match
-upstream `rmw_qos_profile_*` field-for-field. ROS 2 apps porting
-across pull the equivalent constant unchanged.
-
-Each backend advertises which policies it can enforce via
-`Session::supported_qos_policies()`. The runtime validates the
-requested QoS at entity-create time and returns
-`IncompatibleQos` synchronously when the backend can't honour
-a requested policy:
-
-```rust
-if session.supported_qos_policies().contains(QoSPolicyMask::DEADLINE) {
-    // backend honours deadline; safe to set deadline_ms
-} else {
-    // app handles deadline monitoring itself
-}
-```
-
-**No silent downgrade.** The runtime never quietly drops a requested
-policy. Apps either get the QoS they asked for or a hard error.
-
-**Why upstream-shaped struct, not a smaller subset.** ROS 2 QoS is
-the established vocabulary; mismatched APIs make porting painful.
-The field set is small (24 bytes); apps that don't request a policy
-leave its field at zero ("off"). Per-backend implementation is a
-separate question — which policies actually fire — answered by
-the support mask.
-
-**Why synchronous error instead of runtime event.** Upstream's
-`RMW_EVENT_REQUESTED_INCOMPATIBLE_QOS` event surfaces mismatches
-at run time. Most QoS mismatches are configuration errors visible
-at startup; the runtime path doesn't need to handle them. The few
-that aren't (cross-process QoS-mismatched discovery) the wire
-protocol handles itself — DDS endpoints negotiate via DDS Discovery,
-zenoh endpoints communicate intent through the topic-key encoding.
-
-**Manual liveliness assertion.** Publishers configured with
-`MANUAL_BY_TOPIC` / `MANUAL_BY_NODE` liveliness call
-`assert_liveliness()` explicitly to refresh the lease. Available on
-every language surface (Rust `Publisher<M>::assert_liveliness()`, C
-`rcl_publisher_assert_liveliness(&pub)`, C++
-`pub.assert_liveliness()`).
-
-**Which backend actually asserts.** **cyclonedds implements it**
-(`dds_assert_liveliness` on the writer: renews the lease and sends a
-Heartbeat). **zenoh-pico does not** — its liveliness is a session-scoped
-keepalive, it has no per-topic lease a call can renew, and what
-`assert_liveliness()` refreshes there is a LOCAL watchdog that fires this
-publisher's own `LivelinessLost` on expiry. That local behaviour is real,
-but under a manual kind
-zenoh-pico, XRCE-DDS and uORB answer `UNSUPPORTED` rather than `Ok`,
-because an `Ok` from a call that put nothing on the wire is the one thing a
-caller uses this function to rule out. `AUTOMATIC` and `NONE` answer `Ok`
-everywhere: there was nothing to assert.
-
-See [Status events](../guide/rmw/qos-status-events.md) for the runtime-event
-side of liveliness, deadline, and message-lost.
-
-**Per-backend coverage** is documented in
-[RMW vs upstream § 7](../internals/rmw/rmw-vs-upstream.html#7-qos-full-dds-shaped-profile-per-backend-support-advertised).
-
-### 8. No runtime backend swap, no runtime introspection
-
-Standard ROS 2 ships `ros2 topic list`, `ros2 node info`, dynamic
-endpoints discovery, `rmw_get_*` introspection.
-
-nano-ros has none of that at runtime. The backend is fixed at compile
-time, the wire-protocol introspection is whatever the backend natively
-exposes (zenoh-pico's `z_query` for SPDP, Cyclone DDS's SPDP/SEDP
-discovery, …). Use the host-side ROS 2 tools for introspection and connect via
-the rmw_zenoh interop path.
-
-**Why.** Every byte of "introspect what's running" is overhead a
-microcontroller can't justify when a host-side ROS 2 environment is
-one router-hop away.
-
-### 9. Parameters: node-local server, no descriptors, no callbacks (yet)
-
-Standard ROS 2 (`rclcpp::Node`) ships a rich parameter surface:
-`declare_parameter<T>` with `ParameterDescriptor` (description, ranges,
-read-only, dynamic typing), `set_parameter` returning a
-`SetParametersResult`, atomic multi-set, three callback hooks
-(`pre_set` / `on_set` / `post_set`), parameter overrides from the
-launch file or CLI, and a service-backed remote-introspection surface
-(`/<node>/get_parameters`, `/<node>/set_parameters`, …).
-
-nano-ros keeps the **vocabulary** (`declare_parameter<T>`,
-`get_parameter<T>`, `set_parameter<T>`, `has_parameter`) but trims the
-surface for embedded use. There is ONE store, and it is in Rust: the
-`nros_params::ParameterServer` the executor owns, which is also what the six
-`rcl_interfaces/srv/*` servers read. C++ reaches it through methods on
-`rclcpp::Node`; C through rclc's own parameter-server API,
-`<rclc_parameter/rclc_parameter.h>` (`rclc_parameter_server_t`, one per node);
-Rust through the `Node` (`node.declare_parameter::<T>(name)`, rclrs's
-builder, plus `get_parameter` / `set_parameter` and the rest), as rclrs does;
-the executor's own parameter methods are deprecated or internal.
-
-> **If you have older nano-ros code:** `rclcpp::ParameterServer<Cap>` is gone
-> and so is the caller-storage store it wrapped as a thing to
-> reach for. Both were node-LOCAL: the parameter services read a different
-> object, so `ros2 param list` never saw what you declared. The C
-> caller-storage family and the `nros_executor_*_param*` functions are gone too:
-> C uses rclc's `rclc_parameter_server_t`, which declares into the
-> same executor-owned store.
-
-**What we keep**
-
-- Same five scalar types: `bool`, `int64_t`, `double`, string, plus the
-  `bool` / `int64_t` / `double` / `byte` / `string` array variants on the
-  C side (`rclc_parameter_{declare,get,set}_*_array`; string arrays not yet).
-- Same lifecycle: declare → get → set, with declare-once-then-typed-get
-  semantics.
-- Optional service-backed exposure (`~/get_parameters` /
-  `~/set_parameters` / `~/list_parameters` / …) when the
-  `param-services` feature is enabled. This pulls in ROS 2 wire compat:
-  declared parameters are visible to `ros2 param list /<node>` and
-  `ros2 param set`. The services use the `rcl_interfaces` message
-  bounds: a `list_parameters` reply carries at most 64 names and 64
-  prefixes, and when more match it is cut there and the node logs one
-  warning (the reply message has no field to say so). A `set_parameters`
-  request is answered per parameter, so a value or name past those bounds
-  gets `successful = false` with a reason while the rest are applied.
-- `/parameter_events`, from every language. A node whose
-  parameters are served publishes `rcl_interfaces/msg/ParameterEvent` with
-  `rmw_qos_profile_parameter_events` (RELIABLE, VOLATILE; depth 1000 hosted,
-  `NROS_PARAM_EVENTS_DEPTH` on an RTOS): one start-up event naming what the
-  node already holds, then one per declare, set and undeclare, with `node`
-  set to the node's fully qualified name. C++ gets it from
-  `Node::start_parameter_services()`, Rust from `[param_services]` (or
-  `Executor::register_parameter_services`), C from rclc's
-  `notify_changed_over_dds` (default on; `false` opts that node out; C++'s
-  `NodeOptions().start_parameter_event_publisher(false)` does the same). One
-  publisher per executor serves every node, so `param_services` costs one
-  publisher slot and one liveliness token on top of the six services per
-  node, and no queryable. An event too big for
-  `NROS_PARAM_SERVICE_BUFFER_SIZE` is not published (logged as an error),
-  never truncated. To subscribe to OTHER nodes' events, a hosted C++ build
-  has `rclcpp::ParameterEventHandler`: per-parameter callbacks
-  taking `rclcpp::Parameter`, and whole-event callbacks taking the image's
-  generated `rcl_interfaces::msg::ParameterEvent`. A freestanding build, C
-  and Rust use a plain `/parameter_events` subscription.
-
-**What we drop, and why**
-
-| Upstream feature | nano-ros status | Why dropped |
-|---|---|---|
-| `ParameterDescriptor` (description, ranges, read-only, dynamic_typing) | not exposed | descriptor metadata is host-side concern; embedded server enforces type at declare-time, range checks belong in `set` callbacks (deferred — see below) |
-| `add_pre_set_parameters_callback` / `add_on_set_parameters_callback` / `add_post_set_parameters_callback` | one `rclc_parameter_callback_t` per C server — rclc's `(old, new, context)`, fired before the write, `false` refuses | three callbacks → three indirection slots × N subscribers; one callback covers the safety-island validation use case (`reject if out of range`) |
-| `set_parameter` returning `SetParametersResult` (`successful: bool`, `reason: string`) | returns `rcl_ret_t` | string `reason` would force heap or fixed-buffer; ret code captures the binary outcome |
-| `set_parameters_atomically` | not exposed | atomic multi-set requires transaction log; not justified by current embedded use |
-| `declare_parameters` (multi-declare with namespace) | C++ only, hosted only: `rclcpp::Node::declare_parameters<T>(prefix, map)` | upstream's argument is a `std::map`, so it needs an allocator; returns `Result`, not the `std::vector<T>` of values in effect (read back with `get_parameter<T>`). Rust and C declare one at a time |
-| Parameter overrides from CLI / launch / yaml | not exposed | embedded apps configure via Kconfig / `Config` struct; runtime overrides come over the wire via `~/set_parameters` (when `param-services` is on) |
-| Storage allocation policy | one executor-owned table, `NROS_MAX_PARAMETERS` slots, keyed by node | no per-node heap; capacity is a build knob, sized once like the executor arena rather than multiplied by the node count |
-
-**Storage shape difference**
-
-| | rclcpp | nano-ros |
-|---|---|---|
-| Container | `std::map<string, ParameterValue>` per node (heap) | one fixed table on the executor, keyed by `(node, name)` |
-| String value | `std::string` (heap) | fixed slot, copy semantics |
-| Array params | `std::vector<T>` (heap) | `rclcpp::Seq<T, N>` in, elements copied into the store's own slot — nothing for the caller to keep alive |
-| Total fixed cost | unbounded | `NROS_MAX_PARAMETERS` slots, known at build time, shared by every node |
-
-**Class shape difference**
-
-`rclcpp::Node` owns the parameter store; nano-ros's node borrows one the
-EXECUTOR owns. The call shape is upstream's:
+A ported rclcpp node compiles against nano-ros with the same includes and the
+same names. One line it needs that upstream does not:
 
 ```cpp
-// rclcpp
-auto node = std::make_shared<rclcpp::Node>("ctrl");
-node->declare_parameter<double>("ctrl_period", 0.15);
-double v = node->get_parameter("ctrl_period").as_double();
-
-// nano-ros
-rclcpp::Node node;
-RCLCPP_TRY(rclcpp::Node::create(node, "ctrl"));
-double period = node.declare_parameter<double>("ctrl_period", 0.15);
-double v = 0.0;
-node.get_parameter<double>("ctrl_period", v);
-
-// an array parameter, with no heap: `Seq<T, N>` is the value, the store
-// owns the elements
-rclcpp::Seq<double, 8> w = node.declare_parameter("mpc_weights",
-                                                rclcpp::Seq<double, 8>{1.0, 2.0});
+rclcpp::Node node("talker");
+if (!node.ok()) return 1;        // replaces upstream's try/catch
 ```
 
-**Why the executor owns it.** Templating `Node` on a capacity would propagate
-through every `create_publisher` / `create_subscription` site, so the store
-cannot be a member; and a store per node is a store per node's worth of fixed
-arena on a target that has one. One executor-owned table, keyed by node, is both
-— `/talker`'s `rate` is not `/listener`'s, and the arena is sized once
-(`NROS_MAX_PARAMETERS`). It is also the table the services answer from, which is
-the property the split shape could not have: the parameter you declare is the
-parameter `ros2 param get` returns.
+Upstream's `rclcpp::Node` constructor throws when the node cannot be
+created. nano-ros is built with `-fno-exceptions`, so the constructor records
+the failure instead, and the node answers `false` to `ok()`. The vocabulary
+is the same; the reason underneath is not.
 
-**Why no `Box<dyn FnMut>` callback yet.** The same constraint that
-shapes the QoS event callbacks applies here: nano-ros's
-`#[no_std]` core forbids alloc-style indirection. A future
-descriptor-+-validation-callback path will use a function pointer +
-`void* user_context` pair, registered at declare-time. Tracked under
-the upstream parity backlog.
+That is the pattern of this page. nano-ros keeps ROS 2's vocabulary and wire
+format so existing nodes port and talk to ROS 2 peers. Where it differs, the
+reason is almost always the same: it runs on a microcontroller with little
+RAM to spare, no dynamic loader and often no threads. This page states each
+difference plainly, then compares nano-ros with micro-ROS, its closest peer.
+The tasks are [Port a C++ node](../guide/port/port-a-cpp-node.md) and
+[Move a ROS 2 project over](../guide/port/move-a-ros2-project.md).
 
-**Going further.** When upstream's full parameter surface matters —
-`describe_parameter`, ranges, three-stage validation callbacks,
-override files — fall back to running a host-side ROS 2 node that
-exposes them and uses the embedded node only as the leaf publisher /
-subscriber.
+## What stays the same
 
-## What this means in practice
+- **The entity model.** A node owns publishers, subscriptions, services,
+  clients, action servers, action clients, timers and parameters, with ROS 2's
+  names (see the [ROS 2 concepts](https://docs.ros.org/en/humble/Concepts/Basic.html)).
+- **Names and types.** Topic, service and action names follow ROS 2's
+  conventions, message types are rosidl-shaped (`std_msgs/msg/Int32`), and
+  CDR is the encoding on the wire.
+- **Packages.** A workspace is a `src/` of packages with `package.xml`
+  manifests.
+- **The wire.** The zenoh backend is compatible with upstream `rmw_zenoh`: a
+  nano-ros publisher and an rclcpp subscriber on the same router exchange
+  messages with no bridge ([Talk to ROS 2](../tutorial/talk-to-ros2.md)).
+- **The C and C++ spellings.** The C API uses rclc's names, argument order and
+  arity; the C++ API uses rclcpp's.
 
-If you are coming from `rclcpp`:
+## What changes in the workflow
 
-- Open an [`Executor`](../api/cpp/classrclcpp_1_1Executor.html), then
-  create the node from it.
-- Decide poll vs. callback per subscription, not globally.
-- If the platform has `std`, `nros::init()` looks identical; if it is
-  RTOS / bare-metal, plan the executor arena up front.
-- Pick `nros-rmw-zenoh` for ROS 2 interop; everything else is a
-  different trade-off.
+- **One release, no package registry.** The `nros` CLI is a GitHub release,
+  and the library ships as source inside it, compiled into your build.
+  Nothing comes from crates.io or a ROS 2 apt repository.
+- **Per-board provisioning, no `rosdep`.** `nros setup <board>` fetches the
+  toolchains and SDKs for exactly that board and RMW into the user's store,
+  with no system-wide install. The zenoh router is not provisioned: it comes
+  from a ROS 2 install.
+- **`nros build`, not `colcon build`.** It reads the same `package.xml` files
+  and drives cargo, CMake or west, with no install space
+  ([How a build becomes an image](how-a-build-becomes-an-image.md)).
+- **Message code lands in your build.** There is no installed `_msgs`
+  library. The message *definitions* still come from your ROS 2 install,
+  through `AMENT_PREFIX_PATH`, so the layouts and type hashes match your ROS 2
+  peers ([Message generation](../reference/message-generation.md)).
+- **No `ros2 launch` on the device.** The launch file is read at build time,
+  and the generated entry is the launched system.
+- **Configuration is build-time on embedded.** On a host, `ROS_DOMAIN_ID` and
+  the other environment variables work. An embedded image bakes the same
+  values from `system.toml`.
 
-If you are coming from `rclrs`:
+## What changes in the API
 
-- The umbrella crate is [`nros`](../reference/rust-api.md), not split
-  into `rclrs_*`. `nros::prelude` gives you everything.
-- `Executor::open(&config)` is the equivalent of
-  `Context::default_from_env()` + `Executor::new(...)`.
-- The async surface is on the executor + handles themselves (re-exported at the crate
-  root). Compatible with tokio out of the box.
+### The executor is the entry point
 
-If you are coming from `rclc`:
+ROS 2 starts with a global init (`rclcpp::init`, `rclc_support_init`), then
+nodes, then optionally an executor. nano-ros inverts it: an `Executor` opens
+the session, and every node, entity and timer is created from it, in storage
+sized at build time. On a target with tens of kilobytes of RAM, a global
+allocator behind every `create_publisher` is a cost the image cannot carry,
+so the sizing moves to the build. [The client library](client-library.md)
+explains the model.
 
-- The C entry points carry rclc's own names (`rclc_node_init_default`,
-  `rclc_publisher_init_default`, `rclc_subscription_init_default`), in
-  rclc's argument order and at rclc's arity. Memory ownership rules are
-  the same — the caller owns storage, the API initialises it.
-- See the [C API reference](../reference/c-api.md) for the full
-  surface.
+### Polling and callbacks are both first-class
 
-## Going deeper
+rclcpp is callback-only: every subscription has a callback the executor
+dispatches. nano-ros also has polled entities, under a different name
+(`create_polling_subscription`), so you choose per entity. A real-time loop
+often wants the predictability of an explicit poll; an event-driven service
+wants a callback ([The execution model](execution-model.md#two-ways-to-receive)).
 
-- API surface, type by type → per-language references at
-  [Rust](../reference/rust-api.md) / [C](../reference/c-api.md) /
-  [C++](../reference/cpp-api.md).
-- Why the executor / RMW / platform layers split this way →
-  [How a build becomes an image](how-a-build-becomes-an-image.md#the-layers-in-an-image).
-- Cooperative `no_std` model → [no_std Support](static-memory-and-pools.md).
+### No async runtime and no multi-threaded executor
+
+rclrs has an async spin and rclcpp has a `MultiThreadedExecutor`. nano-ros has
+neither, on purpose. A future polled by tokio or Embassy runs when that
+scheduler decides, so nano-ros could not state when a callback runs or at what
+priority. Parallelism is a sched task instead: an executor on an RTOS thread
+at a priority the build derives.
+
+### The heap is optional
+
+ROS 2 assumes `std` and a heap. The nano-ros core is `no_std` with
+fixed-size pools, and `alloc` is opt-in
+([Static memory and pools](static-memory-and-pools.md)). The C transport
+libraries still allocate through the platform's allocator.
+
+### The backend is chosen when you build
+
+ROS 2 reads `RMW_IMPLEMENTATION` at process start and loads a shared library.
+nano-ros links the backend when it builds the image, from the bringup's
+`rmw`. Most embedded targets have no `dlopen`; linking only the chosen
+backend keeps its C client out of an image that does not use it; and the
+build knows what to link. The cost is that changing backends means
+rebuilding. One binary can still link several backends and bridge between
+them ([Bridge between backends](../guide/rmw/bridge-between-backends.md)).
+
+### No introspection on the device
+
+`ros2 topic list`, `ros2 node info` and the `rmw_get_*` graph queries run on
+a host. A nano-ros image answers what its backend's discovery exposes, and you
+introspect it from a ROS 2 host over the interop path. Every byte of
+introspection is a byte a microcontroller pays for, when a ROS 2 host is one
+router hop away.
+
+### QoS: the full profile, with support stated per backend
+
+The QoS profile has the full DDS field set, and the standard profiles
+(`_DEFAULT`, `_SENSOR_DATA`, `_SERVICES_DEFAULT`, `_PARAMETERS`,
+`_SYSTEM_DEFAULT`) match upstream field for field. What differs is
+enforcement. Each backend advertises which policies it can enforce
+(`Session::supported_qos_policies()`), and creating an entity with a policy
+the backend cannot honour fails at once with `IncompatibleQos`. A requested
+policy is never dropped silently. Upstream reports a mismatch later, as a
+run-time event; most mismatches are configuration errors visible at start-up.
+
+Manual liveliness is the sharpest case. `assert_liveliness()` exists in every
+language, but only Cyclone DDS puts it on the wire. zenoh-pico's liveliness is
+a session keep-alive with no per-topic lease, so under a manual kind zenoh,
+XRCE-DDS and uORB answer `UNSUPPORTED` rather than an `Ok` that would mean
+nothing was sent. The run-time side is
+[Use QoS, status events and discovery](../guide/rmw/qos-status-events.md),
+and per-backend coverage is the [Per-RMW feature matrix](../reference/rmw-feature-matrix.md).
+
+### Parameters: one store, a smaller surface
+
+nano-ros keeps the vocabulary (`declare_parameter<T>`, `get_parameter<T>`,
+`set_parameter<T>`, `has_parameter`) and the remote services, so
+`ros2 param list` and `ros2 param set` reach a node with parameter services
+on. Underneath there is one store, owned by the executor and keyed by node,
+with a slot count fixed at build time; it is also the store the services read,
+so what you declare is what `ros2 param get` returns. A node does not own its
+parameters, because a store per node is a fixed arena per node on a target
+that has one.
+
+What is smaller than rclcpp, and why:
+
+| rclcpp | nano-ros | Why |
+| --- | --- | --- |
+| `ParameterDescriptor` (ranges, read-only, description) | not exposed | metadata is a host concern; the type is enforced at declare time |
+| three set callbacks (`pre_set`, `on_set`, `post_set`) | one validation callback per C server | each callback is an indirection slot per node; one covers range checks |
+| `set_parameter` returns `SetParametersResult` with a reason | a return code | a reason string needs a heap or a fixed buffer |
+| `set_parameters_atomically` | not exposed | needs a transaction log |
+| `declare_parameters` with a `std::map` | C++ on a hosted build only, returning `Result` | the map needs an allocator |
+| overrides from the command line, launch file or YAML | the launch file at build time; `~/set_parameters` over the wire; `-p` and `--params-file` on a hosted build | an embedded image has no command line |
+
+An array value is `rclcpp::Seq<T, N>`, an array parameter, with no heap: the
+store copies the elements into its own slot. When you need the full upstream
+surface, run it on a host ROS 2 node and keep the embedded node a leaf. The
+calls, `/parameter_events` and the C and Rust forms are in the
+[C++ API reference](../reference/cpp-api.md#parameters-and-parameter_events).
+
+### Where C++ code behaves differently
+
+Most of the rclcpp surface either works or fails to compile. Three things
+compile and behave differently, each for a reason:
+
+- **`Node::ok()`.** With no exceptions, a failed constructor cannot throw, so
+  you ask. A generated entry checks it and halts naming the node; a
+  hand-written `main` must check, or a failed node goes on to create
+  publishers that do nothing.
+- **`Node::SharedPtr` observes; it does not own.** It is a copyable handle,
+  not a `std::shared_ptr`, on every target, embedded included. A node is
+  constructed by the entry and outlives everything it is handed to, so no
+  ownership needs counting. `shared_from_this()` returns the handle and
+  never throws `bad_weak_ptr`. nano-ros cannot derive from
+  `std::enable_shared_from_this`, because its `std::weak_ptr` member exists
+  only where `<memory>` does, and two translation units of one image could
+  then disagree about the node's layout. Assigning a temporary
+  `make_shared` result to a `Node::SharedPtr` is a compile error, since the
+  handle would dangle; write `auto`.
+- **`rclcpp::TimerBase` is a name, not a hierarchy.** It is an alias of the
+  one flat `rclcpp::Timer`, with no vtable: the executor dispatches through a
+  plain function pointer, so a polymorphic base would cost bytes with no
+  caller. The clock is a run-time field and a second verb,
+  `rclcpp::create_timer`, not a type parameter, so `WallTimer` and
+  `GenericTimer` do not exist. A `SharedPtr` to a timer, subscription,
+  service or client is a small handle too: dropping it leaves the entity
+  running, and `reset()` on the handle releases it.
+
+## Compared with micro-ROS
+
+micro-ROS is the closest peer: a ROS 2 client stack for microcontrollers. The
+two differ mostly in what they assume about the network and the language.
+
+| | nano-ros | micro-ROS |
+| --- | --- | --- |
+| Application APIs | Rust, C (rclc's names), C++ (rclcpp's names) | C (rclc) |
+| RMW | zenoh, XRCE-DDS, Cyclone DDS, chosen per image | XRCE-DDS |
+| Network model | through a zenoh router, brokerless with Cyclone DDS, or agent-based with XRCE-DDS | agent-based |
+| Process beside the device | a zenoh router, none, or an XRCE-DDS agent, by backend | always the Micro XRCE-DDS Agent |
+| Core | `no_std`, fixed-size pools | C with a static memory configuration |
+| Scheduling | sched tasks and derived levels, EDF and sporadic classes, budgets ([The execution model](execution-model.md)) | the rclc executor |
+| Several backends in one binary | yes, with bridges | no |
+| End-to-end integrity | CRC and sequence check ([Safety](safety.md)) | none built in |
+| Formal checks | Kani harnesses and Verus proofs over serialization, scheduling and protocol logic | none published |
+| Build | `nros build` driving cargo, CMake or west; or nano-ros inside your CMake, Zephyr or NuttX build | colcon and per-RTOS firmware scripts |
+| License | MIT or Apache-2.0 | Apache-2.0 |
+
+The boards nano-ros supports, and at what level, are generated in
+[Supported boards](../reference/supported-boards.md).
+
+Choose nano-ros when you want Rust as a first-class API, a zenoh router or
+brokerless DDS instead of an agent, several backends in one image, or scheduling beyond
+priorities. Choose micro-ROS when you already have rclc code and an agent
+deployment, when your toolchain must stay C-only, or when you need its
+ecosystem's commercial support.
+
+Moving from micro-ROS is mostly a rename, and in C often not even that: the
+C API keeps rclc's spellings, so `rclc_publisher_init_default`,
+`rclc_node_init_default` (in rclc's argument order) and `rclc_executor_t` are
+nano-ros's names too. An existing XRCE agent serves nano-ros's XRCE-DDS
+backend unchanged. A custom transport is a platform-level transport rather
+than `rmw_uros_set_custom_transport`
+([Add a transport](../extending/custom-transport.md)).
 
 ## Design background
 
-- [RFC-0113: RT unified wait (why there is no async executor)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0113-rt-unified-wait.md)
+- [RFC-0113](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0113-rt-unified-wait.md):
+  why there is no async executor.
+- [RFC-0089](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md):
+  adopting the ROS 2 API, and the compile-or-conform rule: a ported line
+  either behaves as upstream's or does not compile.

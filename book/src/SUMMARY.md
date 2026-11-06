@@ -71,8 +71,7 @@
 - [Static memory and pools](./background/static-memory-and-pools.md)
 - [The client library](./background/client-library.md)
 - [Safety](./background/safety.md)
-- [Differences from Standard ROS 2](./background/differences-from-ros2.md)
-- [nano-ros vs micro-ROS](./background/vs-micro-ros.md)
+- [How nano-ros differs from ROS 2 and micro-ROS](./background/differences-from-ros2.md)
 
 # Reference
 
