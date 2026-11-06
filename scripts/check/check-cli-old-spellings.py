@@ -172,8 +172,20 @@ def tracked() -> list[str]:
     return [f for f in p.stdout.decode().split("\0") if f]
 
 
+def first_words(compiled) -> re.Pattern:
+    """A prefilter over every row: each `use` pattern's match contains its
+    row's FIRST old word, with a non-word, non-hyphen character (or the line's
+    edge) on both sides (`nros ws …`, `"${_nros}" ws …`, `["ws", …`). A line
+    with none of them cannot match any row, so the per-row regexes, 2 of them
+    for each of ~40 rows, never run on it. That was 140 CPU-seconds on the
+    fast line's hosted runner (phase-489); measured equal on 3740 hits."""
+    words = sorted({r["old"].split()[0] for r, _use, _beside in compiled})
+    return re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, words)) + r")(?![\w-])")
+
+
 def scan(compiled) -> list[tuple[str, int, str, str]]:
     hits = []
+    pre = first_words(compiled)
     for rel in tracked():
         if rel in EXEMPT_FILES or rel.startswith(HISTORY_PREFIXES):
             continue
@@ -184,6 +196,8 @@ def scan(compiled) -> list[tuple[str, int, str, str]]:
         if "nros" not in text and "$" not in text:
             continue
         for n, line in enumerate(text.splitlines(), 1):
+            if not pre.search(line):
+                continue
             for old in uses(line, compiled):
                 hits.append((rel, n, old, line.strip()))
     return hits
@@ -227,9 +241,12 @@ def self_test() -> None:
     assert rewrite("run([cli, 'init'])", c) == "run([cli, 'setup', 'presets'])"
     assert rewrite('X "${_nros}" ws board-facts --y', c) == 'X "${_nros}" dev image board-facts --y'
     assert rewrite("nros init . && git init", c) == "nros setup presets . && git init"
+    pre = first_words(c)
     for line, want in cases.items():
         got = uses(line, c)
         assert got == want, f"self-test: {line!r}: want {want}, got {got}"
+        # The prefilter may only skip a line no row matches.
+        assert not want or pre.search(line), f"self-test: prefilter skips {line!r}"
 
 
 def main() -> int:
