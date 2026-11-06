@@ -140,9 +140,17 @@ registry, not written here:
    [`examples/zephyr/rust/talker/prj-cyclonedds.conf`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/rust/talker/prj-cyclonedds.conf)
    beside `system.toml`. Its lines that matter for Cyclone are
    `CONFIG_NET_IPV4_IGMP=y`, the `CONFIG_NET_PKT_*` and `CONFIG_NET_BUF_*`
-   counts, and `CONFIG_HEAP_MEM_POOL_SIZE`. The settings for the other
-   platforms are listed in
-   [Pick and configure the RMW](../../tutorial/pick-the-rmw.md#cyclone-dds-network-configuration-per-platform).
+   counts, and `CONFIG_HEAP_MEM_POOL_SIZE`, with `CONFIG_NET_SOCKETS_POLL_MAX=8`
+   for the receive thread's socket set.
+
+   On the other RTOS platforms the board package already carries the network
+   settings Cyclone DDS needs, so an image adds none: the FreeRTOS boards'
+   `lwipopts.h` enables `LWIP_IGMP`, `IP_REASSEMBLY` (for fragmented RTPS
+   samples) and `LWIP_SO_RCVTIMEO`; the NuttX boards' defconfig sets
+   `CONFIG_NET_IGMP` and `CONFIG_NET_BROADCAST`; the ThreadX boards'
+   `nx_user.h` defines `NX_ENABLE_IGMPV2`. On a POSIX host the kernel handles
+   multicast and needs nothing. A board you add yourself needs the same
+   settings in its own package ([Add a board](../../extending/add-a-board.md)).
 
 ## Example
 

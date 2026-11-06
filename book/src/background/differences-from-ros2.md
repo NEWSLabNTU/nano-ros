@@ -106,6 +106,40 @@ build knows what to link. The cost is that changing backends means
 rebuilding. One binary can still link several backends and bridge between
 them ([Bridge between backends](../guide/rmw/bridge-between-backends.md)).
 
+### How each backend reaches ROS 2
+
+The three backends differ less in what they can carry than in the shape of
+the network around the device: what else has to run, who does discovery, and
+what happens when a process goes away.
+
+- **zenoh.** The device runs zenoh-pico, a small C client, in client mode,
+  and connects to a zenoh router over serial, TCP or UDP. The router is ROS
+  2's own `rmw_zenohd`; ROS 2 nodes running `rmw_zenoh_cpp` connect to the
+  same router, which forwards messages without translating them. The device
+  joins ROS 2 graph discovery through liveliness tokens, so `ros2 topic list`
+  sees it. On a serial-only link the build leaves out the device's own graph
+  cache, its view of the other nodes, to save RAM. Zenoh also defines a peer mode with no router, which
+  nano-ros does not ship: its multicast transport and scouting cost flash,
+  and every nano-ros deployment reaches its peers through a router.
+  `NROS_SESSION_MODE=peer` is refused at session open. If the router stops,
+  the device keeps running but reaches no one.
+- **XRCE-DDS.** The device runs the Micro XRCE-DDS client, the same one
+  micro-ROS uses, and asks an agent, `MicroXRCEAgent`, to create DDS
+  entities on its behalf. The agent does discovery and bridges data to the
+  DDS data space, so ROS 2 nodes on any DDS RMW reach the device through it.
+  The client allocates when a session or entity is created, never per
+  message. If the agent stops, the device loses all connectivity.
+- **Cyclone DDS.** The image links Eclipse Cyclone DDS, the implementation
+  ROS 2 itself uses through `rmw_cyclonedds_cpp`. The device is a full DDS
+  participant: SPDP and SEDP discovery over UDP multicast (or a static
+  unicast peer list), the same wire protocol and no key rewriting. Nothing
+  runs beside it, and when a peer goes away only that peer's samples stop.
+  Cyclone allocates with `malloc` and runs its own receive threads, so it
+  needs a heap and an operating system with a network stack.
+
+All three are linked through one RMW C ABI below the client library, which
+is why a node package does not change when its image's backend does.
+
 ### No introspection on the device
 
 `ros2 topic list`, `ros2 node info` and the `rmw_get_*` graph queries run on
