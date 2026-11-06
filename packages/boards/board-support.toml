@@ -631,6 +631,16 @@ row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 3, Add a second node: a listener package added with `nros new --to`, `nros check --workspace`, then `nros run` until the listener hears the talker in the same image. Chained after chapters 1-2."
 
 [[probe]]
+track = "tutorial-4"
+chapter = "tutorial/pick-the-rmw.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 4, Pick and configure the RMW: the project's rmw and locator lines, the image moved from its serial link to the board's network (tcp/10.0.2.2:7447), then nros run (the router on tcp/127.0.0.1:7447) and ros2 topic echo. Chained after chapters 1-3."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""

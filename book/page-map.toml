@@ -181,7 +181,7 @@ path = "tutorial/pick-the-rmw.md"
 action = "move"
 batch = "p537-w1-tutorial"
 was = ["communicate/choosing-an-rmw.md"]
-note = "Tutorial 4, Pick and configure the RMW: W5 keeps its task parts (with switching-rmw's); the per-backend how-tos go to guide/rmw (W6) and the why to Background (W10)"
+note = "Tutorial 4, Pick and configure the RMW (W5): its task parts, on the Tutorial project. W5 moved How each backend works to background/differences-from-ros2 and the Cyclone DDS per-platform network settings to guide/rmw/use-cyclone-dds (checked against the shipped prj-cyclonedds.conf and the board packages)"
 
 [[page]]
 old = "user-guide/rmw-backends.md"
