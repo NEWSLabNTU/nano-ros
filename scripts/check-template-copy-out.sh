@@ -150,6 +150,8 @@ cd "$repo_root" || exit 2
 . "$repo_root/scripts/build/gate-prune.sh"
 # shellcheck source=scripts/build/gate-scratch.sh
 . "$repo_root/scripts/build/gate-scratch.sh"
+# shellcheck source=scripts/build/gate-units.sh
+. "$repo_root/scripts/build/gate-units.sh"
 # shellcheck source=scripts/build/cmake-cache-guard.sh
 . "$repo_root/scripts/build/cmake-cache-guard.sh"
 # shellcheck source=scripts/build/copy-out-cmake.sh
@@ -1319,23 +1321,6 @@ if [ "$has_host" -eq 1 ] && ! preflight_host_tools; then
     exit 1
 fi
 
-echo "check-template-copy-out: building ${#buildable[@]} project(s) from a copy of the tracked file set"
-fail=0
-fail_build=0
-missing_tool=0
-strict_missing=0
-verified=0
-for entry in "${buildable[@]}"; do
-    rc=0
-    run_one "${entry%%$'\t'*}" "${entry#*$'\t'}" || rc=$?
-    case "$rc" in
-        0) verified=$((verified + 1)) ;;
-        4) : ;;
-        2) fail=1; missing_tool=1 ;;
-        6) fail=1; strict_missing=1 ;;
-        *) fail=1; fail_build=1 ;;
-    esac
-done
 # The scaffolded workspaces: every run, unless the caller named templates
 # and not `scaffold`.
 run_scaffolds=1
@@ -1343,11 +1328,37 @@ if [ "${#wanted[@]}" -gt 0 ]; then
     run_scaffolds=0
     for w in "${wanted[@]}"; do [ "$w" = scaffold ] && run_scaffolds=1; done
 fi
+# phase-489 — every project and scaffold is an independent unit (its own
+# scratch copy, its own cargo/cmake root), so they build
+# `$NROS_TEMPLATE_COPY_OUT_JOBS` at once (`scripts/build/gate-units.sh`) and
+# report in the order they ran serially. Serial, this gate was 905 s of
+# `check::build` at 3044 CPU-seconds on a 48-CPU host.
+units=()
+for entry in "${buildable[@]}"; do units+=("p"$'\t'"$entry"); done
 if [ "$run_scaffolds" -eq 1 ]; then
-    for b in "${scaffold_boards[@]}"; do
-        rc=0
-        run_scaffold "$b" || rc=$?
-        case "$rc" in
+    for b in "${scaffold_boards[@]}"; do units+=("s"$'\t'"$b"); done
+fi
+_tco_unit() {
+    local kind="${1%%$'\t'*}" rest="${1#*$'\t'}"
+    if [ "$kind" = s ]; then
+        run_scaffold "$rest"
+    else
+        run_one "${rest%%$'\t'*}" "${rest#*$'\t'}"
+    fi
+}
+jobs="$(nros_gate_unit_jobs NROS_TEMPLATE_COPY_OUT_JOBS)" || exit 2
+echo "check-template-copy-out: building ${#buildable[@]} project(s) from a copy of the tracked file set, $jobs at a time"
+fail=0
+fail_build=0
+missing_tool=0
+strict_missing=0
+verified=0
+if [ "${#units[@]}" -gt 0 ]; then
+    nros_gate_scratch reports template-copy-out-reports || exit 3
+    nros_gate_units "$jobs" "$reports" _tco_unit "${units[@]}"
+    for i in "${!units[@]}"; do
+        nros_gate_unit_report "$reports" "$i" 0 4
+        case "$NROS_GATE_UNIT_RC" in
             0) verified=$((verified + 1)) ;;
             4) : ;;
             2) fail=1; missing_tool=1 ;;
@@ -1355,6 +1366,7 @@ if [ "$run_scaffolds" -eq 1 ]; then
             *) fail=1; fail_build=1 ;;
         esac
     done
+    rm -rf -- "$reports"
 fi
 for tmpl in "${skipped[@]}"; do
     echo "  $tmpl: skipped — declares no [image.*]"

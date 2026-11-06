@@ -160,6 +160,13 @@ scaffold-builds:
 gate-scratch:
     @bash scripts/build/gate-scratch.sh --self-test
 
+# phase-489 — how those two build gates run their units: a few at a time, each
+# reported in unit order with its status (`scripts/build/gate-units.sh`). Its
+# controls need no CLI or compiler, so this runs on the fast line too.
+[private]
+gate-units:
+    @bash scripts/build/gate-units.sh --self-test
+
 # phase-535 W3 — the rule `workspace-fixtures-build.sh` fans its rows out by:
 # rows that write a common cmake configure, cargo target dir or generated
 # entry are one build unit and stay serial; units run at once. Buildless, so
