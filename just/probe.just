@@ -56,8 +56,8 @@ platform name:
 platform-asset out="tmp/probe-asset":
     PROBE_TRACK=installed PROBE_ASSET_OUT={{out}} ./scripts/probe/run-bootstrap-probe.sh
 
-# book/src/tutorial/run-a-talker.md's "run it on this machine" section —
-# the same scaffold on the Linux host over Cyclone DDS (weekly).
+# book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
+# Cyclone DDS, no router (weekly).
 [group("main")]
 linux: (platform "linux")
 
