@@ -649,6 +649,27 @@ if [ "${#all[@]}" -eq 0 ]; then
     exit 1
 fi
 
+# phase-543 W2 — the nextest harness runs ONE unit per test: `@self-test`
+# or a variant. `NROS_GATE_LIST_UNITS=1` prints them, one per line, and exits;
+# `NROS_GATE_UNIT=<unit>` runs that one. An unknown unit is an error, never an
+# empty pass.
+if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
+    echo "@self-test"
+    printf '%s\n' "${all[@]}"
+    exit 0
+fi
+if [ -n "${NROS_GATE_UNIT:-}" ]; then
+    if [ "$NROS_GATE_UNIT" = "@self-test" ]; then
+        self_test
+        exit $?
+    fi
+    if ! nros_grep_q -Fx -- "$NROS_GATE_UNIT" <<<"$(printf '%s\n' "${all[@]}")"; then
+        echo "check-scaffold-builds: no unit named \`$NROS_GATE_UNIT\` (NROS_GATE_LIST_UNITS=1 lists them)" >&2
+        exit 1
+    fi
+    set -- "$NROS_GATE_UNIT"
+fi
+
 wanted=("$@")
 selected=()
 if [ "${#wanted[@]}" -eq 0 ]; then

@@ -1,6 +1,6 @@
 # Phase 543 — Every gate is a nextest test
 
-**Status (2026-11-06). IN PROGRESS — W0 in PR #3207; W1 done in its pull request.** No RFC yet: the design below
+**Status (2026-11-06). IN PROGRESS — W0 in PR #3207; W1 and W2 done in their pull request.** No RFC yet: the design below
 is this phase's. If W1-W3 settle it, it moves into an RFC and this doc keeps
 the work items.
 
@@ -240,11 +240,26 @@ defaulting to today's derivation (`check-gate-lists.py`), so the listing equals
 today's lanes. Acceptance: `cargo nextest list -p nros-gates` names all 511 + 28
 + 28 + the outside gates, and a run of the fast tier matches today's runner.
 
-### W2 — Units
+### W2 — Units — DONE
 
-`[group('units')]` recipes answer `--list-units`; `scaffold-builds` and
-`template-copy-out` first. `scripts/build/gate-units.sh` (PR #3199) retires
-once nextest runs the units.
+- A gate with `[group('units')]` on its recipe answers `NROS_GATE_LIST_UNITS=1`
+  with one unit per line and runs one with `NROS_GATE_UNIT=<unit>`. Each unit is
+  a test `<tier>::<target>#<unit>`. The listing reads attributes through
+  `just --dump`; a gate that cannot list its units is listed as ONE test,
+  which fails when run, so a broken lister is a red, never a dropped gate.
+- `scaffold-builds`: 22 units (`@self-test` + 21 variants).
+  `template-copy-out`: 19 units (`@self-test`, 15 projects, 3
+  `scaffold:<board>`), selected through the ownership filter its shards
+  already use. An unknown unit is an error.
+- The listing is 617 tests and takes 1.7 s.
+- All 41 units at `--test-threads 8`, on this host: 498 s, 36 pass, 5 fail. The
+  five are the Zephyr projects of `template-copy-out` (no west workspace here).
+  The old runner passed the gate over them as NOT VERIFIED, because another
+  unit in the same gate built. As their own tests they are red, by the phase's
+  ruling. W3 gives them `needs:zephyr`, which takes them out of scope on a lane
+  that does not claim Zephyr.
+- `scripts/build/gate-units.sh` stays until W5 moves the lanes: the old runner
+  still runs these gates whole.
 
 ### W3 — Scope
 

@@ -8,7 +8,10 @@
 //!   makes a lane's out-of-scope gates that subset);
 //! * `<name> --exact --nocapture` runs one gate.
 //!
-//! A test name is `<tier>::<just target>`, e.g. `fast::check::cli-old-spellings`.
+//! A test name is `<tier>::<just target>`, e.g. `fast::check::cli-old-spellings`,
+//! or `<tier>::<just target>#<unit>` for one part of a `[group('units')]` gate
+//! (`build::check::scaffold-builds#rust_project_talker`), which runs with
+//! `NROS_GATE_UNIT=<unit>`.
 //! The tier is the lane the gate belongs to today; the rest IS the `just`
 //! target, so running a test needs no second lookup and cannot disagree with
 //! the listing. The listing comes from `scripts/check/check-gate-lists.py
@@ -53,7 +56,7 @@ fn gates(root: &Path) -> Result<Vec<(String, String)>, String> {
     let text = String::from_utf8(out.stdout).map_err(|e| e.to_string())?;
     let mut v = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        let target = target_of(line).ok_or_else(|| format!("malformed test name `{line}`"))?;
+        let (target, _) = target_of(line).ok_or_else(|| format!("malformed test name `{line}`"))?;
         v.push((line.to_string(), target.to_string()));
     }
     if v.is_empty() {
@@ -64,10 +67,17 @@ fn gates(root: &Path) -> Result<Vec<(String, String)>, String> {
     Ok(v)
 }
 
-/// `fast::check::x` -> `check::x`.
-fn target_of(name: &str) -> Option<&str> {
-    let (tier, target) = name.split_once("::")?;
-    (!tier.is_empty() && !target.is_empty()).then_some(target)
+/// `fast::check::x` -> (`check::x`, None); `build::check::x#u` -> (`check::x`,
+/// Some(`u`)). A unit (phase-543 W2) is one part of a `[group('units')]` gate,
+/// run alone through `NROS_GATE_UNIT`.
+fn target_of(name: &str) -> Option<(&str, Option<&str>)> {
+    let (tier, rest) = name.split_once("::")?;
+    let (target, unit) = match rest.split_once('#') {
+        Some((t, u)) if !u.is_empty() => (t, Some(u)),
+        Some(_) => return None,
+        None => (rest, None),
+    };
+    (!tier.is_empty() && !target.is_empty()).then_some((target, unit))
 }
 
 /// A red verdict, with its reason on stderr.
@@ -76,9 +86,15 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn run(root: &Path, target: &str) -> ExitCode {
+fn run(root: &Path, target: &str, unit: Option<&str>) -> ExitCode {
     let mut cmd = Command::new("just");
-    cmd.arg(target).current_dir(root);
+    cmd.arg(target)
+        .current_dir(root)
+        .env_remove("NROS_GATE_LIST_UNITS");
+    match unit {
+        Some(u) => cmd.env("NROS_GATE_UNIT", u),
+        None => cmd.env_remove("NROS_GATE_UNIT"),
+    };
     let inherited: Vec<OsString> = std::env::vars_os()
         .map(|(k, _)| k)
         .filter(|k| k.to_string_lossy().starts_with("NEXTEST"))
@@ -117,7 +133,7 @@ fn main() -> ExitCode {
     let names: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
     match (has("--exact"), names.as_slice()) {
         (true, [name]) => match target_of(name) {
-            Some(target) => run(&root, target),
+            Some((target, unit)) => run(&root, target, unit),
             None => fail(format_args!("`{name}` is not <tier>::<just target>")),
         },
         _ => {

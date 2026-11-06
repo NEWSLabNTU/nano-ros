@@ -57,7 +57,10 @@ registry-parsing ratchet had, minus the registry.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -337,6 +340,56 @@ def classify(just_text: str, exempt_text: str) -> tuple[dict[str, list[str]], li
     )
 
 
+def unit_gates() -> set[str]:
+    """`check` recipes carrying `[group('units')]` (phase-543 W2), read from
+    `just --dump`, the one view of a recipe's attributes."""
+    out = subprocess.run(
+        ["just", "--dump", "--dump-format", "json"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    ).stdout
+    recipes = json.loads(out)["modules"]["check"]["recipes"]
+    return {
+        name for name, r in recipes.items()
+        if {"group": "units"} in r.get("attributes", [])
+    }
+
+
+def gate_units(name: str) -> list[str] | None:
+    """The units a `[group('units')]` gate lists, or None when it cannot list
+    them. `None` makes the gate ONE test, which then fails when run for the
+    same reason, so a broken lister is a red and never a dropped gate."""
+    env = dict(os.environ, NROS_GATE_LIST_UNITS="1")
+    env.pop("NROS_GATE_UNIT", None)
+    p = subprocess.run(
+        ["just", f"check::{name}"], cwd=REPO, env=env,
+        capture_output=True, text=True,
+    )
+    units = [u for u in p.stdout.splitlines() if u.strip()]
+    if p.returncode != 0 or not units:
+        print(f"check-gate-lists: `{name}` could not list its units "
+              f"(rc={p.returncode}); listed as one test", file=sys.stderr)
+        return None
+    return units
+
+
+def test_names(b: dict[str, list[str]]) -> list[str]:
+    """phase-543 — the nextest harness's listing, `<tier>::<just target>`, and
+    for a `[group('units')]` gate `<tier>::<just target>#<unit>`. The part
+    after the first `::` and before `#` is the target. Lane-exempt recipes are
+    listed as `exempt::` so ONE listing names every gate; the harness's default
+    filter keeps them out of a plain run."""
+    with_units = unit_gates()
+    lines = []
+    for tier in ("fast", "build", "exempt"):
+        for n in b[tier]:
+            units = gate_units(n) if n in with_units else None
+            if units is None:
+                lines.append(f"{tier}::check::{n}")
+            else:
+                lines.extend(f"{tier}::check::{n}#{u}" for u in units)
+    return lines
+
+
 def buckets() -> tuple[dict[str, list[str]], list[str]]:
     return classify(
         justfile_text(),
@@ -574,17 +627,8 @@ def main(argv: list[str]) -> int:
             return 1
         lane = (argv[1] if len(argv) > 1 else "fast").removesuffix("-serial")
         if lane == "tests":
-            # phase-543 W1 — the nextest harness's listing: `<tier>::<just
-            # target>` for every gate, the tier being the bucket above. The
-            # part after the first `::` IS the target, so the harness runs a
-            # test without a second lookup. Lane-exempt recipes are listed too,
-            # as `exempt::`, so ONE listing names every gate; the harness's
-            # default filter keeps them out of a plain run.
-            print("\n".join(
-                f"{tier}::check::{n}"
-                for tier in ("fast", "build", "exempt")
-                for n in b[tier]
-            ))
+            for line in test_names(b):
+                print(line)
             return 0
         if lane == "all":
             names = sorted(b["fast"] + b["build"])
