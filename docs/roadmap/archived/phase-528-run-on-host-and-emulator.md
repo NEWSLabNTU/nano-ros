@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-06). DONE — W1, W2 and W3 landed (W3 with three items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 done: step 1 (native cells) in #3167, step 2 (QEMU cells) after it, with the tier-2 cell comparison carried to [issue 2302](../../issues/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) (`main`'s tier-2 build is red, so no run reached a cell). Open issues still pointing here: [#2172](../../issues/2172-harness-mps-lines-restate-board-runner.md) and [#2273](../../issues/2273-violation-channel-qemu-leg.md).** Implements
+**Status (2026-11-06). DONE — W1, W2 and W3 landed (W3 with three items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 done: step 1 (native cells) in #3167, step 2 (QEMU cells) after it, with the tier-2 cell comparison carried to [issue 2302](../../issues/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) (`main`'s tier-2 build is red, so no run reached a cell). Its open follow-ups (issues 2172, 2273 and 2307, the orphaned image) are homed in [phase-544](../phase-544-harness-run-plan-followups.md).** Implements
 [RFC-0118](../../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../../design/0119-cli-extension-packages.md) D8.
@@ -537,7 +537,7 @@ than its sources):
   the run-to-run spread at that size, and the 5 % bound is read on cells
   that launch an image for longer than that.
 
-Known gap: **a verb killed outright orphans its image.** The runner dies
+Known gap ([issue 2307](../../issues/2307-killed-run-verb-orphans-its-image.md), phase-544 W3): **a verb killed outright orphans its image.** The runner dies
 with the verb (`PR_SET_PDEATHSIG`), but the image is the runner's child and
 carries no such flag: `nros_extension::runner::exec` cannot set it, because
 the crate is `#![forbid(unsafe_code)]`. The harness avoids the gap itself.

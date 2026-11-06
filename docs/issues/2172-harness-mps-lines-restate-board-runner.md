@@ -5,11 +5,11 @@ status: open
 type: tech-debt
 severity: medium
 area: [testing, qemu, cli]
-related: [phase-528, 2169, 2170]
+related: [phase-544, phase-528, 2169, 2170]
 found: 2026-10-31
 ---
 
-**Home: [phase-528](../roadmap/archived/phase-528-run-on-host-and-emulator.md)** — homed 2026-11-04: W5 puts the test harness on `nros run --plan`, which leaves one QEMU line instead of three. Phase-528 was archived 2026-11-06 with this issue still open: it needs a new home.
+**Home: [phase-544](../roadmap/phase-544-harness-run-plan-followups.md) W1** — rehomed 2026-11-06 from phase-528 (archived), whose W5 put the harness on `nros run --plan` and its QEMU lines on the shared renderer; reading `[board.run.qemu]` is what is left.
 
 ## What
 
