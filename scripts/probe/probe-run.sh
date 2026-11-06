@@ -66,6 +66,23 @@ nros_probe_run_expect() {
     echo "probe: step $step printed its documented output"
 }
 
+# nros_probe_stop_kept — close the terminals a chapter left open (phase-537
+# W5). A Tutorial track replays several chapters in one shell, and each
+# chapter's reader starts with the last one's `nros run` stopped. Every
+# process group a `probe-keep` step left running is killed and waited for, so
+# the next chapter's router finds its port free.
+nros_probe_stop_kept() {
+    local pgid
+    for pgid in ${NROS_PROBE_KEPT_PGIDS:-}; do
+        kill -- "-$pgid" 2>/dev/null || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 -- "-$pgid" 2>/dev/null || break
+            sleep 1
+        done
+    done
+    NROS_PROBE_KEPT_PGIDS=""
+}
+
 # nros_probe_clock_start / nros_probe_clock_report — the field budget's wall
 # clock (phase-525 W4, RFC-0116 D1: 30 minutes from an unopened box to
 # `ros2 topic echo`). extract-book-steps.py --clock-from places the start
