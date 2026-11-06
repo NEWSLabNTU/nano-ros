@@ -708,6 +708,28 @@ row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 10, Talk to ROS 2: tutorial_msgs built for ROS 2 with colcon into build/colcon, the bare-metal image run, then ros2 topic echo, ros2 topic info -v (the QoS the board grants) and ros2 topic pub to the board. Chained after chapters 1-9."
 
 [[probe]]
+track = "tutorial-c"
+chapter = "tutorial/talk-to-ros2.md"
+variant = "qemu"
+lang = "c"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
+awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C tab: chapters 1-10 on one C project, chained. The Rust tab has one track per chapter (first-project, tutorial-2 to tutorial-10); each language tab has one chained track."
+
+[[probe]]
+track = "tutorial-cpp"
+chapter = "tutorial/talk-to-ros2.md"
+variant = "qemu"
+lang = "cpp"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
+awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: chapters 1-10 on one C++ project, chained."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""
