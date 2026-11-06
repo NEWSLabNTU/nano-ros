@@ -32,7 +32,9 @@ F. **The Book charter** (RFC-0124 Principles 3, 7, 14, 15 and the Topic
    levels; `lib/book_charter.py`): every hand-written page declares one type
    and level, keeps its type's length budget, links "needs first" only to
    pages at its level or below, probes its shell steps, and is a board page
-   only for an admitted board. phase-537 W0 REPORTS these: the count is
+   only for an admitted board. A User guide platform page sits in the
+   SUMMARY group its board row's generated status word names (phase-537 W9,
+   RFC-0124 D8). phase-537 W0 REPORTS these: the count is
    printed and never fails the gate. `--charter` lists each finding. W13
    makes them refusals.
 
@@ -237,7 +239,10 @@ def charter_findings(user_paths: list[str], generated: set[str]) -> list[str]:
     doc = board_registry.with_descriptor_facts(
         board_registry.load(ROOT / "packages/boards/board-support.toml"), board_registry.descriptor_index(ROOT))
     rows = [(r, board_registry.status_word(r, True)) for r in doc.get("board", [])]
-    return book_charter.findings(pages, rows)
+    # phase-537 W9 (RFC-0124 D8): each platform page's SUMMARY group against
+    # its row's generated status word.
+    summary = (ROOT / "book/src/SUMMARY.md").read_text()
+    return book_charter.findings(pages, rows, summary)
 
 
 def main() -> int:

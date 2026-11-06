@@ -195,11 +195,13 @@ def admitted(row: dict, status: str) -> bool:
 def board_findings(rows: list[tuple[dict, str]]) -> list[str]:
     """Board pages whose every row is unadmitted (Principle 3). `rows` pairs
     each registry row with its status word; a row names its page by
-    `book_run` / `book_flash`."""
+    `book_run` / `book_flash`, and its User guide platform page by
+    `book_platform` (phase-537 W9), so a platform page that takes over from
+    an admitted row's starter is admitted by that row."""
     pages: dict[str, list[bool]] = defaultdict(list)
     names: dict[str, list[str]] = defaultdict(list)
     for row, status in rows:
-        for key in ("book_run", "book_flash"):
+        for key in ("book_run", "book_flash", "book_platform"):
             if row.get(key):
                 page = row[key].split("#", 1)[0]
                 pages[page].append(admitted(row, status))
@@ -208,11 +210,108 @@ def board_findings(rows: list[tuple[dict, str]]) -> list[str]:
             for page, oks in sorted(pages.items()) if not any(oks)]
 
 
-def findings(pages: dict[str, str], rows: list[tuple[dict, str]]) -> list[str]:
+# phase-537 W9 (RFC-0124 D8) — the User guide's platform pages are grouped by
+# their row's generated status word, in this order (RFC-0124 Appendix A). A
+# twin of a named `hardware` board is its own group whatever its word says,
+# as its starter is (D12).
+PLATFORM_GROUPS = ("Verified on host", "Verified in emulator", "Verified on hardware",
+                   "Twin and hardware")
+PLATFORMS_HEADING = "Platforms"
+SUMMARY_ENTRY = re.compile(r"^(\s*)-\s*\[(.+?)\]\((?:\./)?([^)#]*)\)\s*$")
+
+
+def platform_group(row: dict, status: str) -> str | None:
+    """The platform group an admitted row's page sits in, or None for a row
+    RFC-0124 D8 does not admit (its generated reference page only)."""
+    if row.get("emulator") and row.get("hardware"):
+        return "Twin and hardware"
+    for where in ("on host", "in emulator", "on hardware"):
+        if status.startswith(f"Verified {where}"):
+            return f"Verified {where}"
+    return None
+
+
+def platform_pages(rows: list[tuple[dict, str]]) -> tuple[dict[str, str], list[str]]:
+    """({page: group} for every row's `book_platform`, findings). A page whose
+    rows name two groups, or a row the book does not admit, is a finding: the
+    page splits by status (D8), or the row keeps its reference page only."""
+    groups: dict[str, set[str]] = defaultdict(set)
+    out: list[str] = []
+    for row, status in rows:
+        page = (row.get("book_platform") or "").split("#", 1)[0]
+        if not page:
+            continue
+        g = platform_group(row, status)
+        if g is None:
+            out.append(f"{page}: `{row.get('crate', '?')}` ({status}) names it as its platform page, "
+                       "but the row is not admitted to the user book (Principle 3, D8)")
+            continue
+        groups[page].add(g)
+    placed = {}
+    for page, gs in sorted(groups.items()):
+        if len(gs) > 1:
+            out.append(f"{page}: its rows sit in {len(gs)} status groups ({', '.join(sorted(gs))}); "
+                       "split the page by status (D8)")
+        placed[page] = min(gs, key=PLATFORM_GROUPS.index)
+    return placed, out
+
+
+def summary_platforms(summary: str) -> dict[str, str | None]:
+    """{page: status group, or None when directly under Platforms} for every
+    page SUMMARY.md lists in the User guide's Platforms group."""
+    out: dict[str, str | None] = {}
+    base = None  # indent of the "Platforms" entry while inside it
+    group = None
+    for line in summary.splitlines():
+        m = SUMMARY_ENTRY.match(line)
+        if not m:
+            if line.startswith("#"):
+                base = None
+            continue
+        indent, title, target = len(m.group(1)), m.group(2), m.group(3)
+        if base is None:
+            if title == PLATFORMS_HEADING and not target:
+                base, group = indent, None
+            continue
+        if indent <= base:
+            base = None
+            if title == PLATFORMS_HEADING and not target:
+                base, group = indent, None
+            continue
+        if not target:
+            group = title
+            continue
+        if target.startswith("guide/platforms/"):
+            out[target] = group if indent > base + 2 and group else None
+    return out
+
+
+def platform_findings(summary: str, rows: list[tuple[dict, str]]) -> list[str]:
+    """A platform page whose SUMMARY group is not its row's generated status
+    group, or a page placed in a status group no row names (D8)."""
+    want, out = platform_pages(rows)
+    have = summary_platforms(summary)
+    for page, g in sorted(want.items()):
+        if page not in have:
+            out.append(f"{page}: its row places it in Platforms › {g}, and SUMMARY.md does not list it there (D8)")
+        elif have[page] != g:
+            out.append(f"{page}: SUMMARY.md places it in Platforms › {have[page] or '(no group)'}, its row's "
+                       f"status word places it in {g} (D8)")
+    for page, g in sorted(have.items()):
+        if g is not None and page not in want:
+            out.append(f"{page}: SUMMARY.md places it in Platforms › {g}, and no registry row names it as "
+                       "its platform page (`book_platform`): a status group is generated, never typed (D8)")
+        elif g is not None and g not in PLATFORM_GROUPS:
+            out.append(f"{page}: Platforms › {g} is not a status group ({', '.join(PLATFORM_GROUPS)}) (D8)")
+    return out
+
+
+def findings(pages: dict[str, str], rows: list[tuple[dict, str]], summary: str | None = None) -> list[str]:
     out = []
     for rel, text in sorted(pages.items()):
         out += page_findings(rel, text)
-    return out + level_findings(pages) + topic_findings(pages) + board_findings(rows)
+    out += level_findings(pages) + topic_findings(pages) + board_findings(rows)
+    return out + (platform_findings(summary, rows) if summary is not None else [])
 
 
 def self_test() -> None:
@@ -247,6 +346,38 @@ def self_test() -> None:
             ({"crate": "d", "book_flash": "t/a.md#f"}, "Builds")]
     bf = board_findings(rows)
     assert len(bf) == 1 and bf[0].startswith("t/b.md:"), bf
+    # phase-537 W9: a platform page an admitted row names is admitted by it.
+    assert not board_findings(rows[:1] + [({"crate": "e", "book_platform": "t/b.md"}, "Verified on host (merge)")]
+                              + rows[1:2]), "a platform page of an admitted row"
+    # The platform groups come from the rows; SUMMARY must agree.
+    host = ({"crate": "h", "book_platform": "guide/platforms/h.md"}, "Verified on host (merge)")
+    emu = ({"crate": "q", "book_platform": "guide/platforms/q.md"}, "Verified in emulator (daily)")
+    twin = ({"crate": "n", "book_platform": "guide/platforms/n.md", "emulator": "renode:x", "hardware": "n"},
+            "Boots, manual (2026-11-01)")
+    assert platform_group(*twin) == "Twin and hardware" and platform_group({}, "Builds") is None
+    good = ("# User guide\n\n- [Platforms]()\n  - [Verified on host]()\n    - [H](./guide/platforms/h.md)\n"
+            "  - [Verified in emulator]()\n    - [Q](./guide/platforms/q.md)\n"
+            "  - [Twin and hardware]()\n    - [N](./guide/platforms/n.md)\n"
+            "  - [West app](./guide/platforms/w.md)\n- [Real-time]()\n  - [R](./guide/realtime/r.md)\n")
+    assert summary_platforms(good) == {"guide/platforms/h.md": "Verified on host",
+                                       "guide/platforms/q.md": "Verified in emulator",
+                                       "guide/platforms/n.md": "Twin and hardware",
+                                       "guide/platforms/w.md": None}, summary_platforms(good)
+    assert platform_findings(good, [host, emu, twin]) == []
+    moved = good.replace("    - [H](./guide/platforms/h.md)\n", "").replace(
+        "    - [Q](./guide/platforms/q.md)\n", "    - [Q](./guide/platforms/q.md)\n    - [H](./guide/platforms/h.md)\n")
+    pf = platform_findings(moved, [host, emu, twin])
+    assert len(pf) == 1 and "h.md: SUMMARY.md places it in Platforms › Verified in emulator" in pf[0], pf
+    typed = good.replace("  - [West app](./guide/platforms/w.md)\n",
+                         "  - [Verified on hardware]()\n    - [W](./guide/platforms/w.md)\n")
+    pf = platform_findings(typed, [host, emu, twin])
+    assert len(pf) == 1 and "w.md" in pf[0] and "never typed" in pf[0], pf
+    split = ({"crate": "h2", "book_platform": "guide/platforms/h.md"}, "Verified in emulator (daily)")
+    assert any("split the page" in f for f in platform_findings(good, [host, split, emu, twin]))
+    unadmitted = ({"crate": "s", "book_platform": "guide/platforms/s.md"}, "Builds")
+    assert any("not admitted" in f for f in platform_findings(good, [host, emu, twin, unadmitted]))
+    gone = good.replace("    - [N](./guide/platforms/n.md)\n", "")
+    assert any("n.md" in f and "does not list" in f for f in platform_findings(gone, [host, emu, twin]))
 
 
 if __name__ == "__main__":
