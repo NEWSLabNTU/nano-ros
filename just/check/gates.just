@@ -298,3 +298,27 @@ wait-evidence-discarded:
 [private]
 component-lang-vocabulary:
     @python3 scripts/check-component-lang-vocabulary.py
+
+# phase-543 W1 — every gate as a nextest test, through the harness in
+# `packages/testing/nros-gates` (`<tier>::<just target>`, from
+# `check-gate-lists.py --list tests`). Not a lane yet: W5 puts the lane
+# wrappers on it. The pinned cargo-nextest comes from the index's store path
+# (`index_tool.py`), never PATH, and it needs no CLI and no submodule.
+#   just check nextest-gates -E 'test(/^fast::/)'
+#   just check nextest-gates --ignore-default-filter -E 'test(=exempt::check::deny)'
+[private]
+[positional-arguments]
+nextest-gates *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nx_rc=0
+    nx="$(python3 scripts/lib/index_tool.py path cargo-nextest cargo-nextest)" || nx_rc=$?
+    if [ "$nx_rc" -ne 0 ]; then
+        echo "nextest-gates: the pinned cargo-nextest is not installed at $nx" >&2
+        echo "  Remedy: just setup linux   (or: python3 scripts/lib/index_tool.py install cargo-nextest --prefix \"$(dirname "$(dirname "$nx")")\")" >&2
+        exit 1
+    fi
+    export GIT_OPTIONAL_LOCKS=0
+    just _check-skip-reset >/dev/null
+    exec "$nx" nextest run --manifest-path packages/testing/nros-gates/Cargo.toml \
+        --test-threads "${NROS_GATE_JOBS:-$(nproc)}" "$@"

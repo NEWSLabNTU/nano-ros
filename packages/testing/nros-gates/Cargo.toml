@@ -1,0 +1,20 @@
+# The gate runner's harness (phase-543). Every gate is a nextest test.
+#
+# A STANDALONE cargo root, deliberately: the gate runner runs before any build,
+# on a checkout with no submodules and no `nros` CLI (issues 0650, 1373). The
+# root workspace cannot even be resolved there (its `-sys` members need their
+# submodules), so this crate is not a member of it, has its own `[workspace]`,
+# and depends on nothing.
+[package]
+name = "nros-gates"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace]
+
+[[test]]
+name = "gates"
+path = "tests/gates.rs"
+harness = false

@@ -2295,6 +2295,9 @@ locked_roots = [
     # phase-527 W3 (RFC-0119 D5) — the runner packages and `nros-extension`,
     # a closed-graph host-tool root like `packages/cli`.
     "packages/runners",
+    # phase-543 W1 — the gate harness: its own root (the runner runs before any
+    # build, so it may not resolve the root workspace), zero dependencies.
+    "packages/testing/nros-gates",
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     "packages/verification/nros-verification",
 ]
