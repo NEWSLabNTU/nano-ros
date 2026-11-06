@@ -62,6 +62,11 @@ pub enum Noun {
     // phase-527 W7 (RFC-0119 D10). Born under `nros dev`: no old spelling.
     #[command(subcommand)]
     Command(cmd::extension_check::CommandSub),
+    /// Turn a standalone package into a workspace: a node package plus a
+    /// bringup holding its system.toml.
+    // RFC-0121 D8, phase-531 W6. Born under `nros dev`: no old spelling.
+    #[command(name = "migrate-bringup")]
+    MigrateBringup(cmd::migrate_bringup::Args),
 }
 
 #[derive(Debug, Subcommand)]
@@ -216,13 +221,19 @@ pub fn lower(args: Args) -> Cmd {
         Noun::Metadata(a) => Cmd::Metadata(a),
         // Born under `nros dev` with no older spelling to lower into: run as
         // they are (`crate::run`'s `Cmd::Dev` arm).
-        noun @ (Noun::Runner(_) | Noun::Command(_)) => Cmd::Dev(Args { noun }),
+        noun @ (Noun::Runner(_) | Noun::Command(_) | Noun::MigrateBringup(_)) => {
+            Cmd::Dev(Args { noun })
+        }
     }
 }
 
 /// Verbs born under `nros dev`, which no older spelling lowers to, so they
 /// have no row in [`ALIASES`].
-pub const BORN_IN_DEV: &[&str] = &["dev runner check", "dev command check"];
+pub const BORN_IN_DEV: &[&str] = &[
+    "dev runner check",
+    "dev command check",
+    "dev migrate-bringup",
+];
 
 /// Run a `nros dev` command [`lower`] left as it is.
 ///
@@ -237,6 +248,7 @@ pub fn run_unlowered(args: Args) -> eyre::Result<()> {
         Noun::Command(cmd::extension_check::CommandSub::Check(a)) => {
             cmd::extension_check::command_check(a)
         }
+        Noun::MigrateBringup(a) => cmd::migrate_bringup::run(a),
         other => unreachable!("`nros dev` lowers {other:?}"),
     }
 }

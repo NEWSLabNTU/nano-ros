@@ -54,6 +54,7 @@ dev command
 dev image
 dev lock
 dev metadata
+dev migrate-bringup
 dev profile
 dev rmw
 dev runner

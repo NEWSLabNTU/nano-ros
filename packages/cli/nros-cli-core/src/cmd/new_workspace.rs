@@ -211,7 +211,7 @@ fn bringup_contract(node: &NodePackage<'_>) -> String {
 }
 
 /// The bringup's `package.xml`: it builds nothing, and runs its node.
-fn bringup_package_xml(bringup: &str, node: &str) -> String {
+pub(crate) fn bringup_package_xml(bringup: &str, node: &str) -> String {
     format!(
         r#"<?xml version="1.0"?>
 <package format="3">

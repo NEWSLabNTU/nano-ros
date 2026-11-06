@@ -48,6 +48,7 @@ pub mod managed_deps;
 pub mod materialize;
 pub mod message_bound_knobs;
 pub mod metadata;
+pub mod migrate_bringup;
 pub mod model_path;
 pub mod monitor;
 pub mod new;
