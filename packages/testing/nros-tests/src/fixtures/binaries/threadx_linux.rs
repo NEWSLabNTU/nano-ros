@@ -38,16 +38,109 @@ pub fn is_cmake_available() -> bool {
 }
 
 // =============================================================================
+// phase-535 W4 — the example PAIRS are workspace images
+// =============================================================================
+
+/// The pair role a moved leaf case played, or `None` for the talker: the
+/// talker leaves stay, as the board's road witnesses (RFC-0122 D3).
+fn moved_role(case: &str) -> Option<crate::fixtures::workspace_image::PairRole> {
+    use crate::fixtures::workspace_image::PairRole;
+    Some(match case {
+        "listener" => PairRole::Listener,
+        "service-server" => PairRole::ServiceServer,
+        "service-client" => PairRole::ServiceClient,
+        "action-server" => PairRole::ActionServer,
+        "action-client" => PairRole::ActionClient,
+        _ => return None,
+    })
+}
+
+fn matrix_lang(lang: &str) -> Option<crate::matrix::Lang> {
+    use crate::matrix::Lang;
+    Some(match lang {
+        "rust" => Lang::Rust,
+        "c" => Lang::C,
+        "cpp" => Lang::Cpp,
+        _ => return None,
+    })
+}
+
+fn matrix_rmw(rmw: super::Rmw) -> crate::matrix::Rmw {
+    match rmw {
+        super::Rmw::Zenoh => crate::matrix::Rmw::Zenoh,
+        super::Rmw::Xrce => crate::matrix::Rmw::Xrce,
+        super::Rmw::Cyclonedds => crate::matrix::Rmw::Cyclonedds,
+    }
+}
+
+/// A resolver asked for a moved leaf (`threadx-linux/<lang>/{listener,
+/// service-*,action-*}`) answers with its workspace image instead.
+fn moved_pair(lang: &str, case: &str, rmw: super::Rmw) -> Option<TestResult<PathBuf>> {
+    let role = moved_role(case)?;
+    let lang = matrix_lang(lang)?;
+    Some(crate::fixtures::workspace_image::resolve_coord(
+        crate::matrix::PlatformId::ThreadxLinux,
+        lang,
+        matrix_rmw(rmw),
+        role,
+    ))
+}
+
+/// One role of a `(ThreadxLinux, lang, rmw)` pair cell, uncached: for a caller
+/// that names the RMW (`linux_api`'s Cyclone and exit-status cases).
+pub fn pair_image_rmw(
+    lang: crate::matrix::Lang,
+    role: crate::fixtures::workspace_image::PairRole,
+    rmw: super::Rmw,
+) -> TestResult<PathBuf> {
+    crate::fixtures::workspace_image::resolve_coord(
+        crate::matrix::PlatformId::ThreadxLinux,
+        lang,
+        matrix_rmw(rmw),
+        role,
+    )
+}
+
+/// One role of a `(ThreadxLinux, lang, Zenoh)` pair cell: its workspace image
+/// (RFC-0122 D1/D4), resolved by `fixtures::workspace_image` and cached for
+/// the process — the threadx-linux sibling of `freertos::pair_image`.
+pub fn pair_image(
+    lang: crate::matrix::Lang,
+    role: crate::fixtures::workspace_image::PairRole,
+) -> TestResult<&'static Path> {
+    use std::{collections::HashMap, sync::Mutex};
+    type Key = (u16, &'static str);
+    static CACHE: Mutex<Option<HashMap<Key, &'static Path>>> = Mutex::new(None);
+    let key = (lang.port_index(), role.token());
+    if let Some(p) = CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .get(&key)
+    {
+        return Ok(p);
+    }
+    let path = crate::fixtures::workspace_image::resolve_coord(
+        crate::matrix::PlatformId::ThreadxLinux,
+        lang,
+        crate::matrix::Rmw::Zenoh,
+        role,
+    )?;
+    let leaked: &'static Path = Box::leak(path.into_boxed_path());
+    CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(key, leaked);
+    Ok(leaked)
+}
+
+// =============================================================================
 // Rust binary builders
 // =============================================================================
 
 static THREADX_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_LISTENER_CONNECT_FOREVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 // Issue #194 — the role crates are lib-only Component pkgs since 212.L (same
 // as FreeRTOS/NuttX, see freertos.rs `build_rust_example` / nuttx.rs
@@ -101,12 +194,6 @@ pub fn build_threadx_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-pub fn build_threadx_listener() -> TestResult<&'static Path> {
-    THREADX_LISTENER_BINARY
-        .get_or_try_init(|| build_rust_example("listener", "threadx-linux-listener"))
-        .map(|p| p.as_path())
-}
-
 /// The listener built with `NROS_ZENOH_CONNECT_FOREVER=1` (issue 2207): it
 /// keeps trying until its router answers, where the default listener makes one
 /// connect attempt. Row-selected by its env, like the peer-mode pair.
@@ -121,30 +208,6 @@ pub fn build_threadx_listener_connect_forever() -> TestResult<&'static Path> {
             let rel = PathBuf::from(format!("{}/listener", super::cargo_target_profile_dir()));
             super::require_prebuilt_row_binary_fresh(row, &rel)
         })
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_service_server() -> TestResult<&'static Path> {
-    THREADX_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_rust_example("service-server", "threadx-linux-service-server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_service_client() -> TestResult<&'static Path> {
-    THREADX_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_rust_example("service-client", "threadx-linux-service-client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_action_server() -> TestResult<&'static Path> {
-    THREADX_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_rust_example("action-server", "threadx-linux-action-server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_action_client() -> TestResult<&'static Path> {
-    THREADX_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_rust_example("action-client", "threadx-linux-action-client"))
         .map(|p| p.as_path())
 }
 
@@ -179,6 +242,9 @@ pub fn build_threadx_action_client() -> TestResult<&'static Path> {
 /// row's variant is how a caller resolves that. These rows author `rmw` and
 /// leave default features on, which is the `platform_rmw` shape.
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
+    if let Some(r) = moved_pair("rust", role, super::Rmw::Zenoh) {
+        return r;
+    }
     let leaf = format!("examples/threadx-linux/rust/{role}");
     let dir = project_root().join(&leaf);
     if !dir.exists() {
@@ -209,21 +275,8 @@ pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
 // =============================================================================
 
 static THREADX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-// C++ action builders are kept against a future Phase 69.7 follow-up.
-#[allow(dead_code)]
-static THREADX_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-#[allow(dead_code)]
-static THREADX_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static THREADX_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
@@ -247,70 +300,8 @@ pub fn build_threadx_cpp_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-pub fn build_threadx_cpp_listener() -> TestResult<&'static Path> {
-    THREADX_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "listener", "cpp_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_cpp_service_server() -> TestResult<&'static Path> {
-    THREADX_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-server", "cpp_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_cpp_service_client() -> TestResult<&'static Path> {
-    THREADX_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-client", "cpp_service_client"))
-        .map(|p| p.as_path())
-}
-
-#[allow(dead_code)]
-pub fn build_threadx_cpp_action_server() -> TestResult<&'static Path> {
-    THREADX_CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-server", "cpp_action_server"))
-        .map(|p| p.as_path())
-}
-
-#[allow(dead_code)]
-pub fn build_threadx_cpp_action_client() -> TestResult<&'static Path> {
-    THREADX_CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-client", "cpp_action_client"))
-        .map(|p| p.as_path())
-}
-
 pub fn build_threadx_c_talker() -> TestResult<&'static Path> {
     THREADX_C_TALKER_BINARY
         .get_or_try_init(|| build_cmake_example("c", "talker", "c_talker"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_c_listener() -> TestResult<&'static Path> {
-    THREADX_C_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "listener", "c_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_c_service_server() -> TestResult<&'static Path> {
-    THREADX_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-server", "c_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_c_service_client() -> TestResult<&'static Path> {
-    THREADX_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-client", "c_service_client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_c_action_server() -> TestResult<&'static Path> {
-    THREADX_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-server", "c_action_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_c_action_client() -> TestResult<&'static Path> {
-    THREADX_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-client", "c_action_client"))
         .map(|p| p.as_path())
 }

@@ -128,6 +128,10 @@ args = { host = "robot2" }
 
 [image.threadx]
 board = "threadx-linux"
+# phase-535 W4 — stated here, not as the row's `-DNROS_ENTRY_LOCATOR`: the
+# pair images share this configure, so the locator is a per-image fact.
+# 9230 = `alloc::port_of(ThreadxLinux, Cpp, EntryPubsub)`.
+locator = "tcp/127.0.0.1:9230"
 
 [image.zephyr]
 board = "zephyr"

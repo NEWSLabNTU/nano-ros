@@ -2376,9 +2376,10 @@ mod board_crate_tests {
         // A REACH floor, not a quota: it proves the walk found the leaves. It
         // moves DOWN when phase-535 retires example leaves into workspace
         // images (generated entries, no leaf `Cargo.toml`) — 98 -> 97 for the
-        // FreeRTOS pilot's 5 Rust pair leaves (W3).
+        // FreeRTOS pilot's 5 Rust pair leaves (W3), 97 -> 93 for threadx-linux's
+        // Rust service and action leaves (W4).
         assert!(
-            on_selection >= 97,
+            on_selection >= 93,
             "only {on_selection} leaves on the selection package"
         );
     }

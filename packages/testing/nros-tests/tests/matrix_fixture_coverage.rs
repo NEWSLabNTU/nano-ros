@@ -100,6 +100,16 @@ struct CoordRows {
 /// in-Rust parser counted. That is the point — a coordinate no build produces
 /// cannot satisfy `every_runtime_cell_has_a_fixture_row`, which claims the cell
 /// is BUILT. (There are none today; the semantics matter for the next one.)
+fn is_pair_image_row(dir: &str, id: &str) -> bool {
+    use nros_tests::fixtures::baked_locator::row_str;
+    match (row_str(id, "bringup"), row_str(id, "image")) {
+        (Some(bringup), Some(image)) => {
+            nros_tests::fixtures::workspace_image::parse_image(dir, &bringup, &image).is_some()
+        }
+        _ => false,
+    }
+}
+
 fn fixture_coords() -> (BTreeMap<Coord, CoordRows>, Vec<String>) {
     let root = nros_tests::project_root();
     let out = std::process::Command::new("python3")
@@ -131,7 +141,12 @@ fn fixture_coords() -> (BTreeMap<Coord, CoordRows>, Vec<String>) {
             "unexpected `coords` record shape (expected 9 \\x1f-separated fields): {line:?}"
         );
         let (table, p, l, r, dir, id) = (f[0], f[1], f[2], f[3], f[4], f[5]);
-        let is_ws = table == "workspace_fixture";
+        // phase-535 W4 (RFC-0122 D1) — a pair IMAGE row models its Example
+        // cell, not a Workspace one: the example pairs live in the language
+        // workspaces now, and `workspace_image::parse_image` is the one place
+        // that recognises them. Without this a Cyclone pair image on a board
+        // with no Cyclone Workspace cell (threadx-linux) reads as an orphan.
+        let is_ws = table == "workspace_fixture" && !is_pair_image_row(dir, id);
         match (platform_from_str(p), lang_from_str(l), rmw_from_str(r)) {
             (Some(p), Some(l), Some(r)) => {
                 let kind = if is_ws { "Workspace" } else { "Example" };

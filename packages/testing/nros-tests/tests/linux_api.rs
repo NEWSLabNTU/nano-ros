@@ -1203,10 +1203,9 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
 #[test]
 fn test_threadx_linux_cyclonedds_service() {
     require_cmake();
-    let server_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
-        "c",
-        "service-server",
-        "c_service_server",
+    let server_bin = nros_tests::fixtures::threadx_linux::pair_image_rmw(
+        nros_tests::matrix::Lang::C,
+        nros_tests::fixtures::workspace_image::PairRole::ServiceServer,
         nros_tests::fixtures::Rmw::Cyclonedds,
     )
     .require("resolve threadx-linux c service-server (cyclonedds)");
@@ -1248,10 +1247,9 @@ fn test_threadx_linux_cyclonedds_service() {
 #[test]
 fn test_threadx_linux_cyclonedds_action() {
     require_cmake();
-    let server_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
-        "c",
-        "action-server",
-        "c_action_server",
+    let server_bin = nros_tests::fixtures::threadx_linux::pair_image_rmw(
+        nros_tests::matrix::Lang::C,
+        nros_tests::fixtures::workspace_image::PairRole::ActionServer,
         nros_tests::fixtures::Rmw::Cyclonedds,
     )
     .require("resolve threadx-linux c action-server (cyclonedds)");
@@ -1593,13 +1591,16 @@ fn catches_signal(pid: u32, signal: i32) -> bool {
 #[case::zenoh(Rmw::Zenoh)]
 fn test_threadx_linux_c_image_ends_on_one_sigterm(#[case] rmw: Rmw) {
     require_cmake();
-    let bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+    let bin = // phase-535 W4 — the C TALKER leaf, the board's road witness: its hand-written
+    // `main` installs the SIGTERM handler and returns `nros_app_main`'s status,
+    // which is what this measures. The pair images run a generated entry.
+    nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
         "c",
-        "service-server",
-        "c_service_server",
+        "talker",
+        "c_talker",
         rmw,
     )
-    .require("resolve threadx-linux c service-server");
+    .require("resolve threadx-linux c talker");
 
     let router = matches!(rmw, Rmw::Zenoh).then(zenohd_unique);
     let mut cmd = Command::new(&bin);
@@ -1608,11 +1609,11 @@ fn test_threadx_linux_c_image_ends_on_one_sigterm(#[case] rmw: Rmw) {
     }
     // Direct, not `spawn_image`: this measures the IMAGE's own signal handling
     // and exit status through its pid, which `nros run` would stand in front of.
-    let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-service-server")
-        .expect("spawn the threadx-linux c service-server");
+    let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-talker")
+        .expect("spawn the threadx-linux c talker");
     server
         .wait_for_output_pattern(
-            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            nros_tests::output::TALKER_READY_MARKER,
             Duration::from_secs(30),
         )
         .unwrap_or_else(|e| panic!("the image never became ready: {e}"));
@@ -1698,13 +1699,16 @@ fn negative_control_one_sigterm_does_not_end_a_process_that_catches_it() {
 #[test]
 fn test_threadx_linux_c_image_exit_status_is_the_apps() {
     require_cmake();
-    let bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+    let bin = // phase-535 W4 — the C TALKER leaf, the board's road witness: its hand-written
+    // `main` installs the SIGTERM handler and returns `nros_app_main`'s status,
+    // which is what this measures. The pair images run a generated entry.
+    nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
         "c",
-        "service-server",
-        "c_service_server",
+        "talker",
+        "c_talker",
         Rmw::Zenoh,
     )
-    .require("resolve threadx-linux c service-server");
+    .require("resolve threadx-linux c talker");
 
     // FAILURE: a locator whose port nothing listens on. Bound and released, so
     // the port is free now; a stranger taking it in the gap would make the
@@ -1717,7 +1721,7 @@ fn test_threadx_linux_c_image_exit_status_is_the_apps() {
     let out = nros_tests::process::deadline_command(20, &bin)
         .env("NROS_LOCATOR", format!("tcp/127.0.0.1:{port}"))
         .output()
-        .expect("run the threadx-linux c service-server");
+        .expect("run the threadx-linux c talker");
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -1741,11 +1745,11 @@ fn test_threadx_linux_c_image_exit_status_is_the_apps() {
     cmd.env("NROS_LOCATOR", router.locator());
     // Direct, not `spawn_image`: this measures the IMAGE's own signal handling
     // and exit status through its pid, which `nros run` would stand in front of.
-    let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-service-server")
-        .expect("spawn the threadx-linux c service-server");
+    let mut server = ManagedProcess::spawn_command(cmd, "threadx-linux-c-talker")
+        .expect("spawn the threadx-linux c talker");
     server
         .wait_for_output_pattern(
-            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            nros_tests::output::TALKER_READY_MARKER,
             Duration::from_secs(30),
         )
         .unwrap_or_else(|e| panic!("the image never became ready: {e}"));

@@ -66,5 +66,22 @@ board = "linux"
 launch = "service_client.launch.xml"
 rmw = "cyclonedds"
 
+# ThreadX's Linux simulator (a hosted process, NSOS host sockets): it
+# dials loopback directly. `locator` is the cell's `alloc::port_of`; no
+# matrix cell runs this pair on Cyclone, so no Cyclone image is built.
+
+[image.threadx_service_server]
+board = "threadx-linux"
+launch = "service_server.launch.xml"
+locator = "tcp/127.0.0.1:9210"
+
+[image.threadx_service_client]
+board = "threadx-linux"
+launch = "service_client.launch.xml"
+locator = "tcp/127.0.0.1:9210"
+
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
+
+[board_config."threadx-linux"]
+netstack = "netxduo"

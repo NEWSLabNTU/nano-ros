@@ -327,7 +327,17 @@ One PR per board.
   `generated/` on codegen-stamp drift, and `nros configure` then reports up
   to date without regenerating it. The wipe now retires the configure stamps
   too.
-- **threadx-linux, zephyr native_sim:** not started.
+- **threadx-linux (in review).** Each behaviour bringup gets `threadx_<role>`
+  images for all three languages (zenoh, loopback locator = the cell's
+  `alloc::port_of`), and `threadx_<role>_cyclonedds` for C (every workload)
+  and C++ (pubsub), at the leaves' domains 107 and 108. 25 leaf rows and 14
+  leaves retire. The talker leaves stay as witnesses, and the Rust listener
+  leaf keeps only its connect-forever row. The C++ Cyclone service and action
+  leaf rows had no cell and no consumer, so they were not carried over. The
+  SIGTERM and exit-status cases in `linux_api` measure a hand-written `main`,
+  so they now run the C talker witness. `matrix_fixture_coverage` models a
+  pair image row as its Example cell.
+- **zephyr native_sim:** not started.
 
 ### W5 — The other platforms
 
