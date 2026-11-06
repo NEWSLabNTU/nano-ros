@@ -90,7 +90,7 @@ transport sources** (zenoh-pico + mbedtls for zenoh, the cyclonedds fork) —
 from a pinned index into `${NROS_HOME:-~/.nros}/sdk`. The Zephyr sources and
 modules themselves are a `west` workspace, which you keep the standard Zephyr
 way. It provides **no zenoh router**: that is ROS's `rmw_zenohd`
-(see [the RMW design](../../extending/rmw-design.md)); Cyclone DDS needs no daemon at all.
+(see [the zenoh pairing](../../internals/rmw/rmw-api-design.html#the-zenoh-pairing)); Cyclone DDS needs no daemon at all.
 
 1. **Get the `nros` CLI** — install a release with `scripts/install.sh`
    ([Installation](../../start/install.md)); it lands in `~/.nros/bin`.

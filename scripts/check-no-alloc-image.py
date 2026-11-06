@@ -342,18 +342,9 @@ BOOK_CLAIMS = (
         "kind": "rationale",
         "why": "a clippy disallowed-methods entry a user writes",
     },
-    {
-        "file": "book/src/extending/rmw-design.md",
-        "text": '"no heap" is a property of the BACKEND',
-        "kind": "disclaimer",
-        "why": "issue 0777's correction of the old flat 'no heap' claim",
-    },
-    {
-        "file": "book/src/extending/rmw-design.md",
-        "text": 'The BACKENDS are another matter: "no heap" is not',
-        "kind": "disclaimer",
-        "why": "retracts the old flat 'no heap' claim: not true of every backend (reworded by phase-532 W3)",
-    },
+    # phase-537 W12: the two disclaimer rows of the RMW API design page left
+    # with it, when it moved to Internals (rmw/rmw-api-design). The gate reads
+    # book/src only, and the page's wording there is unchanged.
 )
 
 

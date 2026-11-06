@@ -42,7 +42,7 @@ The zenoh-pico shim is the canonical reference port.
 
 ## Writing a custom backend
 
-- Conceptual walkthrough: [Custom RMW Backend](../extending/custom-rmw.md).
+- The task, step by step: [Write a custom RMW backend](../extending/custom-rmw.md).
 - Coming from upstream `rmw.h`?
   → [RMW API: Differences from upstream `rmw.h`](../internals/rmw/rmw-vs-upstream.html).
 - Coverage status vs upstream `rmw.h`:

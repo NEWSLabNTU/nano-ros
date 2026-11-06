@@ -23,7 +23,7 @@ for the policy.
 > (`arm-none-eabi-gcc`, `qemu-system-arm`) plus the Rust
 > `thumbv7m-none-eabi` target into a shared store — no manual
 > cross-compiler install. It provides no zenoh router: that is ROS's
-> `rmw_zenohd` (see [the RMW design](../../extending/rmw-design.md)), so running a zenoh image
+> `rmw_zenohd` (see [the zenoh pairing](../../internals/rmw/rmw-api-design.html#the-zenoh-pairing)), so running a zenoh image
 > needs it from a ROS 2 install.
 
 ```bash probe=30

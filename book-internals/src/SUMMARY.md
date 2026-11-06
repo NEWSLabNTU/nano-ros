@@ -27,6 +27,7 @@
 
 # RMW Internals
 
+- [RMW API Design](./rmw/rmw-api-design.md)
 - [RMW Backends — Host-Language Policy](./rmw/backend-host-language-policy.md)
 - [zpico-sys Build Architecture](./rmw/zpico-build.md)
 - [RMW Zenoh Protocol](./rmw/zenoh-protocol.md)

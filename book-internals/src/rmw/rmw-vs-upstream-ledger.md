@@ -30,8 +30,8 @@ Issue files live under `docs/issues/archived/` unless noted; phase docs under
   `phase-376-rmw-api-parity.md`).
 - **Graph slots** were added as visitor callbacks in phase-376 W4; node
   entities (`rmw_node_t`) arrived in phase-376 W5/B1.
-- **Heap is a backend property** (issue 0777, user page
-  [RMW API Design](../../extending/rmw-design.html)). That page said "no heap" flatly
+- **Heap is a backend property** (issue 0777, page
+  [RMW API Design](rmw-api-design.md)). That page said "no heap" flatly
   for years; `scripts/rmw-alloc-sites.py` now counts the allocation sites
   per backend.
 - **zenoh version reading** (issue 0609): the ROS package version of

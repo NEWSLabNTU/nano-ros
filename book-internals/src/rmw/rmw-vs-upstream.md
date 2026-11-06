@@ -1050,9 +1050,9 @@ What an application sees on the client side:
 
 ## See also
 
-- [RMW API Design](../../../book/src/extending/rmw-design.md) — deeper architectural rationale (heap,
+- [RMW API Design](rmw-api-design.md) — deeper architectural rationale (heap,
   threading, dispatch model) shared across all the points above.
-- [Custom RMW Backend](../../../book/src/extending/custom-rmw.md) — step-by-step guide
+- [Write a custom RMW backend](../../../book/src/extending/custom-rmw.md) — step-by-step guide
   to writing a backend in C against this vtable.
 - [`<nros/rmw_vtable.h>` Doxygen](../api/rmw-cffi/index.html) — full
   C reference for every function pointer above.
