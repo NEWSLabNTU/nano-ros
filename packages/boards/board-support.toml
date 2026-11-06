@@ -115,7 +115,7 @@ crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
 board_keys = ["zephyr"]
 nightly_token = "zephyr"
-book_run = "guide/platforms/zephyr.md#run-on-native_sim"
+book_run = "starters/zephyr-native-sim.md#run-it-on-this-machine"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -754,16 +754,18 @@ qemu_board = "rv-virt-nuttx"
 
 [[probe]]
 track = "zephyr"
-chapter = "guide/platforms/zephyr.md"
-variant = "native-sim"
+chapter = "starters/zephyr-native-sim.md"
+variant = ""
+lang = "c"
 awaits = ["an entropy source in the generated native_sim entry: the link fails on `z_impl_sys_rand_get` (CLI owner bug 2)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 
 [[probe]]
 track = "zephyr-rust"
-chapter = "guide/platforms/zephyr.md"
-variant = "native-sim-rust"
+chapter = "starters/zephyr-native-sim.md"
+variant = ""
+lang = "rust"
 awaits = ["a Rust Zephyr workspace entry that sees its bringup package: the generated zephyr_entry fails `nros::main!: pkg `<bringup>` not found in workspace … Known pkgs: []` (CLI owner bug 4)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
