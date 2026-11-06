@@ -120,7 +120,7 @@ contributor who is not working on the FVP should not be blocked by its absence;
 
 The FVP is a Zephyr board, `fvp-aemv8r-smp`, so an image names it in its
 bringup's `system.toml` and `nros build` hands it to `west` like any Zephyr
-image ([the Zephyr chapter](../../../book/src/guide/platforms/zephyr.md#nros-build-on-zephyr-it-hands-off-it-does-not-take-over)
+image ([Zephyr native_sim](../../../book/src/guide/platforms/zephyr-native-sim.md#drive-west-yourself)
 has the workspace flow). The worked example is
 [`examples/workspaces/realtime-cpp`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-cpp/src/demo_bringup)'s
 `[image.fvp]`, a Cyclone DDS image:

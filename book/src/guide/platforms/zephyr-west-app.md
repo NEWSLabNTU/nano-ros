@@ -17,7 +17,7 @@ done so `nros` is on your PATH, and some familiarity with west: a manifest,
 
 **What it leaves for later:** a project with several nodes, several boards, or
 a launch file. That is a nano-ros workspace, which the
-[Zephyr chapter](zephyr.md) builds.
+[Zephyr native_sim](zephyr-native-sim.md) builds.
 
 ## When to choose this
 
@@ -28,7 +28,7 @@ There are two ways to put a ROS 2 node on Zephyr.
   `nros build` writes the Zephyr application for you and runs `west build`
   on it, and `nros run` starts it. You write no `CMakeLists.txt` for Zephyr
   and no `prj.conf`. Start there if you are starting fresh, or if the project
-  will grow past one node. The [Zephyr chapter](zephyr.md) covers it.
+  will grow past one node. The [Zephyr native_sim](zephyr-native-sim.md) covers it.
 - **Your own west application** (this chapter). The Zephyr application
   already exists, owns its build, and has its own drivers, devicetree and
   `prj.conf`. You want a ROS 2 node inside it, and you want `west build` and
@@ -100,7 +100,7 @@ revision nano-ros builds with on Zephyr 3.7. Only a
 none.
 
 nano-ros supports both the Zephyr 3.7 LTS line and the 4.x line; the
-[version table](zephyr.md#which-zephyr--37-lts-and-4x-both-supported) lists
+[version table](zephyr-native-sim.md#the-zephyr-lines) lists
 what differs between them.
 
 ## Add nano-ros to the build
@@ -381,7 +381,7 @@ is driven by the generated entry point, which is C++, so it sets
 For XRCE-DDS, set `CONFIG_NROS_RMW_XRCE=y` and name the agent with
 `CONFIG_NROS_XRCE_AGENT_ADDR` and `CONFIG_NROS_XRCE_AGENT_PORT` instead of a
 locator. Each middleware also needs some Zephyr settings of its own;
-[What each RMW's Zephyr-native fragment needs](zephyr.md#what-each-rmws-zephyr-native-fragment-needs)
+[What each RMW's Zephyr-native fragment needs](zephyr-native-sim.md#one-image-per-rmw)
 lists them.
 
 Every other nano-ros setting (executor slots, buffer sizes, the zenoh
@@ -393,7 +393,7 @@ is no such symbol, and Zephyr stops the build on a symbol it does not know.
 On Zephyr 4.x you can also select the middleware on the build line with one of
 the module's snippets, `-S nros-zenoh`, `-S nros-xrce` or `-S nros-cyclonedds`,
 instead of the `CONFIG_NROS_RMW_*` line
-([Zephyr 4.x: select the RMW with a snippet](zephyr.md#zephyr-4x-select-the-rmw-with-a-snippet)).
+([Zephyr 4.x: select the RMW with a snippet](zephyr-native-sim.md#the-zephyr-lines)).
 
 ## Messages
 

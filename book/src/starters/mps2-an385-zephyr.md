@@ -196,7 +196,7 @@ which receives nothing from it. That is why the command asks for best-effort.
 ## Next
 
 - **Each Zephyr piece, the image's configuration, and other boards:**
-  [Zephyr (west module)](../guide/platforms/zephyr.md).
+  [Zephyr on mps2-an385](../guide/platforms/zephyr.md).
 - **Zephyr with no emulator, as a program on this machine:**
   [Zephyr native_sim](zephyr-native-sim.md).
 - **A Zephyr board you can hold:** the [Nucleo-F767ZI](nucleo-f767zi.md).

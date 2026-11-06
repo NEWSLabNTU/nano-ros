@@ -129,7 +129,7 @@ reliable publisher alike.
 ## Next
 
 - **The host board with zenoh, its configuration and deployment:**
-  [Native (Host) Build](../guide/platforms/linux-host.md).
+  [Linux host](../guide/platforms/linux-host.md).
 - **The same project on an emulated microcontroller:**
   [mps2-an385 in QEMU (bare-metal)](mps2-an385-bare-metal.md).
 - **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md).
