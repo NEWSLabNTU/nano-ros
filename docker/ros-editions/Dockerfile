@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-${DISTRO}-rosidl-adapter \
         ros-${DISTRO}-rclpy \
     && (apt-get install -y --no-install-recommends ros-${DISTRO}-rmw-zenoh-cpp \
-        || echo "note: rmw_zenoh_cpp not in apt for ${DISTRO} (source overlay needed)") \
+        || echo "note: ros-${DISTRO}-rmw-zenoh-cpp is not in this image's apt sources") \
     && rm -rf /var/lib/apt/lists/*
 
 LABEL org.nano-ros.image="ros-edition" \

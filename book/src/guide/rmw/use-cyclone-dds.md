@@ -29,7 +29,7 @@ registry, not written here:
 
 - A workspace, such as the host one from
   [Run a talker](../../tutorial/run-a-talker.md#no-qemu-no-router-run-it-on-this-machine).
-- ROS 2 Humble with `ros-humble-rmw-cyclonedds-cpp` on the same network,
+- ROS 2 with `ros-<distro>-rmw-cyclonedds-cpp` ([which edition](../../start/install.md#before-you-start)) on the same network,
   to see the image from ROS 2.
 
 ## Steps

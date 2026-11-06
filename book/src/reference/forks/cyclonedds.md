@@ -13,14 +13,14 @@ nano-ros builds `third-party/dds/cyclonedds` from the fork [NEWSLabNTU/cyclonedd
 
 **Pinned commit:** `404fc5d9603dd80af624e3557d52fa1369e274d0`
 
-Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../../../book-internals/src/rmw/cyclonedds-fork-delta.md).
+Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../../internals/rmw/cyclonedds-fork-delta.html).
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [454df330c7](https://github.com/NEWSLabNTU/cyclonedds/commit/454df330c7bc213729ccf714c20807b22d02f007) | Removed warnign |
-| [b8fed02821](https://github.com/NEWSLabNTU/cyclonedds/commit/b8fed028213882f6466b6b8757bd7eb82a0cd578) | Improve topic name support (#1426) |
+| [b8fed02821](https://github.com/NEWSLabNTU/cyclonedds/commit/b8fed028213882f6466b6b8757bd7eb82a0cd578) | Improve topic name support |
 | [03352a5b95](https://github.com/NEWSLabNTU/cyclonedds/commit/03352a5b95ebda5d1435abec3e615cd493e449af) | Add missing atomic uintptr/uint64 functions |
 | [e95551609c](https://github.com/NEWSLabNTU/cyclonedds/commit/e95551609ccd0f7bc0a37c6b69353bd61643fd8a) | Allow more children per entity |
 | [76360fb739](https://github.com/NEWSLabNTU/cyclonedds/commit/76360fb73907ce3dba397e89090a7a4ecf4f1246) | Move handle flag bitmasks and update debug code |
@@ -36,7 +36,7 @@ Why each patch exists, and what retires it: [cyclonedds-fork-delta.md](../../../
 | [6eb92277bc](https://github.com/NEWSLabNTU/cyclonedds/commit/6eb92277bcea355cb7877012ee6d565d5096fccf) | fix(ddsrt/threadx): drop duplicate ddsrt_setsockreuse (use generic) |
 | [4aa337b0dd](https://github.com/NEWSLabNTU/cyclonedds/commit/4aa337b0dd716d1fb0a2ab0b5331b018c4cfd686) | q_sockwaitset: AF_UNIX socketpair self-pipe on native-IP-stack Zephyr |
 | [4c8ff8c276](https://github.com/NEWSLabNTU/cyclonedds/commit/4c8ff8c276a0cc56830b87872c8632b7c3fee909) | ddsrt/posix: fail loudly when pthread_mutex_init fails |
-| [1d794c0ae8](https://github.com/NEWSLabNTU/cyclonedds/commit/1d794c0ae8d2fc81cc797a6c72c42ff9b89ca2a7) | ddsi_udp: Zephyr multicast join via struct ip_mreqn (nano-ros issue 0231) |
+| [1d794c0ae8](https://github.com/NEWSLabNTU/cyclonedds/commit/1d794c0ae8d2fc81cc797a6c72c42ff9b89ca2a7) | ddsi_udp: Zephyr multicast join via struct ip_mreqn |
 | [5b87ee52ba](https://github.com/NEWSLabNTU/cyclonedds/commit/5b87ee52ba1c100d5f29fbcd46bdd971a045cdb9) | fix(ddsrt/posix): say which pool ran out, and fix cond/rwlock too |
 | [942dda3ccb](https://github.com/NEWSLabNTU/cyclonedds/commit/942dda3ccbb12be78d4081c1029ba381f8d51d37) | ddsi/addrset: stripe the lock instead of one mutex per addrset |
 | [a09babf32d](https://github.com/NEWSLabNTU/cyclonedds/commit/a09babf32d828e38c90e8aee176e906c40c2e1f9) | ddsrt: Zephyr-native sync backend — k_mutex/k_condvar instead of pooled pthreads |

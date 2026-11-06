@@ -1,15 +1,16 @@
 ---
 id: 2262
 title: "The serial quick-start's router config listens only on the serial PTY, so a ROS 2 node cannot reach it"
-status: open
+status: resolved
 type: bug
 area: book, serial
 purpose: [industrial]
 related: [phase-523, rfc-0116]
 found: 2026-11-05
+resolved_in: "docs/523-book-stops branch: Fixed on main: the serial router also listens on TCP"
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round one (2026-11-05); round two counts what is left.
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round one (2026-11-05); round two counts what is left.
 
 Found by phase-523 W3 adoption probe round one, 2026-11-05, on release `nros-0.6.0-nros6` (2026-10-31, 318 commits behind `main` at the time) in a pristine `ubuntu:24.04` container, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n.
 
@@ -21,3 +22,7 @@ Found by phase-523 W3 adoption probe round one, 2026-11-05, on release `nros-0.6
 ## Next
 
 The page's router line listens on both the serial endpoint and the default TCP one, so "See it from ROS 2" works as written.
+
+## Resolution (2026-11-07)
+
+Already fixed on `main` by phase-537's rewrite of the serial page (`guide/rmw/use-a-serial-link.md`). `nros run` starts the router on the serial device and on `tcp/127.0.0.1:7447` (`router_listen_endpoints` in `cmd/run_exec.rs`), and the page's hand-run router line lists both endpoints. Round two re-checks it on the next release.

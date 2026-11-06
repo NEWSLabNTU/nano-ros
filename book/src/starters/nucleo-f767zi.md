@@ -13,8 +13,8 @@ this chapter; [ethernet](#ethernet) comes after it.
 
 This chapter assumes a Linux x86_64 host (or the
 [container](../guide/build/install-options.md#ros-2-and-the-zenoh-router) the install page
-describes) with a C/C++ compiler, ROS 2 Humble with
-`ros-humble-rmw-zenoh-cpp`, and the [install](../start/install.md) done, so
+describes) with a C/C++ compiler, ROS 2 with
+`ros-<distro>-rmw-zenoh-cpp` ([which edition](../start/install.md#before-you-start)), and the [install](../start/install.md) done, so
 `nros` is on your PATH. It uses Zephyr's own tools the way
 [the Zephyr chapter](../guide/platforms/zephyr.md) does; read that one for what each
 piece is.

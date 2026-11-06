@@ -17,13 +17,13 @@ The pin is 728 upstream commit(s) behind `libc-0.2`'s tip; the delta below is ag
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [bc6c8dfc60](https://github.com/jerry73204/libc/commit/bc6c8dfc605ddc950f03241d5e72e7b60b0aa570) | Add _SC_HOST_NAME_MAX for NuttX target |
 | [10d142a800](https://github.com/jerry73204/libc/commit/10d142a8007b6b3534f893d8aa89f74f8d6e7b71) | Sync with nightly-2026-04-11 + NuttX missing pthread symbols |
-| [adb4c592eb](https://github.com/jerry73204/libc/commit/adb4c592eb9977b2ee33dff248139ee2d78b6cad) | Add poll() ABI shim for NuttX 24-byte struct pollfd (#167) |
-| [826c4ca918](https://github.com/jerry73204/libc/commit/826c4ca918d870723a750b5f8adc863e0467ea0a) | Size pthread_attr_t for CONFIG_SCHED_SPORADIC (nano-ros #570) |
-| [994735191a](https://github.com/jerry73204/libc/commit/994735191a4bd3872cd61e6210dc65e584c2c161) | Size NuttX sem/mutex/cond/rwlock mirrors for priority inheritance (nano-ros #1907) |
+| [adb4c592eb](https://github.com/jerry73204/libc/commit/adb4c592eb9977b2ee33dff248139ee2d78b6cad) | Add poll ABI shim for NuttX 24-byte struct pollfd |
+| [826c4ca918](https://github.com/jerry73204/libc/commit/826c4ca918d870723a750b5f8adc863e0467ea0a) | Size pthread_attr_t for CONFIG_SCHED_SPORADIC |
+| [994735191a](https://github.com/jerry73204/libc/commit/994735191a4bd3872cd61e6210dc65e584c2c161) | Size NuttX sem/mutex/cond/rwlock mirrors for priority inheritance |
 
 Reproduce:
 

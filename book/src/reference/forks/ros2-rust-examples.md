@@ -17,7 +17,7 @@ The pin is 5 upstream commit(s) behind `main`'s tip; the delta below is against 
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [ab3927a8d7](https://github.com/jerry73204/ros2_rust_examples/commit/ab3927a8d7020e588e980ccc5216c0f7d4e14696) | Ignore colcon-generated files and editor temp files |
 | [38f7036366](https://github.com/jerry73204/ros2_rust_examples/commit/38f7036366100bc7707dac20fb1da6f14e071782) | Add a justfile |

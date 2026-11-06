@@ -36,7 +36,7 @@ nros run rtic_node
 rtic_ws/
 └── src/
     ├── rtic_node/            # the node: package.xml, Cargo.toml, src/lib.rs
-    └── rtic_node_bringup/    # package.xml and system.toml: the board, so RTIC
+    └── rtic_node_bringup/    # package.xml, system.toml, system.contract.yaml: the board, so RTIC
 ```
 
 `nros run` builds the image, boots it in QEMU and starts the router, as in

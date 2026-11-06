@@ -9,13 +9,11 @@ compatible key expressions.
 
 ## Prerequisites
 
-- ROS 2 installed. For the zenoh path use
-  [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/Installation.html):
-  `sudo apt install ros-jazzy-rmw-zenoh-cpp`. **Humble and Iron ship no
-  `rmw_zenoh_cpp` apt package** — on those, either build `rmw_zenoh` from
-  source as a colcon overlay, or use the Cyclone DDS backend instead
-  (direct `rmw_cyclonedds_cpp` interop, no router at all — see
-  [Choosing an RMW](pick-the-rmw.md))
+- ROS 2 installed with its zenoh middleware, `ros-<distro>-rmw-zenoh-cpp`:
+  Humble on Ubuntu 22.04, Jazzy on 24.04 ([Install](../start/install.md#before-you-start)).
+  Both editions ship the package. The Cyclone DDS backend needs no router at
+  all (direct `rmw_cyclonedds_cpp` interop — see
+  [Choosing an RMW](pick-the-rmw.md)).
 - The zenoh router running: `ros2 run rmw_zenoh_cpp rmw_zenohd`
 
 ## Quick Start

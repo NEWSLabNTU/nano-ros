@@ -15,7 +15,7 @@ nano-ros builds `third-party/threadx/netxduo` from the fork [NEWSLabNTU/netxduo]
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [669760b0df](https://github.com/NEWSLabNTU/netxduo/commit/669760b0df959d9dd7c02b1bb5e143fd35cd65d6) | Fix UINT pointer truncation in BSD recv + add extract bounds check |
 | [d0c2e80e2d](https://github.com/NEWSLabNTU/netxduo/commit/d0c2e80e2da61e274f8f53505b1974fcad7d1071) | Fix x86_64 pointer truncation in BSD socket layer |

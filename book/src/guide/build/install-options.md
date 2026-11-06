@@ -167,6 +167,11 @@ nros pin
 sdk/nros/0.6.0-nros4/share/nros/manifest.toml
 ```
 
+Only the newest release is supported, and fixes are not backported, so a
+pin is a choice to move deliberately rather than a place to stay; a pinned
+release keeps installing, because its assets stay published
+([Release support](../../reference/support-status.md#release-support)).
+
 With no pin, `nros pin` says so:
 
 ```text
@@ -202,20 +207,72 @@ Cyclone DDS ROS ships and its zenoh-pico are chosen together.
 
 ## Working offline
 
-1. **Mirror the release asset.** `install.sh` takes `NROS_INSTALL_URL=<url>`:
-   a mirror, an air-gapped copy or a test server. The asset's `.sha256` must
-   sit beside it.
-2. **Pin the SDK index.** `nros setup --index <path>` uses a copy you have;
-   `NROS_INDEX_URL=<url>` fetches one from a mirror. The index names every
-   asset's upstream, so a full mirror rehosts those URLs in your copy.
-3. **Stage Corrosion** with `nros setup --tool corrosion`, or the
-   `nros setup <board>` you already run.
-4. **Prepare each workspace while online.** `nros configure` fetches the
-   crates its images need into cargo's cache and writes everything generated.
-5. **Carry the stores.** `~/.nros` (or `NROS_HOME`) holds the CLI, the SDK
-   root and every package `nros setup` fetched. The Rust toolchain lives in
-   `~/.rustup` and `~/.cargo`, with cargo's registry cache; carry those too,
-   or `nros setup` tries to download rustup again.
+Prepare on a machine with a network and the same Ubuntu release and
+architecture as the offline one, then carry four things across.
+
+1. **Carry the host packages.** apt downloads only what is not installed,
+   so download them in a clean container of the same release. The ROS image
+   already has the ROS 2 repository, so one command covers
+   [Install](../../start/install.md)'s host packages and the ROS 2 ones:
+
+   ```sh
+   mkdir debs
+   docker run --rm -v "$PWD/debs:/debs" ros:jazzy-ros-base bash -c '
+     apt-get update &&
+     apt-get install -y --download-only git curl ca-certificates build-essential \
+       cmake pkg-config python3 python3-dev zstd \
+       python3-catkin-pkg python3-empy python3-lark python3-yaml \
+       ros-jazzy-rmw-zenoh-cpp &&
+     cp /var/cache/apt/archives/*.deb /debs/'
+   ```
+
+   Use `ros:humble-ros-base` and `ros-humble-…` for Ubuntu 22.04. On the
+   offline machine, after installing ROS 2 the same way, run
+   `sudo apt install ./debs/*.deb`.
+2. **Mirror the release asset.** A release is tagged `nros-<version>` and
+   its asset is `nros-<os>-<arch>.tar.zst`, with a `.sha256` beside it. The
+   installer's dry run prints the exact URL for a version and this host:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
+       | sh -s -- --version 0.6.0-nros6 --dry-run
+   ```
+
+   ```text
+   nros-install: 0.6.0-nros6 for linux-x86_64
+   nros-install:   from https://github.com/NEWSLabNTU/nano-ros/releases/download/nros-0.6.0-nros6/nros-linux-x86_64.tar.zst
+   ```
+
+   Download that file and its `.sha256`, carry both, and install with
+   `NROS_INSTALL_URL=file:///path/to/nros-linux-x86_64.tar.zst sh install.sh`.
+3. **Pin the SDK index.** A release reads the index it ships with, so the
+   toolchains it provisions are the ones it was built with.
+   `nros setup --index <path>` uses another copy you have, and
+   `NROS_INDEX_URL=<url>` fetches one from a mirror; the index
+   names every asset's upstream, so a full mirror rehosts those URLs in your
+   copy.
+4. **Provision and prepare while online.** Run `nros setup <board>` (it
+   stages Corrosion too, or `nros setup --tool corrosion` alone), then
+   `nros configure` in each workspace. It fetches the crates its images need
+   into cargo's cache and writes everything generated.
+5. **Carry the stores.** `nros setup --offline-dirs` prints the directories
+   to copy, one per line, each with its reason on stderr:
+
+   ```sh
+   nros setup --offline-dirs
+   ```
+
+   ```text
+   /home/you/.nros
+   /home/you/.rustup
+   /home/you/.cargo
+   ```
+
+   `~/.nros` (or `NROS_HOME`) holds the CLI, the SDK root and every package
+   `nros setup` fetched. `~/.rustup` and `~/.cargo` are rustup's homes (or
+   `$RUSTUP_HOME` and `$CARGO_HOME`): the pinned Rust toolchains and cargo's
+   registry cache. Without them `nros setup` tries to download rustup again.
+   Copy them to the same paths on the offline machine.
 6. **Build with `NROS_OFFLINE=1`.** `nros` then fetches nothing, and runs
    every cargo it starts with `CARGO_NET_OFFLINE=true`. A build that needs
    something missing stops and names it.

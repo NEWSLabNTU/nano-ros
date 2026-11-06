@@ -118,7 +118,11 @@ boxes per group; a group missing two or more is not ready.
 **Middleware and interop**
 
 - [ ] The release pinned with `nros pin`, so the backend versions are the
-      tested ones (`nros setup --list` prints them).
+      tested ones (`nros setup --list` prints them), and a plan to move the
+      pin: only the newest release is supported, and fixes are not
+      backported ([Release support](../../reference/support-status.md#release-support)).
+- [ ] `nros doctor --report` output filed with the build: the release, each
+      board's support status and every pinned tool, dated.
 - [ ] Every QoS policy you use is supported by your backend; an unsupported
       one is reported at entity creation.
 - [ ] A stock ROS 2 node receives what the image publishes, with each custom
@@ -135,9 +139,10 @@ boxes per group; a group missing two or more is not ready.
 - [ ] A log sink chosen ([Log and observe a board](log-and-observe.md)),
       time synchronization, and a bootloader and update strategy, none of
       which nano-ros ships.
-- [ ] The licenses accepted: nano-ros is MIT OR Apache-2.0; zenoh-pico,
-      Cyclone DDS and Micro-XRCE-DDS-Client carry their own. nano-ros has no
-      commercial support entity, so plan for in-house expertise.
+- [ ] The licenses accepted: nano-ros is MIT OR Apache-2.0, and each
+      component an image compiles in carries its own
+      ([Third-party code](../../reference/third-party-code.md)). nano-ros has
+      no commercial support entity, so plan for in-house expertise.
 
 ## Example
 

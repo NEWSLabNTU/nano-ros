@@ -12,10 +12,38 @@ without building. It cannot tell you what *your* image costs — your knobs
 differ, your backend differs, and several pools are sized by a `sizeof` that no
 comment can see.
 
-For that, measure the image you built with the memory report, which reads
-the linked ELF. The report ships in the nano-ros source tree, not in a
-release; running it: see
-[Internals → The memory report](../../internals/realtime/mem-report.html).
+For that, measure the image you built. Two ways:
+
+- **Without a nano-ros checkout**, read the ELF with the LLVM tools rustup
+  ships (`rustup component add llvm-tools` once). They read an image for any
+  target:
+
+  ```sh
+  bin="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin"
+  "$bin/llvm-size" -A build/.../your-image      # RAM = .data + .bss (+ .uninit)
+  "$bin/llvm-nm" --size-sort -S -C --radix=d build/.../your-image | tail -20
+  ```
+
+  `llvm-size -A` gives the section totals; `llvm-nm --size-sort` lists the
+  largest statics last, each with its size in bytes.
+- **With a checkout**, the memory report below does the attribution for you.
+  It ships in the nano-ros source tree, not in a release; running it: see
+  [Internals → The memory report](../../internals/realtime/mem-report.html).
+
+On the Tutorial's board, `mps2-an385-baremetal`, two figures are worth
+knowing before you read either output:
+
+- **The heap is a static.** `nros_platform_mps2_an385::memory::HEAP` is a
+  128 KiB allocator (`NROS_HEAP_SIZE` changes it, in bytes), so it is
+  already inside the RAM total. Its symbol reads a little over 128 KiB
+  (132,792 B measured) because the allocator's own state sits beside the
+  arena. It lands in `.data`, not `.bss`, so today it occupies flash as
+  well.
+- **The stack has no budget.** The main stack starts at the top of the
+  board's 4 MiB SRAM and grows down toward the end of `.bss`, with no guard
+  between them; nothing in the image reserves or checks a stack size. On this
+  board that leaves about 3.8 MiB, so it is not the limit; on a board with
+  less RAM, the stack is what is left after `.data` and `.bss`.
 
 You get RAM broken down by symbol, by owner, by storage role and by pool, plus
 the section totals, so you can see how much is *not* attributable to any

@@ -48,7 +48,7 @@ $NUTTX_APPS_DIR/                             # sibling: apps tree
 nx_ws/                                   # your application: a workspace
 └── src/
     ├── nx_node/                         # node package: package.xml, Cargo.toml | CMakeLists.txt, the node
-    └── nx_node_bringup/                 # package.xml and system.toml: the board, the RMW, the node
+    └── nx_node_bringup/                 # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
 Wire the shell into your NuttX apps tree. Two commands, both run once:

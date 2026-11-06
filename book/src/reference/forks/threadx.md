@@ -15,7 +15,7 @@ nano-ros builds `third-party/threadx/kernel` from the fork [NEWSLabNTU/threadx](
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [13d061a73a](https://github.com/NEWSLabNTU/threadx/commit/13d061a73afd6dd3a3afda5fe71f94bbc411bc34) | fix(linux port): key LONG/ULONG and ALIGN_TYPE on the data model, not x86_64 |
 | [9a29f1bd3f](https://github.com/NEWSLabNTU/threadx/commit/9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7) | fix: key the LP64 thread-timeout compensation on the data model, not __x86_64__ |

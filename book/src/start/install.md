@@ -9,14 +9,29 @@ checkout and no system-wide install: everything lands under `~/.nros`.
 
 ## Before you start
 
-- **A Linux host.** The book's steps are tested on Ubuntu 22.04, and the
-  host packages below also cover Fedora and Arch. macOS is not supported.
-- **ROS 2 Humble, with its Zenoh middleware.** Install it from the
-  [ROS 2 documentation](https://docs.ros.org/en/humble/Installation.html),
-  then add `ros-humble-rmw-zenoh-cpp`. nano-ros generates your project's
-  message bindings from this install, and the Tutorial watches your nodes with
-  its `ros2` command. You source it before your first build; the
-  Tutorial shows where.
+- **A Linux host.** The book's steps are tested on Ubuntu 22.04 and 24.04,
+  and the host packages below also cover Fedora and Arch. macOS is not
+  supported.
+- **ROS 2 with its Zenoh middleware, installed before step 1.** The edition
+  follows your Ubuntu release: **Humble on 22.04, Jazzy on 24.04** (Humble
+  has no 24.04 packages). Add the ROS 2 apt repository as the
+  [ROS 2 documentation](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html)
+  shows, then:
+
+  ```sh
+  sudo apt install ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp   # humble on 22.04
+  ```
+
+  nano-ros generates your project's message bindings from this install, and
+  the Tutorial watches your nodes with its `ros2` command. You source it
+  before your first build; the Tutorial shows where.
+
+  Install it **first** on Ubuntu: step 1's `python3-catkin-pkg` must then
+  come from the ROS 2 repository. Taken from Ubuntu's own archive before the
+  repository is added, it blocks ROS's catkin package, and the ROS install
+  fails with `trying to overwrite '/usr/lib/python3/dist-packages/catkin_pkg/__init__.py'`.
+  If that already happened, `sudo apt remove python3-catkin-pkg` and run the
+  ROS 2 install again.
 - **A network connection** for this install. To install on a machine with no
   network, see [Install options](../guide/build/install-options.md#working-offline).
 

@@ -10,6 +10,27 @@ parsed from `nros-sdk-index.toml` and `rust-toolchain.toml` (the
 pinning SSoTs), so they cannot drift from what `nros setup`
 actually installs.
 
+## This page and your release
+
+This page is generated from the tree the book is published from,
+`main`. A release pins its own versions, so a release older than
+`main` may provision older ones than the tables below show. For the
+release you installed, run `nros doctor --report` in your bringup
+package: it prints, dated, the `nros` version, each image's board and
+that board's support status, and every tool and source the image pins.
+That output is the record to attach to a review.
+
+## Release support
+
+- **Only the newest release is supported.** nano-ros is pre-1.0, and
+  each release supersedes the one before it.
+- **Fixes reach you in the next release.** A fix lands on `main` and
+  ships with the release after it; nothing is backported to an older
+  release. To take a fix, move your pin to the release that has it.
+- **Release assets stay published.** A release's tag is never deleted
+  or moved, and its assets stay on GitHub Releases, so a pinned version
+  installs the same bytes later.
+
 ## CI tiers — what "supported" means
 
 | Tier | Lane | Runs | Guarantee |
@@ -58,9 +79,9 @@ Per-feature coverage across the three backends:
 
 | Edition | Feature / flag | Status | Notes |
 |---|---|---|---|
-| Humble | `ros-humble` (default) | Supported | `TypeHashNotSupported` key expressions, XCDR1. No `rmw_zenoh_cpp` apt package — zenoh interop on Humble needs a source overlay, or use Cyclone DDS. |
-| Iron | `ros-iron` | Supported | RIHS01 type hashes. Same zenoh-apt caveat as Humble. |
-| Jazzy | `ros-jazzy` | Supported | RIHS01; ships `ros-jazzy-rmw-zenoh-cpp` — the zenoh-interop reference edition. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |
+| Humble | `ros-humble` (default) | Supported | `TypeHashNotSupported` key expressions, XCDR1. Ubuntu 22.04 only; ships `ros-humble-rmw-zenoh-cpp`. |
+| Iron | `ros-iron` | Supported | RIHS01 type hashes. |
+| Jazzy | `ros-jazzy` | Supported | RIHS01; Ubuntu 24.04; ships `ros-jazzy-rmw-zenoh-cpp`. A default Jazzy peer encodes XCDR1/FINAL, which nano-ros speaks; per-type XCDR2 (`@appendable`) is not enabled. |
 
 Pick the edition of the ROS system you interop with — mismatched
 editions discover nothing (different key expressions).

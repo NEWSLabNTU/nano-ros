@@ -10,8 +10,8 @@ router, and then flash the same application to a real board. The application
 keeps its own `CMakeLists.txt` and `prj.conf`; nano-ros joins it as one more
 Zephyr module.
 
-**What this assumes:** a Linux host with ROS 2 Humble and its Zenoh
-middleware (`ros-humble-rmw-zenoh-cpp`), the [install](../../start/install.md)
+**What this assumes:** a Linux host with ROS 2 and its Zenoh
+middleware (`ros-<distro>-rmw-zenoh-cpp`, [which edition](../../start/install.md#before-you-start)), the [install](../../start/install.md)
 done so `nros` is on your PATH, and some familiarity with west: a manifest,
 `west update`, `west build -b <board>`.
 

@@ -84,7 +84,7 @@ cd tx_ws
 tx_ws/
 └── src/
     ├── tx_node/                 # node package: package.xml + CMakeLists.txt (or Cargo.toml), the talker
-    └── tx_node_bringup/         # package.xml and system.toml: the board, the RMW, the node
+    └── tx_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
 `tx_node` is a library with no `main()` that names no board; the ThreadX

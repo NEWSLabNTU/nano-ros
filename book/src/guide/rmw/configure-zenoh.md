@@ -18,7 +18,7 @@ a board needs to find the router.
 
 - A workspace with a zenoh image, such as the one from
   [Run a talker](../../tutorial/run-a-talker.md).
-- ROS 2 Humble with `ros-humble-rmw-zenoh-cpp`, sourced in each terminal
+- ROS 2 with `ros-<distro>-rmw-zenoh-cpp` ([which edition](../../start/install.md#before-you-start)), sourced in each terminal
   (`source /opt/ros/humble/setup.bash`). It provides `rmw_zenohd`.
 
 ## Steps
@@ -213,7 +213,7 @@ data: 'Hello World: 3'
 
 - **`nros run` stops with `no zenoh router: rmw_zenoh_cpp/rmw_zenohd was not
   found`.** Source ROS 2 in that terminal, install
-  `ros-humble-rmw-zenoh-cpp`, or set `NROS_RMW_ZENOHD` to the `rmw_zenohd`
+  `ros-<distro>-rmw-zenoh-cpp`, or set `NROS_RMW_ZENOHD` to the `rmw_zenohd`
   binary.
 - **`the zenoh router exited on tcp/127.0.0.1:7447 … is the port taken?`**
   Another router already holds the port. Stop it, or reuse it with

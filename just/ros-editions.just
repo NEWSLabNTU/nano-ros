@@ -32,7 +32,7 @@ image-check distro="jazzy":
         ros2 pkg prefix domain_bridge      >/dev/null && echo "[ok] domain_bridge"
         ros2 pkg prefix example_interfaces >/dev/null && echo "[ok] example_interfaces"
         ros2 pkg prefix geometry_msgs      >/dev/null && echo "[ok] geometry_msgs"
-        ros2 pkg prefix rmw_zenoh_cpp >/dev/null 2>&1 && echo "[ok] rmw_zenoh_cpp" || echo "[--] rmw_zenoh_cpp absent (apt-less distro; source overlay needed)"
+        ros2 pkg prefix rmw_zenoh_cpp >/dev/null 2>&1 && echo "[ok] rmw_zenoh_cpp" || echo "[--] rmw_zenoh_cpp absent (install ros-<distro>-rmw-zenoh-cpp)"
     '
     echo "image-check {{distro}}: PASS"
 
