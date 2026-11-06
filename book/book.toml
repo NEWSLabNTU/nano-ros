@@ -35,6 +35,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/guide/contracts/cpp-workspaces.html" = "../../tutorial/tell-the-build.html"
 "/tutorial/grow-your-workspace.html" = "parameters-and-launch-files.html"
 "/tutorial/add-a-second-node-c.html" = "add-a-second-node.html"
 "/tutorial/add-a-second-node-cpp.html" = "add-a-second-node.html"
@@ -107,7 +108,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/communicate/bridges.html" = "../guide/rmw/bridge-between-backends.html"
 "/communicate/tx-tuning.html" = "../guide/rmw/tune-throughput-and-latency.html"
 "/communicate/qos-status-events.html" = "../guide/rmw/qos-status-events.html"
-"/build/cpp-workspaces.html" = "../guide/contracts/cpp-workspaces.html"
+"/build/cpp-workspaces.html" = "../tutorial/tell-the-build.html"
 "/realtime/static-memory.html" = "../guide/contracts/measure-static-memory.html"
 "/build/roles.html" = "../guide/build/organize-a-larger-workspace.html"
 "/build/mixed-language.html" = "../guide/build/mix-languages.html"
@@ -169,7 +170,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/getting-started/px4.html" = "../guide/platforms/px4.html"
 "/getting-started/arm-fvp.html" = "../internals/platform/arm-fvp.html"
 "/getting-started/workspace-from-app-node.html" = "../tutorial/parameters-and-launch-files.html"
-"/getting-started/workspace-cpp.html" = "../guide/contracts/cpp-workspaces.html"
+"/getting-started/workspace-cpp.html" = "../tutorial/tell-the-build.html"
 "/getting-started/workspace-mixed-language.html" = "../guide/build/mix-languages.html"
 "/user-guide/component-and-entry-pkg.html" = "../guide/build/organize-a-larger-workspace.html"
 "/user-guide/message-generation.html" = "../reference/message-generation.html"

@@ -221,7 +221,7 @@ def render(upstream: str, tag: str, commit: str) -> str:
         "release's parser, so a key this page does not list is a parse error.",
         "",
         "To write a contract for your own nodes, see",
-        "[Contracts for a C or C++ workspace](../guide/contracts/cpp-workspaces.md).",
+        "[Tell the build what your system creates](../tutorial/tell-the-build.md).",
         "",
     ]
     return "\n".join(head) + "\n" + text
