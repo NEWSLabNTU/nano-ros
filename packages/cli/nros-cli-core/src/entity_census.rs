@@ -699,7 +699,7 @@ fn read_contract(contract: &Manifest) -> Vec<Declared> {
             push(Kind::Cli, alias, props.qos.as_ref());
         }
     }
-    // Actions have NO node-level key: the contract schema's `NodeDecl` carries
+    // Actions have NO node-level key: the contract schema's node declaration has
     // `pub`/`sub`/`srv`/`cli` and nothing for an action, so the top-level
     // `actions:` wiring (`server: [node/alias]`, `client: [...]`) is the whole
     // declaration. The loop above walks node keys only, so an action endpoint
