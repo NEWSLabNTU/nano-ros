@@ -258,6 +258,10 @@ pub enum Net<'a> {
         remote: &'a str,
         mac: &'a str,
     },
+    /// A `-netdev socket,mcast=<group>` LAN shared by every QEMU on the same
+    /// group (the ThreadX riscv64 sibling-mcast pair, phase 97.4). The line's
+    /// `-icount` stays as the board states it.
+    Mcast { group: &'a str, mac: &'a str },
     /// No NIC at all (boot-only images).
     None,
 }
@@ -297,8 +301,10 @@ impl Line {
 /// Two shapes, by which keys are present:
 ///
 /// * `board` = one of [`Board::word`] (and optionally `mac`): the
-///   [`board_line`] of that board, on user-mode networking — the NuttX and
-///   ThreadX riscv64 lines, whose virtio-mmio NIC the harness varies per pair.
+///   [`board_line`] of that board — the NuttX and ThreadX riscv64 lines, whose
+///   virtio-mmio NIC the harness varies per pair. `net` picks the [`Net`]:
+///   `user` (the default), `none`, `dgram` (with `net_local`, `net_remote`
+///   and `mac`) or `mcast` (with `net_mcast` and `mac`).
 /// * otherwise the board descriptor's `[board.run.qemu]` facts, rendered in
 ///   one fixed order: `qemu-system-<system> [-cpu <cpu>] -machine <machine>
 ///   -nographic [-icount <icount>] [-semihosting-config <semihosting>]
@@ -373,7 +379,30 @@ pub fn plan_line(args: &std::collections::BTreeMap<String, String>) -> Result<Pl
             )
         })?;
         let mac = args.get("mac").map(String::as_str);
-        return Ok(board_line(board, Net::User { mac }).into());
+        let need = |k: &str| {
+            args.get(k)
+                .map(String::as_str)
+                .ok_or_else(|| format!("`args.net = {:?}` needs `args.{k}`", args.get("net")))
+        };
+        let net = match args.get("net").map(String::as_str) {
+            None | Some("user") => Net::User { mac },
+            Some("none") => Net::None,
+            Some("dgram") => Net::Dgram {
+                local: need("net_local")?,
+                remote: need("net_remote")?,
+                mac: need("mac")?,
+            },
+            Some("mcast") => Net::Mcast {
+                group: need("net_mcast")?,
+                mac: need("mac")?,
+            },
+            Some(other) => {
+                return Err(format!(
+                    "`args.net = {other:?}` names no network (known: user, none, dgram, mcast)"
+                ));
+            }
+        };
+        return Ok(board_line(board, net).into());
     }
     let need = |k: &str| {
         args.get(k)
@@ -398,10 +427,18 @@ pub fn plan_line(args: &std::collections::BTreeMap<String, String>) -> Result<Pl
     }
     v.push("-kernel".to_string());
     Ok(PlanLine {
-        exe: format!("qemu-system-{system}"),
+        exe: system_exe(&system),
         before_kernel: v,
         after_kernel: Vec::new(),
     })
+}
+
+/// The executable name of QEMU's `<system>` emulator, `qemu-system-<system>`
+/// (`arm`, `riscv64`, `aarch64`, the Zephyr SDK's `xilinx-aarch64`). The one
+/// spelling of the name, so a consumer names the system and never the binary.
+#[must_use]
+pub fn system_exe(system: &str) -> String {
+    format!("qemu-system-{system}")
 }
 
 /// The MAC a ThreadX riscv64 image expects for `peer_index` — `52:54:00:12:34:56`
@@ -490,6 +527,12 @@ pub fn board_line(board: Board, net: Net<'_>) -> Line {
             "user,id=net0".to_string(),
             "-device".to_string(),
             device(mac),
+        ],
+        Net::Mcast { group, mac } => vec![
+            "-netdev".to_string(),
+            format!("socket,id=net0,mcast={group}"),
+            "-device".to_string(),
+            device(Some(mac)),
         ],
         Net::Dgram { local, remote, mac } => {
             // `-icount shift=auto` keeps a timer aligned with SLIRP's host I/O
@@ -747,6 +790,51 @@ mod tests {
                 PlanLine::from(board_line(b, Net::User { mac: None }))
             );
         }
+        let threadx = |kv: &[(&str, &str)]| -> BTreeMap<String, String> {
+            [("board", "threadx-riscv64")]
+                .iter()
+                .chain(kv)
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+                .collect()
+        };
+        let mac = "52:54:00:12:34:56";
+        assert_eq!(
+            plan_line(&threadx(&[
+                ("net", "dgram"),
+                ("net_local", "/a"),
+                ("net_remote", "/b"),
+                ("mac", mac)
+            ]))
+            .unwrap(),
+            PlanLine::from(board_line(
+                Board::ThreadxRiscv64,
+                Net::Dgram {
+                    local: "/a",
+                    remote: "/b",
+                    mac
+                }
+            ))
+        );
+        assert_eq!(
+            plan_line(&threadx(&[
+                ("net", "mcast"),
+                ("net_mcast", "230.0.0.1:1"),
+                ("mac", mac)
+            ]))
+            .unwrap()
+            .argv("K")
+            .join(" "),
+            "-M virt -m 256M -bios none -nographic -global virtio-mmio.force-legacy=false \
+             -kernel K -netdev socket,id=net0,mcast=230.0.0.1:1 \
+             -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=52:54:00:12:34:56"
+        );
+        assert_eq!(
+            plan_line(&threadx(&[("net", "none")])).unwrap(),
+            PlanLine::from(board_line(Board::ThreadxRiscv64, Net::None))
+        );
+        assert!(plan_line(&threadx(&[("net", "dgram")])).is_err());
+        assert!(plan_line(&threadx(&[("net", "tap")])).is_err());
+        assert_eq!(system_exe("aarch64"), "qemu-system-aarch64");
         assert!(plan_line(&BTreeMap::from([("system".into(), "arm".into())])).is_err());
         assert!(plan_line(&BTreeMap::from([("board".into(), "x".into())])).is_err());
     }

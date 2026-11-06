@@ -1,32 +1,23 @@
 //! QEMU process fixture for embedded testing
 //!
-//! Provides managed QEMU processes for testing ARM Cortex-M binaries.
+//! Provides managed QEMU guests for the FreeRTOS, NuttX, ThreadX and
+//! bare-metal images.
 //!
-//! ## Launch convention — SANCTIONED hand-rolled builders (phase-295 W5.c)
+//! ## Launch convention — `nros run --plan` (phase-528 W5)
 //!
-//! Every `QemuProcess::start_*` builder below assembles a `qemu-system-{arm,
-//! riscv32,riscv64}` command line by hand. This is the **sanctioned form**
-//! (RFC-0051 §4 / audit checklist E9 / the #222 E1-exception pattern), not a
-//! bypass to fix, because the platforms this module launches — FreeRTOS,
-//! NuttX, ThreadX, and pure bare-metal — have **no build-system runner
-//! metadata** to interpret:
+//! A guest boots the way a user runs it: every `QemuProcess::start_*` builder
+//! states a [`crate::run::QemuBoot`] — the RunPlan's QEMU `args` (the board
+//! descriptor's `[board.run.qemu]` keys, or a fixed ladder board) plus the
+//! words after the kernel — and [`QemuProcess::start`] runs it through
+//! `nros run --plan` and the `qemu` runner, which renders the line with
+//! `nros_qemu_ladder::plan_line`. No builder here spells a QEMU command line,
+//! and gate `check-harness-qemu-literals` keeps it that way (no QEMU binary
+//! name outside comments in `nros-tests/src`).
 //!
-//! - There is no Zephyr `runners.yaml` (that path is handled by the
-//!   [`crate::zephyr::RunnersYaml`] interpreter) and no ESP-IDF
-//!   `flasher_args.json` for these images.
-//!   They are plain cross-compiled ELFs; the emulator machine/CPU/netdev plan
-//!   lives only in each board crate's build glue and this file.
-//! - So `qemu.rs` is itself "the interpreter" E9 refers to: the hand-rolled
-//!   `-M/-cpu/-netdev` blocks here are the run convention, and consuming
-//!   PREBUILT ELFs (never building at run time) keeps the E1 no-compile rule.
-//!
-//! FOLLOW-UP (phase doc W5.c): the per-machine argument blocks (the
-//! `-M virt -cpu cortex-a7 …` specifics) can later move into each board
-//! crate's `NROS_BOARD_RUNNER`-adjacent metadata so a board owns its launch
-//! line (the phase-215 duty rule), leaving these functions as thin readers of
-//! board-provided launch metadata. That relocation is deferred here to avoid
-//! disturbing the many green QEMU lanes; the doc-comment route is the
-//! sanctioned interim state.
+//! The emulator binary is still the harness's one ladder
+//! ([`qemu_system_path`]), which the plan's `tools` carry. Consuming PREBUILT
+//! ELFs (never building at run time) keeps the E1 no-compile rule: `--plan`
+//! resolves and builds nothing.
 
 use crate::{
     TestError, TestResult,
@@ -113,17 +104,6 @@ pub(crate) fn qemu_system_path_in(
     }
 }
 
-/// A [`Command`] for `line` booting `kernel` — the binary through
-/// [`qemu_system_path`], the arguments from [`nros_qemu_ladder::board_line`].
-/// The CLI's printed run command comes from the same line (phase-517 W14).
-pub fn board_line_cmd(line: &nros_qemu_ladder::Line, kernel: &Path) -> Command {
-    let mut cmd = qemu_system_cmd(line.exe);
-    cmd.args(&line.before_kernel)
-        .arg(kernel)
-        .args(&line.after_kernel);
-    cmd
-}
-
 /// Issue 0930 — whether the project prefix holds the version `[tool.<tool>]`
 /// pins ([`nros_qemu_ladder::prefix_matches_pin`] against this checkout's pin).
 /// The ladder asks it itself; this spelling is for the unit test below.
@@ -135,25 +115,12 @@ pub(crate) fn project_prefix_matches_pin(prefix: &Path, tool: &str) -> Result<()
     )
 }
 
-/// The line [`QemuProcess::start_nuttx_virt`] /[`QemuProcess::start_nuttx_riscv`]
-/// boot: user networking, or no NIC for a boot-only image.
-pub fn nuttx_virt_line(board: nros_qemu_ladder::Board, networking: bool) -> nros_qemu_ladder::Line {
-    let net = if networking {
-        nros_qemu_ladder::Net::User { mac: None }
-    } else {
-        nros_qemu_ladder::Net::None
-    };
-    nros_qemu_ladder::board_line(board, net)
-}
-
-/// The line [`QemuProcess::start_riscv64_virt`] boots for `peer_index` (its MAC
-/// is the firmware's preset for that peer).
-pub fn threadx_riscv64_line(peer_index: u8) -> nros_qemu_ladder::Line {
-    let mac = nros_qemu_ladder::threadx_riscv64_mac(peer_index);
-    nros_qemu_ladder::board_line(
-        nros_qemu_ladder::Board::ThreadxRiscv64,
-        nros_qemu_ladder::Net::User { mac: Some(&mac) },
-    )
+/// The boot [`QemuProcess::start_nuttx_virt`] /[`QemuProcess::start_nuttx_riscv`]
+/// state: the board's ladder line on user networking, or no NIC for a
+/// boot-only image. The CLI's printed run command comes from the same line
+/// (phase-517 W14).
+pub fn nuttx_virt_boot(board: nros_qemu_ladder::Board, networking: bool) -> crate::run::QemuBoot {
+    crate::run::QemuBoot::board(board).arg("net", if networking { "user" } else { "none" })
 }
 
 /// A fresh [`Command`] for [`qemu_system_path`]`(exe)`.
@@ -197,7 +164,7 @@ pub fn qemu_system_has_machine(exe: &str, machine: &str) -> bool {
 /// boots the image and failed that probe, so the tier-2 `nuttx-riscv`
 /// coordinate reported an unmet precondition on every host without the fork.
 pub fn is_qemu_riscv32_virt_available() -> bool {
-    qemu_system_has_machine("qemu-system-riscv32", "virt")
+    qemu_system_has_machine(&nros_qemu_ladder::system_exe("riscv32"), "virt")
 }
 
 /// Whether the Zephyr `qemu_cortex_a53` SMP boot can run: its binary
@@ -209,12 +176,12 @@ pub fn is_qemu_riscv32_virt_available() -> bool {
 /// `qemu-system-arm` package ships it). Without one the boot used to die as a
 /// bare ENOENT at spawn, naming no tool.
 pub fn is_qemu_aarch64_virt_available() -> bool {
-    qemu_system_has_machine("qemu-system-aarch64", "virt")
+    qemu_system_has_machine(&nros_qemu_ladder::system_exe("aarch64"), "virt")
 }
 
 /// `qemu-system-arm` through [`qemu_system_path`].
 pub fn qemu_system_arm_path() -> std::ffi::OsString {
-    qemu_system_path("qemu-system-arm")
+    qemu_system_path(&nros_qemu_ladder::system_exe("arm"))
 }
 
 /// Convenience wrapper around [`qemu_system_arm_path`] that returns
@@ -278,10 +245,13 @@ fn drain_into<R: Read>(src: &mut R, buffer: &mut [u8], dst: &mut String) -> bool
 /// assert!(output.contains("[PASS]"));
 /// ```
 pub struct QemuProcess {
+    /// The `nros run --plan` process (phase-528 W5): the verb, which runs the
+    /// `qemu` runner, which runs QEMU.
     handle: Child,
-    /// The exact command this process was started with — see
-    /// [`QemuProcess::command_line`].
+    /// The QEMU line the runner executes — see [`QemuProcess::command_line`].
     cmdline: String,
+    /// The plan directory, which must outlive the process.
+    _run: Box<crate::run::HostRun>,
 }
 
 /// Render a spawned command as a line a human can paste into a shell.
@@ -316,17 +286,38 @@ pub(crate) fn render_command(cmd: &Command) -> String {
 }
 
 impl QemuProcess {
-    /// Spawn `cmd`, recording the exact command line for failure messages.
+    /// Boot `binary` as `boot` states it, through `nros run --plan` and the
+    /// `qemu` runner (phase-528 W5), recording the QEMU line for failure
+    /// messages.
     ///
     /// THE one spawn point for every `start_*` builder in this file, so a new
-    /// builder cannot forget to record what it ran (issue 0877).
-    fn spawn(mut cmd: Command) -> TestResult<Self> {
-        let cmdline = render_command(&cmd);
+    /// builder cannot forget to record what it ran (issue 0877), and none
+    /// spells a QEMU command line: each states the plan's QEMU args, which the
+    /// runner renders.
+    pub fn start(binary: &Path, boot: crate::run::QemuBoot) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+        let mut run = crate::run::qemu_image(binary, &boot)?;
+        let mut cmd = run.take_command();
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        // `nros run` owns a group of its own: `crate::run::stop` kills it
+        // before the verb, and a dying test binary SIGTERMs the verb.
+        #[cfg(unix)]
+        crate::process::set_orphan_group_suicide(&mut cmd);
         let handle = cmd.spawn()?;
-        Ok(Self { handle, cmdline })
+        Ok(Self {
+            handle,
+            cmdline: run.image_line.clone(),
+            _run: Box::new(run),
+        })
     }
 
-    /// The command line this QEMU was started with, pasteable into a shell.
+    /// The QEMU line this guest was started with, pasteable into a shell: the
+    /// `qemu` runner's rendering of the plan, which is what it executed.
     ///
     /// Assertion messages that report "the guest did nothing" must carry this:
     /// the RTOS lanes run under `--failure-output never` (see the `just
@@ -343,73 +334,24 @@ impl QemuProcess {
     /// Start QEMU Cortex-M3 emulator with semihosting
     ///
     /// Uses the LM3S6965EVB machine which supports semihosting output.
-    ///
-    /// # Arguments
-    /// * `binary` - Path to the ARM ELF binary to run
-    ///
-    /// # Returns
-    /// A managed QEMU process
     pub fn start_cortex_m3(binary: &Path) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-cpu",
-            "cortex-m3",
-            "-machine",
-            "lm3s6965evb",
-            "-nographic",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-kernel",
-        ])
-        .arg(binary)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+        Self::start(
+            binary,
+            crate::run::QemuBoot::table("arm", "lm3s6965evb")
+                .arg("cpu", "cortex-m3")
+                .arg("semihosting", SEMIHOSTING),
+        )
     }
 
-    /// Start QEMU with MPS2-AN385 machine (Cortex-M3 + LAN9118 Ethernet)
-    ///
-    /// Uses the MPS2-AN385 machine which has a LAN9118 Ethernet controller.
-    ///
-    /// # Arguments
-    /// * `binary` - Path to the ARM ELF binary to run
-    ///
-    /// # Returns
-    /// A managed QEMU process
+    /// Start QEMU with MPS2-AN385 machine (Cortex-M3 + LAN9118 Ethernet),
+    /// no NIC configured.
     pub fn start_mps2_an385(binary: &Path) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-cpu",
-            "cortex-m3",
-            "-machine",
-            "mps2-an385",
-            "-nographic",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-kernel",
-        ])
-        .arg(binary)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+        Self::start(
+            binary,
+            crate::run::QemuBoot::table("arm", "mps2-an385")
+                .arg("cpu", "cortex-m3")
+                .arg("semihosting", SEMIHOSTING),
+        )
     }
 
     /// Start QEMU with MPS2-AN385 machine + LAN9118 slirp networking
@@ -427,7 +369,7 @@ impl QemuProcess {
     /// during WFI, causing zenoh-pico timeouts to expire before network I/O
     /// completes. See `book-internals/src/testing/qemu-icount.md`.
     pub fn start_mps2_an385_networked(binary: &Path) -> TestResult<Self> {
-        Self::spawn(mps2_an385_networked_cmd(binary)?)
+        Self::start(binary, mps2_an385_networked_boot())
     }
 
     /// [`Self::start_mps2_an385_networked`] for a cell that asserts a bound on
@@ -435,11 +377,13 @@ impl QemuProcess {
     /// instead of `shift=auto`, so a guest-measured duration is the guest's
     /// instruction count at the modelled core's rate (issue 2252).
     pub fn start_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
-        Self::spawn(mps2_an385_cmd_with_nic_icount(
+        Self::start(
             binary,
-            &nros_board_common::image_net::slirp_nic("lan9118"),
-            MPS2_AN385_CORE_ICOUNT,
-        )?)
+            mps2_an385_boot(
+                &nros_board_common::image_net::slirp_nic("lan9118"),
+                MPS2_AN385_CORE_ICOUNT,
+            ),
+        )
     }
 
     /// [`Self::start_mps2_an385_networked`] on the network the IMAGE states
@@ -447,7 +391,7 @@ impl QemuProcess {
     /// interface, from [`image_nic`] — QEMU's own user-mode network, a host
     /// bridge, or a TAP.
     pub fn start_mps2_an385_on(binary: &Path, nic: &str) -> TestResult<Self> {
-        Self::spawn(mps2_an385_cmd_with_nic(binary, nic)?)
+        Self::start(binary, mps2_an385_boot(nic, "shift=auto"))
     }
 
     /// [`Self::start_mps2_an385_networked`] plus a QEMU human monitor on a
@@ -459,19 +403,18 @@ impl QemuProcess {
         binary: &Path,
         monitor_socket: &Path,
     ) -> TestResult<Self> {
-        let mut cmd = mps2_an385_networked_cmd(binary)?;
-        cmd.arg("-monitor").arg(format!(
-            "unix:{},server=on,wait=off",
-            monitor_socket.display()
-        ));
-        Self::spawn(cmd)
+        Self::start(
+            binary,
+            mps2_an385_networked_boot().then([
+                "-monitor".to_string(),
+                format!("unix:{},server=on,wait=off", monitor_socket.display()),
+            ]),
+        )
     }
 
-    // phase-484 W4b-2 (RFC-0103 D10) — `start_mps2_an385_networked` is
-    // gone. It configured SLIRP to `192.0.3.0/24` (host `192.0.3.1`) because
-    // the FreeRTOS firmware's lwIP was static on that plan; the FreeRTOS QEMU
-    // boards now sit on QEMU's own SLIRP network like every other QEMU board,
-    // so they boot with `start_mps2_an385_networked`, the one MPS2 launcher.
+    // phase-484 W4b-2 (RFC-0103 D10) — the FreeRTOS QEMU boards sit on QEMU's
+    // own SLIRP network like every other QEMU board, so they boot with
+    // `start_mps2_an385_networked`, the one MPS2 launcher.
 
     /// Start QEMU `mps3-an536` (Cortex-R52) on a multicast-socket LAN.
     ///
@@ -481,34 +424,10 @@ impl QemuProcess {
     /// sends. A guest alone on the group still delivers to itself, which is
     /// what an in-image talker + listener needs.
     pub fn start_mps3_an536_mcast(binary: &Path, mcast_addr_port: &str) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-machine",
-            "mps3-an536",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-kernel",
-        ])
-        .arg(binary)
-        .args([
-            "-nic",
-            &format!("socket,model=lan9118,mcast={mcast_addr_port}"),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+        Self::start(
+            binary,
+            mps3_an536_boot(&format!("socket,model=lan9118,mcast={mcast_addr_port}")),
+        )
     }
 
     /// Start QEMU `mps3-an536` (Cortex-R52) on user-mode networking (slirp),
@@ -521,80 +440,43 @@ impl QemuProcess {
     /// unicast ports. The guest's address is the board's QEMU network plan
     /// (`10.0.2.15`, gateway `10.0.2.2`).
     pub fn start_mps3_an536_slirp(binary: &Path, hostfwd: &str) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-machine",
-            "mps3-an536",
-            "-nographic",
-            "-icount",
-            "shift=auto",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-kernel",
-        ])
-        .arg(binary)
-        .args(["-nic", &format!("user,model=lan9118,{hostfwd}")])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+        Self::start(
+            binary,
+            mps3_an536_boot(&format!("user,model=lan9118,{hostfwd}")),
+        )
     }
 
     /// Start QEMU with MPS2-AN385 machine + external serial device
     ///
     /// Connects UART0 to the given serial device path (e.g., a socat PTY).
-    /// Uses `-display none -monitor none` to avoid `-nographic`'s implicit
-    /// `-serial mon:stdio` which would hijack UART0 for the monitor.
+    /// `-monitor none` keeps QEMU's monitor off the console: with UART0 on the
+    /// chardev, `-nographic` would otherwise put the monitor on stdio.
     /// Semihosting output goes to stdout via the ARM semihosting interface.
+    ///
+    /// `-icount shift=auto` synchronizes the virtual clock with wall-clock
+    /// time. The firmware uses CMSDK Timer0 (hardware timer) for zenoh-pico
+    /// timeouts. Without icount, WFI advances virtual time instantly, causing
+    /// timeouts to fire before serial I/O through zenohd completes.
     ///
     /// # Arguments
     /// * `binary` - Path to the ARM ELF binary to run
     /// * `serial_path` - Host serial device path (e.g., `/tmp/serial-a`)
     pub fn start_mps2_an385_with_serial(binary: &Path, serial_path: &str) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let chardev_arg = format!("serial,id=ser0,path={}", serial_path);
-        let mut cmd = qemu_system_arm_cmd();
-        cmd.args([
-            "-cpu",
-            "cortex-m3",
-            "-machine",
-            "mps2-an385",
-            "-display",
-            "none",
-            "-monitor",
-            "none",
-            // Synchronize virtual clock with wall-clock time. The firmware
-            // uses CMSDK Timer0 (hardware timer) for zenoh-pico timeouts.
-            // Without icount, WFI advances virtual time instantly, causing
-            // timeouts to fire before serial I/O through zenohd completes.
-            "-icount",
-            "shift=auto",
-            "-semihosting-config",
-            "enable=on,target=native",
-            "-chardev",
-        ])
-        .arg(&chardev_arg)
-        .args(["-serial", "chardev:ser0", "-kernel"])
-        .arg(binary)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+        Self::start(
+            binary,
+            crate::run::QemuBoot::table("arm", "mps2-an385")
+                .arg("cpu", "cortex-m3")
+                .arg("icount", "shift=auto")
+                .arg("semihosting", SEMIHOSTING)
+                .then([
+                    "-chardev".to_string(),
+                    format!("serial,id=ser0,path={serial_path}"),
+                    "-serial".to_string(),
+                    "chardev:ser0".to_string(),
+                    "-monitor".to_string(),
+                    "none".to_string(),
+                ]),
+        )
     }
 
     /// Wait for QEMU to produce output and exit
@@ -633,7 +515,7 @@ impl QemuProcess {
         let mut buffer = [0u8; 4096];
         loop {
             if start.elapsed() > timeout {
-                kill_process_group(&mut self.handle);
+                crate::run::stop(&mut self.handle);
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }
@@ -666,7 +548,7 @@ impl QemuProcess {
                         || output.contains(crate::output::ACTION_RESULT_PREFIX)
                     {
                         std::thread::sleep(Duration::from_millis(100));
-                        kill_process_group(&mut self.handle);
+                        crate::run::stop(&mut self.handle);
                         break;
                     }
                 }
@@ -836,7 +718,7 @@ impl QemuProcess {
         let mut buffer = [0u8; 4096];
         loop {
             if start.elapsed() > timeout {
-                kill_process_group(&mut self.handle);
+                crate::run::stop(&mut self.handle);
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }
@@ -875,9 +757,10 @@ impl QemuProcess {
         Ok(output)
     }
 
-    /// Kill the QEMU process
+    /// Kill the QEMU process: the groups under `nros run`, then the verb
+    /// ([`crate::run::stop`]).
     pub fn kill(&mut self) {
-        kill_process_group(&mut self.handle);
+        crate::run::stop(&mut self.handle);
     }
 
     /// Check if QEMU is still running
@@ -907,49 +790,69 @@ impl QemuProcess {
     }
 
     pub fn start_nuttx_virt(binary: &Path, networking: bool) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
         // phase-517 W14 — the line is the ONE the CLI prints too (the
         // virtio-mmio NIC and `-icount` reasons live with it).
-        let mut cmd = board_line_cmd(
-            &nuttx_virt_line(nros_qemu_ladder::Board::NuttxArmVirt, networking),
+        Self::start(
             binary,
-        );
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+            nuttx_virt_boot(nros_qemu_ladder::Board::NuttxArmVirt, networking),
+        )
     }
 
     /// #165 — boot a riscv32 rv-virt NuttX kernel image (the riscv sibling of
-    /// [`Self::start_nuttx_virt`]). Command mirrors the canonical rv-virt export
-    /// `scripts/nuttx/build-nuttx.sh` emits: `qemu-system-riscv32 -M virt -bios
-    /// none` + a virtio-net-device on the MMIO transport (NuttX's rv-virt
-    /// defconfig enables `CONFIG_DRIVERS_VIRTIO_MMIO`, so — as on arm-virt — the
-    /// NIC must be `-device virtio-net-device`, not the PCI default `-nic user`).
+    /// [`Self::start_nuttx_virt`]). The line mirrors the canonical rv-virt export
+    /// `scripts/nuttx/build-nuttx.sh` emits: `-M virt -bios none` + a
+    /// virtio-net-device on the MMIO transport (NuttX's rv-virt defconfig
+    /// enables `CONFIG_DRIVERS_VIRTIO_MMIO`, so — as on arm-virt — the NIC must
+    /// be `-device virtio-net-device`, not the PCI default `-nic user`).
     /// `-icount shift=auto` syncs the virtual clock to wall-clock so `sleep()` /
     /// timeouts run at real rates, matching `start_nuttx_virt`.
     pub fn start_nuttx_riscv(binary: &Path, networking: bool) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = board_line_cmd(
-            &nuttx_virt_line(nros_qemu_ladder::Board::NuttxRvVirt, networking),
+        Self::start(
             binary,
-        );
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+            nuttx_virt_boot(nros_qemu_ladder::Board::NuttxRvVirt, networking),
+        )
+    }
+
+    /// Phase 97.4.threadx-riscv64 — sibling-mcast variant. Two QEMU instances
+    /// share `-netdev socket,mcast=…` so SPDP / SEDP / pubsub frames cross
+    /// between them on the host's loopback / primary iface (no `localaddr` —
+    /// same lesson as the FreeRTOS slice).
+    pub fn start_riscv64_virt_mcast(
+        binary: &Path,
+        mcast_addr_port: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        Self::start(
+            binary,
+            crate::run::QemuBoot::board(nros_qemu_ladder::Board::ThreadxRiscv64)
+                .arg("net", "mcast")
+                .arg("net_mcast", mcast_addr_port)
+                .arg("mac", mac),
+        )
+    }
+
+    /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
+    /// peer pair for RV64 ThreadX. It avoids QEMU's broken cross-process
+    /// `socket,mcast=` delivery by routing two QEMU processes at each
+    /// other via an AF_UNIX SOCK_DGRAM pair, with no root, routes or IGMP.
+    /// The caller picks two distinct per-pair paths and deletes stale files
+    /// at them first (QEMU's bind fails on EADDRINUSE).
+    pub fn start_riscv64_virt_dgram(
+        binary: &Path,
+        local_unix_path: &str,
+        remote_unix_path: &str,
+        mac: &str,
+    ) -> TestResult<Self> {
+        // Issue 2170 — the board's machine line from the shared ladder, the
+        // pair link as its `Net::Dgram`.
+        Self::start(
+            binary,
+            crate::run::QemuBoot::board(nros_qemu_ladder::Board::ThreadxRiscv64)
+                .arg("net", "dgram")
+                .arg("net_local", local_unix_path)
+                .arg("net_remote", remote_unix_path)
+                .arg("mac", mac),
+        )
     }
 
     /// Start QEMU with RISC-V 64-bit virt machine + virtio-net slirp networking
@@ -966,105 +869,18 @@ impl QemuProcess {
     /// derived from the peer index (0x56 + index). These must match the
     /// firmware's `Config::default()` / `Config::listener()` presets in
     /// `nros-board-threadx-qemu-riscv64`.
-    /// Phase 97.4.threadx-riscv64 — sibling-mcast variant. Two
-    /// QEMU instances share `-netdev socket,mcast=…` so SPDP /
-    /// SEDP / pubsub frames cross between them on the host's
-    /// loopback / primary iface (no `localaddr` — same lesson as
-    /// the FreeRTOS slice).
-    pub fn start_riscv64_virt_mcast(
-        binary: &Path,
-        mcast_addr_port: &str,
-        mac: &str,
-    ) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = qemu_system_cmd("qemu-system-riscv64");
-        cmd.args([
-            "-M",
-            "virt",
-            "-m",
-            "256M",
-            "-bios",
-            "none",
-            "-nographic",
-            "-global",
-            "virtio-mmio.force-legacy=false",
-            "-kernel",
-        ])
-        .arg(binary)
-        .args([
-            "-netdev",
-            &format!("socket,id=net0,mcast={mcast_addr_port}"),
-            "-device",
-            &format!("virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac={mac}"),
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
-    }
-
-    /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
-    /// peer pair for RV64 ThreadX. It avoids QEMU's broken cross-process
-    /// `socket,mcast=` delivery by routing two QEMU processes at each
-    /// other via an AF_UNIX SOCK_DGRAM pair, with no root, routes or IGMP.
-    /// The caller picks two distinct per-pair paths and deletes stale files
-    /// at them first (QEMU's bind fails on EADDRINUSE).
-    pub fn start_riscv64_virt_dgram(
-        binary: &Path,
-        local_unix_path: &str,
-        remote_unix_path: &str,
-        mac: &str,
-    ) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        // Issue 2170 — the board's machine line from the shared ladder, the
-        // pair link as its `Net::Dgram`.
-        let line = nros_qemu_ladder::board_line(
-            nros_qemu_ladder::Board::ThreadxRiscv64,
-            nros_qemu_ladder::Net::Dgram {
-                local: local_unix_path,
-                remote: remote_unix_path,
-                mac,
-            },
-        );
-        let mut cmd = board_line_cmd(&line, binary);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
-    }
-
     pub fn start_riscv64_virt(binary: &Path, peer_index: u8) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        let mut cmd = board_line_cmd(&threadx_riscv64_line(peer_index), binary);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        Self::spawn(cmd)
+        Self::start(
+            binary,
+            crate::run::QemuBoot::board(nros_qemu_ladder::Board::ThreadxRiscv64)
+                .arg("mac", &nros_qemu_ladder::threadx_riscv64_mac(peer_index)),
+        )
     }
 }
 
 impl Drop for QemuProcess {
     fn drop(&mut self) {
-        kill_process_group(&mut self.handle);
+        crate::run::stop(&mut self.handle);
     }
 }
 
@@ -1160,7 +976,7 @@ pub fn require_mcast_loopback_route(group: &str) {
 
 /// Check if QEMU RISC-V 64-bit is available
 pub fn is_qemu_riscv64_available() -> bool {
-    qemu_system_available("qemu-system-riscv64")
+    qemu_system_available(&nros_qemu_ladder::system_exe("riscv64"))
 }
 
 /// Phase 127.B.5 — does the host's `qemu-system-arm` support
@@ -1177,7 +993,7 @@ pub fn qemu_supports_dgram_unix() -> bool {
 /// (added in 7.2). Checking the ARM binary's help here would be wrong, so the
 /// ThreadX-RV64 two-node test gates on this and falls back to `socket,mcast`.
 pub fn qemu_riscv64_supports_dgram_unix() -> bool {
-    qemu_cmd_supports_dgram(qemu_system_cmd("qemu-system-riscv64"))
+    qemu_cmd_supports_dgram(qemu_system_cmd(&nros_qemu_ladder::system_exe("riscv64")))
 }
 
 /// `-netdev help` lists backend types one per line; "dgram" appears iff
@@ -1322,12 +1138,6 @@ impl Drop for SocatPtyPair {
     }
 }
 
-/// The command [`QemuProcess::start_mps2_an385_networked`] runs: MPS2-AN385,
-/// LAN9118 on slirp, `-icount shift=auto`.
-fn mps2_an385_networked_cmd(binary: &Path) -> TestResult<Command> {
-    mps2_an385_cmd_with_nic(binary, &nros_board_common::image_net::slirp_nic("lan9118"))
-}
-
 /// The `-nic` value of an image's interface (phase-497 W3), from the network
 /// file `nros build` wrote for it (`<build>/nros/net/<image>.toml`):
 /// `model` is the board's QEMU NIC model. A missing file is an error, not the
@@ -1369,44 +1179,40 @@ pub fn image_nic(net_file: &Path, model: &str) -> TestResult<String> {
 /// count, every run. Measured in issue 2252.
 pub const MPS2_AN385_CORE_ICOUNT: &str = "shift=5";
 
-fn mps2_an385_cmd_with_nic(binary: &Path, nic: &str) -> TestResult<Command> {
-    mps2_an385_cmd_with_nic_icount(binary, nic, "shift=auto")
+/// The semihosting the Arm QEMU boards' consoles use.
+const SEMIHOSTING: &str = "enable=on,target=native";
+
+/// The boot [`QemuProcess::start_mps2_an385_networked`] runs: MPS2-AN385,
+/// LAN9118 on slirp, `-icount shift=auto`.
+fn mps2_an385_networked_boot() -> crate::run::QemuBoot {
+    mps2_an385_boot(
+        &nros_board_common::image_net::slirp_nic("lan9118"),
+        "shift=auto",
+    )
 }
 
-fn mps2_an385_cmd_with_nic_icount(binary: &Path, nic: &str, icount: &str) -> TestResult<Command> {
-    if !binary.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found: {}",
-            binary.display()
-        )));
-    }
+/// MPS2-AN385 with `nic` and `icount`.
+///
+/// `-icount` synchronizes the virtual clock with wall-clock time. With
+/// sleep=on (default), WFI advances virtual time at wall-clock speed via
+/// QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps hardware
+/// timer-backed clocks (CMSDK Timer0) aligned with slirp network I/O timing.
+/// A measurement cell passes a fixed shift instead (`MPS2_AN385_CORE_ICOUNT`,
+/// issue 2252).
+fn mps2_an385_boot(nic: &str, icount: &str) -> crate::run::QemuBoot {
+    crate::run::QemuBoot::table("arm", "mps2-an385")
+        .arg("cpu", "cortex-m3")
+        .arg("icount", icount)
+        .arg("semihosting", SEMIHOSTING)
+        .arg("nic", nic)
+}
 
-    let mut cmd = qemu_system_arm_cmd();
-    cmd.args([
-        "-cpu",
-        "cortex-m3",
-        "-machine",
-        "mps2-an385",
-        "-nographic",
-        // Synchronize virtual clock with wall-clock time. With sleep=on
-        // (default), WFI advances virtual time at wall-clock speed via
-        // QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps
-        // hardware timer-backed clocks (CMSDK Timer0) aligned with slirp
-        // network I/O timing. A measurement cell passes a fixed shift
-        // instead (`MPS2_AN385_CORE_ICOUNT`, issue 2252).
-        "-icount",
-        icount,
-        "-semihosting-config",
-        "enable=on,target=native",
-        "-kernel",
-    ])
-    .arg(binary)
-    .args(["-nic", nic])
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
-    #[cfg(unix)]
-    set_new_process_group(&mut cmd);
-    Ok(cmd)
+/// MPS3-AN536 (Cortex-R52) with `nic`.
+fn mps3_an536_boot(nic: &str) -> crate::run::QemuBoot {
+    crate::run::QemuBoot::table("arm", "mps3-an536")
+        .arg("icount", "shift=auto")
+        .arg("semihosting", SEMIHOSTING)
+        .arg("nic", nic)
 }
 
 /// Run one command on a QEMU human monitor (`-monitor unix:<socket>,…`) and
@@ -1512,41 +1318,52 @@ mod tests {
         assert_eq!(project_prefix_matches_pin(d.path(), "qemu"), Ok(()));
     }
 
-    /// phase-517 W14 — the three launchers boot exactly the line the shared
+    /// phase-517 W14 — the launchers' plans render exactly the line the shared
     /// crate states (the CLI's printed run command asserts the same against
-    /// it in `nros-cli-core`'s `cmd::build_next`), with the program from the
-    /// ONE ladder.
+    /// it in `nros-cli-core`'s `cmd::build_next`). Since phase-528 W5 they
+    /// state plan args, which the `qemu` runner renders through
+    /// `nros_qemu_ladder::plan_line`.
     #[test]
     fn launchers_boot_the_shared_board_lines() {
-        use nros_qemu_ladder::{Board, Net, board_line, threadx_riscv64_mac};
-        let kernel = Path::new("/img/nuttx");
-        let rendered =
-            |line: &nros_qemu_ladder::Line| render_command(&board_line_cmd(line, kernel));
-        let expected = |line: nros_qemu_ladder::Line| {
-            let mut words = vec![qemu_system_path(line.exe).to_string_lossy().into_owned()];
-            words.extend(line.argv("/img/nuttx"));
-            words.join(" ")
-        };
+        use nros_qemu_ladder::{Board, Net, PlanLine, board_line, plan_line, threadx_riscv64_mac};
+        let rendered = |boot: crate::run::QemuBoot| plan_line(&boot.args).unwrap();
         let user = Net::User { mac: None };
         assert_eq!(
-            rendered(&nuttx_virt_line(Board::NuttxArmVirt, true)),
-            expected(board_line(Board::NuttxArmVirt, user))
+            rendered(nuttx_virt_boot(Board::NuttxArmVirt, true)),
+            PlanLine::from(board_line(Board::NuttxArmVirt, user))
         );
         assert_eq!(
-            rendered(&nuttx_virt_line(Board::NuttxRvVirt, true)),
-            expected(board_line(Board::NuttxRvVirt, user))
+            rendered(nuttx_virt_boot(Board::NuttxRvVirt, true)),
+            PlanLine::from(board_line(Board::NuttxRvVirt, user))
         );
         assert_eq!(
-            rendered(&nuttx_virt_line(Board::NuttxRvVirt, false)),
-            expected(board_line(Board::NuttxRvVirt, Net::None))
+            rendered(nuttx_virt_boot(Board::NuttxRvVirt, false)),
+            PlanLine::from(board_line(Board::NuttxRvVirt, Net::None))
         );
         let mac = threadx_riscv64_mac(0);
         assert_eq!(
-            rendered(&threadx_riscv64_line(0)),
-            expected(board_line(
+            rendered(crate::run::QemuBoot::board(Board::ThreadxRiscv64).arg("mac", &mac)),
+            PlanLine::from(board_line(
                 Board::ThreadxRiscv64,
                 Net::User { mac: Some(&mac) }
             ))
+        );
+    }
+
+    /// The MPS2-AN385 networked boot renders the line the launcher spelled by
+    /// hand before phase-528 W5, flag for flag (the `-nic` now precedes the
+    /// kernel, which QEMU does not order).
+    #[test]
+    fn the_mps2_networked_boot_is_the_old_line() {
+        let line = nros_qemu_ladder::plan_line(&mps2_an385_networked_boot().args).unwrap();
+        assert_eq!(line.exe, nros_qemu_ladder::system_exe("arm"));
+        assert_eq!(
+            line.argv("K").join(" "),
+            format!(
+                "-cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto \
+                 -semihosting-config enable=on,target=native -nic {} -kernel K",
+                nros_board_common::image_net::slirp_nic("lan9118")
+            )
         );
     }
 
@@ -1578,7 +1395,7 @@ mod tests {
     /// re-interpret has to come back quoted.
     #[test]
     fn recorded_command_quotes_arguments_a_shell_would_split() {
-        let mut cmd = Command::new("/usr/bin/qemu-system-arm");
+        let mut cmd = Command::new(format!("/usr/bin/{}", nros_qemu_ladder::system_exe("arm")));
         cmd.args([
             "-nic",
             "user,model=lan9118,net=10.0.2.0/24,host=10.0.2.2",

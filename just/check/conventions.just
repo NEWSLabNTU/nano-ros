@@ -275,6 +275,14 @@ artifact-path-literals:
 qemu-one-ladder:
     @python3 scripts/check/check-qemu-one-ladder.py
 
+# phase-528 W5 — the test harness boots a QEMU guest through `nros run --plan`,
+# so no `qemu-system-` literal is left in `packages/testing/nros-tests/src/`
+# outside comments: a boot states plan args, a probe asks
+# `nros_qemu_ladder::system_exe`. Buildless, ~0.1 s; self-tests its matcher.
+[private]
+harness-qemu-literals:
+    @python3 scripts/check/check-harness-qemu-literals.py
+
 # issue 1850 (RFC-0103 D4) — the in-tree `nros` and `nros-launch-resolve` are
 # each found by ONE resolver: `nros_cli_bin` (`--checkout-only` for a gate
 # precondition: this checkout's CLI or nothing, never PATH/store — issue 1280's

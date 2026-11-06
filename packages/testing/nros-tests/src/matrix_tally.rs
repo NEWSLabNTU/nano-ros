@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn an_unmet_precondition_is_a_failure_that_executed() {
         let mut t = Tally::new("m", "cell");
-        t.run("a", || crate::unmet!("no qemu-system-aarch64"));
+        t.run("a", || crate::unmet!("no aarch64 QEMU"));
         assert_eq!(t.executed(), 1);
         assert_eq!(t.failed.len(), 1);
         let msg = panic_msg(move || t.finish());
