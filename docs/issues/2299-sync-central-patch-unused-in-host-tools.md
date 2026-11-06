@@ -11,7 +11,7 @@ related: [phase-527, phase-287, 0457]
 
 ## What happens
 
-`nros sync` writes a `.cargo/config.toml` into every `nros_cargo` package. Its
+`nros configure` writes a `.cargo/config.toml` into every `nros_cargo` package. Its
 one `include` names the central `<checkout>/nros-patch.toml`, which patches
 `nros`, `nros-core` and `nros-serdes` (`cmd/ws.rs` `CENTRAL_PATCH_CRATES`).
 A runner or command package (phase-527, RFC-0119) is a host tool written
