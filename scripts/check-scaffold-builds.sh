@@ -113,6 +113,8 @@ cd "$repo_root" || exit 2
 . "$repo_root/scripts/build/cargo.sh"
 # shellcheck source=scripts/build/gate-scratch.sh
 . "$repo_root/scripts/build/gate-scratch.sh"
+# shellcheck source=scripts/build/gate-units.sh
+. "$repo_root/scripts/build/gate-units.sh"
 # shellcheck source=scripts/build/copy-out-cmake.sh
 . "$repo_root/scripts/build/copy-out-cmake.sh"
 # The one resolver (issue 1850): $NROS_CLI, this checkout's build, PATH, store.
@@ -681,11 +683,21 @@ if [ "$mode" = "list" ]; then
     exit 0
 fi
 
-echo "check-scaffold-builds: compiling ${#selected[@]} scaffold variant(s) outside the checkout"
+# phase-489 — variants are independent (each scaffolds into its own scratch
+# tree and builds its own cargo/cmake root, issue 0616), so they build
+# `$NROS_SCAFFOLD_JOBS` at once (`scripts/build/gate-units.sh`) and report in
+# variant order. Serial, this gate WAS `check::build`'s wall clock: 1197 s at
+# 5255 CPU-seconds on a 48-CPU host; 6 at once measured 303 s.
+jobs="$(nros_gate_unit_jobs NROS_SCAFFOLD_JOBS)" || exit 2
+echo "check-scaffold-builds: compiling ${#selected[@]} scaffold variant(s) outside the checkout, $jobs at a time"
+nros_gate_scratch reports scaffold-builds-reports || exit 3
 fail=0
-for v in "${selected[@]}"; do
-    run_one "$v" || fail=1
+nros_gate_units "$jobs" "$reports" run_one "${selected[@]}"
+for i in "${!selected[@]}"; do
+    nros_gate_unit_report "$reports" "$i" 0
+    [ "$NROS_GATE_UNIT_RC" = 0 ] || fail=1
 done
+rm -rf -- "$reports"
 
 if [ "$fail" -ne 0 ]; then
     echo "check-scaffold-builds: FAILED — \`nros new\` emits something that does not compile." >&2
