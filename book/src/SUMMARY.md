@@ -31,6 +31,7 @@
 - [5. Your own message](./tutorial/your-own-message.md)
 - [6. Services and actions](./tutorial/services-and-actions.md)
 - [Parameters and launch files](./tutorial/parameters-and-launch-files.md)
+- [8. Tell the build what your system creates](./tutorial/tell-the-build.md)
 - [ROS 2 Interoperability](./tutorial/talk-to-ros2.md)
 
 # User guide
@@ -45,7 +46,6 @@
   - [Tune throughput and latency](./guide/rmw/tune-throughput-and-latency.md)
   - [Use QoS, status events and discovery](./guide/rmw/qos-status-events.md)
 - [Contracts and sizing]()
-  - [C / C++ multi-node workspaces](./guide/contracts/cpp-workspaces.md)
   - [Measuring Static Memory](./guide/contracts/measure-static-memory.md)
 - [Build and configure]()
   - [Organize a larger workspace](./guide/build/organize-a-larger-workspace.md)
