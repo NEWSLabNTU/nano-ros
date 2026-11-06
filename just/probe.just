@@ -173,6 +173,62 @@ zephyr-mps2: (platform "zephyr-mps2")
 [group("main")]
 freertos-posix: (platform "freertos-posix")
 
+# book/src/guide/platforms/linux-host.md — the the Linux host platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-linux: (platform "platform-linux")
+
+# book/src/guide/platforms/zephyr-native-sim.md — the Zephyr native_sim platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-zephyr-native-sim: (platform "platform-zephyr-native-sim")
+
+# book/src/guide/platforms/threadx-linux.md — the the ThreadX Linux simulator platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-threadx-linux: (platform "platform-threadx-linux")
+
+# book/src/guide/platforms/freertos-posix.md — the FreeRTOS POSIX platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-freertos-posix: (platform "platform-freertos-posix")
+
+# book/src/guide/platforms/bare-metal.md — the bare-metal Cortex-M3 platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-baremetal: (platform "platform-baremetal")
+
+# book/src/guide/platforms/freertos.md — the FreeRTOS on mps2-an385 platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-freertos: (platform "platform-freertos")
+
+# book/src/guide/platforms/zephyr.md — the Zephyr on mps2-an385 platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-zephyr-mps2: (platform "platform-zephyr-mps2")
+
+# book/src/guide/platforms/nuttx.md — the NuttX Arm and RISC-V platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-nuttx: (platform "platform-nuttx")
+
+# book/src/guide/platforms/threadx.md — the ThreadX RISC-V 64 platform page, after its
+# starter: the run plan and the native build line (phase-537 W9).
+[group("main")]
+platform-threadx-riscv64: (platform "platform-threadx-riscv64")
+
+# book/src/guide/platforms/flash-a-real-board.md — Flash a real board, after
+# the Nucleo-F767ZI starter: the bench file and the flash plan, no board
+# needed (phase-537 W9).
+[group("main")]
+flash-a-real-board: (platform "flash-a-real-board")
+
+# The same page with `nros flash` onto an attached Nucleo-F767ZI; it fails up
+# front naming the board it awaits (phase-537 W9).
+[group("main")]
+flash-a-real-board-bench: (platform "flash-a-real-board-bench")
+
 # book/src/guide/platforms/zephyr-west-app.md — a Zephyr application built with
 # plain west (no workspace, no system.toml), on native_sim.
 [group("main")]
