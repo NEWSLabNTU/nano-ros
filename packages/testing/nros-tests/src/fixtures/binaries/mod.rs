@@ -1176,7 +1176,7 @@ fn linux_pair_workspace_image(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf
     Some(resolve_coord(PlatformId::Linux, lang, rmw, role))
 }
 
-/// [`moved_linux_pair`] by (language dir, case): the workspace image of one
+/// `moved_linux_pair` by (language dir, case): the workspace image of one
 /// role of a linux pair, for a caller that names the old leaf's case
 /// (`"listener"`, `"service-server"`, …). `lang` is `rust`, `c` or `cpp`.
 pub fn linux_pair_image(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
