@@ -408,7 +408,7 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         "::nros_board_zephyr::ZephyrBoard",
         false,
     ),
-    // phase-524 W3 -- the Pico W, the Wokwi-twinned book board.
+    // phase-524 W3 -- the Pico W, a hardware-only board.
     (
         "rpi-pico-w-zephyr",
         "::nros_board_zephyr::ZephyrBoard",

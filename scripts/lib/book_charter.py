@@ -243,7 +243,7 @@ def self_test() -> None:
     assert len(topic_findings(pages)) == 1
     rows = [({"crate": "a", "book_run": "t/a.md#run"}, "Verified on host (merge)"),
             ({"crate": "b", "book_run": "t/b.md#run"}, "Boots, manual (2026-11-03)"),
-            ({"crate": "c", "book_run": "t/c.md#r", "emulator": "wokwi:pico", "hardware": "pico"}, "Boots, manual (x)"),
+            ({"crate": "c", "book_run": "t/c.md#r", "emulator": "renode:pico", "hardware": "pico"}, "Boots, manual (x)"),
             ({"crate": "d", "book_flash": "t/a.md#f"}, "Builds")]
     bf = board_findings(rows)
     assert len(bf) == 1 and bf[0].startswith("t/b.md:"), bf

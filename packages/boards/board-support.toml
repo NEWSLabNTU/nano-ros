@@ -19,7 +19,8 @@
 #
 #   runs       none | host | emulator | hardware — where the board's image
 #              executes in evidence nano-ros holds.
-#   emulator   qemu:<machine> | renode:<platform> | wokwi:<board> | fvp:<model>;
+#   emulator   qemu:<machine> | renode:<platform> | fvp:<model>; free and open
+#              source only (RFC-0115 Amendment 1, 2026-11-06);
 #              required when runs = "emulator", allowed elsewhere to record a
 #              twin that is not the evidence. NOT TYPED HERE: the generator
 #              reads it from the row's board descriptor, `[board.run] emulator`
@@ -422,16 +423,15 @@ maintainers = ["jerry73204"]
 #   the ethernet image's extra knobs are its own (see the descriptor header).
 notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7. Its Renode twin boots the C talker over serial (USART3, the ST-LINK VCP) and over ethernet. Its RAM budget, `max_large_subscribers = 0`, is the board descriptor's `[knobs.zenoh]`, which every image inherits; the ethernet image adds its own knobs (see the descriptor header)."
 
-# phase-524 W3 (RFC-0115 D3/D4) -- the Raspberry Pi Pico W, the field
-# solutions board, whose twin is Wokwi's hosted `board-pi-pico-w` (the
-# descriptor's `[board.run] emulator = "wokwi:pi-pico-w"`). Its evidence is the
-# W1 spike 3 rerun plus the W3 rerun: the C talker ELF in Wokwi, zenoh over
-# UART0 carried by `wokwi-cli --interactive` to a host pty and the router's
-# `serial/` locator, and `ros2 topic echo` heard it
-# (docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log). By hand, hence
-# `manual` and its date; it moves to `weekly` with `probe = ["wokwi-pico"]`
-# once phase-524 W4's generated track replays it (on schedule and dispatch
-# only: the token is a repository secret a fork pull request cannot read).
+# phase-524 W3 (RFC-0115 D3/D4) -- the Raspberry Pi Pico W, HARDWARE-ONLY
+# since 2026-11-06 (RFC-0115 Amendment 1, issue 2283: a twin must be free and
+# open source, and Wokwi is a paid hosted service). Until then its twin was
+# Wokwi; the evidence dated 2026-11-01 is the W1 spike 3 rerun, the C talker
+# ELF zenoh over UART0 to the router's `serial/` locator, `ros2 topic echo`
+# heard it (docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log). That date
+# stays as the row's `last_run` (maintainer ruling 2026-11-06); the next one
+# is a bench run (phase-524 W5, deferred). By hand, hence `manual`, with one
+# maintainer.
 #
 # `breadth` inherits the Zephyr Cortex-M witness, as the Nucleo's does
 # (RFC-0115 D4, RFC-0114 D11): ZephyrQemuCortexM is the one Cortex-M
@@ -444,13 +444,13 @@ notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7
 # `real_hardware = true` because the board is silicon that is FLASHED (the UF2
 # copy onto the BOOTSEL drive); the book has no Pico section yet, so the row
 # names the Zephyr chapter's "Flash a real board" section, as the Nucleo's
-# does. The chapter's own `book_run` for the twin is W4's (RFC-0116 D5).
+# does. No `book_run`: there is no twin to run.
 [[board]]
 crate = "nros-board-rpi-pico-w-zephyr"
 board_keys = ["rpi-pico-w-zephyr"]
 real_hardware = true
 book_flash = "guide/platforms/zephyr.md#flash-a-real-board"
-runs = "emulator"
+runs = "hardware"
 hardware = "rpi-pico-w"
 cadence = "manual"
 last_run = "2026-11-01"
@@ -459,14 +459,13 @@ maintainers = ["jerry73204"]
 # Maintainer evidence (moved out of `notes`, which renders on the user
 # book's board page — phase-532 W3, RFC-0123 D3):
 #   Was: Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7,
-#   serial only. Wokwi twin booted the C talker over UART0, the Wokwi serial
-#   monitor, with the console on UART1 (phase-524 W1 rerun). The image needs
-#   `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs,
-#   which are the descriptor's `[knobs]` and every image inherits (issue 2194;
-#   see the descriptor header). Each twin run needs a `WOKWI_CLI_TOKEN` and
-#   spends that account's simulation minutes, so the twin is user-run and never
-#   in our CI (maintainer ruling 2026-11-02).
-notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only. Its Wokwi twin boots the C talker over UART0 (the Wokwi serial monitor), with the console on UART1. The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs, which are the descriptor's `[knobs]` and every image inherits. Each twin run needs your own `WOKWI_CLI_TOKEN` and spends that account's simulation minutes, so the twin is run by users and not in nano-ros CI."
+#   serial only. Wokwi twin booted the C talker over UART0, with the console
+#   on UART1 (phase-524 W1 rerun). The image needs `CONFIG_TICKLESS_KERNEL=n`
+#   (in the board's prj.conf) and five RAM knobs, which are the descriptor's
+#   `[knobs]` and every image inherits (issue 2194; see the descriptor
+#   header). The twin was user-run and never in our CI (ruling 2026-11-02),
+#   and since 2026-11-06 there is no twin (RFC-0115 Amendment 1).
+notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, serial only: zenoh over UART0, with the console on UART1, so the bench needs a USB-to-UART adapter. Hardware only: it is flashed by UF2 with `nros flash`, and no emulator twin runs it. The image needs `CONFIG_TICKLESS_KERNEL=n` (in the board's prj.conf) and five RAM knobs, which are the descriptor's `[knobs]` and every image inherits."
 
 # ===== infra — not boards ==================================================
 
@@ -798,13 +797,3 @@ row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
 twin = "nucleo-f767zi-zephyr"
 twin_locator = "serial/serial@40004800#baudrate=115200"
 notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on a host pty, the console on USART6. The RAM knob is the board descriptor's `[knobs]` (issue 2194). phase-524 W4b — the track replays the board's own chapter (the row's `book_run`): setup, scaffold, then `nros run` in the twin through the `renode` runner and `ros2 topic echo`, so the probe's twin smoke script no longer runs for it. The `twin` facts stay for the test harness's Renode launcher (`nros_tests::renode`)."
-
-[[probe]]
-track = "wokwi-pico"
-chapter = "guide/platforms/zephyr.md"
-variant = "zephyr-twin"
-weekly = false
-row = "nros-board-rpi-pico-w-zephyr@-"
-twin = "rpi-pico-w-zephyr"
-twin_locator = "serial/uart@40034000#baudrate=115200"
-notes = "phase-524 W4a — the Pico W's Wokwi twin: zenoh over UART0, which `wokwi-cli --interactive` and socat carry to a host pty. Hosted and metered, so it is USER-RUN and never in our CI (maintainer ruling 2026-11-02, after the free plan's 50 simulation minutes ran out): `just probe wokwi-pico` with the user's own `WOKWI_CLI_TOKEN`, about 1.5 minutes a run; without the token the track FAILS as an unmet precondition naming it. The RAM knobs are the board descriptor's `[knobs]` (issue 2194)."

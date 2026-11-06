@@ -1,6 +1,6 @@
 # Phase 524 — Emulator twins for the boards adopters hold
 
-**Status (2026-11-04). IN PROGRESS. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. Wokwi left CI (maintainer, 2026-11-02, after the free plan ran out): `wokwi-pico` is no longer weekly and the workflow holds no Wokwi secret; the Pico W twin is user-run, the Renode Nucleo twin is the CI-checked one. Issue 2194 landed (#3015): the twins' RAM knobs are their descriptors' `[knobs]`. W4c added (maintainer, 2026-11-03): the Nucleo gets its own `PlatformId` and a Renode smoke cell, the route RFC-0115 D4 now records. W4c done (2026-11-04): `PlatformId::ZephyrNucleoF767zi`, the `nros_tests::renode` launcher, the Runtime cell and its fixture row, Renode through `just zephyr setup`, and the registry row naming the platform and the track; the row stays manual with one maintainer (maintainer ruling 2026-11-04). W0 (purchase) and W5 (bench runs) DEFERRED (maintainer ruling 2026-11-04: hardware work waits). The Nucleo cell's first green tier-2 run is handed to phase-466 (maintainer ruling 2026-11-04). W4b split (2026-11-05): the Nucleo half done, measured in the `ros2` box (the `renode` runner, because Zephyr 3.7 declares no `run_renode` for the board; the `nucleo-f767zi.md` chapter, serial first; `book_run` and the issue 2169 row; the `renode-nucleo` track replays the chapter's `nros run`); ethernet left as a follow-up (a Renode tap needs `CAP_NET_ADMIN`). The Pico W half stays open: blocked on issue 2230 (no Wokwi runner) and unverifiable here (Wokwi is out of CI and the free quota is gone).** Implements
+**Status (2026-11-06). IN PROGRESS. Wokwi ruling (maintainer, 2026-11-06, RFC-0115 Amendment 1, issue 2283): a twin must be free and open source, so Wokwi is no board's twin; the Pico W is hardware-only, the `wokwi-pico` track, `[tool.wokwi-cli]` and the `wokwi` emulator kind are removed, issue 2230 is closed wontfix, and W4b's Pico W half is superseded, not done (see "Ruling 2026-11-06" below). The rest of this line is the record before that ruling. W1 done: one survivor, the Nucleo-F767ZI (serial and ethernet in Renode 1.17.0); the UNO R4 Minima failed (does not fit the RA4M1) and the Pico W was blocked (no `WOKWI_CLI_TOKEN`, no RP2040 in Renode); the Pico W rerun with a token PASSED over serial, so the Pico W is back as the field solutions board (W2 to W4 follow-ups listed under W1; issue 2206 first). RFC-0115 D4 rewritten to match. W2 and W3 ran for the Nucleo first. W2 done: `[tool.renode]` (Linux x86_64 and arm64; macOS has no portable archive) and `hal_stm32` on the 3.7 line; the board row that names them is W3. W3 done: the `nucleo-f767zi-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's probe track), built through the leaf road and booted in Renode. W2 done for the Pico W: `[tool.wokwi-cli]` (all four host keys) and `hal_rpi_pico` on the 3.7 line; `thumbv6m-none-eabi` landed with issue 2206. W3 done for the Pico W: the `rpi-pico-w-zephyr` package and registry row (manual, 2026-11-01; weekly after W4's track), built through the leaf road and booted in Wokwi on 2026-11-02. W4 split (maintainer, 2026-11-02): W4a done, the `renode-nucleo` and `wokwi-pico` probe tracks generated from the registry and listed by the weekly workflow (both rows stay manual: the gate needs a Runtime cell and two maintainers for weekly); W4b (chapters, `book_run`, `nros run`) waits on phase-528 W1/W3/W4 and phase-529. Wokwi left CI (maintainer, 2026-11-02, after the free plan ran out): `wokwi-pico` is no longer weekly and the workflow holds no Wokwi secret; the Pico W twin is user-run, the Renode Nucleo twin is the CI-checked one. Issue 2194 landed (#3015): the twins' RAM knobs are their descriptors' `[knobs]`. W4c added (maintainer, 2026-11-03): the Nucleo gets its own `PlatformId` and a Renode smoke cell, the route RFC-0115 D4 now records. W4c done (2026-11-04): `PlatformId::ZephyrNucleoF767zi`, the `nros_tests::renode` launcher, the Runtime cell and its fixture row, Renode through `just zephyr setup`, and the registry row naming the platform and the track; the row stays manual with one maintainer (maintainer ruling 2026-11-04). W0 (purchase) and W5 (bench runs) DEFERRED (maintainer ruling 2026-11-04: hardware work waits). The Nucleo cell's first green tier-2 run is handed to phase-466 (maintainer ruling 2026-11-04). W4b split (2026-11-05): the Nucleo half done, measured in the `ros2` box (the `renode` runner, because Zephyr 3.7 declares no `run_renode` for the board; the `nucleo-f767zi.md` chapter, serial first; `book_run` and the issue 2169 row; the `renode-nucleo` track replays the chapter's `nros run`); ethernet left as a follow-up (a Renode tap needs `CAP_NET_ADMIN`). The Pico W half stays open: blocked on issue 2230 (no Wokwi runner) and unverifiable here (Wokwi is out of CI and the free quota is gone); superseded by the 2026-11-06 ruling.** Implements
 [RFC-0115](../design/0115-emulator-first-board-policy.md). Depends on
 phase-522 (the board support registry as the single primitive, RFC-0114) for
 the row shape W3 writes and the generator W4 uses, and on phase-523 (adoption
@@ -732,6 +732,36 @@ half open.**
   issue 2230 (no Wokwi runner package), and nothing here can verify it:
   Wokwi is out of CI and the free plan's minutes are gone, so no Wokwi run
   was made.
+- **Superseded by ruling 2026-11-06 (not done).** The Pico W half closes
+  without its chapter, `book_run` or runner: Wokwi is no twin any more (see
+  "Ruling 2026-11-06"), so the Pico W has no `nros run` road to write and
+  issue 2230 is `wontfix`. The board stays hardware-only; its bench run is
+  W5's, which stays deferred.
+
+### Ruling 2026-11-06: a twin is free and open source
+
+Maintainer ruling, recorded as RFC-0115 Amendment 1 and issue
+[#2283](../issues/archived/2283-wokwi-demoted-to-community.md). Wokwi is a paid
+hosted service, and nano-ros gives it no first-class support. A board's
+emulator twin must be free and open source (QEMU, Renode); a paid hosted
+simulator can never be a board's twin, runner, probe track or SDK-index tool.
+
+What it changed in this phase's output:
+
+- `rpi-pico-w-zephyr` states no `[board.run]` and flashes by UF2; its
+  registry row is `runs = "hardware"`, `cadence = "manual"`, `last_run =
+  "2026-11-01"`, one maintainer.
+- Removed: the `wokwi-pico` `[[probe]]` row and `scripts/probe/twin/wokwi.sh`
+  (W4a), `[tool.wokwi-cli]` and its place in the Pico W setup set (W2),
+  `[board.run.wokwi]` and the `wokwi` emulator kind (W4a), and the resolver's
+  `RUNNERLESS_EMULATORS` table with the `check-board-runner-resolves`
+  exemption (W4b).
+- W4b's Pico W half: superseded, not done (above). W0 and W5 stay deferred.
+- The W1 Wokwi logs (`data/phase-524-w1-wokwi-pico*.log`) and the W1 to W4a
+  results below stay as dated history.
+- Acceptance's "each of the three purposes has a board it can replay in the
+  twin" no longer holds for field solutions: no free emulator boots the
+  Pico W today (no RP2040 in Renode 1.17.0, none in QEMU).
 
 ### W4c — A `PlatformId` and a Renode smoke cell for the Nucleo
 
@@ -882,7 +912,8 @@ same commit the date lands.
 | [#2194](../issues/archived/2194-zephyr-board-knob-rung.md) | W3 | **Resolved** 2026-11-02. The Nucleo-F767ZI and Pico W descriptors now state their RAM knobs in `[knobs]`, and the Zephyr leaf road carries the board rung. Listed here because W3 is where it was found. |
 | [#2202](../issues/2202-zenoh-defaults-sized-for-big-ram.md) | W3 | An undeclared zenoh C image falls back to pool and heap defaults sized for host-scale RAM (~400 KB on a 520 KiB part). Every small board this phase adds meets them, and 2194's board rung (resolved) is where a board overrides them. |
 | [#2185](../issues/2185-zephyr-chapter-workspace-unpatched.md) | W4 (W3 for the descriptor) | The Zephyr chapter's own west workspace never gets nano-ros's patch set, so the Rust lane's carrier is silently missing. W4's chapters take the same road: they run `nros setup board --zephyr-workspace` or `nros build` refuses. The generic `zephyr` descriptor needs a `[board.provisioning]` block for that to work, which is W3's. |
-| [#2230](../issues/2230-wokwi-twin-has-no-runner.md) | W4b | Homed 2026-11-04 from archived phase-529. The Pico W's Wokwi twin has no runner package, so `nros run` refuses it. |
+| [#2230](../issues/archived/2230-wokwi-twin-has-no-runner.md) | W4b | **Wontfix** 2026-11-06 (ruling, RFC-0115 Amendment 1). Homed 2026-11-04 from archived phase-529. The Pico W's Wokwi twin had no runner package, so `nros run` refused it; Wokwi is no twin any more. |
+| [#2283](../issues/archived/2283-wokwi-demoted-to-community.md) | W4b | **Resolved** 2026-11-06. Records the ruling and the cleanup: the Pico W is hardware-only and the Wokwi tooling left the tree. |
 | [#2242](../issues/archived/2242-persistent-west-workspace-lacks-new-module.md) | W4c | Closed 2026-11-05 as a duplicate of [#2249](../issues/archived/2249-zephyr-workspace-manifest-never-refreshed.md), fixed by #3090: an existing workspace now follows the checkout's manifest. `just zephyr setup` had skipped `west update` on a present workspace, so the newly allowlisted `hal_stm32` never reached a persistent runner. |
 
 ## Out of scope

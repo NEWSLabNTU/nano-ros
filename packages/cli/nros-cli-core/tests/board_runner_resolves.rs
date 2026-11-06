@@ -18,10 +18,9 @@
 //! implementing `console` (the default console of `nros flash --monitor` and
 //! `nros monitor`).
 //!
-//! Known gaps: an emulator kind in `run_plan::RUNNERLESS_EMULATORS` is
-//! refused by the resolver, naming an issue. Such a row passes only while the
-//! issue is open and no package provides the runner; once one does, the
-//! exemption is stale and the gate fails.
+//! No exemptions: the one known gap (`wokwi`, issue 2230) left with the
+//! `wokwi` emulator kind (RFC-0115 Amendment 1, issue 2283), so every
+//! runnable row resolves or the gate fails.
 //!
 //! The row-to-descriptor rule is `scripts/lib/board_registry.py`'s
 //! `row_descriptor`: the row's first `board_keys` entry, else the single
@@ -36,7 +35,7 @@ use cargo_nano_ros::{
 use nros_cli_core::{
     cmd::{
         build_next::BuildOutput,
-        run_plan::{Bench, ImageTables, Inputs, Invocation, RUNNERLESS_EMULATORS, resolve},
+        run_plan::{Bench, ImageTables, Inputs, Invocation, resolve},
     },
     orchestration::board_descriptor::{BoardCatalog, BoardDescriptor, PlatformKind},
 };
@@ -174,25 +173,9 @@ fn every_runnable_board_resolves_to_a_runner_package() {
         .filter(|e| e.path.starts_with(&runners_dir))
         .map(|e| format!("{}: {}", e.path.display(), e.message))
         .collect();
-    let mut gaps: Vec<String> = Vec::new();
     for row in &rows {
         let d = descriptor_for(&cat, row);
         let out = output_for(d);
-        let kind = d
-            .run
-            .as_ref()
-            .and_then(|r| r.emulator_parts())
-            .map(|(k, _)| k.to_string());
-        if let Some((kind, issue)) = kind
-            .as_deref()
-            .and_then(|k| RUNNERLESS_EMULATORS.iter().find(|(r, _)| *r == k))
-        {
-            match known_gap(&root, &scan, row, d, &out, kind, issue) {
-                Ok(note) => gaps.push(note),
-                Err(p) => problems.push(p),
-            }
-            continue;
-        }
         let plan = match resolve(
             Verb::Run,
             Inputs {
@@ -251,76 +234,11 @@ fn every_runnable_board_resolves_to_a_runner_package() {
             ));
         }
     }
-    for g in &gaps {
-        eprintln!("known gap: {g}");
-    }
     assert!(
         problems.is_empty(),
         "boards that do not resolve to a runner package:\n  {}",
         problems.join("\n  ")
     );
-}
-
-/// A row on a runnerless emulator kind: the resolver must refuse it naming
-/// the issue, the issue must be open, and no package may provide the runner
-/// (else the exemption is stale and the board should resolve normally).
-fn known_gap(
-    root: &Path,
-    scan: &ScanResult,
-    row: &Row,
-    d: &BoardDescriptor,
-    out: &BuildOutput,
-    kind: &str,
-    issue: &str,
-) -> Result<String, String> {
-    if let Ok(r) = lookup_runner(scan, kind) {
-        return Err(format!(
-            "{}: runner `{kind}` is now provided by {} ({}), so remove `{kind}` from \
-             run_plan::RUNNERLESS_EMULATORS and close issue {issue}",
-            row.key,
-            r.package,
-            r.dir.display()
-        ));
-    }
-    let open = std::fs::read_dir(root.join("docs/issues"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .any(|e| {
-            e.file_name()
-                .to_string_lossy()
-                .starts_with(&format!("{issue}-"))
-        });
-    if !open {
-        return Err(format!(
-            "{}: `{kind}` is exempt for issue {issue}, which is not open in docs/issues/",
-            row.key
-        ));
-    }
-    match resolve(
-        Verb::Run,
-        Inputs {
-            image: "gate:img",
-            board: &row.names[0],
-            descriptor: d,
-            output: Some(out),
-            tables: &ImageTables::default(),
-            bench: &Bench::default(),
-            invocation: &Invocation::default(),
-        },
-    ) {
-        Err(e) if e.to_string().contains(&format!("issue {issue}")) => Ok(format!(
-            "{}: `{kind}` has no runner package (issue {issue})",
-            row.key
-        )),
-        Err(e) => Err(format!(
-            "{}: refused, but not for the `{kind}` gap (issue {issue}): {e}",
-            row.key
-        )),
-        Ok(p) => Err(format!(
-            "{}: `{kind}` is exempt for issue {issue}, yet a plan resolved to runner `{}`",
-            row.key, p.runner.name
-        )),
-    }
 }
 
 /// phase-529 W2: every in-tree board with `[board.flash]` resolves a flash
