@@ -13,6 +13,7 @@
 - [Raspberry Pi Pico W](./starters/rpi-pico-w.md)
 - [mps2-an385 in QEMU (bare-metal)](./starters/mps2-an385-bare-metal.md)
 - [mps2-an385 in QEMU (FreeRTOS)](./starters/mps2-an385-freertos.md)
+- [mps2-an385 in QEMU (Zephyr)](./starters/mps2-an385-zephyr.md)
 
 # Tutorial
 

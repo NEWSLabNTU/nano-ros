@@ -279,7 +279,7 @@ notes = "One crate; the book's entry shape is direct execution (the `board-entry
 crate = "nros-board-mps2-an385-zephyr"
 matrix_platform = "ZephyrQemuCortexM"
 nightly_token = "zephyr"
-book_run = "guide/platforms/zephyr.md#run-on-qemu-mps2-an385"
+book_run = "starters/mps2-an385-zephyr.md#run-it-in-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -726,6 +726,14 @@ variant = "native-sim-rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
+
+[[probe]]
+track = "zephyr-mps2"
+chapter = "starters/mps2-an385-zephyr.md"
+variant = ""
+weekly = false
+row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
+notes = "phase-537 W4 — the mps2-an385 Zephyr starter: a Rust talker on Zephyr's `mps2/an385` in QEMU, from `nros setup` and a fresh west workspace to `ros2 topic echo`. Until W4 the zephyr-rust track replayed this run as a second image of the native_sim chapter's workspace. Not weekly yet: the probe PR decides that, with its `awaits`."
 
 [[probe]]
 track = "zephyr-west-app"

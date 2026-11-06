@@ -986,42 +986,20 @@ west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
 
 The Cortex-M3 witness is Zephyr's `mps2/an385` under QEMU, with Zephyr's own
 IP stack on the emulated SMSC911x. An image names it `board =
-"mps2-an385-zephyr"`; `west build -t run` boots it under the QEMU the Zephyr
-SDK ships (`nros setup zephyr` installed it). In the Rust workspace above, a
-second image is that board. `nros setup board` comes first: it applies
-nano-ros's patch set to your west workspace, without which zephyr-lang-rust's
-cargo command carries none of nano-ros's settings for the board (among them
-the C cross compiler the zenoh-pico crate builds with), and adds the board's
-Rust target. The image is one more block in the bringup:
-
-```bash probe=80 variant=native-sim-rust
-nros setup board mps2-an385-zephyr --zephyr-workspace "$NROS_ZEPHYR_WORKSPACE"
-cat >> src/rs_node_bringup/system.toml <<'TOML'
-
-[image.zephyr_m3]
-board = "mps2-an385-zephyr"
-TOML
-nros setup --sudo
-nros build zephyr_m3
-```
+"mps2-an385-zephyr"`, and `nros run` boots it under the QEMU the Zephyr SDK
+ships. [Its starter](../../starters/mps2-an385-zephyr.md) takes a Rust talker
+there from nothing. `nros setup board mps2-an385-zephyr --zephyr-workspace
+<ws>` comes first: it applies nano-ros's patch set to your west workspace,
+without which zephyr-lang-rust's cargo command carries none of nano-ros's
+settings for the board (among them the C cross compiler the zenoh-pico crate
+builds with), and adds the board's Rust target.
 
 The guest sits on QEMU's user-mode network, and the board package states it:
 its `prj.conf` gives the image `10.0.2.15` (gateway `10.0.2.2`) and the locator
 `tcp/10.0.2.2:7447`, and `nros build` applies it, so there is nothing to set.
-The Slirp gateway `10.0.2.2` is the host, so the router above is reachable.
-An image whose router listens elsewhere states its own `locator` in
-`system.toml`.
-
-With two images in the bringup, name the one to run:
-
-```bash probe=90 probe-run=180 variant=native-sim-rust
-nros run zephyr_m3
-```
-
-```text probe-expect=90 variant=native-sim-rust
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
+The gateway `10.0.2.2` is the host, so a router listening on the host's
+`0.0.0.0:7447` is reachable. An image whose router listens elsewhere states
+its own `locator` in `system.toml`.
 
 ### Verify from stock ROS 2
 
