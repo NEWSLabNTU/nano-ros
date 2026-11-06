@@ -2348,12 +2348,30 @@ mod board_crate_tests {
             .collect();
         assert!(stale.is_empty(), "exemptions matching no leaf: {stale:?}");
         // The scaffold rule is only as good as its reach: when the registry
-        // names an unsupported board, the rule must find its leaves, or the
-        // registry spelling drifted. (None is named since the ESP32 board was
-        // retired outright, phase-521 W6.)
+        // names an unsupported board that some tracked leaf mentions, the rule
+        // must find that leaf, or the registry spelling drifted. A board with
+        // no leaf at all (the Pico W since issue 2283: its images are C, and it
+        // has no twin) gives the rule nothing to reach, so it is not asked.
+        let mentioned: Vec<&String> = scaffold
+            .iter()
+            .filter(|krate| {
+                let key = krate.trim_start_matches("nros-board-");
+                crate::source_stamp::nros_git_command("git")
+                    .args(["grep", "-q", "-F", "-e", krate, "-e", key, "--"])
+                    .args(["examples/**/Cargo.toml", "examples/**/system.toml"])
+                    .args([
+                        "packages/testing/**/Cargo.toml",
+                        "packages/testing/**/system.toml",
+                    ])
+                    .current_dir(repo())
+                    .status()
+                    .expect("git grep")
+                    .success()
+            })
+            .collect();
         assert!(
-            scaffold.is_empty() || unsupported >= 1,
-            "no leaf matched a \"Not supported\" board ({scaffold:?})"
+            mentioned.is_empty() || unsupported >= 1,
+            "no leaf matched a \"Not supported\" board a leaf mentions ({mentioned:?})"
         );
         // A REACH floor, not a quota: it proves the walk found the leaves. It
         // moves DOWN when phase-535 retires example leaves into workspace
