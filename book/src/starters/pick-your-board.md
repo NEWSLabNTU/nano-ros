@@ -44,6 +44,7 @@ show for it.
 ### Twin and hardware
 
 - [Nucleo-F767ZI](nucleo-f767zi.md): Boots, manual (2026-11-01); reads *Builds* from 2027-03-02
+- [Raspberry Pi Pico W](rpi-pico-w.md): Boots, manual (2026-11-01); reads *Builds* from 2027-03-02
 
 <!-- END GENERATED starter list -->
 

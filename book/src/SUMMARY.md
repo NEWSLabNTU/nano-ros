@@ -10,6 +10,7 @@
 
 - [Pick your board](./starters/pick-your-board.md)
 - [Nucleo-F767ZI](./starters/nucleo-f767zi.md)
+- [Raspberry Pi Pico W](./starters/rpi-pico-w.md)
 
 # Tutorial
 

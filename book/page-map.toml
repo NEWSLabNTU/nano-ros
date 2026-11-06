@@ -53,6 +53,13 @@ batch = "p537-w1-starters"
 note = "Nucleo-F767ZI starter, on the starter template (W4, D12); its board notes go to a guide/platforms page (W9)"
 
 [[page]]
+book = "user"
+path = "starters/rpi-pico-w.md"
+action = "new phase-537"
+batch = "p537-w4"
+note = "Raspberry Pi Pico W starter (W4, D12): Wokwi twin, then the board; its twin runs are user-run with the reader's WOKWI_CLI_TOKEN"
+
+[[page]]
 old = "getting-started/first-project.md"
 book = "user"
 path = "tutorial/run-a-talker.md"
