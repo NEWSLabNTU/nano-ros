@@ -8,7 +8,8 @@
 
 # Get started on your board
 
-- [Nucleo-F767ZI (Zephyr, Renode twin)](./starters/nucleo-f767zi.md)
+- [Pick your board](./starters/pick-your-board.md)
+- [Nucleo-F767ZI](./starters/nucleo-f767zi.md)
 
 # Tutorial
 
