@@ -35,6 +35,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/background/vs-micro-ros.html" = "differences-from-ros2.html#compared-with-micro-ros"
 "/background/two-layer-api.html" = "execution-model.html#two-ways-to-receive"
 "/background/dispatch-strategy.html" = "execution-model.html#deferred-dispatch"
 "/background/rtos-cooperation.html" = "execution-model.html#what-one-spin-does"
@@ -74,7 +75,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/concepts/client-library.html" = "../background/client-library.html"
 "/realtime/safety-protocol.html" = "../background/safety.html"
 "/from-ros2/differences.html" = "../background/differences-from-ros2.html"
-"/from-ros2/vs-micro-ros.html" = "../background/vs-micro-ros.html"
+"/from-ros2/vs-micro-ros.html" = "../background/differences-from-ros2.html#compared-with-micro-ros"
 "/communicate/switching-rmw.html" = "../guide/rmw/switch-the-rmw-per-image.html"
 "/communicate/serial-transport.html" = "../guide/rmw/use-a-serial-link.html"
 "/communicate/bridges.html" = "../guide/rmw/bridge-between-backends.html"
@@ -188,7 +189,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/start-here/setup-compared-to-ros2.html" = "../guide/port/move-a-ros2-project.html#steps"
 "/getting-started/porting-a-cpp-node.html" = "../guide/port/port-a-cpp-node.html"
 "/concepts/ros2-comparison.html" = "../background/differences-from-ros2.html"
-"/concepts/comparison-vs-microros.html" = "../background/vs-micro-ros.html"
+"/concepts/comparison-vs-microros.html" = "../background/differences-from-ros2.html#compared-with-micro-ros"
 "/start-here/migration-guide.html" = "../guide/port/move-a-ros2-project.html"
 "/user-guide/logging.html" = "../guide/deploy/log-and-observe.html"
 "/user-guide/simulated-time.html" = "../guide/deploy/use-simulated-time.html"
