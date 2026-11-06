@@ -35,13 +35,13 @@ session, and the same result on every seat.
 3. [What you just built](../tutorial/what-you-just-built.md): the node
    package and the workspace around it.
 4. [Add a second node](../tutorial/add-a-second-node.md), in Rust,
-   [C](../tutorial/add-a-second-node-c.md) or
-   [C++](../tutorial/add-a-second-node-cpp.md).
+   [C](../tutorial/add-a-second-node.md) or
+   [C++](../tutorial/add-a-second-node.md).
 5. [Pick and configure the RMW](../tutorial/pick-the-rmw.md). Cyclone DDS
    needs no router, which keeps a lab machine simple.
 6. [Your own message](../tutorial/your-own-message.md).
 7. Services and actions: the `server`, `client` and action templates in
-   [the C node chapter](../tutorial/add-a-second-node-c.md#the-node-package).
+   [the C node chapter](../tutorial/add-a-second-node.md#the-node-package).
 8. [Parameters and launch files](../tutorial/grow-your-workspace.md).
 9. The lab's board: its starter in the
    [list of starters](../starters/pick-your-board.md), such as

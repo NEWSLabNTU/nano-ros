@@ -35,6 +35,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/tutorial/add-a-second-node-c.html" = "add-a-second-node.html"
+"/tutorial/add-a-second-node-cpp.html" = "add-a-second-node.html"
 "/migrating/retired-config-files.html" = "from-older-releases.html#replace-a-retired-configuration-file"
 "/migrating/esp32.html" = "from-older-releases.html#esp32-boards"
 "/migrating/install-local-removal.html" = "from-older-releases.html"
@@ -136,8 +138,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/get-started/first-project.html" = "../tutorial/run-a-talker.html"
 "/get-started/anatomy.html" = "../tutorial/what-you-just-built.html"
 "/get-started/first-node-rust.html" = "../tutorial/add-a-second-node.html"
-"/get-started/first-node-c.html" = "../tutorial/add-a-second-node-c.html"
-"/get-started/first-node-cpp.html" = "../tutorial/add-a-second-node-cpp.html"
+"/get-started/first-node-c.html" = "../tutorial/add-a-second-node.html"
+"/get-started/first-node-cpp.html" = "../tutorial/add-a-second-node.html"
 "/communicate/choosing-an-rmw.html" = "../tutorial/pick-the-rmw.html"
 "/get-started/your-own-msg-package.html" = "../tutorial/your-own-message.html"
 "/build/growing-your-workspace.html" = "../tutorial/grow-your-workspace.html"
@@ -180,8 +182,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/getting-started/first-project.html" = "../tutorial/run-a-talker.html"
 "/getting-started/anatomy.html" = "../tutorial/what-you-just-built.html"
 "/getting-started/first-node-rust.html" = "../tutorial/add-a-second-node.html"
-"/getting-started/first-node-c.html" = "../tutorial/add-a-second-node-c.html"
-"/getting-started/first-node-cpp.html" = "../tutorial/add-a-second-node-cpp.html"
+"/getting-started/first-node-c.html" = "../tutorial/add-a-second-node.html"
+"/getting-started/first-node-cpp.html" = "../tutorial/add-a-second-node.html"
 "/getting-started/your-own-msg-package.html" = "../tutorial/your-own-message.html"
 "/getting-started/troubleshooting-first-10-min.html" = "../reference/troubleshooting-index.html"
 "/getting-started/integration-esp-idf.html" = "../migrating/from-older-releases.html#esp32-boards"
