@@ -66,7 +66,7 @@ public surface a user application needs.
 > templates with the same typed serialization glue but caller-driven control
 > flow. Subscriptions, services and service clients have both shapes too
 > (`Subscription` / `PollSubscription`, and so on). See
-> [Two-Layer API](../background/two-layer-api.md) for the per-layer rationale.
+> [Two ways to receive](../background/execution-model.md#two-ways-to-receive) for the per-layer rationale.
 
 > **Event-driven wake callbacks.** `PollingActionServer<A>` and
 > `PollingActionClient<A>` expose a nested `WakeState` POD and
@@ -490,7 +490,7 @@ executor.spin_for(5000, 50);    // bounded; executor.spin() blocks until shutdow
 ```
 
 How spinning maps onto RTOS tasks and priorities is the subject of
-[Execution Model](../background/execution-model.md).
+[The execution model](../background/execution-model.md).
 
 ### Parameters and `/parameter_events`
 

@@ -209,9 +209,8 @@ nros run demo_bringup:linux
   for unbounded work.
 - [Scheduling wiring matrix](../../reference/sched-matrix.md): what each
   platform delivers.
-- [The execution model](../../background/execution-model.md) and
-  [Dispatch strategy](../../background/dispatch-strategy.md): how executors,
-  sched tasks and dispatch fit together.
+- [The execution model](../../background/execution-model.md): how executors,
+  sched tasks, levels and dispatch fit together.
 
 ## Design background
 

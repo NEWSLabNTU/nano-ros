@@ -592,39 +592,40 @@ path = "background/execution-model.md"
 action = "split realtime/running-rt-tests.md"
 batch = "p537-w1-background"
 was = ["realtime/execution-model.md"]
-note = "The execution model (W10): two-layer-api, dispatch-strategy and rtos-cooperation merge into it"
+note = "The execution model (W10): two-layer-api, dispatch-strategy and rtos-cooperation merged in, with the scheduling theory W8 took out of guide/realtime/pick-a-scheduling-model and the WCET tool survey from guide/realtime/analyze-timing. Its S1-S12 scenario table went to Internals realtime/running-rt-tests"
 
 [[page]]
 old = "concepts/two-layer-api.md"
 book = "user"
-path = "background/two-layer-api.md"
-action = "move"
-batch = "p537-w1-background"
-note = "W10 merges it into background/execution-model"
+path = "background/execution-model.md"
+action = "merge-into background/execution-model.md"
+batch = "p537-w10"
+was = ["background/two-layer-api.md"]
+note = "merged by W10 into The execution model, as Two ways to receive"
 
 [[page]]
 old = "internals/dispatch-strategy.md"
 book = "user"
-path = "background/dispatch-strategy.md"
-action = "split realtime/dispatch-abi-history.md"
-batch = "p537-w1-background"
-was = ["realtime/dispatch-strategy.md"]
-note = "W10 merges it into background/execution-model"
+path = "background/execution-model.md"
+action = "merge-into background/execution-model.md"
+batch = "p537-w10"
+was = ["realtime/dispatch-strategy.md", "background/dispatch-strategy.md"]
+note = "merged by W10 into The execution model, as Deferred dispatch. The ABI symbol, the board-side trait, the compatibility contract and the FromIsr preconditions went to Internals realtime/dispatch-abi-history (split earlier)"
 
 [[page]]
 old = "concepts/rtos-cooperation.md"
 book = "user"
-path = "background/rtos-cooperation.md"
-action = "move"
-batch = "p537-w1-background"
-was = ["realtime/rtos-cooperation.md"]
-note = "W10 merges it into background/execution-model"
+path = "background/execution-model.md"
+action = "merge-into background/execution-model.md"
+batch = "p537-w10"
+was = ["realtime/rtos-cooperation.md", "background/rtos-cooperation.md"]
+note = "merged by W10 into The execution model, as What one spin does and What nano-ros does not run on. The per-platform wait-primitive table was cut (not re-verified; Internals rmw/rmw-vs-upstream section 4 keeps the drive_io model)"
 
 [[page]]
 old = "user-guide/embassy-integration.md"
 book = "user"
-path = "background/rtos-cooperation.md"
-action = "merge-into background/rtos-cooperation.md"
+path = "background/execution-model.md"
+action = "merge-into background/execution-model.md"
 batch = "w4-realtime"
 
 [[page]]

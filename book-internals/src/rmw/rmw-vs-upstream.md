@@ -336,8 +336,8 @@ regardless of whether it's a sub, service, timer, or guard
 condition."
 
 For the per-RTOS-model recommendations (which knobs to set, which
-defaults to use), see the [RTOS Cooperation](../../../book/src/background/rtos-cooperation.md)
-concepts page.
+defaults to use), see "What one spin does" in the Book's
+[The execution model](../../background/execution-model.html#what-one-spin-does).
 
 **Why drive_io and not rmw_wait.** Cooperative single-task runtimes
 (bare-metal, single-threaded RTOS) have one execution context. A
