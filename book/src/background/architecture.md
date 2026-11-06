@@ -109,7 +109,7 @@ types work across Rust, C, and C++ APIs.
 
 ## Where to Go Next
 
-- New user: [Setup Compared to Standard ROS 2](../guide/port/setup-compared.md).
+- New user: [Move a ROS 2 project over](../guide/port/move-a-ros2-project.md).
 - Application author: [Configuration](../guide/build/configure-an-image.md).
 - Platform porter: [Porting Overview](../extending/overview.md).
 - Contributor changing internals: [Design Overview](design-overview.md).

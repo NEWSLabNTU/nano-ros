@@ -35,6 +35,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/guide/port/setup-compared.html" = "move-a-ros2-project.html#steps"
 "/guide/deploy/console-less-boards.html" = "log-and-observe.html#observe-a-board-with-no-console"
 "/guide/deploy/production-readiness.html" = "deploy-to-production.html#check-readiness-for-production"
 "/guide/build/build-profiling.html" = "build-profiles.html#find-where-the-build-time-goes"
@@ -102,7 +103,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/operate/troubleshooting.html" = "../guide/deploy/troubleshoot.html"
 "/from-ros2/porting-a-cpp-node.html" = "../guide/port/port-a-cpp-node.html"
 "/from-ros2/migration-guide.html" = "../guide/port/move-a-ros2-project.html"
-"/from-ros2/setup-compared.html" = "../guide/port/setup-compared.html"
+"/from-ros2/setup-compared.html" = "../guide/port/move-a-ros2-project.html#steps"
 "/get-started/first-project.html" = "../tutorial/run-a-talker.html"
 "/get-started/anatomy.html" = "../tutorial/what-you-just-built.html"
 "/get-started/first-node-rust.html" = "../tutorial/add-a-second-node.html"
@@ -179,7 +180,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/internals/platform-porting-pitfalls.html" = "../extending/porting-pitfalls.html"
 "/design/overview.html" = "../background/design-overview.html"
 "/design/client-library.html" = "../background/client-library.html"
-"/start-here/setup-compared-to-ros2.html" = "../guide/port/setup-compared.html"
+"/start-here/setup-compared-to-ros2.html" = "../guide/port/move-a-ros2-project.html#steps"
 "/getting-started/porting-a-cpp-node.html" = "../guide/port/port-a-cpp-node.html"
 "/concepts/ros2-comparison.html" = "../background/differences-from-ros2.html"
 "/concepts/comparison-vs-microros.html" = "../background/vs-micro-ros.html"
