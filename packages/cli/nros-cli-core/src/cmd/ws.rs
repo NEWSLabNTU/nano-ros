@@ -2143,7 +2143,7 @@ fn stamp_resolver_pin(staged: &Path) -> Result<()> {
         .map_err(|e| eyre::eyre!("parse staged model {}: {e}", staged.display()))?;
     model.meta.resolver = Some(ros_launch_manifest_model::ResolverInfo {
         tool: "nros-launch-resolve".into(),
-        version: env!("NROS_PLAY_LAUNCH_SHA").into(),
+        version: crate::configure_stamp::resolver_pin(),
     });
     let yaml = model
         .to_yaml_string()

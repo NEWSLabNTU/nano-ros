@@ -695,6 +695,7 @@ mod tests {
             codegen_version: String::new(),
             ament_prefix: ament.map(str::to_string),
             launch_resolve: resolver.map(Path::to_path_buf),
+            resolver_pin: Some(configure_stamp::resolver_pin()),
             skipped: None,
         };
         configure_stamp::record(project, key, &stamp).unwrap();

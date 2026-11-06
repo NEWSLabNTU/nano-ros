@@ -1,15 +1,16 @@
 ---
 id: 2296
 title: "Two test fixtures reuse a SystemModel from before a play_launch pin bump, and `codegen-system` refuses it as stale"
-status: open
+status: resolved
 type: bug
 area: [ci, testing, cli]
 severity: medium
 found: 2026-11-06
+resolved: 2026-11-06
 related: [phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**: a
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**: a
 scheduled-class lane stopped in its fixture build and produced no verdict.
 
 ## Measured
@@ -69,3 +70,29 @@ the codegen version is for issue 1360.
 
 Acceptance: a run-matrix tier 1 on the self-hosted runner, after a play_launch pin
 bump, gets past both fixtures with no hand cleanup of `nros-fixture-tree`.
+
+## Resolution
+
+Both fixture roads run `nros configure` before the build. `scripts/build/west-fixtures.sh`
+runs it in each bringup, and the workspace road runs it through `nros build`. Sync
+already re-resolves a model whose recorded pin differs (`model_gate::provenance_stale`
+in `ws.rs`). It never ran here, because configure's own stamp
+(`configure_stamp::currency`) said `configure: up to date`. That stamp records the
+resolver's PATH (`launch_resolve`) and the codegen version, but not the resolver's
+pin. A play_launch bump rebuilds `nros-launch-resolve` at the same path, so the stamp
+stayed current, and the models it vouched for were the ones `codegen-system` refused.
+
+The stamp now records `resolver_pin`, the `NROS_PLAY_LAUNCH_SHA` this CLI stamps into
+every model it resolves. `ws::stamp_resolver_pin` reads the same
+`configure_stamp::resolver_pin()`, so the two cannot drift. A mismatch is stale with
+`launch resolver pin changed: <old> -> <new>`. A stamp written before the field
+existed reads `None` and reconfigures once.
+
+Measured on `image_config_ws`, with the stamps and the model both set to the old pin
+`b5243446b761…` (the CI state): configure printed `probe_bringup:plain: launch
+resolver pin changed: b5243446b761 -> 8d2c78d40671`, re-resolved the model (0 old-pin
+lines left), and the next configure was `up to date`. Unit test:
+`configure_stamp::tests::a_resolver_pin_bump_stales_the_stamp`.
+
+Acceptance still stands as written: the next scheduled run-matrix on the self-hosted
+runner gets past both fixtures with no hand cleanup.
