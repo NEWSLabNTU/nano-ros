@@ -418,7 +418,7 @@ path = "guide/realtime/pick-a-scheduling-model.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["realtime/scheduling-models.md"]
-note = "Pick a scheduling model (W8)"
+note = "Pick a scheduling model (W8): the task (sched tasks, callback groups, per-RTOS keys, timer overrun policy). Its explanation of the scheduling algorithms, the per-RTOS models and priority inversion left this page: W10 writes it in background/execution-model, from this page as W1 left it (git history); its platform tables are the generated reference/sched-matrix"
 
 [[page]]
 old = "internals/realtime-analysis.md"
@@ -427,7 +427,7 @@ path = "guide/realtime/analyze-timing.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["realtime/rt-analysis.md"]
-note = "Analyze timing (W8)"
+note = "Analyze timing (W8): the static checks as steps. The WCET harness (no measurements yet) and the static WCET tool survey were dropped; W10 may take the tool survey into background/execution-model"
 
 [[page]]
 old = "user-guide/deployment.md"

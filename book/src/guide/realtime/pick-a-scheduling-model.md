@@ -1,449 +1,221 @@
-# Scheduling Models
+# Pick a scheduling model
 
 <!-- type: how-to · level: 3 -->
 
-This chapter introduces the real-time scheduling models used by the platforms
-nano-ros supports. Understanding these models helps you make informed
-decisions about task priorities, deadline guarantees, and platform selection
-for your application.
+**Needs first:** [Organize a larger workspace](../build/organize-a-larger-workspace.md)
 
-## Background: What Is Real-Time Scheduling?
+Pick a scheduling model when one image runs callbacks of different urgency: a
+10 ms control loop beside a 100 ms telemetry publisher, for example, where the
+control loop must not wait behind the telemetry.
 
-A **real-time scheduler** decides which task (or thread) runs on the CPU at
-any given moment. The key property is **predictability** — not raw speed. A
-system that always finishes a 10 ms task in exactly 10 ms is more
-"real-time" than one that finishes it in 1 ms but occasionally takes 50 ms.
+In nano-ros, the unit of scheduling is a **sched task**: one executor running
+on one RTOS thread, with its own priority and spin period, all of them sharing
+one middleware session. You name callback groups in code, map each group to a
+sched task in `system.toml`, and give each sched task its priority per RTOS.
+The build turns that into the threads each platform has. Where ROS 2 reaches
+for a `MultiThreadedExecutor` and callback groups, nano-ros gives you sched
+tasks: an executor dispatches on one thread, and parallelism is a sched task,
+not a callback group.
 
-Two key concepts recur across all models:
+The scheduling theory behind the choice (fixed-priority preemption,
+rate-monotonic assignment, EDF, priority inversion) belongs to
+[The execution model](../../background/execution-model.md).
 
-- **Priority**: a numeric value that determines which task runs when multiple
-  tasks are ready. Higher-priority tasks preempt lower-priority ones.
-- **Preemption**: the ability to interrupt a running task to run a
-  higher-priority one. Non-preemptive (cooperative) systems only switch tasks
-  at explicit yield points.
+## Before you start
 
-### Hard vs. Soft Real-Time
+- A workspace whose image runs on an RTOS or on Linux.
+- The capabilities your platform delivers, from the generated
+  [Scheduling wiring matrix](../../reference/sched-matrix.md): kernel EDF on
+  Zephyr, the sporadic server on NuttX, preemption threshold on ThreadX, core
+  affinity on most.
 
-| Type | Guarantee | Consequence of missed deadline |
-|------|-----------|-------------------------------|
-| **Hard** | Deadline must never be missed | System failure (safety hazard) |
-| **Soft** | Deadline should rarely be missed | Degraded quality (dropped frame, late message) |
+## Steps
 
-nano-ros targets **soft real-time** by default (bounded message latency,
-bounded memory). Hard real-time is achievable with careful priority
-assignment on RTOS platforms.
+1. Name a callback group for each urgency, in the node's code.
 
-## Scheduling Algorithms
+   In Rust, call `node.callback_group("ctrl")?` before creating the timer
+   or subscription that belongs to it. In C++, use the named form,
+   `create_callback_group("ctrl")`; an unnamed group runs on the node's
+   default sched task.
 
-### Fixed-Priority Preemptive (FPP)
+2. Map each group to a sched task, on the node's `[[component]]` row:
 
-The most common RTOS scheduling algorithm. Each task has a static priority
-assigned at creation time. The scheduler always runs the highest-priority
-ready task. When a higher-priority task becomes ready, it immediately
-preempts the running task.
+   ```toml
+   [[component]]
+   pkg = "ctrl_pkg"
+   class = "ctrl_pkg::Control"
+   name = "control_node"
+   group_tasks = { ctrl = "high" }
 
-```
-Time ──────────────────────────────────────►
-        ┌───────┐           ┌───────┐
-High    │ Task A│           │ Task A│        (preempts B when ready)
-        └───┬───┘           └───┬───┘
-            │ ┌───┐    ┌───┐   │ ┌───┐
-Low         └►│ B │    │ B │   └►│ B │       (runs when A is blocked)
-              └───┘    └───┘     └───┘
-```
+   [[component]]
+   pkg = "telem_pkg"
+   class = "telem_pkg::Telem"
+   name = "telem_node"
+   group_tasks = { telem = "low" }
+   ```
 
-**Schedulability analysis** uses **Rate-Monotonic Analysis (RMA)**: assign
-higher priority to tasks with shorter periods. RMA is optimal for
-independent periodic tasks — if any fixed-priority assignment can meet all
-deadlines, RMA can too.
+3. Declare the sched tasks. A key on `[tasks.<name>]` applies on every
+   platform; a key on `[tasks.<name>.<rtos>]` applies only there:
 
-The **response time** of a task under FPP is:
+   ```toml
+   [tasks.high]
+   class = "real_time"
+   spin_period = "1000us"
 
-```
-R_i = C_i + Σ ⌈R_i / T_j⌉ × C_j    (for all higher-priority tasks j)
-```
+   [tasks.high.posix]
+   priority = 80
+   core = 0
 
-Where `C_i` is worst-case execution time, `T_j` is the period of
-higher-priority task `j`. The task meets its deadline if `R_i ≤ D_i`.
+   [tasks.high.freertos]
+   priority = 3
 
-**Used by**: FreeRTOS, ThreadX, NuttX (SCHED_FIFO), Zephyr (preemptive
-threads).
+   [tasks.low]
+   spin_period = "10000us"
 
-### Round-Robin (Time-Sliced)
+   [tasks.low.posix]
+   priority = 10
 
-Tasks at the **same** priority level share CPU time in equal time slices
-(quanta). When a task's quantum expires, the scheduler switches to the next
-same-priority task. Tasks at different priority levels still follow FPP rules.
+   [tasks.low.freertos]
+   priority = 2
+   ```
 
-```
-Time ──────────────────────────────────────►
-        ┌──┐┌──┐┌──┐┌──┐┌──┐┌──┐
-Pri 3   │A ││B ││A ││B ││A ││B │            (equal time slices)
-        └──┘└──┘└──┘└──┘└──┘└──┘
-```
+   `class` is `real_time` (the default for a priority sched task),
+   `best_effort` or `time_triggered`. Priorities are the RTOS's own numbers,
+   so their direction differs: on FreeRTOS, NuttX and Linux a bigger number
+   is more urgent, and on ThreadX and Zephyr a smaller one is. The table of
+   levels and directions per platform is in the
+   [Scheduling wiring matrix](../../reference/sched-matrix.md).
 
-Round-robin prevents starvation among equal-priority tasks but adds
-scheduling jitter (a task may wait up to `(N-1) × quantum` before running,
-where N is the number of same-priority tasks).
+4. Add the platform's own mechanism where it has one. Scope it to that
+   platform, so it lowers to nothing elsewhere:
 
-**Used by**: NuttX (SCHED_RR), FreeRTOS (when `configUSE_TIME_SLICING=1`),
-ThreadX (when `time_slice > 0`).
+   ```toml
+   [tasks.high.zephyr]
+   priority = 9
+   deadline = "10000us"        # kernel EDF, Zephyr only
 
-### Cooperative (Non-Preemptive)
+   [tasks.high.nuttx]
+   priority = 99
+   budget = "5000us"           # SCHED_SPORADIC, NuttX only
+   period = "10000us"
 
-Tasks run until they explicitly yield the CPU. No preemption occurs. This
-eliminates the need for locks (no race conditions) but requires every task
-to yield frequently. A single task that runs too long blocks all others.
+   [tasks.low.threadx]
+   priority = 16
+   preempt_threshold = 10      # ThreadX only
+   time_slice = "5000us"
+   ```
 
-```
-Time ──────────────────────────────────────►
-        ┌──────────┐     ┌────┐
-Task A  │ runs     │     │    │              (runs until yield())
-        └────┬─────┘     └──┬─┘
-             │ ┌────────┐   │ ┌──────┐
-Task B       └►│ runs   │   └►│ runs │       (gets CPU only when A yields)
-               └────────┘     └──────┘
-```
+   A `budget` on `[tasks.high]` itself would switch every platform's executor
+   to cooperative sporadic gating, which is why these keys go in the
+   platform tables.
 
-**Used by**: Zephyr (cooperative threads via `K_PRIO_COOP`), bare-metal
-super-loops, Embassy async executor.
+5. Keep sched tasks below the transport. Each board reserves a priority band
+   for the middleware's own read and lease threads, and a sched task that
+   outranks them cannot be served by them. The build allocates sched-task
+   priorities from the board's application pool and refuses a priority that
+   lands on the reserved band. A sched task that really must run above it
+   says so with `above = "transport"`.
 
-### Interrupt-Driven (Hardware Scheduling)
+6. Choose what a periodic timer does after a stall. When a sched task is
+   preempted past several periods, the timer fires once and counts the
+   missed periods (`TimerOverrunPolicy::Skip`, the default, as in rclcpp and
+   Zephyr's `k_timer`). Phase is kept, so activations stay on the declared
+   cadence. Replay every missed period instead, for a counter or an
+   accumulator, with
+   `executor.set_timer_overrun_policy(id, TimerOverrunPolicy::CatchUp)`. Do
+   not replay a control loop: the replayed activations compute with stale
+   inputs and send a burst of commands. Watch `executor.timer_overruns(id)`,
+   or the `timer-overrun-runtime` violation, rather than the publish rate,
+   which looks nominal under `CatchUp` during exactly the stall it should
+   catch. Timer periods are microseconds throughout, including across the C
+   ABI.
 
-The CPU's interrupt controller acts as a hardware scheduler. Each interrupt
-source has a hardware priority level. When an interrupt fires, the hardware
-saves context and jumps to the handler — no software scheduler overhead.
-Nested interrupts provide preemption between priority levels.
+7. Build. The configure runs the host image once to take its census, and
+   each node logs the sched task it registered on:
 
-On ARM Cortex-M, the **Nested Vectored Interrupt Controller (NVIC)** provides:
-- Up to 256 priority levels (typically 8–16 usable)
-- Zero-cycle context switch for tail-chaining interrupts
-- Deterministic latency (12 cycles to handler entry on Cortex-M3)
+   ```bash
+   nros configure
+   ```
 
-```
-                          NVIC
-IRQ Priority    ┌──────────────────┐
-   0 (highest)  │ SysTick          │──► timing / OS tick
-   1            │ UART RX          │──► message receive
-   2            │ Timer            │──► periodic publish
-   3 (lowest)   │ PendSV           │──► background work
-                └──────────────────┘
-```
+   ```text
+   [INFO] Telem::register on a tier admitting group `telem`
+   ```
 
-This is the most deterministic scheduling model — no jitter from software
-task switching, no priority inversion, and worst-case latency is bounded by
-the longest critical section that disables interrupts.
+## Example
 
-**Used by**: bare-metal interrupt handlers.
+[`examples/workspaces/realtime-rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-rust)
+runs a 10 ms control node on `high` and a 100 ms telemetry node on `low`, with
+sched-task tables for Linux, FreeRTOS, NuttX, ThreadX and Zephyr in one
+`system.toml`. Its `realtime-c` and `realtime-cpp` siblings do the same in C
+and C++.
 
-### Earliest Deadline First (EDF)
+```toml
+# src/demo_bringup/system.toml (excerpt)
+[[component]]
+pkg = "ctrl_pkg"
+class = "ctrl_pkg::Control"
+name = "control_node"
+group_tasks = { ctrl = "high" }
 
-A dynamic-priority algorithm: the task with the nearest deadline always runs
-next. EDF is **optimal** — it can schedule any task set that is schedulable
-by *any* algorithm, up to 100% CPU utilization (vs. ~69% for RMA with
-harmonic periods).
+[[component]]
+pkg = "telem_pkg"
+class = "telem_pkg::Telem"
+name = "telem_node"
+group_tasks = { telem = "low" }
 
-```
-Time ──────────────────────────────────────►
-        ┌───┐       ┌───┐
-Task A  │ d=5│      │d=15│     (deadline 5, then 15)
-        └───┘       └───┘
-            ┌────┐      ┌────┐
-Task B      │d=10│      │d=20│  (deadline 10, then 20)
-            └────┘      └────┘
-```
+[tasks.high]
+class = "real_time"
+spin_period = "1000us"
+[tasks.high.posix]
+priority = 80
+core = 0
+[tasks.high.freertos]
+priority = 3
 
-EDF is harder to analyze than FPP (no simple closed-form response time) and
-harder to implement (priority changes every scheduling decision). Overload
-behavior is also less predictable — under FPP, low-priority tasks miss
-deadlines first; under EDF, deadline misses can cascade unpredictably.
+[tasks.low]
+spin_period = "10000us"
+[tasks.low.posix]
+priority = 10
+[tasks.low.freertos]
+priority = 2
 
-**Used by**: Zephyr (`CONFIG_SCHED_DEADLINE` + `k_thread_deadline_set()`)
-as the kernel-native capability, and the portable executor's
-`SchedClass::Edf` ready-set inside dispatch. Which platform gets which
-is decided by the realizer — see the generated
-[Scheduling Wiring Matrix](../../reference/sched-matrix.md).
+[image.linux]
+board = "linux"
 
-## Platform Scheduling Comparison
-
-### FreeRTOS
-
-The most widely deployed RTOS. Uses fixed-priority preemptive scheduling
-with optional round-robin time-slicing for same-priority tasks.
-
-| Property | Value |
-|----------|-------|
-| **Model** | Fixed-priority preemptive (FPP) |
-| **Preemption** | Yes — `configUSE_PREEMPTION=1` (default) |
-| **Priority levels** | `configMAX_PRIORITIES` (typically 8–32) |
-| **Priority direction** | Higher number = higher priority |
-| **Context switch** | ~80 cycles on Cortex-M (PendSV handler) |
-| **Mutual exclusion** | Mutexes with optional priority inheritance |
-| **Time slicing** | Optional — `configUSE_TIME_SLICING` |
-
-FreeRTOS tasks are created with `xTaskCreate()`, specifying a priority and
-stack size. The scheduler runs the highest-priority ready task. When
-multiple tasks share a priority and time-slicing is enabled, they
-round-robin at tick boundaries.
-
-**Priority inheritance**: FreeRTOS mutexes optionally support priority
-inheritance to mitigate priority inversion. When a low-priority task holds
-a mutex needed by a high-priority task, the low-priority task temporarily
-inherits the high priority until it releases the mutex.
-
-```
-Without inheritance:        With inheritance:
-  H ──blocks──►             H ──blocks──►
-  M ──runs────►             L ──promoted──► (runs at H's priority)
-  L ──holds mutex           L ──releases──► H runs immediately
-     (M preempts L →        (no M preemption → bounded inversion)
-      unbounded inversion)
+[image.freertos_realtime]
+board = "freertos"
+panic = "own"
+locator = "tcp/10.0.2.2:7891"
 ```
 
-**nano-ros task layout** on FreeRTOS:
-
-| Task | Default Priority | Stack | Role |
-|------|-----------------|-------|------|
-| nros_app | 3 (Normal) | 64 KB | Executor, callbacks, spin |
-| net_poll | 4 (AboveNormal) | 1 KB | Poll LAN9118 RX FIFO |
-| zenoh read | 4 (AboveNormal) | 5 KB | Socket read, message decode |
-| zenoh lease | 4 (AboveNormal) | 5 KB | Keep-alive, lease monitor |
-| tcpip_thread | 4 (AboveNormal) | 4 KB | lwIP protocol processing |
-
-### ThreadX (Azure RTOS)
-
-ThreadX is designed for deeply embedded systems with a unique
-**preemption-threshold** feature not found in other RTOSes.
-
-| Property | Value |
-|----------|-------|
-| **Model** | Fixed-priority preemptive (FPP) with preemption-threshold |
-| **Preemption** | Yes — with configurable threshold per thread |
-| **Priority levels** | 32 (0–31) |
-| **Priority direction** | Lower number = higher priority |
-| **Context switch** | ~60 cycles (optimized assembly for each architecture) |
-| **Mutual exclusion** | Mutexes with priority inheritance |
-| **Time slicing** | Per-thread configurable (`time_slice` parameter) |
-
-The **preemption-threshold** is ThreadX's distinguishing feature. Each
-thread has two priority values:
-
-1. **Priority**: determines scheduling order (which thread runs next)
-2. **Preemption-threshold**: the minimum priority that can preempt this thread
-
-```
-Thread A: priority=10, preempt_threshold=5
-  → Scheduled based on priority 10
-  → Only threads with priority 0–4 can preempt it
-  → Threads with priority 5–9 must wait, even though they're higher priority
-
-Thread B: priority=10, preempt_threshold=10  (threshold = priority)
-  → Normal behavior — any higher-priority thread can preempt
+```bash
+nros run demo_bringup:linux
 ```
 
-This effectively creates **non-preemptive regions** without disabling
-interrupts. A thread performing a critical sequence of operations can set a
-low preemption-threshold to prevent most preemption while still allowing
-the highest-priority threads through.
+## If it doesn't work
 
-The academic basis is the **dual-priority model**: preemption-threshold
-reduces context switches (and thus stack usage) while preserving
-schedulability. Research shows it can reduce RAM requirements by 30–50%
-compared to pure FPP, because fewer threads need independent stacks for
-preemption frames.
+- **The build refuses a priority.** It lands on the board's reserved
+  transport band, or outranks it. Pick one from the application pool the
+  message names, or state `above = "transport"`.
+- **A `core` pin falls back with a warning on Zephyr.** The pin is on the
+  boot sched task, which Zephyr started before nano-ros ran and cannot pin
+  any more. Put `core` on a sched task nano-ros spawns.
+- **`MultiThreadedExecutor` does not compile.** It has no nano-ros form. Move
+  the callbacks that need their own thread to a sched task of their own.
 
-**nano-ros on ThreadX**: multi-sched-task `run_sched_tasks` is real — one executor per sched task over one shared session, with
-per-sched-task stacks allocated from the ThreadX byte pool via
-`nros_threadx_create_task`. The sched task's `preempt_threshold` is passed
-natively at `tx_thread_create` (a `-1` sentinel means "use the
-priority", i.e. normal preemption). Sched tasks are resolved descending by
-raw priority number, so on ThreadX (lower number = higher priority)
-`sched_tasks[0]` is the lowest-priority sched task; the boot sched task runs first and
-re-prioritizes itself to its declared priority.
+## See also
 
-### NuttX
-
-NuttX is a POSIX-compliant RTOS, meaning it implements the full
-`pthread` and `sched` APIs from IEEE 1003.1. This makes it the most
-portable platform — standard POSIX real-time scheduling is well-understood
-and widely taught.
-
-| Property | Value |
-|----------|-------|
-| **Model** | POSIX SCHED_FIFO (FPP), SCHED_RR, or SCHED_SPORADIC |
-| **Preemption** | Yes (FIFO/RR), configurable |
-| **Priority levels** | 1–255 (POSIX `sched_param.sched_priority`) |
-| **Priority direction** | Higher number = higher priority |
-| **Context switch** | Kernel-managed, architecture-dependent |
-| **Mutual exclusion** | POSIX mutexes with `PTHREAD_PRIO_INHERIT` or `PTHREAD_PRIO_PROTECT` |
-| **Scheduling policy** | Per-thread via `sched_setscheduler()` |
-
-NuttX supports three POSIX scheduling policies:
-
-**SCHED_FIFO** (First-In-First-Out): Pure fixed-priority preemptive. A
-task runs until it blocks, yields, or is preempted by a higher-priority
-task. Tasks at the same priority run in FIFO order — no time-slicing.
-
-**SCHED_RR** (Round-Robin): Same as SCHED_FIFO but with time-slicing for
-same-priority tasks. Each task gets a time quantum before the scheduler
-switches to the next task at that priority.
-
-**SCHED_SPORADIC** (NuttX extension): Implements the **sporadic server**
-algorithm for aperiodic event handling. A task alternates between a high
-"normal" priority and a low "background" priority based on its execution
-budget:
-
-```
-Budget = 5ms, Replenish period = 20ms
-
-Time ──────────────────────────────────────────────────►
-        ┌─────┐                    ┌─────┐
-High    │5ms  │                    │5ms  │     (budget)
-        └──┬──┘                    └──┬──┘
-           │ ┌──────────────┐        │
-Low        └►│ background   │        └►...    (budget exhausted)
-             └──────────────┘
-                    ▲ replenish after 20ms
-```
-
-The sporadic server bounds the interference that an aperiodic task imposes
-on periodic tasks, making it analyzable with standard RMA techniques. This
-is valuable for event-driven ROS callbacks that fire at irregular intervals.
-
-**Priority inversion protocols**: NuttX supports both POSIX priority
-inheritance (`PTHREAD_PRIO_INHERIT`) and priority ceiling
-(`PTHREAD_PRIO_PROTECT`):
-
-| Protocol | How it works | Trade-off |
-|----------|-------------|-----------|
-| **Priority inheritance** | Holder inherits waiter's priority | Dynamic — may chain through multiple locks |
-| **Priority ceiling** | Mutex has fixed ceiling priority; holder runs at ceiling | Static — simpler analysis, avoids chained inversion |
-
-**nano-ros on NuttX**: Currently runs with kernel defaults (no explicit
-scheduling policy). Future work will add `SCHED_FIFO` and priority
-configuration.
-
-### Zephyr
-
-Zephyr provides the most flexible scheduling model, supporting cooperative
-threads, preemptive threads, and EDF in a single system.
-
-| Property | Value |
-|----------|-------|
-| **Model** | Cooperative + preemptive + optional EDF |
-| **Preemption** | Configurable per-thread |
-| **Priority levels** | Cooperative: `K_PRIO_COOP(0)` to `K_PRIO_COOP(N)` (negative values); Preemptive: `K_PRIO_PREEMPT(0)` to `K_PRIO_PREEMPT(N)` (positive values) |
-| **Priority direction** | Lower number = higher priority |
-| **Context switch** | Architecture-dependent (~100 cycles on Cortex-M) |
-| **Mutual exclusion** | k_mutex with priority inheritance |
-| **Meta-IRQ** | Ultra-high-priority threads that preempt even cooperative threads |
-
-Zephyr's scheduling model has three sched tasks:
-
-```
-Priority Number Line:
-◄── higher priority                    lower priority ──►
-    │                │                    │
-    │  Meta-IRQ      │  Cooperative       │  Preemptive
-    │  (negative,    │  (negative,        │  (0 or positive)
-    │   special)     │   non-preemptible) │
-    │                │                    │
-```
-
-**Cooperative threads** (`K_PRIO_COOP`): Cannot be preempted by other
-threads (only by interrupts). They run until they explicitly yield or
-block. This is useful for critical sections that must not be interrupted
-by other threads, while still allowing hardware interrupts.
-
-**Preemptive threads** (`K_PRIO_PREEMPT`): Standard FPP behavior. Can
-be preempted by any higher-priority thread (cooperative or preemptive).
-
-**Meta-IRQ threads** (`CONFIG_NUM_METAIRQ_PRIORITIES`): Special
-ultra-high-priority threads that can preempt even cooperative threads.
-Used for work that must complete with interrupt-like urgency but needs
-thread context (e.g., stack, blocking calls). This fills the gap between
-ISR context (limited API) and thread context (preemptible).
-
-**Deadline scheduling**: Zephyr optionally supports EDF via
-`CONFIG_SCHED_DEADLINE`. Threads call `k_thread_deadline_set()` to
-declare their next deadline. Among threads at the same priority level,
-the scheduler picks the one with the earliest deadline. This allows EDF
-within a priority band while preserving FPP across bands — a hybrid
-approach that combines EDF's optimality with FPP's predictable overload
-behavior.
-
-**nano-ros on Zephyr**: Currently uses a single main thread with
-default priority. The async service example uses Embassy's executor
-with kernel-backed waking (`zephyr::embassy::Executor`).
-
-## Priority Inversion
-
-Priority inversion is a well-studied problem in real-time systems. It
-occurs when a high-priority task is indirectly blocked by a low-priority
-task through a shared resource, while a medium-priority task runs
-unimpeded.
-
-The classic example (from the Mars Pathfinder incident, 1997):
-
-```
-  High-priority task ──► blocks on mutex held by Low
-  Medium-priority task ──► preempts Low (doesn't need mutex)
-  Low-priority task ──► holds mutex, can't run (M preempts)
-
-  Result: High is blocked by Medium indefinitely
-```
-
-### Solutions
-
-| Solution | Approach | Platforms |
-|----------|----------|-----------|
-| **Priority inheritance** | Mutex holder inherits highest waiter's priority | FreeRTOS, ThreadX, NuttX, Zephyr |
-| **Priority ceiling** | Mutex has fixed ceiling; holder runs at ceiling | NuttX (`PTHREAD_PRIO_PROTECT`) |
-| **Preemption-threshold** | Limit which tasks can preempt | ThreadX |
-| **Lock-free design** | Avoid shared resources entirely | nano-ros single-slot buffers |
-
-nano-ros mitigates priority inversion architecturally: subscriptions use
-single-slot buffers with atomic overwrites — no mutex needed between
-publisher and subscriber tasks. The executor processes callbacks in a
-single task, eliminating inter-task resource sharing for most use cases.
-
-## Choosing a Scheduling Model
-
-| Criterion | FreeRTOS | ThreadX | NuttX | Zephyr |
-|-----------|----------|---------|-------|--------|
-| **Determinism** | Good (FPP) | Good (FPP+threshold) | Good (POSIX FPP) | Good (FPP+coop+EDF) |
-| **Worst-case latency** | ~80 cycles | ~60 cycles | Kernel-dependent | ~100 cycles |
-| **Priority inversion** | Inheritance | Inheritance + threshold | Inheritance + ceiling | Inheritance |
-| **Analysis tools** | RMA/RTA | RMA/RTA + threshold | POSIX standard RMA | RMA + EDF analysis |
-| **Flexibility** | Medium | Medium-High | High (POSIX) | Highest |
-| **RAM overhead** | Low | Low (threshold reduces stacks) | Medium (kernel) | Medium (kernel) |
-
-**Use FreeRTOS** when: you need a widely supported RTOS with a small
-footprint and a large ecosystem. Good for projects where portability across
-MCU vendors matters more than advanced scheduling features.
-
-**Use ThreadX** when: you need deterministic scheduling with reduced RAM
-(preemption-threshold), or your project targets Azure IoT infrastructure.
-ThreadX is also safety-certified (IEC 61508 SIL 4, ISO 26262 ASIL D).
-
-**Use NuttX** when: you want POSIX compatibility (reuse Linux-targeted code
-on embedded), need SCHED_SPORADIC for aperiodic events, or want
-PTHREAD_PRIO_PROTECT for static priority ceiling analysis.
-
-**Use Zephyr** when: you need maximum scheduling flexibility (cooperative +
-preemptive + EDF in one system), want a Linux Foundation backed project with
-broad hardware support, or need meta-IRQ for interrupt-like thread
-priorities.
-
-## Further Reading
-
-- Liu, C.L. and Layland, J.W. (1973). "Scheduling Algorithms for Multiprogramming in a Hard-Real-Time Environment." *Journal of the ACM*, 20(1), 46–61. — The foundational paper for Rate-Monotonic Analysis.
-- Sha, L., Rajkumar, R., and Lehoczky, J.P. (1990). "Priority Inheritance Protocols: An Approach to Real-Time Synchronization." *IEEE Transactions on Computers*, 39(9), 1175–1185. — Priority inheritance and priority ceiling protocols.
-- Wang, Y. and Saksena, M. (1999). "Scheduling Fixed-Priority Tasks with Preemption Threshold." *RTCSA*. — The theoretical basis for ThreadX's preemption-threshold.
-- Buttazzo, G.C. (2011). *Hard Real-Time Computing Systems: Predictable Scheduling Algorithms and Applications*. Springer. — Comprehensive textbook covering FPP, EDF, and hybrid approaches.
+- [Analyze timing](analyze-timing.md): check the callbacks a sched task runs
+  for unbounded work.
+- [Scheduling wiring matrix](../../reference/sched-matrix.md): what each
+  platform delivers.
+- [The execution model](../../background/execution-model.md) and
+  [Dispatch strategy](../../background/dispatch-strategy.md): how executors,
+  sched tasks and dispatch fit together.
 
 ## Design background
 
-- [RFC-0053: ThreadX multi-sched-task execution](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0053-threadx-multi-tier-execution.md)
-- [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
-  Example variants as node packages with their own image rows.
+- [RFC-0015: RTOS orchestration](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0015-rtos-orchestration.md)
+- [RFC-0053: ThreadX multi-tier execution](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0053-threadx-multi-tier-execution.md)
+- [RFC-0079: priority is allocated, not authored](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0079-priority-is-allocated-not-authored.md)
+- [RFC-0002: RT execution model (timer overrun policy)](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0002-rt-execution-model.md)
