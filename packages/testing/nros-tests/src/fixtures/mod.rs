@@ -11,6 +11,7 @@ mod binaries;
 pub mod cache_key;
 pub mod groups;
 pub mod lane;
+pub mod migrated_leaf;
 pub mod require;
 pub mod staleness;
 pub mod tls_certs;

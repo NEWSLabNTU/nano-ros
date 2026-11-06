@@ -1187,6 +1187,51 @@ pub fn linux_pair_image(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf>
     })
 }
 
+/// Phase-531 W6 (RFC-0121 D8) — the prebuilt binary of a leaf migrated to a
+/// single-node workspace, or `None` when `leaf` (repo-relative) is not one.
+///
+/// THE fallback every leaf resolver takes before its own `[[fixture]]` route:
+/// [`build_example`], [`build_example_rmw`] and [`build_cmake_leaf_rmw`] (and
+/// so every per-platform wrapper over them) call it first, and a resolver that
+/// selects a configured row (`link-tls`, an `env`) calls it with that
+/// [`LeafVariant`]. The row comes from `fixtures::migrated_leaf`; the path from
+/// the row's own artifact root, with the same lane, stamp and staleness checks
+/// every workspace resolver gets. The caller's binary name is not consulted: a
+/// generated entry is named `<image>_entry`, and the row already says so.
+///
+/// [`LeafVariant`]: crate::fixtures::migrated_leaf::LeafVariant
+pub fn migrated_leaf_binary(
+    leaf: &str,
+    rmw: Rmw,
+    variant: crate::fixtures::migrated_leaf::LeafVariant<'_>,
+) -> Option<TestResult<PathBuf>> {
+    let row = crate::fixtures::migrated_leaf::select(leaf, rmw.coord_token(), variant)?;
+    Some(row.and_then(|row| resolve_workspace_row_entry(&row)))
+}
+
+/// The binary a `[[workspace_fixture]]` row builds, from the row alone: its
+/// artifact root, its cross `target` (Rust), and whether its entry is
+/// generated (top of the cmake build dir) or owned (`src/<entry>/`).
+fn resolve_workspace_row_entry(
+    row: &crate::fixtures::migrated_leaf::LeafRow,
+) -> TestResult<PathBuf> {
+    let dir = crate::fixtures::groups::workspace_artifact_dir(&row.id)?;
+    let entry = &row.entry;
+    let binary = match row.lang.as_str() {
+        "rust" => match crate::fixtures::baked_locator::row_str(&row.id, "target") {
+            Some(triple) => dir.join(format!("{triple}/{}/{entry}", cargo_target_profile_dir())),
+            None => dir.join(format!("{}/{entry}", cargo_target_profile_dir())),
+        },
+        _ if row.image.is_empty() => dir.join(format!("src/{entry}/{entry}")),
+        _ => dir.join(entry),
+    };
+    require_prebuilt_workspace_binary(
+        &row.id,
+        &binary,
+        &dir.join(workspace_fixture_stamp_name(&row.id)),
+    )
+}
+
 pub fn build_example(
     name: &str,
     binary_name: &str,
@@ -1196,6 +1241,13 @@ pub fn build_example(
     if target.is_none()
         && let Some(r) = moved_linux_pair(name, Rmw::Zenoh)
     {
+        return r;
+    }
+    if let Some(r) = migrated_leaf_binary(
+        &format!("examples/{name}"),
+        Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    ) {
         return r;
     }
     let root = project_root();
@@ -1322,6 +1374,13 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
     if let Some(r) = moved_linux_pair(name, rmw) {
         return r;
     }
+    if let Some(r) = migrated_leaf_binary(
+        &format!("examples/{name}"),
+        rmw,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    ) {
+        return r;
+    }
     let root = project_root();
     let example_dir = root.join(format!("examples/{}", name));
 
@@ -1389,6 +1448,13 @@ pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestR
 /// [`build_example_cmake_rmw`] is a thin wrapper over this, deliberately: one
 /// locator, not a second spelling that drifts from it.
 pub fn build_cmake_leaf_rmw(rel_dir: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    if let Some(r) = migrated_leaf_binary(
+        rel_dir,
+        rmw,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    ) {
+        return r;
+    }
     let root = project_root();
     let leaf_dir = root.join(rel_dir);
 
