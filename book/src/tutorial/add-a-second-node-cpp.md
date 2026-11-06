@@ -202,7 +202,7 @@ nros configure
 
 For a CMake tree that is
 not a nano-ros workspace at all, see
-[Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md).
+[Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree).
 
 First configure builds nano-ros's Rust staticlibs (~3 minutes).
 Re-builds finish in seconds.

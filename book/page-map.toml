@@ -295,16 +295,16 @@ path = "guide/build/build-profiles.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["build/build-profiles.md"]
-note = "Build profiles (W8): guide/build/build-profiling merges into it"
+note = "Build profiles (W8): one how-to, with guide/build/build-profiling merged in"
 
 [[page]]
 old = "user-guide/build-profiling.md"
 book = "user"
-path = "guide/build/build-profiling.md"
-action = "move"
-batch = "p537-w1-guide"
-was = ["operate/build-profiling.md"]
-note = "W8 merges it into guide/build/build-profiles"
+path = "guide/build/build-profiles.md"
+action = "merge-into guide/build/build-profiles.md"
+batch = "p537-w8"
+was = ["operate/build-profiling.md", "guide/build/build-profiling.md"]
+note = "merged by W8 into Build profiles, as its \"Find where the build time goes\" steps"
 
 [[page]]
 old = "getting-started/vendored-tree.md"
@@ -313,16 +313,16 @@ path = "guide/build/existing-cmake-or-vendor-tree.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["build/vendored-tree.md"]
-note = "Build inside an existing CMake or vendor tree (W8): guide/build/cmake-subdirectory merges into it"
+note = "Build inside an existing CMake or vendor tree (W8): one how-to with guide/build/cmake-subdirectory merged in; its pinning and air-gapped parts moved to guide/build/install-options"
 
 [[page]]
 old = "getting-started/build-as-subdirectory.md"
 book = "user"
-path = "guide/build/cmake-subdirectory.md"
-action = "split testing/creating-examples.md"
-batch = "p537-w1-guide"
-was = ["build/cmake-subdirectory.md"]
-note = "W8 merges it into guide/build/existing-cmake-or-vendor-tree"
+path = "guide/build/existing-cmake-or-vendor-tree.md"
+action = "merge-into guide/build/existing-cmake-or-vendor-tree.md"
+batch = "p537-w8"
+was = ["build/cmake-subdirectory.md", "guide/build/cmake-subdirectory.md"]
+note = "merged by W8 into Build inside an existing CMake or vendor tree, as its \"Add nano-ros to a CMake tree\" steps; its cache-variable table went to reference/environment-variables"
 
 [[page]]
 old = "getting-started/installation-details.md"
@@ -331,7 +331,7 @@ path = "guide/build/install-options.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["get-started/installation-details.md"]
-note = "Install options, pinning, working offline (W8)"
+note = "Install options, pinning, working offline (W8): one how-to, trimmed and split by task within the page (install a release, provision, ROS 2 and the router, pin, work offline); it takes the pinning and air-gapped parts of guide/build/existing-cmake-or-vendor-tree. Its workspace-layout and Rust-consumer parts went to Organize a larger workspace and Build inside an existing CMake or vendor tree"
 
 [[page]]
 old = "platform-guides/native-host.md"
