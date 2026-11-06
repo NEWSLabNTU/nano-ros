@@ -343,7 +343,7 @@ BOOK_CLAIMS = (
         "why": "`Seq<T, N>` is inline storage; a property of the value type",
     },
     {
-        "file": "book/src/guide/contracts/cpp-workspaces.md",
+        "file": "book/src/guide/build/organize-a-larger-workspace.md",
         "text": "no-alloc trampoline",
         "kind": "type-level",
         "why": "a C++ template trampoline with `this` as ctx — no storage is "
