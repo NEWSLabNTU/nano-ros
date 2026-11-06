@@ -22,7 +22,7 @@ use std::io;
                   nros check           validate a plan or workspace\n  \
                   nros doctor          check SDK paths / toolchains / env\n\n\
                   Run `nros setup --list` to see available packages, and \
-                  `nros help --all` for the build-system verbs under `nros dev`.",
+                  `nros help --all` for the build-system tier as well.",
     version,
     propagate_version = true,
     // `--codegen-version` is answerable with no subcommand, so the subcommand

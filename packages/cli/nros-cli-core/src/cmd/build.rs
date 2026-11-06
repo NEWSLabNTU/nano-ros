@@ -78,8 +78,8 @@ pub struct Args {
     ///
     /// Safe by construction: a `Handoff` performs no I/O until `exec`. It
     /// still GENERATES (stage 4 writes each image's generated files), which
-    /// regenerates an application without building it; a no-write answer is
-    /// `nros image-facts`.
+    /// regenerates an application without building it.
+    // A no-write answer is `nros dev image` (formerly `nros image-facts`).
     // The Zephyr fixture runner relies on the generate-without-build
     // behaviour (issue 1707); the no-write answer is issue 1716.
     #[arg(long)]
@@ -161,9 +161,10 @@ pub struct Args {
     /// Default: `build`, under the workspace.
     ///
     /// Only for a workspace with no bringup. An image's generated tree has a
-    /// fixed place under `build/`, which `nros image-facts`, the cmake module
-    /// and the test fixtures all read, so moving it for one build would split
-    /// them; it is refused there.
+    /// fixed place under `build/`, which the cmake module and the image's other
+    /// readers all expect, so moving it for one build would split them; it is
+    /// refused there.
+    // Those readers: `nros dev image`, the cmake module and the test fixtures.
     #[arg(long, value_name = "DIR")]
     pub build_base: Option<PathBuf>,
 
