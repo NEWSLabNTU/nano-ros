@@ -223,7 +223,7 @@ C API keeps rclc's spellings, so `rclc_publisher_init_default`,
 nano-ros's names too. An existing XRCE agent serves nano-ros's XRCE-DDS
 backend unchanged. A custom transport is a platform-level transport rather
 than `rmw_uros_set_custom_transport`
-([Add a transport](../extending/custom-transport.md)).
+([Add a transport](../extending/add-a-transport.md)).
 
 ## Design background
 

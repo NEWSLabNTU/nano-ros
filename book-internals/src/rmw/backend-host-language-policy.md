@@ -298,7 +298,7 @@ the ones above.
 
 - [roadmap doc](../../../docs/roadmap/archived/phase-115-runtime-transport-vtable.md)
   — Appendix D carries LOC sizing, port shapes, and risk notes.
-- [Custom Transport porting guide](../../extending/custom-transport.html) —
+- [Add a transport](../../extending/add-a-transport.html) —
   how the transport vtable composes with the RMW vtable.
 - `packages/rmw/cyclonedds/nros-rmw-cyclonedds/` — reference layout for the
   C++ vtable consumer.
