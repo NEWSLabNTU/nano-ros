@@ -52,7 +52,7 @@ reason, tested together (see
 | **Cyclone DDS** | fork `0.10.5-nros1` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/book-internals/src/rmw/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration |
 
 Per-feature coverage across the three backends:
-[Per-RMW Feature Matrix](rmw-feature-matrix.md).
+[Per-RMW Feature Matrix](matrices/rmw-feature-matrix.md).
 
 ## ROS 2 editions
 
@@ -100,7 +100,7 @@ store; the base version is the upstream release.
 
 - [Install](../start/install.md) — how these get onto
   a machine (`nros setup`, prebuilt-vs-source rules)
-- [Per-RMW Feature Matrix](rmw-feature-matrix.md)
+- [Per-RMW Feature Matrix](matrices/rmw-feature-matrix.md)
 - [Board Support Levels](board-support-levels.md) (generated) ·
   [Supported Boards](supported-boards.md) (procurement view)
 - [Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md)

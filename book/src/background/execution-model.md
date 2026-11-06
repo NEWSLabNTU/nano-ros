@@ -214,7 +214,7 @@ per-RTOS table of a sched task:
 Priority numbers run in opposite directions: on FreeRTOS, NuttX and Linux a
 bigger number is more urgent, and on ThreadX and Zephyr a smaller one is.
 What each platform delivers is generated in the
-[Scheduling wiring matrix](../reference/sched-matrix.md).
+[Scheduling wiring matrix](../reference/matrices/sched-matrix.md).
 
 ### Priority inversion
 

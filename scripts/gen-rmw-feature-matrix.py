@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate book/src/reference/rmw-feature-matrix.md from backend sources.
+"""Generate book/src/reference/matrices/rmw-feature-matrix.md from backend sources.
 
 The per-RMW capability story used to live as prose scattered over four
 pages, and it drifted in BOTH directions (Cyclone services were
