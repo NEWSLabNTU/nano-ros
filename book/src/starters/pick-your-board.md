@@ -54,6 +54,11 @@ show for it.
 - [NuttX in QEMU (RISC-V)](nuttx-riscv.md): Verified in emulator (daily)
 - [ThreadX in QEMU (RISC-V 64)](threadx-riscv64.md): Verified in emulator (daily)
 
+### Verified on host
+
+- [Linux host](linux-host.md): Verified on host (merge)
+- [ThreadX Linux simulator](threadx-linux.md): Verified on host (merge)
+
 <!-- END GENERATED starter list -->
 
 ## Next
