@@ -17,6 +17,8 @@ table. This page is that rendering at that commit, wrapped for the book:
     dropped, as `book_pages.scrub_ids` drops ours from every generated user
     page: the reader has no tree to look them up in. Only the citation goes;
     a sentence that still names an id after that stops the generator;
+  * a `|` inside a code span in a table row is escaped (`\|`), so the row
+    keeps its cells (GitHub-flavoured tables split on it otherwise);
   * nothing else changes: every section, table row and sentence is the
     owner's.
 
@@ -198,6 +200,7 @@ def render(upstream: str, tag: str, commit: str) -> str:
     while body and not body[0].strip():
         body.pop(0)
     text = scrub(book_pages.scrub_ids("\n".join(body).rstrip() + "\n"))
+    text = "\n".join(escape_cell_pipes(l) for l in text.split("\n"))
     blob = f"{REPO_URL}/blob/{tag}/docs/"
     text = re.sub(r"\]\((?!https?:|#|/)([^)\s]+)\)", lambda m: f"]({blob}{m.group(1)})", text)
     head = [
@@ -238,6 +241,13 @@ def scrub(text: str) -> str:
         fail(f"the upstream reference names {', '.join(left)} in a way this generator cannot drop "
              "without rewriting the sentence; extend `scrub` for the new shape")
     return text
+
+
+def escape_cell_pipes(line: str) -> str:
+    """In a table row, `|` inside a code span is content, not a cell edge."""
+    if not line.startswith("|"):
+        return line
+    return re.sub(r"`[^`]*`", lambda m: re.sub(r"(?<!\\)\|", r"\\|", m.group(0)), line)
 
 
 def page_tag(text: str) -> tuple[str, str] | None:
@@ -281,6 +291,8 @@ def self_test() -> None:
     assert scrub("Removed in phase 70 — write x. Links (play_launch phase 97): y (play_launch phase 97 P5, "
                  "not adopted).") == "Removed — write x. Links: y (not adopted)."
     assert refused(lambda: scrub("since phase 70 the key is gone")), "a remaining id passed"
+    assert escape_cell_pipes("| `k` | `{ a | b }` |") == "| `k` | `{ a \\| b }` |"
+    assert escape_cell_pipes("prose `a | b`") == "prose `a | b`"
     out = render(md, "v1.2.3", "a" * 40)
     assert "Do not edit by hand**" not in out and "# Contract File" not in out
     assert f"]({REPO_URL}/blob/v1.2.3/docs/extension-guide.md)" in out, out
