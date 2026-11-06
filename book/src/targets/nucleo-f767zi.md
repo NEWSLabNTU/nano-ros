@@ -82,7 +82,7 @@ export ZEPHYR_BASE="$PWD/zephyr"
 Last, give the workspace the patches nano-ros carries for Zephyr 3.7:
 
 ```bash probe=36 track=installed
-nros setup board nucleo-f767zi-zephyr --zephyr-workspace .
+nros setup board nucleo-f767zi-zephyr --zephyr-workspace "$PWD"
 ```
 
 ## Scaffold the talker
