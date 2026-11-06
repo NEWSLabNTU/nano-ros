@@ -2,7 +2,7 @@
 
 <!-- type: how-to · level: 2 -->
 
-**Needs first:** [the contract walkthrough](cpp-workspaces.md#telling-the-build-what-the-component-creates) ·
+**Needs first:** [the contract walkthrough](../../tutorial/tell-the-build.md#write-the-contract) ·
 [Size an image from its contract](size-an-image-from-its-contract.md)
 
 Use this page when `nros build` refuses a contract, or builds the image without
