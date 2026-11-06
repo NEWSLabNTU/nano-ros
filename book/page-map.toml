@@ -263,7 +263,7 @@ path = "guide/contracts/measure-static-memory.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["realtime/static-memory.md"]
-note = "Measure static memory (W7): the task part; its Sizing the pools section moved to guide/contracts/size-an-image-from-its-contract (W7); W10 moves its background part (The three service inboxes) into background/static-memory-and-pools"
+note = "Measure static memory (W7): the task part; its Sizing the pools section moved to guide/contracts/size-an-image-from-its-contract (W7). W10 moved its background part (the three zenoh service inboxes, why the message-derived sizes are upper bounds) into background/static-memory-and-pools"
 
 [[page]]
 old = "getting-started/workspace-cpp.md"
@@ -662,7 +662,7 @@ book = "user"
 path = "background/static-memory-and-pools.md"
 action = "move"
 batch = "p537-w1-background"
-note = "Static memory and pools (W10): adds the background part of guide/contracts/measure-static-memory"
+note = "Static memory and pools (W10): rewritten around pools and their derived sizes, with the background part of guide/contracts/measure-static-memory. Its per-crate API lists and Cargo.toml recipes were cut for reference/rust-api; its checkout-path command for the no-alloc checker was dropped"
 
 [[page]]
 old = "design/client-library.md"
