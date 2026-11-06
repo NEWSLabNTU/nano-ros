@@ -30,8 +30,8 @@ The headers live in the SDK's C++ include directory at upstream's paths:
 `rclcpp/`, `rclcpp_action/` and `rclcpp_lifecycle/`. `rclcpp/detail/` is
 internal.
 
-To build and run a first C++ node, start with
-[First Node — C++](../tutorial/add-a-second-node-cpp.md); to grow it into a
+To build and run a first C++ node, start with the
+[Tutorial](../tutorial/run-a-talker.md), whose every step has a C++ tab; to grow it into a
 workspace, see [C++ in a workspace](../guide/contracts/cpp-workspaces.md). To
 bring an existing ROS 2 node across, see
 [Porting a ROS 2 C++ node](../guide/port/port-a-cpp-node.md). This page is
@@ -97,8 +97,8 @@ internal and may change without notice.
 
 - [rclcpp compatibility](rclcpp-compatibility.md): what a ported rclcpp node
   gets, by the upstream spelling it uses, and the measured ROS 2 examples.
-- [Add a second node](../tutorial/add-a-second-node-cpp.md): a first C++ node,
-  built and run.
+- [Add a second node](../tutorial/add-a-second-node.md): a C++ node added
+  to a workspace, built and run.
 - [Zephyr](../guide/platforms/zephyr.md#c-applications): a C++ application
   under the nano-ros Zephyr module.
 
