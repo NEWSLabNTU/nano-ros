@@ -578,6 +578,14 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 #   lang        the language tab (rust | c | cpp) the track replays when its
 #               chapter shows a step in language tabs (phase-537 W2); absent
 #               for a chapter with no tabbed probe step
+#   after       the chapters a Tutorial track replays BEFORE its own, in
+#               reading order (phase-537 W5, RFC-0124 D3): the Tutorial grows
+#               one project, so chapter N runs on what chapters 1 to N-1 made.
+#               The probe stops what a chapter left running before the next
+#               chapter's first step, as a reader closes the last terminals
+#   also_rows   further board rows (crate@platform) a Tutorial chapter's steps
+#               run on, beside `row`; the chapter's generated status header
+#               names every row its tracks list, and each must be Verified
 #   weekly      true when `probe-platforms.yml` replays it every Monday
 #   row         the board row (crate@platform) whose evidence this is, if any
 #   qemu_board  the board the image is built for, when the run step boots QEMU;

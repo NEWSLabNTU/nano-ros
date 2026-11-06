@@ -218,6 +218,14 @@ def main():
                          "beginning with TEXT")
     ap.add_argument("--clock-budget", type=int, default=None, metavar="SECS",
                     help="with --clock-from: fail the step that ends past SECS")
+    # phase-537 W5 (RFC-0124 D3) — a Tutorial track replays the chapters before
+    # its own, on one growing project. A reader starts each chapter with the
+    # last one's terminals closed, so the processes a chapter left running
+    # (`probe-keep`: the talker under `nros run`, its router) are stopped
+    # before the first step of the next chapter, never left to hold its port.
+    ap.add_argument("--close-between-chapters", action="store_true",
+                    help="stop the steps a chapter left running (probe-keep) "
+                         "before the first step of the next chapter")
     ap.add_argument("files", nargs="+")
     args = ap.parse_args()
     if (args.clock_from is None) != (args.clock_budget is None):
@@ -348,8 +356,13 @@ def main():
     clock_on = False
     if args.clock_budget is not None:
         out.append(f"PROBE_CLOCK_BUDGET={args.clock_budget}")
+    prev_file = None
     for order, f, lineno, body, run, keep in steps:
         out.append("")
+        if args.close_between_chapters and prev_file is not None and f != prev_file:
+            out.append(f"echo '=== probe: {Path(prev_file).name} ends; its terminals close ==='")
+            out.append("nros_probe_stop_kept")
+        prev_file = f
         if (args.clock_from is not None and not clock_on
                 and any(ln.lstrip().startswith(args.clock_from) for ln in body.splitlines())):
             out.append(f"nros_probe_clock_start {order}")
@@ -456,6 +469,17 @@ def self_test() -> None:
     assert rc == 0 and "echo one" in one, one
     rc, err = extract("<!-- tabs -->\n#### Go\n```bash probe=1\nx\n```\n<!-- /tabs -->\n")
     assert rc != 0 and "c.md:2:" in err and "is not one of" in err, err
+    # phase-537 W5 — a chained Tutorial track closes a chapter's kept steps
+    # before the next chapter's first step, and only between chapters.
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "a.md").write_text("```bash probe=10\necho a1\n```\n```bash probe=11\necho a2\n```\n")
+        (Path(d) / "b.md").write_text("```bash probe=20\necho b1\n```\n")
+        r = subprocess.run([sys.executable, str(me), "--out", f"{d}/o.sh", "--close-between-chapters",
+                            f"{d}/a.md", f"{d}/b.md"], capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        o = (Path(d) / "o.sh").read_text()
+        assert o.count("nros_probe_stop_kept") == 1, o
+        assert o.index("echo a2") < o.index("nros_probe_stop_kept") < o.index("echo b1"), o
     print("extract-book-steps: self-test OK")
 
 
