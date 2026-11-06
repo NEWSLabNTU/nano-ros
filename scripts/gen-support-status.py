@@ -169,7 +169,7 @@ def render():
         "",
         "These pins are **decisions, not lags** — they move only with a",
         "reason, tested together (see",
-        "[Integrating into a Vendored Tree](../getting-started/vendored-tree.md)).",
+        "[Build inside an existing CMake or vendor tree](../getting-started/vendored-tree.md)).",
         "",
         "## RMW backends — versions and interop pairing",
         "",
@@ -231,7 +231,7 @@ def render():
         "- [Per-RMW Feature Matrix](rmw-feature-matrix.md)",
         "- [Board Support Levels](board-support-levels.md) (generated) ·",
         "  [Supported Boards](supported-boards.md) (procurement view)",
-        "- [Integrating into a Vendored Tree](../getting-started/vendored-tree.md)",
+        "- [Build inside an existing CMake or vendor tree](../getting-started/vendored-tree.md)",
         "  — pinning and upgrading these from a company tree",
         "",
     ]
