@@ -703,15 +703,15 @@ book = "user"
 path = "reference/system-toml.md"
 action = "new phase-537"
 batch = "p537-w8"
-note = "system.toml keys: hand-kept, because no generator owns the [image.*] schema yet (configuration-surface lists Kconfig symbols). W8 moved the key tables of guide/build/configure-an-image and build/roles here; W11 generates it from the CLI's schema and folds reference/nros-bridge-toml in"
+note = "system.toml keys: hand-kept, because the CLI's schema (ImageBlock's serde struct) documents its keys for contributors, not users; scripts/check-system-toml-keys.py holds the [image.<id>] table's key set to the struct both ways (W11). W8 moved the key tables of guide/build/configure-an-image and build/roles here; W11 folded reference/nros-bridge-toml in as its nros-bridge.toml section"
 
 [[page]]
 old = "reference/nros-bridge-toml.md"
 book = "user"
-path = "reference/nros-bridge-toml.md"
-action = "keep"
-batch = "w4-reference"
-note = "W11 folds it into the system.toml keys reference"
+path = "reference/system-toml.md"
+action = "merge-into reference/system-toml.md"
+batch = "p537-w11"
+note = "merged by W11 into system.toml keys, as its nros-bridge.toml section"
 
 [[page]]
 old = "reference/environment-variables.md"

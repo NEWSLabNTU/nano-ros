@@ -227,7 +227,7 @@ deadline, put the fast side's node in a higher-priority tier; see
 
 ## See also
 
-- [`nros-bridge.toml` reference](../../reference/nros-bridge-toml.md): the
+- [`nros-bridge.toml` reference](../../reference/system-toml.md#nros-bridgetoml): the
   generated file, its keys and its errors.
 - [Configure an image](../build/configure-an-image.md#the-middlewares-own-file):
   one middleware file per domain, and per-image overrides.

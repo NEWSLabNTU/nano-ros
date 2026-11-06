@@ -79,7 +79,6 @@
 - [`nros` CLI](./reference/cli.md)
 - [Configuration Surface](./reference/configuration-surface.md)
 - [system.toml keys](./reference/system-toml.md)
-- [`nros-bridge.toml` Schema](./reference/nros-bridge-toml.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
