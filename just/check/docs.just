@@ -142,6 +142,16 @@ cli-reference:
 rclcpp-examples-table:
     @python3 scripts/gen-rclcpp-examples-table.py --check
 
+# phase-537 W12 (RFC-0124 Principle 9) — `migrating/retired-names` restates
+# two lists the CLI keeps: the retired and removed board words
+# (`nros-entry-lower`'s RETIRED_BOARD_KEYS / REMOVED_BOARD_KEYS) and the old
+# user-tier command spellings (`user::ALIASES`). Both tables are rendered
+# from that source between markers, so an alias or a retired board the CLI
+# adds cannot be missing from the page. Buildless: it reads the Rust source.
+[private]
+retired-names:
+    @python3 scripts/gen-retired-names.py --check
+
 # phase-537 W11 (RFC-0124 Principle 9) — `reference/system-toml` is hand-kept
 # (the CLI's schema documents its keys for contributors), so its `[image.<id>]`
 # key set is held to the schema instead: every key `ImageBlock` deserializes is

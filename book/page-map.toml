@@ -1198,6 +1198,8 @@ book = "user"
 path = "migrating/retired-names.md"
 action = "move"
 batch = "w6"
+generated = "scripts/gen-retired-names.py"
+note = "Retired names (W12): hand-kept, except its retired-board and old-command-spelling tables, rendered from the CLI's RETIRED_BOARD_KEYS, REMOVED_BOARD_KEYS and user::ALIASES; dev::ALIASES is left out (Principle 5)"
 
 [[page]]
 book = "internals"
