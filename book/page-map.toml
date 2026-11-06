@@ -643,7 +643,7 @@ path = "background/client-library.md"
 action = "move"
 batch = "p537-w1-background"
 was = ["concepts/client-library.md"]
-note = "The client library (W10)"
+note = "The client library (W10): rewritten around a real service-client excerpt. Dropped as false: the Promise Future impl and the one-session-per-executor rule (executors share a session in generated entries; open_multi holds several)"
 
 [[page]]
 old = "internals/safety.md"

@@ -69,7 +69,7 @@
 - [How a build becomes an image](./background/how-a-build-becomes-an-image.md)
 - [The execution model](./background/execution-model.md)
 - [Static memory and pools](./background/static-memory-and-pools.md)
-- [Client Library Model](./background/client-library.md)
+- [The client library](./background/client-library.md)
 - [Safety Protocol](./background/safety.md)
 - [Differences from Standard ROS 2](./background/differences-from-ros2.md)
 - [nano-ros vs micro-ROS](./background/vs-micro-ros.md)
