@@ -91,10 +91,10 @@ impl Component for Talker {
 nros::node!(Talker);
 ```
 
-Use the full [First Node — Rust](../../tutorial/add-a-second-node.md)
-walkthrough for generated messages and runnable commands, and
-[Growing your workspace](../../tutorial/grow-your-workspace.md#srclibrs) for each
-line of `lib.rs`.
+The Tutorial's [Add a second node](../../tutorial/add-a-second-node.md)
+walks through a node package, generated messages and runnable commands, and
+[its listener section](../../tutorial/add-a-second-node.md#read-the-listener)
+reads a node's `lib.rs` line by line.
 
 ## Run with zenoh
 

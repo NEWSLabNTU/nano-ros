@@ -42,7 +42,7 @@ session, and the same result on every seat.
 6. [Your own message](../tutorial/your-own-message.md).
 7. Services and actions: the `server`, `client` and action templates in
    [the C node chapter](../tutorial/add-a-second-node.md#the-node-package).
-8. [Parameters and launch files](../tutorial/grow-your-workspace.md).
+8. [Parameters and launch files](../tutorial/parameters-and-launch-files.md).
 9. The lab's board: its starter in the
    [list of starters](../starters/pick-your-board.md), such as
    [Nucleo-F767ZI](../starters/nucleo-f767zi.md), or its entry in
