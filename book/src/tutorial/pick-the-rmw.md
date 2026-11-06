@@ -24,7 +24,7 @@ Cyclone DDS requires neither.
 
 Current maturity: pub/sub and services interoperate with stock
 `rmw_cyclonedds_cpp`. Which status events and other features it wires is
-listed in the [Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md);
+listed in the [Per-RMW Feature Matrix](../reference/matrices/rmw-feature-matrix.md);
 the remaining known limitations are in
 [`docs/reference/cyclonedds-known-limitations.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-known-limitations.md).
 
@@ -70,7 +70,7 @@ loses all connectivity.
 
 ## What each backend supports
 
-The [Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md) is the
+The [Per-RMW Feature Matrix](../reference/matrices/rmw-feature-matrix.md) is the
 one capability table in this book. It is generated from the backend
 sources, so it is current: services, status events, graph introspection,
 zero-copy loans and the rest, per backend. In short, all three backends

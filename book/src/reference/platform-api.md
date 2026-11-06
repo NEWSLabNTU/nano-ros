@@ -235,7 +235,7 @@ The POSIX implementation is the canonical reference port.
 
 - Conceptual walkthrough: [Custom Platform](../extending/custom-platform.md).
 - Per-platform behaviour matrix:
-  [Platform Differences](./platform-differences.md).
+  [Platform Differences](matrices/platform-differences.md).
 
 ## Design background
 

@@ -104,8 +104,8 @@ and Error both ways, and Fatal to `log`'s Error one way.
 
 ## Common pitfalls
 
-For platform-specific gotchas (DMA buffer placement, ephemeral port conflicts, picolibc errno TLS, QEMU clock synchronization, Z_FEATURE_INTEREST mutex exhaustion, etc.), see [Platform Porting Pitfalls](../extending/porting-pitfalls.md).
+For platform-specific gotchas (DMA buffer placement, ephemeral port conflicts, picolibc errno TLS, QEMU clock synchronization, Z_FEATURE_INTEREST mutex exhaustion, etc.), see [Platform Porting Pitfalls](../../extending/porting-pitfalls.md).
 
-For the design rationale (why these trait groups, why both ms and µs, why split `PlatformNetworkPoll`), see [Platform API Design](../extending/platform-api-design.md).
+For the design rationale (why these trait groups, why both ms and µs, why split `PlatformNetworkPoll`), see [Platform API Design](../../extending/platform-api-design.md).
 
-For writing a new port, see [Custom Platform](../extending/custom-platform.md). For the canonical interface spec, see the [Doxygen reference](../api/platform-cffi/index.html).
+For writing a new port, see [Custom Platform](../../extending/custom-platform.md). For the canonical interface spec, see the [Doxygen reference](../api/platform-cffi/index.html).

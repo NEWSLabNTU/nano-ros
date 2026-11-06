@@ -30,7 +30,7 @@ event: it fails at `create_publisher` or `create_subscription` with
 
 - A node package whose subscription or publisher you want to watch.
 - Its backend. Not every backend generates every event; the
-  [Per-RMW feature matrix](../../reference/rmw-feature-matrix.md) lists
+  [Per-RMW feature matrix](../../reference/matrices/rmw-feature-matrix.md) lists
   which ones each backend implements.
 
 ## Steps
@@ -196,7 +196,7 @@ if sub.supports_event(EventKind::RequestedDeadlineMissed) {
 
 ## See also
 
-- [Per-RMW feature matrix](../../reference/rmw-feature-matrix.md): the
+- [Per-RMW feature matrix](../../reference/matrices/rmw-feature-matrix.md): the
   generated list of events and QoS policies per backend.
 - [Talk to ROS 2](../../tutorial/talk-to-ros2.md): QoS on the wire
   between nano-ros and ROS 2.

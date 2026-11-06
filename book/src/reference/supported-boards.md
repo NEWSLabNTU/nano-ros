@@ -78,5 +78,5 @@ To add a board, as a package of your own or contributed to nano-ros, see
   means.
 - [Embedded Starters](../guide/platforms/freertos.md) — per-RTOS
   walkthrough.
-- [Platform Differences](./platform-differences.md) — per-platform
+- [Platform Differences](matrices/platform-differences.md) — per-platform
   capability deltas.
