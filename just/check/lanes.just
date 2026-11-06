@@ -3819,6 +3819,7 @@ decoupling:
 # nros CLI; SKIPS cleanly when ROS isn't sourced so `just check` still runs
 # everywhere (CI sources ROS).
 [private]
+[group('needs:ros2')]
 dep-chain:
     #!/usr/bin/env bash
     set -e

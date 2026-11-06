@@ -34,6 +34,13 @@ if ! command -v nros_build_dir >/dev/null 2>&1; then
 fi
 
 _nros_check_skip_file() {
+    # phase-543 W3 — the nextest gate harness gives each test its OWN ledger
+    # and fails the test when anything lands in it: under the harness a skip
+    # is never a pass (scope decides what runs, not the host).
+    if [ -n "${NROS_GATE_SKIP_LEDGER:-}" ]; then
+        printf '%s' "$NROS_GATE_SKIP_LEDGER"
+        return 0
+    fi
     printf '%s/checks.skipped' "$(nros_build_dir "$NROS_KIND_CHECK_SKIPS")"
 }
 

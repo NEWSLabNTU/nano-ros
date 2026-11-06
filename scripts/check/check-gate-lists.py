@@ -340,31 +340,43 @@ def classify(just_text: str, exempt_text: str) -> tuple[dict[str, list[str]], li
     )
 
 
-def unit_gates() -> set[str]:
-    """`check` recipes carrying `[group('units')]` (phase-543 W2), read from
-    `just --dump`, the one view of a recipe's attributes."""
+def recipe_groups() -> dict[str, set[str]]:
+    """Every `check` recipe's `[group(...)]` values, read from `just --dump`,
+    the one view of a recipe's attributes (phase-543)."""
     out = subprocess.run(
         ["just", "--dump", "--dump-format", "json"],
         cwd=REPO, capture_output=True, text=True, check=True,
     ).stdout
     recipes = json.loads(out)["modules"]["check"]["recipes"]
     return {
-        name for name, r in recipes.items()
-        if {"group": "units"} in r.get("attributes", [])
+        name: {a["group"] for a in r.get("attributes", []) if isinstance(a, dict) and "group" in a}
+        for name, r in recipes.items()
     }
 
 
-def gate_units(name: str) -> list[str] | None:
-    """The units a `[group('units')]` gate lists, or None when it cannot list
-    them. `None` makes the gate ONE test, which then fails when run for the
-    same reason, so a broken lister is a red and never a dropped gate."""
+def needs_of(groups: set[str]) -> set[str]:
+    return {g.removeprefix("needs:") for g in groups if g.startswith("needs:")}
+
+
+def gate_units(name: str) -> list[tuple[str, set[str]]] | None:
+    """The units a `[group('units')]` gate lists, each with the capabilities
+    it needs beyond the gate's own (a lister line is `<unit>` or
+    `<unit>\tneeds:<cap>[,<cap>]`), or None when it cannot list them. `None`
+    makes the gate ONE test, which then fails when run for the same reason, so
+    a broken lister is a red and never a dropped gate."""
     env = dict(os.environ, NROS_GATE_LIST_UNITS="1")
     env.pop("NROS_GATE_UNIT", None)
     p = subprocess.run(
         ["just", f"check::{name}"], cwd=REPO, env=env,
         capture_output=True, text=True,
     )
-    units = [u for u in p.stdout.splitlines() if u.strip()]
+    units = []
+    for line in p.stdout.splitlines():
+        if not line.strip():
+            continue
+        unit, _, extra = line.partition("\t")
+        caps = set(extra.removeprefix("needs:").split(",")) - {""} if extra else set()
+        units.append((unit, caps))
     if p.returncode != 0 or not units:
         print(f"check-gate-lists: `{name}` could not list its units "
               f"(rc={p.returncode}); listed as one test", file=sys.stderr)
@@ -372,23 +384,62 @@ def gate_units(name: str) -> list[str] | None:
     return units
 
 
-def test_names(b: dict[str, list[str]]) -> list[str]:
-    """phase-543 — the nextest harness's listing, `<tier>::<just target>`, and
-    for a `[group('units')]` gate `<tier>::<just target>#<unit>`. The part
-    after the first `::` and before `#` is the target. Lane-exempt recipes are
-    listed as `exempt::` so ONE listing names every gate; the harness's default
-    filter keeps them out of a plain run."""
-    with_units = unit_gates()
-    lines = []
+LANES_FILE = REPO / ".config" / "gate-lanes.toml"
+
+
+def load_lane(name: str | None) -> dict | None:
+    """The lane's `{tiers, claims}`, or None for no lane: everything in scope."""
+    if not name:
+        return None
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib
+    lanes = tomllib.loads(LANES_FILE.read_text())["lane"]
+    if name not in lanes:
+        raise SystemExit(f"check-gate-lists: no lane `{name}` in {LANES_FILE.relative_to(REPO)}")
+    return {"tiers": set(lanes[name]["tiers"]), "claims": set(lanes[name]["claims"])}
+
+
+def scope(lane: dict | None, tier: str, needs: set[str]) -> str | None:
+    """None when in scope, else the reason it is not."""
+    if lane is None:
+        return None
+    if tier not in lane["tiers"]:
+        return f"tier `{tier}` is not in this lane"
+    missing = sorted(needs - lane["claims"])
+    if missing:
+        return "needs " + ", ".join(missing) + ", which this lane does not claim"
+    return None
+
+
+def test_names(b: dict[str, list[str]], lane_name: str | None = None) -> list[tuple[str, str | None]]:
+    """phase-543 — the nextest harness's listing: `(name, out-of-scope reason)`.
+
+    A name is `<tier>::<just target>`, or `<tier>::<just target>#<unit>` for
+    a `[group('units')]` gate; the part after the first `::` and before `#` is
+    the target. Lane-exempt recipes are listed as `exempt::`, so ONE listing
+    names every gate. With a lane, a test whose tier or `needs:` the lane does
+    not cover carries the reason, and the harness lists it as ignored. A gate
+    out of scope as a whole is not asked for its units: a lister may need what
+    the lane lacks."""
+    lane = load_lane(lane_name)
+    groups = recipe_groups()
+    out: list[tuple[str, str | None]] = []
     for tier in ("fast", "build", "exempt"):
         for n in b[tier]:
-            units = gate_units(n) if n in with_units else None
+            g = groups.get(n, set())
+            needs = needs_of(g)
+            why = scope(lane, tier, needs)
+            units = gate_units(n) if "units" in g and why is None else None
             if units is None:
-                lines.append(f"{tier}::check::{n}")
+                out.append((f"{tier}::check::{n}", why))
             else:
-                lines.extend(f"{tier}::check::{n}#{u}" for u in units)
-    return lines
-
+                out.extend(
+                    (f"{tier}::check::{n}#{u}", scope(lane, tier, needs | caps))
+                    for u, caps in units
+                )
+    return out
 
 def buckets() -> tuple[dict[str, list[str]], list[str]]:
     return classify(
@@ -627,8 +678,11 @@ def main(argv: list[str]) -> int:
             return 1
         lane = (argv[1] if len(argv) > 1 else "fast").removesuffix("-serial")
         if lane == "tests":
-            for line in test_names(b):
-                print(line)
+            # `--list tests [--lane <lane>]`: one line per test, `<name>` when
+            # in scope, `<name>\t<reason>` when not.
+            lane_name = argv[argv.index("--lane") + 1] if "--lane" in argv else None
+            for name, why in test_names(b, lane_name or None):
+                print(name if why is None else f"{name}\t{why}")
             return 0
         if lane == "all":
             names = sorted(b["fast"] + b["build"])

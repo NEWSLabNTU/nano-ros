@@ -26,6 +26,7 @@
 # 1832's derived tree, 1922's cross-root copies) was a negative control that
 # nothing ran.
 [private]
+[group('needs:build-tree')]
 artifact-identity-budget:
     @bash scripts/check-artifact-identity-budget.sh --self-test >/dev/null
     @bash scripts/check-artifact-identity-budget.sh
@@ -380,6 +381,7 @@ ament-census-sizing:
 # is fatal and names the component. The CLI is STUBBED, so this needs cmake and
 # nothing else -- no cargo build, which is what keeps it affordable on the fast
 # line beside its sibling above.
+[group('needs:cmake')]
 entity-inventory-knobs:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -401,6 +403,7 @@ entity-inventory-knobs:
 # emitter with no `CMAKE_CONFIGURE_DEPENDS` edge (issue 1018), and a broken
 # input that configures cleanly. The CLI is STUBBED, so this needs cmake and
 # nothing else.
+[group('needs:cmake')]
 sizing-descriptor-reader:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -418,6 +421,7 @@ sizing-descriptor-reader:
 # ever above the header's 256), and a pin smaller than that is refused. Each
 # case configures AND builds a one-TU stand-in that `static_assert`s the value
 # it was compiled with, so this asks the compiler, not the cache. cmake only.
+[group('needs:cmake')]
 cyclonedds-descriptor-cap:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -453,6 +457,7 @@ param-inventory-road-parity:
 # control (equal values configure). Same shape as its two siblings above: the
 # CLI is STUBBED (the ladder from `system.toml` to the define is unit-tested in
 # `codegen_system.rs`), so this needs cmake and nothing else.
+[group('needs:cmake')]
 system-domain-agreement:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -472,6 +477,7 @@ system-domain-agreement:
 # system.toml and every merged fragment that states the symbol; this gates the
 # refusal, its three-value message, the snippet/command-line provenance the
 # boot record carries, and the agreeing controls. cmake only.
+[group('needs:cmake')]
 entry-domain-agreement:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -627,6 +633,8 @@ message-bound-knobs:
 # an image sized at the placeholder knobs and only the second was the fixed point.
 # Configure-only (no compiler, no cargo); needs the in-tree CLI, so a pristine
 # worktree SKIPS through the ledger rather than reporting a green it never earned.
+[group('needs:cli')]
+[group('needs:cmake')]
 bounds-fragment-configure:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -711,6 +719,7 @@ pool-inventory:
 # are `include_str!`-bundled, so a stale binary would answer for other sources).
 # `--self-test` is its negative control and needs neither.
 [private]
+[group('needs:cli')]
 repr-memory-agreement:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -752,6 +761,7 @@ repr-memory-agreement:
 # source from `mirror-generated-header.sh --resolve` — the old globs named
 # `packages/core/`, matched nothing after the crates moved, and compared 0.
 [private]
+[group('needs:build-tree')]
 sizes-header-mirrors:
     @python3 scripts/check-sizes-header-mirrors.py
 
@@ -760,6 +770,7 @@ sizes-header-mirrors:
 # replacement, the retired `NANO_ROS_ROOT` keyword likewise, and the new names
 # alone configure silently (tests/cmake-retired-names-tests.sh).
 [private]
+[group('needs:cmake')]
 cmake-retired-names:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -775,6 +786,7 @@ cmake-retired-names:
 # platform, board) FOLLOWS the file on reconfigure, while a person's `-D` or a
 # project's own `set()` still wins (tests/cmake-leaf-cache-tests.sh).
 [private]
+[group('needs:cmake')]
 cmake-leaf-cache:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -793,6 +805,8 @@ cmake-leaf-cache:
 # for, and an AMENT message package gets a Find stub
 # (tests/cmake-ament-surface-tests.sh).
 [private]
+[group('needs:cli')]
+[group('needs:cmake')]
 cmake-ament-surface:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -820,6 +834,7 @@ cmake-ament-surface:
 # rebuild rather than `File exists (os error 17)`
 # (tests/cmake-shared-cargo-link-tests.sh).
 [private]
+[group('needs:cmake')]
 cmake-shared-cargo-link:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -836,6 +851,7 @@ cmake-shared-cargo-link:
 # naming both files, a guest project with no `system.toml` keeps the keyword
 # (tests/cmake-entry-agreement-tests.sh).
 [private]
+[group('needs:cmake')]
 cmake-entry-agreement:
     #!/usr/bin/env bash
     set -euo pipefail

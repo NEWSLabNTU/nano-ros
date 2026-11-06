@@ -322,3 +322,12 @@ nextest-gates *args:
     just _check-skip-reset >/dev/null
     exec "$nx" nextest run --manifest-path packages/testing/nros-gates/Cargo.toml \
         --test-threads "${NROS_GATE_JOBS:-$(nproc)}" "$@"
+
+# phase-543 W3 — every gate's scope is declared and every capability has a
+# home: a `needs:` names a capability `.config/gate-lanes.toml` lists, a
+# capability no lane claims is listed on every run (its gates run nowhere),
+# and a recipe that can skip declares a `needs:` (ratchet:
+# `.config/gate-needs-baseline.txt`). Buildless; self-tests on its normal path.
+[private]
+gate-needs:
+    @python3 scripts/check/check-gate-needs.py

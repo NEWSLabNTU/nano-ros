@@ -1,26 +1,30 @@
-//! Every gate as a nextest test (phase-543 W1).
+//! Every gate as a nextest test (phase-543).
 //!
 //! nextest drives a `harness = false` binary through three calls, which is the
 //! whole protocol this implements:
 //!
-//! * `--list --format terse` prints `<name>: test`, one line per gate;
-//! * `--list --format terse --ignored` prints the ignored subset (none yet: W3
-//!   makes a lane's out-of-scope gates that subset);
-//! * `<name> --exact --nocapture` runs one gate.
+//! * `--list --format terse` prints `<name>: test`, one line per test;
+//! * `--list --format terse --ignored` prints the ignored subset: the tests
+//!   out of the lane's scope (`NROS_GATE_LANE`, `.config/gate-lanes.toml`), so
+//!   nextest shows them as not run, by name, and never counts them as passed;
+//! * `<name> --exact --nocapture` runs one test.
 //!
 //! A test name is `<tier>::<just target>`, e.g. `fast::check::cli-old-spellings`,
 //! or `<tier>::<just target>#<unit>` for one part of a `[group('units')]` gate
 //! (`build::check::scaffold-builds#rust_project_talker`), which runs with
-//! `NROS_GATE_UNIT=<unit>`.
-//! The tier is the lane the gate belongs to today; the rest IS the `just`
-//! target, so running a test needs no second lookup and cannot disagree with
-//! the listing. The listing comes from `scripts/check/check-gate-lists.py
-//! --list tests`, the same derivation the old runner read (issue 1072), so the
-//! two cannot list different sets.
+//! `NROS_GATE_UNIT=<unit>`. The rest after the tier IS the `just` target, so
+//! running a test needs no second lookup and cannot disagree with the listing.
+//! The listing comes from `scripts/check/check-gate-lists.py --list tests`, the
+//! same derivation the old runner read (issue 1072).
 //!
-//! The gate runs as `just <target>` from the checkout root, with the
-//! environment nextest set for THIS process removed: several build gates run
-//! their own `cargo nextest`, and an inherited `NEXTEST_*` would steer it.
+//! A gate runs as `just <target>` from the checkout root, with the environment
+//! nextest set for THIS process removed: several build gates run their own
+//! `cargo nextest`, and an inherited `NEXTEST_*` would steer it.
+//!
+//! A gate under this harness never passes by skipping (phase-543 W3). It gets
+//! its own skip ledger (`NROS_GATE_SKIP_LEDGER`, written by
+//! `scripts/build/check-skip.sh`) and `NROS_CHECK_SKIP_STRICT=1`; anything in
+//! the ledger afterwards fails the test, even when the gate exited 0.
 
 use std::{
     ffi::OsString,
@@ -38,12 +42,19 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// `(test name, just target)` for every gate, from the one derivation.
-fn gates(root: &Path) -> Result<Vec<(String, String)>, String> {
-    let out = Command::new("python3")
-        .arg("scripts/check/check-gate-lists.py")
+/// Every test with the reason it is out of the lane's scope (`None` = in
+/// scope), from the one derivation. Unset `NROS_GATE_LANE` claims everything.
+fn gates(root: &Path) -> Result<Vec<(String, Option<String>)>, String> {
+    let mut cmd = Command::new("python3");
+    cmd.arg("scripts/check/check-gate-lists.py")
         .args(["--list", "tests"])
-        .current_dir(root)
+        .current_dir(root);
+    if let Ok(lane) = std::env::var("NROS_GATE_LANE")
+        && !lane.is_empty()
+    {
+        cmd.args(["--lane", &lane]);
+    }
+    let out = cmd
         .output()
         .map_err(|e| format!("cannot run python3: {e}"))?;
     if !out.status.success() {
@@ -56,8 +67,12 @@ fn gates(root: &Path) -> Result<Vec<(String, String)>, String> {
     let text = String::from_utf8(out.stdout).map_err(|e| e.to_string())?;
     let mut v = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        let (target, _) = target_of(line).ok_or_else(|| format!("malformed test name `{line}`"))?;
-        v.push((line.to_string(), target.to_string()));
+        let (name, why) = match line.split_once('\t') {
+            Some((n, w)) => (n, Some(w.to_string())),
+            None => (line, None),
+        };
+        target_of(name).ok_or_else(|| format!("malformed test name `{name}`"))?;
+        v.push((name.to_string(), why));
     }
     if v.is_empty() {
         // An empty list is a broken derivation, never "no gates": refuse
@@ -68,8 +83,7 @@ fn gates(root: &Path) -> Result<Vec<(String, String)>, String> {
 }
 
 /// `fast::check::x` -> (`check::x`, None); `build::check::x#u` -> (`check::x`,
-/// Some(`u`)). A unit (phase-543 W2) is one part of a `[group('units')]` gate,
-/// run alone through `NROS_GATE_UNIT`.
+/// Some(`u`)).
 fn target_of(name: &str) -> Option<(&str, Option<&str>)> {
     let (tier, rest) = name.split_once("::")?;
     let (target, unit) = match rest.split_once('#') {
@@ -86,11 +100,19 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn run(root: &Path, target: &str, unit: Option<&str>) -> ExitCode {
+fn run(root: &Path, name: &str, target: &str, unit: Option<&str>) -> ExitCode {
+    let ledger = std::env::temp_dir().join(format!(
+        "nros-gate-skips-{}-{}",
+        std::process::id(),
+        name.replace([':', '/', '#', '@'], "_")
+    ));
+    let _ = std::fs::remove_file(&ledger);
     let mut cmd = Command::new("just");
     cmd.arg(target)
         .current_dir(root)
-        .env_remove("NROS_GATE_LIST_UNITS");
+        .env_remove("NROS_GATE_LIST_UNITS")
+        .env("NROS_GATE_SKIP_LEDGER", &ledger)
+        .env("NROS_CHECK_SKIP_STRICT", "1");
     match unit {
         Some(u) => cmd.env("NROS_GATE_UNIT", u),
         None => cmd.env_remove("NROS_GATE_UNIT"),
@@ -102,7 +124,19 @@ fn run(root: &Path, target: &str, unit: Option<&str>) -> ExitCode {
     for k in inherited {
         cmd.env_remove(k);
     }
-    match cmd.status() {
+    let status = cmd.status();
+    let skipped = std::fs::read_to_string(&ledger).unwrap_or_default();
+    let _ = std::fs::remove_file(&ledger);
+    if !skipped.trim().is_empty() {
+        return fail(format_args!(
+            "[UNMET PRECONDITION] `{name}` skipped instead of running:\n{}\n  A skip is \
+             never a pass. Provision what it needs, or declare it on the recipe with \
+             `[group('needs:<cap>')]` so a lane that lacks it leaves the gate out of \
+             scope (.config/gate-lanes.toml).",
+            skipped.trim_end()
+        ));
+    }
+    match status {
         Ok(s) if s.success() => ExitCode::SUCCESS,
         Ok(s) => fail(format_args!("gate `{target}` failed: {s}")),
         Err(e) => fail(format_args!("cannot run `just {target}`: {e}")),
@@ -115,13 +149,13 @@ fn main() -> ExitCode {
     let root = repo_root();
 
     if has("--list") {
-        if has("--ignored") {
-            return ExitCode::SUCCESS; // W3: a lane's out-of-scope gates
-        }
+        let ignored = has("--ignored");
         return match gates(&root) {
             Ok(v) => {
-                for (name, _) in v {
-                    println!("{name}: test");
+                for (name, why) in v {
+                    if !ignored || why.is_some() {
+                        println!("{name}: test");
+                    }
                 }
                 ExitCode::SUCCESS
             }
@@ -133,14 +167,13 @@ fn main() -> ExitCode {
     let names: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
     match (has("--exact"), names.as_slice()) {
         (true, [name]) => match target_of(name) {
-            Some((target, unit)) => run(&root, target, unit),
+            Some((target, unit)) => run(&root, name, target, unit),
             None => fail(format_args!("`{name}` is not <tier>::<just target>")),
         },
         _ => {
             eprintln!(
-                "nros-gates: run under nextest (`cargo nextest run --manifest-path \
-                 packages/testing/nros-gates/Cargo.toml`), or one gate with \
-                 `<tier>::<target> --exact`"
+                "nros-gates: run under nextest (`just check nextest-gates`), or one gate \
+                 with `<tier>::<target> --exact`"
             );
             ExitCode::from(2)
         }

@@ -1,6 +1,6 @@
 # Phase 543 — Every gate is a nextest test
 
-**Status (2026-11-06). IN PROGRESS — W0 in PR #3207; W1 and W2 done in their pull request.** No RFC yet: the design below
+**Status (2026-11-06). IN PROGRESS — W0 merged (#3207); W1 and W2 in #3209; W3 first pass done.** No RFC yet: the design below
 is this phase's. If W1-W3 settle it, it moves into an RFC and this doc keeps
 the work items.
 
@@ -193,7 +193,7 @@ the `just` wrapper; `slice:` partitioning is 0.9.127, `group()` filtering
 
 ## Work items
 
-### W0 — Housekeeping — DONE (PR #3207)
+### W0 — Housekeeping — DONE (#3207)
 
 - cargo-nextest 0.9.143 -> 0.9.151 in `nros-sdk-index.toml` (both dists, sha256
   measured, floor glibc 2.27 measured on both arches unchanged). The repo's
@@ -261,11 +261,45 @@ today's lanes. Acceptance: `cargo nextest list -p nros-gates` names all 511 + 28
 - `scripts/build/gate-units.sh` stays until W5 moves the lanes: the old runner
   still runs these gates whole.
 
-### W3 — Scope
+### W3 — Scope — DONE (first pass)
 
-`.config/gate-lanes.toml`, `needs:` on each of the ~60 skip sites, the runtime
-skip removed, `NROS_CHECK_SKIP_STRICT=1` under the harness. Gate: no
-`nros_check_skip` call outside the strict backstop.
+Decided (maintainer, 2026-11-06): the fast lane claims what the ci-base image
+and CI's fast job provide; Zephyr and built-artifact gates get a self-hosted
+`queue` lane that claims them; a capability no runner provides (FSP) is listed
+as running nowhere, visibly.
+
+- `.config/gate-lanes.toml`: `[capabilities]` (14, each described) and four
+  lanes, `fast`, `build`, `queue`, `pristine`, each `{tiers, claims}`.
+- A gate declares `[group('needs:<cap>')]`; a unit adds its own
+  (`<unit>\tneeds:<cap>` from its lister). `template-copy-out` tags its five
+  Zephyr-road projects `needs:zephyr`, using `unit_part`, the road split its
+  CI parts already use.
+- `check-gate-lists.py --list tests --lane <lane>` marks each out-of-scope test
+  with its reason. The harness lists those as IGNORED under `NROS_GATE_LANE`,
+  so nextest shows them as not run. A gate out of scope as a whole is not
+  asked for its units, because a lister may need what the lane lacks.
+- Under the harness a gate never passes by skipping. It gets its own skip
+  ledger (`NROS_GATE_SKIP_LEDGER`, honoured by the one ledger writer in
+  `check-skip.sh`, which the Python helper also goes through) and
+  `NROS_CHECK_SKIP_STRICT=1`. A non-empty ledger fails the test with
+  `[UNMET PRECONDITION]`, even when the gate exited 0.
+- 27 gates declare `needs:`: the six that skipped on this host, the build-tree
+  pair, the two unit gates (`cli`), and 18 mapped from their skip reasons.
+- `check-gate-needs` (fast) enforces three things. A `needs:` names a listed
+  capability. A capability no lane claims is printed on every run (`fsp`:
+  `ivc-fsp` runs nowhere; `nuttx`: no gate needs it yet). A recipe that calls
+  `nros_check_skip` / `nros_check_unverified` declares a `needs:`. The 18
+  recipes whose skip reason is computed at run time (`$_missing`, `$out`) are a
+  ratchet baseline, `.config/gate-needs-baseline.txt`; an entry may leave it,
+  never join it.
+- Measured, `NROS_GATE_LANE=fast`, strict: 512 run, 512 pass, 67 not run, and
+  no runtime skip anywhere. Getting there needed two things this host's
+  `setup-worktree` does not provision but CI's fast job does: the `rosidl`
+  source and Zephyr's sparse `minimal/include`. The two provisioning lists
+  (`.config/worktree-provisioning.txt` and the hardcoded step in `gate.yml`)
+  have diverged, which is why a local fast run and CI's could disagree.
+  `third-party/nuttx/libc` was added to the file now (for `leaf-lockfiles`).
+  W5 makes the lane's claims the one provisioning list.
 
 ### W4 — Resources
 
@@ -273,6 +307,11 @@ The generated tool config (`writes:`, `cpu:`, `disk:`, `priority`), the fixed
 test groups, the disk preflight, the order-independence self-test.
 
 ### W5 — Wrapper and lanes
+
+- The lane's `claims` become the one provisioning list: `setup-worktree`, the
+  wrapper's preflight and CI's provisioning steps read them, so a claimed
+  capability is provisioned by construction, and a missing one is named before
+  any gate runs (issue 2306's fix belongs here too).
 
 One wrapper recipe per lane (names: open question 1), the pre/post steps moved from
 `run-gates-parallel.sh`; `pre-push` and `ci gate` call them.

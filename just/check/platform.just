@@ -260,6 +260,7 @@ zephyr-patch-set-workspace:
 # No west, no Zephyr SDK, no board -- which is the point, since nothing else
 # under `tests/zephyr/` can run without a provisioned workspace.
 [group("checks")]
+[group('needs:cc')]
 zephyr-thread-slots:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -295,6 +296,7 @@ zephyr-thread-slots:
 # gate table already says W7's native_sim half does not run in the fast tier.
 # The same trade `zephyr-thread-slots` above made, for the same reason.
 [group("checks")]
+[group('needs:cc')]
 zephyr-heap-exhaustion:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -529,6 +531,7 @@ posix-port-private-symbols:
 # LEDGERED skip rather than a silent pass (issue 1184's rule). The default stub
 # and `unix-mock` are covered elsewhere -- see the script's header.
 [group("checks")]
+[group('needs:fsp')]
 ivc-fsp:
     @bash scripts/check-ivc-fsp-compile.sh
 
@@ -1064,6 +1067,7 @@ cross-toolchain-provenance:
 # ownership guard for `check-tier-preconditions`; one implementation, two
 # callers.
 [private]
+[group('needs:zephyr')]
 zephyr-workspace-foreign-checkout:
     #!/usr/bin/env bash
     set -euo pipefail

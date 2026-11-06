@@ -307,6 +307,7 @@ rosdep-snapshot:
 # pinned rosdep snapshot, never from the index (`python3-lark-parser` ->
 # `python3-lark` is a rename we WERE hand-copying one edge of).
 [group("checks")]
+[group('needs:sources')]
 python-entry-provenance:
     @python3 scripts/check-python-entry-provenance.py
 
