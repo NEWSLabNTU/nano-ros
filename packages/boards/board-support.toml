@@ -200,7 +200,7 @@ matrix_platform = "NuttxArm"
 board_keys = ["nuttx", "qemu-armv7a-nuttx"]
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-armv7a-nuttx/rust/talker"
-book_run = "guide/platforms/nuttx.md#run-on-qemu-arm-virt"
+book_run = "starters/nuttx-arm.md#run-it-in-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -303,7 +303,7 @@ crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
 board_keys = ["nuttx-riscv", "rv-virt-nuttx"]
 nightly_token = "nuttx"
-book_run = "guide/platforms/nuttx.md#run-on-qemu-risc-v-rv-virt"
+book_run = "starters/nuttx-riscv.md#run-it-in-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits NuttxArm"
@@ -727,8 +727,9 @@ qemu_board = "qemu-armv7a-nuttx"
 
 [[probe]]
 track = "nuttx-arm-rust"
-chapter = "guide/platforms/nuttx.md"
-variant = "arm-rust"
+chapter = "starters/nuttx-arm.md"
+variant = ""
+lang = "rust"
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxArm"
 qemu_board = "qemu-armv7a-nuttx"
@@ -743,8 +744,9 @@ qemu_board = "rv-virt-nuttx"
 
 [[probe]]
 track = "nuttx-riscv-rust"
-chapter = "guide/platforms/nuttx.md"
-variant = "riscv-rust"
+chapter = "starters/nuttx-riscv.md"
+variant = ""
+lang = "rust"
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxRiscv"
 qemu_board = "rv-virt-nuttx"
