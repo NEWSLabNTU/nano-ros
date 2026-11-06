@@ -35,7 +35,7 @@
   "scripts/zephyr/aarch64-rust-patch.sh": 2,
   "scripts/zephyr/cargo-features-patch.sh": 4,
   "scripts/zephyr/cmake-variant-probe.sh": 1,
-  "scripts/zephyr/cortex-a9-rust-patch.sh": 3,
+  "scripts/zephyr/cortex-a9-rust-patch.sh": 2,
   "scripts/zephyr/cortex-r-rust-patch.sh": 2,
   "scripts/zephyr/cyclonedds-zephyr-log-flush-patch.sh": 1,
   "scripts/zephyr/cyclonedds-zephyr-mcjoin-patch.sh": 1,

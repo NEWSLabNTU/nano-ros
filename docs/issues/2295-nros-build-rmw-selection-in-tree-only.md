@@ -33,7 +33,7 @@ cmake road and fails on the `nros build` road.
   selection time. It was added by phase-439 W4 for issue 1214.
 
 Only `cmd/ws.rs` `run_rmw_dispatch` (the cmake seam) calls
-`resolve_rmw_in`. Every `nros build` and `nros sync` site calls
+`resolve_rmw_in`. Every `nros build` and `nros configure` site calls
 `resolve_rmw`:
 
 - `nros-cli-core/src/orchestration/facade.rs`: `derive()` (the selection
