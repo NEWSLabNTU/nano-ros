@@ -265,7 +265,7 @@ path = "tutorial/talk-to-ros2.md"
 action = "move"
 batch = "p537-w1-tutorial"
 was = ["communicate/ros2-interop.md"]
-note = "Tutorial 10, Talk to ROS 2: W5 adds the basics of guide/rmw/qos-status-events"
+note = "Tutorial 10, Talk to ROS 2 (W5): rewritten on the Tutorial project (its own message type both ways, the QoS the board grants), with the basics of guide/rmw/qos-status-events. Its claims that Humble ships no rmw_zenoh_cpp package and that rmw_zenoh_cpp needs a client-mode override were dropped"
 
 [[page]]
 book = "user"
