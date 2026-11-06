@@ -1299,7 +1299,12 @@ Options:
           Optional board package `nros-board.toml` supplying `[knobs]` deltas (the ladder's board rung). Explicit path; registry-name resolution is a follow-up
 
       --platforms-dir <PLATFORMS_DIR>
-          Platforms root (default: `$NROS_PLATFORMS_DIR`, else `<repo>/config` located by walking up from cwd)
+          Platforms root. Pins the search to this one directory.
+          
+          Default: `$NROS_PLATFORMS_DIR`, then the platform packages in the workspace, then the SDK's own platforms.
+
+      --workspace <WORKSPACE>
+          Workspace whose platform packages are searched (default: the current directory)
 
   -h, --help
           Print help (see a summary with '-h')

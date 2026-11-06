@@ -195,20 +195,7 @@ pub fn resolve(
     //
     // A caller's own value comes FIRST: an explicit `--platforms-dir` is an
     // override and must keep outranking discovery.
-    let mut roots: Vec<String> = env("NROS_PLATFORMS_DIR")
-        .map(|v| {
-            v.split(':')
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-    for dir in workspace_platform_roots(ws) {
-        let d = dir.display().to_string();
-        if !roots.contains(&d) {
-            roots.push(d);
-        }
-    }
+    let roots = platforms_dir_entries(env("NROS_PLATFORMS_DIR").as_deref(), ws);
     if !roots.is_empty() {
         out.insert("NROS_PLATFORMS_DIR".into(), roots.join(":"));
     }
@@ -972,6 +959,31 @@ fn board_of_cargo_leaf(ws: &Path, root: &Path) -> Result<Option<String>> {
                 .join(", ")
         )),
     }
+}
+
+/// The `$NROS_PLATFORMS_DIR` entries for a workspace: the caller's own value
+/// first (an explicit root outranks discovery), then every directory in `ws`
+/// that holds platform packages, each once.
+///
+/// Issue 2293 -- ONE derivation, read by the board facts a build is handed
+/// and by `nros config explain`. The second reader used to build its own path
+/// without the workspace, so it could not see a platform the build could.
+pub(crate) fn platforms_dir_entries(env_value: Option<&str>, ws: &Path) -> Vec<String> {
+    let mut roots: Vec<String> = env_value
+        .map(|v| {
+            v.split(':')
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    for dir in workspace_platform_roots(ws) {
+        let d = dir.display().to_string();
+        if !roots.contains(&d) {
+            roots.push(d);
+        }
+    }
+    roots
 }
 
 /// Directories in `ws` that CONTAIN platform packages.

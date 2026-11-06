@@ -71,10 +71,17 @@ pub struct ExplainArgs {
     #[arg(long)]
     pub board_toml: Option<PathBuf>,
 
-    /// Platforms root (default: `$NROS_PLATFORMS_DIR`, else
-    /// `<repo>/config` located by walking up from cwd).
+    /// Platforms root. Pins the search to this one directory.
+    ///
+    /// Default: `$NROS_PLATFORMS_DIR`, then the platform packages in the
+    /// workspace, then the SDK's own platforms.
     #[arg(long)]
     pub platforms_dir: Option<PathBuf>,
+
+    /// Workspace whose platform packages are searched (default: the current
+    /// directory).
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
 }
 
 /// phase-290 (RFC-0049) — the porter's debugging surface: every knob, its
@@ -89,15 +96,22 @@ fn explain(args: ExplainArgs) -> Result<()> {
 
     // phase-400 W1 — a search path. An explicit --platforms-dir still pins one
     // root, because that is what it is for; otherwise the path is
-    // $NROS_PLATFORMS_DIR (if set), then packages/platform, then config/.
+    // $NROS_PLATFORMS_DIR (if set), then the workspace's platform packages,
+    // then packages/platform, then config/. Issue 2293: the workspace rung is
+    // the one board facts hands a build, from the same function.
     let search: Vec<PathBuf> = match args.platforms_dir {
         Some(d) => vec![d],
         None => {
             let repo = find_repo_root()?;
-            PlatformsTree::default_search_path(
-                &repo,
+            let ws = match &args.workspace {
+                Some(w) => w.clone(),
+                None => std::env::current_dir().wrap_err("resolve cwd")?,
+            };
+            let entries = crate::cmd::board_facts::platforms_dir_entries(
                 std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
-            )
+                &ws,
+            );
+            PlatformsTree::default_search_path(&repo, Some(&entries.join(":")))
         }
     };
     let root = search
