@@ -1241,6 +1241,44 @@ scaffold_boards=("${SCAFFOLD_BOARDS[@]}")
 # It builds a host copy and a CMake cross copy, so it belongs to `no-zephyr`.
 self_test_unit=0
 { [ -n "$shard" ] || [ -n "$part" ]; } && self_test_unit=1
+# phase-543 W2 — the nextest harness runs this gate ONE UNIT PER TEST. A unit
+# is what a shard already owns: `@self-test`, a project label, or
+# `scaffold:<board>`. `NROS_GATE_LIST_UNITS=1` prints them, one per line, and
+# exits; `NROS_GATE_UNIT=<unit>` runs that unit alone, through the same
+# ownership filter a shard uses. An unknown unit is an error, never an empty
+# pass.
+if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ] || [ -n "${NROS_GATE_UNIT:-}" ]; then
+    all_units="$(
+        echo "@self-test"
+        for entry in "${buildable[@]}"; do
+            project_label "${entry%%$'\t'*}" "${entry#*$'\t'}"
+            echo
+        done
+        for b in "${scaffold_boards[@]}"; do echo "scaffold:$b"; done
+    )"
+    if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
+        printf '%s\n' "$all_units"
+        exit 0
+    fi
+    if ! nros_grep_q -Fx -- "$NROS_GATE_UNIT" <<<"$all_units"; then
+        echo "check-template-copy-out: no unit named \`$NROS_GATE_UNIT\` (NROS_GATE_LIST_UNITS=1 lists them)" >&2
+        exit 1
+    fi
+    mine="$NROS_GATE_UNIT"
+    owned() { [ "$1" = "$mine" ]; }
+    self_test_unit=0
+    owned "@self-test" && self_test_unit=1
+    kept=()
+    for entry in "${buildable[@]}"; do
+        owned "$(project_label "${entry%%$'\t'*}" "${entry#*$'\t'}")" && kept+=("$entry")
+    done
+    buildable=("${kept[@]}")
+    kept=()
+    for b in "${scaffold_boards[@]}"; do
+        owned "scaffold:$b" && kept+=("$b")
+    done
+    scaffold_boards=("${kept[@]}")
+fi
 if [ -n "$part" ]; then
     kept=()
     for entry in "${buildable[@]}"; do

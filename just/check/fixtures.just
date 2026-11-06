@@ -146,9 +146,16 @@ example-matrix:
 # BUILD lane, not the fast one: ~1 min for six variants warm, and it needs the
 # in-tree CLI. It builds everything it resolves, so `check-lane-contracts` holds.
 [private]
+[group('units')]
 scaffold-builds:
-    @bash scripts/check-scaffold-builds.sh --self-test
-    @bash scripts/check-scaffold-builds.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # phase-543 W2 — one unit per nextest test; `@self-test` is a unit.
+    if [ -n "${NROS_GATE_UNIT:-}" ] || [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
+        exec bash scripts/check-scaffold-builds.sh
+    fi
+    bash scripts/check-scaffold-builds.sh --self-test
+    bash scripts/check-scaffold-builds.sh
 
 # issue 2239 — the rule both build gates above and below use for their scratch
 # trees outside the checkout (`scripts/build/gate-scratch.sh`). A passing tree
@@ -188,6 +195,7 @@ workspace-fixture-units:
 # west workspace and `no-zephyr` as the three shards. The self-test is a
 # `no-zephyr` unit, so the `zephyr` part never runs it.
 [private]
+[group('units')]
 template-copy-out:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -199,6 +207,12 @@ template-copy-out:
     fi
     if [ "${#args[@]}" -gt 0 ]; then
         exec bash scripts/check-template-copy-out.sh "${args[@]}"
+    fi
+    # phase-543 W2 — under the nextest harness the script lists or runs ONE
+    # unit (`NROS_GATE_LIST_UNITS` / `NROS_GATE_UNIT`), and `@self-test` is
+    # one of them, so it is not run a second time here.
+    if [ -n "${NROS_GATE_UNIT:-}" ] || [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
+        exec bash scripts/check-template-copy-out.sh
     fi
     bash scripts/check-template-copy-out.sh --self-test
     bash scripts/check-template-copy-out.sh
