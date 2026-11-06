@@ -652,6 +652,17 @@ row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 5, Your own message: a stock ROS 2 message package (tutorial_msgs/Reading) written into the workspace, both nodes moved onto it, then nros run until the listener hears a reading. Chained after chapters 1-4."
 
 [[probe]]
+track = "tutorial-6"
+chapter = "tutorial/services-and-actions.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md"]
+awaits = ["a Rust image beside a ROS message package: with no `launch` key the image falls back to the workspace-wide language answer, which counts the message package's CMakeLists.txt as C, so configure refuses `no cmake packages in this workspace` (nros build `ws_non_rust` does not skip interface packages; found by phase-537 W5, 2026-11-06)"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 6, Services and actions: the server, client, action-server and action-client templates added to the bringup, one run until the in-image goal's result, then ros2 service call and ros2 action send_goal against the board. Chained after chapters 1-5."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""
