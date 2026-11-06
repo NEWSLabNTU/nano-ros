@@ -685,6 +685,18 @@ row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3, D6) — Tutorial 8, Tell the build what your system creates: the image measured with arm-none-eabi-size, the contract written beside the launch file ([census] on_missing = warn: no host image), measured again (static RAM falls), run, then one refusal (a parameter renamed in the contract) and the fix. Chained after chapters 1-7."
 
 [[probe]]
+track = "tutorial-9"
+chapter = "tutorial/another-target.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md"]
+awaits = ["a Rust image beside a ROS message package: with no `launch` key the image falls back to the workspace-wide language answer, which counts the message package's CMakeLists.txt as C, so configure refuses `no cmake packages in this workspace` (nros build `ws_non_rust` does not skip interface packages; found by phase-537 W5, 2026-11-06)"]
+also_rows = ["nros-board-mps2-an385-freertos@FreertosMps2"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 9, Same project, another target: nros setup mps2-an385-freertos, a second [image.freertos] row in the same bringup, the target names (nros run baremetal --dry-run --why), then nros run freertos to the in-image action result and the bare-metal image again. Chained after chapters 1-8."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""
