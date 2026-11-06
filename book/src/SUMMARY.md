@@ -85,7 +85,6 @@
 - [C++ API](./reference/cpp-api.md)
 - [rclcpp compatibility](./reference/rclcpp-compatibility.md)
 - [Platform API](./reference/platform-api.md)
-- [Canonical Platform C ABI](./reference/platform-c-abi.md)
 - [RMW API](./reference/rmw-api.md)
 - [Message Generation](./reference/message-generation.md)
 - [What `nros build` Produces](./reference/build-outputs.md)

@@ -53,7 +53,7 @@ no new public API. Unblocks accurate embedded heap accounting and a
 genuinely single system-access layer.
 
 **Depends on:** RFC-0034 (this phase implements it), RFC-0006 (C-ABI
-canonical + platform free-symbol model), [platform-c-abi.md](../../../book/src/reference/platform-c-abi.md)
+canonical + platform free-symbol model), [platform-c-abi.md](../../../book/src/reference/platform-api.md)
 (symbol contract + drift gate). Touches the vendored zenoh-pico fork
 (`packages/rmw/zenoh/zpico-sys/zenoh-pico`) and `nros-zpico-build`.
 
@@ -451,7 +451,7 @@ link line.
 
 #### 230.1.5 — Init-order contract
 Ensure each port initializes its pool before first alloc; document the
-contract in [platform-c-abi.md](../../../book/src/reference/platform-c-abi.md)
+contract in [platform-c-abi.md](../../../book/src/reference/platform-api.md)
 (board/runtime platform-init → transport/alloc). Verify on
 ThreadX/FreeRTOS QEMU + Zephyr native_sim.
 

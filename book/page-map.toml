@@ -755,16 +755,16 @@ book = "user"
 path = "reference/platform-api.md"
 action = "keep"
 batch = "w4-reference"
-note = "Platform API and C ABI (W11): reference/platform-c-abi merges into it"
+note = "Platform API and C ABI (W11): reference/platform-c-abi merged in"
 
 [[page]]
 old = "internals/platform-c-abi.md"
 book = "user"
-path = "reference/platform-c-abi.md"
-action = "move"
-batch = "p537-w1-reference"
-was = ["extending/platform-c-abi.md"]
-note = "W11 merges it into reference/platform-api"
+path = "reference/platform-api.md"
+action = "merge-into reference/platform-api.md"
+batch = "p537-w11"
+was = ["extending/platform-c-abi.md", "reference/platform-c-abi.md"]
+note = "merged by W11 into Platform API and C ABI. Its hand-typed symbol counts (59 + 29 + 8) and its Status and architecture history were cut: the headers own the counts"
 
 [[page]]
 old = "reference/rmw-api.md"
