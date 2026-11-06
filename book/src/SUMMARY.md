@@ -20,6 +20,7 @@
 - [Linux host](./starters/linux-host.md)
 - [Zephyr native_sim](./starters/zephyr-native-sim.md)
 - [ThreadX Linux simulator](./starters/threadx-linux.md)
+- [FreeRTOS POSIX](./starters/freertos-posix.md)
 
 # Tutorial
 
