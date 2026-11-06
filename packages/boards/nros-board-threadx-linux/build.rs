@@ -15,7 +15,7 @@
 //!     this board's staticlib so any TU (notably the board's
 //!     `startup.c`) that pulls the header resolves it at link time.
 //!     Same values as `src/config.rs`'s `Config::default()`: the
-//!     resolved `[board.net]` and `THREADX_LINUX_DEFAULT_LOCATOR`
+//!     resolved `[board.net]` and its `board_net::crate_locator`
 //!     (issue 1793).
 //!
 //! The ThreadX and NetX Duo trees are LOCATED (`nros_build_paths::locate`,
@@ -206,7 +206,7 @@ fn env_path_or(name: &str, default: PathBuf) -> PathBuf {
 /// `nros_app_config_t` storage path on threadx-linux).
 ///
 /// The `.network` block is the board's resolved `[board.net]` and the
-/// locator is `THREADX_LINUX_DEFAULT_LOCATOR`, the same two values
+/// locator is `board_net::crate_locator`, the same two values
 /// `src/config.rs`'s `Config::default()` reads, so the Rust and C roads
 /// on this board fall back to one router (issue 1793; the C copy said
 /// `tcp/127.0.0.1:7555` while Rust said `tcp/192.0.3.1:7447`). Scheduling
@@ -227,7 +227,7 @@ fn emit_app_config_def(net: &nros_board_common::board_net::ResolvedNet) -> PathB
  *
  * The `.network` block is the board's resolved `[board.net]` (phase-484
  * W4b) — the same value `Config::default()` reads, and so is the locator
- * (`THREADX_LINUX_DEFAULT_LOCATOR`, issue 1793). Do NOT edit by hand.
+ * (`board_net::default_locator`, issue 1793). Do NOT edit by hand.
  */
 
 #include <stdint.h>
@@ -247,7 +247,7 @@ const nros_app_config_t NROS_APP_CONFIG = {{
 }};
 "#,
         network = net.c_network_initializer(),
-        locator = nros_board_common::threadx_config::THREADX_LINUX_DEFAULT_LOCATOR,
+        locator = nros_board_common::board_net::crate_locator(*net),
     );
 
     fs::write(&dst, body).expect("failed to write nros_app_config_def.c into OUT_DIR");

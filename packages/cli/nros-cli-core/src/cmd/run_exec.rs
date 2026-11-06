@@ -381,6 +381,42 @@ fn xrce_agent(args: &[String], nano_ros_root: Option<&Path>) -> Result<Command, 
     Ok(cmd)
 }
 
+/// Refuse to start a router on a TCP port something already accepts on.
+///
+/// `rmw_zenohd` cannot bind a taken port and exits 1 within 0.1 s ("Address
+/// already in use"), which `nros run` reported only as "the router exited
+/// (code 1)". The usual holder is a router the reader started by hand, so the
+/// refusal names the two ways on: use that router, or start none.
+fn refuse_taken_listen_ports(endpoints: &[String]) -> Result<(), String> {
+    for ep in endpoints {
+        let Some((proto, host, port)) = split_locator(ep) else {
+            continue;
+        };
+        if proto != "tcp" {
+            continue;
+        }
+        let probe = if host == "0.0.0.0" {
+            "127.0.0.1".to_string()
+        } else {
+            host
+        };
+        let Ok(ip) = probe.parse::<IpAddr>() else {
+            continue;
+        };
+        if TcpStream::connect_timeout(&SocketAddr::new(ip, port), Duration::from_millis(200))
+            .is_ok()
+        {
+            return Err(format!(
+                "something already listens on tcp/{probe}:{port} (a router you started, or \
+                 another run's), so the router `nros run` starts there would exit at once. \
+                 Use that one with `--router tcp/{probe}:{port}`, or start none with \
+                 `--router none`"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn wait_for_tcp(port: u16, within: Duration) -> bool {
     let deadline = Instant::now() + within;
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -902,6 +938,9 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
             }
         }
         HostSide::ZenohListen(endpoint) => {
+            if let Err(e) = refuse_taken_listen_ports(&router_listen_endpoints(endpoint)) {
+                return fail(exit::RUNNER_FAILED, &e);
+            }
             let cmd = match zenoh_router(endpoint) {
                 Ok(c) => c,
                 Err(e) => return fail(exit::RUNNER_FAILED, &e),
@@ -1053,6 +1092,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                 "nros {}: starting the zenoh router on {ep}",
                 verb_word(plan.verb)
             );
+            refuse_taken_listen_ports(&router_listen_endpoints(&ep))?;
             ("router", zenoh_router(&ep)?)
         } else {
             let baud = options
@@ -1235,6 +1275,26 @@ mod tests {
             router_listen_endpoints("tcp/127.0.0.1:10500"),
             vec!["tcp/127.0.0.1:10500".to_string()]
         );
+    }
+
+    /// A router started on a taken port would exit 1 at once; the refusal
+    /// names the port and both ways on before anything starts. A serial
+    /// link's extra `tcp/127.0.0.1:7447` endpoint is asked the same way.
+    #[test]
+    fn a_taken_router_port_is_refused_with_the_remedy() {
+        let held = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = held.local_addr().unwrap().port();
+        let e = refuse_taken_listen_ports(&[format!("tcp/127.0.0.1:{port}")]).unwrap_err();
+        assert!(e.contains(&format!("--router tcp/127.0.0.1:{port}")), "{e}");
+        assert!(e.contains("--router none"), "{e}");
+        let e = refuse_taken_listen_ports(&[
+            "serial//dev/pts/9#baudrate=115200".to_string(),
+            format!("tcp/0.0.0.0:{port}"),
+        ])
+        .unwrap_err();
+        assert!(e.contains(&format!("tcp/127.0.0.1:{port}")), "{e}");
+        drop(held);
+        assert!(refuse_taken_listen_ports(&[format!("tcp/127.0.0.1:{port}")]).is_ok());
     }
 
     #[test]

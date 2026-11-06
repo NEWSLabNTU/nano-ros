@@ -189,7 +189,11 @@ endif()
 # road anyway (codegen), so a missing one is a configure error, not a fallback
 # literal that would be a fourth copy.
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardNet.cmake")
-nros_board_net_c(threadx-linux _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}")
+# The locator is asked the same way (`board_net::default_locator`): the
+# fallback the crate's `Config::default()` and its build-script emitter read,
+# so the cmake and cargo roads of this board dial one router (issue 1793).
+nros_board_net_c(threadx-linux _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}"
+    LOCATOR_VAR _nros_board_locator)
 set(_NROS_APP_CONFIG_DEF_C
     "${CMAKE_CURRENT_BINARY_DIR}/nros_app_config_def.c")
 file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
@@ -205,7 +209,7 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 "\n"
 "const nros_app_config_t NROS_APP_CONFIG = {\n"
 "    .transport = {\n"
-"        .locator = \"tcp/127.0.0.1:7447\",\n"
+"        .locator = \"${_nros_board_locator}\",\n"
 "        .domain_id = 0,\n"
 "    },\n"
 "    .network = ${_nros_board_net_c},\n"

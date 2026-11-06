@@ -14,7 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::platform_config::BoardKnobsFile;
+use crate::platform_config::{BoardKnobsFile, StackOwner};
 
 /// The resolved identity: the board's `[board.net]` over the platform default.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +48,17 @@ impl ResolvedNet {
             gateway: [10, 0, 2, 2],
             mac: Self::platform_default().mac,
         }
+    }
+
+    /// `tcp/<gateway>:7447`: the router default of a board that leaves it to
+    /// its network ([`default_locator`]).
+    #[must_use]
+    pub fn gateway_locator(&self) -> String {
+        let g = self.gateway;
+        format!(
+            "tcp/{}.{}.{}.{}:{DEFAULT_ROUTER_PORT}",
+            g[0], g[1], g[2], g[3]
+        )
     }
 
     /// The prefix length of [`Self::netmask`].
@@ -110,6 +121,93 @@ pub fn resolve(
         Some(_) => ResolvedNet::qemu_network(),
         None => fallback,
     })
+}
+
+/// The port a board-derived router default dials: the one a stock
+/// `rmw_zenohd` listens on.
+pub const DEFAULT_ROUTER_PORT: u16 = 7447;
+
+/// The router an image on this board dials when nothing states one: no
+/// `locator` in its `system.toml`, no `NROS_ENTRY_LOCATOR`, no `$NROS_LOCATOR`.
+///
+/// A locator is the image's selection (RFC-0103 D1); this is only its
+/// fallback, and it is DERIVED from the board's network facts rather than
+/// stated by the board (RFC-0109, which absorbed RFC-0103 D10):
+///
+/// - `stack = "host"`: `tcp/127.0.0.1:7447`. The image is a host process
+///   (linux, freertos-posix, threadx-linux's NSOS), and loopback is the one
+///   address it reaches without root-provisioned interfaces (issue 1793).
+/// - `stack = "os"` with no `kernel_config` (every Zephyr board): `None`. The
+///   RTOS's own configuration owns the default (`CONFIG_NROS_ZENOH_LOCATOR`,
+///   which a board package's `prj.conf` may set), and nothing here reads it.
+/// - otherwise: `tcp/<the board's resolved gateway>:7447` ([`resolve`]): QEMU's
+///   `10.0.2.2` for `network = "qemu"`, the kernel's `CONFIG_NETINIT_DRIPADDR`
+///   for a NuttX board, the platform default for a board stating neither.
+///
+/// ONE rule, read by the board crates (`BOARD_NET_LOCATOR` and their C
+/// `NROS_APP_CONFIG` emitters), by `nros dev board net` (so the cmake entry-locator
+/// rung and the ThreadX cmake board modules) and by `nros run`'s planner, whose
+/// `link` it is when the image states none.
+///
+/// # Errors
+///
+/// The descriptor's `[board.net]` is malformed.
+pub fn default_locator(descriptor: &Path, board: Option<&str>) -> Result<Option<String>, String> {
+    if !descriptor.is_file() {
+        return Ok(None);
+    }
+    let net = resolve(descriptor, board, ResolvedNet::platform_default())?;
+    default_locator_over(descriptor, board, &net)
+}
+
+/// [`default_locator`] over a network already resolved for the image, whose
+/// own interface may state a gateway of its own (`--image-net`, RFC-0103
+/// D10f): the gateway form reads `net`, not the board's bare default.
+///
+/// # Errors
+///
+/// As [`default_locator`].
+pub fn default_locator_over(
+    descriptor: &Path,
+    board: Option<&str>,
+    net: &ResolvedNet,
+) -> Result<Option<String>, String> {
+    if !descriptor.is_file() {
+        return Ok(None);
+    }
+    let file = BoardKnobsFile::load_for_board(descriptor, board).map_err(|e| e.to_string())?;
+    if let Some(n) = file.board_net(board)? {
+        match n.stack_owner()? {
+            Some(StackOwner::Host) => {
+                return Ok(Some(format!("tcp/127.0.0.1:{DEFAULT_ROUTER_PORT}")));
+            }
+            Some(StackOwner::Os) if n.kernel_config.is_none() => return Ok(None),
+            _ => {}
+        }
+    }
+    Ok(Some(net.gateway_locator()))
+}
+
+/// [`default_locator_over`] `net`, for a board crate's build script: this
+/// crate's own descriptor (`$CARGO_MANIFEST_DIR/nros-board.toml`) and the board
+/// the build names (`NROS_BOARD`), as [`emit_for_crate`] reads them. The
+/// crate's C `NROS_APP_CONFIG` emitter bakes it beside `net`'s `.network`
+/// block, so the Rust and C roads of one board fall back to one router.
+/// Panics with the descriptor's error: the right failure in a build script.
+#[must_use]
+pub fn crate_locator(net: ResolvedNet) -> String {
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
+    let board = std::env::var("NROS_BOARD").ok().filter(|b| !b.is_empty());
+    locator_for(&manifest.join("nros-board.toml"), board.as_deref(), net)
+}
+
+/// [`default_locator_over`], or `net`'s gateway form where the board leaves
+/// the default to its RTOS: a board crate's `BOARD_NET_LOCATOR` always has a
+/// value.
+fn locator_for(descriptor: &Path, board: Option<&str>, net: ResolvedNet) -> String {
+    default_locator_over(descriptor, board, &net)
+        .unwrap_or_else(|e| panic!("{}: {e}", descriptor.display()))
+        .unwrap_or_else(|| net.gateway_locator())
 }
 
 impl ResolvedNet {
@@ -183,7 +281,12 @@ fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
     let board = std::env::var("NROS_BOARD").ok().filter(|b| !b.is_empty());
     let net = resolve(descriptor, board.as_deref(), fallback)
         .unwrap_or_else(|e| panic!("{}: {e}", descriptor.display()));
-    write_consts(&format!("{} [board.net]", descriptor.display()), net);
+    let locator = locator_for(descriptor, board.as_deref(), net);
+    write_consts(
+        &format!("{} [board.net]", descriptor.display()),
+        net,
+        &locator,
+    );
     net
 }
 
@@ -228,11 +331,11 @@ pub fn emit_from_kconfig(config: &Path, fallback: ResolvedNet) -> ResolvedNet {
     let text = std::fs::read_to_string(config)
         .unwrap_or_else(|e| panic!("read {}: {e}", config.display()));
     let net = from_kconfig(&text, fallback).unwrap_or_else(|e| panic!("{}: {e}", config.display()));
-    write_consts(&config.display().to_string(), net);
+    write_consts(&config.display().to_string(), net, &net.gateway_locator());
     net
 }
 
-fn write_consts(source: &str, net: ResolvedNet) {
+fn write_consts(source: &str, net: ResolvedNet, locator: &str) {
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("nros_board_net.rs");
     let body = format!(
         "// Generated from {} (phase-484 W4b, RFC-0109 D2). Do not edit.\n\
@@ -244,9 +347,9 @@ fn write_consts(source: &str, net: ResolvedNet) {
          pub(crate) const BOARD_NET_GATEWAY: [u8; 4] = {:?};\n\
          #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_MAC: [u8; 6] = {:?};\n\
-         /// The board's router default: its gateway (RFC-0103 D10).\n\
+         /// The board's router default (`board_net::default_locator`).\n\
          #[allow(dead_code)]\n\
-         pub(crate) const BOARD_NET_LOCATOR: &str = \"tcp/{}.{}.{}.{}:7447\";\n\
+         pub(crate) const BOARD_NET_LOCATOR: &str = {:?};\n\
          /// `tcp/<the board's gateway>:<port>` for a board whose router\n\
          /// listens elsewhere (`board_net_locator!(\"7448\")`).\n\
          #[allow(unused_macros)]\n\
@@ -256,10 +359,7 @@ fn write_consts(source: &str, net: ResolvedNet) {
         net.netmask,
         net.gateway,
         net.mac,
-        net.gateway[0],
-        net.gateway[1],
-        net.gateway[2],
-        net.gateway[3],
+        locator,
         net.gateway[0],
         net.gateway[1],
         net.gateway[2],
@@ -271,6 +371,76 @@ fn write_consts(source: &str, net: ResolvedNet) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The router default each in-tree board's images fall back to, through
+    /// the one rule: loopback for a host stack, the gateway otherwise, and
+    /// nothing where the RTOS's own configuration owns it (Zephyr).
+    #[test]
+    fn each_board_derives_its_router_default() {
+        let boards = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        for (pkg, board, want) in [
+            (
+                "nros-board-threadx-linux",
+                "threadx-linux",
+                Some("tcp/127.0.0.1:7447"),
+            ),
+            (
+                "nros-board-freertos-posix",
+                "freertos-posix",
+                Some("tcp/127.0.0.1:7447"),
+            ),
+            (
+                "nros-board-threadx-qemu-riscv64",
+                "rv-virt-threadx",
+                Some("tcp/10.0.2.2:7447"),
+            ),
+            (
+                "nros-board-mps2-an385-freertos",
+                "mps2-an385-freertos",
+                Some("tcp/10.0.2.2:7447"),
+            ),
+            (
+                "nros-board-mps3-an536-freertos",
+                "mps3-an536-freertos",
+                Some("tcp/10.0.2.2:7447"),
+            ),
+            (
+                "nros-board-mps2-an385",
+                "mps2-an385-baremetal",
+                Some("tcp/10.0.2.2:7447"),
+            ),
+            (
+                "nros-board-nuttx-qemu",
+                "qemu-armv7a-nuttx",
+                Some("tcp/10.0.2.2:7447"),
+            ),
+            (
+                "nros-board-nuttx-qemu",
+                "rv-virt-nuttx",
+                Some("tcp/10.0.2.2:7447"),
+            ),
+            (
+                "nros-board-s32z270-freertos",
+                "s32z270-freertos",
+                Some("tcp/192.0.3.1:7447"),
+            ),
+            ("zephyr", "zephyr", None),
+            ("nros-board-mps2-an385-zephyr", "mps2-an385-zephyr", None),
+        ] {
+            let d = boards.join(pkg).join("nros-board.toml");
+            assert_eq!(
+                default_locator(&d, Some(board)).unwrap().as_deref(),
+                want,
+                "{board} ({})",
+                d.display()
+            );
+        }
+        // No descriptor: nothing to derive from.
+        assert_eq!(
+            default_locator(Path::new("/nonexistent"), None).unwrap(),
+            None
+        );
+    }
 
     /// RFC-0109 D2 — an `"os"`-stack board reads its kernel config's address:
     /// each of the three keys, an unset one keeping the fallback, and a value

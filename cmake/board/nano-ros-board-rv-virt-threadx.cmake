@@ -386,7 +386,10 @@ endif()
 # it, and `nros_board_net_c` applies it over the board default. This file
 # carries no copy of the subnet, gateway, address or MAC.
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBoardNet.cmake")
-nros_board_net_c(rv-virt-threadx _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}")
+# The locator is asked the same way (`board_net::default_locator`), so the
+# cmake and cargo roads of this board dial one router (issue 1793).
+nros_board_net_c(rv-virt-threadx _nros_board_net_c ROOT "${_NROS_BOARD_ROOT}"
+    LOCATOR_VAR _nros_board_locator)
 
 set(_NROS_APP_CONFIG_DEF_C
     "${CMAKE_CURRENT_BINARY_DIR}/nros_app_config_def.c")
@@ -406,7 +409,7 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 "\n"
 "const nros_app_config_t NROS_APP_CONFIG = {\n"
 "    .transport = {\n"
-"        .locator   = \"tcp/10.0.2.2:7447\",\n"
+"        .locator   = \"${_nros_board_locator}\",\n"
 "        .domain_id = 0,\n"
 "    },\n"
 "    .network = ${_nros_board_net_c},\n"

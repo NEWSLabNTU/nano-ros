@@ -626,6 +626,31 @@ against the alternative named:
   38 `system.toml` files D10g migrated, NuttX's `[board.net]`).
 - The spelling of handing a user-built Embassy stack to a Rust entry (D5).
 
+## Implementation notes
+
+- **The router fallback is DERIVED, by one rule (2026-11-06, phase-531 W4
+  follow-up).** This implements RFC-0103 D10's "derived router on `qemu`",
+  which this RFC kept as a fallback and did not turn into a board fact. A
+  locator stays the image's selection (D6). An image that states none falls
+  back to `nros_board_common::board_net::default_locator`:
+  - `stack = "host"`: `tcp/127.0.0.1:7447`.
+  - `stack = "os"` with no `kernel_config` (Zephyr): nothing. The RTOS's
+    Kconfig (`CONFIG_NROS_ZENOH_LOCATOR`) owns it.
+  - Otherwise: `tcp/<the board's resolved gateway>:7447`.
+  
+  Four readers use the same function: the board crates' `BOARD_NET_LOCATOR`
+  and their C `NROS_APP_CONFIG` emitters; `nros dev board net --format cmake`
+  (`NROS_BOARD_NET_DEFAULT_LOCATOR`), which feeds both the cmake entry-locator
+  rung and the two ThreadX cmake board modules; and `nros run`'s planner. In
+  the planner it is the plan's `link` on the `board` rung, below the image's
+  `locator`, so `--why` names which rung supplied it. This retired issue
+  1793's three leftover copies: ~~`THREADX_LINUX_DEFAULT_LOCATOR`~~,
+  ~~`THREADX_QEMU_RISCV64_DEFAULT_LOCATOR`~~, and the literals in the two ThreadX
+  cmake board modules. 7447 (`DEFAULT_ROUTER_PORT`) is the one constant. A
+  host target takes no board default in the planner, because
+  `run_exec::decorate` already gives it the zenoh default at run time and
+  honours `$NROS_LOCATOR` the way the host image does.
+
 ## Not decided here
 
 - Run-time rewiring (a micro-ROS-style API, a parameter store): out of scope.

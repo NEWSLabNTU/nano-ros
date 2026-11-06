@@ -433,6 +433,18 @@ fn net(args: NetArgs) -> Result<()> {
                     .collect::<Vec<_>>()
                     .join(".")
             );
+            // The router an image on this board dials when nothing states one:
+            // the one rule (`board_net::default_locator_over`) the board crates
+            // and `nros run` read too, over the image's network. "" where the
+            // RTOS's own configuration owns it (Zephyr).
+            let desc = dir.join("nros-board.toml");
+            let locator =
+                nros_board_common::board_net::default_locator_over(&desc, Some(&args.name), &n)
+                    .map_err(|e| eyre!("{}: {e}", desc.display()))?;
+            println!(
+                "set(NROS_BOARD_NET_DEFAULT_LOCATOR \"{}\")",
+                locator.unwrap_or_default()
+            );
         }
         "toml" => {
             let dotted = |o: &[u8]| o.iter().map(u8::to_string).collect::<Vec<_>>().join(".");

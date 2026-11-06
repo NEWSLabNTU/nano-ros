@@ -73,8 +73,13 @@
 # `nano_ros_add_executable` example). Its board rung comes FIRST: threadx-linux
 # is a host simulation whose nsos `connect()` reaches the host loopback with no
 # veth bridge and no root.
+# Reached only when the CLI cannot answer (`nros_board_net_c(... OPTIONAL)`
+# returned nothing): with a CLI, threadx-linux's descriptor says
+# `stack = "host"` and the board rung below derives this same loopback router.
+# A configure with no CLI cannot read a descriptor at all, so this literal is
+# what keeps a no-CLI threadx-linux build off the QEMU default.
 set(NROS_LOCATOR_ENTRY_THREADX_LINUX "tcp/127.0.0.1:7447"
-    CACHE INTERNAL "nano-ros: entry-lane locator default, threadx-linux host sim")
+    CACHE INTERNAL "nano-ros: entry-lane locator default, threadx-linux host sim, no CLI")
 # phase-484 W4b-2 (RFC-0103 D10) — a board that names its network has a
 # router default DERIVED from it: `tcp/<the board's resolved gateway>:<port>`.
 # This replaced the FreeRTOS literal `tcp/192.0.3.1:7447`, which was this
@@ -114,7 +119,9 @@ set(NROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
 #   configure dial different routers, so it outranks the configure-wide `-D`,
 #   and a `-D` that disagrees is reported, not silently dropped)
 #   > `NROS_ENTRY_LOCATOR` (the `-D` cache override every RTOS fixture row passes)
-#   > board threadx-linux > the board's own gateway (RFC-0103 D10)
+#   > the board's derived default (`nros dev board net`'s
+#     `NROS_BOARD_NET_DEFAULT_LOCATOR`: loopback for a host stack, else its
+#     gateway, RFC-0103 D10) > board threadx-linux with no CLI
 #   > the QEMU-slirp default.
 #
 # Precedence, node-register lane:
@@ -148,14 +155,13 @@ function(_nros_resolve_entry_locator lane platform board out_var)
             "NanoRosEntryLocator.cmake, not a bad locator value.")
     endif()
 
-    # The board's own gateway, when the board is named and has a descriptor.
+    # The board's own router default, when the board is named and has a
+    # descriptor: the CLI's `board_net::default_locator`, the one rule the
+    # board crates' `BOARD_NET_LOCATOR` and `nros run`'s planner also read
+    # (loopback for a `stack = "host"` board, else `tcp/<gateway>:7447`).
     set(_board_loc "")
-    if(NOT "${board}" STREQUAL "" AND NOT board STREQUAL "threadx-linux"
-       AND COMMAND nros_board_net_c)
-        nros_board_net_c("${board}" _unused_net GATEWAY_VAR _gw OPTIONAL)
-        if(_gw)
-            set(_board_loc "tcp/${_gw}:${NROS_LOCATOR_DEFAULT_PORT}")
-        endif()
+    if(NOT "${board}" STREQUAL "" AND COMMAND nros_board_net_c)
+        nros_board_net_c("${board}" _unused_net LOCATOR_VAR _board_loc OPTIONAL)
     endif()
 
     if(lane STREQUAL "entry")
@@ -169,10 +175,10 @@ function(_nros_resolve_entry_locator lane platform board out_var)
             endif()
         elseif(DEFINED NROS_ENTRY_LOCATOR)
             set(_loc "${NROS_ENTRY_LOCATOR}")
-        elseif(board STREQUAL "threadx-linux")
-            set(_loc "${NROS_LOCATOR_ENTRY_THREADX_LINUX}")
         elseif(_board_loc)
             set(_loc "${_board_loc}")
+        elseif(board STREQUAL "threadx-linux")
+            set(_loc "${NROS_LOCATOR_ENTRY_THREADX_LINUX}")
         else()
             set(_loc "${NROS_LOCATOR_ENTRY_DEFAULT}")
         endif()
