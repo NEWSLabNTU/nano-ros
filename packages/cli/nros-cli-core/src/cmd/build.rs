@@ -2286,6 +2286,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     // `-Dnano_ros_ROOT` still wins.
                     resolved_opt.push(crate::builder::nano_ros_root_arg(nr));
                 }
+                // Issue 2314 -- and the workspace a Rust entry's `nros::main!`
+                // indexes for its bringup. Without it the walk up from the
+                // generated entry stopped at that entry's own `[workspace]`
+                // table in any workspace with no `.colcon_workspace`.
+                resolved_opt.push(crate::builder::workspace_root_arg(&root));
                 if !west_opts.is_empty() || !cmake_extra.is_empty() || !resolved_opt.is_empty() {
                     // Everything after `--` is a cmake option for the app.
                     a.push("--".to_string());
