@@ -503,11 +503,49 @@ from before W6.
 
 **Status: in progress (2026-11-06).**
 
-- Issue 2298 fixed: a workspace image derives its payload classes and take
+- Issue 2298 fixed (PR #3208, merged 2026-11-06): a workspace image derives its payload classes and take
   buffer over its own message closure, with the leaf road's functions
   (`image_closure_bound_tables`, `payload_classes_over`, `take_buffer_over`).
   The rows equal the leaf builds of the same nodes; the issue records the
   measurement.
+- `nros dev migrate-bringup <dir> [--fixtures <manifest>] [--dry-run]`
+  (`cmd/migrate_bringup.rs`). Unit tests on a copy of each shape: Rust,
+  C, C++, Zephyr west (the Rust leaf with a nested node package, and the C
+  leaf whose `CMakeLists.txt` registers the component), a hand-written
+  `main`, a `main` that only names a panic policy, and fixture rows.
+  - The node package gets the code and manifest, with the selection-crate
+    dependency, the `[[bin]]` of a deleted `main` and the `[workspace]`
+    table removed and relative `path =` dependencies re-rooted. The bringup
+    gets `system.toml`, every file it names, `launch/`, `boards/`, the
+    contract and board-net files, and on Zephyr every Kconfig fragment.
+  - The crate takes its `package.xml` name and the `[[component]] class`
+    paths follow: the generated entry depends on a node package by that
+    name, so `linux/rust/talker` (`native-rs-talker` against
+    `native_talker`) failed `no matching package` until it did. Measured:
+    the migrated `linux/rust/talker` then built `native_talker_bringup:linux`
+    through the workspace road (trial only; the tree is unchanged here).
+  - A `main.rs` that only calls `nros::main!` is deleted; a `panic` argument
+    moves into `[image_defaults] panic`. Any other `main` is moved and
+    reported (RFC-0122 D10).
+  - A fixture row becomes a `[[workspace_fixture]]` row on the image that
+    builds its RMW, keeping `platform`, `lang` and `rmw`. A row carrying a
+    key a workspace row does not read (`features`, `cmake_defs`, `builder`,
+    `target`, the `west_*` keys) is left alone and reported.
+- `fixtures-manifest.py validate-workspaces` accepts a bringup with no
+  `launch/` and at least one `[[component]]` row: its launch file is
+  generated (RFC-0121 D3).
+- Run over a copy of all 23 W6 sites and `examples/fixtures.toml`. Every site
+  migrated, and 7 of its fixture rows were rewritten; the 7 validate. The
+  reports are the batches' work list:
+  - 14 sites have a hand-written `main` to turn into a component: every C
+    and C++ talker outside Zephyr (the baremetal pair through a Rust carrier
+    `main.rs` as well), and `custom-platform`
+    (RFC-0122 D10 keeps a manual entry there; how is a batch decision);
+  - the C/C++ leaves build xrce and cyclonedds through `-DNROS_RMW` and
+    declare one image, so those rows need an image per RMW;
+  - the rows carrying platform knobs (`cmake_defs`, `builder`, `target`,
+    `skip_probe`, the `west_*` keys) and the Rust talker's `link-tls`
+    feature row.
 
 ### W7 — Retirement
 
