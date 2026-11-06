@@ -1360,12 +1360,15 @@ mod tests {
         // `getting-started/`); ROWS names each by its file name.
         for path in [
             "tutorial/run-a-talker.md",
-            "guide/platforms/bare-metal.md",
-            "guide/platforms/freertos.md",
-            "guide/platforms/nuttx.md",
-            "guide/platforms/threadx.md",
-            "guide/platforms/zephyr.md",
+            // phase-537 W4: the boards' starters carry the runs their
+            // platform pages carried.
+            "starters/mps2-an385-bare-metal.md",
+            "starters/mps2-an385-freertos.md",
+            "starters/nuttx-arm.md",
+            "starters/nuttx-riscv.md",
+            "starters/threadx-riscv64.md",
             "starters/nucleo-f767zi.md",
+            "starters/rpi-pico-w.md",
         ] {
             let chapter = path.rsplit('/').next().unwrap();
             let text = std::fs::read_to_string(root.join("book/src").join(path))
@@ -1414,6 +1417,20 @@ mod tests {
                     .as_ref()
                     .and_then(|r| r.emulator_parts())
                     .is_some_and(|(k, _)| k == "renode");
+                // phase-537 W4 — a twin no runner package drives yet (Wokwi,
+                // issue 2230) has no printed run command to compare: `nros
+                // run` refuses its plan naming the issue, which run_plan's
+                // own tests assert.
+                let runnerless = d
+                    .run
+                    .as_ref()
+                    .and_then(|r| r.emulator_parts())
+                    .is_some_and(|(k, _)| {
+                        crate::cmd::run_plan::RUNNERLESS_EMULATORS.iter().any(|(e, _)| *e == k)
+                    });
+                if runs_verb && runnerless {
+                    continue;
+                }
                 if runs_verb && renode {
                     let p = plan(
                         board,

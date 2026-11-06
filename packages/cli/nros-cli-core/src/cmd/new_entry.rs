@@ -680,7 +680,8 @@ mod tests {
         assert!(root.join("zephyr/snippets/nros-nsos/snippet.yml").is_file());
     }
 
-    /// The Zephyr chapter's quick-start manifest names `zephyr-lang-rust` at a
+    /// The Zephyr native_sim starter's manifest (the Zephyr chapter's quick
+    /// start until phase-537 W4) names `zephyr-lang-rust` at a
     /// literal revision (a Rust entry builds only with it, phase-517 W17); it
     /// must be the revision nano-ros's own `west.yml` pins, or the book drifts
     /// off the supported (zephyr × zephyr-lang-rust) pair on the next bump.
@@ -696,7 +697,7 @@ mod tests {
             })
         };
         let west = std::fs::read_to_string(root.join("west.yml")).expect("west.yml");
-        let book = std::fs::read_to_string(root.join("book/src/guide/platforms/zephyr.md"))
+        let book = std::fs::read_to_string(root.join("book/src/starters/zephyr-native-sim.md"))
             .expect("chapter");
         let pinned = rev_after(&west).expect("west.yml pins zephyr-lang-rust");
         assert_eq!(rev_after(&book).as_deref(), Some(pinned.as_str()));
