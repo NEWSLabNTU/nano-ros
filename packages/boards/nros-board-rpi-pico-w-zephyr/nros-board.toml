@@ -1,22 +1,23 @@
 # Board descriptor for `rpi-pico-w-zephyr` (phase-524 W3, RFC-0115 D3).
 #
 # Raspberry Pi Pico W (RP2040, dual Cortex-M0+, 2 MiB QSPI flash, 264 KiB
-# SRAM; CYW43439 WiFi) on Zephyr 3.7, the field solutions board. RFC-0115 D4
-# admits it because Wokwi's `board-pi-pico-w` boots the SAME ELF (phase-524 W1
-# spike 3 rerun, docs/roadmap/data/phase-524-w1-wokwi-pico-rerun.log). Its
-# registry row reads that from `[board.run]` below.
+# SRAM; CYW43439 WiFi) on Zephyr 3.7. HARDWARE-ONLY: it states no
+# `[board.run]`, and flashes by UF2 through `west flash` (`[board.flash]`
+# below). Its emulator twin was Wokwi from phase-524 W1's spike 3 rerun
+# until 2026-11-06, when RFC-0115 Amendment 1 ruled that a twin must be free
+# and open source (issue 2283). No free emulator boots an RP2040 today.
 #
 # A board is a PACKAGE (RFC-0064 R5 D1): this file says what the board lowers
 # to, and the `package.xml` beside it announces that the board exists.
 #
 # What lives beside it, found by the spike:
 #   prj.conf                          the serial image's Kconfig, with
-#                                     CONFIG_TICKLESS_KERNEL=n (Wokwi)
+#                                     CONFIG_TICKLESS_KERNEL=n (from the W1
+#                                     spike; kept until a bench run says)
 #   boards/rpi_pico_rp2040_w.overlay  zenoh on UART0, the console on UART1
 #
 # Serial only: 3.7 has no driver for the CYW43439 on SPI/PIO (its AIROC
-# driver is SDIO-only), and a Wokwi WiFi run to a host-local router needs the
-# private gateway the free plan lacks (RFC-0115 "Open questions").
+# driver is SDIO-only).
 #
 # ---------------------------------------------------------------------------
 # RAM BUDGET: the `[knobs]` tables at the end of this file (issue 2194).
@@ -37,8 +38,8 @@
 #
 # The 32 KiB heap is the Nucleo ethernet image's number: below the C talker's
 # measured 15,152-byte boot peak plus the 24,576-byte headroom floor (39,728
-# in all). It boots and publishes in Wokwi; measure the boot report before
-# a chapter states it (phase-524 W4).
+# in all). It booted and published in the W1 spike; measure the boot report
+# on the bench before a chapter states it (phase-524 W5).
 #
 # A board states a knob in a top-level `[knobs.<group>]` (RFC-0103 D6), keyed
 # as an image's `[image.<id>.knobs.<group>]` is. On the Zephyr road the board
@@ -73,24 +74,14 @@ rust_components = ["clippy"]
 # beside this file. The flash runner is Zephyr's own (the UF2 copy onto the
 # BOOTSEL drive, or openocd over SWD).
 
-# phase-528 W2 (RFC-0118 D4) -- the board's Wokwi twin (phase-524 W1 rerun),
-# read by the support registry. Each run needs a `WOKWI_CLI_TOKEN` and spends
-# that account's simulation minutes (`[tool.wokwi-cli]` in the SDK index).
-[board.run]
-emulator = "wokwi:pi-pico-w"
-
-# phase-524 W4a — the twin's wiring, read only by the Wokwi runner (the twin
-# probe track's scripts/probe/twin/wokwi.sh today, phase-528's runner package
-# later): UART0's TX and RX pins go to Wokwi's serial monitor, which
-# `wokwi-cli --interactive` carries on its stdio. The diagram part is
-# `board-pi-pico-w`.
-[board.run.wokwi]
-link = ["GP0", "GP1"]
-
+# No `[board.run]`: the board is hardware-only (RFC-0115 Amendment 1), so
+# `nros run` answers as for any silicon and points at `nros flash`.
+#
 # phase-529 W1 (RFC-0118 D4) -- the silicon is flashed through Zephyr's own
 # runner (`west flash`; the integration-zephyr chapter's "Flash a real
-# board"). Which runner that is (the UF2 copy, or openocd over SWD) is
-# Zephyr's `runners.yaml`, read by the `west` method and not restated here.
+# board"): the UF2 copy onto the BOOTSEL drive, or openocd over SWD. Which
+# one is Zephyr's `runners.yaml`, read by the `west` method and not restated
+# here.
 [board.flash]
 method = "west"
 

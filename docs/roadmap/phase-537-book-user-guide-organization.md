@@ -175,7 +175,7 @@ how-to, level 1, depending only on Install.
 
 | Order | Starters | From |
 | --- | --- | --- |
-| 1. Twin and hardware | Nucleo-F767ZI (Renode twin) · Raspberry Pi Pico W (Wokwi twin, **new**) | `targets/nucleo-f767zi` |
+| 1. Twin and hardware | Nucleo-F767ZI (Renode twin). The Pico W (Wokwi twin) was here until the 2026-11-06 ruling (RFC-0115 Amendment 1) left it hardware-only | `targets/nucleo-f767zi` |
 | 2. Verified in emulator | mps2-an385 in QEMU: bare-metal, FreeRTOS, Zephyr · NuttX Arm and RISC-V · ThreadX RISC-V 64 | the starter parts of `targets/{bare-metal,freertos,zephyr,nuttx,threadx}` |
 | 3. Verified on host | Linux host · Zephyr native_sim · ThreadX Linux simulator · FreeRTOS POSIX | `targets/linux-host` and the host parts |
 
@@ -183,8 +183,7 @@ how-to, level 1, depending only on Install.
   `hardware` on the row, or the status word. A row that changes level changes
   slot on regeneration.
 - **Each step is a probe fence.** Twin starters replay through the twin
-  tracks: `renode-nucleo` in CI, and `wokwi-pico` where the user has a
-  `WOKWI_CLI_TOKEN`, failing loudly where it isn't set.
+  track `renode-nucleo` in CI.
 - Serial first; ethernet as the "next" step where the row has it; WiFi stated
   as deferred (Principle 12).
 - PX4 SITL gets a starter only when its probe track replays (issue 2289).

@@ -524,7 +524,7 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     ("qemu-cortex-a53", BoardFamily::Zephyr),
     // phase-524 W3 — the Nucleo-F767ZI, the book's Renode-twinned board.
     ("nucleo-f767zi-zephyr", BoardFamily::Zephyr),
-    // phase-524 W3 -- the Pico W, the book's Wokwi-twinned board.
+    // phase-524 W3 -- the Pico W, a hardware-only board.
     ("rpi-pico-w-zephyr", BoardFamily::Zephyr),
     ("nuttx", BoardFamily::Nuttx),
     ("qemu-armv7a-nuttx", BoardFamily::Nuttx),

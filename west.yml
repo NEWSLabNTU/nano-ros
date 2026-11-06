@@ -47,7 +47,7 @@ manifest:
           # esp-hal is the esp32 path and Zephyr esp32 is not supported for
           # now. `hal_stm32` came back for the Nucleo-F767ZI emulator twin
           # (phase-524 W2, RFC-0115 D4), and `hal_rpi_pico` for the Pico W
-          # (phase-524 W2, Wokwi twin).
+          # (phase-524 W2, a hardware-only board since RFC-0115 Amendment 1).
           - hal_rpi_pico
           - hal_stm32
           # Bootloader

@@ -28,8 +28,8 @@
 //! `run`: a host image is `nros_runner_native`; an emulator Zephyr's own build
 //! runs ([`WEST_EMULATORS`]) on a west build is `nros_runner_west`; the FVP
 //! is `nros_runner_fvp`; otherwise the emulator kind names it (`qemu`,
-//! `renode`), and a kind no package drives yet ([`RUNNERLESS_EMULATORS`]:
-//! `wokwi`, issue 2230) is refused naming its issue. `flash`: a
+//! `renode`). A kind outside the descriptor vocabulary never gets here: the
+//! descriptor refuses it at load. `flash`: a
 //! `command` template is `nros_runner_command`, any other method is the runner
 //! package of that name. The packages are W3's and phase-529's to write; the
 //! plan names them now.
@@ -344,9 +344,8 @@ fn method_runner(method: &str) -> RunnerRef {
 /// The emulator kinds a Zephyr build runs itself: its board declares them and
 /// the build emits a `run_<kind>` target, so a Zephyr image on one goes to
 /// the `west` runner. (The FVP is Zephyr's `armfvp`, which has its own runner
-/// for the model path.) Any other kind on a west build, such as `wokwi`, is
-/// not Zephyr's to run, and is named by its own runner like on any other
-/// platform.
+/// for the model path.) Any other kind on a west build is not Zephyr's to
+/// run, and is named by its own runner like on any other platform.
 ///
 /// `renode` is NOT one (phase-524 W4b, measured): Zephyr 3.7's
 /// `nucleo_f767zi` declares no `run_renode` target, so the `west` runner
@@ -356,36 +355,21 @@ fn method_runner(method: &str) -> RunnerRef {
 /// board's `[board.run.renode]` wiring.
 pub const WEST_EMULATORS: &[&str] = &["qemu"];
 
-/// Emulator kinds no runner package drives yet, each with the issue that
-/// tracks the package. A plan for one is refused at resolve time, naming the
-/// issue, rather than handed to a runner that would refuse it after the build.
-/// `check-board-runner-resolves` reports these as known gaps and fails once a
-/// package provides the runner while the row is still here.
-pub const RUNNERLESS_EMULATORS: &[(&str, &str)] = &[("wokwi", "2230")];
-
 /// The verb that starts an image built for `d`, from the board's facts alone:
 /// [`Verb::Run`] for a host process or an emulator a runner drives,
 /// [`Verb::Flash`] for silicon, `None` when the board states neither in a form
 /// `nros` can act on. It is the board half of [`resolve`]'s choice, in its
-/// order (`resolve_run`: host, then emulator, refused for a
-/// [`RUNNERLESS_EMULATORS`] kind; `resolve_flash`: `[board.flash]`, or a
+/// order (`resolve_run`: host, then emulator; `resolve_flash`: `[board.flash]`, or a
 /// Zephyr board's own west runner), for a caller that has no build to plan
 /// against yet: `nros new`'s next steps (issue 2282).
 /// `start_verb_agrees_with_the_resolver` holds the two together over the
 /// catalog.
 #[must_use]
 pub fn start_verb(d: &BoardDescriptor) -> Option<Verb> {
-    let runnerless = |kind: &str| RUNNERLESS_EMULATORS.iter().any(|(k, _)| *k == kind);
     match d.run.as_ref() {
         Some(r) if r.host => return Some(Verb::Run),
-        Some(r) => {
-            if let Some((kind, _)) = r.emulator_parts()
-                && !runnerless(kind)
-            {
-                return Some(Verb::Run);
-            }
-        }
-        None => {}
+        Some(r) if r.emulator_parts().is_some() => return Some(Verb::Run),
+        _ => {}
     }
     let flashes = d
         .flash
@@ -458,19 +442,6 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
         .as_deref()
         .and_then(|e| e.split_once(':'))
         .map(|(k, _)| k);
-    if let Some((kind, issue)) = emu_kind.and_then(|k| {
-        RUNNERLESS_EMULATORS
-            .iter()
-            .find(|(runnerless, _)| *runnerless == k)
-    }) {
-        return Err(ResolveError::Unresolved(format!(
-            "board `{}` runs under `{}`, and no runner package drives `{kind}` yet (issue \
-             {issue}). Zephyr's west build declares no `{kind}` run target, so the `west` \
-             runner cannot boot it either.",
-            i.board,
-            target.emulator.as_deref().unwrap_or(kind),
-        )));
-    }
     // phase-527 W7 — `[image.<id>.run] method|command` (the image rung)
     // names the runner above what the board's `[board.run]` implies. The
     // target stays the board's: the runner decides how to reach it.
@@ -1371,8 +1342,8 @@ mod tests {
             run > 0 && flash > 0,
             "run {run}, flash {flash}, none {none}"
         );
-        // The reported shape: a Renode twin runs; a board whose emulator no
-        // runner drives yet (wokwi, issue 2230) is flashed.
+        // The reported shape: a Renode twin runs; a hardware-only board (the
+        // Pico W, RFC-0115 Amendment 1) is flashed.
         assert_eq!(
             start_verb(&board(&cat, "nucleo-f767zi-zephyr")),
             Some(Verb::Run)
@@ -1731,17 +1702,15 @@ mod tests {
         let linux = board(&cat, "linux");
         assert!(go(Verb::Flash, &linux, &cargo_out(None), &none, &inv).is_err());
 
-        // The Pico W's twin is Wokwi, which Zephyr's build does not run, so
-        // it is NOT handed to west (which would refuse it after the build).
-        // No runner package drives Wokwi yet: refused at plan time, naming
-        // the issue (2230). Its silicon flashes through west.
+        // The Pico W is hardware-only (RFC-0115 Amendment 1: a twin is free
+        // and open source, so Wokwi is none): `nros run` gives the ordinary
+        // answer for silicon, pointing at `nros flash`, and its silicon
+        // flashes through west.
         let pico = board(&cat, "rpi-pico-w-zephyr");
+        assert!(pico.run.is_none(), "{:?}", pico.run);
         let e = go(Verb::Run, &pico, &out, &none, &inv).unwrap_err();
-        assert!(matches!(e, ResolveError::Unresolved(_)), "{e:?}");
-        assert!(
-            e.to_string().contains("wokwi:pi-pico-w") && e.to_string().contains("issue 2230"),
-            "{e}"
-        );
+        assert!(matches!(e, ResolveError::WrongVerb(_)), "{e:?}");
+        assert!(e.to_string().contains("nros flash --monitor"), "{e}");
         let p = go(Verb::Flash, &pico, &out, &none, &inv).unwrap();
         assert_eq!(p.runner.name, "west");
     }
