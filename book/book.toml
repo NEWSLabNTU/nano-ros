@@ -35,6 +35,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/reference/nros-bridge-toml.html" = "system-toml.html#nros-bridgetoml"
 "/background/vs-micro-ros.html" = "differences-from-ros2.html#compared-with-micro-ros"
 "/background/two-layer-api.html" = "execution-model.html#two-ways-to-receive"
 "/background/dispatch-strategy.html" = "execution-model.html#deferred-dispatch"

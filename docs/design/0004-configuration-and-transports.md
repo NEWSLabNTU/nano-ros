@@ -398,7 +398,7 @@ on the next callback.
 
 - RFC-0031 (RMW selection & lowering), RFC-0024/0025 (multi-node workspace layout).
 - `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md` — the file-consolidation work.
-- `book/src/reference/nros-bridge-toml.md` — the separate runtime topic-forward bridge config.
+- `book/src/reference/system-toml.md` (its `nros-bridge.toml` section) — the separate runtime topic-forward bridge config.
 
 ## Changelog
 
