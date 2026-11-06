@@ -145,7 +145,7 @@ RATCHET = 0
 # documented, so "provided" cannot become a place to hide a symbol nobody uses.
 PROVIDED = {
     "CONFIG_NROS_INIT_DELAY_MS":
-        "`book/src/reference/cpp-api.md` (its Zephyr section) shows an application calling "
+        "`book/src/guide/platforms/zephyr.md` (its C++ applications section) shows an application calling "
         "`nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS)` from its own "
         "`main()`; `book-internals/src/testing/zephyr-dev-setup.md:220` documents it as a knob.",
 }

@@ -2,7 +2,7 @@
   "key": "cpp:Client::send_goal_future",
   "disposition": "adopt-bounded",
   "envelope": {
-    "file": "book/src/reference/cpp-api.md",
+    "file": "book/src/reference/rclcpp-compatibility.md",
     "text": "`Future<T>` keyed by its goal"
   },
   "verdict": "divergence",

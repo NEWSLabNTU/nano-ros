@@ -886,6 +886,63 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
    root and the generated interfaces at `generated/*`.
    `--nano-ros-path <dir>` names another root (the SDK ROOT, the directory holding `nano_rosConfig.cmake`).
 
+## C++ applications
+
+A Zephyr application reaches the C++ API through the nano-ros Zephyr module.
+The module, the image's `system.toml` and the `prj.conf` split are covered
+above, in [Configure](#configure); the RMW,
+locator and domain come from the image, never from `CONFIG_NROS_*` lines in
+`prj.conf`. The C++ side needs `CONFIG_CPP=y` and `CONFIG_STD_CPP14=y` in
+`prj.conf` (Zephyr's own settings), and the application's `CMakeLists.txt`
+generates the message bindings:
+
+```cmake
+cmake_minimum_required(VERSION 3.20.0)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(my_app LANGUAGES CXX)
+
+nros_generate_interfaces(std_msgs LANGUAGE CPP)
+target_sources(app PRIVATE src/main.cpp)
+```
+
+A minimal `main()` waits for the network, opens the session with the locator
+and domain the image rendered into Kconfig, and spins:
+
+```cpp
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+
+#include <nros/platform_zephyr.h>
+
+#include <rclcpp/rclcpp.hpp>
+#include "std_msgs.hpp"
+
+LOG_MODULE_REGISTER(my_app, LOG_LEVEL_INF);
+
+int main(void)
+{
+    nros_platform_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS);
+
+    rclcpp::Result ret = rclcpp::init_in(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
+    if (!ret.ok()) return 1;
+
+    rclcpp::Node node;
+    if (!rclcpp::create_node(node, "my_node").ok()) return 1;
+
+    // ... create publishers, subscriptions, etc.
+
+    while (true) {
+        rclcpp::spin_once(100);
+    }
+}
+```
+
+`nros_platform_zephyr_wait_network` (`<nros/platform_zephyr.h>`) is defined
+in every Zephyr image. On an image with no IP stack (`CONFIG_NET_SOCKETS` off,
+for example a serial-only zenoh image) it returns 0 at once, so the call needs
+no guard. `CONFIG_NROS_INIT_DELAY_MS` is the module's start-up delay; your
+`main()` is its only reader.
+
 ## Run
 
 `nros build` ends by printing what to type next, read from the finished build

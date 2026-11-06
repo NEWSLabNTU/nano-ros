@@ -740,6 +740,14 @@ book = "user"
 path = "reference/cpp-api.md"
 action = "keep"
 batch = "w4-reference"
+note = "C++ API landing page (W11): what the API is, how to read the Doxygen site, links into it. Its lookup tables went to reference/rclcpp-compatibility, its Zephyr section to guide/platforms/zephyr (C++ applications); its Core API walkthrough and error-code table were cut for the Doxygen pages that document the same members"
+
+[[page]]
+book = "user"
+path = "reference/rclcpp-compatibility.md"
+action = "new phase-537"
+batch = "p537-w11"
+note = "rclcpp compatibility (W11): the lookup tables of reference/cpp-api (the rclcpp surface table; the hosted surface and NROS_CPP_STD; the hosted-only shapes; action client futures; parameters and /parameter_events). Its measured ros2/examples table is rendered from the nros-cpp edits.json by scripts/gen-rclcpp-examples-table.py"
 
 [[page]]
 old = "reference/platform-api.md"

@@ -84,6 +84,7 @@
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
 - [C++ API](./reference/cpp-api.md)
+- [rclcpp compatibility](./reference/rclcpp-compatibility.md)
 - [Platform API](./reference/platform-api.md)
 - [Canonical Platform C ABI](./reference/platform-c-abi.md)
 - [RMW API](./reference/rmw-api.md)
