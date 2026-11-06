@@ -45,6 +45,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+. "$REPO_ROOT/scripts/lib/runner-tmpfs.sh"
+# Resolved once, up front: a bad size must stop here, not reach `docker run`.
+TMPFS_ARG="$(nros_runner_tmpfs_arg)"
 IMAGE="${NROS_RUNNER_IMAGE:-nano-ros-runner:local}"
 REMOTE="${NROS_RUNNER_REMOTE:-https://github.com/NEWSLabNTU/nano-ros.git}"
 REF="${NROS_RUNNER_REF:-main}"
@@ -220,7 +223,7 @@ say "provisioning $LABELS in $IMAGE (first run downloads the SDKs; later runs ar
 docker run --rm \
     --user runner \
     --cap-drop ALL --security-opt no-new-privileges \
-    --tmpfs /tmp:rw,exec,nosuid,size=8g \
+    --tmpfs "$TMPFS_ARG" \
     -v "nros-runner-work:/home/runner/_work" \
     -v "nros-runner-cargo:/home/runner/.cargo" \
     -v "nros-runner-rustup:/home/runner/.rustup" \
