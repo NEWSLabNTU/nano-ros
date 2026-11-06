@@ -357,7 +357,7 @@ passes an absolute path, both patch sets resolve their argument before they
 absent (gate `zephyr-patch-set-workspace`). Filed, not fixed:
 [2291](../issues/archived/2291-board-new-out-of-tree-demands-checkout.md) (`board new
 --out-of-tree` needs a checkout),
-[2292](../issues/2292-new-board-for-platform-writes-no-package-xml.md) (`new
+[2292](../issues/archived/2292-new-board-for-platform-writes-no-package-xml.md) (`new
 board --for-platform` writes no `package.xml`),
 [2293](../issues/archived/2293-config-explain-misses-out-of-tree-platforms.md) (`config
 explain` misses workspace and scaffolded platforms),
