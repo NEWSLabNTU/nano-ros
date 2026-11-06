@@ -304,13 +304,14 @@ BOOK_CLAIMS = (
     },
     {
         "file": "book/src/background/static-memory-and-pools.md",
-        "text": "check-no-alloc-image.py",
-        "kind": "tool",
-        "why": "this tool's own name",
+        "text": "own executor path is heap-free in that checked sense",
+        "kind": "image",
+        "backed_by": HEAP_FREE_POC,
+        "covers": "the executor open + component install + spin path, with no transport (moved from the dispatch-strategy page by phase-537 W10)",
     },
     {
         "file": "book/src/background/static-memory-and-pools.md",
-        "text": "allocation-free promise, borrows client's reply slot",
+        "text": "A `Promise` is allocation-free: it borrows its client's",
         "kind": "type-level",
         "why": "where one type keeps its state (a borrowed slot), true of the "
         "type whatever the image links",
