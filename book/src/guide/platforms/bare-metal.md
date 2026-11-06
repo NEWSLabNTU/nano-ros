@@ -2,6 +2,8 @@
 
 <!-- type: how-to · level: 2 -->
 
+**Needs first:** [Get started on mps2-an385 in QEMU (bare-metal)](../../starters/mps2-an385-bare-metal.md)
+
 > **Support level:** [`mps2-an385-baremetal`](../../reference/boards/mps2-an385.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../../reference/board-support-levels.md) explains the words.
 
 Single-node starter on **bare-metal** Cortex-M3 (QEMU MPS2-AN385) —
@@ -17,19 +19,9 @@ for the policy.
 > or any RTOS, use the [FreeRTOS starter](./freertos.md) instead —
 > it's more ergonomic and produces smaller code overall.
 
-> **Prereqs.** Install the `nros` CLI once per machine (`scripts/install.sh`,
-> see [Installation](../../start/install.md)), then provision this board.
-> `nros setup` fetches a prebuilt bare-metal toolchain
-> (`arm-none-eabi-gcc`, `qemu-system-arm`) plus the Rust
-> `thumbv7m-none-eabi` target into a shared store — no manual
-> cross-compiler install. It provides no zenoh router: that is ROS's
-> `rmw_zenohd` (see [the zenoh pairing](../../internals/rmw/rmw-api-design.html#the-zenoh-pairing)), so running a zenoh image
-> needs it from a ROS 2 install.
-
-```bash probe=30
-# Provision the bare-metal Cortex-M3 board (zenoh RMW is the default):
-nros setup mps2-an385-baremetal --rmw zenoh
-```
+The [starter](../../starters/mps2-an385-bare-metal.md) provisions the board,
+scaffolds a talker and runs it over the board's serial port. This page covers
+what comes after it: the configuration, the network, and the board's limits.
 
 > One key, not two: `qemu-arm-baremetal` is a retired spelling of the same
 > entry. A board name states the reach of its build, and this build is true
@@ -39,12 +31,7 @@ nros setup mps2-an385-baremetal --rmw zenoh
 
 ## Project layout
 
-Scaffold a workspace for the board:
-
-```bash probe=40
-nros new bm_ws --board mps2-an385-baremetal --template talker --lang rust --rmw zenoh
-cd bm_ws
-```
+The starter's scaffold wrote this workspace:
 
 ```text
 bm_ws/
@@ -144,7 +131,7 @@ workspace, so later builds and runs of it need no sourced shell.
 
 In the workspace root (where the scaffold step left you):
 
-```bash probe=50
+```bash
 source /opt/ros/humble/setup.bash
 nros build           # builds the image `[image.baremetal]` declares
 ```
@@ -173,73 +160,17 @@ of your own to carry board facts. Your own Rust-toolchain preferences go where
 cargo already looks for them — a parent directory or `$CARGO_HOME`. See
 [When `nros build` drives the build](../../background/how-a-build-becomes-an-image.md#when-nros-build-drives-the-build).
 
-## Run on QEMU
+## Run over the network
 
-Two terminals: the board, and a stock ROS 2 peer.
-
-**1. The board**, from the workspace root. Source ROS 2 first: the router
-`nros run` starts is ROS's `rmw_zenohd`.
-
-```bash probe=70 probe-run=120 probe-keep
-source /opt/ros/humble/setup.bash
-nros run bm_node
-```
-
-`nros run` rebuilds if anything changed, then boots the talker in QEMU with the
-board's runner: the patched `qemu-system-arm` that `nros setup
-mps2-an385-baremetal` provisioned into the SDK store, with `-icount
-shift=auto`, which keeps the board's timer in step with the host. The
-scaffold's image names no `locator`, so it talks to the router over the
-board's serial port: `nros run` connects that port to a terminal device on the
-host and starts the router on it. It streams the semihosting console until
-you press Ctrl-C, which stops QEMU and the router together.
-
-Expected serial-over-semihosting output:
-
-```text probe-expect=70
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-...
-```
-
-With the `tcp/10.0.2.2:10500` locator of [Configure](#configure), `nros run`
-starts the router on the host's port 10500 instead, so don't start one of your
-own: a second router on the same port stops the first run. To use a router
-you already have, pass `--router <its locator>`.
-
-**2. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
-echo` defaults to RELIABLE, so the QoS-mismatched echo silently delivers
-nothing. Force best-effort to receive:
-
-```bash probe=80 probe-run=90
-source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
-```
-
-```text probe-expect=80
-data: 'Hello World:
-```
-
-Ctrl-C stops `nros run` and QEMU with it.
-
-**Readiness signal.** Within ~15 seconds of QEMU boot (no RTOS
-init delay, but smoltcp + zenoh handshake still takes a few
-seconds), expect `Publishing: 'Hello World: 1'` on semihosting
-stdout — the count starts at 1, matching the official ROS 2 demo
-talker. If no `Publishing:` line:
-
-1. The router did not start — `nros run` says so and names its
-   log under `build/nros/run/`. A router you started yourself on the
-   same port is the usual cause.
-2. No network on the guest — if you boot the ELF with your own QEMU
-   line, an explicit `-nic`/`-netdev` that does not reach the LAN9118
-   (or `-nic none`, `-nodefaults`) leaves it unwired. The board's
-   runner passes `-nic user,model=lan9118`.
-3. Cooperative spin starvation — if you added a long-running
-   callback, the entire executor stalls; bare-metal has no
-   preemption.
-4. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
+With the `tcp/10.0.2.2:10500` locator of [Configure](#configure), the image
+talks to the router over QEMU's user-mode network instead of the serial port,
+and `nros run bm_node` starts the router on the host's port 10500, so don't
+start one of your own: a second router on the same port stops the first run.
+To use a router you already have, pass `--router <its locator>`. The board's
+runner passes `-nic user,model=lan9118`, which wires the guest's LAN9118 to
+that network; a QEMU line of your own that drops it (`-nic none`,
+`-nodefaults`) leaves the guest with no network. Within about 15 seconds of
+boot the zenoh handshake is done and the first `Publishing:` line appears.
 
 ## Flash a real board
 
