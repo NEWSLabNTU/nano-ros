@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [testing, zephyr, ci]
-related: [phase-528, 2189, 1158]
+related: [phase-528, 2296, 2189, 1158]
 found: 2026-11-06
 ---
 
@@ -42,6 +42,28 @@ From 42173661457 on, a second stage fails beside it: `linux` (rc=2),
 `build-fixture-rust` with `error: failed to load manifest for dependency
 std_msgs` (a leaf whose `generated/` tree was not produced). The tier-1 cells
 job in every one of these runs fails the same two stages.
+
+## Cause: issue 2296 (2026-11-06)
+
+This is [issue 2296](archived/2296-fixture-model-stale-after-resolver-pin.md),
+filed in parallel and fixed on `main` by its own pull request. Both reds are
+one refusal. The `tier1-junit` stage logs name it:
+`SystemModel … is stale: resolver pin changed (model b5243446b761 != ours
+8d2c78d40671)`, for the `zephyr_self_pkg` model (zephyr stage) and the
+`image_config_ws` model (linux stage). The linux stage's
+`failed to load manifest for dependency std_msgs` follows from the same
+refused configure. `nros configure`'s stamp recorded the resolver's path but
+not its pin, so after phase 536's play_launch bump it said "up to date" over
+models `codegen-system` then refused. The stamp now records the pin.
+
+Reproduced locally on a fresh checkout and incrementally: the west fixtures
+were built at the last green commit (`1d287ef110`) and then rebuilt at
+current `main` with the build dirs and in-source models kept. Current `main`
+passes 5/5. The step-2 branch run (42195214776) was cut before the fix.
+
+What is left here is the acceptance: a tier-2 run that reaches the cells.
+The before and after runs for phase-528 W5 were dispatched with the fix in
+both (see below). This issue closes when they report.
 
 ## Why it matters
 
