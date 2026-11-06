@@ -2,6 +2,8 @@
 
 <!-- type: how-to · level: 2 -->
 
+**Needs first:** [Get started on the ThreadX Linux simulator](../../starters/threadx-linux.md) or [ThreadX in QEMU (RISC-V 64)](../../starters/threadx-riscv64.md)
+
 > **Support level:** [`threadx-linux`](../../reference/boards/threadx-linux.md), [`rv-virt-threadx`](../../reference/boards/threadx-qemu-riscv64.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../../reference/board-support-levels.md) explains the words.
 
 Single-node starter on Microsoft Azure RTOS ThreadX + NetX Duo (BSD
@@ -20,65 +22,25 @@ See the
 [coverage matrix](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)
 for the per-RMW cell status.
 
-> **Prereqs.** Install the `nros` CLI once, then run
-> `nros setup <board> --rmw <rmw>` for the flavour you need (see
-> [Setup](#setup)). It provisions the cross-compiler, emulator, and
-> ThreadX/NetX sources — no hand-installed `riscv64` cross toolchain or
-> `qemu-system-riscv64`. The zenoh path additionally needs a ROS 2
-> install for the router (`ros2 run rmw_zenoh_cpp rmw_zenohd`); xrce
-> needs only the Micro-XRCE-DDS agent, which `nros setup` installs.
+Each flavour has a starter that provisions it, scaffolds a talker and runs
+it: [the Linux simulator](../../starters/threadx-linux.md) and
+[QEMU RISC-V 64](../../starters/threadx-riscv64.md). This page covers what
+comes after them: the two flavours' board crates, the configuration, and the
+scheduling tiers.
 
-## Setup
-
-`nros setup` is the single canonical command to prepare a machine to build
-nano-ros for a board. Most components are prebuilt per platform per RMW — the
-cross-compiler, emulator, and SDK sources (the ThreadX/NetX
-sources, and for threadx-linux the POSIX-sim sources) are fetched from a pinned
-index into a shared store at `${NROS_HOME:-~/.nros}/sdk`. The zenoh router is
-NOT among them — it comes from a ROS 2 install; only the xrce
-agent is provisioned by `nros setup`.
-
-Packages are prebuilt where the index has a binary for your host and built from
-source otherwise. `--dry-run` prints the plan for your host. See
-[Installation Details](../build/install-options.md#provisioning-with-nros-setup) for the full explanation.
-
-With the `nros` CLI on PATH ([Installation](../../start/install.md) —
-`install.sh` puts it in `~/.nros/bin`), provision the ThreadX flavour you
-need (+ the RMW; `--rmw` defaults to zenoh). The POSIX-sim flavour:
-
-```bash probe=30 variant=linux,linux-c
-nros setup threadx-linux --rmw zenoh
-```
-
-and, if you need the RISC-V64 QEMU flow:
-
-```bash probe=30 variant=riscv64
-nros setup rv-virt-threadx --rmw zenoh
-```
-
-The RMW host daemon must be **running** before any example: for zenoh the
-ROS 2 router (`ros2 run rmw_zenoh_cpp rmw_zenohd`), for xrce the
-Micro-XRCE-DDS agent (installed by `nros setup … --rmw xrce`).
+`nros setup <board>` fetches most components prebuilt per platform per RMW
+(the cross-compiler, the emulator, and the ThreadX/NetX sources, and for
+threadx-linux the POSIX-sim sources) from a pinned index into a shared store
+at `${NROS_HOME:-~/.nros}/sdk`, and builds from source where the index has no
+binary for your host. `--dry-run` prints the plan. See
+[Installation Details](../build/install-options.md#provisioning-with-nros-setup).
+For xrce, `nros setup … --rmw xrce` also installs the Micro-XRCE-DDS agent.
 
 ## Project layout
 
-`nros new` scaffolds a workspace for one board, in any of the three languages.
-`threadx` names two boards, so name the one you want with `--board`:
-
-```bash probe=40 variant=linux-c
-nros new tx_ws --board threadx-linux --template talker --lang c   # or rv-virt-threadx; --lang cpp
-cd tx_ws
-```
-
-```bash probe=40 variant=linux
-nros new tx_ws --board threadx-linux --template talker --lang rust
-cd tx_ws
-```
-
-```bash probe=40 variant=riscv64
-nros new tx_ws --board rv-virt-threadx --template talker --lang rust
-cd tx_ws
-```
+The starters' scaffold, `nros new tx_ws --board <board> --template talker`,
+writes this workspace in any of the three languages. `threadx` names two
+boards, so `--board` names the one you want:
 
 ```text
 tx_ws/
@@ -199,7 +161,7 @@ workspace, so later builds and runs of it need no sourced shell.
 In the workspace root (`tx_ws/`, where `nros new` left you), whatever the
 language and flavour:
 
-```bash probe=50
+```bash
 source /opt/ros/humble/setup.bash
 nros build
 ```
@@ -220,91 +182,22 @@ that runs it.
 
 ## Run on the Linux simulator
 
-`threadx-linux` is an ordinary host process, with no QEMU. Run it from the
-workspace root, with ROS 2 sourced: the image dials a router on this machine
-(port 7447 when its `locator` names none, as a scaffolded image does; 9000 in
-the example above), so `nros run` starts that router, ROS's `rmw_zenohd`, and
-stops it with the image. Don't start a router of your own on the same port;
-to use one you already have, pass `--router <its locator>`.
-
-```bash probe=70 probe-run=120 variant=linux,linux-c
-source /opt/ros/humble/setup.bash
-nros run tx_node
-```
-
-The scaffolded talker publishes `std_msgs/String` once a second, in every
-language:
-
-```text probe-expect=70 variant=linux,linux-c
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
+`threadx-linux` is an ordinary host process, with no QEMU.
+[Its starter](../../starters/threadx-linux.md#run-it-on-this-machine) runs it:
+the image dials a router on this machine (port 7447 when its `locator` names
+none, as a scaffolded image does; 9000 in the example above), so `nros run`
+starts that router, ROS's `rmw_zenohd`, and stops it with the image. To use a
+router you already have, pass `--router <its locator>`. If you brought up a
+`tap-tx0` interface by hand, confirm it is up; without it the image uses the
+loopback fallback (`nros setup threadx-linux` does not create the interface).
 
 ## Run on QEMU (RISC-V 64)
 
 `rv-virt-threadx` boots on QEMU's RISC-V `virt` machine, UART on stdio,
-virtio-net on Slirp. Three terminals: the router, the board, and a stock
-ROS 2 peer.
-
-**1. The router**, on the image's port (7447 for a scaffolded image; 9400 in
-the example above). The guest dials `10.0.2.2:<p>` through QEMU Slirp, so it
-listens on `0.0.0.0`:
-
-```bash probe=60 probe-run=60 probe-keep variant=riscv64
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=60 variant=riscv64
-Started Zenoh router with id
-```
-
-**2. The board** — from the workspace root:
-
-```bash probe=70 probe-run=150 probe-keep variant=riscv64
-nros run tx_node
-```
-
-`nros run` boots the image with the board's runner: the store's
-`qemu-system-riscv64` (`nros setup rv-virt-threadx` installed it) on the
-`virt` machine, with virtio-net on Slirp. A C or C++ node on this board runs
-the same way.
-
-```text probe-expect=70 variant=riscv64
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
-
-**3. A stock ROS 2 peer** (either flavour). The talker publishes
-best-effort; stock `ros2 topic echo` defaults to RELIABLE, so the
-QoS-mismatched echo silently delivers nothing. Force best-effort to receive:
-
-```bash probe=80 probe-run=90 variant=riscv64
-source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
-```
-
-```text probe-expect=80 variant=riscv64
-data:
-```
-
-Ctrl-C stops `nros run` and QEMU with it.
-
-**Readiness signal.** threadx-linux: `Publishing: 'Hello World: 1'`
-within a few seconds of the program starting **on a warm
-cache**; a cold first `nros build` compiles the Rust image (~80 s)
-before the first publish lands. threadx-riscv64
-(QEMU): within ~15 seconds of QEMU boot. If no `Publishing:` line:
-
-1. Confirm the router is reachable on the image's `locator`
-   (threadx-linux uses `127.0.0.1`; riscv64 QEMU uses `10.0.2.2`).
-2. threadx-linux: if you brought up `tap-tx0` by hand, confirm it is
-   up; without it the fixtures use the loopback fallback, which is
-   fine for this tutorial (`nros setup threadx-linux` does not create
-   the interface).
-3. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
+virtio-net on Slirp. [Its starter](../../starters/threadx-riscv64.md#run-it-in-qemu)
+runs it against a router on the host's `0.0.0.0` (port 7447 for a scaffolded
+image; 9400 in the example above), which the guest dials as `10.0.2.2`. A C or
+C++ node on this board runs the same way.
 
 ## Flash a real board
 

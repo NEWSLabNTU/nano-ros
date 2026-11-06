@@ -210,7 +210,7 @@ crate = "nros-board-threadx-linux"
 matrix_platform = "ThreadxLinux"
 nightly_token = "threadx_linux"
 link_check_example = "examples/threadx-linux/rust/talker"
-book_run = "guide/platforms/threadx.md#run-on-the-linux-simulator"
+book_run = "starters/threadx-linux.md#run-it-on-this-machine"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -238,7 +238,7 @@ maintainers = []
 crate = "nros-board-threadx-qemu-riscv64"
 matrix_platform = "ThreadxRiscv64"
 nightly_token = "threadx_riscv64"
-book_run = "guide/platforms/threadx.md#run-on-qemu-risc-v-64"
+book_run = "starters/threadx-riscv64.md#run-it-in-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits ThreadxLinux"
@@ -652,16 +652,17 @@ qemu_board = "mps2-an385-freertos"
 
 [[probe]]
 track = "threadx-linux"
-chapter = "guide/platforms/threadx.md"
-variant = "linux"
+chapter = "starters/threadx-linux.md"
+variant = ""
+lang = "rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-threadx-linux@ThreadxLinux"
 
 [[probe]]
 track = "threadx-riscv64"
-chapter = "guide/platforms/threadx.md"
-variant = "riscv64"
+chapter = "starters/threadx-riscv64.md"
+variant = ""
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-threadx-qemu-riscv64@ThreadxRiscv64"
@@ -669,8 +670,9 @@ qemu_board = "rv-virt-threadx"
 
 [[probe]]
 track = "threadx-linux-c"
-chapter = "guide/platforms/threadx.md"
-variant = "linux-c"
+chapter = "starters/threadx-linux.md"
+variant = ""
+lang = "c"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-threadx-linux@ThreadxLinux"
