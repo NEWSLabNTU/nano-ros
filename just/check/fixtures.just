@@ -147,6 +147,7 @@ example-matrix:
 # in-tree CLI. It builds everything it resolves, so `check-lane-contracts` holds.
 [private]
 [group('units')]
+[group('needs:cli')]
 scaffold-builds:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -196,6 +197,7 @@ workspace-fixture-units:
 # `no-zephyr` unit, so the `zephyr` part never runs it.
 [private]
 [group('units')]
+[group('needs:cli')]
 template-copy-out:
     #!/usr/bin/env bash
     set -euo pipefail

@@ -1257,7 +1257,26 @@ if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ] || [ -n "${NROS_GATE_UNIT:-}" ]; then
         for b in "${scaffold_boards[@]}"; do echo "scaffold:$b"; done
     )"
     if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
-        printf '%s\n' "$all_units"
+        # A unit on the Zephyr road needs a west workspace, beyond what the
+        # gate as a whole needs (phase-543 W3): `<unit>\tneeds:zephyr`. The
+        # road comes from `unit_part`, the split the CI parts already use; a
+        # project it cannot place is a listing failure, never a guess.
+        echo "@self-test"
+        for entry in "${buildable[@]}"; do
+            label="$(project_label "${entry%%$'\t'*}" "${entry#*$'\t'}")"
+            rc=0
+            up="$(unit_part "${entry%%$'\t'*}" "${entry#*$'\t'}")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+                echo "check-template-copy-out: cannot place $label on a road (unit_part rc=$rc)" >&2
+                exit 2
+            fi
+            if [ "$up" = zephyr ]; then
+                printf '%s\tneeds:zephyr\n' "$label"
+            else
+                printf '%s\n' "$label"
+            fi
+        done
+        for b in "${scaffold_boards[@]}"; do echo "scaffold:$b"; done
         exit 0
     fi
     if ! nros_grep_q -Fx -- "$NROS_GATE_UNIT" <<<"$all_units"; then

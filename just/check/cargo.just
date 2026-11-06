@@ -445,6 +445,7 @@ just-recipe-refs:
 # backlog can only shrink. ~30s (it resolves each leaf; NOT `--offline`, which
 # would conflate a cold cargo cache with real drift).
 [private]
+[group('needs:submodules')]
 leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
 

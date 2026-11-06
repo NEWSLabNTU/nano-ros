@@ -253,6 +253,7 @@ cxx-compat-shim-coverage:
 # `remove_cv_t<remove_reference_t<T>>` is right for scalars and wrong for exactly
 # the function and array types a callback signature uses.
 [private]
+[group('needs:zephyr-tree')]
 cxx-compat-shim-facilities:
     @python3 scripts/check-cxx-compat-shim-facilities.py
 
@@ -362,6 +363,8 @@ format-macro-scope:
 # the same shape `cli-fresh` already has on this line; "the CLI is not built" is
 # a different claim from "it passed", so it goes through the skip ledger.
 # Everything past the preconditions is a hard failure inside the script.
+[group('needs:cli')]
+[group('needs:cmake')]
 probe-shared-types:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -422,6 +425,8 @@ probe-shared-types:
 # codegen half alone is seconds and asserts on the header's TEXT rather than on
 # its effect. Preconditions SKIP through the ledger (no CLI, no cmake, no
 # compiler); everything past them is a hard failure.
+[group('needs:cli')]
+[group('needs:cmake')]
 probe-workspace-caps:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -459,6 +464,9 @@ probe-workspace-caps:
 # workspaces: a refusal, plus two shapes it must leave alone, so it can never
 # harden into "SYSTEM is always required". Same skip ledger and Corrosion rule
 # as `probe-workspace-caps` above, for the same reasons.
+[group('needs:cc')]
+[group('needs:cli')]
+[group('needs:cmake')]
 workspace-system-required:
     #!/usr/bin/env bash
     set -euo pipefail

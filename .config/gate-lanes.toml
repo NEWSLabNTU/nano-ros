@@ -1,0 +1,50 @@
+# Gate lanes as SCOPES (phase-543 W3). A lane names the tiers it runs and the
+# capabilities its environment CLAIMS. A gate (or a unit of one) that needs a
+# capability its lane does not claim is out of that lane's scope: the nextest
+# harness lists it as ignored, so it is shown as not run, by name, and never
+# counted as a pass. A gate that IS in scope and finds its capability missing
+# at run time fails (its skip ledger is not empty). Scope is a property of the
+# lane, never of the host that happens to run it (issue 1758's rule for tests).
+#
+# With NROS_GATE_LANE unset, every capability is claimed, so a host lacking one
+# is red, honestly.
+#
+# Capabilities a gate declares with `[group('needs:<cap>')]` on its recipe.
+# `check-gate-needs` refuses a `needs:` naming a capability not listed here.
+[capabilities]
+cli = "the in-tree `nros` CLI (just setup-cli)"
+cmake = "cmake on PATH"
+cc = "a host C/C++ compiler"
+bindgen = "bindgen-cli at the pin"
+ros2 = "a sourced ROS 2 (AMENT_PREFIX_PATH)"
+colcon = "colcon on PATH"
+sources = "provisioned source clones under $NROS_HOME/sources (nros setup --source)"
+submodules = "the submodules .config/worktree-provisioning.txt lists"
+git-history = "commit history deeper than a shallow clone"
+zephyr-tree = "Zephyr's lib/cpp/minimal/include under zephyr-workspace/ (CI's sparse clone)"
+zephyr = "a resolvable west workspace"
+nuttx = "the NuttX sources (NUTTX_DIR)"
+fsp = "the NVIDIA Orin SPE FSP tree (NV_SPE_FSP_DIR)"
+build-tree = "artifacts a fixture or image build produced"
+
+[lane.fast]
+# `check / fast` on the hosted runner: the ci-base image provides these.
+tiers = ["fast"]
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
+
+[lane.build]
+# `check / build tier` shards on the hosted runner: same image.
+tiers = ["build"]
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
+
+[lane.queue]
+# The self-hosted runner (nros-sdk-zephyr): the image's set plus a Zephyr
+# workspace and the fixture build's artifacts.
+tiers = ["fast", "build"]
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree", "zephyr", "build-tree"]
+
+[lane.pristine]
+# `check pristine-checkout`: a worktree with no submodules and no CLI
+# (issues 0650, 1373).
+tiers = ["fast"]
+claims = ["cmake", "cc", "git-history"]
