@@ -2,7 +2,7 @@
   "key": "cpp:Client::async_cancel_goals_before",
   "disposition": "adopt-bounded",
   "envelope": {
-    "file": "book/src/guide/port/port-a-cpp-node.md",
+    "file": "book/src/reference/cpp-api.md",
     "text": "A nano-ros server acts on the zero-id cancel-all / cancel-before forms"
   },
   "verdict": "divergence",

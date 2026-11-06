@@ -85,7 +85,17 @@ nros_components_register_node(talker_lib
 ```
 
 The class has a `configure(::rclcpp::Node&)` method that creates its
-entities; the generated entry constructs it and calls `configure`.
+entities and binds member callbacks by identity, with no callback name and no
+allocation; the generated entry constructs it and calls `configure`:
+
+```cpp
+::rclcpp::Result Talker::configure(::rclcpp::Node& node) {
+    ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
+    if (!r.ok()) return r;
+    // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
+    return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
+}
+```
 
 <!-- /tabs -->
 
