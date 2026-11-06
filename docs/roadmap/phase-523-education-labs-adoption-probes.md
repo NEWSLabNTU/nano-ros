@@ -1,7 +1,8 @@
 # Phase 523 — The education lab series, the adoption probes and the industrial extras
 
-**Status (2026-11-07). Every round-one stop is closed but 2255 (the release
-cut, the maintainer's) and 2269 (homed in phase-537). Fixed on `main`:
+**Status (2026-11-07, later). Release `nros-0.6.0-nros7` is cut from `main`
+(538ccb9084) and pinned in the index, so 2255 is closed and W3 round two runs
+against it next. Every round-one stop is closed but 2269 (homed in phase-537). Fixed on `main`:
 2256–2268, 2270–2272 and 2197; 2262 and 2272 were already fixed by
 phase-537's serial page. Release support is ruled: latest release only. One
 new issue from the work, 2309 (the bare-metal heap static lands in `.data`).
@@ -138,7 +139,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 
 | issue | purpose | what |
 | --- | --- | --- |
-| [#2255](../issues/2255-book-ahead-of-latest-release.md) | both | The book teaches `nros dev`, `nros run`, `nros new --board`; the latest release has none of them |
+| [#2255](../issues/archived/2255-book-ahead-of-latest-release.md) | both | **Resolved** 2026-11-07: release `nros-0.6.0-nros7` cut from main; every measured verb present |
 | [#2256](../issues/archived/2256-store-label-disagrees-with-provenance.md) | both | **Resolved** 2026-11-06: one index per release, so the store label and its contents share a pin |
 | [#2257](../issues/archived/2257-setup-and-build-read-different-index.md) | both | **Resolved** 2026-11-06: a release reads its own shipped index (RFC-0097 D5 amended), so setup and build agree |
 | [#2258](../issues/archived/2258-setup-rewrites-pinned-sdk-lock.md) | both | **Resolved** 2026-11-06: with one index per release, a pinned seat's setup records the lock's own pins |

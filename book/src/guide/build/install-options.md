@@ -235,12 +235,12 @@ architecture as the offline one, then carry four things across.
 
    ```sh
    curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
-       | sh -s -- --version 0.6.0-nros6 --dry-run
+       | sh -s -- --version 0.6.0-nros7 --dry-run
    ```
 
    ```text
-   nros-install: 0.6.0-nros6 for linux-x86_64
-   nros-install:   from https://github.com/NEWSLabNTU/nano-ros/releases/download/nros-0.6.0-nros6/nros-linux-x86_64.tar.zst
+   nros-install: 0.6.0-nros7 for linux-x86_64
+   nros-install:   from https://github.com/NEWSLabNTU/nano-ros/releases/download/nros-0.6.0-nros7/nros-linux-x86_64.tar.zst
    ```
 
    Download that file and its `.sha256`, carry both, and install with
