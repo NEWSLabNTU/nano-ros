@@ -40,9 +40,18 @@ else
     WORKSPACE="$LEGACY_WORKSPACE"
 fi
 
-if [ ! -d "$WORKSPACE/zephyr" ] || [ ! -d "$WORKSPACE/modules/lang/rust" ]; then
-    echo "ERROR: $WORKSPACE doesn't look like a Zephyr workspace" >&2
+# `zephyr/` is the one hard requirement. `modules/lang/rust` is OPTIONAL: a
+# C/C++-only workspace (no zephyr-lang-rust in west.yml) is legitimate (book:
+# zephyr-west-app.md), the patch sets call this script unconditionally, and
+# every edit below is inside that module, so with no module there is nothing
+# to patch. Skip, saying so; never fail the whole set over it.
+if [ ! -d "$WORKSPACE/zephyr" ]; then
+    echo "ERROR: $WORKSPACE doesn't look like a Zephyr workspace (missing zephyr/)" >&2
     exit 1
+fi
+if [ ! -d "$WORKSPACE/modules/lang/rust" ]; then
+    echo "[skip] aarch64-rust-patch: no zephyr-lang-rust module at $WORKSPACE/modules/lang/rust, nothing to patch (C/C++-only workspace)"
+    exit 0
 fi
 
 CMAKE_FILE="$WORKSPACE/modules/lang/rust/CMakeLists.txt"

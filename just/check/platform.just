@@ -227,6 +227,15 @@ zephyr-sdk-path-asked:
 zephyr-checkout-guard:
     @bash scripts/check/check-zephyr-checkout-guard.sh
 
+# The Zephyr patch sets against synthetic workspaces: a C-only one (no
+# zephyr-lang-rust) is set up with every Rust-module patch SAYING it skipped,
+# `zephyr/` stays a hard requirement, and a RELATIVE workspace argument keeps
+# the caller's cwd rather than the SDK root the sets `cd` to. ~1 s, tmpdir,
+# no Zephyr checkout needed.
+[group("checks")]
+zephyr-patch-set-workspace:
+    @bash tests/zephyr-patch-set-workspace-tests.sh
+
 # phase-460 W6 -- the Zephyr stack-slot pool gives back what it hands out.
 #
 # `zephyr/nros_platform_zephyr_shims.c` owns the ENTIRE task pool of the Zephyr

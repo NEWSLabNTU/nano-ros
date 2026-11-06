@@ -8,9 +8,20 @@
 # a new sibling `<version>.sh` — no applier edit (see patches/README.md).
 set -e
 
+# The workspace argument is read, and made ABSOLUTE, BEFORE the `cd` below.
+# Every path after this runs from the SDK root, so a relative argument read
+# after it resolved against the SDK root instead of the caller's cwd:
+# `nros setup board <b> --zephyr-workspace .` then failed as "doesn't look like
+# a Zephyr workspace" over a workspace that was fine. Lexical, not `cd && pwd`,
+# so a missing directory still reaches the sub-scripts' own clear refusal.
+WORKSPACE="${1:?usage: patches/4.4.sh <zephyr-workspace-dir>}"
+case "$WORKSPACE" in
+    /*) ;;
+    *) WORKSPACE="$PWD/$WORKSPACE" ;;
+esac
+
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$REPO_ROOT"
-WORKSPACE="${1:?usage: patches/4.4.sh <zephyr-workspace-dir>}"
 
 # CHECKS by default; CREATES only when the caller owns its interpreter and says
 # so. A CI container is that caller — the zephyr CI image ships `uv` for exactly
