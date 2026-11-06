@@ -1,5 +1,12 @@
 # Phase 523 — The education lab series, the adoption probes and the industrial extras
 
+**Status (2026-11-06). W1 moved to phase-537 W5 (maintainer). The release
+behind 2255 is the maintainer's to cut; round two runs on the release after
+it. Book-side round-one stops (2259, 2262, 2264–2268, 2272) are fixed after
+phase-537's page moves (#3160) land; the CLI-side ones (2256–2258, 2260,
+2261, 2263, 2270, 2271) are being fixed now. "Left" (2197) is open for a
+comparison, not yet ruled.**
+
 **Status (2026-11-05). W3 round one RUN for industrial and education:
 industrial 18 stops → 14 open issues, education 14 stops → 12 open issues
 (18 issues in all, 2255–2272; seven shared by both purposes). Field round one
@@ -34,6 +41,14 @@ does — the adoption probes of D9, run twice.
 ## Work items
 
 ### W1 — Six labs on QEMU and Renode, lab seven on the bench
+
+**Moved to [phase-537](phase-537-book-user-guide-organization.md) W5
+(maintainer, 2026-11-06).** That phase's Tutorial is this lab series: ten
+chapters, each a two-hour lab with a probe track, accepted by an education
+adoption probe. Its "Absorbed from phase-523 W1" section carries what is
+below and not in its chapter list: the QoS, lifecycle and two-tier timing labs,
+the Renode twin run, lab 7 on the bench, and the grading command per chapter.
+The text below is kept as the record of what was asked.
 
 - Labs 1 to 6 run on QEMU mps2-an385 and on the Renode twin of phase-524
   (the Nucleo-F767ZI; phase-524 W1 dropped the UNO R4 Minima, whose RA4M1 the
@@ -129,7 +144,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2266](../issues/2266-book-has-no-third-party-inventory.md) | industrial | No third-party or patch inventory in the book |
 | [#2267](../issues/2267-book-has-no-release-provenance-report.md) | industrial | No release provenance report reachable from the book |
 | [#2268](../issues/2268-no-release-support-backport-policy.md) | industrial | No release support or backport policy; stale Jazzy line |
-| [#2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter (W1's list) |
+| [#2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter. Home moved to phase-537 W5 with W1 (2026-11-06) |
 | [#2270](../issues/2270-default-talker-prints-internal-warnings.md) | education | The default talker prints internal issue ids and a "contract violation" |
 | [#2271](../issues/2271-install-sh-no-longer-prints-path-export.md) | education | install.sh output no longer matches the install page |
 | [#2272](../issues/2272-serial-flow-needs-socat-unlisted.md) | education | The serial flow needs `socat`, which no prerequisite list names |
