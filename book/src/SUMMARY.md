@@ -32,6 +32,7 @@
 - [6. Services and actions](./tutorial/services-and-actions.md)
 - [Parameters and launch files](./tutorial/parameters-and-launch-files.md)
 - [8. Tell the build what your system creates](./tutorial/tell-the-build.md)
+- [9. Same project, another target](./tutorial/another-target.md)
 - [ROS 2 Interoperability](./tutorial/talk-to-ros2.md)
 
 # User guide
