@@ -1230,7 +1230,7 @@ Options:
       --platform <PLATFORM>        Platform this board runs on (`zephyr`, `freertos`, `nuttx`, `threadx`, `bare-metal`, `posix`, `esp32`)
       --west-board <WEST_BOARD>    Zephyr board id (`<board>/<soc>/<variant>`). Required for, and only meaningful on, `--platform zephyr`
       --out-of-tree <OUT_OF_TREE>  Write the package outside the nano-ros tree. The board is then reached through `$NROS_EXTRA_BOARD_PATH`, which this prints
-      --workspace <WORKSPACE>      nano-ros workspace root (auto-detected from cwd if omitted)
+      --workspace <WORKSPACE>      nano-ros checkout to write the in-tree board into (auto-detected from cwd if omitted). Not read with `--out-of-tree`, which needs no checkout
       --dry-run                    Print what would be written and write nothing
   -h, --help                       Print help
   -V, --version                    Print version

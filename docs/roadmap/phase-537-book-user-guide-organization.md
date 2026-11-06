@@ -355,7 +355,7 @@ set failed on a C-only west workspace (no zephyr-lang-rust), and a relative
 passes an absolute path, both patch sets resolve their argument before they
 `cd`, and the Rust-module patches skip with a printed note when the module is
 absent (gate `zephyr-patch-set-workspace`). Filed, not fixed:
-[2291](../issues/2291-board-new-out-of-tree-demands-checkout.md) (`board new
+[2291](../issues/archived/2291-board-new-out-of-tree-demands-checkout.md) (`board new
 --out-of-tree` needs a checkout),
 [2292](../issues/2292-new-board-for-platform-writes-no-package-xml.md) (`new
 board --for-platform` writes no `package.xml`),
