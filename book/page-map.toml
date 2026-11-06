@@ -916,9 +916,10 @@ note = "merged by W11 into Platform API and C ABI. Its hand-typed symbol counts 
 [[page]]
 old = "reference/rmw-api.md"
 book = "user"
-path = "reference/rmw-api.md"
-action = "keep"
-batch = "w4-reference"
+path = "reference/platform-api.md"
+action = "merge-into reference/platform-api.md"
+batch = "p537-w13"
+note = "merged by W13 into Platform and RMW APIs, its section The RMW API: at 245 words it was under the 300-word floor (RFC-0124 D9), and both pages are the reference for a porting boundary"
 
 [[page]]
 old = "user-guide/message-generation.md"

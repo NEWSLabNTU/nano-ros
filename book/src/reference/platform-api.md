@@ -1,13 +1,14 @@
-# Platform API and C ABI
+# Platform and RMW APIs
 
 <!-- type: reference · level: 4 -->
 
-The platform API is the porting boundary between nano-ros and a
-concrete OS / RTOS / bare-metal target. Each platform provides a
-clock, optionally a heap, optionally threading, optionally
-networking. Platform is **internal** — user applications use the
-[Rust](rust-api.md) / [C](c-api.md) / [C++](cpp-api.md) APIs, not
-the platform vtable directly.
+nano-ros has two porting boundaries, and this page is the reference for
+both. The **platform API** sits between nano-ros and a concrete OS, RTOS or
+bare-metal target: each platform provides a clock, and optionally a heap,
+threading and networking. The **RMW API** sits between nano-ros and a
+concrete pub/sub transport ([The RMW API](#the-rmw-api), below). Both are
+**internal**: user applications use the [Rust](rust-api.md), [C](c-api.md)
+and [C++](cpp-api.md) APIs, not either vtable directly.
 
 nano-ros separates the platform layer (clock, sleep, allocator,
 threading, critical section, network, timer, …) from the rest of the
@@ -162,6 +163,48 @@ The POSIX implementation is the canonical reference port.
 - The task, step by step: [Add a platform](../extending/add-a-platform.md).
 - Per-platform behaviour matrix:
   [Platform Differences](matrices/platform-differences.md).
+
+## The RMW API
+
+The RMW (ROS middleware) vtable is the porting boundary between nano-ros and
+a concrete pub/sub transport: zenoh-pico, XRCE-DDS, Cyclone DDS or PX4 uORB.
+
+### The vtable
+
+The C vtable `nros_rmw_vtable_t` is the source of truth. Each function
+pointer's brief, its parameters, its ownership rules (a borrowed buffer or a
+caller-owned one), whether it blocks, its return codes and the lifetime of
+loaned slots are in the Doxygen output, compiled from the header.
+
+| Surface | Link |
+|---|---|
+| **rmw-cffi Doxygen** (canonical) | [HTML](../api/rmw-cffi/index.html) · [header](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw-abi/include/nros/rmw_vtable.h) |
+
+To regenerate the Doxygen in the tree, see
+[Internals → Build Commands](../internals/dev-env/build-commands.html#api-documentation).
+This page does **not** duplicate the interface specification: read the
+Doxygen for that.
+
+### Backends in the tree
+
+Each crate's `README.md` walks its implementation, and the source is the
+worked example to copy.
+
+| Backend | Source | Notes |
+|---|---|---|
+| zenoh-pico | [`packages/rmw/zenoh/nros-rmw-zenoh`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/zenoh/nros-rmw-zenoh) | Default. C transport through zenoh-pico. Native zero-copy publish through `z_bytes_from_static_buf`. |
+| micro-XRCE-DDS-Client | [`packages/rmw/xrce/nros-rmw-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/xrce/nros-rmw-xrce) | C-only shim; agent-based. |
+| Cyclone DDS | [`packages/rmw/cyclonedds/nros-rmw-cyclonedds`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/cyclonedds/nros-rmw-cyclonedds) | C++ shim; standalone CMake project. |
+| PX4 uORB | [`packages/rmw/uorb/nros-rmw-uorb`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/rmw/uorb/nros-rmw-uorb) | Typed-trampoline registry over PX4 uORB. |
+
+The zenoh-pico shim is the canonical reference port.
+
+### Writing a custom backend
+
+- The task, step by step: [Write a custom RMW backend](../extending/custom-rmw.md).
+- Coming from upstream `rmw.h`: [Internals → RMW API vs upstream](../internals/rmw/rmw-vs-upstream.html).
+- Coverage against upstream `rmw.h`:
+  [`docs/research/rmw-c-abi-coverage.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/research/rmw-c-abi-coverage.md).
 
 ## Design background
 

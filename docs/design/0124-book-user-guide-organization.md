@@ -567,7 +567,7 @@ no current source.
    Contract format (generated, D6) · CLI (generated, D7; ← reference/cli) ·
    system.toml keys (← reference/configuration-surface, build/configuration reference part, reference/nros-bridge-toml) ·
    Environment variables · Rust / C / C++ APIs (landing pages to rustdoc and Doxygen) ·
-   Platform API and C ABI (← reference/platform-api, extending/platform-c-abi) · RMW API (← reference/rmw-api) ·
+   Platform and RMW APIs (← reference/platform-api, extending/platform-c-abi, reference/rmw-api: under the D9 floor, merged by phase-537 W13) ·
    Message generation (← build/message-generation, reference part) · Build outputs (← build/build-artifacts) ·
    Supported boards and support levels (generated; + the board pages) ·
    Feature matrices (← reference/rmw-feature-matrix, sched-matrix, platform-differences) ·
