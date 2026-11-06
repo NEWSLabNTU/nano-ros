@@ -23,7 +23,7 @@ use nros_board_common::{
 /// # Default (Talker)
 ///
 /// - IP: 192.0.3.10/24, Gateway: 192.0.3.1
-/// - Zenoh: `tcp/127.0.0.1:7447` (`THREADX_LINUX_DEFAULT_LOCATOR`, issue 1793)
+/// - Zenoh: `tcp/127.0.0.1:7447` (`BOARD_NET_LOCATOR`: `stack = "host"`, issue 1793)
 /// - Interface: `veth-tx0`
 #[derive(Clone)]
 pub struct Config {
@@ -46,8 +46,9 @@ impl Default for Config {
                 ip: BOARD_NET_IP,
                 netmask: BOARD_NET_NETMASK,
                 gateway: BOARD_NET_GATEWAY,
-                // issue 1793 — the one fallback, shared with the C emitters.
-                zenoh_locator: nros_board_common::threadx_config::THREADX_LINUX_DEFAULT_LOCATOR,
+                // issue 1793 — the one fallback (`board_net::default_locator`),
+                // shared with the C emitters.
+                zenoh_locator: BOARD_NET_LOCATOR,
                 domain_id: 0,
             },
             interface: "veth-tx0",

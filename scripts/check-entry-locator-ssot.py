@@ -86,10 +86,9 @@ SYNC_NOTE = re.compile(r"keep\s+(?:it\s+|them\s+)?in\s+sync", re.IGNORECASE)
 # nros-board-common, held equal to these literals by that crate's test.) If the
 # pairing with the entry locator is ever shown to matter it is its own issue,
 # not this gate's business.
-ALLOWED_LITERALS = {
-    "cmake/board/nano-ros-board-threadx-linux.cmake",
-    "cmake/board/nano-ros-board-rv-virt-threadx.cmake",
-}
+# Empty since the two ThreadX board modules ask `nros dev board net` for their
+# locator (`LOCATOR_VAR`) instead of holding a literal (issue 1793's leftover).
+ALLOWED_LITERALS: set = set()
 
 
 # (file, RHS variable) -> why that write is an INPUT, not a second producer.
@@ -284,12 +283,13 @@ def selftest():
         "keep in sync",
     )
 
-    # The allowlisted board app-config emitters keep their literal.
+    # The board app-config emitters were allowlisted until they asked
+    # `nros dev board net` for the locator; a literal there is a violation again.
     expect(
-        "app-config allowlist respected",
+        "board app-config literal refused",
         {"cmake/board/nano-ros-board-threadx-linux.cmake":
             '"        .locator = \\"tcp/127.0.0.1:7447\\",\\n"\n'},
-        False,
+        True,
     )
 
 

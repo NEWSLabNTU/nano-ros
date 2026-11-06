@@ -77,7 +77,7 @@ echo printing `data: 'Hello World: N'`); lands with the fork pin.
 
 ### W3 — A host-stack board dials the host's loopback router
 
-- `nros board net --format cmake` prints `NROS_BOARD_NET_STACK`;
+- `nros board net --format cmake` prints `NROS_BOARD_NET_STACK` (since replaced by `NROS_BOARD_NET_DEFAULT_LOCATOR`, which applies the same host-stack rule);
   `nros_board_net_c(... STACK_VAR)` returns it, and the entry-locator resolver
   sends a `"host"` board to `tcp/127.0.0.1:7447`
   (`NROS_LOCATOR_ENTRY_HOST_STACK`) instead of its gateway rung, which

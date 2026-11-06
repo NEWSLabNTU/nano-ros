@@ -122,7 +122,7 @@ road's router default was the board's gateway, so the image dialled the
 FreeRTOS family's `tcp/192.0.3.1:7447` from a host process and failed with
 `Executor::open failed: Transport(ConnectionFailed)`. The cmake road already
 used loopback for a host-stack board (`NROS_LOCATOR_ENTRY_HOST_STACK`).
-`board_net::router_host` now gives the same answer: loopback for
+`board_net::default_locator` (the one rule both roads read since the board-derived router default landed) now gives the same answer: loopback for
 `[board.net] stack = "host"`, the gateway otherwise. It changes only the
 locator. The address constants stay, because threadx-linux hands them to NetX.
 

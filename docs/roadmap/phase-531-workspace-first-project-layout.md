@@ -331,6 +331,16 @@ resolved.
   `serial/` locator, and the generated entry's facade now takes the board's
   link feature from that locator (`serial` in place of `ethernet` on the
   mps2 bare-metal crate), as a leaf's selection package already did.
+- Follow-up: an emulator image that states no `locator` now gets a run-plan
+  `link` from the board, on the `board` rung, so `nros run` starts its router.
+  This covers the scaffolded freertos, ThreadX riscv64 and NuttX images. The
+  link is `nros_board_common::board_net::default_locator`, the one rule the
+  board crates, `nros board net` (and therefore the cmake entry rung and the
+  ThreadX cmake modules) and the planner share; see RFC-0109's implementation
+  notes. Issue 1793's leftover copies are gone: two Rust constants and two
+  cmake literals. `nros run` now refuses to start a router on a port that is
+  already taken, naming `--router tcp/…` and `--router none`. Zephyr boards
+  get no board default yet, because Kconfig owns theirs (issue 2301).
 - The acceptance's `--expect 'Publishing: 0'` cannot match the talker, which
   prints `Publishing: 'Hello World: N'` from 1. It was run with `--expect
   'Publishing:'`, as the first chapter (PR #3093) does: on QEMU (ROS 2 Humble

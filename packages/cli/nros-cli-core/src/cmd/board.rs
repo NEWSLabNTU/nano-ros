@@ -552,17 +552,18 @@ fn net(args: NetArgs) -> Result<()> {
                     .collect::<Vec<_>>()
                     .join(".")
             );
-            // issue 2342 (phase-546) — who owns the network (RFC-0109 D2). On a
-            // `"host"` board the gateway above is the platform default and
-            // means nothing: the image is a host process, and the router it
-            // dials by default is the host's own loopback one. The resolver
-            // keys that rung on this fact, not on a board name.
-            let descriptor = dir.join("nros-board.toml");
-            let stack = crate::orchestration::image_net::board_net(&descriptor, &args.name)
-                .map_err(|e| eyre!("{e}"))?
-                .stack
-                .unwrap_or_default();
-            println!("set(NROS_BOARD_NET_STACK \"{stack}\")");
+            // The router an image on this board dials when nothing states one:
+            // the one rule (`board_net::default_locator_over`) the board crates
+            // and `nros run` read too, over the image's network. "" where the
+            // RTOS's own configuration owns it (Zephyr).
+            let desc = dir.join("nros-board.toml");
+            let locator =
+                nros_board_common::board_net::default_locator_over(&desc, Some(&args.name), &n)
+                    .map_err(|e| eyre!("{}: {e}", desc.display()))?;
+            println!(
+                "set(NROS_BOARD_NET_DEFAULT_LOCATOR \"{}\")",
+                locator.unwrap_or_default()
+            );
         }
         "toml" => {
             let dotted = |o: &[u8]| o.iter().map(u8::to_string).collect::<Vec<_>>().join(".");
