@@ -32,7 +32,7 @@ internal.
 
 To build and run a first C++ node, start with the
 [Tutorial](../tutorial/run-a-talker.md), whose every step has a C++ tab; to grow it into a
-workspace, see [C++ in a workspace](../guide/contracts/cpp-workspaces.md). To
+workspace, see [Organize a larger workspace](../guide/build/organize-a-larger-workspace.md). To
 bring an existing ROS 2 node across, see
 [Porting a ROS 2 C++ node](../guide/port/port-a-cpp-node.md). This page is
 the API itself.

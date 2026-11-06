@@ -15,7 +15,7 @@ against (commit `d2e2290a327d`). The CLI reads a contract with that
 release's parser, so a key this page does not list is a parse error.
 
 To write a contract for your own nodes, see
-[Contracts for a C or C++ workspace](../guide/contracts/cpp-workspaces.md).
+[Tell the build what your system creates](../tutorial/tell-the-build.md).
 
 Every key below is accepted in the context that heads its section, and **a key that is not listed is a parse error**. Contexts whose keys are chosen by the author — `nodes:`, `topics:`, `services:`, `actions:`, `includes:`, `paths:`, `args:`, `external_topics:`, the endpoint maps under `pub:`/`sub:`/`srv:`/`cli:`, and the parameter names under a node's `params:` — have no section here, because no allowlist applies to them.
 

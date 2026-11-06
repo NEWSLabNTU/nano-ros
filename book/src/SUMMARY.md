@@ -31,6 +31,7 @@
 - [5. Your own message](./tutorial/your-own-message.md)
 - [6. Services and actions](./tutorial/services-and-actions.md)
 - [Parameters and launch files](./tutorial/parameters-and-launch-files.md)
+- [8. Tell the build what your system creates](./tutorial/tell-the-build.md)
 - [ROS 2 Interoperability](./tutorial/talk-to-ros2.md)
 
 # User guide
@@ -50,7 +51,6 @@
   - [Contracts for a bringup with no launch file](./guide/contracts/contracts-for-a-bringup-with-no-launch-file.md)
   - [Fix a contract refusal](./guide/contracts/fix-a-contract-refusal.md)
   - [Measure static memory](./guide/contracts/measure-static-memory.md)
-  - [C / C++ multi-node workspaces](./guide/contracts/cpp-workspaces.md)
 - [Build and configure]()
   - [Organize a larger workspace](./guide/build/organize-a-larger-workspace.md)
   - [Mix languages](./guide/build/mix-languages.md)
