@@ -50,6 +50,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "lib"))
+import book_charter  # noqa: E402
 import book_pages as bp  # noqa: E402
 
 ROOT = bp.ROOT
@@ -294,17 +295,42 @@ def render_summary(book: str, pages: list[bp.Page], titles: dict[pathlib.Path, s
         def group_of(p: bp.Page, cur: pathlib.Path) -> str | None:
             return p.group if cur.resolve() == p.target.resolve() else None
 
-        rows.sort(key=lambda r: -1 if group_of(*r) is None else order[group_of(*r)])
+        # phase-537 W9 (RFC-0124 D8): within the status-grouped group (the
+        # Platforms), a page a board row names (`book_platform`) is nested
+        # under its row's generated status group, in book_charter's order;
+        # the group's other pages follow, unnested.
+        status_group = bp.STATUS_GROUPED.get(book, {}).get(d)
+        statuses = bp.platform_groups() if status_group else {}
+        sorder = {g: n for n, g in enumerate(book_charter.PLATFORM_GROUPS)}
+
+        def status_of(p: bp.Page, cur: pathlib.Path) -> str | None:
+            if group_of(p, cur) != status_group:
+                return None
+            return statuses.get(str(cur.relative_to(src)))
+
+        def rank(r):
+            g = group_of(*r)
+            if g is None:
+                return (-1, 0)
+            s = status_of(*r)
+            return (order[g], sorder[s] if s else len(sorder))
+
+        rows.sort(key=rank)
         body = []
         last_group = None
+        last_status = None
         for p, cur in rows:
             if cur.resolve() in in_region:
                 continue
             g = group_of(p, cur)
-            indent = "  " if g else ""
+            st = status_of(p, cur)
+            indent = "    " if st else ("  " if g else "")
             if g and g != last_group:
                 body.append(f"- [{dict(groups)[g]}]()")
-            last_group = g
+                last_status = None
+            if st and st != last_status:
+                body.append(f"  - [{st}]()")
+            last_group, last_status = g, st
             body.append(f"{indent}- [{page_title(p, cur, titles)}](./{cur.relative_to(src)})")
             # A page waiting to be merged into this one keeps a line nested
             # under it until it is folded in, so the half-migrated book still
@@ -539,7 +565,7 @@ REGISTRY_FILES = (
     "scripts/probe/probe-tracks.json",
 )
 REGISTRY_FIELD = re.compile(
-    r'(?P<pre>"?\b(?:book_run|book_flash|chapter)"?\s*[:=]\s*")(?P<path>[^"#\s]+\.md)(?P<anchor>#[^"]*)?(?P<post>")')
+    r'(?P<pre>"?\b(?:book_run|book_flash|book_platform|chapter)"?\s*[:=]\s*")(?P<path>[^"#\s]+\.md)(?P<anchor>#[^"]*)?(?P<post>")')
 
 
 def registry_path(pages: list[bp.Page], page: str) -> str | None:

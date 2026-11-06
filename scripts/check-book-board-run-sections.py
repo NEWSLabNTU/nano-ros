@@ -12,7 +12,7 @@ emulator or hardware) or is physical silicon (`real_hardware = true`):
   * the row names its run block, `book_run = "<chapter>.md#<anchor>"` — a page
     under `book/src/` and the id mdbook gives one of its headings;
   * a row with `real_hardware = true` names its flash block, `book_flash`, the
-    same way (and needs no run block when nothing emulates it — S32Z270);
+    same way (and needs no run block when nothing emulates it);
   * a row with `runs = "hardware"` states `real_hardware = true`: its image
     runs on silicon, which is flashed (a model such as the ARM FVP is
     `runs = "emulator"` and states `real_hardware = false`);
@@ -31,11 +31,12 @@ pages, issue 1525) is skipped, with the same SUMMARY derivation
 `check-book-links.py` and `check-book-board-names.py` use; today the ESP32 row
 is `runs = "none"` anyway, which this check does not read.
 
-A model or host row the user book does not admit (RFC-0115 D4 as RFC-0124
-D8 states it: not Verified, and no emulator twin of a named board) keeps
-only its generated reference page, so it may name no run block; its steps
-live in nano-ros Internals (the Arm FVP, phase-537 W1). A row that does
-name one is still checked.
+A row the user book does not admit (RFC-0115 D4 as RFC-0124 D8 states it:
+not Verified, and no emulator twin of a named board) keeps only its
+generated reference page, so it may name no run or flash block: a model
+whose steps live in nano-ros Internals (the Arm FVP, phase-537 W1), or
+silicon nothing here boots (the S32Z270, the S32K344 safety island,
+phase-537 W9). A row that does name one is still checked.
 
 The commands themselves are not executed here; that is phase-517 W10's
 per-chapter probe.
@@ -164,21 +165,23 @@ def run(registry: dict, pages: dict[str, str]) -> tuple[list[str], int]:
         real = row.get("real_hardware")
         if row.get("infra") or (row.get("runs") in (None, "none") and real is not True):
             continue  # a row that runs nowhere has no Run section to name
-        if (real is not True and "book_run" not in row and "book_flash" not in row
-                and not book_charter.admitted(row, board_registry.status_word(row, True))):
-            continue  # RFC-0124 D8: not admitted; its generated reference page only
         where = f"{REGISTRY}: {row.get('crate', '<no crate>')}@{row.get('matrix_platform') or '-'}"
-        refs = [row.get(k) for k in ("book_run", "book_flash")]
-        chapters = {r.split("#", 1)[0] for r in refs if isinstance(r, str)}
-        if chapters and chapters <= parked:
-            continue  # a dormant chapter — parked text, kept unchanged on purpose
-        checked += 1
         if row.get("runs") == "hardware" and real is not True:
             errors.append(
                 f"{where}: `runs = \"hardware\"` row must state `real_hardware = true` — "
                 f"its image runs on silicon, and silicon is flashed")
         if real is not None and not isinstance(real, bool):
             errors.append(f"{where}: `real_hardware` must be a boolean")
+        if ("book_run" not in row and "book_flash" not in row
+                and not book_charter.admitted(row, board_registry.status_word(row, True))):
+            # RFC-0124 D8: not admitted, silicon or not; its generated
+            # reference page only (phase-537 W9: the S32Z270 and the S32K344).
+            continue
+        refs = [row.get(k) for k in ("book_run", "book_flash")]
+        chapters = {r.split("#", 1)[0] for r in refs if isinstance(r, str)}
+        if chapters and chapters <= parked:
+            continue  # a dormant chapter — parked text, kept unchanged on purpose
+        checked += 1
         if "book_run" in row:
             errors += check_ref(where, "book_run", row["book_run"], "Run", pages, listed)
         elif real is not True:
@@ -254,8 +257,18 @@ def selftest(verbose: bool = False) -> int:
         ("an unadmitted row that names a run block is still checked",
          errs([{"crate": "f", "runs": "emulator", "cadence": "manual", "last_run": "2026-09-06",
                 "book_run": "getting-started/z.md#run-on-qemu"}]), True),
-        ("silicon nothing runs (real_hardware, runs none) needs its flash block",
-         errs([{"crate": "s", "runs": "none", "real_hardware": True}]), True),
+        ("silicon the user book does not admit (real_hardware, runs none) needs none",
+         errs([{"crate": "s", "runs": "none", "real_hardware": True}]), False),
+        ("unadmitted silicon that names a flash block is still checked",
+         errs([{"crate": "s", "runs": "none", "real_hardware": True,
+                "book_flash": "getting-started/z.md#flash"}]), True),
+        ("a hand-booted hardware row with no twin names none",
+         errs([{"crate": "k", "runs": "hardware", "real_hardware": True, "cadence": "manual",
+                "last_run": "2026-10-26", "hardware": "k"}]), False),
+        ("an admitted twin of silicon still needs its flash block",
+         errs([{"crate": "t", "runs": "emulator", "real_hardware": True, "cadence": "manual",
+                "last_run": "2026-10-26", "emulator": "renode:x", "hardware": "x",
+                "book_run": "getting-started/a.md#run-on-qemu"}]), True),
         ("an unlisted chapter fails",
          errs([dict(qemu, book_run="getting-started/z.md#run-on-qemu")]), True),
         ("a heading not starting with Run fails",
