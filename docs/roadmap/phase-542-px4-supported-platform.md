@@ -5,10 +5,11 @@ started.** Implements the 2026-11-06 revision of
 [RFC-0039](../design/0039-px4-integration-architecture.md), whose D1 states
 what "PX4 supported" means in RFC-0114 D10 status words: PX4 SITL reads
 **Verified on host (daily)**, and Pixhawk hardware reads **Boots on hardware,
-manual** at most until a hardware runner exists. Shares
-[issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md) with
-[phase-541](phase-541-px4-posix-prebuilt-archives.md), its home: phase-541
-ships the archives (option 1), and W3 here closes the issue's second gap.
+manual** at most until a hardware runner exists.
+[Issue 2289](../issues/archived/2289-px4-release-ships-no-posix-archives.md)
+is resolved by [phase-541](archived/phase-541-px4-posix-prebuilt-archives.md),
+which ships the archives (option 1); W3 here carries the issue's second gap,
+the dev-tier verbs, which its resolution did not close.
 
 Depends on:
 
@@ -115,7 +116,7 @@ rebases it, implements it on the PR.
 ### W2 — The release ships the PX4 POSIX archives and their headers — MOVED to phase-541
 
 Issue 2289's option 1, planned here first, is
-[phase-541](phase-541-px4-posix-prebuilt-archives.md) W1–W3 (the maintainer's
+[phase-541](archived/phase-541-px4-posix-prebuilt-archives.md) W1–W3 (the maintainer's
 pull request, #3189): the release stages `libnros_cpp.a` (uORB features),
 `libnros_platform_posix.a` and the placed headers under
 `<sdk-root>/prebuilt/px4-posix/`, and `NanoRosPx4Module.cmake` reads them.
@@ -134,8 +135,8 @@ configures on the installed track.
 
 ### W4 — The `px4` probe track replays; the book page earns its place (S)
 
-Depends on W1, W3 and phase-541 W4 (the book session drops the track's
-`awaits` on issue 2289 once the archives ship).
+Depends on W1 and W3. Phase-541 W4 is done: the track replayed green on the
+installed track on 2026-11-06, and its `awaits` on issue 2289 drops in #3169.
 
 - The track drops its `awaits` and replays the SITL `make`, the headless boot
   and `px4-nano_ros_app start` green on the installed track (issue 2289's
@@ -146,7 +147,8 @@ Depends on W1, W3 and phase-541 W4 (the book session drops the track's
   possible.
 
 **Acceptance:** the weekly probe run shows the `px4` track green with no
-`awaits`; issue 2289 closes; RFC-0124 D8's exception to Principle 3 ends.
+`awaits`; RFC-0124 D8's exception to Principle 3 ends. (Issue 2289 closed
+2026-11-06, with phase-541.)
 
 ### W5 — The `px4-sitl` job counts as a `daily` lane (M)
 
@@ -234,7 +236,8 @@ W6 and W7 are independent of the rest. W8.a with phase-537 W9. W9 any time.
 ## Acceptance (phase)
 
 - `px4-sitl@Px4` on `main` reads **Verified on host (daily)**.
-- The `px4` probe track replays with no `awaits`; issue 2289 is closed.
+- The `px4` probe track replays with no `awaits` (issue 2289 closed
+  2026-11-06).
 - Every PX4 cell names a job that runs it, and each job has a green scheduled
   run.
 - No user book page teaches a PX4 build that has no registry row behind it.
