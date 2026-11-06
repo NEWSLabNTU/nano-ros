@@ -198,5 +198,5 @@ The family crate is where the `BoardEntry::run` *body* actually lives. The kerne
 
 - **Workspace shape + how an Entry pkg consumes a board** → [Role reference](../guide/build/organize-a-larger-workspace.md).
 - **Multi-node composition root** → [`docs/design/0024-multi-node-workspace-layout.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0024-multi-node-workspace-layout.md).
-- **Why the C ABI looks the way it does** → [Canonical Platform C ABI](../reference/platform-c-abi.md).
+- **Why the C ABI looks the way it does** → [Platform API and C ABI](../reference/platform-api.md#why-free-symbols-not-a-vtable-struct).
 - **Platform trait set vs Board trait set** — these are *different* traits with different roles. `Platform*` (clock / alloc / sockets / threading) sits below the RMW; `Board*` sits above the platform and owns the boot lifecycle. A bare-metal board crate typically depends on both: a `nros-platform-*` impl for the platform traits and a `nros-board-*` impl for the board traits.
