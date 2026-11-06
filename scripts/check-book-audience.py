@@ -34,9 +34,12 @@ F. **The Book charter** (RFC-0124 Principles 3, 7, 14, 15 and the Topic
    pages at its level or below, probes its shell steps, and is a board page
    only for an admitted board. A User guide platform page sits in the
    SUMMARY group its board row's generated status word names (phase-537 W9,
-   RFC-0124 D8). phase-537 W0 REPORTS these: the count is
-   printed and never fails the gate. `--charter` lists each finding. W13
-   makes them refusals.
+   RFC-0124 D8). Since phase-537 W13 each finding REFUSES, unless
+   `.config/book-charter-baseline.txt` lists it: the findings left in pages
+   other open work owns, each with its reason or owner. The baseline only
+   shrinks (`book_charter.ratchet`): a finding it does not list fails, and so
+   does a row that no longer fires or whose count fell, until the row is
+   removed or lowered. `--charter` lists every finding with its baseline key.
 
 G. **Language tab groups parse** (RFC-0124 D9, phase-537 W2;
    `lib/book_tabs.py`). A malformed `<!-- tabs -->` group fails the book build
@@ -63,6 +66,8 @@ import book_pages  # noqa: E402
 import book_tabs  # noqa: E402
 
 ROOT = book_pages.ROOT
+# phase-537 W13 — the charter findings left in pages other open work owns.
+CHARTER_BASELINE = ROOT / ".config" / "book-charter-baseline.txt"
 CONTRIB_LEAD = re.compile(r"^\s*(?:>\s*)*\*\*Contributors?\b", re.I)
 CONTRIB_HEADING = re.compile(r"^#{1,6}\s.*\bcontributors?\b", re.I)
 FENCE = re.compile(r"^\s*(?:```|~~~)")
@@ -282,9 +287,16 @@ def main() -> int:
     charter = charter_findings(user_paths, generated)
     if "--charter" in sys.argv:
         for f in charter:
-            print(f"  charter: {f}")
-    print(f"check-book-audience: {len(charter)} charter finding(s), reported, not refused "
-          f"(RFC-0124, phase-537 W0; `--charter` lists them)")
+            print(f"  charter: {f.row():<64} {f.text}")
+    base_rel = CHARTER_BASELINE.relative_to(ROOT)
+    base_text = CHARTER_BASELINE.read_text() if CHARTER_BASELINE.exists() else ""
+    refused, kept = book_charter.ratchet(charter, base_text, str(base_rel))
+    errs += refused
+    held = sum(kept.values())
+    owners = "; ".join(f"{n} {reason}" for reason, n in sorted(kept.items(), key=lambda kv: (-kv[1], kv[0])))
+    print(f"check-book-audience: {len(charter)} charter finding(s): {held} baselined in {base_rel}"
+          f"{f' ({owners})' if owners else ''}, {len(charter) - held} refused "
+          f"(RFC-0124, phase-537 W13; `--charter` lists them)")
     if errs:
         print(f"check-book-audience: {len(errs)} problem(s):")
         for e in errs:

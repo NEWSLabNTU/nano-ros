@@ -8,11 +8,17 @@ Every hand-written user page carries one declaration line after its title:
 four topic levels. An optional `topic: <slug>` names the topic, so two pages of
 one type for one topic can be found (Principle 7).
 
-`findings(...)` returns one line per departure from a gated principle or the
-level rule. phase-537 W0 only REPORTS them (`check-book-audience` prints the
-count and never fails on them); W13 turns each into a refusal. The rules that
-already refuse elsewhere (internal ids, `nros dev`, typed board facts) are not
-repeated here.
+`findings(...)` returns one `Finding` per departure from a gated principle or
+the level rule. phase-537 W0 reported them; since W13 `check-book-audience`
+REFUSES each one, against a ratchet baseline (`ratchet`, below, and
+`.config/book-charter-baseline.txt`) that lists the findings left in pages
+other open work owns. The rules that already refuse elsewhere (internal ids,
+`nros dev`, typed board facts) are not repeated here.
+
+A finding's `key` (`<subject> <rule>`) names it without a line number, so an
+edit above it does not move it. A rule that counts (shell steps with no probe
+fence) carries the count beside the key, and the baseline holds the count it
+may not rise above.
 
 Pure functions over (path, text) pairs plus the registry rows the caller
 loaded, so the self-test needs no tree.
@@ -22,6 +28,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 
 import book_tabs
 
@@ -59,6 +66,29 @@ LINK = re.compile(r"\]\(([^)#\s]+\.md)(?:#[^)]*)?\)")
 FENCE = re.compile(r"^\s*(?:>\s*)*(```|~~~)\s*([\w+-]*)(.*)$")
 SHELL_LANGS = {"bash", "sh", "shell", "zsh", "fish"}
 COMMENT = re.compile(r"<!--.*?-->", re.S)
+
+
+@dataclass(frozen=True)
+class Finding:
+    """One departure from the charter. `subject` is a book/src/ page (or
+    `topic:<slug>`), `rule` a word that names the rule (with its argument
+    after a colon, such as the linked page), `count` the number of instances
+    for a rule that counts them. `text` is what a person reads."""
+    subject: str
+    rule: str
+    text: str
+    count: int | None = None
+
+    @property
+    def key(self) -> str:
+        return f"{self.subject} {self.rule}"
+
+    def row(self) -> str:
+        """The finding as a baseline row, without its reason."""
+        return self.key if self.count is None else f"{self.key}={self.count}"
+
+    def __str__(self) -> str:
+        return self.text
 
 
 def declaration(text: str) -> tuple[str, int, str | None] | None:
@@ -124,38 +154,43 @@ def resolve(rel: str, link: str) -> str:
     return "/".join(parts)
 
 
-def page_findings(rel: str, text: str) -> list[str]:
+def page_findings(rel: str, text: str) -> list[Finding]:
     """The checks that read one page. `rel` is relative to book/src/."""
     d = declaration(text)
     if d is None:
         bad = any(ANY_DECL.match(l.strip()) for l in text.splitlines()[:6])
-        return [f"{rel}: {'a malformed' if bad else 'no'} type and level declaration (RFC-0124 D2)"]
+        return [Finding(rel, "declaration",
+                        f"{rel}: {'a malformed' if bad else 'no'} type and level declaration (RFC-0124 D2)")]
     typ, level, _ = d
     out = []
     if typ not in TYPES:
-        out.append(f"{rel}: type {typ!r} is not one of {', '.join(TYPES)} (D2)")
-        return out
+        return [Finding(rel, "declaration", f"{rel}: type {typ!r} is not one of {', '.join(TYPES)} (D2)")]
     if level not in LEVELS:
-        out.append(f"{rel}: level {level} is not 1-4 (Topic levels)")
+        out.append(Finding(rel, "level", f"{rel}: level {level} is not 1-4 (Topic levels)"))
     section = rel.split("/", 1)[0]
     if section in SECTION_TYPES and typ not in SECTION_TYPES[section]:
-        out.append(f"{rel}: a {typ} page in {section}/, which holds {'/'.join(sorted(SECTION_TYPES[section]))} (Principle 7)")
+        out.append(Finding(rel, "section-type",
+                           f"{rel}: a {typ} page in {section}/, which holds "
+                           f"{'/'.join(sorted(SECTION_TYPES[section]))} (Principle 7)"))
     words = prose_words(text)
     lo, hi = BUDGET[typ]
     if words < FLOOR:
-        out.append(f"{rel}: {words} words, under the {FLOOR}-word floor — merge into its parent (Principle 15)")
+        out.append(Finding(rel, "floor", f"{rel}: {words} words, under the {FLOOR}-word floor — merge into its "
+                                         "parent (Principle 15)"))
     elif hi is not None and words > hi:
-        out.append(f"{rel}: {words} words, over the {typ} budget of {hi} (Principle 15)")
+        out.append(Finding(rel, "over-budget", f"{rel}: {words} words, over the {typ} budget of {hi} (Principle 15)"))
     elif words < lo:
-        out.append(f"{rel}: {words} words, under the {typ} budget of {lo} (Principle 15)")
+        out.append(Finding(rel, "under-budget", f"{rel}: {words} words, under the {typ} budget of {lo} (Principle 15)"))
     lines = unprobed_steps(text)
     if lines:
         shown = ", ".join(str(n) for n in lines[:5]) + (" …" if len(lines) > 5 else "")
-        out.append(f"{rel}: {len(lines)} shell step(s) with no probe fence (line {shown}) (Principle 14)")
+        out.append(Finding(rel, "unprobed-steps",
+                           f"{rel}: {len(lines)} shell step(s) with no probe fence (line {shown}) (Principle 14)",
+                           len(lines)))
     return out
 
 
-def level_findings(pages: dict[str, str]) -> list[str]:
+def level_findings(pages: dict[str, str]) -> list[Finding]:
     """"Needs first" links that point at a higher level (Topic levels)."""
     levels = {rel: d[1] for rel, text in pages.items() if (d := declaration(text))}
     out = []
@@ -171,18 +206,21 @@ def level_findings(pages: dict[str, str]) -> list[str]:
                 target = resolve(rel, link)
                 theirs = levels.get(target)
                 if theirs is not None and theirs > mine:
-                    out.append(f"{rel}:{n}: level {mine} page needs {target}, a level {theirs} page (Topic levels)")
+                    out.append(Finding(rel, f"needs-first:{target}",
+                                       f"{rel}:{n}: level {mine} page needs {target}, a level {theirs} page "
+                                       "(Topic levels)"))
     return out
 
 
-def topic_findings(pages: dict[str, str]) -> list[str]:
+def topic_findings(pages: dict[str, str]) -> list[Finding]:
     """Two pages of one type for one declared topic (Principle 7)."""
     seen: dict[tuple[str, str], list[str]] = defaultdict(list)
     for rel, text in sorted(pages.items()):
         d = declaration(text)
         if d and d[2]:
             seen[(d[2], d[0])].append(rel)
-    return [f"{', '.join(rels)}: {len(rels)} {typ} pages for topic {topic!r} (Principle 7)"
+    return [Finding(f"topic:{topic}", f"duplicate-{typ}",
+                    f"{', '.join(rels)}: {len(rels)} {typ} pages for topic {topic!r} (Principle 7)")
             for (topic, typ), rels in seen.items() if len(rels) > 1]
 
 
@@ -192,7 +230,7 @@ def admitted(row: dict, status: str) -> bool:
     return status.startswith("Verified") or bool(row.get("emulator") and row.get("hardware"))
 
 
-def board_findings(rows: list[tuple[dict, str]]) -> list[str]:
+def board_findings(rows: list[tuple[dict, str]]) -> list[Finding]:
     """Board pages whose every row is unadmitted (Principle 3). `rows` pairs
     each registry row with its status word; a row names its page by
     `book_run` / `book_flash`, and its User guide platform page by
@@ -206,7 +244,8 @@ def board_findings(rows: list[tuple[dict, str]]) -> list[str]:
                 page = row[key].split("#", 1)[0]
                 pages[page].append(admitted(row, status))
                 names[page].append(f"{row.get('crate', '?')}: {status}")
-    return [f"{page}: no row admits it to the user book ({'; '.join(sorted(set(names[page])))}) (Principle 3)"
+    return [Finding(page, "unadmitted-board",
+                    f"{page}: no row admits it to the user book ({'; '.join(sorted(set(names[page])))}) (Principle 3)")
             for page, oks in sorted(pages.items()) if not any(oks)]
 
 
@@ -231,27 +270,29 @@ def platform_group(row: dict, status: str) -> str | None:
     return None
 
 
-def platform_pages(rows: list[tuple[dict, str]]) -> tuple[dict[str, str], list[str]]:
+def platform_pages(rows: list[tuple[dict, str]]) -> tuple[dict[str, str], list[Finding]]:
     """({page: group} for every row's `book_platform`, findings). A page whose
     rows name two groups, or a row the book does not admit, is a finding: the
     page splits by status (D8), or the row keeps its reference page only."""
     groups: dict[str, set[str]] = defaultdict(set)
-    out: list[str] = []
+    out: list[Finding] = []
     for row, status in rows:
         page = (row.get("book_platform") or "").split("#", 1)[0]
         if not page:
             continue
         g = platform_group(row, status)
         if g is None:
-            out.append(f"{page}: `{row.get('crate', '?')}` ({status}) names it as its platform page, "
-                       "but the row is not admitted to the user book (Principle 3, D8)")
+            out.append(Finding(page, f"platform-unadmitted:{row.get('crate', '?')}",
+                               f"{page}: `{row.get('crate', '?')}` ({status}) names it as its platform page, "
+                               "but the row is not admitted to the user book (Principle 3, D8)"))
             continue
         groups[page].add(g)
     placed = {}
     for page, gs in sorted(groups.items()):
         if len(gs) > 1:
-            out.append(f"{page}: its rows sit in {len(gs)} status groups ({', '.join(sorted(gs))}); "
-                       "split the page by status (D8)")
+            out.append(Finding(page, "platform-split",
+                               f"{page}: its rows sit in {len(gs)} status groups ({', '.join(sorted(gs))}); "
+                               "split the page by status (D8)"))
         placed[page] = min(gs, key=PLATFORM_GROUPS.index)
     return placed, out
 
@@ -286,27 +327,33 @@ def summary_platforms(summary: str) -> dict[str, str | None]:
     return out
 
 
-def platform_findings(summary: str, rows: list[tuple[dict, str]]) -> list[str]:
+def platform_findings(summary: str, rows: list[tuple[dict, str]]) -> list[Finding]:
     """A platform page whose SUMMARY group is not its row's generated status
     group, or a page placed in a status group no row names (D8)."""
     want, out = platform_pages(rows)
     have = summary_platforms(summary)
     for page, g in sorted(want.items()):
         if page not in have:
-            out.append(f"{page}: its row places it in Platforms › {g}, and SUMMARY.md does not list it there (D8)")
+            out.append(Finding(page, "platform-group",
+                               f"{page}: its row places it in Platforms › {g}, and SUMMARY.md does not list it "
+                               "there (D8)"))
         elif have[page] != g:
-            out.append(f"{page}: SUMMARY.md places it in Platforms › {have[page] or '(no group)'}, its row's "
-                       f"status word places it in {g} (D8)")
+            out.append(Finding(page, "platform-group",
+                               f"{page}: SUMMARY.md places it in Platforms › {have[page] or '(no group)'}, its "
+                               f"row's status word places it in {g} (D8)"))
     for page, g in sorted(have.items()):
         if g is not None and page not in want:
-            out.append(f"{page}: SUMMARY.md places it in Platforms › {g}, and no registry row names it as "
-                       "its platform page (`book_platform`): a status group is generated, never typed (D8)")
+            out.append(Finding(page, "platform-typed",
+                               f"{page}: SUMMARY.md places it in Platforms › {g}, and no registry row names it "
+                               "as its platform page (`book_platform`): a status group is generated, never "
+                               "typed (D8)"))
         elif g is not None and g not in PLATFORM_GROUPS:
-            out.append(f"{page}: Platforms › {g} is not a status group ({', '.join(PLATFORM_GROUPS)}) (D8)")
+            out.append(Finding(page, "platform-bad-group",
+                               f"{page}: Platforms › {g} is not a status group ({', '.join(PLATFORM_GROUPS)}) (D8)"))
     return out
 
 
-def findings(pages: dict[str, str], rows: list[tuple[dict, str]], summary: str | None = None) -> list[str]:
+def findings(pages: dict[str, str], rows: list[tuple[dict, str]], summary: str | None = None) -> list[Finding]:
     out = []
     for rel, text in sorted(pages.items()):
         out += page_findings(rel, text)
@@ -314,9 +361,72 @@ def findings(pages: dict[str, str], rows: list[tuple[dict, str]], summary: str |
     return out + (platform_findings(summary, rows) if summary is not None else [])
 
 
+# phase-537 W13 — the charter refuses, against a ratchet baseline. A row is
+#     <subject> <rule>[=<count>]  # <reason or owner>
+# with the key `Finding.row()` prints. The baseline only shrinks: a finding not
+# in it fails, a row that no longer fires fails until it is deleted, and a
+# counted row fails both when the count rises and when it falls (lower it).
+BASELINE_ROW = re.compile(r"^(\S+) (\S+?)(?:=(\d+))?\s+#\s*(\S.*)$")
+
+
+def read_baseline(text: str) -> tuple[dict[str, tuple[int | None, str]], list[str]]:
+    """({key: (count, reason)}, problems) from a baseline file's text. A row
+    with no reason, a malformed row or a repeated key is a problem."""
+    rows: dict[str, tuple[int | None, str]] = {}
+    bad = []
+    for n, line in enumerate(text.splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        m = BASELINE_ROW.match(line.strip())
+        if not m:
+            bad.append(f"line {n}: not `<page> <rule>[=<count>]  # <reason>`: {line.strip()[:100]}")
+            continue
+        key = f"{m.group(1)} {m.group(2)}"
+        if key in rows:
+            bad.append(f"line {n}: `{key}` is listed twice")
+            continue
+        rows[key] = (int(m.group(3)) if m.group(3) else None, m.group(4).strip())
+    return rows, bad
+
+
+def ratchet(found: list[Finding], baseline_text: str, where: str = "the baseline"
+            ) -> tuple[list[str], dict[str, int]]:
+    """(refusals, {reason: findings baselined}) for `found` against the
+    baseline's text."""
+    rows, errs = read_baseline(baseline_text)
+    errs = [f"{where}: {e}" for e in errs]
+    by_key: dict[str, list[Finding]] = defaultdict(list)
+    for f in found:
+        by_key[f.key].append(f)
+    kept: dict[str, int] = defaultdict(int)
+    for key, fs in sorted(by_key.items()):
+        if key not in rows:
+            errs += [f"{f.text} — fix it: the baseline holds only the findings left when the charter began refusing" for f in fs]
+            continue
+        want, reason = rows[key]
+        have = fs[0].count
+        if (want is None) != (have is None):
+            errs.append(f"{where}: `{key}` " + (f"counts: write it `{key}={have}`" if have is not None
+                                                 else f"takes no count: drop `={want}`"))
+            continue
+        if have is not None and have > want:
+            errs.append(f"{fs[0].text} — {where} allows {want}: fix the new one(s)")
+            continue
+        if have is not None and have < want:
+            errs.append(f"{where}: `{key}={want}` now counts {have} — lower it to `{key}={have}`; "
+                        "the baseline only shrinks")
+            continue
+        kept[reason] += 1
+    for key in sorted(set(rows) - set(by_key)):
+        row = key if rows[key][0] is None else f"{key}={rows[key][0]}"
+        errs.append(f"{where}: `{row}` no longer fires — remove it; the baseline only shrinks")
+    return errs, dict(kept)
+
+
 def self_test() -> None:
     page = "# T\n\n<!-- type: how-to · level: 2 -->\n\n" + "word " * 400 + "\n```bash\nnros build\n```\n" \
            "```bash probe=10\nnros run\n```\n```text\nout\n```\n"
+    clean = page.replace("```bash\nnros build", "```bash probe=5\nnros build")
     assert declaration(page) == ("how-to", 2, None)
     assert declaration("# T\n<!-- type: tutorial · level: 1 · topic: rmw -->\n") == ("tutorial", 1, "rmw")
     assert prose_words(page) == 402, prose_words(page)  # "#", "T" and 400
@@ -325,27 +435,53 @@ def self_test() -> None:
     assert prose_words(tabbed) == 6, prose_words(tabbed)  # intro words + the Rust tab's three + end
     assert unprobed_steps(tabbed) == [10], unprobed_steps(tabbed)  # each fence is still a fence
     assert unprobed_steps(page) == [6], unprobed_steps(page)
+
+    def rules(rel: str, text: str) -> list[str]:
+        return [f.rule for f in page_findings(rel, text)]
+
+    # The clean page trips nothing, in a section whose type it fits.
+    assert page_findings("guide/x.md", clean) == [], page_findings("guide/x.md", clean)
+    # Principle 14: a shell step with no probe fence, counted.
     f = page_findings("guide/x.md", page)
-    assert len(f) == 1 and "no probe fence (line 6)" in f[0], f
-    assert "no type" in page_findings("a.md", "# T\n")[0]
-    assert "malformed" in page_findings("a.md", "# T\n<!-- type: how-to -->\n")[0]
-    assert "Principle 7" in page_findings("tutorial/x.md", page)[0]
+    assert [(x.rule, x.count) for x in f] == [("unprobed-steps", 1)] and "no probe fence (line 6)" in f[0].text, f
+    assert f[0].key == "guide/x.md unprobed-steps" and f[0].row() == "guide/x.md unprobed-steps=1"
+    # D2: a missing, malformed or unknown declaration; a level outside 1-4.
+    assert rules("a.md", "# T\n") == ["declaration"] and "no type" in page_findings("a.md", "# T\n")[0].text
+    assert "malformed" in page_findings("a.md", "# T\n<!-- type: how-to -->\n")[0].text
+    assert rules("a.md", clean.replace("how-to ·", "guide ·")) == ["declaration"]
+    assert rules("a.md", clean.replace("level: 2", "level: 7")) == ["level"]
+    # Principle 7: a type that does not fit its section.
+    assert rules("tutorial/x.md", clean) == ["section-type"], rules("tutorial/x.md", clean)
+    assert rules("guide/x.md", clean) == []
+    # Principle 15: the floor, and a budget outside Reference only.
     short = "# T\n<!-- type: how-to · level: 1 -->\nfew words\n"
-    assert "floor" in page_findings("a.md", short)[0]
-    assert "budget of 1500" in page_findings("a.md", "# T\n<!-- type: how-to · level: 1 -->\n" + "w " * 1600)[0]
+    assert rules("guide/a.md", short) == ["floor"] and "floor" in page_findings("a.md", short)[0].text
+    long_how_to = "# T\n<!-- type: how-to · level: 1 -->\n" + "w " * 1600
+    assert rules("guide/a.md", long_how_to) == ["over-budget"]
+    assert "budget of 1500" in page_findings("a.md", long_how_to)[0].text
+    assert rules("tutorial/a.md", "# T\n<!-- type: tutorial · level: 1 -->\n" + "w " * 400) == ["under-budget"]
+    assert rules("reference/a.md", long_how_to.replace("how-to", "reference") + "w " * 5000) == []
+    # Topic levels: a "needs first" link to a higher level, and not to a lower one.
     assert resolve("tutorial/a.md", "../guide/b.md") == "guide/b.md"
     pages = {"tutorial/a.md": "# A\n<!-- type: tutorial · level: 1 · topic: t -->\n**Needs first:** [b](../guide/b.md)\n",
              "guide/b.md": "# B\n<!-- type: how-to · level: 3 -->\n",
              "guide/c.md": "# C\n<!-- type: tutorial · level: 1 · topic: t -->\n"}
     lf = level_findings(pages)
-    assert len(lf) == 1 and "tutorial/a.md:3: level 1 page needs guide/b.md, a level 3" in lf[0], lf
-    assert len(topic_findings(pages)) == 1
+    assert len(lf) == 1 and "tutorial/a.md:3: level 1 page needs guide/b.md, a level 3" in lf[0].text, lf
+    assert lf[0].key == "tutorial/a.md needs-first:guide/b.md", lf[0].key
+    assert not level_findings({**pages, "guide/b.md": "# B\n<!-- type: how-to · level: 1 -->\n"})
+    # Principle 7: two pages of one type for one topic, and two types for one.
+    tf = topic_findings(pages)
+    assert len(tf) == 1 and tf[0].key == "topic:t duplicate-tutorial", tf
+    assert not topic_findings({**pages, "guide/c.md": "# C\n<!-- type: how-to · level: 1 · topic: t -->\n"})
+    # Principle 3: a board page no row admits.
     rows = [({"crate": "a", "book_run": "t/a.md#run"}, "Verified on host (merge)"),
             ({"crate": "b", "book_run": "t/b.md#run"}, "Boots, manual (2026-11-03)"),
             ({"crate": "c", "book_run": "t/c.md#r", "emulator": "wokwi:pico", "hardware": "pico"}, "Boots, manual (x)"),
             ({"crate": "d", "book_flash": "t/a.md#f"}, "Builds")]
     bf = board_findings(rows)
-    assert len(bf) == 1 and bf[0].startswith("t/b.md:"), bf
+    assert len(bf) == 1 and bf[0].text.startswith("t/b.md:") and bf[0].key == "t/b.md unadmitted-board", bf
+    assert not board_findings(rows[:1] + rows[2:]), "an admitted row, or a twin of a named board"
     # phase-537 W9: a platform page an admitted row names is admitted by it.
     assert not board_findings(rows[:1] + [({"crate": "e", "book_platform": "t/b.md"}, "Verified on host (merge)")]
                               + rows[1:2]), "a platform page of an admitted row"
@@ -367,17 +503,40 @@ def self_test() -> None:
     moved = good.replace("    - [H](./guide/platforms/h.md)\n", "").replace(
         "    - [Q](./guide/platforms/q.md)\n", "    - [Q](./guide/platforms/q.md)\n    - [H](./guide/platforms/h.md)\n")
     pf = platform_findings(moved, [host, emu, twin])
-    assert len(pf) == 1 and "h.md: SUMMARY.md places it in Platforms › Verified in emulator" in pf[0], pf
+    assert len(pf) == 1 and "h.md: SUMMARY.md places it in Platforms › Verified in emulator" in pf[0].text, pf
+    assert pf[0].key == "guide/platforms/h.md platform-group", pf[0].key
     typed = good.replace("  - [West app](./guide/platforms/w.md)\n",
                          "  - [Verified on hardware]()\n    - [W](./guide/platforms/w.md)\n")
     pf = platform_findings(typed, [host, emu, twin])
-    assert len(pf) == 1 and "w.md" in pf[0] and "never typed" in pf[0], pf
+    assert len(pf) == 1 and "w.md" in pf[0].text and "never typed" in pf[0].text, pf
     split = ({"crate": "h2", "book_platform": "guide/platforms/h.md"}, "Verified in emulator (daily)")
-    assert any("split the page" in f for f in platform_findings(good, [host, split, emu, twin]))
+    assert any("split the page" in f.text for f in platform_findings(good, [host, split, emu, twin]))
     unadmitted = ({"crate": "s", "book_platform": "guide/platforms/s.md"}, "Builds")
-    assert any("not admitted" in f for f in platform_findings(good, [host, emu, twin, unadmitted]))
+    assert any("not admitted" in f.text for f in platform_findings(good, [host, emu, twin, unadmitted]))
     gone = good.replace("    - [N](./guide/platforms/n.md)\n", "")
-    assert any("n.md" in f and "does not list" in f for f in platform_findings(gone, [host, emu, twin]))
+    assert any("n.md" in f.text and "does not list" in f.text for f in platform_findings(gone, [host, emu, twin]))
+
+    # phase-537 W13: every finding refuses unless the baseline lists it, and
+    # the baseline only shrinks.
+    found = page_findings("guide/x.md", page) + bf
+    base = "# header\n\nguide/x.md unprobed-steps=1  # W6\nt/b.md unadmitted-board  # W4, its twin\n"
+    errs, kept = ratchet(found, base)
+    assert errs == [] and kept == {"W6": 1, "W4, its twin": 1}, (errs, kept)
+    errs, _ = ratchet(found, "guide/x.md unprobed-steps=1  # W6\n")
+    assert len(errs) == 1 and errs[0].startswith("t/b.md:") and "fix it" in errs[0], errs  # not listed
+    errs, _ = ratchet(bf, base)
+    assert errs == ["the baseline: `guide/x.md unprobed-steps=1` no longer fires — remove it; "
+                    "the baseline only shrinks"], errs  # stale
+    errs, _ = ratchet(found, base.replace("=1", "=2"))
+    assert len(errs) == 1 and "lower it to `guide/x.md unprobed-steps=1`" in errs[0], errs  # count fell
+    errs, _ = ratchet(page_findings("guide/x.md", page.replace("```bash probe=10", "```bash")) + bf, base)
+    assert len(errs) == 1 and "allows 1" in errs[0], errs  # count rose
+    errs, _ = ratchet(found, base.replace("=1", ""))
+    assert len(errs) == 1 and "counts: write it" in errs[0], errs
+    errs, _ = ratchet(found, base.replace("  # W6", ""))
+    assert len(errs) == 2 and "not `<page> <rule>" in errs[0], errs  # a row needs its reason
+    errs, _ = ratchet(found, base + "t/b.md unadmitted-board  # again\n")
+    assert any("listed twice" in e for e in errs), errs
 
 
 if __name__ == "__main__":
