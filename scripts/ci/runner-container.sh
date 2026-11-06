@@ -99,6 +99,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 . "$REPO_ROOT/scripts/lib/runner-name.sh"
+. "$REPO_ROOT/scripts/lib/runner-tmpfs.sh"
 NAME="$(nros_require_runner_name runner-container)"
 
 [ -n "$LABELS" ] || { echo "runner-container: need <labels>, e.g. nros-qemu,nros-sdk-zephyr,nros-big" >&2; exit 2; }
@@ -119,13 +120,14 @@ VOLUME_ARGS=(
 )
 # The job container's confinement, shared for the same reason. Each flag is
 # explained where the job container starts, below.
-# shellcheck disable=SC2054  # the commas are --tmpfs mount options
+# Resolved once, up front: a bad size must stop here, not reach `docker run`.
+TMPFS_ARG="$(nros_runner_tmpfs_arg)"
 CONFINE_ARGS=(
     --cap-drop ALL
     --security-opt no-new-privileges
     --user runner
     --pids-limit 4096
-    --tmpfs /tmp:rw,exec,nosuid,size=8g
+    --tmpfs "$TMPFS_ARG"
 )
 
 command -v "$ENGINE" >/dev/null 2>&1 || {
@@ -571,6 +573,7 @@ if [ "$DO_RUN" -eq 1 ]; then
     #   --user runner        never root, in or out of the container
     #   --pids-limit         a fork bomb in a job cannot take the host down
     #   --tmpfs /tmp         exec-capable scratch that dies with the container
+    #                        (size: scripts/lib/runner-tmpfs.sh)
     #   named volumes        caches persist; nothing else does
     #
     # `.nros` is the FOURTH volume and it is not a cache — it is the SDK store
