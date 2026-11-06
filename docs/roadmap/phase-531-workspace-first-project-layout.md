@@ -482,6 +482,9 @@ W6 / phase-535, and NuttX cannot build on this host.
   lane membership does not move; `matrix_fixture_coverage.rs` and
   `check-west-leaf-vocabulary` stay green per batch.
 - The ratchet allowlist from W2 shrinks with each batch.
+- Before the first batch, fix [issue 2298](../issues/2298-workspace-image-take-buffer-not-derived.md):
+  the workspace road states neither the take buffer nor the payload classes, so
+  every image a batch moves would lose the sizing it had as a cargo leaf.
 
 **Acceptance:** the W2 allowlists are empty. `just ci` (tier 1) and `just ci
 matrix` (tier 2) are green on the migrated tree, with fixture counts unchanged
