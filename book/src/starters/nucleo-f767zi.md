@@ -63,6 +63,13 @@ manifest:
       revision: v3.7.0
       import:
         name-allowlist: [cmsis, picolibc, mbedtls, tinycrypt, mcuboot, net-tools, hal_stm32]
+    # Zephyr's Rust support. The board's setup patches it, so the workspace
+    # needs it even for a C talker. Pinned to the revision nano-ros builds
+    # with on the 3.7 line (it has no release tags).
+    - name: zephyr-lang-rust
+      remote: zephyrproject-rtos
+      revision: 404fcefdbab0f2711cd342a1fab9d2eda52a1ba9
+      path: modules/lang/rust
   self:
     path: manifest
 WEST_YML
