@@ -5696,7 +5696,7 @@ pub(crate) fn workspace_image_net(
     Ok(all.remove(image_id))
 }
 
-fn board_descriptor_file(
+pub(crate) fn board_descriptor_file(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     nano_ros_root: Option<&std::path::Path>,
 ) -> Option<std::path::PathBuf> {

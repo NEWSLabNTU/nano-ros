@@ -59,9 +59,9 @@ impl Default for Config {
                 ip: BOARD_NET_IP,
                 netmask: BOARD_NET_NETMASK,
                 gateway: BOARD_NET_GATEWAY,
-                // issue 1793 — the one fallback, shared with the C emitters.
-                zenoh_locator:
-                    nros_board_common::threadx_config::THREADX_QEMU_RISCV64_DEFAULT_LOCATOR,
+                // issue 1793 — the one fallback (`board_net::default_locator`),
+                // shared with the C emitters.
+                zenoh_locator: BOARD_NET_LOCATOR,
                 domain_id,
             },
         }

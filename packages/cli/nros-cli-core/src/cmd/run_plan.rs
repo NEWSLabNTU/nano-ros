@@ -70,6 +70,11 @@ pub struct ImageTables {
     pub console: Option<ConsoleTable>,
     /// The image's `locator` (`tcp/10.0.2.2:7447`, `serial/…`).
     pub locator: Option<String>,
+    /// The router an image on this board dials when it states no `locator`
+    /// ([`board_default_locator`]): the plan's link below the image's, on the
+    /// BOARD rung. Filled by the caller that has the board's descriptor file;
+    /// the constructors leave it empty.
+    pub board_locator: Option<String>,
     /// The image's resolved network as the build receives it (the
     /// `NROS_IMAGE_NET` text), which carries `[image.<id>.run] nic` and the
     /// MAC the firmware was built with. `None`: the image states no network.
@@ -121,6 +126,7 @@ impl ImageTables {
             flash: b.flash.clone(),
             console: b.console.clone(),
             locator: b.locator.clone(),
+            board_locator: None,
             net: net.map(crate::orchestration::image_net::ImageNet::text),
             run_method: b.run.method.clone(),
             run_command: b.run.command.as_ref().map(|c| c.as_str().to_string()),
@@ -138,6 +144,7 @@ impl ImageTables {
             flash: l.network.flash.clone(),
             console: l.network.console.clone(),
             locator: l.network.locator.clone(),
+            board_locator: None,
             net: net.map(crate::orchestration::image_net::ImageNet::text),
             run_method: l.network.run.method.clone(),
             run_command: l
@@ -149,6 +156,37 @@ impl ImageTables {
             ros_edition: l.ros_edition.clone(),
         }
     }
+}
+
+/// The router an image on `board` dials when it states no `locator`:
+/// `nros_board_common::board_net::default_locator_over`, the one rule the
+/// board crates and the cmake entry-locator rung read too, over the board's
+/// network with the image's own interface applied (`image_net`, the
+/// `NROS_IMAGE_NET` text). `Ok(None)`: the board has no descriptor file, or its
+/// RTOS's configuration owns the default (Zephyr).
+///
+/// # Errors
+///
+/// The descriptor's `[board.net]`, or the image network text, is malformed.
+pub fn board_default_locator(
+    descriptor: &BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&Path>,
+    image_net: Option<&str>,
+) -> Result<Option<String>, String> {
+    use nros_board_common::board_net::{ResolvedNet, default_locator_over, resolve};
+    let Some(file) = crate::cmd::build::board_descriptor_file(descriptor, nano_ros_root) else {
+        return Ok(None);
+    };
+    let mut net = resolve(&file, Some(board), ResolvedNet::platform_default())
+        .map_err(|e| format!("{}: {e}", file.display()))?;
+    if let Some(t) = image_net.filter(|t| !t.is_empty())
+        && let Some(i) =
+            nros_board_common::image_net::primary(t).map_err(|e| format!("image network: {e}"))?
+    {
+        net = net.with_interface(&i);
+    }
+    default_locator_over(&file, Some(board), &net).map_err(|e| format!("{}: {e}", file.display()))
 }
 
 /// D5 rung 1: what the command line said.
@@ -745,8 +783,17 @@ fn finish(
         prov.set("passthrough", INVOCATION);
     }
 
-    // ---- link: the image's locator (RFC-0109 D6) ------------------------------
-    if let Some(loc) = &i.tables.locator {
+    // ---- link: the image's locator (RFC-0109 D6), else the board's default ---
+    //
+    // A host target takes none from the board: `run_exec::decorate` gives it
+    // the zenoh default at run time, honouring `$NROS_LOCATOR` the way the
+    // host image itself does.
+    let (locator, rung) = match (&i.tables.locator, &i.tables.board_locator) {
+        (Some(l), _) => (Some(l), IMAGE),
+        (None, Some(l)) if !plan.target.host => (Some(l), BOARD),
+        _ => (None, IMAGE),
+    };
+    if let Some(loc) = locator {
         let kind = match loc.split(['/', ':']).next() {
             Some("tcp") => Some(LinkKind::Tcp),
             Some("udp") => Some(LinkKind::Udp),
@@ -759,7 +806,7 @@ fn finish(
                 locator: loc.clone(),
                 rmw: None,
             });
-            prov.set("link", IMAGE);
+            prov.set("link", rung);
         }
     }
 
@@ -892,6 +939,22 @@ pub fn run(args: Args) -> eyre::Result<()> {
     // A `run` target is a host process or an emulator: this machine's bench
     // adds nothing to it (`bench_for` answers empty for `run`).
     let bench = Bench::default();
+    let root = crate::orchestration::nano_ros_root::resolve(
+        args.nano_ros_path.clone(),
+        &std::env::current_dir().unwrap_or_default(),
+    );
+    let mut tables = one.run_tables.clone();
+    if tables.locator.is_none() {
+        tables.board_locator = match board_default_locator(
+            descriptor,
+            &one.board,
+            root.as_deref(),
+            tables.net.as_deref(),
+        ) {
+            Ok(l) => l,
+            Err(e) => unresolved(&e),
+        };
+    }
     let mut plan = match resolve(
         Verb::Run,
         Inputs {
@@ -899,7 +962,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
             board: &one.board,
             descriptor,
             output: one.output.as_ref(),
-            tables: &one.run_tables,
+            tables: &tables,
             bench: &bench,
             invocation: &invocation,
         },
@@ -909,10 +972,6 @@ pub fn run(args: Args) -> eyre::Result<()> {
     };
     // The emulator executable the runner is handed, through the QEMU ladder.
     // Attached before the dry-run prints, so the printed plan is the run one.
-    let root = crate::orchestration::nano_ros_root::resolve(
-        args.nano_ros_path.clone(),
-        &std::env::current_dir().unwrap_or_default(),
-    );
     let ctx = crate::orchestration::qemu_bin::for_sdk(root.as_deref());
     let renode = || -> Result<PathBuf, String> {
         let (_, index) = crate::cmd::setup::load_resolved_index(Path::new("nros-sdk-index.toml"))
@@ -1718,6 +1777,60 @@ mod tests {
         assert!(e.to_string().contains("nros flash --monitor"), "{e}");
         let p = go(Verb::Flash, &pico, &out, &none, &inv).unwrap();
         assert_eq!(p.runner.name, "west");
+    }
+
+    /// The link's two rungs: the image's `locator`, else the board's derived
+    /// default (`board_default_locator`, the BOARD rung), which an emulator
+    /// board's `nros run` starts a router for. A host target takes none from
+    /// the board (`run_exec::decorate` gives it one at run time), and a Zephyr
+    /// board has none to give (its Kconfig owns it).
+    #[test]
+    fn the_link_is_the_images_locator_else_the_boards_default() {
+        let root = repo_root();
+        let cat = BoardCatalog::load(&root).unwrap();
+        let inv = Invocation::default();
+        let out = cargo_out(Some("thumbv7m-none-eabi"));
+        let fr = board(&cat, "mps2-an385-freertos");
+        let derived = board_default_locator(&fr, "mps2-an385-freertos", Some(&root), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(derived, "tcp/10.0.2.2:7447");
+        let by_board = ImageTables {
+            board_locator: Some(derived.clone()),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Run, &fr, &out, &by_board, &inv).unwrap();
+        assert_eq!(
+            p.link.as_ref().map(|l| l.locator.as_str()),
+            Some("tcp/10.0.2.2:7447")
+        );
+        assert_eq!(p.provenance["link"], BOARD);
+        let by_image = ImageTables {
+            locator: Some("tcp/10.0.2.2:7500".into()),
+            board_locator: Some(derived),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Run, &fr, &out, &by_image, &inv).unwrap();
+        assert_eq!(
+            p.link.as_ref().map(|l| l.locator.as_str()),
+            Some("tcp/10.0.2.2:7500")
+        );
+        assert_eq!(p.provenance["link"], IMAGE);
+
+        let linux = board(&cat, "linux");
+        let host = ImageTables {
+            board_locator: board_default_locator(&linux, "linux", Some(&root), None).unwrap(),
+            ..ImageTables::default()
+        };
+        assert_eq!(host.board_locator.as_deref(), Some("tcp/127.0.0.1:7447"));
+        let p = go(Verb::Run, &linux, &cargo_out(None), &host, &inv).unwrap();
+        assert!(p.link.is_none(), "{:?}", p.link);
+
+        let z = board(&cat, "zephyr");
+        assert_eq!(
+            board_default_locator(&z, "zephyr", Some(&root), None).unwrap(),
+            None
+        );
     }
 
     /// The `--dry-run --why` snapshots: mps2-an385 bare metal, linux, and
