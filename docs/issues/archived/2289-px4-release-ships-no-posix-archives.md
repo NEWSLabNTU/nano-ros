@@ -1,21 +1,32 @@
 ---
 id: 2289
 title: "The release ships no PX4 POSIX archives or placed headers, so a PX4 external module cannot build on the installed track"
-status: open
+status: resolved
 type: enhancement
 area: release, px4, cmake, book
 purpose: [field, industrial]
 related: [phase-537, phase-527, phase-541, phase-542]
 found: 2026-11-05
+resolved: 2026-11-06
+resolved_in: "phase-541 (#3189)"
 ---
 
-**Home: [phase-541](../roadmap/phase-541-px4-posix-prebuilt-archives.md).**
+**Resolved (2026-11-06) by phase-541, PR #3189.** The release asset ships
+`share/nano-ros/prebuilt/px4-posix/` (the uORB-only `libnros_cpp.a`,
+`libnros_platform_posix.a`, the two placed config headers and a stamp), and
+`NanoRosPx4Module.cmake` reads it in an SDK root. The book's `px4` probe track
+replayed green on the installed track with no checkout, on an asset built from
+main: `px4_sitl_default` configure and build, headless boot ("Startup script
+returned successfully"), and `px4-nano_ros_app start` ("nano-ros uORB backend
+registered"). The track's `awaits` on this issue is dropped in PR #3169.
+
+**Home: [phase-541](../../roadmap/archived/phase-541-px4-posix-prebuilt-archives.md).**
 The maintainer chose option 1 below (2026-11-06): the release ships the
 archives prebuilt (RFC-0097 D13). Until phase-541 merges, the book's PX4 page
 stays in User guide › Platforms, waiting on this issue (maintainer ruling,
 2026-11-05), and its `px4` probe track carries an `awaits` naming it. The
 second gap below, a `BRINGUP` module reaching dev-tier verbs from CMake, is
-[phase-542](../roadmap/phase-542-px4-supported-platform.md) W3.
+[phase-542](../../roadmap/phase-542-px4-supported-platform.md) W3.
 
 ## Measured
 

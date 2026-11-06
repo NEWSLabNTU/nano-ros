@@ -13,7 +13,7 @@ Depends on:
   here) and every Tutorial chapter (W5);
 - [phase-535](phase-535-example-reorg-and-cadence-ci.md), for the example
   pointers of the platform pages (W9);
-- [issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md) (the
+- [issue 2289](../issues/archived/2289-px4-release-ships-no-posix-archives.md) (the
   release ships no PX4 POSIX archives), for PX4's probe track to replay. Its
   page stays in Platforms meanwhile (maintainer ruling, 2026-11-05).
 
