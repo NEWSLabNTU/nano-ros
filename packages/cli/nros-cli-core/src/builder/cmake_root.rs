@@ -185,7 +185,9 @@ pub fn render(
         // only "has a CMakeLists" and swept them back in. On a host WITH ROS
         // that configures and looks fine, which is why it landed — it fails
         // only where tier 1 is contracted to run, on a host with no ROS.
-        if crate::interface_package::dir_is_interface_package(&pkg.dir) {
+        // `routing::cmake_node` is that rule, shared with the driver choice in
+        // `cmd/build.rs`, which had missed it.
+        if !crate::routing::cmake_node(pkg) {
             continue;
         }
         // Relative to the WORKSPACE, not to this file.

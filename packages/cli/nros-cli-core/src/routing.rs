@@ -132,6 +132,22 @@ pub fn route(pkg: &WorkspacePackage) -> Routing {
     route_parts(&pkg.dir, pkg.build_type.as_deref())
 }
 
+/// Is `pkg` a package the workspace's CMAKE build compiles: routed to cmake
+/// ([`route`]) and not an interface package?
+///
+/// An interface package (a ROS message package: `rosidl_generate_interfaces`,
+/// `<member_of_group>rosidl_interface_packages`) carries a stock ament
+/// `CMakeLists.txt` because it must also build under colcon, and nano-ros never
+/// configures it: `nros sync` generates its bindings into the packages that use
+/// it (issue 0862). Every site that asks "is there C/C++ here for cmake to
+/// build" asks this, not [`route`] alone. Asking [`route`] alone made a Rust
+/// image beside a message package take the cmake road, whose root then had
+/// nothing to `add_subdirectory` ("no cmake packages in this workspace").
+#[must_use]
+pub fn cmake_node(pkg: &WorkspacePackage) -> bool {
+    route(pkg).cmake_subdir && !crate::interface_package::dir_is_interface_package(&pkg.dir)
+}
+
 /// [`route`] over the parts, for callers that hold no [`WorkspacePackage`].
 #[must_use]
 pub fn route_parts(dir: &Path, build_type: Option<&str>) -> Routing {
@@ -259,6 +275,28 @@ mod tests {
                 cmake_subdir: true
             }
         );
+    }
+
+    /// A ROS message package beside a Rust node: its stock ament CMakeLists
+    /// routes to cmake, yet it is no cmake NODE, so a Rust image beside it
+    /// still takes the cargo road (the Tutorials 5-10 shape, which refused
+    /// with "no cmake packages in this workspace").
+    #[test]
+    fn a_message_package_is_no_cmake_node() {
+        let t = tempfile::tempdir().unwrap();
+        let msgs = pkg(t.path(), "my_msgs", false, true, Some("ament_cmake"));
+        std::fs::write(
+            msgs.dir.join("package.xml"),
+            "<package format=\"3\"><name>my_msgs</name>\
+             <member_of_group>rosidl_interface_packages</member_of_group></package>",
+        )
+        .unwrap();
+        assert!(route(&msgs).cmake_subdir, "its CMakeLists still routes");
+        assert!(!cmake_node(&msgs));
+        let c = pkg(t.path(), "c_talker_pkg", false, true, Some("nros_cmake"));
+        assert!(cmake_node(&c));
+        let rs = pkg(t.path(), "rs_node", true, false, Some("nros_cargo"));
+        assert!(!cmake_node(&rs));
     }
 
     /// The headline of W3 and the whole reason it exists: a Zephyr west leaf
