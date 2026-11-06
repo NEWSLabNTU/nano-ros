@@ -114,7 +114,7 @@ crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
 board_keys = ["zephyr"]
 nightly_token = "zephyr"
-book_run = "guide/platforms/zephyr.md#run-on-native_sim"
+book_run = "starters/zephyr-native-sim.md#run-it-on-this-machine"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -719,16 +719,18 @@ qemu_board = "rv-virt-nuttx"
 
 [[probe]]
 track = "zephyr"
-chapter = "guide/platforms/zephyr.md"
-variant = "native-sim"
+chapter = "starters/zephyr-native-sim.md"
+variant = ""
+lang = "c"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 
 [[probe]]
 track = "zephyr-rust"
-chapter = "guide/platforms/zephyr.md"
-variant = "native-sim-rust"
+chapter = "starters/zephyr-native-sim.md"
+variant = ""
+lang = "rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"

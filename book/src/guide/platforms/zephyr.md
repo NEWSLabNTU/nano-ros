@@ -2,6 +2,8 @@
 
 <!-- type: how-to · level: 2 -->
 
+**Needs first:** [Get started on Zephyr native_sim](../../starters/zephyr-native-sim.md) or [mps2-an385 in QEMU (Zephyr)](../../starters/mps2-an385-zephyr.md)
+
 > **Support level:** [`native_sim`](../../reference/boards/zephyr-native-sim.md), [`mps2_an385`](../../reference/boards/mps2-an385-zephyr.md), [the S32K344 safety island](../../reference/boards/s32k344-safety-island.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../../reference/board-support-levels.md) explains the words.
 
 Single-node starter on Zephyr via the in-tree `zephyr/`
@@ -117,156 +119,22 @@ ros2 run rmw_zenoh_cpp rmw_zenohd`); for xrce, the Micro-XRCE-DDS agent
 
 ## Quick start: a talker on native_sim, from nothing
 
-The sections after this one explain each piece; this is the whole path in
-order, for a C talker on `native_sim` (a host executable, so no emulator).
-Zephyr's own host tools come first — `west` and the build tools
-[Zephyr's Getting Started](https://docs.zephyrproject.org/3.7.0/develop/getting_started/index.html)
-lists; `nros setup` installs no system packages. On Debian/Ubuntu:
+[Get started on Zephyr native_sim](../../starters/zephyr-native-sim.md) is
+the whole path in order, for a C or Rust talker on `native_sim` (a host
+executable, so no emulator): Zephyr's host tools, `nros setup zephyr`, a west
+workspace pinned to Zephyr 3.7, the scaffold, and `nros run`. The sections
+after this one explain each piece.
 
-```bash probe=30 variant=native-sim,native-sim-rust,zephyr-twin
-sudo apt-get install -y --no-install-recommends git cmake ninja-build gperf \
-    device-tree-compiler python3-pip python3-venv xz-utils file wget
-pip3 install --user west
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Provision the board and RMW (the Zephyr SDK, zenoh-pico, mbedtls):
-
-```bash probe=32 variant=native-sim,native-sim-rust,zephyr-twin
-nros setup zephyr --rmw zenoh
-export ZEPHYR_SDK_INSTALL_DIR="$(nros locate tool zephyr-sdk)"
-```
-
-A west workspace that pins Zephyr 3.7 and fetches only the modules nano-ros's
-boards build with (`nros setup zephyr` lists them; `import: true` would fetch
-every vendor HAL, ~2.5 GB more):
-
-```bash probe=34 variant=native-sim,native-sim-rust,zephyr-twin
-mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws
-cat > manifest/west.yml <<'WEST_YML'
-manifest:
-  remotes:
-    - name: zephyrproject-rtos
-      url-base: https://github.com/zephyrproject-rtos
-  projects:
-    - name: zephyr
-      remote: zephyrproject-rtos
-      revision: v3.7.0
-      import:
-        name-allowlist: [cmsis, picolibc, mbedtls, tinycrypt, mcuboot, net-tools]
-    # Rust support: only a Rust app builds with it. Pinned to the revision
-    # nano-ros's own west.yml pins for the 3.7 line (it has no release tags).
-    - name: zephyr-lang-rust
-      remote: zephyrproject-rtos
-      revision: 404fcefdbab0f2711cd342a1fab9d2eda52a1ba9
-      path: modules/lang/rust
-  self:
-    path: manifest
-WEST_YML
-west init -l manifest
-west update --narrow -o=--depth=1
-pip3 install --user -r zephyr/scripts/requirements-base.txt
-export ZEPHYR_BASE="$PWD/zephyr"
-```
-
-Scaffold a workspace beside the west workspace: a C talker node package and
-its bringup, whose image runs on board `zephyr` (Zephyr's `native_sim/native/64`).
-`nros build` writes the Zephyr application for that image under `build/` and
-runs `west build` on it, from the west workspace `NROS_ZEPHYR_WORKSPACE` names.
-You write no `CMakeLists.txt` and no `prj.conf`.
-
-The board package also applies nano-ros's `nros-nsos` snippet, which routes the
+The board package applies nano-ros's `nros-nsos` snippet, which routes the
 image's sockets to the host's (Zephyr's NSOS) instead of a TAP interface.
 Without it `native_sim` tries to create one (`eth_posix: Cannot create zeth`),
 which needs privileges a container or an ordinary user does not have, and the
 image never reaches the router.
 
-The first build generates the message bindings from your ROS 2 install, so
-source it in this shell first. It records the ROS 2 prefix in the workspace,
-so later builds and runs of it need no sourced shell.
-
-```bash probe=40 variant=native-sim
-source /opt/ros/humble/setup.bash
-export NROS_ZEPHYR_WORKSPACE="$PWD"
-cd ..
-nros new c_ws --board zephyr --template talker --lang c --rmw zenoh
-cd c_ws
-nros build
-```
-
-That wrote two packages, the same shape every platform's scaffold has:
-
-```text
-c_ws/
-└── src/
-    ├── c_node/            # the talker: package.xml, CMakeLists.txt, its C source
-    └── c_node_bringup/    # package.xml, and system.toml: [image.zephyr] board = "zephyr"
-```
-
-Run it against a router on the host's loopback — `native_sim` uses the host's
-sockets, and the image dials `tcp/127.0.0.1:7447` unless the bringup's
-`system.toml` states a `locator`:
-
-```bash probe=60 probe-run=60 probe-keep variant=native-sim,native-sim-rust
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=60 variant=native-sim,native-sim-rust
-Started Zenoh router with id
-```
-
-With the router running, run the talker:
-
-```bash probe=70 probe-run=120 variant=native-sim
-nros run c_node
-```
-
-```text probe-expect=70 variant=native-sim
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
-
 **An application you already build with west.** A Zephyr application that
 keeps its own `CMakeLists.txt` and `prj.conf` and has no bringup is not a
 workspace image: it adds the nano-ros module to a plain `west build`, as
 [A Zephyr App You Build with West](zephyr-west-app.md) shows.
-
-**The same talker in Rust.** The scaffold is the same with `--lang rust`, and
-so is everything `nros build` does with it. Make it beside the west workspace
-above.
-
-zephyr-lang-rust needs three things the C app does not: the Rust target the
-Zephyr board implies (`x86_64-unknown-none` for native_sim/64 on an x86_64
-host), rustup's `clippy` (it lints every Rust app as part of the build), and
-clang and libclang, for the bindings it generates from Zephyr's headers.
-`nros setup` in the workspace installs the target and `clippy`, and with
-`--sudo` the two packages (without it, it prints the install command).
-`nros build` refuses a Rust Zephyr image that lacks any of them, naming the
-command.
-
-```bash probe=40 variant=native-sim-rust
-source /opt/ros/humble/setup.bash
-. "$HOME/.cargo/env"     # the cargo `nros setup` installed (Installation)
-export NROS_ZEPHYR_WORKSPACE="$PWD"
-cd ..
-nros new rs_ws --board zephyr --template talker --lang rust --rmw zenoh
-cd rs_ws
-nros setup --sudo
-nros build
-```
-
-With the router above running, run it:
-
-```bash probe=70 probe-run=120 variant=native-sim-rust
-nros run rs_node
-```
-
-```text probe-expect=70 variant=native-sim-rust
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
 
 ## Configure
 
