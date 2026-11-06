@@ -92,6 +92,67 @@ launch = "listener.launch.xml"
 rmw = "cyclonedds"
 domain_id = 108
 
+# Zephyr native_sim: one image per (role, rmw). The router port, Agent port
+# and DDS domain are the cell's `nros_tests::alloc` values (the
+# `cell-isolation` table). The west lane passes the same values as
+# `-DCONFIG_*` defines. The Kconfig fragments live in
+# `boards/native_sim_native_64/`. They came from the `examples/zephyr/cpp` leaves.
+
+[image.zephyr_talker]
+board = "zephyr"
+launch = "talker.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7600"
+
+[image.zephyr_talker_xrce]
+board = "zephyr"
+launch = "talker.launch.xml"
+rmw = "xrce"
+os_config = ["prj-xrce.conf"]
+locator = "udp/127.0.0.1:2600"
+domain_id = 33
+
+[image.zephyr_talker_xrce.knobs.xrce]
+max_subscribers = 0
+max_service_servers = 0
+max_service_clients = 0
+
+[image.zephyr_talker_cyclonedds]
+board = "zephyr"
+launch = "talker.launch.xml"
+rmw = "cyclonedds"
+os_config = ["prj-cyclonedds.conf"]
+domain_id = 24
+
+[image.zephyr_listener]
+board = "zephyr"
+launch = "listener.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7600"
+
+[image.zephyr_listener_xrce]
+board = "zephyr"
+launch = "listener.launch.xml"
+rmw = "xrce"
+os_config = ["prj-xrce.conf"]
+locator = "udp/127.0.0.1:2600"
+domain_id = 33
+
+[image.zephyr_listener_xrce.knobs.xrce]
+max_subscribers = 1
+max_service_servers = 0
+max_service_clients = 0
+
+[image.zephyr_listener_xrce.knobs.zephyr]
+heap_size = 98304
+
+[image.zephyr_listener_cyclonedds]
+board = "zephyr"
+launch = "listener.launch.xml"
+rmw = "cyclonedds"
+os_config = ["prj-cyclonedds.conf"]
+domain_id = 24
+
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
 

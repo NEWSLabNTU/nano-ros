@@ -1428,13 +1428,13 @@ mod tests {
     /// The issue-1016 reading, on the exact coordinates it was measured at.
     ///
     /// `lane-coords tier2` selects `zephyr,cpp,xrce` and nothing else under
-    /// `zephyr`, so `build-c-listener-xrce` is a leaf that lane deliberately
+    /// `zephyr`, so `build-ws-c-listener-xrce` is an image that lane deliberately
     /// does not build — and the verdict the reporter saw said only "STALE".
     #[test]
     fn a_west_image_outside_the_recorded_cover_is_named_as_such() {
         let root = project_root();
-        let in_cover = root.join("zephyr-workspace/build-cpp-listener-xrce/zephyr/zephyr.exe");
-        let out_of_cover = root.join("zephyr-workspace/build-c-listener-xrce/zephyr/zephyr.exe");
+        let in_cover = root.join("zephyr-workspace/build-ws-cpp-listener-xrce/zephyr/zephyr.exe");
+        let out_of_cover = root.join("zephyr-workspace/build-ws-c-listener-xrce/zephyr/zephyr.exe");
 
         let (_, built) = parse_stamp("lane=tier2\ncoord=zephyr,cpp,xrce\n").expect("stamp");
         let placed = |p: &Path| coord_of_artifact(p).expect("a west image is placeable");

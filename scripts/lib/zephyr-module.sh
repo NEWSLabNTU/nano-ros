@@ -12,7 +12,7 @@
 # checkout generated. Measured on this host, in the very build dir issue 1379
 # was filed from:
 #
-#   APPLICATION_SOURCE_DIR = <worktree>/examples/zephyr/rust/listener
+#   APPLICATION_SOURCE_DIR = <worktree>/examples/zephyr/rust/talker
 #   NROS_REPO_DIR          = <another clone>/third-party/nano-ros
 #   zephyr_modules.txt     "nros":"<workspace>/nano-ros":"<another clone>/…/zephyr"
 #

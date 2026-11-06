@@ -82,6 +82,50 @@ board = "threadx-linux"
 launch = "service_client.launch.xml"
 locator = "tcp/127.0.0.1:9010"
 
+# Zephyr native_sim: one image per (role, rmw). The router port, Agent port
+# and DDS domain are the cell's `nros_tests::alloc` values (the
+# `cell-isolation` table). The west lane passes the same values as
+# `-DCONFIG_*` defines. The Kconfig fragments live in
+# `boards/native_sim_native_64/`. They came from the `examples/zephyr/rust` leaves.
+
+[image.zephyr_service_server]
+board = "zephyr"
+launch = "service_server.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7410"
+
+[image.zephyr_service_server_xrce]
+board = "zephyr"
+launch = "service_server.launch.xml"
+rmw = "xrce"
+os_config = ["prj-xrce.conf"]
+locator = "udp/127.0.0.1:2410"
+domain_id = 34
+
+[image.zephyr_service_server_xrce.knobs.xrce]
+max_subscribers = 0
+max_service_servers = 1
+max_service_clients = 0
+
+[image.zephyr_service_client]
+board = "zephyr"
+launch = "service_client.launch.xml"
+os_config = ["prj-zenoh.conf"]
+locator = "tcp/127.0.0.1:7410"
+
+[image.zephyr_service_client_xrce]
+board = "zephyr"
+launch = "service_client.launch.xml"
+rmw = "xrce"
+os_config = ["prj-xrce.conf"]
+locator = "udp/127.0.0.1:2410"
+domain_id = 34
+
+[image.zephyr_service_client_xrce.knobs.xrce]
+max_subscribers = 0
+max_service_servers = 0
+max_service_clients = 1
+
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
 

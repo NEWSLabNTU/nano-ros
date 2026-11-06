@@ -5443,109 +5443,9 @@ west_image = "zephyr_zenoh"
 [[fixture]]
 platform = "zephyr"
 lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/action-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
 rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/rust/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/rust/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/rust/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/rust/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/rust/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/rust/action-client"
 board = "native_sim/native/64"
 conf_files = ["prj.conf"]
 west_image = "zephyr_xrce"
@@ -5590,6 +5490,19 @@ board = "native_sim/native/64"
 conf_files = ["prj.conf"]
 west_image = "zephyr_cyclonedds"
 
+# phase-535 W4 — kept: `zephyr_rust_zenoh_action_goal_completion_rate` reads
+# this leaf's `reply-slot: refusals=` heartbeat, which the workspace action
+# server does not print. Retires with the leaf in W6.
+[[fixture]]
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/zephyr/rust/action-server"
+board = "native_sim/native/64"
+conf_files = ["prj.conf"]
+west_image = "zephyr_zenoh"
+
 [[fixture]]
 platform = "zephyr"
 lang = "rust"
@@ -5623,109 +5536,9 @@ west_image = "zephyr_zenoh"
 [[fixture]]
 platform = "zephyr"
 lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/action-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
 rmw = "xrce"
 builder = "west"
 dir = "examples/zephyr/c/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/c/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/c/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/c/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/c/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/c/action-client"
 board = "native_sim/native/64"
 conf_files = ["prj.conf"]
 west_image = "zephyr_xrce"
@@ -5742,110 +5555,10 @@ west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
-lang = "c"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/c/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/c/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/c/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/c/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/c/action-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
 lang = "cpp"
 rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/cpp/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/cpp/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/cpp/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/cpp/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/cpp/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/cpp/action-client"
 board = "native_sim/native/64"
 conf_files = ["prj.conf"]
 west_image = "zephyr_zenoh"
@@ -5863,109 +5576,9 @@ west_image = "zephyr_xrce"
 [[fixture]]
 platform = "zephyr"
 lang = "cpp"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/cpp/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/cpp/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/cpp/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/cpp/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/cpp/action-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
 rmw = "cyclonedds"
 builder = "west"
 dir = "examples/zephyr/cpp/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/cpp/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/cpp/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/cpp/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/cpp/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/cpp/action-client"
 board = "native_sim/native/64"
 conf_files = ["prj.conf"]
 west_image = "zephyr_cyclonedds"
@@ -6800,6 +6413,636 @@ board = "native_sim/native/64"
 west_build_name = "build-ws-mixed-entry-zenoh"
 west_id = "zephyr/native_sim/native/64/workspace-entry-mixed"
 west_zenoh_locator = "tcp/127.0.0.1:7730"
+skip_probe = true
+
+# phase-535 W4 (RFC-0122 D1) — the zephyr native_sim example pairs as images
+# of the behaviour bringups, all three RMWs. Built by the west lane like every
+# workspace row above (`nros build <bringup>:<image>`); the isolation values come
+# from the allocator's table. `tests/zephyr.rs` reads `west_build_name` through
+# `fixtures::zephyr_pair_image`. The talker leaves stay: they are the board's
+# road witnesses (RFC-0122 D3). skip_probe: own-lane artifacts, like the rows above.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-talker"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-talker-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-talker-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-talker-xrce"
+platform = "zephyr"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-talker-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-rust-talker-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-listener"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-listener-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-listener-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-listener-xrce"
+platform = "zephyr"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-listener-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-rust-listener-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-service-server"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "zephyr_service_server"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-service-server-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-service-server-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-service-server-xrce"
+platform = "zephyr"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "zephyr_service_server_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-service-server-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-rust-service-server-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-service-client"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "zephyr_service_client"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-service-client-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-service-client-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-service-client-xrce"
+platform = "zephyr"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "zephyr_service_client_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-service-client-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-rust-service-client-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-action-server"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "zephyr_action_server"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-action-server-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-action-server-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-action-server-xrce"
+platform = "zephyr"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "zephyr_action_server_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-action-server-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-rust-action-server-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-action-client"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "zephyr_action_client"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-action-client-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-rust-action-client-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-action-client-xrce"
+platform = "zephyr"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "zephyr_action_client_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-action-client-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-rust-action-client-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-talker"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-talker-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-c-talker-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-talker-xrce"
+platform = "zephyr"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-talker-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-c-talker-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-talker-cyclonedds"
+platform = "zephyr"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-talker-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-c-talker-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-listener"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-listener-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-c-listener-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-listener-xrce"
+platform = "zephyr"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-listener-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-c-listener-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-listener-cyclonedds"
+platform = "zephyr"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-listener-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-c-listener-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-service-server"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "zephyr_service_server"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-service-server-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-c-service-server-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-service-server-xrce"
+platform = "zephyr"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "zephyr_service_server_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-service-server-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-c-service-server-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-service-server-cyclonedds"
+platform = "zephyr"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "zephyr_service_server_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-service-server-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-c-service-server-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-service-client"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "zephyr_service_client"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-service-client-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-c-service-client-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-service-client-xrce"
+platform = "zephyr"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "zephyr_service_client_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-service-client-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-c-service-client-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-service-client-cyclonedds"
+platform = "zephyr"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "zephyr_service_client_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-service-client-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-c-service-client-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-action-server"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "zephyr_action_server"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-action-server-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-c-action-server-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-action-server-xrce"
+platform = "zephyr"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "zephyr_action_server_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-action-server-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-c-action-server-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-action-server-cyclonedds"
+platform = "zephyr"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "zephyr_action_server_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-action-server-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-c-action-server-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-action-client"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "zephyr_action_client"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-action-client-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-c-action-client-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-action-client-xrce"
+platform = "zephyr"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "zephyr_action_client_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-action-client-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-c-action-client-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-c-zephyr-action-client-cyclonedds"
+platform = "zephyr"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "zephyr_action_client_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-c-action-client-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-c-action-client-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-talker"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-talker-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-talker-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-talker-xrce"
+platform = "zephyr"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-talker-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-talker-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-talker-cyclonedds"
+platform = "zephyr"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-talker-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-talker-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-listener"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-listener-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-listener-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-listener-xrce"
+platform = "zephyr"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-listener-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-listener-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-listener-cyclonedds"
+platform = "zephyr"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-listener-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-listener-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-service-server"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "zephyr_service_server"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-service-server-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-service-server-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-service-server-xrce"
+platform = "zephyr"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "zephyr_service_server_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-service-server-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-service-server-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-service-server-cyclonedds"
+platform = "zephyr"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "zephyr_service_server_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-service-server-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-service-server-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-service-client"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "zephyr_service_client"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-service-client-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-service-client-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-service-client-xrce"
+platform = "zephyr"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "zephyr_service_client_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-service-client-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-service-client-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-service-client-cyclonedds"
+platform = "zephyr"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "zephyr_service_client_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-service-client-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-service-client-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-action-server"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "zephyr_action_server"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-action-server-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-action-server-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-action-server-xrce"
+platform = "zephyr"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "zephyr_action_server_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-action-server-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-action-server-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-action-server-cyclonedds"
+platform = "zephyr"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "zephyr_action_server_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-action-server-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-action-server-cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-action-client"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "zephyr_action_client"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-action-client-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-action-client-zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-action-client-xrce"
+platform = "zephyr"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "zephyr_action_client_xrce"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-action-client-xrce"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-action-client-xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "workspace-cpp-zephyr-action-client-cyclonedds"
+platform = "zephyr"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "zephyr_action_client_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-cpp-action-client-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-cpp-action-client-cyclonedds"
 skip_probe = true
 
 

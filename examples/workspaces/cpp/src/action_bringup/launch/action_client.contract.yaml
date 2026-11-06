@@ -7,7 +7,7 @@ nodes:
   fib_client:
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate_hz: 2 } }
         output: []
 
 actions:

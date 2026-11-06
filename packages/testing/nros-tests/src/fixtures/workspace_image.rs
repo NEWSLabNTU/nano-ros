@@ -306,16 +306,17 @@ pub fn row_id(img: &WorkspaceImage) -> TestResult<String> {
 /// `alloc::port_of` (issue 1581), so a row that dials the wrong router fails
 /// here by name rather than as `ConnectionFailed` at boot.
 ///
-/// Zephyr images are built by the west lane and resolved by `zephyr.rs`'s
-/// build-dir table; this answers only the cargo and cmake roads.
+/// Zephyr native_sim images are built by the west lane, into the build dir
+/// their row names (`west_build_name`); see `resolve_zephyr`. The other
+/// west boards have no pair images yet.
 pub fn resolve(cell: &Cell, role: PairRole) -> TestResult<PathBuf> {
     let img = workspace_image(cell, role).map_err(TestError::BuildFailed)?;
+    if cell.platform == PlatformId::ZephyrNativeSim {
+        return resolve_zephyr(cell, &img);
+    }
     if matches!(
         cell.platform,
-        PlatformId::ZephyrNativeSim
-            | PlatformId::ZephyrQemuCortexM
-            | PlatformId::ZephyrNucleoF767zi
-            | PlatformId::Fvp
+        PlatformId::ZephyrQemuCortexM | PlatformId::ZephyrNucleoF767zi | PlatformId::Fvp
     ) {
         return Err(TestError::BuildFailed(format!(
             "{} is a west image; zephyr cells resolve through the zephyr build-dir table",
@@ -340,6 +341,46 @@ pub fn resolve(cell: &Cell, role: PairRole) -> TestResult<PathBuf> {
         crate::fixtures::baked_locator::assert_row_dials_port(&id, crate::alloc::port(cell));
     }
     Ok(binary)
+}
+
+/// A zephyr native_sim pair image: the west lane builds row `id` into
+/// `<zephyr build root>/<west_build_name>/`, so the name is read from the row,
+/// never spelled here. The staleness probe watches the whole language
+/// workspace, like every other generated west application
+/// (`build_zephyr_workspace_c_entry`).
+fn resolve_zephyr(cell: &Cell, img: &WorkspaceImage) -> TestResult<PathBuf> {
+    let id = row_id(img)?;
+    let build =
+        crate::fixtures::baked_locator::row_str(&id, "west_build_name").ok_or_else(|| {
+            TestError::BuildFailed(format!(
+                "row {id} ({}) states no `west_build_name`",
+                img.qualified()
+            ))
+        })?;
+    let exe = crate::zephyr::zephyr_build_root()
+        .join(&build)
+        .join("zephyr")
+        .join("zephyr.exe");
+    let rmw = match cell.rmw {
+        Rmw::Zenoh => "zenoh",
+        Rmw::Xrce => "xrce",
+        Rmw::Cyclonedds => "cyclonedds",
+        Rmw::Uorb => {
+            return Err(TestError::BuildFailed(format!(
+                "{} is a uORB cell; zephyr has no uORB images",
+                img.qualified()
+            )));
+        }
+    };
+    crate::fixtures::require_prebuilt_binary_fresh_zephyr(
+        &exe,
+        crate::fixtures::ZephyrLeafSource {
+            dir: img.workspace,
+            lang: Some(cell.lang.as_str()),
+            rmw: Some(rmw),
+            conf_files: None,
+        },
+    )
 }
 
 /// Issue 1581 for pair images: the row's baked locator must dial its cell's

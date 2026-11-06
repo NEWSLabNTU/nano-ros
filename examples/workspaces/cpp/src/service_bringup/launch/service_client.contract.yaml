@@ -24,7 +24,7 @@ nodes:
     # declare; the model records a path with no `input` as the periodic one.
     paths:
       on_timer:
-        trigger: { timer: { rate_hz: 1 } }
+        trigger: { timer: { rate_hz: 2 } }
         output: []
     cli:
       add_two_ints: {}

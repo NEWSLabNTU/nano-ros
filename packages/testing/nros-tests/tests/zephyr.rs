@@ -80,15 +80,14 @@ use std::{
 /// Zephyr boot banner (printed by every native_sim image before app code).
 const ZEPHYR_BOOT_BANNER: &str = "Booting Zephyr";
 
-/// M-F.23: the single-node `zephyr_component_main!` macro emits the
-/// canonical `"Waiting for messages"` readiness marker for every node kind
-/// (pub/sub/service/action); the C/C++ listeners print the same line.
+/// A listener is ready once its subscription exists.
 ///
-/// phase-342 W7 — bound to the shared table rather than respelled. The value is
-/// byte-identical to what was here, so this changes nothing at runtime; what it
-/// changes is ownership. A file-local copy of a marker string is how a test and
-/// the example it watches drift apart, which is issue 0481 in one sentence.
-const NODE_READY_MARKER: &str = nros_tests::output::LISTENER_WAITING_BANNER;
+/// phase-535 W4 — the pair images run the workspace programs, which print
+/// `LISTENER_READY_MARKER` in every language. The old leaves' single-node
+/// `zephyr_component_main!` printed `"Waiting for messages"` instead, and the
+/// C++ workspace listener prints no such line. Bound to the shared table, never
+/// respelled (phase-342 W7, issue 0481).
+const NODE_READY_MARKER: &str = nros_tests::output::LISTENER_READY_MARKER;
 
 /// Lax server-readiness prefix: matches BOTH the component-main
 /// `"Waiting for messages"` marker (rust servers) and the canonical
@@ -161,27 +160,34 @@ fn baked_identity_key(rmw: Rmw, lang: Lang, case: &str) -> String {
     format!("zephyr-{}-{}-{variant}", rmw_str(rmw), lang.as_str())
 }
 
-/// Resolve a prebuilt Zephyr native_sim example image for
-/// (lang, case, rmw), or skip. Missing OR stale (`source_dir_is_stale`) west
-/// images skip with the `just zephyr build-fixtures` remedy — tests never
-/// build fixtures in their bodies (Phase 179.I).
+/// Resolve a prebuilt Zephyr native_sim example image for (lang, case, rmw).
+///
+/// phase-535 W4 (RFC-0122 D4) — the pairs are images of the behaviour
+/// bringups now, so the case names a ROLE of the (zephyr, lang, rmw) Example
+/// cell and `fixtures::workspace_image` answers which image runs it. Missing
+/// OR stale images fail (`unmet!`) with the `just zephyr build-fixtures`
+/// remedy — tests never build fixtures in their bodies (Phase 179.I).
 fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {
-    let alias = match (lang, rmw) {
-        (Lang::Rust, Rmw::Zenoh) => format!("zephyr-rs-{case}"),
-        (Lang::Rust, Rmw::Xrce) => format!("zephyr-xrce-rs-{case}"),
-        (Lang::Rust, Rmw::Cyclonedds) => format!("zephyr-dds-rs-{case}"),
-        (Lang::C, Rmw::Zenoh) => format!("zephyr-c-{case}"),
-        (Lang::C, Rmw::Xrce) => format!("zephyr-xrce-c-{case}"),
-        (Lang::C, Rmw::Cyclonedds) => format!("zephyr-dds-c-{case}"),
-        (Lang::Cpp, Rmw::Zenoh) => format!("zephyr-cpp-{case}"),
-        (Lang::Cpp, Rmw::Xrce) => format!("zephyr-xrce-cpp-{case}"),
-        (Lang::Cpp, Rmw::Cyclonedds) => format!("zephyr-dds-cpp-{case}"),
-        (_, Rmw::Uorb) => unreachable!("uORB is PX4-SITL only; no zephyr example (issue 0341)"),
-        (Lang::Mixed, _) => unreachable!("no mixed example cells"),
+    use nros_tests::fixtures::workspace_image::{PairRole, resolve_coord};
+    let role = match case {
+        "talker" => PairRole::Talker,
+        "listener" => PairRole::Listener,
+        "service-server" => PairRole::ServiceServer,
+        "service-client" => PairRole::ServiceClient,
+        "action-server" => PairRole::ActionServer,
+        "action-client" => PairRole::ActionClient,
+        other => unreachable!("no zephyr pair role {other:?}"),
     };
-    get_prebuilt_zephyr_example(&alias, ZephyrPlatform::NativeSim).unwrap_or_else(|e| {
+    // The Rust Cyclone pairs are still leaves (issue 2313): a generated
+    // Rust Zephyr entry does not yet run Cyclone.
+    let resolved = if (lang, rmw) == (Lang::Rust, Rmw::Cyclonedds) {
+        get_prebuilt_zephyr_example(&format!("zephyr-dds-rs-{case}"), ZephyrPlatform::NativeSim)
+    } else {
+        resolve_coord(PlatformId::ZephyrNativeSim, lang, rmw, role)
+    };
+    resolved.unwrap_or_else(|e| {
         nros_tests::unmet!(
-            "zephyr/{}/{case} {} image not prebuilt or stale \
+            "zephyr {}/{case} {} image not prebuilt or stale \
              (run `just zephyr build-fixtures`): {e:?}",
             lang.as_str(),
             rmw_str(rmw)
@@ -433,7 +439,7 @@ fn assert_heap_verdicts(cell: &Cell, verdicts: Vec<(String, Result<String, Strin
 #[case::zenoh_rust_action_e2e(Cell {
     rmw: Rmw::Zenoh, lang: Lang::Rust, workload: Workload::Action,
     iso: Iso::EphemeralZenohd,
-    ready_marker: NODE_READY_MARKER, ready_secs: 60, ready_fatal: true,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 60, ready_fatal: true,
     post_ready_ms: 0, window_secs: 150, min_received: 0,
     require_feedback: true, server_check: Some(ServerCheck::GoalReceived),
     note: "ex test_zephyr_action_e2e — 3 queryable declarations serialize at ~10 s each \
@@ -515,7 +521,7 @@ fn assert_heap_verdicts(cell: &Cell, verdicts: Vec<(String, Result<String, Strin
 #[case::cyclonedds_rust_action_e2e(Cell {
     rmw: Rmw::Cyclonedds, lang: Lang::Rust, workload: Workload::Action,
     iso: Iso::BakedCycloneDomain,
-    ready_marker: NODE_READY_MARKER, ready_secs: 30, ready_fatal: true,
+    ready_marker: output::ACTION_SERVER_READY_MARKER, ready_secs: 30, ready_fatal: true,
     post_ready_ms: 0, window_secs: 90, min_received: 0,
     require_feedback: false, server_check: Some(ServerCheck::GoalReceived),
     note: "ex test_zephyr_dds_rs_action_e2e",
@@ -1882,7 +1888,16 @@ fn zephyr_rust_zenoh_action_goal_completion_rate() {
     /// and matches W2's native probe so the two numbers compare.
     const SOAK_MS: u64 = 10_000;
 
-    let server_bin = resolve_example(Lang::Rust, "action-server", Rmw::Zenoh);
+    // phase-535 W4 — the LEAF, not the workspace image: only the leaf's
+    // server prints the `reply-slot: refusals=` heartbeat this cell reads.
+    let server_bin =
+        get_prebuilt_zephyr_example("zephyr-rs-action-server", ZephyrPlatform::NativeSim)
+            .unwrap_or_else(|e| {
+                nros_tests::unmet!(
+                    "zephyr rust/action-server zenoh leaf not prebuilt or stale \
+                 (run `just zephyr build-fixtures`): {e:?}"
+                )
+            });
     let client_bin = build_action_client_multigoal(FixtureRmw::Zenoh)
         .require("action-client-multigoal (zenoh)")
         .to_path_buf();
