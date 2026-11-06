@@ -1,19 +1,16 @@
-//! Phase 212.L.7 — self-bringup component / application pkg integration.
+//! Phase 212.L.7 — `nros plan <pkg-dir>` on a package with no launch file.
 //!
-//! These tests drive the `nros` CLI against staged tempdir fixtures and
-//! assert the three pieces of the L.7 surface:
+//! These tests drive the `nros` CLI against staged tempdir fixtures:
 //!
 //! 1. `nros_plan_self_bringup_emits_plan_json` — a single-pkg dir w/
-//!    `[package.metadata.nros.component]` + `[package.metadata.nros.deploy.native]`
-//!    is treated as its own 1-component bringup. `nros plan` resolves the
-//!    launch via the L.6 synth path and writes `record.json`
-//!    (sufficient proof: planner consumed the synth XML).
-//! 2. `nros_codegen_system_self_bringup_bakes_system_config` — `nros
-//!    codegen-system --bringup <pkg-dir>` produces `system_config.h`
-//!    with the config header + cmake mirror populated from the pkg's deploy
-//!    block + class (`system_main.c` retired in phase-258 — issue 0154).
-//! 3. `nros_plan_self_bringup_uses_launch_synth_when_absent` — confirm
-//!    L.6 synth fires for an L.7 self-bringup pkg w/ no `launch/` dir.
+//!    `[package.metadata.nros.component]` and no `launch/` dir is planned as
+//!    a synthesised 1-node model, and `nros plan` writes `record.json`.
+//! 2. `nros_plan_self_bringup_uses_launch_synth_when_absent` — confirm the
+//!    synth fires for such a pkg rather than a Path A no-launch error.
+//!
+//! The `[package.metadata.nros.deploy.*]` half of the L.7 surface (a package
+//! baked as its own bringup by `nros codegen-system`) retired in phase-531 W7
+//! step 1; the CLI refuses the table by name.
 
 use std::{fs, path::Path, process::Command};
 
@@ -25,10 +22,9 @@ fn require_nros_cli_only() {
     nros_tests::require_nros_cli();
 }
 
-/// Stage a self-bringup component pkg fixture: a single workspace member
-/// whose `Cargo.toml` carries `[package.metadata.nros.component]` +
-/// `[package.metadata.nros.deploy.native]` and ships a sibling
-/// `package.xml`. No `launch/` dir — the L.6 synth fires.
+/// Stage a launchless component pkg fixture: a single workspace member
+/// whose `Cargo.toml` carries `[package.metadata.nros.component]` and ships a
+/// sibling `package.xml`. No `launch/` dir — the L.6 synth fires.
 fn stage_self_bringup_component_pkg(root: &Path) {
     fs::write(
         root.join("Cargo.toml"),
@@ -57,12 +53,6 @@ path = "src/main.rs"
 class = "alpha_pkg::Node"
 name = "alpha"
 default_namespace = "/"
-
-[package.metadata.nros.deploy.native]
-board = "zephyr"
-rmw = "zenoh"
-domain_id = 7
-locator = "tcp/127.0.0.1:7447"
 "#,
     )
     .unwrap();
@@ -123,86 +113,7 @@ fn nros_plan_self_bringup_emits_plan_json() {
     );
 }
 
-/// `nros codegen-system --bringup <pkg-dir>` bakes a 1-component
-/// `system_config.h` + `system_config.cmake` from the pkg's L.7 metadata.
-#[test]
-fn nros_codegen_system_self_bringup_bakes_system_config() {
-    require_nros_cli_only();
-    let td = tempfile::tempdir().expect("tempdir");
-    stage_self_bringup_component_pkg(td.path());
-
-    let nros = nros_tests::nros_cli_bin_path().expect("nros bin");
-    let out_dir = td.path().join("out");
-    let result = Command::new(&nros)
-        .arg("codegen-system")
-        .arg("--workspace")
-        .arg(td.path())
-        .arg("--bringup")
-        .arg("alpha_pkg")
-        .arg("--target")
-        .arg("native")
-        .arg("--out")
-        .arg(&out_dir)
-        .current_dir(td.path())
-        .output()
-        .expect("spawn nros codegen-system");
-    assert!(
-        result.status.success(),
-        "nros codegen-system failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&result.stdout),
-        String::from_utf8_lossy(&result.stderr),
-    );
-
-    let bake = out_dir.join("nros-system");
-    let header = fs::read_to_string(bake.join("system_config.h")).expect("system_config.h");
-    assert!(
-        header.contains("#define NROS_SYSTEM_DOMAIN_ID 7u"),
-        "header missing domain_id bake:\n{header}"
-    );
-    assert!(
-        header.contains("#define NROS_SYSTEM_RMW \"zenoh\""),
-        "header missing rmw bake:\n{header}"
-    );
-    assert!(
-        header.contains("#define NROS_SYSTEM_LOCATOR \"tcp/127.0.0.1:7447\""),
-        "header missing locator bake:\n{header}"
-    );
-    assert!(
-        header.contains("#define NROS_SYSTEM_COMPONENT_COUNT 1"),
-        "header missing component count:\n{header}"
-    );
-    assert!(
-        header.contains("#define NROS_SYSTEM_COMPONENT_0_NAME \"alpha\""),
-        "header missing component name:\n{header}"
-    );
-    assert!(
-        header.contains("#define NROS_SYSTEM_COMPONENT_0_CLASS \"alpha_pkg::Node\""),
-        "header missing component class:\n{header}"
-    );
-
-    // Issue 0154 — `system_main.c` retired in phase-258 (install-seam
-    // registration); the bake contract is header + cmake mirror + plan.
-    assert!(
-        !bake.join("system_main.c").exists(),
-        "system_main.c is retired (phase-258) — the baker should not emit it"
-    );
-    let config_cmake =
-        fs::read_to_string(bake.join("system_config.cmake")).expect("system_config.cmake");
-    assert!(
-        config_cmake.contains("NROS_FEATURES"),
-        "system_config.cmake missing the NROS_FEATURES bake:\n{config_cmake}"
-    );
-
-    let plan = fs::read_to_string(bake.join("nros-plan.json")).expect("nros-plan.json");
-    assert!(plan.contains("\"bringup\": \"alpha_pkg\""), "plan: {plan}");
-    assert!(plan.contains("\"system\": \"alpha_pkg\""), "plan: {plan}");
-    assert!(
-        plan.contains("\"class\": \"alpha_pkg::Node\""),
-        "plan: {plan}"
-    );
-}
-
-/// Confirm the L.6 synth resolver fires when the L.7 pkg has no
+/// Confirm the L.6 synth resolver fires when the pkg has no
 /// `launch/` dir — i.e. the record carries the synth pkg/exec attrs
 /// rather than a Path A no-launch error.
 #[test]

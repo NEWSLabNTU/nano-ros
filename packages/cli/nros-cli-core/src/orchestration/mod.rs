@@ -100,9 +100,7 @@ pub use cargo_nano_ros::{
     rmw_resolver::{ResolvedRmw, UnknownRmw, resolve_rmw},
 };
 pub use config::ComponentConfig;
-pub use nros_config::{
-    BringupPackageEntry, BringupSource, ComponentPackageEntry, NrosConfig, NrosConfigError,
-};
+pub use nros_config::{BringupPackageEntry, ComponentPackageEntry, NrosConfig, NrosConfigError};
 pub use plan::NrosPlan;
 pub use source_metadata::SourceMetadata;
 pub use workspace::{ComponentDeclaration, Package, Workspace};

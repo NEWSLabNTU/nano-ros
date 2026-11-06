@@ -26,8 +26,7 @@ use serde::Deserialize;
 use thiserror::Error;
 
 use super::cargo_metadata_schema::{
-    DeployTargetMetadata, PackageMetadataAment, PackageMetadataNros, SystemComponentEntry,
-    SystemHeader, SystemToml, WorkspaceMetadataNros,
+    PackageMetadataAment, PackageMetadataNros, SystemToml, WorkspaceMetadataNros,
 };
 
 /// Errors surfaced by the Phase 212.B loader. Distinct from the catch-all
@@ -98,35 +97,13 @@ pub enum NrosConfigError {
         source: Box<toml::de::Error>,
     },
 
-    /// A bringup system (on-disk or synthesised) declares an RMW backend that
+    /// A bringup system declares an RMW backend that
     /// is not one of the supported set (Phase 227.2, RFC-0031).
     #[error("bringup package `{package}`: {source}")]
     InvalidSystemRmw {
         package: String,
         #[source]
         source: crate::orchestration::rmw_resolver::UnknownRmw,
-    },
-
-    /// phase-486 W8 — a self-bringup package's `[package.metadata.nros.deploy.*]`
-    /// rows disagree about the session (`domain_id` / `locator`).
-    ///
-    /// The synthesised system used to carry one `[deploy.<t>]` per row, and
-    /// the per-target resolvers read each row's own session from it. That
-    /// table retired; an image carries no session, and a machine's session
-    /// lives on a `[host.*]` an image selects through its launch arguments,
-    /// which a package with no launch file has none of. Rows that AGREE fold
-    /// into the `[system]` header unchanged; rows that disagree would lose all
-    /// but the first in silence, so they are refused.
-    #[error(
-        "self-bringup package `{package}`: its `[package.metadata.nros.deploy.*]` rows \
-         disagree about `{field}` ({values}). A per-target session needs a bringup \
-         `system.toml` with one `[host.<name>]` per machine (`domain_id`, `locator`), each \
-         selected by an `[image.<id>]` through its launch `args` (phase-486 W8)."
-    )]
-    SelfBringupSessionDisagrees {
-        package: String,
-        field: &'static str,
-        values: String,
     },
 
     /// phase-420 W6 — a root `nros.toml` exists but is not readable TOML.
@@ -177,37 +154,18 @@ pub struct ComponentPackageEntry {
     pub ament: PackageMetadataAment,
 }
 
-/// Phase 212.L.7 — provenance of a [`BringupPackageEntry`]. Helps `nros
-/// plan` / `nros codegen-system` distinguish a real `system.toml`-backed
-/// bringup from a synthesised one (self-bringup component / application
-/// pkg) — the latter has no on-disk `system.toml` and the resolver tracks
-/// it via the host package's manifest instead.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BringupSource {
-    /// Real bringup pkg with an on-disk `system.toml` (Path A or Path B).
-    SystemToml,
-    /// Synthesised from a self-bringup component / application pkg's
-    /// `[package.metadata.nros]` + `[package.metadata.nros.deploy.*]`
-    /// (Phase 212.L.7).
-    SelfBringup,
-}
-
-/// A workspace member declared as the bringup pkg for a system. Carries a
-/// loaded `system.toml` (or a synthesised one for self-bringup pkgs).
+/// A workspace member declared as the bringup pkg for a system. Carries its
+/// loaded `system.toml`.
 #[derive(Clone, Debug)]
 pub struct BringupPackageEntry {
     pub name: String,
     pub manifest_path: PathBuf,
-    /// `<bringup>/system.toml`. For self-bringup pkgs this points at the
-    /// host pkg's `Cargo.toml` (no on-disk system.toml exists); callers
-    /// keying on file presence should consult `source` instead.
+    /// `<bringup>/system.toml`.
     pub system_toml_path: PathBuf,
     pub system: SystemToml,
     /// Bringup pkgs may still declare `[package.metadata.ament]` for
     /// `package.xml` regeneration (Phase 212.G).
     pub ament: PackageMetadataAment,
-    /// Phase 212.L.7 — provenance (`SystemToml` vs `SelfBringup`).
-    pub source: BringupSource,
 }
 
 impl NrosConfig {
@@ -366,7 +324,6 @@ impl NrosConfig {
                                 system_toml_path,
                                 system,
                                 ament,
-                                source: BringupSource::SystemToml,
                             },
                         );
                     }
@@ -388,38 +345,8 @@ impl NrosConfig {
         // child layouts.
         discover_path_a_bringups(workspace_root, &mut bringup_packages)?;
 
-        // Phase 212.L.7 — self-bringup synthesis.
-        //
-        // A component / application pkg whose `[package.metadata.nros]`
-        // carries `[deploy.<target>]` AND that is not already named as
-        // `pkg = "<name>"` by any sibling bringup pkg becomes its own
-        // degenerate 1-component bringup. We synthesise a SystemToml
-        // from the component metadata + the first deploy block so the
-        // planner / codegen path can consume it uniformly.
-        let referenced_by_bringup: std::collections::HashSet<String> = bringup_packages
-            .values()
-            .flat_map(|b| b.system.components.iter().map(|c| c.pkg.clone()))
-            .collect();
-        let mut synthesised: Vec<(String, BringupPackageEntry)> = Vec::new();
-        for comp in component_packages.values() {
-            if !comp.nros.is_self_bringup_eligible() {
-                continue;
-            }
-            if referenced_by_bringup.contains(&comp.name) {
-                continue; // A real bringup already wires this pkg in.
-            }
-            if bringup_packages.contains_key(&comp.name) {
-                continue; // A bringup pkg already exists under this name.
-            }
-            let synth = synthesise_self_bringup(comp)?;
-            synthesised.push((comp.name.clone(), synth));
-        }
-        for (k, v) in synthesised {
-            bringup_packages.insert(k, v);
-        }
-
-        // Phase 227.2 — validate the declared RMW on every bringup (on-disk,
-        // Path-A, and synthesised single-node) so a typo fails early with the
+        // Phase 227.2 — validate the declared RMW on every bringup (Path A
+        // and Path B) so a typo fails early with the
         // known-list rather than as a broken downstream build (RFC-0031).
         for (name, entry) in &bringup_packages {
             crate::orchestration::rmw_resolver::resolve_rmw(&entry.system.system.rmw).map_err(
@@ -623,7 +550,6 @@ fn discover_path_a_bringups(
                 system_toml_path,
                 system,
                 ament: Default::default(),
-                source: BringupSource::SystemToml,
             },
         );
     }
@@ -754,221 +680,6 @@ fn parse_ament_metadata(value: &serde_json::Value) -> Result<PackageMetadataAmen
         return Ok(PackageMetadataAment::default());
     };
     PackageMetadataAment::deserialize(ament.clone()).map_err(|e| e.to_string())
-}
-
-// ---------------------------------------------------------------------------
-// Phase 212.L.7 — self-bringup synthesis
-// ---------------------------------------------------------------------------
-
-/// Synthesise a [`BringupPackageEntry`] for a self-bringup component /
-/// application pkg. The first declared `[deploy.<target>]` block supplies
-/// the `[system]` header (rmw / domain_id / locator); every declared deploy
-/// block flows into `system.image.<target>` (board / rmw / serdes), and the
-/// rows must agree on the session (phase-486 W8); the component(s) flow into
-/// `system.components` (single `[component]` → one entry using `class` +
-/// `name` fallback; multi `[components.<N>]` → one per entry; application
-/// pkgs synthesise an empty component list — the orchestration root is the
-/// pkg itself).
-fn synthesise_self_bringup(
-    comp: &ComponentPackageEntry,
-) -> Result<BringupPackageEntry, NrosConfigError> {
-    let nros = &comp.nros;
-
-    // phase-486 W8 — the session must be ONE answer: see
-    // `NrosConfigError::SelfBringupSessionDisagrees`. A row's session used to
-    // be its own value, else the header's (= the FIRST row's); it is now the
-    // header's for every row. The two agree unless some row SETS a value other
-    // than the first row's — that, and only that, is refused.
-    let refuse_if_split = |field: &'static str, vals: Vec<Option<String>>| {
-        let first = vals.first().cloned().flatten();
-        let split = vals.iter().any(|v| v.is_some() && *v != first);
-        split.then(|| NrosConfigError::SelfBringupSessionDisagrees {
-            package: comp.name.clone(),
-            field,
-            values: nros
-                .deploy
-                .keys()
-                .zip(&vals)
-                .map(|(k, v)| format!("{k}: {}", v.as_deref().unwrap_or("(unset)")))
-                .collect::<Vec<_>>()
-                .join(", "),
-        })
-    };
-    if let Some(e) = refuse_if_split(
-        "domain_id",
-        nros.deploy
-            .values()
-            .map(|d| d.domain_id.map(|i| i.to_string()))
-            .collect(),
-    ) {
-        return Err(e);
-    }
-    if let Some(e) = refuse_if_split(
-        "locator",
-        nros.deploy.values().map(|d| d.locator.clone()).collect(),
-    ) {
-        return Err(e);
-    }
-
-    // Pick the first deploy target deterministically (BTreeMap iteration
-    // order is key-sorted). The `[system]` header's rmw / domain_id /
-    // locator come from this block, defaulting when the deploy table
-    // omits them.
-    let (first_target_name, first_deploy) = nros
-        .deploy
-        .iter()
-        .next()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .unwrap_or_else(|| ("native".to_string(), DeployTargetMetadata::default()));
-    let _ = first_target_name; // recorded via the deploy map below.
-
-    let system_header = SystemHeader {
-        default_images: Vec::new(),
-        name: comp.name.clone(),
-        rmw: first_deploy
-            .rmw
-            .clone()
-            .unwrap_or_else(|| "zenoh".to_string()),
-        domain_id: first_deploy.domain_id.unwrap_or(0),
-        // phase-421 W4 — carry the Cargo-native `[..deploy.<t>].serdes`
-        // projection into the synthesized header, the same way `rmw` above
-        // comes from the first deploy block. Absent ⇒ `cdr` at resolve time.
-        serdes: first_deploy.serdes.clone(),
-        // Self-bringup synthesized from component deploy metadata, which carries
-        // no edition today → humble default (RFC-0056; phase-304 W2 follow-up:
-        // thread a component-declared edition here if one is added).
-        ros_edition: None,
-        locator: first_deploy.locator.clone(),
-        rmw_config: None,
-        default_launch: None,
-        default_target: None,
-        features: Vec::new(),
-    };
-
-    // Component rows. The `node` spelling (Phase 212.N.12 rename) is
-    // accepted as an alias for `component` via `node_or_component()`.
-    let mut components: Vec<SystemComponentEntry> = Vec::new();
-    if let Some(single) = nros.node_or_component() {
-        let class = single
-            .class
-            .clone()
-            .unwrap_or_else(|| format!("{}::Node", comp.name));
-        let inst_name = single.name.clone().unwrap_or_else(|| comp.name.clone());
-        components.push(SystemComponentEntry {
-            pkg: comp.name.clone(),
-            class,
-            name: inst_name,
-            group_tasks: std::collections::BTreeMap::new(),
-            retired_group_tiers: Default::default(),
-            params: Default::default(),
-            params_files: Vec::new(),
-            entities: None,
-            dispatch: single.dispatch.clone(),
-            stack_bytes: None,
-        });
-    } else {
-        // Phase 212.N.12 in-flight — read the multi-shape via the
-        // `nodes_or_components()` accessor so the synthesis works the same
-        // whether the manifest uses the legacy `components` spelling or
-        // the forward-looking `nodes` spelling.
-        for (key, meta) in nros.nodes_or_components() {
-            let class = meta
-                .class
-                .clone()
-                .unwrap_or_else(|| format!("{}::{}", comp.name, key));
-            let inst_name = meta.name.clone().unwrap_or_else(|| key.clone());
-            components.push(SystemComponentEntry {
-                pkg: comp.name.clone(),
-                class,
-                name: inst_name,
-                group_tasks: std::collections::BTreeMap::new(),
-                retired_group_tiers: Default::default(),
-                params: Default::default(),
-                params_files: Vec::new(),
-                entities: None,
-                dispatch: meta.dispatch.clone(),
-                stack_bytes: None,
-            });
-        }
-    }
-    // Application pkgs: no components on this pkg directly; bringup body
-    // stays empty. (Future: discover sibling component pkgs the
-    // application allow-lists.)
-
-    // Issue 0951 — project the same rows as images. `resolve_image`'s image
-    // rung and every `image_for` reader see a synthesised bringup exactly as
-    // they see an authored one.
-    let image: BTreeMap<String, crate::orchestration::image::ImageBlock> = nros
-        .deploy
-        .iter()
-        .map(|(target_name, dt)| {
-            (
-                target_name.clone(),
-                crate::orchestration::image::ImageBlock {
-                    board: dt.board.clone(),
-                    rmw: dt.rmw.clone(),
-                    // phase-421 W4 — the Cargo-native deploy block is the one
-                    // `[deploy.<t>]` nano-ros owns, and it is where a
-                    // `serdes = "…"` key can live at all (system.toml's block
-                    // is upstream's `deny_unknown_fields` struct). Projected as
-                    // an image so `resolved_serdes`'s image rung sees it.
-                    serdes: dt.serdes.clone(),
-                    ..Default::default()
-                },
-            )
-        })
-        .collect();
-
-    let system = SystemToml {
-        board_config: Default::default(),
-        sources: Default::default(),
-        tools: Default::default(),
-        overrides: Default::default(),
-        system: system_header,
-        components,
-        retired_deploy: Default::default(),
-        // Issue 0951 — a synthesised self-bringup declares no machines. It IS
-        // one machine by construction (the component package's own host), and
-        // placement over a single implicit host is what the empty map already
-        // means.
-        host: Default::default(),
-        // Issue 0951 — the `[package.metadata.nros.deploy.<t>]` rows,
-        // projected as images. Since phase-486 W8 this is the ONLY projection:
-        // the synthesised `[deploy.<t>]` twin retired with the table. Only the
-        // fields an image OWNS cross over (`board`, `rmw`, `serdes`); the
-        // session folds into the header above, checked to agree; `kind` and
-        // `target` had no reader left (a self-bringup is the implicit single
-        // host, and the board descriptor states the triple).
-        image,
-        image_defaults: None,
-        retired_network: Default::default(),
-        retired_transport: Default::default(),
-        domains: Vec::new(),
-        bridges: Vec::new(),
-        models: Vec::new(),
-        sched_tasks: std::collections::BTreeMap::new(),
-        retired_tiers: Default::default(),
-        node_overrides: Vec::new(),
-        safety: None,
-        retired_param_services: Default::default(),
-        lifecycle: None,
-        // phase-463 W3 -- a scaffold waives nothing; a waiver is a person
-        // taking responsibility for one row of a census check.
-        census: None,
-        // RFC-0078 — no declared bounds; absent is the default.
-        wcet: None,
-    };
-
-    Ok(BringupPackageEntry {
-        name: comp.name.clone(),
-        manifest_path: comp.manifest_path.clone(),
-        // No on-disk system.toml; point at the Cargo manifest as a
-        // stand-in so callers needing a real path don't crash.
-        system_toml_path: comp.manifest_path.clone(),
-        system,
-        ament: comp.ament.clone(),
-        source: BringupSource::SelfBringup,
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1398,141 +1109,47 @@ board = "linux"
         assert_eq!(names, ["Echo", "Listener"]);
     }
 
-    // -----------------------------------------------------------------
-    // Phase 212.L.7 — self-bringup synthesis
-    // -----------------------------------------------------------------
-
-    /// Stage a workspace with a single component pkg that carries
-    /// `[deploy.<target>]` AND NO sibling bringup naming it. The loader
-    /// must synthesise a `BringupPackageEntry` for the pkg.
-    fn write_self_bringup_component_workspace(dir: &Path) {
+    #[test]
+    fn rejects_unknown_rmw_on_a_bringup_system() {
+        // Phase 227.2 — a typo'd rmw in a bringup's `system.toml` surfaces at
+        // load time, not as a broken build.
+        let dir = scratch_dir("rejects_unknown_rmw_on_a_bringup_system");
         fs::write(
             dir.join("Cargo.toml"),
-            r#"
-[workspace]
-resolver = "2"
-members = ["alpha_pkg"]
-"#,
+            "[workspace]\nresolver = \"2\"\nmembers = [\"demo_bringup\"]\n",
         )
         .unwrap();
-        fs::create_dir_all(dir.join("alpha_pkg/src")).unwrap();
+        fs::create_dir_all(dir.join("demo_bringup/src")).unwrap();
         fs::write(
-            dir.join("alpha_pkg/Cargo.toml"),
-            r#"
-[package]
-name = "alpha_pkg"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-
-[package.metadata.nros.component]
-class = "alpha_pkg::Node"
-name = "alpha"
-default_namespace = "/demo"
-
-[package.metadata.nros.deploy.native]
-board = "native_sim/native/64"
-rmw = "zenoh"
-domain_id = 7
-locator = "tcp/127.0.0.1:7447"
-"#,
+            dir.join("demo_bringup/Cargo.toml"),
+            "[package]\nname = \"demo_bringup\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
+             [lib]\npath = \"src/lib.rs\"\n",
         )
         .unwrap();
-        fs::write(dir.join("alpha_pkg/src/lib.rs"), "").unwrap();
+        fs::write(dir.join("demo_bringup/src/lib.rs"), "").unwrap();
+        fs::write(
+            dir.join("demo_bringup/system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"dust-dds\"\ndomain_id = 0\n",
+        )
+        .unwrap();
+
+        let err = NrosConfig::from_cargo_metadata(&dir).expect_err("unknown rmw must fail load");
+        match err {
+            NrosConfigError::InvalidSystemRmw { package, source } => {
+                assert_eq!(package, "demo_bringup");
+                assert_eq!(source.declared, "dust-dds");
+            }
+            other => panic!("expected InvalidSystemRmw, got {other:?}"),
+        }
     }
 
+    /// phase-531 W7 step 1 — a node package's `[package.metadata.nros.deploy.*]`
+    /// once made it its own one-node bringup. The table is retired: discovery
+    /// refuses it by name rather than dropping it, because a dropped table
+    /// would build some other deployment without a word.
     #[test]
-    fn discovers_self_bringup_component_pkg() {
-        let dir = scratch_dir("discovers_self_bringup_component_pkg");
-        write_self_bringup_component_workspace(&dir);
-
-        let cfg = NrosConfig::from_cargo_metadata(&dir).expect("loads");
-        let entry = cfg
-            .bringup_packages
-            .get("alpha_pkg")
-            .expect("self-bringup entry synthesised");
-        assert_eq!(entry.source, BringupSource::SelfBringup);
-        assert_eq!(entry.system.system.name, "alpha_pkg");
-        assert_eq!(entry.system.system.rmw, "zenoh");
-        assert_eq!(entry.system.system.domain_id, 7);
-        assert_eq!(
-            entry.system.system.locator.as_deref(),
-            Some("tcp/127.0.0.1:7447")
-        );
-        assert_eq!(entry.system.components.len(), 1);
-        let c = &entry.system.components[0];
-        assert_eq!(c.pkg, "alpha_pkg");
-        assert_eq!(c.class, "alpha_pkg::Node");
-        assert_eq!(c.name, "alpha");
-        // Issue 0951 — the row is projected as an image (since phase-486 W8,
-        // ONLY as an image: the synthesised `[deploy.native]` twin retired). A
-        // synthesised bringup is not authored anywhere, so nothing in the tree
-        // would show a gap here: a consumer would just read an empty map.
-        let img = entry
-            .system
-            .image_for("native")
-            .expect("native image projected");
-        assert_eq!(img.board.as_deref(), Some("native_sim/native/64"));
-        assert_eq!(
-            entry.system.resolve_image(None).as_deref(),
-            Some("native"),
-            "the sole image resolves the target"
-        );
-    }
-
-    /// phase-486 W8 — a self-bringup's deploy rows fold into ONE session.
-    /// Rows that agree (or leave it unset) load; a row that SETS a different
-    /// `domain_id` than the first is refused naming both, because the per-row
-    /// `[deploy.<t>]` that used to carry it is gone and the value would
-    /// otherwise vanish.
-    #[test]
-    fn self_bringup_rows_that_split_the_session_are_refused() {
-        let write = |dir: &Path, second: &str| {
-            fs::write(
-                dir.join("Cargo.toml"),
-                "[workspace]\nresolver = \"2\"\nmembers = [\"alpha_pkg\"]\n",
-            )
-            .unwrap();
-            fs::create_dir_all(dir.join("alpha_pkg/src")).unwrap();
-            fs::write(dir.join("alpha_pkg/src/lib.rs"), "").unwrap();
-            fs::write(
-                dir.join("alpha_pkg/Cargo.toml"),
-                format!(
-                    "[package]\nname = \"alpha_pkg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
-                     [lib]\npath = \"src/lib.rs\"\n\
-                     [package.metadata.nros.component]\nclass = \"alpha_pkg::Node\"\n\
-                     [package.metadata.nros.deploy.a]\nboard = \"linux\"\ndomain_id = 7\n\
-                     [package.metadata.nros.deploy.b]\nboard = \"linux\"\n{second}"
-                ),
-            )
-            .unwrap();
-        };
-
-        let ok = scratch_dir("self_bringup_session_agrees");
-        write(&ok, "");
-        let cfg = NrosConfig::from_cargo_metadata(&ok).expect("an unset row inherits");
-        let sys = &cfg.bringup_packages["alpha_pkg"].system;
-        assert_eq!(sys.resolved_domain_id(Some("b")), 7);
-
-        let split = scratch_dir("self_bringup_session_splits");
-        write(&split, "domain_id = 9\n");
-        let e = NrosConfig::from_cargo_metadata(&split)
-            .expect_err("two set values disagree")
-            .to_string();
-        assert!(
-            e.contains("domain_id") && e.contains("a: 7") && e.contains("b: 9"),
-            "{e}"
-        );
-        assert!(e.contains("[host.<name>]"), "{e}");
-    }
-
-    #[test]
-    fn rejects_unknown_rmw_on_synthesised_system() {
-        // Phase 227.2 — a typo'd rmw in a deploy block surfaces at load time
-        // (via the synthesised single-node system), not as a broken build.
-        let dir = scratch_dir("rejects_unknown_rmw_on_synthesised_system");
+    fn a_manifest_deploy_table_fails_discovery_by_name() {
+        let dir = scratch_dir("a_manifest_deploy_table_fails_discovery_by_name");
         fs::write(
             dir.join("Cargo.toml"),
             "[workspace]\nresolver = \"2\"\nmembers = [\"alpha_pkg\"]\n",
@@ -1541,168 +1158,21 @@ locator = "tcp/127.0.0.1:7447"
         fs::create_dir_all(dir.join("alpha_pkg/src")).unwrap();
         fs::write(
             dir.join("alpha_pkg/Cargo.toml"),
-            r#"
-[package]
-name = "alpha_pkg"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-
-[package.metadata.nros.component]
-class = "alpha_pkg::Node"
-name = "alpha"
-
-[package.metadata.nros.deploy.native]
-rmw = "dust-dds"
-"#,
+            "[package]\nname = \"alpha_pkg\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
+             [lib]\npath = \"src/lib.rs\"\n\
+             [package.metadata.nros.component]\nclass = \"alpha_pkg::Node\"\n\
+             [package.metadata.nros.deploy.native]\nboard = \"linux\"\nrmw = \"zenoh\"\n",
         )
         .unwrap();
         fs::write(dir.join("alpha_pkg/src/lib.rs"), "").unwrap();
 
-        let err = NrosConfig::from_cargo_metadata(&dir).expect_err("unknown rmw must fail load");
-        match err {
-            NrosConfigError::InvalidSystemRmw { package, source } => {
-                assert_eq!(package, "alpha_pkg");
-                assert_eq!(source.declared, "dust-dds");
-            }
-            other => panic!("expected InvalidSystemRmw, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn discovers_self_bringup_application_pkg() {
-        let dir = scratch_dir("discovers_self_bringup_application_pkg");
-        fs::write(
-            dir.join("Cargo.toml"),
-            r#"
-[workspace]
-resolver = "2"
-members = ["demo_app"]
-"#,
-        )
-        .unwrap();
-        fs::create_dir_all(dir.join("demo_app/src")).unwrap();
-        fs::write(
-            dir.join("demo_app/Cargo.toml"),
-            r#"
-[package]
-name = "demo_app"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-
-[package.metadata.nros.application]
-name = "demo_app"
-deploy = ["linux"]
-
-[package.metadata.nros.deploy.native]
-board = "native_sim/native/64"
-rmw = "zenoh"
-domain_id = 0
-"#,
-        )
-        .unwrap();
-        fs::write(dir.join("demo_app/src/lib.rs"), "").unwrap();
-
-        let cfg = NrosConfig::from_cargo_metadata(&dir).expect("loads");
-        let entry = cfg
-            .bringup_packages
-            .get("demo_app")
-            .expect("self-bringup application entry");
-        assert_eq!(entry.source, BringupSource::SelfBringup);
-        assert_eq!(entry.system.system.name, "demo_app");
-        // Application self-bringup has no in-pkg components.
-        assert!(entry.system.components.is_empty());
-        assert!(entry.system.image.contains_key("native"));
-    }
-
-    /// When a real bringup pkg already names a component pkg via
-    /// `pkg = "<name>"`, the component's deploy table does NOT cause a
-    /// synthesised bringup (no double-counting).
-    #[test]
-    fn self_bringup_skipped_when_named_by_real_bringup() {
-        let dir = scratch_dir("self_bringup_skipped_when_named_by_real_bringup");
-        fs::write(
-            dir.join("Cargo.toml"),
-            r#"
-[workspace]
-resolver = "2"
-members = ["alpha_pkg", "demo_bringup"]
-
-[workspace.metadata.nros]
-default_system = "demo_bringup"
-"#,
-        )
-        .unwrap();
-        fs::create_dir_all(dir.join("alpha_pkg/src")).unwrap();
-        fs::write(
-            dir.join("alpha_pkg/Cargo.toml"),
-            r#"
-[package]
-name = "alpha_pkg"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-
-[package.metadata.nros.component]
-class = "alpha_pkg::Node"
-name = "alpha"
-
-[package.metadata.nros.deploy.native]
-rmw = "zenoh"
-domain_id = 0
-"#,
-        )
-        .unwrap();
-        fs::write(dir.join("alpha_pkg/src/lib.rs"), "").unwrap();
-
-        fs::create_dir_all(dir.join("demo_bringup/src")).unwrap();
-        fs::write(
-            dir.join("demo_bringup/Cargo.toml"),
-            r#"
-[package]
-name = "demo_bringup"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-"#,
-        )
-        .unwrap();
-        fs::write(dir.join("demo_bringup/src/lib.rs"), "").unwrap();
-        fs::write(
-            dir.join("demo_bringup/system.toml"),
-            r#"
-[system]
-name = "demo"
-rmw = "zenoh"
-domain_id = 0
-
-[[component]]
-pkg = "alpha_pkg"
-class = "alpha_pkg::Node"
-name = "alpha"
-"#,
-        )
-        .unwrap();
-
-        let cfg = NrosConfig::from_cargo_metadata(&dir).expect("loads");
-        // Only `demo_bringup` is a bringup; alpha_pkg is NOT auto-synthesised.
-        assert!(cfg.bringup_packages.contains_key("demo_bringup"));
+        let err = NrosConfig::from_cargo_metadata(&dir)
+            .expect_err("a retired deploy table must fail discovery")
+            .to_string();
+        assert!(err.contains("alpha_pkg"), "{err}");
         assert!(
-            !cfg.bringup_packages.contains_key("alpha_pkg"),
-            "alpha_pkg should not be self-bringup'd when demo_bringup names it"
-        );
-        assert_eq!(
-            cfg.bringup_packages.get("demo_bringup").unwrap().source,
-            BringupSource::SystemToml
+            err.contains("RETIRED") && err.contains("[image.<id>]"),
+            "the refusal must name the replacement: {err}"
         );
     }
 

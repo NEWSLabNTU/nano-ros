@@ -1776,8 +1776,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `BoardEntry::run` path (`setup` owns the bounded hosted spin) — so the
     // emitted TU is byte-identical to pre-228 for every current example.
     // Issue #48 cause 1 — bake the deploy overlay from the leaf's deployment
-    // identity (RFC-0098 D5: `system.toml`, else the retiring
-    // `[package.metadata.nros.deploy.<board>]`). An entry with no leaf
+    // identity (RFC-0098 D5: `system.toml`; the manifest
+    // `[package.metadata.nros.deploy.<board>]` is refused). An entry with no leaf
     // declaration gets an all-`None` overlay, so `run_with_deploy` then
     // behaves exactly like `run`.
     let mut deploy_overlay_lit = match (&deploy_for_framework, &leaf_decl) {
@@ -3557,8 +3557,8 @@ fn executor_capacity_assert(
     }
 }
 
-/// Issue #48 cause 1 — the deploy-overlay values read from the Entry pkg's
-/// `[package.metadata.nros.deploy.<board>]` block. Every field is `Option`
+/// Issue #48 cause 1 — the deploy-overlay values read from the image's
+/// deployment identity (`system.toml`). Every field is `Option`
 /// (absent key → `None`), baked into a `DeployOverlay` const by
 /// [`deploy_overlay_tokens`] and threaded through `BoardEntry::run_with_deploy`.
 #[derive(Default)]
@@ -3591,8 +3591,8 @@ struct DeployOverlayLit {
 /// The leaf's deployment identity (RFC-0098 D5), as the overlay the board's
 /// compiled-in `Config::default()` is patched with. Absent keys stay `None`,
 /// so the firmware keeps its default for them. The values come from
-/// `nros_orchestration_ir::leaf_system` — `system.toml` or the retiring
-/// `[package.metadata.nros.deploy.<board>]` table — never from a manifest walk
+/// `nros_orchestration_ir::leaf_system` — `system.toml`; the retired
+/// `[package.metadata.nros.deploy.<board>]` table is refused — never from a manifest walk
 /// here.
 fn overlay_from_leaf(leaf: &nros_orchestration_ir::leaf_system::LeafSystem) -> DeployOverlayLit {
     let net = &leaf.network;

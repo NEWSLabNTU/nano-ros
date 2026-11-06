@@ -15,10 +15,7 @@ use std::path::PathBuf;
 use eyre::{Result, WrapErr, bail, eyre};
 use toml_edit::{DocumentMut, Item, Table, value};
 
-use crate::orchestration::{
-    cargo_metadata_schema::SystemToml,
-    nros_config::{BringupSource, NrosConfig},
-};
+use crate::orchestration::{cargo_metadata_schema::SystemToml, nros_config::NrosConfig};
 
 /// Which table this scaffold writes.
 ///
@@ -138,9 +135,7 @@ pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
 }
 
 /// Discover the bringup package's `system.toml` to edit, the same way
-/// `nros_config` discovers bringup packages. Only bringups with a real on-disk
-/// `system.toml` ([`BringupSource::SystemToml`]) are eligible — a synthesised
-/// self-bringup has no file to edit.
+/// `nros_config` discovers bringup packages.
 fn locate_bringup_system_toml(s: &DeployScaffold) -> Result<PathBuf> {
     let cfg = NrosConfig::from_workspace(&s.workspace_root).wrap_err_with(|| {
         format!(
@@ -152,7 +147,6 @@ fn locate_bringup_system_toml(s: &DeployScaffold) -> Result<PathBuf> {
     let mut candidates: Vec<(String, PathBuf)> = cfg
         .bringup_packages
         .into_iter()
-        .filter(|(_, e)| e.source == BringupSource::SystemToml)
         .map(|(name, e)| (name, e.system_toml_path))
         .collect();
     candidates.sort();

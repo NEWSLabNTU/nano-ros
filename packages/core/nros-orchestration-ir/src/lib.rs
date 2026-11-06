@@ -142,8 +142,7 @@ pub mod wcet;
 /// `"mps2-an385-freertos"` for `"freertos"`) are normalised here so callers
 /// need no extra translation.
 ///
-/// Keys match the `deploy = "…"` strings in
-/// `[package.metadata.nros.deploy.<board>]` (RFC-0014 §3).
+/// Keys match the board words an `[image.<id>] board` names (RFC-0014 §3).
 /// The canonical framework names an `nros` board may declare.
 ///
 /// Issue 0415 — the SSoT for "which entry shape does this board want". Kept as

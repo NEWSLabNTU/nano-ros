@@ -137,6 +137,16 @@ dials the default router and reads as "no delivery".
 |---|---|---|
 | `nros new entry <name> --platform zephyr` | `nros materialize <bringup>:<image>`, which writes the image's generated entry into your workspace as a package you own under `src/`; or, for an application that owns its west build, [A Zephyr App You Build with West](../guide/platforms/zephyr-west-app.md) | the book no longer teaches it: a workspace generates the entry for each image, so there is nothing to scaffold by hand |
 
+## Retired project layout
+
+A workspace has node packages and bringup packages, and only a bringup says
+where a node runs. These spellings let a node package stand in for a bringup.
+They are retired: each is refused, naming what to write instead.
+
+| Retired | Use instead | What happens now |
+|---|---|---|
+| `[package.metadata.nros.deploy.<target>]` in a node package's `Cargo.toml` (the package became its own one-node bringup) | a bringup package (`package.xml` + `system.toml`) whose `[image.<id>]` names the `board` and `rmw`, with the session in `[system]` or `[host.<name>]`; `nros new --image <id> --board <board>` writes it | workspace discovery fails, naming the table |
+
 ## Old command spellings
 
 These spellings of a command still run, as the command they were renamed to.

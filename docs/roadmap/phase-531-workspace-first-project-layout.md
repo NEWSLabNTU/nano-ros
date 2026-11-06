@@ -114,7 +114,7 @@ Lines are non-test lines. "WS reach" uses the classes defined above.
 
 | Item | Lines | WS reach | Evidence | W7 step |
 | --- | --- | --- | --- | --- |
-| `orchestration/nros_config.rs` `synthesise_self_bringup` + the `is_self_bringup_eligible` loop in `from_cargo_metadata`; `[package.metadata.nros.deploy.*]` schema | 198 + ~25 | none | not run on either road; no example declares `[deploy.*]` | 1 |
+| `orchestration/nros_config.rs` `synthesise_self_bringup` + the `is_self_bringup_eligible` loop in `from_cargo_metadata`; `[package.metadata.nros.deploy.*]` schema | 198 + ~25 | none | not run on either road; no example declares `[deploy.*]` | 1 — **deleted** (W7 step 1). The schema keeps a `RetiredTable` slot so discovery refuses the key by name |
 | `orchestration/launch_synth.rs` `synthesise_self_model`, `enumerate_launch_files`, `is_self_bringup_eligible`; the `cmd/plan.rs` self-bringup block (lines 189–225) | 42 + ~37 | none | reached only from `nros plan <pkg-dir>` | 2 |
 | `launch_synth.rs` `discover_pkg_name`, `discover_exec_target` and their four readers | 147 | leaf-only | ran on the leaf road only, via `synthesise_leaf_launch` | 2 (W3's bringup generator reads `[[component]]` and needs none of them) |
 | `cmd/ws.rs` `synthesise_leaf_launch`, `carry_leaf_contract` | 65 + 28 | probe / leaf-only | `synthesise_leaf_launch` ran 26 times on the workspace road, each time returning `None` (no `system.toml` beside code) | **kept, moved**: W3 rewrites it to read bringups (RFC-0121 D3) |
@@ -137,7 +137,7 @@ Lines are non-test lines. "WS reach" uses the classes defined above.
 | `cmd/leaf_settings.rs`, the shared half: `board_fact_layer`, `board_knob_layer`, `board_rung*`, `app_rung`, `knob_env_row`, `registry_knob_of_env_row`, `refuse_retired_env_keys`, `link_build_implications`, `session_link_build_implications`, `transport_implications_of`, `image_block_layers*`, `image_layers_over`, `is_settings_include`, `resolve_claimed_entry`, `write_entry_selection` | ~620 | live | ran on every workspace `plan_for` (`cmake_image_rows`, `image_config_digest`) and in the Zephyr hook. The last two serve hand-written entries | **kept** (the file should be renamed for what it is: the image's settings layers); `resolve_claimed_entry` and `write_entry_selection` go with W7 step 8 |
 | `orchestration-ir` `leaf_system.rs`: `read`, `from_system_toml`, `declared_entities`, `board`, and the "a `system.toml` beside the entry answers first" arm of `for_entry` / `claiming_image` | 8 + 49 + 11 + 3 + ~6 | probe / leaf-only | `read` ran 613 times on the workspace road, always returning `None` | 5 |
 | `orchestration-ir` `leaf_system.rs`: `read_image`, `image_system`, `for_entry`, `claiming_image`, `entry_package_name`, `flatten_knobs`, `is_package_dir`, the key readers, `link_kind_of_locator`, `is_byte_stream_link` | ~560 | live | `for_entry` ran 5164 times and `image_system` 3444 times on the workspace road. `is_package_dir` is also the predicate RFC-0121 D7's refusal needs | **kept** (the module is the `system.toml` reader for bringups) |
-| `orchestration-ir` `refuse_retired_manifest_keys`, `retired_deployment_keys` | 40 | live | refuses `[package.metadata.nros.deploy.*]` in any package | 7, with `check-leaf-deployment-spelling` R1, once no reader of those keys remains (step 1) |
+| `orchestration-ir` `refuse_retired_manifest_keys`, `retired_deployment_keys` | 40 | live | refuses `[package.metadata.nros.deploy.*]` in any package | 7, with `check-leaf-deployment-spelling` R1. Step 1 removed the last reader of those keys (2026-11-07) |
 | `cmd/leaf_system.rs` `run` / `rows` / the `board_*` and `kconfig` arms (`nros dev image leaf-system`) | ~470 of 832 | live | the Zephyr hook calls it with the bringup directory for every generated west application (measured: 473 lines ran) | **kept** |
 | `cmd/leaf_system.rs`, the `--write-settings` and `resolve_image` arms of `run` (616–639), `qemu_nic`, and the `find_package(nano_ros)` consumer `nano_ros_read_leaf_system` (`cmake/NanoRosPackageXml.cmake` 309–530) | ~24 + 43 + 222 | leaf-only | the CMake function returns unless `${DIR}/system.toml` exists; `qemu_nic` is called by `just/freertos.just` on a leaf | 5 |
 | `cmd/leaf_kconfig.rs` | 665 (whole) | live | the Zephyr hook on a bringup ran 426 lines of it (`render_over`, `defaults_text`, `fragment_text`, `write_fragment`) | **kept** |
@@ -554,6 +554,25 @@ replacement.
 
 **Acceptance:** W1's table has every row marked deleted or kept-with-reason;
 `just ci gate` and `just ci matrix` green after the last step.
+
+**Status (2026-11-07): step 1 done.**
+
+- **Step 1 (done).** Re-measured before deleting: `git grep
+  'metadata\.nros\.deploy' -- '*Cargo.toml'` finds no tracked manifest, and
+  the only consumers were `synthesise_self_bringup` and its tests. Deleted:
+  `synthesise_self_bringup`, the eligibility loop in `from_cargo_metadata`,
+  `PackageMetadataNros::is_self_bringup_eligible`, `DeployTargetMetadata`,
+  `NrosConfigError::SelfBringupSessionDisagrees`, and `BringupSource` (its
+  only other variant is every bringup, so the field and its one filter in
+  `scaffold_deploy` went too). `[package.metadata.nros.deploy.<t>]` is now
+  refused by name at discovery (`RETIRED_MANIFEST_DEPLOY`), naming the
+  bringup `[image.<id>]` that replaces it. The two codegen-system alias tests
+  that staged their bringup through `[deploy.*]` now stage a `system.toml`
+  plus a model, so the alias resolver keeps its coverage; the unknown-RMW
+  load test moved onto an on-disk bringup. Doc comments that still called
+  the table live were corrected in the same sweep (`image.rs`,
+  `main_macro.rs`, `nros-platform` `board/entry.rs`, `nros-orchestration-ir`
+  `lib.rs`, `cmd/config.rs`).
 
 ### W8 — Book rewrite
 
