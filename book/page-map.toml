@@ -81,6 +81,20 @@ batch = "p537-w4"
 note = "mps2-an385 in QEMU (Zephyr) starter (W4, D12): the mps2-an385 run of guide/platforms/zephyr, a Rust talker from a fresh west workspace"
 
 [[page]]
+book = "user"
+path = "starters/nuttx-arm.md"
+action = "new phase-537"
+batch = "p537-w4"
+note = "NuttX in QEMU (Arm) starter (W4, D12): the Arm virt starter parts of guide/platforms/nuttx, Rust and C in tabs"
+
+[[page]]
+book = "user"
+path = "starters/nuttx-riscv.md"
+action = "new phase-537"
+batch = "p537-w4"
+note = "NuttX in QEMU (RISC-V) starter (W4, D12): the rv-virt starter parts of guide/platforms/nuttx, Rust and C in tabs"
+
+[[page]]
 old = "getting-started/first-project.md"
 book = "user"
 path = "tutorial/run-a-talker.md"

@@ -51,6 +51,8 @@ show for it.
 - [mps2-an385 in QEMU (bare-metal)](mps2-an385-bare-metal.md): Verified in emulator (daily)
 - [mps2-an385 in QEMU (FreeRTOS)](mps2-an385-freertos.md): Verified in emulator (daily)
 - [mps2-an385 in QEMU (Zephyr)](mps2-an385-zephyr.md): Verified in emulator (daily)
+- [NuttX in QEMU (Arm)](nuttx-arm.md): Verified in emulator (daily)
+- [NuttX in QEMU (RISC-V)](nuttx-riscv.md): Verified in emulator (daily)
 
 <!-- END GENERATED starter list -->
 

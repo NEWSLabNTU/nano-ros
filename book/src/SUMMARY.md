@@ -14,6 +14,8 @@
 - [mps2-an385 in QEMU (bare-metal)](./starters/mps2-an385-bare-metal.md)
 - [mps2-an385 in QEMU (FreeRTOS)](./starters/mps2-an385-freertos.md)
 - [mps2-an385 in QEMU (Zephyr)](./starters/mps2-an385-zephyr.md)
+- [NuttX in QEMU (Arm)](./starters/nuttx-arm.md)
+- [NuttX in QEMU (RISC-V)](./starters/nuttx-riscv.md)
 
 # Tutorial
 
