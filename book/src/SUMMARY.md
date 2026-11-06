@@ -61,9 +61,8 @@
   - [Use simulated time](./guide/deploy/use-simulated-time.md)
   - [Troubleshoot](./guide/deploy/troubleshoot.md)
 - [Port from ROS 2]()
-  - [Porting a ROS 2 C++ node](./guide/port/port-a-cpp-node.md)
-  - [Migration Guide](./guide/port/move-a-ros2-project.md)
-  - [Setup Compared to Standard ROS 2](./guide/port/setup-compared.md)
+  - [Port a C++ node](./guide/port/port-a-cpp-node.md)
+  - [Move a ROS 2 project over](./guide/port/move-a-ros2-project.md)
 
 # Background
 
