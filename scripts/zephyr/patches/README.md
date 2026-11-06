@@ -27,6 +27,14 @@ The recipe runs `bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh
 - One positional arg: the Zephyr workspace dir.
 - `cd`s to the repo root (works regardless of caller cwd).
 - Every patch must be **idempotent** (`just setup zephyr` re-runs them).
+- `zephyr/` is a **hard** requirement: a patch whose Zephyr target file is
+  missing exits non-zero. `modules/lang/rust` is **optional** — a C/C++-only
+  workspace has no zephyr-lang-rust (book: `zephyr-west-app.md`), and
+  `nros setup board <b> --zephyr-workspace <ws>` runs this set against it. A
+  patch that edits only that module prints a `[skip] … no zephyr-lang-rust
+  module` line and exits 0; a script that patches both (the Cortex-A9 one)
+  still applies its Zephyr half. Never fail the set over an absent optional
+  module, and never skip without printing why.
 - Most patches edit Zephyr *internals* (native_sim/NSOS — not stable APIs); these
   are the churn Phase 199 tracks for upstreaming. As fixes land upstream, drop
   the corresponding line so the carried set shrinks per release.

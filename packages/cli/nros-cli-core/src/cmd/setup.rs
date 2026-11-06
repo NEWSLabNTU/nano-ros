@@ -1092,7 +1092,19 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         .wrap_err("nros setup board: could not locate the nano-ros SDK root")?;
 
     // 2. Validate the consumer's Zephyr workspace.
-    let zephyr_ws = &args.zephyr_workspace;
+    //
+    //    ABSOLUTE before anything else sees it. The patch set `cd`s to the SDK
+    //    root before it reads its argument, so a relative `--zephyr-workspace .`
+    //    used to resolve against the SDK root rather than the caller's cwd and
+    //    fail as "doesn't look like a Zephyr workspace" over a workspace that
+    //    was fine. The scripts resolve their argument too; this side makes the
+    //    path every later step prints and passes the one the user meant.
+    let zephyr_ws = &std::path::absolute(&args.zephyr_workspace).wrap_err_with(|| {
+        format!(
+            "nros setup board: resolve --zephyr-workspace `{}`",
+            args.zephyr_workspace.display()
+        )
+    })?;
     if !zephyr_ws.join("zephyr").is_dir() {
         bail!(
             "nros setup board: --zephyr-workspace `{}` does not look like a Zephyr \

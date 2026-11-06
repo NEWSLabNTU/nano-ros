@@ -45,32 +45,30 @@ else
     WORKSPACE="$LEGACY_WORKSPACE"
 fi
 
-if [ ! -d "$WORKSPACE/zephyr" ] || [ ! -d "$WORKSPACE/modules/lang/rust" ]; then
-    echo "ERROR: $WORKSPACE doesn't look like a Zephyr workspace" >&2
-    echo "       (missing zephyr/ and/or modules/lang/rust/)" >&2
+# `zephyr/` is the one hard requirement: without it this is not a Zephyr
+# workspace at all. `modules/lang/rust` is OPTIONAL — a C/C++-only workspace
+# (no zephyr-lang-rust in west.yml) is legitimate (book: zephyr-west-app.md),
+# and the patch sets call this script unconditionally. Patch 1 edits only that
+# module, so it is skipped, saying so; Patch 2 edits Zephyr itself and is
+# needed by a C image on qemu_cortex_a9 just the same.
+if [ ! -d "$WORKSPACE/zephyr" ]; then
+    echo "ERROR: $WORKSPACE doesn't look like a Zephyr workspace (missing zephyr/)" >&2
     echo "       Run \`just zephyr setup\` first, or pass the workspace dir explicitly." >&2
     exit 1
 fi
 
-CMAKE_FILE="$WORKSPACE/modules/lang/rust/CMakeLists.txt"
-KCONFIG_FILE="$WORKSPACE/modules/lang/rust/Kconfig"
+RUST_MODULE="$WORKSPACE/modules/lang/rust"
+CMAKE_FILE="$RUST_MODULE/CMakeLists.txt"
+KCONFIG_FILE="$RUST_MODULE/Kconfig"
 SOC_FILE="$WORKSPACE/zephyr/soc/xlnx/zynq7000/xc7zxxxs/soc.c"
 
+if [ -d "$RUST_MODULE" ]; then
 for f in "$CMAKE_FILE" "$KCONFIG_FILE"; do
     if [ ! -f "$f" ]; then
         echo "ERROR: expected file not found: $f" >&2
         exit 1
     fi
 done
-
-# The Zynq-7000 SoC source moved across Zephyr lines (3.7 vs 4.4). This patch
-# targets the qemu_cortex_a9 / Zynq board only — if the SoC file isn't where we
-# expect (e.g. a newer Zephyr that relocated it), skip gracefully instead of
-# failing the whole workspace setup. native_sim CI never needs the SLCR entry.
-if [ ! -f "$SOC_FILE" ]; then
-    echo "[skip] Zynq-7000 SoC source not at $SOC_FILE — skipping Cortex-A9 SLCR patch (not needed for native_sim)" >&2
-    exit 0
-fi
 
 # ---- Patch 1a: modules/lang/rust/CMakeLists.txt ----
 if grep -q 'CONFIG_CPU_CORTEX_A9\|CONFIG_CPU_AARCH32_CORTEX_A' "$CMAKE_FILE"; then
@@ -123,8 +121,18 @@ with open(path, "w") as f:
 PY
 fi
 
+else
+    echo "[skip] no zephyr-lang-rust module at $RUST_MODULE — skipping the Cortex-A9 Rust target patch (C/C++-only workspace)"
+fi
+
 # ---- Patch 2: zephyr/soc/xlnx/zynq7000/xc7zxxxs/soc.c ----
-if grep -q 'MMU_REGION_FLAT_ENTRY("slcr"' "$SOC_FILE"; then
+# The Zynq-7000 SoC source moved across Zephyr lines (3.7 vs 4.4). This patch
+# targets the qemu_cortex_a9 / Zynq board only — if the SoC file isn't where we
+# expect (e.g. a newer Zephyr that relocated it), skip it, saying so, instead
+# of failing the whole workspace setup. native_sim never needs the SLCR entry.
+if [ ! -f "$SOC_FILE" ]; then
+    echo "[skip] Zynq-7000 SoC source not at $SOC_FILE — skipping Cortex-A9 SLCR patch (not needed for native_sim)" >&2
+elif grep -q 'MMU_REGION_FLAT_ENTRY("slcr"' "$SOC_FILE"; then
     echo "[skip] soc.c already has SLCR MMU entry"
 else
     echo "[apply] soc.c += SLCR MMU entry (0xF8000000, 0x1000)"
@@ -152,4 +160,4 @@ with open(path, "w") as f:
 PY
 fi
 
-echo "Cortex-A9 Rust patch applied to $WORKSPACE"
+echo "Cortex-A9 patch set done for $WORKSPACE"

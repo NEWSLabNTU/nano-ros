@@ -78,7 +78,7 @@ if [ "${1:-}" = "--self-test" ]; then
     # 4.4: the function inlined, two literal commands.
     for _layout in shared inlined; do
         _d="$_st_tmp/$_layout/modules/lang/rust"
-        mkdir -p "$_d"
+        mkdir -p "$_d" "$_st_tmp/$_layout/zephyr"
         {
             printf 'function(rust_cargo_application)\n'
             printf '  set(rust_build_type_arg --release)\n'
@@ -143,6 +143,20 @@ elif [ -d "$IN_TREE_WORKSPACE/zephyr" ]; then
     WORKSPACE="$IN_TREE_WORKSPACE"
 else
     WORKSPACE="$LEGACY_WORKSPACE"
+fi
+
+# `zephyr/` is the one hard requirement. `modules/lang/rust` is OPTIONAL: a
+# C/C++-only workspace (no zephyr-lang-rust in west.yml) is legitimate (book:
+# zephyr-west-app.md), the patch sets call this script unconditionally, and
+# every edit below is inside that module, so with no module there is nothing
+# to patch. Skip, saying so; never fail the whole set over it.
+if [ ! -d "$WORKSPACE/zephyr" ]; then
+    echo "ERROR: $WORKSPACE doesn't look like a Zephyr workspace (missing zephyr/)" >&2
+    exit 1
+fi
+if [ ! -d "$WORKSPACE/modules/lang/rust" ]; then
+    echo "[skip] cargo-features-patch: no zephyr-lang-rust module at $WORKSPACE/modules/lang/rust, nothing to patch (C/C++-only workspace)"
+    exit 0
 fi
 
 CMAKE_FILE="$WORKSPACE/modules/lang/rust/CMakeLists.txt"
