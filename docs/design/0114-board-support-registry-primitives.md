@@ -3,7 +3,7 @@ rfc: 0114
 title: "Board support registry: primitives and derivation"
 status: Draft
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-522]
 amends: [RFC-0064]
 supersedes: []
@@ -162,6 +162,24 @@ requires a probe track in the generated probe matrix; `cadence = manual`
 requires `last_run`. Maintainer counts key on the status word: a Verified row
 needs two named maintainers, a Boots or Builds row one, with the existing
 grandfather baseline unchanged.
+
+> **Open, owned by [phase-542](../roadmap/phase-542-px4-supported-platform.md)
+> W0 (noted 2026-11-06; not decided here).** PX4 SITL's row (PR #3169) meets
+> three cases D10 does not cover. They are the phase's questions for the
+> maintainer, and D10 is amended when they are ruled:
+>
+> 1. **Host + manual.** "Boots, manual" names `runs = emulator|hardware`; a
+>    `runs = "host"`, `cadence = "manual"` row has no status word.
+> 2. **An `external` row with a `matrix_platform` and no board crate.**
+>    `check-flavour-lanes` reads a board crate's flavour for every such row;
+>    `px4-sitl` has neither a `Cargo.toml` nor an `nros-board.toml` under
+>    `packages/boards/`. (`s32k344-safety-island`, the other `external` row,
+>    carries no `matrix_platform`.)
+> 3. **An automated cadence on Gated cells.** The predicates above key an
+>    automated cadence on a Runtime cell of the row's platform. Every PX4 cell
+>    is Gated (run by the hosted `px4-sitl` nightly job), and a PX4 Runtime
+>    cell would overflow the 232-domain matrix window
+>    (`nros_tests::alloc::domain_of`).
 
 ### D11 — Breadth is derived and inherited
 

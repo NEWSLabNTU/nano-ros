@@ -5,7 +5,7 @@ status: open
 type: enhancement
 area: release, px4, cmake, book
 purpose: [field, industrial]
-related: [phase-537, phase-527, phase-541]
+related: [phase-537, phase-527, phase-541, phase-542]
 found: 2026-11-05
 ---
 
@@ -13,7 +13,9 @@ found: 2026-11-05
 The maintainer chose option 1 below (2026-11-06): the release ships the
 archives prebuilt (RFC-0097 D13). Until phase-541 merges, the book's PX4 page
 stays in User guide › Platforms, waiting on this issue (maintainer ruling,
-2026-11-05), and its `px4` probe track carries an `awaits` naming it.
+2026-11-05), and its `px4` probe track carries an `awaits` naming it. The
+second gap below, a `BRINGUP` module reaching dev-tier verbs from CMake, is
+[phase-542](../roadmap/phase-542-px4-supported-platform.md) W3.
 
 ## Measured
 
