@@ -103,10 +103,11 @@ pub struct Args {
     #[arg(long, value_parser = ["zenoh", "xrce", "cyclonedds"])]
     pub rmw: Option<String>,
 
-    /// ROS edition (drives the `ros-<edition>` cargo feature)
-    // RFC-0056.
-    #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy"], default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
-    pub ros_edition: String,
+    /// ROS edition (drives the `ros-<edition>` cargo feature). Defaults to the
+    /// sourced ROS 2 (`$ROS_DISTRO`) when it is one of these, else humble.
+    // RFC-0056; the `$ROS_DISTRO` default is issue 2260.
+    #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy"])]
+    pub ros_edition: Option<String>,
 
     /// Source language. Defaults per mode: `rust` for project/component
     /// scaffolds, `cpp` for `--workspace` (the quick-start language).
@@ -1004,6 +1005,10 @@ pub fn run(args: Args) -> Result<()> {
     let ws_dir = package_dir(&args, &name);
     let node_pkg = new_workspace::node_package_name(&name);
     let rmw = args.rmw.clone().unwrap_or_else(|| "zenoh".to_string());
+    let (edition, edition_from) = scaffold_edition(
+        args.ros_edition.as_deref(),
+        std::env::var("ROS_DISTRO").ok().as_deref(),
+    );
     let bringup = new_workspace::scaffold_project(&new_workspace::WorkspaceProject {
         dir: ws_dir.clone(),
         node: new_workspace::NodePackage {
@@ -1017,7 +1022,7 @@ pub fn run(args: Args) -> Result<()> {
         board: &board,
         image_id: &platform,
         rmw: &rmw,
-        ros_edition: &args.ros_edition,
+        ros_edition: &edition,
         locator,
     })?;
     let bringup_name = bringup
@@ -1031,6 +1036,7 @@ pub fn run(args: Args) -> Result<()> {
         template.name()
     );
     println!("  src/{bringup_name}/   what it runs on: `{board}`, image `{platform}`, {rmw}");
+    println!("  ROS 2 edition: {edition} ({edition_from})");
     println!();
     println!("Next steps:");
     for line in workspace_next_steps(&ws_dir, &node_pkg, &board, descriptor) {
@@ -1064,6 +1070,26 @@ fn workspace_next_steps(
         }
     }
     v
+}
+
+/// Issue 2260 — the edition a new workspace states, and why: `--ros-edition`,
+/// else the sourced ROS 2 (`$ROS_DISTRO`) when nano-ros generates for it, else
+/// the default. A humble image and a jazzy peer exchange nothing with no error,
+/// so the scaffold follows the ROS 2 the user has rather than a constant.
+fn scaffold_edition(cli: Option<&str>, ros_distro: Option<&str>) -> (String, &'static str) {
+    if let Some(e) = cli {
+        return (e.to_string(), "--ros-edition");
+    }
+    if let Some(e) = ros_distro
+        .map(str::trim)
+        .and_then(rosidl_codegen::RosEdition::parse)
+    {
+        return (e.as_str().to_string(), "the sourced ROS 2, $ROS_DISTRO");
+    }
+    (
+        rosidl_codegen::DEFAULT_ROS_EDITION.to_string(),
+        "the default; source a ROS 2 setup.bash or pass --ros-edition to pick another",
+    )
 }
 
 /// The nano-ros tree `nros` builds against, and its board catalog.
@@ -1326,6 +1352,23 @@ mod project_board_tests {
     use crate::orchestration::board_descriptor::BoardCatalog;
     use clap::CommandFactory;
     use std::path::Path;
+
+    /// Issue 2260 — the flag wins, then a supported `$ROS_DISTRO`, then the
+    /// default; an unsupported distro (rolling) falls through to the default.
+    #[test]
+    fn scaffold_edition_follows_flag_then_sourced_distro_then_default() {
+        assert_eq!(scaffold_edition(Some("iron"), Some("jazzy")).0, "iron");
+        assert_eq!(scaffold_edition(None, Some("jazzy")).0, "jazzy");
+        assert_eq!(scaffold_edition(None, Some(" humble\n")).0, "humble");
+        assert_eq!(
+            scaffold_edition(None, Some("rolling")).0,
+            rosidl_codegen::DEFAULT_ROS_EDITION
+        );
+        assert_eq!(
+            scaffold_edition(None, None).0,
+            rosidl_codegen::DEFAULT_ROS_EDITION
+        );
+    }
 
     #[derive(clap::Parser)]
     struct Cli {

@@ -135,7 +135,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2257](../issues/2257-setup-and-build-read-different-index.md) | both | `nros setup` provisions from `main`'s index, while build and locate read the release's; the QEMU remedy loops |
 | [#2258](../issues/2258-setup-rewrites-pinned-sdk-lock.md) | both | `nros setup` rewrites a committed `nros-sdk.lock`, so a semester pin does not hold |
 | [#2259](../issues/2259-first-project-requires-humble-on-noble.md) | both | First Project requires Humble, which Ubuntu 24.04 cannot install |
-| [#2260](../issues/2260-ros-edition-mismatch-silent-no-delivery.md) | both | An edition mismatch delivers nothing with no error, and the scaffold defaults to humble |
+| [#2260](../issues/archived/2260-ros-edition-mismatch-silent-no-delivery.md) | both | **Resolved** 2026-11-06: the scaffold follows `$ROS_DISTRO`, and `nros run` warns on a mismatch |
 | [#2261](../issues/2261-catkin-pkg-prereq-breaks-ros-apt.md) | both | The `python3-catkin-pkg` prerequisite breaks the ROS 2 apt install |
 | [#2262](../issues/2262-serial-quickstart-router-unreachable-from-ros2.md) | industrial | The serial quick-start router listens on serial only |
 | [#2263](../issues/archived/2263-setup-rejects-board-key-nros-new-writes.md) | both | **Resolved** 2026-11-06: fixed on `main` by phase-531 W4's scaffold (`b719d169ed`); only the release lacked it |
