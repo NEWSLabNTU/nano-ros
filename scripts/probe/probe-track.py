@@ -24,6 +24,11 @@ cannot list different tracks.
                               print the language tab (rust | c | cpp) the
                               track replays a tabbed chapter in (phase-537
                               W2); nothing for a track that picks none
+  probe-track.py --after <track>
+                              print the chapters a Tutorial track replays
+                              before its own (phase-537 W5), one book/src path
+                              per line, in reading order; nothing for a track
+                              that replays one chapter
   probe-track.py --awaits <track>
                               print the CLI work the track's chapter is written
                               ahead of (phase-532), "; "-joined; nothing when
@@ -58,6 +63,14 @@ def main(argv: list[str]) -> int:
         for t in tracks():
             if t["track"] == argv[1]:
                 print(t.get("lang", ""))
+                return 0
+        print(f"probe: unknown track '{argv[1]}'", file=sys.stderr)
+        return 2
+    if len(argv) == 2 and argv[0] == "--after":
+        for t in tracks():
+            if t["track"] == argv[1]:
+                for chapter in t.get("after") or []:
+                    print(f"book/src/{chapter}")
                 return 0
         print(f"probe: unknown track '{argv[1]}'", file=sys.stderr)
         return 2
