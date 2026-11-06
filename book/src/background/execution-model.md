@@ -22,7 +22,7 @@ group_tasks = { telem = "low" }
 When the configure takes the image's census, each node logs where it landed:
 
 ```text
-[INFO] Telem::register on a tier admitting group `telem`
+[INFO] Telem::register on a sched task admitting group `telem`
 ```
 
 Why two sched tasks, and not one executor that runs both nodes? This page
