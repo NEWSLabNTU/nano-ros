@@ -36,8 +36,8 @@ Pick your row:
 | Zephyr (`west`) | west module | `zephyr/` (`module.yml`, `Kconfig`, `CMakeLists.txt`) | [Zephyr (west module)](../guide/platforms/zephyr.md) |
 | NuttX (`make` + Kconfig) | `apps/external/` app | `integrations/nuttx/` (`Make.defs`, `Kconfig`, `Makefile`) | [NuttX (apps/external)](../guide/platforms/nuttx.md) |
 | ESP-IDF (`idf.py`) | *retired* — `integrations/nano-ros/` is gone | none ships today | [ESP32 (ESP-IDF component) — retired](../migrating/esp32.md); for an ESP32-C3 use [ESP32 (esp-hal)](../migrating/esp32.md) |
-| FreeRTOS, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-freertos.cmake` | [Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md), [FreeRTOS (QEMU)](../guide/platforms/freertos.md) |
-| ThreadX, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-threadx.cmake` | [Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md), [ThreadX](../guide/platforms/threadx.md) |
+| FreeRTOS, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-freertos.cmake` | [Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree), [FreeRTOS (QEMU)](../guide/platforms/freertos.md) |
+| ThreadX, CMake project | `add_subdirectory(nano-ros)` | `cmake/platform/nano-ros-threadx.cmake` | [Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree), [ThreadX](../guide/platforms/threadx.md) |
 | PX4 (`make px4_…`) | `EXTERNAL_MODULES_LOCATION` copy-out | `integrations/px4/module-template/` | [PX4 (integration shell)](../guide/platforms/px4.md) |
 | PlatformIO (`pio run`) | library + pre-build codegen script | `library.json` (repo root) + `integrations/platformio/` | `integrations/platformio/README.md` in the repo |
 | IDE project (no CMake) | emitted drop-in sources | *planned* — no shell ships today | see note below |
@@ -58,7 +58,7 @@ Notes on the rows that need them:
   shim sources + an integration README) is designed but **not shipped
   yet**. Today, the practical route is your IDE's external-CMake or
   makefile support driving the
-  [CMake subdirectory](../guide/build/cmake-subdirectory.md) path.
+  [CMake subdirectory](../guide/build/existing-cmake-or-vendor-tree.md) path.
 
 In every row the division of labor is the same: **your build owns
 compile and link; nano-ros owns the adapter shell and the host-time
@@ -188,7 +188,7 @@ and links in as a library, the same as every other row in the table.
   component shell is [retired](../migrating/esp32.md)
 - PX4 firmware: [PX4 (integration shell)](../guide/platforms/px4.md)
 - Plain CMake host (FreeRTOS, ThreadX, POSIX):
-  [Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md)
+  [Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree)
 - Deploy targets and `system.toml`:
   [Deployment Workflow](../guide/deploy/deploy-to-production.md)
 - A project with several nodes or boards:

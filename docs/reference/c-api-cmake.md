@@ -22,7 +22,7 @@ nros_platform_link_app(my_app)
 
 This wires include dirs, RMW staticlib, platform shim, and per-build
 config header automatically. See
-[build-as-subdirectory.md](../../book/src/guide/build/cmake-subdirectory.md)
+[build-as-subdirectory.md](../../book/src/guide/build/existing-cmake-or-vendor-tree.md)
 for the full walkthrough.
 
 **RMW backend selection:** Pass `-DNROS_RMW=<zenoh|dds|xrce|cyclonedds>` to cmake.

@@ -669,7 +669,7 @@ works here unchanged.
 
 It picks up automatically in any workspace whose manifest lists nano-ros —
 a checkout of this repository, or a mirror of a release you vendor (see
-[Pin and mirror a release](../build/existing-cmake-or-vendor-tree.md)). **With the installed SDK alone
+[Pin and mirror a release](../build/install-options.md#pinning-a-version)). **With the installed SDK alone
 there is no `west nros`:** west reads extension commands from a manifest
 project, and the installed SDK root is a versioned directory under `~/.nros`
 that no `west.yml` can name. Name the Zephyr workspace to `nros` instead,

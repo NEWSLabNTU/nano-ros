@@ -61,7 +61,7 @@ next command (a QEMU line, `west build -d … -t run`, `west flash -d …`); eac
 platform chapter's **Run on QEMU / simulator** and **Flash a real board**
 sections say the same. Driving CMake yourself is the escape hatch —
 `nros build --dry-run` prints the line it would run, and
-[Build as a CMake subdirectory](../build/cmake-subdirectory.md)
+[Build inside an existing CMake or vendor tree](../build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree)
 covers a tree with no `system.toml`.
 
 Building and testing the in-tree fixtures: see
