@@ -164,9 +164,8 @@ Options:
           [possible values: zenoh, xrce, cyclonedds]
 
       --ros-edition <ROS_EDITION>
-          ROS edition (drives the `ros-<edition>` cargo feature)
+          ROS edition (drives the `ros-<edition>` cargo feature). Defaults to the sourced ROS 2 (`$ROS_DISTRO`) when it is one of these, else humble
           
-          [default: humble]
           [possible values: humble, iron, jazzy]
 
       --lang <LANG>
@@ -286,6 +285,9 @@ Options:
 
       --licenses
           Show the license-gated packages + how to install them
+
+      --offline-dirs
+          Print the directories an air-gapped copy of this host's setup needs, one per line: the nros store, then the rustup and cargo homes the builds use (nros leaves Rust in rustup's own homes). Feed it to `tar`
 
       --tool <NAME>
           Install tools by name (instead of a board's whole set), e.g. `--tool qemu`. Repeatable, like `--source`: `--tool ninja --tool make` is ONE plan — one system-package ask for the union, one lock write. The `just <module> setup` recipes call this
