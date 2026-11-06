@@ -144,7 +144,7 @@ as the [Nucleo-F767ZI](../starters/nucleo-f767zi.md), run the same firmware in
 an emulator first and then on the board.
 
 A board that is not in the registry can still run nano-ros. You add it from
-your own tree, without changing nano-ros: [Extending nano-ros](../extending/overview.md)
+your own tree, without changing nano-ros: [Add a board](../extending/add-a-board.md)
 shows how.
 
 ## How this book is organized

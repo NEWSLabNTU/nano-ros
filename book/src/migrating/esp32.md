@@ -52,4 +52,4 @@ out-of-tree port. A port has to bring what every supported board has:
 - for ESP-IDF, a component, a way to carry nano-ros's resolved settings into
   the ESP-IDF build, and a build that something runs.
 
-[Extending nano-ros](../extending/overview.md) describes what a port provides.
+[Add a board](../extending/add-a-board.md) and [Add a platform](../extending/add-a-platform.md) describe what a port provides.
