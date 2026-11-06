@@ -234,8 +234,21 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
     && rustup target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
-        riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf riscv64gc-unknown-none-elf \
-    && cargo install cargo-nextest --locked
+        riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf riscv64gc-unknown-none-elf
+
+# cargo-nextest at the INDEX's pin (phase-543 W0). This was a bare
+# `cargo install cargo-nextest --locked`, i.e. whatever crates.io had the day the
+# image was built, while `[tool.cargo-nextest]` pinned 0.9.143 and
+# `.config/nextest.toml` is version-sensitive (issue 0743). `index_tool.py`
+# installs the row's prebuilt for this host, checks its sha256, and needs no
+# `nros` CLI, which the gate runner never has. It reads `config/ci-base-tools.toml`,
+# the index rows this image bakes (generated; gate `ci-base-tools`), so an edit
+# to any other index row does not rebuild the image.
+COPY config/ci-base-tools.toml /opt/nros-ssot/config/ci-base-tools.toml
+COPY scripts/lib/index_tool.py scripts/lib/index_packages.py /opt/nros-ssot/scripts/lib/
+RUN python3 /opt/nros-ssot/scripts/lib/index_tool.py install cargo-nextest --prefix /usr/local \
+        --index /opt/nros-ssot/config/ci-base-tools.toml \
+    && cargo-nextest nextest --version
 
 # ...and then every target the tree DECLARES, read from the SSoT rather than
 # hand-listed. Issue 0833 split this list into `config/rust-targets.txt`

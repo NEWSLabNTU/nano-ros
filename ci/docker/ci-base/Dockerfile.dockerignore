@@ -12,3 +12,6 @@
 !scripts/ci/install-just.sh
 !config/rust-toolchains.txt
 !scripts/lib/install-rust-toolchains.sh
+!config/ci-base-tools.toml
+!scripts/lib/index_tool.py
+!scripts/lib/index_packages.py
