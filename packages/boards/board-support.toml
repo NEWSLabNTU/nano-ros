@@ -153,7 +153,7 @@ crate = "nros-board-mps2-an385-freertos"
 matrix_platform = "FreertosMps2"
 nightly_token = "freertos"
 link_check_example = "examples/mps2-an385-freertos/rust/talker"
-book_run = "guide/platforms/freertos.md#run-on-qemu"
+book_run = "starters/mps2-an385-freertos.md#run-it-in-qemu"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -631,8 +631,9 @@ notes = "phase-523 W4 (RFC-0116 industrial): the bare-metal starter (the bare-me
 
 [[probe]]
 track = "freertos"
-chapter = "guide/platforms/freertos.md"
-variant = "rust"
+chapter = "starters/mps2-an385-freertos.md"
+variant = ""
+lang = "rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
@@ -641,8 +642,9 @@ notes = "phase-517 W17 — one track per language road the chapter documents: th
 
 [[probe]]
 track = "freertos-c"
-chapter = "guide/platforms/freertos.md"
-variant = "c"
+chapter = "starters/mps2-an385-freertos.md"
+variant = ""
+lang = "c"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
