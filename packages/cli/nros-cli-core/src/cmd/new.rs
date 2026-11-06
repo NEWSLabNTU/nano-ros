@@ -1219,7 +1219,7 @@ mod single_package_tests {
 
     /// Issue 2282 -- the next steps start the image the way the board says:
     /// `nros run` only where the resolver would run it, `nros flash` for a
-    /// board it flashes (the Pico W, whose wokwi twin no runner drives yet),
+    /// board it flashes (the Pico W, hardware-only since RFC-0115 Amendment 1),
     /// and the build plus a note where the board names neither.
     #[test]
     fn the_next_steps_start_the_image_the_way_the_board_says() {

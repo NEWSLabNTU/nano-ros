@@ -341,7 +341,7 @@ Two questions, two owners:
 
 - **Admission: may a board have a user page?** RFC-0115 D4 decides. The board
   needs an emulator twin that boots its ELF (the QEMU concepts board,
-  Renode, Wokwi), or a track that replays its chapter. Host boards (Linux,
+  Renode; free and open source only, RFC-0115 Amendment 1), or a track that replays its chapter. Host boards (Linux,
   native_sim, the ThreadX and FreeRTOS simulators) run as host executables
   and qualify the same way. A board that fails this test keeps only its
   generated reference page. Arm FVP is maintainer-run with no replaying track
@@ -462,7 +462,8 @@ done on that board, and the platform's User guide page takes over after it.
      the twin first, then flashes it to the board, and the twin result predicts
      the board result. This is the level the field and education purposes need
      (RFC-0116 D1), so these starters come first. Today: Nucleo-F767ZI (Renode
-     twin) and Raspberry Pi Pico W (Wokwi twin).
+     twin). The Raspberry Pi Pico W was here with a Wokwi twin until
+     2026-11-06, when RFC-0115 Amendment 1 left it hardware-only.
   2. **Verified in emulator:** mps2-an385 (bare-metal, FreeRTOS, Zephyr, in
      QEMU), NuttX Arm and RISC-V, ThreadX RISC-V 64.
   3. **Verified on host:** Linux, Zephyr native_sim, ThreadX Linux simulator,
@@ -470,8 +471,7 @@ done on that board, and the platform's User guide page takes over after it.
 - **The header is generated.** Each starter shows its row's status word, so a
   twin board's "Boots, manual (date)" and its staleness after
   `manual_stale_days` are stated, never typed. A starter whose step needs
-  something the twin can't run says so, for example a Wokwi twin that needs a
-  `WOKWI_CLI_TOKEN`.
+  something the twin can't run says so.
 - **The list is generated from the registry.** A row that gains a twin and
   `hardware`, or reaches Verified, gets a starter slot. A row that drops to
   Builds loses its starter, and its board reference page remains.
@@ -525,7 +525,6 @@ no current source.
    Install                         ← get-started/installation
 2. Get started on your board  (D12; ordered by twin and hardware, then emulator, then host)
    Nucleo-F767ZI: Renode twin, then the board    ← targets/nucleo-f767zi
-   Raspberry Pi Pico W: Wokwi twin, then the board **new**
    mps2-an385 in QEMU: bare-metal · FreeRTOS · Zephyr  ← targets/{bare-metal,freertos,zephyr} (starter parts)
    NuttX in QEMU (Arm, RISC-V) · ThreadX in QEMU (RISC-V 64)  ← targets/{nuttx,threadx} (starter parts)
    Linux host · Zephyr native_sim · ThreadX Linux simulator · FreeRTOS POSIX  ← targets/linux-host and the host parts

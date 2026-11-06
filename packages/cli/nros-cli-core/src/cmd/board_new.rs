@@ -199,7 +199,7 @@ fn render_descriptor(args: &NewArgs) -> String {
             // See RFC-0118 D4.
             "\n# How this board runs, when it has an emulator or a\n\
              # twin: `emulator = \"qemu:<machine>\" | \"fvp:<model>\" |\n\
-             # \"renode:<platform>\" | \"wokwi:<board>\"`. The support registry reads\n\
+             # \"renode:<platform>\"`. The support registry reads\n\
              # it from here. A QEMU board adds the line's facts, which `nros build`\n\
              # prints and the generated cargo settings use as `runner`:\n\
              #\n\

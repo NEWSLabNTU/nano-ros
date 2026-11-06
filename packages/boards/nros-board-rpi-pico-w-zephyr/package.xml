@@ -4,7 +4,7 @@
   <version>0.0.0</version>
   <description>
     Board support for `rpi-pico-w-zephyr` (zephyr): Raspberry Pi Pico W,
-    with a Wokwi twin (phase-524, RFC-0115).
+    hardware-only, flashed by UF2 (phase-524, RFC-0115).
   </description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>

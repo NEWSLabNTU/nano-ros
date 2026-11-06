@@ -145,12 +145,6 @@ zephyr-west-app-rust: (platform "zephyr-west-app-rust")
 [group("main")]
 renode-nucleo: (platform "renode-nucleo")
 
-# phase-524 W4a — the Pico W's Wokwi twin, the same run through `wokwi-cli`
-# and a socat pty. Needs WOKWI_CLI_TOKEN in the environment (it fails naming
-# it otherwise) and spends about 1.5 of the account's simulation minutes.
-[group("main")]
-wokwi-pico: (platform "wokwi-pico")
-
 # phase-517 W4: not a platform chapter, but it rides the same harness. One bare
 # `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.
 # book/src/guide/build/install-options.md — "Provision a whole workspace".

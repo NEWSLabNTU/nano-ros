@@ -15,13 +15,44 @@ superseded-by: null
 **Status:** Draft (2026-10-31; D4 rewritten 2026-11-01 from phase-524 W1's
 three spikes, and again the same day when the Pico W spike was rerun with a
 Wokwi token, see "Spike results"; D4's smoke cell and CI scope ruled
-2026-11-02/03, see D4 "Breadth" and "Probe tracks"). Written from the adoption discussion of
+2026-11-02/03, see D4 "Breadth" and "Probe tracks"; amended 2026-11-06,
+a twin must be free and open source, see "Amendment 1"). Written from the adoption discussion of
 2026-10-31, before any spike had run. Implemented by
 [phase-524](../roadmap/phase-524-emulator-twins.md). Companion RFCs from the
 same discussion: RFC-0114 (the board support registry as the single primitive,
 which this RFC's evidence page reads from) and RFC-0116 (adoption purposes and
 front doors, which decides serial-first chapters and the `nros run` verb). This
 RFC does not restate either; it names what it needs from them.
+
+## Amendment 1 (2026-11-06): a twin is free and open source
+
+Maintainer ruling, 2026-11-06. Wokwi is a paid hosted service, and nano-ros
+gives it no first-class support.
+
+- **A twin counts only if the emulator is free and open source** (QEMU,
+  Renode). A paid or hosted simulator can never be a board's twin, its
+  `nros run` runner, its probe track, or a `[tool.*]` row in
+  `nros-sdk-index.toml`. The reason is the one this RFC exists for: a twin is
+  the replay every reader has, and a run that needs an account and spends a
+  quota is not that replay.
+- **The Pico W loses its twin.** It was the Wokwi-twinned field solutions
+  board from 2026-11-01 until this ruling. It now has no twin and flashes by
+  UF2. The 2026-11-01 Wokwi run is history, not evidence, and no Pico W has
+  booted on the bench yet, so the registry row says `runs = "none"`, with no `cadence` or `last_run` and the
+  board page reads "Not supported" until a bench run dates it. Under D4 it is
+  no longer a twinned book board; RFC-0124 D8 places it by its status word.
+  No free emulator boots it today (no RP2040 in Renode 1.17.0, none in QEMU),
+  so field solutions has no twinned board until one does.
+- **Removed with it:** the `wokwi` emulator kind from the descriptor
+  vocabulary, the board's `[board.run.wokwi]` wiring, the `wokwi-pico` probe
+  track, `[tool.wokwi-cli]`, and issue 2230 (the missing Wokwi runner,
+  closed `wontfix`). Anyone who wants Wokwi can run it out of tree with
+  their own account; nano-ros does not test it. Issue 2283 records the
+  cleanup.
+
+The decisions below keep their 2026-11-01 to 2026-11-03 text where it is
+history (the spike results), and mark where Wokwi was a twin until this
+amendment.
 
 ## Summary
 
@@ -43,9 +74,11 @@ This RFC decides three things.
 - **D4 — Emulator twin required.** A board enters the book only when an
   emulator boots the same ELF the bench board runs. The emulator series is:
   QEMU `mps2-an385` for concepts (the gate emulator, with no hardware twin by
-  design), Renode for Nucleo-F767ZI, Wokwi for Raspberry Pi Pico W, and the
+  design), Renode for Nucleo-F767ZI, and the
   Arm FVP for industrial use, maintainer-run. The UNO R4 Minima was a
   candidate and left the list after phase-524 W1 (see "Spike results").
+  Wokwi for Raspberry Pi Pico W was in the series from 2026-11-01 until
+  Amendment 1 (2026-11-06) removed it.
 - **D8 — One evidence page per board**, generated from the registry RFC-0114
   defines: what runs it, how often, what breadth it inherits, when hardware
   last booted it.
@@ -53,7 +86,8 @@ This RFC decides three things.
 The board set picked on 2026-10-31 was Nucleo-F767ZI, Arduino UNO R4 Minima
 and Raspberry Pi Pico W, all three on Zephyr, all three reachable over USB
 serial first; after phase-524 W1's spikes (the Pico W one rerun with a token)
-the Nucleo-F767ZI and the Pico W stay. The NXP S32K344 stays the industrial board, hardware-only. Arduino GIGA R1 WiFi, Nucleo-H743ZI
+the Nucleo-F767ZI and the Pico W stay (the Pico W as hardware-only since
+Amendment 1). The NXP S32K344 stays the industrial board, hardware-only. Arduino GIGA R1 WiFi, Nucleo-H743ZI
 and an ESP32 revival are dropped for now, each for a stated reason.
 
 ## Problem
@@ -115,7 +149,7 @@ and an ESP32 revival are dropped for now, each for a stated reason.
   |---|---|---|
   | QEMU `mps2-an385` | bare-metal, FreeRTOS and Zephyr witnesses | Concepts; the gate emulator for the family matrix; deliberately no hardware twin (an MPS2 board is not what adopters buy) |
   | Renode 1.17.0 | Nucleo-F767ZI | Twin of a bench board; serial first (USART3, the ST-LINK virtual COM port), ethernet second (the on-chip MAC on a Renode switch bridged to a host tap). Both measured: phase-524 W1 spike 2 |
-  | Wokwi (`wokwi-cli` 0.29.1, hosted) | Raspberry Pi Pico W | Twin of a bench board for the field solutions purpose; serial only (UART0, the Wokwi serial monitor, carried by `wokwi-cli --interactive` to a host pty). Measured: phase-524 W1 spike 3 rerun. Conditions: the image states `CONFIG_TICKLESS_KERNEL=n` (Wokwi's SysTick does not carry Zephyr 3.7's tickless driver), and the Cortex-M0+ gaps the spike patched locally land first (phase-524 W1 rerun result). Each run needs a Wokwi token and counts against that account's simulation minutes, so this twin is USER-RUN and never in nano-ros CI (maintainer ruling 2026-11-02, after the free plan ran out); the Renode twin is the CI-checked one |
+  | ~~Wokwi (`wokwi-cli` 0.29.1, hosted)~~ | Raspberry Pi Pico W | **Removed 2026-11-06 (Amendment 1): a paid hosted simulator is no twin; the Pico W is hardware-only.** Was: twin of a bench board for the field solutions purpose; serial only (UART0, the Wokwi serial monitor, carried by `wokwi-cli --interactive` to a host pty). Measured: phase-524 W1 spike 3 rerun. Conditions: the image states `CONFIG_TICKLESS_KERNEL=n` (Wokwi's SysTick does not carry Zephyr 3.7's tickless driver), and the Cortex-M0+ gaps the spike patched locally land first (phase-524 W1 rerun result). Each run needs a Wokwi token and counts against that account's simulation minutes, so this twin is USER-RUN and never in nano-ros CI (maintainer ruling 2026-11-02, after the free plan ran out); the Renode twin is the CI-checked one |
   | Arm FVP | `fvp-aemv8r-smp` | Industrial purpose, maintainer-run (issue 2176); not a book board under this rule until a track replays it |
 
   Left the table on 2026-11-01 (phase-524 W1; the logs are in
@@ -129,13 +163,14 @@ and an ESP32 revival are dropped for now, each for a stated reason.
     before the emulator is asked anything.
 
   The Pico W left with it, blocked on a missing `WOKWI_CLI_TOKEN`, and came
-  back the same day when the rerun with a token passed.
+  back the same day when the rerun with a token passed. It lost the twin again
+  on 2026-11-06 (Amendment 1) and stays as a hardware-only board.
 
 - **Probe tracks.** Each twin gets an installed-track probe like the QEMU
-  chapters have (phase-517 W10): `renode-nucleo`, `wokwi-pico`. They are generated from
-  the registry (RFC-0114 D12), not authored in the workflow matrix. Only
-  `renode-nucleo` is weekly; `wokwi-pico` is user-run (`just probe
-  wokwi-pico` with the user's own token) and no lane holds a Wokwi secret.
+  chapters have (phase-517 W10): `renode-nucleo`, weekly. They are generated
+  from the registry (RFC-0114 D12), not authored in the workflow matrix. A
+  user-run `wokwi-pico` track existed from 2026-11-02 until Amendment 1
+  removed it; no lane ever held a Wokwi secret.
 - **Hardware.** The bench run is maintainer-run and dated in the registry
   (`runs = "hardware"`, `cadence = "manual"`, `last_run`). The flash line in
   the chapter drops the 2176 "unverified" wording only when that date exists.
@@ -158,9 +193,9 @@ and an ESP32 revival are dropped for now, each for a stated reason.
   `PlatformId` variant (about 67 references, phase-385's estimate), a twin
   launcher in the test harness beside QEMU's, a fixture row, and the twin in
   the CI runner image. **Only a twin CI can run gets a cell**: the Wokwi twin
-  is user-run and never in CI (ruling 2026-11-02, after the free plan's
-  quota ran out), so the Pico W gets no `PlatformId` and its row stays
-  `cadence = "manual"`; Renode is local and free, so the Nucleo's row moves to
+  was user-run and never in CI (ruling 2026-11-02, after the free plan's
+  quota ran out), so the Pico W got no `PlatformId`; since Amendment 1 it
+  has no twin and its row is `runs = "none"` until a bench run; Renode is local and free, so the Nucleo's row moves to
   an automated cadence once its cell is green and it names a second
   maintainer (D10's two-maintainer rule for "Verified").
 
@@ -183,7 +218,7 @@ workspace, Renode's `platforms/boards`, and Wokwi's supported-hardware page.
 |---|---|---|---|---|
 | Nucleo-F767ZI | education; industrial broad reference | UART over the ST-LINK virtual COM port, `netif:eth`, USB device | Renode `nucleo_f767zi.repl` | UART, GPIO, LEDs, button; ethernet PHY declared, MAC comes from `platforms/cpus/stm32f777.repl` (to verify by booting) |
 | Arduino UNO R4 Minima | field solutions | GPIO, UART only | Renode `arduino_uno_r4_minima.repl` (via `platforms/cpus/renesas-r7fa4m1a.repl`) | UART, GPIO |
-| Raspberry Pi Pico W | field solutions and education bridge | UART, GPIO, USB device, PIO. WiFi needs the Zephyr 4.x AIROC driver: 3.7's AIROC is SDIO-only and the CYW43439 sits on SPI/PIO | Wokwi RP2040 Pico W | UART, GPIO; WiFi simulated with a virtual access point and gateway (documented for the Pico 2 W) |
+| Raspberry Pi Pico W | field solutions and education bridge | UART, GPIO, USB device, PIO. WiFi needs the Zephyr 4.x AIROC driver: 3.7's AIROC is SDIO-only and the CYW43439 sits on SPI/PIO | none since Amendment 1 (was Wokwi RP2040 Pico W, a paid hosted simulator) | UART, GPIO; WiFi simulated with a virtual access point and gateway (documented for the Pico 2 W) |
 | NXP S32K344 | industrial | FreeRTOS, lwIP ethernet (in hand) | none claimed (Renode ships only `nxp-s32k388evb.repl`, S32K3 peripherals partial) | — |
 
 Dropped, with the reason:
@@ -282,8 +317,8 @@ three tree gaps the spike patched only locally (no Cortex-M0+ arm in
 not build without CAS, no ARMv6-M `__atomic_*` libcalls for zenoh-pico). The
 free Wokwi plan gives 50 simulation minutes per rolling 30 days and 5 minutes
 per session; a twin run uses about 1.5 of them. That quota is why the Wokwi
-twin stays out of CI (ruling 2026-11-02): users run it with their own token,
-and no lane holds a Wokwi secret.
+twin stayed out of CI (ruling 2026-11-02), and why Amendment 1 (2026-11-06)
+removed it as a twin altogether.
 
 ## Alternatives rejected
 
@@ -307,8 +342,9 @@ and no lane holds a Wokwi secret.
   single-package front door and `nros run`.
 - **RFC-0109**: a Zephyr board's network is Zephyr's (`stack = "os"`), which
   is why one field suffices.
-- **RFC-0099**: Renode and Wokwi join `nros-sdk-index.toml` as `[tool.*]` dist
-  rows with measured floors.
+- **RFC-0099**: Renode joins `nros-sdk-index.toml` as a `[tool.*]` dist row
+  with a measured floor. `[tool.wokwi-cli]` was one from phase-524 W2 until
+  Amendment 1 removed it: no paid hosted tool is an index row.
 
 ## Sources
 

@@ -130,7 +130,7 @@ than doing nothing.
 
 A board states its launch once, in `[board.run]`. Real silicon
 with no emulator twin leaves it out. Otherwise it holds either
-`emulator = "<kind>:<machine>"` (kind `qemu`, `fvp`, `renode` or `wokwi`) or
+`emulator = "<kind>:<machine>"` (kind `qemu`, `fvp` or `renode`) or
 `host = true` for a host process, never both. A runner-specific sub-table
 holds what only that runner reads; for QEMU it is `[board.run.qemu]`:
 
