@@ -76,6 +76,26 @@ GROUPS = {
     "internals": {},
 }
 ACTIONS = ("keep", "move", "merge-into", "split", "new", "import")
+# phase-537 W9 (RFC-0124 D8): the User guide group whose pages are nested,
+# one level further, under their board row's generated status group.
+STATUS_GROUPED = {"user": {"guide": "platforms"}}
+REGISTRY = ROOT / "packages" / "boards" / "board-support.toml"
+
+
+def platform_groups() -> dict[str, str]:
+    """{user-book path: status group} for every platform page a board row
+    names (`book_platform`), from the row's generated status word
+    (RFC-0124 D8, `book_charter.platform_pages`). SUMMARY nests each page
+    under its group, so the grouping is the registry's and never typed. The
+    committed views read no clock: a manual row's staleness moves a page
+    when the registry is next regenerated, as every other view does."""
+    import board_registry
+    import book_charter
+
+    doc = board_registry.with_descriptor_facts(board_registry.load(REGISTRY),
+                                               board_registry.descriptor_index(ROOT))
+    rows = [(r, board_registry.status_word(r, True)) for r in doc.get("board", []) if not r.get("infra")]
+    return book_charter.platform_pages(rows)[0]
 
 
 @dataclass(frozen=True)
