@@ -830,24 +830,10 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
         nros_tests::alloc::BAREMETAL_LARGE_MSG_PORT,
     ));
 
-    let mut cmd = nros_tests::qemu::qemu_system_arm_cmd();
-    cmd.args([
-        "-cpu",
-        "cortex-m3",
-        "-machine",
-        "mps2-an385",
-        "-nographic",
-        "-icount",
-        "shift=auto",
-        "-semihosting-config",
-        "enable=on,target=native",
-        "-kernel",
-    ]);
-    cmd.arg(&qemu_large_msg_test_binary);
-    cmd.args(["-nic", "user,model=lan9118"]);
-
+    // phase-528 W5 — the board's networked boot, through `nros run --plan`.
     let mut proc =
-        ManagedProcess::spawn_command(cmd, "qemu-large-msg-test").expect("Failed to start QEMU");
+        nros_tests::qemu::QemuProcess::start_mps2_an385_networked(&qemu_large_msg_test_binary)
+            .expect("Failed to start QEMU");
 
     let output = proc.collect_until("All tests passed", Duration::from_secs(30));
 

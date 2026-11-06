@@ -23,6 +23,14 @@
 //! The verb adds nothing of its own: `--router none`, because a test that
 //! needs a router starts the one it leased.
 //!
+//! Two runners, two plan shapes (phase-528 W5, in two steps so a regression
+//! is attributable to one): a host process ([`host_image`], the `native`
+//! runner) and a QEMU guest ([`qemu_image`], the `qemu` runner). A QEMU boot
+//! is stated as the plan's QEMU `args`, the keys the `qemu` runner renders
+//! through `nros_qemu_ladder::plan_line`, so the harness never spells a QEMU
+//! command line itself: the line it reports on failure is that renderer's,
+//! the one the runner executes.
+//!
 //! Each launch gets its own directory, used as the verb's workspace, so the
 //! run directory (`<ws>/build/nros/run/<image>/`, where the verb writes its
 //! copy of the plan and the console log) is never shared between two cells
@@ -30,6 +38,7 @@
 //! returned [`HostRun`].
 
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -193,13 +202,7 @@ fn host_plan(exe: &Path, passthrough: &[String], plan_args: &[(&str, &str)]) -> 
 ///
 /// The `nros` CLI is not built, or the plan directory cannot be written.
 pub fn host_image(image: &Command, plan_args: &[(&str, &str)]) -> TestResult<HostRun> {
-    let nros = crate::nros_cli_bin_path().ok_or_else(|| {
-        TestError::ProcessFailed(
-            "the `nros` CLI is not built, so no image can be run through `nros run --plan` \
-             (run `just setup-cli`)"
-                .into(),
-        )
-    })?;
+    let nros = nros_cli()?;
     let program = PathBuf::from(image.get_program());
     let exe = std::path::absolute(&program).unwrap_or(program);
     let passthrough: Vec<String> = image
@@ -207,22 +210,7 @@ pub fn host_image(image: &Command, plan_args: &[(&str, &str)]) -> TestResult<Hos
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
 
-    let dir = tempfile::Builder::new().prefix("nros-run-").tempdir()?;
-    let plan = dir.path().join("plan.json");
-    let text = serde_json::to_string_pretty(&host_plan(&exe, &passthrough, plan_args))
-        .map_err(|e| TestError::ProcessFailed(format!("serializing the run plan: {e}")))?;
-    std::fs::write(&plan, text)?;
-
-    let mut command = Command::new(nros);
-    command
-        .arg("run")
-        .arg("--plan")
-        .arg(&plan)
-        .arg("--workspace")
-        .arg(dir.path())
-        .arg("--nano-ros-path")
-        .arg(crate::project_root())
-        .args(["--router", "none"]);
+    let (dir, mut command) = verb_command(nros, &host_plan(&exe, &passthrough, plan_args))?;
     for (k, v) in image.get_envs() {
         match v {
             Some(v) => command.env(k, v),
@@ -239,9 +227,216 @@ pub fn host_image(image: &Command, plan_args: &[(&str, &str)]) -> TestResult<Hos
     })
 }
 
+/// The `nros` CLI, or why no image can be run through `nros run --plan`.
+fn nros_cli() -> TestResult<PathBuf> {
+    crate::nros_cli_bin_path().ok_or_else(|| {
+        TestError::ProcessFailed(
+            "the `nros` CLI is not built, so no image can be run through `nros run --plan` \
+             (run `just setup-cli`)"
+                .into(),
+        )
+    })
+}
+
+/// Write `plan` into a fresh directory and return it with the command that
+/// executes it: `nros run --plan <file> --workspace <dir> --nano-ros-path
+/// <root> --router none`. The directory is the verb's workspace, so two cells
+/// running the same image never share a run directory.
+fn verb_command(
+    nros: PathBuf,
+    plan: &serde_json::Value,
+) -> TestResult<(tempfile::TempDir, Command)> {
+    let dir = tempfile::Builder::new().prefix("nros-run-").tempdir()?;
+    let file = dir.path().join("plan.json");
+    let text = serde_json::to_string_pretty(plan)
+        .map_err(|e| TestError::ProcessFailed(format!("serializing the run plan: {e}")))?;
+    std::fs::write(&file, text)?;
+    let mut command = Command::new(nros);
+    command
+        .arg("run")
+        .arg("--plan")
+        .arg(&file)
+        .arg("--workspace")
+        .arg(dir.path())
+        .arg("--nano-ros-path")
+        .arg(crate::project_root())
+        .args(["--router", "none"]);
+    Ok((dir, command))
+}
+
+/// The runner package and name for a QEMU guest (RFC-0119 D8).
+pub const QEMU_RUNNER_PACKAGE: &str = "nros_runner_qemu";
+/// The runner name the plan states for a QEMU guest.
+pub const QEMU_RUNNER: &str = "qemu";
+
+/// A QEMU boot as a RunPlan states it: the plan's QEMU `args`, which the
+/// `qemu` runner renders through [`nros_qemu_ladder::plan_line`], and the
+/// words that follow the kernel (`passthrough`).
+///
+/// The keys are the board descriptor's `[board.run.qemu]` facts (`system`,
+/// `cpu`, `machine`, `icount`, `semihosting`, `nic`), or a fixed ladder board
+/// (`board`, with `mac` and `net`). A boot that needs a word those keys do
+/// not state (`-smp`, a `-chardev`, a monitor socket) carries it in
+/// `passthrough`, exactly as `nros run -- <args>` would.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct QemuBoot {
+    /// The plan's `args`.
+    pub args: BTreeMap<String, String>,
+    /// Words after the kernel image.
+    pub passthrough: Vec<String>,
+}
+
+impl QemuBoot {
+    /// A table-shaped boot: `qemu-system-<system> -machine <machine>`.
+    #[must_use]
+    pub fn table(system: &str, machine: &str) -> Self {
+        Self::default()
+            .arg("system", system)
+            .arg("machine", machine)
+    }
+
+    /// A fixed ladder board's boot ([`nros_qemu_ladder::Board`]).
+    #[must_use]
+    pub fn board(board: nros_qemu_ladder::Board) -> Self {
+        Self::default().arg("board", board.word())
+    }
+
+    /// Set one plan arg.
+    #[must_use]
+    pub fn arg(mut self, key: &str, value: &str) -> Self {
+        self.args.insert(key.to_string(), value.to_string());
+        self
+    }
+
+    /// Append words after the kernel.
+    #[must_use]
+    pub fn then<S: AsRef<str>>(mut self, words: impl IntoIterator<Item = S>) -> Self {
+        self.passthrough
+            .extend(words.into_iter().map(|w| w.as_ref().to_string()));
+        self
+    }
+
+    /// The emulator the plan's target names: `qemu:<machine>`, or the board
+    /// word for a fixed ladder board.
+    fn emulator(&self) -> String {
+        let m = self
+            .args
+            .get("machine")
+            .or_else(|| self.args.get("board"))
+            .map_or("unknown", String::as_str);
+        format!("qemu:{m}")
+    }
+
+    /// The console the guest writes to: semihosting when the boot enables it
+    /// (the runner then reads QEMU's stderr as console too), else QEMU's
+    /// stdio.
+    fn console_kind(&self) -> &'static str {
+        if self.args.contains_key("semihosting") {
+            "semihosting"
+        } else {
+            "stdio"
+        }
+    }
+}
+
+/// The plan for a QEMU guest: what `nros run --dry-run --json` would print for
+/// it, written by the harness. `qemu` is the resolved emulator binary, which
+/// the plan's `tools` carry (the runner never searches `PATH`).
+fn qemu_plan(elf: &Path, boot: &QemuBoot, exe: &str, qemu: &Path) -> serde_json::Value {
+    let image = elf
+        .file_name()
+        .map_or_else(|| "image".to_string(), |n| n.to_string_lossy().into_owned());
+    serde_json::json!({
+        "protocol": 1,
+        "image": image,
+        "artifacts": { "elf": elf },
+        "verb": "run",
+        "runner": { "package": QEMU_RUNNER_PACKAGE, "name": QEMU_RUNNER },
+        "target": { "emulator": boot.emulator() },
+        "console": { "kind": boot.console_kind() },
+        "args": boot.args,
+        "tools": { exe: qemu },
+        "passthrough": boot.passthrough,
+        "provenance": { "runner": "nros-tests" },
+    })
+}
+
+/// Boot `elf` under QEMU through `nros run --plan`, the `qemu` runner.
+///
+/// The emulator binary is the harness's one ladder
+/// ([`crate::qemu::qemu_system_path`]), written into the plan's `tools`. The
+/// returned [`HostRun::image_line`] is the QEMU line the runner executes,
+/// rendered by the same function, pasteable into a shell (issue 0877).
+///
+/// # Errors
+///
+/// The args name no QEMU line, the `nros` CLI is not built, or the plan
+/// directory cannot be written.
+pub fn qemu_image(elf: &Path, boot: &QemuBoot) -> TestResult<HostRun> {
+    let line = nros_qemu_ladder::plan_line(&boot.args).map_err(TestError::ProcessFailed)?;
+    let nros = nros_cli()?;
+    let elf = std::path::absolute(elf).unwrap_or_else(|_| elf.to_path_buf());
+    let qemu = PathBuf::from(crate::qemu::qemu_system_path(&line.exe));
+    let mut shown = Command::new(&qemu);
+    shown
+        .args(line.argv(&elf.display().to_string()))
+        .args(&boot.passthrough);
+    let (dir, command) = verb_command(nros, &qemu_plan(&elf, boot, &line.exe, &qemu))?;
+    Ok(HostRun {
+        command,
+        image_line: crate::qemu::render_command(&shown),
+        dir,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_qemu_plan_names_the_qemu_runner_and_its_tool() {
+        let boot = QemuBoot::table("arm", "mps2-an385")
+            .arg("cpu", "cortex-m3")
+            .arg("semihosting", "enable=on,target=native")
+            .then(["-monitor", "none"]);
+        let exe = nros_qemu_ladder::system_exe("arm");
+        let path = format!("/q/bin/{exe}");
+        let p = qemu_plan(Path::new("/b/app"), &boot, &exe, Path::new(&path));
+        assert_eq!(p["runner"]["package"], QEMU_RUNNER_PACKAGE);
+        assert_eq!(p["runner"]["name"], QEMU_RUNNER);
+        assert_eq!(p["target"]["emulator"], "qemu:mps2-an385");
+        assert_eq!(p["console"]["kind"], "semihosting");
+        assert_eq!(p["tools"][exe.as_str()], path.as_str());
+        assert_eq!(p["args"]["cpu"], "cortex-m3");
+        assert_eq!(p["passthrough"][1], "none");
+        let b = QemuBoot::board(nros_qemu_ladder::Board::NuttxArmVirt).arg("net", "none");
+        assert_eq!(b.emulator(), "qemu:nuttx-arm-virt");
+        assert_eq!(b.console_kind(), "stdio");
+    }
+
+    /// The line a failure reports is the ladder's rendering of the plan's
+    /// args, plus the passthrough: the line the runner executes.
+    #[test]
+    fn a_qemu_runs_failure_line_is_the_runners_line() {
+        if crate::nros_cli_bin_path().is_none() {
+            crate::unmet!("nros CLI not built");
+        }
+        let boot = QemuBoot::table("arm", "mps2-an385").then(["-smp", "cpus=1"]);
+        let run = qemu_image(Path::new("/b/app"), &boot).unwrap();
+        let want = nros_qemu_ladder::plan_line(&boot.args)
+            .unwrap()
+            .argv("/b/app")
+            .join(" ");
+        assert!(
+            run.image_line.contains(&format!("{want} -smp cpus=1")),
+            "{}",
+            run.image_line
+        );
+        let plan: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(run.plan_path()).unwrap()).unwrap();
+        assert_eq!(plan["artifacts"]["elf"], "/b/app");
+        assert!(qemu_image(Path::new("/b/app"), &QemuBoot::default()).is_err());
+    }
 
     #[test]
     fn the_plan_names_the_native_runner_and_carries_the_arguments() {

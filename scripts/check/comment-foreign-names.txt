@@ -307,7 +307,6 @@ can_receive
 g_source
 icount_adjust
 lan9118_receive
-mcast_addr
 qemu_net_queue
 
 # Arm: CMSIS, semihosting, instructions, the STM32 reference manual

@@ -2,11 +2,7 @@
 //!
 //! Provides managed Zephyr processes for testing native_sim and QEMU targets.
 
-use crate::{
-    TestError, TestResult,
-    process::{kill_process_group, set_new_process_group},
-    project_root,
-};
+use crate::{TestError, TestResult, process::kill_process_group, project_root};
 // phase-353 W2 — the content-aware staleness helpers moved to `fixtures::staleness`
 // so the dep-info arm shares them; this module keeps using the same one.
 use crate::fixtures::staleness::{
@@ -300,7 +296,7 @@ impl ZephyrProcess {
             )));
         }
 
-        let mut host_run = None;
+        let host_run;
         let mut handle = match platform {
             ZephyrPlatform::NativeSim => {
                 // phase-295 W5.a — native_sim direct-exec IS the framework
@@ -344,25 +340,20 @@ impl ZephyrProcess {
                 host_run = Some(Box::new(run));
                 cmd.spawn()?
             }
-            ZephyrPlatform::QemuArm => {
+            ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA53Smp => {
                 // phase-295 W5.a — the launch ELF is derived from the board's
                 // `runners.yaml` (`config.elf_file` under a confirmed `qemu`
                 // runner), mirroring the native branch above; falls back to the
                 // passed binary when the metadata is absent.
                 //
-                // SANCTIONED BYPASS (E1/E9 exception, RFC-0051 §4): the
-                // `-cpu/-machine` block below stays hand-rolled because Zephyr
-                // does NOT record the QEMU machine flags in `runners.yaml`.
-                // For an emulator board the flags live in
-                // `boards/qemu/cortex_m3/board.cmake` (`QEMU_FLAGS_<ARCH> =
-                // -cpu cortex-m3 -machine lm3s6965evb …`) and are assembled by
-                // `cmake/emu/qemu.cmake` into the CMake `run` target — reachable
-                // only via `west build -t run`, which triggers the build half
-                // (an E1 violation, and a stale reconfigure can mask a museum
-                // binary). So we read what `runners.yaml` DOES carry (the runner
-                // kind + the ELF) and mirror the board.cmake machine line here.
-                // A follow-up (phase doc W5.c) can relocate these flags into the
-                // board crate's `NROS_BOARD_RUNNER`-adjacent metadata.
+                // phase-528 W5 — booted through `nros run --plan` and the
+                // `qemu` runner. Zephyr does NOT record the QEMU machine flags
+                // in `runners.yaml`: they live in the board's `board.cmake`
+                // (`QEMU_FLAGS_<ARCH>`), assembled by `cmake/emu/qemu.cmake`
+                // into the CMake `run` target, reachable only through `west
+                // build -t run`, which triggers the build half (an E1
+                // violation). So the plan states that board.cmake line as QEMU
+                // args ([`zephyr_qemu_boot`]).
                 let launch_bin = binary
                     .parent()
                     .and_then(RunnersYaml::from_zephyr_dir)
@@ -370,73 +361,23 @@ impl ZephyrProcess {
                     .and_then(|r| r.elf_path())
                     .filter(|p| p.exists())
                     .unwrap_or_else(|| binary.to_path_buf());
-
-                // QEMU ARM requires qemu-system-arm; Phase 143 routes
-                // this through the patched build under `build/qemu/`
-                // when present.
-                let mut cmd = crate::qemu::qemu_system_arm_cmd();
-                cmd.args([
-                    "-cpu",
-                    "cortex-m3",
-                    "-machine",
-                    "lm3s6965evb",
-                    "-nographic",
-                    "-kernel",
-                ])
-                .arg(&launch_bin)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
+                let mut run = crate::run::qemu_image(&launch_bin, &zephyr_qemu_boot(platform))?;
+                let mut cmd = run.take_command();
+                cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+                // `nros run` owns a group of its own: `crate::run::stop` kills
+                // it before the verb, and a dying test binary SIGTERMs the verb.
                 #[cfg(unix)]
-                set_new_process_group(&mut cmd);
-                cmd.spawn()?
-            }
-            ZephyrPlatform::QemuCortexA53Smp => {
-                // Same shape as QemuArm above, and the same SANCTIONED BYPASS:
-                // `runners.yaml` carries the runner kind and the ELF, never the
-                // machine flags, so those are mirrored from
-                // `boards/qemu/cortex_a53/board.cmake` here.
-                //
-                // ONE DELIBERATE DEVIATION from that board.cmake: it passes
-                // `-nic tap,model=e1000,ifname=zeth`, which needs `/dev/net/tun`
-                // and fails with "Operation not permitted" for an unprivileged
-                // runner. User-mode networking gives the guest the same e1000
-                // with no privileges; the guest is 10.0.2.15 and the host
-                // 10.0.2.2, which is what the fixture's baked locator names.
-                // `-smp cpus=2` is the whole point of this platform.
-                let launch_bin = binary
-                    .parent()
-                    .and_then(RunnersYaml::from_zephyr_dir)
-                    .filter(|r| r.runners.iter().any(|x| x == "qemu"))
-                    .and_then(|r| r.elf_path())
-                    .filter(|p| p.exists())
-                    .unwrap_or_else(|| binary.to_path_buf());
-
-                let mut cmd = crate::qemu::qemu_system_cmd("qemu-system-aarch64");
-                cmd.args([
-                    "-cpu",
-                    "cortex-a53",
-                    "-machine",
-                    "virt,gic-version=3",
-                    "-nographic",
-                    "-smp",
-                    "cpus=2",
-                    "-nic",
-                    "user,model=e1000",
-                    "-kernel",
-                ])
-                .arg(&launch_bin)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-                #[cfg(unix)]
-                set_new_process_group(&mut cmd);
+                crate::process::set_orphan_group_suicide(&mut cmd);
+                host_run = Some(Box::new(run));
                 cmd.spawn()?
             }
             ZephyrPlatform::QemuCortexA9 => {
-                // For Cortex-A9 the test must call `start_qemu_a9_mcast`
-                // instead so it can supply a virtual-L2 mcast group.
-                // Calling the bare `start` API doesn't make sense here.
+                // The A9 board booted only through a multicast-LAN launcher
+                // (~~`start_qemu_a9_mcast`~~, Phase 92) that no test called;
+                // phase-528 W5 retired it rather than move it onto a plan.
                 return Err(TestError::ProcessFailed(String::from(
-                    "ZephyrPlatform::QemuCortexA9 requires `start_qemu_a9_mcast` (Phase 92)",
+                    "ZephyrPlatform::QemuCortexA9 has no launcher (retired in phase-528 W5: \
+                     no test booted it)",
                 )));
             }
         };
@@ -461,101 +402,6 @@ impl ZephyrProcess {
             reader_threads,
             image,
             _run: host_run,
-        })
-    }
-
-    /// Launch a Zephyr `qemu_cortex_a9` binary with QEMU's
-    /// `-netdev socket,mcast=…` networking. Two instances launched
-    /// with the same `mcast_addr:port` share a virtual L2 broadcast
-    /// domain on the host (no `sudo`, no TAP), so SPDP/SEDP/ARP all
-    /// flow between them. Phase 92.5 talker↔listener interop runs
-    /// over this.
-    ///
-    /// `mac` must be unique per instance — Zephyr's GEM driver uses
-    /// the DTS `local-mac-address`, but QEMU still wants its `-nic
-    /// mac=` to match for ARP/IGMP plumbing on the host side.
-    pub fn start_qemu_a9_mcast(
-        binary: &Path,
-        mcast_addr_port: &str,
-        mac: &str,
-    ) -> TestResult<Self> {
-        if !binary.exists() {
-            return Err(TestError::BuildFailed(format!(
-                "Zephyr binary not found: {}",
-                binary.display()
-            )));
-        }
-
-        // Locate the SDK-bundled qemu-system-xilinx-aarch64 — same binary the
-        // upstream zephyr-lang-rust samples/philosophers build uses via
-        // `west build -t run`.
-        //
-        // issue 0334 — this used to hardcode one developer's absolute path,
-        // pinning BOTH the SDK version (`zephyr-sdk-0.16.8`, owned by
-        // scripts/zephyr/setup.sh) and the host tuple
-        // (`x86_64-pokysdk-linux`, so it could not work on an aarch64 host
-        // even with the SDK present). On any other machine it handed a
-        // nonexistent path to `Command`, which fails with a bare ENOENT rather
-        // than a diagnosable "SDK not found" — while the dtb lookup four lines
-        // below already resolved properly.
-        let qemu = match std::env::var("QEMU_BIN") {
-            Ok(explicit) => explicit,
-            Err(_) => sdk_qemu_xilinx_aarch64().ok_or_else(|| {
-                TestError::BuildFailed(
-                    "qemu-system-xilinx-aarch64 not found. Set QEMU_BIN, or install the \
-                     Zephyr SDK (`just zephyr setup`) so it can be found under \
-                     $ZEPHYR_SDK_INSTALL_DIR or scripts/zephyr/sdk/zephyr-sdk-*."
-                        .to_string(),
-                )
-            })?,
-        };
-        let dtb = std::env::var("ZEPHYR_FDT_ZYNQ7000S").unwrap_or_else(|_| {
-            let ws = zephyr_workspace_path()
-                .map(|p| p.join("zephyr/boards/qemu/cortex_a9/fdt-zynq7000s.dtb"))
-                .unwrap_or_default();
-            ws.to_string_lossy().into_owned()
-        });
-
-        let mut cmd = Command::new(&qemu);
-        cmd.args([
-            "-nographic",
-            "-machine",
-            "arm-generic-fdt-7series",
-            "-dtb",
-            dtb.as_str(),
-            "-nic",
-            &format!("socket,model=cadence_gem,mcast={mcast_addr_port},mac={mac}"),
-            "-chardev",
-            "stdio,id=con,mux=on",
-            "-serial",
-            "chardev:con",
-            "-mon",
-            "chardev=con,mode=readline",
-            "-device",
-        ])
-        .arg(format!(
-            "loader,file={},cpu-num=0",
-            binary.to_string_lossy()
-        ))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-        #[cfg(unix)]
-        set_new_process_group(&mut cmd);
-        let mut handle = cmd.spawn()?;
-
-        let output = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-        let reader_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let reader_threads =
-            spawn_output_readers(&mut handle, output.clone(), reader_done.clone())?;
-
-        Ok(Self {
-            handle,
-            platform: ZephyrPlatform::QemuCortexA9,
-            output,
-            reader_done,
-            reader_threads,
-            image: binary.to_path_buf(),
-            _run: None,
         })
     }
 
@@ -871,84 +717,36 @@ impl Drop for ZephyrProcess {
 // Zephyr Availability Checks
 // =============================================================================
 
-/// Resolve the Zephyr-SDK-bundled `qemu-system-xilinx-aarch64` (issue 0334).
+/// The QEMU boot of a Zephyr emulator board, as plan args: the
+/// `QEMU_FLAGS_<ARCH>` line of its `board.cmake`, which `runners.yaml` does
+/// not carry (phase-528 W5).
 ///
-/// Nothing here is HARDCODED: the host tuple is GLOBBED (whatever host you are
-/// on owns it), and the SDK version comes from the `[tool.zephyr-sdk*]` pins in
-/// `nros-sdk-index.toml` for the store arm (issue 1546) — both were previously
-/// spelled in this file.
+/// * `qemu_cortex_m3` — `-cpu cortex-m3 -machine lm3s6965evb`, the console on
+///   QEMU's stdio.
+/// * `qemu_cortex_a53` SMP — `-cpu cortex-a53 -machine virt,gic-version=3` and
+///   `-smp cpus=2`, the whole point of this platform. ONE DELIBERATE DEVIATION
+///   from that board.cmake: it passes `-nic tap,model=e1000,ifname=zeth`,
+///   which needs `/dev/net/tun` and fails with "Operation not permitted" for an
+///   unprivileged runner. User-mode networking gives the guest the same e1000
+///   with no privileges; the guest is 10.0.2.15 and the host 10.0.2.2, which is
+///   what the fixture's baked locator names.
 ///
-/// Search order mirrors the other resolvers in this file, and gained its middle
-/// arm with issue 1254 / phase-449 W3 — the SDK is provisioned into the STORE
-/// now, and the in-checkout copy is the legacy arm a host provisioned earlier
-/// still resolves to:
-/// 1. `ZEPHYR_SDK_INSTALL_DIR` (the SDK's own variable, set by `west`/`setup.sh`)
-/// 2. `$NROS_HOME/sdk/<tool>/<pinned version>/<subdir>` — constructed from the
-///    `[tool.zephyr-sdk*]` pins, never globbed (issue 1546)
-/// 3. `<project_root>/scripts/zephyr/sdk/zephyr-sdk-*`
+/// # Panics
 ///
-/// The checkout arm is still globbed (a per-checkout directory, so the newest
-/// there is this checkout's own); the store arm is not, because the store is
-/// shared between checkouts and only the pin names this tree's SDK.
-///
-/// Returns `None` when absent so the caller can report a diagnosable error
-/// rather than handing a nonexistent path to `Command`.
-fn sdk_qemu_xilinx_aarch64() -> Option<String> {
-    const QEMU: &str = "qemu-system-xilinx-aarch64";
-
-    // Inside one SDK root, find `sysroots/<host-tuple>/usr/bin/<QEMU>`.
-    fn in_sdk_root(root: &Path) -> Option<String> {
-        let entries = std::fs::read_dir(root.join("sysroots")).ok()?;
-        for entry in entries.flatten() {
-            let candidate = entry.path().join("usr/bin").join(QEMU);
-            if candidate.is_file() {
-                return Some(candidate.to_string_lossy().into_owned());
-            }
+/// On a platform with no QEMU boot (native_sim, the retired A9).
+fn zephyr_qemu_boot(platform: ZephyrPlatform) -> crate::run::QemuBoot {
+    match platform {
+        ZephyrPlatform::QemuArm => {
+            crate::run::QemuBoot::table("arm", "lm3s6965evb").arg("cpu", "cortex-m3")
         }
-        None
-    }
-
-    if let Ok(dir) = std::env::var("ZEPHYR_SDK_INSTALL_DIR")
-        && let Some(found) = in_sdk_root(Path::new(&dir))
-    {
-        return Some(found);
-    }
-
-    // Newest-first so a host carrying several SDKs picks the latest, matching
-    // what `just zephyr setup` most recently provisioned.
-    fn newest_sdk_root_under(parent: &Path) -> Option<String> {
-        let mut roots: Vec<PathBuf> = std::fs::read_dir(parent)
-            .ok()?
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.starts_with("zephyr-sdk-"))
-            })
-            .collect();
-        roots.sort();
-        roots.iter().rev().find_map(|r| in_sdk_root(r))
-    }
-
-    // issue 1254 — the STORE arm, CONSTRUCTED from the pins (issue 1546).
-    // `$NROS_HOME/sdk/<tool>/<version>/<subdir>` for each Zephyr SDK this tree
-    // pins — one per Zephyr line (`[tool.zephyr-sdk]`, `[tool.zephyr-sdk-1-0-1]`;
-    // the line→tool table lives in `scripts/lib/zephyr-sdk.sh`, so this tries
-    // both rather than restating it). It used to glob both levels and take the
-    // newest, but the store is shared between checkouts, so "newest" could be
-    // an SDK some other checkout pinned.
-    let store = crate::store_root().join("sdk");
-    for tool in ["zephyr-sdk", "zephyr-sdk-1-0-1"] {
-        if let Some(found) = crate::sdk_pin(tool)
-            .map(|pin| pin.dir_under(&store, tool))
-            .and_then(|root| in_sdk_root(&root))
-        {
-            return Some(found);
+        ZephyrPlatform::QemuCortexA53Smp => {
+            crate::run::QemuBoot::table("aarch64", "virt,gic-version=3")
+                .arg("cpu", "cortex-a53")
+                .arg("nic", "user,model=e1000")
+                .then(["-smp", "cpus=2"])
         }
+        other => panic!("{other:?} has no QEMU boot"),
     }
-
-    newest_sdk_root_under(&crate::project_root().join("scripts/zephyr/sdk"))
 }
 
 /// The Zephyr workspace, from THE ladder — `scripts/lib/zephyr-workspace.sh
