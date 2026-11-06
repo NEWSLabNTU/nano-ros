@@ -1,17 +1,17 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-05). IN PROGRESS — W1, W2 and W3 landed (W3 with four items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 partial: step 1 (native cells) landed in #3167, step 2 (QEMU cells, tier 2) pending on the CI runner.** Implements
-[RFC-0118](../design/0118-target-execution-model.md) D1 to D5 and D8 for host
+**Status (2026-11-06). DONE — W1, W2 and W3 landed (W3 with three items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 done: step 1 (native cells) in #3167, step 2 (QEMU cells) after it, with the tier-2 cell comparison carried to [issue 2302](../../issues/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) (`main`'s tier-2 build is red, so no run reached a cell). Open issues still pointing here: [#2172](../../issues/2172-harness-mps-lines-restate-board-runner.md) and [#2273](../../issues/2273-violation-channel-qemu-leg.md).** Implements
+[RFC-0118](../../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
-[RFC-0119](../design/0119-cli-extension-packages.md) D8.
+[RFC-0119](../../design/0119-cli-extension-packages.md) D8.
 
 Depends on:
 
-- [phase-527](archived/phase-527-cli-extension-packages.md) W1 to W3, for the kinds,
+- [phase-527](phase-527-cli-extension-packages.md) W1 to W3, for the kinds,
   the host build role and `nros-extension`;
-- [phase-522](archived/phase-522-support-registry-primitives.md)'s generator, for W2 (landed; the phase is archived).
+- [phase-522](phase-522-support-registry-primitives.md)'s generator, for W2 (landed; the phase is archived).
 
-Carries [phase-525](archived/phase-525-adoption-front-doors.md) W3: when W4 here is
+Carries [phase-525](phase-525-adoption-front-doors.md) W3: when W4 here is
 accepted, phase-525 W3's acceptance is met by this phase's verb.
 
 ---
@@ -293,7 +293,9 @@ Carried:
   that alias is not done here, since `nros run`'s own surface is W4's.
 - *`nros-qemu-ladder` with no launch line.* `board_line` is still what the
   test harness launches with; it leaves when W5 moves the harness onto
-  `nros run --plan`.
+  `nros run --plan`. Resolved by W5 step 2: the harness states plan args and
+  the qemu runner renders them through `plan_line`. `board_line` stays as
+  `plan_line`'s fixed-board half and the CLI's printed line.
 - The qemu runner implements `run` only. `console` (RFC-0119 D8) arrives
   with `nros monitor` (phase-529 W3).
 - The Pico W's Wokwi twin resolves to the `west` runner, which refuses it at
@@ -448,11 +450,15 @@ Decision step: if the verb's overhead breaks the 5 % bound on short cells,
 fix the cost in the verb (lazy resolution, no rebuild check under `--plan`),
 never by giving the harness a private path.
 
-Status: **partial.** Step 1 (native cells) landed in #3167. Step 2 (QEMU cells,
-serial included now that issue 2231 is fixed) is pending. Its tier-2 lane
-cannot run on the development host in reasonable time, so its before/after
-runs are dispatched on the CI runner (`run-matrix.yml`, tier-2 lane, `main`
-against the step-2 branch). The `qemu-system-` gate lands with step 2.
+Status: **done (2026-11-06), with the tier-2 cell comparison carried.** Step 1
+(native cells) landed in #3167, step 2 (QEMU cells) in the pull request that
+carries this line. The `qemu-system-` gate is `check-harness-qemu-literals`.
+Step 2's tier-2 before/after was dispatched on the CI runner, but neither run
+reached a cell: `main` is red in the tier-2 fixture build (issue 2302), so
+both runs stopped in the same build stages and the comparison could only be
+the stage reached. The cell-level comparison and the wall-time bound for the
+QEMU cells are carried to issue 2302: re-dispatch `run-matrix.yml` once it
+is fixed and compare against the 2026-11-05 runs, which reached the cells.
 
 Step 1, what landed:
 
@@ -543,6 +549,70 @@ orphans the image. Two ways to close it:
 - the verb keeping the image in a group the caller can kill: the harness
   killing the process group, extended to every caller.
 
+The QEMU cells inherit this gap: QEMU is the runner's child, like a host
+image.
+
+Step 2, what landed:
+
+- `nros_tests::run::qemu_image` writes a RunPlan for the `qemu` runner
+  (`nros_runner_qemu`, target `qemu:<machine>`, console `semihosting` when
+  the boot enables it, else `stdio`) and returns the same `nros run --plan
+  … --router none` command as step 1. The emulator binary is the harness's
+  one ladder (`qemu::qemu_system_path`), written into the plan's `tools`,
+  since the runner never searches `PATH`.
+- A boot is a `run::QemuBoot`: the plan's QEMU `args` (the
+  `[board.run.qemu]` keys `system`, `cpu`, `machine`, `icount`,
+  `semihosting`, `nic`, or a fixed ladder `board` with `mac` and `net`)
+  plus `passthrough`, the words after the kernel (`-smp`, a `-chardev`, a
+  monitor socket). Every `QemuProcess::start_*` builder states one and calls
+  `QemuProcess::start`; none spells a command line. The line a failure
+  reports (`command_line()`, issue 0877) is `nros_qemu_ladder::plan_line`'s
+  rendering, which is what the runner executes.
+- `nros-qemu-ladder`: `plan_line` takes `net = user | none | dgram | mcast`
+  for a fixed board (with `net_local`/`net_remote` or `net_mcast`), so the
+  NuttX boot-only line and the ThreadX riscv64 pair links (issue 2170's
+  dgram pair, the sibling-mcast pair, now `Net::Mcast`) are plan args.
+  `system_exe` is the one spelling of a QEMU binary's name.
+- Zephyr `qemu_cortex_m3` and the `qemu_cortex_a53` SMP boot go through the
+  same road (`zephyr::zephyr_qemu_boot`, the board.cmake line as args). The
+  A9 multicast launcher and its Zephyr-SDK QEMU resolver are deleted: no
+  test called them. `large_msg`'s hand-built MPS2 line is
+  `start_mps2_an385_networked`.
+- QEMU guests stop through `run::stop`, like the native cells.
+- The ESP32-on-QEMU launcher had already gone with the ESP32-C3 board
+  (phase-521 W6), so there was nothing of it to retire.
+- Gate `check-harness-qemu-literals`: no `qemu-system-` literal in
+  `nros-tests/src` outside comments. Probes that need a binary's name
+  (`is_qemu_riscv32_virt_available` and friends) ask `system_exe`.
+
+Measured:
+
+- Each launcher's plan renders the line it spelled by hand before
+  (`launchers_boot_the_shared_board_lines`,
+  `the_mps2_networked_boot_is_the_old_line`; `-nic` now precedes the
+  kernel, which QEMU does not order). `start_mps2_an385_with_serial` gains
+  `-nographic` from the renderer and keeps `-monitor none`, so UART0 stays
+  on the chardev.
+- Locally (newslab-server-241): `emulator::test_qemu_cdr_serialization`
+  boots `lm3s6965evb` through the verb and passes (26 s, the fixture build
+  included). The `just ci gate` steps all pass. `test-lane-contracts` had one
+  60 s timeout under load 50 to 170 (`a_resolver_row_observation_reads_the_real_dep_file`,
+  13 s solo) and passed on the re-run.
+- Tier 2 on the CI runner (`just matrix-triage`):
+
+  | run | ref | stage reached | failing build stages | cells |
+  | --- | --- | --- | --- | --- |
+  | 42020633598 (2026-11-05, reference) | `phase-531-w5-entry-selection` | cells | — | ran and passed |
+  | 42155998964 (before) | `main` `a9e1941b13` | build | zephyr | none ran |
+  | 42173661457 (before, schedule) | `main` `658f2d8ac1` | build | zephyr, linux | none ran |
+  | 42195214776 (after) | the step-2 branch | build | zephyr, linux | none ran |
+
+  The before and after runs fail identically, in fixture builds this change
+  does not touch: the `zephyr_self_pkg_rust` west fixture's `nros dev
+  codegen system` and a linux leaf with no `std_msgs` manifest (issue 2302).
+  So the pass set and the 5 % wall-time bound for the QEMU cells are not
+  measured yet; they are carried to issue 2302.
+
 ## Acceptance
 
 | Work item | Industrial | Field solutions | Education |
@@ -561,7 +631,7 @@ Nucleo-F767ZI twin, against this phase's contract), and `nros debug`.
 
 ## RFC-0120 (2026-11-03): what changes for this phase
 
-[RFC-0120](../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](phase-530-nros-configure-single-pass.md). For this phase:
+[RFC-0120](../../design/0120-nros-configure-one-resolver.md) adds `nros configure`. It covers what `nros sync` did, plus census, resolve and generated files. Every road calls it, and `nros build`/`nros run` call it implicitly when stale, like cargo. `nros sync` becomes its alias. A leaf that states no entities is sized from its census, and a host C/C++ compiler is required. Every host configure takes one pass, including a plain `west build`. The work is [phase-530](../phase-530-nros-configure-single-pass.md). For this phase:
 
 - **W4, "build if stale".** This is `nros build`, which now configures when its stamp is stale (RFC-0120 D3). Today the `--dry-run` path calls `plan_builds` directly; phase-530 W1 puts `configure::ensure_current` in front of it.
 - **W3, the `west` run runner** (`west build -t run`). A host configure it triggers calls `nros configure` from the module hook (phase-530 W4). With a current stamp that is a no-op, so the runner adds no pass.
@@ -573,5 +643,5 @@ Each issue has a `**Home:**` line pointing here.
 
 | issue | work item | why it belongs here |
 | --- | --- | --- |
-| [#2273](../issues/2273-violation-channel-qemu-leg.md) | W5 | Split from phase-474 T4 (archived) 2026-11-05. The violation channel's end-to-end test runs on native_sim only; its QEMU leg is a cell on the road W5 puts the harness on. |
-| [#2172](../issues/2172-harness-mps-lines-restate-board-runner.md) | W5 | The MPS2/MPS3 QEMU line has three spellings: the board's cargo runner, the CLI's printed line and the harness's launchers. W5 puts the harness on `nros run --plan`, which leaves one. |
+| [#2273](../../issues/2273-violation-channel-qemu-leg.md) | W5 | Split from phase-474 T4 (archived) 2026-11-05. The violation channel's end-to-end test runs on native_sim only; its QEMU leg is a cell on the road W5 puts the harness on. |
+| [#2172](../../issues/2172-harness-mps-lines-restate-board-runner.md) | W5 | The MPS2/MPS3 QEMU line has three spellings: the board's cargo runner, the CLI's printed line and the harness's launchers. W5 puts the harness on `nros run --plan`, which leaves one. |

@@ -22,7 +22,7 @@ page per fork, `nros doctor --report` with the toolchain); W3's briefs and the
 phase-528 W4 (`nros run`) and phase-524 W4 (the Renode probe tracks).** Implements
 [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D1 and D9
 and the industrial purpose's remaining frictions. Depends on
-[phase-528](phase-528-run-on-host-and-emulator.md) W4 (`nros run`, the grading
+[phase-528](archived/phase-528-run-on-host-and-emulator.md) W4 (`nros run`, the grading
 command; it carries phase-525 W3 since RFC-0118) and on phase-524 W4 (the Renode and Wokwi probe tracks, so lab seven
 has a bench twin). Starts after both.
 

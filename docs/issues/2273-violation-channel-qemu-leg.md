@@ -9,7 +9,7 @@ found: 2026-11-05
 related: [phase-474, phase-528, 1714, 1715]
 ---
 
-**Home: [phase-528](../roadmap/phase-528-run-on-host-and-emulator.md)** — split out of phase-474 T4 when that phase was archived (2026-11-05): a QEMU cell for an existing workspace, which is the road phase-528 puts the harness on.
+**Home: [phase-528](../roadmap/archived/phase-528-run-on-host-and-emulator.md)** — split out of phase-474 T4 when that phase was archived (2026-11-05): a QEMU cell for an existing workspace, which is the road phase-528 puts the harness on. Phase-528 was archived 2026-11-06 with this issue still open: it needs a new home.
 
 ## What exists
 

@@ -18,7 +18,7 @@ proposal of one `run` verb for every target was rejected as unable to cover
 real targets. Siblings: [RFC-0117](0117-cli-command-tiers.md) (the command
 tree) and [RFC-0119](0119-cli-extension-packages.md) (runner packages, which
 carry out everything this RFC resolves). Implemented by
-[phase-528](../roadmap/phase-528-run-on-host-and-emulator.md) (host and
+[phase-528](../roadmap/archived/phase-528-run-on-host-and-emulator.md) (host and
 emulator) and [phase-529](../roadmap/archived/phase-529-flash-monitor-bench.md) (real
 boards).
 

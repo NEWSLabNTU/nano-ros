@@ -13,7 +13,7 @@ RFC-0118 D2 and RFC-0120.
 
 Depends on:
 
-- [phase-528](phase-528-run-on-host-and-emulator.md) W4, for `nros run`, whose
+- [phase-528](archived/phase-528-run-on-host-and-emulator.md) W4, for `nros run`, whose
   target argument W4 here extends;
 - [phase-529](archived/phase-529-flash-monitor-bench.md) W3, for `nros flash`, the same;
 - [phase-530](phase-530-nros-configure-single-pass.md), whose `nros configure`
