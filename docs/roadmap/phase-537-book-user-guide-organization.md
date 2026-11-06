@@ -350,6 +350,24 @@ step.
 **Acceptance:** Extending has five pages, each needing only level 3 pages and
 Background; Releases has two.
 
+**CLI gaps the W12 rewrite measured (2026-11-06).** Fixed: the Zephyr 3.7 patch
+set failed on a C-only west workspace (no zephyr-lang-rust), and a relative
+`--zephyr-workspace` resolved against the SDK root. `nros setup board` now
+passes an absolute path, both patch sets resolve their argument before they
+`cd`, and the Rust-module patches skip with a printed note when the module is
+absent (gate `zephyr-patch-set-workspace`). Filed, not fixed:
+[2291](../issues/2291-board-new-out-of-tree-demands-checkout.md) (`board new
+--out-of-tree` needs a checkout),
+[2292](../issues/2292-new-board-for-platform-writes-no-package-xml.md) (`new
+board --for-platform` writes no `package.xml`),
+[2293](../issues/2293-config-explain-misses-out-of-tree-platforms.md) (`config
+explain` misses workspace and scaffolded platforms),
+[2294](../issues/2294-extension-scaffold-check-step-is-dev-tier.md) (scaffolds
+name `nros dev`/`just` check steps; no user-tier check verb is planned), and
+[2295](../issues/2295-nros-build-rmw-selection-in-tree-only.md) (`nros build`
+selects in-tree RMWs only). The Extending pages should say what these mean for
+a reader until each one is fixed.
+
 ### W13 — Tighten the gates (S)
 
 W0's report becomes a refusal for every gated principle and the level rule:
