@@ -35,6 +35,31 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 
+# Issue 2240, two halves.
+#
+# REFUSE a TMPDIR inside a git checkout, naming it. Fourteen gates' self-tests
+# build a fixture that must be "outside every checkout" under TMPDIR (a cargo
+# root, an SDK, a Zephyr workspace, a crate to scan); inside a checkout that
+# premise is false by construction and they fail with messages about the
+# fixture, not the cause. Measured: 14 of 511 red with TMPDIR inside a clone,
+# 0 with TMPDIR=/tmp. Asked with the environment cleared and with no ceiling,
+# so neither an inherited GIT_DIR nor the bound below can change the answer.
+#
+# BOUND discovery, so no gate's scratch repository can find the checkout that
+# holds TMPDIR even when a gate is run alone, outside this runner. Set once
+# here, so every gate started below inherits it.
+# shellcheck source=scripts/lib/git-hook-env.sh
+. scripts/lib/git-hook-env.sh
+if tmp_top="$(nros_clear_inherited_git_env; unset GIT_CEILING_DIRECTORIES
+        git -C "${TMPDIR:-/tmp}" rev-parse --show-toplevel 2>/dev/null)"; then
+    echo "$0: REFUSING to run: TMPDIR=${TMPDIR:-/tmp} is inside the git checkout $tmp_top." >&2
+    echo "  Gates' self-tests build fixtures that must be outside every checkout," >&2
+    echo "  and a scratch repository there can reach that checkout (issue 2240)." >&2
+    echo "  Point TMPDIR at a directory outside any checkout, e.g. one beside it." >&2
+    exit 2
+fi
+nros_bound_git_discovery
+
 jobs="${NROS_GATE_JOBS:-$(nproc)}"
 
 # One CPU budget for the whole fan-out — the thing this runner did not have.

@@ -67,6 +67,11 @@
 nros_clear_inherited_git_env() {
     local vars
 
+    # Issue 2240: clearing the environment is not enough on its own, because
+    # repository DISCOVERY is the other door. Bounded here so every caller of
+    # this helper gets it with no second call to remember.
+    nros_bound_git_discovery
+
     if vars="$(git rev-parse --local-env-vars 2>/dev/null)" && [ -n "$vars" ]; then
         # Word splitting is the point: one name per line from git.
         # shellcheck disable=SC2086
@@ -95,5 +100,37 @@ nros_clear_inherited_git_env() {
         GIT_INTERNAL_SUPER_PREFIX \
         GIT_SHALLOW_FILE \
         GIT_COMMON_DIR
+    return 0
+}
+
+# nros_bound_git_discovery — stop git's repository search at the temp root.
+#
+# Issue 2240. Git finds a repository by walking UP from the working directory,
+# and it keeps walking past a `.git` it cannot use (a store with no `objects/`,
+# a junk `HEAD`). Under `/tmp` that walk ends at `/` with "not a git
+# repository", so a self-test step that runs before its scratch repo exists, or
+# after it breaks one on purpose, fails safely. With `TMPDIR` inside a checkout
+# (which this project's own "temp files in `$project/tmp/`" rule invites), the
+# same step finds the ENCLOSING checkout and acts on it. Measured: `just check
+# fast` with `TMPDIR=<clone>/tmp/x` detached that clone's HEAD at a self-test's
+# synthetic commit, wrote `refs/nros/fixture-tree-head`, pruned every
+# remote-tracking ref, rewrote its index and working tree, and 317 of 511 gates
+# then failed on the wreckage.
+#
+# `GIT_CEILING_DIRECTORIES` is git's own answer: discovery never moves up INTO
+# a listed directory. The temp root is listed (physical path, since git compares
+# resolved paths), so a scratch repo under it can only ever find itself. Nothing
+# OUTSIDE the temp root is affected, and that includes a checkout that holds the
+# temp root: the ceiling stops walks that come from below it, never one that
+# starts above it. Appended to any ceiling the caller already set, never
+# replacing it. `--local-env-vars` does not name this variable (it is not
+# repository-local), so clearing the environment never drops it.
+nros_bound_git_discovery() {
+    local root
+    root="$(cd "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)" || return 0
+    case ":${GIT_CEILING_DIRECTORIES:-}:" in
+        *":$root:"*) return 0 ;;
+    esac
+    export GIT_CEILING_DIRECTORIES="${GIT_CEILING_DIRECTORIES:+$GIT_CEILING_DIRECTORIES:}$root"
     return 0
 }

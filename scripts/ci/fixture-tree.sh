@@ -99,6 +99,14 @@ sync_tree() {
     case "$tree/" in
         "$src"/*) die "the tree ($tree) is inside the job checkout ($src): its \`git clean -ffdx\` would remove it" ;;
     esac
+    # Issue 2240: every `git -C "$tree"` below must answer about the TREE. When
+    # its `.git` is unusable (the broken-store case below), git keeps walking up
+    # and would answer about whatever repository holds the tree, so the
+    # "unreadable" probe reads as healthy and the sync then fetches, prunes and
+    # force-checks-out into THAT repository. Measured: with the self-test's
+    # scratch dir inside a clone, this did exactly that to the clone. Discovery
+    # stops at the tree's parent, so a broken tree can only fail to resolve.
+    export GIT_CEILING_DIRECTORIES="${GIT_CEILING_DIRECTORIES:+$GIT_CEILING_DIRECTORIES:}$(dirname "$tree")"
     local want
     want="$(git -C "$src" rev-parse HEAD)"
 
