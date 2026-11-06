@@ -22,7 +22,7 @@
 #                    `zenoh` is the ROS-interop story (phase-368 follow-up):
 #                    image defaults to ros:humble (the interop page's own
 #                    prerequisite), setup provisions `--rmw zenoh`,
-#                    first-node-rust.md joins the chapter list (its
+#                    the verifier scaffolds a Rust talker (its
 #                    zenoh-default build needs the zenoh-pico source that only
 #                    `--rmw zenoh` provisions), and the verifier replays the
 #                    interop page's three terminals: the documented router
@@ -304,26 +304,25 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
     # ABI floor still holds.
     default_platform_image="ros:humble"
 elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
-    # first-node-rust.md is IN this track: its zenoh-default `nros configure &&
-    # cargo build` is exactly what a reader on the interop path runs, and it
-    # needs the zenoh-pico source that only `--rmw zenoh` provisions.
+    # The user book has no Linux first-node chapter since phase-537 W5 (the
+    # Tutorial grows one project on mps2-an385), so the verifier scaffolds and
+    # builds the zenoh talker itself, with the commands that chapter showed.
     CHAPTERS=(
         book/src/start/install.md
         book-internals/src/orientation/contributing.md
-        book/src/tutorial/add-a-second-node.md
     )
     PROBE_RMW="zenoh"
     VERIFIER="verify-zenoh-interop.sh"
 else
+    # verify-first-node.sh scaffolds every workspace it runs. The C
+    # first-node chapter this list carried merged into the Tutorial's
+    # chapter 3 (phase-537 W5), which runs on mps2-an385, not this host.
     CHAPTERS=(
         book/src/start/install.md
         book-internals/src/orientation/contributing.md
-        book/src/tutorial/add-a-second-node-c.md
     )
     PROBE_RMW="cyclonedds"
     VERIFIER="verify-first-node.sh"
-    # The C chapter needed a `cd examples/…` subst here until phase-517 W2;
-    # it scaffolds its talker with `nros new` now, so no checkout path is left.
 fi
 
 workdir="$(mktemp -d)"

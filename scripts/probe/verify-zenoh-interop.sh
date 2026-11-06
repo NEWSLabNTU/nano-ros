@@ -4,8 +4,8 @@
 # Replays getting-started/ros2-interop.md's Quick Start non-interactively on
 # the ros:humble image that page presumes: install the page's own prerequisite
 # (`ros-humble-rmw-zenoh-cpp`, its documented apt line), start the router with
-# the page's exact invocation, run the nano-ros talker the first-node chapter
-# just built, and prove CROSS-STACK DELIVERY with the page's `ros2 topic echo`
+# the page's exact invocation, scaffold and run a nano-ros talker, and prove
+# CROSS-STACK DELIVERY with the page's `ros2 topic echo`
 # — the one assertion the cyclonedds quickstart track cannot make.
 
 echo '=== probe verify: zenoh ROS-interop runtime ==='
@@ -57,12 +57,18 @@ until (exec 3<>/dev/tcp/127.0.0.1/7447) 2>/dev/null; do
 done
 exec 3>&- 3<&- || true
 
-# Terminal 2 — the nano-ros talker (built by the extracted first-node step).
-#
-# first-node-rust.md scaffolds the `talker_ws` workspace with `nros new`
-# (RFC-0121 D4) in the checkout root, where the contributor step left the
-# shell, and runs it with the page's own `nros run talker_node` (D5). Step 30's
-# `nros build` already built it, so the run only checks the stamp and starts it.
+# Terminal 2 — the nano-ros talker. The user book's Linux first-node chapter
+# merged into the Tutorial (phase-537 W5), so the probe scaffolds the
+# `talker_ws` workspace itself with the commands that chapter showed
+# (`nros new`, RFC-0121 D4), builds it with ROS 2 sourced (the messages are
+# generated from it), and runs it with `nros run talker_node` (D5).
+nros new talker_ws --board linux --template talker --lang rust --rmw zenoh
+(
+    set +u
+    # shellcheck disable=SC1091
+    source /opt/ros/humble/setup.bash
+    cd talker_ws && nros build
+)
 cd talker_ws
 RUST_LOG=info "${NROS_DEADLINE[@]}" 120 nros run talker_node >/tmp/talker.log 2>&1 &
 talker_pid=$!

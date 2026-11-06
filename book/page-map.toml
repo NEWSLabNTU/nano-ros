@@ -154,25 +154,25 @@ path = "tutorial/add-a-second-node.md"
 action = "move"
 batch = "p537-w1-tutorial"
 was = ["get-started/first-node-rust.md"]
-note = "Tutorial 3, Add a second node: W5 merges first-node-{rust,c,cpp} into this page as language tabs (W2) and adds growing-your-workspace steps 1-2"
+note = "Tutorial 3, Add a second node (W5): first-node-{rust,c,cpp} merged into this page as language tabs (W2), with growing-your-workspace steps 1-2"
 
 [[page]]
 old = "getting-started/first-node-c.md"
 book = "user"
-path = "tutorial/add-a-second-node-c.md"
-action = "move"
-batch = "p537-w1-tutorial"
-was = ["get-started/first-node-c.md"]
-note = "W5 merges it into tutorial/add-a-second-node as its C tab"
+path = "tutorial/add-a-second-node.md"
+action = "merge-into tutorial/add-a-second-node.md"
+batch = "p537-w5"
+was = ["get-started/first-node-c.md", "tutorial/add-a-second-node-c.md"]
+note = "W5 merged it into Tutorial 3, Add a second node, as its C tab"
 
 [[page]]
 old = "getting-started/first-node-cpp.md"
 book = "user"
-path = "tutorial/add-a-second-node-cpp.md"
-action = "move"
-batch = "p537-w1-tutorial"
-was = ["get-started/first-node-cpp.md"]
-note = "W5 merges it into tutorial/add-a-second-node as its C++ tab"
+path = "tutorial/add-a-second-node.md"
+action = "merge-into tutorial/add-a-second-node.md"
+batch = "p537-w5"
+was = ["get-started/first-node-cpp.md", "tutorial/add-a-second-node-cpp.md"]
+note = "W5 merged it into Tutorial 3, Add a second node, as its C++ tab"
 
 [[page]]
 old = "user-guide/rmw-choosing.md"

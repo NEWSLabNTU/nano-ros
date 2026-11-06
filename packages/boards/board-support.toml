@@ -621,6 +621,16 @@ row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 2, What you just built: chapter 1's project, then `nros list`, the bringup's system.toml and `nros run --dry-run --why`. Chained: it replays chapter 1 first."
 
 [[probe]]
+track = "tutorial-3"
+chapter = "tutorial/add-a-second-node.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 3, Add a second node: a listener package added with `nros new --to`, `nros check --workspace`, then `nros run` until the listener hears the talker in the same image. Chained after chapters 1-2."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""
