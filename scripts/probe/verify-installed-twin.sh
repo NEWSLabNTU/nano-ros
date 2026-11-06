@@ -12,8 +12,9 @@
 # kind's script before it): build the board's serial C talker through the leaf
 # road, boot it in the twin, and hear one message from stock ROS 2.
 #
-# The chapter that will own these steps is phase-524 W4b's; it waits on `nros
-# run` (phase-528 W1/W3/W4). Until then the steps are the probe's.
+# phase-537 W4: both twin boards now replay their own starters (the Nucleo's
+# and the Pico W's `book_run`), which run the twin through `nros run`, so no
+# track takes this path without `twin_build` today.
 #
 # A track with `twin_build` is the exception: its chapter builds the image
 # (and documents `west flash` for the board), so this file only boots it.
