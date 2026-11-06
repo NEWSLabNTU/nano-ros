@@ -792,7 +792,6 @@ chapter = "tutorial/talk-to-ros2.md"
 variant = "qemu"
 lang = "c"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
-awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
 weekly = false
 row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C tab: chapters 1-10 on one C project, chained. The Rust tab has one track per chapter (first-project, tutorial-2 to tutorial-10); each language tab has one chained track."
@@ -803,7 +802,6 @@ chapter = "tutorial/talk-to-ros2.md"
 variant = "qemu"
 lang = "cpp"
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
-awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
 weekly = false
 row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: chapters 1-10 on one C++ project, chained."
@@ -845,8 +843,9 @@ notes = "phase-517 W17 — one track per language road the chapter documents: th
 
 [[probe]]
 track = "freertos-c"
-chapter = "guide/platforms/freertos.md"
-variant = "c"
+chapter = "starters/mps2-an385-freertos.md"
+variant = ""
+lang = "c"
 weekly = true
 row = "nros-board-mps2-an385-freertos@FreertosMps2"
 qemu_board = "mps2-an385-freertos"
@@ -869,15 +868,17 @@ qemu_board = "rv-virt-threadx"
 
 [[probe]]
 track = "threadx-linux-c"
-chapter = "guide/platforms/threadx.md"
-variant = "linux-c"
+chapter = "starters/threadx-linux.md"
+variant = ""
+lang = "c"
 weekly = true
 row = "nros-board-threadx-linux@ThreadxLinux"
 
 [[probe]]
 track = "nuttx-arm"
-chapter = "guide/platforms/nuttx.md"
-variant = "arm"
+chapter = "starters/nuttx-arm.md"
+variant = ""
+lang = "c"
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxArm"
 qemu_board = "qemu-armv7a-nuttx"
@@ -893,8 +894,9 @@ qemu_board = "qemu-armv7a-nuttx"
 
 [[probe]]
 track = "nuttx-riscv"
-chapter = "guide/platforms/nuttx.md"
-variant = "riscv"
+chapter = "starters/nuttx-riscv.md"
+variant = ""
+lang = "c"
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxRiscv"
 qemu_board = "rv-virt-nuttx"
@@ -939,7 +941,6 @@ notes = "phase-537 W4 — the mps2-an385 Zephyr starter: a Rust talker on Zephyr
 track = "freertos-posix"
 chapter = "starters/freertos-posix.md"
 variant = ""
-awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
 weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process, `nros run` starting the router on loopback, then `ros2 topic echo`. The board's first track (its row's evidence is the daily lane). Not weekly yet; its `awaits` names the CLI fix it waits on."
@@ -986,7 +987,6 @@ track = "platform-freertos-posix"
 chapter = "guide/platforms/freertos-posix.md"
 variant = ""
 after = ["starters/freertos-posix.md"]
-awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
 weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-537 W9 — the FreeRTOS POSIX platform page, after its starter (starters/freertos-posix.md, the `freertos-posix` track): the run plan and the native build line."
@@ -1026,7 +1026,6 @@ chapter = "guide/platforms/nuttx.md"
 variant = ""
 lang = "c"
 after = ["starters/nuttx-arm.md"]
-awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
 weekly = false
 row = "nros-board-nuttx-qemu@NuttxArm"
 notes = "phase-537 W9 — the NuttX Arm and RISC-V platform page, after its starter (starters/nuttx-arm.md, the `nuttx-arm` track): the run plan and the native build line."
