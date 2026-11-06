@@ -127,7 +127,5 @@
 
 # Releases
 
-- [Migrating off `install-local`](./migrating/install-local-removal.md)
-- [ESP32 (esp-hal, retired)](./migrating/esp32.md)
-- [Retired Configuration Files](./migrating/retired-config-files.md)
+- [Migrating from older releases](./migrating/from-older-releases.md)
 - [Retired names](./migrating/retired-names.md)

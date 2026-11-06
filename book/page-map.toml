@@ -1161,29 +1161,36 @@ note = "RFC-0124 Principle 2 (W12): the argument for nano-ros's own RMW API, for
 [[page]]
 old = "release/migration-install-local-removal.md"
 book = "user"
-path = "migrating/install-local-removal.md"
+path = "migrating/from-older-releases.md"
 action = "move"
-batch = "w6"
+batch = "p537-w12-releases"
+was = ["migrating/install-local-removal.md"]
+note = "Migrating from older releases (W12): one how-to, a section per change; esp32 and retired-config-files merged in"
 
 [[page]]
 old = "getting-started/esp32.md"
 book = "user"
-path = "migrating/esp32.md"
-action = "move"
-batch = "w6"
+path = "migrating/from-older-releases.md"
+action = "merge-into migrating/from-older-releases.md"
+batch = "p537-w12"
+was = ["migrating/esp32.md"]
+note = "merged by W12 into Migrating from older releases, as its ESP32 boards section"
 
 [[page]]
 old = "getting-started/integration-esp-idf.md"
 book = "user"
-path = "migrating/esp32.md"
-action = "merge-into migrating/esp32.md"
-batch = "w6"
+path = "migrating/from-older-releases.md"
+action = "merge-into migrating/from-older-releases.md"
+batch = "p537-w12"
+note = "merged into migrating/esp32 (w6), which W12 merged into Migrating from older releases"
 
 [[page]]
+old = "migrating/retired-config-files.md"
 book = "user"
-path = "migrating/retired-config-files.md"
-action = "new phase-532"
-batch = "w6"
+path = "migrating/from-older-releases.md"
+action = "merge-into migrating/from-older-releases.md"
+batch = "p537-w12"
+note = "merged by W12 into Migrating from older releases, as Replace a retired configuration file"
 
 [[page]]
 old = "reference/retired-names.md"

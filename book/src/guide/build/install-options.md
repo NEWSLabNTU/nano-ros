@@ -241,7 +241,7 @@ Cyclone DDS ROS ships and its zenoh-pico are chosen together.
   nano-ros in a tree you already build.
 - [Supported boards](../../reference/supported-boards.md) and the
   [`nros` CLI](../../reference/cli.md).
-- [Migrating from install-local](../../migrating/install-local-removal.md),
+- [Migrating from install-local](../../migrating/from-older-releases.md#move-off-the-install-local-prefix),
   for a project that used nano-ros from a checkout.
 
 ## Design background

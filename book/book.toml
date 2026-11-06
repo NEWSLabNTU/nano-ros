@@ -35,6 +35,9 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/migrating/retired-config-files.html" = "from-older-releases.html#replace-a-retired-configuration-file"
+"/migrating/esp32.html" = "from-older-releases.html#esp32-boards"
+"/migrating/install-local-removal.html" = "from-older-releases.html"
 "/extending/overview.html" = "runner-and-command-packages.html"
 "/extending/rmw-design.html" = "../internals/rmw/rmw-api-design.html"
 "/extending/custom-transport.html" = "add-a-transport.html"
@@ -181,10 +184,10 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/getting-started/first-node-cpp.html" = "../tutorial/add-a-second-node-cpp.html"
 "/getting-started/your-own-msg-package.html" = "../tutorial/your-own-message.html"
 "/getting-started/troubleshooting-first-10-min.html" = "../reference/troubleshooting-index.html"
-"/getting-started/integration-esp-idf.html" = "../migrating/esp32.html"
+"/getting-started/integration-esp-idf.html" = "../migrating/from-older-releases.html#esp32-boards"
 "/reference/retired-names.html" = "../migrating/retired-names.html"
-"/release/migration-install-local-removal.html" = "../migrating/install-local-removal.html"
-"/getting-started/esp32.html" = "../migrating/esp32.html"
+"/release/migration-install-local-removal.html" = "../migrating/from-older-releases.html"
+"/getting-started/esp32.html" = "../migrating/from-older-releases.html#esp32-boards"
 "/porting/overview.html" = "../extending/runner-and-command-packages.html"
 "/porting/board-trait.html" = "../extending/add-a-board.html#steps"
 "/porting/custom-board.html" = "../extending/add-a-board.html"

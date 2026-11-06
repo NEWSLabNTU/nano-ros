@@ -363,9 +363,9 @@ shape, and would be right if one were written) and D12's citation of
 active routing goes* — not *delete every mention*.
 
 *What a user who wants ESP-IDF does.* Nothing here forbids an out-of-tree
-integration, and `book/src/migrating/esp32.md` says how the
+integration, and `book/src/migrating/from-older-releases.md` says how the
 shape would look. What nano-ros offers on ESP32 today is the esp-hal bare-metal
-Rust road (`book/src/migrating/esp32.md`). C or C++ on an ESP32 has no
+Rust road (`book/src/migrating/from-older-releases.md`). C or C++ on an ESP32 has no
 in-tree path: that is issue 1525, which also states what re-adding one would
 need — an IDF component, a knob carrier for the road, a `[tool.esp-idf]` index
 entry, and a lane that builds it.
