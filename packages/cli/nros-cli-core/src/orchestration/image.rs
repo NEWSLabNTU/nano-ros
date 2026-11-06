@@ -710,9 +710,22 @@ mod tests {
             "both quote styles read, duplicates collapsed, sorted"
         );
 
-        // No launch, and a launch naming no file, are both "nothing known" —
-        // the caller falls back to the workspace answer rather than guessing.
+        // No launch and no default launch file: the generated launch's
+        // packages, which are the `[[component]]` rows' (RFC-0121 D3).
         assert!(launch_node_pkgs(&ImageBlock::default(), &dir).is_empty());
+        std::fs::write(
+            dir.join("system.toml"),
+            "[system]\nname = \"s\"\n\n[[component]]\npkg = \"rs_node\"\n\
+             class = \"rs_node::Talker\"\n\n[[component]]\npkg = \"rs_node\"\n\
+             class = \"rs_node::Talker\"\nname = \"b\"\n",
+        )
+        .expect("write");
+        assert_eq!(
+            launch_node_pkgs(&ImageBlock::default(), &dir),
+            vec!["rs_node".to_string()]
+        );
+        // A launch naming no file is "nothing known" — the caller falls back
+        // to the workspace answer rather than guessing.
         let missing = ImageBlock {
             launch: Some("nonesuch.launch.xml".to_string()),
             ..ImageBlock::default()
@@ -1087,13 +1100,32 @@ pub fn validate_image_launch(
 /// silently walks includes would need the whole play_launch stack to run
 /// before the first driver decision. When the file cannot be read the answer
 /// is "nothing known", which the caller reads as "no evidence".
+///
+/// An image with no `launch` key runs the bringup's default launch: its
+/// `default_launch` file when the bringup ships one, else the launch nano-ros
+/// generates from `system.toml`'s `[[component]]` rows (RFC-0121 D3), whose
+/// packages are those rows' `pkg`. Answering "nothing known" here sent every
+/// scaffolded image to the workspace-wide answer, so one message package's
+/// CMakeLists decided a Rust image's driver.
 #[must_use]
 pub fn launch_node_pkgs(image: &ImageBlock, bringup_dir: &std::path::Path) -> Vec<String> {
-    let Some(launch) = image.launch.as_deref() else {
-        return Vec::new();
+    let launch = match image.launch.as_deref() {
+        Some(l) => l.to_string(),
+        None => {
+            let Ok(default) = nros_orchestration_ir::model_location::default_launch(bringup_dir)
+            else {
+                return Vec::new();
+            };
+            let file =
+                nros_orchestration_ir::model_location::launch_dir(bringup_dir).join(&default);
+            if !file.is_file() {
+                return component_row_pkgs(bringup_dir);
+            }
+            default
+        }
     };
     let Ok(xml) = std::fs::read_to_string(
-        nros_orchestration_ir::model_location::launch_dir(bringup_dir).join(launch),
+        nros_orchestration_ir::model_location::launch_dir(bringup_dir).join(&launch),
     ) else {
         return Vec::new();
     };
@@ -1110,6 +1142,28 @@ pub fn launch_node_pkgs(image: &ImageBlock, bringup_dir: &std::path::Path) -> Ve
         }
     }
     out.sort();
+    out
+}
+
+/// The `pkg` of every `[[component]]` row in the bringup's `system.toml`,
+/// sorted and deduplicated: the packages the generated launch names.
+fn component_row_pkgs(bringup_dir: &std::path::Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+        return Vec::new();
+    };
+    let Ok(t) = text.parse::<toml::Table>() else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = t
+        .get("component")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r.get("pkg").and_then(toml::Value::as_str))
+        .map(str::to_string)
+        .collect();
+    out.sort();
+    out.dedup();
     out
 }
 

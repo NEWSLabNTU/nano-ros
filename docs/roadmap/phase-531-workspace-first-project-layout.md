@@ -281,6 +281,13 @@ one), so "marks it generated" is not done here.
   gains RFC-0121 D5's rungs, with `--why` naming the rung and every ambiguous
   case refused with the spellings that would resolve.
 
+  Follow-up (the Rust tutorials' shape): a ROS message package beside a Rust
+  node no longer sends the image down the cmake road. `routing::cmake_node`
+  (`route` less interface packages) is the one predicate the driver choice
+  and the cmake root share. An image with no `launch` now reads its node
+  packages from the bringup's default launch, or from the `[[component]]`
+  rows when that launch is generated.
+
 **Acceptance:** `nros new sensor_ws --board mps2-an385-baremetal --template
 talker && cd sensor_ws && nros run sensor_node --expect 'Publishing: 0'`
 passes on QEMU. A workspace with two bringups naming one node refuses `nros run

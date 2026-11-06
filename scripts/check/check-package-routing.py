@@ -295,10 +295,15 @@ def route_declaration(pkg: dict) -> frozenset[str]:
 SITE_CONTRACT = {
     "packages/cli/nros-cli-core/src/builder/cmake_root.rs": [
         ("routing::route(", "add_subdirectory() would key on CMakeLists.txt presence"),
+        ("routing::cmake_node(", "an interface package's ament CMakeLists would become a subdir"),
         ("routing::check_declarations(", "a misdeclared participant would drop out silently"),
     ],
     "packages/cli/nros-cli-core/src/cmd/build.rs": [
         ("routing::route(", "the cargo-vs-cmake driver choice would key on file presence"),
+        (
+            "routing::cmake_node(",
+            "a message package beside a Rust node would send the image down the cmake road",
+        ),
         ("routing::check_declarations(", "W3's acceptance: the error must be loud and name it"),
     ],
     # The rule itself has exactly one home. If this file stops resolving the
@@ -306,6 +311,7 @@ SITE_CONTRACT = {
     "packages/cli/nros-cli-core/src/routing.rs": [
         ("build_type::{BuildPath, canonical}", "the one reader of the <build_type> vocabulary"),
         ("pub fn route(", "the predicate the three sites share"),
+        ("pub fn cmake_node(", "route() less interface packages, which both cmake sites ask"),
     ],
 }
 

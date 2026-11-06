@@ -827,7 +827,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // entries ("a framework entry's build file is its framework's, not
         // evidence about the graph"), reached from the declaration instead of
         // from a second directory probe.
-        .filter(|p| crate::routing::route(p).cmake_subdir)
+        //
+        // And not an interface package: a ROS message package's stock ament
+        // `CMakeLists.txt` is colcon's, never configured here (issue 0862), so
+        // it is no evidence of C/C++ in the graph. Without this a Rust image
+        // beside one took the cmake road and its root had nothing to add.
+        .filter(|p| crate::routing::cmake_node(p))
         .map(|p| p.name.as_str())
         .collect();
 
