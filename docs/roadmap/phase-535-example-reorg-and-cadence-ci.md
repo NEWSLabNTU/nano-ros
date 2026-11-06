@@ -305,7 +305,7 @@ issue 2221 (two Agents, two cells) hears 0 foreign samples.
 
 One PR per board.
 
-- **linux (in review).** Each language workspace gets 18
+- **linux (merged, #3211).** Each language workspace gets 18
   `linux_<role>[_xrce|_cyclonedds]` images in its three behaviour bringups.
   `demo_bringup`'s service and action images move there, and their row ids
   stay. 39 leaf rows and 8 leaves retire: the C listener, service and
@@ -327,7 +327,7 @@ One PR per board.
   `generated/` on codegen-stamp drift, and `nros configure` then reports up
   to date without regenerating it. The wipe now retires the configure stamps
   too.
-- **threadx-linux (in review).** Each behaviour bringup gets `threadx_<role>`
+- **threadx-linux (merged, #3225).** Each behaviour bringup gets `threadx_<role>`
   images for all three languages (zenoh, loopback locator = the cell's
   `alloc::port_of`), and `threadx_<role>_cyclonedds` for C (every workload)
   and C++ (pubsub), at the leaves' domains 107 and 108. 25 leaf rows and 14
@@ -337,7 +337,34 @@ One PR per board.
   SIGTERM and exit-status cases in `linux_api` measure a hand-written `main`,
   so they now run the C talker witness. `matrix_fixture_coverage` models a
   pair image row as its Example cell.
-- **zephyr native_sim:** not started.
+- **zephyr native_sim (in review).** Each behaviour bringup gets
+  `zephyr_<role>[_xrce|_cyclonedds]` images: 48 in all, every
+  (language, role, rmw) the leaves had except Rust on Cyclone. Their router
+  port, Agent port and domain are the cell's allocator values (the
+  `cell-isolation` table); the west lane passes the same values as defines.
+  The Kconfig fragments moved from the leaves to each bringup's
+  `boards/native_sim_native_64/`, and the per-role XRCE pool and heap knobs
+  moved onto the images. Each image is a `[[workspace_fixture]]` row with its
+  own `west_build_name` (`build-ws-<lang>-<role>-<rmw>`), which
+  `workspace_image::resolve` reads back, so `example_e2e` keeps its 27 case
+  names and resolves both roles through `fixtures::workspace_image`. 40 leaf
+  rows and 10 leaves (C and C++) retire. The talker leaves stay as the board's
+  witnesses, with all nine of their rows. The Rust listener, service and
+  action leaves keep only their Cyclone rows: a generated Rust Zephyr entry
+  cannot run Cyclone yet (issue 2313), so those cells still resolve the
+  leaves. The Rust action-server leaf also keeps its zenoh row:
+  `zephyr_rust_zenoh_action_goal_completion_rate` reads its
+  `reply-slot: refusals=` heartbeat, which the workspace server does not
+  print. The listener readiness marker is now `LISTENER_READY_MARKER`,
+  which every workspace listener prints; the Rust action cells wait for
+  `ACTION_SERVER_READY_MARKER`. Found on the way, all from the Zephyr C++
+  configure-time census check, which no other road runs:
+  - the C++ service and action contracts declared timer rates the code does
+    not use (the programs tick every 500 ms);
+  - the census join never matched an action the C++ recorder reports, since
+    it records an action as its five RMW constituents; the census side folds
+    them into the action now;
+  - the C++ action server needs `CONFIG_MAX_PTHREAD_COND_COUNT=24`.
 
 ### W5 — The other platforms
 

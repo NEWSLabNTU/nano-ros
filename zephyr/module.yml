@@ -52,8 +52,6 @@ build:
 # Zephyr E2E suite, which pairs talker+listener with a zenohd router.
 samples:
   - examples/zephyr/c/talker
-  - examples/zephyr/c/listener
   - examples/zephyr/cpp/talker
-  - examples/zephyr/cpp/listener
   - examples/zephyr/rust/talker
   - examples/zephyr/rust/listener

@@ -11,7 +11,7 @@
 # nros-c/nros-cpp headers, beside the entry code B generated. Measured, in the
 # build dir issue 1379 was filed from:
 #
-#   APPLICATION_SOURCE_DIR = <worktree>/examples/zephyr/rust/listener
+#   APPLICATION_SOURCE_DIR = <worktree>/examples/zephyr/rust/talker
 #   NROS_REPO_DIR          = <another clone>/third-party/nano-ros
 #
 # Nothing warned. A half-and-half image is not a result about either tree, and

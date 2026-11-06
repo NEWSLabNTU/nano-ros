@@ -125,17 +125,7 @@ examples/threadx-linux/c/talker/system.toml
 examples/threadx-linux/cpp/talker/system.toml
 examples/threadx-linux/rust/listener/system.toml
 examples/threadx-linux/rust/talker/system.toml
-examples/zephyr/c/action-client/system.toml
-examples/zephyr/c/action-server/system.toml
-examples/zephyr/c/listener/system.toml
-examples/zephyr/c/service-client/system.toml
-examples/zephyr/c/service-server/system.toml
 examples/zephyr/c/talker/system.toml
-examples/zephyr/cpp/action-client/system.toml
-examples/zephyr/cpp/action-server/system.toml
-examples/zephyr/cpp/listener/system.toml
-examples/zephyr/cpp/service-client/system.toml
-examples/zephyr/cpp/service-server/system.toml
 examples/zephyr/cpp/talker/system.toml
 examples/zephyr/rust/action-client/system.toml
 examples/zephyr/rust/action-server/system.toml

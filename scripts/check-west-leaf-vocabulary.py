@@ -94,9 +94,10 @@ _LITERAL = re.compile(r'require_west_leaf_in_lane\(\s*"([^"\n]+)"')
 _LITERAL_CONST = re.compile(r"require_west_leaf_in_lane\(\s*([A-Z][A-Z0-9_]*)\s*,")
 _CONST_DEF = re.compile(r'const\s+([A-Z][A-Z0-9_]*)\s*:\s*&\'?[a-z]*\s*str\s*=\s*"([^"]*)"')
 
-# `decode_alias` has ~54 live arms; a harvest far below that means the regex
-# stopped matching, not that the table shrank.
-_MIN_ARMS = 30
+# `decode_alias` has 9 live arms since phase-535 W4 (the talker witnesses;
+# every other role is a workspace image). A harvest below that means the
+# regex stopped matching, not that the table shrank.
+_MIN_ARMS = 9
 # …and the image-path literals name ~14 entry images plus the two shapes.
 _MIN_PATHS = 10
 

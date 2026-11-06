@@ -563,11 +563,54 @@ fn read_census(census: &Value) -> Vec<ObservedNode> {
 
         out.push(ObservedNode {
             key,
-            endpoints,
+            endpoints: fold_action_constituents(endpoints),
             timer_periods_ms,
             guard_conditions,
         });
     }
+    out
+}
+
+/// An action as the RMW sees it is five endpoints under `<action>/_action/`:
+/// three services and two topics. A recorder that reports those constituents
+/// instead of an `actions` row (the C++ census, measured on phase-535 W4's
+/// Zephyr action images) would otherwise read as five `missing-in-contract`
+/// rows against a contract that declares the action in `actions:`. Folded the
+/// way `leaf_entity_env::fold_action_constituents` folds a leaf census: a
+/// `send_goal` service names the action (server when served, client when
+/// called), and every endpoint under the same `<action>/_action/` goes with it.
+fn fold_action_constituents(endpoints: Vec<Observed>) -> Vec<Observed> {
+    const MARK: &str = "/_action/";
+    let base_of = |o: &Observed| o.name.find(MARK).map(|i| o.name[..i].to_string());
+    let mut actions: Vec<Observed> = Vec::new();
+    let mut folded: Vec<String> = Vec::new();
+    for o in &endpoints {
+        if o.name.ends_with("/_action/send_goal") && matches!(o.kind, Kind::Srv | Kind::Cli) {
+            let base = base_of(o).unwrap_or_default();
+            actions.push(Observed {
+                kind: if o.kind == Kind::Srv {
+                    Kind::ActionServer
+                } else {
+                    Kind::ActionClient
+                },
+                name: base.clone(),
+                type_name: o.type_name.trim_end_matches("_SendGoal").to_string(),
+                depth: None,
+                reliability: None,
+                durability: None,
+                history: None,
+            });
+            folded.push(base);
+        }
+    }
+    if folded.is_empty() {
+        return endpoints;
+    }
+    let mut out: Vec<Observed> = endpoints
+        .into_iter()
+        .filter(|o| !base_of(o).is_some_and(|b| folded.contains(&b)))
+        .collect();
+    out.extend(actions);
     out
 }
 
@@ -2256,6 +2299,82 @@ services:
 
     /// A bare recorder document -- what the binary itself writes, without the
     /// verb's provenance wrapper -- reads the same.
+    /// phase-535 W4 — a recorder that reports an action as its five RMW
+    /// constituents still confirms the contract's one `actions:` row, on both
+    /// sides of the action.
+    #[test]
+    fn an_action_reported_as_its_constituents_confirms_the_action_row() {
+        let ty = "example_interfaces/action/Fibonacci";
+        let mut server = node("fib_server", 500);
+        for svc in ["send_goal", "cancel_goal", "get_result"] {
+            let iface = match svc {
+                "send_goal" => format!("{ty}_SendGoal"),
+                "cancel_goal" => "action_msgs/srv/CancelGoal".to_string(),
+                _ => format!("{ty}_GetResult"),
+            };
+            push(
+                &mut server,
+                "services",
+                endpoint(
+                    "unresolved_name",
+                    &format!("/fibonacci/_action/{svc}"),
+                    &iface,
+                    10,
+                ),
+            );
+        }
+        for topic in ["feedback", "status"] {
+            push(
+                &mut server,
+                "publishers",
+                endpoint(
+                    "unresolved_topic",
+                    &format!("/fibonacci/_action/{topic}"),
+                    "action_msgs/msg/GoalStatusArray",
+                    10,
+                ),
+            );
+        }
+        let mut client = node("fib_client", 500);
+        push(
+            &mut client,
+            "service_clients",
+            endpoint(
+                "unresolved_name",
+                "/fibonacci/_action/send_goal",
+                &format!("{ty}_SendGoal"),
+                10,
+            ),
+        );
+        push(
+            &mut client,
+            "subscribers",
+            endpoint(
+                "unresolved_topic",
+                "/fibonacci/_action/feedback",
+                "action_msgs/msg/GoalStatusArray",
+                10,
+            ),
+        );
+        let census = json!({ "census": { "nodes": [server, client], "parameters": [] } });
+        let contract = manifest(
+            "version: 1\nnodes:\n  fib_server:\n    paths:\n      on_timer:\n        \
+             trigger: { timer: { rate_hz: 2 } }\n        output: []\n  fib_client:\n    \
+             paths:\n      on_timer:\n        trigger: { timer: { rate_hz: 2 } }\n        \
+             output: []\nactions:\n  /fibonacci:\n    type: \
+             example_interfaces/action/Fibonacci\n    server: [fib_server/fibonacci]\n    \
+             client: [fib_client/fibonacci]\n",
+        );
+        let report = run(&census, &contract, &no_waivers());
+        assert_eq!(report.errors(), 0, "{}", report.render());
+        assert_eq!(
+            report.confirmed(),
+            4,
+            "two timers and the action on each side:\n{}",
+            report.render()
+        );
+    }
+
     #[test]
     fn a_bare_recorder_document_is_accepted_too() {
         let census = island_census();

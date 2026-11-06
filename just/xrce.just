@@ -64,7 +64,7 @@ doctor:
 #
 #   just xrce agent                          # udp/127.0.0.1:8888, or $NROS_LOCATOR
 #   just xrce agent udp/127.0.0.1:2018       # the locator a [[domain]] states
-#   just xrce agent examples/zephyr/c/action-client:zephyr_xrce
+#   just xrce agent examples/zephyr/c/talker:zephyr_xrce
 #                                            # the locator that leaf's image states
 #   just xrce agent udp/127.0.0.1:8888 -v 6  # flags after it go to the agent
 #

@@ -890,99 +890,26 @@ pub fn require_zephyr() {
 fn decode_alias(example_name: &str) -> Option<(&'static str, &'static str, &'static str)> {
     // (lang, case, rmw)
     Some(match example_name {
-        // Rust zenoh
+        // phase-535 W4 — the talker leaves are the board's road witnesses
+        // (RFC-0122 D3), and the Rust Cyclone pairs stay leaves until a
+        // generated Rust Zephyr entry runs Cyclone (issue 2313). Every
+        // other role is an image of a behaviour bringup now, resolved through
+        // `fixtures::workspace_image`.
         "zephyr-rs-talker" | "rs-talker" => ("rust", "talker", "zenoh"),
-        "zephyr-rs-listener" | "rs-listener" => ("rust", "listener", "zenoh"),
-        "zephyr-rs-action-server" | "rs-action-server" => ("rust", "action-server", "zenoh"),
-        "zephyr-rs-action-client" | "rs-action-client" => ("rust", "action-client", "zenoh"),
-        "zephyr-rs-service-server" | "rs-service-server" => ("rust", "service-server", "zenoh"),
-        "zephyr-rs-service-client" | "rs-service-client" => ("rust", "service-client", "zenoh"),
-        // C++ zenoh
         "zephyr-cpp-talker" | "cpp-talker" => ("cpp", "talker", "zenoh"),
-        "zephyr-cpp-listener" | "cpp-listener" => ("cpp", "listener", "zenoh"),
-        "zephyr-cpp-service-server" | "cpp-service-server" => ("cpp", "service-server", "zenoh"),
-        "zephyr-cpp-service-client" | "cpp-service-client" => ("cpp", "service-client", "zenoh"),
-        "zephyr-cpp-action-server" | "cpp-action-server" => ("cpp", "action-server", "zenoh"),
-        "zephyr-cpp-action-client" | "cpp-action-client" => ("cpp", "action-client", "zenoh"),
-        // C zenoh
         "zephyr-c-talker" | "c-talker" => ("c", "talker", "zenoh"),
-        "zephyr-c-listener" | "c-listener" => ("c", "listener", "zenoh"),
-        "zephyr-c-service-server" | "c-service-server" => ("c", "service-server", "zenoh"),
-        "zephyr-c-service-client" | "c-service-client" => ("c", "service-client", "zenoh"),
-        "zephyr-c-action-server" | "c-action-server" => ("c", "action-server", "zenoh"),
-        "zephyr-c-action-client" | "c-action-client" => ("c", "action-client", "zenoh"),
-        // XRCE Rust
         "zephyr-xrce-rs-talker" | "xrce-rs-talker" => ("rust", "talker", "xrce"),
-        "zephyr-xrce-rs-listener" | "xrce-rs-listener" => ("rust", "listener", "xrce"),
-        "zephyr-xrce-rs-service-server" | "xrce-rs-service-server" => {
-            ("rust", "service-server", "xrce")
-        }
-        "zephyr-xrce-rs-service-client" | "xrce-rs-service-client" => {
-            ("rust", "service-client", "xrce")
-        }
-        "zephyr-xrce-rs-action-server" | "xrce-rs-action-server" => {
-            ("rust", "action-server", "xrce")
-        }
-        "zephyr-xrce-rs-action-client" | "xrce-rs-action-client" => {
-            ("rust", "action-client", "xrce")
-        }
-        // XRCE C
         "zephyr-xrce-c-talker" | "xrce-c-talker" => ("c", "talker", "xrce"),
-        "zephyr-xrce-c-listener" | "xrce-c-listener" => ("c", "listener", "xrce"),
-        "zephyr-xrce-c-service-server" | "xrce-c-service-server" => ("c", "service-server", "xrce"),
-        "zephyr-xrce-c-service-client" | "xrce-c-service-client" => ("c", "service-client", "xrce"),
-        "zephyr-xrce-c-action-server" | "xrce-c-action-server" => ("c", "action-server", "xrce"),
-        "zephyr-xrce-c-action-client" | "xrce-c-action-client" => ("c", "action-client", "xrce"),
-        // XRCE C++
         "zephyr-xrce-cpp-talker" | "xrce-cpp-talker" => ("cpp", "talker", "xrce"),
-        "zephyr-xrce-cpp-listener" | "xrce-cpp-listener" => ("cpp", "listener", "xrce"),
-        "zephyr-xrce-cpp-service-server" | "xrce-cpp-service-server" => {
-            ("cpp", "service-server", "xrce")
-        }
-        "zephyr-xrce-cpp-service-client" | "xrce-cpp-service-client" => {
-            ("cpp", "service-client", "xrce")
-        }
-        "zephyr-xrce-cpp-action-server" | "xrce-cpp-action-server" => {
-            ("cpp", "action-server", "xrce")
-        }
-        "zephyr-xrce-cpp-action-client" | "xrce-cpp-action-client" => {
-            ("cpp", "action-client", "xrce")
-        }
-        // Cyclone DDS — C / C++ today; Rust path lands once Phase 169.5
-        // ships `nros-rmw-cyclonedds-sys`. Legacy `zephyr-dds-*` aliases
-        // map to cyclonedds for source compatibility after Phase 169.4.
         "zephyr-dds-cpp-talker" => ("cpp", "talker", "cyclonedds"),
-        "zephyr-dds-cpp-listener" => ("cpp", "listener", "cyclonedds"),
-        "zephyr-dds-cpp-service-server" => ("cpp", "service-server", "cyclonedds"),
-        "zephyr-dds-cpp-service-client" => ("cpp", "service-client", "cyclonedds"),
-        "zephyr-dds-cpp-action-server" => ("cpp", "action-server", "cyclonedds"),
-        "zephyr-dds-cpp-action-client" => ("cpp", "action-client", "cyclonedds"),
         "zephyr-dds-c-talker" => ("c", "talker", "cyclonedds"),
-        "zephyr-dds-c-listener" => ("c", "listener", "cyclonedds"),
-        "zephyr-dds-c-service-server" => ("c", "service-server", "cyclonedds"),
-        "zephyr-dds-c-service-client" => ("c", "service-client", "cyclonedds"),
-        "zephyr-dds-c-action-server" => ("c", "action-server", "cyclonedds"),
-        "zephyr-dds-c-action-client" => ("c", "action-client", "cyclonedds"),
-        // DDS Rust legacy aliases — Phase 169.4 retired the old Rust DDS
-        // backend. These
-        // map to cyclonedds for now; the build dir + example path
-        // resolve correctly only once Phase 169.5's `nros-rmw-cyclonedds-sys`
-        // lands. Tests that invoke these aliases without the shim get
-        // a clean "example not found" failure.
         "zephyr-dds-rs-talker" | "dds-rs-talker" => ("rust", "talker", "cyclonedds"),
-        "zephyr-dds-rs-listener" | "dds-rs-listener" => ("rust", "listener", "cyclonedds"),
-        "zephyr-dds-rs-service-server" | "dds-rs-service-server" => {
-            ("rust", "service-server", "cyclonedds")
-        }
-        "zephyr-dds-rs-service-client" | "dds-rs-service-client" => {
-            ("rust", "service-client", "cyclonedds")
-        }
-        "zephyr-dds-rs-action-server" | "dds-rs-action-server" => {
-            ("rust", "action-server", "cyclonedds")
-        }
-        "zephyr-dds-rs-action-client" | "dds-rs-action-client" => {
-            ("rust", "action-client", "cyclonedds")
-        }
+        "zephyr-rs-action-server" => ("rust", "action-server", "zenoh"),
+        "zephyr-dds-rs-listener" => ("rust", "listener", "cyclonedds"),
+        "zephyr-dds-rs-service-server" => ("rust", "service-server", "cyclonedds"),
+        "zephyr-dds-rs-service-client" => ("rust", "service-client", "cyclonedds"),
+        "zephyr-dds-rs-action-server" => ("rust", "action-server", "cyclonedds"),
+        "zephyr-dds-rs-action-client" => ("rust", "action-client", "cyclonedds"),
         // `service-client-async` zephyr/rust example dropped 2026-06-02 per
         // Phase 212.M-F.5 — pending async-`Node` trait decision.
         //
