@@ -6,8 +6,10 @@ the user book under `book/src/`. It is the charter of
 checklist before you open a template, and check your page against it before
 you ask for review.
 
-`check-book-audience` reads the gated rules. It reports them today (phase-537
-W0) and refuses them once phase-537 W13 lands:
+`check-book-audience` reads the gated rules and refuses every departure from
+them, except the findings its baseline still lists (see
+[The charter baseline](#the-charter-baseline)). `--charter` lists each finding
+with its baseline key:
 
 ```sh
 python3 scripts/check-book-audience.py --charter
@@ -30,7 +32,7 @@ python3 scripts/check-book-audience.py --charter
 3. **A board enters the Book only with an emulator twin,** or a track that
    replays its chapter (RFC-0115 D4). QEMU mps2-an385 is the concepts board.
    **Gated:** a board page whose registry rows are neither Verified nor an
-   emulator twin of a named board is reported.
+   emulator twin of a named board is refused.
 4. **Claims follow the registry.** Board facts and status words are generated,
    never typed. A board, feature or integration with no registry row gets no
    user page. **Gated** (rule E refuses a typed status word).
@@ -71,7 +73,10 @@ python3 scripts/check-book-audience.py --charter
     that is not there.
 14. **Every runnable step is probed** on its row's evidence. A step that
     cannot run yet carries an `awaits` line on its track and fails loudly.
-    Nothing is skipped. **Gated:** a shell fence with no `probe=` is reported.
+    Nothing is skipped. **Gated:** a shell fence (`bash`, `sh`, `shell`, `zsh`
+    or `fish`) with no `probe=` is refused. A fence that is not a step, such as
+    output, a file's contents or a command with a placeholder the reader fills
+    in, is tagged with what it is (`text`, `console`, `toml`), not `bash`.
 15. **Budgets.** **Gated:**
 
     | Type | Words of prose |
@@ -90,6 +95,49 @@ Follow the
 [Google developer documentation style guide](https://developers.google.com/style):
 second person, present tense, active voice, sentence-case headings, and no
 "simply", "just" or "easy". Name a thing once, then use that name throughout.
+
+## The charter baseline
+
+The gate refuses every finding of the rules above, except the ones
+`.config/book-charter-baseline.txt` lists: the findings that were left in the
+book when the rules began to refuse, in pages that other open work owns or
+that no track replays yet. Each row names one finding by the key `--charter`
+prints in its first column, then its reason or owner:
+
+```text
+guide/rmw/use-cyclone-dds.md unprobed-steps=7  # probe coverage follow-up
+```
+
+The baseline only shrinks:
+
+- A finding it does not list is refused. Fix it; do not add a row.
+- A row that no longer fires is refused until you remove it.
+- A counted row (`unprobed-steps=N`) is refused when the page gains a step
+  with no probe fence, and when it loses one, until you lower `N` to the new
+  count.
+
+To remove a row, fix its finding, then delete or lower the row in the same
+commit:
+
+1. Find the steps: `python3 scripts/check-book-audience.py --charter` prints
+   each finding's lines.
+2. Fix each one. Give a runnable step a `probe=` on a track that replays the
+   page (a `[[probe]]` row in `packages/boards/board-support.toml`, then
+   `python3 scripts/gen-board-support.py` and a recipe in `just/probe.just`).
+   A step that cannot run yet still gets its `probe=`, on a track whose
+   `awaits` names why. Tag a fence that is not a step with what it is. Merge a
+   page under the floor into its parent through `book/page-map.toml` and
+   `scripts/book-move.py`, so it keeps a redirect.
+3. Check that each track you touched still extracts:
+
+   ```sh
+   PROBE_EXTRACT_ONLY="$PWD/track.sh" PROBE_TRACK=installed PROBE_PLATFORM=<track> \
+       bash scripts/probe/run-bootstrap-probe.sh && bash -n track.sh
+   python3 scripts/check-book-probe-tracks.py
+   ```
+
+4. Run `python3 scripts/check-book-audience.py`. It names the row to delete or
+   the count to lower.
 
 ## Declare the type and level
 
@@ -117,7 +165,7 @@ can tell that each type appears once:
 ### Topic levels
 
 A page may assume only topics at its own level or below. It lists them on a
-"needs first" line, and the gate reports a link to a higher level.
+"needs first" line, and the gate refuses a link to a higher level.
 
 | Level | Topics | Where |
 | --- | --- | --- |
@@ -319,7 +367,7 @@ tasks. Needs only Tutorial 1–2 and the starter. It sits in the User guide
 group its row's generated status word names: the board row names the page
 with `book_platform` in `packages/boards/board-support.toml`, and
 `scripts/book-move.py --summary` nests it under that group, so neither the
-group nor the status header is typed. `check-book-audience --charter` reports
+group nor the status header is typed. `check-book-audience` refuses
 a page whose group and row disagree, and a page whose rows sit in two groups,
 which splits by status. Each deeper task's commands are `probe=` steps on a
 track that replays the starter first (`after`).
