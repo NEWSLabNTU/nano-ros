@@ -1882,7 +1882,11 @@ fn locate_index_with(
 /// The one spelling of the index's file name.
 pub(crate) const INDEX_FILE: &str = "nros-sdk-index.toml";
 
-/// RFC-0097 D5 — where a `nros` with no checkout FETCHES the index from.
+/// RFC-0097 D5 — where a `nros` with no checkout and NO SHIPPED INDEX fetches
+/// the index from. A released `nros` reads its own shipped copy instead
+/// (issue 2257, [`release_reads_shipped`]); what follows is D5's original
+/// reasoning, kept for the binaries it still serves (a dev build run outside
+/// a checkout) and amended for releases.
 ///
 /// The index is a MANIFEST OF POINTERS into `nano-ros-sdk`'s per-tool releases.
 /// It has no ABI, so a newer index is usable by an older CLI — which is the
@@ -2102,12 +2106,22 @@ fn fetch_index(cache: &Path, url: &str) -> Result<()> {
 /// `fetch` is the CALLER's decision (see [`locate_index`]); `$NROS_OFFLINE`
 /// vetoes it either way, which is the same escape-hatch shape the rest of this
 /// module uses.
+///
+/// Issue 2257 (RFC-0097 D5, amended 2026-11-06): a released `nros` reads the
+/// index it SHIPS with ([`release_reads_shipped`]), and fetches nothing unless
+/// the operator names a mirror with `$NROS_INDEX_URL`.
 fn store_index(fetch: bool) -> Result<(PathBuf, IndexOrigin)> {
+    let shipped = shipped_index();
+    let url_env = std::env::var("NROS_INDEX_URL")
+        .ok()
+        .filter(|u| !u.is_empty());
+    if let Some(own) = release_reads_shipped(shipped.as_deref(), url_env.is_some()) {
+        return Ok((own.to_path_buf(), IndexOrigin::Shipped));
+    }
     let store = crate::orchestration::store::root();
-    let url = std::env::var("NROS_INDEX_URL").unwrap_or_else(|_| DEFAULT_INDEX_URL.to_string());
+    let url = url_env.unwrap_or_else(|| DEFAULT_INDEX_URL.to_string());
     let offline = !fetch || std::env::var_os("NROS_OFFLINE").is_some();
     let refresh = std::env::var_os("NROS_INDEX_REFRESH").is_some();
-    let shipped = shipped_index();
     let got = index_from_store(&store, &url, offline, refresh, shipped.as_deref())?;
     if got.1 == IndexOrigin::Fetched {
         eprintln!("nros: fetched the SDK index → {}", got.0.display());
@@ -2115,14 +2129,33 @@ fn store_index(fetch: bool) -> Result<(PathBuf, IndexOrigin)> {
     Ok(got)
 }
 
+/// Issue 2257 — the index a released `nros` provisions from: its own shipped
+/// copy, unless the operator named a mirror (`$NROS_INDEX_URL`).
+///
+/// RFC-0097 D5 had a release fetch `main`'s index, on the ground that a
+/// pointer table has no ABI. Measured otherwise (phase-523 W3 round one): the
+/// index also pins the SOURCES the release's own SDK root compiles
+/// (zenoh-pico `8d5ac2fe` on `nros-0.6.0-nros6`, `c78dbffd` on `main`), and
+/// every reader except `nros setup` takes its pins from that root's copy
+/// (`qemu_bin::for_sdk`, the build's source preflight, `nros locate`, the
+/// drift check). So setup installed QEMU `-nros8` while the build asked for
+/// `-nros7`, labelled a store source with one pin while filling it with
+/// another (2256), and rewrote a committed lock (2258), each remedy looping.
+/// One index per CLI: the shipped copy IS the SDK root's, so every reader
+/// agrees. `None` — no shipped copy (a dev binary) or a named mirror — keeps
+/// the store rung.
+#[must_use]
+pub(crate) fn release_reads_shipped(shipped: Option<&Path>, url_overridden: bool) -> Option<&Path> {
+    (!url_overridden).then_some(shipped).flatten()
+}
+
 /// The index shipped inside the release, at `<prefix>/share/nros/` — phase-431
 /// W5.
 ///
-/// RFC-0097 D5 demoted this from the answer to the LAST RESORT: it is what a
-/// first run with no network and no cache falls back to, so an air-gapped host
-/// still provisions from the table the binary was released with. Everything
-/// else prefers [`index_from_store`], because a copy inside the asset can only
-/// ever be as new as the asset.
+/// The index a released `nros` reads ([`release_reads_shipped`], issue 2257):
+/// the same file the release's SDK root carries, so `nros setup` and every
+/// reader of that root agree. RFC-0097 D5 had demoted it to a last resort
+/// behind a fetched copy; that is amended.
 ///
 /// Resolved from the running executable rather than from `$NROS_HOME`, so a
 /// binary and the index it was released with stay together — two versions in
@@ -2161,9 +2194,9 @@ pub(crate) fn shipped_index() -> Option<PathBuf> {
 /// mirror the operator named is read even inside a checkout. The walk-up is
 /// ONLY the enclosing checkout, never the binary's own root
 /// ([`crate::orchestration::nano_ros_root`]'s last rung): a released `nros`
-/// stages the index into `share/nano-ros/` too, and preferring that over the
-/// store is exactly the coupling D5 removed, so the installed track is
-/// unchanged.
+/// stages the index into `share/nano-ros/` too, and the store rung answers a
+/// release with its shipped copy of that same file (issue 2257), so a
+/// release's setup and its SDK root read one index.
 pub fn resolve_index(explicit: &Path) -> Result<PathBuf> {
     resolve_index_explained(explicit).map(|(p, _)| p)
 }
@@ -4455,6 +4488,17 @@ mod tests {
     // `tests/store_reclaim.rs`: "No test here touches `$NROS_HOME`,
     // `$NROS_HOME`"), and no test reaches the network: `curl` speaks `file://`,
     // so the fetch under test is the REAL fetch, not a mock of one.
+
+    /// Issue 2257 — a release reads its own shipped index, and fetches only
+    /// for a mirror the operator named; a binary with no shipped copy keeps
+    /// the store rung.
+    #[test]
+    fn a_release_reads_its_shipped_index_unless_a_mirror_is_named() {
+        let shipped = Path::new("/prefix/share/nros/nros-sdk-index.toml");
+        assert_eq!(release_reads_shipped(Some(shipped), false), Some(shipped));
+        assert_eq!(release_reads_shipped(Some(shipped), true), None);
+        assert_eq!(release_reads_shipped(None, false), None);
+    }
 
     /// A parseable index, distinguishable by the tool name it declares.
     fn index_text(tool: &str) -> String {
