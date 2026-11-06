@@ -15,7 +15,7 @@ Found by phase-523 W3 adoption probe round one, 2026-11-05, on release `nros-0.6
 
 ## Measured
 
-- I18, installation.md "Pinning a version", production-readiness §8–9: versioning is a link to `docs/development/versioning.md`; the reader is told to "track the roadmap directory in the upstream repo"; there is no support window, backport/LTS policy, or promise that dist assets stay hosted. "Targets ROS 2 Humble today… Jazzy no public ETA" contradicts support-status, which lists Jazzy as supported.
+- I18, installation.md "Pinning a version", production-readiness §8–9: versioning is a link to `book-internals/src/dev-env/versioning.md`; the reader is told to "track the roadmap directory in the upstream repo"; there is no support window, backport/LTS policy, or promise that dist assets stay hosted. "Targets ROS 2 Humble today… Jazzy no public ETA" contradicts support-status, which lists Jazzy as supported.
 
 ## Next
 

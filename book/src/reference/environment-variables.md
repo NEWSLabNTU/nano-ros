@@ -247,6 +247,30 @@ env or Kconfig knob. Changing them means editing that header.
 | `XRCE_SERVICE_REQUEST_RING_DEPTH` | Queued service requests per server      | `4`     |
 | `XRCE_DEFAULT_AGENT_PORT`         | Default agent port                      | `2018`  |
 
+### Binary size (embedded)
+
+Carried in the image's generated `[env]`, from the board's `[knobs]` or your
+environment; a value you export wins.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `NROS_LINK_IP` | on | `0` on a serial-only image drops zenoh-pico's TCP and UDP link code and, with `--gc-sections`, the smoltcp platform code |
+| `ZPICO_NO_SMOLTCP` | off | `1` skips the smoltcp glue on bare metal |
+| `NROS_HEAP_SIZE` | per platform crate | bare-metal static heap, in bytes; see [Build outputs](build-outputs.md#measured-footprint) |
+
+### Logging (`NROS_LOG_*`)
+
+Also stated as `[knobs.log] <key>` on a board, `[image.<id>.knobs.log] <key>`
+on an image, or `CONFIG_<knob>` on Zephyr.
+
+| Variable | Key | Default | What it sizes |
+| --- | --- | --- | --- |
+| `NROS_LOG_MAX_LEVEL` | `max_level` | `trace` | compile-time ceiling: `trace`, `debug`, `info`, `warn`, `error`, `fatal`, `off`, or `0`–`6` |
+| `NROS_LOG_BUFFER_SIZE` | `buffer_size` | 256 (128–4096) | the per-call formatting buffer, and the message in each early and `/rosout` slot |
+| `NROS_LOG_EARLY_RECORDS` | `early_records` | 4 (0 = drop, counted) | records held before `init` installs the sinks |
+| `NROS_LOG_ROSOUT_RECORDS` | `rosout_records` | 16 | the `/rosout` queue |
+| `NROS_LOG_DYNAMIC_LOGGERS` | `dynamic_loggers` | 16, 32 on Linux hosts (0 = lookup only) | loggers created at run time |
+
 ### Core (`NROS_*`)
 
 | Variable                        | Description                                                                              | Default | Crate       |

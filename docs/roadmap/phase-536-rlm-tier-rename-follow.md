@@ -206,7 +206,7 @@ names move with rlm's, per W0's table.
 - **C ABI**: rename the 64 identifiers and the three headers. The old names
   stay for one nano-ros release as `typedef`s, `#define`s and forwarding
   headers that `#warning`, then retire into
-  `book/src/reference/retired-names.md`. Struct layouts do not change
+  `book/src/migrating/retired-names.md`. Struct layouts do not change
   (`check-ffi-struct-mirrors.sh` stays green with no layout edit). Breaking
   fragment in `changelog.d/`.
 - **Kconfig**: new symbols in `zephyr/Kconfig`; the old ones kept one
