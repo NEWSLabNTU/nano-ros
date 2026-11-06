@@ -200,6 +200,13 @@ was = ["get-started/your-own-msg-package.md"]
 note = "Tutorial 5, Your own message (W5): rewritten on the Tutorial project, with the tutorial part of reference/message-generation (its Workflow steps); the shadowing contract, the search-path table and the umbrella CMake escape hatch are reference, already in reference/message-generation and guide/build/existing-cmake-or-vendor-tree"
 
 [[page]]
+book = "user"
+path = "tutorial/services-and-actions.md"
+action = "new phase-537"
+batch = "p537-w5"
+note = "Tutorial 6, Services and actions (W5): new, on the scaffold's server, client, action-server and action-client templates, with ROS 2 calling the board's service and action"
+
+[[page]]
 old = "getting-started/workspace-from-app-node.md"
 book = "user"
 path = "tutorial/grow-your-workspace.md"
