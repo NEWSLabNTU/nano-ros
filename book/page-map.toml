@@ -38,12 +38,19 @@ was = ["get-started/installation.md"]
 note = "Install (W3): procedure only; its pinning, offline and vendored-install parts go to guide/build/install-options (W8)"
 
 [[page]]
+book = "user"
+path = "starters/pick-your-board.md"
+action = "new phase-537"
+batch = "p537-w4"
+note = "Get started on your board (W4): the section's index; its list of starters is generated from the board registry in RFC-0124 D12 order"
+
+[[page]]
 old = "targets/nucleo-f767zi.md"
 book = "user"
 path = "starters/nucleo-f767zi.md"
 action = "move"
 batch = "p537-w1-starters"
-note = "Nucleo-F767ZI starter: W4 puts it on the starter template (D12); its board notes go to a guide/platforms page (W9)"
+note = "Nucleo-F767ZI starter, on the starter template (W4, D12); its board notes go to a guide/platforms page (W9)"
 
 [[page]]
 old = "getting-started/first-project.md"
