@@ -2955,22 +2955,71 @@ pub(crate) fn leaf_outputs_missing(root: &std::path::Path, has_components: bool)
     if has_components && matches!(crate::leaf_entity_env::leaf_model_path(root), Ok(None)) {
         out.push("the resolved model under `build/nros/models/`".to_string());
     }
-    let Ok(doc) = std::fs::read_to_string(root.join("Cargo.toml"))
+    for (name, p) in path_deps(root) {
+        if p.split('/').next() == Some("generated") && !root.join(&p).join("Cargo.toml").is_file() {
+            out.push(format!("the generated message crate `{name}` ({p})"));
+        }
+    }
+    out
+}
+
+/// `(name, path)` of every `path` dependency (normal and build) in the
+/// manifest at `dir/Cargo.toml`; empty when it is absent or unreadable.
+fn path_deps(dir: &std::path::Path) -> Vec<(String, String)> {
+    let Ok(doc) = std::fs::read_to_string(dir.join("Cargo.toml"))
         .map_err(|e| e.to_string())
         .and_then(|t| t.parse::<toml::Table>().map_err(|e| e.to_string()))
     else {
-        return out;
+        return Vec::new();
     };
+    let mut out = Vec::new();
     for key in ["dependencies", "build-dependencies"] {
         let Some(deps) = doc.get(key).and_then(|d| d.as_table()) else {
             continue;
         };
         for (name, spec) in deps {
-            if let Some(p) = spec.get("path").and_then(|p| p.as_str())
-                && p.split('/').next() == Some("generated")
-                && !root.join(p).join("Cargo.toml").is_file()
-            {
-                out.push(format!("the generated message crate `{name}` ({p})"));
+            if let Some(p) = spec.get("path").and_then(|p| p.as_str()) {
+                out.push((name.clone(), p.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// Issue 2297 -- the workspace counterpart of [`leaf_outputs_missing`]'s
+/// crate check: a member package's path-dep into `<root>/generated/` whose
+/// crate is gone. A workspace configure writes those crates for every member,
+/// so the configure stamp reads this, and `rm -rf generated` makes it stale
+/// instead of "up to date".
+pub(crate) fn workspace_generated_missing(root: &std::path::Path) -> Vec<String> {
+    use std::path::Component;
+    let generated = root.join("generated");
+    let mut out = Vec::new();
+    for member in discover::cargo_members_or_walk(root) {
+        let dir = if member.is_absolute() {
+            member
+        } else {
+            root.join(member)
+        };
+        for (name, p) in path_deps(&dir) {
+            // Lexical: the crate may be gone, so there is nothing to
+            // canonicalize.
+            let mut abs = std::path::PathBuf::new();
+            for c in dir.join(&p).components() {
+                match c {
+                    Component::ParentDir => {
+                        abs.pop();
+                    }
+                    Component::CurDir => {}
+                    other => abs.push(other),
+                }
+            }
+            if abs.starts_with(&generated) && !abs.join("Cargo.toml").is_file() {
+                let rel = dir.strip_prefix(root).unwrap_or(&dir);
+                out.push(format!(
+                    "the generated message crate `{name}` ({}: {p})",
+                    rel.display()
+                ));
             }
         }
     }

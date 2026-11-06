@@ -432,8 +432,9 @@ fn configured_model_dir(flags: &OutputFlags, env: &[(String, Option<String>)]) -
 /// The first configure OUTPUT a build of `image` reads that is gone
 /// (phase-530 W1): a leaf's model, its `generated/<pkg>` path-deps
 /// (`build::leaf_outputs_missing`, the check `nros build` itself refuses on)
-/// and its selection package; a workspace image's model. Inputs alone cannot
-/// see an `rm -rf generated`.
+/// and its selection package; a workspace image's model and its members'
+/// `generated/<pkg>` path-deps (issue 2297). Inputs alone cannot see an
+/// `rm -rf generated`.
 fn missing_output(project: &Path, image: &str, model_dir: Option<&Path>) -> Result<Option<String>> {
     use nros_orchestration_ir::leaf_system;
     // A package-only leaf (a `package.xml` and no `system.toml`) is configured
@@ -449,6 +450,12 @@ fn missing_output(project: &Path, image: &str, model_dir: Option<&Path>) -> Resu
             .next());
     }
     if image.contains(':') {
+        if let Some(what) = crate::cmd::build::workspace_generated_missing(project)
+            .into_iter()
+            .next()
+        {
+            return Ok(Some(what));
+        }
         return crate::cmd::build::workspace_model_missing(project, image, model_dir);
     }
     if !project.join(leaf_system::SYSTEM_TOML).is_file() {
@@ -1539,6 +1546,52 @@ mod tests {
     /// The same for a package-only leaf, which has no `system.toml` and is
     /// stamped under the project key: deleting its `generated/<pkg>` must
     /// not leave configure "up to date (0 image(s))".
+    /// Issue 2297 -- the workspace half. A workspace member path-deps the
+    /// crates configure writes under `<ws>/generated/`, so deleting that tree
+    /// makes a workspace image's stamp stale. It used to answer "up to date",
+    /// and the build then failed on the missing manifest.
+    #[test]
+    fn deleted_generated_crate_is_stale_for_a_workspace_image() {
+        let p = tmp("deleted-generated-workspace");
+        let node = p.join("src/talker");
+        std::fs::create_dir_all(&node).unwrap();
+        std::fs::write(
+            node.join("Cargo.toml"),
+            "[package]\nname = \"talker\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+             std_msgs = { path = \"../../generated/std_msgs\" }\n\
+             other = { path = \"../other\" }\n",
+        )
+        .unwrap();
+        let crate_dir = p.join("generated/std_msgs");
+        std::fs::create_dir_all(&crate_dir).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), "[package]\n").unwrap();
+        let key = "talker_bringup:linux";
+        record(&p, key, &stamp_for(&p)).unwrap();
+        let ask = || {
+            currency(
+                &p,
+                key,
+                false,
+                &real_env(),
+                &OutputFlags::defaults(),
+                None,
+                &nothing_moved,
+                &still_refuses,
+            )
+            .unwrap()
+        };
+        assert_eq!(ask(), Currency::Current);
+        std::fs::remove_dir_all(p.join("generated")).unwrap();
+        assert_eq!(
+            ask(),
+            Currency::Stale(
+                "configure output missing: the generated message crate `std_msgs` \
+                 (src/talker: ../../generated/std_msgs)"
+                    .into()
+            )
+        );
+    }
+
     #[test]
     fn deleted_generated_crate_is_stale_for_a_package_only_leaf() {
         let p = tmp("deleted-generated-project");
