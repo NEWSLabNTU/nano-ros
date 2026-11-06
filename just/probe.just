@@ -89,6 +89,10 @@ tutorial-8: (platform "tutorial-8")
 [group("main")]
 tutorial-9: (platform "tutorial-9")
 
+# book/src/tutorial/talk-to-ros2.md — Tutorial 10 (phase-537 W5).
+[group("main")]
+tutorial-10: (platform "tutorial-10")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]
