@@ -908,10 +908,132 @@ weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process, `nros run` starting the router on loopback, then `ros2 topic echo`. The board's first track (its row's evidence is the daily lane). Not weekly yet; its `awaits` names the CLI fix it waits on."
 
+# phase-537 W9 (RFC-0124 D8) — the User guide platform pages. Each replays its
+# starter first (`after`), then the platform page's own steps: the run plan
+# (`nros run --dry-run --why`) and the native build line (`nros build
+# --dry-run`). A track inherits its starter track's `awaits`, because the
+# starter's steps run first; it drops when the starter's does. Not weekly: no
+# run of these tracks has been recorded yet.
+
+[[probe]]
+track = "platform-linux"
+chapter = "guide/platforms/linux-host.md"
+variant = ""
+after = ["starters/linux-host.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-linux@Linux"
+notes = "phase-537 W9 — the Linux host platform page, after its starter (starters/linux-host.md, the `linux` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-zephyr-native-sim"
+chapter = "guide/platforms/zephyr-native-sim.md"
+variant = ""
+lang = "c"
+after = ["starters/zephyr-native-sim.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-zephyr@ZephyrNativeSim"
+notes = "phase-537 W9 — the Zephyr native_sim platform page, after its starter (starters/zephyr-native-sim.md, the `zephyr` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-threadx-linux"
+chapter = "guide/platforms/threadx-linux.md"
+variant = ""
+lang = "rust"
+after = ["starters/threadx-linux.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-threadx-linux@ThreadxLinux"
+notes = "phase-537 W9 — the ThreadX Linux simulator platform page, after its starter (starters/threadx-linux.md, the `threadx-linux` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-freertos-posix"
+chapter = "guide/platforms/freertos-posix.md"
+variant = ""
+after = ["starters/freertos-posix.md"]
+awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-537 W9 — the FreeRTOS POSIX platform page, after its starter (starters/freertos-posix.md, the `freertos-posix` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-baremetal"
+chapter = "guide/platforms/bare-metal.md"
+variant = ""
+after = ["starters/mps2-an385-bare-metal.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W9 — the Bare-metal Cortex-M3 platform page, after its starter (starters/mps2-an385-bare-metal.md, the `baremetal` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-freertos"
+chapter = "guide/platforms/freertos.md"
+variant = ""
+lang = "rust"
+after = ["starters/mps2-an385-freertos.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W9 — the FreeRTOS on mps2-an385 platform page, after its starter (starters/mps2-an385-freertos.md, the `freertos` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-zephyr-mps2"
+chapter = "guide/platforms/zephyr.md"
+variant = ""
+after = ["starters/mps2-an385-zephyr.md"]
+awaits = ["a Rust Zephyr workspace entry that sees its bringup package: the generated zephyr_entry fails `nros::main!: pkg `<bringup>` not found in workspace … Known pkgs: []` (CLI owner bug 4, reported 2026-11-06)"]
+weekly = false
+row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
+notes = "phase-537 W9 — the Zephyr on mps2-an385 platform page, after its starter (starters/mps2-an385-zephyr.md, the `zephyr-mps2` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-nuttx"
+chapter = "guide/platforms/nuttx.md"
+variant = ""
+lang = "c"
+after = ["starters/nuttx-arm.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-nuttx-qemu@NuttxArm"
+notes = "phase-537 W9 — the NuttX Arm and RISC-V platform page, after its starter (starters/nuttx-arm.md, the `nuttx-arm` track): the run plan and the native build line."
+
+[[probe]]
+track = "platform-threadx-riscv64"
+chapter = "guide/platforms/threadx.md"
+variant = ""
+after = ["starters/threadx-riscv64.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-threadx-qemu-riscv64@ThreadxRiscv64"
+notes = "phase-537 W9 — the ThreadX RISC-V 64 platform page, after its starter (starters/threadx-riscv64.md, the `threadx-riscv64` track): the run plan and the native build line."
+
+[[probe]]
+track = "flash-a-real-board"
+chapter = "guide/platforms/flash-a-real-board.md"
+variant = ""
+after = ["starters/nucleo-f767zi.md"]
+awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
+weekly = false
+row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
+notes = "phase-537 W9 — Flash a real board, after the Nucleo-F767ZI starter: `nros bench scan --dry-run`, `nros bench list` and the flash plan (`nros flash --dry-run --why --port …`), none of which needs a board attached. The `board` variant adds the flash itself."
+
+[[probe]]
+track = "flash-a-real-board-bench"
+chapter = "guide/platforms/flash-a-real-board.md"
+variant = "board"
+after = ["starters/nucleo-f767zi.md"]
+awaits = ["a Nucleo-F767ZI attached to the machine the probe runs on: no CI runner has a board, so `nros flash` is run by hand on a bench"]
+weekly = false
+row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
+notes = "phase-537 W9 — Flash a real board on a bench: the flash-a-real-board track's steps, then `nros flash` onto an attached Nucleo-F767ZI. It fails up front until a runner with a board exists."
+
 [[probe]]
 track = "zephyr-west-app"
 chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app"
+lang = "c"
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 notes = "phase-532 (RFC-0123) — a guest Zephyr application (RFC-0121 D6, RFC-0085 D14): no workspace and no system.toml. The chapter writes a C talker app into a fresh west workspace, configures it in prj.conf, builds it with a plain `west build` naming the module by `nros locate nano-ros`, and runs native_sim against ROS's rmw_zenohd."
@@ -920,6 +1042,7 @@ notes = "phase-532 (RFC-0123) — a guest Zephyr application (RFC-0121 D6, RFC-0
 track = "zephyr-west-app-cpp"
 chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app-cpp"
+lang = "cpp"
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 notes = "phase-532 (RFC-0123) — the same guest application as `zephyr-west-app`, with the chapter's C++ node (a class with a `configure` member, registered with its HEADER) in place of the C one; same prj.conf, same plain `west build`, same native_sim run against ROS's rmw_zenohd."
@@ -928,6 +1051,7 @@ notes = "phase-532 (RFC-0123) — the same guest application as `zephyr-west-app
 track = "zephyr-west-app-flash"
 chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app-flash"
+lang = "c"
 weekly = true
 row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
 twin = "nucleo-f767zi-zephyr"
@@ -940,6 +1064,7 @@ notes = "phase-532 (RFC-0123) — the guest application's flash section: the cha
 track = "zephyr-west-app-rust"
 chapter = "guide/platforms/zephyr-west-app.md"
 variant = "west-app-rust"
+lang = "rust"
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 notes = "phase-532 (RFC-0123) — the guest application in Rust: zephyr-lang-rust in the chapter's west manifest, `nros setup board zephyr` on the west workspace, a `rustapp` staticlib crate built by `rust_cargo_application()`, `nros configure` for its message crates and cargo patches, then the chapter's plain `west build` and native_sim run."
