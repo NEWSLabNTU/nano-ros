@@ -35,6 +35,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/extending/rmw-design.html" = "../internals/rmw/rmw-api-design.html"
 "/extending/custom-transport.html" = "add-a-transport.html"
 "/extending/platform-model.html" = "add-a-platform.html#before-you-start"
 "/extending/custom-platform.html" = "add-a-platform.html#steps"
@@ -197,7 +198,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/design/platform-api.html" = "../internals/platform/platform-api-design.html"
 "/porting/custom-transport.html" = "../extending/add-a-transport.html"
 "/porting/custom-rmw.html" = "../extending/custom-rmw.html"
-"/design/rmw.html" = "../extending/rmw-design.html"
+"/design/rmw.html" = "../internals/rmw/rmw-api-design.html"
 "/design/rmw-vs-upstream.html" = "../internals/rmw/rmw-vs-upstream.html"
 "/internals/porting-platform/zenoh-pico.html" = "../rmw/zenoh-pico-symbols.html"
 "/internals/porting-platform/xrce-dds.html" = "../rmw/xrce-dds-symbols.html"

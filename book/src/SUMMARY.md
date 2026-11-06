@@ -123,8 +123,7 @@
 - [Add a board](./extending/add-a-board.md)
 - [Add a platform](./extending/add-a-platform.md)
 - [Add a transport](./extending/add-a-transport.md)
-- [Custom RMW Backend](./extending/custom-rmw.md)
-- [RMW API Design](./extending/rmw-design.md)
+- [Write a custom RMW backend](./extending/custom-rmw.md)
 
 # Releases
 

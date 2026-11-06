@@ -175,7 +175,7 @@ dispatches in its own background threads. None of that holds on a Cortex-M3
 with 64 KB of RAM. The nano-ros RMW leaves the I/O buffers to the caller,
 replaces wait sets with an explicit call that drives I/O, and binds the
 backend when the image links, through a C ABI table. A backend can be written
-in C or C++ as well as Rust. [RMW API design](../extending/rmw-design.md) has
+in C or C++ as well as Rust. [RMW API design](../internals/rmw/rmw-api-design.html) has
 the full argument.
 
 **One future type, and no hidden spin.** rclcpp owns the spin loop, and rclc

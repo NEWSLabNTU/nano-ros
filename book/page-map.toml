@@ -1146,13 +1146,16 @@ book = "user"
 path = "extending/custom-rmw.md"
 action = "move"
 batch = "w4-extending"
+note = "Write a custom RMW backend (W12): one how-to; extending/rmw-design went to Internals as rmw/rmw-api-design"
 
 [[page]]
 old = "design/rmw.md"
-book = "user"
-path = "extending/rmw-design.md"
+book = "internals"
+path = "rmw/rmw-api-design.md"
 action = "move"
-batch = "w4-extending"
+batch = "p537-w12-rmw"
+was = ["extending/rmw-design.md"]
+note = "RFC-0124 Principle 2 (W12): the argument for nano-ros's own RMW API, for a reader changing it. Its task part (what a backend must do for ROS 2 tools to see it) is in extending/custom-rmw. Overlaps rmw/rmw-vs-upstream, which is the symbol-level comparison"
 
 [[page]]
 old = "release/migration-install-local-removal.md"
