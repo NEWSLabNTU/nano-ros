@@ -150,7 +150,7 @@ missing, stops naming the command that builds it).
 PX4's SITL runs the autopilot as a host process against a simulator. With
 Gazebo (Harmonic) installed per PX4's documentation:
 
-```bash
+```text
 make -C PX4-Autopilot px4_sitl_default gz_x500 \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros"
 # In the PX4 console:
