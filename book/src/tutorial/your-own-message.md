@@ -632,7 +632,8 @@ replaces all of that package's messages, not one of them.
 
 What the build generates is where nano-ros differs from ROS 2. ROS 2
 generates code that allocates: a `std::string`, a `std::vector`, rosidl's
-`__init` and `__fini` in C. nano-ros generates code for a board with no heap.
+`__init` and `__fini` in C. nano-ros generates code whose every string and
+sequence has a capacity fixed when the image is built.
 A Rust message is a `no_std` struct built on fixed-capacity types. A C
 message's strings and sequences point at memory the node owns. Because
 nothing grows at run time, an unbounded `string` or `[]` sequence in a
