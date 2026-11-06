@@ -40,7 +40,7 @@ rtic_ws/
 ```
 
 `nros run` builds the image, boots it in QEMU and starts the router, as in
-[First Project](../../tutorial/run-a-talker.html). The bringup's `system.toml`
+[Run a talker on an emulated board](../../tutorial/run-a-talker.html). The bringup's `system.toml`
 is the only place RTIC is named:
 
 ```toml

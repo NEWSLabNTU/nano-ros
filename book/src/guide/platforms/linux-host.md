@@ -123,7 +123,7 @@ platform-specific configuration files. See
 
 Host deployment is normal process deployment: install the workspace,
 source `install/setup.bash`, set environment, and run the binary. For
-ROS 2 interop, run [ROS 2 Interoperability](../../tutorial/talk-to-ros2.md)
+ROS 2 interop, run [Talk to ROS 2](../../tutorial/talk-to-ros2.md)
 and set the ROS side to `rmw_zenoh_cpp`.
 
 ## Design background
