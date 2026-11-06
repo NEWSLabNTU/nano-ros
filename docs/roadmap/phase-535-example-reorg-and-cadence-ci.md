@@ -1,14 +1,12 @@
 # Phase 535 — Example pairs into the language workspaces, single-node witnesses, and cadence-backed CI
 
-**Status (2026-11-05). STOPPED at W3 for a maintainer decision, again.** W0
-answered (issue 2253 fixed on the way, #3106). W1 merged (#3107). W0.b done:
-C (#3112), C++ (#3120), Rust (#3124). W2 merged (#3125). The W3 pilot was
-measured; it saves build CPU but costs wall clock, which is under the 10 %
-bar (data below). The maintainer chose option 1: the workspace fixture builder
-now fans out by build unit (and issue 2284, a jobserver hang the fan-out
-exposed, is fixed). Re-measured on that builder, the pilot is 3.8 % SLOWER in
-wall clock and 17 % cheaper in CPU, so it is still under the bar. The pilot
-itself is draft PR #3129.
+**Status (2026-11-06). W3 done; W4 next.** W0 answered (issue 2253 fixed on
+the way, #3106). W1 merged (#3107). W0.b done: C (#3112), C++ (#3120), Rust
+(#3124). W2 merged (#3125). W3: the pilot (#3129) moves the FreeRTOS pairs.
+After the builder fan-out (#3142) and the shared jobserver pool (#3159), the
+final re-measure is -7.7 % wall clock and -20 % CPU. That is under the 10 %
+bar, and the maintainer had ruled (2026-11-05) that the phase proceeds after
+one re-measure whatever it shows.
 Implements [RFC-0122](../design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
 D1 to D9, with its amendments to RFC-0026, RFC-0051, RFC-0061, RFC-0066,
 RFC-0114 and RFC-0121 D8.
@@ -271,7 +269,7 @@ before run is discarded for host load. Table, loads and method:
 - Further levers, each a decision: one `cmake --build` for all the images of a
   configure; the workspace stage beside the leaf stage in `build-examples`; a
   Rust target shared per (board, rmw) behind D6's gate.
-- By the rule above, W4 does not start.
+- By the rule above, W4 did not start then. See the final re-measure below.
 
 **Levers pulled (2026-11-05, maintainer: one more lever, re-measure once, then
 proceed).** The freertos leaf stage and workspace stage now run side by side
@@ -282,6 +280,18 @@ C/C++ configure belong to four bringups, and the generated root carries one
 bringup's entries at a time. Within a bringup, the untargeted `cmake --build`
 already builds every entry in one ninja graph. Each bringup switch rebuilds
 the Rust runtime, 22 to 32 s measured: issue 2287.
+
+**Final re-measure (2026-11-06): W3 done.** Two interleaved runs per tree,
+cold, no run discarded for load:
+
+| | before (mean) | after (mean) | change |
+| --- | --- | --- | --- |
+| wall | 678 s | 626 s | **-7.7 %** |
+| CPU (user+sys) | 2161 s | 1728 s | **-20 %** |
+
+Wall clock is still under the 10 % bar. By the maintainer's ruling, W4
+starts. Table and caveats:
+[phase-535-w3-pilot.md](data/phase-535-w3-pilot.md#final-re-measure-2026-11-06-after-the-shared-pool).
 
 ### W4 — The merge boards: linux, zephyr native_sim, threadx-linux
 
