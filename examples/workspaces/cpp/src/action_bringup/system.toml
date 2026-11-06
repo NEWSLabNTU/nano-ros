@@ -35,5 +35,36 @@ launch = "action_client.launch.xml"
 locator = "tcp/10.0.2.2:8020"
 os_config = ["board-net-11.toml"]
 
+# Linux: one image per (role, rmw). The router locator is ephemeral
+# (NROS_LOCATOR at run time), so none is baked here.
+
+[image.linux_action_server]
+board = "linux"
+launch = "action_server.launch.xml"
+
+[image.linux_action_server_xrce]
+board = "linux"
+launch = "action_server.launch.xml"
+rmw = "xrce"
+
+[image.linux_action_server_cyclonedds]
+board = "linux"
+launch = "action_server.launch.xml"
+rmw = "cyclonedds"
+
+[image.linux_action_client]
+board = "linux"
+launch = "action_client.launch.xml"
+
+[image.linux_action_client_xrce]
+board = "linux"
+launch = "action_client.launch.xml"
+rmw = "xrce"
+
+[image.linux_action_client_cyclonedds]
+board = "linux"
+launch = "action_client.launch.xml"
+rmw = "cyclonedds"
+
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"

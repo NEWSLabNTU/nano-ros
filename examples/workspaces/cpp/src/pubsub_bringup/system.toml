@@ -35,5 +35,36 @@ launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:8000"
 os_config = ["board-net-11.toml"]
 
+# Linux: one image per (role, rmw). The router locator is ephemeral
+# (NROS_LOCATOR at run time), so none is baked here.
+
+[image.linux_talker]
+board = "linux"
+launch = "talker.launch.xml"
+
+[image.linux_talker_xrce]
+board = "linux"
+launch = "talker.launch.xml"
+rmw = "xrce"
+
+[image.linux_talker_cyclonedds]
+board = "linux"
+launch = "talker.launch.xml"
+rmw = "cyclonedds"
+
+[image.linux_listener]
+board = "linux"
+launch = "listener.launch.xml"
+
+[image.linux_listener_xrce]
+board = "linux"
+launch = "listener.launch.xml"
+rmw = "xrce"
+
+[image.linux_listener_cyclonedds]
+board = "linux"
+launch = "listener.launch.xml"
+rmw = "cyclonedds"
+
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"

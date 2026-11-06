@@ -121,14 +121,6 @@ board = "linux"
 launch = "system.launch.xml"
 rmw = "xrce"
 
-[image.linux_action_client]
-board = "linux"
-launch = "action_client.launch.xml"
-
-[image.linux_action_server]
-board = "linux"
-launch = "action_server.launch.xml"
-
 [image.linux_robot1]
 board = "linux"
 launch = "multihost.launch.xml"
@@ -168,17 +160,9 @@ locator = "tcp/192.0.3.1:7870"
 [image.freertos_br_robot2.run]
 nic = { bridge = "qemu-br" }
 
-[image.linux_service_client]
-board = "linux"
-launch = "service_client.launch.xml"
-
 [image.linux_service_inprocess]
 board = "linux"
 launch = "service_inprocess.launch.xml"
-
-[image.linux_service_server]
-board = "linux"
-launch = "service_server.launch.xml"
 
 [image.linux_showcase]
 board = "linux"

@@ -179,7 +179,7 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
-bringup = "src/demo_bringup"
+bringup = "src/service_bringup"
 image = "linux_service_server"
 target_dir = "target-fixtures"
 
@@ -189,7 +189,7 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
-bringup = "src/demo_bringup"
+bringup = "src/service_bringup"
 image = "linux_service_client"
 target_dir = "target-fixtures"
 
@@ -228,7 +228,7 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
-bringup = "src/demo_bringup"
+bringup = "src/action_bringup"
 image = "linux_action_server"
 target_dir = "target-fixtures"
 
@@ -238,9 +238,168 @@ platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
-bringup = "src/demo_bringup"
+bringup = "src/action_bringup"
 image = "linux_action_client"
 target_dir = "target-fixtures"
+
+# phase-535 W4 (RFC-0122 D1) — the linux example pairs as images of the
+# behaviour bringups, all three RMWs. The cells keep Kind::Example and resolve
+# through nros_tests::fixtures::workspace_image.
+[[workspace_fixture]]
+id = "workspace-rust-native-talker"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker"
+target_dir = "target-fixtures"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-talker-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_xrce"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-talker-cyclonedds"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_cyclonedds"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures-cyclonedds"
+
+# Also the host listener the Zephyr Rust cells and the Nucleo-F767ZI Renode
+# twin (`zephyr_renode_twin`) observe through, so the lanes that build them
+# build it too (`serves`).
+[[workspace_fixture]]
+id = "workspace-rust-native-listener"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_listener"
+target_dir = "target-fixtures"
+serves = ["zephyr,rust,zenoh", "zephyr-nucleo-f767zi,c,zenoh"]
+
+[[workspace_fixture]]
+id = "workspace-rust-native-listener-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_xrce"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-listener-cyclonedds"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_cyclonedds"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures-cyclonedds"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-service-server-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "linux_service_server_xrce"
+codegen_out = "build-workspace-codegen/service_bringup"
+target_dir = "target-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-service-server-cyclonedds"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "linux_service_server_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+target_dir = "target-fixtures-cyclonedds"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-service-client-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "linux_service_client_xrce"
+codegen_out = "build-workspace-codegen/service_bringup"
+target_dir = "target-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-service-client-cyclonedds"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "linux_service_client_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+target_dir = "target-fixtures-cyclonedds"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-action-server-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "linux_action_server_xrce"
+codegen_out = "build-workspace-codegen/action_bringup"
+target_dir = "target-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-action-server-cyclonedds"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "linux_action_server_cyclonedds"
+codegen_out = "build-workspace-codegen/action_bringup"
+target_dir = "target-fixtures-cyclonedds"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-action-client-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "linux_action_client_xrce"
+codegen_out = "build-workspace-codegen/action_bringup"
+target_dir = "target-fixtures-xrce"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-action-client-cyclonedds"
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "linux_action_client_cyclonedds"
+codegen_out = "build-workspace-codegen/action_bringup"
+target_dir = "target-fixtures-cyclonedds"
 
 # phase-263 B2 (Track D) — the real-time multi-sched-task workspace. Pure-cargo
 # `nros::main!(launch = "demo_bringup")` resolves the 2-sched-task table ([tasks.high] +
@@ -554,9 +713,9 @@ platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
-bringup = "src/demo_bringup"
+bringup = "src/service_bringup"
 image = "linux_service_server"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/service_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 [[workspace_fixture]]
@@ -565,9 +724,9 @@ platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
-bringup = "src/demo_bringup"
+bringup = "src/service_bringup"
 image = "linux_service_client"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/service_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 # phase-263 A4 (actions, C) — the Fibonacci action cross-process round-trip (issue 0096): the
@@ -579,9 +738,9 @@ platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
-bringup = "src/demo_bringup"
+bringup = "src/action_bringup"
 image = "linux_action_server"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/action_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 [[workspace_fixture]]
@@ -590,10 +749,167 @@ platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
-bringup = "src/demo_bringup"
+bringup = "src/action_bringup"
 image = "linux_action_client"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/action_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
+
+# phase-535 W4 (RFC-0122 D1) — the linux example pairs as images of the
+# behaviour bringups, all three RMWs. The cells keep Kind::Example and resolve
+# through nros_tests::fixtures::workspace_image.
+[[workspace_fixture]]
+id = "workspace-c-native-talker"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "linux_talker"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-talker-xrce"
+platform = "linux"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_xrce"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-talker-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_cyclonedds"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-listener"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "linux_listener"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-listener-xrce"
+platform = "linux"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_xrce"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-listener-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_cyclonedds"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-service-server-xrce"
+platform = "linux"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "linux_service_server_xrce"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-service-server-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "linux_service_server_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-service-client-xrce"
+platform = "linux"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "linux_service_client_xrce"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-service-client-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "linux_service_client_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-action-server-xrce"
+platform = "linux"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "linux_action_server_xrce"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-action-server-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "linux_action_server_cyclonedds"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-action-client-xrce"
+platform = "linux"
+lang = "c"
+rmw = "xrce"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "linux_action_client_xrce"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-action-client-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "linux_action_client_cyclonedds"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
 
 # phase-326 — per-host C entries for the multihost demo. `linux_robot1_entry`
 # bakes the talker, `linux_robot2_entry` the listener, each consuming its
@@ -905,9 +1221,9 @@ platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
-bringup = "src/demo_bringup"
+bringup = "src/service_bringup"
 image = "linux_service_server"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/service_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 [[workspace_fixture]]
@@ -916,9 +1232,9 @@ platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
-bringup = "src/demo_bringup"
+bringup = "src/service_bringup"
 image = "linux_service_client"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/service_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 # phase-263 A4 (actions, C++) — the Fibonacci action cross-process round-trip (issue 0096): server
@@ -930,9 +1246,9 @@ platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
-bringup = "src/demo_bringup"
+bringup = "src/action_bringup"
 image = "linux_action_server"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/action_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
 [[workspace_fixture]]
@@ -941,10 +1257,167 @@ platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
-bringup = "src/demo_bringup"
+bringup = "src/action_bringup"
 image = "linux_action_client"
-codegen_out = "build-workspace-codegen/demo_bringup"
+codegen_out = "build-workspace-codegen/action_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
+
+# phase-535 W4 (RFC-0122 D1) — the linux example pairs as images of the
+# behaviour bringups, all three RMWs. The cells keep Kind::Example and resolve
+# through nros_tests::fixtures::workspace_image.
+[[workspace_fixture]]
+id = "workspace-cpp-native-talker"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "linux_talker"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-talker-xrce"
+platform = "linux"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_xrce"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-talker-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_cyclonedds"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-listener"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "linux_listener"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-listener-xrce"
+platform = "linux"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_xrce"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-listener-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_cyclonedds"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-service-server-xrce"
+platform = "linux"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "linux_service_server_xrce"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-service-server-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "linux_service_server_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-service-client-xrce"
+platform = "linux"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "linux_service_client_xrce"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-service-client-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "linux_service_client_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-action-server-xrce"
+platform = "linux"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "linux_action_server_xrce"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-action-server-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "linux_action_server_cyclonedds"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-action-client-xrce"
+platform = "linux"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "linux_action_client_xrce"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-xrce-linux/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-action-client-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "linux_action_client_cyclonedds"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-cyclonedds-linux/cmake"
 
 # phase-326 — per-host C++ entries for the multihost demo (per-host models
 # `multihost_robot<N>_model.yaml`). Consumed by tests/multihost_e2e.rs (native_cpp cell).
@@ -1686,21 +2159,52 @@ dir = "examples/linux/rust/talker"
 serves = ["zephyr-cortex-m,c,zenoh"]
 
 [[fixture]]
-id = "native-rust-listener"
 platform = "linux"
 lang = "rust"
-dir = "examples/linux/rust/listener"
-# phase-524 W4c -- also the host listener of the Nucleo-F767ZI's Renode smoke
-# cell (`zephyr_renode_twin`), so the lane that builds the twin builds it too.
-# phase-535 W0.b -- and the observer of the Zephyr Rust workspace entry
-# (`zephyr.rs` `test_zephyr_workspace_entry_native_sim_e2e`), whose talker is
-# the tutorial String talker.
-serves = ["zephyr,rust,zenoh", "zephyr-nucleo-f767zi,c,zenoh"]
+dir = "examples/linux/rust/lifecycle-node"
+
+# phase-535 W4 — two C++ leaves stay too, for tests that need what the
+# workspace program does not have: `cpp/service-client` is a hand-written
+# `main` (workspace_metadata's census-from-an-application case, whose first
+# blocking call is `wait_for_service`), and `cpp/action-client` reads
+# `NROS_TEST_GOAL_ORDER` (linux_api's goal-rejection case). Zenoh only; their
+# pair cells run the workspace images.
+[[fixture]]
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/linux/cpp/service-client"
+
+[[fixture]]
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/linux/cpp/action-client"
+
+# phase-535 W4 — the Rust service and action LEAVES stay, because the opt-in
+# ROS-edition lane (`just ros-editions build-e2e-fixtures`) builds their
+# `linux[_<rmw>]_<edition>` images; the editions move with the W6
+# configurations. Their pair cells run the workspace images. One plain row each
+# keeps the leaf compiling where a user would copy it.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "examples/linux/rust/service-server"
 
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/linux/rust/lifecycle-node"
+dir = "examples/linux/rust/service-client"
+
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "examples/linux/rust/action-server"
+
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "examples/linux/rust/action-client"
 
 [[fixture]]
 platform = "linux"
@@ -1717,31 +2221,11 @@ platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/entry-poc"
 
-[[fixture]]
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/service-server"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/service-client"
-
 # RFC-0041 / Phase 239 — callback-receive variant of the service client.
 [[fixture]]
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/service-client-callback"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/action-server"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/action-client"
 
 # Phase 275 W2 (#102 H3) — linux/rust variant examples that shipped with zero
 # fixtures. Bare rows (default = ["rmw-zenoh"], same shape as the base examples
@@ -2266,27 +2750,6 @@ image = "linux_xrce"
 # over XRCE (the xrce IdleWake cell).
 serves = ["zephyr-cortex-m,c,xrce"]
 
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "xrce"
-dir = "examples/linux/rust/listener"
-image = "linux_xrce"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "xrce"
-dir = "examples/linux/rust/service-server"
-image = "linux_xrce"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "xrce"
-dir = "examples/linux/rust/service-client"
-image = "linux_xrce"
-
 # issue 2088 — the XRCE half of issue 2081's `take_request_with_info`, measured
 # against a live Agent and a stock ROS 2 client
 # (`xrce_ros2_interop::test_xrce_service_reports_the_stock_clients_request_id`).
@@ -2357,64 +2820,6 @@ lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/linux/rust/talker"
 image = "linux_cyclonedds"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "cyclonedds"
-dir = "examples/linux/rust/listener"
-image = "linux_cyclonedds"
-
-# issue #233 cell 1 — native rust CycloneDDS service pair (proven to deliver:
-# server sees the request, client prints `Result of add_two_ints: 5`).
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "cyclonedds"
-dir = "examples/linux/rust/service-server"
-image = "linux_cyclonedds"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "cyclonedds"
-dir = "examples/linux/rust/service-client"
-image = "linux_cyclonedds"
-
-# issue #234 — native rust CycloneDDS action pair (now delivers: server sees
-# `Received goal request with order`, client prints the order-10 Fibonacci
-# `Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`). Fixed by routing
-# `RosAction::register_protocol_types` through the generic
-# `nros_rmw::register_type_descriptor` seam (was a cfg-gated named-backend call
-# that compiled out of the example build → ActionCreationFailed). Consumed by
-# tests/linux_api.rs (test_native_cyclonedds_rust_action).
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "cyclonedds"
-dir = "examples/linux/rust/action-server"
-image = "linux_cyclonedds"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "cyclonedds"
-dir = "examples/linux/rust/action-client"
-image = "linux_cyclonedds"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "xrce"
-dir = "examples/linux/rust/action-server"
-image = "linux_xrce"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-rmw = "xrce"
-dir = "examples/linux/rust/action-client"
-image = "linux_xrce"
 
 # Bench / stress fixtures (default features).
 [[fixture]]
@@ -3090,12 +3495,6 @@ lang = "c"
 rmw = "cyclonedds"
 dir = "examples/linux/c/talker"
 
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/linux/c/listener"
-
 # Issue 0073 — C E2E-safety listener (polls rclc_polling_subscription_take_validated).
 # Its CMakeLists forces NROS_SAFETY_E2E=ON, so the harness build (zenoh only —
 # the CRC path) needs no extra flag. Consumed by tests/safety_e2e.rs::
@@ -3117,54 +3516,6 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/safety-listener"
 
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "xrce"
-dir = "examples/linux/c/listener"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/linux/c/listener"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/linux/c/service-server"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "xrce"
-dir = "examples/linux/c/service-server"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/linux/c/service-server"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/linux/c/service-client"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "xrce"
-dir = "examples/linux/c/service-client"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/linux/c/service-client"
-
 # RFC-0041 / Phase 239 — C service-client callback variant (zenoh + cyclonedds
 # for the 239.8 backend-parity check).
 [[fixture]]
@@ -3178,42 +3529,6 @@ platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/linux/c/service-client-callback"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/linux/c/action-server"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "xrce"
-dir = "examples/linux/c/action-server"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/linux/c/action-server"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/linux/c/action-client"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "xrce"
-dir = "examples/linux/c/action-client"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/linux/c/action-client"
 
 # Issue 0454 / phase-354 W3 — the raw-goal WIRE proof. Not an example (it is a
 # regression probe, so it lives under packages/testing/ per the examples-are-
@@ -3282,60 +3597,6 @@ lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/linux/cpp/talker"
 
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/linux/cpp/listener"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "xrce"
-dir = "examples/linux/cpp/listener"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/linux/cpp/listener"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/linux/cpp/service-server"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "xrce"
-dir = "examples/linux/cpp/service-server"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/linux/cpp/service-server"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/linux/cpp/service-client"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "xrce"
-dir = "examples/linux/cpp/service-client"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/linux/cpp/service-client"
-
 # RFC-0041 / Phase 239 — C++ callback variants. service-client-callback gets
 # zenoh + cyclonedds (239.8 backend-parity); action-client-callback gets zenoh.
 [[fixture]]
@@ -3355,42 +3616,6 @@ platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/action-client-callback"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/linux/cpp/action-server"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "xrce"
-dir = "examples/linux/cpp/action-server"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/linux/cpp/action-server"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/linux/cpp/action-client"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "xrce"
-dir = "examples/linux/cpp/action-client"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/linux/cpp/action-client"
 
 [[fixture]]
 id = "cpp-parameters"

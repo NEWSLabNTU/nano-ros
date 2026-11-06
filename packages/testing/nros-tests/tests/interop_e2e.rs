@@ -49,11 +49,10 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, Rmw as FixtureRmw, Ros2DdsProcess,
-        Ros2Process, ZenohRouter, build_cmake_leaf_rmw, build_native_c_example_rmw,
-        build_ros2_string_interop, build_zenoh_constrained_link_probe, lifecycle_node_binary,
-        listener_binary, require_ros2, require_ros2_cyclonedds, ros2_env_setup_with_locator,
-        service_client_binary, service_server_binary, talker_binary,
-        zenoh_service_info_client_binary,
+        Ros2Process, ZenohRouter, build_cmake_leaf_rmw, build_ros2_string_interop,
+        build_zenoh_constrained_link_probe, lifecycle_node_binary, listener_binary, require_ros2,
+        require_ros2_cyclonedds, ros2_env_setup_with_locator, service_client_binary,
+        service_server_binary, talker_binary, zenoh_service_info_client_binary,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
     output, unmet,
@@ -204,8 +203,8 @@ fn spawn_nano_zenoh(bin: &Path, name: &str, locator: &str) -> ManagedProcess {
 
 /// Resolve (building if needed) a native Cyclone C example binary, or skip
 /// when the fixtures aren't set up (`just cyclonedds setup`).
-fn nano_cyclone_c_binary(case: &str, binary: &str) -> std::path::PathBuf {
-    build_native_c_example_rmw(case, binary, FixtureRmw::Cyclonedds).unwrap_or_else(|e| {
+fn nano_cyclone_c_binary(case: &str, _binary: &str) -> std::path::PathBuf {
+    nros_tests::fixtures::linux_pair_image("c", case, FixtureRmw::Cyclonedds).unwrap_or_else(|e| {
         panic!("linux/c/{case} cyclonedds fixture not built (run `just cyclonedds setup`): {e:?}")
     })
 }

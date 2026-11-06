@@ -1114,12 +1114,90 @@ fn cargo_build_args() -> Vec<String> {
     args
 }
 
+/// phase-535 W4 (RFC-0122 D1) — the linux example pairs moved into the language
+/// workspaces' behaviour bringups. A resolver asked for one of the moved leaves
+/// (`linux/<lang>/{listener,service-*,action-*}`, plain build) answers with its
+/// workspace image, through `fixtures::workspace_image` — the one place that
+/// knows the mapping. The talker leaf is not moved: it is the road witness.
+///
+/// A leaf that still has a manifest row for `rmw` answers for itself: a few
+/// pair leaves stay until W6 because they carry a configuration (the Rust
+/// service/action leaves' ROS-edition images, the C++ action client's
+/// `NROS_TEST_GOAL_ORDER`, the C++ service client's hand-written `main`).
+fn moved_linux_pair(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
+    let leaf = format!("examples/{name}");
+    let rmw_name = match rmw {
+        Rmw::Zenoh => "zenoh",
+        Rmw::Xrce => "xrce",
+        Rmw::Cyclonedds => "cyclonedds",
+    };
+    let leaf_answers = if project_root().join(&leaf).join("Cargo.toml").is_file() {
+        // A cargo leaf's plain row for this RMW (a configured row — link-tls,
+        // peer mode — is not the plain build this resolver is asked for).
+        crate::fixtures::groups::select_rmw_row(&leaf, rmw).is_ok()
+    } else {
+        crate::fixtures::lane::manifest_rows()
+            .iter()
+            .any(|r| r.kind == "fixture" && r.dir == leaf && r.coord.2 == rmw_name)
+    };
+    if leaf_answers {
+        return None;
+    }
+    linux_pair_workspace_image(name, rmw)
+}
+
+/// The workspace image of the linux pair role `name` (`linux/<lang>/<case>`),
+/// or `None` when `name` is not a pair role.
+fn linux_pair_workspace_image(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
+    use crate::{
+        fixtures::workspace_image::{PairRole, resolve_coord},
+        matrix::{Lang, PlatformId, Rmw as MRmw},
+    };
+    let (lang, case) = name.strip_prefix("linux/")?.split_once('/')?;
+    let lang = match lang {
+        "rust" => Lang::Rust,
+        "c" => Lang::C,
+        "cpp" => Lang::Cpp,
+        _ => return None,
+    };
+    let role = match case {
+        "listener" => PairRole::Listener,
+        "service-server" => PairRole::ServiceServer,
+        "service-client" => PairRole::ServiceClient,
+        "action-server" => PairRole::ActionServer,
+        "action-client" => PairRole::ActionClient,
+        _ => return None,
+    };
+    let rmw = match rmw {
+        Rmw::Zenoh => MRmw::Zenoh,
+        Rmw::Xrce => MRmw::Xrce,
+        Rmw::Cyclonedds => MRmw::Cyclonedds,
+    };
+    Some(resolve_coord(PlatformId::Linux, lang, rmw, role))
+}
+
+/// [`moved_linux_pair`] by (language dir, case): the workspace image of one
+/// role of a linux pair, for a caller that names the old leaf's case
+/// (`"listener"`, `"service-server"`, …). `lang` is `rust`, `c` or `cpp`.
+pub fn linux_pair_image(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    linux_pair_workspace_image(&format!("linux/{lang}/{case}"), rmw).unwrap_or_else(|| {
+        Err(TestError::BuildFailed(format!(
+            "linux/{lang}/{case} is not a moved pair role (phase-535 W4)"
+        )))
+    })
+}
+
 pub fn build_example(
     name: &str,
     binary_name: &str,
     _features: Option<&[&str]>,
     target: Option<&str>,
 ) -> TestResult<PathBuf> {
+    if target.is_none()
+        && let Some(r) = moved_linux_pair(name, Rmw::Zenoh)
+    {
+        return r;
+    }
     let root = project_root();
     let example_dir = root.join(format!("examples/{}", name));
 
@@ -1241,6 +1319,9 @@ impl Rmw {
 /// --target-dir <rmw.target_dir()>` invocation belongs to
 /// `just <plat> build-fixtures`.
 pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    if let Some(r) = moved_linux_pair(name, rmw) {
+        return r;
+    }
     let root = project_root();
     let example_dir = root.join(format!("examples/{}", name));
 
@@ -1292,6 +1373,9 @@ pub fn build_example_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<
 /// `cmake -B build-<rmw> -S . -DNROS_RMW=<rmw> && cmake --build
 /// build-<rmw>` invocation belongs to `just <plat> build-fixtures`.
 pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
+    if let Some(r) = moved_linux_pair(name, rmw) {
+        return r;
+    }
     build_cmake_leaf_rmw(&format!("examples/{}", name), binary_name, rmw)
 }
 
@@ -5397,7 +5481,7 @@ pub fn build_native_listener_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_CELL,
         Rmw::Cyclonedds => &CYCLONEDDS_CELL,
     };
-    cell.get_or_try_init(|| build_example_rmw("linux/rust/listener", "listener", rmw))
+    cell.get_or_try_init(|| linux_pair_image("rust", "listener", rmw))
         .map(|p| p.as_path())
 }
 
@@ -6045,7 +6129,7 @@ pub fn build_freertos_cmake_example_rmw(
 /// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
-        .get_or_try_init(|| build_example("linux/rust/listener", "listener", None, None))
+        .get_or_try_init(|| linux_pair_image("rust", "listener", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -6593,18 +6677,14 @@ pub fn listener_tls_binary() -> PathBuf {
 /// Build native-rs-action-server (cached)
 pub fn build_native_action_server() -> TestResult<&'static Path> {
     NATIVE_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/action-server", "action-server", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "action-server", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-action-client (cached)
 pub fn build_native_action_client() -> TestResult<&'static Path> {
     NATIVE_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/action-client", "action-client", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "action-client", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -6805,18 +6885,14 @@ pub fn action_client_binary() -> PathBuf {
 /// Build native-rs-service-server (cached)
 pub fn build_native_service_server() -> TestResult<&'static Path> {
     NATIVE_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/service-server", "service-server", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "service-server", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-service-client (cached)
 pub fn build_native_service_client() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/service-client", "service-client", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "service-client", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7091,7 +7167,7 @@ pub fn build_xrce_talker() -> TestResult<&'static Path> {
 /// Build the xrce-listener example binary (cached).
 pub fn build_xrce_listener() -> TestResult<&'static Path> {
     XRCE_LISTENER_BINARY
-        .get_or_try_init(|| build_example_rmw("linux/rust/listener", "listener", Rmw::Xrce))
+        .get_or_try_init(|| linux_pair_image("rust", "listener", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -7172,18 +7248,14 @@ pub fn px4_companion_binary() -> PathBuf {
 /// Build the xrce-service-server example binary (cached).
 pub fn build_xrce_service_server() -> TestResult<&'static Path> {
     XRCE_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/service-server", "service-server", Rmw::Xrce)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "service-server", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
 /// Build the xrce-service-client example binary (cached).
 pub fn build_xrce_service_client() -> TestResult<&'static Path> {
     XRCE_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/service-client", "service-client", Rmw::Xrce)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "service-client", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -7292,18 +7364,14 @@ pub fn xrce_service_info_server_binary() -> PathBuf {
 /// Build the xrce-action-server example binary (cached).
 pub fn build_xrce_action_server() -> TestResult<&'static Path> {
     XRCE_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/action-server", "action-server", Rmw::Xrce)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "action-server", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
 /// Build the xrce-action-client example binary (cached).
 pub fn build_xrce_action_client() -> TestResult<&'static Path> {
     XRCE_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example_rmw("linux/rust/action-client", "action-client", Rmw::Xrce)
-        })
+        .get_or_try_init(|| linux_pair_image("rust", "action-client", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -7659,7 +7727,7 @@ pub fn build_c_talker() -> TestResult<&'static Path> {
 /// Build c-listener example (cached)
 pub fn build_c_listener() -> TestResult<&'static Path> {
     C_LISTENER_BINARY
-        .get_or_try_init(|| build_example_cmake_rmw("linux/c/listener", "c_listener", Rmw::Zenoh))
+        .get_or_try_init(|| linux_pair_image("c", "listener", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7678,18 +7746,14 @@ pub fn c_listener_binary() -> PathBuf {
 /// Build c-service-server example (cached)
 pub fn build_c_service_server() -> TestResult<&'static Path> {
     C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/c/service-server", "c_service_server", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("c", "service-server", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
 /// Build c-service-client example (cached)
 pub fn build_c_service_client() -> TestResult<&'static Path> {
     C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/c/service-client", "c_service_client", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("c", "service-client", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7709,9 +7773,7 @@ pub fn build_c_service_client_callback() -> TestResult<&'static Path> {
 /// Build c-action-server example (cached)
 pub fn build_c_action_server() -> TestResult<&'static Path> {
     C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/c/action-server", "c_action_server", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("c", "action-server", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7736,9 +7798,7 @@ pub fn build_action_raw_goal_probe() -> TestResult<&'static Path> {
 /// Build c-action-client example (cached)
 pub fn build_c_action_client() -> TestResult<&'static Path> {
     C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/c/action-client", "c_action_client", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("c", "action-client", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7796,7 +7856,7 @@ pub fn build_c_xrce_talker() -> TestResult<&'static Path> {
 /// Build c-xrce-listener example (cached)
 pub fn build_c_xrce_listener() -> TestResult<&'static Path> {
     C_XRCE_LISTENER_BINARY
-        .get_or_try_init(|| build_example_cmake_rmw("linux/c/listener", "c_listener", Rmw::Xrce))
+        .get_or_try_init(|| linux_pair_image("c", "listener", Rmw::Xrce))
         .map(|p| p.as_path())
 }
 
@@ -7903,18 +7963,14 @@ pub fn build_cpp_talker() -> TestResult<&'static Path> {
 /// Build cpp-listener example (cached)
 pub fn build_cpp_listener() -> TestResult<&'static Path> {
     CPP_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/cpp/listener", "cpp_listener", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("cpp", "listener", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
 /// Build cpp-service-server example (cached)
 pub fn build_cpp_service_server() -> TestResult<&'static Path> {
     CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/cpp/service-server", "cpp_service_server", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("cpp", "service-server", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -7971,9 +8027,7 @@ pub fn cpp_service_client_binary() -> PathBuf {
 /// Build cpp-action-server example (cached)
 pub fn build_cpp_action_server() -> TestResult<&'static Path> {
     CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw("linux/cpp/action-server", "cpp_action_server", Rmw::Zenoh)
-        })
+        .get_or_try_init(|| linux_pair_image("cpp", "action-server", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 

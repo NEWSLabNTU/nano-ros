@@ -230,13 +230,14 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: Action server (Fibonacci example)
-cd examples/linux/rust/action-server && nros configure && nros build
-./build/linux/target/debug/action-server
+cd examples/workspaces/rust && nros run action_bringup:linux_action_server
 
 # Terminal 3: Action client
-cd examples/linux/rust/action-client && nros configure && nros build
-./build/linux/target/debug/action-client
+cd examples/workspaces/rust && nros run action_bringup:linux_action_client
 ```
+
+The action pair is two images of the Rust workspace's `action_bringup`
+(phase-535 W4). `nros run` builds an image if it is stale.
 
 **Zephyr action tests:**
 ```bash

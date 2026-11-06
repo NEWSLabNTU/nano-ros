@@ -30,8 +30,8 @@ use nros_tests::{
         build_cpp_action_client_callback, build_cpp_action_server, build_cpp_listener,
         build_cpp_service_client_callback, build_cpp_service_server, build_cpp_talker,
         build_native_c_example_rmw, build_native_cpp_example_rmw, build_native_listener_rmw,
-        build_native_service_client_callback, build_native_talker_rmw, require_cmake,
-        require_zenohd, zenohd_unique,
+        build_native_service_client_callback, build_native_talker_rmw, linux_pair_image,
+        require_cmake, require_zenohd, zenohd_unique,
     },
     output::{
         ACTION_EXECUTING_MARKER, ACTION_GOAL_ACCEPTED_PREFIX, ACTION_GOAL_NO_RESPONSE_PREFIX,
@@ -72,18 +72,6 @@ impl Language {
         match self {
             Language::C => "C",
             Language::Cpp => "C++",
-        }
-    }
-
-    /// Substring that every language-native binary prints after
-    /// `rclcpp::init_in` / `rclc_support_init` succeeds. Used to assert that
-    /// the binary started cleanly.
-    fn init_marker(&self) -> &'static str {
-        match self {
-            // C binaries print `"Support initialized"` from `rclc_support_init`.
-            Language::C => "Support initialized",
-            // C++ binaries print `"Node created: <name>"` from `rclcpp::create_node`.
-            Language::Cpp => "Node created",
         }
     }
 
@@ -219,11 +207,14 @@ fn test_native_listener_starts(
     let binary = lang.listener_binary();
     let mut listener = spawn_native(&binary, lang, "listener", &locator);
 
-    let output = listener.collect_until(lang.init_marker(), Duration::from_secs(30));
+    // phase-535 W4: the workspace image prints its role's ready line, not the
+    // old leaf's `rclc_support_init` / `create_node` banner.
+    let marker = nros_tests::output::LISTENER_READY_MARKER;
+    let output = listener.collect_until(marker, Duration::from_secs(30));
 
     eprintln!("{} listener output:\n{}", lang.label(), output);
     assert!(
-        output.contains(lang.init_marker()),
+        output.contains(marker),
         "{} listener failed to initialize.\nOutput:\n{}",
         lang.label(),
         output
@@ -240,11 +231,14 @@ fn test_native_service_server_starts(
     let binary = lang.service_server_binary();
     let mut server = spawn_native(&binary, lang, "service-server", &locator);
 
-    let output = server.collect_until(lang.init_marker(), Duration::from_secs(30));
+    // phase-535 W4: the workspace image prints its role's ready line, not the
+    // old leaf's `rclc_support_init` / `create_node` banner.
+    let marker = nros_tests::output::SERVICE_SERVER_READY_MARKER;
+    let output = server.collect_until(marker, Duration::from_secs(30));
 
     eprintln!("{} service server output:\n{}", lang.label(), output);
     assert!(
-        output.contains(lang.init_marker()),
+        output.contains(marker),
         "{} service server failed to initialize.\nOutput:\n{}",
         lang.label(),
         output
@@ -261,11 +255,14 @@ fn test_native_action_server_starts(
     let binary = lang.action_server_binary();
     let mut server = spawn_native(&binary, lang, "action-server", &locator);
 
-    let output = server.collect_until(lang.init_marker(), Duration::from_secs(30));
+    // phase-535 W4: the workspace image prints its role's ready line, not the
+    // old leaf's `rclc_support_init` / `create_node` banner.
+    let marker = nros_tests::output::ACTION_SERVER_READY_MARKER;
+    let output = server.collect_until(marker, Duration::from_secs(30));
 
     eprintln!("{} action server output:\n{}", lang.label(), output);
     assert!(
-        output.contains(lang.init_marker()),
+        output.contains(marker),
         "{} action server failed to initialize.\nOutput:\n{}",
         lang.label(),
         output
@@ -903,8 +900,8 @@ fn cyclone_talker_binary(lang: Language) -> PathBuf {
 
 fn cyclone_listener_binary(lang: Language) -> PathBuf {
     match lang {
-        Language::C => build_native_c_example_rmw("listener", "c_listener", Rmw::Cyclonedds),
-        Language::Cpp => build_native_cpp_example_rmw("listener", "cpp_listener", Rmw::Cyclonedds),
+        Language::C => linux_pair_image("c", "listener", Rmw::Cyclonedds),
+        Language::Cpp => linux_pair_image("cpp", "listener", Rmw::Cyclonedds),
     }
     .require("native cyclonedds listener")
 }
@@ -1354,9 +1351,20 @@ fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter) {
 // =============================================================================
 
 /// Resolve a native Cyclone C/C++ example role binary (prebuilt), or skip.
+/// The pair roles whose linux leaves moved into the workspaces (phase-535 W4);
+/// a variant such as `service-client-callback` is still a leaf.
+fn is_moved_pair_role(case: &str) -> bool {
+    matches!(
+        case,
+        "listener" | "service-server" | "service-client" | "action-server" | "action-client"
+    )
+}
+
 fn cyclone_role_binary(lang: Language, case: &str) -> PathBuf {
     let snake = case.replace('-', "_");
     match lang {
+        Language::C if is_moved_pair_role(case) => linux_pair_image("c", case, Rmw::Cyclonedds),
+        Language::Cpp if is_moved_pair_role(case) => linux_pair_image("cpp", case, Rmw::Cyclonedds),
         Language::C => {
             let bin = format!("c_{snake}");
             build_native_c_example_rmw(case, &bin, Rmw::Cyclonedds)

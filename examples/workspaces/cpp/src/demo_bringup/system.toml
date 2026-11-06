@@ -126,22 +126,6 @@ board = "linux"
 launch = "multihost.launch.xml"
 args = { host = "robot2" }
 
-[image.linux_action_client]
-board = "linux"
-launch = "action_client.launch.xml"
-
-[image.linux_action_server]
-board = "linux"
-launch = "action_server.launch.xml"
-
-[image.linux_service_client]
-board = "linux"
-launch = "service_client.launch.xml"
-
-[image.linux_service_server]
-board = "linux"
-launch = "service_server.launch.xml"
-
 [image.threadx]
 board = "threadx-linux"
 

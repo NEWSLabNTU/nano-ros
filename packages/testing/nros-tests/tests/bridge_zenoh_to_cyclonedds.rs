@@ -63,7 +63,7 @@ use nros_tests::{
     count_pattern,
     fixtures::{
         DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, Rmw, Ros2DdsProcess, ZenohRouter,
-        build_bridge_zenoh_to_cyclonedds_fwd, build_native_c_example_rmw, require_ros2_cyclonedds,
+        build_bridge_zenoh_to_cyclonedds_fwd, linux_pair_image, require_ros2_cyclonedds,
         require_zenohd, talker_binary, zenohd_unique,
     },
 };
@@ -77,7 +77,7 @@ const MSG_TYPE: &str = "std_msgs/msg/String";
 ///
 /// HARD FAILURE, not a skip — issue 1124; see the module note above.
 fn nano_cyclone_listener() -> PathBuf {
-    build_native_c_example_rmw("listener", "c_listener", Rmw::Cyclonedds)
+    linux_pair_image("c", "listener", Rmw::Cyclonedds)
         .require("linux/c/listener cyclonedds (run `just cyclonedds setup`)")
 }
 
