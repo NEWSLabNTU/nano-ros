@@ -2,7 +2,7 @@
 
 nano-ros defines its own RMW (ROS Middleware) abstraction in the `nros-rmw` crate. While it serves the same purpose as the official [ros2/rmw](https://github.com/ros2/rmw) interface -- decoupling the client library from the transport backend -- it is designed for `no_std` embedded systems and uses a fundamentally different approach.
 
-This page documents the architectural differences and trade-offs. For trait signatures and the available backends, see [RMW API Reference](../../reference/rmw-api.html). For implementing a new backend, see [Write a custom RMW backend](../../extending/custom-rmw.html) in the user book. [RMW API vs upstream](rmw-vs-upstream.md) compares the two APIs symbol by symbol.
+This page documents the architectural differences and trade-offs. For trait signatures and the available backends, see [RMW API reference](../../reference/platform-api.html#the-rmw-api). For implementing a new backend, see [Write a custom RMW backend](../../extending/custom-rmw.html) in the user book. [RMW API vs upstream](rmw-vs-upstream.md) compares the two APIs symbol by symbol.
 
 ## Why We Revised `rmw.h`
 

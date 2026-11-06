@@ -49,7 +49,7 @@ instead: it is four functions, not a backend.
    (`create_session`, `drive_io`, `create_publisher`, `publish`,
    `create_subscription`, `take`, and the service and client slots). The
    header states each slot's signature, ownership and blocking rules; the
-   [RMW API](../reference/rmw-api.md) reference links its rendered form. A
+   [RMW API](../reference/platform-api.md#the-rmw-api) reference links its rendered form. A
    slot the backend leaves `NULL` is reported as unsupported.
 
 2. Keep to the I/O model. The buffers are the caller's: `publish_raw` gets a
@@ -193,7 +193,7 @@ is a C++ backend over PX4's uORB, with its `package.xml` and `nros-rmw.toml`.
 
 ## See also
 
-- [RMW API](../reference/rmw-api.md): the C table and the in-tree backends.
+- [RMW API](../reference/platform-api.md#the-rmw-api): the C table and the in-tree backends.
 - [Internals → RMW API vs upstream](../internals/rmw/rmw-vs-upstream.html):
   every difference from `rmw.h`, for a porter coming from a ROS 2 backend.
 - [Internals → RMW Zenoh protocol](../internals/rmw/zenoh-protocol.html): the
