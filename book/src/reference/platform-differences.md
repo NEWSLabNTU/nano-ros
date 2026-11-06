@@ -72,6 +72,36 @@ The split into four traits maps directly onto zenoh-pico's `unix/network.c` inte
 
 zenoh-pico uses `strlen`, `memcpy`, `errno`, etc. directly. Bare-metal targets that link `picolibc` or `newlib-nano` satisfy these for free; the trait exists for `no_std` targets without a C runtime, which forward to Rust implementations.
 
+## Logging (`nros-log`)
+
+Where a log record goes, by the platform linked into the image:
+
+| Target | Delivery |
+| --- | --- |
+| POSIX | `fprintf(stderr, "[<LEVEL>] <name>: <msg>\n")` |
+| Zephyr | `LOG_INF`, `LOG_WRN` and so on, in module `nros` (`printk` if `CONFIG_LOG=n`) |
+| NuttX | `syslog(priority, "%s", buf)` |
+| FreeRTOS, ThreadX | a UART writer the board registers with `nros_platform_register_log_writer` at `run()` |
+| Bare metal (MPS2-AN385) | QEMU semihosting, `hstderr` |
+| Bare metal (STM32F4) | `defmt::info!("{=str}", msg)` |
+
+Severities, as the `nros_platform_log_write` ABI numbers them. They are not
+`rcutils_log_severity_t`'s numbers, and there is no `Unset` level in Rust
+(`Logger::unset_level()` is the "no level of its own" state). The C surface's
+`rcl_log_severity_t` uses rcutils's numbers, `UNSET` included.
+
+| Severity | Value | Use |
+| --- | --- | --- |
+| `Trace` | 0 | per-instruction detail; compiled out unless the ceiling allows it |
+| `Debug` | 1 | diagnostics while developing |
+| `Info` | 2 | normal events worth one line; the process default |
+| `Warn` | 3 | unexpected but recoverable |
+| `Error` | 4 | errors the caller surfaces; the system continues |
+| `Fatal` | 5 | unrecoverable; the system is about to stop |
+
+The `log` crate bridge (`nros-log/log-compat`) maps Trace, Debug, Info, Warn
+and Error both ways, and Fatal to `log`'s Error one way.
+
 ## Common pitfalls
 
 For platform-specific gotchas (DMA buffer placement, ephemeral port conflicts, picolibc errno TLS, QEMU clock synchronization, Z_FEATURE_INTEREST mutex exhaustion, etc.), see [Platform Porting Pitfalls](../extending/porting-pitfalls.md).
