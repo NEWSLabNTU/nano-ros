@@ -260,6 +260,11 @@ px4: (platform "px4")
 [group("main")]
 renode-nucleo: (platform "renode-nucleo")
 
+# The same starter's `nros flash --monitor` onto an attached Nucleo-F767ZI; it
+# fails up front naming the board it awaits (phase-537 W13).
+[group("main")]
+nucleo-f767zi-bench: (platform "nucleo-f767zi-bench")
+
 # phase-517 W4: not a platform chapter, but it rides the same harness. One bare
 # `nros setup` for a Linux and a FreeRTOS image, then `nros build --all`.
 # book/src/guide/build/install-options.md — "Provision a whole workspace".
