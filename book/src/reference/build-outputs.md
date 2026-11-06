@@ -212,3 +212,59 @@ than wrapping.
 For the generation side of this — which root file is written, why the entry is
 derived rather than hand-written, and what the coordinate directory holds — see
 [What `nros build` generates](../tutorial/grow-your-workspace.md#what-nros-build-generates).
+
+## The generated entry
+
+| Part of the entry | Derived from |
+| --- | --- |
+| the `no_std` / `no_main` shell | the board's `entry_kind` |
+| board boilerplate (`use panic_semihosting as _;`, `esp_app_desc!()`) | the board descriptor's `entry.crate_root_extra` |
+| `nros::main!(launch = …, args = …)` | the image |
+
+| `nros::main!` form | Meaning |
+| --- | --- |
+| `nros::main!(launch = "demo_bringup")` | the bringup's default launch file |
+| `nros::main!(launch = "demo_bringup:sim.launch.xml")` | a named launch file |
+| `nros::main!(launch = "…:multihost.launch.xml", args = [("host", "robot1")])` | one host's slice, by launch argument |
+| `nros::main!(model = "demo_bringup")` | deprecated: names the resolved model instead of its input |
+| `nros::main!(board = X)` | retired: a compile error |
+
+On the CMake driver, the generated root holds one
+`nano_ros_add_executable(<name> BOARD … BRINGUP … LAUNCH … LANG … TYPED DEPLOY …)`
+per image, with no `SOURCES`: the verb generates the translation unit that
+carries `main`. `nano_ros_entry(NAME … LANG … BRINGUP … LAUNCH …)` is the
+hand-written spelling, in an entry taken over with `nros materialize`.
+
+## Measured footprint
+
+Per `(platform, transport, backend, profile)`, built from the in-tree
+examples. RAM is `data + bss`, after `--gc-sections`. The release profile is
+cargo's default; the size profile is opt-level `s`, fat LTO and `strip`.
+
+| Platform | Transport | Backend | Profile | text | data | bss | RAM |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| mps2-an385-baremetal (Cortex-M3) | ethernet (smoltcp) | zenoh-pico | release | 177.4 KB | 67.0 KB | 91.7 KB | 158.7 KB |
+| mps2-an385-baremetal | ethernet | zenoh-pico | size | 158.3 KB | 67.0 KB | 91.7 KB | 158.7 KB |
+| mps2-an385-baremetal | serial (no IP stack) | zenoh-pico | release | 128.6 KB | 25.2 KB | 75.8 KB | 101.0 KB |
+| mps2-an385-baremetal | serial | zenoh-pico | size, with the size knobs | 116.1 KB | 25.2 KB | 75.8 KB | 101.0 KB |
+| stm32f4 (Cortex-M4F) ¹ | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
+| stm32f4 ¹ | ethernet | zenoh-pico | size | 138.1 KB | 13.7 KB | 123.0 KB | 136.7 KB |
+| mps2-an385-freertos (lwIP) | ethernet | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB ² | 3.3 MB |
+| mps2-an385-baremetal | serial (custom transport) | XRCE-DDS | size, 24 KB heap, tight XRCE pools ³ | 60.3 KB | 25.2 KB | 8.8 KB | ~34 KB |
+
+¹ Historical: the stm32f4 board crates have left the tree, so nothing in the
+tree reproduces these rows.
+² lwIP's heap and the FreeRTOS task stacks: configured headroom, not nano-ros.
+³ `NROS_XRCE_STREAM_HISTORY=4`, `NROS_XRCE_CUSTOM_TRANSPORT_MTU=512`,
+`NROS_XRCE_MAX_SUBSCRIBERS=1`, `NROS_XRCE_MAX_SERVICE_SERVERS=1`,
+`NROS_XRCE_MAX_SERVICE_CLIENTS=1`, `NROS_XRCE_SUBSCRIBER_RING_DEPTH=1`,
+`NROS_XRCE_BUFFER_SIZE=256`.
+
+| Static heap (`NROS_HEAP_SIZE`, bare metal) | Peak working set | Recommended |
+| --- | --- | --- |
+| zenoh-pico over TCP | ~16 KB | 24–32 KB |
+| zenoh-pico over serial | below TCP | 16–24 KB |
+| XRCE-DDS | ~3 KB | ~8 KB |
+
+These are direct-mode figures. A `nros::main!` image needs the board's
+default heap, because its executor backing is one large allocation.

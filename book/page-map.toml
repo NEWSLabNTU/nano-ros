@@ -235,7 +235,7 @@ path = "guide/contracts/cpp-workspaces.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["build/cpp-workspaces.md"]
-note = "Mixed: W7 splits it into Declare QoS in a contract, Size an image from its contract, Contracts for a bringup with no launch file and Fix a contract refusal; W5 takes the contract section into Tutorial 8; W8 takes the workspace layout into Organize a larger workspace"
+note = "Contract sections only: W8 moved its layout, node, bringup, image and entry parts into guide/build/organize-a-larger-workspace and guide/build/mix-languages. W7 splits the rest into Declare QoS in a contract, Size an image from its contract, Contracts for a bringup with no launch file and Fix a contract refusal; W5 takes the contract section into Tutorial 8"
 
 [[page]]
 old = "internals/measuring-static-memory.md"
@@ -249,11 +249,11 @@ note = "Measure static memory (W7); W10 moves its background part into backgroun
 [[page]]
 old = "user-guide/component-and-entry-pkg.md"
 book = "user"
-path = "guide/build/roles.md"
+path = "guide/build/organize-a-larger-workspace.md"
 action = "move"
-batch = "p537-w1-guide"
-was = ["build/roles.md"]
-note = "Mixed (a reference page): W8 merges it with growing-your-workspace and cpp-workspaces into Organize a larger workspace; its tables go to Reference (W11)"
+batch = "p537-w8"
+was = ["build/roles.md", "guide/build/roles.md"]
+note = "Organize a larger workspace (W8): the task parts of build/roles and the layout and multi-node parts of guide/contracts/cpp-workspaces; its image-key table went to reference/system-toml and its generated-entry table to reference/build-outputs. W5 may still send the rest of tutorial/grow-your-workspace here"
 
 [[page]]
 old = "getting-started/workspace-mixed-language.md"
@@ -262,7 +262,7 @@ path = "guide/build/mix-languages.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["build/mixed-language.md"]
-note = "Mix languages (W8)"
+note = "Mix languages (W8): one how-to; the C++ node shape lives in Organize a larger workspace"
 
 [[page]]
 old = "getting-started/workspace-languages.md"
@@ -278,7 +278,7 @@ path = "guide/build/configure-an-image.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["build/configuration.md"]
-note = "Configure an image (W8): its task part stays; its key tables go to Reference, system.toml keys (W11)"
+note = "Configure an image (W8): the task part. Its key tables went to reference/system-toml, the footprint and heap tables to reference/build-outputs, the size and log knobs to reference/environment-variables; the timer-overrun part to guide/realtime/pick-a-scheduling-model. The SDK-path and runtime variables were already in reference/environment-variables"
 
 [[page]]
 old = "build/build-and-configure.md"
@@ -686,6 +686,13 @@ action = "keep"
 batch = "w4-reference"
 generated = "scripts/gen-config-surface.py"
 note = "gitignored; written by `just book` before mdbook"
+
+[[page]]
+book = "user"
+path = "reference/system-toml.md"
+action = "new phase-537"
+batch = "p537-w8"
+note = "system.toml keys: hand-kept, because no generator owns the [image.*] schema yet (configuration-surface lists Kconfig symbols). W8 moved the key tables of guide/build/configure-an-image and build/roles here; W11 generates it from the CLI's schema and folds reference/nros-bridge-toml in"
 
 [[page]]
 old = "reference/nros-bridge-toml.md"

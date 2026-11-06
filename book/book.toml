@@ -35,6 +35,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/guide/build/roles.html" = "organize-a-larger-workspace.html"
 "/extending/rmw-vs-upstream.html" = "../internals/rmw/rmw-vs-upstream.html"
 "/extending/zenoh-pico-symbols.html" = "../internals/rmw/zenoh-pico-symbols.html"
 "/extending/xrce-dds-symbols.html" = "../internals/rmw/xrce-dds-symbols.html"
@@ -71,7 +72,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/communicate/qos-status-events.html" = "../guide/rmw/qos-status-events.html"
 "/build/cpp-workspaces.html" = "../guide/contracts/cpp-workspaces.html"
 "/realtime/static-memory.html" = "../guide/contracts/measure-static-memory.html"
-"/build/roles.html" = "../guide/build/roles.html"
+"/build/roles.html" = "../guide/build/organize-a-larger-workspace.html"
 "/build/mixed-language.html" = "../guide/build/mix-languages.html"
 "/build/configuration.html" = "../guide/build/configure-an-image.html"
 "/build/build-profiles.html" = "../guide/build/build-profiles.html"
@@ -133,7 +134,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/getting-started/workspace-from-app-node.html" = "../tutorial/grow-your-workspace.html"
 "/getting-started/workspace-cpp.html" = "../guide/contracts/cpp-workspaces.html"
 "/getting-started/workspace-mixed-language.html" = "../guide/build/mix-languages.html"
-"/user-guide/component-and-entry-pkg.html" = "../guide/build/roles.html"
+"/user-guide/component-and-entry-pkg.html" = "../guide/build/organize-a-larger-workspace.html"
 "/user-guide/message-generation.html" = "../reference/message-generation.html"
 "/user-guide/configuration.html" = "../guide/build/configure-an-image.html"
 "/user-guide/build-profiles.html" = "../guide/build/build-profiles.html"

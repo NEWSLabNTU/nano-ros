@@ -551,7 +551,7 @@ Several processes are several images.
 Nothing on this page is Rust-specific except the node's source file. C and
 C++ node packages, and workspaces that mix languages, are
 [C / C++ multi-node workspaces](../guide/contracts/cpp-workspaces.md) and
-[Mixed-language workspaces](../guide/build/mix-languages.md). [Role reference](../guide/build/roles.md)
+[Mixed-language workspaces](../guide/build/mix-languages.md). [Role reference](../guide/build/organize-a-larger-workspace.md)
 lists every field of the three roles.
 
 ## Design background
