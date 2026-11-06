@@ -488,7 +488,7 @@ asks for. Take the smallest step that does what you need:
 |---|---|---|
 | another panic policy, build profile, Kconfig fragment or capability | an `[image.*]` key | yes |
 | one step before the runtime starts (open a device, check a calibration) | `before_boot` | yes |
-| hardware setup every image on a board needs (clocks, DMA) | the board's `init_hardware`, in a [board package](../extending/board-trait.md) | yes |
+| hardware setup every image on a board needs (clocks, DMA) | the board's `init_hardware`, in a [board package](../extending/add-a-board.md) | yes |
 | startup none of the above can express | `nros materialize` | no |
 
 **`before_boot`** names a function in one of the image's node packages:

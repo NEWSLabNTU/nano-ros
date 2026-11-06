@@ -167,8 +167,8 @@ cmake --build build
 - [Build outputs](../../reference/build-outputs.md): where each target
   family's artifact lands.
 - [How a build becomes an image](../../background/how-a-build-becomes-an-image.md).
-- [Vendor Overlay Board Crate](../../extending/vendor-overlay.md) and
-  [STM32F4 Out of Tree](../../extending/stm32f4-out-of-tree.md): board code
+- [Add a board](../../extending/add-a-board.md) and its
+  [out-of-tree example](../../extending/add-a-board.md#example): board code
   that lives in your tree.
 
 ## Design background

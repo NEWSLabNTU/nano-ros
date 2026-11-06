@@ -948,7 +948,7 @@ because nothing else can.
 
 ### Documentation contradicts a decided policy
 
-`book/src/extending/vendor-overlay.md` §"Naming convention" tells vendors to
+`book/src/extending/add-a-board.md` §"Naming convention" tells vendors to
 *"Publish to crates.io as `nros-board-<vendor>-<chip>-<rtos>`"*. RFC-0040 D1:
 *"No `nros*` crate is ever published."* The book page is the first thing a new
 vendor reads. Fix regardless of everything else here.
@@ -1484,7 +1484,7 @@ two different generators, one of which zenoh-pico's session ID actually reads.
 
 **The "~60–80 lines for a second board" claim is HALF right, and the honest
 number is 205.** W5.f wrote the complete file set for a hypothetical S32K344
-board (`book/src/extending/freertos-board.md`) and measured it:
+board (`book/src/extending/add-a-board.md`) and measured it:
 
 | | lines |
 |---|---:|

@@ -344,7 +344,7 @@ This is the approach used by platforms with mature C networking stacks (lwIP on 
 
 ## Next steps
 
-- [Custom Board Package](custom-board.md) -- create a board crate that ties your platform to specific hardware
+- [Custom Board Package](add-a-board.md) -- create a board crate that ties your platform to specific hardware
 - [Platform API Reference](../reference/platform-api.md) -- complete method signatures for all traits
 - [Platform Porting Pitfalls](porting-pitfalls.md) -- QEMU networking and timing issues
 

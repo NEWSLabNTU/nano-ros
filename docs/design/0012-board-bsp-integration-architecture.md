@@ -334,7 +334,7 @@ Suggest **Phase 152 — Board / BSP abstraction layer**:
    `packages/rmw/zenoh/zpico-sys/build/manifest.rs`.
 3. **148.3 — Overlay-crate template + docs.**
    Cookiecutter under `templates/overlay-board/`; book chapter under
-   `book/src/extending/vendor-overlay.md`.
+   `book/src/extending/add-a-board.md`.
 4. **148.4 — Migrate ThreadX overlays.** `nros-board-threadx-linux`
    + `nros-board-threadx-qemu-riscv64` become overlays on
    `nros-board-threadx`.
@@ -344,7 +344,7 @@ Suggest **Phase 152 — Board / BSP abstraction layer**:
    NuttX needs `Rust.mk` wiring; ESP-IDF needs `extra_components`
    bridge to `esp-idf-sys`; PlatformIO needs the
    `EXTRA_COMPONENT_DIRS` workaround documented.
-7. **148.7 — Doc page.** `book/src/extending/board-integration.md`
+7. **148.7 — Doc page.** `book/src/extending/add-a-board.md`
    explaining the consumption matrix above.
 8. **148.8 — Migration of existing examples.** Each
    `examples/<plat>/...` README points at the appropriate
