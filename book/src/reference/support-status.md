@@ -41,7 +41,7 @@ procurement view, including parts with no board package, is
 
 These pins are **decisions, not lags** — they move only with a
 reason, tested together (see
-[Integrating into a Vendored Tree](../guide/build/existing-cmake-or-vendor-tree.md)).
+[Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md)).
 
 ## RMW backends — versions and interop pairing
 
@@ -103,5 +103,5 @@ store; the base version is the upstream release.
 - [Per-RMW Feature Matrix](rmw-feature-matrix.md)
 - [Board Support Levels](board-support-levels.md) (generated) ·
   [Supported Boards](supported-boards.md) (procurement view)
-- [Integrating into a Vendored Tree](../guide/build/existing-cmake-or-vendor-tree.md)
+- [Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md)
   — pinning and upgrading these from a company tree
