@@ -377,11 +377,18 @@ Two questions, two owners:
 
 Applied so far:
 - RTIC (no row) moved to Internals in #3145.
-- PX4 SITL has its registry row and a `px4` probe track (#3150). The track
-  waits on [issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md)
-  (the release ships no PX4 POSIX archives), and the page stays in User guide ›
-  Platforms meanwhile, by maintainer ruling (2026-11-05): an exception to
-  Principle 3 that ends when the track replays.
+- PX4 SITL — record of the state on 2026-11-06, not yet applied. The
+  registry row `px4-sitl@Px4` and the `px4` probe track are **not on `main`**:
+  they are on PR #3169 (`registry-px4-row`, open, failing
+  `check-flavour-lanes`), which replaced the closed #3150. This line said the
+  row and track had landed with #3150; they had not.
+  [Phase-542](../roadmap/phase-542-px4-supported-platform.md) W1 plans the gate
+  rule the row needs. The track, once landed, waits on
+  [issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md) (the
+  release ships no PX4 POSIX archives; phase-541 ships them, phase-542 W3–W4
+  finish the user-tier build). The page stays in User
+  guide › Platforms meanwhile, by maintainer ruling (2026-11-05): an exception
+  to Principle 3 that ends when the track replays.
 - Arm FVP leaves the user book (no replaying track, RFC-0115 D4).
 
 ### D9 — Length budgets, no stubs, languages in tabs
@@ -596,6 +603,8 @@ task for every language.
 
 ## Changelog
 
+- 2026-11-06 — D8's PX4 line corrected: the row and probe track are on open
+  PR #3169, not on `main` (#3150 was closed). Phase-542 owns the rest.
 - 2026-11-05 — PX4 SITL placed in User guide › Platforms, waiting on issue
   2289 (maintainer ruling).
 - 2026-11 — Retitled as the book charter. Principles, Topic levels and

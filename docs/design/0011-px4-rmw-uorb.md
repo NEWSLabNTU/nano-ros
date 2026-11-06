@@ -3,7 +3,7 @@ rfc: 0011
 title: "PX4 RMW (`nros-rmw-uorb`) — design notes"
 status: Stable
 since: 2026-04
-last-reviewed: 2026-04
+last-reviewed: 2026-11
 implements-tracked-by: []
 supersedes: []
 superseded-by: null
@@ -11,8 +11,14 @@ superseded-by: null
 
 # PX4 RMW (`nros-rmw-uorb`) — design notes
 
-**Status:** v1 landed (Phase 90.1–90.5; 90.6/90.7 remaining). See
-Phase 90 roadmap.
+**Status (2026-11-06):** v1 landed, and
+[Phase 90](../roadmap/archived/phase-90-px4-rmw-uorb.md) is complete,
+including the first example (90.6) and the SITL integration test (90.7). The
+backend has since been ported to C++ (phase-115 K.4,
+`packages/rmw/uorb/nros-rmw-uorb/`); its service slots return UNSUPPORTED, so
+§7's question is open again for the C++ backend (90.4b's paired-topic services
+were in the retired Rust implementation). The strategy around this backend,
+and what "PX4 supported" means, is [RFC-0039](0039-px4-integration-architecture.md).
 
 This document focuses on the nano-ros-specific design choices. For the
 underlying async / WorkQueue / uORB story, see
@@ -202,12 +208,18 @@ async model documented in `px4-rs/docs/async-model.md`.
 ## 10. Risks
 
 - **uORB metadata ABI drift.** If PX4 changes `orb_metadata` layout,
-  `px4-sys` regenerates bindings and we recompile. Low risk; the
-  struct has been stable for years.
+  `px4-sys` regenerates bindings and we recompile. This is not hypothetical:
+  PX4 v1.16 added `message_hash`, `o_id` and `o_queue` (the 6-field layout,
+  RFC-0039), and phase-232.4 refreshed the fallback declaration to match. The
+  uORB path is raw `repr(C)`, so a layout change is a silent ABI break; the
+  defence is the stable-tag pin (`v1.17.0`, `nros-sdk-index.toml`
+  `[source.px4-autopilot]`) and moving it only on a PX4 release.
 - **Symbol collision in std mock.** `px4_uorb`'s mock broker is
   process-global. Tests must call `px4_uorb::_reset_broker()` +
   `nros_rmw_uorb::_reset()` between cases or they see stale state.
   Both helpers are gated behind `feature = "test-helpers"`.
-- **PX4 build integration not yet exercised.** Phase 90.6 will write
-  the first example module; until then we only know the wrapper crate
-  compiles, not that it links into PX4 successfully.
+- ~~**PX4 build integration not yet exercised.**~~ Retired: phase 90.6
+  and 90.7 built the example modules into `px4_sitl_default` and booted them,
+  and `nros-tests --test px4_sitl` runs the C++ backend in SITL today. The
+  remaining risk is evidence, not linkage: the nightly `px4 sitl` job is not
+  yet green (issue 2243), tracked by phase-542.

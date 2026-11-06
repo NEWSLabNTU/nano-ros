@@ -6,10 +6,10 @@ type: bug
 area: [px4, testing, ci]
 severity: medium
 found: 2026-11-04
-related: [phase-466, phase-521]
+related: [phase-466, phase-521, phase-542]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the nightly PX4 SITL job's red comes from the harness, not the code under test; phase-521, which added the job, is archived.
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the nightly PX4 SITL job's red comes from the harness, not the code under test; phase-521, which added the job, is archived. [Phase-542](../roadmap/phase-542-px4-supported-platform.md) W5 (the job as a `daily` lane) depends on the fix.
 
 ## Measured
 

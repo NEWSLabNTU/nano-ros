@@ -4,7 +4,7 @@ title: "PX4 integration architecture (uORB in-firmware + companion XRCE; 1.16 me
 status: Draft
 since: 2026-06
 last-reviewed: 2026-11
-implements-tracked-by: [phase-232, phase-233, phase-541]
+implements-tracked-by: [phase-232, phase-233, phase-541, phase-542]
 supersedes: []
 superseded-by: null
 ---
@@ -24,6 +24,17 @@ version-robustness mechanism, and (4) lists the concrete revision opportunities
 for PX4 1.16+. RFC-0011 remains the detail spec for the `nros-rmw-uorb` backend;
 this RFC is the strategy around it.
 
+**Status (2026-11-06).** Both tracks this RFC opened have landed: the uORB
+track as [phase-232](../roadmap/archived/phase-232-px4-uorb-1.16-support.md)
+(revision opportunities 1–4, and the stable pin of OQ3) and the XRCE companion
+as [phase-233](../roadmap/archived/phase-233-px4-xrce-companion.md)
+(opportunity 5, and OQ2's one-source-two-emitters). PX4 has since been admitted
+as a Tier 1 framework (RFC-0113 D9, RFC-0112 D3). What is left is evidence:
+D1 below states what "PX4 supported" means in RFC-0114 D10 status words, and
+[phase-542](../roadmap/phase-542-px4-supported-platform.md) plans the work to
+reach it. The sections from "Motivation" to "Open questions" are the 2026-06
+analysis; where a claim there is no longer true, a dated note says so.
+
 ## Motivation / problem
 
 - nano-ros ships a uORB RMW backend (RFC-0011) that runs *inside* PX4 firmware,
@@ -37,6 +48,8 @@ this RFC is the strategy around it.
 - The PX4-Autopilot pin (`third-party/px4/PX4-Autopilot`) is already
   `v1.17.0-alpha1` — the post-versioning era — so this is current, not
   speculative.
+  *(2026-11-06: the pin is now the stable tag `v1.17.0`, SHA `d6f12ad`, set by
+  phase-232.5; `[source.px4-autopilot]` in `nros-sdk-index.toml`.)*
 
 ## Design
 
@@ -82,12 +95,16 @@ philosophies, which sets their maintenance contracts:
   #1) just to keep generating the live topic set. Maintenance is *reactive to PX4
   releases*.
 - **XRCE (companion)** is version-buffered by the agent translation node → it is
-  comparatively turnkey but currently **untapped** (no example, no px4_msgs CDR
-  emit). Work here is *additive*, not reactive.
+  comparatively turnkey. Work here is *additive*, not reactive. *(2026-06 it was
+  untapped: no example, no px4_msgs CDR emit. 2026-11-06: phase-233 delivered
+  the CDR `px4_msgs` emitter, the companion example
+  `examples/px4/rust/companion/`, and services, pub/sub and actions interop
+  against real PX4 SITL and `rmw_fastrtps`.)*
 
-So the roadmap carries two parallel tracks: **Phase 232** (keep uORB working on new
-PX4 — the codegen fixes) and **Phase 233** (stand up the XRCE companion path — CDR
-emitter + example).
+So the roadmap carried two parallel tracks: **Phase 232** (keep uORB working on
+new PX4 — the codegen fixes) and **Phase 233** (stand up the XRCE companion path
+— CDR emitter + example). Both are complete and archived. Phase-542 carries
+the evidence work for both positions.
 
 ### `px4-rs` and the version-robustness mechanism
 
@@ -151,6 +168,11 @@ The archives hold no PX4 code, so this does not narrow which PX4 versions work.
 
 ## Revision opportunities (PX4 1.16+)
 
+*(2026-11-06: all five are done. 1–4 landed in phase-232 — 232.1 enumerates
+`msg/versioned/`, 232.2 carries `MESSAGE_VERSION`, 232.3 computes the FNV-1a
+`message_hash`, 232.4 refreshes the 6-field `orb_metadata`. 5 landed in
+phase-233. The list is kept as the record of the analysis.)*
+
 Ordered by real impact (severity re-scoped after confirming the canonical-metadata
 resolution):
 
@@ -179,6 +201,40 @@ resolution):
    confirm BEST_EFFORT to interop with MicroXRCEAgent. This is the mainstream PX4
    ROS 2 path and currently has no example.
 
+## Decisions
+
+### D1 — What "PX4 supported" means (2026-11-06)
+
+Support is the registry's word (RFC-0114 D10, RFC-0115 D3), so this RFC states
+PX4's target in those words rather than as a tier.
+
+- **PX4 SITL is the supported board.** Its row, `px4-sitl@Px4` (`external =
+  "PX4-Autopilot"`, `runs = "host"`), targets **Verified on host (daily)**: the
+  hosted `px4-sitl` job in `nightly.yml` runs the `(Px4, Cpp, Uorb, Pubsub)`
+  cell green every night, and the row's cadence names that job (RFC-0122
+  D8/D9). Until then the row reads a manual status with the date of the last
+  hand run, and the book says so.
+- **Both positions are part of SITL's support.** The in-firmware uORB cell is
+  the delivering cell. The XRCE companion cell `(Px4, Rust, Xrce, Pubsub)` and
+  the bridge's ROS 2 leg each run in a named CI job; a cell that no job runs is
+  not counted as support.
+- **The supported build is the installed track.** A reader builds a PX4
+  module from a release with no checkout and no cargo step: the release ships
+  the PX4 POSIX archives and headers ("Installed toolchain" above, phase-541),
+  PX4's configure calls no
+  dev-tier verb, and the `px4` probe track replays the book page.
+- **Pixhawk hardware is not claimed.** The same module builds for `px4_fmu-*`
+  targets, but nano-ros has no run on a flight controller. The most a
+  hardware row can read, while no hardware runner exists, is **Boots on
+  hardware, manual (date)**, and taking that on is deferred (OQ5). Until then
+  no user page teaches a Pixhawk build or upload as supported.
+- **uORB services stay deferred** (RFC-0011 §7). The C++ backend's service
+  slots return UNSUPPORTED; a PX4 user who needs services uses the XRCE
+  companion.
+
+The work to meet D1 is phase-541 (the prebuilt archives) and phase-542
+(everything else). This RFC moves to Stable when it is met.
+
 ## Alternatives considered
 
 - **Fold everything into RFC-0011.** Rejected — 0011 is a Stable, focused
@@ -203,19 +259,32 @@ resolution):
    `msg/versioned/`) into both `px4-msg-codegen` (raw `repr(C)`, uORB) and nano-ros's
    `rosidl-codegen` (CDR, XRCE). Rationale: `px4_msgs` *is* generated from these
    files, so the format is compatible; one source keeps both emitters lock-stepped to
-   the same PX4 pin with no external ament dependency. Caveats to resolve: (a)
+   the same PX4 pin with no external ament dependency. **Resolved
+   (phase-233.1): adopted** — `generate_px4_msgs` flattens `msg/` and
+   `msg/versioned/` into one `px4_msgs` package. Caveats to resolve: (a)
    `rosidl-codegen` must accept the PX4-`.msg` `MESSAGE_VERSION` constant; (b) the
    `version` field is a normal payload field — generate it, and the agent-side
    translation node handles cross-version matching; (c) nano-ros's `type_hash`
    ("TypeHashNotSupported" on Humble) is orthogonal to PX4's `message_hash` — DDS
    matching is by topic+type name, so the XRCE path needs the right type *names*
    (`px4_msgs::msg::*`) and QoS, not the uORB hash.
-3. **Pin policy — pin a stable PX4 *tag*, not `main` (recommended).** The current
+3. ~~Pin policy~~ **Resolved (phase-232.5): pinned to the stable tag
+   `v1.17.0`.** The 2026-06 recommendation follows. **Pin policy — pin a stable
+   PX4 *tag*, not `main` (recommended).** The current
    `v1.17.0-alpha1` pin is risky: the in-firmware uORB path is raw `repr(C)`, so an
    alpha `orb_metadata`/struct change is a silent ABI break. Pin the latest *stable*
    release (e.g. 1.16.x once tagged) for reproducible, deployable builds; bump on PX4
    releases; track `main` only in an opt-in forward-compat CI lane. The companion
    XRCE path tolerates version skew (translation node); the uORB path does not.
+4. **The registry questions D1 depends on** — a status word for a host +
+   manual row, a gate rule for an `external` row with no board crate, and what
+   backs `cadence = "daily"` for a platform whose cells are all Gated.
+   RFC-0114 D10 names them open; phase-542 W0 asks the maintainer.
+5. **Pixhawk hardware posture** — whether nano-ros takes on a recorded run on
+   a `px4_fmu-*` target and ships its NuttX archives (phase-542 W8.b,
+   deferred).
+6. **Multi-component mapping and per-board selectability** — RFC-0003 §7 and
+   RFC-0072 §4 (phase-542 W9).
 
 ## Changelog
 
@@ -233,3 +302,9 @@ resolution):
   releases; XRCE additive) and the two parallel roadmap tracks.
 - 2026-11-06 — **decision: the PX4 POSIX archives and headers ship prebuilt in the
   release** ("Installed toolchain" above; RFC-0097 D13; phase-541, issue 2289).
+- 2026-11-06 — revised. Status line added: phase-232 and phase-233 are
+  complete, so revision opportunities 1–5 and OQ1–OQ3 are resolved (the
+  "untapped" XRCE claim and the `v1.17.0-alpha1` pin corrected in dated notes;
+  the pin is `v1.17.0`). D1 added: PX4 SITL targets **Verified on host
+  (daily)**; Pixhawk hardware is not claimed. OQ4–OQ6 added, owned by
+  phase-542, which this RFC now tracks. Stays Draft until D1 is met.
