@@ -28,7 +28,7 @@
 - [2. What you just built](./tutorial/what-you-just-built.md)
 - [3. Add a second node](./tutorial/add-a-second-node.md)
 - [4. Pick and configure the RMW](./tutorial/pick-the-rmw.md)
-- [Your own message package](./tutorial/your-own-message.md)
+- [5. Your own message](./tutorial/your-own-message.md)
 - [Project layout](./tutorial/grow-your-workspace.md)
 - [ROS 2 Interoperability](./tutorial/talk-to-ros2.md)
 

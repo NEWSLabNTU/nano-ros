@@ -69,6 +69,10 @@ tutorial-3: (platform "tutorial-3")
 [group("main")]
 tutorial-4: (platform "tutorial-4")
 
+# book/src/tutorial/your-own-message.md — Tutorial 5 (phase-537 W5).
+[group("main")]
+tutorial-5: (platform "tutorial-5")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]
