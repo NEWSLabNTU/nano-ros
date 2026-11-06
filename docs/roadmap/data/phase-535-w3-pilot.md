@@ -18,6 +18,11 @@ the pilot lost: 846 s against 1258 s with the serial builder. But it is still
 3.8 % slower than the leaves on the same builder, while CPU stays 17 % lower.
 See "Re-measure with the fan-out builder" below.
 
+**Final re-measure, after the shared jobserver pool (#3159): wall clock -7.7 %,
+CPU -20 %.** Still under the 10 % bar on wall clock. The maintainer ruled
+before this run (2026-11-05) that the phase proceeds whatever it shows, so W3
+is done and W4 starts. See "Final re-measure" below.
+
 ## Method
 
 `scripts/dev/measure-fixture-build.sh --platform freertos --no-sccache`, which
@@ -228,8 +233,49 @@ What would move it further. None of these was tried; each needs a decision:
 3. Share a Rust target across the images of one (board, rmw), as in the
    section above.
 
+## Final re-measure (2026-11-06), after the shared pool
+
+The last lever: the freertos leaf stage and workspace stage share one
+jobserver pool, and fan-out drivers under an inherited pool join it (#3159).
+The maintainer's ruling was to re-measure once and then proceed, whatever the
+result.
+
+Method as above: `scripts/dev/measure-fixture-build.sh --platform freertos
+--no-sccache`, cold, from the same checkout. BEFORE is `origin/main` at
+`01ddf793df` (the leaves). AFTER is the pilot (#3129) rebased onto it.
+The runs were interleaved B, A, B, A. A sampler logged the 1-min load every
+30 s during each run. A run would be discarded if its mean load went above
+2 x nproc (40). None did.
+
+| run | tree | wall | CPU (user+sys) | 1-min load mean (min / max) | kept |
+| --- | --- | --- | --- | --- | --- |
+| r1 | before | 807 s | 2415 s | 19.5 (4.1 / 31.4) | yes |
+| r2 | after | 627 s | 1737 s | 16.9 (8.5 / 27.9) | yes |
+| r3 | before | 549 s | 1906 s | 15.9 (8.8 / 23.9) | yes |
+| r4 | after | 624 s | 1719 s | 16.1 (7.1 / 27.7) | yes |
+
+Every run exited 0.
+
+| | before (r1, r3) | after (r2, r4) | change of the means |
+| --- | --- | --- | --- |
+| wall | 678 s | 626 s | **-7.7 %** |
+| CPU | 2161 s | 1728 s | **-20 %** |
+
+- The two after runs agree within 3 s. The two before runs differ by 258 s,
+  so the wall clock change rests mostly on r1. The interleaved pairs give
+  -22 % (r1/r2) and +14 % (r3/r4). Neither run is dropped for its result.
+- CPU agrees with the earlier series: about -20 %, from the C/C++ side
+  building one kernel, lwIP and C runtime per configure.
+- The absolute CPU numbers are about half the earlier series' (4501 s before,
+  3738 s after), on both trees and by the same method. The cause was not
+  found. `/usr/bin/time` counts only reaped descendants, so a process the pool
+  no longer reaps would drop out. Compare runs within one series only.
+- By the 10 % rule the result is still under the bar on wall clock. The
+  maintainer's ruling applies, and the phase proceeds to W4.
+
 ## Raw logs
 
 Not committed (`tmp/` is gitignored). They are the `tmp/p535/w3-*.md` and
 `tmp/p535/w3-*-build.log` files in the measuring checkout. The re-measure is `tmp/p535/fo-f2-*`, `tmp/p535/fo-f3-*`
-(`.md`, `.meta` with `uptime`, `-build.log`) and `tmp/p535/load-f{2,3}.log`.
+(`.md`, `.meta` with `uptime`, `-build.log`) and `tmp/p535/load-f{2,3}.log`. The final re-measure is `tmp/p535/remeasure/` (`summary`,
+`<run>.report`, `<run>.load`, `<run>.build.log`).
