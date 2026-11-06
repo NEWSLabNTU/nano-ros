@@ -133,85 +133,11 @@ Rust's calling convention. The shared crate
 single-symbol shim: the Rust side just calls the externs and registers
 the result with `critical_section::set_impl!`.
 
-## Adding a new port — checklist
+## Design
 
-1. **Decide A vs B.** Greenfield host build with a Rust crate
-   available? Path A. Vendor RTOS with a C SDK and no Rust toolchain
-   on the build machine? Path B.
-2. **Mirror, don't extend.** Implement every symbol in the three
-   headers. The drift gate fails the build otherwise. If the kernel
-   genuinely cannot provide a primitive, return the documented
-   sentinel value (`-1` for `task_init` on single-task RTOS, `0` for
-   `mutex_*` on single-core no-preempt hardware) rather than skipping
-   the symbol.
-3. **Write the smoke test.** Land a `tests/<port>-c-smoke/` mini-app
-   that links the new C port against the canonical headers and calls
-   a representative symbol from each capability group. Wire it into
-   `just <port> test-c-port`. The smoke tests are the runtime
-   parity layer that the drift gate cannot enforce.
-4. **For platforms that emit `critical_section::Impl`** (i.e. anything
-   that consumes a `critical-section`-using crate),
-   make sure the binary pulls
-   `nros-platform-critical-section` once — it does the
-   `critical_section::set_impl!(PlatformCs)` registration against the
-   canonical externs. Binaries that don't need the global registration
-   don't pay for it.
-5. **Update the drift gate's smoke list** (the
-   `HEADERS_REQUIRE_MACRO` array in
-   `scripts/check-platform-abi-mirror.sh`) if you add a new header.
-   Adding a symbol to an existing header needs no script change — the
-   grep is generic.
-
-## The scalar / opaque-struct boundary
-
-Not every kernel service unifies the same way. The ABI splits into two
-classes, and the split is a **design boundary, not tech debt**:
-
-- **Scalar services — fully unified.** Alloc, sleep, clock, time, yield,
-  random. Their ABI is plain scalars (sizes, millisecond counts, byte
-  buffers) with no host-type in the signature, so a single canonical
-  `nros_platform_*` symbol works for every RTOS and every consumer
-  (core, RMW, vendored zenoh-pico/XRCE) funnels through it. The allocation gate
-  (`check-no-direct-kernel-alloc.sh`) enforces this for allocation; the
-  same pattern extends to the other scalars (the vendored `z_*`/`uxr_*`
-  funnel is checked by a CI relink lane).
-
-- **Opaque-struct services — stay per-RTOS-vendored.** Threading
-  (`mutex`/`condvar`/`task`), the wake primitive, and network sockets
-  carry RTOS-defined structs (`SemaphoreHandle_t`, `TX_MUTEX`,
-  `struct k_mutex`, socket/`NX_*` control blocks) whose layout the
-  vendor owns. A single C ABI cannot name those types portably, so each
-  port vendors its own body and nano-ros exposes only opaque storage
-  (`*_storage_size`/`*_storage_align` + an init/drop pair). This is why
-  the ThreadX board's `tx_byte_allocate` thread-stack / NetX-pool sites
-  are **not** allocation-gate violations — they are the *task* and *net* opaque
-  services, allowed on a documented symbol-scoped lint allowlist.
-
-**Escape hatch (if an opaque service must move later).** The way out is
-NOT to widen the C ABI with host types; it is to pin a **canonical
-fixed-layout struct** in `platform.h`, give each port a compile-time
-`size_probe` / `_Static_assert` that the canonical layout is ≥ the
-vendor struct (so opaque storage stays sound), and let the port
-memcpy/place the vendor object inside the canonical slot. **Net is the
-first candidate** — `platform_net.h` already exposes 29 symbols over an
-opaque socket handle — but it is deferred (out of scope for the platform split)
-until there is a consumer that needs portable socket structs. Threads
-and sync are the least likely to move (deepest struct coupling).
-
-## Why free symbols (not a vtable struct)
-
-The RMW layer uses a `NrosRmwVtable` fn-ptr struct because a single
-binary registers multiple backends at runtime (bridge nodes). Platforms
-are different: **one platform per binary, resolved at link time**. A
-vtable would add an indirection on every clock read, every mutex lock,
-every socket send — overhead with no upside, because there is nobody to
-swap. Free symbols let the linker resolve calls direct, let LTO inline
-across the boundary, and let static analysis treat them like any other
-extern.
-
-The full rationale is in
-[`docs/design/0006-portable-rmw-platform-interface.md`](../../../docs/design/0006-portable-rmw-platform-interface.md)
-under "Platform ABI: free symbols (no vtable)".
+Why the ABI is free symbols rather than a vtable, and why threading and
+sockets stay per-RTOS while the scalar services are unified, is in
+[Internals → Platform API design](../internals/platform/platform-api-design.html).
 
 ## Reference implementations
 
@@ -233,7 +159,7 @@ The POSIX implementation is the canonical reference port.
 
 ## Writing a custom platform
 
-- Conceptual walkthrough: [Custom Platform](../extending/custom-platform.md).
+- The task, step by step: [Add a platform](../extending/add-a-platform.md).
 - Per-platform behaviour matrix:
   [Platform Differences](matrices/platform-differences.md).
 
