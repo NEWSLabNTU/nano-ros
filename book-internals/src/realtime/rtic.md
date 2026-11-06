@@ -17,7 +17,8 @@ contributes one spin task and (optionally) one callback-dispatch task.
 
 For the underlying design — why per-Node dispatch strategies, why tags
 instead of closures, why no `AsyncNode` trait yet — see the user book's
-[Dispatch Strategy](../../background/dispatch-strategy.html).
+[The execution model](../../background/execution-model.html#deferred-dispatch),
+and [Dispatch ABI history](dispatch-abi-history.md).
 
 ## The board key chooses RTIC
 
@@ -505,8 +506,9 @@ at the cost of flexibility: ARM Cortex-M only, no dynamic task creation.
 
 ## See also
 
-- [Dispatch Strategy](../../background/dispatch-strategy.html) —
-  the trichotomy and the per-Node-vs-per-callback rationale.
+- [The execution model, Deferred dispatch](../../background/execution-model.html#deferred-dispatch)
+  and [Dispatch ABI history](dispatch-abi-history.md) — the trichotomy and
+  the per-Node-vs-per-callback rationale.
 - [Role reference](../../guide/build/organize-a-larger-workspace.html) —
   the package roles in full.
 - [Bare-metal Cortex-M3](../../guide/platforms/bare-metal.html) — the MPS2-AN385 board
