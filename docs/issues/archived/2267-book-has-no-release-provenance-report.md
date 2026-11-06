@@ -1,15 +1,16 @@
 ---
 id: 2267
 title: "The book never points a reviewer at a release-specific provenance report, and support-status describes `main`, not the installed release"
-status: open
+status: resolved
 type: bug
 area: book, release
 purpose: [industrial]
 related: [phase-523, rfc-0116]
 found: 2026-11-05
+resolved_in: "docs/523-book-stops branch: Book: name `nros doctor --report` and date support per release"
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round one (2026-11-05); round two counts what is left.
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round one (2026-11-05); round two counts what is left.
 
 Found by phase-523 W3 adoption probe round one, 2026-11-05, on release `nros-0.6.0-nros6` (2026-10-31, 318 commits behind `main` at the time) in a pristine `ubuntu:24.04` container, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n.
 
@@ -22,3 +23,7 @@ Found by phase-523 W3 adoption probe round one, 2026-11-05, on release `nros-0.6
 ## Next
 
 The book names `nros doctor --report`, and support status is stated per release with dated evidence.
+
+## Resolution (2026-11-07)
+
+"Support status" now opens with "This page and your release": it describes `main`, and `nros doctor --report`, run in the bringup, prints the dated record for the installed release (version, each image's board and support status, every pinned tool and source). The production checklist asks for that output to be filed with the build.

@@ -15,7 +15,7 @@ nano-ros builds `third-party/nuttx/nuttx` from the fork [jerry73204/nuttx](https
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [44844788d9](https://github.com/jerry73204/nuttx/commit/44844788d9a8a3d2124d711b759ecd9eac4e7608) | Fix signal constants to match Linux/POSIX convention |
 | [7f252631e4](https://github.com/jerry73204/nuttx/commit/7f252631e4e1e3936027085320841e617172ebab) | Uncomment SIG_IGN and SIG_DFL check |

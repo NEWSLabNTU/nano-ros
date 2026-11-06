@@ -50,7 +50,7 @@ cd bm_ws
 bm_ws/
 └── src/
     ├── bm_node/                 # node package: package.xml, Cargo.toml (a library), src/lib.rs
-    └── bm_node_bringup/         # package.xml and system.toml: the board, the RMW, the node
+    └── bm_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
 `bm_node` is the talker, a library with no `main()` that names no board. The

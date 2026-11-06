@@ -8,10 +8,11 @@ In this chapter you scaffold a talker for an Arm Cortex-M3 board, run it in
 QEMU, and watch its messages arrive in ROS 2. You write no code and edit no
 configuration to get there.
 
-**What this assumes:** a Linux host with ROS 2 Humble and its Zenoh
-middleware (`ros-humble-rmw-zenoh-cpp`) installed, or the container from
-[Installation Details](../guide/build/install-options.md#ros-2-and-the-zenoh-router),
-and the [install](../start/install.md) done, so `nros` is on your PATH.
+**What this assumes:** a Linux host with ROS 2 and its Zenoh middleware
+(`ros-<distro>-rmw-zenoh-cpp`) installed — Humble on Ubuntu 22.04, Jazzy on
+24.04, as [Install](../start/install.md#before-you-start) shows — and the
+[install](../start/install.md) done, so `nros` is on your PATH. The commands
+below source Humble; on Jazzy, write `jazzy` where they say `humble`.
 
 **What it leaves for later:** the board talks to your machine over its serial
 port, the way a real board's first program does. The network comes in the
@@ -141,7 +142,7 @@ shape, and so is every command after it.
   recorded it. Run `source /opt/ros/humble/setup.bash` and run again.
 - **`nros run` stops at once and names the router:** it could not find
   the Zenoh router. Source ROS 2 in that shell (and install
-  `ros-humble-rmw-zenoh-cpp` if it is missing), or point `NROS_RMW_ZENOHD`
+  `ros-<distro>-rmw-zenoh-cpp` if it is missing), or point `NROS_RMW_ZENOHD`
   at an `rmw_zenohd` binary.
 - **No `Publishing:` line within a minute of boot:** the router started
   but the board did not reach it. `nros run` names the router's log when

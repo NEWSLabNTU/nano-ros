@@ -67,7 +67,7 @@ cd host_ws
 host_ws/
 └── src/
     ├── host_node/              # node package: package.xml + Cargo.toml (or CMakeLists.txt), the node
-    └── host_node_bringup/      # package.xml and system.toml: board, rmw, domain, components
+    └── host_node_bringup/      # package.xml, system.toml, system.contract.yaml: board, rmw, domain, components
 ```
 
 The node package is a library with no `main()`; the bringup's

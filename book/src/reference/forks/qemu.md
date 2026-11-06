@@ -15,7 +15,7 @@ nano-ros builds `third-party/qemu/qemu` from the fork [NEWSLabNTU/qemu](https://
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [699fa98296](https://github.com/NEWSLabNTU/qemu/commit/699fa982969a0a53be2f398f22191d5536bc7568) | hw/net/lan9118: add can_receive + flush on FIFO drain |
 | [1edd124e68](https://github.com/NEWSLabNTU/qemu/commit/1edd124e686f6fbca36eb8d9c0df1ec857831af9) | python: add pyproject.toml with modern setuptools backend |

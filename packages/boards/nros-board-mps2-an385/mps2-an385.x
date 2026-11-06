@@ -8,8 +8,10 @@
  *   0x2000_0000 - 0x203F_FFFF : SRAM (4MB)
  *
  * Allocations (within SRAM):
- *   Stack: 8KB at end of RAM
- *   Heap: 64KB for embedded-alloc
+ *   Stack: cortex-m-rt's, from the end of RAM downward, NOT bounded. The
+ *     `_stack_size` and `_heap_*` symbols below are read by nothing (issue
+ *     2265): the heap is `nros_platform_mps2_an385::memory::HEAP`, a 128 KiB
+ *     static sized by `NROS_HEAP_SIZE`.
  *   Ethernet buffers: 16KB for smoltcp
  */
 

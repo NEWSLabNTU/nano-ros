@@ -23,7 +23,7 @@ undone.
 sensor_ws/
 └── src/
     ├── sensor_node/            # node package: package.xml, Cargo.toml (a library), src/lib.rs
-    └── sensor_node_bringup/    # package.xml and system.toml; no launch/ yet
+    └── sensor_node_bringup/    # package.xml, system.toml, system.contract.yaml; no launch/ yet
 ```
 
 The two roles, and what each one never holds:

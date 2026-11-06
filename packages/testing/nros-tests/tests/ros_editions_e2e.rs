@@ -18,7 +18,7 @@
 //!   - zenoh:   nano zpico node → rmw_zenohd router (host) → rmw_zenoh_cpp.
 //!
 //! Skips (never a silent pass) without the built fixtures / docker / image /
-//! Agent, and — for zenoh — on editions with no `rmw_zenoh_cpp` (iron/humble).
+//! Agent, and — for zenoh — on an image whose install has no `rmw_zenoh_cpp`.
 //! Not in `just ci`; run by `just ros_editions ci <distro>`. Case names are
 //! prefixed by RMW so the recipe can filter each lane's threading:
 //! `cargo test --test ros_editions_e2e {cyclone|xrce|zenoh}`.

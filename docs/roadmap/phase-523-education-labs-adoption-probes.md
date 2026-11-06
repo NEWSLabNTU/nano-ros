@@ -1,5 +1,13 @@
 # Phase 523 — The education lab series, the adoption probes and the industrial extras
 
+**Status (2026-11-07). Every round-one stop is closed but 2255 (the release
+cut, the maintainer's) and 2269 (homed in phase-537). Fixed on `main`:
+2256–2268, 2270–2272 and 2197; 2262 and 2272 were already fixed by
+phase-537's serial page. Release support is ruled: latest release only. One
+new issue from the work, 2309 (the bare-metal heap static lands in `.data`).
+Left: round two on the next release, the field probe (a person with a board),
+and W2 (phase-537 W5's lab sources).**
+
 **Status (2026-11-06). W1 moved to phase-537 W5 (maintainer). The release
 behind 2255 is the maintainer's to cut; round two runs on the release after
 it. Book-side round-one stops (2259, 2262, 2264–2268, 2272) are fixed after
@@ -134,20 +142,21 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2256](../issues/archived/2256-store-label-disagrees-with-provenance.md) | both | **Resolved** 2026-11-06: one index per release, so the store label and its contents share a pin |
 | [#2257](../issues/archived/2257-setup-and-build-read-different-index.md) | both | **Resolved** 2026-11-06: a release reads its own shipped index (RFC-0097 D5 amended), so setup and build agree |
 | [#2258](../issues/archived/2258-setup-rewrites-pinned-sdk-lock.md) | both | **Resolved** 2026-11-06: with one index per release, a pinned seat's setup records the lock's own pins |
-| [#2259](../issues/2259-first-project-requires-humble-on-noble.md) | both | First Project requires Humble, which Ubuntu 24.04 cannot install |
+| [#2259](../issues/archived/2259-first-project-requires-humble-on-noble.md) | both | **Resolved** 2026-11-07: Book: the ROS 2 edition follows the Ubuntu release |
 | [#2260](../issues/archived/2260-ros-edition-mismatch-silent-no-delivery.md) | both | **Resolved** 2026-11-06: the scaffold follows `$ROS_DISTRO`, and `nros run` warns on a mismatch |
-| [#2261](../issues/2261-catkin-pkg-prereq-breaks-ros-apt.md) | both | The `python3-catkin-pkg` prerequisite breaks the ROS 2 apt install |
-| [#2262](../issues/2262-serial-quickstart-router-unreachable-from-ros2.md) | industrial | The serial quick-start router listens on serial only |
+| [#2261](../issues/archived/2261-catkin-pkg-prereq-breaks-ros-apt.md) | both | **Resolved** 2026-11-07: Book: install ROS 2 before the host packages |
+| [#2262](../issues/archived/2262-serial-quickstart-router-unreachable-from-ros2.md) | industrial | **Resolved** 2026-11-07: Fixed on main: the serial router also listens on TCP |
 | [#2263](../issues/archived/2263-setup-rejects-board-key-nros-new-writes.md) | both | **Resolved** 2026-11-06: fixed on `main` by phase-531 W4's scaffold (`b719d169ed`); only the release lacked it |
-| [#2264](../issues/2264-airgap-recipe-omits-host-packages-and-asset-names.md) | industrial | The air-gapped recipe omits apt packages and release asset names |
-| [#2265](../issues/2265-memory-evidence-needs-source-tree.md) | industrial | Memory evidence needs a checkout; the documented heap is wrong |
-| [#2266](../issues/2266-book-has-no-third-party-inventory.md) | industrial | No third-party or patch inventory in the book |
-| [#2267](../issues/2267-book-has-no-release-provenance-report.md) | industrial | No release provenance report reachable from the book |
-| [#2268](../issues/2268-no-release-support-backport-policy.md) | industrial | No release support or backport policy; stale Jazzy line |
+| [#2264](../issues/archived/2264-airgap-recipe-omits-host-packages-and-asset-names.md) | industrial | **Resolved** 2026-11-07: Book: the offline recipe carries apt packages and names the asset |
+| [#2265](../issues/archived/2265-memory-evidence-needs-source-tree.md) | industrial | **Resolved** 2026-11-07: Book: measure memory without a checkout; the heap and stack figures |
+| [#2266](../issues/archived/2266-book-has-no-third-party-inventory.md) | industrial | **Resolved** 2026-11-07: Book: a third-party inventory and the fork pages |
+| [#2267](../issues/archived/2267-book-has-no-release-provenance-report.md) | industrial | **Resolved** 2026-11-07: Book: name `nros doctor --report` and date support per release |
+| [#2268](../issues/archived/2268-no-release-support-backport-policy.md) | industrial | **Resolved** 2026-11-07: Book: release support policy (latest only) |
 | [#2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter. Home moved to phase-537 W5 with W1 (2026-11-06) |
 | [#2270](../issues/archived/2270-default-talker-prints-internal-warnings.md) | education | **Resolved** 2026-11-06: the descriptor writer reports defaults as one line, the scaffold declares its contract, and no user-facing text cites a tracker id (gated) |
 | [#2271](../issues/archived/2271-install-sh-no-longer-prints-path-export.md) | education | **Resolved** 2026-11-06: not reproduced — install.sh prints the line, above the closing `next` lines |
-| [#2272](../issues/2272-serial-flow-needs-socat-unlisted.md) | education | The serial flow needs `socat`, which no prerequisite list names |
+| [#2272](../issues/archived/2272-serial-flow-needs-socat-unlisted.md) | education | **Resolved** 2026-11-07: Fixed on main: no `socat` in the serial flow |
+| [#2309](../issues/2309-heap-static-lands-in-data.md) | both | The bare-metal 128 KiB heap static lands in `.data`, so it costs flash (found answering 2265) |
 Round one has not run.
 
 Acceptance: three briefs committed under `docs/development/adoption-probes/`;
@@ -188,7 +197,7 @@ documented as is.
   rustup keeps the Rust toolchain outside `NROS_HOME`, and `NROS_OFFLINE` did
   not reach cargo (it now sets `CARGO_NET_OFFLINE`). Measured passing
   2026-11-01.
-- *Fork deltas.* `docs/reference/forks/` holds one generated page per fork
+- *Fork deltas.* `book/src/reference/forks/` (moved into the user book by issue 2266, with internal ids taken out of the commit subjects; the table stays at `docs/reference/forks/forks.toml`) holds one generated page per fork
   (nine: zenoh-pico, cyclonedds, lwip, threadx, netxduo, nuttx, libc, qemu,
   ros2-rust-examples), each the commit list from GitHub's compare API between
   the pinned fork commit and a named upstream ref. Seven pins descend from an

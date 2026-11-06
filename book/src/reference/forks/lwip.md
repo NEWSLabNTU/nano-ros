@@ -15,7 +15,7 @@ nano-ros builds `third-party/freertos/lwip` from the fork [jerry73204/lwip](http
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [6233eb61c8](https://github.com/jerry73204/lwip/commit/6233eb61c89b531fd5aaa16acdd6bc5c6368dfdd) | Use pvPortMalloc for per-thread netconn semaphore allocation |
 | [de76e778f9](https://github.com/jerry73204/lwip/commit/de76e778f93ffb9c1784a92418e41c0e82535c4e) | fix(freertos): create netconn semaphores lazily |

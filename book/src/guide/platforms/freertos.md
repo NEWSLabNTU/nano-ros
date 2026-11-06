@@ -53,7 +53,7 @@ cd fr_ws
 fr_ws/
 └── src/
     ├── fr_node/                 # node package: package.xml + CMakeLists.txt (or Cargo.toml), the talker
-    └── fr_node_bringup/         # package.xml and system.toml: the board, the RMW, the node
+    └── fr_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
 `fr_node` is a library: no `main()`, no board, no RMW. The bringup's

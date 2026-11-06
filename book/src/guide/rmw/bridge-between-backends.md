@@ -24,7 +24,7 @@ backend; a bridge image links two and drains both in each executor spin.
   is this page's example.
 - Both backends provisioned for the board, for example
   `nros setup linux --rmw zenoh` and `nros setup linux --rmw cyclonedds`.
-- ROS 2 Humble with `rmw_zenoh_cpp` and `rmw_cyclonedds_cpp`, sourced.
+- ROS 2 with `rmw_zenoh_cpp` and `rmw_cyclonedds_cpp` ([which edition](../../start/install.md#before-you-start)), sourced.
 
 ## Steps
 

@@ -48,9 +48,11 @@ never cross-implied:
   RMW/platform, edition is a *functional* feature ordinary crates may branch on
   (e.g. `nros-rmw-zenoh::keyexpr` selects the type-hash tail). Edition is a
   PER-RUN global (`NROS_ROS_EDITION`), not a per-cell test-matrix axis (issue
-  0327; see `nros-tests::matrix::Cell`). Carve-out: humble/iron ship no
-  `rmw_zenoh_cpp` apt package, so the zenoh interop lane runs only on jazzy —
-  recorded in `examples/README.md`'s coverage matrix.
+  0327; see `nros-tests::matrix::Cell`). The zenoh interop
+  lane runs on any edition whose ROS install has `rmw_zenoh_cpp` — probed per
+  host, never assumed (`ros_env::HostRosEnv::available`). Humble ships it as
+  `ros-humble-rmw-zenoh-cpp` (0.1.x on jammy, checked 2026-11-07); this line
+  used to say humble had none, which was never re-checked once it did.
 
 `nros` declares an EMPTY `default`; the user picks each axis explicitly, and the standard
 library with it (see the `std`/`alloc` contract below). **RMW is a

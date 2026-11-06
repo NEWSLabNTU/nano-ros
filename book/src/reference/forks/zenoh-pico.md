@@ -15,7 +15,7 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 
 ## Commits on top of upstream
 
-| commit | subject |
+| commit | subject <!-- no-just-ok: quoted commit subjects --> |
 | --- | --- |
 | [db65ca086a](https://github.com/jerry73204/zenoh-pico/commit/db65ca086a2ddecb857013f8026644947e8a691a) | Add serial support for Unix platform |
 | [f9bdc3a7d3](https://github.com/jerry73204/zenoh-pico/commit/f9bdc3a7d3f547b3b539eab4c3ff67fd26a31e78) | Add NuttX support |
@@ -27,11 +27,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [5bb427db3c](https://github.com/jerry73204/zenoh-pico/commit/5bb427db3cb9724640da9ad1eba4d71acd07686c) | Skip TCP_NODELAY and SO_LINGER on NuttX (cross-compile header mismatch) |
 | [72a027d000](https://github.com/jerry73204/zenoh-pico/commit/72a027d000cdf73c0108550327641876db868fe6) | Fix Race 2: report OOM from _z_unsafe_register_pending_query |
 | [194ff76515](https://github.com/jerry73204/zenoh-pico/commit/194ff76515b7420e58faa7ce7510135cf4c2bb47) | Add Z_FEATURE_LINK_IVC link transport (NVIDIA Tegra IVC) |
-| [dc5051294b](https://github.com/jerry73204/zenoh-pico/commit/dc5051294bb44b563beabe80d588ffa31a658545) | Phase 11.3.A: zero-copy IVC link transport |
-| [0bde6a0838](https://github.com/jerry73204/zenoh-pico/commit/0bde6a0838dcc2baeec743ca7a98e2ae3bc7447b) | Phase 11.3.B: ZENOH_ORIN_SPE platform header |
-| [8084b38f6b](https://github.com/jerry73204/zenoh-pico/commit/8084b38f6b9e92419e017587cd55abbd4d09feb7) | Phase 11.3.B fix: provide _z_socket_close stubs for ZENOH_ORIN_SPE |
-| [a60450b80d](https://github.com/jerry73204/zenoh-pico/commit/a60450b80d454477021ada10f3ebbc32a71b1cf9) | nros: link-custom (Phase 115.B) — runtime-pluggable user transport |
-| [a1c28b4222](https://github.com/jerry73204/zenoh-pico/commit/a1c28b4222337ab2f83cf992c58d14ec5fa375ca) | nros: link-custom Phase 115.F follow-ups — stream-flow, real I/O routing |
+| [dc5051294b](https://github.com/jerry73204/zenoh-pico/commit/dc5051294bb44b563beabe80d588ffa31a658545) | zero-copy IVC link transport |
+| [0bde6a0838](https://github.com/jerry73204/zenoh-pico/commit/0bde6a0838dcc2baeec743ca7a98e2ae3bc7447b) | ZENOH_ORIN_SPE platform header |
+| [8084b38f6b](https://github.com/jerry73204/zenoh-pico/commit/8084b38f6b9e92419e017587cd55abbd4d09feb7) | fix: provide _z_socket_close stubs for ZENOH_ORIN_SPE |
+| [a60450b80d](https://github.com/jerry73204/zenoh-pico/commit/a60450b80d454477021ada10f3ebbc32a71b1cf9) | nros: link-custom — runtime-pluggable user transport |
+| [a1c28b4222](https://github.com/jerry73204/zenoh-pico/commit/a1c28b4222337ab2f83cf992c58d14ec5fa375ca) | nros: link-custom follow-ups — stream-flow, real I/O routing |
 | [01510cae3d](https://github.com/jerry73204/zenoh-pico/commit/01510cae3d9351ce83aa97566f917400a9d6ea09) | fix(zephyr): repair zenoh socket startup |
 | [046d0b43a3](https://github.com/jerry73204/zenoh-pico/commit/046d0b43a394a487f82e09d3efdb6ac81397dd86) | freertos: harden lwIP TCP open path |
 | [29e72077ac](https://github.com/jerry73204/zenoh-pico/commit/29e72077ac6bc143b063c73dbad11a3a34200529) | freertos: init lwIP TLS before TCP ops |
@@ -47,23 +47,23 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [c644f0516c](https://github.com/jerry73204/zenoh-pico/commit/c644f0516c0dfcc6271c22fbfcca6aae58df6652) | endpoint: include custom.h under Z_FEATURE_LINK_CUSTOM — int-conversion on gcc >= 14 |
 | [d1676165d5](https://github.com/jerry73204/zenoh-pico/commit/d1676165d55ebfb73baf43fc24fd47300da51633) | unicast rx: reset the buffer only when empty, so a pass can resume |
 | [56870a5119](https://github.com/jerry73204/zenoh-pico/commit/56870a5119f047720f84f82341f210d97dbc3fa8) | zephyr: socket lengths are socklen_t, not unsigned int |
-| [9faedbb660](https://github.com/jerry73204/zenoh-pico/commit/9faedbb66083e28347c77d43b4e72b6bfc585be7) | feat(link): a CAN / CAN FD link (RFC-0080) |
+| [9faedbb660](https://github.com/jerry73204/zenoh-pico/commit/9faedbb66083e28347c77d43b4e72b6bfc585be7) | feat(link): a CAN / CAN FD link |
 | [e0d08c2c8e](https://github.com/jerry73204/zenoh-pico/commit/e0d08c2c8e3534ccd0a9218fa7b814c0b585e624) | fix(link/can): CAN is a MULTICAST link, not a unicast one |
 | [57d1883e53](https://github.com/jerry73204/zenoh-pico/commit/57d1883e530a5a24b7996be08f0bb5a204df1fca) | fix(link/can): a CAN link owns its receive queue, not a global one |
 | [8b46b32f29](https://github.com/jerry73204/zenoh-pico/commit/8b46b32f29f6c5a711e6d0d04d37bb1fd74b8529) | docs(link/can): the identifier defaults are a starting point, not an allocation |
 | [dd2fdc69a5](https://github.com/jerry73204/zenoh-pico/commit/dd2fdc69a55b288b24e463bdff2b603d8e1158ef) | serial: retry the INIT instead of giving up on the first timeout |
 | [027f3b6d51](https://github.com/jerry73204/zenoh-pico/commit/027f3b6d51a871602307466166028c3f76fe433a) | config: let an embedder set Z_TRANSPORT_LEASE without editing a generated header |
-| [daef338464](https://github.com/jerry73204/zenoh-pico/commit/daef338464d28ca9ca52b5665f5cbc9714fb59f7) | feat(isotp): CAN unicast over ISO-TP (RFC-0083) |
-| [45e740e49b](https://github.com/jerry73204/zenoh-pico/commit/45e740e49ba762e9f82f7f89636f34b7f6d380a1) | feat(isotp): vendor isotp-c and implement `unix` on it as well (RFC-0083) |
-| [b1884d973a](https://github.com/jerry73204/zenoh-pico/commit/b1884d973a306576ae3ca709371ea5762efc4378) | feat(isotp): Zephyr port on Zephyr's own ISO-TP (RFC-0083) |
+| [daef338464](https://github.com/jerry73204/zenoh-pico/commit/daef338464d28ca9ca52b5665f5cbc9714fb59f7) | feat(isotp): CAN unicast over ISO-TP |
+| [45e740e49b](https://github.com/jerry73204/zenoh-pico/commit/45e740e49ba762e9f82f7f89636f34b7f6d380a1) | feat(isotp): vendor isotp-c and implement `unix` on it as well |
+| [b1884d973a](https://github.com/jerry73204/zenoh-pico/commit/b1884d973a306576ae3ca709371ea5762efc4378) | feat(isotp): Zephyr port on Zephyr's own ISO-TP |
 | [eabd1522c2](https://github.com/jerry73204/zenoh-pico/commit/eabd1522c2e357fb18f756ea1d83c351fa33c3f1) | fix(isotp): use Zephyr 3.7's isotp_msg_id API, not the pre-3.7 one |
 | [768867a014](https://github.com/jerry73204/zenoh-pico/commit/768867a01412ba68f7b81af03e064b4cb7ec79ff) | fix(isotp): start the CAN controller on Zephyr before binding |
 | [9ea9a17e01](https://github.com/jerry73204/zenoh-pico/commit/9ea9a17e01bb57932869e4dd0ed51eeb8e355526) | deps(isotp-c): vendor from a fork carrying ISO_TP_NO_FORMATTED_ERRORS |
 | [7b77c04abb](https://github.com/jerry73204/zenoh-pico/commit/7b77c04abbc651821d50c07462fcaa0c0ed1e3c2) | feat(isotp): take stmin and bs from the endpoint |
 | [68593d56be](https://github.com/jerry73204/zenoh-pico/commit/68593d56be6f38080775fa4d4ff2fd13a46502a6) | isotp: the Zephyr binding lives beside the other link transports |
-| [bbcce89c73](https://github.com/jerry73204/zenoh-pico/commit/bbcce89c73030ec570185d149c0fa9cd4644d7d9) | fix(nano-ros #0899): do not free a live transport under a publishing task |
-| [7f24d85ac7](https://github.com/jerry73204/zenoh-pico/commit/7f24d85ac733b319b4eaa2281223120c1e380c3f) | fix(nano-ros #0906): give every zenoh task its lwIP per-thread netconn semaphore |
-| [f469e19dcb](https://github.com/jerry73204/zenoh-pico/commit/f469e19dcb318cf8e59786cc1f8e4d9177c7e6dd) | fix(nano-ros #0924): abort the connection on teardown instead of shutting it down |
+| [bbcce89c73](https://github.com/jerry73204/zenoh-pico/commit/bbcce89c73030ec570185d149c0fa9cd4644d7d9) | fix: do not free a live transport under a publishing task |
+| [7f24d85ac7](https://github.com/jerry73204/zenoh-pico/commit/7f24d85ac733b319b4eaa2281223120c1e380c3f) | fix: give every zenoh task its lwIP per-thread netconn semaphore |
+| [f469e19dcb](https://github.com/jerry73204/zenoh-pico/commit/f469e19dcb318cf8e59786cc1f8e4d9177c7e6dd) | fix: abort the connection on teardown instead of shutting it down |
 | [5c5fb463cf](https://github.com/jerry73204/zenoh-pico/commit/5c5fb463cf844211e9f590ae7cc07ab5f4cf438c) | config: the #ifndef guards belong in config.h.in, or a cmake run deletes them |
 | [2768dba270](https://github.com/jerry73204/zenoh-pico/commit/2768dba270a432bf6a5ea583c1cb7b89d2c6bc44) | config: config.h.in keeps the NuttX socket-timeout split |
 | [37f022f225](https://github.com/jerry73204/zenoh-pico/commit/37f022f225f6cfaa67e281681b0830bf0b801f3a) | fix: NuttX belongs in the _z_socket_get_endpoints guard, or the link duplicates it |
@@ -86,18 +86,18 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [276c594cf5](https://github.com/jerry73204/zenoh-pico/commit/276c594cf58d9b46170706a63494876caabb2570) | feat(nano-ros): a frame budget on the unicast read task |
 | [79b752601d](https://github.com/jerry73204/zenoh-pico/commit/79b752601d66634ac19d3a585247074074a72800) | fix(nano-ros): a DROP put dropped for congestion reports success |
 | [f7ab9657e9](https://github.com/jerry73204/zenoh-pico/commit/f7ab9657e9262675841111eb6b689c59233dd105) | config: carry a generated config.h for builds that do not run this CMake |
-| [663a0c72dc](https://github.com/jerry73204/zenoh-pico/commit/663a0c72dc77ccf7fb32b74ff91954ca1b1f66d6) | fix(nano-ros #0899): a send during an outage fails at once instead of waiting it out |
-| [06ac6bf808](https://github.com/jerry73204/zenoh-pico/commit/06ac6bf80875b458f5c8dc9c02f5ce7427ae74bf) | feat(nano-ros, RFC-0110 D4): zp_spin_once drives a multi-thread executor from the caller |
+| [663a0c72dc](https://github.com/jerry73204/zenoh-pico/commit/663a0c72dc77ccf7fb32b74ff91954ca1b1f66d6) | fix: a send during an outage fails at once instead of waiting it out |
+| [06ac6bf808](https://github.com/jerry73204/zenoh-pico/commit/06ac6bf80875b458f5c8dc9c02f5ce7427ae74bf) | feat: zp_spin_once drives a multi-thread executor from the caller |
 | [9249abba16](https://github.com/jerry73204/zenoh-pico/commit/9249abba161c10f0cb619bf4ef95aea3403567e6) | fix(nano-ros): the CAN links assume a started controller |
 | [2594f6b431](https://github.com/jerry73204/zenoh-pico/commit/2594f6b43160cfa0e041cd4a1723d367293bf270) | fix(nano-ros): the multicast CAN link refuses a classic interface at open |
 | [f90e738892](https://github.com/jerry73204/zenoh-pico/commit/f90e73889253b6c874028c7949acca320aaca65c) | fix(nano-ros): a multicast JOIN on CAN advertises the frame, not Z_BATCH_MULTICAST_SIZE |
-| [3c5cbc473b](https://github.com/jerry73204/zenoh-pico/commit/3c5cbc473b4bae04a7914cb8943e9f97d3651514) | fix(nano-ros #1731): expire a peer on ITS lease, keep-alive on ours |
-| [8d5ac2fe10](https://github.com/jerry73204/zenoh-pico/commit/8d5ac2fe102e6af57dfb3d8d903208ed383ab5e6) | test(nano-ros #1731): a peer is judged on its own lease, silence summed |
-| [d7ea813365](https://github.com/jerry73204/zenoh-pico/commit/d7ea8133652703f8a1d1fe3b535ed4a33d561475) | feat(nano-ros phase-521): zp_next_wake_ms, the executor's next due work minus link reads |
-| [26ad81545c](https://github.com/jerry73204/zenoh-pico/commit/26ad81545cbfab1bc84f068af3845b7e2152810a) | fix(nano-ros phase-521 W6): retire the polled Zephyr serial receive |
+| [3c5cbc473b](https://github.com/jerry73204/zenoh-pico/commit/3c5cbc473b4bae04a7914cb8943e9f97d3651514) | fix: expire a peer on ITS lease, keep-alive on ours |
+| [8d5ac2fe10](https://github.com/jerry73204/zenoh-pico/commit/8d5ac2fe102e6af57dfb3d8d903208ed383ab5e6) | test: a peer is judged on its own lease, silence summed |
+| [d7ea813365](https://github.com/jerry73204/zenoh-pico/commit/d7ea8133652703f8a1d1fe3b535ed4a33d561475) | feat: zp_next_wake_ms, the executor's next due work minus link reads |
+| [26ad81545c](https://github.com/jerry73204/zenoh-pico/commit/26ad81545cbfab1bc84f068af3845b7e2152810a) | fix: retire the polled Zephyr serial receive |
 | [fed5d711d7](https://github.com/jerry73204/zenoh-pico/commit/fed5d711d79bca0cd2dd12a5dd10b31ff980b38f) | fix(zephyr serial): accept a UART with no runtime configuration |
-| [50e059eaa7](https://github.com/jerry73204/zenoh-pico/commit/50e059eaa790ea398dc05156f40e9be42dbba62f) | fix(nano-ros #2207): read the connect timeout without the unstable API |
-| [c78dbffd91](https://github.com/jerry73204/zenoh-pico/commit/c78dbffd91ed5c271bbe127bad9e21ef1e376b11) | feat(nano-ros phase-521 W6): zp_next_wake_ms in a multi-thread build |
+| [50e059eaa7](https://github.com/jerry73204/zenoh-pico/commit/50e059eaa790ea398dc05156f40e9be42dbba62f) | fix: read the connect timeout without the unstable API |
+| [c78dbffd91](https://github.com/jerry73204/zenoh-pico/commit/c78dbffd91ed5c271bbe127bad9e21ef1e376b11) | feat: zp_next_wake_ms in a multi-thread build |
 
 Reproduce:
 

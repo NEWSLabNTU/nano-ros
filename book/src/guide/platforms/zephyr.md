@@ -200,7 +200,7 @@ That wrote two packages, the same shape every platform's scaffold has:
 c_ws/
 └── src/
     ├── c_node/            # the talker: package.xml, CMakeLists.txt, its C source
-    └── c_node_bringup/    # package.xml, and system.toml: [image.zephyr] board = "zephyr"
+    └── c_node_bringup/    # package.xml, system.contract.yaml, and system.toml: [image.zephyr] board = "zephyr"
 ```
 
 Run it against a router on the host's loopback — `native_sim` uses the host's

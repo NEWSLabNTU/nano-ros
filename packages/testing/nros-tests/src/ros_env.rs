@@ -318,8 +318,9 @@ impl RosEnv for HostRosEnv {
         // but not this `Middleware`'s package, and the cell then FAILS at node
         // construction — an unprovisioned host reported as a red instead of a
         // skip, which is the inverse of the false-skip class and just as
-        // misleading. `rmw_zenoh_cpp` is the live case: humble and iron ship no
-        // official apt package for it, so a humble host is exactly this.
+        // misleading. `rmw_zenoh_cpp` is the live case: it is a separate apt
+        // package (`ros-<distro>-rmw-zenoh-cpp`), so a host can have the
+        // distro without it.
         ros2::is_ros2_distro_available(&self.distro)
             && ros2::is_ros2_package_available(&self.distro, self.mw.rmw_package())
     }
@@ -1113,16 +1114,18 @@ pub fn e2e_setup_zenoh(example: &str) -> (DockerRosEnv, std::path::PathBuf, u8, 
     if !env.available() {
         crate::unmet!("{ed} image not built or docker absent — run `just ros_editions image {ed}`");
     }
-    // Only editions that SHIP `rmw_zenoh_cpp` can be a zenoh peer (jazzy; iron
-    // and humble have no official apt package). Skip loudly otherwise — never a
-    // silent pass on an edition that structurally cannot run this lane.
+    // Only an image whose install HAS `rmw_zenoh_cpp` can be a zenoh peer, so
+    // ask the image. Humble and Jazzy both ship `ros-<distro>-rmw-zenoh-cpp`;
+    // the image installs it when its apt sources have it (the Dockerfile's
+    // note says so when they do not). Never a silent pass.
     let has_zenoh = env
         .run_text("ros2 pkg prefix rmw_zenoh_cpp >/dev/null 2>&1 && echo OK")
         .map(|s| s.contains("OK"))
         .unwrap_or(false);
     if !has_zenoh {
         crate::unmet!(
-            "{ed} ships no rmw_zenoh_cpp (only jazzy does) — zenoh interop lane N/A for this edition"
+            "the {ed} image has no rmw_zenoh_cpp — rebuild it with `just ros_editions image {ed}` \
+             (it installs ros-{ed}-rmw-zenoh-cpp when the edition's apt sources carry it)"
         );
     }
     (env, bin, domain, locator)
@@ -1262,9 +1265,9 @@ mod tests {
     /// the inverse of the silent-skip class, and equally misleading about what
     /// the sweep measured.
     ///
-    /// `rmw_zenoh_cpp` is the live case rather than a hypothetical: humble and
-    /// iron ship no official apt package for it (the docker zenoh lane says so
-    /// in its own skip message), so a humble host IS the failing configuration.
+    /// `rmw_zenoh_cpp` is the live case rather than a hypothetical: it is a
+    /// separate apt package (`ros-<distro>-rmw-zenoh-cpp`), so a host with
+    /// the distro and not the package IS the failing configuration.
     #[test]
     fn host_available_requires_the_middlewares_rmw_not_just_the_distro() {
         // Every variant must name a package — a `Middleware` whose RMW cannot

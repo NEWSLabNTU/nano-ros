@@ -338,11 +338,12 @@ and regenerated per edition, so it is a PER-RUN global (`NROS_ROS_EDITION`,
 default `jazzy`), not a per-cell column. `just ros_editions ci <distro>` runs the
 whole set against one edition.
 
-Carve-out: **humble and iron ship no `rmw_zenoh_cpp` apt package**, so the zenoh
-ROS 2 interop lanes run **only on jazzy** — the two humble/iron zenoh-interop
-cells are permanently skipped (was recorded only as a code comment in
-`nros-tests::ros_env`; surfaced here per issue 0327). cyclonedds/xrce interop is
-edition-agnostic.
+The zenoh ROS 2 interop lanes need `rmw_zenoh_cpp` in the edition's install,
+and the harness PROBES for it rather than assuming (`nros-tests::ros_env`): a
+host or image without it reports the cell unmet. Humble ships it as
+`ros-humble-rmw-zenoh-cpp` (checked 2026-11-07), as does Jazzy. This section
+used to say humble and iron ship none, and the probes followed the claim to
+Jazzy (issue 2259). cyclonedds/xrce interop is edition-agnostic.
 
 Gap themes — see `docs/roadmap/archived/phase-118-example-matrix-coverage.md`
 for the plan that fills these:
