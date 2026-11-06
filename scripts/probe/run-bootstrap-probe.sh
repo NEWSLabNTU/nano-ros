@@ -192,6 +192,18 @@ PROBE_BUDGET_MIN="${track_rest#*$'\t'}"
 if ! PROBE_LANG="$(python3 "$SCRIPT_DIR/probe-track.py" --lang "$PROBE_PLATFORM")"; then
     exit 2
 fi
+# phase-537 W5 (RFC-0124 D3) — a Tutorial track replays the chapters before
+# its own first, in one shell, because every chapter grows the one project the
+# chapters before it made. Each is a book/src path; none for other tracks.
+if ! PROBE_AFTER="$(python3 "$SCRIPT_DIR/probe-track.py" --after "$PROBE_PLATFORM")"; then
+    exit 2
+fi
+AFTER_CHAPTERS=()
+CHAPTER_ARGS=()
+if [[ -n "$PROBE_AFTER" ]]; then
+    mapfile -t AFTER_CHAPTERS <<<"$PROBE_AFTER"
+    CHAPTER_ARGS=(--close-between-chapters)
+fi
 CLOCK_ARGS=()
 if [[ -n "$PROBE_BUDGET_MIN" ]]; then
     CLOCK_ARGS=(--clock-from "nros setup" --clock-budget "$((PROBE_BUDGET_MIN * 60))")
@@ -238,6 +250,7 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
     # own chapter is installation.md would list it twice and extract every
     # step twice. (The workspace and pinned runs moved to
     # installation-details.md in phase-532 W10.)
+    CHAPTERS+=(${AFTER_CHAPTERS[@]+"${AFTER_CHAPTERS[@]}"})
     if [[ "$PLATFORM_CHAPTER" != "${CHAPTERS[0]}" ]]; then
         CHAPTERS+=("$PLATFORM_CHAPTER")
     fi
@@ -339,6 +352,7 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     ${TWIN_SUBST[@]+"${TWIN_SUBST[@]}"} \
     ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
     ${CLOCK_ARGS[@]+"${CLOCK_ARGS[@]}"} \
+    ${CHAPTER_ARGS[@]+"${CHAPTER_ARGS[@]}"} \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
 
 # The installed track's release steps, extracted here so a drift check
