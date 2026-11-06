@@ -614,9 +614,12 @@ pub fn render_manifest(
     // refuses with "current package believes it's in a workspace when it's
     // not". An empty table stops the walk here, wherever the workspace lives.
     //
-    // The pkg-index is unaffected: `nros::main!` finds the bringup through the
-    // `.colcon_workspace` marker first, and the settings file hands it
-    // `NROS_WORKSPACE_ROOT` besides (`builder::cargo_config`).
+    // It is also where the pkg-index's walk would stop, so `nros::main!` must
+    // be TOLD the workspace: every road hands it `NROS_WORKSPACE_ROOT` (cargo:
+    // the settings file, `builder::cargo_config`; west: the handoff's `-D`,
+    // which the Zephyr module puts on the Rust lane's env — issue 2314). The
+    // walk's `.colcon_workspace` pass outranks this table only where the
+    // marker exists, which `nros new` writes but an older workspace may lack.
     out.push_str("[workspace]\n\n");
     out.push_str("[package]\n");
     out.push_str(&format!("name = \"{pkg}\"\n"));

@@ -395,6 +395,15 @@ endif()
 # its crates read `$DOTCONFIG`, where a derived knob is still the `-1` sentinel.
 nros_derived_knob_env(_nros_derived_env)
 list(APPEND _nros_rust_lane_env ${_nros_derived_env})
+# Issue 2314 -- and the workspace `nros::main!` indexes for the bringup. The
+# cargo roads hand it in their settings file; this lane runs zephyr-lang-rust's
+# cargo command, so `nros build`'s west handoff passes `-DNROS_WORKSPACE_ROOT`
+# and it rides here. Without it the walk up from a generated entry stopped at
+# the entry's own `[workspace]` table in a workspace with no
+# `.colcon_workspace`. Unset (a bare `west build` of a fresh dir): the walk.
+if(DEFINED NROS_WORKSPACE_ROOT AND NOT NROS_WORKSPACE_ROOT STREQUAL "")
+    list(APPEND _nros_rust_lane_env "NROS_WORKSPACE_ROOT=${NROS_WORKSPACE_ROOT}")
+endif()
 # Issue 2177 -- and the C cross compiler, which the Rust lane's `cc` builds
 # (zpico-sys's zenoh-pico) needed and never got: on mps2-an385 cc fell back to
 # a PATH `arm-none-eabi-gcc` an installed host does not have. The triple is

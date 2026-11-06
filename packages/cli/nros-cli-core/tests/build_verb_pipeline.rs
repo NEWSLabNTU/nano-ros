@@ -312,6 +312,29 @@ fn a_west_image_names_the_nano_ros_root_its_app_imports() {
     );
 }
 
+/// Issue 2314 — the west handoff names the WORKSPACE, for a Rust entry's
+/// `nros::main!`. zephyr-lang-rust owns the cargo command, so the cargo roads'
+/// settings-file row cannot reach it; without this the pkg-index walk stopped
+/// at the generated entry's own `[workspace]` table ("pkg `<bringup>` not
+/// found … Known pkgs: []") in any workspace with no `.colcon_workspace`.
+#[test]
+fn a_west_image_names_its_workspace_root() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let (_, cmake_zone) = line.split_once(" -- ").expect("a cmake zone");
+    let value = cmake_zone
+        .split(' ')
+        .find_map(|a| a.strip_prefix("-DNROS_WORKSPACE_ROOT="))
+        .unwrap_or_else(|| panic!("no -DNROS_WORKSPACE_ROOT after `--`: {line}"));
+    assert_eq!(
+        std::path::Path::new(value),
+        std::fs::canonicalize(tmp.path()).unwrap(),
+        "the workspace, absolute: {line}"
+    );
+}
+
 /// Issue 1519 — the image authors the NANO-ROS id (`zephyr`, above) and `-b`
 /// is the descriptor's `[board.zephyr] west_board`. Authoring that framework
 /// string instead used to work only because the descriptor also listed it as

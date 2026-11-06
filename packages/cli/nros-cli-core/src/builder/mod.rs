@@ -49,3 +49,18 @@ pub mod zephyr;
 pub fn nano_ros_root_arg(nano_ros_root: &std::path::Path) -> String {
     format!("-Dnano_ros_ROOT={}", nano_ros_root.display())
 }
+
+/// The configure argument that names the WORKSPACE to a west-built Rust
+/// entry's `nros::main!` (issue 2314).
+///
+/// The cargo roads hand cargo `NROS_WORKSPACE_ROOT` in their settings file
+/// ([`cargo_config`]); the west road cannot, because zephyr-lang-rust owns that
+/// cargo command line. So it rides the configure line instead, and the Zephyr
+/// module appends it to the Rust lane's env — the one carrier that lane has
+/// (`_nros_rust_lane_env`, issue 1662). It is a `-D`, so it is CACHED: a later
+/// bare `west build` of the same build dir keeps it. Absolute, and it lives
+/// only in the build dir, so nothing `nros materialize` copies carries it.
+#[must_use]
+pub fn workspace_root_arg(workspace_root: &std::path::Path) -> String {
+    format!("-DNROS_WORKSPACE_ROOT={}", workspace_root.display())
+}

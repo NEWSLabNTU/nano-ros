@@ -316,6 +316,12 @@ resolved.
 - Inside a workspace (`new_workspace::enclosing_workspace`), `nros new <node>
   [--to <bringup>]` adds the package, and with `--to` its row and
   `<exec_depend>`.
+- Follow-up (the Zephyr Rust chapter): the scaffold writes the
+  `.colcon_workspace` marker every in-tree workspace tracks, and the west
+  handoff passes `-DNROS_WORKSPACE_ROOT`, which the Zephyr module appends to
+  the Rust lane's env, because zephyr-lang-rust passes cargo no settings file
+  of ours. Without either, `nros::main!` stopped at the entry's own
+  `[workspace]` and found no bringup outside a git checkout (issue 2314).
 - The rungs are `builder::plan::name_target`; `run_plan::name_target` rewrites
   the target word before configure, planning and the implicit build, so
   `run`, `flash` and `monitor` all take a node. `nros run --why` names the

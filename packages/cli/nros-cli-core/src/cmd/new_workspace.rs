@@ -33,7 +33,11 @@ use eyre::{Result, WrapErr, bail};
 #[must_use]
 pub fn enclosing_workspace(cwd: &Path) -> Option<PathBuf> {
     cwd.ancestors()
-        .find(|d| d.join("nros.toml").is_file() || holds_packages(&d.join("src")))
+        .find(|d| {
+            d.join("nros.toml").is_file()
+                || d.join(WORKSPACE_MARKER).is_file()
+                || holds_packages(&d.join("src"))
+        })
         .map(Path::to_path_buf)
 }
 
@@ -118,6 +122,19 @@ pub struct WorkspaceProject<'a> {
     pub locator: Option<String>,
 }
 
+/// The file that says "this directory is a workspace root" to every reader that
+/// walks up from inside it: `nros::main!`'s pkg index (`nros_pkg_index::
+/// detect_workspace_root`) and [`enclosing_workspace`]. Every in-tree workspace
+/// tracks one (phase-383 W10.a).
+pub const WORKSPACE_MARKER: &str = ".colcon_workspace";
+
+const WORKSPACE_MARKER_BODY: &str = "\
+# This directory is a workspace ROOT. `nros::main!` walks up from a generated
+# entry under build/ to find the packages; without this marker, on a road
+# that names no workspace (a bare `west build`, a bare `cargo` run inside an
+# entry), it stopped at the entry's own `[workspace]` table and found none.
+";
+
 /// `nros new <ws> --board <b>`: the workspace, its node package and its
 /// bringup. Returns the bringup directory.
 pub fn scaffold_project(p: &WorkspaceProject<'_>) -> Result<PathBuf> {
@@ -150,6 +167,7 @@ pub fn scaffold_project(p: &WorkspaceProject<'_>) -> Result<PathBuf> {
         p.dir.join(".gitignore"),
         "/build/\n/generated/\n/target/\n/.cargo/\nCargo.lock\n/src/*/metadata/\n",
     )?;
+    std::fs::write(p.dir.join(WORKSPACE_MARKER), WORKSPACE_MARKER_BODY)?;
     Ok(bringup_dir)
 }
 
@@ -500,6 +518,21 @@ mod tests {
             "{pxml}"
         );
         assert!(!ws.join("Cargo.toml").exists() && !ws.join("CMakeLists.txt").exists());
+        // The marker `nros::main!` walks up to from a generated entry, which
+        // is its own `[workspace]` root: without it a west-built entry found
+        // no packages ("pkg `…_bringup` not found in workspace `…/zephyr_entry`").
+        assert!(ws.join(WORKSPACE_MARKER).is_file());
+        let entry = ws.join("build/zephyr-zenoh/zephyr_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        std::fs::write(entry.join("Cargo.toml"), "[workspace]\n").unwrap();
+        // (`$NROS_WORKSPACE_ROOT` outranks every marker, so a caller that set
+        // it is asking a different question.)
+        if std::env::var_os("NROS_WORKSPACE_ROOT").is_none() {
+            assert_eq!(
+                nros_pkg_index::detect_workspace_root(&entry).unwrap(),
+                ws.canonicalize().unwrap()
+            );
+        }
         assert_eq!(enclosing_workspace(&ws), Some(ws.clone()));
         assert_eq!(
             enclosing_workspace(&ws.join("src/sensor_node")),
