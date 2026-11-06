@@ -1216,7 +1216,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // `infra_families`), written below.
                 let mut env = std::collections::BTreeMap::new();
                 if let Some(r) = &resolved {
-                    env.extend(derived_pool_env(&r.resolved));
+                    let tables = image_closure_tables(&root, r, &all_packages);
+                    env.extend(derived_pool_env(r, &tables));
                 }
                 // phase-454 W14 (RFC-0100 D4) — the SECOND descriptor producer.
                 //
@@ -4793,35 +4794,82 @@ struct GeneratedEntry {
 /// Rendered by `leaf_entity_env::render_env_sidecar` and read back, not
 /// re-spelled here: that renderer is where the knob NAMES, the consumer floors
 /// (issue 1015) and the deliberate omission of `ZPICO_MAX_QUERYABLES` live, and
-/// a second list would be the drift this repository keeps paying for. Payload
-/// classes and the take buffer are not derived on this road (both need a
-/// leaf's message-bound inventory), so the crate defaults stand for them.
+/// a second list would be the drift this repository keeps paying for.
+///
+/// Issue 2298 — the payload classes and the take buffer are derived here by
+/// the leaf road's own functions, over the IMAGE's message closure
+/// (`closure_tables`, from [`image_closure_tables`]) rather than the
+/// workspace's whole `generated/` tree, so a workspace image and the leaf
+/// build of the same node state the same sizes.
 fn derived_pool_env(
-    resolved: &crate::resolve::Resolved,
+    image: &ResolvedImage,
+    closure_tables: &[PathBuf],
 ) -> std::collections::BTreeMap<String, String> {
+    let resolved = &image.resolved;
     let Some(knobs) = resolved.knobs() else {
         return std::collections::BTreeMap::new();
     };
-    const NOT_DERIVED: &str = "not derived for a workspace image (no leaf message-bound inventory)";
-    let body = crate::leaf_entity_env::render_env_sidecar(
-        knobs,
-        &crate::leaf_payload_classes::PayloadClasses::Refused {
-            reason: NOT_DERIVED.to_string(),
+    let payload = match &image.inventory {
+        Some(inv) => crate::leaf_payload_classes::payload_classes_over(closure_tables, inv),
+        None => crate::leaf_payload_classes::PayloadClasses::Refused {
+            reason: "the image's entity inventory was not composed".to_string(),
         },
-        &crate::leaf_take_buffer::TakeBuffer::Refused {
-            reason: NOT_DERIVED.to_string(),
-        },
-        &resolved.source,
-    );
-    body.parse::<toml::Value>()
-        .ok()
-        .and_then(|v| v.get("env").and_then(|e| e.as_table()).cloned())
-        .map(|t| {
-            t.into_iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
-                .collect()
-        })
-        .unwrap_or_default()
+    };
+    let take = crate::leaf_take_buffer::take_buffer_over(closure_tables);
+    for (what, reason) in [
+        (
+            "payload classes",
+            match &payload {
+                crate::leaf_payload_classes::PayloadClasses::Refused { reason } => Some(reason),
+                _ => None,
+            },
+        ),
+        (
+            "take buffer",
+            match &take {
+                crate::leaf_take_buffer::TakeBuffer::Refused { reason } => Some(reason),
+                _ => None,
+            },
+        ),
+    ] {
+        if let Some(reason) = reason {
+            eprintln!(
+                "nros build:   {what} not derived for `{}`, so the crate default stands: {reason}",
+                resolved.image.entry
+            );
+        }
+    }
+    let body = crate::leaf_entity_env::render_env_sidecar(knobs, &payload, &take, &resolved.source);
+    crate::leaf_entity_env::env_rows(&body)
+}
+
+/// Issue 2298 — the bound tables of one image's message closure: the node
+/// packages its resolved model instantiates, followed through the workspace's
+/// `<depend>` graph into `generated/`.
+///
+/// Seeded from the MODEL's node instances (which the resolver reached through
+/// every `<include>`), plus the per-component rows of the derivation, so a
+/// component the model names only through its contract still counts.
+fn image_closure_tables(
+    root: &std::path::Path,
+    image: &ResolvedImage,
+    packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
+) -> Vec<PathBuf> {
+    let mut seeds: Vec<String> = image
+        .resolved
+        .per_component
+        .iter()
+        .map(|(pkg, ..)| pkg.clone())
+        .collect();
+    if let Some(model) = &image.model {
+        seeds.extend(model.structure.nodes.values().filter_map(|n| n.pkg.clone()));
+    }
+    crate::leaf_payload_classes::image_closure_bound_tables(root, seeds, |name| {
+        packages
+            .iter()
+            .find(|p| p.name == name)
+            .map(|p| p.depends.iter().cloned().collect())
+    })
 }
 
 /// The `[patch.crates-io]` rows an image's cargo graph needs, as crate name →

@@ -57,6 +57,13 @@ pub fn take_buffer_for_leaf(leaf: &Path) -> TakeBuffer {
     derive(|| crate::leaf_payload_classes::leaf_bound_inventory(leaf))
 }
 
+/// The take buffer over tables the caller found: a workspace image's own
+/// message closure (issue 2298,
+/// [`crate::leaf_payload_classes::image_closure_bound_tables`]).
+pub fn take_buffer_over(tables: &[std::path::PathBuf]) -> TakeBuffer {
+    derive(|| crate::leaf_payload_classes::bound_inventory_from_tables(tables))
+}
+
 /// The derivation proper, with its input supplied — so a test can state a bound
 /// table without a directory.
 pub fn derive(bounds: impl FnOnce() -> Result<Vec<(String, BoundState)>, String>) -> TakeBuffer {
