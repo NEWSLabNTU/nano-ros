@@ -110,7 +110,7 @@ nano-ros has no exceptions, and a few handles observe rather than own.
    A node you construct by hand, outside a generated entry, cannot throw
    either: check `node.ok()` after constructing it. The other spellings and
    what each maps to are in
-   [rclcpp compatibility](../../reference/cpp-api.md#rclcpp-compatibility).
+   [rclcpp compatibility](../../reference/rclcpp-compatibility.md).
 
 5. Run it against the router your ROS 2 peers use:
 
@@ -229,7 +229,7 @@ ament_auto_package()
 
 ## See also
 
-- [rclcpp compatibility](../../reference/cpp-api.md#rclcpp-compatibility):
+- [rclcpp compatibility](../../reference/rclcpp-compatibility.md):
   every upstream spelling and what it maps to, and the measured ports.
 - [How nano-ros differs from ROS 2](../../background/differences-from-ros2.md).
 - [Message generation](../../reference/message-generation.md#which-cmake-spelling-one-table):
