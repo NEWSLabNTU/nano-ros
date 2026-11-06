@@ -17,7 +17,7 @@ nros_components_register_node(service_server_lib
     EXECUTABLE add_server
     SHAPE configure
     # phase-412 -- `ENTITIES` is retired. What this component creates is
-    # stated in demo_bringup/launch/service_server.contract.yaml, beside the launch
+    # stated in service_bringup/launch/service_server.contract.yaml, beside the launch
     # file that runs it, and reaches the sizing through the SystemModel.
 )
 

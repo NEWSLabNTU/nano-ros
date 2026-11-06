@@ -12,8 +12,8 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, Rmw, XrceAgent, build_native_c_example_rmw, c_xrce_listener_binary,
-        c_xrce_talker_binary, require_cmake, require_xrce_agent,
+        ManagedProcess, Rmw, XrceAgent, c_xrce_listener_binary, c_xrce_talker_binary,
+        require_cmake, require_xrce_agent,
     },
 };
 use rstest::rstest;
@@ -93,13 +93,17 @@ fn test_c_xrce_listener_starts(c_xrce_listener_binary: PathBuf) {
             .expect("Failed to start c-xrce-listener");
 
     let output = listener
-        .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_READY_MARKER,
+            1,
+            Duration::from_secs(5),
+        )
         .expect("C XRCE listener did not initialize");
 
     eprintln!("C XRCE listener output:\n{}", output);
 
     assert!(
-        output.contains("Support initialized"),
+        output.contains(nros_tests::output::LISTENER_READY_MARKER),
         "C XRCE listener failed to initialize.\nOutput:\n{}",
         output
     );
@@ -132,7 +136,11 @@ fn test_c_xrce_talker_listener_communication(
     .expect("Failed to start c-xrce-listener");
 
     let init_output = listener
-        .wait_for_output_count("Support initialized", 1, Duration::from_secs(5))
+        .wait_for_output_count(
+            nros_tests::output::LISTENER_READY_MARKER,
+            1,
+            Duration::from_secs(5),
+        )
         .expect("C XRCE listener did not initialize");
     eprintln!("C XRCE listener initialized:\n{}", init_output);
 
@@ -161,7 +169,7 @@ fn test_c_xrce_talker_listener_communication(
 
     // Verify initialization
     assert!(
-        listener_output.contains("Support initialized"),
+        listener_output.contains(nros_tests::output::LISTENER_READY_MARKER),
         "C XRCE listener failed to initialize.\nOutput:\n{}",
         listener_output
     );
@@ -190,8 +198,8 @@ fn test_c_xrce_talker_listener_communication(
 // =============================================================================
 
 /// Resolve a native C XRCE example binary (prebuilt), or skip.
-fn nano_c_xrce(case: &str, binary: &str) -> PathBuf {
-    build_native_c_example_rmw(case, binary, Rmw::Xrce).unwrap_or_else(|e| {
+fn nano_c_xrce(case: &str, _binary: &str) -> PathBuf {
+    nros_tests::fixtures::linux_pair_image("c", case, Rmw::Xrce).unwrap_or_else(|e| {
         nros_tests::unmet!(
             "linux/c/{case} xrce fixture not prebuilt (run `just linux build-fixtures`): {e:?}"
         )

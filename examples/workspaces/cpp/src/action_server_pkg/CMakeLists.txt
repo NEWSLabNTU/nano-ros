@@ -18,7 +18,7 @@ nros_components_register_node(action_server_lib
     EXECUTABLE fib_server
     SHAPE configure
     # phase-412 -- `ENTITIES` is retired. What this component creates is
-    # stated in demo_bringup/launch/action_server.contract.yaml, beside the launch
+    # stated in action_bringup/launch/action_server.contract.yaml, beside the launch
     # file that runs it, and reaches the sizing through the SystemModel.
 )
 

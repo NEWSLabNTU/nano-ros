@@ -645,7 +645,6 @@ build-c:
     #!/usr/bin/env bash
     set -e
     just linux _build-c-example examples/linux/c/talker
-    just linux _build-c-example examples/linux/c/listener
     just linux _build-c-example examples/linux/c/custom-msg
     echo "C examples built!"
 
@@ -655,7 +654,6 @@ build-c-xrce:
     #!/usr/bin/env bash
     set -e
     just linux _build-c-example examples/linux/c/talker  "-DNROS_RMW=xrce -DNROS_RMW=xrce"
-    just linux _build-c-example examples/linux/c/listener "-DNROS_RMW=xrce -DNROS_RMW=xrce"
     echo "C XRCE examples built!"
 
 # Clean C examples build
@@ -686,10 +684,7 @@ build-cpp:
     #!/usr/bin/env bash
     set -e
     just linux _build-cpp-example examples/linux/cpp/talker
-    just linux _build-cpp-example examples/linux/cpp/listener
-    just linux _build-cpp-example examples/linux/cpp/service-server
     just linux _build-cpp-example examples/linux/cpp/service-client
-    just linux _build-cpp-example examples/linux/cpp/action-server
     just linux _build-cpp-example examples/linux/cpp/action-client
     echo "C++ examples built!"
 

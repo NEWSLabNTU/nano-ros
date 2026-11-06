@@ -16,7 +16,7 @@ nros_components_register_node(service_client_lib
     EXECUTABLE add_client
     SHAPE configure
     # phase-412 -- `ENTITIES` is retired. What this component creates is
-    # stated in demo_bringup/launch/service_client.contract.yaml, beside
+    # stated in service_bringup/launch/service_client.contract.yaml, beside
     # the launch file that runs it. That contract marks the service
     # `external: server`, because the server is the separate add_server
     # image; without that mark (ros-launch-manifest v0.1.23, issue 1083)

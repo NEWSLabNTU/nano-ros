@@ -303,6 +303,32 @@ once.
 `zephyr::example_e2e` keeps its 27 case names. The cross-Agent XRCE repro of
 issue 2221 (two Agents, two cells) hears 0 foreign samples.
 
+One PR per board.
+
+- **linux (in review).** Each language workspace gets 18
+  `linux_<role>[_xrce|_cyclonedds]` images in its three behaviour bringups.
+  `demo_bringup`'s service and action images move there, and their row ids
+  stay. 39 leaf rows and 8 leaves retire: the C listener, service and
+  action leaves, and the C++ listener, service server and action server. A few
+  leaves stay until W6, because each carries something the workspace program
+  does not have, and each keeps one plain row:
+  - Rust `listener`: its `link-tls` and peer-mode rows.
+  - Rust service and action leaves: the `linux[_<rmw>]_<edition>` images that
+    the opt-in ROS-edition lane builds.
+  - C++ `service-client`: a hand-written `main`, which the census test needs.
+  - C++ `action-client`: it reads `NROS_TEST_GOAL_ORDER`, for the
+    goal-rejection test.
+
+  Every
+  resolver that named a moved leaf now resolves its workspace image
+  (`fixtures::linux_pair_image`). The 32 pair cells
+  (`linux_example_{pubsub,reqresp}_e2e`) pass with unchanged case names.
+  Found on the way: issue 2297. The fixture builder wipes a leaf's
+  `generated/` on codegen-stamp drift, and `nros configure` then reports up
+  to date without regenerating it. The wipe now retires the configure stamps
+  too.
+- **threadx-linux, zephyr native_sim:** not started.
+
 ### W5 — The other platforms
 
 nuttx (arm, riscv), threadx-riscv64 (with its cyclonedds rows) and

@@ -61,8 +61,10 @@ fn scratch() -> PathBuf {
 }
 
 /// Resolve one of the adopter's launch files the way `nros sync` does.
-fn resolve(out: &Path, stem: &str) -> PathBuf {
-    let bringup = repo().join("examples/workspaces/cpp/src/demo_bringup");
+/// `bringup` is the package under `examples/workspaces/cpp/src` (phase-535 W4
+/// moved the service pair's launch file into `service_bringup`).
+fn resolve(out: &Path, bringup: &str, stem: &str) -> PathBuf {
+    let bringup = repo().join("examples/workspaces/cpp/src").join(bringup);
     let model = out.join(format!("{stem}_model.yaml"));
     let output = std::process::Command::new(common::pinned_launch_resolver())
         .arg(bringup.join(format!("launch/{stem}.launch.xml")))
@@ -84,8 +86,8 @@ fn resolve(out: &Path, stem: &str) -> PathBuf {
 #[test]
 fn the_cpp_workspace_listener_declares_a_depth_and_asserts_against_it() {
     let out = scratch();
-    let system = resolve(&out, "system");
-    let sibling = resolve(&out, "service_server");
+    let system = resolve(&out, "demo_bringup", "system");
+    let sibling = resolve(&out, "service_bringup", "service_server");
 
     // The registered component population, as `nano_ros_node_register()` writes
     // it for this workspace: every component the native configure compiles.

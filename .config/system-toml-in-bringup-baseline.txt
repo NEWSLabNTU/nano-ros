@@ -7,29 +7,21 @@
 # listed path that no longer violates fails until its line is deleted. Phase-531
 # W6 and phase-535 empty it. Regenerate (shrink only):
 #   python3 scripts/check-system-toml-in-bringup.py --write-baseline
-examples/linux/c/action-client/system.toml
-examples/linux/c/action-server/system.toml
 examples/linux/c/custom-msg/system.toml
 examples/linux/c/custom-platform/system.toml
 examples/linux/c/custom-transport-loopback/system.toml
-examples/linux/c/listener/system.toml
 examples/linux/c/logging/system.toml
 examples/linux/c/parameters/system.toml
 examples/linux/c/safety-listener/system.toml
 examples/linux/c/service-client-callback/system.toml
-examples/linux/c/service-client/system.toml
-examples/linux/c/service-server/system.toml
 examples/linux/c/talker/system.toml
 examples/linux/cpp/action-client-callback/system.toml
 examples/linux/cpp/action-client/system.toml
-examples/linux/cpp/action-server/system.toml
-examples/linux/cpp/listener/system.toml
 examples/linux/cpp/logging/system.toml
 examples/linux/cpp/parameters/system.toml
 examples/linux/cpp/safety-listener/system.toml
 examples/linux/cpp/service-client-callback/system.toml
 examples/linux/cpp/service-client/system.toml
-examples/linux/cpp/service-server/system.toml
 examples/linux/cpp/talker/system.toml
 examples/linux/rust/action-client-rtic/system.toml
 examples/linux/rust/action-client/system.toml

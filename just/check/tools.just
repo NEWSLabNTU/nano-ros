@@ -167,7 +167,6 @@ stack-all top="10":
     # C examples (native)
     for example in \
         examples/linux/c/talker \
-        examples/linux/c/listener \
         examples/linux/c/custom-msg \
         examples/linux/c/custom-transport-loopback \
     ; do

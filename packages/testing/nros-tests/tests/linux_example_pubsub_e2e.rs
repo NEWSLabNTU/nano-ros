@@ -27,11 +27,7 @@
 
 use nros_tests::{
     TestResult,
-    fixtures::{
-        ManagedProcess, Rmw as FixtureRmw, XrceAgent, ZenohRouter, build_native_c_example_rmw,
-        build_native_cpp_example_rmw, build_native_rust_example_rmw, require_xrce_agent,
-        require_zenohd,
-    },
+    fixtures::{ManagedProcess, XrceAgent, ZenohRouter, require_xrce_agent, require_zenohd},
     matrix::{Cell as MCell, Kind as MK, Lang as ML, Rmw as MR, Tier as MT, Workload as MW},
     output::LISTENER_LOG_PREFIX,
     unique_ros_domain_id,
@@ -39,25 +35,21 @@ use nros_tests::{
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
-/// Build a native example binary for `(lang, case, rmw)`. The cmake target names
-/// are `c_talker`/`cpp_talker`/… ; the Rust `[[bin]]` names are the bare role.
-fn fixture_rmw(r: MR) -> FixtureRmw {
-    match r {
-        MR::Zenoh => FixtureRmw::Zenoh,
-        MR::Cyclonedds => FixtureRmw::Cyclonedds,
-        MR::Xrce => FixtureRmw::Xrce,
-        MR::Uorb => unreachable!("no uorb native example pubsub cell"),
-    }
-}
-
-fn resolve(lang: ML, case: &str, binary: &str, rmw: MR) -> TestResult<PathBuf> {
-    let fr = fixture_rmw(rmw);
-    match lang {
-        ML::Rust => build_native_rust_example_rmw(case, binary, fr).map(|p| p.to_path_buf()),
-        ML::C => build_native_c_example_rmw(case, binary, fr).map(|p| p.to_path_buf()),
-        ML::Cpp => build_native_cpp_example_rmw(case, binary, fr).map(|p| p.to_path_buf()),
-        ML::Mixed => unreachable!("no mixed native example pubsub cell"),
-    }
+/// phase-535 W4 (RFC-0122 D1) — both roles of a pair cell are workspace
+/// images (`nros_tests::fixtures::workspace_image`); `binary` names the old
+/// leaf target and is kept only so the case table reads as before.
+fn resolve(lang: ML, case: &str, _binary: &str, rmw: MR) -> TestResult<PathBuf> {
+    use nros_tests::fixtures::workspace_image::{PairRole, resolve_coord};
+    let role = match case {
+        "talker" => PairRole::Talker,
+        "listener" => PairRole::Listener,
+        "service-server" => PairRole::ServiceServer,
+        "service-client" => PairRole::ServiceClient,
+        "action-server" => PairRole::ActionServer,
+        "action-client" => PairRole::ActionClient,
+        other => unreachable!("no pair role `{other}`"),
+    };
+    resolve_coord(nros_tests::matrix::PlatformId::Linux, lang, rmw, role)
 }
 
 fn talker_bin(l: ML) -> &'static str {
