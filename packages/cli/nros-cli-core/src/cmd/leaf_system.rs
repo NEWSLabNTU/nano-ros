@@ -1261,11 +1261,10 @@ mod tests {
     /// `os_config` fragment, so the board package's conf and the snippets the
     /// board names are all it gets: without `CONFIG_NETWORKING` there, native_sim
     /// failed to link (Zephyr had no random source) and mps2-an385 booted into
-    /// `ConnectionFailed`. A board in `KNOWN` is the open half of the issue;
-    /// fixing it makes this test fail until its row goes.
+    /// `ConnectionFailed`. `qemu-cortex-a53` kept its network in the one
+    /// bringup that used it until its board package took it over.
     #[test]
     fn a_zephyr_board_whose_default_link_is_ip_states_a_network_stack() {
-        const KNOWN: &[&str] = &["qemu-cortex-a53", "nucleo-f767zi-zephyr"];
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
@@ -1304,24 +1303,70 @@ mod tests {
                     .any(|l| l.trim() == "CONFIG_NETWORKING=y")
             });
             checked.push(name.to_string());
-            let known = KNOWN.contains(&name);
-            if states == known {
+            if !states {
                 wrong.push(format!(
-                    "{name}: {} (files: {confs:?})",
-                    if known {
-                        "now states CONFIG_NETWORKING=y; delete its KNOWN row and close issue 2290's half"
-                    } else {
-                        "states no CONFIG_NETWORKING=y in its board conf or snippets"
-                    }
+                    "{name}: states no CONFIG_NETWORKING=y in its board conf or snippets \
+                     (files: {confs:?})"
                 ));
             }
         }
-        for b in ["zephyr", "mps2-an385-zephyr"] {
+        for b in ["zephyr", "mps2-an385-zephyr", "qemu-cortex-a53"] {
             assert!(
                 checked.iter().any(|c| c == b),
                 "{b} not checked: {checked:?}"
             );
         }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Issue 2290 -- the other half: a Zephyr board whose OWN conf turns the
+    /// IP stack off (`CONFIG_NETWORKING=n`) has a serial link as its default,
+    /// so it states the host-side port in `[board.net] host_serial`. Without
+    /// it `nros new <ws> --board <b>` wrote no locator, and the image dialled
+    /// the TCP Kconfig default with no stack (`nucleo-f767zi-zephyr`).
+    #[test]
+    fn a_zephyr_board_whose_conf_turns_ip_off_states_its_host_serial() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = BoardCatalog::load(&root).expect("in-tree board catalog");
+        let mut checked = Vec::new();
+        let mut wrong = Vec::new();
+        for d in catalog.descriptors() {
+            if d.zephyr.is_none() {
+                continue;
+            }
+            let name = d.names[0].as_str();
+            let td = leaf_dir(&format!(
+                "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.z]\nboard = \"{name}\"\n"
+            ));
+            let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+            let confs = board_conf_paths(&leaf, Some(&catalog), Some(&root), name);
+            let ip_off = confs.iter().any(|p| {
+                std::fs::read_to_string(p)
+                    .unwrap_or_default()
+                    .lines()
+                    .any(|l| l.trim() == "CONFIG_NETWORKING=n")
+            });
+            if !ip_off {
+                continue;
+            }
+            checked.push(name.to_string());
+            let net = crate::cmd::build::descriptor_board_net(d, name, Some(&root)).unwrap();
+            if !net.links.iter().any(|l| l == "serial") || net.host_serial.is_none() {
+                wrong.push(format!(
+                    "{name}: its conf turns NETWORKING off, but its [board.net] carries \
+                     links {:?} and host_serial {:?}",
+                    net.links, net.host_serial
+                ));
+            }
+        }
+        assert!(
+            checked.iter().any(|c| c == "nucleo-f767zi-zephyr"),
+            "nucleo-f767zi-zephyr not checked: {checked:?}"
+        );
         assert!(wrong.is_empty(), "{wrong:#?}");
     }
 

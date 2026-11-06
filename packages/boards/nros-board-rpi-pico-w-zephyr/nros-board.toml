@@ -103,6 +103,11 @@ threads = true
 stack = "os"
 # RFC-0109 D3 -- serial only: zenoh-pico's serial link on UART0.
 links = ["serial"]
+# Issue 2290 -- the port brought out to the host: UART0 on GP0/GP1 (`boards/rpi_pico_rp2040_w.overlay`).
+# This package's prj.conf turns the IP stack off, so `nros new <ws> --board`
+# writes this serial locator for the first image. Without it the image dialled
+# the TCP Kconfig default with no stack.
+host_serial = "uart@40034000#baudrate=115200"
 
 # What `nros setup board rpi-pico-w-zephyr --zephyr-workspace <ws>` does to a
 # reader's own west workspace: apply the 3.7 patch set and add the Rust
