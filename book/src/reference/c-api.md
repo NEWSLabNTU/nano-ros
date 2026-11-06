@@ -78,7 +78,7 @@ has the table of spellings.
 
 The **`rmw-cffi`** and **`platform-cffi`** Doxygen sites are not part of the
 user API. They document the C vtables for porters writing a custom RMW backend
-or platform port. See [RMW API](rmw-api.md) and [Platform API](platform-api.md).
+or platform port. See [Platform and RMW APIs](platform-api.md).
 
 ## Design background
 
