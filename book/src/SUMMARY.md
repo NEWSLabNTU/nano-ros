@@ -11,6 +11,7 @@
 - [Pick your board](./starters/pick-your-board.md)
 - [Nucleo-F767ZI](./starters/nucleo-f767zi.md)
 - [Raspberry Pi Pico W](./starters/rpi-pico-w.md)
+- [mps2-an385 in QEMU (bare-metal)](./starters/mps2-an385-bare-metal.md)
 
 # Tutorial
 

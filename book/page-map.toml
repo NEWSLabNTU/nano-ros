@@ -60,6 +60,13 @@ batch = "p537-w4"
 note = "Raspberry Pi Pico W starter (W4, D12): Wokwi twin, then the board; its twin runs are user-run with the reader's WOKWI_CLI_TOKEN"
 
 [[page]]
+book = "user"
+path = "starters/mps2-an385-bare-metal.md"
+action = "new phase-537"
+batch = "p537-w4"
+note = "mps2-an385 in QEMU (bare-metal) starter (W4, D12): the starter parts of guide/platforms/bare-metal"
+
+[[page]]
 old = "getting-started/first-project.md"
 book = "user"
 path = "tutorial/run-a-talker.md"

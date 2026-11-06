@@ -46,6 +46,10 @@ show for it.
 - [Nucleo-F767ZI](nucleo-f767zi.md): Boots, manual (2026-11-01); reads *Builds* from 2027-03-02
 - [Raspberry Pi Pico W](rpi-pico-w.md): Boots, manual (2026-11-01); reads *Builds* from 2027-03-02
 
+### Verified in emulator
+
+- [mps2-an385 in QEMU (bare-metal)](mps2-an385-bare-metal.md): Verified in emulator (daily)
+
 <!-- END GENERATED starter list -->
 
 ## Next
