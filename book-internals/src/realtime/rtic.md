@@ -507,7 +507,7 @@ at the cost of flexibility: ARM Cortex-M only, no dynamic task creation.
 
 - [Dispatch Strategy](../../background/dispatch-strategy.html) —
   the trichotomy and the per-Node-vs-per-callback rationale.
-- [Role reference](../../guide/build/roles.html) —
+- [Role reference](../../guide/build/organize-a-larger-workspace.html) —
   the package roles in full.
 - [Bare-metal Cortex-M3](../../guide/platforms/bare-metal.html) — the MPS2-AN385 board
   and the direct-exec entry shape the book teaches.

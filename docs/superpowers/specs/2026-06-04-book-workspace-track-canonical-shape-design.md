@@ -85,7 +85,7 @@ Genuinely stale; fix:
 
 ### B1. Reconcile existing reference pages
 
-- **`book/src/guide/build/roles.md`** → retitle
+- **`book/src/guide/build/organize-a-larger-workspace.md`** → retitle
   **"Node, Bringup & Entry Packages"**. Edits (file is the cookbook):
   - "Component pkg" → "Node pkg" everywhere (note the ROS composable-node
     parallel once). `nros::component!()` → `nros::node!()`.
