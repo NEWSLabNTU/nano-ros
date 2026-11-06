@@ -55,10 +55,10 @@ embedded image has no run-time configuration.
    that publishes less than once per flush period: there is nothing to
    combine, and the flushes make it slower.
 
-Timer-paced sched tasks (100 Hz control + 10 Hz telemetry, one session,
-harness): defaults 8.6 msg/s total → batch + flush thread 34.1 → + split lock
-43.2, with the 10 Hz sched task at its ideal rate. Delivery integrity is validated
-in every configuration.
+3. Add split locking if a tight-loop or bursty publisher is still limited by
+   the transport. The flush then sends one batch while publishers fill the
+   next, and a full batch no longer blocks the publishing thread. It needs
+   `batch`:
 
    ```toml
    [image.posix.knobs.zenoh.tx]
@@ -111,18 +111,8 @@ auto pub = node.create_publisher<Twist>("/cmd_vel", rclcpp::QoS().tx_express(tru
 
 <!-- /tabs -->
 
-- **Benchmark listeners need a deep rx ring.** A batched publisher delivers a
-  whole wire batch as one callback burst; the per-subscriber SPSC ring depth
-  is compile-time (`NROS_ZENOH_SUBSCRIBER_RING_DEPTH`, default 4). A full ring
-  keeps the newest samples and evicts older ones, counted by
-  `nros_rmw_zenoh::ring_full_drops_total()` — build measurement sinks with e.g.
-  `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` or the numbers undercount by >10×.
-- **Express ≠ fast on Zephyr.** Express bypasses the batch, so each sample
-  pays the socket-window wait itself. Reserve it for topics whose *rate* is
-  low but whose *latency* matters.
-- **Don't flush from your own timers/executor threads.** The dedicated flush
-  thread exists because flushing from sched task threads stalls the very timers
-  that generate the puts (measured slower than no batching).
+Do not mark a stream express on Zephyr: each express sample waits for the
+socket window on its own.
 
 ### Set the wire buffers
 
@@ -192,7 +182,7 @@ with `nros build posix`.
 | A benchmark listener counts far fewer messages than were sent | its receive ring is too shallow for a batch arriving at once; build the listener with `NROS_ZENOH_SUBSCRIBER_RING_DEPTH=1024` |
 | Batching made a timer-paced image slower | turn `batch` off: at one message per flush there is nothing to combine |
 
-Do not flush from your own timers or executor threads. Flushing from a tier
+Do not flush from your own timers or executor threads. Flushing from a sched-task
 thread stalls the timers that produce the samples, and measured slower than
 no batching.
 

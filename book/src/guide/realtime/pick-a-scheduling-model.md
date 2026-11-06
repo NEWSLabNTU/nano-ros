@@ -138,7 +138,7 @@ rate-monotonic assignment, EDF, priority inversion) belongs to
    ```
 
    ```text
-   [INFO] Telem::register on a tier admitting group `telem`
+   [INFO] Telem::register on a sched task admitting group `telem`
    ```
 
 ## Example
