@@ -195,10 +195,12 @@ data: 'Hello World: 8'
 ---
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` asks for reliable
-delivery by default, which receives nothing from a best-effort publisher. That
-is why the command asks for best-effort. Chapter 10 explains the QoS rules
-that decide this, and where nano-ros differs from ROS 2 on the wire.
+The command asks for best-effort delivery, which receives from a publisher
+of either kind, so it works whatever QoS a publisher offers. This talker's
+publisher happens to be reliable, as `ros2 topic info -v /chatter` shows, and
+a plain `ros2 topic echo /chatter` hears it too. Chapter 10 explains the QoS
+rules that decide what a subscriber hears, and where nano-ros differs from
+ROS 2 on the wire.
 
 Press Ctrl-C in both terminals when you have seen enough.
 
