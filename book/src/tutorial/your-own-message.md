@@ -176,7 +176,7 @@ writes), the same `nros build` builds `my_msgs` into whichever image's packages 
 **Escape hatch — a hand-written umbrella.** For a CMake tree that is not a
 nano-ros workspace, one top-level `CMakeLists.txt` pulls nano-ros in as a
 subdirectory, naming the SDK root on the configure line
-([Build as a CMake subdirectory](../guide/build/cmake-subdirectory.md) has the
+([Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree) has the
 mechanism):
 
 ```cmake

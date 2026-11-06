@@ -247,6 +247,23 @@ env or Kconfig knob. Changing them means editing that header.
 | `XRCE_SERVICE_REQUEST_RING_DEPTH` | Queued service requests per server      | `4`     |
 | `XRCE_DEFAULT_AGENT_PORT`         | Default agent port                      | `2018`  |
 
+### CMake cache variables
+
+For a CMake project that adds nano-ros with `add_subdirectory` and has no
+`system.toml`. Set them before `add_subdirectory`. In a nano-ros workspace the
+generated root sets them from the image, and none is yours to set.
+
+| Variable | Default | Values |
+| --- | --- | --- |
+| `NROS_PLATFORM` | `posix` | `posix`, `freertos`, `nuttx`, `threadx` (also the legacy `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64`). `esp_idf` is refused |
+| `NROS_BOARD` | (unset) | required for `threadx`: `threadx-linux` or `rv-virt-threadx` |
+| `NROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`, `cyclonedds` |
+| `NROS_ROS_EDITION` | `humble` | `humble`, `iron`, `jazzy` |
+| `NROS_FEATURES` | (empty) | extra cargo features for the Rust build, such as `rosout` |
+| `NROS_BUILD_CODEGEN` | `ON` | `ON`, `OFF` |
+| `NROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time source bootstrap of a checkout; an installed SDK takes its sources from `nros setup` |
+| `NROS_CARGO_PROFILE` | derived from `CMAKE_BUILD_TYPE` | the cargo profile for the Rust half; see [Build profiles](../guide/build/build-profiles.md) |
+
 ### Binary size (embedded)
 
 Carried in the image's generated `[env]`, from the board's `[knobs]` or your

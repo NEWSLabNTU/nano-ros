@@ -331,7 +331,7 @@ runner scripts — live in the [Platform Guides](../../../book/src/guide/platfor
 
 ## See Also
 
-- [Build as a CMake subdirectory](../../guide/build/cmake-subdirectory.html)
+- [Build inside an existing CMake or vendor tree](../../guide/build/existing-cmake-or-vendor-tree.html#add-nano-ros-to-a-cmake-tree)
 - [Message Generation](../../reference/message-generation.html)
 - [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md)
   — coverage matrix + intentionally-empty cells

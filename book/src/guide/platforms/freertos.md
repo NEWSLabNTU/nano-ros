@@ -164,7 +164,7 @@ nros configure
 
 For a CMake tree that is
 not a nano-ros workspace at all, see
-[Build as a CMake subdirectory](../build/cmake-subdirectory.md).
+[Build inside an existing CMake or vendor tree](../build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree).
 
 See
 [When `nros build` drives the build](../../background/how-a-build-becomes-an-image.md#when-nros-build-drives-the-build)
