@@ -60,6 +60,7 @@ show for it.
 - [Linux host](linux-host.md): Verified on host (merge)
 - [Zephyr native_sim](zephyr-native-sim.md): Verified on host (merge)
 - [ThreadX Linux simulator](threadx-linux.md): Verified on host (merge)
+- [FreeRTOS POSIX](freertos-posix.md): Verified on host (daily)
 
 <!-- END GENERATED starter list -->
 

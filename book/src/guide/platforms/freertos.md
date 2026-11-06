@@ -155,20 +155,14 @@ session`, sets `[knobs.zenoh.limits] connect_forever = true` (or
 
 ## Run on the POSIX simulator
 
-The `freertos-posix` board runs the FreeRTOS kernel as an ordinary
-Linux process (FreeRTOS's POSIX port) — no QEMU, host networking. It is
-a C / C++ board (it has no Rust entry shape). Provision it, point the
-image of a C or C++ workspace at it, and run:
-
-```bash
-nros setup freertos-posix --rmw zenoh
-# in src/fr_node_bringup/system.toml:  [image.freertos] board = "freertos-posix"
-nros run fr_node
-```
-
-The image dials the router on the host directly (no Slirp gateway), so
-start `rmw_zenohd` on the port its `locator` names, as in
-[Run on QEMU](#run-on-qemu) step 1.
+The `freertos-posix` board runs the FreeRTOS kernel as an ordinary Linux
+process (FreeRTOS's POSIX port), with no QEMU and the host's own network. It
+is a C / C++ board (it has no Rust entry shape).
+[Its starter](../../starters/freertos-posix.md) provisions it, scaffolds a C
+talker and runs it. To move an existing C or C++ workspace onto it, point its
+image at the board, `[image.freertos] board = "freertos-posix"`, and run
+again. The image dials the router on the host directly, with no Slirp
+gateway.
 
 ## Flash a real board
 

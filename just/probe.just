@@ -123,6 +123,11 @@ zephyr-rust: (platform "zephyr-rust")
 [group("main")]
 zephyr-mps2: (platform "zephyr-mps2")
 
+# book/src/starters/freertos-posix.md — a C talker on the FreeRTOS POSIX
+# simulator (phase-537 W4).
+[group("main")]
+freertos-posix: (platform "freertos-posix")
+
 # book/src/guide/platforms/zephyr-west-app.md — a Zephyr application built with
 # plain west (no workspace, no system.toml), on native_sim.
 [group("main")]

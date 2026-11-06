@@ -227,7 +227,7 @@ matrix_platform = "FreertosPosix"
 # `just freertos build-posix-*`. The old token named no module, which nothing
 # asked about until `cadence = "daily"` did (phase-522 W1).
 nightly_token = "freertos"
-book_run = "guide/platforms/freertos.md#run-on-the-posix-simulator"
+book_run = "starters/freertos-posix.md#run-it-on-this-machine"
 runs = "host"
 cadence = "daily"
 breadth = "inherits FreertosMps2"
@@ -742,6 +742,14 @@ variant = ""
 weekly = false
 row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
 notes = "phase-537 W4 — the mps2-an385 Zephyr starter: a Rust talker on Zephyr's `mps2/an385` in QEMU, from `nros setup` and a fresh west workspace to `ros2 topic echo`. Until W4 the zephyr-rust track replayed this run as a second image of the native_sim chapter's workspace. Not weekly yet: the probe PR decides that, with its `awaits`."
+
+[[probe]]
+track = "freertos-posix"
+chapter = "starters/freertos-posix.md"
+variant = ""
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process, `nros run` starting the router on loopback, then `ros2 topic echo`. The board's first track (its row's evidence is the daily lane). Not weekly yet: the probe PR decides that, with its `awaits`."
 
 [[probe]]
 track = "zephyr-west-app"
