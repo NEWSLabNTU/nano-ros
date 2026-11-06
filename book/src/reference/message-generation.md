@@ -316,7 +316,7 @@ workspace shadows the installed one of the same name.
 
 ## Troubleshooting
 
-**"`AMENT_PREFIX_PATH` is unset and no configure of … has recorded one to reuse"**
+**"`AMENT_PREFIX_PATH` is unset, and … has no earlier configure that recorded one"**
 - This shell has not sourced ROS 2, and this project has never been
   configured from one that had. Run `source /opt/ros/humble/setup.bash`
   (or your overlay's `install/setup.bash`), then build again.

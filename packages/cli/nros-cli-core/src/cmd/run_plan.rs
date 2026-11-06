@@ -854,7 +854,7 @@ pub fn run(args: Args) -> eyre::Result<()> {
     let (named, rung) = name_target(&Selection::from(&args)).unwrap_or_else(|e| unresolved(&e));
     let mut bargs = selection_build_args(&named).map_err(|e| eyre::eyre!(e))?;
     bargs.dry_run = args.dry_run;
-    crate::cmd::build::configure_implicitly(&bargs)?;
+    crate::cmd::build::configure_implicitly(&bargs, "run")?;
     let one = match select_target(&named, "run") {
         Ok(one) => one,
         Err(e) => unresolved(&e),

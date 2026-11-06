@@ -207,10 +207,11 @@ hit it. If a cargo command you drive yourself does, you skipped the
 
 ### A10. `AMENT_PREFIX_PATH` is unset
 
-`nros build`, `nros run` or `nros configure` stops before building anything:
+`nros build`, `nros run` or `nros configure` stops before building anything.
+The message names the command you ran; from `nros build`:
 
 ```
-Error: configure: `AMENT_PREFIX_PATH` is unset and no configure of `/home/you/sensor_ws` has recorded one to reuse. Run the setup step once from a shell that has ROS 2: `source /opt/ros/<distro>/setup.bash` (or your overlay's `install/setup.bash`), then `nros configure`; later runs without a sourced shell reuse what it records.
+Error: configure: `AMENT_PREFIX_PATH` is unset, and `/home/you/sensor_ws` has no earlier configure that recorded one. Source ROS 2 in this shell (`source /opt/ros/<distro>/setup.bash`, or your overlay's `install/setup.bash`) and run `nros build` again; later shells need not source it.
 ```
 
 The project has messages to generate (every talker uses `std_msgs`), and
