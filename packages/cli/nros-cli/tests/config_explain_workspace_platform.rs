@@ -6,8 +6,10 @@
 //! never held the workspace, and the scaffold wrote no `names`, so the package
 //! answered to its directory name (`nros-platform-acmeos`) and not `acmeos`.
 
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::{
+    path::{Path, PathBuf},
+    process::{Command, Output},
+};
 
 fn nros() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_nros"))
