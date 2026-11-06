@@ -686,7 +686,8 @@ book = "user"
 path = "reference/cli.md"
 action = "keep"
 batch = "w4-reference"
-note = "CLI: W11 generates it from the CLI's help (D7); W8 takes its task parts"
+generated = "scripts/gen-cli-reference.py"
+note = "CLI (W11, D7): committed, generated from the in-tree CLI's --help of every user-tier command. The hand prose it replaced went to the pages that explain each verb: nros px4 msgs to guide/platforms/px4, nros router config to guide/rmw/configure-zenoh, extension-command lookup to extending/overview; the rest was the help's own text or already on a how-to page"
 
 [[page]]
 old = "reference/configuration-surface.md"

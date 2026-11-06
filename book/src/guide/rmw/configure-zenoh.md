@@ -150,6 +150,23 @@ Two nano-ros boards therefore talk through a router, as two `rmw_zenoh_cpp`
 nodes do. This differs from the ROS 2 DDS backends, where nodes discover each
 other directly; for that, use [Cyclone DDS](use-cyclone-dds.md).
 
+## Downsample at the router
+
+When a subscriber's contract declares an arrival curve, `nros configure`
+writes a router `downsampling` rule beside the resolved model.
+`nros router config --model <model>` prints it as the
+`ZENOH_CONFIG_OVERRIDE` entry `rmw_zenohd` reads (`--format json5` prints the
+rule file itself):
+
+```sh
+ZENOH_CONFIG_OVERRIDE="$(nros router config --model build/nros/models/<bringup>/<stem>.yaml)" rmw_zenohd
+```
+
+It fails when there is no rule: no subscriber declares an arrival curve, no
+image links zenoh, or the model was never configured. `nros router` is a
+command package (`nros_zenoh_tools`), not a built-in verb, so
+`nros help --all` lists it and `nros router config --help` prints its flags.
+
 ## Example
 
 A talker in QEMU and a ROS 2 listener on the host, sharing one router that

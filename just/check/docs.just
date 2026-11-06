@@ -125,6 +125,15 @@ book-audience:
 contract-format:
     @python3 scripts/gen-contract-format.py --check
 
+# phase-537 W11 (RFC-0124 D7) — `reference/cli` is the CLI's own help: `nros
+# --help` and `--help` of every user-tier verb and subcommand, rendered from
+# this checkout's CLI with a scrubbed environment. Committed and compared byte
+# for byte, so the page cannot drift from `nros --help`. No in-tree CLI, or a
+# stale one (`cli-fresh` owns that failure), is NOT VERIFIED. ~1 s.
+[private]
+cli-reference:
+    @python3 scripts/gen-cli-reference.py --check
+
 # phase-517 W1 — every board the book names is one `nros` accepts: an index
 # `[board.*]` key or a board descriptor's `names` alias, both DERIVED per run.
 # The retired host-board words (`RETIRED_BOARD_KEYS`, harvested from

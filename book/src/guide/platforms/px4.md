@@ -97,6 +97,23 @@ queue, opens an nros executor, and forwards uORB messages onto a
 zenoh / DDS topic (or vice versa). Edit `nano_ros_app.cpp` to add
 your topic bindings.
 
+## Generate px4_msgs
+
+`nros px4 msgs` generates CDR-serializable `px4_msgs::msg::*` bindings from a
+PX4-Autopilot `.msg` tree (`--px4 <dir>`, default `$PX4_AUTOPILOT_DIR`) into
+`--output`. `--lang rust` (the default) writes a `px4_msgs` crate for an XRCE
+companion; `--lang cpp` writes headers and FFI glue for an in-firmware PX4
+module. `--topics` keeps only the messages a bridge carries (by message name
+or uORB topic name), pulling in nested types:
+
+```sh
+nros px4 msgs --output generated/px4_msgs --topics vehicle_status
+```
+
+`nros px4` is a command package (`nros_px4_tools`), not a built-in: `nros`
+runs its executable with the arguments unchanged, and
+`nros px4 msgs --help` prints its flags.
+
 ## Configure
 
 The template does **not** ship a Kconfig overlay (no `Kconfig.projbuild`

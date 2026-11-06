@@ -561,10 +561,11 @@ pub struct SyncArgs {
 
     /// nano-ros source tree to scan as the FIRST provider search root.
     ///
-    /// Same flag and same meaning as `nros ws providers --nano-ros-root`, so the
-    /// index `sync` writes is the one that command would read — see
-    /// [`provider_search_path`], which exists because two spellings of the root
-    /// list make every read "built for other roots".
+    /// The same root every provider lookup reads, so the provider index this
+    /// writes is the one later commands read.
+    // Same flag and same meaning as `nros dev ws providers --nano-ros-root` —
+    // see `provider_search_path`, which exists because two spellings of the
+    // root list make every read "built for other roots".
     #[arg(long)]
     pub nano_ros_root: Option<PathBuf>,
 
