@@ -621,6 +621,7 @@ fn build_args(project: &Path, image: &str) -> nros_cli_core::cmd::build::Args {
         all: false,
         dry_run: true,
         verbose: false,
+        explain_sizing: false,
         offline: false,
         selection: Default::default(),
         continue_on_error: false,

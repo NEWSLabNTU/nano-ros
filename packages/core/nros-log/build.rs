@@ -132,7 +132,7 @@ fn main() {
             parse_log_level(&raw).unwrap_or_else(|| {
                 panic!(
                     "\n\nnros-log: NROS_LOG_MAX_LEVEL='{raw}' is not a level. Expected one of \
-                     {} (or 0..={}). issue 1037.\n",
+                     {} (or 0..={}).\n",
                     LOG_LEVELS.join(", "),
                     LOG_LEVELS.len() - 1
                 )
@@ -209,7 +209,7 @@ const BUFFER_SIZE: Family = Family {
         (512, "buffer-size-512"),
         (1024, "buffer-size-1024"),
     ],
-    since: "issue 1037",
+    since: "phase-479 W5",
 };
 
 const EARLY_RECORDS: Family = Family {
@@ -222,7 +222,7 @@ const EARLY_RECORDS: Family = Family {
         (8, "early-records-8"),
         (16, "early-records-16"),
     ],
-    since: "issue 1037",
+    since: "phase-479 W5",
 };
 
 /// A depth of 0 would be a `KEEP_LAST(0)` `/rosout` publisher, which is not a
@@ -237,7 +237,7 @@ const ROSOUT_RECORDS: Family = Family {
         (32, "rosout-records-32"),
         (64, "rosout-records-64"),
     ],
-    since: "issue 1037",
+    since: "phase-479 W5",
 };
 
 /// Indices into [`LOG_LEVELS`]; `fatal` (5) had no feature.
@@ -254,7 +254,7 @@ const MAX_LEVEL: Family = Family {
         (4, "max-level-error"),
         (6, "max-level-off"),
     ],
-    since: "issue 1037",
+    since: "phase-479 W5",
 };
 
 /// Resolve one family: print its warnings, or stop the build.
@@ -280,8 +280,8 @@ fn family(f: &Family, stated: Option<usize>) -> usize {
     let (lo, hi) = f.range;
     if !(lo..=hi).contains(&value) {
         panic!(
-            "\n\nnros-log: {} = {value} is outside {lo}..={hi}. {}\n",
-            f.knob, f.since
+            "\n\nnros-log: {} = {value} is outside {lo}..={hi}.\n",
+            f.knob
         );
     }
     value
@@ -373,8 +373,7 @@ fn clock(build: Option<&BuildRungs>) -> bool {
         (true, Some(false)) => panic!(
             "\n\nnros-log: the `platform-clock` feature is on, and platform `{}` declares \
              `[capabilities] clock = false`. One of them is wrong: the feature promises \
-             `nros_platform_clock_ns` at link time and the descriptor says the port has none. \
-             issue 1037.\n",
+             `nros_platform_clock_ns` at link time and the descriptor says the port has none.\n",
             build.map(|r| r.platform.as_str()).unwrap_or("?")
         ),
         (true, _) | (false, Some(true)) => true,

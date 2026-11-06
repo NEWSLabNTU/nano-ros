@@ -360,6 +360,16 @@ cli-old-spellings:
     printf '%s\n' "$out"
     exit "$rc"
 
+# Issue 2270 — an internal tracker id never reaches a user. A newcomer's first
+# build printed `(issue 1572)` and `(issue 1352)`, which read as "known bug"
+# and lead nowhere from a terminal. Reads Rust string literals in the CLI and
+# every build script; an id stays in a COMMENT beside the string, and a
+# comment written into a generated file keeps its id too. Buildless, ~1 s;
+# self-tests its scanner on each run.
+[private]
+user-text-issue-ids:
+    @python3 scripts/check/user-text-issue-ids.py
+
 # `CMAKE_CURRENT_LIST_DIR` inside a function body is the CALLER's directory,
 # so a path built from it misses whenever another file calls the function (the
 # Zephyr CycloneDDS `NanoRosCli.cmake` include did). Write

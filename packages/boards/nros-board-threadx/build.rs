@@ -123,10 +123,11 @@ fn main() {
         };
         if let Some(wanted) = mismatch {
             println!(
+                // issue 0288.
                 "cargo:warning=nros-board-threadx: THREADX_PORT={port_subpath} targets \
                  {wanted} but TARGET={target}; skipping the ThreadX C build. The crate still \
                  compiles as a Rust shell so host tooling can build packages that dep it \
-                 (issue 0288)."
+."
             );
             // issue 1586 — the port NAME decided this skip, so it is an input
             // here too (TARGET is a different unit by construction).

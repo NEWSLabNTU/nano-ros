@@ -1160,10 +1160,11 @@ pub fn refuse_framework_board(
         return Ok(());
     };
     Err(format!(
+        // issue 1519.
         "`{origin} = \"{board}\"` is the FRAMEWORK's board id, not a nano-ros one. \
          Write `board = \"{id}\"`: an image names the nano-ros board, and the \
          descriptor ({}) states `{board}` as the framework's own id for it, so \
-         the build is unchanged (issues 1519, 1652).",
+         the build is unchanged.",
         descriptor
             .source
             .as_deref()
@@ -1279,7 +1280,7 @@ entry_kind = "board-run"
             .expect_err("the framework id is not an image board");
         assert!(e.contains("[image.zephyr] board"), "names the line: {e}");
         assert!(e.contains("board = \"zephyr\""), "names the fix: {e}");
-        assert!(e.contains("1519"), "{e}");
+        assert!(!e.contains("1519"), "no tracker id in user text: {e}");
         // The SAME string still resolves for a deploy (issue 0606).
         assert!(matches!(
             cat.resolve_deploy("native_sim/native/64"),

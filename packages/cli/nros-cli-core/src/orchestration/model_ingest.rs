@@ -217,7 +217,7 @@ pub fn apply_model_execution(
              of the SAME PACKAGE is in the resolved model: {}. A component binds to a launch \
              node by NAME (`[[component]].name` vs the node's `name=`), so a component renamed \
              for workspace-wide uniqueness stops matching its own node and its sched tasks fall back \
-             to the default silently — issue 0398. Give the node the component's name, or bind \
+             to the default silently. Give the node the component's name, or bind \
              it with an explicit `[[node_overrides]]`. (A component whose package has no node \
              here is simply absent from this variant, and is not an error.)",
             renamed.join(", ")
@@ -615,7 +615,7 @@ pub fn check_executor_capacity(
     if counted > capacity {
         bail!(
             "codegen-system: the SystemModel registers {counted} callback entities but the \
-             executor callback table holds {capacity}: {fix}. issue 0257"
+             executor callback table holds {capacity}: {fix}."
         );
     }
     Ok(())
@@ -748,8 +748,7 @@ pub fn resolve_cyclonedds_max_types_with(
                 bail!(
                     "codegen-system: the SystemModel registers {counted} distinct DDS types but \
                      `NROS_CYCLONEDDS_MAX_TYPES` is pinned to {user}: raise it to at least {} (a \
-                     power of two) in the build env and rebuild, or unset it to let nros size it. \
-                     issue 0284",
+                     power of two) in the build env and rebuild, or unset it to let nros size it.",
                     ty::derive_max_types(counted)
                 );
             }
@@ -772,7 +771,7 @@ pub fn manage_cyclonedds_max_types(workspace: &Path, value: Option<usize>) -> Re
         workspace,
         "NROS_CYCLONEDDS_MAX_TYPES",
         value,
-        "issue 0284; derived from the SystemModel",
+        "derived from the SystemModel",
     )
 }
 
@@ -1027,7 +1026,7 @@ mod executor_capacity_tests {
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
         assert!(err.contains("NROS_EXECUTOR_MAX_CBS"), "got: {err}");
         assert!(err.contains("at least 12"), "got: {err}");
-        assert!(err.contains("0257"), "got: {err}");
+        assert!(!err.contains("0257"), "no tracker id in user text: {err}");
     }
 
     #[test]

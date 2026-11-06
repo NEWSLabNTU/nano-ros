@@ -196,7 +196,9 @@ pub enum BackendDispatch {
 /// now only where no FRESH sidecar could be attributed to it; the refusal
 /// still names the issue, because that is where the attribution rule and its
 /// remedies are written down.
-pub const UNOBSERVED_ON_MODEL_ROAD_ISSUE: &str = "issue 1594";
+// issue 1594 -- where the attribution rule and its remedies are written down;
+// the refusal names the RULE, since a user cannot open the tracker.
+pub const UNOBSERVED_ON_MODEL_ROAD_ISSUE: &str = "the contract join's attribution rule";
 
 /// What a producer that has no LEAF inventories reads, and what that costs.
 ///
@@ -252,8 +254,8 @@ const MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE: &str = "no per-endpoint observatio
      name, or a key that is not unique on both sides)";
 const A_DECLARATION_IS_NOT_A_CALL_SITE: &str = "a declaration names the entity, never the CALL \
      SITE that registers it, and nine of the executor's eleven subscription entry points cannot \
-     dispatch in place -- which one a site calls is visible only in the source (issue 1522 rules \
-     this population a refusal by design)";
+     dispatch in place -- which one a site calls is visible only in the source, so this population \
+     is refused by design)";
 
 impl ModelHorizon {
     /// `road` names the producer in prose — "a workspace cargo image",
@@ -344,8 +346,8 @@ impl ModelHorizon {
             why = self.unobserved,
             tracked = if self.unobserved == MODEL_ROWS_ARE_NOT_JOINED_TO_THE_PROBE {
                 format!(
-                    "Run `nros configure` in the workspace so its probe sidecars are current; the \
-                     attribution rule is {UNOBSERVED_ON_MODEL_ROAD_ISSUE}'s"
+                    "Run `nros configure` in the workspace so its probe sidecars are current; this is \
+                     {UNOBSERVED_ON_MODEL_ROAD_ISSUE}"
                 )
             } else {
                 "Refused by design on this road".to_string()
@@ -1289,12 +1291,13 @@ fn registration_path(
 fn unobserved_buffered_refusal(inputs: &DescriptorInputs<'_>) -> String {
     let rmw = inputs.rmw.as_deref().unwrap_or("this image's backend");
     format!(
+        // issues 1319, 1648.
         "backend `{rmw}` carries no type schema, so this registration's receive slot is either a \
          bound its call site stated or the closure buffer `RX_BUF` -- and nothing OBSERVED which. \
          The metadata probe records it at `Executor::open_subscription` (sidecar `buffered`, \
          schema v4); a language is not evidence for it, because a C/C++ registration with no \
-         type hint claims `RX_BUF` exactly like a Rust generic one (issue 1319). Refused rather \
-         than credited with the smaller row (issue 1648)"
+         type hint claims `RX_BUF` exactly like a Rust generic one. Refused rather \
+         than credited with the smaller row"
     )
 }
 
@@ -1316,7 +1319,7 @@ fn unobserved_registration_refusal(inputs: &DescriptorInputs<'_>) -> String {
          declaration carries. The fact is reported by the metadata probe at \
          `Executor::open_subscription`; a road whose probe DECLARES without registering leaves it \
          unobserved. Refused rather than assumed, because an endpoint credited with in-place \
-         dispatch is priced at NO receive region at all (issue 1340). Tracked by issue 1522"
+         dispatch is priced at NO receive region at all"
     )
 }
 
@@ -1338,9 +1341,10 @@ fn registration_path_refusal(inputs: &DescriptorInputs<'_>) -> String {
         });
     }
     format!(
+        // issue 1319.
         "cannot tell which registration path this endpoint takes -- {} unknown. A Rust typed \
          registration on a schemaless backend claims the closure buffer rather than the type's \
-         bound (issue 1319), so the path is refused rather than assumed",
+         bound, so the path is refused rather than assumed",
         missing.join(" and ")
     )
 }
@@ -1422,8 +1426,7 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
                         "a standalone leaf's declaration never sized this on its road (no \
                          carrier reaches it, so the builtin does), and stating it here would \
                          shrink a table from a declaration checked only for its queryables \
-                         (issue 1378) -- issue 1655: `[image]` takes over a delivered fact, \
-                         never introduces one",
+                         -- `[image]` takes over a delivered fact, never introduces one",
                     );
                 }
             } else {
@@ -2124,6 +2127,7 @@ pub fn write_for_leaf(
     }
     crate::atomic_file::atomic_write(&path, &body)
         .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
+    report_defaults(&path, &desc);
     Ok(WrittenDescriptor { path, desc })
 }
 
@@ -2662,7 +2666,58 @@ fn write_model_descriptor(
     }
     crate::atomic_file::atomic_write(&path, &body)
         .map_err(|e| eyre::eyre!("write `{}`: {e}", path.display()))?;
+    report_defaults(&path, &desc);
     Ok(Some(WrittenDescriptor { path, desc }))
+}
+
+/// `nros build --explain-sizing`, or `NROS_EXPLAIN_SIZING=1` on any road (a
+/// cmake or west configure runs this writer as its child, so the variable is
+/// how that road asks).
+static EXPLAIN_SIZING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Ask every descriptor this process writes to print its defaults in full.
+pub fn set_explain_sizing(on: bool) {
+    EXPLAIN_SIZING.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn explain_sizing() -> bool {
+    EXPLAIN_SIZING.load(std::sync::atomic::Ordering::Relaxed)
+        || std::env::var_os("NROS_EXPLAIN_SIZING").is_some_and(|v| v == "1")
+}
+
+/// Issue 2270 (RFC-0100 D6, amended) -- the WRITER reports what the descriptor
+/// leaves to a default, as one line, because it is the one place every road
+/// passes through before any build script runs. The build scripts used to
+/// print the same facts one consumer at a time: a scaffolded talker built
+/// with six `cargo:warning`s from three crates, four of them about one missing
+/// `durability`.
+///
+/// Once per descriptor per process: a workspace build writes the same file at
+/// two stages, and saying it twice is the noise this replaces.
+fn report_defaults(path: &std::path::Path, desc: &SizingDescriptor) {
+    static SEEN: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
+    if let Ok(mut seen) = SEEN.lock() {
+        if seen.iter().any(|p| p == path) {
+            return;
+        }
+        seen.push(path.to_path_buf());
+    }
+    let entries = nros_sizing_descriptor::defaults::defaults_in_use(desc);
+    if explain_sizing() {
+        if entries.is_empty() {
+            eprintln!("nros: sizing: every input is declared ({})", path.display());
+        } else {
+            eprintln!(
+                "nros: sizing: inputs left to a default ({}):",
+                path.display()
+            );
+            eprint!("{}", nros_sizing_descriptor::defaults::explain(&entries));
+        }
+    } else if let Some(line) =
+        nros_sizing_descriptor::defaults::summary_line(&entries, "`nros build --explain-sizing`")
+    {
+        eprintln!("nros: sizing: {line}");
+    }
 }
 
 /// [`Wiring::Unwired`]'s descriptor: the MODEL facts an image states with no
@@ -2699,8 +2754,9 @@ fn compose_unwired(
     let mut desc = SizingDescriptor::new(img.entry, Status::Refused, Basis::Closure);
     desc.meta.refuse(
         "undeclared_endpoints",
+        // issue 1706.
         "the model describes no wiring, so this file carries only what the model states \
-         (issue 1706, phase-486 W9) -- absence is not zero",
+         (phase-486 W9) -- absence is not zero",
     );
     let params = param_facts(&inputs);
     if params.implies_store() {
@@ -3815,7 +3871,7 @@ mod tests {
         i.backend_dispatch = Some(BackendDispatch::Buffered);
         let path = build(&i).endpoints[0].registration_path();
         assert!(
-            path.refusal().is_some_and(|r| r.contains("issue 1648")),
+            path.refusal().is_some_and(|r| !r.contains("issue 1648")),
             "{path:?}"
         );
         // ...and the OBSERVATION decides it, both ways, whatever the language.
@@ -4256,7 +4312,7 @@ mod tests {
         let d = build(&i);
         let path = d.endpoints[0].registration_path();
         let r = path.refusal().unwrap();
-        assert!(r.contains("1319"), "{r}");
+        assert!(!r.contains("1319"), "no tracker id in user text: {r}");
         assert_eq!(d.meta.status, Status::Partial);
     }
 
@@ -4574,7 +4630,10 @@ mod tests {
         let why = path
             .refusal()
             .expect("an unobserved endpoint on an in-place backend must REFUSE");
-        assert!(why.contains("issue 1522"), "{why}");
+        assert!(
+            !why.contains("issue 1522"),
+            "no tracker id in user text: {why}"
+        );
         assert!(
             !ep.claims_no_receive_region(),
             "a refused path must budget the region -- the one direction that \
@@ -6168,7 +6227,10 @@ contracts:
             desc.image.sched_context_count(),
             desc.image.cell_entities(),
         ] {
-            assert!(f.refusal().unwrap().contains("1655"), "{f:?}");
+            assert!(
+                !f.refusal().unwrap().contains("1655"),
+                "no tracker id in user text: {f:?}"
+            );
         }
         // ...while the counts that road already stated stay stated -- and
         // the service-server queryables, whose carrier DOES reach that road.

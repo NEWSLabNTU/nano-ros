@@ -12,8 +12,9 @@ use std::path::PathBuf;
 fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| {
         panic!(
+            // issue 1512.
             "heap-free-cpp-poc-mps2: {name} is not set -- nros-c / nros-cpp must carry \
-             their `links` keys (issue 1512)"
+             their `links` keys"
         )
     })
 }

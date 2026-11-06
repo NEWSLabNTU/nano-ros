@@ -756,8 +756,9 @@ run_one() {
 SCAFFOLD_BOARDS=(linux mps2-an385-baremetal runner-package)
 
 # What RFC-0121 D4 promises the workspace holds, one line per violation: a
-# library node package and a bringup of `package.xml` + `system.toml` only
-# (no `launch/`, which is generated), one `[image.*]`, and no root build file
+# library node package and a bringup of `package.xml` + `system.toml` +
+# `system.contract.yaml` only (no `launch/`, which is generated; the contract
+# is D4's 2026-11-06 amendment), one `[image.*]`, and no root build file
 # or `system.toml` beside code. Asked of the freshly scaffolded tree, before
 # any build writes into it.
 scaffold_shape_violations() {
@@ -771,8 +772,8 @@ scaffold_shape_violations() {
     [ -e "$node/system.toml" ] && echo "a system.toml beside the node's code"
     [ -e "$node/src/main.rs" ] && echo "a main.rs in the node package (a node package is a library)"
     [ -e "$bringup/launch" ] && echo "a launch/ in the bringup (its launch file is generated)"
-    n="$(ls -A "$bringup" 2>/dev/null | grep -v -x -e package.xml -e system.toml | wc -l)"
-    [ "$n" -eq 0 ] || echo "$n file(s) in the bringup beyond package.xml and system.toml"
+    n="$(ls -A "$bringup" 2>/dev/null | grep -v -x -e package.xml -e system.toml -e system.contract.yaml | wc -l)"
+    [ "$n" -eq 0 ] || echo "$n file(s) in the bringup beyond package.xml, system.toml and system.contract.yaml"
     n="$(grep -c '^\[image\.[^].]*\]' "$bringup/system.toml" 2>/dev/null)" || n=0
     [ "$n" -eq 1 ] || echo "$n [image.*] tables in the bringup's system.toml (one is the promise)"
     return 0
@@ -936,6 +937,7 @@ scaffold_shape_self_test() {
         : > "$work/p/src/sensor_node_bringup/package.xml"
         printf '[system]\nname = "p"\n\n[image.linux]\nboard = "linux"\n' \
             > "$work/p/src/sensor_node_bringup/system.toml"
+        : > "$work/p/src/sensor_node_bringup/system.contract.yaml"
     }
     _plant
     v="$(scaffold_shape_violations "$work/p")"

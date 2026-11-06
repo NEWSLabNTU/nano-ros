@@ -1264,7 +1264,8 @@ fn heal_dangling_gitlink(subdir: &Path) {
     }
     if std::fs::remove_file(&gitlink).is_ok() {
         super::step_log::say(format!(
-            "nros setup: removed {}, a gitlink naming no repository (issue 1621)",
+            // issue 1621.
+            "nros setup: removed {}, a gitlink naming no repository",
             gitlink.display()
         ));
     }

@@ -530,7 +530,7 @@ mod cbindgen_stubs {
     }
 
     /// The SUBSCRIBER half of transient-local durability: one history query on
-    /// `keyexpr` (`<subscription keyexpr>/@adv/**`) whose replies land in the
+    /// `keyexpr` (`**` under `<subscription keyexpr>/@adv/`) whose replies land in the
     /// ring subscription `handle` beside its live samples. Older-or-equal
     /// samples from the same publisher are dropped while the query is open.
     ///

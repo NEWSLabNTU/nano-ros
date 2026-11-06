@@ -581,11 +581,12 @@ pub fn resolve_toolchain(
         return done(None);
     }
     Err(format!(
+        // issues 1811, 2147.
         "board `{board}` builds with the Zephyr SDK, and this tree pins SDK {want} \
          ({}), which is not installed. Refusing rather than letting the build take \
          whichever SDK the CMake registry holds: on 3.7 a newer SDK fails in \
-         Zephyr's own libc-hooks.c (issue 1811), and another checkout's is refused \
-         by its checkout guard (issue 2147).\n\
+         Zephyr's own libc-hooks.c, and another checkout's is refused \
+         by its checkout guard.\n\
          Remedy: just setup zephyr   (without --skip-sdk), or set \
          ZEPHYR_SDK_INSTALL_DIR to an SDK you mean to use.",
         pin.display()

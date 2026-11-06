@@ -325,6 +325,7 @@ pub fn refuse_if_stale(command_name: &str) -> Result<(), String> {
         }
     };
     Err(format!(
+        // issue 0363.
         "in-tree nros CLI is STALE — its sources changed since it was built\n\
          (source stamp {BUILT_STAMP} != {current}) for '{}',\n\
          whose checkout is '{}'.\n\
@@ -332,7 +333,7 @@ pub fn refuse_if_stale(command_name: &str) -> Result<(), String> {
          A stale CLI silently breaks workspace planning + codegen: its hardcoded\n\
          crate→path table can name locations that no longer exist, and a dropped\n\
          [patch.crates-io] entry resolves from crates.io instead of this checkout\n\
-         WITHOUT failing (issues 0363, 0197).\n\
+         WITHOUT failing.\n\
          Rebuild it (not auto-done — compiling at build/test time is forbidden):\n\
          \x20   ./scripts/bootstrap.sh      (contributors: just setup-cli)\n\
          Override for a deliberate experiment: NROS_SKIP_STALE_CHECK=1",

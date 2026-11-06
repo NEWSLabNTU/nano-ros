@@ -79,11 +79,12 @@ pub fn choose(pinned: Option<&Path>, makeflags: Option<&str>) -> MakeProgram {
     }
     match makeflags {
         Some(f) if names_fifo_jobserver(f) => MakeProgram::AmbientUnderFifo(
+            // issue 2058.
             "a FIFO jobserver is inherited (`--jobserver-auth=fifo:`) and the pinned make \
              is not provisioned, so CMake uses the make on PATH; a make older than 4.4 stops \
              with `invalid --jobserver-auth string`. Provision it: `nros setup --tool make` \
-             (issue 2058)"
-                .to_string(),
+"
+            .to_string(),
         ),
         _ => MakeProgram::Ambient,
     }

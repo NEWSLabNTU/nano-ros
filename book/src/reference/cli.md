@@ -463,6 +463,11 @@ Options:
           
           That is: why a pass re-runs, why a size was not derived. Sets `NROS_VERBOSE=1` for every native command; a correct build without it prints one line per fact.
 
+      --explain-sizing
+          Print, in full, every sizing input the image leaves to a default.
+          
+          A build prints them as one summary line; this names each one, why it was not derived, and what declaring it would take. `NROS_EXPLAIN_SIZING=1` asks the same of any road (a cmake or west configure).
+
       --offline
           Do not fetch anything; fail naming what is missing.
           

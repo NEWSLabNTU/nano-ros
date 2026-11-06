@@ -306,7 +306,7 @@ typedef struct {
  * Kconfig NROS_ZENOH_GRAPH_DISCOVERY, env/cargo ZPICO_GRAPH_DISCOVERY).
  *
  * 1: `zpico_graph_cache_start` declares the standing liveliness SUBSCRIBER on
- * `@ros2_lv/<domain>/**` and the router replays the WHOLE domain's tokens into
+ * `**` under `@ros2_lv/<domain>/` and the router replays the WHOLE domain's tokens into
  * `graph_cache_t.buf`, then pushes every later change.
  *
  * 0: no subscriber is declared and no cache exists -- the array, the mutex and
@@ -1955,89 +1955,13 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * by `nros_zephyr_native_priority`. */
 #endif /* ZENOH_ZEPHYR */
 
-/* issue 0765 — OUTSIDE the ZENOH_ZEPHYR block below.
- *
- * This first landed inside `#if defined(ZENOH_ZEPHYR) && ...`, which meant it
- * compiled ONLY on Zephyr while its callers are the NuttX and Linux/macOS arms
- * of `zpico_set_task_config` — the two platforms where it therefore did not
- * exist. A helper defined under a guard narrower than its call sites is a
- * link-time hole with a compile-time smell; keep it beside the function that
- * uses it. */
-/* Guarded on the macros THIS BUILD defines (`nros-zpico-build`'s
- * `build.define(...)`), not on compiler/OS macros.
- *
- * An earlier revision of this comment claimed `ZENOH_LINUX` was "not yet
- * defined at this point" because it came from a header further down. That was
- * wrong: these are `-D` flags and are set for the whole TU. The real reason the
- * first attempt failed to compile was that this helper sat INSIDE the
- * `ZENOH_ZEPHYR` block above — a helper guarded more narrowly than its call
- * sites (issue 0775). Recorded because the wrong explanation was plausible and
- * would have sent the next reader to the include order. */
-#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS)
-/* issue 0765 — is SCHED_FIFO actually permitted for this process?
- *
- * This must be asked BEFORE the policy goes into a pthread ATTRIBUTE, because
- * an attribute is not best-effort the way a post-create `pthread_setschedparam`
- * is: with `PTHREAD_EXPLICIT_SCHED` set, `pthread_create` itself returns EPERM
- * and the thread is never created. Measured the hard way — setting the
- * transport band on an unprivileged host made the zenoh session fail to open
- * at all (`RMW session open failed — Backend("rmw_ret error")`), turning a
- * scheduling preference into a total outage.
- *
- * Probed by asking on THIS thread and putting it back, once per process. A
- * request that is refused changes nothing; one that succeeds is undone
- * immediately, so the probe cannot leave the caller on a policy it did not
- * choose. */
-static int zpico_posix_rt_permitted(void) {
-    static int cached = -1;
-    if (cached >= 0) {
-        return cached;
-    }
-    int old_policy;
-    struct sched_param old_param;
-    if (pthread_getschedparam(pthread_self(), &old_policy, &old_param) != 0) {
-        cached = 0;
-        return cached;
-    }
-    struct sched_param probe;
-    memset(&probe, 0, sizeof(probe));
-    probe.sched_priority = sched_get_priority_min(SCHED_FIFO);
-    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &probe) == 0) {
-        (void)pthread_setschedparam(pthread_self(), old_policy, &old_param);
-        cached = 1;
-    } else {
-        cached = 0;
-    }
-    return cached;
-}
-
-static void zpico_posix_fifo_set_priority(pthread_attr_t* attr, uint32_t raw) {
-    if (raw == 0u) {
-        return;
-    }
-    if (!zpico_posix_rt_permitted()) {
-        /* Leave the attribute alone: the tasks inherit, exactly as before this
-         * arm existed. The sched task path has already printed the one line naming
-         * `setcap cap_sys_nice+ep`, so saying it again per task would be noise
-         * about a fact the operator has been told. */
-        return;
-    }
-    int lo = sched_get_priority_min(SCHED_FIFO);
-    int hi = sched_get_priority_max(SCHED_FIFO);
-    int p = (int)raw;
-    if (p < lo) {
-        p = lo;
-    }
-    if (p > hi) {
-        p = hi;
-    }
-    struct sched_param sp;
-    sp.sched_priority = p;
-    (void)pthread_attr_setschedpolicy(attr, SCHED_FIFO);
-    (void)pthread_attr_setinheritsched(attr, PTHREAD_EXPLICIT_SCHED);
-    (void)pthread_attr_setschedparam(attr, &sp);
-}
-#endif
+/* issue 0765's ~~`zpico_posix_rt_permitted`~~ / ~~`zpico_posix_fifo_set_priority`~~
+ * DELETED (issue 2270): issue 0803 moved the NuttX and Linux/macOS arms of
+ * `zpico_set_task_config` onto the `nros_platform_task_attr_t` those ports
+ * read, and removed the two calls, so the pair compiled into every POSIX image
+ * as dead code and printed `-Wunused-function` in a scaffolded talker's first
+ * build. The port handles a refused SCHED_FIFO itself
+ * (`nros-platform-posix/src/platform.c`, the EPERM arm). */
 
 void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes) {
 #if Z_FEATURE_MULTI_THREAD == 1
@@ -3324,7 +3248,7 @@ static void history_reply_dropper(void* arg) {
 }
 
 /* The SUBSCRIBER half of transient-local durability: one history query, at
- * creation, on `keyexpr` -- the caller passes `<subscription keyexpr>/@adv/**`,
+ * creation, on `keyexpr` -- the caller passes `**` under `<subscription keyexpr>/@adv/`,
  * the global query `rmw_zenoh_cpp`'s advanced subscriber issues, which
  * intersects every advanced publisher's cache queryable
  * (`<topic keyexpr>/@adv/pub/<zid>/<eid>/_`, served by nano-ros's own TL
@@ -3363,7 +3287,7 @@ int32_t zpico_subscriber_history_query(zpico_session_t* session, int32_t handle,
      * per key, and all replies here carry the TOPIC key. */
     opts.consolidation.mode = Z_CONSOLIDATION_MODE_NONE;
     /* A cache replies on the TOPIC key, which does not intersect the query
-     * key `<topic>/@adv/**`; without `_anyke` the publisher's session refuses
+     * key `**` under `<topic>/@adv/`; without `_anyke` the publisher's session refuses
      * to send that reply and answers only the final one. Measured on the
      * safety island against a stock rclpy latched publisher: the query was
      * routed, the final reply came back 0.5 ms later, and no sample. This is
@@ -4558,7 +4482,7 @@ int32_t zpico_liveliness_collect_start(zpico_session_t* session, const char* key
      *
      * Measured against a live `rmw_zenoh_cpp` talker (issue 0903): the entity
      * enumeration returned zero every time while node enumeration worked, and
-     * widening the wildcard to `@ros2_lv/<domain>/**` changed nothing — because
+     * widening the wildcard to `**` under `@ros2_lv/<domain>/` changed nothing — because
      * the pattern was never the problem.
      *
      * The comment this replaces called the race "worst case the first reply is
@@ -4842,7 +4766,7 @@ int32_t zpico_graph_cache_start(zpico_session_t* session, const char* keyexpr) {
      * this session's own were declared before the cache existed and are never
      * replayed, so seed them here. Matching `keyexpr` is not re-checked: every
      * token this shim declares is a ROS 2 liveliness token under the same
-     * `@ros2_lv/**` root the cache subscribes to. */
+     * `**`-under-`@ros2_lv/` root the cache subscribes to. */
     for (int i = 0; i < ZPICO_MAX_LIVELINESS; i++) {
         if (s->liveliness[i].active && s->liveliness[i].key != NULL) {
             graph_cache_apply(s, s->liveliness[i].key, strlen(s->liveliness[i].key), false);

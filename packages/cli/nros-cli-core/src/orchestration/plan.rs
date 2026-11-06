@@ -794,9 +794,10 @@ pub struct PlanBuildOptions {
 /// nano-ros has no per-layer compiler-flag carrier on any build road (see
 /// `book-internals/src/pipeline/canonical-build-path.md`), so the remedy names the build
 /// tool's own knobs rather than a nano-ros one.
+// issue 2153.
 pub const RETIRED_BUILD_TUNING_REMEDY: &str = "the plan build keys `optimize`, \
      `cargo` and `cc` (phase-204.15's `[build.cargo]` / `[build.cc]`) are retired \
-     (issue 2153): no build road applied them, so they parsed and changed nothing. \
+: no build road applied them, so they parsed and changed nothing. \
      Choose the cargo profile with `[image.<id>] profile` in `system.toml` and tune \
      it in the leaf's own `[profile.*]`; pass C/C++ flags through the build tool \
      (`CFLAGS`/`CXXFLAGS`, which cc-rs appends, or `-DCMAKE_C_FLAGS` on a cmake \
@@ -913,7 +914,10 @@ mod transport_tests {
             let err = serde_json::from_str::<PlanBuildOptions>(&json)
                 .expect_err("a retired build-tuning key must not parse")
                 .to_string();
-            assert!(err.contains("issue 2153"), "{key}: {err}");
+            assert!(
+                !err.contains("issue 2153"),
+                "{key}: no tracker id in user text: {err}"
+            );
             assert!(!err.contains("unknown field"), "{key}: {err}");
         }
     }

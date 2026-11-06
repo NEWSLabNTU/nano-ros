@@ -208,12 +208,13 @@ fn emit_probe_watches(rlib: &Path) {
         // cannot be met, the build stops here, where the message can name the
         // cause, instead of two crates away where it cannot.
         panic!(
+            // issue 0563.
             "nros-sizes-build: no depfile for probe rlib {}\n\
              Looked beside it and, for a `deps/` artifact, at the uplifted \
              sibling one directory up.\n\
              Without it this probe cannot state what it measured, and the \
              consumer would silently stop rebuilding when that crate changes \
-             (issue 0563).",
+.",
             rlib.display()
         )
     });
@@ -739,9 +740,10 @@ fn apply_nested_lock_discipline(
             // No copy to resolve against: the nested build resolves the
             // workspace lock directly, and `WorkspaceLockGuard` restores it.
             println!(
+                // issue 1307.
                 "cargo:warning=nros-sizes-build: could not seed the probe's own \
                  lockfile ({e}); the nested build will resolve the workspace lock \
-                 directly (issue 1307)"
+                 directly"
             );
         }
     }
@@ -888,16 +890,18 @@ impl WorkspaceLockGuard {
         }
         match write_atomic(path, &self.bytes) {
             Ok(()) => println!(
+                // issue 1307.
                 "cargo:warning=nros-sizes-build: the nested size probe rewrote {} \
                  and it has been restored — the lockfile redirect did not take \
-                 effect (issue 1307); check whether this cargo honours \
+                 effect; check whether this cargo honours \
                  `resolver.lockfile-path`",
                 path.display()
             ),
             Err(e) => println!(
+                // issue 1307.
                 "cargo:warning=nros-sizes-build: the nested size probe rewrote {} \
                  and it could NOT be restored ({e}); `git checkout -- {}` \
-                 (issue 1307)",
+",
                 path.display(),
                 path.display()
             ),

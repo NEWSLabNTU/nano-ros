@@ -3083,10 +3083,11 @@ impl ParamDeclarations {
         if !silent.is_empty() {
             return ParamDeclarations::Refused {
                 reason: format!(
+                    // issue 1600.
                     "this configure links one runtime for several images, and {} declare \
                      parameters while {} declare none ({}). A store sized over the images that \
                      declared would be short for the ones that did not -- declare `params:` in \
-                     every image's contract, or in none (issue 1600)",
+                     every image's contract, or in none",
                     declared.len(),
                     silent.len(),
                     silent.join(", ")
@@ -4633,10 +4634,11 @@ impl EntityInventory {
         if !self.unresolved_bridges.is_empty() {
             return Derivation::Refused {
                 reason: format!(
+                    // issue 2076.
                     "the `[[bridge]]` {} forwards every topic the workspace declares, and the \
                      bringup's generated `nros-bridge.toml` -- which names them -- was not read \
                      here, so the nodes and endpoints the bridge creates are not known. Run \
-                     `nros configure`, or name the bridge's `topics` in `system.toml` (issue 2076).",
+                     `nros configure`, or name the bridge's `topics` in `system.toml`.",
                     self.unresolved_bridges.join(", ")
                 ),
             };
@@ -4673,6 +4675,7 @@ impl EntityInventory {
                     // thing the caller could not do. A diagnostic that survives the
                     // mechanism it describes aims the next reader at a wall, and
                     // this one did it for every standalone image in the tree.
+                    // issue 1033.
                     "{} of {} components in this image declare no entities:\n{block}\n\
                      Deriving over only the components that did would publish a slot count \
                      smaller than the image needs, and a short NROS_EXECUTOR_MAX_CBS fails \
@@ -4682,7 +4685,7 @@ impl EntityInventory {
                      SystemModel. An image that runs from no launch file -- a standalone \
                      Zephyr application, say -- reaches no contract, so it keeps its \
                      CONFIGURED pool knobs and must state the ones its RMW session sizes \
-                     (see issue 1033).",
+.",
                     undeclared.len(),
                     self.components.len()
                 ),
@@ -6784,7 +6787,8 @@ pub fn render_declared_qos_header(source: &str, table: &DeclaredQosHeaderTable) 
         " * The QoS each subscription was DECLARED with, in the contract sidecar",
         " * beside the launch file that runs it (`sub: { <topic>: { qos: { ... } } }`),",
         " * or in an `EntityDecl` declaration's `@depth=N` attribute: its history",
-        " * DEPTH, and (issue 1256) its RELIABILITY and DURABILITY.",
+        // issue 1256.
+        " * DEPTH, and its RELIABILITY and DURABILITY.",
         " * `rclcpp/detail/declared_qos.hpp` expands this into a `constexpr` table and",
         " * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a",
         " * declaration and an implementation that disagree fail the BUILD naming",
@@ -12905,7 +12909,10 @@ to = { node = "s1", topic = "/header" }
             .expect("described");
         match all.derive() {
             Derivation::Refused { reason } => {
-                assert!(reason.contains("gw") && reason.contains("2076"), "{reason}")
+                assert!(
+                    reason.contains("gw") && !reason.contains("2076"),
+                    "{reason}"
+                )
             }
             d => panic!("a forward-all bridge with no runtime config must refuse: {d:?}"),
         }

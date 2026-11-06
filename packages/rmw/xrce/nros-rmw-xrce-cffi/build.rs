@@ -237,8 +237,8 @@ fn main() {
             other => panic!(
                 "nros-rmw-xrce-cffi: an xrce manifest uses condition token `{other}`, which \
                  this build script does not answer. Add an arm here AND in \
-                 nros-rmw-xrce/CMakeLists.txt — a token only one lane answers is issue 1068 \
-                 again.",
+                 nros-rmw-xrce/CMakeLists.txt — a token only one lane answers \
+                 builds the two lanes differently.",
             ),
         }
     };
@@ -1224,11 +1224,12 @@ impl XrceDemand {
             // say how short it can be: a refusal would fail an image that may
             // fit, a guess is how this issue's 4 got there.
             None if runtime > 0 => self.note(format!(
+                // issue 1743.
                 "the parameter / lifecycle services need {runtime} service-server slot(s), \
                  and the sizing descriptor states no `[image] service_server_queryables` \
                  for the application's own, so {ENV_SERVICE_SERVERS} keeps its header \
                  default. State it if the image serves more than that default allows \
-                 (issue 1743)"
+"
             )),
             None => {}
         }
@@ -1318,7 +1319,8 @@ impl XrceDemand {
         if self.values.remove(ENV_BUILTIN_SERVERS).is_some() {
             self.values.remove(ENV_SERVICE_REQUEST);
             self.note(format!(
-                "{ENV_SERVICE_SERVERS} is stated, so the parameter / lifecycle services share                  the application's service-server slots and {ENV_SERVICE_REQUEST} is not                  derived down (issue 1808). Leave it unset to derive both"
+                // issue 1808.
+                "{ENV_SERVICE_SERVERS} is stated, so the parameter / lifecycle services share                  the application's service-server slots and {ENV_SERVICE_REQUEST} is not                  derived down. Leave it unset to derive both"
             ));
         }
     }
@@ -1359,7 +1361,7 @@ impl XrceDemand {
                     e.topic,
                     e.reply_bound_bytes()
                         .refusal()
-                        .unwrap_or("a descriptor written before issue 1808 has none; run `nros sync`")
+                        .unwrap_or("this descriptor predates the field; run `nros sync`")
                 ));
                 return;
             };
@@ -1503,6 +1505,7 @@ fn param_request_verdict(shape: &str) -> Option<usize> {
     match nros_sizing_descriptor::param_request_max_from(shape) {
         Some(n) => Some(n),
         None => panic!(
+            // issue 1352.
             "\n\nnros-rmw-xrce: the contract declares this image's parameters \
              (`[params] service_shape` = `{shape}`), and at least one is a string or an \
              array. Such a request's size depends on the parameter store's caps \
@@ -1511,7 +1514,7 @@ fn param_request_verdict(shape: &str) -> Option<usize> {
              `set_parameters` lands in.\n\
              Keeping the default would guess, and the guess was measured wrong: a \
              25-parameter `set_parameters` was dropped by the 1,024-byte buffer \
-             (issues 1352, 1722).\n\
+.\n\
              State NROS_PARAM_SERVICE_INBOX_BYTES (environment, Kconfig \
              CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, or the board's executor rung). \
              nros-node checks the statement against the request it prices from the same \

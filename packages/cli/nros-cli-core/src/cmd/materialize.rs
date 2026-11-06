@@ -57,6 +57,7 @@ pub fn run(args: Args) -> Result<()> {
         all: false,
         dry_run: true,
         verbose: false,
+        explain_sizing: false,
         offline: true,
         // phase-420 W7 — a QUERY resolves the whole workspace. Narrowing it
         // would answer a question nobody asked.

@@ -274,11 +274,12 @@ pub(crate) fn admit_and_lower(
         // 0303 made every QoS producer refuse.
         if kind == ComponentKind::Rust && !n.qos_overrides.is_empty() {
             return Err(format!(
+                // issue 1854.
                 "typed entry emit (`{pack}` pack): node pkg `{}` exec `{}` is a `rust` \
                  component with {} `qos_overrides.*` parameter(s) (first: `{}`), and the \
                  C-ABI install seam a `{pack}` entry calls carries no QoS override table; \
                  build that component's image with `nros::main!` or drop the override \
-                 (issue 1854)",
+",
                 n.pkg,
                 n.exec,
                 n.qos_overrides.len(),

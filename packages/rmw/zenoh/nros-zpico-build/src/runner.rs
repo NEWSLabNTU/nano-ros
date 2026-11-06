@@ -312,7 +312,9 @@ fn transient_local_publishers() -> usize {
             // Issue 1572 -- the worst case over the SAME rows, never zero.
             let bound =
                 nros_sizing_descriptor::transient_local_publishers_bound(&desc).unwrap_or(0);
-            warn_worst_case(&reason, bound);
+            // Reported by the descriptor's writer
+            // (`nros_sizing_descriptor::defaults`, issue 2270), not here.
+            let _ = reason;
             bound
         }
     }
@@ -353,16 +355,6 @@ fn described_service_server_queryables() -> Option<usize> {
 fn described_model_nodes() -> Option<String> {
     let desc = nros_sizing_descriptor::from_build_env().unwrap_or_else(|e| panic!("{e}"))?;
     desc.image.model_nodes().stated().map(usize::to_string)
-}
-
-/// RFC-0100 D6's LOUD half, for the one term here that can be a worst case.
-fn warn_worst_case(reason: &str, bound: usize) {
-    println!(
-        "cargo:warning=the zenoh queryable table budgets the WORST CASE of {bound} \
-         transient-local cache queryable(s): {reason}, so every such publisher is \
-         sized as transient-local (issue 1572). Stating each publisher's `durability` \
-         gives back the slots of the ones that are volatile."
-    );
 }
 
 /// What the queryable table was sized from, and what it may not go below.
@@ -454,12 +446,13 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
     }
     if requested < sizing.floor {
         panic!(
+            // issue 0460.
             "NROS_ZENOH_MAX_QUERYABLES={requested} is below this image's DERIVED floor of \
              {} (phase-392 W5.f).\n  \
              A service server IS a zenoh queryable. This image declares the \
              infrastructure services and application service servers that claim those \
              slots at boot, so a smaller table cannot start — it fails with \
-             `ServiceServerCreationFailed` and no explanation (issue 0460).\n  \
+             `ServiceServerCreationFailed` and no explanation.\n  \
              The ROS parameter services are registered once PER NODE (phase-426 W3), \
              so a {}-node image carrying them claims {} slots for those alone.\n  \
              {} of the floor is TRANSIENT_LOCAL PUBLISHERS, not service servers \
@@ -2835,8 +2828,9 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
             let existing = std::fs::read(&output_file).ok();
             if existing.as_deref() != Some(processed.as_bytes()) {
                 println!(
+                    // issue 0452.
                     "cargo:warning={} is STALE against this crate's sources — run \
-                     `just regen-c-headers` and commit the result (issue 0452). \
+                     `just regen-c-headers` and commit the result. \
                      The build used the committed copy.",
                     output_file.display()
                 );

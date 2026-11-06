@@ -76,7 +76,8 @@ pub fn receive_ceiling_refusal(
         return None;
     }
     Some(format!(
-        "this image is built to receive a sample zenoh-pico cannot deliver (issue 1368).\n  \
+        // issue 1368.
+        "this image is built to receive a sample zenoh-pico cannot deliver.\n  \
          largest receivable sample     = {need} ({need_knob})\n  \
          NROS_ZENOH_FRAG_MAX_SIZE      = {frag_max_size}\n  \
          NROS_ZENOH_BATCH_UNICAST_SIZE = {batch_unicast_size}\n  \
