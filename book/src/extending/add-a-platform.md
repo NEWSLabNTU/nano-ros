@@ -195,7 +195,7 @@ Internals keeps the longer list of lessons from the in-tree ports:
   capability groups and the ports to copy.
 - [Platform differences](../reference/matrices/platform-differences.md): the
   clock, allocator, threading and network of each supported platform.
-- [Add a transport](custom-transport.md): for a link that needs no platform
+- [Add a transport](add-a-transport.md): for a link that needs no platform
   of its own.
 - [Internals → Platform API design](../internals/platform/platform-api-design.html):
   why the ABI is free symbols, and why threads and sockets stay per kernel.

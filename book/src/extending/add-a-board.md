@@ -257,7 +257,7 @@ word.
 
 - [Add a platform](add-a-platform.md), for an RTOS nano-ros has no platform
   for.
-- [Add a transport](custom-transport.md), for a link that is not Ethernet,
+- [Add a transport](add-a-transport.md), for a link that is not Ethernet,
   serial or WiFi.
 - [Supported boards](../reference/supported-boards.md) and the generated board
   pages.

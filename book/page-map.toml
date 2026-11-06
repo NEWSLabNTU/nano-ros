@@ -1134,9 +1134,11 @@ note = "merged by W12 into Add a platform. What each RMW backend asks of a platf
 [[page]]
 old = "porting/custom-transport.md"
 book = "user"
-path = "extending/custom-transport.md"
+path = "extending/add-a-transport.md"
 action = "move"
-batch = "w4-extending"
+batch = "p537-w12-transport"
+was = ["extending/custom-transport.md"]
+note = "Add a transport (W12): rewritten as a how-to. The L0/L1/L2 layering and ABI-versioning rules were cut for the nros_rmw::custom_transport rustdoc; the backend table now says zenoh-pico is wired (link-custom)"
 
 [[page]]
 old = "porting/custom-rmw.md"

@@ -6,7 +6,7 @@
 //! real zenohd over TCP, but the same vtable shape covers
 //! USB-CDC, BLE GATT, RS-485 with framing, ring-buffer loopback,
 //! semihosting bridge, and so on. See
-//! `book/src/extending/custom-transport.md` for the full design.
+//! `book/src/extending/add-a-transport.md` for the full design.
 //!
 //! # Wire layout for this example
 //!

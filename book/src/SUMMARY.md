@@ -122,7 +122,7 @@
 - [Overview](./extending/overview.md)
 - [Add a board](./extending/add-a-board.md)
 - [Add a platform](./extending/add-a-platform.md)
-- [Custom Transport](./extending/custom-transport.md)
+- [Add a transport](./extending/add-a-transport.md)
 - [Custom RMW Backend](./extending/custom-rmw.md)
 - [RMW API Design](./extending/rmw-design.md)
 
