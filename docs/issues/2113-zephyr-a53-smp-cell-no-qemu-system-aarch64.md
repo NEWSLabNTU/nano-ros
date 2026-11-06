@@ -113,3 +113,38 @@ issue:
 * the tier-2 `run-matrix` dispatches of 2026-10-31 stopped in the Zephyr
   fixture build, at `build-cortex-m-c-boot-report-zenoh`'s configure
   ("Aborting due to Kconfig warnings").
+
+## The cell boots and passes on a host with the packaged emulator, 2026-11-06 (still open)
+
+No nightly has reached this cell since the precondition landed: they stopped in
+the zephyr build (issues 2229, 2249, 2288). So the cell was run by hand on
+newslab-server133, at `main` 01ddf793df on 2026-11-06, with the distribution
+emulator this issue provisions: `qemu-system-aarch64` 9.0.2 (Ubuntu 22.04
+backport), `virt` listed.
+
+- The fixture row's image was built the way the leaf runner builds it.
+  `nros configure` came first, then `nros build smp_bringup:zephyr_smp
+  --workspace examples/workspaces/realtime-c`, run from the west workspace, as
+  issue 2288 fixed. Last, `CONFIG_NROS_ZENOH_LOCATOR="tcp/10.0.2.2:7591"`,
+  the row's `west_zenoh_locator`.
+- It was booted with the harness's exact command from
+  `ZephyrPlatform::QemuCortexA53Smp` (`-cpu cortex-a53 -machine
+  virt,gic-version=3 -smp cpus=2 -nic user,model=e1000 -kernel …`), with
+  `rmw_zenohd` on `tcp/0.0.0.0:7591`.
+
+Within the cell's 90 s budget the image printed the cell's `accept` line,
+`ZEPHYR_CORE_PIN_OBSERVED_CPU1`, verbatim:
+
+```
+nros: scheduler core=0 levels=2 backing=232
+nros: core pin tier=`high` cpu=1
+[nros] tier task entered
+nros: core pin observed tier=`high` running_on=1
+nros: EDF deadline set tier=`high` 10000us
+```
+
+So the image, the boot command and the assertion all hold with a packaged
+emulator. Two things this run does not cover, and the nightly does: the
+runner's emulator is 6.2.0, not 9.0.2, and the harness resolves the fixture
+from the lane's west build root, not from this build dir. **The acceptance is
+unchanged:** `CorePinPlacement/zephyr/c` passes in a tier-2 nightly.
