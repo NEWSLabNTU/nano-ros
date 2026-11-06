@@ -51,7 +51,7 @@ path you would take to bring nano-ros up on it.
 | NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS (NVIDIA FSP) | No board package, and no work on one is planned. The IVC driver (`nvidia-ivc`) and the zenoh-pico IVC link remain in nano-ros |
 
 The ESP32 boards (ESP-IDF component and esp-hal bare-metal) are retired:
-[ESP32 — retired](../migrating/esp32.md).
+[ESP32 — retired](../migrating/from-older-releases.md#esp32-boards).
 
 To add a board, as a package of your own or contributed to nano-ros, see
 [Add a board](../extending/add-a-board.md#get-your-board-into-this-book).
@@ -65,7 +65,7 @@ To add a board, as a package of your own or contributed to nano-ros, see
   scheduler is the only option. Pub/sub works fine.
 - **Xtensa (ESP32, ESP32-S2, ESP32-S3)**: not supported. nano-ros has no
   Xtensa board, and the RISC-V ESP32 boards are retired
-  ([ESP32 — retired](../migrating/esp32.md)).
+  ([ESP32 — retired](../migrating/from-older-releases.md#esp32-boards)).
 - **Cortex-A9 / A53**: hosted-RTOS only (NuttX, Zephyr). Heap +
   libc required; bare-metal Cortex-A is not in the coverage matrix.
 - **PX4 boards**: NuttX is the underlying kernel; the PX4 module

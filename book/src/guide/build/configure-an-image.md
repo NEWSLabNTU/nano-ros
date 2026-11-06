@@ -290,7 +290,7 @@ fn main() -> ! {
   build-time and runtime variables, and the buffer knobs.
 - [Configuration surface](../../reference/configuration-surface.md): the
   Kconfig symbols and where each decision is made.
-- [Retired configuration files](../../migrating/retired-config-files.md).
+- [Retired configuration files](../../migrating/from-older-releases.md#replace-a-retired-configuration-file).
 
 ## Design background
 
