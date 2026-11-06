@@ -214,7 +214,7 @@
     },
     {
       "beaten_by": "cmake/zephyr/mps2-an385-serial.conf",
-      "dead_in": "examples/zephyr/rust/talker/prj.conf",
+      "dead_in": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_value": "y",
       "live_value": "n",
       "rows": [

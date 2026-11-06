@@ -1255,6 +1255,76 @@ mod tests {
         );
     }
 
+    /// Issue 2290 -- a Zephyr board whose default link is IP (it carries `tcp`
+    /// or `udp` and states no `[board.net] host_serial`) turns the network
+    /// stack on in its OWN files. A scaffolded workspace image names no
+    /// `os_config` fragment, so the board package's conf and the snippets the
+    /// board names are all it gets: without `CONFIG_NETWORKING` there, native_sim
+    /// failed to link (Zephyr had no random source) and mps2-an385 booted into
+    /// `ConnectionFailed`. A board in `KNOWN` is the open half of the issue;
+    /// fixing it makes this test fail until its row goes.
+    #[test]
+    fn a_zephyr_board_whose_default_link_is_ip_states_a_network_stack() {
+        const KNOWN: &[&str] = &["qemu-cortex-a53", "nucleo-f767zi-zephyr"];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = BoardCatalog::load(&root).expect("in-tree board catalog");
+        let mut checked = Vec::new();
+        let mut wrong = Vec::new();
+        for d in catalog.descriptors() {
+            let Some(z) = &d.zephyr else { continue };
+            let name = d.names[0].as_str();
+            let net = crate::cmd::build::descriptor_board_net(d, name, Some(&root)).unwrap();
+            let ip = net.links.iter().any(|l| l == "tcp" || l == "udp");
+            if !ip || net.host_serial.is_some() {
+                continue;
+            }
+            let td = leaf_dir(&format!(
+                "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.z]\nboard = \"{name}\"\n"
+            ));
+            let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+            let mut confs = board_conf_paths(&leaf, Some(&catalog), Some(&root), name);
+            for s in &z.snippets {
+                let dir = root.join("zephyr/snippets").join(s);
+                confs.extend(
+                    std::fs::read_dir(&dir)
+                        .unwrap_or_else(|e| panic!("{name}: snippet {}: {e}", dir.display()))
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().is_some_and(|x| x == "conf")),
+                );
+            }
+            let states = confs.iter().any(|p| {
+                std::fs::read_to_string(p)
+                    .unwrap_or_default()
+                    .lines()
+                    .any(|l| l.trim() == "CONFIG_NETWORKING=y")
+            });
+            checked.push(name.to_string());
+            let known = KNOWN.contains(&name);
+            if states == known {
+                wrong.push(format!(
+                    "{name}: {} (files: {confs:?})",
+                    if known {
+                        "now states CONFIG_NETWORKING=y; delete its KNOWN row and close issue 2290's half"
+                    } else {
+                        "states no CONFIG_NETWORKING=y in its board conf or snippets"
+                    }
+                ));
+            }
+        }
+        for b in ["zephyr", "mps2-an385-zephyr"] {
+            assert!(
+                checked.iter().any(|c| c == b),
+                "{b} not checked: {checked:?}"
+            );
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
     /// Issue 2200 -- the in-tree pair `check cmake-cli-rows` reads: the
     /// `mps2-an385-zephyr` board package carries a `prj.conf` AND the
     /// `cpp-port-minimal-publisher/zephyr` leaf names an `os_config` fragment,
