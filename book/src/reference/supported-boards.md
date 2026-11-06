@@ -37,7 +37,7 @@ path you would take to bring nano-ros up on it.
 
 | Vendor       | Board                | MCU / SoC          | Arch       | RTOS to start from | How to approach it |
 |--------------|----------------------|--------------------|------------|--------------------|--------------------|
-| STMicro      | STM32F4-Discovery    | STM32F407          | Cortex-M4F | bare               | [Worked example](../extending/stm32f4-out-of-tree.md), an out-of-tree board package |
+| STMicro      | STM32F4-Discovery    | STM32F407          | Cortex-M4F | bare               | [Worked example](../extending/add-a-board.md#example), an out-of-tree board package |
 | STMicro      | STM32H7-Nucleo       | STM32H743          | Cortex-M7F | FreeRTOS / Zephyr  | FreeRTOS or Zephyr starter, with an overlay on `nros-board-freertos` |
 | STMicro      | Pixhawk 4 (FMUv5)    | STM32F765          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../guide/platforms/px4.md) |
 | STMicro      | Pixhawk 6X / 6C      | STM32H753          | Cortex-M7F | NuttX (PX4)        | The PX4 module template: [PX4 Autopilot](../guide/platforms/px4.md) |
@@ -54,7 +54,7 @@ The ESP32 boards (ESP-IDF component and esp-hal bare-metal) are retired:
 [ESP32 — retired](../migrating/esp32.md).
 
 To add a board, as a package of your own or contributed to nano-ros, see
-[Adding a Board to the Registry](../extending/adding-a-board-to-the-registry.md).
+[Add a board](../extending/add-a-board.md#get-your-board-into-this-book).
 
 ## Caveats by chip family
 
