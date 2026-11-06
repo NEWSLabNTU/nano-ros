@@ -158,7 +158,7 @@ writes a router `downsampling` rule beside the resolved model.
 `ZENOH_CONFIG_OVERRIDE` entry `rmw_zenohd` reads (`--format json5` prints the
 rule file itself):
 
-```sh
+```text
 ZENOH_CONFIG_OVERRIDE="$(nros router config --model build/nros/models/<bringup>/<stem>.yaml)" rmw_zenohd
 ```
 
