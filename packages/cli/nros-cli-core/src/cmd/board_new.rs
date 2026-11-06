@@ -327,5 +327,10 @@ fn print_next_steps(args: &NewArgs, dir: &Path) {
             args.name
         );
     }
-    println!("  just check fast   # the scaffold's acceptance: green before the first commit");
+    // The checkout's own acceptance, and only the checkout has the recipe. The
+    // out-of-tree road is a user's, who has no `just` recipes to run (issue
+    // 2292 routed `nros new board` here too).
+    if args.out_of_tree.is_none() {
+        println!("  just check fast   # the scaffold's acceptance: green before the first commit");
+    }
 }

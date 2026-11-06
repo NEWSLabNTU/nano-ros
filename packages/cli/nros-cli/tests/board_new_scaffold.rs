@@ -387,3 +387,56 @@ fn new_board_for_zephyr_names_the_verb_that_takes_a_board_id() {
     );
     assert!(!tmp.path().join("nros-board-zb").exists());
 }
+
+/// The out-of-tree road is the user's, and a user has neither the checkout's
+/// `just` recipes nor a reason to enter the `nros dev` tier. Both spellings
+/// reach it, so both are checked.
+#[test]
+fn the_out_of_tree_next_steps_name_no_contributor_step() {
+    let a = outside_every_checkout();
+    let b = outside_every_checkout();
+    let outs = [
+        Command::new(nros())
+            .args([
+                "board",
+                "new",
+                "userboard",
+                "--platform",
+                "freertos",
+                "--out-of-tree",
+            ])
+            .arg(a.path())
+            .current_dir(a.path())
+            .output()
+            .expect("run nros board new"),
+        Command::new(nros())
+            .args([
+                "new",
+                "board",
+                "userboard",
+                "--for-platform",
+                "freertos",
+                "--into",
+            ])
+            .arg(b.path())
+            .current_dir(b.path())
+            .output()
+            .expect("run nros new board"),
+    ];
+    for out in outs {
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            !text.contains("just ") && !text.contains("nros dev"),
+            "a user-road next step names a contributor step:\n{text}"
+        );
+    }
+}
