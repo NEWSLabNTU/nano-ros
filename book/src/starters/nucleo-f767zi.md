@@ -151,7 +151,7 @@ Publishing: 'Hello World: 2'
 On the bench, plug the Nucleo's ST-LINK port into your host and flash the
 same image:
 
-```bash
+```bash probe=65 track=installed variant=bench
 nros flash --monitor
 ```
 

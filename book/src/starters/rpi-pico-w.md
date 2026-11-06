@@ -171,7 +171,7 @@ On the bench, wire the USB-to-UART adapter to GP0 (TX) and GP1 (RX) and
 ground, plug both the Pico W and the adapter into your host, and flash the
 same image:
 
-```bash
+```bash probe=65 track=installed variant=bench
 nros flash --monitor
 ```
 
