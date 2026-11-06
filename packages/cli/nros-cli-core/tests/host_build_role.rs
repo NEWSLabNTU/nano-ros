@@ -110,6 +110,7 @@ fn args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) -> Args {
         all: false,
         dry_run: true,
         verbose: false,
+        explain_sizing: false,
         offline: false,
         selection: SelectionArgs {
             packages_select: select.iter().map(|s| (*s).to_string()).collect(),

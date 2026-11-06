@@ -605,8 +605,9 @@ fn patch_rows_of(file: &Path) -> Result<toml::Table> {
             }
             // Never "run `nros sync`": this runs INSIDE sync (issue 1920).
             bail!(
+                // issue 0463.
                 "{} includes {}, which does not exist. cargo refuses to read a config \
-                 whose `include` target is missing (issue 0463), so nothing can resolve \
+                 whose `include` target is missing, so nothing can resolve \
                  this package until that file is restored or the entry is removed from \
                  `include`.",
                 file.display(),

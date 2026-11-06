@@ -94,6 +94,15 @@ pub struct Args {
     #[arg(short, long)]
     pub verbose: bool,
 
+    /// Print, in full, every sizing input the image leaves to a default.
+    ///
+    /// A build prints them as one summary line; this names each one, why it
+    /// was not derived, and what declaring it would take. `NROS_EXPLAIN_SIZING=1`
+    /// asks the same of any road (a cmake or west configure).
+    // issue 2270.
+    #[arg(long)]
+    pub explain_sizing: bool,
+
     /// Do not fetch anything; fail naming what is missing.
     ///
     /// Note this is a SCOPED guarantee: stages 1–4 touch no network, and stage
@@ -262,6 +271,7 @@ impl Args {
             board,
             dry_run,
             verbose,
+            explain_sizing,
             offline,
             selection,
             continue_on_error,
@@ -281,6 +291,7 @@ impl Args {
         self.board = board.or(self.board);
         self.dry_run |= dry_run;
         self.verbose |= verbose;
+        self.explain_sizing |= explain_sizing;
         self.offline |= offline;
         let SelectionArgs {
             packages_select,
@@ -2968,6 +2979,7 @@ pub(crate) fn leaf_outputs_missing(root: &std::path::Path, has_components: bool)
 
 pub fn run(args: Args) -> Result<()> {
     let args = args.split_cmake_args()?;
+    crate::sizing_descriptor::set_explain_sizing(args.explain_sizing);
     // phase-429 W2 — the codegen version guard, BEFORE planning. `nros build`
     // is RFC-0065's front door and was the one codegen path with no guard on
     // it at all; planning is where the generated root is written, so the check
@@ -7774,6 +7786,7 @@ mod selection_wiring_tests {
             all: false,
             dry_run: true,
             verbose: false,
+            explain_sizing: false,
             offline: true,
             selection: crate::cmd::build::SelectionArgs {
                 packages_select: select.iter().map(|s| (*s).to_string()).collect(),
@@ -8447,6 +8460,7 @@ mod single_package_tests {
             all: false,
             dry_run: true,
             verbose: false,
+            explain_sizing: false,
             offline: false,
             selection: Default::default(),
             continue_on_error: false,

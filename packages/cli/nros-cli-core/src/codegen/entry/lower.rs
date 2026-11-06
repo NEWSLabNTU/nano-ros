@@ -358,8 +358,7 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
         {
             return Err(format!(
                 "typed entry emit: board `{}` has a sched task runner but no level runner; \
-                 the entry packs emit only the level shape (one executor per core, \
-                 issue 2021)",
+                 the entry packs emit only the level shape (one executor per core)",
                 plan.board
             ));
         }

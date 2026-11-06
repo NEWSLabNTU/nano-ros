@@ -599,6 +599,31 @@ build prints what declaring would save:
 | Cyclone | `DEFAULT_MAX_TYPES = 32` floor |
 | uORB | current literals — the `#ifndef … 64` in each source, so an image with no descriptor is byte-identical to every build before W6.d |
 
+**Amendment (2026-11-06, issue 2270) — loud ONCE, by the descriptor's
+writer.** "Loud" used to mean every build script that took a fallback printed
+its own `cargo:warning`. Each of those warnings was a function of the
+descriptor alone, so three crates printed the same missing fact in three
+vocabularies: a scaffolded talker built with six warnings, four of them about
+one publisher with no stated `durability`, and a newcomer read them as errors.
+The fallbacks themselves are unchanged. What moved is who says so:
+
+* The ONE list is `nros_sizing_descriptor::defaults::defaults_in_use` — each
+  input the descriptor leaves unstated, the consequences, and the declaration
+  that would state it — built from the same functions the consumers size from.
+* Whoever writes the descriptor prints it, as one summary line beside the file
+  (`nros: sizing: N inputs use a default … -- details: nros build
+  --explain-sizing`). Every road writes its descriptor through the `nros` CLI
+  (cargo build, cmake and west configure), so every road prints it, before any
+  build script runs. `nros build --explain-sizing`, or `NROS_EXPLAIN_SIZING=1`
+  on a configure, prints each entry in full.
+* The build scripts no longer print a fallback the list covers. They still
+  print what the list cannot know: a stated knob below the declared demand, a
+  `KEEP_LAST(0)`, a road input such as the transport's receive ceiling.
+
+A summary rather than a filter, because `nros build` hands off with `exec` and
+pipes nothing (RFC-0065 D1): it cannot read cargo's output, so it must say its
+piece before the hand-off.
+
 ## D7 — derivation publishes demand, unfloored; the floor lives at the consumer
 
 Carried unchanged from issues 1015 and 1033, which are the same derivation

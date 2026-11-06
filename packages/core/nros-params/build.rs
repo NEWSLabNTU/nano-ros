@@ -427,10 +427,11 @@ fn refuse_partial_declaration() {
         .filter(|r| !r.trim().is_empty())
         .unwrap_or_else(|| "(the road carried no NROS_PARAM_DECLARATION_REASON)".into());
     panic!(
+        // issue 1421.
         "\n\nnros-params: the parameter store cannot be sized: the entity inventory REFUSED \
          the contract's `params:` declaration:\n  {reason}\n\
          Declare `params:` on every node in the image, or on none. The build stops here \
-         rather than size the store from the crate defaults (phase-460 W2, issue 1421).\n"
+         rather than size the store from the crate defaults (phase-460 W2).\n"
     );
 }
 

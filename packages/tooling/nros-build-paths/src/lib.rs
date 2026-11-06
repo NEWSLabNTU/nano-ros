@@ -476,7 +476,7 @@ fn reroot_env_value(env_name: &str, value: PathBuf) -> PathBuf {
         println!(
             "cargo::warning=nano-ros: ${env_name} named another nano-ros checkout \
              ({}); building this one instead ({}). A linked worktree inherits the \
-             parent shell's absolute SDK paths — issue 1280.",
+             parent shell's absolute SDK paths.",
             value.display(),
             rerooted.display()
         );
@@ -1970,7 +1970,7 @@ pub mod riscv64 {
         if !others.is_empty() {
             println!(
                 "cargo:warning=the SDK store has {TOOL} {} but NOT the pinned {pin} — not used \
-                 (issue 1546: only <store>/{TOOL}/<pin> counts). Provision the pin: \
+                 (only <store>/{TOOL}/<pin> counts). Provision the pin: \
                  nros setup --tool {TOOL}",
                 others.join(", ")
             );

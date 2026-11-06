@@ -1118,8 +1118,9 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
         // an absent file (issue 1061).
         if !unprobeable.is_empty() {
             eprintln!(
+                // issue 1061.
                 "{who}: {}: {} component(s) are un-probeable, so pool budgets stay at the crate \
-                 defaults (issue 1061): {}",
+                 defaults: {}",
                 leaf.display(),
                 unprobeable.len(),
                 unprobeable.join(", ")
@@ -1152,8 +1153,9 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
                     "`NROS_SUBSCRIBER_BUFFER_SIZE`"
                 };
                 eprintln!(
+                    // issue 1125.
                     "{who}: {}: payload classes not derived, so {kept} keeps the \
-                     crate default (issue 1125): {reason}",
+                     crate default: {reason}",
                     leaf.display()
                 );
             }
@@ -1164,8 +1166,9 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             let take = crate::leaf_take_buffer::take_buffer_for_leaf(leaf);
             if let crate::leaf_take_buffer::TakeBuffer::Refused { reason } = &take {
                 eprintln!(
+                    // issue 1233.
                     "{who}: {}: take buffer not derived, so `RX_BUF` keeps the crate \
-                     default (issue 1233): {reason}",
+                     default: {reason}",
                     leaf.display()
                 );
             }

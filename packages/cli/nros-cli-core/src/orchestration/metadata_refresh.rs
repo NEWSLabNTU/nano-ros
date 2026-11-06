@@ -247,9 +247,10 @@ pub fn refresh_stale_sidecars(
                     crate::orchestration::metadata_build::component_resolution_error(&opts)
                 {
                     eyre::bail!(
+                        // issue 1817.
                         "{}::{}: cargo cannot resolve {}:\n{cause}\n\n\
                          This fails the image's own build too, so sync stops here rather \
-                         than fall back to the SystemModel bound (issue 1817).",
+                         than fall back to the SystemModel bound.",
                         decl.config.package,
                         decl.config.component,
                         decl.package_root.join("Cargo.toml").display()

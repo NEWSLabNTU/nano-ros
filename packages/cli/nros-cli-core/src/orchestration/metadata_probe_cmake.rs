@@ -648,8 +648,9 @@ impl std::fmt::Display for ProbeRootMismatch {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
+            // issue 1593.
             "metadata probe build dir {} compiles nano-ros at {} but this sync's nano-ros is {} \
-             (issue 1593); no marker written — reconfigure it with \
+; no marker written — reconfigure it with \
              `cmake {} -Dnano_ros_DIR={}`",
             self.build_dir.display(),
             self.cached.display(),
@@ -772,7 +773,7 @@ fn write_capabilities(probe_dir: &Path) -> Result<()> {
         if systems.len() > 1 {
             eprintln!(
                 "sync: metadata — {} bringups in {}; capabilities not lowered into the \
-                 probe (issue 0543: probe is per workspace, capabilities are per system)",
+                 probe (the probe is per workspace, capabilities are per system)",
                 systems.len(),
                 ws_root.display()
             );

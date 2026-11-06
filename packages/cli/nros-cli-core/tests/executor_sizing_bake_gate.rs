@@ -261,7 +261,7 @@ fn recorded_timers_over_capacity_fail_the_bake_with_the_count() {
     assert!(err.contains("7 callback entities"), "got: {err}");
     assert!(err.contains("holds 4"), "got: {err}");
     assert!(err.contains("NROS_EXECUTOR_MAX_CBS"), "got: {err}");
-    assert!(err.contains("0257"), "got: {err}");
+    assert!(!err.contains("0257"), "no tracker id in user text: {err}");
 }
 
 /// A sidecar that records FEWER entities than the model wires must not shrink

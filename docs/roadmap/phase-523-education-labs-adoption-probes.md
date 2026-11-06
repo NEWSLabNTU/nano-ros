@@ -145,7 +145,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2267](../issues/2267-book-has-no-release-provenance-report.md) | industrial | No release provenance report reachable from the book |
 | [#2268](../issues/2268-no-release-support-backport-policy.md) | industrial | No release support or backport policy; stale Jazzy line |
 | [#2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter. Home moved to phase-537 W5 with W1 (2026-11-06) |
-| [#2270](../issues/2270-default-talker-prints-internal-warnings.md) | education | The default talker prints internal issue ids and a "contract violation" |
+| [#2270](../issues/archived/2270-default-talker-prints-internal-warnings.md) | education | **Resolved** 2026-11-06: the descriptor writer reports defaults as one line, the scaffold declares its contract, and no user-facing text cites a tracker id (gated) |
 | [#2271](../issues/archived/2271-install-sh-no-longer-prints-path-export.md) | education | **Resolved** 2026-11-06: not reproduced — install.sh prints the line, above the closing `next` lines |
 | [#2272](../issues/2272-serial-flow-needs-socat-unlisted.md) | education | The serial flow needs `socat`, which no prerequisite list names |
 Round one has not run.

@@ -217,9 +217,10 @@ pub fn portability_violation(text: &str, roots: &[&std::path::Path]) -> Option<S
             }
             if line.contains(needle) {
                 return Some(format!(
+                    // issue 0320.
                     "sizing descriptor line {} names the checkout directory `{needle}`. The \
                      descriptor must be byte-identical across two checkouts of one tree at \
-                     different paths (issue 0320) -- name the entry, or a repo-relative path, \
+                     different paths -- name the entry, or a repo-relative path, \
                      instead:\n  {line}",
                     i + 1
                 ));

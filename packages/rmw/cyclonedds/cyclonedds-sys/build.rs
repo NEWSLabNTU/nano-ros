@@ -154,8 +154,9 @@ fn wipe_build_dir_on_compiler_change(build_dir: &std::path::Path) {
     };
     if cached != now {
         println!(
+            // issue 0400.
             "cargo:warning=cyclonedds-sys: CMake dir was configured by cc {cached}, now {now} — \
-             wiping (cached check_symbol_exists results describe the other environment, issue 0400)"
+             wiping (cached check_symbol_exists results describe the other environment)"
         );
         let _ = std::fs::remove_dir_all(build_dir);
     }

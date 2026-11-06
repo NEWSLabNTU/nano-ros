@@ -158,11 +158,19 @@ writes:
 sensor_ws/
 └── src/
     ├── sensor_node/            # node package: package.xml, Cargo.toml (a library), src/lib.rs
-    └── sensor_node_bringup/    # package.xml and system.toml; no launch/
+    └── sensor_node_bringup/    # package.xml, system.toml, system.contract.yaml; no launch/
 ```
 
 The bringup's `system.toml` names the board, the RMW, the one component and one
 image. The reader never has to open it to get output.
+
+**Amendment (2026-11-06, issue 2270).** The bringup also holds
+`system.contract.yaml`, stating what the template's own code does: `params: {}`,
+and on a talker its publisher's `durability: volatile`. Without it every buffer
+those declarations size kept a default or a worst case, and the first build
+reported six of them. The reader still never opens it to get output; it is
+there so the first build is quiet, and so the file a user edits when they add an
+endpoint already exists.
 
 **Names (settled by phase-531 W4, 2026-11-05).** The node package is the
 workspace name less a `_ws` suffix, plus `_node` (`sensor_ws` → `sensor_node`,

@@ -55,8 +55,8 @@ pub fn probe_nros_sizes(crate_label: &str) -> SizeMap {
              \n\
              These sizes become the opaque-storage macros C and C++ callers \n\
              allocate against, so a guess here is a short buffer, not a wrong \n\
-             report. Issue 0464 removed the two fallbacks that used to hide \n\
-             this: a poll of the outer target dir (which could return ANOTHER \n\
+             report. The two fallbacks that used to hide this are gone: \n\
+             a poll of the outer target dir (which could return ANOTHER \n\
              consumer's rlib, picked by mtime) and a table of committed \n\
              constants that had already rotted ~11% below the real \n\
              `size_of::<Executor>()`.\n\
@@ -264,16 +264,18 @@ fn drift_check_committed_header(
         Ok(committed) if committed == fresh => {}
         Ok(_) => {
             println!(
+                // issue 0452.
                 "cargo:warning={} is STALE against this crate's sources — run \
-                 `just regen-c-headers` and commit the result (issue 0452). \
+                 `just regen-c-headers` and commit the result. \
                  The build used the committed copy.",
                 output_path.display()
             );
         }
         Err(e) => {
             println!(
+                // issue 0452.
                 "cargo:warning=cannot read committed header {}: {e} — run \
-                 `just regen-c-headers` (issue 0452)",
+                 `just regen-c-headers`",
                 output_path.display()
             );
         }

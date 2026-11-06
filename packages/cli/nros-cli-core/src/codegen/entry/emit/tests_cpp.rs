@@ -448,7 +448,10 @@ fn typed_emit_refuses_a_rust_component_with_qos_overrides() {
     let err = emit_typed(&plan).expect_err("a rust node with overrides must be refused");
     assert!(err.contains("rust_pkg"), "{err}");
     assert!(err.contains("qos_overrides"), "{err}");
-    assert!(err.contains("issue 1854"), "{err}");
+    assert!(
+        !err.contains("issue 1854"),
+        "no tracker id in user text: {err}"
+    );
 
     // The same node without overrides still renders: the refusal is about the
     // table, not the kind.

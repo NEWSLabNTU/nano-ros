@@ -497,11 +497,12 @@ impl<'a> Knob<'a> {
             // through ~~`dotconfig_usize`~~, whose doc comment said in as many
             // words that its callers could not tell the two apart.
             KnobSource::ConfigUnreadable(path, why) => panic!(
+                // issue 1134.
                 "nros-zephyr-build: DOTCONFIG={path} could not be read ({why}), so \
                  `{key}` cannot be resolved.\n  \
                  Refusing to fall back to a default: a Zephyr image built from \
                  crate defaults compiles, links, and then behaves as though its \
-                 Kconfig said nothing (issue 1134).\n  \
+                 Kconfig said nothing.\n  \
                  This usually means a RECONFIGURE ran without the environment the \
                  original configure had — `west build -t run` re-enters the build \
                  graph, and the run inherits whatever the shell provides."

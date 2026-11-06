@@ -121,7 +121,7 @@ fn main() {
             "cargo:warning=nros-cli-core: git could not resolve `--git-path index` \
              (needs git >= 2.31); NROS_CLI_SOURCE_STAMP is UNWATCHED, so a commit \
              will not re-bake it and `just check cli-fresh` may report a stale CLI \
-             that `just setup-cli` cannot clear — issue 1336."
+             that `just setup-cli` cannot clear."
         ),
         None => {}
     }

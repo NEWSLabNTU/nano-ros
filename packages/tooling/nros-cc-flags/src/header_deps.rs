@@ -181,7 +181,7 @@ pub fn emit_header_deps(out_dir: &Path) -> usize {
     let deps = take_header_deps(out_dir);
     assert!(
         !deps.is_empty(),
-        "issue 1570: no compiler depfile under {} after a compile — was \
+        "no compiler depfile under {} after a compile — was \
          `track_header_deps` applied to this cc::Build?",
         out_dir.display()
     );

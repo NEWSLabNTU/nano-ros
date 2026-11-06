@@ -3,7 +3,7 @@
  * The QoS each subscription was DECLARED with, in the contract sidecar
  * beside the launch file that runs it (`sub: { <topic>: { qos: { ... } } }`),
  * or in an `EntityDecl` declaration's `@depth=N` attribute: its history
- * DEPTH, and (issue 1256) its RELIABILITY and DURABILITY.
+ * DEPTH, and its RELIABILITY and DURABILITY.
  * `rclcpp/detail/declared_qos.hpp` expands this into a `constexpr` table and
  * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a
  * declaration and an implementation that disagree fail the BUILD naming

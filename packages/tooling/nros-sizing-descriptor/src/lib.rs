@@ -55,6 +55,7 @@
 //! the checkout directories it actually read from — the only exact answer, since
 //! a ROS topic is an absolute-looking string too.
 
+pub mod defaults;
 pub mod fact;
 // Issue 1743 — the runtime's own service servers, priced from the two
 // `NROS_DECLARED_*` facts, shared by every backend that caps service servers.
@@ -1838,7 +1839,7 @@ basis = \"contract\"
         );
         let hit = portability_violation(&render(&d), &[checkout.path()])
             .expect("the leaked checkout path was caught");
-        assert!(hit.contains("0320"), "{hit}");
+        assert!(!hit.contains("0320"), "no tracker id in user text: {hit}");
         assert!(hit.contains(checkout.path().to_str().unwrap()), "{hit}");
     }
 

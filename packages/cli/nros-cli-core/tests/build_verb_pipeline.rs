@@ -122,6 +122,7 @@ fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) ->
         all: false,
         dry_run: true,
         verbose: false,
+        explain_sizing: false,
         offline: false,
         selection: nros_cli_core::cmd::build::SelectionArgs {
             packages_select: select.iter().map(|s| (*s).to_string()).collect(),

@@ -144,6 +144,10 @@ pub fn scaffold_project(p: &WorkspaceProject<'_>) -> Result<PathBuf> {
     )?;
     std::fs::write(bringup_dir.join("system.toml"), bringup_system_toml(p))?;
     std::fs::write(
+        bringup_dir.join(crate::cmd::ws::LEAF_CONTRACT),
+        bringup_contract(&p.node),
+    )?;
+    std::fs::write(
         p.dir.join(".gitignore"),
         "/build/\n/generated/\n/target/\n/.cargo/\nCargo.lock\n/src/*/metadata/\n",
     )?;
@@ -175,6 +179,35 @@ fn bringup_system_toml(p: &WorkspaceProject<'_>) -> String {
         id = p.image_id,
         board = p.board,
     )
+}
+
+/// The bringup's `system.contract.yaml`: what the node's endpoints DECLARE.
+///
+/// Issue 2270. Without one, every buffer the declarations would size keeps a
+/// default or a worst case, and a scaffolded talker's first build reported
+/// six of them. The scaffold states what its own code does -- the talker's
+/// publisher is VOLATILE and no template declares a parameter -- so the build
+/// sizes from that and says nothing about it; a user who changes the code
+/// edits this beside it. A listener's ring depth is left unstated on purpose:
+/// stating ROS's KEEP_LAST(10) would raise the ring above the depth the
+/// backend serves by default and cost RAM, so the build notes it instead.
+fn bringup_contract(node: &NodePackage<'_>) -> String {
+    let ros = node.ros_name();
+    let mut s = String::from(
+        "# What this image's node DECLARES about its endpoints, beside system.toml.\n\
+         # The build sizes its buffers from these instead of a default; when you add\n\
+         # a publisher, a subscription or a parameter in the code, state it here.\n\
+         # `nros build --explain-sizing` lists anything still left to a default.\n\
+         \nversion: 1\n\nnodes:\n",
+    );
+    s.push_str(&format!("  {ros}:\n    params: {{}}\n"));
+    if node.template == Role::Talker {
+        s.push_str("    pub:\n      chatter:\n        qos:\n          durability: volatile\n");
+        s.push_str(&format!(
+            "\ntopics:\n  /chatter:\n    type: std_msgs/msg/String\n    pub: [{ros}/chatter]\n"
+        ));
+    }
+    s
 }
 
 /// The bringup's `package.xml`: it builds nothing, and runs its node.
@@ -385,7 +418,26 @@ mod tests {
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         entries.sort();
-        assert_eq!(entries, ["package.xml", "system.toml"]);
+        assert_eq!(
+            entries,
+            ["package.xml", "system.contract.yaml", "system.toml"]
+        );
+        // issue 2270 -- the contract states what the talker's code does, so
+        // the first build sizes from it rather than from defaults.
+        let contract: serde_yaml_ng::Value = serde_yaml_ng::from_str(
+            &std::fs::read_to_string(bringup.join("system.contract.yaml")).unwrap(),
+        )
+        .unwrap();
+        let node_c = &contract["nodes"]["sensor_node"];
+        assert!(node_c["params"].as_mapping().is_some_and(|m| m.is_empty()));
+        assert_eq!(
+            node_c["pub"]["chatter"]["qos"]["durability"].as_str(),
+            Some("volatile")
+        );
+        assert_eq!(
+            contract["topics"]["/chatter"]["pub"][0].as_str(),
+            Some("sensor_node/chatter")
+        );
         let sys: toml::Table =
             toml::from_str(&std::fs::read_to_string(bringup.join("system.toml")).unwrap()).unwrap();
         assert_eq!(sys["system"]["rmw"].as_str(), Some("zenoh"));

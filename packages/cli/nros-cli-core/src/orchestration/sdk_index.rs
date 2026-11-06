@@ -1962,7 +1962,7 @@ impl SdkIndex {
                 bail!(
                     "zephyr_module '{name}' is fetched (lines = {:?}) but has \
                      no `approx_mb`, so `nros setup zephyr --dry-run` cannot \
-                     price it — which is the hole issue 1275 filed. Measure it \
+                     price it. Measure it \
                      (`du -sm` on a populated workspace) and record it.",
                     m.lines
                 );

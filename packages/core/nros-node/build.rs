@@ -172,8 +172,9 @@ fn declared_entity_counts(
         match (from_desc, from_env) {
             (Some(d), Some(e)) if d != e => {
                 println!(
+                    // issue 1577.
                     "cargo::warning=nros-node: the sizing descriptor states {d} for what \
-                     `{env}` says is {e}; sizing the arena for {} (issue 1577)",
+                     `{env}` says is {e}; sizing the arena for {}",
                     d.max(e)
                 );
                 Some(d.max(e))
@@ -1710,9 +1711,10 @@ fn knob_source_code(knob: &str) -> u32 {
         Some("snippet") => 5,
         Some("command-line") => 6,
         Some(other) => panic!(
+            // issue 1549.
             "NROS_KNOB_SOURCE_{knob}={other}: not a rung the boot record knows \
              (default, derived, kconfig, environment, snippet, command-line). Add it to \
-             `boot_report::KnobSource` and here together (issue 1549)."
+             `boot_report::KnobSource` and here together."
         ),
     }
 }
@@ -1727,8 +1729,9 @@ fn boot_record_knobs() -> String {
         Some("0") => 0,
         Some("1") => 1,
         Some(other) => panic!(
+            // issue 1549.
             "NROS_RMW_LOCAL_QUERYABLE={other}: a 0/1 feature flag \
-             (Z_FEATURE_LOCAL_QUERYABLE, issue 1549)"
+             (Z_FEATURE_LOCAL_QUERYABLE)"
         ),
     };
     let lq = lq_value | (knob_source_code("NROS_RMW_LOCAL_QUERYABLE") << 8);
@@ -1776,8 +1779,8 @@ fn env_opt_usize_laddered(name: &str) -> Option<usize> {
 /// that states 0 is told one thing whichever build script runs first.
 const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
      It is the bytes ONE request slot of the parameter/lifecycle inbox holds, \
-     and a 0-byte slot drops every request. 0 was this knob's derive sentinel \
-     until issue 1485 and the readers took it literally.\n  \
+     and a 0-byte slot drops every request. 0 was once this knob's derive sentinel, \
+     which is why a 0 may still be written somewhere.\n  \
      Delete the line (on Zephyr, CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, whose \
      default -1 derives the size from the contract's declared parameters), \
      or state the size you mean.";
@@ -1818,19 +1821,12 @@ fn described_closure_bound(
     desc: Option<&nros_sizing_descriptor::SizingDescriptor>,
 ) -> Option<usize> {
     let desc = desc?;
-    let fact = desc.types.max_wire_bound_bytes();
-    if let Some(why) = fact.refusal() {
-        // phase-517 W5 -- one line: a refusal's reason ends in the list of
-        // every unbounded type, which a correct hello-world printed as a
-        // 15-entry warning. The list stays in the descriptor's `[types.refused]`
-        // (`nros ws sizing-descriptor --descriptor <path>` prints it).
-        let why = why.split(':').next().unwrap_or(why).trim_end();
-        println!(
-            "cargo::warning=nros-node: RX_BUF keeps its 1024-byte default -- {why} \
-             (the descriptor's [types.refused] lists them)"
-        );
-    }
-    fact.stated().copied()
+    // A refusal is reported by whoever WROTE the descriptor, not here: the
+    // `nros` CLI prints `nros_sizing_descriptor::defaults::defaults_in_use`
+    // beside the file, as one line for every consumer (issue 2270, RFC-0100
+    // D6 amended). This build script used to print its own `cargo:warning`,
+    // and a scaffolded talker built with six of them from three crates.
+    desc.types.max_wire_bound_bytes().stated().copied()
 }
 
 /// Issue 1655 — an `[image]` count off the descriptor, for the rung
@@ -2247,7 +2243,7 @@ fn sched_task_sizings(
         if v != probe && v != 0 && Some(v) != *own {
             println!(
                 "cargo::warning=nros-node: `{knob}` is stated ({v}), so the image's {} \
-                 sched tasks keep the image's executor size each (issue 1970: a sched task is sized \
+                 sched tasks keep the image's executor size each (a sched task is sized \
                  from its own members only when nothing states the size)",
                 desc.sched_tasks.len()
             );
@@ -2281,9 +2277,10 @@ fn sched_task_sizings(
             img.node_count().stated().copied(),
         ) else {
             println!(
+                // issue 1970.
                 "cargo::warning=nros-node: sched task `{}` states too little to size its own \
                  executor (its entity counts, callback slots and node count must all \
-                 compose), so every sched task keeps the image's executor size (issue 1970)",
+                 compose), so every sched task keeps the image's executor size",
                 t.name
             );
             return Vec::new();

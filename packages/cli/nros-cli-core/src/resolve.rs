@@ -110,17 +110,16 @@ pub const HAND_SET_KNOBS: &[(&str, &str)] = &[
         "NROS_ZENOH_MAX_QUERYABLES",
         "HAND-SET on the cargo-leaf road. `max_queryables` above counts the \
          runtime's parameter and lifecycle servers when the bringup declares \
-         them (issue 1270), and the Zephyr lane takes it; a cargo leaf's \
+         them, and the Zephyr lane takes it; a cargo leaf's \
          inventory is built from nros-metadata.json, which carries no bringup \
-         features, so that road still cannot derive this knob. Issues 0827, \
-         1061, 1125, 1270.",
+         features, so that road still cannot derive this knob.",
     ),
     (
         "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS",
         "HAND-SET: no declarative derivation. It is a count of payload BLOCKS, \
          which needs the message-bound inventory (a TYPE's size) joined to the \
          subscribed-type set — and the bound half is produced by codegen, not \
-         by a declaration this phase reads. Issues 0827, 1061, 1125.",
+         by a declaration this phase reads.",
     ),
 ];
 
@@ -552,7 +551,7 @@ impl Resolved {
                     toml_str(
                         "APPLICATION service servers + 3 per action server + the runtime's own \
                          servers for the families the bringup declares (6 per node for \
-                         param_services, 5 for lifecycle; issue 1270). A DEFAULT and not a \
+                         param_services, 5 for lifecycle). A DEFAULT and not a \
                          ceiling: a stated knob wins."
                     )
                 );

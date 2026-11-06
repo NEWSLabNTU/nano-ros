@@ -24,7 +24,8 @@ fn main() {
     let max_sessions: usize = std::env::var("DEP_ZPICO_MAX_SESSIONS")
         .ok()
         .and_then(|v| v.trim().parse().ok())
-        .expect("zpico-sys publishes `max_sessions` on its `links` channel (issue 1704)");
+        // issue 1704.
+        .expect("zpico-sys publishes `max_sessions` on its `links` channel");
     if max_sessions >= 2 {
         println!("cargo:rustc-cfg=zpico_multi_session");
     }
@@ -227,14 +228,10 @@ fn main() {
         BuiltinSlot::Unpriced(n) => {
             // Only an image with a descriptor has a builtin table to warn about;
             // with none, the family shares the user-service rings as before.
-            if sizing.is_some() {
-                warn(&format!(
-                    "the parameter family's requests are not priced: the image declares no \
-                     `params:`. Its inbox slot keeps {n} B; a larger `set_parameters` is dropped \
-                     with no reply. Declaring the parameters in the contract derives it \
-                     (issue 1352)"
-                ));
-            }
+            // An image with a descriptor has a builtin table, and the
+            // descriptor's writer reports that it is unpriced
+            // (`nros_sizing_descriptor::defaults`, issue 2270) -- this build
+            // script no longer repeats it.
             n
         }
         BuiltinSlot::Refused(why) => panic!("\n\n{why}\n"),
@@ -339,7 +336,8 @@ fn main() {
         let parse = |v: String| -> usize {
             v.trim()
                 .parse()
-                .expect("zpico-sys publishes the reassembly ceiling as a number (issue 1368)")
+                // issue 1368.
+                .expect("zpico-sys publishes the reassembly ceiling as a number")
         };
         let need = receive_need(
             nros_zephyr_build::knob("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS")
@@ -449,11 +447,12 @@ fn main() {
     );
     let service_inbox_bytes = if shared_user_slot != service_inbox_bytes {
         warn(&format!(
+            // issue 1352.
             "the parameter family's request slot is {builtin_inbox_bytes} B, but this image \
              does not say how many queryables its own components create, so there is no \
              builtin table and the parameter services share the user-service rings. Those \
              rings are raised from {service_inbox_bytes} B to {builtin_inbox_bytes} B so a \
-             declared `set_parameters` still lands (issue 1352). Declaring each component's \
+             declared `set_parameters` still lands. Declaring each component's \
              entities in its contract builds the builtin table and gives the user rings \
              their own size back"
         ));
@@ -574,14 +573,10 @@ fn declared_tl_retain_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
     match nros_sizing_descriptor::transient_local_retain_depth(desc?) {
         Fact::Stated(0) | Fact::Absent => None,
         Fact::Stated(n) => Some(n),
-        Fact::Refused(reason) => {
-            warn(&format!(
-                "{reason}. Each transient-local publisher retains \
-                 {TL_RETAIN_DEPTH_DEFAULT} sample (NROS_ZENOH_TL_RETAIN_DEPTH), and `shim/qos.rs` \
-                 grants and advertises that depth to anything that asks for more"
-            ));
-            None
-        }
+        // Reported by the descriptor's writer (`nros_sizing_descriptor::
+        // defaults`, issue 2270): one publisher with no stated durability
+        // used to print this and two siblings from this crate alone.
+        Fact::Refused(_) => None,
     }
 }
 
@@ -844,26 +839,11 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
     for s in &subs {
         match s.depth() {
             Fact::Stated(d) => max = max.max(d as usize),
-            Fact::Refused(reason) => {
-                warn(&format!(
-                    "sizing descriptor refuses `depth` on subscription {}: {reason}. The \
-                     per-subscriber ring keeps {SUBSCRIBER_RING_DEPTH_DEFAULT} \
-                     (NROS_ZENOH_SUBSCRIBER_RING_DEPTH), and `shim/qos.rs` reports the clamp for \
-                     anything that asks for more",
-                    s.topic
-                ));
-                return None;
-            }
-            Fact::Absent => {
-                warn(&format!(
-                    "sizing descriptor states no `depth` for subscription {} ({}); the \
-                     per-subscriber ring keeps {SUBSCRIBER_RING_DEPTH_DEFAULT}. Declaring every \
-                     subscription's depth sizes both payload pools from what this image actually \
-                     keeps",
-                    s.topic, s.type_name
-                ));
-                return None;
-            }
+            // Refused or absent: the ring keeps its builtin, and the
+            // descriptor's writer reports it
+            // (`nros_sizing_descriptor::max_subscription_depth`, through
+            // `defaults`, issue 2270).
+            Fact::Refused(_) | Fact::Absent => return None,
         }
     }
     if max == 0 {
@@ -921,9 +901,9 @@ fn transient_local_publisher_demand(desc: Option<&SizingDescriptor>) -> Option<u
             // Issue 1572 -- the WORST CASE over the same rows, never the
             // builtin: the builtin is 2 whatever the image declares, and the
             // refusal is about a publisher that may be latched.
-            let bound = nros_sizing_descriptor::transient_local_publishers_bound(desc).unwrap_or(0);
-            warn_tl_worst_case(&reason, bound);
-            Some(bound)
+            // Reported by the descriptor's writer (issue 2270).
+            let _ = reason;
+            Some(nros_sizing_descriptor::transient_local_publishers_bound(desc).unwrap_or(0))
         }
     }
 }
@@ -949,23 +929,9 @@ fn transient_local_retain_demand(desc: Option<&SizingDescriptor>) -> Option<usiz
     match nros_sizing_descriptor::transient_local_retain_bytes(desc) {
         Fact::Stated(n) => Some(n),
         Fact::Absent => None,
-        Fact::Refused(reason) => {
-            warn(&format!(
-                "{reason}. The transient-local retention slot (NROS_ZENOH_TL_RETAIN_BYTES) keeps \
-                 its builtin of {TL_RETAIN_BYTES_DEFAULT} B"
-            ));
-            None
-        }
+        // Reported by the descriptor's writer (issue 2270).
+        Fact::Refused(_) => None,
     }
-}
-
-/// RFC-0100 D6's LOUD half for the retention pool's worst case (issue 1572).
-fn warn_tl_worst_case(reason: &str, bound: usize) {
-    warn(&format!(
-        "{reason}. The transient-local retention pool (NROS_ZENOH_MAX_TL_PUBLISHERS) is \
-         sized for the WORST CASE of {bound} slot(s): every publisher that states no \
-         durability is counted as transient-local. Stating it gives the slots back"
-    ));
 }
 
 /// `ZPICO_MAX_TL_PUBLISHERS` as a CHECKED override, shaped after
@@ -1140,10 +1106,11 @@ fn env_usize_min(name: &str, default: usize, min: usize) -> usize {
     let v = env_usize(name, default);
     if v < min {
         panic!(
+            // issue 0827.
             "{name}={v} is below this pool's floor of {min}.\n  \
              The lookup path indexes the pool unconditionally, so a shorter one \
              is not representable — raise the value, or change the lookup to \
-             refuse the entity kind first (issue 0827).\n  \
+             refuse the entity kind first.\n  \
              This used to be silently rounded up to {min}, which reserved the \
              memory anyway while reading as though the knob had been honoured."
         );
@@ -1157,8 +1124,8 @@ fn env_usize_min(name: &str, default: usize, min: usize) -> usize {
 /// whichever build script runs first.
 const PARAM_INBOX_ZERO_REFUSAL: &str = "NROS_PARAM_SERVICE_INBOX_BYTES=0: 0 is not a size; -1 derives.\n  \
      It is the bytes ONE request slot of the parameter/lifecycle inbox holds, \
-     and a 0-byte slot drops every request. 0 was this knob's derive sentinel \
-     until issue 1485 and the readers took it literally.\n  \
+     and a 0-byte slot drops every request. 0 was once this knob's derive sentinel, \
+     which is why a 0 may still be written somewhere.\n  \
      Delete the line (on Zephyr, CONFIG_NROS_PARAM_SERVICE_INBOX_BYTES, whose \
      default -1 derives the size from the contract's declared parameters), \
      or state the size you mean.";

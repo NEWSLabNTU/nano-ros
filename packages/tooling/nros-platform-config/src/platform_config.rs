@@ -504,6 +504,7 @@ fn unanswered_platform_message(
         known.join(", ")
     };
     format!(
+        // issue 1145.
         "NROS_PLATFORM_NAME={platform}: no nros-platform.toml answers to `{platform}`, \
          so the {what} knobs have no platform rung.\n\
          \n  searched (every root, in order):\n    {roots}\n\
@@ -518,7 +519,7 @@ fn unanswered_platform_message(
          answer — 'this platform states no rungs' — and an absent file is not an answer \
          at all, which is why this is fatal rather than a fall-through to the builtin \
          defaults (phase-468 W1; falling through is how `threadx-linux` stopped \
-         compiling, issue 1145).\n\
+         compiling).\n\
          \n  `just check platform-name-answered` asks this question for the whole tree \
          without a build."
     )
@@ -1959,10 +1960,11 @@ impl std::fmt::Display for ConfigError {
             ConfigError::Manifest(e) => write!(f, "{e}"),
             ConfigError::NoSearchRoot { tried } => write!(
                 f,
+                // issue 0979.
                 "no platform descriptor root exists; tried {tried}. \
                  Every root in the search path is missing, so the tree is empty \
                  and no platform can resolve from it — this is a wrong ROOT, not \
-                 a missing platform (issue 0979)."
+                 a missing platform."
             ),
             ConfigError::UnknownPlatform { name, root } => write!(
                 f,

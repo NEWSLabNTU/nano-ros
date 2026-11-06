@@ -212,8 +212,9 @@ fn refuse_size_markers_outside_the_probe() {
     let probe = env::var(PROBE_BUILD_ENV).is_ok_and(|v| v == "1");
     if markers && !probe {
         panic!(
+            // issue 1765.
             "nros: feature `ffi-size-markers` is enabled outside the size probe \
-             (issue 1765).\n\
+.\n\
              The markers exist to be MEASURED by the probe's own nested build \
              (`nros-sizes-build`, which sets {PROBE_BUILD_ENV}=1); in a linked \
              image they are zero-filled flash the size of every probed type. \

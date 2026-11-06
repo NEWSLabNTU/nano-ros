@@ -159,7 +159,8 @@ fn main() -> ExitCode {
             for h in &stale {
                 eprintln!("         {}", h.display());
             }
-            eprintln!("       Run `just regen-c-headers` and commit the result (issue 0452).");
+            // issue 0452.
+            eprintln!("       Run `just regen-c-headers` and commit the result.");
             eprintln!("       If the diff is only the C23 enum-base guard, your cbindgen is not");
             eprintln!("       the pinned one — check `just check cbindgen-pin` first.");
             return ExitCode::FAILURE;

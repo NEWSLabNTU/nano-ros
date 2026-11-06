@@ -423,6 +423,7 @@ pub(crate) fn build_args(
         all: false,
         dry_run,
         verbose: false,
+        explain_sizing: false,
         offline,
         selection: Default::default(),
         continue_on_error: false,

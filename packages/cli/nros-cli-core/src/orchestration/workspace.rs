@@ -500,9 +500,10 @@ fn infer_cmake_language(language: Option<&str>, class: Option<&str>) -> Componen
             Some(known) => known,
             None => {
                 eprintln!(
+                    // issue 0641.
                     "nros: `LANGUAGE {lang}` is not one of c/cpp/cxx/rust/rs — guessing from \
                      the class shape instead. Fix the declaration; a wrong guess here routes \
-                     the component to the wrong metadata probe (issue 0641)."
+                     the component to the wrong metadata probe."
                 );
                 infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp)
             }
@@ -1065,16 +1066,18 @@ fn language_from_sources_or_class(
     // author could have written differently. An unreadable list is.
     if let Some(why) = unreadable {
         eprintln!(
+            // issue 1062.
             "nros: {decl}: {why}. Guessing `{}` from the class shape; pass \
-             `LANGUAGE C` or `LANGUAGE CPP` to state it (issue 1062).",
+             `LANGUAGE C` or `LANGUAGE CPP` to state it.",
             guess.as_str(),
         );
     } else if !sources.is_empty() {
         eprintln!(
+            // issue 1062.
             "nros: {decl}: no source in `{}` carries a C/C++ extension — a cmake \
              variable or generator expression expands at configure time but not \
              for this scanner. Guessing `{}` from the class shape; pass \
-             `LANGUAGE C` or `LANGUAGE CPP` to state it (issue 1062).",
+             `LANGUAGE C` or `LANGUAGE CPP` to state it.",
             sources.join(" "),
             guess.as_str(),
         );
