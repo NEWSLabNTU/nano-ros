@@ -1,5 +1,6 @@
 //! phase-290 (RFC-0049) W4.b — `nros new platform <name>` and
-//! `nros new board <name> --for-platform <p>` scaffolders.
+//! `nros new board <name> --for-platform <p>` scaffolders. The board one is
+//! `nros board new` under another spelling (issue 2292).
 //!
 //! The porter contract: bringing nano-ros to a new RTOS is **2 crates +
 //! 2 tomls, zero central-file edits**. These scaffolds emit the crate
@@ -164,90 +165,32 @@ names = ["{name}"]
     Ok(())
 }
 
-/// `nros new board <name> --for-platform <p>` — a board package skeleton:
-/// `nros-board-<name>/` crate + `nros-board.toml` (RFC-0042 descriptor +
-/// RFC-0049 `[capabilities]`/`[knobs]` tables as comments).
+/// `nros new board <name> --for-platform <p>`: the same board package
+/// `nros board new <name> --platform <p> --out-of-tree <into>` writes.
+///
+/// Issue 2292 -- this kept its own template (a crate skeleton and a descriptor
+/// with no `package.xml`) from before RFC-0064 R5 D5 made the announcement
+/// mandatory, so every catalog reader refused the board it reported
+/// scaffolded. There is now one board scaffolder, and this spelling calls it.
 pub fn scaffold_board(name: &str, platform: &str, into: &Path) -> Result<()> {
     validate_name(name)?;
     validate_name(platform)?;
-    let dir = into.join(format!("nros-board-{name}"));
-    if dir.exists() {
-        bail!("{} already exists", dir.display());
+    if platform == "zephyr" {
+        // `nros new` takes no Zephyr board id, and the descriptor cannot be
+        // written without one.
+        bail!(
+            "a Zephyr board needs its Zephyr board id. Scaffold it with\n  \
+             nros board new {name} --platform zephyr --west-board <board>/<soc>/<variant> \
+             --out-of-tree {}",
+            into.display()
+        );
     }
-
-    write_new(
-        &dir.join("Cargo.toml"),
-        &format!(
-            r#"[package]
-name = "nros-board-{name}"
-version = "0.1.0"
-edition = "2024"
-license = "MIT OR Apache-2.0"
-description = "nano-ros board package for {name} (platform: {platform})"
-
-[dependencies]
-nros-platform-{platform} = {{ version = "*" }}
-# nros-platform = {{ version = "*", default-features = false }}  # BoardEntry traits
-"#
-        ),
-    )?;
-
-    write_new(
-        &dir.join("src/lib.rs"),
-        &format!(
-            r#"//! nano-ros board package for {name} (platform: {platform}).
-//!
-//! A board crate owns hardware bring-up (clocks, pins, the network
-//! device) and implements the `nros_platform::BoardEntry` lifecycle so
-//! `nros::main!()` can boot on it. Mirror the closest in-tree board
-//! under packages/boards/ for the full trait surface.
-
-#![no_std]
-
-/// Board hardware bring-up. Called once before the executor opens.
-pub fn init_hardware() {{
-    todo!("port: clocks / pins / network device for {name}")
-}}
-"#
-        ),
-    )?;
-
-    write_new(
-        &dir.join("nros-board.toml"),
-        &format!(
-            // See RFC-0042.
-            r#"# Board descriptor + knob deltas for `{name}`.
-#
-# Duty rule: the PLATFORM file carries software-stack facts + defaults;
-# THIS file carries hardware facts + per-board overrides. Debug the
-# resolved ladder with:
-#   nros config explain --platform {platform} --board-toml <this file>
-
-[[board]]
-names = ["{name}"]
-platform = "{platform}"
-board_crate = "nros-board-{name}"
-# toolchain / link_kind / entry_kind / net_stack — see an in-tree
-# nros-board.toml (e.g. packages/boards/nros-board-esp32-qemu/) for the
-# full descriptor key set.
-
-[board.capabilities]
-# Hardware FACTS: what this board can actually do.
-# heap = true
-# atomics = true
-# threads = true
-
-# [knobs.zenoh.tx]
-# Per-board OVERRIDES of the platform defaults (rarely needed — prefer
-# fixing the platform default if every board wants the same value).
-# batch = false
-"#
-        ),
-    )?;
-
-    println!(
-        "board package `{name}` scaffolded for platform `{platform}` — next: \
-         implement init_hardware + the BoardEntry lifecycle"
-    );
-    Ok(())
+    crate::cmd::board_new::run(crate::cmd::board_new::NewArgs {
+        name: name.to_string(),
+        platform: platform.to_string(),
+        west_board: None,
+        out_of_tree: Some(into.to_path_buf()),
+        workspace: None,
+        dry_run: false,
+    })
 }

@@ -273,3 +273,117 @@ fn out_of_tree_needs_no_checkout() {
     assert!(dir.join("nros-board.toml").is_file());
     assert!(dir.join("package.xml").is_file());
 }
+
+/// Issue 2292 -- `nros new board <name> --for-platform <p>` is the second
+/// spelling of a board scaffold, and its board must resolve through the same
+/// catalog `nros board new`'s does. It wrote no `package.xml`, so every
+/// catalog reader refused the board it had just reported scaffolded.
+///
+/// An in-tree platform on purpose: the descriptor's `platform` is a closed set
+/// today, so a board for a platform outside it is refused by the catalog for a
+/// reason that is not the scaffold's.
+#[test]
+fn new_board_for_platform_resolves_through_the_catalog() {
+    let tmp = outside_every_checkout();
+    let out = Command::new(nros())
+        .args(["new", "board", "acme", "--for-platform", "nuttx", "--into"])
+        .arg(tmp.path())
+        .current_dir(tmp.path())
+        .env_remove("NROS_WORKSPACE_ROOT")
+        .output()
+        .expect("run nros new board");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let dir = tmp.path().join("nros-board-acme");
+    let xml = std::fs::read_to_string(dir.join("package.xml")).expect("package.xml written");
+    assert!(
+        xml.contains(r#"<nano_ros_provides kind="board" name="acme"/>"#),
+        "{xml}"
+    );
+
+    let out = Command::new(nros())
+        .args(["board", "info", "acme", "--workspace"])
+        .arg(repo_root())
+        .env("NROS_EXTRA_BOARD_PATH", tmp.path())
+        .output()
+        .expect("run nros board info");
+    assert!(
+        out.status.success(),
+        "a board from `nros new board --for-platform` must resolve: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Issue 2292 -- the two spellings write one package, not two templates that
+/// drift. Byte-compare what each writes for the same name and platform.
+#[test]
+fn both_board_scaffold_spellings_write_the_same_package() {
+    let a = outside_every_checkout();
+    let b = outside_every_checkout();
+    let out = Command::new(nros())
+        .args([
+            "board",
+            "new",
+            "same",
+            "--platform",
+            "freertos",
+            "--out-of-tree",
+        ])
+        .arg(a.path())
+        .current_dir(a.path())
+        .env_remove("NROS_WORKSPACE_ROOT")
+        .output()
+        .expect("run nros board new");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let out = Command::new(nros())
+        .args([
+            "new",
+            "board",
+            "same",
+            "--for-platform",
+            "freertos",
+            "--into",
+        ])
+        .arg(b.path())
+        .current_dir(b.path())
+        .env_remove("NROS_WORKSPACE_ROOT")
+        .output()
+        .expect("run nros new board");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    for f in ["nros-board.toml", "package.xml"] {
+        let ta = std::fs::read_to_string(a.path().join("nros-board-same").join(f)).unwrap();
+        let tb = std::fs::read_to_string(b.path().join("nros-board-same").join(f)).unwrap();
+        assert_eq!(ta, tb, "{f} differs between the two scaffold spellings");
+    }
+}
+
+/// Issue 2292 -- `nros new` takes no Zephyr board id, so a Zephyr board from
+/// that spelling is refused, naming the spelling that takes one.
+#[test]
+fn new_board_for_zephyr_names_the_verb_that_takes_a_board_id() {
+    let tmp = outside_every_checkout();
+    let out = Command::new(nros())
+        .args(["new", "board", "zb", "--for-platform", "zephyr", "--into"])
+        .arg(tmp.path())
+        .current_dir(tmp.path())
+        .output()
+        .expect("run nros new board");
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("nros board new zb --platform zephyr --west-board"),
+        "{err}"
+    );
+    assert!(!tmp.path().join("nros-board-zb").exists());
+}

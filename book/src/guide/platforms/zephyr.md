@@ -753,7 +753,8 @@ For a board shared by **several** workspaces there is no single workspace to
 put it in, and `$NROS_EXTRA_BOARD_PATH` still covers that: PATH-style, naming
 directories shaped like `packages/boards/`.
 
-`nros new board <name> --for-platform zephyr` scaffolds the descriptor. Note
+`nros board new <name> --platform zephyr --west-board <board>/<soc>/<variant>
+--out-of-tree <dir>` scaffolds the descriptor. Note
 this is the *nano-ros* descriptor; an out-of-tree Zephyr board **definition**
 (its devicetree and `board.yml`) is contributed the Zephyr way, through your
 module's `board_root`.
