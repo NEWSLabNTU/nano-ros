@@ -240,7 +240,8 @@ std::snprintf(payload, sizeof(payload), "Hello World: %d", count_);
 <!-- /tabs -->
 
 Keep the message under 64 bytes: the talker formats it into a fixed buffer,
-because nothing on this board allocates memory per message.
+because each message is built in a buffer whose size is fixed when the
+program is built.
 
 ## What just happened
 
@@ -269,8 +270,8 @@ changes one of them:
 
 The talker itself is the same kind of node you would write for ROS 2: a
 publisher, a timer, and a callback that publishes on every tick. What differs
-is around it. The program is built for one board, it allocates nothing per
-message, and its size is fixed when it is built. The next chapter opens the
+is around it. The program is built for one board, its messages are built in
+buffers of fixed size, and its memory is fixed when it is built. The next chapter opens the
 two packages and shows where each of those facts is stated.
 
 ## No QEMU, no router: run it on this machine

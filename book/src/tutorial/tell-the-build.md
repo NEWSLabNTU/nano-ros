@@ -9,7 +9,7 @@
 <!-- END GENERATED chapter status -->
 
 Every node in the project creates publishers, subscriptions, timers, servers
-and clients when it starts. On a board with no heap, the memory for all of
+and clients when it starts. On this board, the memory for all of
 them is set aside when the image is built, so the build must size it before
 any node has run. Until now it has not known what the nodes create, so it
 sized every pool for a generous default. In this chapter you write the
