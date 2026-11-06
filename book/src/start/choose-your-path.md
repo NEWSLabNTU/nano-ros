@@ -27,26 +27,30 @@ embedded systems.
 **Budget:** a 15-minute install on each seat, labs that fit a two-hour
 session, and the same result on every seat.
 
-**Route:**
+**Route:** the Tutorial, one project carried through ten chapters, each a
+lab of its own, every step in Rust, C and C++ tabs. Chapters 1 to 7 fit the
+education budget.
 
 1. [Install](install.md) on each seat.
-2. [Run a talker on an emulated board](../tutorial/run-a-talker.md). The
+2. [1. Run a talker on an emulated board](../tutorial/run-a-talker.md). The
    output it prints is the result to check on every seat.
-3. [What you just built](../tutorial/what-you-just-built.md): the node
-   package and the workspace around it.
-4. [Add a second node](../tutorial/add-a-second-node.md), in Rust,
-   [C](../tutorial/add-a-second-node.md) or
-   [C++](../tutorial/add-a-second-node.md).
-5. [Pick and configure the RMW](../tutorial/pick-the-rmw.md). Cyclone DDS
-   needs no router, which keeps a lab machine simple.
-6. [Your own message](../tutorial/your-own-message.md).
-7. Services and actions: the `server`, `client` and action templates in
-   [the C node chapter](../tutorial/add-a-second-node.md#the-node-package).
-8. [Parameters and launch files](../tutorial/parameters-and-launch-files.md).
-9. The lab's board: its starter in the
-   [list of starters](../starters/pick-your-board.md), such as
-   [Nucleo-F767ZI](../starters/nucleo-f767zi.md), or its entry in
-   [Supported Boards](../reference/supported-boards.md).
+3. [2. What you just built](../tutorial/what-you-just-built.md): the node
+   package, the bringup and the image.
+4. [3. Add a second node](../tutorial/add-a-second-node.md): the workspace.
+5. [4. Pick and configure the RMW](../tutorial/pick-the-rmw.md): zenoh,
+   Cyclone DDS and XRCE-DDS, and the board moved onto its network.
+6. [5. Your own message](../tutorial/your-own-message.md): a message
+   package of the project's own.
+7. [6. Services and actions](../tutorial/services-and-actions.md).
+8. [7. Parameters and launch files](../tutorial/parameters-and-launch-files.md).
+9. [8. Tell the build what your system creates](../tutorial/tell-the-build.md):
+   the contract, and the static RAM it saves.
+10. [9. Same project, another target](../tutorial/another-target.md).
+11. [10. Talk to ROS 2](../tutorial/talk-to-ros2.md).
+12. The lab's own board: its starter in the
+    [list of starters](../starters/pick-your-board.md), such as
+    [Nucleo-F767ZI](../starters/nucleo-f767zi.md), or its entry in
+    [Supported Boards](../reference/supported-boards.md).
 
 </div>
 
