@@ -5,11 +5,11 @@ status: open
 type: enhancement
 area: book, education
 purpose: [education]
-related: [phase-523, rfc-0116]
+related: [phase-537, phase-523, rfc-0116]
 found: 2026-11-05
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round one (2026-11-05); round two counts what is left.
+**Home: [phase-537](../roadmap/phase-537-book-user-guide-organization.md)** — W5, which absorbed phase-523 W1 (maintainer, 2026-11-06). Found by phase-523 W3 round one.
 
 Found by phase-523 W3 adoption probe round one, 2026-11-05, on release `nros-0.6.0-nros6` (2026-10-31, 318 commits behind `main` at the time) in a pristine `ubuntu:24.04` container, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n.
 
@@ -21,4 +21,4 @@ This is phase-523 W1's work list; the probe confirms the gap from the reader's s
 
 ## Next
 
-phase-523 W1 labs 1–6.
+phase-537 W5's Tutorial, with the labs it absorbed from phase-523 W1.

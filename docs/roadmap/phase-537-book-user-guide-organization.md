@@ -362,6 +362,26 @@ W0's report becomes a refusal for every gated principle and the level rule:
 **Acceptance:** `check-book-audience` refuses each of these, with a self-test
 case for each.
 
+## Absorbed from phase-523 W1 (maintainer, 2026-11-06)
+
+[Phase-523](phase-523-education-labs-adoption-probes.md) W1 planned the same
+deliverable as W5, a lab series, so it moved here. W5 carries these as well:
+
+- **Labs W5's chapter list lacks.** QoS (523 lab 2), lifecycle (lab 4), and
+  two tiers with the real-time promise measured (lab 5). Each is a W5 chapter
+  or a level-2 lab beside it, on the same probe-track rule. Issue
+  [2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) is the round-one
+  education stop that measured the gap.
+- **A grading command per chapter.** It is the chapter's own
+  `nros run --expect '<line>'`, the line an instructor runs per seat. A chapter
+  whose output is not deterministic across seats states a range or a predicate,
+  or is kept as a demonstration and left out of the graded series.
+- **The twin and the bench.** Chapters run on QEMU and on the Renode
+  Nucleo-F767ZI twin, so a seat needs no hardware. One chapter runs the same
+  image on the Nucleo bench, in manual cadence with a dated run. It waits for
+  phase-524 W5, whose hardware work is deferred.
+- **Acceptance.** `just probe <chapter>` passes for every graded chapter.
+
 ## Order
 
 ```
