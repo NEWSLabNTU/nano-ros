@@ -92,6 +92,7 @@
 - [Support Status](./reference/support-status.md)
 - [Static Pool Inventory](./reference/static-pool-inventory.md)
 - [Troubleshooting — First 10 Minutes](./reference/troubleshooting-index.md)
+- [Glossary](./reference/glossary.md)
 - [Feature matrices]()
   - [Per-RMW Feature Matrix](./reference/matrices/rmw-feature-matrix.md)
   - [Scheduling Wiring Matrix](./reference/matrices/sched-matrix.md)

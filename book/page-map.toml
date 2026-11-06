@@ -850,6 +850,13 @@ was = ["get-started/first-10-minutes.md"]
 note = "Troubleshooting index (W11)"
 
 [[page]]
+book = "user"
+path = "reference/glossary.md"
+action = "new phase-537"
+batch = "p537-w11"
+note = "Glossary (W11): the nano-ros terms the book uses, each defined in the words of the page that explains it, with a link there"
+
+[[page]]
 old = "reference/board-support-levels.md"
 book = "user"
 path = "reference/board-support-levels.md"
