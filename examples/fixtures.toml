@@ -968,7 +968,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "threadx"
 build_subdir = "build/threadx-linux-zenoh/cmake"
-cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9130" }
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 # issue 1286 follow-up — the rv-virt (riscv64 QEMU virt, NetX Duo over
 # virtio-net) sibling of the row above: the same pure-C `demo_bringup` entry,
@@ -1738,7 +1738,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "threadx"
 build_subdir = "build/threadx-linux-zenoh/cmake"
-cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9230" }
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-freertos"
@@ -3293,12 +3293,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/threadx-linux/rust/talker"
 
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/listener"
-
 # Issue 2207 — the same listener with `connect_forever` stated, for the one
 # cell that starts the image BEFORE its router
 # (`test_rtos_session_open_outlasts_a_late_router`). The library default is one
@@ -3311,30 +3305,6 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/threadx-linux/rust/listener"
 env = { NROS_ZENOH_CONNECT_FOREVER = "1" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/service-server"
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/service-client"
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/action-server"
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/threadx-linux/rust/action-client"
 
 [[fixture]]
 id = "threadx-linux-logging-smoke"
@@ -3860,80 +3830,10 @@ cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9100" }
 
 [[fixture]]
 platform = "threadx-linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/threadx-linux/c/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9100" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/threadx-linux/c/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9110" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/threadx-linux/c/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9110" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/threadx-linux/c/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9120" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/threadx-linux/c/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9120" }
-
-[[fixture]]
-platform = "threadx-linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/threadx-linux/cpp/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9200" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/threadx-linux/cpp/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9200" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/threadx-linux/cpp/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9210" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/threadx-linux/cpp/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9210" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/threadx-linux/cpp/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9220" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/threadx-linux/cpp/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9220" }
 
 # ===========================================================================
 # threadx-riscv64 — C / C++ (cmake). Zenoh here; experimental Cyclone gated inline.
@@ -4061,80 +3961,300 @@ cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
 [[fixture]]
 platform = "threadx-linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/c/listener"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/c/service-server"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/c/service-client"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/c/action-server"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
-
-[[fixture]]
-platform = "threadx-linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/c/action-client"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
-
-[[fixture]]
-platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/cpp/talker"
 cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
 
-[[fixture]]
+# phase-535 W4 (RFC-0122 D1) — the threadx-linux example pairs as images of
+# the behaviour bringups (zenoh; Cyclone for C and C++). The cells resolve
+# through nros_tests::fixtures::workspace_image. The talker leaves stay: they
+# are the board's road witnesses (RFC-0122 D3).
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux-talker"
 platform = "threadx-linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/cpp/listener"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "threadx_talker"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/threadx-talker"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux-listener"
 platform = "threadx-linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/cpp/service-server"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "threadx_listener"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/threadx-listener"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux-service-server"
 platform = "threadx-linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/cpp/service-client"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "threadx_service_server"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/threadx-service-server"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux-service-client"
 platform = "threadx-linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/threadx-linux/cpp/action-server"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "threadx_service_client"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/threadx-service-client"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux-action-server"
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "threadx_action_server"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/threadx-action-server"
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-linux-action-client"
+platform = "threadx-linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "threadx_action_client"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/threadx-action-client"
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-talker"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "threadx_talker"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-talker-cyclonedds"
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "threadx_talker_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-listener"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "threadx_listener"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-listener-cyclonedds"
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "threadx_listener_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-service-server"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "threadx_service_server"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-service-server-cyclonedds"
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "threadx_service_server_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-service-client"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "threadx_service_client"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-service-client-cyclonedds"
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "threadx_service_client_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-action-server"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "threadx_action_server"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-action-server-cyclonedds"
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "threadx_action_server_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-action-client"
+platform = "threadx-linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "threadx_action_client"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-linux-action-client-cyclonedds"
+platform = "threadx-linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "threadx_action_client_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-talker"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "threadx_talker"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-talker-cyclonedds"
 platform = "threadx-linux"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/threadx-linux/cpp/action-client"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "threadx_talker_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-listener"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "threadx_listener"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-listener-cyclonedds"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "threadx_listener_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-service-server"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "threadx_service_server"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-service-client"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "threadx_service_client"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-action-server"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "threadx_action_server"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-action-client"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "threadx_action_client"
+build_subdir = "build/threadx-linux-zenoh/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 # ===========================================================================
 # threadx-riscv64 — experimental Cyclone C / C++ (gated; talker/listener only).

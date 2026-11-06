@@ -501,42 +501,42 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
 
         // ThreadX Linux — Rust
         (Platform::ThreadxLinux, Lang::Rust, Variant::Pubsub) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_talker,
-            second_builder: threadx_linux::build_threadx_listener,
+            first_builder: || threadx_linux::pair_image(MLang::Rust, PairRole::Talker),
+            second_builder: || threadx_linux::pair_image(MLang::Rust, PairRole::Listener),
         },
         (Platform::ThreadxLinux, Lang::Rust, Variant::Service) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_service_server,
-            second_builder: threadx_linux::build_threadx_service_client,
+            first_builder: || threadx_linux::pair_image(MLang::Rust, PairRole::ServiceServer),
+            second_builder: || threadx_linux::pair_image(MLang::Rust, PairRole::ServiceClient),
         },
         (Platform::ThreadxLinux, Lang::Rust, Variant::Action) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_action_server,
-            second_builder: threadx_linux::build_threadx_action_client,
+            first_builder: || threadx_linux::pair_image(MLang::Rust, PairRole::ActionServer),
+            second_builder: || threadx_linux::pair_image(MLang::Rust, PairRole::ActionClient),
         },
         // ThreadX Linux — C
         (Platform::ThreadxLinux, Lang::C, Variant::Pubsub) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_c_talker,
-            second_builder: threadx_linux::build_threadx_c_listener,
+            first_builder: || threadx_linux::pair_image(MLang::C, PairRole::Talker),
+            second_builder: || threadx_linux::pair_image(MLang::C, PairRole::Listener),
         },
         (Platform::ThreadxLinux, Lang::C, Variant::Service) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_c_service_server,
-            second_builder: threadx_linux::build_threadx_c_service_client,
+            first_builder: || threadx_linux::pair_image(MLang::C, PairRole::ServiceServer),
+            second_builder: || threadx_linux::pair_image(MLang::C, PairRole::ServiceClient),
         },
         (Platform::ThreadxLinux, Lang::C, Variant::Action) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_c_action_server,
-            second_builder: threadx_linux::build_threadx_c_action_client,
+            first_builder: || threadx_linux::pair_image(MLang::C, PairRole::ActionServer),
+            second_builder: || threadx_linux::pair_image(MLang::C, PairRole::ActionClient),
         },
         // ThreadX Linux — C++ (Action skipped, Pubsub/Service run)
         (Platform::ThreadxLinux, Lang::Cpp, Variant::Pubsub) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_cpp_talker,
-            second_builder: threadx_linux::build_threadx_cpp_listener,
+            first_builder: || threadx_linux::pair_image(MLang::Cpp, PairRole::Talker),
+            second_builder: || threadx_linux::pair_image(MLang::Cpp, PairRole::Listener),
         },
         (Platform::ThreadxLinux, Lang::Cpp, Variant::Service) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_cpp_service_server,
-            second_builder: threadx_linux::build_threadx_cpp_service_client,
+            first_builder: || threadx_linux::pair_image(MLang::Cpp, PairRole::ServiceServer),
+            second_builder: || threadx_linux::pair_image(MLang::Cpp, PairRole::ServiceClient),
         },
         (Platform::ThreadxLinux, Lang::Cpp, Variant::Action) => BinaryPair {
-            first_builder: threadx_linux::build_threadx_cpp_action_server,
-            second_builder: threadx_linux::build_threadx_cpp_action_client,
+            first_builder: || threadx_linux::pair_image(MLang::Cpp, PairRole::ActionServer),
+            second_builder: || threadx_linux::pair_image(MLang::Cpp, PairRole::ActionClient),
         },
 
         // ThreadX RISC-V — Rust
@@ -1076,8 +1076,11 @@ fn listener_ready_marker(platform: Platform, lang: Lang) -> &'static str {
         }
         // phase-535 W3 — the FreeRTOS C++ pair cell runs the workspace
         // listener (`examples/workspaces/cpp`), which prints the tutorial's
-        // subscription line and no "Waiting for messages" banner.
-        (Platform::Freertos, Lang::Cpp) => nros_tests::output::LISTENER_READY_MARKER,
+        // subscription line and no "Waiting for messages" banner. phase-535 W4 —
+        // the threadx-linux C++ cell runs the same workspace listener.
+        (Platform::Freertos | Platform::ThreadxLinux, Lang::Cpp) => {
+            nros_tests::output::LISTENER_READY_MARKER
+        }
         _ => "Waiting for messages",
     }
 }

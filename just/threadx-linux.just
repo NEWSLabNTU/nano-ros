@@ -318,18 +318,6 @@ talker: (_run "talker")
 # Run ThreadX Linux listener
 listener: (_run "listener")
 
-# Run ThreadX Linux service server
-service-server: (_run "service-server")
-
-# Run ThreadX Linux service client
-service-client: (_run "service-client")
-
-# Run ThreadX Linux action server
-action-server: (_run "action-server")
-
-# Run ThreadX Linux action client
-action-client: (_run "action-client")
-
 # Start zenohd router for ThreadX Linux examples (allocator rust-pubsub port 9000, bridge-networked)
 zenohd model="":
     #!/usr/bin/env bash
