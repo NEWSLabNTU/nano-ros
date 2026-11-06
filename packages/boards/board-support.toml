@@ -739,17 +739,19 @@ row = "nros-board-zephyr@ZephyrNativeSim"
 track = "zephyr-mps2"
 chapter = "starters/mps2-an385-zephyr.md"
 variant = ""
+awaits = ["a Rust Zephyr workspace entry that sees its bringup package: the generated zephyr_entry fails `nros::main!: pkg `<bringup>` not found in workspace … Known pkgs: []` (CLI owner bug 4, reported 2026-11-06)"]
 weekly = false
 row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
-notes = "phase-537 W4 — the mps2-an385 Zephyr starter: a Rust talker on Zephyr's `mps2/an385` in QEMU, from `nros setup` and a fresh west workspace to `ros2 topic echo`. Until W4 the zephyr-rust track replayed this run as a second image of the native_sim chapter's workspace. Not weekly yet: the probe PR decides that, with its `awaits`."
+notes = "phase-537 W4 — the mps2-an385 Zephyr starter: a Rust talker on Zephyr's `mps2/an385` in QEMU, from `nros setup` and a fresh west workspace to `ros2 topic echo`. Until W4 the zephyr-rust track replayed this run as a second image of the native_sim chapter's workspace. Not weekly yet; its `awaits` names the CLI fix it waits on."
 
 [[probe]]
 track = "freertos-posix"
 chapter = "starters/freertos-posix.md"
 variant = ""
+awaits = ["the C/C++ node scaffold stating its DEPLOY for the workspace's boards: it writes `DEPLOY linux`, so `nros build` finds no cmake package on a non-Linux board (CLI owner bug 1, branch fix-ws-c-node-deploy)"]
 weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
-notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process, `nros run` starting the router on loopback, then `ros2 topic echo`. The board's first track (its row's evidence is the daily lane). Not weekly yet: the probe PR decides that, with its `awaits`."
+notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process, `nros run` starting the router on loopback, then `ros2 topic echo`. The board's first track (its row's evidence is the daily lane). Not weekly yet; its `awaits` names the CLI fix it waits on."
 
 [[probe]]
 track = "zephyr-west-app"
@@ -846,6 +848,7 @@ notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on
 track = "wokwi-pico"
 chapter = "starters/rpi-pico-w.md"
 variant = ""
+awaits = ["issue 2230: a runner package that drives the Wokwi twin, so `nros run` can boot the Pico W image in it"]
 weekly = false
 row = "nros-board-rpi-pico-w-zephyr@-"
 twin = "rpi-pico-w-zephyr"
