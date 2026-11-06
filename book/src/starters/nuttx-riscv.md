@@ -162,6 +162,6 @@ which receives nothing from it. That is why the command asks for best-effort.
 ## Next
 
 - **The image's configuration, a NuttX tree of your own, and real
-  hardware:** [NuttX (apps/external)](../guide/platforms/nuttx.md).
+  hardware:** [NuttX Arm and RISC-V](../guide/platforms/nuttx.md).
 - **The same NuttX on Arm:** [NuttX in QEMU (Arm)](nuttx-arm.md).
 - **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md).

@@ -130,8 +130,8 @@ which receives nothing from it. That is why the command asks for best-effort.
 
 ## Next
 
-- **FreeRTOS configuration, other FreeRTOS boards, and real hardware:**
-  [FreeRTOS](../guide/platforms/freertos.md).
+- **The image's configuration, and moving it to the emulated board:**
+  [FreeRTOS POSIX](../guide/platforms/freertos-posix.md).
 - **The same talker on an emulated Cortex-M3:**
   [mps2-an385 in QEMU (FreeRTOS)](mps2-an385-freertos.md).
 - **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md).

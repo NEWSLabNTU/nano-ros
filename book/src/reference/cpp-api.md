@@ -99,8 +99,8 @@ internal and may change without notice.
   gets, by the upstream spelling it uses, and the measured ROS 2 examples.
 - [Add a second node](../tutorial/add-a-second-node.md): a C++ node added
   to a workspace, built and run.
-- [Zephyr](../guide/platforms/zephyr.md#c-applications): a C++ application
-  under the nano-ros Zephyr module.
+- [A Zephyr app you build with west](../guide/platforms/zephyr-west-app.md#write-the-application):
+  a C++ node in a Zephyr application, under the nano-ros Zephyr module.
 
 ## Design background
 

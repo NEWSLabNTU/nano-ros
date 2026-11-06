@@ -197,8 +197,8 @@ which receives nothing from it. That is why the command asks for best-effort.
 ## Next
 
 - **Each Zephyr piece, the image's configuration, and other boards:**
-  [Zephyr (west module)](../guide/platforms/zephyr.md).
+  [Zephyr native_sim](../guide/platforms/zephyr-native-sim.md).
 - **A Zephyr application you build with west yourself:**
-  [A Zephyr App You Build with West](../guide/platforms/zephyr-west-app.md).
+  [A Zephyr app you build with west](../guide/platforms/zephyr-west-app.md).
 - **The same Zephyr on an emulated microcontroller:**
   [mps2-an385 in QEMU (Zephyr)](mps2-an385-zephyr.md).

@@ -142,8 +142,8 @@ looks for one, so nothing else needs to be configured.
 
 ## Next
 
-- **The image's configuration, scheduling tiers, and real hardware:**
-  [ThreadX](../guide/platforms/threadx.md).
+- **The image's configuration and sched tasks:**
+  [ThreadX Linux simulator](../guide/platforms/threadx-linux.md).
 - **The same ThreadX on an emulated RISC-V machine:**
   [ThreadX in QEMU (RISC-V 64)](threadx-riscv64.md).
 - **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md).
