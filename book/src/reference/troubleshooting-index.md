@@ -372,6 +372,19 @@ When all else fails, include:
 - `rustc --version`, `cmake --version`, `qemu-system-arm --version`,
 - `nros --version`.
 
+## E. zenoh-pico error codes
+
+| Code | Name | Meaning |
+| --- | --- | --- |
+| -102 | `_Z_ERR_TRANSPORT_OPEN_FAILED` | could not connect to the router |
+| -73 | `_Z_ERR_SESSION_CLOSED` | the session closed after an earlier failure |
+| -78 | `_Z_ERR_SYSTEM_OUT_OF_MEMORY` | an allocation did not fit |
+| -100 | `_Z_ERR_TRANSPORT_TX_FAILED` | a transmission failed |
+| -128 | `_Z_ERR_GENERIC` | a generic error |
+
+The full list is zenoh-pico's `include/zenoh-pico/utils/result.h`. Fixes by
+symptom are in [Troubleshoot](../guide/deploy/troubleshoot.md).
+
 ## What success looks like
 
 A correctly-running Rust Linux talker

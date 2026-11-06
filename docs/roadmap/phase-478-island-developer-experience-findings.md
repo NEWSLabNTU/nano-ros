@@ -419,7 +419,7 @@ issue 1036's record v9, and the RTT recipe as the second; optionally an
 (which UART is wired) stays the island's.
 
 **Landed (2026-10-24):** book page
-[Observing a Board With No Console](../../book/src/guide/deploy/console-less-boards.md).
+[Observing a Board With No Console](../../book/src/guide/deploy/log-and-observe.md).
 It covers three channels, in order:
 1. the boot record: what record v11 carries, and the `--addr-only` /
    `savemem` / decode commands;

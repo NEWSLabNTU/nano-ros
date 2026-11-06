@@ -436,7 +436,7 @@ path = "guide/deploy/deploy-to-production.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["operate/deployment.md"]
-note = "Deploy to production (W8): production-readiness merges into it; the run, run-plan, flash and bench sections folded in from targets/ go to the platform pages and Flash a real board (W9)"
+note = "Deploy to production (W8): one how-to, with production-readiness merged in as a checklist step. The target-model, run, run-plan, flash and bench sections folded in from targets/ stay as the marked \"The target model\" section until W9 moves them to the platform pages and Flash a real board"
 
 [[page]]
 old = "targets/target-model.md"
@@ -481,11 +481,11 @@ note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as
 [[page]]
 old = "internals/production-readiness.md"
 book = "user"
-path = "guide/deploy/production-readiness.md"
-action = "move"
-batch = "p537-w1-guide"
-was = ["realtime/production-readiness.md"]
-note = "W8 merges it into guide/deploy/deploy-to-production"
+path = "guide/deploy/deploy-to-production.md"
+action = "merge-into guide/deploy/deploy-to-production.md"
+batch = "p537-w8"
+was = ["realtime/production-readiness.md", "guide/deploy/production-readiness.md"]
+note = "merged by W8 into Deploy to production, as its \"Check readiness for production\" checklist"
 
 [[page]]
 old = "user-guide/logging.md"
@@ -494,16 +494,16 @@ path = "guide/deploy/log-and-observe.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["operate/logging.md"]
-note = "Log and observe a board (W8): guide/deploy/console-less-boards merges into it"
+note = "Log and observe a board (W8): one how-to, with console-less-boards merged in; W2's quick-start tab group kept as it was. Its delivery and severity tables went to reference/platform-differences, its size knobs to reference/environment-variables; the source-path list was dropped"
 
 [[page]]
 old = "user-guide/console-less-boards.md"
 book = "user"
-path = "guide/deploy/console-less-boards.md"
-action = "move"
-batch = "p537-w1-guide"
-was = ["operate/console-less-boards.md"]
-note = "W8 merges it into guide/deploy/log-and-observe"
+path = "guide/deploy/log-and-observe.md"
+action = "merge-into guide/deploy/log-and-observe.md"
+batch = "p537-w8"
+was = ["operate/console-less-boards.md", "guide/deploy/console-less-boards.md"]
+note = "merged by W8 into Log and observe a board, as its \"Observe a board with no console\" steps"
 
 [[page]]
 old = "user-guide/simulated-time.md"
@@ -512,7 +512,7 @@ path = "guide/deploy/use-simulated-time.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["operate/simulated-time.md"]
-note = "Use simulated time (W8)"
+note = "Use simulated time (W8): one how-to; its timers in language tabs"
 
 [[page]]
 old = "user-guide/troubleshooting.md"
@@ -521,7 +521,7 @@ path = "guide/deploy/troubleshoot.md"
 action = "split testing/test-failures.md"
 batch = "p537-w1-guide"
 was = ["operate/troubleshooting.md"]
-note = "Troubleshoot (W8)"
+note = "Troubleshoot (W8): one how-to by symptom, user tier only. Its zenoh-pico error-code table went to reference/troubleshooting-index; the Z_FEATURE_INTEREST explanation was dropped (the build now enables it), as were the checkout-only steps"
 
 [[page]]
 old = "getting-started/porting-a-cpp-node.md"

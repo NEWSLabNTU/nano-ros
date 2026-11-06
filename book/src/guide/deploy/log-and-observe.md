@@ -1,36 +1,24 @@
-# Logging
+# Log and observe a board
 
 <!-- type: how-to · level: 2 -->
 
-nano-ros ships a ROS 2 style leveled logging facade
-([`nros-log`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/core/nros-log))
-with the same `Logger` + severity surface as `rclcpp::Logger` /
-`rcutils_logging`. Records flow through a single per-platform sink
-(`PlatformSink`) that delegates to whichever
-`nros-platform-<rtos>` is linked into the binary.
+**Needs first:** [Run a talker](../../tutorial/run-a-talker.md)
 
-## Severity ladder
+Use this page to log from a node, choose which records are kept, publish them
+on `/rosout`, and find out what happened on a board that has no console.
 
-REP-2012 style: rcutils's five levels in rcutils's order, plus `Trace`. The
-numbers are NOT `rcutils_log_severity_t`'s (`UNSET=0, DEBUG=10 … FATAL=50`)
-and there is no `Unset` level — in Rust a logger's "no level of its own" state
-is `Logger::unset_level()`, and `Logger::set_default_level` takes a `Severity`
-(pass `Info` where rclrs passes `Unset`). The C surface's `rcl_log_severity_t`
-does use rcutils's numbers, `UNSET` included.
+nano-ros logs through `nros-log`, which has the `Logger` and severity surface
+of `rclcpp::Logger` and `rcutils_logging`. Every record goes to one sink per
+platform: stderr on Linux, Zephyr's log subsystem, NuttX's `syslog`, a UART on
+FreeRTOS and ThreadX. The table is in
+[Platform differences](../../reference/platform-differences.md#logging-nros-log).
 
-| Severity | u8 | When to use |
-|----------|----|-------------|
-| `Trace`  | 0  | Per-instruction granularity; off by default. |
-| `Debug`  | 1  | Diagnostic information useful while developing. |
-| `Info`   | 2  | Normal operation events worth surfacing once. |
-| `Warn`   | 3  | Unexpected but recoverable conditions. |
-| `Error`  | 4  | Errors the caller should surface; system continues. |
-| `Fatal`  | 5  | Unrecoverable; system is about to abort. |
+## Before you start
 
-The numeric representation is stable and used by the
-`nros_platform_log_write` ABI.
+- A node package in a workspace that runs, for example the talker of
+  [Run a talker](../../tutorial/run-a-talker.md).
 
-## Quick start
+## Log from a node
 
 <!-- tabs -->
 
@@ -116,211 +104,58 @@ int main() {
 
 <!-- /tabs -->
 
-The first `NROS_LOG_*` emit auto-installs `PlatformSink` so C/C++
-call sites work without an explicit init step.
+The first log call in C or C++ installs the platform sink, so those call sites
+need no init step.
 
-## Per-platform delivery
+## Set the level
 
-| Target | Backend |
-|--------|---------|
-| POSIX | `fprintf(stderr, "[<LEVEL>] <name>: <msg>\n")` |
-| Zephyr | `LOG_INF` / `LOG_WRN` / etc. (or `printk` if `CONFIG_LOG=n`); module `nros` |
-| NuttX | `syslog(priority, "%s", buf)` |
-| FreeRTOS | board-registered UART writer fn-ptr |
-| ThreadX | board-registered UART writer fn-ptr |
-| Bare-metal (mps2-an385) | QEMU semihosting via `cortex_m_semihosting::hio::hstderr` |
-| Bare-metal (stm32f4) | `defmt::info!("{=str}", msg)` |
+1. Set the compile-time ceiling. Records below it are compiled out: a Rust
+   call becomes a constant-false branch, and a C or C++ record is refused by
+   the same check. State it per image, or per board in its descriptor:
 
-Boards on platforms with no native logger (FreeRTOS / ThreadX) supply their writer fn-ptr at `run()` time:
+   ```toml
+   # system.toml: this image only
+   [image.linux.knobs.log]
+   max_level = "info"
+   ```
 
-```rust
-// from nros-board-mps2-an385-freertos/src/lib.rs
-fn register_log_writer() {
-    unsafe extern "C" fn writer(severity: u8, name_ptr: *const u8, name_len: usize,
-                                 msg_ptr: *const u8, msg_len: usize) { … }
-    unsafe { nros_platform_register_log_writer(Some(writer), None); }
-}
-```
+   The value is `trace` (the default), `debug`, `info`, `warn`, `error`,
+   `fatal` or `off`, or `0`–`6` as Zephyr's `CONFIG_NROS_LOG_MAX_LEVEL` states
+   it. `nros config explain` prints which rung decided it.
 
-## Filtering
+2. Move a logger's level at run time, above the ceiling:
 
-### Compile-time ceiling
+   ```rust
+   let logger = nros_log::get_logger("my_node");
+   logger.set_level(nros_log::Severity::Warn);   // silences Trace, Debug, Info
+   logger.unset_level();                         // follows the default again
+   nros_log::Logger::set_default_level(nros_log::Severity::Debug);
+   ```
 
-The `NROS_LOG_MAX_LEVEL` knob: `trace` (the default), `debug`, `info`, `warn`,
-`error`, `fatal` or `off` — or `0`–`6`, which is how Zephyr's
-`CONFIG_NROS_LOG_MAX_LEVEL` states it, as Zephyr's own `LOG_MAX_LEVEL` does.
-State it per image or per board, like every other knob:
+   A logger with no level of its own follows its nearest dotted ancestor
+   (`my_node.planner` follows `my_node`), then the process default, `Info`.
+   In C the same verbs are `rclc_logger_set_level`,
+   `rclc_log_set_default_level` and `rclc_logger_set_level(logger,
+   RCLC_LOG_SEVERITY_UNSET)`.
 
-```toml
-# system.toml — this image only
-[image.linux.knobs.log]
-max_level = "info"
+3. Make a child logger with upstream's spelling:
+   `node.logger().create_child("planner")?` in Rust,
+   `node->get_logger().get_child("planner")` in C++, and
+   `rclc_logger_get_child(node_log, "planner")` in C. Names are capped at 48
+   bytes and runtime loggers come from a bounded arena: when a child cannot be
+   made, Rust returns an error, C returns `NULL`, and C++ logs through the
+   parent and refuses `set_level` on the child.
 
-# nros-board.toml — every image on the board
-[knobs.log]
-max_level = "info"
-```
+## Publish records on `/rosout`
 
-Environment / `[image.<id>.knobs]` beats Kconfig beats the board; `nros config
-explain` prints which rung decided it. A Rust `nros_*!` call below the ceiling
-folds to a constant-false branch and its format call is dead-code-eliminated.
-C and C++ records — formatted on the C side — are refused by the same check
-in the facade (`rclc_logger_is_enabled` answers `false` below the ceiling).
+1. Declare the capability, `[system] features = ["rosout"]` in `system.toml`
+   (or `set(NROS_FEATURES "rosout")` in a bare CMake project).
 
-The ceiling is a BOUND, not the runtime level: the per-logger threshold below
-still moves freely above it, and a threshold below it is unreachable. rcutils
-has the same pair (`RCUTILS_LOG_MIN_SEVERITY_*` at compile time,
-`rcutils_logging_set_logger_level` at run time).
+2. Create the publisher and pump the queue from your spin loop:
 
-The `max-level-*` Cargo features this replaced are deprecated for one release:
-honoured with a build warning when no knob is stated, a build
-error when they disagree with one.
+<!-- tabs -->
 
-### Runtime per-logger threshold
-
-```rust
-let logger = nros_log::get_logger("my_node");
-logger.set_level(nros_log::Severity::Warn);   // silences Trace/Debug/Info
-```
-
-### The process default, and "unset"
-
-A logger built with `Logger::new(name)` has **no level of its own**. It filters
-on the process-wide default, which is `Severity::Info` until something moves
-it:
-
-```rust
-nros_log::Logger::set_default_level(nros_log::Severity::Debug);  // every
-                                     // logger that has not been given a level
-logger.set_level(nros_log::Severity::Warn);   // this one now states its own
-logger.unset_level();                         // ...and follows the default again
-```
-
-`set_default_level` is retroactive — a `static LOGGER: Logger =
-Logger::new("my_node")` compiled into the image follows it — and it never
-overrides a logger that states its own level, so `Logger::with_level(name,
-Severity::Info)` keeps `Info` whatever the default becomes.
-
-From C, the same three verbs are `rclc_log_set_default_level`,
-`rclc_log_get_default_level`, and `rclc_logger_set_level(logger,
-RCLC_LOG_SEVERITY_UNSET)` — which UNSETS the level rather than selecting a
-value, exactly as `rcutils_logging_set_logger_level(name,
-RCUTILS_LOG_SEVERITY_UNSET)` does. C++ spells the last one
-`logger.set_level(rclcpp::Logger::Level::Unset)`.
-
-### Child loggers, and what an unset level inherits
-
-As upstream, an unset logger takes the level of its nearest dotted ancestor
-(`x.y.z` → `x.y` → `x`) before the process default. Make children
-with the upstream spelling:
-
-```rust
-let node_log = node.logger();                       // "my_node"
-let planner = node_log.create_child("planner")?;    // "my_node.planner"
-node_log.set_level(nros_log::Severity::Debug);      // reaches `planner` too
-nros_log::nros_debug!(planner, "replanning");       // emitted
-```
-
-```cpp
-auto planner = node->get_logger().get_child("planner");   // C++
-```
-
-```c
-rclc_logger_t planner = rclc_logger_get_child(node_log, "planner");   /* C */
-```
-
-A child with its own level keeps it; `unset_level()` hands it back to the
-parent. The same name always answers the same logger. The catch-all's children
-are top-level names: `planner`, not `nros.planner`.
-
-**Bounds, if you are porting.** Upstream keys a level by NAME, so an ancestor
-can hold one without being a logger; here an ancestor holds one by existing,
-and setting a level by name creates it, so in practice the behaviour matches.
-Logger names are capped at **48 bytes**, and runtime-created loggers come from
-a bounded arena. When a child cannot be made:
-
-- Rust's `create_child` returns `Err(ChildError::{NameTooLong, EmptyName,
-  ArenaFull})`, as rclrs's is fallible too;
-- C's `rclc_logger_get_child` returns `NULL` and warns once;
-- C++'s `get_child`, whose upstream shape cannot fail, **emits through the
-  parent** (records carry the parent's name and level) and **refuses
-  `set_level`**, so it can never move the parent's threshold. `get_name()`
-  still answers the name you asked for.
-
-## Sizes
-
-`nros-log` formats each record into a stack-resident `heapless::String<N>`.
-Overflow truncates and appends `…`; the macro never panics on a long format
-string. That `N`, and the two static rings, are knobs on the same ladder as
-the ceiling (`[knobs.log] <key>`, `[image.<id>.knobs.log] <key>`, Kconfig
-`CONFIG_<knob>`):
-
-| Knob | Key | Default | What it sizes |
-|------|-----|---------|---------------|
-| `NROS_LOG_BUFFER_SIZE` | `buffer_size` | 256 (128–4096) | the per-call formatting buffer, and the message in each early/`/rosout` slot |
-| `NROS_LOG_EARLY_RECORDS` | `early_records` | 4 (0 = drop, counted) | records held before `init` installs the sinks |
-| `NROS_LOG_ROSOUT_RECORDS` | `rosout_records` | 16 | the `/rosout` queue (below) |
-| `NROS_LOG_DYNAMIC_LOGGERS` | `dynamic_loggers` | 16, Linux hosts 32 (0 = lookup only) | loggers created at run time |
-
-The C/C++ `NROS_LOG_*` macros format into their own 256-byte frame in the
-calling translation unit, so a C record is bounded by the smaller of that and
-`NROS_LOG_BUFFER_SIZE`. The `buffer-size-<N>`, `early-records-<N>`,
-`rosout-records-<N>` and `dynamic-loggers-<N>` features are deprecated, like
-`max-level-*`.
-
-## Interop with the `log` crate
-
-Enable `nros-log/log-compat`:
-
-```rust
-nros_log::log_compat::install_log_crate_bridge()
-    .expect("log crate already initialized");
-// Now `log::info!(...)` calls from ecosystem crates flow through
-// nros-log's dispatcher.
-
-// Or fan out the other direction — re-emit nros records via `log`:
-static SINKS: &[&dyn nros_log::LogSink] = &[
-    &nros_log::sinks::PlatformSink,
-    &nros_log::log_compat::LogCrateSink,
-];
-nros_log::init(SINKS);
-```
-
-Severity maps Trace↔Trace, Debug↔Debug, Info↔Info, Warn↔Warn,
-Error↔Error round-trip. Fatal folds into Error one-way (`log` has
-no Fatal).
-
-## Working examples
-
-The logging demos live in the features workspace,
-[`examples/workspaces/features`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features),
-with the other Linux feature demos: one node package per language (Rust, C
-and C++), each built by its own `linux` image row in the workspace's
-bringup. Each demonstrates per-severity macros + the runtime threshold
-filter.
-
-## Reference
-
-- `packages/core/nros-log/` — facade crate.
-- `packages/platform/nros-platform-cffi/include/nros/platform.h` —
-  `nros_platform_log_write` / `nros_platform_log_flush` /
-  `nros_platform_register_log_writer` ABI.
-- `packages/api/nros-c/include/rclc/log.h` — C API surface
-  (`NROS_LOG_*` macros + `rclc_log_emit_fmt`).
-- `packages/api/nros-cpp/include/rclcpp/logging.hpp` — C++ macros (the
-  legacy `NROS_INFO` / etc. file:line printf surface stays
-  alongside the new `NROS_LOG_*` macros).
-
-## `/rosout`
-
-Records can be republished as
-`rcl_interfaces/msg/Log` on `/rosout`, so `ros2 topic echo /rosout`,
-`rqt_console` and launch-side log aggregators see a nano-ros node.
-
-Declare the `rosout` capability — `[system].features = ["rosout"]` in
-`system.toml`, or `set(NROS_FEATURES "rosout")` before
-`find_package(nano_ros)` in a bare CMake project (a Rust leaf can also name the
-`nros/rosout` feature) — and wire three lines. Rust:
+### Rust
 
 ```rust
 use nros_rcl_interfaces::msg::Log;
@@ -328,14 +163,14 @@ use nros_rcl_interfaces::msg::Log;
 let rosout = executor
     .create_node("my_node")?
     .create_publisher_with_qos::<Log>(nros::rosout::TOPIC, nros::rosout::qos_bounded())?;
-nros::rosout::enable();                  // records start queueing
+nros::rosout::enable();
 loop {
     executor.spin_once(budget);
-    let _ = nros::rosout::pump(&rosout); // and reach the wire here
+    let _ = nros::rosout::pump(&rosout);
 }
 ```
 
-C (`<rclc/rosout.h>`):
+### C
 
 ```c
 rcl_publisher_t rosout = rcl_get_zero_initialized_publisher();
@@ -347,11 +182,11 @@ for (;;) {
 }
 ```
 
-C++ (`<rclcpp/rosout.hpp>`):
+### C++
 
 ```cpp
 rclcpp::rosout::Publisher rosout;
-RCLCPP_TRY(rosout.create(node));          // or create(node, rclcpp::RosoutQoS())
+RCLCPP_TRY(rosout.create(node));
 RCLCPP_TRY(rclcpp::rosout::enable());
 for (;;) {
     rclcpp::spin_once(10);
@@ -359,70 +194,121 @@ for (;;) {
 }
 ```
 
-All three share one encoder, so the records are identical. Without the
-capability the C and C++ entry points still link: `rcl_logging_rosout_enabled()`
-/ `nros::rosout::enabled()` answer `false` and the rest answer UNSUPPORTED.
-`rclcpp::NodeOptions::enable_rosout(true)` still refuses to compile; "It is
-not automatic" below says why the publisher is yours to create.
+<!-- /tabs -->
 
-Five things to know before you rely on it.
+3. Read them from ROS 2: `ros2 topic echo /rosout`, or `rqt_console`.
 
-**Which loggers reach it depends on the ROS release**, because
-upstream's does. On Humble, rcl publishes only a NODE's logger: a child or a
-free `get_logger("x")` never reaches `/rosout`. Iron and Jazzy also publish a
-node's `get_child` descendants. `nros::rosout::enable()` scopes the queue to
-the release the image is built for (`ros-humble` / `ros-iron` / `ros-jazzy`;
-an image naming none gets Humble's rule). So log through `node.logger()` or
-its children, not a free logger, if you want the record on the wire. One
-bound: upstream stops publishing a child when its last copy is destroyed;
-here it stays published, because runtime loggers are never freed.
+Where this differs from ROS 2:
 
-**It is not automatic.** Upstream republishes from every rcl node with no user
-action. Here you create the publisher yourself, because a publisher is an
-ENTITY: it reaches the derived pool counts, the zenoh session's tables and the
-sizing descriptor. An entity the runtime conjured below your declaration is how
-a queryable table fills up at boot with nothing in your launch file to explain
-it.
+- **It is not automatic.** The publisher is an entity, so you create it, and
+  it counts in the image's pools like any other.
+- **The default QoS is bounded.** `qos_bounded()` is volatile at the queue
+  depth. Upstream's profile (`nros::rosout::qos()`, keep-last 1000,
+  transient-local) is expensive on a board; with the bounded one a late
+  subscriber misses the boot records.
+- **Which loggers publish follows the ROS release.** On Humble only a node's
+  logger reaches `/rosout`, not a child or a free `get_logger("x")`; Iron and
+  Jazzy also publish a node's children.
+- **The stamp is the platform's monotonic clock**, so `rqt_console` shows
+  uptime as a time of day.
+- **It costs `.bss`**: 5,760 bytes at the defaults, from 16 queued records.
+  An image without the feature pays nothing.
 
-**The default QoS is not upstream's.** `nros::rosout::qos()` IS
-`rcl_qos_profile_rosout_default` — KEEP_LAST(1000), RELIABLE, TRANSIENT_LOCAL,
-10 s lifespan — and on an embedded target it is expensive: a transient-local
-publisher takes a retention slot AND a cache queryable out of a
-`NROS_ZENOH_MAX_QUERYABLES` that defaults to 8 and already has eleven claimants if
-you run parameter and lifecycle services, and KEEP_LAST(1000) over a ~1 KB
-message is a megabyte of history. `qos_bounded()` is VOLATILE at the queue
-depth and costs neither. What you give up is that a subscriber which attaches
-LATE sees no boot story. A stock `ros2 topic echo` still matches — it requests
-VOLATILE and downgrades across a mixed publisher set.
+The sink never publishes from inside a log call: it copies the record into a
+ring, and `pump()` publishes on your spin thread. Records lost to a full ring
+or logged during a publish are counted (`nros::rosout::dropped()`,
+`suppressed()`) and reported on `/rosout` itself. The buffer sizes are knobs:
+see [Logging](../../reference/environment-variables.md#logging).
 
-**The stamp is the platform monotonic clock**, not wall time, because an RTOS
-image has none to offer: `rqt_console` will display an uptime as a time of day.
-Without the platform clock it is a constant zero — the clock is compiled in when
-the image's platform declares `[capabilities] clock = true` (every in-tree port
-does) or `nros-log`'s `platform-clock` feature pulls a port in.
+## Observe a board with no console
 
-**It costs `.bss`.** 5 760 bytes on the defaults (16 queued records x 360 B),
-down to 1 856 B with `NROS_LOG_ROSOUT_RECORDS=8` + `NROS_LOG_BUFFER_SIZE=128`
-and up to 72 192 B with `=64` + `=1024`. An image that does not enable
-the feature pays nothing — the module is compiled out whole.
+Some boards have no console you can read, for example one whose only wired
+UART carries the zenoh serial link, where a log line would corrupt the
+transport's framing. Reach for these in order. A debug probe is not a passive
+instrument there: reading memory halts the core, and a serial zenoh session
+misses its keepalives and does not come back until the router restarts.
 
-### The sink does not publish, and that is the point
+1. **Read the boot record.** With `CONFIG_NROS_BOOT_REPORT=y`, the image keeps
+   one fixed-size record in RAM, the `NROS_BOOT_REPORT` symbol, as it boots.
+   It survives the failures that stop a log from ever printing. It holds the
+   knobs the image was compiled with, the last boot stage it reached, the
+   allocation that did not fit and which allocator refused it, the heap's
+   peak and capacity, samples dropped as too large, the domain and the rung
+   that decided it, and a count of `ERROR` and `FATAL` records with the
+   first one's file and line. After the run, halt the core and save it, with
+   the address and size from the image's own symbol table:
 
-`nros_log`'s `/rosout` sink copies each record into a bounded static ring and
-returns. It never enters the transport. A logging sink that publishes, on a
-path that can itself log, is unbounded recursion — and on Zephyr native_sim
-that shape kills the image by stack exhaustion with no message at all. The
-publish happens in `pump()`, on your spin thread, with a flag set that makes
-the queue refuse anything logged underneath it; those refusals are counted
-(`nros::rosout::suppressed()`) alongside the ones lost to a full ring
-(`nros::rosout::dropped()`), and `pump` reports both on `/rosout` itself so an
-operator learns about a gap on the channel the gap is in.
+   ```sh
+   read ADDR LEN <<< "$(arm-none-eabi-nm -S build/zephyr/zephyr.elf \
+       | awk '$4=="NROS_BOOT_REPORT"{print "0x"$1, "0x"$2}')"
+   pyocd commander -t <target> -c halt -c "savemem $ADDR $LEN report.bin"
+   ```
 
-The C and C++ publishers above pump the same queue, so the same counters
-and the same rules apply.
+   The `nros` CLI has no command that decodes the bytes yet. The record is
+   off by default, and an image without it is byte-identical to one built
+   before the feature existed.
+
+2. **Read the fault record.** `CONFIG_NROS_FAULT_LOG=y` replaces Zephyr's
+   fatal-error handler with one that writes the reason, the faulting PC, LR
+   and PSR, and the thread name into a `.noinit` record that survives a
+   functional reset. Set `CONFIG_THREAD_NAME=y` too, or the thread reads `?`.
+   `CONFIG_NROS_FAULT_LOG_FLASH=y` also copies it to the storage partition at
+   the next boot. A power-on or pin reset may zero that RAM.
+
+3. **Read a live log over RTT, last.** Move the console to an unwired UART in
+   a devicetree overlay, and read SEGGER RTT over the SWD link:
+
+   ```sh
+   script -qec "pyocd rtt -t <target> -a $(arm-none-eabi-nm build/zephyr/zephyr.elf \
+       | awk '$3==\"_SEGGER_RTT\"{print \"0x\"$1}')" /dev/null
+   ```
+
+   It needs the `zephyrproject-rtos/segger` module in the workspace, passed
+   with `-DZEPHYR_EXTRA_MODULES=<path>`; a TTY, which `script` provides; and
+   the control block's address, `-a`. Set
+   `CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=16384`, or the default 1 KiB buffer
+   wraps before a late reader sees anything. Check anything found this way
+   again with the probe detached, using the two records above.
+
+## Example
+
+A Rust node that logs once at start and throttles a warning, in an image
+whose ceiling is `info`:
+
+```rust
+use nros_log::{log_info, log_warn, ToLogParams};
+
+log_info!(node.logger().once(), "link up");
+log_warn!(node.logger().throttle(Duration::from_millis(500)), "lag {} ms", lag);
+```
+
+```toml
+[image.linux.knobs.log]
+max_level = "info"
+```
+
+The logging demos, one node package per language, are in
+[`examples/workspaces/features`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features).
+
+## If it doesn't work
+
+- **A `debug!` record never appears.** The compile-time ceiling is above it,
+  or the logger's level is. Lower `max_level`, then the logger's level.
+- **Nothing reaches `/rosout`.** The `rosout` feature is not declared, the
+  queue is never pumped, or the record came from a child or free logger on
+  Humble.
+- **A throttled call does not compile.** `throttle` needs the platform clock;
+  a clockless image refuses it.
+
+## See also
+
+- [Environment variables: logging](../../reference/environment-variables.md#logging):
+  the ceiling and the buffer knobs.
+- [Platform differences: logging](../../reference/platform-differences.md#logging-nros-log):
+  where records go, and the severity numbers.
+- [Use a serial link](../rmw/use-a-serial-link.md): the two settings a Zephyr
+  board joining over a UART needs.
 
 ## Design background
 
 - [RFC-0102: logger hierarchy](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0102-logger-hierarchy.md)
-- [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md): behaviour bringups, single-node witnesses, and cadence-backed CI.
-  Feature demos as node packages of the features workspace.

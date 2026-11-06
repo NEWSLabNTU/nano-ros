@@ -1,102 +1,67 @@
-# Simulated Time
+# Use simulated time
 
 <!-- type: how-to · level: 3 -->
 
-A node in a simulation or replaying a bag should run on the simulator's clock,
-not the wall. nano-ros implements ROS 2's answer to that: `rosgraph_msgs/msg/Clock`
-on `/clock`, the `use_sim_time` parameter, and timers that can be told which
-clock advances them.
+**Needs first:** [Parameters and launch files](../../tutorial/grow-your-workspace.md#3-add-a-launch-file-when-you-need-one)
 
-## The distinction the names carry
+Use simulated time when a node runs against a simulator or a replayed bag, and
+its timers should follow the simulation's clock instead of the wall.
 
-rclcpp draws it in the method name, and so do we:
+nano-ros implements ROS 2's mechanism: `rosgraph_msgs/msg/Clock` on `/clock`,
+the `use_sim_time` parameter, and timers that state which clock advances
+them. As in rclcpp, the method name carries the choice:
 
-| you write | it advances with | affected by `/clock` |
-|---|---|---|
+| You write | It advances with | Follows `/clock` |
+| --- | --- | --- |
 | `create_wall_timer(period, cb)` | the platform's monotonic clock | no |
-| `create_timer(clock, period, cb)` | whatever `clock` is | yes, if it is a ROS-time clock |
+| `create_timer(clock, period, cb)` | the clock you pass | yes, for a ROS-time clock |
 
-A wall timer is the right choice for a watchdog, a transport keep-alive, or
-anything whose job is to notice that real time has passed — a paused simulator
-must not pause those. Everything that consumes simulated data wants the other
-one.
+Keep a wall timer for a watchdog or a keep-alive, anything whose job is to
+notice that real time passed; a paused simulator must not pause it. Older
+nano-ros code used `create_timer` for the wall timer. It no longer means that,
+and there is no alias.
 
-If you are porting from rclcpp, the spelling you already write is the spelling
-that works. If you are reading older nano-ros code, note that `create_timer`
-used to mean the wall timer here; it does not any more, and there is no alias.
+## Before you start
 
-## Reading the time
+- A node package whose timers should follow the simulation.
+- A `/clock` source: a simulator, or `ros2 bag play --clock`.
 
-A node's clock is ROS time, as in rclcpp:
+## Steps
 
-```cpp
-rclcpp::Time now = node.get_clock()->now();
-```
+1. Enable the feature in a Rust node package. The `/clock` subscription costs
+   an entity slot and a receive buffer, so it is opt-in:
 
-With no `/clock` source installed, a ROS-time clock reads system time. That is
-the same fallback `rclcpp::Clock` has, and it is what makes a node written for
-simulation still run standalone.
+   ```toml
+   nros = { version = "*", default-features = false, features = [
+       "alloc", "rmw-cffi", "macros", "sim-time",
+   ] }
+   ```
 
-Two predicates report which situation you are in:
+2. Turn it on with the parameter, as in ROS 2: from a launch file, a
+   parameters file, or at run time. The runtime acts on `use_sim_time`
+   itself; nothing in your code reads it:
 
-```cpp
-node.get_clock()->ros_time_is_active();  // is a /clock source driving this?
-node.get_clock()->started();             // has a first sample arrived?
-```
+   ```yaml
+   talker:
+     ros__parameters:
+       use_sim_time: true
+   ```
 
-## Turning it on
+   An image built with parameter services declares `use_sim_time = false`
+   for every node, as rclcpp does, so this works on a node whose author never
+   mentioned simulated time:
 
-### With the parameter, as in ROS 2
+   ```bash
+   ros2 param set /talker use_sim_time true
+   ```
 
-Declare `use_sim_time` and the runtime attaches the source itself — from a
-launch file, a params YAML, or `ros2 param set`:
+   A declaration of your own still wins. To attach the source in code
+   instead, call `node.install_ros_time_source()?`, or
+   `node.install_ros_time_source_on("/sim/clock")?` for a remapped clock.
 
-```yaml
-talker:
-  ros__parameters:
-    use_sim_time: true
-```
+3. Write the timers that should follow it on the ROS clock:
 
-`use_sim_time` is reserved: nothing reads its value, the runtime acts on it.
-Set it false and `/clock` samples stop being installed.
-
-You do not have to declare it first. An image built with parameter services
-declares `use_sim_time = false` on your behalf, as rclcpp does on every node, so
-`ros2 param list` shows it and
-
-```console
-$ ros2 param set /talker use_sim_time true
-```
-
-reaches a node whose author never wrote a line about simulated time. Declaring
-it yourself still wins — your default, and your descriptor, replace the
-auto-declared one.
-
-The Rust crate needs the `sim-time` feature, because the subscription costs an
-entity slot and an RX buffer:
-
-```toml
-nros-node = { version = "0.5", features = ["sim-time"] }
-```
-
-### Explicitly
-
-```rust
-node.install_ros_time_source()?;          // subscribes /clock
-node.install_ros_time_source_on("/sim/clock")?;  // a remapped clock
-```
-
-QoS is `ClockQoS` — best effort, keep-last 1, volatile. A late subscriber wants
-the next sample, not a replay of the simulation's history.
-
-## Writing a timer that follows it
-
-### C++
-
-```cpp
-rclcpp::Timer t;
-RCLCPP_TRY(node.create_timer(t, *node.get_clock(), 100, on_tick));
-```
+<!-- tabs -->
 
 ### Rust
 
@@ -108,76 +73,108 @@ executor.register_timer_on_clock(
 )?;
 ```
 
-`TimerClockSource::Steady` is the default everywhere and stays free: it consumes
-the spin delta the executor has already measured. `Ros` and `System` read their
-clock on every poll of the timer, which on a target is a platform call — that is
-why the choice is a separate entry point rather than a defaulted argument.
+`TimerClockSource::Steady` is the default and costs nothing extra: it uses
+the spin delta the executor already measured. `Ros` and `System` read their
+clock on every poll, a platform call on a board, which is why they have their
+own entry point.
+
+### C++
+
+```cpp
+rclcpp::Timer t;
+RCLCPP_TRY(node.create_timer(t, *node.get_clock(), 100, on_tick));
+```
+
+<!-- /tabs -->
+
+4. Read the time. A node's clock is ROS time, and with no `/clock` source it
+   reads system time, as `rclcpp::Clock` does, so the node still runs
+   standalone:
+
+   ```cpp
+   rclcpp::Time now = node.get_clock()->now();
+   node.get_clock()->ros_time_is_active();  // is a /clock source driving it?
+   node.get_clock()->started();             // has a first sample arrived?
+   ```
+
+5. Start the source and run the node:
+
+   ```bash
+   ros2 bag play my_bag --clock
+   ```
+
+## Example
+
+A talker that publishes every 100 ms of simulated time, switched on from its
+parameters file:
+
+```yaml
+# config/talker.param.yaml
+talker:
+  ros__parameters:
+    use_sim_time: true
+```
+
+```rust
+executor.register_timer_on_clock(
+    TimerDuration::from_millis(100),
+    TimerClockSource::Ros,
+    || { /* publish */ },
+)?;
+```
+
+```bash
+ros2 bag play my_bag --clock
+```
 
 ## What happens at the edges
 
-**Paused.** `/clock` stops advancing, so the delta is zero and a ROS-time timer
-does not fire. Wall timers on the same executor keep their cadence.
+- **Paused:** the delta is zero, so a ROS-time timer does not fire. Wall
+  timers on the same executor keep their cadence.
+- **Replayed at 0.5× or 2×:** the timer tracks the rate, because it advances
+  by the clock's own delta.
+- **A jump backwards** (a bag looping, a simulator reset) restarts the
+  period.
+- **A jump forwards** lands as a backlog, and the timer overrun policy
+  decides: `Skip` (the default) fires once, `CatchUp` replays every period.
+- **Unsubscribing** keeps the last simulated time rather than snapping back
+  to the wall. Clear it on purpose with `Clock::clear_ros_time_override()`.
 
-**Replayed at 0.5x or 2x.** The timer tracks the rate, because it advances by
-the clock's own delta rather than by elapsed real time.
+## Where nano-ros differs from rclcpp
 
-**A jump backwards** — a bag looping, a simulator reset — restarts the period.
-The alternative would be a timer that stays silent for the length of the jump.
+- **One simulated clock per image.** The override is process-wide; two
+  nodes in one image cannot be on different simulated times.
+- **No jump callbacks.** `create_jump_callback` and `rcl_jump_threshold_t`
+  have no counterpart.
+- **No `wait_until_started` or `sleep_until`.** Poll `started()` from your
+  spin loop.
+- **Timers only.** Message delivery, QoS deadlines and transport leases stay
+  on the monotonic clock, so a link stays up while the simulation is paused.
 
-**A jump forwards** is not special-cased. It lands as a backlog, and
-`TimerOverrunPolicy` decides: `Skip` (the default) coalesces it into one
-activation and counts the rest, `CatchUp` replays every missed period.
+## If it doesn't work
 
-**Unsubscribing does not reset the clock.** A node that stops listening keeps
-the last simulated time rather than snapping back to the wall, which every
-ROS-time timer would otherwise absorb as a jump backwards. Clearing is
-deliberate: `Clock::clear_ros_time_override()`.
+- **ROS-time timers never fire.** A never-connected `/clock` looks exactly
+  like a paused one. Five seconds after the source attaches with no sample,
+  the image logs one warning:
 
-## Limits worth knowing before you rely on this
+  ```text
+  use_sim_time is true but no /clock sample has arrived in 5s: ROS-time timers are
+  running on SYSTEM time meanwhile. Publish rosgraph_msgs/msg/Clock (ros2 bag play
+  --clock), or set use_sim_time false.
+  ```
 
-**One simulated clock per image.** The override is process-global, which is the
-model `nros_core::Clock` has always documented. Two nodes in one image cannot be
-on different simulated times.
+  Publish `/clock`, or turn `use_sim_time` off. The warning comes once;
+  `Executor::sim_time_silence_warnings()` answers the same question in code.
+- **Message ages are enormous.** The `max-age-runtime` rule compares
+  `header.stamp` with the epoch clock, not ROS time. Stamp from the epoch
+  clock, or leave that rule off for the topic under simulation.
 
-**A never-connected `/clock` looks exactly like a paused one, so the image says
-so once.** Both leave every ROS-time timer sitting still. Five seconds after the
-source attaches with no sample received, the image logs one warning at `WARN`,
-naming `use_sim_time` and `/clock` and the fact that ROS-time timers are running
-on system time meanwhile:
+## See also
 
-```text
-use_sim_time is true but no /clock sample has arrived in 5s: ROS-time timers are
-running on SYSTEM time meanwhile. Publish rosgraph_msgs/msg/Clock (ros2 bag play
---clock), or set use_sim_time false.
-```
-
-Once, not per spin, and never again once a sample has arrived — a simulator that
-publishes and then pauses is the case the line exists to be distinguished from.
-Turning `use_sim_time` off and on again arms it afresh. The five seconds are
-measured on the executor's own per-spin elapsed time, the same one your wall
-timers accumulate, so an image whose wall clock is itself simulated gets the
-warning at a point it can relate to its own timers. `Executor::sim_time_silence_warnings()`
-answers the same question in code.
-
-**No jump callbacks.** `rclcpp::Clock::create_jump_callback` and the
-`rcl_jump_threshold_t` machinery have no counterpart. The behaviour a jump
-produces is fixed (above); you cannot subscribe to the event.
-
-**No `wait_until_started` / `sleep_until`.** nano-ros has no blocking helper
-that does not drive the executor. Poll `started()` from your spin loop.
-
-**Timers only.** A ROS-time clock changes what `now()` returns and what a
-ROS-time timer does. It does not retime message delivery, QoS deadlines, or
-transport lease timers — those remain on the monotonic clock, which is what you
-want for a link that has to stay up while the simulation is paused.
-
-**The age monitor is on a different clock from your stamps.** The
-`max-age-runtime` rule compares a message's `header.stamp` against an EPOCH
-clock (µs since the UNIX epoch, installed by the board via
-`Executor::set_epoch_clock`). If you stamp with `node.get_clock()->now()` while
-a simulator is driving ROS time, the two disagree and the reported ages are
-meaningless — usually enormous. Either stamp from the epoch clock, or leave the
-age rule off for that topic while running under simulation.
+- [Pick a scheduling model](../realtime/pick-a-scheduling-model.md): the
+  timer overrun policy.
+- [ROS 2 clock and time](https://design.ros2.org/articles/clock_and_time.html):
+  the upstream design.
 
 ## Design background
 
