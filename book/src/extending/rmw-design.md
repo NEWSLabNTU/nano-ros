@@ -57,7 +57,7 @@ The ABI now has graph-enumeration slots —
 by-node variants — as *visitor* callbacks rather than allocated
 names-and-types arrays, so a backend walks its own discovery data and the
 caller never owns a table. Which backends fill each slot varies; the generated
-[Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md) is the current
+[Per-RMW Feature Matrix](../reference/matrices/rmw-feature-matrix.md) is the current
 per-backend truth, and it is derived from the vtables rather than from this
 page.
 
@@ -241,7 +241,7 @@ request in flight.
 
 Several rows below have gained ABI slots since this table was first written, and the ones that are DECLINED now carry a written reason rather than
 silence. Treat the generated
-[Per-RMW Feature Matrix](../reference/rmw-feature-matrix.md) as current and
+[Per-RMW Feature Matrix](../reference/matrices/rmw-feature-matrix.md) as current and
 this table as the design rationale behind the original omissions.
 
 | ROS 2 rmw API | Purpose | Why absent |

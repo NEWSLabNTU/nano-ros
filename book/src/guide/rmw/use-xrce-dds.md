@@ -161,7 +161,7 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 
 - [Environment variables](../../reference/environment-variables.md#xrce-dds-nros_xrce_):
   every XRCE-DDS knob, its default and its minimum.
-- [Per-RMW feature matrix](../../reference/rmw-feature-matrix.md): what
+- [Per-RMW feature matrix](../../reference/matrices/rmw-feature-matrix.md): what
   XRCE-DDS implements compared with zenoh and Cyclone DDS.
 - [Support status](../../reference/support-status.md#rmw-backends--versions-and-interop-pairing):
   the pinned client and agent versions.

@@ -17,7 +17,7 @@ the way it is.
 > the C signatures one-for-one.
 
 For per-platform behaviour comparison, see
-[Platform Differences](../reference/platform-differences.md). For
+[Platform Differences](../reference/matrices/platform-differences.md). For
 writing a new port, see [Custom Platform](custom-platform.md).
 
 ## Trait groups and rationale

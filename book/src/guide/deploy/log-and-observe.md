@@ -11,7 +11,7 @@ nano-ros logs through `nros-log`, which has the `Logger` and severity surface
 of `rclcpp::Logger` and `rcutils_logging`. Every record goes to one sink per
 platform: stderr on Linux, Zephyr's log subsystem, NuttX's `syslog`, a UART on
 FreeRTOS and ThreadX. The table is in
-[Platform differences](../../reference/platform-differences.md#logging-nros-log).
+[Platform differences](../../reference/matrices/platform-differences.md#logging-nros-log).
 
 ## Before you start
 
@@ -304,7 +304,7 @@ The logging demos, one node package per language, are in
 
 - [Environment variables: logging](../../reference/environment-variables.md#logging):
   the ceiling and the buffer knobs.
-- [Platform differences: logging](../../reference/platform-differences.md#logging-nros-log):
+- [Platform differences: logging](../../reference/matrices/platform-differences.md#logging-nros-log):
   where records go, and the severity numbers.
 - [Use a serial link](../rmw/use-a-serial-link.md): the two settings a Zephyr
   board joining over a UART needs.

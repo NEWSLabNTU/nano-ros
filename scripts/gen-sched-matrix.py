@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate book/src/reference/sched-matrix.md.
+"""Generate book/src/reference/matrices/sched-matrix.md.
 
 The scheduling story used to live as prose in three places and drifted
 three ways at once: scheduling-models.md said EDF is "not currently

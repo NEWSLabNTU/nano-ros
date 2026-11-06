@@ -810,26 +810,26 @@ generated = "scripts/gen-support-status.py"
 [[page]]
 old = "reference/rmw-feature-matrix.md"
 book = "user"
-path = "reference/rmw-feature-matrix.md"
-action = "keep"
-batch = "w4-reference"
+path = "reference/matrices/rmw-feature-matrix.md"
+action = "move"
+batch = "p537-w11-matrices"
 generated = "scripts/gen-rmw-feature-matrix.py"
 
 [[page]]
 old = "reference/sched-matrix.md"
 book = "user"
-path = "reference/sched-matrix.md"
-action = "keep"
-batch = "w4-reference"
+path = "reference/matrices/sched-matrix.md"
+action = "move"
+batch = "p537-w11-matrices"
 generated = "scripts/gen-sched-matrix.py"
 
 [[page]]
 old = "reference/platform-differences.md"
 book = "user"
-path = "reference/platform-differences.md"
-action = "keep"
-batch = "w4-reference"
-note = "Feature matrices (W11)"
+path = "reference/matrices/platform-differences.md"
+action = "move"
+batch = "p537-w11-matrices"
+note = "Feature matrices (W11): grouped with the RMW and scheduling matrices under reference/matrices/"
 
 [[page]]
 old = "reference/static-pool-inventory.md"

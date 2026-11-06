@@ -19,7 +19,7 @@ registry, not written here:
 
 - [Supported boards](../../reference/supported-boards.md): each board's
   evidence page lists, under **Breadth**, the RMWs its tests run.
-- [Per-RMW feature matrix](../../reference/rmw-feature-matrix.md): what the
+- [Per-RMW feature matrix](../../reference/matrices/rmw-feature-matrix.md): what the
   backend implements (services, status events, QoS policies) next to zenoh
   and XRCE-DDS.
 - [Support status](../../reference/support-status.md#rmw-backends--versions-and-interop-pairing):

@@ -54,10 +54,10 @@ with zero sites is a type, not a behavior.
 
 ## Related
 
-- [Scheduling Models](../guide/realtime/pick-a-scheduling-model.md) — the
+- [Scheduling Models](../../guide/realtime/pick-a-scheduling-model.md) — the
   narrative: how tiers, transport priorities, and these classes
   land on each kernel
-- [The execution model](../background/execution-model.md#the-rtos-underneath)
+- [The execution model](../../background/execution-model.md#the-rtos-underneath)
   — spin-loop shapes, levels and the kernels underneath
-- [Support Status](support-status.md) · [Per-RMW Feature
+- [Support Status](../support-status.md) · [Per-RMW Feature
   Matrix](rmw-feature-matrix.md)

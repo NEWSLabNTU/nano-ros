@@ -131,7 +131,7 @@ a session keep-alive with no per-topic lease, so under a manual kind zenoh,
 XRCE-DDS and uORB answer `UNSUPPORTED` rather than an `Ok` that would mean
 nothing was sent. The run-time side is
 [Use QoS, status events and discovery](../guide/rmw/qos-status-events.md),
-and per-backend coverage is the [Per-RMW feature matrix](../reference/rmw-feature-matrix.md).
+and per-backend coverage is the [Per-RMW feature matrix](../reference/matrices/rmw-feature-matrix.md).
 
 ### Parameters: one store, a smaller surface
 

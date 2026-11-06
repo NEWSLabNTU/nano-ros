@@ -68,6 +68,10 @@ GROUPS = {
             ("deploy", "Deploy and debug"),
             ("port", "Port from ROS 2"),
         ],
+        # RFC-0124 Appendix A: Reference keeps its feature matrices together.
+        "reference": [
+            ("matrices", "Feature matrices"),
+        ],
     },
     "internals": {},
 }
@@ -245,6 +249,12 @@ def relink(text: str, seeded_old: str) -> str:
             return m.group(0)
         row = olds.get(rel)
         if row is None:
+            # A link to a page by where it is NOW (no former path): re-spell
+            # it from the generated page's current location, which may be in
+            # another directory than the seeded one.
+            here_now = BOOKS["user"] / rel
+            if here_now.exists() and here.parent.resolve() != seeded_dir.resolve():
+                return f"{m.group(1)}{link(here, here_now)}{m.group(3) or ''})"
             return m.group(0)
         dest_rel = row.arg if row.verb == "merge-into" else None
         dest = page_file(row.old or rel) if dest_rel is None else next(

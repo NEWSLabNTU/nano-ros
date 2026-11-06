@@ -25,7 +25,7 @@ rate-monotonic assignment, EDF, priority inversion) belongs to
 
 - A workspace whose image runs on an RTOS or on Linux.
 - The capabilities your platform delivers, from the generated
-  [Scheduling wiring matrix](../../reference/sched-matrix.md): kernel EDF on
+  [Scheduling wiring matrix](../../reference/matrices/sched-matrix.md): kernel EDF on
   Zephyr, the sporadic server on NuttX, preemption threshold on ThreadX, core
   affinity on most.
 
@@ -84,7 +84,7 @@ rate-monotonic assignment, EDF, priority inversion) belongs to
    so their direction differs: on FreeRTOS, NuttX and Linux a bigger number
    is more urgent, and on ThreadX and Zephyr a smaller one is. The table of
    levels and directions per platform is in the
-   [Scheduling wiring matrix](../../reference/sched-matrix.md).
+   [Scheduling wiring matrix](../../reference/matrices/sched-matrix.md).
 
 4. Add the platform's own mechanism where it has one. Scope it to that
    platform, so it lowers to nothing elsewhere:
@@ -207,7 +207,7 @@ nros run demo_bringup:linux
 
 - [Analyze timing](analyze-timing.md): check the callbacks a sched task runs
   for unbounded work.
-- [Scheduling wiring matrix](../../reference/sched-matrix.md): what each
+- [Scheduling wiring matrix](../../reference/matrices/sched-matrix.md): what each
   platform delivers.
 - [The execution model](../../background/execution-model.md): how executors,
   sched tasks, levels and dispatch fit together.

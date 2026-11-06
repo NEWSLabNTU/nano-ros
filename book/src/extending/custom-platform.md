@@ -15,7 +15,7 @@ This guide walks through porting nano-ros to a new RTOS or bare-metal environmen
 > **Quick differences table.** For a per-platform comparison
 > (clock source, allocator, threading, networking, multicast
 > support) across the platforms nano-ros already supports, see
-> [Platform Differences](../reference/platform-differences.md).
+> [Platform Differences](../reference/matrices/platform-differences.md).
 
 ## What you implement
 
