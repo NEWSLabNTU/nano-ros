@@ -262,9 +262,10 @@ def self_test(base):
 
 
 def main():
-    base = os.path.join(ROOT, "tmp")
-    os.makedirs(base, exist_ok=True)
-    base = tempfile.mkdtemp(prefix="check-lane-stop-", dir=base)
+    # Outside the checkout: each run hands its dir to the real runner as
+    # TMPDIR, and the runner refuses a TMPDIR inside a git checkout (issue
+    # 2240), so a base under `<repo>/tmp` would never reach the fan-out.
+    base = tempfile.mkdtemp(prefix="check-lane-stop-")
     # Independent runs (each with its own token), so they go side by side; the
     # control runs in this thread meanwhile.
     cases = (owner_term, parent_term, owner_kill, lane_term, unknown_step)
