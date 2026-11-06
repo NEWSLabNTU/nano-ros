@@ -2,7 +2,7 @@
 
 <!-- type: how-to · level: 3 -->
 
-**Needs first:** [Parameters and launch files](../../tutorial/grow-your-workspace.md#3-add-a-launch-file-when-you-need-one)
+**Needs first:** [Parameters and launch files](../../tutorial/parameters-and-launch-files.md#start-from-the-generated-launch-file)
 
 Use simulated time when a node runs against a simulator or a replayed bag, and
 its timers should follow the simulation's clock instead of the wall.

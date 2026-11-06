@@ -230,7 +230,7 @@ nros run host_node_bringup:linux
 The bringup has no `launch/`, so its launch file is generated from the
 `[[component]]` rows. Add `launch/system.launch.xml` when you need a launch
 argument, a remap or a parameter, as in
-[Parameters and launch files](../../tutorial/grow-your-workspace.md#3-add-a-launch-file-when-you-need-one).
+[Parameters and launch files](../../tutorial/parameters-and-launch-files.md#start-from-the-generated-launch-file).
 The workspaces under
 [`examples/workspaces/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces)
 (`rust`, `c`, `cpp` and `mixed`) have this shape, Zephyr images included.
