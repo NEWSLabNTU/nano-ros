@@ -602,6 +602,7 @@ notes = "nros-board.toml descriptor directory, not a crate: the Zephyr `qemu_cor
 track = "first-project"
 chapter = "tutorial/run-a-talker.md"
 variant = "qemu"
+lang = "rust"
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = false
 row = "nros-board-mps2-an385@QemuBaremetal"
