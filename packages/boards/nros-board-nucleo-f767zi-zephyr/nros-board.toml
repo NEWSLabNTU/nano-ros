@@ -115,6 +115,11 @@ stack = "os"
 # on-chip ethernet MAC through Zephyr's `eth_stm32_hal` second. Both measured
 # in Renode by phase-524 W1.
 links = ["serial", "tcp", "udp"]
+# Issue 2290 -- the port brought out to the host: USART3, the ST-LINK virtual COM port; the Renode twin carries it on `usart3`.
+# This package's prj.conf turns the IP stack off, so `nros new <ws> --board`
+# writes this serial locator for the first image. Without it the image dialled
+# the TCP Kconfig default with no stack.
+host_serial = "serial@40004800#baudrate=115200"
 
 # What `nros setup board nucleo-f767zi-zephyr --zephyr-workspace <ws>` does to
 # a reader's own west workspace: apply the 3.7 patch set and add the Rust

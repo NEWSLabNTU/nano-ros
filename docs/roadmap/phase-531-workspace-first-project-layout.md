@@ -294,7 +294,10 @@ fragment, so its network stack comes only from the board package. The
 `nros-board-mps2-an385-zephyr/prj.conf` now state `CONFIG_NETWORKING`,
 `CONFIG_NET_IPV4` and `CONFIG_NET_SOCKETS`. Without them, native_sim failed to
 link on `z_impl_sys_rand_get`, and mps2-an385 booted into `ConnectionFailed`.
-`qemu-cortex-a53` and `nucleo-f767zi-zephyr` stay open in the issue.
+`qemu-cortex-a53`'s package now states its own network, randomness and
+stacks, and `nucleo-f767zi-zephyr` and `rpi-pico-w-zephyr` state their
+`host_serial`, so the scaffold writes a serial locator for them. Issue 2290 is
+resolved.
 
 - `nros new <ws> --board <b>` (`cmd/new_workspace.rs`) writes `src/<node>/`
   (the component scaffold with `workspace_member`: no `[workspace]` table, no
