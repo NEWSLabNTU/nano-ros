@@ -392,6 +392,35 @@ W0's report becomes a refusal for every gated principle and the level rule:
 **Acceptance:** `check-book-audience` refuses each of these, with a self-test
 case for each.
 
+**Landed (not done):** each rule refuses now, in `scripts/lib/book_charter.py`
+and `scripts/check-book-audience.py` rule F:
+- a missing, malformed or unknown type, a level outside 1–4, and a type that
+  does not fit its section;
+- a "needs first" link to a higher level;
+- a page under 300 words, and a page outside Reference over its budget (or a
+  tutorial or explanation under its own floor);
+- a platform page whose SUMMARY group is not its row's status group, a page
+  whose rows sit in two groups, and a typed group;
+- a board page no row admits;
+- two pages with the same type and topic;
+- a shell step with no probe fence.
+
+The self-test trips and clears each rule. The findings left are refused
+unless `.config/book-charter-baseline.txt` lists them, by a key with no line
+number (`<page> <rule>[=<count>]  # <reason or owner>`). The baseline only
+shrinks: an unlisted finding fails, a row that no longer fires fails until
+it is removed, and a counted row fails when its count rises or falls. To
+remove a row, fix its finding and delete or lower the row in the same commit
+(Internals, "Writing the Book", "The charter baseline").
+
+Cleared here: `reference/rmw-api` (245 words) merged into Platform and RMW
+APIs through the page map, with a redirect; nine fences that are command
+templates or a console session retagged `text`; the Nucleo-F767ZI and Pico W
+starters' `nros flash --monitor` probed on two bench tracks whose `awaits`
+names the board. Left in the baseline, 29 rows and 133 unprobed steps: 21
+User guide pages as "probe coverage follow-up", and the pages of W7 (#3168),
+W11 (#3180) and W12 (#3181), whose open PRs own them.
+
 ## Absorbed from phase-523 W1 (maintainer, 2026-11-06)
 
 [Phase-523](phase-523-education-labs-adoption-probes.md) W1 planned the same
