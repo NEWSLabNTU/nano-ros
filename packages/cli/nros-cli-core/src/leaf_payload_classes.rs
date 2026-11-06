@@ -110,7 +110,18 @@ impl PayloadClasses {
 /// One level deep: `nros sync --generated-base generated` writes one directory per
 /// ament package with the artifact at its root.
 pub fn leaf_bound_inventory(leaf: &Path) -> Result<Vec<(String, BoundState)>, String> {
-    Ok(leaf_bound_rows(leaf)?
+    bound_inventory_from_tables(&generated_bound_tables(leaf))
+}
+
+/// Every `pkg/msg/Name` -> bound row the given tables price.
+///
+/// The projection [`leaf_bound_inventory`] makes over a leaf's `generated/`,
+/// for a caller that found its tables another way: the workspace road hands
+/// in the image's own closure ([`image_closure_bound_tables`], issue 2298).
+pub fn bound_inventory_from_tables(
+    tables: &[PathBuf],
+) -> Result<Vec<(String, BoundState)>, String> {
+    Ok(bound_rows_from_tables(tables)?
         .into_iter()
         .map(|r| (r.type_name, r.bound))
         .collect())
@@ -251,9 +262,91 @@ pub fn project_bound_rows(
 /// a caller states another, the same shape as
 /// `nros_derive_message_bound_knobs(SMALL_CLASS_CEILING ...)`.
 pub fn payload_classes_for_leaf(leaf: &Path, inv: &EntityInventory) -> PayloadClasses {
+    payload_classes_over(&generated_bound_tables(leaf), inv)
+}
+
+/// [`payload_classes_for_leaf`] over tables the caller found: the workspace
+/// road's image closure (issue 2298). One join for both roads.
+pub fn payload_classes_over(tables: &[PathBuf], inv: &EntityInventory) -> PayloadClasses {
     join(inv, DEFAULT_SMALL_CLASS_CEILING, || {
-        leaf_bound_inventory(leaf)
+        bound_inventory_from_tables(tables)
     })
+}
+
+/// Issue 2298 — the bound tables of ONE IMAGE's message closure in a workspace.
+///
+/// A cargo leaf's `generated/` tree is its closure: `nros configure` writes
+/// one package per message dependency of that leaf. A workspace's
+/// `generated/` is the union over every member, so reading all of it sizes an
+/// image for types it never links -- and, since one unbounded type refuses
+/// the whole take buffer, it refused the take buffer for every image (38
+/// unbounded types in `examples/workspaces/rust`, measured in phase-531 W5).
+///
+/// The closure starts from `seeds`, the node packages the image's launch
+/// selects, and follows two edges:
+///
+/// * a WORKSPACE package's `<depend>` / `<*_depend>` names (`depends_of`
+///   answers for a name that is a workspace package, `None` otherwise);
+/// * a GENERATED package's own path dependencies on its siblings, which is
+///   how `std_msgs` reaches `builtin_interfaces`: the generated crates carry
+///   no `package.xml`, and their manifest is the record codegen wrote.
+///
+/// A name in neither place (a nano-ros crate, an ament package with no
+/// messages) is not part of what this image prices and is skipped, as
+/// [`generated_bound_tables`] skips a package with no table. The result is
+/// sorted, so two runs over one tree hand the readers the same list.
+pub fn image_closure_bound_tables(
+    root: &Path,
+    seeds: impl IntoIterator<Item = String>,
+    depends_of: impl Fn(&str) -> Option<Vec<String>>,
+) -> Vec<PathBuf> {
+    let generated = root.join(GENERATED_DIR);
+    let mut seen = std::collections::BTreeSet::new();
+    let mut tables = std::collections::BTreeSet::new();
+    let mut queue: Vec<String> = seeds.into_iter().collect();
+    while let Some(name) = queue.pop() {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        if let Some(deps) = depends_of(&name) {
+            queue.extend(deps);
+        }
+        let pkg = generated.join(&name);
+        let table = pkg.join(rosidl_codegen::INVENTORY_JSON_NAME);
+        if table.is_file() {
+            tables.insert(table);
+        }
+        queue.extend(generated_sibling_deps(&pkg, &generated));
+    }
+    tables.into_iter().collect()
+}
+
+/// The sibling `generated/` packages a generated crate path-depends on, by
+/// directory name.
+fn generated_sibling_deps(pkg: &Path, generated: &Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(pkg.join("Cargo.toml")) else {
+        return Vec::new();
+    };
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return Vec::new();
+    };
+    let Some(deps) = doc.get("dependencies").and_then(|d| d.as_table()) else {
+        return Vec::new();
+    };
+    let generated = generated
+        .canonicalize()
+        .unwrap_or_else(|_| generated.to_path_buf());
+    deps.values()
+        .filter_map(|spec| spec.get("path").and_then(|p| p.as_str()))
+        .filter_map(|p| {
+            let dep = pkg.join(p);
+            let dep = dep.canonicalize().unwrap_or(dep);
+            if dep.parent() != Some(generated.as_path()) {
+                return None;
+            }
+            dep.file_name().map(|n| n.to_string_lossy().into_owned())
+        })
+        .collect()
 }
 
 /// The join proper, with its two inputs supplied — so a test can state a bound
@@ -575,5 +668,49 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Issue 2298 -- an image's closure is what its node packages reach, not
+    /// the workspace's whole `generated/` tree. `talker` depends on
+    /// `std_msgs`, which path-depends on `builtin_interfaces`; `other` (a
+    /// sibling node the image does not launch) brings `example_interfaces`,
+    /// which must stay out.
+    #[test]
+    fn image_closure_follows_depends_and_generated_path_deps_only() {
+        let ws = scratch("closure");
+        let generated = ws.join(GENERATED_DIR);
+        let pkg = |name: &str, deps: &[&str]| {
+            let dir = generated.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut manifest = format!("[package]\nname = \"{name}\"\n\n[dependencies]\n");
+            for d in deps {
+                manifest.push_str(&format!("{d} = {{ path = \"../{d}\" }}\n"));
+            }
+            manifest.push_str("nros-core = { path = \"../../../nros-core\" }\n");
+            std::fs::write(dir.join("Cargo.toml"), manifest).unwrap();
+            std::fs::write(dir.join(rosidl_codegen::INVENTORY_JSON_NAME), "{}").unwrap();
+        };
+        pkg("builtin_interfaces", &[]);
+        pkg("std_msgs", &["builtin_interfaces"]);
+        pkg("example_interfaces", &[]);
+
+        let depends_of = |name: &str| match name {
+            "talker" => Some(vec!["std_msgs".to_string(), "nros".to_string()]),
+            "other" => Some(vec!["example_interfaces".to_string()]),
+            _ => None,
+        };
+        let got: Vec<String> = image_closure_bound_tables(&ws, ["talker".to_string()], depends_of)
+            .iter()
+            .map(|t| table_label(t))
+            .collect();
+        let _ = std::fs::remove_dir_all(&ws);
+        assert_eq!(
+            got,
+            vec![
+                format!("builtin_interfaces/{}", rosidl_codegen::INVENTORY_JSON_NAME),
+                format!("std_msgs/{}", rosidl_codegen::INVENTORY_JSON_NAME),
+            ],
+            "the closure is the launched node's reach, and nothing else in generated/"
+        );
     }
 }
