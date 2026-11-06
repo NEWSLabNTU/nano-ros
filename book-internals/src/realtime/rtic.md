@@ -180,7 +180,7 @@ std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nr
 
 Dependencies and the class registration, nothing else. The `std_msgs` row is
 not even yours: the build writes it from `<depend>std_msgs</depend>` in
-`package.xml` ([The manifests](../../tutorial/grow-your-workspace.html#the-manifests)).
+`package.xml` ([Where its messages come from](../../tutorial/add-a-second-node.html#where-its-messages-come-from)).
 No board crate, no `rtic`, no PAC: those are the generated entry's.
 
 ## `DispatchStrategy::Inline` vs `Deferred`
@@ -313,7 +313,7 @@ through the first three:
 
 1. **An `[image.*]` key** — `panic`, `profile`, `features`: anything the
    image already declares. See
-   [Customising an entry](../../tutorial/grow-your-workspace.html#customising-an-entry).
+   [When the generated entry is not enough](../../guide/build/organize-a-larger-workspace.html#when-the-generated-entry-is-not-enough).
 2. **`before_boot`** — not on RTIC. RTIC's `#[init]` owns the first statement,
    so the build refuses `before_boot` on an RTIC image; put pre-boot work in
    the board package (step 3) or in your own `#[init]` (step 4).

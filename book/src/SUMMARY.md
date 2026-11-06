@@ -30,7 +30,7 @@
 - [4. Pick and configure the RMW](./tutorial/pick-the-rmw.md)
 - [5. Your own message](./tutorial/your-own-message.md)
 - [6. Services and actions](./tutorial/services-and-actions.md)
-- [Project layout](./tutorial/grow-your-workspace.md)
+- [Parameters and launch files](./tutorial/parameters-and-launch-files.md)
 - [ROS 2 Interoperability](./tutorial/talk-to-ros2.md)
 
 # User guide

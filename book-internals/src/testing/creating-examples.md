@@ -11,7 +11,7 @@ Every example is a **self-contained, copy-out project** under one of:
 
 | Path | Used for |
 |---|---|
-| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [Multi-Node Projects](../../tutorial/grow-your-workspace.html). |
+| `examples/<plat>/<lang>/<example>/` | The standard cell. RMW is selected at **build time** (Cargo features / `-DNROS_RMW=` / Kconfig overlay), not encoded in the path. A single-package "app" example here is the canonical **starter** shape; the multi-package workspace shape (Node + Bringup + Entry pkgs) kicks in at ≥2 nodes — see [Add a second node](../../tutorial/add-a-second-node.html). |
 | `examples/templates/<name>/` | Multi-platform copy-out recipes (e.g. `multi-package-workspace`). |
 
 A cross-RMW gateway is not a separate category: it is a workspace whose

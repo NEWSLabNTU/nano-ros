@@ -209,39 +209,39 @@ note = "Tutorial 6, Services and actions (W5): new, on the scaffold's server, cl
 [[page]]
 old = "getting-started/workspace-from-app-node.md"
 book = "user"
-path = "tutorial/grow-your-workspace.md"
+path = "tutorial/parameters-and-launch-files.md"
 action = "move"
-batch = "p537-w1-tutorial"
-was = ["build/growing-your-workspace.md"]
-note = "Mixed: W5 sends steps 1-2 to Tutorial 3 and the launch and parameters part to Tutorial 7 (Parameters and launch files); W8 sends the rest to guide/build Organize a larger workspace"
+batch = "p537-w5"
+was = ["build/growing-your-workspace.md", "tutorial/grow-your-workspace.md"]
+note = "Tutorial 7, Parameters and launch files (W5): the launch and parameters part of growing-your-workspace, on the Tutorial project. W5 sent its steps 1-2 to Tutorial 3 and its image rows and target names to Tutorial 9; the rest (Zephyr images, the generated entry, customising an entry) was already in guide/build/organize-a-larger-workspace, reference/system-toml and guide/platforms/zephyr"
 
 [[page]]
 old = "getting-started/workspace-node-pkgs.md"
 book = "user"
-path = "tutorial/grow-your-workspace.md"
-action = "merge-into tutorial/grow-your-workspace.md"
+path = "tutorial/parameters-and-launch-files.md"
+action = "merge-into tutorial/parameters-and-launch-files.md"
 batch = "w4-build"
 
 [[page]]
 old = "getting-started/workspace-bringup.md"
 book = "user"
-path = "tutorial/grow-your-workspace.md"
-action = "merge-into tutorial/grow-your-workspace.md"
+path = "tutorial/parameters-and-launch-files.md"
+action = "merge-into tutorial/parameters-and-launch-files.md"
 batch = "w4-build"
 
 [[page]]
 old = "getting-started/workspace-entry-pkg.md"
 book = "user"
-path = "tutorial/grow-your-workspace.md"
-action = "merge-into tutorial/grow-your-workspace.md"
+path = "tutorial/parameters-and-launch-files.md"
+action = "merge-into tutorial/parameters-and-launch-files.md"
 batch = "w4-build"
 note = "migration section -> migrating/ (W6)"
 
 [[page]]
 old = "user-guide/workflow.md"
 book = "user"
-path = "tutorial/grow-your-workspace.md"
-action = "merge-into tutorial/grow-your-workspace.md"
+path = "tutorial/parameters-and-launch-files.md"
+action = "merge-into tutorial/parameters-and-launch-files.md"
 batch = "w4-build"
 
 [[page]]

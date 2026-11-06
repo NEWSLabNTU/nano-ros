@@ -173,7 +173,7 @@ west.
 Then nano-ros's half of the configuration goes in the bringup's
 `system.toml`, and Zephyr's own half in `prj.conf` fragments (in a workspace,
 under the bringup's `boards/<board>/`, as
-[Growing your workspace](../../tutorial/grow-your-workspace.md#zephyr-images) shows):
+[Configuring an image](#configuring-an-image-systemtoml-not-prjconf) shows):
 
 ```toml
 # src/c_node_bringup/system.toml
@@ -421,7 +421,7 @@ That writes the generated application into `src/zephyr_entry/` as a package of
 yours, and from then on `nros build` builds that copy and does not regenerate
 it. Deleting `src/zephyr_entry/` returns the image to generation. It is the
 last resort, for the reasons
-[Customising an entry](../../tutorial/grow-your-workspace.md#customising-an-entry)
+[When the generated entry is not enough](../build/organize-a-larger-workspace.md#when-the-generated-entry-is-not-enough)
 gives.
 
 #### The whole flow, end to end
