@@ -82,7 +82,7 @@ see [Use XRCE-DDS](use-xrce-dds.md); WiFi is not covered yet.
    framing errors at high rates.
 
 5. Run the router yourself for a real board. Flash the board as its
-   [starter](../../starters/nucleo-f767zi.md#flash-a-real-board) shows. Its
+   [starter](../../starters/nucleo-f767zi.md#flash-the-board) shows. Its
    UART then appears as a USB serial device, `/dev/ttyACM0` for example.
    `rmw_zenohd` reads no command-line arguments, so give it the endpoints in
    `ZENOH_CONFIG_OVERRIDE`: the serial device for the board, and a TCP port
