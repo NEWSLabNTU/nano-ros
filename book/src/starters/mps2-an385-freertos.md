@@ -156,7 +156,7 @@ which receives nothing from it. That is why the command asks for best-effort.
 ## Next
 
 - **The board's configuration, its own locator and address, and real
-  hardware:** [FreeRTOS](../guide/platforms/freertos.md).
+  hardware:** [FreeRTOS on mps2-an385](../guide/platforms/freertos.md).
 - **The same FreeRTOS on this machine, with no QEMU:**
   [FreeRTOS POSIX](freertos-posix.md).
 - **The project, grown:** the [Tutorial](../tutorial/run-a-talker.md).

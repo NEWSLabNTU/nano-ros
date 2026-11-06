@@ -150,53 +150,23 @@ nros run host_node_bringup:linux --expect 'Publishing:'
 nros flash <bringup>:<image> --monitor --expect 'Publishing:'
 ```
 
-## The target model
-
-> This section collects the target-model pages that were folded in here. The
-> platform pages and "Flash a real board" will take them over.
-
-Every place an image can run is described the same way: a **launcher or a
-flasher** (a host process, an emulator, or a tool that programs a board), a
-**console** (where the image's output appears), and a **link** (how its
-middleware reaches the rest of the system). `nros` reads these from the
-board's descriptor, so the same commands work on every board.
-
-- `nros run` launches an image on the host or in an emulator.
-- `nros flash` programs a real board, and `nros monitor` attaches to its
-  console.
-- `nros bench` records which board on your machine is on which port.
-
-See the [`nros` CLI reference](../../reference/cli.md) for each verb.
-
-### Running an image: `nros run`
+## Run an image: `nros run`
 
 `nros run` builds the image if it is stale, starts what its link needs, and
 streams the console, for host images and emulators. `--expect '<line>'` exits
 successfully when that line appears. On a real board it refuses and names the
-flashing step instead.
+flashing step instead; [Flash a real board](../platforms/flash-a-real-board.md)
+covers `nros flash`, `nros monitor` and `nros bench`.
 
 ### Run plans
 
-Before it runs anything, `nros run` resolves a **run plan**: which launcher or
-flasher, which console and which link, and where each fact came from. The
-facts come from five levels, highest first: the command line, the image, your
-machine's bench file, the board's descriptor, and the runner's defaults.
-`--dry-run --why` prints the plan without running it, as in step 2.
-
-### Flashing and monitoring a board
-
-`nros flash` programs a real board with a built image, and `nros monitor`
-attaches to its console. Both read how to do it from the board's descriptor,
-and an image overrides any key in its `[image.<id>.flash]` and
-`[image.<id>.console]` tables. Until those verbs work for your board, flash
-with the vendor's own tools.
-
-### Your bench: `nros bench`
-
-`nros bench scan` records which attached USB device is which board, in
-`$NROS_HOME/bench.toml`, so `nros flash` and `nros monitor` find the port and
-probe without being told. `nros bench list` prints the file and what is
-attached now.
+Before it runs anything, `nros run` resolves a **run plan**: which launcher,
+which console and which link, and where each fact came from. The facts come
+from five levels, highest first: the command line, the image, your machine's
+bench file, the board's descriptor, and the runner's defaults.
+`--dry-run --why` prints the plan without running it, as in step 2. Each
+platform page under [Platforms](../platforms/linux-host.md) reads its
+board's plan.
 
 ## If it doesn't work
 

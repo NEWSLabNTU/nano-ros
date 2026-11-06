@@ -223,5 +223,5 @@ Ctrl-C in the first terminal ends the Wokwi session and stops the router.
 
 - **A twin that runs on your machine, with no token:** the
   [Nucleo-F767ZI](nucleo-f767zi.md), in Renode.
-- **What each Zephyr piece is:** [Zephyr (west module)](../guide/platforms/zephyr.md).
+- **The board's link, RAM budget and notes:** [Raspberry Pi Pico W](../guide/platforms/rpi-pico-w.md).
 - **The same kind of project, grown:** the [Tutorial](../tutorial/run-a-talker.md).

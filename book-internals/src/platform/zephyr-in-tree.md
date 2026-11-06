@@ -156,7 +156,7 @@ west build -b native_sim/native/64 ../examples/zephyr/rust/talker
 
 How an image's `system.toml` becomes the Zephyr build's Kconfig — and why a
 `prj*.conf` never carries a `CONFIG_NROS_*` line — is user material:
-[Zephyr (west module) § Configuring an image](../../guide/platforms/zephyr.html#configuring-an-image-systemtoml-not-prjconf).
+[Zephyr native_sim § Configure the platform](../../guide/platforms/zephyr-native-sim.html#configure-the-platform).
 For the in-tree examples, each leaf's `system.toml` declares one image per
 RMW; pick one with `-DNROS_IMAGE=<id>`:
 

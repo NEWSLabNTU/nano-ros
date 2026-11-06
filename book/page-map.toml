@@ -445,7 +445,28 @@ path = "guide/platforms/linux-host.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/linux-host.md"]
-note = "Platform page, Verified on host: W4 moved its starter steps to starters/linux-host; W9 puts the rest on the platform template (D8)"
+note = "Linux host, a platform page (W9, D8): on the platform template after starters/linux-host; its SUMMARY group is its board row's status word (`book_platform`)"
+
+[[page]]
+book = "user"
+path = "guide/platforms/zephyr-native-sim.md"
+action = "new phase-537"
+batch = "p537-w9"
+note = "Zephyr native_sim, a platform page (W9, D8): the native_sim and shared Zephyr configuration of guide/platforms/zephyr (system.toml and prj.conf, one image per RMW, the 3.7 and 4.x lines, Rust and C++ applications), split out by status"
+
+[[page]]
+book = "user"
+path = "guide/platforms/threadx-linux.md"
+action = "new phase-537"
+batch = "p537-w9"
+note = "ThreadX Linux simulator, a platform page (W9, D8): the Linux-simulator parts of guide/platforms/threadx, split out by status"
+
+[[page]]
+book = "user"
+path = "guide/platforms/freertos-posix.md"
+action = "new phase-537"
+batch = "p537-w9"
+note = "FreeRTOS POSIX, a platform page (W9, D8): the POSIX-simulator parts of guide/platforms/freertos, split out by status"
 
 [[page]]
 old = "getting-started/bare-metal.md"
@@ -454,7 +475,7 @@ path = "guide/platforms/bare-metal.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/bare-metal.md"]
-note = "Platform page, Verified in emulator: W4 moved its starter steps to starters/mps2-an385-bare-metal; W9 puts the rest on the platform template (D8)"
+note = "Bare-metal Cortex-M3, a platform page (W9, D8): on the platform template after starters/mps2-an385-bare-metal"
 
 [[page]]
 old = "getting-started/freertos.md"
@@ -463,7 +484,7 @@ path = "guide/platforms/freertos.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/freertos.md"]
-note = "Platform page: W4 moved its starter steps to starters/mps2-an385-freertos and starters/freertos-posix; W9 puts the rest on the platform template (D8)"
+note = "FreeRTOS on mps2-an385, a platform page (W9, D8): on the platform template after starters/mps2-an385-freertos. Its POSIX-simulator parts went to guide/platforms/freertos-posix; the S32Z270 flash section left the user book (a Builds row, D8)"
 
 [[page]]
 old = "getting-started/integration-zephyr.md"
@@ -472,7 +493,7 @@ path = "guide/platforms/zephyr.md"
 action = "split platform/zephyr-in-tree.md"
 batch = "p537-w1-guide"
 was = ["targets/zephyr.md"]
-note = "Platform page: W4 moved its starter steps to starters/zephyr-native-sim and starters/mps2-an385-zephyr; W9 splits the rest by status (native_sim, mps2-an385, the twin-and-hardware boards)"
+note = "Zephyr on mps2-an385, a platform page (W9, D8): split by status. The native_sim and shared Zephyr configuration went to guide/platforms/zephyr-native-sim, the twin-and-hardware boards to guide/platforms/{nucleo-f767zi,rpi-pico-w}, flashing to guide/platforms/flash-a-real-board; this page keeps the mps2-an385 board notes, the board catalog and Zephyr's own extension points"
 
 [[page]]
 old = "getting-started/integration-nuttx.md"
@@ -481,7 +502,7 @@ path = "guide/platforms/nuttx.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/nuttx.md"]
-note = "Platform page: W4 moved its starter steps to starters/nuttx-arm and starters/nuttx-riscv; W9 puts the rest on the platform template (D8)"
+note = "NuttX Arm and RISC-V, a platform page (W9, D8): on the platform template after starters/nuttx-arm and starters/nuttx-riscv"
 
 [[page]]
 old = "getting-started/threadx.md"
@@ -490,7 +511,21 @@ path = "guide/platforms/threadx.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/threadx.md"]
-note = "Platform page: W4 moved its starter steps to starters/threadx-riscv64 and starters/threadx-linux; W9 puts the rest on the platform template (D8)"
+note = "ThreadX RISC-V 64, a platform page (W9, D8): on the platform template after starters/threadx-riscv64. Its Linux-simulator parts went to guide/platforms/threadx-linux"
+
+[[page]]
+book = "user"
+path = "guide/platforms/nucleo-f767zi.md"
+action = "new phase-537"
+batch = "p537-w9"
+note = "Nucleo-F767ZI, a platform page (W9, D8, twin and hardware): after starters/nucleo-f767zi; the board notes of the starter and of guide/platforms/zephyr's flash section"
+
+[[page]]
+book = "user"
+path = "guide/platforms/rpi-pico-w.md"
+action = "new phase-537"
+batch = "p537-w9"
+note = "Raspberry Pi Pico W, a platform page (W9, D8, twin and hardware): after starters/rpi-pico-w"
 
 [[page]]
 old = "targets/zephyr-west-app.md"
@@ -498,7 +533,14 @@ book = "user"
 path = "guide/platforms/zephyr-west-app.md"
 action = "move"
 batch = "p537-w1-guide"
-note = "A Zephyr app you build with west (W9)"
+note = "A Zephyr app you build with west (W9): a how-to on the template, trimmed to its budget; its four probe tracks replay it"
+
+[[page]]
+book = "user"
+path = "guide/platforms/flash-a-real-board.md"
+action = "new phase-537"
+batch = "p537-w9"
+note = "Flash a real board (W9, D8): nros flash, nros monitor and nros bench, with the target model, and a hardware table generated from the registry rows that name `hardware`"
 
 [[page]]
 old = "getting-started/px4.md"
@@ -541,15 +583,15 @@ path = "guide/deploy/deploy-to-production.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["operate/deployment.md"]
-note = "Deploy to production (W8): one how-to, with production-readiness merged in as a checklist step. The target-model, run, run-plan, flash and bench sections folded in from targets/ stay as the marked \"The target model\" section until W9 moves them to the platform pages and Flash a real board"
+note = "Deploy to production (W8): one how-to, with production-readiness merged in as a checklist step. W9 moved the target-model, flash and bench sections folded in from targets/ to guide/platforms/flash-a-real-board; the run and run-plan sections stay, as the run step this page uses"
 
 [[page]]
 old = "targets/target-model.md"
 book = "user"
-path = "guide/deploy/deploy-to-production.md"
-action = "merge-into guide/deploy/deploy-to-production.md"
-batch = "p537-w1-merges"
-note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as a section (RFC-0124 D9)"
+path = "guide/platforms/flash-a-real-board.md"
+action = "merge-into guide/platforms/flash-a-real-board.md"
+batch = "p537-w9"
+note = "stub under 300 words, folded into Deploy to production by W1, then into Flash a real board as a section by W9 (RFC-0124 D9)"
 
 [[page]]
 old = "targets/run.md"
@@ -557,7 +599,7 @@ book = "user"
 path = "guide/deploy/deploy-to-production.md"
 action = "merge-into guide/deploy/deploy-to-production.md"
 batch = "p537-w1-merges"
-note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as a section (RFC-0124 D9)"
+note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as a section (RFC-0124 D9); W9 keeps it there, as the run step that page uses, and each platform page reads its own run plan"
 
 [[page]]
 old = "targets/run-plans.md"
@@ -565,23 +607,23 @@ book = "user"
 path = "guide/deploy/deploy-to-production.md"
 action = "merge-into guide/deploy/deploy-to-production.md"
 batch = "p537-w1-merges"
-note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as a section (RFC-0124 D9)"
+note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as a section (RFC-0124 D9); W9 keeps it there, as the run step that page uses, and each platform page reads its own run plan"
 
 [[page]]
 old = "targets/flash-and-monitor.md"
 book = "user"
-path = "guide/deploy/deploy-to-production.md"
-action = "merge-into guide/deploy/deploy-to-production.md"
-batch = "p537-w1-merges"
-note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as a section (RFC-0124 D9)"
+path = "guide/platforms/flash-a-real-board.md"
+action = "merge-into guide/platforms/flash-a-real-board.md"
+batch = "p537-w9"
+note = "stub under 300 words, folded into Deploy to production by W1, then into Flash a real board as a section by W9 (RFC-0124 D9)"
 
 [[page]]
 old = "targets/bench.md"
 book = "user"
-path = "guide/deploy/deploy-to-production.md"
-action = "merge-into guide/deploy/deploy-to-production.md"
-batch = "p537-w1-merges"
-note = "stub under 300 words folded into guide/deploy/deploy-to-production.md as a section (RFC-0124 D9)"
+path = "guide/platforms/flash-a-real-board.md"
+action = "merge-into guide/platforms/flash-a-real-board.md"
+batch = "p537-w9"
+note = "stub under 300 words, folded into Deploy to production by W1, then into Flash a real board as a section by W9 (RFC-0124 D9)"
 
 [[page]]
 old = "internals/production-readiness.md"
