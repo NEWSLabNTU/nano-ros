@@ -142,7 +142,7 @@ that provides it.
 - [Custom Board Package](custom-board.md) -- bringing up a new MCU board
 - [Platform API Reference](../reference/platform-api.md) -- complete trait signatures and method documentation
 - [RMW API Reference](../reference/rmw-api.md) -- RMW trait hierarchy and backend details
-- [Architecture Overview](../background/architecture.md) -- concise layer map
+- [How a build becomes an image](../background/how-a-build-becomes-an-image.md#the-layers-in-an-image) -- the layers in an image
 - [Platform Model](platform-model.md) -- conceptual overview of the three feature axes
 
 ## Design background
