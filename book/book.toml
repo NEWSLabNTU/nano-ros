@@ -35,6 +35,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/background/architecture.html" = "how-a-build-becomes-an-image.html#the-layers-in-an-image"
+"/background/design-overview.html" = "how-a-build-becomes-an-image.html#why-it-has-this-shape"
 "/guide/port/setup-compared.html" = "move-a-ros2-project.html#steps"
 "/guide/deploy/console-less-boards.html" = "log-and-observe.html#observe-a-board-with-no-console"
 "/guide/deploy/production-readiness.html" = "deploy-to-production.html#check-readiness-for-production"
@@ -59,8 +61,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/build/build-artifacts.html" = "../reference/build-outputs.html"
 "/get-started/first-10-minutes.html" = "../reference/troubleshooting-index.html"
 "/targets/how-integration-works.html" = "../background/how-a-build-becomes-an-image.html"
-"/concepts/architecture.html" = "../background/architecture.html"
-"/concepts/design-overview.html" = "../background/design-overview.html"
+"/concepts/architecture.html" = "../background/how-a-build-becomes-an-image.html#the-layers-in-an-image"
+"/concepts/design-overview.html" = "../background/how-a-build-becomes-an-image.html#why-it-has-this-shape"
 "/realtime/execution-model.html" = "../background/execution-model.html"
 "/concepts/two-layer-api.html" = "../background/two-layer-api.html"
 "/realtime/dispatch-strategy.html" = "../background/dispatch-strategy.html"
@@ -178,7 +180,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/internals/porting-platform/zenoh-pico.html" = "../rmw/zenoh-pico-symbols.html"
 "/internals/porting-platform/xrce-dds.html" = "../rmw/xrce-dds-symbols.html"
 "/internals/platform-porting-pitfalls.html" = "../extending/porting-pitfalls.html"
-"/design/overview.html" = "../background/design-overview.html"
+"/design/overview.html" = "../background/how-a-build-becomes-an-image.html#why-it-has-this-shape"
 "/design/client-library.html" = "../background/client-library.html"
 "/start-here/setup-compared-to-ros2.html" = "../guide/port/move-a-ros2-project.html#steps"
 "/getting-started/porting-a-cpp-node.html" = "../guide/port/port-a-cpp-node.html"

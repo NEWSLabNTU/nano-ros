@@ -185,7 +185,7 @@ and won't find the router.
 
 ## Next Steps
 
-- [Architecture](../background/architecture.md) — understand the layer model
+- [How a build becomes an image](../background/how-a-build-becomes-an-image.md#the-layers-in-an-image) — the layers in an image
 - [Internals → Zenoh protocol](../internals/rmw/zenoh-protocol.html) —
   how the wire format is encoded
 

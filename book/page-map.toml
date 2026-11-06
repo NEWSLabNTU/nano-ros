@@ -557,7 +557,7 @@ path = "background/how-a-build-becomes-an-image.md"
 action = "move"
 batch = "p537-w1-background"
 was = ["targets/how-integration-works.md"]
-note = "How a build becomes an image (W10): background/architecture and background/design-overview merge into it"
+note = "How a build becomes an image (W10): background/architecture and background/design-overview merged in; its per-platform table of board facts was cut for the generated reference/supported-boards"
 
 [[page]]
 old = "user-guide/workflow-by-platform.md"
@@ -570,19 +570,20 @@ note = "contributor recipe column -> internals dev-env/build-commands.md"
 [[page]]
 old = "concepts/architecture.md"
 book = "user"
-path = "background/architecture.md"
-action = "move"
-batch = "p537-w1-background"
-note = "W10 merges it into background/how-a-build-becomes-an-image"
+path = "background/how-a-build-becomes-an-image.md"
+action = "merge-into background/how-a-build-becomes-an-image.md"
+batch = "p537-w10"
+was = ["background/architecture.md"]
+note = "merged by W10 into How a build becomes an image, as The layers in an image"
 
 [[page]]
 old = "design/overview.md"
 book = "user"
-path = "background/design-overview.md"
-action = "move"
-batch = "p537-w1-background"
-was = ["concepts/design-overview.md"]
-note = "W10 merges it into background/how-a-build-becomes-an-image"
+path = "background/how-a-build-becomes-an-image.md"
+action = "merge-into background/how-a-build-becomes-an-image.md"
+batch = "p537-w10"
+was = ["concepts/design-overview.md", "background/design-overview.md"]
+note = "merged by W10 into How a build becomes an image, as Why it has this shape"
 
 [[page]]
 old = "internals/rt-execution-model.md"

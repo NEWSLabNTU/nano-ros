@@ -25,8 +25,8 @@ by fixture row rather than by directory, so a platform's single-node and
 workspace examples share one grid row: a grid row names a platform FAMILY,
 never a board (RFC-0093 R6). Zephyr is the case that does split — `zephyr`
 and `zephyr-cortex-m` build the SAME examples for different boards. The user
-book's [How Integration Works](../../background/how-a-build-becomes-an-image.html#per-platform)
-lists the user-side board names and starter pages.
+book's [Supported Boards](../../reference/supported-boards.html)
+lists the user-side board names and their pages.
 
 ### Builder per grid row
 

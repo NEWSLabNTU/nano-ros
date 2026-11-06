@@ -414,7 +414,7 @@ If you are coming from `rclc`:
   [Rust](../reference/rust-api.md) / [C](../reference/c-api.md) /
   [C++](../reference/cpp-api.md).
 - Why the executor / RMW / platform layers split this way →
-  [Architecture Overview](architecture.md).
+  [How a build becomes an image](how-a-build-becomes-an-image.md#the-layers-in-an-image).
 - Cooperative `no_std` model → [no_std Support](static-memory-and-pools.md).
 
 ## Design background

@@ -66,9 +66,7 @@
 
 # Background
 
-- [How Integration Works](./background/how-a-build-becomes-an-image.md)
-- [Architecture Overview](./background/architecture.md)
-- [Overview](./background/design-overview.md)
+- [How a build becomes an image](./background/how-a-build-becomes-an-image.md)
 - [The Real-Time Execution Model](./background/execution-model.md)
 - [Execution Model and Two-Layer API](./background/two-layer-api.md)
 - [Dispatch Strategy](./background/dispatch-strategy.md)
