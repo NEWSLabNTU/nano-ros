@@ -138,7 +138,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2260](../issues/2260-ros-edition-mismatch-silent-no-delivery.md) | both | An edition mismatch delivers nothing with no error, and the scaffold defaults to humble |
 | [#2261](../issues/2261-catkin-pkg-prereq-breaks-ros-apt.md) | both | The `python3-catkin-pkg` prerequisite breaks the ROS 2 apt install |
 | [#2262](../issues/2262-serial-quickstart-router-unreachable-from-ros2.md) | industrial | The serial quick-start router listens on serial only |
-| [#2263](../issues/2263-setup-rejects-board-key-nros-new-writes.md) | both | `nros setup` refuses the board key `nros new` writes |
+| [#2263](../issues/archived/2263-setup-rejects-board-key-nros-new-writes.md) | both | **Resolved** 2026-11-06: fixed on `main` by phase-531 W4's scaffold (`b719d169ed`); only the release lacked it |
 | [#2264](../issues/2264-airgap-recipe-omits-host-packages-and-asset-names.md) | industrial | The air-gapped recipe omits apt packages and release asset names |
 | [#2265](../issues/2265-memory-evidence-needs-source-tree.md) | industrial | Memory evidence needs a checkout; the documented heap is wrong |
 | [#2266](../issues/2266-book-has-no-third-party-inventory.md) | industrial | No third-party or patch inventory in the book |
@@ -146,7 +146,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2268](../issues/2268-no-release-support-backport-policy.md) | industrial | No release support or backport policy; stale Jazzy line |
 | [#2269](../issues/2269-no-emulator-chapters-for-lab-topics.md) | education | Five of seven lab topics have no emulator chapter. Home moved to phase-537 W5 with W1 (2026-11-06) |
 | [#2270](../issues/2270-default-talker-prints-internal-warnings.md) | education | The default talker prints internal issue ids and a "contract violation" |
-| [#2271](../issues/2271-install-sh-no-longer-prints-path-export.md) | education | install.sh output no longer matches the install page |
+| [#2271](../issues/archived/2271-install-sh-no-longer-prints-path-export.md) | education | **Resolved** 2026-11-06: not reproduced — install.sh prints the line, above the closing `next` lines |
 | [#2272](../issues/2272-serial-flow-needs-socat-unlisted.md) | education | The serial flow needs `socat`, which no prerequisite list names |
 Round one has not run.
 
