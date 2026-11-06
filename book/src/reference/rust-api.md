@@ -41,7 +41,7 @@ are generated for your workspace, so the published site does not have them.
 These crates are not part of the user API. They surface only when you write a
 custom RMW backend or port nano-ros to a new platform; see
 [Custom RMW Backend](../extending/custom-rmw.md) and
-[Custom Platform](../extending/custom-platform.md).
+[Add a platform](../extending/add-a-platform.md).
 
 - [`nros_rmw`](../api/rust/nros_rmw/index.html): the RMW trait surface.
 - [`nros_platform_api`](../api/rust/nros_platform_api/index.html): the platform abstraction traits.

@@ -230,4 +230,4 @@ cargo test -p nros-rmw-xrce --features platform-posix \
 - [`<nros/transport.h>`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/api/nros-c/include/rclc/detail/nros_generated.h) — C header
 - [`<rclcpp/transport.hpp>`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/api/nros-cpp/include/rclcpp/transport.hpp) — C++ header
 - [`nros_rmw::custom_transport`](https://github.com/NEWSLabNTU/nano-ros/blob/main/packages/core/nros-rmw/src/custom_transport.rs) — Rust source
-- [Custom platform](custom-platform.md) — when you need more than just transport
+- [Custom platform](add-a-platform.md) — when you need more than just transport

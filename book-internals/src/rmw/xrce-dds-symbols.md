@@ -9,7 +9,7 @@ The 2-3 required FFI symbols (`uxr_millis`, `uxr_nanos`) are provided by
 compiled into `nros-rmw-xrce-cffi` on every target), which forwards them to
 the canonical `nros_platform_*` ABI. When porting to a new platform, you
 implement an `nros-platform-<name>` crate (see
-[Custom Platform](../../../book/src/extending/custom-platform.md)) that supplies the
+[Add a platform](../../extending/add-a-platform.html)) that supplies the
 `nros_platform_*` symbols — you do **not** provide the `uxr_*` symbols
 directly.
 
@@ -126,7 +126,7 @@ the clock symbols.
 ## Step-by-step procedure
 
 1. **Create the platform crate** — `nros-platform-<name>/` (see
-   [Custom Platform](../../../book/src/extending/custom-platform.md))
+   [Add a platform](../../extending/add-a-platform.html))
 2. **Implement the canonical clock primitive** —
    `nros_platform_clock_ns()`; the alias TU
    (`nros-rmw-xrce/src/platform_aliases.c`) derives `uxr_millis()` /

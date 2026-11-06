@@ -44,6 +44,6 @@ ships from the board crate via [`nros-smoltcp`](../../drivers/net/nros-smoltcp).
 
 ## See also
 
-- [Custom Platform porting guide](../../../book/src/extending/custom-platform.md)
+- [Add a platform](../../../book/src/extending/add-a-platform.md)
 - CLAUDE.md "smoltcp Multicast" pitfalls
 - Source on GitHub: <https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-mps2-an385>

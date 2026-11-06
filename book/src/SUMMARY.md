@@ -121,11 +121,7 @@
 
 - [Overview](./extending/overview.md)
 - [Add a board](./extending/add-a-board.md)
-- [Custom Platform](./extending/custom-platform.md)
-- [Adding a Platform (CMake)](./extending/add-a-platform.md)
-- [Platform Porting Pitfalls](./extending/porting-pitfalls.md)
-- [Platform API Design](./extending/platform-api-design.md)
-- [Platform Model](./extending/platform-model.md)
+- [Add a platform](./extending/add-a-platform.md)
 - [Custom Transport](./extending/custom-transport.md)
 - [Custom RMW Backend](./extending/custom-rmw.md)
 - [RMW API Design](./extending/rmw-design.md)

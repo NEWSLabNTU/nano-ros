@@ -190,7 +190,8 @@ sockets and a clock. XRCE-DDS needs a clock and four C functions. Bare metal
 has no scheduler. So each capability is its own trait, which a platform may
 stub when it lacks it, and each method states whether it blocks, whether it
 can fail and what an unsupported call does.
-[Platform API design](../extending/platform-api-design.md) lists them.
+The headers behind the [Platform API and C ABI](../reference/platform-api.md)
+state it for every symbol.
 
 ## Where nano-ros differs from ROS 2
 

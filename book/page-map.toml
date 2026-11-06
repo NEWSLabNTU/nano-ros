@@ -1090,9 +1090,11 @@ note = "merged by W12 into Add a board, as the four-trait table of its board-cra
 [[page]]
 old = "porting/custom-platform.md"
 book = "user"
-path = "extending/custom-platform.md"
-action = "move"
-batch = "w4-extending"
+path = "extending/add-a-platform.md"
+action = "merge-into extending/add-a-platform.md"
+batch = "p537-w12"
+was = ["extending/custom-platform.md"]
+note = "merged by W12 into Add a platform, as its implement-the-ABI steps. Its trait tables, the inherent-method ZST pattern, the clock_ms signatures and the per-platform ConcretePlatform alias were cut as no longer true (the ABI is clock_ns; every platform resolves to CffiPlatform)"
 
 [[page]]
 old = "porting/add-a-platform.md"
@@ -1100,28 +1102,34 @@ book = "user"
 path = "extending/add-a-platform.md"
 action = "move"
 batch = "w4-extending"
+note = "Add a platform (W12): one how-to, with custom-platform and platform-model merged in; the porting checklist of reference/platform-api became its steps"
 
 [[page]]
 old = "internals/platform-porting-pitfalls.md"
-book = "user"
-path = "extending/porting-pitfalls.md"
+book = "internals"
+path = "platform/porting-pitfalls.md"
 action = "move"
-batch = "w4-extending"
+batch = "p537-w12-internals"
+was = ["extending/porting-pitfalls.md"]
+note = "RFC-0124 Principle 2 (W12): QEMU test-rig, TAP and build-race lessons are contributor material. The pitfalls a porter meets first are the If it doesn't work list of extending/add-a-platform"
 
 [[page]]
 old = "design/platform-api.md"
-book = "user"
-path = "extending/platform-api-design.md"
+book = "internals"
+path = "platform/platform-api-design.md"
 action = "move"
-batch = "w4-extending"
+batch = "p537-w12-internals"
+was = ["extending/platform-api-design.md"]
+note = "RFC-0124 Principle 2 (W12): why the platform ABI is shaped as it is, for a reader changing nano-ros. Takes the scalar/opaque-struct boundary and why-free-symbols sections of reference/platform-api; its behaviour-contract tables were cut for the platform.h Doxygen, which owns them"
 
 [[page]]
 old = "concepts/platform-model.md"
 book = "user"
-path = "extending/platform-model.md"
-action = "move"
-batch = "p537-w1-extending"
-note = "W12 merges it into Add a platform"
+path = "extending/add-a-platform.md"
+action = "merge-into extending/add-a-platform.md"
+batch = "p537-w12"
+was = ["extending/platform-model.md"]
+note = "merged by W12 into Add a platform. What each RMW backend asks of a platform is kept; the feature-axis tables and example Cargo manifests were cut: an image's RMW and edition are system.toml's, lowered by the toolchain"
 
 [[page]]
 old = "porting/custom-transport.md"

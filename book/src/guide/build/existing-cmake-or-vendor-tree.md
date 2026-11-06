@@ -119,7 +119,7 @@ variable for `nano_ros_use_board()`) at a directory of board crates in your
 tree, laid out like the SDK's `packages/boards/`. Board keys stay global: one
 name under two roots is an error. A new platform, an RTOS port of your own, is
 the one extension that edits nano-ros itself; see
-[Add a platform](../../extending/custom-platform.md).
+[Add a platform](../../extending/add-a-platform.md).
 
 ## Example
 

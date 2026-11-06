@@ -1,10 +1,13 @@
 # Platform Porting Pitfalls
 
-<!-- type: how-to · level: 4 -->
-
 Hard-won lessons from porting nros to bare-metal ARM (QEMU MPS2-AN385), bare-metal RISC-V,
 STM32F4, FreeRTOS, NuttX, ThreadX, and Zephyr. Read this before adding a new
 platform or debugging mysterious failures on an existing one.
+
+The pitfalls a porter meets first are the "If it doesn't work" list of
+[Add a platform](../../extending/add-a-platform.html#if-it-doesnt-work) in the
+user book. This page keeps the rest: test-rig, TAP and build lessons from the
+in-tree ports.
 
 ## Memory Layout
 
@@ -73,7 +76,7 @@ address. If C code stored a pointer to the original location (e.g., during
 from an init function.
 
 **Fix:** Use static storage, `Box::pin()`, or index-based references instead of
-raw pointers. See [Troubleshooting: Subscriber Callback Crashes](../guide/deploy/troubleshoot.md#subscriber-callback-crashes).
+raw pointers. See [Troubleshooting: Subscriber Callback Crashes](../../../book/src/guide/deploy/troubleshoot.md#subscriber-callback-crashes).
 
 ## Clock Sources
 
@@ -126,7 +129,7 @@ timer-backed timeouts to fire before TAP network I/O completes. This is solved
 with `-icount shift=auto`, which makes virtual time advance at wall-clock speed
 during CPU sleep states.
 
-See [QEMU icount reference](../../../book-internals/src/testing/qemu-icount.md) for the full
+See [QEMU icount reference](../testing/qemu-icount.md) for the full
 explanation, parameter reference, and tradeoffs.
 
 ## Networking
@@ -250,7 +253,7 @@ cmake::Config::new(&zenoh_pico_path)
 
 `Z_FEATURE_MATCHING` depends on `Z_FEATURE_INTEREST` — both must be disabled.
 
-See [Troubleshooting: zenoh-pico Multiple Client Issues](../guide/deploy/troubleshoot.md#zenoh-pico-multiple-client-issues).
+See [Troubleshooting: zenoh-pico Multiple Client Issues](../../../book/src/guide/deploy/troubleshoot.md#zenoh-pico-multiple-client-issues).
 
 ### Blocking TCP reads in cooperative schedulers
 

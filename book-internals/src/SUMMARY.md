@@ -39,6 +39,8 @@
 
 # Platform Internals
 
+- [Platform Porting Pitfalls](./platform/porting-pitfalls.md)
+- [Platform API Design](./platform/platform-api-design.md)
 - [Opaque Storage Sizing](./platform/opaque-storage-sizing.md)
 - [Per-Platform Contributor Lanes](./platform/platform-lanes.md)
 - [Zephyr in-tree examples (contributor)](./platform/zephyr-in-tree.md)

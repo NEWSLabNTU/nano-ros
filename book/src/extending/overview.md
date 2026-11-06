@@ -9,7 +9,7 @@ nano-ros is designed for customization at three independent levels: **RMW** (tra
 | I want to... | Chapter |
 |---|---|
 | Add a new transport protocol (MQTT, DDS, custom) | [Custom RMW Backend](custom-rmw.md) |
-| Port to a new RTOS or bare-metal target | [Custom Platform](custom-platform.md) |
+| Port to a new RTOS or bare-metal target | [Custom Platform](add-a-platform.md) |
 | Bring up nano-ros on a new MCU board | [Custom Board Package](add-a-board.md) |
 
 Most porting work falls into the second or third category. Adding a new RMW backend is rare and substantially more involved.
@@ -143,12 +143,12 @@ A verb `nros` does not know is looked up as an announced `command` package
 ## Further reading
 
 - [Custom RMW Backend](custom-rmw.md) -- implementing a new transport protocol
-- [Custom Platform](custom-platform.md) -- porting to a new RTOS or bare-metal target
+- [Custom Platform](add-a-platform.md) -- porting to a new RTOS or bare-metal target
 - [Custom Board Package](add-a-board.md) -- bringing up a new MCU board
 - [Platform API Reference](../reference/platform-api.md) -- complete trait signatures and method documentation
 - [RMW API Reference](../reference/rmw-api.md) -- RMW trait hierarchy and backend details
 - [How a build becomes an image](../background/how-a-build-becomes-an-image.md#the-layers-in-an-image) -- the layers in an image
-- [Platform Model](platform-model.md) -- conceptual overview of the three feature axes
+- [Platform Model](add-a-platform.md) -- conceptual overview of the three feature axes
 
 ## Design background
 
