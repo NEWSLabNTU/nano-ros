@@ -652,7 +652,7 @@ path = "background/safety.md"
 action = "move"
 batch = "p537-w1-background"
 was = ["realtime/safety-protocol.md"]
-note = "Safety (W10)"
+note = "Safety (W10): rewritten around the safety workspace. Its implementation-change list and memory table were cut (the table had drifted: the validator is 16 bytes, not about 24); delay and masquerade are stated as not built"
 
 [[page]]
 old = "concepts/ros2-comparison.md"

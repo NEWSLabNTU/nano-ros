@@ -70,7 +70,7 @@
 - [The execution model](./background/execution-model.md)
 - [Static memory and pools](./background/static-memory-and-pools.md)
 - [The client library](./background/client-library.md)
-- [Safety Protocol](./background/safety.md)
+- [Safety](./background/safety.md)
 - [Differences from Standard ROS 2](./background/differences-from-ros2.md)
 - [nano-ros vs micro-ROS](./background/vs-micro-ros.md)
 
