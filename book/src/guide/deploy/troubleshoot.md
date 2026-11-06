@@ -1,384 +1,178 @@
-# Troubleshooting
+# Troubleshoot
 
 <!-- type: how-to · level: 2 -->
 
-Common issues and solutions when working with nros. This page owns
-troubleshooting; a few chapters keep a short section for failures that
-only happen in their topic:
+**Needs first:** [Run a talker](../../tutorial/run-a-talker.md)
 
-- First build and first run: [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md)
-- ROS 2 side sees nothing (domain ID, QoS, `rmw_zenoh_cpp` client mode, edition):
-  [ROS 2 Interop](../../tutorial/talk-to-ros2.md#troubleshooting)
-- Serial links (session timeouts, baud rate, a shared UART):
-  [Use a serial link](../rmw/use-a-serial-link.md#if-it-doesnt-work)
-- Multi-backend binaries: [Bridge between backends](../rmw/bridge-between-backends.md#if-it-doesnt-work)
+Use this page when a build or a running image fails in a way the page you were
+following does not cover. Find the symptom, then apply its fix.
 
-## zenoh-pico Multiple Client Issues
+Some topics keep their own failures:
 
-### Symptoms
+- First build and first run: the [troubleshooting index](../../reference/troubleshooting-index.md).
+- ROS 2 sees nothing (domain ID, QoS, client mode, edition):
+  [Talk to ROS 2](../../tutorial/talk-to-ros2.md#troubleshooting).
+- Serial links: [Use a serial link](../rmw/use-a-serial-link.md#if-it-doesnt-work).
+- Several backends in one binary:
+  [Bridge between backends](../rmw/bridge-between-backends.md#if-it-doesnt-work).
 
-When running multiple zenoh-pico clients (e.g., a talker and listener) simultaneously connecting to the same router, you may see errors like:
+## Before you start
 
-```
-<err> nros_bsp: Failed to open zenoh session: -3
-<err> rust: rustapp: BSP init failed: InitFailed(-5)
-```
+Run the doctor in the workspace. It checks the SDK paths, toolchains and
+environment, and names what is missing:
 
-Or publisher/subscriber declarations fail with:
-- Error code `-128` (`_Z_ERR_GENERIC`)
-- Error code `-78` (`_Z_ERR_SYSTEM_OUT_OF_MEMORY`)
-
-The first client typically succeeds while subsequent clients fail during `z_declare_publisher()` or `z_declare_subscriber()`.
-
-### Root Cause
-
-This is caused by the **Z_FEATURE_INTEREST** feature in zenoh-pico. The interest protocol implements write filtering to optimize network traffic by only sending data to interested subscribers. However, this feature has issues when multiple clients connect to the same router:
-
-1. The router tracks "interest" for each client
-2. When creating a publisher, zenoh-pico creates a write filter context
-3. The filter creation calls `_z_session_rc_clone_as_weak()` which can fail
-4. This manifests as `_Z_ERR_SYSTEM_OUT_OF_MEMORY` (-78) even when memory is available
-
-The failure occurs in `zenoh-pico/src/net/filtering.c`:
-```c
-ctx->zn = _z_session_rc_clone_as_weak(zn);
-if (_Z_RC_IS_NULL(&ctx->zn)) {
-    _z_write_filter_ctx_clear(ctx);
-    z_free(ctx);
-    _Z_ERROR_RETURN(_Z_ERR_SYSTEM_OUT_OF_MEMORY);
-}
-```
-
-### Solution
-
-nros disables `Z_FEATURE_INTEREST` by default for all builds:
-
-**Native builds** (build.rs):
-```rust
-let dst = cmake::Config::new(&zenoh_pico_build)
-    // ...
-    .define("Z_FEATURE_INTEREST", "0")
-    .build();
-```
-
-**Zephyr builds**: edit
-`modules/lib/zenoh-pico/include/zenoh-pico/config.h` as shown below.
-(The in-tree Zephyr workspace gets this patch automatically: see
-[Internals → Zephyr in-tree examples](../../internals/platform/zephyr-in-tree.html).)
-
-Manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:
-```c
-// Change from:
-#define Z_FEATURE_INTEREST 1
-#define Z_FEATURE_MATCHING 1
-
-// To:
-#define Z_FEATURE_INTEREST 0
-#define Z_FEATURE_MATCHING 0
-```
-
-Then rebuild with `--pristine`:
 ```bash
-west build -b native_sim/native/64 nros/examples/zephyr/rust/talker -d build-talker --pristine
+nros doctor
 ```
 
-Note: `Z_FEATURE_MATCHING` depends on `Z_FEATURE_INTEREST`, so both must be disabled.
+Outside a workspace it checks the install instead, and reports store entries
+you can remove, with the command to remove them.
 
-### References
+## Steps
 
-- [rmw_zenoh_pico](https://github.com/micro-ROS/rmw_zenoh_pico) disables this feature by default
-- zenoh-pico filtering code: `src/net/filtering.c`
-- zenoh-pico interest protocol: `src/session/interest.c`
+1. Run `nros doctor` and fix what it names.
+2. Run the failing step again with `--dry-run` where it has one
+   (`nros build`, `nros run`, `nros flash`), to see the plan and the exact
+   command.
+3. Find the symptom in the sections below.
 
----
+## zenoh-pico multiple client issues
 
-## zenoh-pico Version Compatibility
+**Symptom:** the first of several zenoh clients on one router starts, and the
+next fails to open its session (`-102`, `_Z_ERR_TRANSPORT_OPEN_FAILED`) or to
+declare a publisher or subscriber (`-78`, `_Z_ERR_SYSTEM_OUT_OF_MEMORY`, or
+`-128`, `_Z_ERR_GENERIC`).
 
-### Symptoms
+**Fix:** `-102` means the client could not reach the router: check its
+`locator` and that the router listens there. `-78` is an allocation that did
+not fit. Raise the image's heap, or the zenoh pool that filled, which the
+image names at start-up; the knobs are in
+[Environment variables](../../reference/environment-variables.md#buffer-tuning).
 
-Publisher works but `z_publisher_put` fails immediately:
-```
-zenoh_shim: z_publisher_put failed: -100
-<err> rust: rustapp: Publish failed: PublishFailed(-1)
-zenoh_shim: z_publisher_put failed: -73
-```
+## zenoh-pico version compatibility
 
-Error codes:
-- `-100`: `_Z_ERR_TRANSPORT_TX_FAILED` - Transport transmission failed
-- `-73`: `_Z_ERR_SESSION_CLOSED` - Session closed after first failure
+**Symptom:** publishing fails at once with `-100`
+(`_Z_ERR_TRANSPORT_TX_FAILED`), then `-73` (`_Z_ERR_SESSION_CLOSED`).
 
-### Root Cause
-
-Version mismatch between zenoh-pico and zenohd:
-- **zenoh-pico**: 1.5.1 (in west.yml)
-- **zenohd**: 1.7.x (installed via cargo)
-
-The zenoh protocol may have changed, causing transport-level incompatibilities.
-
-### Solution
-
-Compare the two zenoh versions across the seam — nano-ros does not pin the
-router, because the router is the one ROS ships:
+**Fix:** compare the zenoh on both sides. nano-ros does not pin the router,
+because the router is the one ROS ships:
 
 ```bash
 grep 'define ZENOH_C ' /opt/ros/$ROS_DISTRO/opt/zenoh_cpp_vendor/include/zenoh_configure.h
-cat packages/rmw/zenoh/zpico-sys/zenoh-pico/version.txt
+nros setup --list | grep zenoh-pico
 ```
 
-Read the HEADER, not `dpkg -l`: the package version (`ros-humble-rmw-zenoh-cpp
-0.1.9`) is a wrapper version and says nothing about the zenoh inside it.
-
+Read the header, not `dpkg -l`: the package version is a wrapper version.
 Under zenoh's 1.x wire guarantee the two need not match, so a mismatch is
-evidence rather than a diagnosis. The interop tests print both numbers on a
-delivery failure for exactly this comparison.
+evidence rather than a diagnosis.
 
----
+## Multiple Zephyr native_sim instances
 
-## Multiple Zephyr Instance Issues
+### Ephemeral port conflict
 
-### Ephemeral Port Conflict
+**Symptom:** two native_sim instances (a talker and a listener) both fail to
+open their sessions, or one fails with `-100`.
 
-**Symptom**: When running multiple Zephyr native_sim instances (e.g., talker and listener), both sessions fail to establish or one gets `-100` (`_Z_ERR_TRANSPORT_TX_FAILED`) errors.
+**Cause:** native_sim's test entropy source gives every instance the same
+random sequence, so both pick the same ephemeral port.
 
-**Root Cause**: Zephyr native_sim uses a test entropy source that produces identical random number sequences unless seeded differently. This causes both instances to select the same ephemeral TCP port when connecting to the router, causing a port conflict.
+**Fix:** give each instance its own seed:
 
-**Solution**: Pass different `--seed` values to each native_sim instance:
 ```bash
-# Start listener with one seed
 ./build-listener/zephyr/zephyr.exe --seed=12345
-
-# Start talker with a different seed
 ./build-talker/zephyr/zephyr.exe --seed=67890
 ```
 
-The `--seed` parameter initializes the test entropy source with a different value, producing different random numbers and thus different ephemeral ports.
+### Cyclone DDS: two native_sim nodes never discover each other
 
-**For automated tests**: The test framework (`packages/testing/nros-tests`) automatically assigns unique seeds to each process.
+**Symptom:** with Cyclone DDS, the publisher prints
+`Publishing: 'Hello World: N'` and the subscriber never prints `I heard:`, with
+no error.
 
-### Cyclone DDS: Two native_sim Nodes Never Discover Each Other
+**Cause:** the same fixed entropy gives both participants the same DDSI GUID
+prefix, and a node drops discovery from a peer that shares its own GUID.
 
-**Symptom**: Two native_sim nodes with the **Cyclone DDS** RMW (e.g. talker + listener) each start, the publisher reports `Publishing: 'Hello World: N'`, but the subscriber never prints an `I heard:` line — no abort, no error.
+**Fix:** distinct seeds, as above. On native_sim, Cyclone discovery is
+unicast to `127.0.0.1`. Real hardware has real entropy and multicast, and
+needs neither workaround.
 
-**Root Cause**: Same fixed-entropy issue as above. Cyclone derives each participant's DDSI **GUID prefix** from the entropy source; with identical entropy, both processes get the *same* GUID. DDSI requires per-participant unique GUIDs — a node treats SPDP from a peer that shares its own GUID as a self-announcement and drops it, so the two never form a proxy-participant pair and discovery never closes.
+## Network configuration issues
 
-**Solution**: Pass different `--seed` values per instance (exactly as above):
-```bash
-./build-listener/zephyr/zephyr.exe --seed=11
-./build-talker/zephyr/zephyr.exe   --seed=22
-```
-With distinct seeds the GUID prefixes differ and SPDP discovery completes. (native_sim Cyclone discovery is unicast-only — the embedded config points `<Peers>` at `127.0.0.1`; native_sim's NSOS multicast RX fd does not survive Cyclone's `select()`-based socket waitset. Real hardware has real entropy and full multicast, so neither workaround is needed off native_sim.)
+- **QEMU cannot reach the network.** An image on QEMU's built-in `qemu`
+  network uses user-mode networking and needs nothing on the host. An image
+  on a network of your own needs `[image.<id>.run] nic` naming a host bridge
+  or TAP device; see
+  [Configure an image](../build/configure-an-image.md#give-the-image-an-address).
+- **Zephyr native_sim.** Sockets are forwarded to host system calls, so there
+  is no bridge to configure. Point each image at a router on host loopback,
+  `tcp/127.0.0.1:7447`.
 
----
+## Message too large or truncated
 
-## Network Configuration Issues
+**Symptom:** `TransportError::MessageTooLarge`, payloads that arrive
+corrupted, or large messages (images, point clouds) that disappear.
 
-### TAP Interface Setup (QEMU bare-metal only)
+**Cause:** a message passes several static buffers on its way, and must fit
+each: zenoh's defragmentation and batch sizes, XRCE's transport MTU, and the
+entity's own receive buffer.
 
-**Symptom**: QEMU cannot connect to the network.
-
-**Solution**: Run the network setup script:
-```bash
-sudo ./scripts/qemu/setup-network.sh
-```
-
-This creates and configures the `tap0` interface at `192.0.3.1`. QEMU
-bare-metal guests live on `192.0.3.10+`.
-
-### Zephyr native_sim networking
-
-Zephyr `native_sim` uses **NSOS** (Native Sim Offloaded Sockets) — socket
-calls are forwarded to host syscalls, so there is no emulated L2 stack and
-no TAP bridge. Point each example at a host-loopback zenohd / XRCE Agent:
-
-```bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd  # or any host-accessible address
-```
-
-Multiple `native_sim` instances can coexist without bridge configuration.
-
----
-
-## Message Too Large / Truncated Messages
-
-### Symptoms
-
-- `TransportError::MessageTooLarge` when receiving service requests or subscription data
-- Messages arrive but with corrupted or incomplete payloads
-- Large messages (images, point clouds) silently disappear
-
-### Root Cause
-
-nros uses static buffers at multiple layers, each with configurable size limits.
-A message must fit through every layer in the path to be delivered intact.
-
-**Zenoh backend layers:**
-
-| Layer                               | Posix Default | Embedded Default | Env Var                    |
-|-------------------------------------|---------------|------------------|----------------------------|
-| Defragmentation (`Z_FRAG_MAX_SIZE`) | 65536         | 2048             | `NROS_ZENOH_FRAG_MAX_SIZE`      |
-| Batch size (`Z_BATCH_UNICAST_SIZE`) | 65536         | 1024             | `NROS_ZENOH_BATCH_UNICAST_SIZE` |
-| Per-entity shim buffer              | 1024          | 1024             | -- (named constant in code) |
-| User receive buffer (`RX_BUF`)      | 1024          | 1024             | -- (const generic)          |
-
-**XRCE-DDS backend layers:**
-
-| Layer             | Posix Default | Embedded Default | Env Var                    |
-|-------------------|---------------|------------------|----------------------------|
-| Transport MTU     | 4096          | 512              | `XRCE_TRANSPORT_MTU`       |
-| Per-entity buffer | 1024          | 1024             | -- (named constant in code) |
-
-### Solutions
-
-**Increase transport-level limits** (set before `cargo build`):
-
-```bash
-# Zenoh: allow 128 KB reassembled messages
-NROS_ZENOH_FRAG_MAX_SIZE=131072 cargo build
-
-# XRCE: increase MTU to 8 KB
-XRCE_TRANSPORT_MTU=8192 cargo build
-```
-
-**Increase per-entity buffer sizes** (in code):
+**Fix:** raise the transport limit for the image, for example
+`NROS_ZENOH_FRAG_MAX_SIZE` or `XRCE_TRANSPORT_MTU`, from the
+[buffer tuning tables](../../reference/environment-variables.md#buffer-tuning),
+and size the entity's buffer in code:
 
 ```rust
-// Zenoh subscriber with 4 KB receive buffer
-let sub = node.create_subscriber_sized::<MyMsg, 4096>(SubscriberOptions::new("/topic"))?;
-
-// Zenoh publisher with 4 KB transmit buffer
-let pub_ = node.create_publisher_sized::<MyMsg, 4096>(PublisherOptions::new("/topic"))?;
+let sub = node.create_subscription_sized::<MyMsg, 4096>(/* … */)?;
 ```
 
-**Clean rebuild** after changing env vars (CMake caches old values):
+## Build issues
+
+- **The zenoh-pico source is not found.** Let provisioning fetch it:
+  `nros setup <board> --rmw zenoh`, or `nros setup --source zenoh-pico`.
+- **A changed knob has no effect.** An old CMake cache holds the previous
+  value. Remove the image's directory under `build/` and build again.
+
+## Rust and C FFI issues
+
+### Subscriber callback crashes
+
+**Symptom:** a callback registered from Rust through C crashes, or reads
+garbage fields, such as `sub->callback=0x60`.
+
+**Cause:** the C side kept a pointer to a struct the Rust code then moved,
+for example by returning it from a function.
+
+**Fix:** give the struct a stable address before you hand it to C: a
+`static` (with `MaybeUninit`), a `Box`, or `Pin`. Or have the C side keep an
+index instead of a pointer.
+
+### Function pointer ABI mismatch
+
+**Symptom:** a callback passed between Rust and C receives garbage
+arguments.
+
+**Fix:** declare it `extern "C" fn`, not a plain `fn`.
+
+## Example
+
+The usual first pass on a failing image:
 
 ```bash
-cargo clean -p zpico-sys   # or: cargo clean -p xrce-sys
-cargo build
+nros doctor
+nros build <image> --dry-run
+nros run <bringup>:<image> --dry-run --why
 ```
 
----
+## If it doesn't work
 
-## Build Issues
+- Look the error up in the
+  [troubleshooting index](../../reference/troubleshooting-index.md), which
+  also lists the zenoh-pico error codes.
+- File an issue with the doctor's output and the dry-run plan.
 
-### zenoh-pico Submodule Not Found
+## See also
 
-**Symptom**:
-```
-zenoh-pico submodule not found at /path/to/zenoh-pico. Run: git submodule update --init
-```
-
-**Solution**: let provisioning fetch it — this is what `nros setup` is for, and
-it fetches shallow rather than deepening to reach the pin:
-
-```bash
-nros setup <board> --rmw zenoh      # or: nros setup --source zenoh-pico
-```
-
-### CMake Cache Stale
-
-**Symptom**: Changes to CMake defines (like `Z_FEATURE_INTEREST`) don't take effect.
-
-**Solution**: Clean the build cache:
-```bash
-# Clean the zenoh-pico sys crate build cache
-cargo clean -p zpico-sys
-cargo build
-```
-
-For Zephyr builds, clean the west build directory:
-```bash
-rm -rf build/
-west build -b native_sim/native/64 <app>
-```
-
----
-
-## Test Failures
-
-The repository's own test suites (hanging integration tests, skipped Zephyr
-tests): see [Internals → Test failures](../../internals/testing/test-failures.html).
-
----
-
-## Rust/C FFI Issues
-
-### Subscriber Callback Crashes
-
-**Symptom**: When a Zephyr listener receives a message, the application crashes with a segfault or produces garbage values when accessing struct fields. Debug output may show valid pointers but invalid field values:
-```
-bsp_zephyr: sub->callback=0x60, sub->user_data=0x4  # These should be valid addresses!
-```
-
-**Root Cause**: Your C glue stores a pointer to the `rcl_subscription_t` struct when you hand it to a registration call. If the Rust code moves the struct after that (e.g., when returning it from a function), the C side's pointer becomes dangling.
-
-In Rust, values are moved by default:
-```rust
-// WRONG - struct will move when returned
-pub fn create_subscriber(...) -> Result<BspSubscriber<M>, Error> {
-    let mut sub = NanoRosSubscriber { ... };
-    nros_bsp_create_subscriber(&mut sub, ...);  // C stores pointer to `sub`
-    Ok(BspSubscriber { sub, ... })  // `sub` MOVES here - old address is invalid!
-}
-```
-
-**Solution**: Use static storage or ensure the struct has a stable address before passing it to C:
-
-```rust
-use core::mem::MaybeUninit;
-use core::ptr::addr_of_mut;
-
-// Wrapper to make static storage Sync
-struct StaticSubscriber(MaybeUninit<NanoRosSubscriber>);
-unsafe impl Sync for StaticSubscriber {}
-
-static mut SUBSCRIBER_STORAGE: StaticSubscriber =
-    StaticSubscriber(MaybeUninit::uninit());
-
-fn main() {
-    let sub_ptr = unsafe {
-        let storage_ptr = addr_of_mut!(SUBSCRIBER_STORAGE);
-        let sub = (*storage_ptr).0.as_mut_ptr();
-        // Initialize fields...
-        sub
-    };
-
-    // Now the pointer is stable
-    nros_bsp_create_subscriber(sub_ptr, ...);
-}
-```
-
-Alternative approaches:
-- Use `Box::new()` (requires `alloc`) for heap allocation with stable address
-- Use `Pin` to prevent moves
-- Have the C code use indices instead of pointers
-
-**Why this happens**: Unlike C where variables have fixed addresses, Rust moves values during assignment and return. When the C code stores a pointer during initialization, it doesn't know the Rust struct will be moved later.
-
-### Function Pointer ABI Mismatch
-
-**Symptom**: Callbacks passed between Rust and C crash or receive garbage arguments.
-
-**Solution**: Ensure function pointers use `extern "C"`:
-```rust
-// CORRECT - uses C calling convention
-extern "C" fn my_callback(data: *const u8, len: usize, ctx: *mut c_void) {
-    // ...
-}
-
-// WRONG - uses Rust calling convention (incompatible with C)
-fn my_callback(data: *const u8, len: usize, ctx: *mut c_void) {
-    // ...
-}
-```
-
----
-
-## zenoh-pico Error Codes
-
-| Code | Name                           | Description                                      |
-|------|--------------------------------|--------------------------------------------------|
-| -3   | `_Z_ERR_TRANSPORT_OPEN_FAILED` | Could not connect to router                      |
-| -78  | `_Z_ERR_SYSTEM_OUT_OF_MEMORY`  | Memory allocation failed (or write filter issue) |
-| -128 | `_Z_ERR_GENERIC`               | Generic error                                    |
-
-For the complete list, see `zenoh-pico/include/zenoh-pico/utils/result.h`.
+- [Log and observe a board](log-and-observe.md): what to read when a board
+  has no console.
+- [Deploy to production](deploy-to-production.md): the run plan and the
+  verify step.

@@ -99,7 +99,7 @@ nano-ros calls them too. The migration is a rename only where the shape differs.
   embedded DDS, and Arduino-ROS.
 - [Choosing an RMW Backend](../tutorial/pick-the-rmw.md) — the
   backend capability matrix.
-- [Production Readiness Checklist](../guide/deploy/production-readiness.md)
+- [Check readiness for production](../guide/deploy/deploy-to-production.md#check-readiness-for-production)
   — pilot-deployment validation.
 - [Supported Boards](../reference/supported-boards.md) — per-board
   status.

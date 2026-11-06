@@ -275,7 +275,7 @@ environment; a value you export wins.
 | `ZPICO_NO_SMOLTCP` | off | `1` skips the smoltcp glue on bare metal |
 | `NROS_HEAP_SIZE` | per platform crate | bare-metal static heap, in bytes; see [Build outputs](build-outputs.md#measured-footprint) |
 
-### Logging (`NROS_LOG_*`)
+### Logging
 
 Also stated as `[knobs.log] <key>` on a board, `[image.<id>.knobs.log] <key>`
 on an image, or `CONFIG_<knob>` on Zephyr.
