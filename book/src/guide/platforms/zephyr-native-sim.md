@@ -15,8 +15,8 @@ This page covers what comes after it: where an image's nano-ros and Zephyr
 settings each go, the Zephyr lines nano-ros builds against, what is particular
 to `native_sim`, and how `nros build` hands the build to `west`. The
 configuration here applies to every Zephyr board; the
-[mps2-an385](zephyr.md), [Nucleo-F767ZI](nucleo-f767zi.md) and
-[Raspberry Pi Pico W](rpi-pico-w.md) pages add only their board notes.
+[mps2-an385](zephyr.md) and [Nucleo-F767ZI](nucleo-f767zi.md) pages add
+only their board notes.
 
 ## Configure the platform
 

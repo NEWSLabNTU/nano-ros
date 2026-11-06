@@ -53,7 +53,6 @@ batch = "p537-w1-starters"
 note = "Nucleo-F767ZI starter, on the starter template (W4, D12); its board notes go to a guide/platforms page (W9)"
 
 [[page]]
-[[page]]
 book = "user"
 path = "starters/mps2-an385-bare-metal.md"
 action = "new phase-537"
@@ -541,13 +540,6 @@ path = "guide/platforms/nucleo-f767zi.md"
 action = "new phase-537"
 batch = "p537-w9"
 note = "Nucleo-F767ZI, a platform page (W9, D8, twin and hardware): after starters/nucleo-f767zi; the board notes of the starter and of guide/platforms/zephyr's flash section"
-
-[[page]]
-book = "user"
-path = "guide/platforms/rpi-pico-w.md"
-action = "new phase-537"
-batch = "p537-w9"
-note = "Raspberry Pi Pico W, a platform page (W9, D8, twin and hardware): after starters/rpi-pico-w"
 
 [[page]]
 old = "targets/zephyr-west-app.md"

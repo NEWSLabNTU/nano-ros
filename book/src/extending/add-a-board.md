@@ -88,8 +88,8 @@ your RTOS yet, [add the platform](add-a-platform.md) first.
    Then say how the board runs. A board states this once, and `nros run`,
    `nros flash` and the generated board pages read it:
 
-   - `[board.run]` holds `emulator = "<kind>:<machine>"` (`qemu`, `fvp`,
-     `renode` or `wokwi`) or `host = true`. A QEMU board adds
+   - `[board.run]` holds `emulator = "<kind>:<machine>"` (`qemu`, `fvp`
+     or `renode`) or `host = true`. A QEMU board adds
      `[board.run.qemu]`. Real silicon with no emulator twin leaves
      `[board.run]` out.
    - `[board.flash]` names the flasher `method` (`west`, `probe-rs`,

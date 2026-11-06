@@ -52,8 +52,7 @@ are the same keys as on every Zephyr board; see
   of boot: a cold QEMU boot and Zephyr's start-up come first.
 - **Nothing is flashed.** `mps2/an385` is a QEMU machine. A Zephyr board
   you can hold, with a twin that boots the same image, is the
-  [Nucleo-F767ZI](nucleo-f767zi.md) or the
-  [Raspberry Pi Pico W](rpi-pico-w.md).
+  [Nucleo-F767ZI](nucleo-f767zi.md).
 
 ## Name a Zephyr board nano-ros does not ship
 

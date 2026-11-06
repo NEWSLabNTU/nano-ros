@@ -70,8 +70,7 @@ board's data.
 2. Your board's starter, from the
    [list of starters](../starters/pick-your-board.md). The boards with an
    emulated twin come first, such as the
-   [Nucleo-F767ZI](../starters/nucleo-f767zi.md) and the
-   [Raspberry Pi Pico W](../starters/rpi-pico-w.md): the starter runs the
+   [Nucleo-F767ZI](../starters/nucleo-f767zi.md): the starter runs the
    twin first, then flashes the board itself. A board with no starter has a
    page in [Supported Boards](../reference/supported-boards.md) that says
    what nano-ros can show for it.
