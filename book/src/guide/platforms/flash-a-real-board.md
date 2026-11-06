@@ -2,7 +2,7 @@
 
 <!-- type: how-to · level: 2 -->
 
-**Needs first:** [Run a talker on an emulated board](../../tutorial/run-a-talker.md), [What you just built](../../tutorial/what-you-just-built.md), [Get started on the Nucleo-F767ZI](../../starters/nucleo-f767zi.md) or [the Raspberry Pi Pico W](../../starters/rpi-pico-w.md)
+**Needs first:** [Run a talker on an emulated board](../../tutorial/run-a-talker.md), [What you just built](../../tutorial/what-you-just-built.md), [Get started on the Nucleo-F767ZI](../../starters/nucleo-f767zi.md)
 
 Use this page to put an image on a board you hold: record which device on
 your machine is which board, read the plan `nros flash` follows, program the
@@ -21,7 +21,7 @@ registry:
 | `s32z270` | [`nros-board-s32z270-freertos`](../../reference/boards/s32z270-freertos.md) | Builds | — | reference page only |
 | `mr-canhubk344` | [`s32k344-safety-island`](../../reference/boards/s32k344-safety-island.md) | Boots on hardware, manual (2026-10-26); reads *Builds* from 2027-02-24 | — | reference page only |
 | `nucleo-f767zi` | [`nros-board-nucleo-f767zi-zephyr`](../../reference/boards/nucleo-f767zi-zephyr.md) | Boots, manual (2026-11-01); reads *Builds* from 2027-03-02 | `renode:nucleo_f767zi` | [starter](../../starters/nucleo-f767zi.md), [platform page](../../guide/platforms/nucleo-f767zi.md), [flash steps](../../starters/nucleo-f767zi.md#flash-the-board) |
-| `rpi-pico-w` | [`nros-board-rpi-pico-w-zephyr`](../../reference/boards/rpi-pico-w-zephyr.md) | Verified in emulator (None) | — | [platform page](../../guide/platforms/rpi-pico-w.md), [flash steps](../../starters/rpi-pico-w.md#flash-the-board) |
+| `rpi-pico-w` | [`nros-board-rpi-pico-w-zephyr`](../../reference/boards/rpi-pico-w-zephyr.md) | Not supported | — | reference page only |
 <!-- END GENERATED hardware table -->
 
 A board with a twin and a starter is the path this page follows. A board
@@ -176,8 +176,7 @@ interface its board package brings up.
 
 ## See also
 
-- [Nucleo-F767ZI](nucleo-f767zi.md) and [Raspberry Pi Pico W](rpi-pico-w.md):
-  each board's link, RAM budget and notes.
+- [Nucleo-F767ZI](nucleo-f767zi.md): the board's link, RAM budget and notes.
 - [Deploy to production](../deploy/deploy-to-production.md): building
   every image and checking it is ready to ship.
 - [`nros` CLI](../../reference/cli.md): every flag of `flash`, `monitor` and

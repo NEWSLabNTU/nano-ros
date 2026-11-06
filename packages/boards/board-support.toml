@@ -470,17 +470,15 @@ notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7
 # witness. No `matrix_platform`: no `PlatformId` runs it.
 #
 # `real_hardware = true` because the board is silicon that is FLASHED (the UF2
-# copy onto the BOOTSEL drive); the book has no Pico section yet, so the row
-# names the Zephyr chapter's "Flash a real board" section, as the Nucleo's
-# does. No `book_run`: there is no twin to run.
+# copy onto the BOOTSEL drive). No `book_run`: there is no twin to run.
 [[board]]
 crate = "nros-board-rpi-pico-w-zephyr"
 board_keys = ["rpi-pico-w-zephyr"]
 real_hardware = true
-book_run = "starters/rpi-pico-w.md#run-it-in-the-wokwi-twin"
-book_flash = "starters/rpi-pico-w.md#flash-the-board"
-book_platform = "guide/platforms/rpi-pico-w.md"
-runs = "emulator"
+# No `book_flash`: since issue 2283 the Pico W has no twin and no bench run,
+# so the user book does not admit it (RFC-0115 D4, RFC-0124 D8). Flash a real
+# board's generated hardware table links its reference page.
+runs = "none"
 hardware = "rpi-pico-w"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
