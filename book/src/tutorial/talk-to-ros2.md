@@ -193,8 +193,8 @@ match:
   start.
 - **The QoS.** As in ROS 2, a subscriber that asks for more than a publisher
   offers receives nothing: a reliable subscriber hears nothing from a
-  best-effort publisher. That is why chapter 1's `ros2 topic echo` asked for
-  best-effort: a best-effort subscriber hears a publisher of either kind.
+  best-effort publisher. A best-effort subscriber hears a publisher of
+  either kind, which is why chapter 1's `ros2 topic echo` asked for it.
 
 ## Where nano-ros differs from ROS 2
 
