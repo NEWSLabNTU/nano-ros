@@ -16,8 +16,8 @@ acceptance is still not met: `check / fast` has a merge-group median of
 unset), and only one self-hosted runner is registered
 (`nano-ros-runner-newslab-118-server`), so it stays off. W6 met its acceptance
 locally; its CI no-change number is still unmeasured. W7 is moot because its
-runner is no longer registered. Issues 2219, 2223 and 2239 are resolved;
-2240 and 2254 are open.**
+runner is no longer registered. Issues 2219, 2223, 2239 and 2254 are
+resolved; 2240 is open.**
 
 Status (2026-11-03), kept for history: the required gate had regressed to a
 37.1 min `merge_group` median (range 24.4–41.5, runs 41381715200 …
@@ -1088,5 +1088,6 @@ this phase will fix it.
 - [issue 1869](../issues/archived/1869-shared-fixture-target-dir-thrashes-on-sizing-descriptor.md) — workspace fixture rows sharing a target dir rebuilt the core crates every run (W6; resolved by RFC-0100 D13)
 - [issue 1177](../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
 
-- [issue 2239](../issues/archived/2239-gate-scratch-dirs-leak-in-tmp.md) — RESOLVED 2026-11-05: both build gates take their scratch trees from `scripts/build/gate-scratch.sh`; a pass leaves none, a failure is kept until the next run of its gate and scope, an interrupted run's tree goes at exit or at the next run (`just check gate-scratch`). The interrupted-`nros build` jobserver directory it also found is [issue 2254](../issues/2254-nros-build-jobserver-fifo-dir-leaks-on-signal.md).
+- [issue 2239](../issues/archived/2239-gate-scratch-dirs-leak-in-tmp.md) — RESOLVED 2026-11-05: both build gates take their scratch trees from `scripts/build/gate-scratch.sh`; a pass leaves none, a failure is kept until the next run of its gate and scope, an interrupted run's tree goes at exit or at the next run (`just check gate-scratch`). The interrupted-`nros build` jobserver directory it also found is [issue 2254](../issues/archived/2254-nros-build-jobserver-fifo-dir-leaks-on-signal.md).
+- [issue 2254](../issues/archived/2254-nros-build-jobserver-fifo-dir-leaks-on-signal.md) — RESOLVED 2026-11-06: each new `nros build` jobserver retires the `nros-jobserver-*` directories whose owner is provably gone (pid plus `/proc` start time, both recorded in the name), and a failed build drops its pool before `exit`; three interrupted builds then one more run leave 0, where they left 3.
 - [issue 2240](../issues/2240-selftests-escape-into-enclosing-repo.md) — homed 2026-11-04: a self-test whose `TMPDIR` sits inside a git checkout runs its git commands against that checkout; the workaround for issue 2239 exposed it.

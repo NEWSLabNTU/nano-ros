@@ -135,11 +135,23 @@ impl Jobserver {
         use std::os::unix::{ffi::OsStrExt, fs::DirBuilderExt};
         // A private directory, so the path is not guessable and nobody else's
         // make can drain the pool.
+        //
+        // The name records the owner's pid AND start time, so a later pool can
+        // tell this one is orphaned once the process is gone, even after the
+        // pid is reused (issue 2254). Without `/proc` only the pid is written,
+        // and only the pid is checked.
         static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("nros-jobserver-{}-{seq}", std::process::id()));
+        let root = std::env::temp_dir();
+        retire_orphan_fifo_dirs(&root);
+        let pid = std::process::id();
+        let name = match process_start(pid) {
+            Some(start) => format!("{FIFO_DIR_PREFIX}{pid}-{start}-{seq}"),
+            None => format!("{FIFO_DIR_PREFIX}{pid}-{seq}"),
+        };
+        let dir = root.join(name);
         std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
-        let fifo = dir.join("fifo");
+        let fifo = dir.join(FIFO_NAME);
         let c = std::ffi::CString::new(fifo.as_os_str().as_bytes())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
         // SAFETY: `c` is a valid NUL-terminated path.
@@ -367,6 +379,114 @@ impl Drop for Jobserver {
     }
 }
 
+/// The prefix of every pool directory `create_fifo` makes in the temp dir.
+const FIFO_DIR_PREFIX: &str = "nros-jobserver-";
+
+/// The FIFO's name inside its pool directory.
+const FIFO_NAME: &str = "fifo";
+
+/// A process's start time, so a recycled pid is not mistaken for the owner:
+/// field 22 of `/proc/<pid>/stat`, read after the `)` that ends the command
+/// name (which may itself hold spaces or parentheses). `None` where `/proc`
+/// is absent. The same rule as `scripts/build/gate-scratch.sh`.
+#[cfg(unix)]
+fn process_start(pid: u32) -> Option<u64> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let rest = &stat[stat.rfind(')')? + 1..];
+    // After the `)`: field 3 (state) is the first word, so 22 is the 20th.
+    rest.split_whitespace().nth(19)?.parse().ok()
+}
+
+/// Whether the process that made a pool may still be running. `start` is
+/// the start time the directory recorded (`None` for a directory from before
+/// that was recorded). Answers `true` whenever death cannot be PROVED.
+#[cfg(unix)]
+fn owner_alive(pid: u32, start: Option<u64>) -> bool {
+    let Ok(raw) = libc::pid_t::try_from(pid) else {
+        return true;
+    };
+    if raw <= 0 {
+        return true;
+    }
+    // SAFETY: signal 0 performs only the existence and permission check.
+    if unsafe { libc::kill(raw, 0) } != 0 {
+        // EPERM: the pid exists and belongs to someone else.
+        return io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH);
+    }
+    match (start, process_start(pid)) {
+        (Some(want), Some(now)) => want == now,
+        // No recorded start, or no `/proc`: the pid alone, which is alive.
+        _ => true,
+    }
+}
+
+/// `(pid, start)` from a pool directory's name: `nros-jobserver-<pid>-<start>-<seq>`,
+/// or `nros-jobserver-<pid>-<seq>` as written before the start time was
+/// recorded (issue 2254). `None` for any other name.
+fn parse_fifo_dir(name: &str) -> Option<(u32, Option<u64>)> {
+    let parts: Vec<&str> = name.strip_prefix(FIFO_DIR_PREFIX)?.split('-').collect();
+    if parts
+        .iter()
+        .any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()))
+    {
+        return None;
+    }
+    match parts.as_slice() {
+        [pid, _seq] => Some((pid.parse().ok()?, None)),
+        [pid, start, _seq] => Some((pid.parse().ok()?, Some(start.parse().ok()?))),
+        _ => None,
+    }
+}
+
+/// Retire the pool directories under `root` whose owner is gone (issue
+/// 2254). `Drop` removes a pool, but a signal that ends the process skips
+/// `Drop`, and the FIFO cannot be unlinked early because fifo-form clients
+/// open it by path. So each new pool sweeps the ones nothing can use any
+/// more: a directory whose name parses, whose owner is provably dead (pid
+/// gone, or reused by a process with another start time), and which holds
+/// nothing but the FIFO. It is removed with `remove_file` + `remove_dir`,
+/// never recursively, so a wrong match cannot take a tree with it. Every
+/// failure is ignored: a directory that cannot be retired is left as it was.
+/// Returns how many were retired.
+#[cfg(unix)]
+fn retire_orphan_fifo_dirs(root: &std::path::Path) -> usize {
+    use std::os::unix::fs::FileTypeExt;
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return 0;
+    };
+    let mut retired = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some((pid, start)) = name.to_str().and_then(parse_fifo_dir) else {
+            continue;
+        };
+        // A real directory, not a symlink to one.
+        if !entry.file_type().is_ok_and(|t| t.is_dir()) || owner_alive(pid, start) {
+            continue;
+        }
+        let dir = entry.path();
+        let Ok(inner) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let inner: Vec<_> = inner.collect();
+        let only_the_fifo = inner.iter().all(|e| {
+            e.as_ref().is_ok_and(|e| {
+                e.file_name() == FIFO_NAME && e.file_type().is_ok_and(|t| t.is_fifo())
+            })
+        });
+        if !only_the_fifo {
+            continue;
+        }
+        if !inner.is_empty() && std::fs::remove_file(dir.join(FIFO_NAME)).is_err() {
+            continue;
+        }
+        if std::fs::remove_dir(&dir).is_ok() {
+            retired += 1;
+        }
+    }
+    retired
+}
+
 /// `(major, minor)` from the first `X.Y` in a `--version` line, e.g.
 /// `GNU Make 4.3` or `1.13.2`.
 #[must_use]
@@ -443,6 +563,120 @@ mod tests {
         assert!(fifo.exists());
         drop(js);
         assert!(!fifo.exists() && !dir.exists());
+    }
+
+    /// A pid that is certainly not running: a child that has been reaped.
+    fn dead_pid() -> u32 {
+        let mut child = std::process::Command::new("true")
+            .spawn()
+            .expect("spawn true");
+        let pid = child.id();
+        child.wait().expect("reap");
+        pid
+    }
+
+    /// A pool directory as `create_fifo` leaves one, holding a real FIFO.
+    fn plant(root: &std::path::Path, name: &str) -> PathBuf {
+        let dir = root.join(name);
+        std::fs::create_dir(&dir).unwrap();
+        let made = std::process::Command::new("mkfifo")
+            .arg(dir.join(FIFO_NAME))
+            .status()
+            .expect("run mkfifo");
+        assert!(made.success(), "mkfifo failed");
+        dir
+    }
+
+    /// Issue 2254: a new pool retires the directories a signal (or a failed
+    /// build's `exit`) left behind, and nothing else.
+    #[test]
+    fn orphaned_fifo_dirs_are_retired_and_nothing_else_is() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        let me = std::process::id();
+        let start = process_start(me).expect("/proc on the test host");
+        let dead = dead_pid();
+
+        let orphan = plant(root, &format!("{FIFO_DIR_PREFIX}{dead}-{start}-0"));
+        let legacy_orphan = plant(root, &format!("{FIFO_DIR_PREFIX}{dead}-0"));
+        let live = plant(root, &format!("{FIFO_DIR_PREFIX}{me}-{start}-0"));
+        // A live pid that started at another time: the pid was reused, so the
+        // pool's owner is gone.
+        let recycled = plant(root, &format!("{FIFO_DIR_PREFIX}{me}-{}-0", start + 1));
+        // A pre-2254 name names no start time, so a live pid keeps it.
+        let legacy_live = plant(root, &format!("{FIFO_DIR_PREFIX}{me}-0"));
+        // Not the pattern: never touched, owner or not.
+        let other = plant(root, &format!("nros-jobserverx-{dead}-0"));
+        let bad_tail = plant(root, &format!("{FIFO_DIR_PREFIX}{dead}-0-0-0"));
+        // The pattern, a dead owner, but something besides the FIFO inside:
+        // left whole, since it is not provably a pool.
+        let crowded = plant(root, &format!("{FIFO_DIR_PREFIX}{dead}-{start}-1"));
+        std::fs::write(crowded.join("keep"), b"x").unwrap();
+        // The pattern, a dead owner, but `fifo` is a regular file.
+        let not_fifo = root.join(format!("{FIFO_DIR_PREFIX}{dead}-{start}-2"));
+        std::fs::create_dir(&not_fifo).unwrap();
+        std::fs::write(not_fifo.join(FIFO_NAME), b"").unwrap();
+        // A dead owner's directory with no FIFO yet (mkfifo failed): empty, so
+        // retiring it is safe.
+        let empty = root.join(format!("{FIFO_DIR_PREFIX}{dead}-{start}-3"));
+        std::fs::create_dir(&empty).unwrap();
+
+        assert_eq!(retire_orphan_fifo_dirs(root), 4);
+        for gone in [&orphan, &legacy_orphan, &recycled, &empty] {
+            assert!(!gone.exists(), "{} should be retired", gone.display());
+        }
+        for kept in [&live, &legacy_live, &other, &bad_tail, &crowded, &not_fifo] {
+            assert!(kept.exists(), "{} should be kept", kept.display());
+        }
+        assert!(crowded.join("keep").exists());
+    }
+
+    #[test]
+    fn pool_dir_names_parse_only_in_the_two_written_shapes() {
+        assert_eq!(
+            parse_fifo_dir("nros-jobserver-12-34-0"),
+            Some((12, Some(34)))
+        );
+        assert_eq!(parse_fifo_dir("nros-jobserver-12-0"), Some((12, None)));
+        for bad in [
+            "nros-jobserver-12",
+            "nros-jobserver-12-",
+            "nros-jobserver--0",
+            "nros-jobserver-12-x-0",
+            "nros-jobserver-12-34-0-1",
+            "nros-gate-12-0",
+        ] {
+            assert_eq!(parse_fifo_dir(bad), None, "{bad}");
+        }
+    }
+
+    /// The start time is field 22 of `/proc/<pid>/stat`, and it is stable
+    /// for a running process.
+    #[test]
+    fn a_process_start_time_is_read_and_stable() {
+        let me = std::process::id();
+        let a = process_start(me).expect("/proc on the test host");
+        assert_eq!(process_start(me), Some(a));
+        assert!(owner_alive(me, Some(a)));
+        assert!(!owner_alive(me, Some(a + 1)));
+        assert!(!owner_alive(dead_pid(), None));
+    }
+
+    /// A pool made by this process is named with its pid and start time, and
+    /// a second pool does not retire the first while both are live.
+    #[test]
+    fn a_new_pool_keeps_a_live_one() {
+        let a = Jobserver::create(2, Style::Fifo).expect("pool a");
+        let b = Jobserver::create(2, Style::Fifo).expect("pool b");
+        let Auth::OwnedFifo { dir, fifo } = &a.auth else {
+            panic!("fifo style")
+        };
+        let name = dir.file_name().unwrap().to_str().unwrap();
+        let (pid, start) = parse_fifo_dir(name).expect("parses");
+        assert_eq!(pid, std::process::id());
+        assert_eq!(start, process_start(pid));
+        assert!(fifo.exists(), "a live pool survived the second create");
+        drop((a, b));
     }
 
     #[test]
