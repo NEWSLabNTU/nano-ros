@@ -79,11 +79,11 @@ fn launch_arm_resolves_the_bringup() -> nros_tests::TestResult<()> {
 #[test]
 fn multi_sched_task_binary_boots_into_run_sched_tasks() -> nros_tests::TestResult<()> {
     // Proof the macro emitted `run_sched_tasks` AND the boot sched task executed: the binary
-    // emits a `multi-sched_task` marker either way — `multi-sched-task entry needs a live
+    // emits a `multi-sched-task` marker either way — `multi-sched-task entry needs a live
     // session` (no router → abort) or `multi-sched-task run — N sched task(s)` (a router was
     // reachable → it entered the per-sched-task run, then forever-spins). The
-    // single-sched-task path emits NEITHER, so the `multi-sched_task` substring is the
-    // branch-specific signal. Router presence is environmental (an orphaned /
+    // single-sched-task path emits NEITHER, so the `multi-sched-task` substring is the
+    // branch-specific signal (`output::MULTI_SCHED_TASK_MARKER`). Router presence is environmental (an orphaned /
     // other-user zenohd can be scouted), so wrap in `timeout` and accept both.
     let bin = multi_sched_task_bin()?;
     let out = nros_tests::process::deadline_command(6, &bin)
@@ -95,7 +95,7 @@ fn multi_sched_task_binary_boots_into_run_sched_tasks() -> nros_tests::TestResul
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        combined.contains("multi-sched_task"),
+        combined.contains(nros_tests::output::MULTI_SCHED_TASK_MARKER),
         "binary did not reach the run_sched_tasks boot path (no multi-sched-task marker).\noutput:\n{combined}",
     );
     Ok(())
@@ -104,7 +104,7 @@ fn multi_sched_task_binary_boots_into_run_sched_tasks() -> nros_tests::TestResul
 #[test]
 fn multi_sched_task_binary_runs_both_sched_tasks_with_router() -> nros_tests::TestResult<()> {
     // With a live zenohd the binary gets past `Executor::open`, spawns the low
-    // sched task, and the boot sched task prints the `multi-sched_task run — N sched_task(s)` marker
+    // sched task, and the boot sched task prints the `multi-sched-task run — N sched_task(s)` marker
     // before its forever-spin (the timeout kills it).
     nros_tests::fixtures::require_zenohd();
     let bin = multi_sched_task_bin()?;
@@ -137,7 +137,7 @@ fn multi_sched_task_binary_runs_both_sched_tasks_with_router() -> nros_tests::Te
 #[test]
 fn single_sched_task_system_takes_the_legacy_boardentry_run_path() -> nros_tests::TestResult<()> {
     // The `[tasks.*]`-stripped variant must fall back to the legacy single-sched-task
-    // `BoardEntry::run` emit (macro gate G.4): it emits NO `multi-sched_task` marker
+    // `BoardEntry::run` emit (macro gate G.4): it emits NO `multi-sched-task` marker
     // (the branch-distinguishing invariant) AND reaches the lifecycle — either
     // `application complete` (a router was reachable → ran to completion) or
     // `proceeding with NullNodeRuntime` (no router → legacy fallback). Both are
@@ -152,7 +152,7 @@ fn single_sched_task_system_takes_the_legacy_boardentry_run_path() -> nros_tests
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        !combined.contains("multi-sched_task"),
+        !combined.contains(nros_tests::output::MULTI_SCHED_TASK_MARKER),
         "sched-tasks-stripped binary emitted a multi-sched-task marker — the gate leaked into run_sched_tasks.\noutput:\n{combined}",
     );
     assert!(
