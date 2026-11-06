@@ -400,7 +400,7 @@ exclude = [
     # left the supported matrix: 0 Runtime cells, no CI lane that could boot
     # them. `nros-platform-stm32f4` (below) and the porting references stay —
     # they are the chip material an out-of-tree board crate consumes, which is
-    # what `book/src/extending/stm32f4-out-of-tree.md` now documents.
+    # what `book/src/extending/add-a-board.md` now documents.
     # phase-337 W3 — ONE crate for both QEMU NuttX witnesses (arm virt +
     # rv-virt). Cross-only for either (armv7a-nuttx-eabihf /
     # riscv32imac-unknown-nuttx-elf, both build-std), so it stays out of the

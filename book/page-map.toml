@@ -1019,57 +1019,73 @@ note = "stub under 300 words folded into extending/overview.md as a section (RFC
 [[page]]
 old = "porting/custom-board.md"
 book = "user"
-path = "extending/custom-board.md"
+path = "extending/add-a-board.md"
 action = "move"
-batch = "w4-extending"
+batch = "p537-w12-moves"
+was = ["extending/custom-board.md"]
+note = "Add a board (W12): one how-to, with the other extending/ board pages merged in"
 
 [[page]]
 old = "porting/vendor-overlay.md"
 book = "user"
-path = "extending/vendor-overlay.md"
-action = "move"
-batch = "w4-extending"
+path = "extending/add-a-board.md"
+action = "merge-into extending/add-a-board.md"
+batch = "p537-w12"
+was = ["extending/vendor-overlay.md"]
+note = "merged by W12 into Add a board, as its board-crate step. The weak network hooks and the family-crate delegation are kept; the do and don't lists and the distribution notes were cut"
 
 [[page]]
 old = "porting/board-crate-import.md"
 book = "user"
-path = "extending/board-crate-import.md"
-action = "move"
-batch = "w4-extending"
+path = "extending/add-a-board.md"
+action = "merge-into extending/add-a-board.md"
+batch = "p537-w12"
+was = ["extending/board-crate-import.md"]
+note = "merged by W12 into Add a board, as its Zephyr step (nano_ros_use_board). The migration recipe for hand-glued consumers and the retired west fvp note were cut"
 
 [[page]]
 old = "porting/freertos-board.md"
 book = "user"
-path = "extending/freertos-board.md"
-action = "move"
-batch = "w4-extending"
+path = "extending/add-a-board.md"
+action = "merge-into extending/add-a-board.md"
+batch = "p537-w12"
+was = ["extending/freertos-board.md"]
+note = "merged by W12 into Add a board. Its measured S32K344 listings were cut: their build.rs predates the family crate's run_overlay recipe, so the in-tree nros-board-mps2-an385-freertos is linked as the working code instead"
 
 [[page]]
 old = "porting/stm32f4-out-of-tree.md"
 book = "user"
-path = "extending/stm32f4-out-of-tree.md"
-action = "move"
-batch = "w4-extending"
+path = "extending/add-a-board.md"
+action = "merge-into extending/add-a-board.md"
+batch = "p537-w12"
+was = ["extending/stm32f4-out-of-tree.md"]
+note = "merged by W12 into Add a board, as its Example"
 
 [[page]]
+old = "extending/adding-a-board-to-the-registry.md"
 book = "user"
-path = "extending/adding-a-board-to-the-registry.md"
-action = "new phase-532"
-batch = "w4-extending"
+path = "extending/add-a-board.md"
+action = "merge-into extending/add-a-board.md"
+batch = "p537-w12"
+note = "merged by W12 into Add a board, as Get your board into this book"
 
 [[page]]
 old = "concepts/board-integration.md"
 book = "user"
-path = "extending/board-integration.md"
-action = "move"
-batch = "w4-extending"
+path = "extending/add-a-board.md"
+action = "merge-into extending/add-a-board.md"
+batch = "p537-w12"
+was = ["extending/board-integration.md"]
+note = "merged by W12 into Add a board, as the who-owns-your-build table"
 
 [[page]]
 old = "porting/board-trait.md"
 book = "user"
-path = "extending/board-trait.md"
-action = "move"
-batch = "w4-extending"
+path = "extending/add-a-board.md"
+action = "merge-into extending/add-a-board.md"
+batch = "p537-w12"
+was = ["extending/board-trait.md"]
+note = "merged by W12 into Add a board, as the four-trait table of its board-crate step. The members are the nros_platform rustdoc's; the history of the removed TransportBringup and NetworkWait mixins was cut"
 
 [[page]]
 old = "porting/custom-platform.md"

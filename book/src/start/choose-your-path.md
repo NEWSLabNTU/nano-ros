@@ -136,7 +136,7 @@ development work, so this route sets no time for it.
    [What you just built](../tutorial/what-you-just-built.md).
 3. [How a build becomes an image](../background/how-a-build-becomes-an-image.md).
 4. [Extending nano-ros](../extending/overview.md), then
-   [a custom board package](../extending/custom-board.md). A board of yours
+   [Add a board](../extending/add-a-board.md). A board of yours
    lives in your own tree.
 5. [nano-ros Internals](../internals/orientation/start-here.html), when the
    port needs a change inside nano-ros itself, such as a new platform.

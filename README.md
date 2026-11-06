@@ -249,7 +249,7 @@ nano-ros generates its bindings from ROS 2 `.msg`/`.srv`/`.action` packages — 
 | ROS 2 interop protocol | [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md)       |
 | Testing                | [tests/README.md](tests/README.md)                           |
 | Zephyr setup           | [book-internals/src/testing/zephyr-dev-setup.md](book-internals/src/testing/zephyr-dev-setup.md)                 |
-| Embedded integration   | [book/src/extending/board-integration.md](book/src/extending/board-integration.md) |
+| Embedded integration   | [book/src/extending/add-a-board.md](book/src/extending/add-a-board.md#before-you-start) |
 | Troubleshooting        | [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md)           |
 
 ## License

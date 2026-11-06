@@ -130,7 +130,7 @@ board would need every line of it unchanged, and folding it into a crate
 that also serves Linux would mean `cfg`-gating RISC-V assembly there. If
 you are porting to another RISC-V64 ThreadX board, depend on the arch
 port and write only the overlay — see
-[Custom boards](../../extending/custom-board.md).
+[Add a board](../../extending/add-a-board.md).
 
 One rule matters if you build ThreadX outside the shipped recipes: the
 arch port's `inc/` **must** be searched before
@@ -319,7 +319,7 @@ before the first publish lands. threadx-riscv64
 No real ThreadX board is supported. Both boards here are simulated — a
 Linux process and a QEMU machine — and nano-ros ships no ThreadX board
 package for physical hardware. A board of your own starts from the
-[porting guide](../../extending/custom-board.md), with the
+[Add a board](../../extending/add-a-board.md), with the
 `nros-board-threadx` family crate and the riscv64 arch port as the
 pieces to reuse; it is then flashed with that board vendor's tooling.
 

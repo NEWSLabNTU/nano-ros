@@ -289,7 +289,7 @@ claimed: the MPS2-AN385 boards above are QEMU machines.
   ```
 
 * **Your own FreeRTOS board** is a board package of your own — see
-  [Adding a FreeRTOS Board](../../extending/freertos-board.md) — and is
+  [Add a board](../../extending/add-a-board.md) — and is
   flashed with whatever that board's vendor uses (probe-rs, OpenOCD, a
   vendor IDE).
 
@@ -318,7 +318,7 @@ file of its own.
 - No RTOS: the [Bare-metal Cortex-M3](./bare-metal.md) page is the
   same board without FreeRTOS.
 - Your own board / RTOS: the
-  [Board Integration matrix](../../extending/board-integration.md) maps each
+  [who-owns-your-build table](../../extending/add-a-board.md#before-you-start) maps each
   user profile (Cargo-first, vendor-IDE, Zephyr, NuttX, ESP32-C3, niche fork)
   to the shortest bring-up path.
 - RTOS-specific debugging: [FreeRTOS LAN9118

@@ -22,7 +22,7 @@ examples/
 > the rack and QEMU models no STM32 MAC), so an in-tree example set read as a
 > support promise nobody verified. The same board, reached through RFC-0064's
 > customization ladder, is
-> [`book/src/extending/stm32f4-out-of-tree.md`](../book/src/extending/stm32f4-out-of-tree.md).
+> [`book/src/extending/add-a-board.md`](../book/src/extending/add-a-board.md).
 > Cortex-M stays witnessed here by `mps2-an385-baremetal` and
 > `mps2-an385-freertos`, both of which a lane actually boots.
 
@@ -464,23 +464,23 @@ Each is a standalone Cargo package with an empty `[workspace]` table (they nest 
 ## Consumption profile per platform
 
 Each `examples/<plat>/` tree maps to one of the seven consumption
-profiles from [`book/src/extending/board-integration.md`](../book/src/extending/board-integration.md).
+profiles from [`book/src/extending/add-a-board.md`](../book/src/extending/add-a-board.md).
 The mapping tells you which guide to read when porting one of these
 examples to your own board.
 
 | `examples/<plat>/` | Profile | Guide |
 |---|---|---|
 | `linux/` | Host (Linux) | `nros configure` + `nros build` — no integration shell needed. |
-| `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/extending/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
-| `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/extending/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/extending/vendor-overlay.md). |
+| `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/extending/add-a-board.md#before-you-start) (`nros-board-baremetal-cortex-m`) |
+| `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/extending/add-a-board.md#before-you-start) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/extending/add-a-board.md). |
 | `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/guide/platforms/nuttx.md) — `apps/external/nano-ros/`. |
 | `esp32-c3-baremetal/` | Cargo-first bare-metal | Bare-metal `esp-hal` path; same generic-crate flow as `mps2-an385-baremetal`. |
-| `rv-virt-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/extending/board-integration.md#generic-board-crate) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/extending/vendor-overlay.md). |
+| `rv-virt-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/extending/add-a-board.md#before-you-start) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/extending/add-a-board.md). |
 | `threadx-linux/` | Linux sim (CI) | Same as `rv-virt-threadx` but with NSOS host-kernel sockets shim. |
 | `zephyr/` | Zephyr native shell | [Zephyr integration shell](../book/src/guide/platforms/zephyr.md) — `projects:` entry in your `west.yml`. |
 | `px4/` | PX4 native shell | [PX4 integration shell](../book/src/guide/platforms/px4.md) — `EXTERNAL_MODULES_LOCATION`. |
 
-When in doubt, read [Board Integration](../book/src/extending/board-integration.md)
+When in doubt, read [Board Integration](../book/src/extending/add-a-board.md)
 first — it explains why each profile exists and which one fits your
 project's build system.
 

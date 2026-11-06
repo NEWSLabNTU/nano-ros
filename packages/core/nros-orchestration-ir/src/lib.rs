@@ -325,7 +325,7 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
 /// `rtic-mps2-an385`, no key survives: the ZSTs are gone, not moved, so an
 /// entry naming one must fail to resolve rather than silently pick another
 /// board. Out-of-tree replacements supply their own `board_crate` — see
-/// `book/src/extending/stm32f4-out-of-tree.md`.
+/// `book/src/extending/add-a-board.md`.
 pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     // The host board's descriptor `names`, exactly: see [`HOST_BOARD_KEYS`].
     ("linux", "::nros_board_linux::LinuxBoard", true),

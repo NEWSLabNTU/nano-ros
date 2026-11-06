@@ -320,7 +320,7 @@ through the first three:
 3. **A board package** — hardware setup every image on the board needs
    (clocks, DMA, the monotonic) and the dispatcher list belong in the board's
    `init_hardware` and its RTIC support, in a
-   [board package](../../extending/board-trait.html).
+   [board package](../../extending/add-a-board.html).
 4. **`nros materialize <bringup>:<image>`** — the last resort, for hand-written tasks.
 
 `nros materialize` writes the image's generated entry into

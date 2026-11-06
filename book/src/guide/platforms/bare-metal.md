@@ -35,7 +35,7 @@ nros setup mps2-an385-baremetal --rmw zenoh
 > entry. A board name states the reach of its build, and this build is true
 > for one silicon part. Nothing extra is provisioned for physical hardware —
 > no probe/flash tooling. For a real STM32F4 see the
-> [out-of-tree worked example](../../extending/stm32f4-out-of-tree.md).
+> [out-of-tree worked example](../../extending/add-a-board.md#example).
 
 ## Project layout
 
@@ -255,7 +255,7 @@ talker. If no `Publishing:` line:
 
 Nothing in-tree is flashed: `mps2-an385` is a QEMU machine, and `nros setup`
 provisions no probe or flash tooling for it. A real Cortex-M board is a board
-crate of your own — [Worked Example — STM32F4 Out of Tree](../../extending/stm32f4-out-of-tree.md)
+crate of your own — [Add a board: an out-of-tree example](../../extending/add-a-board.md#example)
 takes one through the whole ladder — and its ELF goes to the board with the
 probe tool its vendor supports. Add an image for it to the bringup
 (`[image.stm32f4] board = "<your board id>"`); once that board package declares
@@ -310,7 +310,7 @@ For Cortex-M3 with an RTOS, switch to the
   spin loop on bare-metal.
 - Real hardware: the same code runs on an STM32F4-Discovery with a board
   crate of your own and a different linker script — see
-  [Worked Example — STM32F4 Out of Tree](../../extending/stm32f4-out-of-tree.md),
+  [Add a board: an out-of-tree example](../../extending/add-a-board.md#example),
   which takes that board through the customization ladder end to end.
 
 ## Design background

@@ -149,7 +149,7 @@ NuttX QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-board-nuttx-qemu` board crate follows the standard `Config` / `run()` pattern documented in the [Custom Board Package](../../extending/custom-board.html) guide.
+The `nros-board-nuttx-qemu` board crate follows the standard `Config` / `run()` pattern documented in the [Add a board](../../extending/add-a-board.html#steps) page.
 
 Unlike bare-metal and FreeRTOS board crates, there is no custom hardware
 initialization, no network stack setup, and no task creation. NuttX's kernel

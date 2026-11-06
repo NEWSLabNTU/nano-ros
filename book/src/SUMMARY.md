@@ -120,14 +120,7 @@
 # Extending nano-ros
 
 - [Overview](./extending/overview.md)
-- [Custom Board Package](./extending/custom-board.md)
-- [Vendor Overlay Board Crate](./extending/vendor-overlay.md)
-- [Importing a Board Crate](./extending/board-crate-import.md)
-- [Adding a FreeRTOS Board](./extending/freertos-board.md)
-- [Worked Example — STM32F4 Out of Tree](./extending/stm32f4-out-of-tree.md)
-- [Adding a Board to the Registry](./extending/adding-a-board-to-the-registry.md)
-- [Board Integration](./extending/board-integration.md)
-- [The `Board` Trait Family](./extending/board-trait.md)
+- [Add a board](./extending/add-a-board.md)
 - [Custom Platform](./extending/custom-platform.md)
 - [Adding a Platform (CMake)](./extending/add-a-platform.md)
 - [Platform Porting Pitfalls](./extending/porting-pitfalls.md)

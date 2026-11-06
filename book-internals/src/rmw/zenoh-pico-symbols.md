@@ -287,7 +287,7 @@ pub unsafe fn clear_network_state();
 3. **Implement remaining primitives** — memory, random, sleep, time,
    threading, sockets. Each module is independent
 4. **Wire into `nros-platform`** — add a feature and `ConcretePlatform` alias
-5. **Create the board crate** — see [Custom Board Package](../../../book/src/extending/custom-board.md)
+5. **Create the board crate** — see [Add a board](../../extending/add-a-board.html)
 6. **Add the platform feature** to `nros` with mutual exclusivity checks
 7. **Write an example** — see [Creating Examples](../testing/creating-examples.md)
 8. **Add test infrastructure** — for an in-tree platform, see

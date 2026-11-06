@@ -6,7 +6,7 @@
 //! `docs/design/0012-board-bsp-integration-architecture.md`. Overlay
 //! crates (`nros-board-<vendor>-<chip>-freertos`) depend on this
 //! crate + patch vendor HAL deltas via `#[no_mangle]` hooks; see
-//! `book/src/extending/vendor-overlay.md` for the cookbook.
+//! `book/src/extending/add-a-board.md` for the cookbook.
 //!
 //! ## Status
 //!

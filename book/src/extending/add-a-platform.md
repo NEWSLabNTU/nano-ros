@@ -118,7 +118,7 @@ modules `include(...)` those helpers — the per-platform file is the
 
 - [Custom Platform](./custom-platform.md) — Rust-side trait
   implementations (clock, alloc, threading, networking)
-- [Custom Board Package](./custom-board.md) — the Rust board crate that
+- [Custom Board Package](add-a-board.md) — the Rust board crate that
   carries the linker script and board-specific drivers
 - [Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md#add-nano-ros-to-a-cmake-tree)
   — user-facing intro to `add_subdirectory(nano-ros)`

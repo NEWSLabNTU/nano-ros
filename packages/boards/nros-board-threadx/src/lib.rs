@@ -7,7 +7,7 @@
 //! crates (`nros-board-<vendor>-<chip>-threadx`, e.g. Renesas
 //! Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX) depend
 //! on this crate + patch vendor HAL deltas via `#[no_mangle]`
-//! hooks. See `book/src/extending/vendor-overlay.md` for the cookbook.
+//! hooks. See `book/src/extending/add-a-board.md` for the cookbook.
 //!
 //! ## 152.2.A scaffolding
 //!
