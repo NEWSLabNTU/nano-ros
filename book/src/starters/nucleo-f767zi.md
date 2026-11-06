@@ -208,6 +208,6 @@ Ctrl-C in the first terminal stops Renode and the router together.
   early spike. That run needed a host tap device bridged to Renode's virtual
   switch, which takes `CAP_NET_ADMIN`, and `nros run` does not set one up
   yet, so this starter stops at serial.
-- **What each Zephyr piece is:** [Zephyr (west module)](../guide/platforms/zephyr.md).
+- **The board's link, RAM budget and notes:** [Nucleo-F767ZI](../guide/platforms/nucleo-f767zi.md).
 - **The same kind of project, grown:** the [Tutorial](../tutorial/run-a-talker.md).
 - **Talk to a larger ROS 2 system:** [Talk to ROS 2](../tutorial/talk-to-ros2.md).

@@ -83,7 +83,17 @@
 #   - book_flash    "<chapter>.md#<anchor>": the "Flash …" section — required
 #                   when real_hardware = true (a build-only board says so there)
 #   The anchor is the id mdbook gives the heading; the section must hold a
-#   fenced command block.
+#   fenced command block. A row the user book does not admit (RFC-0124 D8:
+#   not Verified, and no emulator twin of a named `hardware` board) names
+#   neither: it keeps only its generated reference page.
+#   - book_platform "<page>.md" under book/src/guide/platforms/: the User
+#                   guide platform page that takes over where the row's
+#                   starter ends (phase-537 W9, RFC-0124 D8). SUMMARY nests
+#                   the page under the row's generated status group
+#                   (`scripts/book-move.py --summary`), the page carries the
+#                   row's generated status header, and `check-book-audience`
+#                   reports a page whose group and row disagree. Admitted
+#                   rows only; rows of one page must share a group.
 # ---------------------------------------------------------------------------
 manual_stale_days = 120
 
@@ -98,6 +108,7 @@ crate = "nros-board-linux"
 matrix_platform = "Linux"
 board_keys = ["linux"]
 book_run = "starters/linux-host.md#run-it-on-this-machine"
+book_platform = "guide/platforms/linux-host.md"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -116,6 +127,7 @@ matrix_platform = "ZephyrNativeSim"
 board_keys = ["zephyr"]
 nightly_token = "zephyr"
 book_run = "starters/zephyr-native-sim.md#run-it-on-this-machine"
+book_platform = "guide/platforms/zephyr-native-sim.md"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -155,6 +167,7 @@ matrix_platform = "FreertosMps2"
 nightly_token = "freertos"
 link_check_example = "examples/mps2-an385-freertos/rust/talker"
 book_run = "starters/mps2-an385-freertos.md#run-it-in-qemu"
+book_platform = "guide/platforms/freertos.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -183,7 +196,9 @@ crate = "nros-board-s32z270-freertos"
 # board yet. Give it a real PlatformId when it gets a witness, not the
 # neighbour's.
 real_hardware = true
-book_flash = "guide/platforms/freertos.md#flash-a-real-board"
+# No `book_flash`: a Builds row is not admitted to the user book (RFC-0124
+# D8), so it keeps only its generated reference page, which Flash a real
+# board's generated hardware table links (phase-537 W9).
 runs = "none"
 hardware = "s32z270"
 breadth = "inherits FreertosMps2"
@@ -201,6 +216,7 @@ board_keys = ["nuttx", "qemu-armv7a-nuttx"]
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-armv7a-nuttx/rust/talker"
 book_run = "starters/nuttx-arm.md#run-it-in-qemu"
+book_platform = "guide/platforms/nuttx.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -212,6 +228,7 @@ matrix_platform = "ThreadxLinux"
 nightly_token = "threadx_linux"
 link_check_example = "examples/threadx-linux/rust/talker"
 book_run = "starters/threadx-linux.md#run-it-on-this-machine"
+book_platform = "guide/platforms/threadx-linux.md"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -229,6 +246,7 @@ matrix_platform = "FreertosPosix"
 # asked about until `cadence = "daily"` did (phase-522 W1).
 nightly_token = "freertos"
 book_run = "starters/freertos-posix.md#run-it-on-this-machine"
+book_platform = "guide/platforms/freertos-posix.md"
 runs = "host"
 cadence = "daily"
 breadth = "inherits FreertosMps2"
@@ -240,6 +258,7 @@ crate = "nros-board-threadx-qemu-riscv64"
 matrix_platform = "ThreadxRiscv64"
 nightly_token = "threadx_riscv64"
 book_run = "starters/threadx-riscv64.md#run-it-in-qemu"
+book_platform = "guide/platforms/threadx.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits ThreadxLinux"
@@ -251,6 +270,7 @@ crate = "nros-board-mps2-an385"
 matrix_platform = "QemuBaremetal"
 nightly_token = "qemu"
 book_run = "starters/mps2-an385-bare-metal.md#run-it-in-qemu"
+book_platform = "guide/platforms/bare-metal.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -281,6 +301,7 @@ crate = "nros-board-mps2-an385-zephyr"
 matrix_platform = "ZephyrQemuCortexM"
 nightly_token = "zephyr"
 book_run = "starters/mps2-an385-zephyr.md#run-it-in-qemu"
+book_platform = "guide/platforms/zephyr.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "witness"
@@ -304,6 +325,7 @@ matrix_platform = "NuttxRiscv"
 board_keys = ["nuttx-riscv", "rv-virt-nuttx"]
 nightly_token = "nuttx"
 book_run = "starters/nuttx-riscv.md#run-it-in-qemu"
+book_platform = "guide/platforms/nuttx.md"
 runs = "emulator"
 cadence = "daily"
 breadth = "inherits NuttxArm"
@@ -362,7 +384,10 @@ notes = "Runtime is run by a maintainer, hence `cadence = \"manual\"`. The model
 crate = "s32k344-safety-island"
 external = "simple-autoware-safety-island"
 real_hardware = true
-book_flash = "guide/platforms/zephyr.md#flash-a-real-board"
+# No `book_flash`: a hand-booted hardware row with no emulator twin is not
+# admitted to the user book (RFC-0115 D4, RFC-0124 D8). Its board package and
+# its flashing are the island project's; Flash a real board's generated
+# hardware table links its reference page (phase-537 W9).
 runs = "hardware"
 hardware = "mr-canhubk344"
 cadence = "manual"
@@ -406,6 +431,7 @@ board_keys = ["nucleo-f767zi-zephyr"]
 real_hardware = true
 book_run = "starters/nucleo-f767zi.md#run-it-in-the-renode-twin"
 book_flash = "starters/nucleo-f767zi.md#flash-the-board"
+book_platform = "guide/platforms/nucleo-f767zi.md"
 runs = "emulator"
 hardware = "nucleo-f767zi"
 matrix_platform = "ZephyrNucleoF767zi"
@@ -451,8 +477,10 @@ notes = "ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7F, 384 KiB sram0) on Zephyr 3.7
 crate = "nros-board-rpi-pico-w-zephyr"
 board_keys = ["rpi-pico-w-zephyr"]
 real_hardware = true
-book_flash = "guide/platforms/zephyr.md#flash-a-real-board"
-runs = "none"
+book_run = "starters/rpi-pico-w.md#run-it-in-the-wokwi-twin"
+book_flash = "starters/rpi-pico-w.md#flash-the-board"
+book_platform = "guide/platforms/rpi-pico-w.md"
+runs = "emulator"
 hardware = "rpi-pico-w"
 breadth = "inherits ZephyrQemuCortexM"
 maintainers = ["jerry73204"]
