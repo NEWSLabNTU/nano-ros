@@ -150,6 +150,15 @@ nros_codegen_stamp_check_or_wipe() {
     fi
     echo "  codegen-stamp: drift detected in $dir/generated — wiping (will regen)"
     rm -rf "$dir/generated"
+    # Issue 2297 — `nros configure` keys its "up to date" on its INPUTS, not on
+    # whether `generated/` still exists, so a wipe alone left the next
+    # configure a no-op and the leaf with no message crates. The configure
+    # stamps were recorded over the tree just deleted: retire them with it
+    # (never the lock, which a concurrent configure may hold).
+    if [ -d "$dir/build/nros/configured" ]; then
+        find "$dir/build/nros/configured" -mindepth 1 -maxdepth 1 ! -name .lock \
+            -exec rm -rf {} +
+    fi
 }
 
 # Writes the current hash to `<example>/generated/.codegen-stamp`. Call AFTER a
