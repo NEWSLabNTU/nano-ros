@@ -100,7 +100,7 @@ nano-ros reads `ROS_DOMAIN_ID` from the environment (default: `0`). On
 `[system] domain_id` (or an image's own — on Zephyr the module renders it into
 `CONFIG_NROS_DOMAIN_ID`), or a hand-written `config.toml` on a
 direct-mode app (see
-[Add an image](grow-your-workspace.md#4-add-an-image)):
+[Add an image](parameters-and-launch-files.md#4-add-an-image)):
 
 ```bash
 ROS_DOMAIN_ID=42 ./build/linux/target/debug/talker   # nano-ros side

@@ -75,7 +75,7 @@ west build -b native_sim/native/64 src/zephyr_entry \
 west build -t run            # native_sim; `west flash` for hardware
 ```
 
-See the book's [Images → Running on Zephyr](../../book/src/tutorial/grow-your-workspace.md)
+See the book's [Zephyr platform page](../../book/src/guide/platforms/zephyr.md)
 for the full flow.
 
 ## FVP image (realtime-cpp `[image.fvp]`)

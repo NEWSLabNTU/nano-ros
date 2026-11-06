@@ -77,6 +77,10 @@ tutorial-5: (platform "tutorial-5")
 [group("main")]
 tutorial-6: (platform "tutorial-6")
 
+# book/src/tutorial/parameters-and-launch-files.md — Tutorial 7 (phase-537 W5).
+[group("main")]
+tutorial-7: (platform "tutorial-7")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]
