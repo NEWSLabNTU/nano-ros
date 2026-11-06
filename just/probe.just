@@ -61,64 +61,67 @@ platform-asset out="tmp/probe-asset":
 [group("main")]
 linux: (platform "linux")
 
-# book/src/guide/platforms/bare-metal.md — Rust talker on QEMU MPS2-AN385.
+# book/src/starters/mps2-an385-bare-metal.md — Rust talker on QEMU MPS2-AN385.
 [group("main")]
 baremetal: (platform "baremetal")
 
-# phase-523 W4 — the bare-metal chapter OFFLINE: once online to stage the
+# phase-523 W4 — the bare-metal starter OFFLINE: once online to stage the
 # release asset and the SDK store, then again with `--network none` and
 # NROS_OFFLINE=1 from that store (vendored-tree.md "Air-gapped / mirrored CI").
 [group("main")]
 offline: (platform "offline")
 
-# book/src/guide/platforms/freertos.md — Rust workspace image on QEMU MPS2-AN385.
+# book/src/starters/mps2-an385-freertos.md — the Rust tab, on QEMU MPS2-AN385.
 [group("main")]
 freertos: (platform "freertos")
 
-# book/src/guide/platforms/freertos.md — the C package on the same board
+# book/src/starters/mps2-an385-freertos.md — the C tab, on the same board
 # (phase-517 W17: the chapter's other language road).
 [group("main")]
 freertos-c: (platform "freertos-c")
 
-# book/src/guide/platforms/threadx.md — the Linux simulator flavour.
+# book/src/starters/threadx-linux.md — the Rust tab, on the Linux simulator.
 [group("main")]
 threadx-linux: (platform "threadx-linux")
 
-# book/src/guide/platforms/threadx.md — the RISC-V 64 QEMU flavour.
+# book/src/starters/threadx-riscv64.md — the RISC-V 64 QEMU flavour.
 [group("main")]
 threadx-riscv64: (platform "threadx-riscv64")
 
-# book/src/guide/platforms/threadx.md — the C package on the Linux simulator
+# book/src/starters/threadx-linux.md — the C tab, on the Linux simulator
 # (phase-517 W17).
 [group("main")]
 threadx-linux-c: (platform "threadx-linux-c")
 
-# book/src/guide/platforms/nuttx.md — QEMU Arm `virt`.
+# book/src/starters/nuttx-arm.md — the C tab, on QEMU Arm `virt`.
 [group("main")]
 nuttx-arm: (platform "nuttx-arm")
 
-# book/src/guide/platforms/nuttx.md — the Rust workspace image on
-# Arm virt (issue 2149).
+# book/src/starters/nuttx-arm.md — the Rust tab, on Arm virt (issue 2149).
 [group("main")]
 nuttx-arm-rust: (platform "nuttx-arm-rust")
 
-# book/src/guide/platforms/nuttx.md — QEMU RISC-V `rv-virt`.
+# book/src/starters/nuttx-riscv.md — the C tab, on QEMU RISC-V `rv-virt`.
 [group("main")]
 nuttx-riscv: (platform "nuttx-riscv")
 
-# book/src/guide/platforms/nuttx.md — the Rust workspace image on
-# rv-virt (issue 2178).
+# book/src/starters/nuttx-riscv.md — the Rust tab, on rv-virt (issue 2178).
 [group("main")]
 nuttx-riscv-rust: (platform "nuttx-riscv-rust")
 
-# book/src/guide/platforms/zephyr.md — native_sim.
+# book/src/starters/zephyr-native-sim.md — the C tab, on native_sim.
 [group("main")]
 zephyr: (platform "zephyr")
 
-# book/src/guide/platforms/zephyr.md — the Rust workspace on
-# native_sim (phase-517 W17; issues 2151, 2152).
+# book/src/starters/zephyr-native-sim.md — the Rust tab, on native_sim
+# (phase-517 W17; issues 2151, 2152).
 [group("main")]
 zephyr-rust: (platform "zephyr-rust")
+
+# book/src/starters/mps2-an385-zephyr.md — a Rust talker on Zephyr's
+# mps2/an385 in QEMU (phase-537 W4).
+[group("main")]
+zephyr-mps2: (platform "zephyr-mps2")
 
 # book/src/guide/platforms/zephyr-west-app.md — a Zephyr application built with
 # plain west (no workspace, no system.toml), on native_sim.
@@ -138,15 +141,14 @@ zephyr-west-app-flash: (platform "zephyr-west-app-flash")
 [group("main")]
 zephyr-west-app-rust: (platform "zephyr-west-app-rust")
 
-# phase-524 W4a — the Nucleo-F767ZI's Renode twin (no chapter yet, W4b): the
-# Zephyr chapter's setup blocks, then the board's serial C talker built through
-# the leaf road, booted in Renode, and heard by `ros2 topic echo` over a
-# serial-locator `rmw_zenohd`.
+# book/src/starters/nucleo-f767zi.md — the Nucleo-F767ZI's Renode twin: the
+# starter's setup, scaffold and `nros run` in Renode, heard by `ros2 topic
+# echo` over a serial-locator `rmw_zenohd`.
 [group("main")]
 renode-nucleo: (platform "renode-nucleo")
 
-# phase-524 W4a — the Pico W's Wokwi twin, the same run through `wokwi-cli`
-# and a socat pty. Needs WOKWI_CLI_TOKEN in the environment (it fails naming
+# book/src/starters/rpi-pico-w.md — the Pico W's Wokwi twin, the starter's
+# own `nros run` (which waits on issue 2230, a Wokwi runner). Needs WOKWI_CLI_TOKEN in the environment (it fails naming
 # it otherwise) and spends about 1.5 of the account's simulation minutes.
 [group("main")]
 wokwi-pico: (platform "wokwi-pico")
