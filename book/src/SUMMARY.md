@@ -17,6 +17,7 @@
 - [NuttX in QEMU (Arm)](./starters/nuttx-arm.md)
 - [NuttX in QEMU (RISC-V)](./starters/nuttx-riscv.md)
 - [ThreadX in QEMU (RISC-V 64)](./starters/threadx-riscv64.md)
+- [Linux host](./starters/linux-host.md)
 - [ThreadX Linux simulator](./starters/threadx-linux.md)
 
 # Tutorial

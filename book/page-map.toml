@@ -103,6 +103,13 @@ note = "ThreadX in QEMU (RISC-V 64) starter (W4, D12): the RISC-V 64 starter par
 
 [[page]]
 book = "user"
+path = "starters/linux-host.md"
+action = "new phase-537"
+batch = "p537-w4"
+note = "Linux host starter (W4, D12): the starter parts of guide/platforms/linux-host and Tutorial 1's run on this machine"
+
+[[page]]
+book = "user"
 path = "starters/threadx-linux.md"
 action = "new phase-537"
 batch = "p537-w4"

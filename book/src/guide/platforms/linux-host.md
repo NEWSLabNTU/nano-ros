@@ -2,6 +2,8 @@
 
 <!-- type: how-to · level: 2 -->
 
+**Needs first:** [Get started on the Linux host](../../starters/linux-host.md)
+
 Use the host (`linux`) board for first experiments, CI smoke tests, and
 ROS 2 interoperability checks on Linux. It uses OS sockets, the
 host process environment, and the same project layout as the
@@ -26,22 +28,12 @@ hint naming `linux`.
 
 ## Setup
 
-Install the `nros` CLI ([Installation](../../start/install.md)),
-then provision the native host. For a host build there is no cross-toolchain to fetch — `nros
-setup linux` installs the client stack (and for xrce the
-Micro-XRCE-DDS agent) into a shared store. The zenoh router is NOT
-installed: it comes from a ROS 2 install
-(`ros2 run rmw_zenoh_cpp rmw_zenohd`). Rather not run a router? Use
-`--rmw cyclonedds` — it needs no daemon. Either way the first build
-generates the messages from your ROS 2 install, so it needs ROS 2 sourced.
-
-With the `nros` CLI on PATH ([Installation](../../start/install.md) —
-`install.sh` puts it in `~/.nros/bin`):
-
-```bash
-# Provision the Linux host (zenoh RMW is the default):
-nros setup linux --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds
-```
+The [starter](../../starters/linux-host.md) provisions the host for Cyclone
+DDS, which needs no daemon. `nros setup linux` installs the client stack (and
+for xrce the Micro-XRCE-DDS agent) into a shared store; it installs no zenoh
+router, which comes from a ROS 2 install
+(`ros2 run rmw_zenoh_cpp rmw_zenohd`). Either way the first build generates
+the messages from your ROS 2 install, so it needs ROS 2 sourced.
 
 `linux` is this board's one name; `posix` names the platform layer underneath
 it, and `native` names no board at all
@@ -56,12 +48,8 @@ colcon build && source install/setup.bash
 
 ## Workspace Layout
 
-A host project is a workspace, like every other board's:
-
-```bash
-nros new host_ws --board linux --template talker --lang rust   # or --lang c / cpp
-cd host_ws
-```
+A host project is a workspace, like every other board's. The starter's
+scaffold wrote one (`--lang rust`, `c` or `cpp`):
 
 ```text
 host_ws/
@@ -108,28 +96,15 @@ walkthrough for generated messages and runnable commands, and
 [Growing your workspace](../../tutorial/grow-your-workspace.md#srclibrs) for each
 line of `lib.rs`.
 
-## Build and Run
+## Run with zenoh
 
-Start the RMW host daemon (the router comes from ROS 2). For
-zenoh:
-
-```bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-Then build and run the node from the workspace root, in a shell that has
-sourced ROS 2. The first build generates the messages from it and records
-the prefix, so later runs need no sourced shell:
-
-```bash
-source /opt/ros/humble/setup.bash
-nros run host_node
-```
-
-`nros run` builds first if anything changed. `nros build` alone prints the
-binary's path under `build/`, which runs directly too. For a workspace that
-lives in a colcon consumer workspace, `colcon build && source
-install/setup.bash && ros2 run …` works as well.
+With `--rmw zenoh`, the image dials a router on this machine's loopback, so
+`nros run host_node` starts the router, ROS's `rmw_zenohd`, before the node
+and stops it with the node. Run it from the workspace root, in a shell that
+has sourced ROS 2 for the first build. `nros build` alone prints the binary's
+path under `build/`, which runs directly too. For a workspace that lives in a
+colcon consumer workspace, `colcon build && source install/setup.bash && ros2
+run …` works as well.
 
 ## Configuration
 

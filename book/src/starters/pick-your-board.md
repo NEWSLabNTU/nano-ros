@@ -57,6 +57,7 @@ show for it.
 
 ### Verified on host
 
+- [Linux host](linux-host.md): Verified on host (merge)
 - [ThreadX Linux simulator](threadx-linux.md): Verified on host (merge)
 
 <!-- END GENERATED starter list -->

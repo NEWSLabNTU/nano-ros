@@ -118,21 +118,11 @@ image.
 
 ## No QEMU, no router: run it on this machine
 
-The same flow runs on your Linux host. Cyclone DDS needs no router, so
-nothing else has to be running. The build still generates the messages from
-ROS 2, so source it before the first run (later runs of `host_ws` need no
-sourced shell):
-
-```bash probe=30 track=installed variant=linux
-source /opt/ros/humble/setup.bash
-nros setup linux --rmw cyclonedds
-nros new host_ws --board linux --template talker --lang cpp --rmw cyclonedds
-cd host_ws
-nros run host_node --expect 'Publishing:' --timeout 120
-```
-
-Only the board in the scaffold line changed. The node code is the same
-shape, and so is every command after it.
+The same flow runs on your Linux host, with Cyclone DDS, which needs no
+router. Only the board in the scaffold line changes; the node code is the
+same shape, and so is every command after it.
+[Get started on the Linux host](../starters/linux-host.md) takes it step by
+step.
 
 ## If nothing appears
 

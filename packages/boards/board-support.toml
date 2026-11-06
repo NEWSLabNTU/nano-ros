@@ -96,7 +96,7 @@ cell_table = "board-support-cells.toml"
 crate = "nros-board-linux"
 matrix_platform = "Linux"
 board_keys = ["linux"]
-book_run = "tutorial/run-a-talker.md#run"
+book_run = "starters/linux-host.md#run-it-on-this-machine"
 runs = "host"
 cadence = "merge"
 breadth = "witness"
@@ -603,12 +603,12 @@ notes = "phase-525 W4 (RFC-0116 D1, D5): the book's first chapter and the instal
 
 [[probe]]
 track = "linux"
-chapter = "tutorial/run-a-talker.md"
-variant = "linux"
+chapter = "starters/linux-host.md"
+variant = ""
 awaits = ["phase-531 W4 (nros new <ws> writes a workspace; nros run <node>)"]
 weekly = true
 row = "nros-board-linux@Linux"
-notes = "The first chapter's \"run it on this machine\" section: the same scaffold for the Linux host over Cyclone DDS, no router. Weekly since phase-525 W4 made the serial QEMU run the installed track's default."
+notes = "The Linux host starter (phase-537 W4; the first chapter's \"run it on this machine\" section until then): a C++ talker scaffolded for the Linux host over Cyclone DDS, no router, then `ros2 topic echo` over rmw_cyclonedds_cpp. Weekly since phase-525 W4 made the serial QEMU run the installed track's default."
 
 [[probe]]
 track = "baremetal"
