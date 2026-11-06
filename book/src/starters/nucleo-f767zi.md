@@ -207,4 +207,4 @@ Ctrl-C in the first terminal stops Renode and the router together.
   yet, so this starter stops at serial.
 - **What each Zephyr piece is:** [Zephyr (west module)](../guide/platforms/zephyr.md).
 - **The same kind of project, grown:** the [Tutorial](../tutorial/run-a-talker.md).
-- **Talk to a larger ROS 2 system:** [ROS 2 Interoperability](../tutorial/talk-to-ros2.md).
+- **Talk to a larger ROS 2 system:** [Talk to ROS 2](../tutorial/talk-to-ros2.md).

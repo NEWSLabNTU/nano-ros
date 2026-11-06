@@ -1034,7 +1034,7 @@ for the canonical in-repo surface.
 - Pick a real board (Nordic, NXP, STM32, …): a board package naming its
   `west_board`, then [Flash a real board](#flash-a-real-board).
 - Cyclone DDS on Cortex-A/R: see the DDS section of
-  [Choosing an RMW Backend](../../tutorial/pick-the-rmw.md) for the
+  [Pick and configure the RMW](../../tutorial/pick-the-rmw.md) for the
   required Kconfig deltas.
 - Build nano-ros's own Zephyr examples without west:
   [Zephyr in-tree examples (contributor)](../../internals/platform/zephyr-in-tree.html).

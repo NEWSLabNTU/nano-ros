@@ -4,7 +4,7 @@
 
 Every first build of a project needs ROS 2 sourced, because the messages are
 generated from it ([A10](#a10-ament_prefix_path-is-unset)). The
-[First Project](../tutorial/run-a-talker.md) runs a talker in QEMU over Zenoh, so it
+[Run a talker on an emulated board](../tutorial/run-a-talker.md) runs a talker in QEMU over Zenoh, so it
 also needs ROS 2 for the router; its Linux section runs on Cyclone DDS,
 where no router exists, so "no output" there is never a router problem. The
 First Node pages run on Linux over Zenoh and assume `nros setup linux --rmw
@@ -432,6 +432,6 @@ end-to-end.
 ## See also
 
 - [Install + first build](../start/install.md) — full setup walkthrough
-- [First Node — Rust](../tutorial/add-a-second-node.md) — the canonical Rust starter
+- [Add a second node](../tutorial/add-a-second-node.md) — the canonical Rust starter
 - [Troubleshooting](../guide/deploy/troubleshoot.md) — broader
   issue-by-issue reference for post-first-build problems

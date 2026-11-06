@@ -4,7 +4,7 @@ This page describes how nros's zenoh backend speaks the `rmw_zenoh_cpp` wire
 protocol: key expressions, liveliness tokens, QoS strings, CDR framing and the
 per-message attachment. For the user steps (starting the router, running a
 talker against `ros2 topic echo`, matching domain ID, QoS and edition), see the
-book's [ROS 2 Interop](../../tutorial/talk-to-ros2.html) page; this page does
+book's [Talk to ROS 2](../../tutorial/talk-to-ros2.html) page; this page does
 not repeat them.
 
 ## Status: WORKING
@@ -204,7 +204,7 @@ backend.
 
 User-level failures (QoS mismatch, `rmw_zenoh_cpp` left in peer mode, domain
 ID or edition mismatch) are covered in the book's
-[ROS 2 Interop → Troubleshooting](../../tutorial/talk-to-ros2.html#troubleshooting).
+[Talk to ROS 2 → Troubleshooting](../../tutorial/talk-to-ros2.html#troubleshooting).
 
 ## Implementation Status
 

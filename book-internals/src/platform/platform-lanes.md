@@ -224,7 +224,7 @@ pubsub / service / action against an in-test zenohd.
 ## Cyclone DDS
 
 Lanes for the Cyclone DDS backend
-([Choosing an RMW Backend](../../tutorial/pick-the-rmw.html)). These are
+([Pick and configure the RMW](../../tutorial/pick-the-rmw.html)). These are
 contributor-only recipes — a bare `cmake` / `cargo` consumer build
 needs no `just cyclonedds` pre-step; the consumer build self-provisions
 Cyclone from source.
