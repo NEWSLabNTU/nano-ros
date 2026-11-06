@@ -90,7 +90,7 @@ trait-driven Rust callers and C-ABI consumers.
 
 ## See also
 
-- The [Custom Platform porting guide](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/extending/custom-platform.md)
+- The [Add a platform](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/extending/add-a-platform.md)
   — step-by-step walkthrough.
 - The [`nros-platform-cffi` source tree](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/platform/nros-platform-cffi)
   — header + Rust mirror for this ABI.
