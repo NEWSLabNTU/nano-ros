@@ -59,7 +59,7 @@ four samples per subscription, and so on. The build warned about some of it
 on every run, in lines like this one:
 
 ```text
-warning: nros-rmw-zenoh@0.6.0: the parameter family's requests are not priced: the image declares no `params:`. Its inbox slot keeps 1024 B; a larger `set_parameters` is dropped with no reply. Declaring the parameters in the contract derives it (issue 1352)
+warning: nros-rmw-zenoh@0.6.0: the parameter family's requests are not priced: the image declares no `params:`. Its inbox slot keeps 1024 B; a larger `set_parameters` is dropped with no reply. Declaring the parameters in the contract derives it ...
 ```
 
 ## Write the contract
