@@ -80,7 +80,9 @@ How to choose:
   nothing running beside it. A stock ROS 2 node using `rmw_cyclonedds_cpp`
   sees it directly, with the same wire protocol and the same discovery.
 - **XRCE-DDS** when RAM is the tightest constraint, or when the device joins a
-  micro-ROS or DDS deployment that already runs an agent. The device does no
+  micro-ROS or DDS deployment that already runs an agent. It is
+  not heap-free: each allocation goes through `nros_platform_alloc`, once
+  per session or entity, never per message. The device does no
   discovery of its own; if the agent stops, the device loses all
   connectivity.
 
