@@ -674,6 +674,17 @@ row = "nros-board-mps2-an385@QemuBaremetal"
 notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 7, Parameters and launch files: the generated launch file copied into launch/, a period_ms parameter the talker reads, a launch argument and a remap to /sensor/reading, then nros run and ros2 topic list. Chained after chapters 1-6."
 
 [[probe]]
+track = "tutorial-8"
+chapter = "tutorial/tell-the-build.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md"]
+awaits = ["a Rust image beside a ROS message package: with no `launch` key the image falls back to the workspace-wide language answer, which counts the message package's CMakeLists.txt as C, so configure refuses `no cmake packages in this workspace` (nros build `ws_non_rust` does not skip interface packages; found by phase-537 W5, 2026-11-06)"]
+weekly = false
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 (RFC-0124 D3, D6) — Tutorial 8, Tell the build what your system creates: the image measured with arm-none-eabi-size, the contract written beside the launch file ([census] on_missing = warn: no host image), measured again (static RAM falls), run, then one refusal (a parameter renamed in the contract) and the fix. Chained after chapters 1-7."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""
