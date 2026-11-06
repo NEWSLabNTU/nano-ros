@@ -328,6 +328,14 @@ uploaded. Retire `run-gates-parallel.sh`, `gate-shard.py`,
 - [Issue 2306](../issues/2306-interrupted-submodule-checkout-reads-provisioned.md):
   an interrupted submodule checkout reads as provisioned. The runner's
   preflight (W5) is where its fix belongs.
+- [Issue 2308](../issues/2308-sparse-zephyr-tree-reads-as-west-workspace.md):
+  CI's sparse Zephyr header tree (`zephyr-tree`) passes the "west workspace
+  provisioned" test (`zephyr`), so outside a scoped lane `template-copy-out`
+  tries a real Zephyr build. Two capabilities share one path.
+- `build/corrosion-cargo` and `build/sizes-probe` grew 51 -> 160 G and
+  38 -> 93 G over five gate runs in one worktree, and filled a 1.8 T disk
+  twice in a day. Nothing prunes them. W4's disk declarations and preflight
+  need their growth bounded first.
 
 ## Open questions
 
