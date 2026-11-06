@@ -47,7 +47,7 @@ not reduce to one:
 | Shape | Examples in or near the tree | What "run" involves |
 | --- | --- | --- |
 | Host process | Linux/POSIX native, `threadx-linux`, `freertos-posix`, Zephyr `native_sim` | exec a binary; console is stdio |
-| Emulator | QEMU across six system binaries (`arm`, `aarch64`, `riscv32`, `riscv64`, the Xilinx fork, `misc`), Arm FVP, Renode and Wokwi (phase-524) | per-machine arguments, NIC choice (SLIRP, bridge, TAP), semihosting, icount |
+| Emulator | QEMU across six system binaries (`arm`, `aarch64`, `riscv32`, `riscv64`, the Xilinx fork, `misc`), Arm FVP and Renode (phase-524; Wokwi was listed until RFC-0115 Amendment 1, 2026-11-06) | per-machine arguments, NIC choice (SLIRP, bridge, TAP), semihosting, icount |
 | Framework-owned flash | Zephyr boards (`west flash` and Zephyr's runner set: J-Link, pyOCD, OpenOCD, nrfjprog, …) | the framework owns the process; nros should hand off |
 | Tool-owned flash | ESP32 (`espflash`), RP2040 (`picotool` or UF2 copy), STM32 (`probe-rs`, OpenOCD, DFU) | a tool, a port or a probe, sometimes a bootloader mode |
 | Human in the loop | hold BOOTSEL and replug; set BOOT0 and press reset; power-cycle a bench relay | the tool waits on a person, or on a device that appears after they act |
@@ -123,7 +123,7 @@ re-checked against current documentation.
 
 | Part | Values |
 | --- | --- |
-| Launcher | host process, emulator (`qemu:<machine>`, `fvp:<model>`, `renode:<platform>`, `wokwi:<board>`) |
+| Launcher | host process, emulator (`qemu:<machine>`, `fvp:<model>`, `renode:<platform>`) |
 | Flasher | a framework runner (`west`) or a tool (`espflash`, `probe-rs`, `openocd`, `picotool`, `uf2`, `dfu-util`, …) |
 | Console | `stdio`, `serial`, `rtt`, `semihosting` |
 | Link | the RMW transport, as RFC-0109 resolves it: a locator (TCP/UDP) or a serial endpoint |

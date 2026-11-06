@@ -253,7 +253,7 @@ workspace shape but do not need it to evaluate the runtime.
 > carries phase-525 W3.
 
 `nros run` builds the image if stale, then does whatever "run" means for the
-image's board: launches the emulator (QEMU, Renode, Wokwi, as the registry
+image's board: launches the emulator (QEMU, Renode, as the registry
 names it), executes the host binary, or flashes the hardware and opens the
 console. It then streams the console, and with `--expect <line>` exits 0 when
 the line appears and non-zero on timeout.

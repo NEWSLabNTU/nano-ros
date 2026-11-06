@@ -327,8 +327,8 @@ args:
         let l = vec!["qemu".to_string(), "renode".to_string()];
         assert_eq!(target_for("renode", Some(&l)).unwrap(), "run_renode");
         assert_eq!(target_for("qemu", None).unwrap(), "run");
-        let e = target_for("wokwi", Some(&l)).unwrap_err();
-        assert!(e.contains("qemu, renode") && e.contains("wokwi"), "{e}");
+        let e = target_for("bochs", Some(&l)).unwrap_err();
+        assert!(e.contains("qemu, renode") && e.contains("bochs"), "{e}");
         assert!(target_for("qemu", Some(&[])).is_err());
     }
 

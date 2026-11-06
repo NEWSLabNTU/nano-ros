@@ -59,7 +59,8 @@ that is not real silicon. That covers every target the tree's CI runs today.
   - `fvp:` uses `fvp`;
   - any other emulator on a west build uses `west` (Zephyr's own board
     definition selects the emulator), and on any other build the emulator
-    kind (`qemu`, `renode`, `wokwi`);
+    kind (`qemu`, `renode`; `wokwi` until the 2026-11-06 ruling, RFC-0115
+    Amendment 1);
   - `flash` uses `command` for a template, or else the runner named by the
     method word.
 - *Plan contents.* Artifacts come from the planner's recorded `BuildOutput`,
@@ -171,7 +172,7 @@ descriptor and is not read for launch facts.
 **Landed (2026-11-01).**
 
 - *Schema.* `[board.run]` takes `emulator = "<kind>:<machine>"` (kind `qemu`,
-  `fvp`, `renode`, `wokwi`) or `host = true`, never both; `[board.run.qemu]`
+  `fvp`, `renode`; `wokwi` until 2026-11-06) or `host = true`, never both; `[board.run.qemu]`
   takes `system`, `cpu`, `machine`, `icount`, `semihosting` and `nic_model` and
   needs a `qemu:` emulator; `[board.console]` takes `kind` (`stdio`, `serial`,
   `rtt`, `semihosting`) plus `usb` and `baud` for a serial console. Every table
@@ -300,7 +301,9 @@ Carried:
   with `nros monitor` (phase-529 W3).
 - The Pico W's Wokwi twin resolves to the `west` runner, which refuses it at
   run time: Zephyr declares no Wokwi run target. A `wokwi` runner (or a
-  resolver rule naming one) is the next step for that board.
+  resolver rule naming one) is the next step for that board. (Moot since
+  2026-11-06: RFC-0115 Amendment 1 made the Pico W hardware-only, issue 2230
+  wontfix.)
 
 ### W4 — The `nros run` verb
 
@@ -619,7 +622,7 @@ Measured:
 | --- | --- | --- | --- |
 | W1 | the printed command is the executed command | — | the chapter's line is the grading line |
 | W2 | one place states how a board runs | — | — |
-| W3 | an emulator twin is a package, not a special case | — | Renode and Wokwi twins land as runners |
+| W3 | an emulator twin is a package, not a special case | — | Renode twins land as runners (Wokwi dropped by the 2026-11-06 ruling) |
 | W4 | one smoke command per image | one verb to build and watch | the grading command |
 | W5 | CI tests what users run | — | — |
 

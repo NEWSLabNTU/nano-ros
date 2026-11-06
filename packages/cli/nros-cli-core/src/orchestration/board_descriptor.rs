@@ -578,14 +578,16 @@ pub struct BoardDescriptor {
 }
 
 /// The emulator kinds RFC-0114 D10's vocabulary names, and RFC-0118 D1's
-/// launcher row: `<kind>:<machine>`.
-pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode", "wokwi"];
+/// launcher row: `<kind>:<machine>`. A twin is free and open source
+/// (RFC-0115 Amendment 1), so a paid hosted simulator is no kind here and a
+/// descriptor naming one is refused like any unknown kind.
+pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode"];
 
 /// `[board.run]` — RFC-0118 D4.
 ///
 /// `emulator = "<kind>:<machine>"` names the emulator and the machine in the
 /// RFC-0114 vocabulary (`qemu:mps2-an385`, `fvp:FVP_BaseR_AEMv8R`,
-/// `renode:nucleo_f767zi`, `wokwi:<board>`), or `host = true` says the image is
+/// `renode:nucleo_f767zi`), or `host = true` says the image is
 /// a host process. Never both. A runner-specific sub-table (`[board.run.qemu]`)
 /// holds what only that runner reads; it requires the matching emulator kind.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
@@ -603,9 +605,6 @@ pub struct BoardRun {
     /// `[board.run.renode]` — read only by the Renode runner (phase-524 W4a).
     #[serde(default)]
     pub renode: Option<BoardRunRenode>,
-    /// `[board.run.wokwi]` — read only by the Wokwi runner (phase-524 W4a).
-    #[serde(default)]
-    pub wokwi: Option<BoardRunWokwi>,
 }
 
 /// `[board.run.qemu]` — the QEMU invocation's board facts.
@@ -656,16 +655,6 @@ pub struct BoardRunRenode {
     /// not the link; captured to a file.
     #[serde(default)]
     pub console: Option<String>,
-}
-
-/// `[board.run.wokwi]` — the Wokwi twin's wiring (phase-524 W4a), read only by
-/// the Wokwi runner. The diagram part is `board-<machine>`.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct BoardRunWokwi {
-    /// The board's `[tx, rx]` pins wired to Wokwi's serial monitor: the UART
-    /// that carries the image's serial link (`["GP0", "GP1"]`).
-    pub link: Vec<String>,
 }
 
 pub use nros_orchestration_ir::target_exec::{
@@ -754,22 +743,6 @@ impl BoardRun {
                  `[board.run] emulator = \"renode:<platform>\"`"
                     .into(),
             );
-        }
-        if let Some(w) = &self.wokwi {
-            if kind != Some("wokwi") {
-                return Some(
-                    "`[board.run.wokwi]` is read only by the Wokwi runner, so it needs \
-                     `[board.run] emulator = \"wokwi:<board>\"`"
-                        .into(),
-                );
-            }
-            if w.link.len() != 2 {
-                return Some(format!(
-                    "`[board.run.wokwi] link` names the board's `[tx, rx]` pins wired to \
-                     the serial monitor, two of them (got {:?})",
-                    w.link
-                ));
-            }
         }
         None
     }
@@ -3476,13 +3449,13 @@ entry_kind = "zephyr-staticlib"
                 "[board.run]\nemulator = \"qemu:x\"\n[board.run.renode]\nlink = \"usart3\"\n",
                 "needs `[board.run] emulator = \"renode:",
             ),
+            // RFC-0115 Amendment 1: a paid hosted simulator is no emulator
+            // kind, so Wokwi is refused like any unknown one, and its wiring
+            // table is no field.
+            ("[board.run]\nemulator = \"wokwi:x\"\n", "<kind>:<machine>"),
             (
                 "[board.run]\nemulator = \"renode:x\"\n[board.run.wokwi]\nlink = [\"GP0\", \"GP1\"]\n",
-                "needs `[board.run] emulator = \"wokwi:",
-            ),
-            (
-                "[board.run]\nemulator = \"wokwi:x\"\n[board.run.wokwi]\nlink = [\"GP0\"]\n",
-                "two of them",
+                "unknown field",
             ),
             (
                 "[board.run]\nemulator = \"renode:x\"\n[board.run.renode]\nlink = \"u\"\nuart = \"v\"\n",

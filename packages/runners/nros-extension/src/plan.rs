@@ -97,7 +97,7 @@ pub struct RunnerRef {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Target {
     /// An emulator in RFC-0114's vocabulary: `qemu:<machine>`, `fvp:<model>`,
-    /// `renode:<platform>`, `wokwi:<board>`.
+    /// `renode:<platform>`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub emulator: Option<String>,
     /// The image is a host process.

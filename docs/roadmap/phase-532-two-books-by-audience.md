@@ -23,7 +23,7 @@ writing. Those phases keep their chapters, at the new paths:
 | The workspace-first rewrite: getting-started chapters, the four workspace pages merged into one, the platform chapters, `porting/*` | [phase-531](phase-531-workspace-first-project-layout.md) W8 |
 | `nros run` and the run-plan pages | [phase-528](archived/phase-528-run-on-host-and-emulator.md) W4 |
 | `nros flash`, `monitor` and `bench` pages | [phase-529](archived/phase-529-flash-monitor-bench.md) W3, W4 |
-| Renode and Wokwi twin chapters | [phase-524](phase-524-emulator-twins.md) W4b |
+| Renode twin chapters (the Wokwi one was dropped by the 2026-11-06 ruling) | [phase-524](phase-524-emulator-twins.md) W4b |
 | Old CLI spellings in the tree's docs | [phase-526](archived/phase-526-cli-two-tier-restructure.md) W4 |
 | `nros configure` vocabulary in docs | [phase-530](phase-530-nros-configure-single-pass.md) W8 |
 | Runner and command package docs | [phase-527](archived/phase-527-cli-extension-packages.md) W7 |
@@ -729,7 +729,7 @@ stays live.
 |---|---|
 | first-project, linux, baremetal, offline, freertos, freertos-c, threadx-linux, threadx-riscv64, threadx-linux-c, nuttx-arm, nuttx-arm-rust, nuttx-riscv, nuttx-riscv-rust, zephyr, zephyr-rust, workspace | phase-531 W4 (workspace scaffold, node rung); phase-530 W1 landed in #3096 (2026-11-04) |
 | pinned, pinned-newer | phase-530 W1 in a release the pinned run can pin: the pinned 0.6.0 release still needs `nros sync`, which the book no longer shows |
-| renode-nucleo, wokwi-pico | nothing: their `zephyr-twin` blocks are unchanged |
+| renode-nucleo (wokwi-pico was removed 2026-11-06) | nothing: their `zephyr-twin` blocks are unchanged |
 | zephyr-west-app, zephyr-west-app-cpp, zephyr-west-app-flash | nothing: a west app needs neither phase |
 | zephyr-west-app-rust | nothing since #3096: its `nros configure` step shipped with phase-530 W1 |
 

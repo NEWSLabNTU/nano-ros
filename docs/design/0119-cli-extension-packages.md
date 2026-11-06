@@ -44,7 +44,7 @@ A new board is already a package (`nros board new --out-of-tree`, RFC-0064
 R5 D1). A new way of running one is not. QEMU invocation lives in
 `nros-qemu-ladder` and the descriptor's `runner` string, the FVP is a special
 case in `build_next.rs`, the ESP32 launcher lives in `nros-tests`, and a
-Renode or Wokwi twin (phase-524) has nowhere to go but another special case.
+Renode twin (phase-524) has nowhere to go but another special case.
 A user with a vendor flasher can only fork the tree.
 
 ### First-party code would be privileged
