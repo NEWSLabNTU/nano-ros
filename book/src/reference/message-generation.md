@@ -55,23 +55,11 @@ The binding generator is part of the `nros` CLI and provides:
    neither, configure refuses and names this step. A project whose packages
    depend on no message package at all needs no ROS 2.
 
-## Workflow
+## What `nros build` does with message packages
 
-**Step 1: Create package.xml**
-
-Declare your ROS interface dependencies in `<depend>` tags:
-```xml
-<depend>std_msgs</depend>      <!-- For std_msgs::msg::Int32, String, etc. -->
-<depend>example_interfaces</depend>  <!-- For service types -->
-```
-
-**Step 2: Build**
-
-```bash
-cd my_ws
-source /opt/ros/humble/setup.bash   # the first build of the workspace only
-nros build
-```
+[Your own message](../tutorial/your-own-message.md), Tutorial 5, walks
+through adding a message package to a workspace and using it from a node.
+What follows is what the build does with each `<depend>`.
 
 Before it builds, this will:
 1. Parse `package.xml` to find dependencies
@@ -89,7 +77,7 @@ Each step is redone only when its inputs changed. To run them without building
 codegen-only step underneath — steps 1–4 and nothing else — and is useful when
 you want bindings without a workspace.
 
-**Step 3: there is no step 3 — `package.xml` is the dependency list**
+### `package.xml` is the dependency list
 
 A generated message crate is a **path dependency** on its own directory, and
 `nros build` writes that row for you, before it plans: one
