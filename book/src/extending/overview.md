@@ -135,6 +135,11 @@ workspace, with a `package.xml` and a small descriptor, built for the host by
 `nros build`. `nros help --all` lists each extension verb with the package
 that provides it.
 
+A verb `nros` does not know is looked up as an announced `command` package
+(`<nano_ros_provides kind="command" name="<verb>"/>`). The command runs with
+`NROS_WS_ROOT`, `NROS_TOOLCHAIN` and `NROS_CLI` set, and its exit status is
+`nros`'s. A package announcing a built-in verb is refused.
+
 ## Further reading
 
 - [Custom RMW Backend](custom-rmw.md) -- implementing a new transport protocol

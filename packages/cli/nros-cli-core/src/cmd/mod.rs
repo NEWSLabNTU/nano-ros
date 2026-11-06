@@ -201,8 +201,9 @@ pub enum Cmd {
     /// Configure a project: generate message bindings and the cargo patch
     /// config, then resolve and generate every image's build inputs.
     ///
-    /// `nros sync` plus `nros build` stages 1-4 (discover, preflight, census,
-    /// resolve, generate), under a per-project lock. Runs no target build
+    /// The message bindings and patch config, then the stages `nros build`
+    /// runs before it builds (discover, preflight, census, resolve, generate),
+    /// under a per-project lock. Runs no target build
     /// tool. Records a stamp per image, so a rerun with nothing changed is a
     /// no-op. An image this host cannot build is skipped unless named.
     // phase-530 W1, RFC-0120 D2.
