@@ -2355,8 +2355,12 @@ mod board_crate_tests {
             scaffold.is_empty() || unsupported >= 1,
             "no leaf matched a \"Not supported\" board ({scaffold:?})"
         );
+        // A REACH floor, not a quota: it proves the walk found the leaves. It
+        // moves DOWN when phase-535 retires example leaves into workspace
+        // images (generated entries, no leaf `Cargo.toml`) — 98 -> 97 for the
+        // FreeRTOS pilot's 5 Rust pair leaves (W3).
         assert!(
-            on_selection >= 98,
+            on_selection >= 97,
             "only {on_selection} leaves on the selection package"
         );
     }
