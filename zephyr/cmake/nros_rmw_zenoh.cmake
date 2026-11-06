@@ -291,8 +291,9 @@ _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_UDP_MULTICAST)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_SCOUTING)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_SERIAL)
 # The serial link's ISR -> read-task ring (zenoh-pico's own #ifndef default is
-# the Kconfig default, 1024). Only network.c reads it; no struct layout depends
-# on it, so it is not an issue-0135 ABI flag, but it is applied like one.
+# the Kconfig default, 1024). Only the UART link (uart_zephyr.c) reads it; no
+# struct layout depends on it, so it is not an issue-0135 ABI flag, but it is
+# applied like one.
 if(CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES)
     zephyr_compile_definitions(
         _Z_ZEPHYR_SERIAL_RX_RING_BYTES=${CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES})
@@ -303,7 +304,8 @@ if(CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES)
         _Z_ZEPHYR_SERIAL_TX_RING_BYTES=${CONFIG_NROS_ZENOH_SERIAL_TX_RING_BYTES})
 endif()
 # phase-474 I13 -- the serial ISR's cost per call. ISR_STATS compiles the
-# cycle/call counters into network.c; TCM moves network.c's code to ITCM and
+# cycle/call counters into the UART link; TCM moves the link's code
+# (zenoh-pico src/link/transport/serial/uart_zephyr.c) to ITCM and
 # its zero-initialised data (the RX and TX rings, the framing buffers) to DTCM.
 if(CONFIG_NROS_ZENOH_SERIAL_ISR_STATS)
     zephyr_compile_definitions(_Z_ZEPHYR_SERIAL_ISR_STATS=1)
@@ -319,17 +321,20 @@ if(CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC)
         _Z_ZEPHYR_SERIAL_ASYNC_RX_TIMEOUT_US=${CONFIG_NROS_ZENOH_SERIAL_UART_ASYNC_RX_TIMEOUT_US})
 endif()
 if(CONFIG_NROS_ZENOH_SERIAL_TCM)
-    set(_nros_serial_network_c "")
+    # issue 2303: the serial link is uart_zephyr.c since zenoh-pico split it
+    # out of system/zephyr/network.c; relocating network.c moved none of it
+    # (the rings and the DMA buffers stayed in cached SRAM).
+    set(_nros_serial_uart_c "")
     foreach(_src ${_zenoh_pico_sources})
-        if(_src MATCHES "/system/zephyr/network\\.c$")
-            set(_nros_serial_network_c "${_src}")
+        if(_src MATCHES "/link/transport/serial/uart_zephyr\\.c$")
+            set(_nros_serial_uart_c "${_src}")
         endif()
     endforeach()
-    if(NOT _nros_serial_network_c)
-        message(FATAL_ERROR "CONFIG_NROS_ZENOH_SERIAL_TCM: zenoh-pico's system/zephyr/network.c is not in this build's sources")
+    if(NOT _nros_serial_uart_c)
+        message(FATAL_ERROR "CONFIG_NROS_ZENOH_SERIAL_TCM: zenoh-pico's link/transport/serial/uart_zephyr.c is not in this build's sources")
     endif()
-    zephyr_code_relocate(FILES ${_nros_serial_network_c} LOCATION ITCM_TEXT)
-    zephyr_code_relocate(FILES ${_nros_serial_network_c} LOCATION DTCM_BSS)
+    zephyr_code_relocate(FILES ${_nros_serial_uart_c} LOCATION ITCM_TEXT)
+    zephyr_code_relocate(FILES ${_nros_serial_uart_c} LOCATION DTCM_BSS)
 endif()
 # RFC-0080 — CONFIG_NROS_ZENOH_LINK_CAN -> Z_FEATURE_LINK_CAN.
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
