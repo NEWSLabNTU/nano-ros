@@ -92,10 +92,10 @@ pub struct WorkspaceMetadataNros {
 /// * Application crate — `[package.metadata.nros.application]` describes a
 ///   native-only application pkg (per Phase 212.L.2).
 ///
-/// Phase 212.L.7 also adds an optional per-target deploy table at
-/// `[package.metadata.nros.deploy.<target>]`, used both by application pkgs
-/// and by self-bringup component pkgs (component pkg w/ `[deploy.*]` and no
-/// sibling bringup acts as its own bringup).
+/// The per-target `[package.metadata.nros.deploy.<target>]` table is retired
+/// (phase-531 W7 step 1, RFC-0121 D3): a node package names no deployment, the
+/// bringup's `[image.<id>]` does. The field survives only to refuse the key by
+/// name.
 ///
 /// At most one of `component` / `components` / `application` may be present;
 /// the loader validates this after deserialization (a serde untagged enum
@@ -134,12 +134,18 @@ pub struct PackageMetadataNros {
     /// and no in-tree manifest carries the table. Strict schema.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<EntryMetadata>,
-    /// Phase 212.L.7 / L.8 — per-target deploy tables, keyed by target name
-    /// (`native`, `mps2-an385-baremetal`, …). Populates both application pkgs and
-    /// self-bringup component pkgs (component pkg w/ `[deploy.*]` and no
-    /// sibling bringup eats its own bringup role).
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub deploy: BTreeMap<String, DeployTargetMetadata>,
+    /// `[package.metadata.nros.deploy.<target>]` — RETIRED (phase-531 W7
+    /// step 1, RFC-0121 D3). It once made a node package its own one-node
+    /// bringup (Phase 212.L.7). Present only so the schema refuses it BY NAME,
+    /// pointing at the bringup's `[image.<id>]`, instead of serde's generic
+    /// "unknown field". Never holds a value.
+    #[serde(
+        default,
+        rename = "deploy",
+        deserialize_with = "refuse_manifest_deploy",
+        skip_serializing
+    )]
+    pub retired_deploy: RetiredTable,
     /// Phase 212.B.2 stub (`[package.metadata.nros.domain]`) — opaque
     /// pass-through during the schema in-flight window. The full typed shape
     /// lands with system.toml's F.4 work. Captured as `toml::Value` so
@@ -217,21 +223,6 @@ impl PackageMetadataNros {
         } else {
             &self.components
         }
-    }
-
-    /// True when this manifest is a *self-bringup-eligible* component or
-    /// application pkg (Phase 212.L.7): it declares its component/application
-    /// surface AND at least one `[package.metadata.nros.deploy.<target>]`
-    /// table. The planner / codegen path treats such a pkg as its own
-    /// degenerate 1-component bringup when no sibling bringup pkg points at
-    /// it.
-    pub fn is_self_bringup_eligible(&self) -> bool {
-        let has_role = self.component.is_some()
-            || self.node.is_some()
-            || !self.components.is_empty()
-            || !self.nodes.is_empty()
-            || self.application.is_some();
-        has_role && !self.deploy.is_empty()
     }
 }
 
@@ -406,72 +397,17 @@ pub struct TopicDecl {
 /// component pkgs together but MUST NOT name an RTOS target in their
 /// `deploy = […]` allow-list. The allow-list semantics are enforced by
 /// `nros check`; the schema only accepts the field.
-///
-/// The application's per-target deploy block lives on the outer
-/// `[package.metadata.nros.deploy.<target>]` (shared with self-bringup
-/// component pkgs), not nested under `[application]`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ApplicationMetadata {
-    /// Allow-list of deploy targets — keys into the outer
-    /// `[package.metadata.nros.deploy.<target>]` map. Must not include an
-    /// RTOS target name (lint-enforced by `nros check`).
+    /// Allow-list of deploy targets, by name. Must not include an RTOS target
+    /// name (lint-enforced by `nros check`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deploy: Vec<String>,
     /// Optional short app name; falls back to the Cargo `[package].name`
     /// when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-}
-
-/// `[package.metadata.nros.deploy.<target>]` — Phase 212.L.8.
-///
-/// Per-target deploy parameters baked into the bringup tree by `nros
-/// codegen-system` (and recorded into `nros-plan.json` by `nros plan`).
-/// Used by application pkgs and by self-bringup component pkgs.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DeployTargetMetadata {
-    /// Board identifier (e.g. `native_sim/native/64`, `mps2-an385`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub board: Option<String>,
-    /// RMW backend (`zenoh` / `xrce` / `cyclonedds`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rmw: Option<String>,
-    /// Serialization format, by PROVIDER NAME (phase-421 W4, RFC-0088 D6).
-    ///
-    /// The Cargo-native deploy block is a nano-ros table. A `system.toml`'s
-    /// `[deploy.<t>]` is retired (phase-486 W8); there the home for the key is
-    /// `[image.<id>].serdes` (where `rmw` itself moved, RFC-0065 D6).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub serdes: Option<String>,
-    /// Baked ROS_DOMAIN_ID — embedded targets bake at build time.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub domain_id: Option<u32>,
-    /// Optional RMW locator URI (e.g. `tcp/127.0.0.1:7447`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub locator: Option<String>,
-    /// Static network overlay the `nros::main!` bake lowers into a
-    /// `DeployOverlay` (`main_macro::DeployOverlayLit`), overlaying the board's
-    /// compiled-in `Config::default()`. Dotted IPv4 strings.
-    ///
-    /// Same two-parser drift as [`ComponentMetadata::dispatch`]: the macro read
-    /// these keys while this envelope rejected them, so `Workspace::discover`
-    /// hard-failed on every board example that declares a static IP — stm32f4,
-    /// esp32, nuttx. phase-307 W5's coverage gate surfaced it. Parsed here for
-    /// discovery; the macro remains the consumer.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ip: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub gateway: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub netmask: Option<String>,
-    /// Transport selector (`udp` / `tcp` / `serial`), consumed by the bake.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transport: Option<String>,
-    /// Rust target triple the deploy builds for (`armv7a-nuttx-eabihf`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
 }
 
 /// Convenience alias: spec calls these `RemapEntry`. The existing
@@ -1111,6 +1047,22 @@ fn refuse_retired_deploy<'de, D: serde::Deserializer<'de>>(_: D) -> Result<Retir
     refuse_retired::<D>("deploy")
 }
 
+/// The refusal for a node package's `[package.metadata.nros.deploy.<target>]`
+/// (phase-531 W7 step 1). Public so the message has one spelling.
+pub const RETIRED_MANIFEST_DEPLOY: &str = "`[package.metadata.nros.deploy.<target>]` is RETIRED \
+     (phase-531 W7, RFC-0121 D3): a node package names no deployment, and nothing turns a \
+     package into its own bringup any more. State the deployment in the workspace's bringup \
+     package (`package.xml` + `system.toml`, no build file): `[image.<id>] board = \"<board>\"` \
+     (+ `rmw`, `serdes`) for what is built, and `[system] domain_id` / `locator` (or one \
+     `[host.<name>]` per machine) for the session. `nros new --image <id> --board <board>` \
+     writes that layout. Delete the table.";
+
+fn refuse_manifest_deploy<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<RetiredTable, D::Error> {
+    Err(serde::de::Error::custom(RETIRED_MANIFEST_DEPLOY))
+}
+
 fn refuse_retired_param_services<'de, D: serde::Deserializer<'de>>(
     _: D,
 ) -> Result<RetiredTable, D::Error> {
@@ -1310,8 +1262,7 @@ impl SystemToml {
             return Some(only.clone());
         }
         // The sole-`[deploy.*]` rung that stood here retired with the table
-        // (phase-486 W8): the schema refuses `[deploy.*]`, and a synthesised
-        // self-bringup projects its rows as images, which the rung above reads.
+        // (phase-486 W8): the schema refuses `[deploy.*]`.
         None
     }
 
@@ -1667,8 +1618,6 @@ impl SystemToml {
     /// serdes is the same kind of fact: one declared, language-agnostic value
     /// that decides what gets compiled. CLI flag, then `[image.<target>].serdes`
     /// (folded over `[image_defaults]`), then `[system].serdes`, then `"cdr"`.
-    /// The Cargo-native deploy block nano-ros owns carries the key too
-    /// ([`DeployTargetMetadata::serdes`]), projected here as an image.
     ///
     /// The default is `cdr` and not, say, the first provider found: a build
     /// that declares no format must behave exactly as it does today.
@@ -3127,43 +3076,24 @@ deploy = ["linux", "mps2-an385-baremetal"]
         assert_eq!(v, v2);
     }
 
-    /// `[package.metadata.nros.deploy.<target>]` populates the typed
-    /// per-target table.
+    /// phase-531 W7 step 1 — a node package's `[deploy.<target>]` table is
+    /// refused BY NAME, naming the bringup `[image.<id>]` that replaces it.
     #[test]
-    fn loads_deploy_target_metadata() {
+    fn a_manifest_deploy_table_is_refused_by_name() {
         let raw = r#"
 [component]
 class = "alpha_pkg::Node"
 name = "alpha"
 
 [deploy.native]
-board = "native_sim/native/64"
+board = "linux"
 rmw = "zenoh"
-domain_id = 7
-locator = "tcp/127.0.0.1:7447"
-
-[deploy.mps2-an385-baremetal]
-board = "mps2-an385"
-rmw = "cyclonedds"
 "#;
-        let v: PackageMetadataNros = toml::from_str(raw).expect("parse");
-        v.validate().expect("valid");
-        assert!(v.is_self_bringup_eligible());
-        assert_eq!(v.deploy.len(), 2);
-        let native = v.deploy.get("native").expect("native present");
-        assert_eq!(native.board.as_deref(), Some("native_sim/native/64"));
-        assert_eq!(native.rmw.as_deref(), Some("zenoh"));
-        assert_eq!(native.domain_id, Some(7));
-        assert_eq!(native.locator.as_deref(), Some("tcp/127.0.0.1:7447"));
-        let qemu = v.deploy.get("mps2-an385-baremetal").expect("qemu present");
-        assert_eq!(qemu.board.as_deref(), Some("mps2-an385"));
-        assert_eq!(qemu.rmw.as_deref(), Some("cyclonedds"));
-        assert!(qemu.domain_id.is_none());
-        assert!(qemu.locator.is_none());
-
-        let reser = toml::to_string(&v).expect("ser");
-        let v2: PackageMetadataNros = toml::from_str(&reser).expect("reparse");
-        assert_eq!(v, v2);
+        let err = toml::from_str::<PackageMetadataNros>(raw)
+            .expect_err("a retired deploy table must not parse");
+        let s = err.to_string();
+        assert!(s.contains("RETIRED") && s.contains("[image.<id>]"), "{s}");
+        assert!(!s.contains("unknown field"), "{s}");
     }
 
     /// `deny_unknown_fields` rejects typos on `[component]` w/ the new
@@ -3238,25 +3168,6 @@ oops = 1
         assert!(s.contains("oops") || s.contains("unknown field"), "{s}");
     }
 
-    /// `deny_unknown_fields` on the Cargo-native `[package.metadata.nros.deploy.<target>]`.
-    #[test]
-    fn rejects_unknown_field_in_deploy_target() {
-        let raw = r#"
-[component]
-class = "alpha_pkg::Node"
-name = "alpha"
-
-[deploy.native]
-board = "native_sim"
-mystery = "no"
-"#;
-        let err = toml::from_str::<PackageMetadataNros>(raw)
-            .expect_err("unknown field on deploy.<target> must reject");
-        let s = err.to_string();
-        assert!(s.contains("mystery") || s.contains("unknown field"), "{s}");
-    }
-
-    /// Component + application in the same pkg is rejected (mutex).
     #[test]
     fn rejects_component_and_application_in_same_pkg() {
         let raw = r#"

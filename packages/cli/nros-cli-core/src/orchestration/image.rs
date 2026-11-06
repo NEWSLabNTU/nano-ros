@@ -139,7 +139,7 @@ pub struct ImageBlock {
     ///
     /// `domain_id` / `locator` override `[system]`'s; `transport` overlays the
     /// board's compiled-in `Config::default()`. The address is
-    /// [`Self::net`]. These replace the retiring
+    /// [`Self::net`]. These replaced the retired
     /// `[package.metadata.nros.deploy.<board>]` table; the ONE reader is
     /// `nros_orchestration_ir::leaf_system`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

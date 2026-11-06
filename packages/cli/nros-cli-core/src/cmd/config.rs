@@ -3,7 +3,7 @@
 //!
 //! Phase 256 W9: the legacy `config.toml` reader (`--config <path>` on `show` /
 //! `check`) is removed — `config.toml` is retired (RFC-0004 §8) and 0 examples
-//! ship one. Embedded runtime config lives in `[package.metadata.nros.deploy.<t>]`.
+//! ship one. Embedded runtime config lives in the bringup's `[image.<id>]`.
 
 use crate::orchestration::{
     cargo_metadata_schema::SystemToml, nros_config::NrosConfig, params::load_sourced_toml_values,

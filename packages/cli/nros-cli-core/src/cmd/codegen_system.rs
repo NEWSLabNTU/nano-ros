@@ -3201,157 +3201,6 @@ structure:
         assert!(out.join("nros-system/system_config.h").exists());
     }
 
-    /// Phase 212.L.7 — a self-bringup component pkg (Cargo.toml +
-    /// `[package.metadata.nros.component]` + `[package.metadata.nros.deploy.*]`,
-    /// no sibling bringup pkg) becomes its own degenerate 1-component
-    /// bringup. `nros codegen-system` (run via `run`) bakes
-    /// `system_config.h` with the component + the deploy block's
-    /// domain_id / rmw / locator.
-    #[test]
-    fn codegen_system_bakes_self_bringup_component_pkg() {
-        let dir = scratch_dir("bakes_self_bringup_component_pkg");
-        // Workspace w/ ONE self-bringup component pkg.
-        fs::write(
-            dir.join("Cargo.toml"),
-            r#"
-[workspace]
-resolver = "2"
-members = ["alpha_pkg"]
-"#,
-        )
-        .unwrap();
-        fs::create_dir_all(dir.join("alpha_pkg/src")).unwrap();
-        fs::write(
-            dir.join("alpha_pkg/Cargo.toml"),
-            r#"
-[package]
-name = "alpha_pkg"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-
-[package.metadata.nros.component]
-class = "alpha_pkg::Node"
-name = "alpha"
-
-[package.metadata.nros.deploy.linux]
-board = "zephyr"
-rmw = "zenoh"
-domain_id = 7
-locator = "tcp/127.0.0.1:7447"
-"#,
-        )
-        .unwrap();
-        fs::write(dir.join("alpha_pkg/src/lib.rs"), "").unwrap();
-
-        let out = dir.join("build/alpha_pkg");
-        run(Args {
-            workspace: Some(dir.clone()),
-            bringup: Some("alpha_pkg".into()),
-            target: Some("linux".into()),
-            out: Some(out.clone()),
-            ahead_of_vendor: None,
-            file: None,
-            exec: None,
-            rmw: None,
-            dotconfig: None,
-            model: None,
-            for_entry: None,
-            nano_ros_path: None,
-        })
-        .expect("codegen runs for self-bringup");
-
-        let bake = out.join("nros-system");
-        let header = fs::read_to_string(bake.join("system_config.h")).unwrap();
-        assert!(
-            header.contains("#define NROS_SYSTEM_DOMAIN_ID 7u"),
-            "header: {header}"
-        );
-        assert!(header.contains("#define NROS_SYSTEM_RMW \"zenoh\""));
-        assert!(header.contains("#define NROS_SYSTEM_LOCATOR \"tcp/127.0.0.1:7447\""));
-        assert!(header.contains("#define NROS_SYSTEM_COMPONENT_COUNT 1"));
-        assert!(header.contains("#define NROS_SYSTEM_COMPONENT_0_NAME \"alpha\""));
-        assert!(!bake.join("system_main.c").exists());
-
-        // Self-bringup pkg is a Rust pkg → Cargo stub emitted listing the
-        // host pkg.
-        let stub = fs::read_to_string(bake.join("Cargo.toml")).unwrap();
-        assert!(stub.contains("\"alpha_pkg\""), "stub: {stub}");
-
-        // Plan json reflects the self-bringup pkg.
-        let plan = fs::read_to_string(bake.join("nros-plan.json")).unwrap();
-        assert!(plan.contains("\"bringup\": \"alpha_pkg\""), "plan: {plan}");
-        assert!(plan.contains("\"system\": \"alpha_pkg\""), "plan: {plan}");
-    }
-
-    /// Phase 212.L.7 — `[workspace.metadata.nros].default_system` may point
-    /// at a self-bringup component pkg; `nros codegen-system` (no
-    /// `--bringup` hint) resolves through the workspace pointer.
-    /// Verifies system codegen resolves a workspace default system to the self bringup package.
-    #[test]
-    fn codegen_system_resolve_self_bringup_default() {
-        let dir = scratch_dir("workspace_default_self_bringup");
-        fs::write(
-            dir.join("Cargo.toml"),
-            r#"
-[workspace]
-resolver = "2"
-members = ["alpha_pkg"]
-
-[workspace.metadata.nros]
-default_system = "alpha_pkg"
-"#,
-        )
-        .unwrap();
-        fs::create_dir_all(dir.join("alpha_pkg/src")).unwrap();
-        fs::write(
-            dir.join("alpha_pkg/Cargo.toml"),
-            r#"
-[package]
-name = "alpha_pkg"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-path = "src/lib.rs"
-
-[package.metadata.nros.component]
-class = "alpha_pkg::Node"
-name = "alpha"
-
-[package.metadata.nros.deploy.linux]
-rmw = "cyclonedds"
-domain_id = 3
-"#,
-        )
-        .unwrap();
-        fs::write(dir.join("alpha_pkg/src/lib.rs"), "").unwrap();
-
-        let out = dir.join("build/alpha_pkg");
-        run(Args {
-            workspace: Some(dir.clone()),
-            bringup: None, // resolves via [workspace.metadata.nros].default_system
-            target: None,
-            out: Some(out.clone()),
-            ahead_of_vendor: None,
-            file: None,
-            exec: None,
-            rmw: None,
-            dotconfig: None,
-            model: None,
-            for_entry: None,
-            nano_ros_path: None,
-        })
-        .expect("codegen runs via workspace pointer");
-
-        let bake = out.join("nros-system");
-        let header = fs::read_to_string(bake.join("system_config.h")).unwrap();
-        assert!(header.contains("#define NROS_SYSTEM_DOMAIN_ID 3u"));
-        assert!(header.contains("#define NROS_SYSTEM_RMW \"cyclonedds\""));
-    }
-
     /// 212.E.T4 — `--ahead-of-vendor pio` mode emits `library.json` alongside
     /// the standard bake tree.
     #[test]
@@ -3414,8 +3263,9 @@ domain_id = 3
     #[test]
     fn codegen_system_resolves_zephyr_alias() {
         let dir = scratch_dir("alias_collapsed_zephyr_shape");
-        // Lay out a fake `examples/zephyr/rust/action-client/` self-bringup
-        // pkg under a workspace root.
+        // Lay out a fake `examples/zephyr/rust/action-client/` bringup (a
+        // member with a `system.toml` beside its manifest) under a workspace
+        // root.
         let plat_dir = dir.join("examples/zephyr/rust");
         let ex_dir = plat_dir.join("action-client");
         fs::create_dir_all(ex_dir.join("src")).unwrap();
@@ -3438,16 +3288,21 @@ edition = "2021"
 
 [lib]
 path = "src/lib.rs"
-
-[package.metadata.nros.component]
-class = "nros_zephyr_action_client::Node"
-name = "action_client"
-
-[package.metadata.nros.deploy.zephyr]
-board = "zephyr"
-rmw = "cyclonedds"
-domain_id = 5
 "#,
+        )
+        .unwrap();
+        fs::write(
+            ex_dir.join("system.toml"),
+            "[system]\nname = \"action_client\"\nrmw = \"cyclonedds\"\ndomain_id = 5\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\n",
+        )
+        .unwrap();
+        // R-code.1 — a bringup that declares a `system.toml` bakes from its
+        // SystemModel.
+        fs::create_dir_all(ex_dir.join("config")).unwrap();
+        fs::write(
+            ex_dir.join("config/system_model.yaml"),
+            "meta:\n  version: 1\nstructure:\n  scopes:\n    /: {}\n  nodes: {}\n",
         )
         .unwrap();
         fs::write(ex_dir.join("src/lib.rs"), "").unwrap();
@@ -3512,15 +3367,21 @@ edition = "2021"
 
 [lib]
 path = "src/lib.rs"
-
-[package.metadata.nros.component]
-class = "native_rs_talker::Node"
-name = "talker"
-
-[package.metadata.nros.deploy.linux]
-rmw = "zenoh"
-domain_id = 11
 "#,
+        )
+        .unwrap();
+        fs::write(
+            ex_dir.join("system.toml"),
+            "[system]\nname = \"talker\"\nrmw = \"zenoh\"\ndomain_id = 11\n\n\
+             [image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        // R-code.1 — a bringup that declares a `system.toml` bakes from its
+        // SystemModel.
+        fs::create_dir_all(ex_dir.join("config")).unwrap();
+        fs::write(
+            ex_dir.join("config/system_model.yaml"),
+            "meta:\n  version: 1\nstructure:\n  scopes:\n    /: {}\n  nodes: {}\n",
         )
         .unwrap();
         fs::write(ex_dir.join("src/lib.rs"), "").unwrap();

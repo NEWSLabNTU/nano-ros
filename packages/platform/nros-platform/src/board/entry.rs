@@ -32,9 +32,9 @@ use super::runtime::RuntimeCtx;
 /// Deploy-metadata overlay threaded from `nros::main!()` into the board's
 /// boot config (issue #48 cause 1).
 ///
-/// The `nros::main!()` macro reads the Entry pkg's
-/// `[package.metadata.nros.deploy.<board>]` block at expansion time and bakes
-/// the present keys here. Each field is `None` when the deploy block omitted
+/// The `nros::main!()` macro reads the image's deployment identity
+/// (`system.toml`) at expansion time and bakes
+/// the present keys here. Each field is `None` when the image omitted
 /// it, so the board overlays only the supplied values onto its own
 /// `Config::default()` (the firmware's compiled-in default stays the source of
 /// truth for everything the deploy block does not name).
@@ -187,7 +187,7 @@ pub trait BoardEntry: super::Board {
     /// FreeRTOS / bare-metal firmware boards) override it to overlay the
     /// supplied fields onto their `Config::default()`. `nros::main!()` calls
     /// this (not `run`) for `target_os = "none"` OwnedSpin targets so the
-    /// `[package.metadata.nros.deploy.<board>]` block stops being inert.
+    /// image's deployment identity stops being inert.
     fn run_with_deploy<F, E>(_deploy: &DeployOverlay, setup: F) -> Result<(), E>
     where
         F: FnOnce(&mut RuntimeCtx<'_>) -> Result<(), E>,
