@@ -2,7 +2,7 @@
 
 <!-- type: how-to · level: 2 -->
 
-**Needs first:** [Project layout](../../tutorial/grow-your-workspace.md) ·
+**Needs first:** [Project layout](../build/organize-a-larger-workspace.md) ·
 [the contract walkthrough](../../tutorial/tell-the-build.md#write-the-contract)
 
 Write a contract for a bringup that has no `launch/` directory when you want
@@ -96,7 +96,7 @@ name = "listener"
    The build generates the launch file and copies your contract beside it. In
    a workspace, both are under `build/nros/launch/<bringup>/launch/`:
 
-   ```bash
+   ```text
    ls build/nros/launch/<bringup>/launch/
    ```
 
