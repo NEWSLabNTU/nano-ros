@@ -573,6 +573,19 @@ def main(argv: list[str]) -> int:
             print("\n".join(problems), file=sys.stderr)
             return 1
         lane = (argv[1] if len(argv) > 1 else "fast").removesuffix("-serial")
+        if lane == "tests":
+            # phase-543 W1 — the nextest harness's listing: `<tier>::<just
+            # target>` for every gate, the tier being the bucket above. The
+            # part after the first `::` IS the target, so the harness runs a
+            # test without a second lookup. Lane-exempt recipes are listed too,
+            # as `exempt::`, so ONE listing names every gate; the harness's
+            # default filter keeps them out of a plain run.
+            print("\n".join(
+                f"{tier}::check::{n}"
+                for tier in ("fast", "build", "exempt")
+                for n in b[tier]
+            ))
+            return 0
         if lane == "all":
             names = sorted(b["fast"] + b["build"])
         elif lane in ("fast", "build"):

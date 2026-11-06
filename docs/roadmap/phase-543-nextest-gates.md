@@ -1,6 +1,6 @@
 # Phase 543 — Every gate is a nextest test
 
-**Status (2026-11-06). IN PROGRESS — W1 started.** No RFC yet: the design below
+**Status (2026-11-06). IN PROGRESS — W0 in PR #3207; W1 done in its pull request.** No RFC yet: the design below
 is this phase's. If W1-W3 settle it, it moves into an RFC and this doc keeps
 the work items.
 
@@ -193,7 +193,7 @@ the `just` wrapper; `slice:` partitioning is 0.9.127, `group()` filtering
 
 ## Work items
 
-### W0 — Housekeeping — IN PROGRESS
+### W0 — Housekeeping — DONE (PR #3207)
 
 - cargo-nextest 0.9.143 -> 0.9.151 in `nros-sdk-index.toml` (both dists, sha256
   measured, floor glibc 2.27 measured on both arches unchanged). The repo's
@@ -209,7 +209,29 @@ the `just` wrapper; `slice:` partitioning is 0.9.127, `group()` filtering
   `book-audience`) and `check-profile-against-census.py` (RFC-0078's consumer
   tool, run with arguments).
 
-### W1 — The harness lists every gate
+### W1 — The harness lists every gate — DONE
+
+Landed as specified, measured on this tree:
+
+- `packages/testing/nros-gates`: a standalone root, zero dependencies, its own
+  `.config/nextest.toml` (the repository's names `binary()` filters this root
+  lacks, a parse error by issue 0743). It builds in 0.3 s. Its lock is tracked,
+  in `[rust] locked_roots`.
+- `check-gate-lists.py --list tests` is the listing: 515 `fast::`, 28
+  `build::`, 35 `exempt::` (578). A plain run's default filter leaves out
+  `exempt::`.
+- `just check nextest-gates [nextest args]` runs it with the pinned
+  cargo-nextest from the store path (`index_tool.py path`), refusing with the
+  remedy when it is absent. It never takes nextest from PATH.
+- The fast tier through nextest against today's runner, same tree: 514 of 514
+  pass in 43 s, against 44 s for `just check fast`. Both runs pass the same six
+  gates that SKIP at runtime (`artifact-identity-budget`,
+  `cxx-compat-shim-facilities`, `ivc-fsp`, `leaf-lockfiles`,
+  `python-entry-provenance`, `zephyr-workspace-foreign-checkout`), which is
+  W3's work list for this lane.
+- A gate that does not exist fails its test (rc 1); the harness refuses an
+  empty listing.
+
 
 `packages/testing/nros-gates`: lists every gate (the `check` module plus
 `[group('gate')]` recipes elsewhere) as `<tier>::<gate>`, runs one with
@@ -246,6 +268,12 @@ One wrapper recipe per lane (names: open question 1), the pre/post steps moved f
 uploaded. Retire `run-gates-parallel.sh`, `gate-shard.py`,
 `.config/build-gate-weights.txt`, `.config/gate-lane-exempt.txt`, the
 `build-serial` list; CLAUDE.md and AGENTS.md lines that name them.
+
+## Found on the way
+
+- [Issue 2306](../issues/2306-interrupted-submodule-checkout-reads-provisioned.md):
+  an interrupted submodule checkout reads as provisioned. The runner's
+  preflight (W5) is where its fix belongs.
 
 ## Open questions
 
