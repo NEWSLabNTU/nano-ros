@@ -100,47 +100,10 @@ you created would suggest, that is expected rather than a misconfiguration on
 your side. Turning the corresponding knobs down is the current remedy (see
 [Which knobs the build derives](size-an-image-from-its-contract.md#which-knobs-the-build-derives)).
 
-### The three service inboxes (zenoh)
-
-> Why these rings are fixed and how their slots are chosen is background: see
-> [Static memory and pools](../../background/static-memory-and-pools.md).
-
-Every service server is a zenoh queryable, and each queryable owns one inbox
-ring: requests wait there between the read task and the executor's spin. The
-rings sit in three tables, one per family, so a family is sized for its own
-requests rather than for the largest request any service could send:
-
-| symbol | holds | one ring is | knobs |
-| --- | --- | --- | --- |
-| `nros_rmw_zenoh::shim::service::USER_SERVICE_INBOX` | your services | depth × (slot + 12 B) | `NROS_SERVICE_INBOX_BYTES`, `NROS_SERVICE_INBOX_DEPTH` (4) |
-| `nros_rmw_zenoh::shim::service::ACTION_INBOX` | the four queryables of each action server | depth × (slot + 12 B) | `NROS_ACTION_INBOX_BYTES`, `NROS_ACTION_INBOX_DEPTH` (4) |
-| `nros_rmw_zenoh::shim::service::BUILTIN_INBOX` | the runtime's own parameter and lifecycle services | depth × (slot + 12 B) | `NROS_PARAM_SERVICE_INBOX_BYTES`, `NROS_PARAM_SERVICE_INBOX_DEPTH` (1) |
-
-The 12 B is a ring entry's length, sequence and overflow flag (on a 32-bit
-target). Each table holds one ring per queryable of its family, for every
-session: the image's queryable pool (`NROS_MAX_QUERYABLES`) is partitioned
-between the three. A per-queryable header, `SERVICE_BUFFERS`, is separate and
-paid whatever the ring is.
-
-Where a slot size comes from, in the order the build takes it:
-
-- a STATED knob (environment, Kconfig, or `[image.<id>.knobs.service|action|param]`)
-  wins;
-- otherwise it is DERIVED: the user and action slots from the largest request
-  type the image declares a server for, and the builtin slot from the largest
-  `set_parameters` request the contract's declared parameters can produce;
-- with nothing declared, the user and action slots keep 1,024 B, and the
-  builtin table is empty.
-
-Read the bytes off the image with the memory report, not off this formula: the
-compiler sizes the table, so the report is exact. Two worked readings, from
-the Autoware safety island on an S32K344: `BUILTIN_INBOX` = 24 parameter
-queryables × 1 × (1,016 + 12) = 24,672 B, and `USER_SERVICE_INBOX` fell from
-3,744 B to 288 B when those 24 queryables left it.
-
-The parameter family costs nothing here at all when the bringup declares
-`params` instead of `param_services`: the store is built, no service is
-registered, and no queryable is claimed for it.
+The zenoh service inboxes (`USER_SERVICE_INBOX`, `ACTION_INBOX`,
+`BUILTIN_INBOX`) are one table per family, each sized for its own requests;
+how their slots are sized is in
+[Static memory and pools](../../background/static-memory-and-pools.md#the-three-service-inboxes-zenoh).
 
 ## Showing a saving
 
