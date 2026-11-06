@@ -142,7 +142,7 @@ which receives nothing from it. That is why the command asks for best-effort.
 
 ## Next
 
-- **The image's configuration, scheduling tiers, and real hardware:**
+- **The image's configuration, sched tasks, and real hardware:**
   [ThreadX RISC-V 64](../guide/platforms/threadx.md).
 - **The same ThreadX as a program on this machine:**
   [ThreadX Linux simulator](threadx-linux.md).

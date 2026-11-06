@@ -11,8 +11,8 @@
 The [starter](../../starters/threadx-linux.md) scaffolded a talker for
 `board = "threadx-linux"`, Eclipse ThreadX's Linux port, and ran it as an
 ordinary host process. This page covers what comes after it: the image's
-configuration, what is particular to the simulator, ThreadX's scheduling
-tiers, and the native build. The same node package runs on QEMU's RISC-V
+configuration, what is particular to the simulator, ThreadX's sched
+tasks, and the native build. The same node package runs on QEMU's RISC-V
 machine with one changed line; the [ThreadX RISC-V 64](threadx.md) page
 covers that board.
 
