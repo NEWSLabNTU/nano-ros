@@ -132,8 +132,51 @@ fn unresolved(msg: &str) -> ! {
     exit_with(exit::PLAN_UNRESOLVED);
 }
 
-/// The flash plan, and the console plan `--monitor` opens after it.
-fn plans(args: &Args) -> (RunPlan, Option<crate::cmd::build::ResolvedBuild>) {
+/// The bench rung `bench_for` answered, or, for a dry run, the bench
+/// without a port and the reason it did not resolve. A dry run prints its
+/// plan whatever the port ladder says; a real flash stops on it (RFC-0118
+/// D2's exit 3). `probe` is the bench entry's, which the refusal lost.
+fn bench_or_note(
+    found: Result<run_plan::Bench, run_plan::ResolveError>,
+    dry_run: bool,
+    probe: Option<String>,
+) -> Result<(run_plan::Bench, Option<String>), run_plan::ResolveError> {
+    match found {
+        Ok(b) => Ok((b, None)),
+        Err(e) if dry_run => Ok((run_plan::Bench { port: None, probe }, Some(e.to_string()))),
+        Err(e) => Err(e),
+    }
+}
+
+/// The dry run's line for a serial console with no port: what a real flash
+/// would stop on, as TOML comments so the plan text still parses. `None` when
+/// the plan has a port or its console is not serial.
+fn unresolved_port_line(plan: &RunPlan, reason: Option<&str>) -> Option<String> {
+    if plan.console.kind != nros_extension::plan::ConsoleKind::Serial || plan.console.port.is_some()
+    {
+        return None;
+    }
+    let reason = reason.unwrap_or(
+        "no `--port`, no `NROS_PORT`, no bench entry for the board, and no attached \
+         device matches it. Pass `--port`, or record the board with `nros bench scan`.",
+    );
+    let mut out = String::from("# console.port: unresolved");
+    for l in reason.lines() {
+        out.push_str("\n#   ");
+        out.push_str(l);
+    }
+    Some(out)
+}
+
+/// The flash plan, the console plan `--monitor` opens after it, and (dry run
+/// only) why the port did not resolve.
+fn plans(
+    args: &Args,
+) -> (
+    RunPlan,
+    Option<crate::cmd::build::ResolvedBuild>,
+    Option<String>,
+) {
     if let Some(file) = &args.plan {
         let mut plan = RunPlan::read(file).unwrap_or_else(|e| unresolved(&e.to_string()));
         if plan.verb != Verb::Flash {
@@ -149,7 +192,7 @@ fn plans(args: &Args) -> (RunPlan, Option<crate::cmd::build::ResolvedBuild>) {
         if !args.passthrough.is_empty() {
             plan.passthrough = args.passthrough.clone();
         }
-        return (plan, None);
+        return (plan, None, None);
     }
     let one =
         run_plan::select_target(&args.selection(), "flash").unwrap_or_else(|e| unresolved(&e));
@@ -164,17 +207,26 @@ fn plans(args: &Args) -> (RunPlan, Option<crate::cmd::build::ResolvedBuild>) {
         runner: args.runner.clone(),
         passthrough: args.passthrough.clone(),
     };
-    let machine = crate::cmd::bench::Machine::load()
-        .unwrap_or_else(|e| unresolved(&format!("reading this machine's bench: {e:#}")));
-    let bench = run_plan::bench_for(
-        Verb::Flash,
-        &one.board,
-        descriptor,
-        &one.run_tables,
-        &invocation,
-        &machine,
-    )
-    .unwrap_or_else(|e| unresolved(&e.to_string()));
+    let (bench, port_note) = match crate::cmd::bench::Machine::load() {
+        Ok(machine) => bench_or_note(
+            run_plan::bench_for(
+                Verb::Flash,
+                &one.board,
+                descriptor,
+                &one.run_tables,
+                &invocation,
+                &machine,
+            ),
+            args.dry_run,
+            machine.file.entry(&one.board).and_then(|e| e.probe.clone()),
+        )
+        .unwrap_or_else(|e| unresolved(&e.to_string())),
+        Err(e) if args.dry_run => (
+            run_plan::Bench::default(),
+            Some(format!("reading this machine's bench: {e:#}")),
+        ),
+        Err(e) => unresolved(&format!("reading this machine's bench: {e:#}")),
+    };
     let plan = run_plan::resolve(
         Verb::Flash,
         Inputs {
@@ -188,7 +240,7 @@ fn plans(args: &Args) -> (RunPlan, Option<crate::cmd::build::ResolvedBuild>) {
         },
     )
     .unwrap_or_else(|e| unresolved(&e.to_string()));
-    (plan, Some(one))
+    (plan, Some(one), port_note)
 }
 
 /// The console plan for `--monitor`: the flash plan's board on the same port.
@@ -207,10 +259,21 @@ pub fn monitor_plan(flash: &RunPlan) -> RunPlan {
 ///
 /// Never returns an error; every failure is an exit code (RFC-0118 D2).
 pub fn run(args: Args) -> eyre::Result<()> {
-    let (plan, one) = plans(&args);
+    let (plan, one, port_note) = plans(&args);
     let console = args.monitor.then(|| monitor_plan(&plan));
     if args.dry_run {
         print!("{}", run_plan::render_plan_text(&plan, args.why, args.json));
+        // A real flash would stop here; the dry run says so and goes on.
+        if let Some(line) = unresolved_port_line(&plan, port_note.as_deref()) {
+            if args.json {
+                eprintln!(
+                    "nros flash: {}",
+                    line.replace("\n#   ", "\n  ").trim_start_matches("# ")
+                );
+            } else {
+                println!("{line}");
+            }
+        }
         if let Some(c) = &console {
             if !args.json {
                 println!("\n# --monitor: then the console");
@@ -451,5 +514,48 @@ mod tests {
         assert!(c.passthrough.is_empty());
         assert!(!c.args.contains_key("command"));
         assert!(c.validate().is_ok());
+    }
+
+    /// A dry run prints its plan when the port ladder cannot answer (a bench
+    /// entry whose device is unplugged, or two matching devices). A real
+    /// flash still stops on it, as RFC-0118 D2's exit 3.
+    #[test]
+    fn a_dry_run_keeps_its_plan_when_the_port_does_not_resolve() {
+        let refused = || {
+            Err(run_plan::ResolveError::Unresolved(
+                "board `b` is recorded as serial 42, and no attached device has it".into(),
+            ))
+        };
+        let (bench, note) = bench_or_note(refused(), true, Some("probe-7".into()))
+            .expect("a dry run does not stop on the port");
+        assert_eq!(bench.port, None);
+        assert_eq!(bench.probe.as_deref(), Some("probe-7"));
+        assert!(note.unwrap().contains("serial 42"));
+        assert!(bench_or_note(refused(), false, None).is_err());
+        let found = run_plan::Bench {
+            port: Some("/dev/ttyACM0".into()),
+            probe: None,
+        };
+        let (bench, note) = bench_or_note(Ok(found.clone()), true, None).unwrap();
+        assert_eq!(bench, found);
+        assert_eq!(note, None);
+    }
+
+    /// The dry run's text shows a serial console with no port as unresolved,
+    /// with the reason, every line a TOML comment.
+    #[test]
+    fn the_dry_run_text_shows_an_unresolved_port() {
+        let mut p = flash_plan("/dev/ttyACM0");
+        assert_eq!(unresolved_port_line(&p, None), None);
+        p.console.port = None;
+        let line = unresolved_port_line(&p, Some("two devices match:\n  /dev/a\n  /dev/b"))
+            .expect("no port on a serial console");
+        assert!(line.starts_with("# console.port: unresolved"), "{line}");
+        assert!(line.lines().all(|l| l.starts_with('#')), "{line}");
+        assert!(line.contains("/dev/b"), "{line}");
+        let default = unresolved_port_line(&p, None).unwrap();
+        assert!(default.contains("--port"), "{default}");
+        p.console.kind = ConsoleKind::Rtt;
+        assert_eq!(unresolved_port_line(&p, None), None);
     }
 }
