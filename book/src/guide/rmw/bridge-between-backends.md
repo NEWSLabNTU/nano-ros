@@ -201,7 +201,7 @@ shares the primary session; any other opens a session of its own. Set
 `NROS_RMW` to the primary's name when the image links several backends, so
 the primary does not depend on link order:
 
-```bash
+```text
 NROS_RMW=zenoh ./my_bridge
 ```
 

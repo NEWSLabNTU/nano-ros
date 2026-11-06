@@ -71,7 +71,7 @@ workspace, checks the install itself.
 2. Provision the board and the RMW's host tools. `--rmw` defaults to
    `zenoh`:
 
-   ```bash
+   ```text
    nros setup <board> --rmw <zenoh|xrce|cyclonedds>
    ```
 
@@ -194,7 +194,7 @@ between the two releases before it writes anything (`--dry-run` writes
 nothing), and the next `nros build` regenerates the bindings. Then run
 `nros setup <board>` again to bring the SDK store up to the new index:
 
-```bash
+```text
 curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
     | sh -s -- --version <newer>
 nros pin <newer>

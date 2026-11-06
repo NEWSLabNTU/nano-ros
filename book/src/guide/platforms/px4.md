@@ -191,7 +191,7 @@ Ctrl-C stops the daemon.
 To fly a simulated vehicle, run SITL against a simulator instead. With
 Gazebo (Harmonic) installed per PX4's documentation:
 
-```bash
+```text
 make -C PX4-Autopilot px4_sitl_default gz_x500 \
     EXTERNAL_MODULES_LOCATION="$PWD/px4-modules/nano-ros"
 # In the PX4 console:
