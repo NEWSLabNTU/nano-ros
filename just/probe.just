@@ -56,6 +56,11 @@ platform name:
 platform-asset out="tmp/probe-asset":
     PROBE_TRACK=installed PROBE_ASSET_OUT={{out}} ./scripts/probe/run-bootstrap-probe.sh
 
+# book/src/tutorial/what-you-just-built.md — Tutorial 2, replayed after
+# chapter 1 on the same project (phase-537 W5).
+[group("main")]
+tutorial-2: (platform "tutorial-2")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]
