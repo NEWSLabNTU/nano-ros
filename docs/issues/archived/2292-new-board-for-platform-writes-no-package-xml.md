@@ -77,6 +77,14 @@ board resolves with `nros board info` on `$NROS_EXTRA_BOARD_PATH`),
 `nros-board.toml` and `package.xml`), and
 `new_board_for_zephyr_names_the_verb_that_takes_a_board_id`.
 
+Routing `nros new board` through `board_new` put its last next-step line,
+`just check fast`, on a user road that never printed it. That line is now
+printed on the in-tree arm only, where the recipe exists and is the
+contributor's acceptance; the out-of-tree road (both spellings) prints no
+contributor step. `the_out_of_tree_next_steps_name_no_contributor_step`
+asserts it for both spellings. A user-tier check verb to print there instead
+is issue 2294's open question.
+
 ### Not fixed here
 
 The acceptance holds for a board on a platform the catalog knows. A board for
