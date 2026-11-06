@@ -40,7 +40,8 @@ pub struct NewArgs {
     /// through `$NROS_EXTRA_BOARD_PATH`, which this prints.
     #[arg(long)]
     pub out_of_tree: Option<PathBuf>,
-    /// nano-ros workspace root (auto-detected from cwd if omitted).
+    /// nano-ros checkout to write the in-tree board into (auto-detected from
+    /// cwd if omitted). Not read with `--out-of-tree`, which needs no checkout.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
     /// Print what would be written and write nothing.
@@ -79,16 +80,24 @@ pub fn run(args: NewArgs) -> Result<()> {
         bail!("--west-board is only meaningful with --platform zephyr");
     }
 
-    let root = match &args.workspace {
-        Some(p) => p.clone(),
-        None => crate::cmd::board::find_workspace_root()?,
-    };
-    let dir = match &args.out_of_tree {
-        Some(base) => base.join(format!("nros-board-{}", args.name)),
-        None => root
-            .join("packages")
-            .join("boards")
-            .join(format!("nros-board-{}", args.name)),
+    // Issue 2291 -- only the in-tree arm writes into a checkout, so only it
+    // asks for one. The out-of-tree road is the installed-track user's, who
+    // has no checkout to find. The in-tree arm keeps the checkout walk and not
+    // `board::catalog_root`: that ladder also answers with an installed SDK
+    // root, and a scaffold must never write into an install prefix.
+    let pkg_dir = format!("nros-board-{}", args.name);
+    let (dir, root) = match &args.out_of_tree {
+        Some(base) => (base.join(&pkg_dir), None),
+        None => {
+            let root = match &args.workspace {
+                Some(p) => p.clone(),
+                None => crate::cmd::board::find_workspace_root()?,
+            };
+            (
+                root.join("packages").join("boards").join(&pkg_dir),
+                Some(root),
+            )
+        }
     };
     if dir.exists() {
         bail!("{} already exists", dir.display());
@@ -121,8 +130,8 @@ pub fn run(args: NewArgs) -> Result<()> {
         )?;
     }
 
-    if args.out_of_tree.is_none() {
-        append_registry_row(&root, &args)?;
+    if let Some(root) = &root {
+        append_registry_row(root, &args)?;
     }
 
     println!("wrote {}", dir.display());

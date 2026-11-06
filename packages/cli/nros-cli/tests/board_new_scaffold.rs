@@ -227,3 +227,49 @@ fn a_scaffolded_host_board_states_how_it_runs() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// A temp directory with no nano-ros checkout above it: the installed-track
+/// user's cwd. Asserted, not assumed, so a TMPDIR inside a checkout fails this
+/// precondition loudly instead of passing the test for the wrong reason.
+fn outside_every_checkout() -> tempfile::TempDir {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    assert!(
+        tmp.path()
+            .ancestors()
+            .all(|a| !a.join("packages").join("boards").is_dir()),
+        "the temp dir must sit outside every checkout: {}",
+        tmp.path().display()
+    );
+    tmp
+}
+
+/// Issue 2291 -- the out-of-tree road writes nothing into a checkout, so it
+/// must not need one. Run from a directory no checkout encloses, with no
+/// `--workspace` and no `$NROS_WORKSPACE_ROOT`.
+#[test]
+fn out_of_tree_needs_no_checkout() {
+    let tmp = outside_every_checkout();
+    let boards = tmp.path().join("boards");
+    let out = Command::new(nros())
+        .args([
+            "board",
+            "new",
+            "nocheckout",
+            "--platform",
+            "freertos",
+            "--out-of-tree",
+        ])
+        .arg(&boards)
+        .current_dir(tmp.path())
+        .env_remove("NROS_WORKSPACE_ROOT")
+        .output()
+        .expect("run nros board new");
+    assert!(
+        out.status.success(),
+        "--out-of-tree must scaffold with no checkout: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let dir = boards.join("nros-board-nocheckout");
+    assert!(dir.join("nros-board.toml").is_file());
+    assert!(dir.join("package.xml").is_file());
+}
