@@ -18,6 +18,7 @@
 - [NuttX in QEMU (RISC-V)](./starters/nuttx-riscv.md)
 - [ThreadX in QEMU (RISC-V 64)](./starters/threadx-riscv64.md)
 - [Linux host](./starters/linux-host.md)
+- [Zephyr native_sim](./starters/zephyr-native-sim.md)
 - [ThreadX Linux simulator](./starters/threadx-linux.md)
 
 # Tutorial
