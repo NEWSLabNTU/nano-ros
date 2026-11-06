@@ -1,15 +1,17 @@
 ---
 id: 2285
 title: "Tier-2 nightly: the three Zephyr native_sim workspace Rust images are refused by `nros build --dry-run` for a target and component the lane just provisioned"
-status: open
+status: resolved
 type: bug
 area: [ci, zephyr, cli, toolchain]
 severity: medium
 found: 2026-11-05
-related: [2151, 1672, 2211, 1474, 1277, 2242, phase-466]
+related: [2151, 1672, 2211, 1474, 1277, 2242, 2288, phase-466]
+resolved: 2026-11-07
+resolved_in: "5a0856da51 (issue 2288); confirmed by tier-2 nightly 42178807367"
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — a
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — a
 scheduled lane that has produced the same red two nights running.
 
 ## Measured
@@ -80,3 +82,30 @@ whose `zephyr.log` builds `build-ws-rs-entry-zenoh`,
 local reproduction is `NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-entry-zenoh just
 zephyr build-fixtures` on a host that has the target installed for the pinned
 toolchain.
+
+## Resolution
+
+This is the failure issue 2288 found and fixed, filed the same day from the
+night before. Commit 5a0856da51 ("preflight asks rustup from the workspace it
+builds") closed it. The preflight ran a bare `rustup` in the process's
+working directory. `scripts/build/zephyr-fixture-run-one.sh` runs
+`nros build --dry-run` from the Zephyr west workspace, which is outside the
+checkout, so rustup answered for the default `stable` toolchain (minimal
+profile). That toolchain has neither `x86_64-unknown-none` nor `clippy`. The
+build uses the checkout's pinned toolchain, which the lane provisioned with
+both. The issue's first suspect, a cwd that resolves a different toolchain,
+was the cause. Every rustup probe now runs from the workspace root through
+`preflight::rustup_in`, and 2288's `rustup_is_asked_from_the_workspace_it_builds`
+is the test.
+
+Confirmed by the issue's own criterion: tier-2 nightly 42178807367
+(2026-11-06, main `658f2d8ac1`, which contains 5a0856da51). Its
+`tier2-nightly-junit` artifact's `zephyr.log` reports `[ok]` for
+`build-ws-rs-entry-zenoh`, `build-ws-rs-params-entry-zenoh` and
+`build-ws-rs-lifecycle-entry-zenoh`, and no `missing prerequisites` line.
+That job's zephyr stage still failed, on a west fixture
+(`zephyr_self_pkg_rust`: `nros dev codegen system` refuses the image that
+claims entry `alpha_pkg`), which is a different failure and not this issue.
+
+No code change here, so no changelog fragment beyond 2288's.
+
