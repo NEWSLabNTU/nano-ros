@@ -75,6 +75,7 @@
 
 # Reference
 
+- [Contract format](./reference/contract-format.md)
 - [`nros` CLI](./reference/cli.md)
 - [Configuration Surface](./reference/configuration-surface.md)
 - [system.toml keys](./reference/system-toml.md)

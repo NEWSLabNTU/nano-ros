@@ -673,6 +673,14 @@ was = ["from-ros2/vs-micro-ros.md", "background/vs-micro-ros.md"]
 note = "merged by W10 into How nano-ros differs from ROS 2 and micro-ROS, as Compared with micro-ROS. Cut as unverified or hand-typed status: first-release dates, code-size estimates, Kani/Verus counts, governance and commercial-support rows, the source-only release claim (the CLI ships as a GitHub release with prebuilt SDK packages)"
 
 [[page]]
+book = "user"
+path = "reference/contract-format.md"
+action = "new phase-537"
+batch = "p537-w11"
+generated = "scripts/gen-contract-format.py"
+note = "Contract format reference (W11, RFC-0124 D6): committed, rendered from ros-launch-manifest's format reference at the tag the CLI pins; the gate re-renders it from cargo's checkout of that commit"
+
+[[page]]
 old = "reference/cli.md"
 book = "user"
 path = "reference/cli.md"

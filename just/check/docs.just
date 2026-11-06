@@ -114,6 +114,17 @@ book-links:
 book-audience:
     @python3 scripts/check-book-audience.py
 
+# phase-537 W11 (RFC-0124 D6) — the book's contract format reference is
+# ros-launch-manifest's own format reference at the tag the CLI pins, never
+# retyped. The page is committed; this re-renders it from cargo's checkout of
+# the pinned commit and refuses any difference, and refuses an upstream
+# rendering whose keys differ from its `field_table.rs`. With no checkout (a
+# clean clone that never built the CLI) it still refuses a page naming another
+# pin, and reports the table comparison NOT VERIFIED. Buildless, ~0.1 s.
+[private]
+contract-format:
+    @python3 scripts/gen-contract-format.py --check
+
 # phase-517 W1 — every board the book names is one `nros` accepts: an index
 # `[board.*]` key or a board descriptor's `names` alias, both DERIVED per run.
 # The retired host-board words (`RETIRED_BOARD_KEYS`, harvested from
