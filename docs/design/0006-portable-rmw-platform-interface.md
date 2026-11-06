@@ -167,7 +167,7 @@ Concrete shape per layer:
   full contract — surface inventory, capability groups, two port
   shapes (Rust trait + macro export vs pure C body), and the
   "adding a new port" checklist — lives in
-  [`book/src/reference/platform-c-abi.md`](../../book/src/reference/platform-c-abi.md).
+  [`book/src/reference/platform-api.md`](../../book/src/reference/platform-api.md).
 
 cbindgen still produces `nros_generated.h` for message types —
 that surface is data-only, machine-derivable, and a poor fit for
