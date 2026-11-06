@@ -47,10 +47,12 @@ export PATH="${NROS_HOME:-$HOME/.nros}/bin:$PATH"           # if it says to
 #    Zephyr way and point ZEPHYR_SDK_INSTALL_DIR at it (or register it):
 export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-0.16.8
 
-# 5. Patches into YOUR workspace (Zephyr 4.x: `west patch apply` instead)
-for p in nsos-recvmsg-patch native-sim-ipproto-ip-patch nsos-adapt-ipproto-ip-patch; do
-    bash modules/nano-ros/scripts/zephyr/$p.sh "$PWD"
-done
+# 5. nano-ros's patch set for the workspace's Zephyr line, into YOUR workspace:
+#    the native_sim socket (NSOS) patches and, in a workspace that holds
+#    zephyr-lang-rust, the change that carries nano-ros's settings to a Rust
+#    image's cargo (a Rust image's configure refuses a workspace without it,
+#    issue 2185).
+nros setup board zephyr --zephyr-workspace "$PWD" --workspace modules/nano-ros
 
 # 6. Build + run. The C codegen resolves std_msgs's .msg via NROS_STD_MSGS_DIR
 #    (a ROS install, or any dir with std_msgs/msg/*.msg). The app lives at

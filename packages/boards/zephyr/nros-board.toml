@@ -73,6 +73,17 @@ rust_components = ["clippy"]
 # per-leaf conf file. A native board of your own names the same snippet.
 snippets = ["nros-nsos"]
 
+# Issue 2185 -- what `nros setup board zephyr --zephyr-workspace <ws>` does to a
+# reader's own west workspace: apply the 3.7 patch set, whose
+# `cargo-features-patch.sh` is the only carrier of nano-ros's settings to
+# zephyr-lang-rust's cargo, and whose NSOS patches the native_sim socket paths
+# were written against. No `rust_targets`: this board needs no Rust, and the
+# triple a Rust image on it compiles for is `[board.zephyr] rust_target`, a
+# template the host resolves (`nros setup board` adds it to a workspace that
+# holds zephyr-lang-rust).
+[board.provisioning]
+zephyr_line = "3.7"
+
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT). Zephyr heap +
 # mutex are Kconfig-gated (CONFIG_HEAP_MEM_POOL_SIZE / CONFIG_MULTITHREADING);
 # declared true, lowered to prj.conf (not -D) by C.2.

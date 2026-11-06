@@ -99,6 +99,18 @@ revision nano-ros builds with on Zephyr 3.7. Only a
 [Rust application](#a-rust-application) uses it; leave it out if you write
 none.
 
+Then give the workspace, new or your own, the patches nano-ros carries for
+Zephyr 3.7. They change Zephyr's host-socket driver, which the native_sim
+network uses, and zephyr-lang-rust, whose cargo command otherwise carries none
+of nano-ros's settings for the board. A Rust application's configure refuses a
+workspace without them, naming this command. In a workspace that holds
+zephyr-lang-rust it also adds the Rust target a Rust application on
+`native_sim` compiles for:
+
+```bash probe=36 track=installed variant=west-app,west-app-cpp,west-app-rust,west-app-flash
+nros setup board zephyr --zephyr-workspace "$PWD"
+```
+
 nano-ros supports both the Zephyr 3.7 LTS line and the 4.x line; the
 [version table](zephyr.md#which-zephyr--37-lts-and-4x-both-supported) lists
 what differs between them.
@@ -598,16 +610,14 @@ zephyr-lang-rust needs three things a C application does not: the Rust target
 the Zephyr board implies (`x86_64-unknown-none` for `native_sim/native/64` on
 an x86_64 host), rustup's `clippy` (it lints every Rust application as part of
 the build), and clang with libclang, for the bindings it generates from
-Zephyr's headers. `nros setup board` adds the target and applies nano-ros's
-changes to the west workspace, without which zephyr-lang-rust's cargo command
-carries none of nano-ros's settings for the board. From the top of the west
-workspace:
+Zephyr's headers. The `nros setup board` step
+[above](#set-up-the-host-and-the-west-workspace) added the target. From the
+top of the west workspace:
 
 ```bash probe=37 track=installed variant=west-app-rust
 . "$HOME/.cargo/env"     # the cargo the install set up
 sudo apt-get install -y --no-install-recommends clang libclang-dev
 rustup component add clippy
-nros setup board zephyr --zephyr-workspace "$PWD"
 ```
 
 The application is a crate whose library is named `rustapp` and built as a

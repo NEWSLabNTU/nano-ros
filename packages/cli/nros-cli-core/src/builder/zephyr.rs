@@ -1103,3 +1103,13 @@ mod configure_once_tests {
         );
     }
 }
+
+/// Where a west workspace holds zephyr-lang-rust: the `path:` nano-ros's own
+/// manifests and the book's give it, and the one directory
+/// `scripts/zephyr/cargo-features-patch.sh` edits. `nros setup board` asks it
+/// whether the workspace holds the module (issue 2185); the configure-time
+/// refusal of an unpatched one asks Zephyr's own `ZEPHYR_LANG_RUST_MODULE_DIR`.
+#[must_use]
+pub fn lang_rust_module_dir(workspace: &Path) -> PathBuf {
+    workspace.join("modules").join("lang").join("rust")
+}
