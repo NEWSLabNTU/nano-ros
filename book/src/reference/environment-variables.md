@@ -260,7 +260,6 @@ generated root sets them from the image, and none is yours to set.
 | `NROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`, `cyclonedds` |
 | `NROS_ROS_EDITION` | `humble` | `humble`, `iron`, `jazzy` |
 | `NROS_FEATURES` | (empty) | extra cargo features for the Rust build, such as `rosout` |
-| `NROS_BUILD_CODEGEN` | `ON` | `ON`, `OFF` |
 | `NROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time source bootstrap of a checkout; an installed SDK takes its sources from `nros setup` |
 | `NROS_CARGO_PROFILE` | derived from `CMAKE_BUILD_TYPE` | the cargo profile for the Rust half; see [Build profiles](../guide/build/build-profiles.md) |
 
