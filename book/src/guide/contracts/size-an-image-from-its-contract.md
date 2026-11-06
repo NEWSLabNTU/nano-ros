@@ -3,7 +3,7 @@
 <!-- type: how-to · level: 2 -->
 
 **Needs first:** [the contract walkthrough](../../tutorial/tell-the-build.md#write-the-contract) ·
-[Project layout](../../tutorial/grow-your-workspace.md)
+[Project layout](../build/organize-a-larger-workspace.md)
 
 Write a contract that describes every node of an image when you want the build
 to size that image's static pools from what it creates, instead of from the

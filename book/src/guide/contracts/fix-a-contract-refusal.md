@@ -24,7 +24,7 @@ messages, angle brackets stand for your own names.
 
 1. **Rebuild the image and keep the output.**
 
-   ```bash
+   ```text
    nros build <image>
    ```
 

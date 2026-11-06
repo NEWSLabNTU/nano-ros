@@ -15,7 +15,10 @@
 # There is no writer: a reason is a person's to state.
 
 # Contracts and sizing: its open PR rewrites these pages as how-tos.
+guide/contracts/contracts-for-a-bringup-with-no-launch-file.md unprobed-steps=1  # W7 #3168, landed after this baseline
+guide/contracts/declare-qos-in-a-contract.md unprobed-steps=1  # W7 #3168, landed after this baseline
 guide/contracts/measure-static-memory.md unprobed-steps=1  # W7 #3168
+guide/contracts/size-an-image-from-its-contract.md unprobed-steps=2  # W7 #3168, landed after this baseline
 
 # Reference: its open PR regenerates these pages from their owners.
 reference/build-outputs.md unprobed-steps=3           # W11 #3180
