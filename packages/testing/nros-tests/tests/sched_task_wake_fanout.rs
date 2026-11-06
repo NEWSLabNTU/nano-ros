@@ -142,7 +142,7 @@ unsafe extern "C" fn stub_create_subscription(
     let idx = NEXT_SUB.fetch_add(1, SeqCst);
     assert!(
         idx < SCHED_TASKS,
-        "the stub has room for {SCHED TASKS} subscriptions"
+        "the stub has room for {SCHED_TASKS} subscriptions"
     );
     // SAFETY: `out` is the runtime's struct for this subscription.
     unsafe { (*out).backend_data = (idx + 1) as *mut core::ffi::c_void };
@@ -419,7 +419,7 @@ fn a_non_attributing_backend_wakes_every_high_sched_task_and_each_wake_is_bounde
     // includes the wake itself (the futex, the switch-in), not only the pass.
     let (spurious, per_wake, per_arrival) = threaded_fanout_cost(sched_tasks);
     eprintln!(
-        "fan-out over {SCHED TASKS} sched tasks, one thread each: {per_arrival:.2} high-sched-task wakes per \
+        "fan-out over {SCHED_TASKS} sched tasks, one thread each: {per_arrival:.2} high-sched-task wakes per \
          low-sched-task arrival ({spurious} over {ARRIVALS} arrivals), {per_wake:?} of thread CPU each"
     );
     assert!(
