@@ -1,0 +1,55 @@
+# check-book-audience rule F (phase-537 W13): the Book charter's findings
+# left when its rules began to refuse. Each row is one finding, by the key
+# `check-book-audience.py --charter` prints in its first column, then its
+# reason or owner:
+#
+#     <page> <rule>[=<count>]  # <reason or owner>
+#
+# A RATCHET, not an allowlist: this file may only shrink. A finding it does
+# not list fails. A row that no longer fires fails until you remove it. A
+# counted row (`unprobed-steps=N`) fails when the page gains a step with no
+# probe fence, and fails when it loses one until you lower N to the new count.
+# Remove a row by fixing its finding: probe the step on a track, tag a fence
+# that is not a runnable step with what it is (`text`, `console`, `toml`),
+# or merge the page; then delete or lower the row in the same commit.
+# There is no writer: a reason is a person's to state.
+
+# Contracts and sizing: its open PR rewrites these pages as how-tos.
+guide/contracts/measure-static-memory.md unprobed-steps=1  # W7 #3168
+
+# Reference: its open PR regenerates these pages from their owners.
+reference/build-outputs.md unprobed-steps=3           # W11 #3180
+reference/message-generation.md unprobed-steps=6      # W11 #3180
+reference/troubleshooting-index.md unprobed-steps=14  # W11 #3180
+
+# Extending and Releases: its open PR owns these pages. Their steps scaffold
+# a board, platform or package the reader names, and no track replays them yet.
+extending/add-a-board.md unprobed-steps=3                  # W12 #3181
+extending/add-a-platform.md unprobed-steps=2               # W12 #3181
+extending/runner-and-command-packages.md unprobed-steps=6  # W12 #3181
+migrating/from-older-releases.md unprobed-steps=1          # W12 #3181
+
+# User guide pages in this tree whose steps are real commands that no track
+# replays yet. Each needs a page-level track; see writing-the-book.md in the
+# Internals book.
+guide/build/build-profiles.md unprobed-steps=7                 # probe coverage follow-up
+guide/build/configure-an-image.md unprobed-steps=3             # probe coverage follow-up
+guide/build/existing-cmake-or-vendor-tree.md unprobed-steps=4  # probe coverage follow-up
+guide/build/install-options.md unprobed-steps=3                # probe coverage follow-up
+guide/build/mix-languages.md unprobed-steps=4                  # probe coverage follow-up
+guide/build/organize-a-larger-workspace.md unprobed-steps=8    # probe coverage follow-up
+guide/deploy/deploy-to-production.md unprobed-steps=5          # probe coverage follow-up
+guide/deploy/troubleshoot.md unprobed-steps=3                  # probe coverage follow-up
+guide/deploy/use-simulated-time.md unprobed-steps=3            # probe coverage follow-up
+guide/platforms/px4.md unprobed-steps=6                        # probe coverage follow-up
+guide/port/move-a-ros2-project.md unprobed-steps=5             # probe coverage follow-up
+guide/port/port-a-cpp-node.md unprobed-steps=3                 # probe coverage follow-up
+guide/realtime/analyze-timing.md unprobed-steps=4              # probe coverage follow-up
+guide/realtime/pick-a-scheduling-model.md unprobed-steps=2     # probe coverage follow-up
+guide/rmw/bridge-between-backends.md unprobed-steps=3          # probe coverage follow-up
+guide/rmw/configure-zenoh.md unprobed-steps=7                  # probe coverage follow-up
+guide/rmw/switch-the-rmw-per-image.md unprobed-steps=5         # probe coverage follow-up
+guide/rmw/tune-throughput-and-latency.md unprobed-steps=2      # probe coverage follow-up
+guide/rmw/use-a-serial-link.md unprobed-steps=5                # probe coverage follow-up
+guide/rmw/use-cyclone-dds.md unprobed-steps=7                  # probe coverage follow-up
+guide/rmw/use-xrce-dds.md unprobed-steps=8                     # probe coverage follow-up
