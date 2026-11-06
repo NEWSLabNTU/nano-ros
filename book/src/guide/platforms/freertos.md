@@ -2,6 +2,8 @@
 
 <!-- type: how-to · level: 2 -->
 
+**Needs first:** [Get started on mps2-an385 in QEMU (FreeRTOS)](../../starters/mps2-an385-freertos.md)
+
 > **Support level:** [`mps2-an385-freertos`](../../reference/boards/mps2-an385-freertos.md), [`freertos-posix`](../../reference/boards/freertos-posix.md), [`s32z270-freertos`](../../reference/boards/s32z270-freertos.md), [`mps3-an536-freertos`](../../reference/boards/mps3-an536-freertos.md). Each page states what nano-ros can show for the board (where it runs, how often, and its breadth), generated from the board support registry; [Board Support Levels](../../reference/board-support-levels.md) explains the words.
 
 Single-node starter on FreeRTOS + lwIP, cross-compiled for Cortex-M3
@@ -10,44 +12,14 @@ bridge / sudo. Rust, C, and C++ talkers are on
 [GitHub](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos)
 as reading material; this page scaffolds your own.
 
-> **Prereqs.** `nros setup mps2-an385-freertos` is the single command
-> that prepares your machine for this board. It fetches a prebuilt
-> toolchain set into the shared store at `~/.nros/sdk` — the
-> `arm-none-eabi-gcc` cross-compiler, the patched
-> `qemu-system-arm` emulator, and the FreeRTOS kernel + lwIP sources.
-> You do **not** hand-install a cross-toolchain. The zenoh path DOES
-> need a ROS 2 install for the router (`ros2 run rmw_zenoh_cpp
-> rmw_zenohd`); the xrce path needs only the Micro-XRCE-DDS agent,
-> which `nros setup` installs.
-
-## Setup
-
-With the `nros` CLI on PATH ([Installation](../../start/install.md) —
-`install.sh` puts it in `~/.nros/bin`), provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
-or `cyclonedds` to match the example you intend to run):
-
-```bash probe=30
-nros setup mps2-an385-freertos --rmw zenoh
-```
-
-This fetches the cross-compiler, the patched `qemu-system-arm`, and the
-FreeRTOS + lwIP sources into `${NROS_HOME:-~/.nros}/sdk` (plus the
-Micro-XRCE-DDS agent when you pick `--rmw xrce`). The zenoh router is
-NOT installed — it comes from your ROS 2 install.
+The [starter](../../starters/mps2-an385-freertos.md) provisions the board,
+scaffolds a talker in Rust or C and runs it in QEMU. This page covers what
+comes after it: the configuration, the build, and other FreeRTOS boards.
 
 ## Project layout
 
-`nros new` scaffolds a workspace for the board, in any of the three languages:
-
-```bash probe=40 variant=c
-nros new fr_ws --board mps2-an385-freertos --template talker --lang c      # or --lang cpp
-cd fr_ws
-```
-
-```bash probe=40 variant=rust
-nros new fr_ws --board mps2-an385-freertos --template talker --lang rust
-cd fr_ws
-```
+The starter's scaffold wrote this workspace (`--lang cpp` writes the same
+shape in C++):
 
 ```text
 fr_ws/
@@ -129,7 +101,7 @@ workspace, so later builds and runs of it need no sourced shell.
 In the workspace root (`fr_ws/`, where `nros new` left you), whatever the
 language:
 
-```bash probe=50
+```bash
 source /opt/ros/humble/setup.bash
 nros build
 ```
@@ -172,80 +144,14 @@ for which tool builds each image.
 
 ## Run on QEMU
 
-Three terminals: the router, the board, and a stock ROS 2 peer.
-
-**1. The router** — ROS's `rmw_zenohd`, on the port your image's `locator`
-names (7447 when it names none, as a scaffolded image; 7800 in the
-example shown above). It must listen on `0.0.0.0` for the Slirp gateway:
-Slirp forwards the guest's `10.0.2.2:<p>` to the host's `<p>`.
-
-```bash probe=60 probe-run=60 probe-keep
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=60
-Started Zenoh router with id
-```
-
-**2. The board** — from the workspace root:
-
-```bash probe=70 probe-run=120 probe-keep
-nros run fr_node
-```
-
-`nros run` rebuilds if anything changed, then boots the image in QEMU with the
-board's runner: the store's patched `qemu-system-arm` (`nros setup
-mps2-an385-freertos` installed it), the LAN9118 on Slirp, and `-icount
-shift=auto`, which keeps the board's timer in step with Slirp's I/O. It streams
-the semihosting console until you press Ctrl-C.
-
-The scaffolded talker publishes `std_msgs/String` once a second, in every
-language:
-
-```text probe-expect=70
-Publishing: 'Hello World: 1'
-Publishing: 'Hello World: 2'
-```
-
-**3. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
-echo` defaults to RELIABLE, so the QoS-mismatched echo silently delivers
-nothing. Force best-effort to receive:
-
-```bash probe=80 probe-run=90
-source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
-```
-
-It prints a `data:` line per message:
-
-```text probe-expect=80
-data:
-```
-
-Ctrl-C stops `nros run` and QEMU with it.
-
-**Readiness signal.** Within ~20 seconds of QEMU boot, the image
-prints `Publishing: 'Hello World: 1'` on its semihosting stdout — a
-`std_msgs/String` counted from 1, like the official ROS 2 demo talker. QEMU cold-boot through FreeRTOS init + lwIP DHCP + zenoh
-session open typically takes 10–15 s. If no `Publishing:` line in
-30 seconds:
-
-1. Confirm the router is running on the host on the port the image
-   dials — the `locator` in its `system.toml` (Slirp forwards
-   `10.0.2.2:<p>` → host:<p>). Without it the talker makes one
-   connection attempt and stops with `Failed to open session`; a
-   board that should wait for a late router sets
-   `[knobs.zenoh.limits] connect_forever = true` (or
-   `connect_timeout_ms` for a bounded wait).
-2. Check the talker's early log for `lwIP DHCP timeout` or
-   `Failed to open session`.
-3. Bridge tip: `ros2 topic echo /chatter` from a stock ROS 2
-   install (with `RMW_IMPLEMENTATION=rmw_zenoh_cpp`) confirms
-   end-to-end interop.
-4. See [Troubleshooting — First 10 Minutes](../../reference/troubleshooting-index.md).
+The [starter](../../starters/mps2-an385-freertos.md#run-it-in-qemu) runs the
+scaffolded image: a router on the host's `0.0.0.0:7447`, then `nros run
+fr_node`. With the `tcp/10.0.2.2:7800` locator of [Configure](#configure),
+start the router on port 7800 instead; QEMU's user-mode network forwards the
+guest's `10.0.2.2:<p>` to the host's port `<p>`. A board that should wait for
+a late router, instead of giving up after one attempt with `Failed to open
+session`, sets `[knobs.zenoh.limits] connect_forever = true` (or
+`connect_timeout_ms` for a bounded wait).
 
 ## Run on the POSIX simulator
 
