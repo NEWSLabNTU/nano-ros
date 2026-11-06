@@ -255,3 +255,12 @@ nros-installer:
 # committing to a run.
 tier-preconditions:
     @bash scripts/check-tier-preconditions.sh
+
+# phase-543 W0 — the ci-base image bakes cargo-nextest from
+# `config/ci-base-tools.toml`, the index rows it needs and no others, so an
+# edit to any other row leaves the image alone. That file is GENERATED; this
+# fails when it no longer matches the index, naming the regenerate command.
+# Buildless, no CLI: `index_tool.py` is what the image and the gate runner use.
+[private]
+ci-base-tools:
+    @python3 scripts/lib/index_tool.py check-extract config/ci-base-tools.toml cargo-nextest

@@ -35,6 +35,10 @@ on:
       # that installs them. Same rule.
       - "config/rust-toolchains.txt"
       - "scripts/lib/install-rust-toolchains.sh"
+      # phase-543 W0 — the pinned cargo-nextest ci-base bakes, and its installer.
+      - "config/ci-base-tools.toml"
+      - "scripts/lib/index_tool.py"
+      - "scripts/lib/index_packages.py"
   workflow_dispatch:
     inputs:
       image:
@@ -63,6 +67,9 @@ jobs:
               - 'scripts/ci/install-just.sh'
               - 'config/rust-toolchains.txt'
               - 'scripts/lib/install-rust-toolchains.sh'
+              - 'config/ci-base-tools.toml'
+              - 'scripts/lib/index_tool.py'
+              - 'scripts/lib/index_packages.py'
             zephyr:
               - 'ci/docker/zephyr-ros/**'
               - 'ci/docker/apt-packages.txt'
@@ -117,6 +124,7 @@ jobs:
                      scripts/lib/rust-targets.sh config/rust-targets.txt \
                      scripts/ci/install-just.sh \
                      config/rust-toolchains.txt scripts/lib/install-rust-toolchains.sh \
+                     config/ci-base-tools.toml scripts/lib/index_tool.py scripts/lib/index_packages.py \
                  | sha256sum | cut -c1-12)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "content tag: ${{ env.IMAGE }}:humble-$sha"
