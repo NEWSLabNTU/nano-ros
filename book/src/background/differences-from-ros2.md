@@ -158,8 +158,8 @@ What is smaller than rclcpp, and why:
 An array value is `rclcpp::Seq<T, N>`, an array parameter, with no heap: the
 store copies the elements into its own slot. When you need the full upstream
 surface, run it on a host ROS 2 node and keep the embedded node a leaf. The
-calls, `/parameter_events` and the C and Rust forms are in the
-[C++ API reference](../reference/cpp-api.md#parameters-and-parameter_events).
+calls and `/parameter_events` are in the
+[rclcpp compatibility](../reference/rclcpp-compatibility.md#parameters-and-parameter_events) reference.
 
 ### Where C++ code behaves differently
 
