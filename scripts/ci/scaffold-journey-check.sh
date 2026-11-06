@@ -73,19 +73,26 @@ if ! grep -q "^nros = {" "$ws/.cargo/config.toml" 2>/dev/null; then
     exit 1
 fi
 
-# The generated entry reaches the board, backend and edition through its
-# `<entry>_nros_selection` crate, which `nros configure` generates.
+# The generated entry states its own board, backend and edition features on
+# its dependency lines (RFC-0071 D13, phase-531 W5): `nros configure` writes the
+# entry and its cargo settings, and NO selection or adapter crate. A generated
+# entry that still names one is the facade the workspace road retired.
 entry=""
 for c in "$ws"/build/*/*_entry/Cargo.toml; do
     [ -f "$c" ] && { entry="$c"; break; }
 done
 edir="$(dirname "${entry:-/nonexistent/x}")"
-sel="$ws/generated/nros-selection/$(basename "$edir")/Cargo.toml"
-if [ -z "$entry" ] || [ ! -s "$sel" ] || [ ! -s "$edir/nros-cargo.toml" ]; then
-    echo "FAIL: configure wrote no generated entry, selection crate or cargo settings:" >&2
-    echo "      entry=${entry:-<none>} selection=$sel" >&2
+if [ -z "$entry" ] || [ ! -s "$edir/nros-cargo.toml" ]; then
+    echo "FAIL: configure wrote no generated entry or cargo settings:" >&2
+    echo "      entry=${entry:-<none>} settings=$edir/nros-cargo.toml" >&2
     exit 1
 fi
+if grep -nE '^[a-z0-9_]*_nros_(selection|derived)\s*=' "$entry"; then
+    echo "FAIL: the generated entry names a selection or adapter crate; since RFC-0071 D13" >&2
+    echo "      it states its features itself (only an owned entry has an adapter): $entry" >&2
+    exit 1
+fi
+echo "  [ok] configure wrote the generated entry and its cargo settings, with no selection crate"
 
 echo "::group::cargo tree (resolution)"
 if ( cd "$ws" && cargo tree -e no-dev --manifest-path "$entry" --config "$edir/nros-cargo.toml" >/dev/null 2>&1 ); then
