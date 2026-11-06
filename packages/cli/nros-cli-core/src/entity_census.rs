@@ -699,6 +699,29 @@ fn read_contract(contract: &Manifest) -> Vec<Declared> {
             push(Kind::Cli, alias, props.qos.as_ref());
         }
     }
+    // Actions have NO node-level key: the contract schema's `NodeDecl` carries
+    // `pub`/`sub`/`srv`/`cli` and nothing for an action, so the top-level
+    // `actions:` wiring (`server: [node/alias]`, `client: [...]`) is the whole
+    // declaration. The loop above walks node keys only, so an action endpoint
+    // was never declared here at all, and every one the code created read as
+    // `missing-in-contract` -- with a remedy asking for a `nodes.<n>.action_server`
+    // key the schema cannot hold. The wiring row IS the declaration.
+    for ((kind, who), (name, ty, qos)) in &wiring {
+        if !matches!(kind, Kind::ActionServer | Kind::ActionClient) {
+            continue;
+        }
+        let Some((node, alias)) = who.rsplit_once('/') else {
+            continue;
+        };
+        out.push(Declared {
+            node: node.to_string(),
+            kind: *kind,
+            alias: alias.to_string(),
+            wired: Some(name.clone()),
+            type_name: Some(ty.clone()),
+            qos: QosDecl::effective(qos.as_ref(), None),
+        });
+    }
     out
 }
 
@@ -999,6 +1022,38 @@ fn missing_in_contract(node: &ObservedNode, entity: &Observed, contract_path: &s
         Some(depth) => format!(" {{ qos: {{ depth: {depth} }} }}"),
         None => " {}".to_string(),
     };
+    let type_name = if entity.type_name.is_empty() {
+        "<package>/<kind>/<Name>"
+    } else {
+        entity.type_name.as_str()
+    };
+    // An action has no node-level key to add (see `read_contract`): the
+    // `actions:` wiring row is the one line it needs.
+    if matches!(entity.kind, Kind::ActionServer | Kind::ActionClient) {
+        return Row {
+            node: node.key.clone(),
+            kind: entity.kind,
+            name: entity.name.clone(),
+            verdict: Verdict::MissingInContract,
+            detail: format!(
+                "the code creates this {} on `{}`; no `actions:` entry names `{}/<alias>` \
+                 as its {}",
+                entity.kind.noun(),
+                entity.name,
+                node.key,
+                wiring_side(entity.kind),
+            ),
+            remedy: format!(
+                "in {contract_path}, wire it under `actions:` (the alias is the author's; \
+                 `{alias}` is this name's last segment):\n    {}:\n      type: {type_name}\n      \
+                 {}: [{}/{alias}]",
+                entity.name,
+                wiring_side(entity.kind),
+                node.key,
+            ),
+            waiver: None,
+        };
+    }
     Row {
         node: node.key.clone(),
         kind: entity.kind,
@@ -1021,11 +1076,7 @@ fn missing_in_contract(node: &ObservedNode, entity: &Observed, contract_path: &s
             entity.kind.tag(),
             wiring_table(entity.kind),
             entity.name,
-            if entity.type_name.is_empty() {
-                "<package>/<kind>/<Name>"
-            } else {
-                entity.type_name.as_str()
-            },
+            type_name,
             wiring_side(entity.kind),
             node.key,
         ),
@@ -2213,5 +2264,89 @@ services:
         let report = run(&bare, &contract, &no_waivers());
         assert_eq!(report.confirmed(), 54, "{}", report.render());
         assert_eq!(report.errors(), 0, "{}", report.render());
+    }
+
+    /// An action is declared ONLY by the top-level `actions:` wiring -- the
+    /// contract schema has no node-level key for one. Both sides of the
+    /// wiring must count as declared, and an unwired one must be told to add
+    /// the wiring row, never a `nodes.<n>.action_server` key that cannot parse.
+    #[test]
+    fn actions_declared_only_by_their_wiring_are_confirmed() {
+        const ACTION_CONTRACT: &str = r#"
+version: 1
+
+nodes:
+  fib_server: {}
+  fib_client: {}
+
+actions:
+  /fibonacci:
+    type: example_interfaces/action/Fibonacci
+    server: [fib_server/fibonacci]
+    client: [fib_client/fibonacci]
+"#;
+        let mut server = node("fib_server", 100);
+        server["timers"] = json!([]);
+        push(
+            &mut server,
+            "actions",
+            endpoint(
+                "unresolved_name",
+                "/fibonacci",
+                "example_interfaces/action/Fibonacci",
+                10,
+            ),
+        );
+        let mut client = node("fib_client", 100);
+        client["timers"] = json!([]);
+        push(
+            &mut client,
+            "action_clients",
+            endpoint(
+                "unresolved_name",
+                "/fibonacci",
+                "example_interfaces/action/Fibonacci",
+                10,
+            ),
+        );
+        let census = json!({
+            "schema": "nros.entity_census/1",
+            "entry": "action_entry",
+            "census": { "version": 2, "nodes": [server, client], "parameters": [] },
+        });
+
+        let report = run(&census, &manifest(ACTION_CONTRACT), &no_waivers());
+        assert_eq!(report.errors(), 0, "{}", report.render());
+        assert_eq!(
+            report.of(Verdict::MissingInContract).count(),
+            0,
+            "{}",
+            report.render()
+        );
+        for kind in [Kind::ActionServer, Kind::ActionClient] {
+            assert!(
+                report
+                    .rows
+                    .iter()
+                    .any(|r| r.kind == kind && r.verdict == Verdict::Confirmed),
+                "the {kind:?} the wiring declares is confirmed:\n{}",
+                report.render()
+            );
+        }
+
+        // Drop the client's wiring: now it is genuinely missing, and the remedy
+        // is the wiring row.
+        let unwired = ACTION_CONTRACT.replace("    client: [fib_client/fibonacci]\n", "");
+        let report = run(&census, &manifest(&unwired), &no_waivers());
+        let missing: Vec<&Row> = report.of(Verdict::MissingInContract).collect();
+        assert_eq!(missing.len(), 1, "{}", report.render());
+        assert_eq!(missing[0].kind, Kind::ActionClient);
+        assert!(
+            missing[0].remedy.contains("actions:")
+                && missing[0].remedy.contains("client: [fib_client/fibonacci]")
+                && !missing[0].remedy.contains("nodes."),
+            "the remedy is the `actions:` wiring row, not a node key: {}",
+            missing[0].remedy
+        );
     }
 }
