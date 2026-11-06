@@ -132,6 +132,20 @@ it.
 
 ## D5 — Stop shipping the index inside the binary
 
+> **Amended (maintainer, 2026-11-06; issue 2257):** a RELEASED `nros` reads the
+> index it ships, and fetches one only from a mirror the operator names
+> (`$NROS_INDEX_URL`). D5's premise was that the index is pointers with no
+> ABI. It also pins the SOURCES the release's own SDK root compiles, and every
+> reader except `nros setup` took its pins from that root. Phase-523's round-one
+> adoption probes measured the split on `nros-0.6.0-nros6`: setup installed
+> QEMU `-nros8` from `main`'s index while the build asked for the release's
+> `-nros7`, a zenoh-pico store dir was labelled `c78dbffd` and held `8d5ac2fe`,
+> a committed `nros-sdk.lock` was rewritten, and each remedy the CLI printed
+> looped (issues 2256–2258). One index per CLI is the release model the book
+> already states ("a release fixes the whole surface at once"). The cost is the
+> one this section named: an index fix reaches users with the next release.
+> The fetch path stays for a binary with no shipped copy.
+
 `shipped_index()` resolves `<prefix>/share/nros/nros-sdk-index.toml` from the
 release asset. That is why 70 index commits per 60 days would each be a CLI
 release.

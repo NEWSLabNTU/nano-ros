@@ -131,9 +131,9 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | issue | purpose | what |
 | --- | --- | --- |
 | [#2255](../issues/2255-book-ahead-of-latest-release.md) | both | The book teaches `nros dev`, `nros run`, `nros new --board`; the latest release has none of them |
-| [#2256](../issues/2256-store-label-disagrees-with-provenance.md) | both | A store source dir is labelled with one pin and holds another; the build's zenoh-pico refusal loops |
-| [#2257](../issues/2257-setup-and-build-read-different-index.md) | both | `nros setup` provisions from `main`'s index, while build and locate read the release's; the QEMU remedy loops |
-| [#2258](../issues/2258-setup-rewrites-pinned-sdk-lock.md) | both | `nros setup` rewrites a committed `nros-sdk.lock`, so a semester pin does not hold |
+| [#2256](../issues/archived/2256-store-label-disagrees-with-provenance.md) | both | **Resolved** 2026-11-06: one index per release, so the store label and its contents share a pin |
+| [#2257](../issues/archived/2257-setup-and-build-read-different-index.md) | both | **Resolved** 2026-11-06: a release reads its own shipped index (RFC-0097 D5 amended), so setup and build agree |
+| [#2258](../issues/archived/2258-setup-rewrites-pinned-sdk-lock.md) | both | **Resolved** 2026-11-06: with one index per release, a pinned seat's setup records the lock's own pins |
 | [#2259](../issues/2259-first-project-requires-humble-on-noble.md) | both | First Project requires Humble, which Ubuntu 24.04 cannot install |
 | [#2260](../issues/archived/2260-ros-edition-mismatch-silent-no-delivery.md) | both | **Resolved** 2026-11-06: the scaffold follows `$ROS_DISTRO`, and `nros run` warns on a mismatch |
 | [#2261](../issues/2261-catkin-pkg-prereq-breaks-ros-apt.md) | both | The `python3-catkin-pkg` prerequisite breaks the ROS 2 apt install |
