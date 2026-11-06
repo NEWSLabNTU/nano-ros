@@ -383,10 +383,12 @@ Applied so far:
   `check-flavour-lanes`), which replaced the closed #3150. This line said the
   row and track had landed with #3150; they had not.
   [Phase-542](../roadmap/phase-542-px4-supported-platform.md) W1 plans the gate
-  rule the row needs. The track, once landed, waits on
-  [issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md) (the
-  release ships no PX4 POSIX archives; phase-541 ships them, phase-542 W3–W4
-  finish the user-tier build). The page stays in User
+  rule the row needs. The track's wait on
+  [issue 2289](../issues/archived/2289-px4-release-ships-no-posix-archives.md)
+  (the release shipped no PX4 POSIX archives) is over: phase-541 ships them,
+  and the track replayed green on the installed track on 2026-11-06; its
+  `awaits` drop rides #3169. Phase-542 W3 still removes the dev-tier verbs a
+  `BRINGUP` module reaches. The page stays in User
   guide › Platforms meanwhile, by maintainer ruling (2026-11-05): an exception
   to Principle 3 that ends when the track replays.
 - Arm FVP leaves the user book (no replaying track, RFC-0115 D4).

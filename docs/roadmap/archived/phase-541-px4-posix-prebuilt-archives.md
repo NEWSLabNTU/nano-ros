@@ -1,11 +1,11 @@
 # Phase 541 — The release ships the PX4 POSIX archives prebuilt
 
-**Status (2026-11-06). IN PROGRESS — W1 to W3 done in their pull request; W4
-waits on that pull request merging.** Implements
-[RFC-0097 D13](../design/0097-release-composition-and-version-axes.md) and the
+**Status (2026-11-06). DONE — W1 to W3 merged in #3189; W4 replayed green and
+its `awaits` drop is in #3169.** Implements
+[RFC-0097 D13](../../design/0097-release-composition-and-version-axes.md) and the
 "Installed toolchain" decision in
-[RFC-0039](../design/0039-px4-integration-architecture.md). Closes
-[issue 2289](../issues/2289-px4-release-ships-no-posix-archives.md).
+[RFC-0039](../../design/0039-px4-integration-architecture.md). Closes
+[issue 2289](../../issues/archived/2289-px4-release-ships-no-posix-archives.md).
 
 Decided (maintainer, 2026-11-06): option A of issue 2289. The release ships the
 PX4 POSIX build inputs prebuilt, so a user-tier PX4 build has no contributor
@@ -118,12 +118,18 @@ it, W4), `just probe installed` (the asset build in `ubuntu:22.04`), and
 lines are the commands above; `Prove the asset installs`' new check was not
 executed (it needs the installed layout `install.sh` produces).
 
-### W4 — Book: drop the `awaits` — WAITING on this phase's pull request
+### W4 — Book: drop the `awaits` — DONE
 
 Owned by the book session: once this merges, the `px4` track in
 `packages/boards/board-support.toml` drops its `awaits` on issue 2289 and
 replays `guide/platforms/px4.md` on the installed track (SITL `make`, headless
 boot, `px4-nano_ros_app start`). Issue 2289 closes when that replay is green.
+
+**Done (2026-11-06).** The book session replayed the track on an asset built
+from main with the `awaits` dropped, on the installed track with no checkout:
+configure and build passed, the headless boot printed "Startup script returned
+successfully", and `px4-nano_ros_app start` printed "nano-ros uORB backend
+registered". The `awaits` drop ships in #3169. Issue 2289 is resolved.
 
 ## Acceptance
 
