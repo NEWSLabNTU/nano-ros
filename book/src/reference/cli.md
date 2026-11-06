@@ -570,7 +570,7 @@ Options:
   -v, --verbose
           Verbose codegen output
 
-      --nano-ros-root <NANO_ROS_ROOT>
+      --nano-ros-root <DIR>
           nano-ros source tree to scan as the FIRST provider search root.
           
           The same root every provider lookup reads, so the provider index this writes is the one later commands read.

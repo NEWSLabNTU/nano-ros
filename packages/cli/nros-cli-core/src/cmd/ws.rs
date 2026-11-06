@@ -565,8 +565,9 @@ pub struct SyncArgs {
     /// writes is the one later commands read.
     // Same flag and same meaning as `nros dev ws providers --nano-ros-root` —
     // see `provider_search_path`, which exists because two spellings of the
-    // root list make every read "built for other roots".
-    #[arg(long)]
+    // root list make every read "built for other roots". `DIR`, not the
+    // field's name: `NANO_ROS_ROOT` is a retired cmake spelling.
+    #[arg(long, value_name = "DIR")]
     pub nano_ros_root: Option<PathBuf>,
 
     /// `--base-paths`: the same flag, with the same meaning, as on `nros
