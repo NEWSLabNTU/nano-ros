@@ -79,6 +79,34 @@ pub struct ImageTables {
     pub run_method: Option<String>,
     /// See [`Self::run_method`].
     pub run_command: Option<String>,
+    /// The image's ROS edition, `[image]` > `[image_defaults]` > `[system]`
+    /// (RFC-0056). `None` when no table states one. `nros run` compares it
+    /// with the sourced ROS 2 (issue 2260).
+    pub ros_edition: Option<String>,
+}
+
+/// Issue 2260 — the warning `nros run` prints when the image speaks one ROS
+/// edition and the shell's ROS 2 (`$ROS_DISTRO`) is another. Peers on
+/// different editions exchange nothing, with no error on either side: the
+/// type hash in each key expression differs, so no subscription matches.
+///
+/// `None` when they agree, when nothing is sourced, or when the sourced
+/// distro is not one nano-ros generates for (then no claim can be made).
+#[must_use]
+pub fn edition_mismatch_note(image_edition: &str, ros_distro: Option<&str>) -> Option<String> {
+    let distro = ros_distro.map(str::trim).filter(|d| !d.is_empty())?;
+    let sourced = rosidl_codegen::RosEdition::parse(distro)?;
+    let image = rosidl_codegen::RosEdition::parse(image_edition)?;
+    (sourced != image).then(|| {
+        format!(
+            "this image speaks ROS 2 {img}, and the shell's ROS 2 is {src} ($ROS_DISTRO): \
+             a {src} node will see its topics and receive nothing, with no error on either \
+             side. Set `ros_edition = \"{src}\"` in the bringup's system.toml (or the image's \
+             [image.<id>]) to talk to it.",
+            img = image.as_str(),
+            src = sourced.as_str(),
+        )
+    })
 }
 
 impl ImageTables {
@@ -96,6 +124,7 @@ impl ImageTables {
             net: net.map(crate::orchestration::image_net::ImageNet::text),
             run_method: b.run.method.clone(),
             run_command: b.run.command.as_ref().map(|c| c.as_str().to_string()),
+            ros_edition: b.ros_edition.clone(),
         }
     }
 
@@ -117,6 +146,7 @@ impl ImageTables {
                 .command
                 .as_ref()
                 .map(|c| c.as_str().to_string()),
+            ros_edition: l.ros_edition.clone(),
         }
     }
 }
@@ -861,6 +891,17 @@ pub fn run(args: Args) -> eyre::Result<()> {
     if args.why && !args.dry_run {
         eprintln!("nros run: target `{}`: {}", one.qualified, rung.describe());
     }
+    // Issue 2260 — an edition mismatch with the sourced ROS 2 is silent at
+    // runtime, so say it before the run, where it can still be fixed.
+    let edition = one
+        .run_tables
+        .ros_edition
+        .as_deref()
+        .unwrap_or(rosidl_codegen::DEFAULT_ROS_EDITION);
+    if let Some(note) = edition_mismatch_note(edition, std::env::var("ROS_DISTRO").ok().as_deref())
+    {
+        eprintln!("nros run: warning: {note}");
+    }
     let one = &one;
     let descriptor = one.descriptor.as_ref().expect("select_target checked it");
     let invocation = Invocation {
@@ -1221,6 +1262,23 @@ mod tests {
     use super::*;
     use crate::orchestration::board_descriptor::BoardCatalog;
     use nros_orchestration_ir::target_exec::{CommandTemplate, PrepareStep};
+
+    /// Issue 2260 — a humble image under a sourced jazzy names both editions
+    /// and the fix; agreement, nothing sourced, or a distro nano-ros does not
+    /// generate for say nothing.
+    #[test]
+    fn edition_mismatch_note_speaks_only_for_a_known_disagreement() {
+        let note = edition_mismatch_note("humble", Some("jazzy")).expect("mismatch");
+        assert!(
+            note.contains("ROS 2 humble") && note.contains("ROS 2 is jazzy"),
+            "{note}"
+        );
+        assert!(note.contains("ros_edition = \"jazzy\""), "{note}");
+        assert_eq!(edition_mismatch_note("jazzy", Some("jazzy")), None);
+        assert_eq!(edition_mismatch_note("humble", None), None);
+        assert_eq!(edition_mismatch_note("humble", Some("")), None);
+        assert_eq!(edition_mismatch_note("humble", Some("rolling")), None);
+    }
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))

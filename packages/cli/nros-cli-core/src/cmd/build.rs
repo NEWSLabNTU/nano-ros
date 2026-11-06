@@ -7026,6 +7026,14 @@ fn effective_images(
         .map(|(id, img)| {
             let mut img = img.clone();
             img.rmw = Some(sys.resolved_rmw(Some(id), None));
+            // Issue 2260 — the edition the image builds, through the one
+            // resolver (`[image]` > `[image_defaults]` > `[system]`), so
+            // `nros run` can compare it with the sourced ROS 2. An invalid
+            // value is refused where the build reads it; here it stays unset.
+            img.ros_edition = sys
+                .image_ros_edition(Some(id))
+                .ok()
+                .map(|e| e.as_str().to_string());
             (id.clone(), img)
         })
         .collect()

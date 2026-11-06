@@ -49,7 +49,7 @@ fn default_new_args(
         no_readme: false,
         platform: None,
         rmw: None,
-        ros_edition: "humble".to_string(),
+        ros_edition: Some("humble".to_string()),
         lang: None,
         template: None,
         use_case: None,
