@@ -114,6 +114,33 @@ def nros_clear_inherited_git_env(env=None):
     target = os.environ if env is None else env
     for name in local_env_vars():
         target.pop(name, None)
+    nros_bound_git_discovery(target)
+    return target
+
+
+def nros_bound_git_discovery(env=None):
+    """Stop git's repository search at the temp root (issue 2240).
+
+    The twin of the shell helper of the same name; read its comment for the
+    measurement. Git walks UP from the working directory to find a repository,
+    and keeps walking past a `.git` it cannot use, so with `TMPDIR` inside a
+    checkout a scratch step finds the ENCLOSING checkout. Listing the physical
+    temp root in `GIT_CEILING_DIRECTORIES` bounds every walk that starts below
+    it and touches no walk that starts above it. Appended, never replacing.
+    Called by `nros_clear_inherited_git_env`, so its callers get it for free.
+    """
+    target = os.environ if env is None else env
+    root = target.get("TMPDIR") or "/tmp"
+    try:
+        root = os.path.realpath(root)
+    except OSError:
+        return target
+    if not os.path.isdir(root):
+        return target
+    have = target.get("GIT_CEILING_DIRECTORIES", "")
+    if root in have.split(os.pathsep):
+        return target
+    target["GIT_CEILING_DIRECTORIES"] = f"{have}{os.pathsep}{root}" if have else root
     return target
 
 
@@ -168,6 +195,15 @@ def _self_test():
     nros_clear_inherited_git_env()
     if "GIT_DIR" in os.environ:
         print("git_hook_env self-test FAILED: os.environ was not cleared", file=sys.stderr)
+        return 1
+    # Issue 2240: the clear also bounds discovery at the temp root, appending.
+    got = nros_clear_inherited_git_env({"TMPDIR": "/", "GIT_CEILING_DIRECTORIES": "/a"})
+    if got.get("GIT_CEILING_DIRECTORIES") != "/a:/":
+        print(
+            f"git_hook_env self-test FAILED: discovery not bounded at the temp root "
+            f"(GIT_CEILING_DIRECTORIES={got.get('GIT_CEILING_DIRECTORIES')!r})",
+            file=sys.stderr,
+        )
         return 1
     print(
         f"git_hook_env self-test: OK ({len(parsed)} name(s) in the shell twin's "

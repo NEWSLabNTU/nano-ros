@@ -422,7 +422,9 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.
 - Reusable tests → `packages/testing/nros-tests/tests/` (Rust) or `tests/` (sh). Temp tests → Bash
   then promote. Temp files in `$project/tmp/` (gitignored, holds no tracked file), not `/tmp`;
-  use Write/Edit not heredoc. Past one-shot migration recipes live in `scripts/oneshot/` —
+  use Write/Edit not heredoc. That is for files YOU write: never point `TMPDIR` inside a
+  checkout — a gate's scratch repo there discovered and wrecked the enclosing checkout, and
+  `just check fast` now refuses it (issue 2240). Past one-shot migration recipes live in `scripts/oneshot/` —
   they sat in `tmp/` until issue 1524, where `rm -rf tmp` deleted them.
 - **A test never SKIPS because something it needs is absent — it FAILS; SCOPE decides what
   runs** (issue 1758). Missing tool, router, SDK, peer, fixture ⇒ `nros_tests::unmet!` (a red,

@@ -317,7 +317,33 @@ fi
 #
 # `find` over a temp tree we built; there is no git index to consult here, which
 # is the case `check-no-tracked-file-find` exempts by construction.
+#
+# `PROBE_GIT_ONLY`, when set, names a checkout under <dir> and narrows the
+# snapshot to that checkout's REPOSITORY: its git dir, byte for byte, and its
+# tracked content as `git status` sees it. The `tmpdir` shape needs that
+# narrower subject: running a checkout's own scripts legitimately writes
+# untracked output into it (`__pycache__/`, `build/check-skips/`), and issue
+# 2240's damage is git state (refs, HEAD, index, config) and tracked files.
 snapshot() {
+    if [ -n "${PROBE_GIT_ONLY:-}" ]; then
+        (
+            # Read-only throughout: `--no-optional-locks` keeps `status` from
+            # refreshing the index's stat cache, and the index is compared by
+            # CONTENT (`ls-files -s`), since its raw bytes and the git dir's
+            # mtimes move under any read and would report the probe itself.
+            cd "$1/$PROBE_GIT_ONLY" || return 1
+            # The git dir and its index are ASKED of git, never modelled
+            # (issue 1336, `check-git-dir-layout-assumptions`).
+            local gd ix
+            gd="$(git rev-parse --absolute-git-dir 2>/dev/null)" || return 1
+            ix="$(git rev-parse --path-format=absolute --git-path index 2>/dev/null)" || return 1
+            find "$gd" -type f ! -path "$ix" -print0 2>/dev/null | LC_ALL=C sort -z \
+                | xargs -0 -r sha1sum 2>/dev/null | LC_ALL=C sort
+            git --no-optional-locks ls-files -s 2>&1 | sha1sum
+            git --no-optional-locks status --porcelain --untracked-files=no 2>&1
+        )
+        return
+    fi
     (
         cd "$1" || return 1
         find . -printf '%P\t%y\t%s\t%T@\n' 2>/dev/null | LC_ALL=C sort
@@ -414,12 +440,23 @@ build_checkout() {
 PROBE_LOG="$(mktemp)"
 PROBE_RC_FILE="$(mktemp)"
 trap 'rm -f "$PROBE_LOG" "$PROBE_RC_FILE"' EXIT
+# `TMPDIR_PROBE_REUSE`, when it names a directory that still holds a victim and
+# an owned checkout, is used by the `tmpdir` shape instead of building both
+# again: a full clone per probe cost ~3 s, i.e. +60 s over 20 scripts on a gate
+# that sits on the fast line's critical path. Reuse is sound because a CLEAN
+# probe leaves its subject byte-identical by definition; a DIRTY one deletes
+# the directory, so the next probe builds afresh rather than inherit damage.
 run_probe() {
     local shape="$1" cwd="$2"; shift 2
-    local v before after rc
-    v="$(mktemp -d)" || { echo "DIRTY"; echo "  mktemp failed"; return 0; }
-    if ! build_victim "$v"; then
-        echo "DIRTY"; echo "  could not build the victim repo"; rm -rf "$v"; return 0
+    local v before after rc reuse=0
+    if [ "$shape" = tmpdir ] && [ "$cwd" = "@checkout" ] && [ -n "${TMPDIR_PROBE_REUSE:-}" ] \
+        && [ -e "$TMPDIR_PROBE_REUSE/checkout/.git" ]; then
+        v="$TMPDIR_PROBE_REUSE"; reuse=1; cwd="$v/checkout"
+    else
+        v="$(mktemp -d)" || { echo "DIRTY"; echo "  mktemp failed"; return 0; }
+        if ! build_victim "$v"; then
+            echo "DIRTY"; echo "  could not build the victim repo"; rm -rf "$v"; return 0
+        fi
     fi
     if [ "$cwd" = "@checkout" ]; then
         if ! build_checkout "$v/checkout"; then
@@ -428,9 +465,31 @@ run_probe() {
         cwd="$v/checkout"
     fi
 
-    before="$(snapshot "$v")"
     local -a env_args
+    local PROBE_GIT_ONLY=""
     case "$shape" in
+        # Issue 2240: no inherited git environment at all, but TMPDIR INSIDE
+        # the checkout the script runs in, which the project's "temp files in
+        # \`$project/tmp/\`" rule invites. A scratch repo whose \`.git\` is not
+        # usable yet (or was broken on purpose) then DISCOVERS that checkout.
+        # Needs \`@checkout\`: the repository at risk is the one holding TMPDIR.
+        tmpdir)
+            if [ "$cwd" != "$v/checkout" ]; then
+                echo "DIRTY"; echo "  the tmpdir shape needs @checkout"; rm -rf "$v"; return 0
+            fi
+            PROBE_GIT_ONLY="checkout"
+            mkdir -p "$cwd/tmp/probe-scratch"
+            env_args=("TMPDIR=$cwd/tmp/probe-scratch")
+            # The script under test is the owned checkout's copy, so the
+            # repository its own path resolves to is the one being compared.
+            local -a args=() a
+            for a in "$@"; do args+=("${a/#@ROOT\//$cwd/}"); done
+            set -- "${args[@]}"
+            ;;
+    esac
+    before="$(snapshot "$v")"
+    case "$shape" in
+        tmpdir) ;;
         # Exactly what git hands a hook on a push from a linked worktree — the
         # shape that actually occurs. GIT_WORK_TREE is deliberately ABSENT.
         worktree) env_args=(
@@ -447,13 +506,21 @@ run_probe() {
         *) echo "DIRTY"; echo "  unknown shape $shape"; rm -rf "$v"; return 0 ;;
     esac
 
-    ( cd "$cwd" && env "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
+    if [ "$shape" = tmpdir ]; then
+        # No inherited git environment in this shape, by definition, and no
+        # ceiling the caller happened to have: the probe asks what the SCRIPT does.
+        ( cd "$cwd" && env -u GIT_CEILING_DIRECTORIES -u GIT_DIR -u GIT_WORK_TREE \
+              "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
+    else
+        ( cd "$cwd" && env "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
+    fi
     rc=$?
     printf '%s\n' "$rc" > "$PROBE_RC_FILE"
     after="$(snapshot "$v")"
 
     if [ "$before" = "$after" ]; then
         echo "CLEAN"
+        [ "$reuse" -eq 1 ] && return 0
     else
         echo "DIRTY"
         diff <(printf '%s\n' "$before") <(printf '%s\n' "$after") | sed 's/^/      /' | head -40
@@ -626,11 +693,35 @@ EOF
         errs=1
     fi
 
+    # Issue 2240's shape: a scratch "repo" that is not one yet, under a TMPDIR
+    # inside the checkout. The offender writes a ref through discovery and must
+    # be caught; its twin, which calls the clearing helper (and so bounds
+    # discovery at the temp root), must not be.
+    printf '#!/usr/bin/env bash\nd="$(mktemp -d)"\ngit -C "$d" update-ref refs/nros/escaped HEAD >/dev/null 2>&1\nexit 0\n' \
+        > "$t/tmp-offender.sh"
+    printf '#!/usr/bin/env bash\n. %q\n%s\nd="$(mktemp -d)"\ngit -C "$d" update-ref refs/nros/escaped HEAD >/dev/null 2>&1\nexit 0\n' \
+        "$REPO/$LIB" "$CLEAR_FN" > "$t/tmp-fixed.sh"
+    verdict="$(run_probe tmpdir @checkout bash "$t/tmp-offender.sh")"
+    case "$verdict" in
+        DIRTY*) ;;
+        *) echo "  selftest: a scratch step that reached the checkout holding TMPDIR" >&2
+           echo "       was reported CLEAN. The tmpdir shape measures nothing (issue 2240)." >&2; errs=1 ;;
+    esac
+    verdict="$(run_probe tmpdir @checkout bash "$t/tmp-fixed.sh")"
+    case "$verdict" in
+        CLEAN) ;;
+        *) echo "  selftest: the same step after $CLEAR_FN still reached the checkout" >&2
+           echo "       holding TMPDIR — discovery is not bounded (issue 2240):" >&2
+           printf '%s\n' "$verdict" | tail -n +2 >&2; errs=1 ;;
+    esac
+
     rm -rf "$t"
     [ "$errs" -eq 0 ] || { echo "check-hook-repo-side-effects: SELFTEST FAILED" >&2; return 1; }
     echo "  ok    selftest: a shell AND a Python offender are caught in both shapes,
         their cleared twins are not, a working-directory write is caught and
-        lands in the gate's own clone, and the Python helper's control holds"
+        lands in the gate's own clone, a scratch step that reaches the checkout
+        holding TMPDIR is caught and its cleared twin is not, and the Python
+        helper's control holds"
     return 0
 }
 
@@ -679,6 +770,38 @@ interp() {
     esac
 }
 
+# Issue 2240: every hazardous script again, with no inherited git environment
+# and TMPDIR inside the checkout it runs from. Its subjects (one victim + owned
+# checkout, reused while probes stay CLEAN — see run_probe) and its log files
+# are its own, so it runs CONCURRENTLY with the two environment shapes below
+# rather than adding its ~25 s to a gate on the fast line's critical path.
+# Its verdict lines are printed, and its failures counted, after the join.
+tmpdir_pass() {
+    local f verdict
+    PROBE_LOG="$(mktemp)"; PROBE_RC_FILE="$(mktemp)"
+    TMPDIR_PROBE_REUSE="$(mktemp -d)" || return 2
+    if ! build_victim "$TMPDIR_PROBE_REUSE" || ! build_checkout "$TMPDIR_PROBE_REUSE/checkout"; then
+        rm -rf "$TMPDIR_PROBE_REUSE"; TMPDIR_PROBE_REUSE=""
+    fi
+    for f in "${hazardous[@]}"; do
+        [ "$f" = "$HOOK" ] && continue
+        [ "$f" = "scripts/check-hook-repo-side-effects.sh" ] && continue
+        # shellcheck disable=SC2046  # deliberate: an empty arg set must vanish
+        verdict="$(run_probe tmpdir @checkout "$(interp "$f")" "@ROOT/$f" $(probe_args "$f"))"
+        case "$verdict" in
+            CLEAN) ok "$f [tmpdir]" ;;
+            *) bad "$f [tmpdir] MODIFIED the checkout that holds its TMPDIR (issue 2240):
+$(printf '%s\n' "$verdict" | tail -n +2)" ;;
+        esac
+    done
+    [ -n "$TMPDIR_PROBE_REUSE" ] && rm -rf "$TMPDIR_PROBE_REUSE"
+    rm -f "$PROBE_LOG" "$PROBE_RC_FILE"
+    return "$fail"
+}
+tmpdir_out="$(mktemp)"
+tmpdir_pass > "$tmpdir_out" 2>&1 &
+tmpdir_pid=$!
+
 echo "check-hook-repo-side-effects: the victim repo survives every hazardous script"
 for f in "${hazardous[@]}"; do
     [ "$f" = "$HOOK" ] && continue                     # run end-to-end below
@@ -699,6 +822,13 @@ $(printf '%s\n' "$verdict" | tail -n +2)" ;;
         esac
     done
 done
+
+echo "check-hook-repo-side-effects: TMPDIR inside the checkout (issue 2240)"
+tmpdir_rc=0
+wait "$tmpdir_pid" || tmpdir_rc=$?
+cat "$tmpdir_out"
+rm -f "$tmpdir_out"
+[ "$tmpdir_rc" -eq 0 ] || fail=1
 
 # ---------------------------------------------------------------------------
 # The hook itself, end to end, with git-shaped stdin.
