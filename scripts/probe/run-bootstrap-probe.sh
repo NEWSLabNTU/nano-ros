@@ -296,6 +296,10 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     )
     PROBE_RMW="zenoh"
     VERIFIER="verify-zenoh-interop.sh"
+    # This track replays its own chapters, never the row's PLATFORM_CHAPTER,
+    # so the row's `variant` (first-project.md's run) selects nothing here and
+    # extract-book-steps.py refuses the run.
+    PROBE_VARIANT=""
 else
     CHAPTERS=(
         book/src/get-started/installation.md
@@ -304,6 +308,10 @@ else
     )
     PROBE_RMW="cyclonedds"
     VERIFIER="verify-first-node.sh"
+    # The `linux` row's `variant = "linux"` names first-project.md's Linux run,
+    # a chapter this track does not replay; passing it here made the extractor
+    # refuse every checkout run once the row's `awaits` was dropped.
+    PROBE_VARIANT=""
     # The C chapter needed a `cd examples/…` subst here until phase-517 W2;
     # it scaffolds its talker with `nros new` now, so no checkout path is left.
 fi
