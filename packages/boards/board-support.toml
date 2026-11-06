@@ -822,6 +822,8 @@ notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]
 # through the leaf road, boot it in the twin, and hear one message from
 # `ros2 topic echo`. The emulator call is scripts/probe/twin/<kind>.sh, which
 # phase-528's runner packages replace (W4b, with the chapters and `nros run`).
+# Since phase-537 W4 both twin boards replay their own starters (the row's
+# `book_run`), so that smoke run serves only a `twin_build` track.
 #
 #   twin          the board key whose twin the track boots
 #   twin_locator  the serial locator the track's image dials: the twin's link
