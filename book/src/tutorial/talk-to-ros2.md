@@ -20,8 +20,8 @@ hears:
 ```
 
 At the end you know which parts of ROS 2 a nano-ros image matches exactly,
-and the few places it does not, each of them a choice made for a board with
-no heap and no operating system.
+and the few places it does not, each of them a choice made for a
+microcontroller, whose memory is fixed when its image is built.
 
 Run every step from the root of `sensor_ws`.
 
