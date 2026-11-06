@@ -71,7 +71,8 @@ For the promoted Node + Bringup + Entry workflow examples, use
   (Phase 205.A): a `west.yml` pinning a tested Zephyr + the nano-ros
   module import, plus a zenoh `std_msgs/Int32` talker app skeleton.
   Source for the standalone `nano-ros-zephyr-example` repo; see its
-  `README.md` for the current `west init → nros setup zephyr (patches
-  applied automatically) → west build → run` quickstart (e2e-verified,
-  Phase 202; the earlier `west patch` step was retired in Phase 208.E.9
-  — patches now apply during `nros setup zephyr` provisioning).
+  `README.md` for the current `west init -> nros setup zephyr ->
+  nros setup board zephyr --zephyr-workspace <ws> (the patch set) ->
+  west build -> run` quickstart (e2e-verified, Phase 202; the earlier
+  `west patch` step was retired in Phase 208.E.9, and the patch set is
+  `nros setup board`'s since issue 2185).

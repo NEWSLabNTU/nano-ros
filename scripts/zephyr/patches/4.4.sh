@@ -62,4 +62,11 @@ bash ./scripts/zephyr/zephyr-lang-rust-gpio-patch.sh "$WORKSPACE"
 # Cortex-M image builds on this line without it.
 echo "[zephyr setup] 4.4 line: applying zephyr-lang-rust bindgen include patch (idempotent)..."
 bash ./scripts/zephyr/zephyr-lang-rust-bindgen-include-patch.sh "$WORKSPACE"
+# Issue 2185 -- the one carrier of nano-ros's settings to a Rust image's cargo
+# (`${NROS_BOARD_FACTS_ENV}`). `scripts/zephyr/setup.sh` applies it on both
+# lines, and the module refuses a Rust image without it, so a workspace that
+# only `nros setup board` provisions needs it from here too. Its self-test
+# covers the 4.4 (inlined) layout.
+echo "[zephyr setup] 4.4 line: applying cargo-features patch (idempotent)..."
+bash ./scripts/zephyr/cargo-features-patch.sh "$WORKSPACE"
 echo "[zephyr setup] 4.4 line: legacy 3.7 Rust/cyclone-submodule patches skipped (Tasks 4-9)"

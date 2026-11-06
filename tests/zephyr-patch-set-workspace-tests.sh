@@ -112,4 +112,14 @@ $out"
     fi
 done
 
-echo "zephyr-patch-set-workspace: OK (C-only skips said so, zephyr/ still required, apply + idempotent, relative path kept)"
+# 5. Every line's set carries the cargo-features patch (issue 2185). It is the
+#    one carrier of nano-ros's settings to a Rust image's cargo, the module
+#    refuses a Rust image whose workspace lacks it, and `nros setup board`
+#    applies nothing but these sets, so a line without it leaves every
+#    workspace it provisions refused (4.4 had none until 2185).
+for set_file in "$z"/patches/*.sh; do
+    nros_grep_q 'cargo-features-patch\.sh "\$WORKSPACE"' "$set_file" ||
+        fail "$(basename "$set_file") never runs cargo-features-patch.sh on the workspace"
+done
+
+echo "zephyr-patch-set-workspace: OK (C-only skips said so, zephyr/ still required, apply + idempotent, relative path kept, cargo carrier on every line)"

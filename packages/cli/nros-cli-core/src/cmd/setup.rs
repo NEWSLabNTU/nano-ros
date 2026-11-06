@@ -1345,21 +1345,49 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         }
     }
 
-    // (c) rustup target add (when the board requires Rust).
-    if !meta.rust_targets.is_empty() {
+    // (c) rustup target add: the targets the board needs, then the one a Rust
+    //     image on it compiles for (`[board.zephyr] rust_target`, the triple
+    //     `nros build`'s preflight asks for). Issue 2185 -- the generic
+    //     `zephyr` board states the second one only, and as a template
+    //     (`{host_arch}-unknown-none`), because native_sim's triple follows
+    //     the build host; it is resolved here, never written down.
+    let (rust_targets, image_target) = board_rust_targets(
+        &meta.rust_targets,
+        board
+            .zephyr
+            .as_ref()
+            .and_then(crate::orchestration::board_descriptor::BoardZephyr::rust_target_for_host),
+        crate::builder::zephyr::lang_rust_module_dir(zephyr_ws)
+            .join("Kconfig")
+            .is_file(),
+    );
+    if !rust_targets.is_empty() {
         eprintln!(
             "  (c) rust targets: rustup target add {}",
-            meta.rust_targets.join(" ")
+            rust_targets.join(" ")
         );
         if !args.dry_run {
-            for target in &meta.rust_targets {
+            for target in &rust_targets {
                 // Issue 2288 -- onto the toolchain the checkout pins, which is
                 // the one its builds use; a bare `rustup` added it to whatever
                 // the caller's cwd resolved to.
-                let status = crate::builder::preflight::rustup_in(&root)
+                let spawned = crate::builder::preflight::rustup_in(&root)
                     .args(["target", "add", target])
-                    .status()
-                    .wrap_err("spawn rustup (is it on PATH?)")?;
+                    .status();
+                // The image target is not the BOARD's requirement: a host with
+                // no rustup builds C images on this board, and `nros build`
+                // names the target when a Rust image needs it.
+                let status = match spawned {
+                    Err(e) if image_target.as_ref() == Some(target) => {
+                        eprintln!(
+                            "      note: no rustup ({e}); a Rust image on `{}` needs \
+                             `rustup target add {target}`",
+                            args.name
+                        );
+                        continue;
+                    }
+                    other => other.wrap_err("spawn rustup (is it on PATH?)")?,
+                };
                 if !status.success() {
                     bail!("nros setup board: `rustup target add {target}` failed ({status})");
                 }
@@ -1389,12 +1417,29 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
     Ok(())
 }
 
+/// The targets `nros setup board` adds, and which of them is the image target
+/// (issue 2185): the board's `[board.provisioning] rust_targets`, then the
+/// triple a Rust image on it compiles for, when the workspace holds
+/// zephyr-lang-rust and the list does not already name it. A workspace with no
+/// zephyr-lang-rust builds no Rust image (a C-only workspace, as
+/// `zephyr-west-app.md` allows), so it needs no target for one.
+fn board_rust_targets(
+    board_targets: &[String],
+    image_target: Option<String>,
+    has_lang_rust: bool,
+) -> (Vec<String>, Option<String>) {
+    let mut all = board_targets.to_vec();
+    let image = image_target.filter(|t| has_lang_rust && !all.contains(t));
+    all.extend(image.clone());
+    (all, image)
+}
+
 /// Phase 215.J.2 step (d) — verify the `zephyr-lang-rust` module is present in
 /// the consumer's tree; warn + point at the board's `west-downstream.yml`
 /// import fragment (Phase 215.J.3) when it is not. Never mutates the consumer's
 /// west manifest — the consumer keeps manifest authority.
 fn ensure_lang_rust_module(crate_dir: &Path, zephyr_ws: &Path) {
-    let module = zephyr_ws.join("modules").join("lang").join("rust");
+    let module = crate::builder::zephyr::lang_rust_module_dir(zephyr_ws);
     if module.join("Kconfig").is_file() {
         eprintln!("  (d) zephyr-lang-rust: present at {}", module.display());
         return;
@@ -7537,5 +7582,29 @@ mod source_workspace_tests {
         let cache = index_in(&root.join("store/fetch"));
         let got = source_workspace(&cache, &[Some(cache.clone())], || None);
         assert_eq!(got, root.join("store/fetch"));
+    }
+}
+
+#[cfg(test)]
+mod board_rust_targets_tests {
+    use super::board_rust_targets;
+
+    #[test]
+    fn the_image_target_joins_only_a_rust_workspace_and_only_once() {
+        let host = Some("x86_64-unknown-none".to_string());
+        // The generic `zephyr` board: no list, a template-resolved triple.
+        assert_eq!(
+            board_rust_targets(&[], host.clone(), true),
+            (vec!["x86_64-unknown-none".to_string()], host.clone())
+        );
+        assert_eq!(board_rust_targets(&[], host.clone(), false), (vec![], None));
+        // mps2: the list already names the triple `[board.zephyr]` states.
+        let m3 = vec!["thumbv7m-none-eabi".to_string()];
+        assert_eq!(
+            board_rust_targets(&m3, Some("thumbv7m-none-eabi".into()), true),
+            (m3.clone(), None)
+        );
+        // A board that needs Rust keeps its list in a C-only workspace.
+        assert_eq!(board_rust_targets(&m3, None, false), (m3, None));
     }
 }

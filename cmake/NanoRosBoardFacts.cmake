@@ -378,3 +378,43 @@ function(nros_check_zephyr_rust_target)
         message(FATAL_ERROR "nano-ros: ${_err}")
     endif()
 endfunction()
+
+# nros_check_zephyr_rust_cargo_patch()
+#
+# Issue 2185 -- refuse a Rust image whose west workspace never got nano-ros's
+# Zephyr patch set. Everything this file resolves for the Rust lane reaches
+# zephyr-lang-rust's cargo command through ONE line, the
+# `${NROS_BOARD_FACTS_ENV}` that `scripts/zephyr/cargo-features-patch.sh`
+# writes into the module's `CMakeLists.txt` under a `# nano-ros: board facts`
+# comment. A workspace made with plain `west init` / `west update` has no such
+# line, and on native_sim the image still links and boots on every crate's
+# defaults, so the book's own road shipped it with both tracks green. Asked of
+# the module directory Zephyr itself resolved (`ZEPHYR_LANG_RUST_MODULE_DIR`),
+# so it holds for every road: `nros build`, a plain `west build`, a fixture.
+# A C image (no `CONFIG_RUST`) makes no claim.
+function(nros_check_zephyr_rust_cargo_patch)
+    if(NOT CONFIG_RUST OR NOT DEFINED ZEPHYR_LANG_RUST_MODULE_DIR)
+        return()
+    endif()
+    set(_f "${ZEPHYR_LANG_RUST_MODULE_DIR}/CMakeLists.txt")
+    if(NOT EXISTS "${_f}")
+        return()
+    endif()
+    file(STRINGS "${_f}" _marker REGEX "# nano-ros: board facts")
+    if(_marker)
+        return()
+    endif()
+    # The workspace is ZEPHYR_BASE's parent, as `nros_zephyr_ws_candidates`
+    # has it; the board is the one `-b` named, which `nros setup board`
+    # resolves through `[board.zephyr] west_board`.
+    get_filename_component(_ws "${ZEPHYR_BASE}" DIRECTORY)
+    message(FATAL_ERROR
+        "nano-ros: this is a Rust image, and zephyr-lang-rust in this west "
+        "workspace was never patched for nano-ros: ${_f} has no "
+        "`# nano-ros: board facts` line, so its cargo command would carry none "
+        "of nano-ros's settings for the board (the board facts, the derived "
+        "knobs, the C cross compiler) and every crate would build with its "
+        "defaults (issue 2185). Apply nano-ros's Zephyr patch set to the "
+        "workspace once, then configure again:\n"
+        "    nros setup board ${BOARD}${BOARD_QUALIFIERS} --zephyr-workspace ${_ws}")
+endfunction()

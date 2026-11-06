@@ -169,6 +169,18 @@ pip3 install --user -r zephyr/scripts/requirements-base.txt
 export ZEPHYR_BASE="$PWD/zephyr"
 ```
 
+Last, give the workspace the patches nano-ros carries for Zephyr 3.7. Among
+them is the change to zephyr-lang-rust that carries nano-ros's settings for
+the board (its facts, the derived knobs, the C cross compiler) to a Rust
+image's cargo command, and the changes to Zephyr's host-socket driver the
+native_sim network uses. In a workspace that holds zephyr-lang-rust it also
+adds the Rust target a Rust image on native_sim compiles for. `nros build`
+refuses a Rust image in a workspace without them, naming this command:
+
+```bash probe=36 variant=native-sim,native-sim-rust,zephyr-twin
+nros setup board zephyr --zephyr-workspace "$PWD"
+```
+
 Scaffold a workspace beside the west workspace: a C talker node package and
 its bringup, whose image runs on board `zephyr` (Zephyr's `native_sim/native/64`).
 `nros build` writes the Zephyr application for that image under `build/` and
@@ -469,15 +481,24 @@ west update                              # clones Zephyr + its modules into the 
 ```
 
 (If you started from `west init -m <remote>`, both calls above are
-already done — go straight to `west build` below.)
+already done.)
+
+Then apply nano-ros's patch set to the workspace once, as the
+[quick start](#quick-start-a-talker-on-native_sim-from-nothing) does. A Rust
+image's configure refuses a workspace without it, naming this command:
+
+```bash
+nros setup board zephyr --zephyr-workspace "$PWD"
+```
 
 ### `nros build` on Zephyr: it hands off, it does not take over
 
 On every platform `nros build` generates the image's entry under `build/` and
 runs the platform's tool on it. On Zephyr the entry is a Zephyr application
 and the tool is `west build`. What stays yours is the **west workspace**:
-`west init` / `west update` populate it, it pins your Zephyr, and nano-ros never
-writes into it.
+`west init` / `west update` populate it, it pins your Zephyr, and the one
+nano-ros step that writes into it is `nros setup board`, which applies the
+patch set for its Zephyr line.
 
 So for a Zephyr image `nros build`:
 
@@ -988,11 +1009,10 @@ The Cortex-M3 witness is Zephyr's `mps2/an385` under QEMU, with Zephyr's own
 IP stack on the emulated SMSC911x. An image names it `board =
 "mps2-an385-zephyr"`; `west build -t run` boots it under the QEMU the Zephyr
 SDK ships (`nros setup zephyr` installed it). In the Rust workspace above, a
-second image is that board. `nros setup board` comes first: it applies
-nano-ros's patch set to your west workspace, without which zephyr-lang-rust's
-cargo command carries none of nano-ros's settings for the board (among them
-the C cross compiler the zenoh-pico crate builds with), and adds the board's
-Rust target. The image is one more block in the bringup:
+second image is that board. `nros setup board` for it comes first: it adds the
+board's Rust target, and applies the same patch set as the quick start's
+`nros setup board zephyr` (a second run finds it applied). The image is one
+more block in the bringup:
 
 ```bash probe=80 variant=native-sim-rust
 nros setup board mps2-an385-zephyr --zephyr-workspace "$NROS_ZEPHYR_WORKSPACE"

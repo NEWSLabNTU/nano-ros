@@ -123,6 +123,8 @@ nros_resolve_board_facts()
 # Issue 2204 — the board's stated Rust triple against the one zephyr-lang-rust
 # picks; at the END of the configure, when both are known.
 cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL nros_check_zephyr_rust_target)
+# Issue 2185 -- and the patch that carries those facts to a Rust image's cargo.
+nros_check_zephyr_rust_cargo_patch()
 # Phase 212.H.1 — nros_system_generate(<bringup-pkg>) shells the
 # `nros dev codegen system` host-time bake at zephyr cmake configure
 # time. Consumes <bringup>/system.toml + launch/*.xml; emits a baked
