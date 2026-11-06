@@ -228,6 +228,19 @@ introduces its nano-ros concept from the example in front of the reader (D4).
 - an education adoption probe (RFC-0116 D9) completes chapters 1–7 within
   budget.
 
+**Gaps W5 and the renode-nucleo replay measured (2026-11-06).** Fixed: the
+entity census read an action declared only by `actions:` wiring as
+`missing-in-contract` (the contract schema has no node-level action key), so
+a bringup with a host image refused. The zenoh warning that ended in a bare
+internal id was already fixed on main by issue 2270. Filed:
+[2312](../issues/2312-zephyr-c-road-nightly-not-provisioned-by-setup-board.md)
+(`nros setup board` does not provision the nightly the Zephyr C road builds
+`nros-c` with),
+[2304](../issues/2304-c-param-server-cyclone-exits-after-store.md) (a C
+parameter server exits 1 on Cyclone), and
+[2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md) (the
+policy for internal ids in user-tier messages).
+
 ### W6 — Section 4, User guide: RMW and communication (M)
 
 How-tos, level 2–3:
