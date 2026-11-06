@@ -1167,3 +1167,12 @@ twin = "nucleo-f767zi-zephyr"
 twin_locator = "serial/serial@40004800#baudrate=115200"
 notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on a host pty, the console on USART6. The RAM knob is the board descriptor's `[knobs]` (issue 2194). phase-524 W4b — the track replays the board's own chapter (the row's `book_run`): setup, scaffold, then `nros run` in the twin through the `renode` runner and `ros2 topic echo`, so the probe's twin smoke script no longer runs for it. The `twin` facts stay for the test harness's Renode launcher (`nros_tests::renode`)."
 
+[[probe]]
+track = "nucleo-f767zi-bench"
+chapter = "starters/nucleo-f767zi.md"
+variant = "bench"
+awaits = ["a Nucleo-F767ZI attached to the machine the probe runs on: no CI runner has a board, so the starter's `nros flash --monitor` is run by hand on a bench. The step never exits, so it gains `probe-run` and the output to expect once a bench run measures them"]
+weekly = false
+row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
+notes = "phase-537 W13 — the Nucleo-F767ZI starter on a bench: the renode-nucleo track's steps, then the starter's `nros flash --monitor` onto an attached board (its `variant=bench` step). It fails up front until a runner with a board exists."
+
