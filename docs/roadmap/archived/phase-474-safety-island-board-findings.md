@@ -1289,7 +1289,7 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
 
 | item | now |
 | --- | --- |
-| T4's QEMU leg | issue 2273, homed in [phase-528](../phase-528-run-on-host-and-emulator.md) |
+| T4's QEMU leg | issue 2273, homed in [phase-528](phase-528-run-on-host-and-emulator.md) |
 | T3's residue: a measured RX-ring default for a Zephyr serial join | issue 2164, homed in [phase-524](../phase-524-emulator-twins.md) |
 | 446-W7: the island's 21 parameters with services on the board | [phase-512](../phase-512-on-hardware-measurements.md) H10 |
 | issues 1806, 1822, 0880 | homed in [phase-512](../phase-512-on-hardware-measurements.md): each waits on the island's board or the full Autoware graph |

@@ -160,7 +160,7 @@ needs the workspace shape, say), the scaffold still writes one package and
 
 ### W3 — `nros run` (D7)
 
-**Done by reference (2026-11-03): [phase-528](../phase-528-run-on-host-and-emulator.md)
+**Done by reference (2026-11-03): [phase-528](phase-528-run-on-host-and-emulator.md)
 W4 landed.** RFC-0118 amends RFC-0116 D7: `nros run` covers host and
 emulator targets and refuses on hardware, naming `nros flash --monitor`
 (phase-529). `nros run --expect` passed on the mps2-an385 QEMU talker and the

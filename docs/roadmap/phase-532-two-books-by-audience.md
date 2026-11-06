@@ -21,7 +21,7 @@ writing. Those phases keep their chapters, at the new paths:
 | --- | --- |
 | The serial-first first chapter | [phase-525](archived/phase-525-adoption-front-doors.md) W4, with [phase-531](phase-531-workspace-first-project-layout.md) W8 |
 | The workspace-first rewrite: getting-started chapters, the four workspace pages merged into one, the platform chapters, `porting/*` | [phase-531](phase-531-workspace-first-project-layout.md) W8 |
-| `nros run` and the run-plan pages | [phase-528](phase-528-run-on-host-and-emulator.md) W4 |
+| `nros run` and the run-plan pages | [phase-528](archived/phase-528-run-on-host-and-emulator.md) W4 |
 | `nros flash`, `monitor` and `bench` pages | [phase-529](archived/phase-529-flash-monitor-bench.md) W3, W4 |
 | Renode and Wokwi twin chapters | [phase-524](phase-524-emulator-twins.md) W4b |
 | Old CLI spellings in the tree's docs | [phase-526](archived/phase-526-cli-two-tier-restructure.md) W4 |

@@ -9,7 +9,7 @@ related: [phase-528, 2169, 2170]
 found: 2026-10-31
 ---
 
-**Home: [phase-528](../roadmap/phase-528-run-on-host-and-emulator.md)** — homed 2026-11-04: W5 puts the test harness on `nros run --plan`, which leaves one QEMU line instead of three.
+**Home: [phase-528](../roadmap/archived/phase-528-run-on-host-and-emulator.md)** — homed 2026-11-04: W5 puts the test harness on `nros run --plan`, which leaves one QEMU line instead of three. Phase-528 was archived 2026-11-06 with this issue still open: it needs a new home.
 
 ## What
 
@@ -58,3 +58,16 @@ command and the book agree there. Two things are left:
 * the MPS3-AN536 runner still has no `-icount`. It has no probe track to
   compare against, and its harness pairs use `socket,mcast` and SLIRP with
   `hostfwd` rather than plain SLIRP.
+
+## Progress (2026-11-06, phase-528 W5 step 2)
+
+The harness's MPS launchers no longer spell a line. Each states plan args
+(`nros_tests::run::QemuBoot`: `system`, `cpu`, `machine`, `icount`,
+`semihosting`, `nic`), and the qemu runner renders them with
+`nros_qemu_ladder::plan_line`, the renderer the CLI's plan uses too. So the
+harness and `nros run` share the renderer. What is left: the harness still
+states the board's facts itself rather than reading them from the board
+descriptor's `[board.run.qemu]`, so a descriptor edit does not reach the
+harness. Reading the descriptor (or giving the ladder `Board::Mps2An385` /
+`Board::Mps3An536`) closes this issue. The MPS3-AN536 `-icount` point is
+unchanged.

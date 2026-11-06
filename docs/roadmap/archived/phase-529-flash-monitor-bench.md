@@ -7,7 +7,7 @@ silicon, and the flash and console runners of
 
 Depends on:
 
-- [phase-528](../phase-528-run-on-host-and-emulator.md) W1 and W4, for the plan,
+- [phase-528](phase-528-run-on-host-and-emulator.md) W1 and W4, for the plan,
   the resolver and the shared verb machinery;
 - the boards [phase-524](../phase-524-emulator-twins.md) buys, for the
   hardware acceptance (now phase-533's).

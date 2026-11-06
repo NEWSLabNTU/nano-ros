@@ -12,7 +12,7 @@ Depends on:
 - [phase-529](archived/phase-529-flash-monitor-bench.md) W1 to W4: `[board.flash]`,
   the `serial` and `west` runners, `nros flash`/`nros monitor`, and
   `nros bench`;
-- [phase-528](phase-528-run-on-host-and-emulator.md) W5, for the harness
+- [phase-528](archived/phase-528-run-on-host-and-emulator.md) W5, for the harness
   route (`nros run --plan`) that W2 mirrors for hardware;
 - the boards [phase-524](phase-524-emulator-twins.md) W5 puts on the bench.
 
