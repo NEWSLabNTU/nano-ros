@@ -142,6 +142,14 @@ cli-reference:
 rclcpp-examples-table:
     @python3 scripts/gen-rclcpp-examples-table.py --check
 
+# phase-537 W11 (RFC-0124 Principle 9) — `reference/system-toml` is hand-kept
+# (the CLI's schema documents its keys for contributors), so its `[image.<id>]`
+# key set is held to the schema instead: every key `ImageBlock` deserializes is
+# on the page, and every key the table lists is one it deserializes. Buildless.
+[private]
+system-toml-keys:
+    @python3 scripts/check-system-toml-keys.py
+
 # phase-517 W1 — every board the book names is one `nros` accepts: an index
 # `[board.*]` key or a board descriptor's `names` alias, both DERIVED per run.
 # The retired host-board words (`RETIRED_BOARD_KEYS`, harvested from
