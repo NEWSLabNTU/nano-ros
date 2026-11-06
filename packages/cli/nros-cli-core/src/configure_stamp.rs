@@ -112,6 +112,14 @@ pub(crate) struct Stamp {
     pub(crate) codegen_version: String,
     pub(crate) ament_prefix: Option<String>,
     pub(crate) launch_resolve: Option<PathBuf>,
+    /// Issue 2296 — the `play_launch` pin this CLI was built against, which is
+    /// the pin every model it resolves records (`meta.resolver`) and the one
+    /// `model_gate` refuses a model for not matching. A pin bump keeps the
+    /// resolver's PATH, so `launch_resolve` alone called a configure current
+    /// whose models `codegen-system` then refused. A stamp from before this
+    /// field reads `None`, which is stale once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) resolver_pin: Option<String>,
     /// Ruling R15: a SKIP stamp — the image's preflight refused it (this
     /// reason) when nobody named it. Current for a configure that does not
     /// name it either, so a host lacking one image's toolchain does not
@@ -236,6 +244,12 @@ fn input_files(project: &Path) -> Vec<PathBuf> {
 
 fn codegen_version() -> String {
     crate::abi_guard::EMITTED_VERSION.to_string()
+}
+
+/// The resolver pin a configure by this binary stamps into every model it
+/// resolves (issue 2296; `ws::stamp_resolver_pin` writes the same value).
+pub(crate) fn resolver_pin() -> String {
+    env!("NROS_PLAY_LAUNCH_SHA").to_string()
 }
 
 /// `sha256:<hex>` over the project's inputs, the digest-input env, the output
@@ -533,6 +547,7 @@ pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
         codegen_version: codegen_version(),
         ament_prefix: std::env::var(AMENT_VAR).ok(),
         launch_resolve: current_launch_resolver(),
+        resolver_pin: Some(resolver_pin()),
         skipped: None,
     })
 }
@@ -639,6 +654,21 @@ pub(crate) fn currency(
             show(resolver)
         )));
     }
+    // Issue 2296 — same resolver path, different `play_launch` pin: every
+    // model this configure resolved now fails `model_gate`'s pin check, so
+    // the configure is not current even though no input moved.
+    let pin = resolver_pin();
+    if stamp.resolver_pin.as_deref() != Some(pin.as_str()) {
+        let short = |v: &str| v[..v.len().min(12)].to_string();
+        return Ok(Currency::Stale(format!(
+            "launch resolver pin changed: {} -> {}",
+            stamp
+                .resolver_pin
+                .as_deref()
+                .map_or("none".to_string(), short),
+            short(&pin)
+        )));
+    }
     // A model whose resolve was REFUSED (`model_gate`) is quarantined with a
     // marker beside it. Its inputs can be edited back to exactly what this
     // stamp recorded, so only the marker says the model is gone.
@@ -727,6 +757,7 @@ mod tests {
             codegen_version: codegen_version(),
             ament_prefix: None,
             launch_resolve: None,
+            resolver_pin: Some(resolver_pin()),
             skipped: None,
         }
     }
@@ -891,6 +922,7 @@ mod tests {
             codegen_version: codegen_version(),
             ament_prefix: Some("/opt/ros/humble".into()),
             launch_resolve: Some(resolver.to_path_buf()),
+            resolver_pin: Some(resolver_pin()),
             skipped: None,
         };
         record(&p, "img", &stamp).unwrap();
@@ -1633,6 +1665,40 @@ mod tests {
     }
 
     /// phase-530 W1 (I2) — `NROS_MODEL_DIR` moves where C1 writes the
+    /// Issue 2296 — a `play_launch` pin bump keeps the resolver's path and
+    /// every input, and still makes each model the last configure resolved
+    /// fail `model_gate`. The stamp must say so, naming the pin; a stamp from
+    /// before the field existed (no pin) is stale too.
+    #[test]
+    fn a_resolver_pin_bump_stales_the_stamp() {
+        let p = tmp("resolver-pin");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env = real_env();
+        let digest = input_digest_with_env(&p, &env).unwrap();
+        let at = |pin: Option<&str>| {
+            record(
+                &p,
+                "img",
+                &Stamp {
+                    digest: digest.clone(),
+                    resolver_pin: pin.map(str::to_string),
+                    ..stamp_for(&p)
+                },
+            )
+            .unwrap();
+            is_current_with(&p, "img", &env, None).unwrap()
+        };
+        assert_eq!(at(Some(&resolver_pin())), Currency::Current);
+        for old in [Some("b5243446b761deadbeef"), None] {
+            match at(old) {
+                Currency::Stale(why) => {
+                    assert!(why.starts_with("launch resolver pin changed"), "{why}")
+                }
+                Currency::Current => panic!("pin {old:?} left the stamp current"),
+            }
+        }
+    }
+
     /// models, so its value is a digest input like `AMENT_PREFIX_PATH`'s.
     #[test]
     fn model_dir_env_is_a_stamp_input() {
