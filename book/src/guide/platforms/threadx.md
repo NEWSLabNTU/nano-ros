@@ -102,6 +102,19 @@ nros build --dry-run
 `nros configure` writes the generated entry without building. Neither
 command's output under `build/` is yours to edit.
 
+## Multi-sched-task scheduling
+
+ThreadX supports the multi-sched-task workspace scheduling model: declare per-sched-task ThreadX priorities in the bringup's
+`system.toml` with `[tasks.<name>.threadx]` priority tables, and
+the generated entry routes the app onto `run_sched_tasks` — one executor per
+sched task, all sharing one session, with per-sched-task stacks carved from the
+ThreadX byte pool. ThreadX priorities follow the native convention:
+**lower number = higher priority**. Sched tasks are sorted descending by
+raw priority number, so `sched_tasks[0]` (the numerically-largest, i.e.
+lowest-priority sched task) boots first and then adopts its declared
+priority. See [Scheduling Models](../realtime/pick-a-scheduling-model.md)
+for the mechanics.
+
 ## If it doesn't work
 
 - **The image boots and never publishes:** no router on the host's
