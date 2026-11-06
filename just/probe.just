@@ -61,6 +61,10 @@ platform-asset out="tmp/probe-asset":
 [group("main")]
 tutorial-2: (platform "tutorial-2")
 
+# book/src/tutorial/add-a-second-node.md — Tutorial 3 (phase-537 W5).
+[group("main")]
+tutorial-3: (platform "tutorial-3")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]

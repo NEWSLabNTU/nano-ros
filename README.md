@@ -177,7 +177,7 @@ name  = "talker"
 board = "linux"
 ```
 
-See [First Node — C](book/src/tutorial/add-a-second-node-c.md) for a complete C walkthrough.
+The Tutorial's [Add a second node](book/src/tutorial/add-a-second-node.md) walks through a C node package, in its C tab.
 
 ## On Zephyr (west module)
 
