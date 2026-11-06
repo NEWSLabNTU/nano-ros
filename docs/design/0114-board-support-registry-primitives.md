@@ -124,7 +124,7 @@ Each `[[board]]` row carries, in place of `tier`:
 | Field | Values | Meaning |
 | --- | --- | --- |
 | `runs` | `none`, `host`, `emulator`, `hardware` | Where the board's image executes in evidence nano-ros holds. `none` is a board nothing boots. `host` is a host executable (native_sim, threadx-linux, freertos-posix, linux). `emulator` and `hardware` name the machine in the next two fields. |
-| `emulator` | `qemu:<machine>`, `renode:<platform>`, `wokwi:<board>`, `fvp:<model>` | Required when `runs = "emulator"`. Also allowed beside `runs = "hardware"` to record a twin that is NOT the evidence. |
+| `emulator` | `qemu:<machine>`, `renode:<platform>`, `fvp:<model>` | Required when `runs = "emulator"`. Also allowed beside `runs = "hardware"` to record a twin that is NOT the evidence. (`wokwi:<board>` was in this list until 2026-11-06, when RFC-0115 Amendment 1 ruled that a twin must be free and open source.) |
 | `hardware` | a board id | Required when `runs = "hardware"`; allowed beside `runs = "emulator"` to record silicon the emulator stands in for. |
 | `cadence` | `merge`, `daily`, `weekly`, `manual` | How often the run in `runs` happens: a merge-gating lane, the nightly, the weekly probe, or a maintainer by hand. |
 | `last_run` | an ISO date | Required when `cadence = "manual"`; refused otherwise, because a lane's last run is a question for the lane, not the registry. |

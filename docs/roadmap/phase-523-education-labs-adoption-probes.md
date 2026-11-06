@@ -23,7 +23,7 @@ phase-528 W4 (`nros run`) and phase-524 W4 (the Renode probe tracks).** Implemen
 [RFC-0116](../design/0116-adoption-purposes-and-front-doors.md) D1 and D9
 and the industrial purpose's remaining frictions. Depends on
 [phase-528](phase-528-run-on-host-and-emulator.md) W4 (`nros run`, the grading
-command; it carries phase-525 W3 since RFC-0118) and on phase-524 W4 (the Renode and Wokwi probe tracks, so lab seven
+command; it carries phase-525 W3 since RFC-0118) and on phase-524 W4 (the Renode probe track; the Wokwi one was removed by the 2026-11-06 ruling, RFC-0115 Amendment 1; so lab seven
 has a bench twin). Starts after both.
 
 ---

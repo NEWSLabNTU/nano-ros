@@ -37,7 +37,7 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 
 RUNS = ("none", "host", "emulator", "hardware")
 CADENCES = ("merge", "daily", "weekly", "manual")
-EMULATOR_KINDS = ("qemu", "renode", "wokwi", "fvp")
+EMULATOR_KINDS = ("qemu", "renode", "fvp")  # free and open source only (RFC-0115 Amendment 1)
 EVIDENCE_FIELDS = ("runs", "emulator", "hardware", "cadence", "last_run", "breadth")
 DEFAULT_STALE_DAYS = 120
 

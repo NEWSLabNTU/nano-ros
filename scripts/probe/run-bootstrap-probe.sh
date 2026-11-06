@@ -220,7 +220,8 @@ fi
 NROS_TWIN_KIND="" NROS_TWIN_SECRET="" NROS_TWIN_PREREQS="" NROS_TWIN_MODULES=""
 NROS_TWIN_BOARD="" NROS_TWIN_CHAPTER_RUN=""
 eval "$twin_env"
-# A secret the emulator kind cannot run without (Wokwi's token) is a
+# A secret the emulator kind cannot run without (no in-tree kind has one
+# since Wokwi left, RFC-0115 Amendment 1) is a
 # precondition: the track FAILS naming it, before any asset build or container
 # (CLAUDE.md: never a skip). Not under PROBE_EXTRACT_ONLY, which is the
 # per-push drift check and runs where no secret exists.
@@ -467,7 +468,8 @@ if [[ "$PROBE_TRACK" = installed && "${PROBE_PLATFORM:-linux}" != linux ]]; then
     install_shim="$install_shim && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ros-humble-rmw-zenoh-cpp >/dev/null"
 fi
 # A twin track's emulator kind may need a host tool the index declares as a
-# `[prereq.*]` (Wokwi's pty bridge, socat): host shape, resolved from the
+# `[prereq.*]` (none today; socat was Wokwi's, removed 2026-11-06): host
+# shape, resolved from the
 # commit's index the sanctioned way, never typed here.
 if [[ -n "$NROS_TWIN_PREREQS" ]]; then
     # shellcheck disable=SC2086  # the keys are one word each

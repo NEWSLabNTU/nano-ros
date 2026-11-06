@@ -19,9 +19,8 @@
 # The twin track (phase-524 W4a: `renode-nucleo`) replays the Zephyr
 # chapter's setup, then boots a board's serial talker in its emulator twin and
 # hears it from `ros2 topic echo` (scripts/probe/verify-installed-twin.sh).
-# The Pico W's `wokwi-pico` track is NOT weekly and never runs here: Wokwi is a
-# hosted, metered simulator, so that twin is user-run with the user's own
-# token (maintainer ruling 2026-11-02). This lane holds no Wokwi secret.
+# A twin is free and open source (RFC-0115 Amendment 1), so no twin track
+# needs a secret and this lane holds none.
 #
 # The asset is built ONCE (`just probe platform-asset`, the same steps
 # `release-nros.yml` runs) and handed to one job per chapter, so a red names

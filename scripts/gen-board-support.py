@@ -174,7 +174,6 @@ def page_name(row: dict) -> str:
 # kind's script (scripts/probe/twin/<kind>.sh), never of a board.
 TWIN_KIND_NEEDS = {
     "renode": {},
-    "wokwi": {"secret": "WOKWI_CLI_TOKEN", "prereqs": ["socat"]},
 }
 
 
