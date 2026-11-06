@@ -35,6 +35,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 # RFC-0123 D7: every page phase-532 moved keeps its old URL for two releases.
 [output.html.redirect]
+"/extending/overview.html" = "runner-and-command-packages.html"
 "/extending/rmw-design.html" = "../internals/rmw/rmw-api-design.html"
 "/extending/custom-transport.html" = "add-a-transport.html"
 "/extending/platform-model.html" = "add-a-platform.html#before-you-start"
@@ -76,8 +77,8 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/targets/run-plans.html" = "../guide/deploy/deploy-to-production.html#run-plans"
 "/targets/flash-and-monitor.html" = "../guide/deploy/deploy-to-production.html#flashing-and-monitoring-a-board"
 "/targets/bench.html" = "../guide/deploy/deploy-to-production.html#your-bench-nros-bench"
-"/extending/runner-packages.html" = "overview.html#runner-packages"
-"/extending/command-packages.html" = "overview.html#command-packages"
+"/extending/runner-packages.html" = "runner-and-command-packages.html#runner-packages"
+"/extending/command-packages.html" = "runner-and-command-packages.html#command-packages"
 "/concepts/platform-model.html" = "../extending/add-a-platform.html#before-you-start"
 "/extending/platform-c-abi.html" = "../reference/platform-api.html"
 "/build/message-generation.html" = "../reference/message-generation.html"
@@ -184,7 +185,7 @@ additional-js = ["mermaid.min.js", "mermaid-init.js"]
 "/reference/retired-names.html" = "../migrating/retired-names.html"
 "/release/migration-install-local-removal.html" = "../migrating/install-local-removal.html"
 "/getting-started/esp32.html" = "../migrating/esp32.html"
-"/porting/overview.html" = "../extending/overview.html"
+"/porting/overview.html" = "../extending/runner-and-command-packages.html"
 "/porting/board-trait.html" = "../extending/add-a-board.html#steps"
 "/porting/custom-board.html" = "../extending/add-a-board.html"
 "/porting/freertos-board.html" = "../extending/add-a-board.html#steps"

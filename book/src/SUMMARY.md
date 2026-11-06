@@ -119,11 +119,11 @@
 
 # Extending nano-ros
 
-- [Overview](./extending/overview.md)
 - [Add a board](./extending/add-a-board.md)
 - [Add a platform](./extending/add-a-platform.md)
 - [Add a transport](./extending/add-a-transport.md)
 - [Write a custom RMW backend](./extending/custom-rmw.md)
+- [Runner and command packages](./extending/runner-and-command-packages.md)
 
 # Releases
 

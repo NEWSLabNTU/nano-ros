@@ -993,30 +993,6 @@ batch = "w4-reference"
 generated = "scripts/gen-board-support.py"
 
 [[page]]
-old = "porting/overview.md"
-book = "user"
-path = "extending/overview.md"
-action = "move"
-batch = "w4-extending"
-note = "Runner and command packages (W12): the runner-packages and command-packages stubs are folded in as sections"
-
-[[page]]
-old = "extending/runner-packages.md"
-book = "user"
-path = "extending/overview.md"
-action = "merge-into extending/overview.md"
-batch = "p537-w1-merges"
-note = "stub under 300 words folded into extending/overview.md as a section (RFC-0124 D9)"
-
-[[page]]
-old = "extending/command-packages.md"
-book = "user"
-path = "extending/overview.md"
-action = "merge-into extending/overview.md"
-batch = "p537-w1-merges"
-note = "stub under 300 words folded into extending/overview.md as a section (RFC-0124 D9)"
-
-[[page]]
 old = "porting/custom-board.md"
 book = "user"
 path = "extending/add-a-board.md"
@@ -1147,6 +1123,31 @@ path = "extending/custom-rmw.md"
 action = "move"
 batch = "w4-extending"
 note = "Write a custom RMW backend (W12): one how-to; extending/rmw-design went to Internals as rmw/rmw-api-design"
+
+[[page]]
+old = "porting/overview.md"
+book = "user"
+path = "extending/runner-and-command-packages.md"
+action = "move"
+batch = "p537-w12-ext"
+was = ["extending/overview.md"]
+note = "Runner and command packages (W12): the porting-overview prose was cut (each Extending page now states its own task), the runner-packages and command-packages stubs became its two halves"
+
+[[page]]
+old = "extending/runner-packages.md"
+book = "user"
+path = "extending/runner-and-command-packages.md"
+action = "merge-into extending/runner-and-command-packages.md"
+batch = "p537-w1-merges"
+note = "stub under 300 words folded into extending/overview.md as a section; that page is extending/runner-and-command-packages since W12 (RFC-0124 D9)"
+
+[[page]]
+old = "extending/command-packages.md"
+book = "user"
+path = "extending/runner-and-command-packages.md"
+action = "merge-into extending/runner-and-command-packages.md"
+batch = "p537-w1-merges"
+note = "stub under 300 words folded into extending/overview.md as a section; that page is extending/runner-and-command-packages since W12 (RFC-0124 D9)"
 
 [[page]]
 old = "design/rmw.md"
