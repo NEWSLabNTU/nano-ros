@@ -118,4 +118,4 @@ failure exemption or the EXIT trap itself each turns the control red.
 this host predate the marker, so the gates leave them; remove them by hand
 once. The same test also found `nros build`'s own jobserver FIFO directory
 (`nros-jobserver-<pid>-<seq>`) surviving an interrupted build. That is filed
-as [issue 2254](../2254-nros-build-jobserver-fifo-dir-leaks-on-signal.md).
+as [issue 2254](2254-nros-build-jobserver-fifo-dir-leaks-on-signal.md).

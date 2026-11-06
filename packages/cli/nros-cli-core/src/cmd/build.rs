@@ -3041,6 +3041,10 @@ pub fn run(args: Args) -> Result<()> {
         Err(e) => match e.downcast_ref::<ChildExit>() {
             Some(c) => {
                 eprintln!("nros build: {e:#}");
+                // `exit` runs no destructors, so the pool is dropped first:
+                // otherwise every failed build left its FIFO directory in
+                // the temp dir (issue 2254).
+                drop(jobs);
                 std::process::exit(c.code)
             }
             None => Err(e),
