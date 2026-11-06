@@ -43,7 +43,8 @@ session, and the same result on every seat.
 7. Services and actions: the `server`, `client` and action templates in
    [the C node chapter](../tutorial/add-a-second-node-c.md#the-node-package).
 8. [Parameters and launch files](../tutorial/grow-your-workspace.md).
-9. The lab's board: its page under Get started on your board, such as
+9. The lab's board: its starter in the
+   [list of starters](../starters/pick-your-board.md), such as
    [Nucleo-F767ZI](../starters/nucleo-f767zi.md), or its entry in
    [Supported Boards](../reference/supported-boards.md).
 
@@ -62,11 +63,14 @@ board's data.
 **Route:**
 
 1. [Install](install.md).
-2. Your board's page under Get started on your board. It runs the board's
-   emulated twin first, then the board itself:
-   [Nucleo-F767ZI](../starters/nucleo-f767zi.md). For any other board, find
-   it in [Supported Boards](../reference/supported-boards.md); its page
-   names the chapter that runs it.
+2. Your board's starter, from the
+   [list of starters](../starters/pick-your-board.md). The boards with an
+   emulated twin come first, such as the
+   [Nucleo-F767ZI](../starters/nucleo-f767zi.md) and the
+   [Raspberry Pi Pico W](../starters/rpi-pico-w.md): the starter runs the
+   twin first, then flashes the board itself. A board with no starter has a
+   page in [Supported Boards](../reference/supported-boards.md) that says
+   what nano-ros can show for it.
 3. [Talk to ROS 2](../tutorial/talk-to-ros2.md): the board's topics in your
    ROS 2 graph, in both directions.
 

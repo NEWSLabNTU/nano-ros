@@ -424,7 +424,7 @@ path = "guide/platforms/linux-host.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/linux-host.md"]
-note = "Platform page, Verified on host: W4 extracts its starter; W9 puts the rest on the platform template (D8)"
+note = "Platform page, Verified on host: W4 moved its starter steps to starters/linux-host; W9 puts the rest on the platform template (D8)"
 
 [[page]]
 old = "getting-started/bare-metal.md"
@@ -433,7 +433,7 @@ path = "guide/platforms/bare-metal.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/bare-metal.md"]
-note = "Platform page, Verified in emulator: W4 extracts its starter; W9 puts the rest on the platform template (D8)"
+note = "Platform page, Verified in emulator: W4 moved its starter steps to starters/mps2-an385-bare-metal; W9 puts the rest on the platform template (D8)"
 
 [[page]]
 old = "getting-started/freertos.md"
@@ -442,7 +442,7 @@ path = "guide/platforms/freertos.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/freertos.md"]
-note = "Platform page: W4 extracts the mps2-an385 and POSIX starters; W9 puts the rest on the platform template (D8)"
+note = "Platform page: W4 moved its starter steps to starters/mps2-an385-freertos and starters/freertos-posix; W9 puts the rest on the platform template (D8)"
 
 [[page]]
 old = "getting-started/integration-zephyr.md"
@@ -451,7 +451,7 @@ path = "guide/platforms/zephyr.md"
 action = "split platform/zephyr-in-tree.md"
 batch = "p537-w1-guide"
 was = ["targets/zephyr.md"]
-note = "Platform page: W9 splits it by status (native_sim, mps2-an385, the twin-and-hardware boards); W4 extracts its starter parts"
+note = "Platform page: W4 moved its starter steps to starters/zephyr-native-sim and starters/mps2-an385-zephyr; W9 splits the rest by status (native_sim, mps2-an385, the twin-and-hardware boards)"
 
 [[page]]
 old = "getting-started/integration-nuttx.md"
@@ -460,7 +460,7 @@ path = "guide/platforms/nuttx.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/nuttx.md"]
-note = "Platform page: W4 extracts its starters; W9 puts the rest on the platform template (D8)"
+note = "Platform page: W4 moved its starter steps to starters/nuttx-arm and starters/nuttx-riscv; W9 puts the rest on the platform template (D8)"
 
 [[page]]
 old = "getting-started/threadx.md"
@@ -469,7 +469,7 @@ path = "guide/platforms/threadx.md"
 action = "move"
 batch = "p537-w1-guide"
 was = ["targets/threadx.md"]
-note = "Platform page: W4 extracts its starters; W9 puts the rest on the platform template (D8)"
+note = "Platform page: W4 moved its starter steps to starters/threadx-riscv64 and starters/threadx-linux; W9 puts the rest on the platform template (D8)"
 
 [[page]]
 old = "targets/zephyr-west-app.md"
