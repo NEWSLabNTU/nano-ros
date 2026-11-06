@@ -2,7 +2,7 @@
 
 <!-- type: how-to · level: 2 -->
 
-**Needs first:** [the contract walkthrough](cpp-workspaces.md#telling-the-build-what-the-component-creates) ·
+**Needs first:** [the contract walkthrough](../../tutorial/tell-the-build.md#write-the-contract) ·
 [Project layout](../../tutorial/grow-your-workspace.md)
 
 Write a contract that describes every node of an image when you want the build

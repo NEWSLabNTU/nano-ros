@@ -3,7 +3,7 @@
 <!-- type: how-to · level: 2 -->
 
 **Needs first:** [Project layout](../../tutorial/grow-your-workspace.md) ·
-[the contract walkthrough](cpp-workspaces.md#telling-the-build-what-the-component-creates)
+[the contract walkthrough](../../tutorial/tell-the-build.md#write-the-contract)
 
 Write a contract for a bringup that has no `launch/` directory when you want
 its image sized from what it creates, or its QoS declared, without adding a
