@@ -25,7 +25,7 @@
 # Tutorial
 
 - [1. Run a talker on an emulated board](./tutorial/run-a-talker.md)
-- [Anatomy of What You Just Built](./tutorial/what-you-just-built.md)
+- [2. What you just built](./tutorial/what-you-just-built.md)
 - [First Node — Rust](./tutorial/add-a-second-node.md)
 - [First Node — C](./tutorial/add-a-second-node-c.md)
 - [First Node — C++](./tutorial/add-a-second-node-cpp.md)
