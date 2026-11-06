@@ -49,6 +49,13 @@ pub struct Args {
     #[arg(long)]
     pub licenses: bool,
 
+    /// Print the directories an air-gapped copy of this host's setup needs,
+    /// one per line: the nros store, then the rustup and cargo homes the
+    /// builds use (nros leaves Rust in rustup's own homes). Feed it to `tar`.
+    // Issue 2197 / phase-523 "Left" (maintainer, 2026-11-06).
+    #[arg(long = "offline-dirs")]
+    pub offline_dirs: bool,
+
     /// Install tools by name (instead of a board's whole set), e.g.
     /// `--tool qemu`. Repeatable, like `--source`: `--tool ninja --tool make`
     /// is ONE plan — one system-package ask for the union, one lock write.
@@ -251,6 +258,7 @@ pub struct BoardSetupArgs {
 enum Route {
     List,
     Licenses,
+    OfflineDirs,
     Workspace,
     System,
     BuildSources,
@@ -267,6 +275,7 @@ impl Route {
         match self {
             Route::List => "`--list` (print the index)",
             Route::Licenses => "`--licenses` (print the license-gated packages)",
+            Route::OfflineDirs => "`--offline-dirs` (print what an air-gapped copy needs)",
             Route::Workspace => "`--workspace` (plan from a workspace's package.xml files)",
             Route::System => "`--system` (the [system.*] OS-package closure)",
             Route::BuildSources => "`--build-sources` (the build-stage source union)",
@@ -314,12 +323,52 @@ fn is_workspace_root(dir: &std::path::Path) -> bool {
             .is_ok_and(|rd| rd.flatten().any(|e| e.path().join("package.xml").is_file()))
 }
 
+/// Issue 2197 — the directories an air-gapped copy of this host's setup needs,
+/// with why: the nros store, then the rustup and cargo homes. nros leaves the
+/// Rust toolchain in rustup's own homes (maintainer, 2026-11-06), so an
+/// offline host needs all three, which the probe found the book omitted.
+///
+/// The homes are rustup's own rule: `$RUSTUP_HOME`/`$CARGO_HOME`, else
+/// `~/.rustup`/`~/.cargo`. A directory that does not exist is left out
+/// (nothing to copy). The environment and the file system are parameters, so
+/// the rule is testable without touching either.
+fn offline_dirs(
+    store: &Path,
+    getenv: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    is_dir: &dyn Fn(&Path) -> bool,
+) -> Vec<(PathBuf, &'static str)> {
+    let home = getenv("HOME").map(PathBuf::from);
+    let rust_home = |var: &str, dot: &str| {
+        getenv(var)
+            .map(PathBuf::from)
+            .or_else(|| home.as_ref().map(|h| h.join(dot)))
+    };
+    [
+        (
+            Some(store.to_path_buf()),
+            "the nros store: SDK, tools, sources",
+        ),
+        (
+            rust_home("RUSTUP_HOME", ".rustup"),
+            "rustup's home: the pinned Rust toolchains and targets",
+        ),
+        (
+            rust_home("CARGO_HOME", ".cargo"),
+            "cargo's home: rustup's proxies and the crate registry cache",
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(dir, why)| dir.filter(|d| is_dir(d)).map(|d| (d, why)))
+    .collect()
+}
+
 fn route(args: &Args) -> Result<Route> {
     // (flag as the user typed it, given?)
-    let given: [(&str, bool); 12] = [
+    let given: [(&str, bool); 13] = [
         ("<board>", args.board.is_some()),
         ("--list", args.list),
         ("--licenses", args.licenses),
+        ("--offline-dirs", args.offline_dirs),
         ("--workspace", args.workspace_scan.is_some()),
         ("--system", args.system),
         ("--build-sources", args.build_sources),
@@ -334,6 +383,8 @@ fn route(args: &Args) -> Result<Route> {
         Route::List
     } else if args.licenses {
         Route::Licenses
+    } else if args.offline_dirs {
+        Route::OfflineDirs
     } else if args.workspace_scan.is_some() || bare_in_workspace(args) {
         Route::Workspace
     } else if args.system {
@@ -361,6 +412,7 @@ fn route(args: &Args) -> Result<Route> {
     let consumes: &[&str] = match route {
         Route::List => &["--list"],
         Route::Licenses => &["--licenses"],
+        Route::OfflineDirs => &["--offline-dirs"],
         Route::Workspace => &["--workspace", "--check"],
         Route::System => &["--system", "--check", "--role"],
         Route::BuildSources => &["--build-sources", "--check"],
@@ -406,6 +458,7 @@ fn sudo_refusal(route: Route, args: &Args) -> Option<String> {
         Route::Install => !args.tools.is_empty(),
         Route::List
         | Route::Licenses
+        | Route::OfflineDirs
         | Route::BuildSources
         | Route::CheckTools
         | Route::CheckAll => false,
@@ -577,6 +630,18 @@ pub fn run(args: Args) -> Result<()> {
     // a selector the chosen arm does not consume is refused here rather than
     // dropped by whichever `return` happens to come first.
     let route = route(&args)?;
+
+    // Reads no index: it names directories, and an air-gapped host may have
+    // none to load yet.
+    if route == Route::OfflineDirs {
+        let store = crate::orchestration::store::root();
+        let getenv = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+        for (dir, why) in offline_dirs(&store, &getenv, &|p| p.is_dir()) {
+            eprintln!("nros setup --offline-dirs: {} — {why}", dir.display());
+            println!("{}", dir.display());
+        }
+        return Ok(());
+    }
 
     let (index_path, index) = load_resolved_index(&args.index)?;
 
@@ -7096,6 +7161,47 @@ mod workspace_scan_tests {
         assert!(none.args.tools.is_empty());
     }
 
+    /// Issue 2197 — rustup's own rule for its homes (env, else `~/.rustup` and
+    /// `~/.cargo`), the store first, and a missing directory left out.
+    #[test]
+    fn offline_dirs_names_the_store_then_rustups_homes() {
+        let store = Path::new("/h/.nros");
+        let all = |_: &Path| true;
+        let env = |k: &str| (k == "HOME").then(|| std::ffi::OsString::from("/h"));
+        let got: Vec<PathBuf> = offline_dirs(store, &env, &all)
+            .into_iter()
+            .map(|d| d.0)
+            .collect();
+        assert_eq!(
+            got,
+            [
+                PathBuf::from("/h/.nros"),
+                PathBuf::from("/h/.rustup"),
+                PathBuf::from("/h/.cargo")
+            ]
+        );
+        let env = |k: &str| match k {
+            "HOME" => Some("/h".into()),
+            "RUSTUP_HOME" => Some("/opt/rustup".into()),
+            "CARGO_HOME" => Some("/opt/cargo".into()),
+            _ => None,
+        };
+        let got: Vec<PathBuf> = offline_dirs(store, &env, &all)
+            .into_iter()
+            .map(|d| d.0)
+            .collect();
+        assert_eq!(
+            got[1..],
+            [PathBuf::from("/opt/rustup"), PathBuf::from("/opt/cargo")]
+        );
+        let only_store = |p: &Path| p == store;
+        assert_eq!(offline_dirs(store, &env, &only_store).len(), 1);
+        // Combined with another selector, the arm that does not run it is
+        // refused rather than dropped (issue 1935).
+        assert!(routed(&["--offline-dirs", "--list"]).is_err());
+        assert!(routed(&["--offline-dirs", "--tool", "qemu"]).is_err());
+    }
+
     fn routed(argv: &[&str]) -> Result<Route> {
         use clap::Parser;
 
@@ -7243,6 +7349,7 @@ mod workspace_scan_tests {
             (&["--workspace", "--sudo"], Route::Workspace),
             (&["--list"], Route::List),
             (&["--licenses"], Route::Licenses),
+            (&["--offline-dirs"], Route::OfflineDirs),
             (&["--workspace"], Route::Workspace),
         ];
         for (argv, want) in cases {

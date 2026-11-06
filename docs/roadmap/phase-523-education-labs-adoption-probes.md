@@ -214,10 +214,16 @@ documented as is.
 
 ## Left
 
-- Whether `nros setup` should install the Rust toolchain under `NROS_HOME`
-  (`RUSTUP_HOME`/`CARGO_HOME` set for the rustup it runs), so the offline
-  contract is one directory again. It moves an existing user's toolchain, so it
-  needs an RFC-0116 decision first (issue 2197).
+- ~~Whether `nros setup` should install the Rust toolchain under `NROS_HOME`.~~
+  **Ruled 2026-11-06 (maintainer): no.** Rust stays in rustup's own homes.
+  Owning it would mean a second toolchain per channel (1–2 GB each), a shell
+  `cargo` and rust-analyzer that differ from nros's, and `RUSTUP_HOME`/
+  `CARGO_HOME` carried at every place nros starts cargo, cmake or west. Moving
+  `CARGO_HOME` also re-fetches the registry and moves cache keys, issue
+  0491's class. The offline contract is therefore three directories, not
+  one: `nros setup --offline-dirs` prints them (the store, then rustup's and
+  cargo's homes) for `tar`. The book's air-gapped recipe is to name them
+  (issue 2264, after phase-537's page moves).
 
 ## Out of scope
 
