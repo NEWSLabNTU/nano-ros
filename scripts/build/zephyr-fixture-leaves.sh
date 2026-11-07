@@ -174,6 +174,9 @@ nros_root="$(cd "$nros_root" && pwd)"
 source "$nros_root/scripts/build/fixture-matrix.sh"
 # shellcheck source=scripts/build/cargo.sh
 source "$nros_root/scripts/build/cargo.sh"
+# issue 2344 — with no ROS discoverable, the fixtures name the bundled interfaces.
+source "$nros_root/scripts/build/fixture-interfaces.sh"
+nros_fixture_interfaces "$nros_root"
 # shellcheck source=scripts/lib/fixture-filter.sh
 source "$nros_root/scripts/lib/fixture-filter.sh"
 

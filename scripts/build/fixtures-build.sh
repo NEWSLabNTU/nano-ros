@@ -107,6 +107,9 @@ nros_fixture_require_known_platform "$platform"
 
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh
+# issue 2344 — with no ROS discoverable, the fixtures name the bundled interfaces.
+source scripts/build/fixture-interfaces.sh
+nros_fixture_interfaces "$PWD"
 
 # Issue 0393 — `NROS_FIXTURE_COORDS` narrows the build to one CI lane's
 # coordinates, the SAME file `check-fixtures-stale.sh` gates on and

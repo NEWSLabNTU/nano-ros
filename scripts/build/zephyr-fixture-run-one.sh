@@ -248,6 +248,9 @@ fi
 
 # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
 source "$nros_root/scripts/build/zephyr-python.sh"
+# issue 2344 — with no ROS discoverable, the fixtures name the bundled interfaces.
+source "$nros_root/scripts/build/fixture-interfaces.sh"
+nros_fixture_interfaces "$nros_root"
 nros_zephyr_activate
 # A RETARGETED row (phase-383 W9.b): `nros build <bringup>:<image>` owns the
 # application. Resolved once here because BOTH paths below need it.

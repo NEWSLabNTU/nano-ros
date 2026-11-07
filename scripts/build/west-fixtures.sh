@@ -19,6 +19,9 @@ cd "$repo_root"
 NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
+# issue 2344 — with no ROS discoverable, the fixtures name the bundled interfaces.
+source "$repo_root/scripts/build/fixture-interfaces.sh"
+nros_fixture_interfaces "$repo_root"
 # shellcheck source=scripts/build/zephyr-toolchain.sh
 source "$repo_root/scripts/build/zephyr-toolchain.sh"
 # issue 1379 — the ONE spelling of `-DZEPHYR_EXTRA_MODULES`.

@@ -74,6 +74,9 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 # shellcheck source=scripts/build/cargo.sh
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
+# issue 2344 — with no ROS discoverable, the fixtures name the bundled interfaces.
+source "$repo_root/scripts/build/fixture-interfaces.sh"
+nros_fixture_interfaces "$repo_root"
 source "$repo_root/scripts/build/cargo.sh"
 
 # shellcheck source=scripts/build/leaf-cache.sh

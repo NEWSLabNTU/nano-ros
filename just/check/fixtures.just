@@ -81,6 +81,14 @@ example-fmt:
         rustfmt "+{{NIGHTLY}}" --check --edition "$edition" "${files[@]}"
     done
 
+# issue 2344 — a fixture builder that configures a build names its interface
+# packages through `nros_fixture_interfaces` (scripts/build/fixture-interfaces.sh):
+# on a host with no ROS discoverable, issue 2278's CMake refusal otherwise stops
+# every lane at the first row that generates a message. Buildless, ~0.1 s.
+[private]
+fixture-interfaces-opt-in:
+    @python3 scripts/check/check-fixture-interfaces-opt-in.py
+
 # issue 0718 — an example leaf builds in-tree (RFC-0026), so every build
 # directory a recipe gives it must be named in that leaf's own .gitignore.
 # The six threadx rust leaves ignored `build-cyclonedds` and not `build-zenoh`,

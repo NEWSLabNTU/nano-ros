@@ -36,6 +36,9 @@ nros_cmake_export_prefix_path
 NROS_REPO_ROOT="$repo_root"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
+# issue 2344 — with no ROS discoverable, the fixtures name the bundled interfaces.
+source "$repo_root/scripts/build/fixture-interfaces.sh"
+nros_fixture_interfaces "$repo_root"
 
 # issue 1454 — the identity of the launch-resolution toolchain a staged build
 # consumed. One spelling, shared with `compile-check-signature.sh` and (through
