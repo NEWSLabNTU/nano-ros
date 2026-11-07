@@ -319,8 +319,35 @@ nextest-gates *args:
         exit 1
     fi
     export GIT_OPTIONAL_LOCKS=0
+    # Disk preflight (W4): a build gate that runs out of space mid-link fails as
+    # a compile error about something else. Refuse up front instead, naming the
+    # filesystem. `NROS_GATE_MIN_FREE_GIB=0` turns it off.
+    min_gib="${NROS_GATE_MIN_FREE_GIB:-30}"
+    for d in "$PWD" "${TMPDIR:-/tmp}"; do
+        free_kb="$(df -Pk "$d" | awk 'NR==2 {print $4}')"
+        if [ "$min_gib" -gt 0 ] && [ "$((free_kb / 1048576))" -lt "$min_gib" ]; then
+            echo "nextest-gates: $((free_kb / 1048576)) GiB free under $d, below $min_gib GiB" >&2
+            echo "  Remedy: python3 scripts/build/trim-caches.py --apply, or free space; NROS_GATE_MIN_FREE_GIB=<n> sets the floor" >&2
+            exit 1
+        fi
+    done
     just _check-skip-reset >/dev/null
-    exec "$nx" nextest run --manifest-path packages/testing/nros-gates/Cargo.toml \
+    # The tool config (W4): resource groups, threads-required, and priority from
+    # the previous run's junit. Generated per run from the recipe attributes.
+    manifest=packages/testing/nros-gates/Cargo.toml
+    tgt="$(cargo metadata --no-deps --offline --format-version 1 --manifest-path "$manifest" \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
+    cfg_dir="$PWD/build/gates"; mkdir -p "$cfg_dir"
+    cfg_rc=0
+    python3 scripts/check/check-gate-lists.py --list nextest-config \
+        --junit "$tgt/nextest/default/junit.xml" > "$cfg_dir/nextest-gates.toml.new" || cfg_rc=$?
+    if [ "$cfg_rc" -ne 0 ]; then
+        echo "nextest-gates: could not generate the tool config (rc=$cfg_rc)" >&2
+        exit 1
+    fi
+    mv "$cfg_dir/nextest-gates.toml.new" "$cfg_dir/nextest-gates.toml"
+    exec "$nx" nextest run --manifest-path "$manifest" \
+        --tool-config-file "nros-gates:$cfg_dir/nextest-gates.toml" \
         --test-threads "${NROS_GATE_JOBS:-$(nproc)}" "$@"
 
 # phase-543 W3 — every gate's scope is declared and every capability has a

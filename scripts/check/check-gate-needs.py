@@ -52,6 +52,17 @@ def check(groups: dict[str, set[str]], bodies: dict[str, str], cfg: dict,
         for n in sorted(x.removeprefix("needs:") for x in g if x.startswith("needs:")):
             if n not in caps:
                 problems.append(f"  {name}: needs `{n}`, which [capabilities] does not list")
+    resources = cfg.get("resources", {})
+    for name, g in sorted(groups.items()):
+        for r in sorted(x.removeprefix("uses:") for x in g if x.startswith("uses:")):
+            if r not in resources:
+                problems.append(f"  {name}: uses `{r}`, which [resources] does not list")
+        for c in sorted(x.removeprefix("cpu:") for x in g if x.startswith("cpu:")):
+            if not c.isdigit() or int(c) < 1:
+                problems.append(f"  {name}: `cpu:{c}` is not a positive integer")
+    for r, n in sorted(resources.items()):
+        if not isinstance(n, int) or n < 1:
+            problems.append(f"  [resources] {r} = {n!r}: max holders must be a positive integer")
     claimed: set[str] = set()
     for lane, spec in cfg.get("lane", {}).items():
         for c in spec.get("claims", []):
@@ -80,12 +91,16 @@ def check(groups: dict[str, set[str]], bodies: dict[str, str], cfg: dict,
 def self_test() -> None:
     cfg = {"capabilities": {"a": "", "b": "", "z": ""},
            "lane": {"l": {"claims": ["a", "b"]}}}
-    g = {"good": {"needs:a"}, "bad": {"needs:nope"}, "skipper": set(), "old": set()}
+    cfg["resources"] = {"r": 1}
+    g = {"good": {"needs:a", "uses:r", "cpu:4"}, "bad": {"needs:nope", "uses:nope", "cpu:x"},
+         "skipper": set(), "old": set()}
     bodies = {"skipper": "nros_check_skip skipper x", "old": "nros_check_unverified old y",
               "good": "nros_check_skip good x"}
     p, _ = check(g, bodies, cfg, {"old"})
     text = "\n".join(p)
     assert "bad: needs `nope`" in text, text
+    assert "bad: uses `nope`" in text and "`cpu:x`" in text, text
+    assert "good:" not in text, text
     assert "skipper: calls" in text, text
     assert "old:" not in text, text
     assert "no lane claims `z`" in text, text
