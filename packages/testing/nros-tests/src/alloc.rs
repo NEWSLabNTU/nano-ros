@@ -123,6 +123,25 @@ pub const fn dds_domain_of(platform: PlatformId, lang: Lang, workload: Workload,
     }
 }
 
+/// Whether an image of `rmw` puts a participant on the RTPS bus, i.e. whether
+/// [`dds_domain_of`] names something on the wire: Cyclone directly, XRCE
+/// through its Agent (issue 2221). Zenoh and uORB bake no domain.
+///
+/// The gates ask a cell only about the resources its RMW uses. Asking every
+/// baked cell made `domains_valid` and `ports_in_band` refuse a uORB cell
+/// (PX4 SITL, index 12) over arithmetic nothing reads (phase-542 W5).
+pub const fn has_dds_domain(rmw: Rmw) -> bool {
+    matches!(rmw, Rmw::Cyclonedds | Rmw::Xrce)
+}
+
+/// Whether an image of `rmw` dials the router/TCP locator [`port_of`] names.
+/// Zenoh does; Cyclone shares the slot without dialling it, so it is checked
+/// for collisions but has no band to stay inside of its own; XRCE dials its
+/// Agent ([`xrce_agent_port_of`]) instead; uORB dials nothing.
+pub const fn dials_router_port(rmw: Rmw) -> bool {
+    matches!(rmw, Rmw::Zenoh)
+}
+
 /// [`dds_domain_of`] over a matrix cell.
 pub const fn dds_domain(cell: &Cell) -> u8 {
     dds_domain_of(cell.platform, cell.lang, cell.workload, cell.rmw)
@@ -292,7 +311,7 @@ mod tests {
             // Issue 2221 — every RMW whose image puts a participant on the
             // RTPS bus: Cyclone directly, XRCE through its Agent. Checking
             // Cyclone alone let all nine Zephyr XRCE cells share domain 0.
-            if matches!(c.rmw, Rmw::Cyclonedds | Rmw::Xrce) {
+            if has_dds_domain(c.rmw) {
                 let d = dds_domain(c);
                 if let Some(prev) = domains.insert(d, c) {
                     panic!("domain collision {d}: {prev:?} vs {c:?}");
@@ -315,19 +334,29 @@ mod tests {
         }
     }
 
-    /// Ports stay inside the documented band and off well-known ports.
+    /// Ports a cell's image dials stay inside the documented band and off
+    /// well-known ports.
     #[test]
     fn ports_in_band() {
         for c in CELLS.iter().filter(baked) {
-            let p = port(c);
-            assert!((7000..12000).contains(&p), "port {p} out of band for {c:?}");
+            if dials_router_port(c.rmw) {
+                let p = port(c);
+                assert!((7000..12000).contains(&p), "port {p} out of band for {c:?}");
+            }
+            if matches!(c.rmw, Rmw::Xrce) {
+                let p = xrce_agent_port(c);
+                assert!(
+                    (2000..7000).contains(&p),
+                    "agent port {p} out of band for {c:?}"
+                );
+            }
         }
     }
 
-    /// Domains stay DDS-valid.
+    /// Domains a cell's image joins stay DDS-valid.
     #[test]
     fn domains_valid() {
-        for c in CELLS.iter().filter(baked) {
+        for c in CELLS.iter().filter(baked).filter(|c| has_dds_domain(c.rmw)) {
             let d = dds_domain(c);
             assert!((1..=232).contains(&d), "domain {d} invalid for {c:?}");
         }
