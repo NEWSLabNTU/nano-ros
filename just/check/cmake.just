@@ -457,6 +457,7 @@ cmake-bundled-interfaces:
 # compiler); everything past them is a hard failure.
 [group('needs:cli')]
 [group('needs:cmake')]
+[metadata("tier", "exempt", "compiles (CMake probe + cold cargo build of the C++ runtime): gate.yml's `check-fast-compile` job runs it by name on every event `check-fast` runs on, beside it; `default:` and `just ci gate` name it (phase-489 W5)")]
 probe-workspace-caps:
     #!/usr/bin/env bash
     set -euo pipefail

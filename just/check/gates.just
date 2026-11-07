@@ -348,9 +348,18 @@ nextest-gates *args:
         exit 1
     fi
     mv "$cfg_dir/nextest-gates.toml.new" "$cfg_dir/nextest-gates.toml"
-    exec "$nx" nextest run --manifest-path "$manifest" \
+    rc=0
+    "$nx" nextest run --manifest-path "$manifest" \
         --tool-config-file "nros-gates:$cfg_dir/nextest-gates.toml" \
-        --test-threads "${NROS_GATE_JOBS:-$(nproc)}" "$@"
+        --test-threads "${NROS_GATE_JOBS:-$(nproc)}" "$@" || rc=$?
+    # Per-gate timings for whoever asked (`NROS_GATE_TIMINGS_FILE`, set by
+    # the pre-push log), as `name rc wall_ms cpu_ms`; cpu is not measured
+    # under nextest and is 0.
+    if [ -n "${NROS_GATE_TIMINGS_FILE:-}" ]; then
+        python3 scripts/check/check-gate-lists.py --junit-tsv "$tgt/nextest/default/junit.xml" \
+            > "$NROS_GATE_TIMINGS_FILE" || echo "nextest-gates: could not write $NROS_GATE_TIMINGS_FILE" >&2
+    fi
+    exit "$rc"
 
 # phase-543 W5 — run one gate LANE (`.config/gate-lanes.toml`) through the
 # nextest harness: claims preflight, the old runner's pre-steps, and a refusal

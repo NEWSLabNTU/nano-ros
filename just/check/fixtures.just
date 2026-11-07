@@ -31,6 +31,7 @@
 # from the fixture manifest, and examining nothing is a FAILURE.
 #
 # ~4 s on a fully built 100 GB dev tree: one `nm` per image, no compilation.
+[metadata("tier", "exempt", "reads BUILT IMAGES; `build-test-fixtures` runs it (phase-413 W7, issue 1001)")]
 action-client-arena-budget:
     python3 scripts/check-action-client-arena-budget.py
 
@@ -148,6 +149,7 @@ example-matrix:
 [private]
 [group('units')]
 [group('needs:cli')]
+[metadata("tier", "build")]
 scaffold-builds:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -198,6 +200,7 @@ workspace-fixture-units:
 [private]
 [group('units')]
 [group('needs:cli')]
+[metadata("tier", "build")]
 template-copy-out:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -462,6 +465,7 @@ lane-scope-consumers:
 # two the scope admits that need a fixture are listed, not failed. ~30 s of
 # run on top of the `nros-tests` test-binary build. Step of `just ci gate`.
 [group("ci")]
+[metadata("tier", "exempt", "builds every nros-tests test binary (listing IS building, issue 1500); a step of `just ci gate` and of gate.yml's merge-group `check-lane-contracts` job (issue 1900)")]
 out-of-lane-deselected:
     @python3 scripts/test/check-out-of-lane-deselected.py
 
@@ -538,6 +542,7 @@ log-first-errors:
 # sources. It needs the test binaries, so it runs from `test-all` rather than
 # `just check`, which builds none.
 [private]
+[metadata("tier", "exempt", "needs the test binaries (listing IS building, issue 1500); `test-all` (justfile) runs it first, which `just ci tier1 run` / `just ci matrix` (run-matrix.yml) reach (issue 1739)")]
 nextest-test-filters:
     @python3 scripts/check-nextest-test-filters.py
 

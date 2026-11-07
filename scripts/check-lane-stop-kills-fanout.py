@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Stopping a lane stops its gate fan-out, and the stop is never a pass — issue 1350.
 
-Killing `just ci gate` used to leave `run-gates-parallel.sh`'s `xargs -P 32`
+Killing `just ci gate` used to leave the old gate runner's `xargs -P 32`
 running as an orphan, spawning fresh gates for minutes, while the stop read as
 clean. `just` forwards a signal to its direct child only, so the recipe shell
 died and nothing below it was told. The fix is `nros_guard_lane`
 (`scripts/build/subtree-guard.sh`): the fan-out runs in its own process group
 with a trap and a sentinel inside the group.
 
-This drives the REAL `run-gates-parallel.sh` and `run-lane-steps.sh` against a
-stub `just` whose gates are long `sleep`s, and asserts on the process table:
+This drives the REAL `nros_guard_lane` and `run-lane-steps.sh` against a stub
+`just` whose gates are long `sleep`s, and asserts on the process table. The
+fan-out under the guard is a four-line driver written per run (`fanout.sh`):
+since phase-543 W6 the lanes run under `scripts/build/gate-lane.sh`, which
+puts the nextest harness inside the same `nros_guard_lane`, so the guard is
+what is being tested and the driver only gives it a process tree to own.
 
   owner-term    SIGTERM the fan-out's owner: rc 143, NO VERDICT, no survivor.
   parent-term   SIGTERM only the shell ABOVE the owner (what `just` does):
@@ -38,7 +42,7 @@ import threading
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GATES = os.path.join(ROOT, "scripts", "build", "run-gates-parallel.sh")
+GUARD = os.path.join(ROOT, "scripts", "build", "subtree-guard.sh")
 LANE = os.path.join(ROOT, "scripts", "ci", "run-lane-steps.sh")
 
 errors = []
@@ -58,6 +62,13 @@ class Run:
         with open(self.list, "w") as fh:
             for i in range(40):
                 fh.write(f"g{i:02d}\n")
+        self.gates = os.path.join(self.dir, "fanout.sh")
+        with open(self.gates, "w") as fh:
+            fh.write(f"""#!/usr/bin/env bash
+. "{GUARD}"
+_fan() {{ grep -vE '^\\s*(#|$)' "$1" | xargs -P "${{NROS_GATE_JOBS:-4}}" -I{{}} just check {{}}; }}
+nros_guard_lane gates-selftest _fan "$1"
+""")
         bindir = os.path.join(self.dir, "bin")
         os.mkdir(bindir)
         with open(os.path.join(bindir, "just"), "w") as fh:
@@ -65,7 +76,7 @@ class Run:
 case "$1" in
   --show) [ "$2" = nope ] && exit 1; exit 0 ;;
   check) exec bash -c 'sleep "$1" & wait' "{self.dir}/gate-$2" "{self.sleep}" ;;
-  fanout) exec bash "{GATES}" "{self.list}" ;;
+  fanout) exec bash "{self.gates}" "{self.list}" ;;
   nope) echo ran > "{self.dir}/nope-ran"; exit 1 ;;
 esac
 exit 0
@@ -158,7 +169,7 @@ def wait_rc(p, timeout=20):
 def owner_term(base):
     r = Run(base)
     try:
-        p = spawn(r, ["bash", GATES, r.list])
+        p = spawn(r, ["bash", r.gates, r.list])
         if not check(r.wait_fanned_out(), "owner-term: the fan-out never started"):
             return
         p.send_signal(signal.SIGTERM)
@@ -179,7 +190,7 @@ def parent_term(base, disabled=False):
     try:
         # The `; :` keeps bash from exec'ing the script, so the parent is a
         # real shell standing above the owner — the recipe shell `just` kills.
-        p = spawn(r, ["bash", "-c", f'bash "{GATES}" "{r.list}"; :'], env)
+        p = spawn(r, ["bash", "-c", f'bash "{r.gates}" "{r.list}"; :'], env)
         if not check(r.wait_fanned_out(), "parent-term: the fan-out never started"):
             return None
         p.send_signal(signal.SIGTERM)
@@ -200,7 +211,7 @@ def parent_term(base, disabled=False):
 def owner_kill(base):
     r = Run(base)
     try:
-        p = spawn(r, ["bash", GATES, r.list])
+        p = spawn(r, ["bash", r.gates, r.list])
         if not check(r.wait_fanned_out(), "owner-kill: the fan-out never started"):
             return
         p.send_signal(signal.SIGKILL)

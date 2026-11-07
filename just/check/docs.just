@@ -540,6 +540,7 @@ roadmap-status:
 # provisioning step, so on that job an absent source is the WORKFLOW's
 # regression and must be a red, not a skip.
 [group("ci")]
+[metadata("tier", "exempt", "`cargo doc` over the deployed crate set; compiles `zpico-sys`, whose build script needs the zenoh-pico source. Its own pull-request step in gate.yml runs it AFTER provisioning")]
 rustdoc-links:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -606,6 +607,7 @@ rustdoc-links:
 # crate with no `[lints]` table, and that the derived scope really is wider
 # than the deployed set. `--self-test` runs it alone and verbosely.
 [group("ci")]
+[metadata("tier", "exempt", "`cargo doc` over every workspace crate; runs the cyclonedds/xrce/zenoh-pico build scripts too. Its own pull-request step in gate.yml runs it AFTER provisioning (issue 1116)")]
 rustdoc-workspace:
     @bash scripts/check-rustdoc-workspace.sh
 

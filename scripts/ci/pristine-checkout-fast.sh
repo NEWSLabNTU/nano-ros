@@ -31,8 +31,8 @@
 # SKIPS: under the nextest harness a skip is a red. Fix it by declaring what the
 # gate needs on its recipe. Never fix it by provisioning the clone.
 #
-# Not a fast gate (it RUNS the fast tier, so the tier would recurse). It is in
-# `.config/gate-lane-exempt.txt`, and `just ci gate` runs it after `check::fast`.
+# Not a fast gate (it RUNS the fast tier, so the tier would recurse). Its recipe
+# is `tier` exempt, and `just ci gate` runs it after `check::fast`.
 #
 # Usage: scripts/ci/pristine-checkout-fast.sh [--keep]
 

@@ -48,16 +48,25 @@ line, which git cannot merge. No `.gitattributes` driver can fix it either,
 because GitHub rebases queue entries server-side (issue 0884), so the shared
 line was deleted rather than reformatted.
 
-Membership is now DERIVED: a recipe in `just/check.just` is a fast gate unless
-it is in `build-serial:`, named in `.config/gate-lane-exempt.txt` with a
-reason, or declares parameters (a gate runs as `just check <name>`, with
-nothing after the name). `scripts/check/check-gate-lists.py --list <lane>` is
-the one place that derivation lives; `run-gates-parallel.sh` and
+Membership is DERIVED from the recipe's own attributes: a recipe in
+`just/check.just` is a fast gate unless it carries `[metadata("tier",
+"build")]`, `[metadata("tier", "exempt", "<why>")]` (the reason is required),
+or declares parameters (a gate runs as `just check <name>`, with nothing after
+the name). There is no gate list anywhere, so two pull requests adding gates
+never touch the same line. `scripts/check/check-gate-lists.py --list <lane>` is
+the one place that derivation lives; the gate harness and
 `check-gate-visibility.py` both ask it rather than parsing the justfile, and it
 exits non-zero rather than emitting a short list.
 
-Put a gate in `build-serial:` only when it CANNOT run without something built
-— **not** as a default, because since phase-396 W1 that lane runs on
+**Gates run as nextest tests** (phase-543): `packages/testing/nros-gates` is a
+`harness = false` binary whose tests are the gates, `just check lane <lane>`
+runs one lane of `.config/gate-lanes.toml`, and `fast`/`build` are that lane
+restricted to a tier (`NROS_GATE_SCOPE`, default `dev`). A gate in scope that
+skips is RED; a gate that needs something a lane does not claim declares it,
+`[group('needs:<cap>')]`, and is listed as not run, by name.
+
+Give a gate the build tier only when it CANNOT run without something built
+— **not** as a default, because since phase-396 W1 that tier runs on
 `schedule`/`workflow_dispatch` only and therefore gates nothing a merge passes
 through.
 

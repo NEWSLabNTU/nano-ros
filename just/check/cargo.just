@@ -731,6 +731,7 @@ source-manifest:
 # failure — "your submodule is unpushed" is a false and very specific
 # accusation to make at an offline laptop, and the remedy it implies is wrong.
 [group("check")]
+[metadata("tier", "exempt", "gate.yml runs it by name; needs the remote")]
 submodule-commits-reachable:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -752,6 +753,7 @@ submodule-commits-reachable:
 # observe it. It runs as the first item of `check-tier-preconditions`, ahead of
 # the CLI stamp, because `git submodule update` rewrites source mtimes and would
 # re-stale anything cleared before it. Exposed standalone for diagnosis.
+[metadata("tier", "exempt", "in no lane and no caller found — issue 1071's class")]
 submodule-drift:
     @bash scripts/check-submodule-drift.sh
 
@@ -790,6 +792,7 @@ workspace-order:
 # database. Runs over the two closed-graph roots, which hold 482 of the 512
 # pins. Config and its measured allow-lists: `deny.toml`. Findings that need a
 # breaking bump are issues (the first run filed 1805).
+[metadata("tier", "exempt", "developer lane (phase-485 W9, RFC-0104 D8): needs cargo-deny and the network (RustSec); run by hand, never merge-gating")]
 deny:
     #!/usr/bin/env bash
     set -euo pipefail

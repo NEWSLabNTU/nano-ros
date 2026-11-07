@@ -287,6 +287,7 @@ weak-symbols:
 # fixtures (skips covered classes whose artifacts are absent) — NOT in the fast
 # `check` aggregate; run after the fixture build / in the per-platform CI lanes.
 # The fast source-level half is `weak_symbol_audit.rs` (in `just test`).
+[metadata("tier", "exempt", "needs built fixtures, so it cannot be buildless; a step of `just ci matrix` (run-matrix.yml) after that lane's fixture build (issue 1739)")]
 weak-symbols-image:
     @bash scripts/check-weak-symbols-image.sh
 
@@ -307,6 +308,7 @@ size-markers-unlinked:
 # NuttX kernel) defines a size-probe marker. Prints images examined per road;
 # no image at all is NOT VERIFIED, never OK. Needs built fixtures, so it is a
 # step after the fixture build of `just ci` tier 1/2/nightly/full.
+[metadata("tier", "exempt", "needs built fixtures; a step of `just ci` tier1/matrix/matrix-nightly/full after the fixture build (issue 1765)")]
 size-markers-image:
     @python3 scripts/check-size-markers-unlinked.py --built
 

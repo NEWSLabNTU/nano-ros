@@ -26,8 +26,8 @@ an upper bound: `just build linux` and `just build tier1` are one recipe. A job
 flagged here that never reaches the gate at run time pays one depth-1 fetch,
 which is cheap; a job missed here is a red lane with no verdict.
 
-`check::fast` runs its gates through `run-gates-parallel.sh`, which no just edge
-records, so the entry points are named rather than derived: the fast line in
+`check::fast` runs its gates through the nextest harness
+(`scripts/build/gate-lane.sh`), which no just edge records, so the entry points are named rather than derived: the fast line in
 both spellings and the gate itself.
 """
 

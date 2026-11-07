@@ -40,34 +40,27 @@ BASELINE = ROOT / ".config" / "ungated-gates.txt"
 GATING_EVENTS = ("pull_request", "merge_group")
 
 
-def lane_members(text: str, lane: str) -> list[str]:
-    m = re.search(rf"^{lane}: \\\n((?:    [a-z0-9-]+ \\\n)+)", text, re.M)
-    if not m:
-        return []
-    return re.findall(r"^    ([a-z0-9-]+) \\", m.group(1), re.M)
-
-
 def lane_gates(text: str, lane: str) -> list[str]:
-    """A lane's members, however that lane records them.
+    """A lane's members, from the ONE derivation (`check-gate-lists.py`).
 
-    `build-serial` is still an authored dependency list, so `lane_members`
-    reads it. `fast-serial` has none: issue 1072 deleted the 218-name registry
-    because two authors adding alphabetically adjacent gates insert at the same
-    base line and conflict, and no `.gitattributes` driver runs on GitHub's
-    server-side rebase to fix it. Its membership is DERIVED by
-    `check-gate-lists.py`, and it is asked rather than parsed here — a regex
-    over a dependency line that no longer exists returns [], which would make
-    this gate silently vacuous the moment `just check fast` stopped being run
-    by a gating job. That is the exact shape this file exists to prevent.
+    Neither tier has an authored list: issue 1072 deleted the fast registry
+    and phase-543 W6 the `build-serial:` one, so a gate's tier is a
+    `[metadata("tier", ...)]` attribute on its recipe. Asked, never parsed:
+    a regex over a dependency line that no longer exists returns [], which
+    made this gate silently vacuous, and was measured doing exactly that the
+    day `build-serial:` was deleted. `text` is unused and kept for callers.
     """
-    if lane.removesuffix("-serial") == "fast":
-        out = subprocess.run(
-            [sys.executable, str(ROOT / "scripts/check/check-gate-lists.py"),
-             "--list", "fast"],
-            capture_output=True, text=True, check=True,
-        )
-        return [ln for ln in out.stdout.split("\n") if ln.strip()]
-    return lane_members(text, lane)
+    _ = text
+    out = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/check/check-gate-lists.py"),
+         "--list", lane.removesuffix("-serial")],
+        capture_output=True, text=True, check=True,
+    )
+    got = [ln for ln in out.stdout.split("\n") if ln.strip()]
+    if not got:
+        raise SystemExit(f"check-gate-visibility: the `{lane}` lane derived EMPTY; "
+                         "refusing to read that as nothing ungated")
+    return got
 
 
 def lanes_run_by_gating_jobs() -> set[str]:
@@ -127,10 +120,9 @@ def read_baseline() -> list[str]:
 
 def self_test() -> None:
     """Runs on the NORMAL path — `check-gate-selftests`."""
-    txt = "fast-serial: \\\n    a \\\n    b \\\n\nbuild: \\\n    c \\\n"
-    assert lane_members(txt, "fast-serial") == ["a", "b"]
-    assert lane_members(txt, "build") == ["c"]
-    assert lane_members(txt, "nope") == []
+    # Both tiers come from the derivation, and neither may come back empty.
+    fast, build = lane_gates("", "fast-serial"), lane_gates("", "build-serial")
+    assert fast and build and not set(fast) & set(build), (len(fast), len(build))
     # The guard shape that actually appears in gate.yml — double-quoted event
     # names inside a single-quoted fromJSON list. The first version of this
     # gate missed it and reported everything as gated.
