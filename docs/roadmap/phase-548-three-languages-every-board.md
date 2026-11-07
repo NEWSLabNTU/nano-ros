@@ -322,6 +322,35 @@ no marker means no action.
 - every tab has a probe track;
 - `check-book-audience` passes with no new baseline row.
 
+### W9 — The RISC-V toolchain file finds rust-lld on the pinned toolchain — DONE
+
+**Code area:** `cmake/toolchain/riscv64-threadx.cmake`,
+`packages/api/nros-c/cmake/nros-rtos-helpers.cmake` (`nros_host_rustlib_bin`),
+`nros-cli-core` `cmd/setup.rs`.
+
+- Measured: a project outside this checkout, on a host whose rustup default
+  is a bare `nightly` (no `llvm-tools`), failed at configure with
+  `llvm-ar not found alongside rust-lld`. `nros_host_rustlib_bin` asked
+  `rustc --print sysroot` before anything had pinned the toolchain, so it got
+  the default's sysroot, while every cargo command of the same build runs the
+  `rust-toolchain.toml` pin (issue 1914). `nros setup` added `llvm-tools` and
+  the board targets to rustup's default only, so on that host it provisioned
+  a toolchain that no CMake build used.
+- Reproduced without global state: a private `RUSTUP_HOME` whose toolchains
+  are the host's and whose default is `nightly`.
+
+**Done (2026-11-07).**
+- `nros_host_rustlib_bin` calls `nros_pin_default_rust_toolchain()` first,
+  and passes an explicit `-DRust_TOOLCHAIN` to the query.
+- Both refusals in the toolchain file name the toolchain they searched, and
+  give two remedies: `nros setup rv-virt-threadx`, or
+  `rustup component add llvm-tools --toolchain <tc>`.
+- `nros setup` installs each default-toolchain need on the pin as well. The
+  default's row stays, because the cargo road still runs rustup's default.
+- Measured on the repro: the default `nightly` configures, now on 1.99.0, and
+  so does `-DRust_TOOLCHAIN=stable`. `-DRust_TOOLCHAIN=nightly` refuses with
+  the named remedy.
+
 ## Acceptance (phase)
 
 - Every cell of the matrix above is green and re-measured on main.
