@@ -323,16 +323,24 @@ nextest-gates *args:
     export GIT_OPTIONAL_LOCKS=0
     # Disk preflight (W4): a build gate that runs out of space mid-link fails as
     # a compile error about something else. Refuse up front instead, naming the
-    # filesystem. `NROS_GATE_MIN_FREE_GIB=0` turns it off.
-    min_gib="${NROS_GATE_MIN_FREE_GIB:-30}"
-    for d in "$PWD" "${TMPDIR:-/tmp}"; do
-        free_kb="$(df -Pk "$d" | awk 'NR==2 {print $4}')"
-        if [ "$min_gib" -gt 0 ] && [ "$((free_kb / 1048576))" -lt "$min_gib" ]; then
-            echo "nextest-gates: $((free_kb / 1048576)) GiB free under $d, below $min_gib GiB" >&2
-            echo "  Remedy: python3 scripts/build/trim-caches.py --apply, or free space; NROS_GATE_MIN_FREE_GIB=<n> sets the floor" >&2
+    # filesystem. Two floors, because they are two filesystems with different
+    # jobs. The checkout holds the build caches. TMPDIR holds the gates' fixtures
+    # and the units' scratch trees (scripts/build/gate-scratch.sh), and is often
+    # a RAM-backed tmpfs: 20 GiB on one contributor host, so one 30 GiB floor for
+    # both refused every run there. How many units run at once already scales to
+    # TMPDIR's free space (`nros_gate_unit_jobs`, #3234), so TMPDIR's floor is
+    # only room for one unit (~4 GiB) and the fixtures. `=0` turns either off.
+    floor() {   # <dir> <min-gib> <knob>
+        local free_kb
+        free_kb="$(df -Pk "$1" | awk 'NR==2 {print $4}')"
+        if [ "$2" -gt 0 ] && [ "$((free_kb / 1048576))" -lt "$2" ]; then
+            echo "nextest-gates: $((free_kb / 1048576)) GiB free under $1, below $2 GiB" >&2
+            echo "  Remedy: python3 scripts/build/trim-caches.py --apply, or free space; $3=<n> sets the floor" >&2
             exit 1
         fi
-    done
+    }
+    floor "$PWD" "${NROS_GATE_MIN_FREE_GIB:-30}" NROS_GATE_MIN_FREE_GIB
+    floor "${TMPDIR:-/tmp}" "${NROS_GATE_MIN_FREE_TMP_GIB:-8}" NROS_GATE_MIN_FREE_TMP_GIB
     just _check-skip-reset >/dev/null
     # The tool config (W4): resource groups, threads-required, and priority from
     # the previous run's junit. Generated per run from the recipe attributes.

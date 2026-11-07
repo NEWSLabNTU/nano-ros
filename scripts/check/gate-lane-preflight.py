@@ -102,6 +102,12 @@ def probe_zephyr() -> str | None:
     return "no west workspace resolves (`.west/` absent)"
 
 
+def probe_west() -> str | None:
+    r = subprocess.run(["bash", "-c", 'source scripts/build/zephyr-python.sh && py="$(NROS_PYTHON= nros_zephyr_python)" && [ -n "$py" ] && "$py" -c "import west"'],
+                       cwd=ROOT, capture_output=True, text=True)
+    return None if r.returncode == 0 else "no interpreter that imports west"
+
+
 def probe_build_tree() -> str | None:
     stamp = ROOT / os.environ.get("NROS_FIXTURE_STAMP", "target/nextest/.fixtures-built")
     return None if stamp.exists() else "no fixture build stamp (just build-test-fixtures)"
@@ -132,6 +138,7 @@ REMEDY = {
     "zephyr": "just zephyr setup",
     "nuttx": "nros setup --source nuttx",
     "fsp": "provision NV_SPE_FSP_DIR (not on any runner)",
+    "west": "just zephyr setup",
     "build-tree": "just build-test-fixtures",
     "nextest": "just setup-worktree",
 }
@@ -151,6 +158,7 @@ PROBES = {
     "zephyr": probe_zephyr,
     "nuttx": lambda: env_dir("NUTTX_DIR"),
     "fsp": lambda: env_dir("NV_SPE_FSP_DIR"),
+    "west": probe_west,
     "build-tree": probe_build_tree,
 }
 

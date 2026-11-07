@@ -23,6 +23,7 @@ submodules = "the submodules .config/worktree-provisioning.txt lists"
 git-history = "commit history deeper than a shallow clone"
 zephyr-tree = "Zephyr's lib/cpp/minimal/include under zephyr-workspace/ (CI's sparse clone)"
 zephyr = "a resolvable west workspace"
+west = "a Python interpreter that imports west (scripts/build/zephyr-python.sh)"
 nuttx = "the NuttX sources (NUTTX_DIR)"
 fsp = "the NVIDIA Orin SPE FSP tree (NV_SPE_FSP_DIR)"
 build-tree = "artifacts a fixture or image build produced"
@@ -51,7 +52,7 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # The self-hosted runner (nros-sdk-zephyr): the image's set plus a Zephyr
 # workspace and the fixture build's artifacts.
 tiers = ["fast", "build"]
-claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree", "zephyr", "build-tree"]
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree", "zephyr", "west", "build-tree"]
 
 [lane.dev]
 # A developer worktree after `just setup-worktree` with ROS 2 sourced: what
@@ -68,7 +69,7 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # run 42346220231. The gates that need more run in gate.yml's hosted jobs; the
 # Zephyr and fixture gates run as named steps after the build there.
 tiers = ["fast", "build"]
-claims = ["cli", "cmake", "cc", "ros2", "sources"]
+claims = ["cli", "cmake", "cc", "ros2", "sources", "west"]
 
 [lane.pristine]
 # `check pristine-checkout`: a worktree with no submodules and no CLI
