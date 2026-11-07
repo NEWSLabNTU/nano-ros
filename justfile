@@ -845,6 +845,16 @@ setup-worktree:
         echo "setup-worktree: checking out ${#want[@]} submodule(s)."
         git submodule update --init "${want[@]}"
     fi
+    # phase-543 — the gate harness's runner, at the index's pin, into the
+    # store every checkout shares (so a second worktree finds it installed).
+    nx_rc=0
+    nx="$(python3 scripts/lib/index_tool.py resolve cargo-nextest cargo-nextest)" || nx_rc=$?
+    if [ "$nx_rc" -eq 0 ]; then
+        echo "  [OK]      cargo-nextest at the pin: $nx"
+    else
+        echo "  [INSTALL] cargo-nextest at the pin -> $(dirname "$(dirname "$nx")")"
+        python3 scripts/lib/index_tool.py install cargo-nextest --prefix "$(dirname "$(dirname "$nx")")"
+    fi
     echo ""
     # No backticks in these strings: `just` treats a backtick in a recipe line
     # as command substitution, so an earlier draft of this message EXECUTED

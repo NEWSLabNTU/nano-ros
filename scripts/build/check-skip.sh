@@ -33,11 +33,32 @@ if ! command -v nros_build_dir >/dev/null 2>&1; then
     . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/build-root.sh"
 fi
 
+# The checkout this file belongs to: a gate's skip is recorded by the
+# check-skip.sh of the checkout the gate script lives in.
+_NROS_CHECK_SKIP_SELF_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+
+# phase-543 — is the gate harness's ledger (and its strict mode) THIS
+# checkout's? The harness names its checkout in NROS_GATE_SKIP_ROOT. A gate
+# that runs a nested subject in a scratch checkout (the pre-push hook in a
+# probe clone, `check fast` in a pristine clone) passes the harness's
+# environment down, and the subject's own skips are not the outer gate's
+# verdict: measured, the hook's `submodule-pins` NOT VERIFIED in a clone with no
+# submodules failed `hook-repo-side-effects`, and with it every push. A
+# subject runs ITS checkout's copy of this file, so the root tells them apart
+# wherever it runs, whatever its cwd. Unset (no harness): not nested.
+_nros_check_skip_nested() {
+    [ -n "${NROS_GATE_SKIP_ROOT:-}" ] || return 1
+    local want
+    want="$(cd "$NROS_GATE_SKIP_ROOT" 2>/dev/null && pwd -P)" || return 1
+    [ "$want" != "$_NROS_CHECK_SKIP_SELF_ROOT" ]
+}
+
 _nros_check_skip_file() {
     # phase-543 W3 — the nextest gate harness gives each test its OWN ledger
     # and fails the test when anything lands in it: under the harness a skip
-    # is never a pass (scope decides what runs, not the host).
-    if [ -n "${NROS_GATE_SKIP_LEDGER:-}" ]; then
+    # is never a pass (scope decides what runs, not the host). A nested
+    # subject in another checkout keeps its skips in its own ledger.
+    if [ -n "${NROS_GATE_SKIP_LEDGER:-}" ] && ! _nros_check_skip_nested; then
         printf '%s' "$NROS_GATE_SKIP_LEDGER"
         return 0
     fi
@@ -116,7 +137,7 @@ nros_check_unverified() {
     local name="${1:?nros_check_unverified: name}"
     shift
     local reason="$*"
-    if [ "${NROS_CHECK_SKIP_STRICT:-}" = 1 ]; then
+    if [ "${NROS_CHECK_SKIP_STRICT:-}" = 1 ] && ! _nros_check_skip_nested; then
         echo "[FAIL] ${name}: NOT VERIFIED — ${reason} (NROS_CHECK_SKIP_STRICT=1: a missing precondition is a failure here)" >&2
         return 1
     fi
@@ -145,5 +166,15 @@ nros_check_unverified_self_test() (
         "multi-gate"$'\t'"first / second third") ;;
         *) rm -rf "$scratch"; echo "nros_check_skip SELFTEST FAILED: a multi-line reason wrote more than one record" >&2; exit 1 ;;
     esac
+    # phase-543 — a subject in ANOTHER checkout is nested: the harness's strict
+    # mode and ledger are not its. This checkout, or no harness, is not nested.
+    NROS_GATE_SKIP_ROOT="$_NROS_CHECK_SKIP_SELF_ROOT" _nros_check_skip_nested \
+        && { rm -rf "$scratch"; echo "check-skip SELFTEST FAILED: its own checkout read as nested" >&2; exit 1; }
+    NROS_GATE_SKIP_ROOT= _nros_check_skip_nested \
+        && { rm -rf "$scratch"; echo "check-skip SELFTEST FAILED: no harness read as nested" >&2; exit 1; }
+    NROS_GATE_SKIP_ROOT="$scratch" _nros_check_skip_nested \
+        || { rm -rf "$scratch"; echo "check-skip SELFTEST FAILED: another checkout did not read as nested" >&2; exit 1; }
+    NROS_GATE_SKIP_ROOT="$scratch" NROS_CHECK_SKIP_STRICT=1 nros_check_unverified nested-gate "probe" >/dev/null 2>&1 \
+        || { rm -rf "$scratch"; echo "check-skip SELFTEST FAILED: a nested subject took the harness's strict mode" >&2; exit 1; }
     rm -rf "$scratch"
 )
