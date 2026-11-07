@@ -196,7 +196,7 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | [#2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md) | both | Jazzy `ros2 topic echo` receives nothing from the QEMU talker; type hash INVALID |
 | [#2321](../issues/2321-lock-provenance-incomplete.md) | industrial | `nros-sdk.lock` omits Rust, source packages, corrosion hash |
 | [#2322](../issues/2322-image-not-reproducible-across-paths.md) | industrial | Image embeds the absolute workspace path |
-| [#2323](../issues/2323-offline-deb-recipe-omits-ros-base.md) | industrial | Offline `.deb` recipe omits ROS 2 itself |
+| [#2323](../issues/archived/2323-offline-deb-recipe-omits-ros-base.md) | industrial | **Resolved** 2026-11-07: the recipe downloads in plain Ubuntu with the ROS 2 source; 606 debs, 227 MB |
 | [#2324](../issues/2324-offline-error-no-nros-offline-hint.md) | industrial | Offline failure does not name `NROS_OFFLINE=1` |
 | [#2325](../issues/2325-board-support-no-last-run-date.md) | industrial | Board support gives cadence, not last run |
 | [#2326](../issues/2326-mem-report-not-shipped.md) | industrial | Memory report not in the release; `llvm-tools` needs the network |
