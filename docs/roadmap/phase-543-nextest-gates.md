@@ -313,8 +313,8 @@ keep caches that runs use, remove the ones they do not.
   `mktemp` path, and in the checkout's shared `corrosion-cargo` / `sizes-probe`
   its image builds got a new key every run. Measured: 2.4-3.1 GB left behind
   per variant per run, about 50 GB a gate run, with no speed-up from sharing
-  (50 s, then 47 s). [Issue 2318](../issues/2318-cmake-leaf-recompiles-host-tooling.md)
-  measures the duplication underneath. Each unit now keeps its caches in its
+  (50 s, then 47 s). #3239 files the issue that measures the duplication
+  underneath. Each unit now keeps its caches in its
   own scratch tree, which goes with it: 57-62 s cold, 0 MB left in the checkout,
   across two runs. `NROS_KEEP_CACHES=1` restores the shared cache.
 - `scripts/build/trim-caches.py` evicts whole cargo target dirs in
