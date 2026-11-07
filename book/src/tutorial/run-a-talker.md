@@ -21,12 +21,14 @@ chapter adds to the workspace you create here, so keep it.
 
 - A Linux host with the [install](../start/install.md) done, so `nros` is on
   your `PATH`.
-- ROS 2 Humble with its zenoh middleware, `ros-humble-rmw-zenoh-cpp`. ROS 2
+- ROS 2 with its zenoh middleware, `ros-<distro>-rmw-zenoh-cpp`: Humble on Ubuntu 22.04, Jazzy on 24.04
+  ([which edition](../start/install.md#install-ros-2-first)). ROS 2
   gives you the router the board talks to, the `ros2` command that shows its
   messages, and the message definitions the build generates the talker's code
   from. If you have no ROS 2 install, the container in
   [Install options](../guide/build/install-options.md#ros-2-and-the-zenoh-router)
-  has one.
+  has one. The commands
+  here source Humble; on Jazzy, write `jazzy` where they say `humble`.
 
 You need no board, no cable and no root access. The emulated board talks to
 your machine over its serial port, the way a real board's first program does.
@@ -291,7 +293,7 @@ step. Chapter 9 adds the host to this project as its second target.
   program, and this shell has not sourced ROS 2, so it could not start.
   Source ROS 2 in that shell and run again.
 - **`nros run` stops at once and names the router:** it could not find
-  the zenoh router. Install `ros-humble-rmw-zenoh-cpp` if it is missing, or
+  the zenoh router. Install `ros-<distro>-rmw-zenoh-cpp` if it is missing, or
   point `NROS_RMW_ZENOHD` at an `rmw_zenohd` binary.
 - **No `Publishing:` line within a minute of boot:** the router started
   but the board did not reach it. `nros run` names the router's log when

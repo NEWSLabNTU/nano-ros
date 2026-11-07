@@ -21,7 +21,8 @@ same steps target an embedded board.
 - A Linux host with the [install](../start/install.md) done, so `nros` is on
   your `PATH`. Only Linux is supported as a host board: macOS, Windows and
   FreeBSD are not.
-- ROS 2 Humble, with its Cyclone DDS middleware, so that `ros2 topic echo`
+- ROS 2 (Humble on Ubuntu 22.04, Jazzy on 24.04; [which edition](../start/install.md#install-ros-2-first)),
+  with its Cyclone DDS middleware, so that `ros2 topic echo`
   can read what the talker publishes. On Debian or Ubuntu:
 
 ```bash probe=30 track=installed
@@ -55,7 +56,7 @@ That wrote a workspace with two packages:
 host_ws/
 └── src/
     ├── host_node/              # the talker: package.xml, CMakeLists.txt, its C++ source
-    └── host_node_bringup/      # package.xml and system.toml: the board, the RMW, the node
+    └── host_node_bringup/      # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
 `host_node` is the talker, a library with no `main()` that names no board. It

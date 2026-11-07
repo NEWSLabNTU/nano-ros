@@ -175,7 +175,7 @@ match:
 
 - **The RMW.** The board uses zenoh, so the ROS 2 side sets
   `RMW_IMPLEMENTATION=rmw_zenoh_cpp`, and both reach the same router, which
-  `nros run` started. ROS 2 Humble's `ros-humble-rmw-zenoh-cpp` package,
+  `nros run` started. The `ros-<distro>-rmw-zenoh-cpp` package,
   which chapter 1 and every zenoh starter ask for, provides both the RMW and
   the router. With Cyclone DDS on both sides there is no router at all, as the
   [Linux host starter](../starters/linux-host.md) shows.

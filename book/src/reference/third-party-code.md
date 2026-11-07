@@ -32,7 +32,7 @@ An image's Rust dependencies are an ordinary cargo graph. List them, with
 their licenses, from the image's generated cargo root — the directory
 `nros build` prints on its `entry →` line:
 
-```sh
+```text
 cargo metadata --format-version 1 --manifest-path <entry-dir>/Cargo.toml \
   | python3 -c 'import json,sys; [print(p["name"], p["version"], p.get("license") or "-") for p in json.load(sys.stdin)["packages"]]' \
   | sort -u

@@ -125,7 +125,7 @@ on that machine or name a reachable one in `NROS_LOCATOR`. The checklist in
 
 - **`nros run` stops at once and names the router:** the image uses zenoh
   and `rmw_zenohd` is not on the path. Source ROS 2 and install
-  `ros-humble-rmw-zenoh-cpp`, or pass `--router <locator>` to use a router
+  `ros-<distro>-rmw-zenoh-cpp`, or pass `--router <locator>` to use a router
   you already run.
 - **ROS 2 hears nothing:** the ROS 2 shell's `RMW_IMPLEMENTATION` or
   `ROS_DOMAIN_ID` differs from the image's `rmw` and `domain_id`.

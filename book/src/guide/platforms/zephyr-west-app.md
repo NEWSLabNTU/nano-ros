@@ -21,7 +21,8 @@ any Zephyr module does. For a new project, or one that will grow past one
 node, use a nano-ros workspace instead, where `nros build` writes the Zephyr
 application for you: [Zephyr native_sim](zephyr-native-sim.md).
 
-You need a Linux host with ROS 2 Humble and `ros-humble-rmw-zenoh-cpp`, the
+You need a Linux host with ROS 2 and `ros-<distro>-rmw-zenoh-cpp`
+([which edition](../../start/install.md#install-ros-2-first)), the
 [install](../../start/install.md) done, and Zephyr's host tools, `west` and
 the build tools
 [Zephyr's Getting Started](https://docs.zephyrproject.org/3.7.0/develop/getting_started/index.html)

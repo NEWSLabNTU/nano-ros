@@ -18,7 +18,8 @@ the image you later flash to the board.
 ## What you need
 
 - A Linux x86_64 host with the [install](../start/install.md) done, so `nros`
-  is on your `PATH`, and ROS 2 Humble with `ros-humble-rmw-zenoh-cpp`.
+  is on your `PATH`, and ROS 2 with `ros-<distro>-rmw-zenoh-cpp`
+  (Humble on Ubuntu 22.04, Jazzy on 24.04; [which edition](../start/install.md#install-ros-2-first)).
 - For the last step only: a Nucleo-F767ZI and a USB cable for its ST-LINK
   port. Everything before it runs in the twin.
 - Zephyr's host tools: `west` and the build tools
