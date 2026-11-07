@@ -406,12 +406,21 @@ find_program(_RUST_LLD rust-lld
 # neither rust-lld nor this file. The hardcoded-triple bug this replaces landed
 # in exactly that silent branch on every non-x86 host — which is why the
 # 2026-07-28 audit could name the defect and it still survived unfixed.
+# phase-548 W9 — name the toolchain the tools were looked for in: the sysroot
+# is `<rustup>/toolchains/<tc>`, and a bare `rustup component add` would add
+# the component to whatever rustup's default is, which need not be this one.
+get_filename_component(_rust_sysroot "${_RUSTLIB_BIN}/../../../.." ABSOLUTE)
+get_filename_component(_rust_tc "${_rust_sysroot}" NAME)
+set(_rust_tools_remedy
+    "Provision the board (installs `llvm-tools` on the pinned toolchain):\n"
+    "    nros setup rv-virt-threadx\n"
+    "or add the component to this toolchain by hand:\n"
+    "    rustup component add llvm-tools --toolchain ${_rust_tc}")
 if(NOT _RUST_LLD)
     message(FATAL_ERROR
-        "rust-lld not found in ${_RUSTLIB_BIN} — required by the riscv64-threadx "
-        "toolchain to link picolibc (TLS errno) against ThreadX (non-TLS errno); "
-        "GNU ld cannot. Install the rustup component that ships it:\n"
-        "    rustup component add llvm-tools")
+        "rust-lld not found in ${_RUSTLIB_BIN} (toolchain ${_rust_tc}) — required "
+        "by the riscv64-threadx toolchain to link picolibc (TLS errno) against "
+        "ThreadX (non-TLS errno); GNU ld cannot. " ${_rust_tools_remedy})
 endif()
 
 # Pass tool paths to the wrapper via environment variables. Earlier
@@ -430,8 +439,9 @@ get_filename_component(_lld_dir "${_RUST_LLD}" DIRECTORY)
 find_program(_LLVM_AR_TC llvm-ar PATHS "${_lld_dir}" NO_DEFAULT_PATH)
 if(NOT _LLVM_AR_TC)
     message(FATAL_ERROR
-        "llvm-ar not found alongside rust-lld at ${_lld_dir} — needed by "
-        "riscv64-lld-wrapper.sh to strip soft-float compiler_builtins.")
+        "llvm-ar not found alongside rust-lld at ${_lld_dir} (toolchain "
+        "${_rust_tc}) — needed by riscv64-lld-wrapper.sh to strip soft-float "
+        "compiler_builtins. " ${_rust_tools_remedy})
 endif()
 
 set(_lld_wrapper "${CMAKE_CURRENT_LIST_DIR}/riscv64-lld-wrapper.sh")

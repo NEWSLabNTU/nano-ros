@@ -920,6 +920,7 @@ fn provision_boards(
     // memory recipe and `scripts/nros-mem-report.py` read an image with, and
     // installing it here is what lets them work offline afterwards.
     needs.extend(default_toolchain_components(index));
+    let needs = also_on_the_pinned_build_toolchain(needs, index);
     let line = crate::orchestration::rust_toolchain::ensure_needs(&needs, args.dry_run)
         .map_err(|e| eyre::eyre!("nros setup: {e}"))?;
     eprintln!("  {:<22} {line}", "rust target");
@@ -998,6 +999,41 @@ fn default_toolchain_components(
             )
         })
         .collect()
+}
+
+/// phase-548 W9 — a need on "rustup's default" is ALSO installed on the pinned
+/// build toolchain (`[rust.toolchain.<rustup's>].channel`, the root
+/// `rust-toolchain.toml` pin). A CMake build outside this checkout runs the pin
+/// whenever it is installed (issue 1914's `nros_pin_default_rust_toolchain`,
+/// and the RISC-V toolchain file's rust-lld/llvm-ar lookup since W9), so a
+/// component or target added only to a default that differs from it — a host
+/// whose default is a bare `nightly` — was provisioned where no CMake build
+/// looked. The default's row stays: a cargo-road project outside the checkout
+/// still runs rustup's default. Where the two are one toolchain, `ensure_needs`
+/// finds the second row installed and does nothing.
+fn also_on_the_pinned_build_toolchain(
+    needs: Vec<(Option<String>, crate::builder::preflight::RustNeed)>,
+    index: &SdkIndex,
+) -> Vec<(Option<String>, crate::builder::preflight::RustNeed)> {
+    let Some(pin) = index
+        .rust
+        .rustup
+        .as_ref()
+        .and_then(|r| index.rust.toolchain.get(&r.toolchain))
+        .map(|t| t.channel.clone())
+    else {
+        return needs;
+    };
+    let mut out = needs.clone();
+    for (tc, n) in needs {
+        if tc.is_none() {
+            let row = (Some(pin.clone()), n);
+            if !out.contains(&row) {
+                out.push(row);
+            }
+        }
+    }
+    out
 }
 
 fn board_rust_needs(
@@ -7912,6 +7948,43 @@ mod zephyr_runtime_setup_tests {
         }
         // zephyr-lang-rust's own target stays on the stable channel.
         assert!(needs.contains(&(None, RustNeed::Target("thumbv7em-none-eabi".into()))));
+    }
+
+    #[test]
+    fn a_default_toolchain_need_is_also_installed_on_the_pinned_build_toolchain() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let index = super::SdkIndex::load(&root.join("nros-sdk-index.toml")).expect("index");
+        let pin = index.rust.toolchain["stable"].channel.clone();
+        let mut needs =
+            super::board_rust_needs(&root, &index, &[("rv-virt-threadx".to_string(), None)]);
+        needs.extend(super::default_toolchain_components(&index));
+        let needs = super::also_on_the_pinned_build_toolchain(needs, &index);
+        for n in [
+            RustNeed::Component("llvm-tools".into()),
+            RustNeed::Target("riscv64gc-unknown-none-elf".into()),
+        ] {
+            assert!(
+                needs.contains(&(None, n.clone())),
+                "{n:?} on rustup's default missing from {needs:?}"
+            );
+            assert!(
+                needs.contains(&(Some(pin.clone()), n.clone())),
+                "{n:?} on the pin {pin} missing from {needs:?}"
+            );
+        }
+        // A row that already names its channel is left alone.
+        let nightly = index.rust.toolchain["nightly-pinned"].channel.clone();
+        let only = super::also_on_the_pinned_build_toolchain(
+            vec![(
+                Some(nightly.clone()),
+                RustNeed::Component("rust-src".into()),
+            )],
+            &index,
+        );
+        assert_eq!(
+            only,
+            vec![(Some(nightly), RustNeed::Component("rust-src".into()))]
+        );
     }
 
     #[test]
