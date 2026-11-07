@@ -104,6 +104,11 @@ jobs:
     name: L3 (cross build + link)
     if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
     runs-on: [self-hosted, linux, nros-sdk-zephyr, nros-big]
+    env:
+      # phase-543 — the self-hosted runner's gate lane (.config/gate-lanes.toml
+      # [lane.runner]): `just build <lane>` and `just ci matrix` reach `check
+      # fast`/`check build`, and an unset scope is refused in CI.
+      NROS_GATE_SCOPE: runner
     defaults:
       run:
         shell: bash
