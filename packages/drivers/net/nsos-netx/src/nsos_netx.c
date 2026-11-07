@@ -25,8 +25,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/select.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "nsos_netx.h"
@@ -215,6 +217,66 @@ int nsos_netx_init(void) {
 
 /* ─── Socket calls ──────────────────────────────────────────────────── */
 
+/* ---- Interrupted host calls -------------------------------------------
+ *
+ * The ThreadX Linux port preempts a thread by sending it SIGUSR1
+ * (`_tx_linux_thread_suspend`) and installs that handler WITHOUT
+ * `SA_RESTART`. So a host socket call a ThreadX thread is blocked in when the
+ * scheduler preempts it returns -1/EINTR. That is not a failure of the call:
+ * nothing about the socket changed. Measured: a `connect` to a router whose
+ * accept queue was full came back `ERESTARTSYS` at image time 0.010 s, the
+ * first tick, and the session open reported `ConnectionFailed` — the
+ * threadx_linux nightly's quiet-link red, where a loaded host made the
+ * loopback handshake outlast one tick.
+ *
+ * So every call that can block finishes what it started rather than handing
+ * EINTR up as an error. A restarted call would get its `SO_RCVTIMEO` /
+ * `SO_SNDTIMEO` afresh, and the scheduler can interrupt it again, so each one
+ * waits with `poll` against ONE deadline taken when the call began: the
+ * socket's timeout keeps its meaning, however often the thread is preempted.
+ */
+
+static int64_t nsos_now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* The socket's `opt` timeout in ms, or -1 when it has none (block forever). */
+static int nsos_timeout_ms(int fd, int opt) {
+    struct timeval tv;
+    socklen_t len = sizeof(tv);
+    if (getsockopt(fd, SOL_SOCKET, opt, &tv, &len) != 0) return -1;
+    if (tv.tv_sec == 0 && tv.tv_usec == 0) return -1;
+    return (int)(tv.tv_sec * 1000 + (tv.tv_usec + 999) / 1000);
+}
+
+/* Wait for `events` on `fd` until `opt`'s timeout, counted from `start_ms`,
+ * runs out. 0 = ready; -1 with errno EAGAIN = timed out, as the blocking
+ * call itself would have reported it. */
+static int nsos_wait(int fd, short events, int opt, int64_t start_ms) {
+    int timeout = nsos_timeout_ms(fd, opt);
+    for (;;) {
+        int left = -1;
+        if (timeout >= 0) {
+            int64_t remaining = (int64_t)timeout - (nsos_now_ms() - start_ms);
+            if (remaining <= 0) {
+                errno = EAGAIN;
+                return -1;
+            }
+            left = (int)remaining;
+        }
+        struct pollfd p = { .fd = fd, .events = events, .revents = 0 };
+        int r = poll(&p, 1, left);
+        if (r > 0) return 0;
+        if (r == 0) {
+            errno = EAGAIN;
+            return -1;
+        }
+        if (errno != EINTR) return -1;
+    }
+}
+
 INT nx_bsd_socket(INT family, INT type, INT proto) {
     return socket(nx_to_posix_family(family), type, proto);
 }
@@ -237,7 +299,23 @@ INT nx_bsd_connect(INT sockID, struct nx_bsd_sockaddr *addr, INT addrLen) {
     socklen_t posix_len = 0;
     (void)addrLen;
     if (nx_to_posix_sockaddr(addr, &posix_addr, &posix_len) != 0) return -1;
-    return connect(sockID, (const struct sockaddr *)&posix_addr, posix_len);
+    int64_t start = nsos_now_ms();
+    if (connect(sockID, (const struct sockaddr *)&posix_addr, posix_len) == 0) return 0;
+    if (errno != EINTR) return -1;
+    /* An interrupted connect keeps going in the kernel; calling it again
+     * reports EALREADY. Wait for it to finish and read its outcome. */
+    if (nsos_wait(sockID, POLLOUT, SO_SNDTIMEO, start) != 0) {
+        if (errno == EAGAIN) errno = ETIMEDOUT;
+        return -1;
+    }
+    int err = 0;
+    socklen_t err_len = sizeof(err);
+    if (getsockopt(sockID, SOL_SOCKET, SO_ERROR, &err, &err_len) != 0) return -1;
+    if (err != 0) {
+        errno = err;
+        return -1;
+    }
+    return 0;
 }
 
 INT nx_bsd_listen(INT sockID, INT backlog) {
@@ -247,8 +325,15 @@ INT nx_bsd_listen(INT sockID, INT backlog) {
 INT nx_bsd_accept(INT sockID, struct nx_bsd_sockaddr *clientAddr, INT *addrLen) {
     struct sockaddr_storage posix_addr;
     socklen_t posix_len = sizeof(posix_addr);
-    int new_fd = accept(sockID, (struct sockaddr *)&posix_addr,
+    int64_t start = nsos_now_ms();
+    int new_fd;
+    for (;;) {
+        posix_len = sizeof(posix_addr);
+        new_fd = accept(sockID, (struct sockaddr *)&posix_addr,
                         clientAddr ? &posix_len : NULL);
+        if (new_fd >= 0 || errno != EINTR) break;
+        if (nsos_wait(sockID, POLLIN, SO_RCVTIMEO, start) != 0) return -1;
+    }
     if (new_fd < 0) {
         return new_fd;
     }
@@ -260,12 +345,22 @@ INT nx_bsd_accept(INT sockID, struct nx_bsd_sockaddr *clientAddr, INT *addrLen) 
 }
 
 INT nx_bsd_send(INT sockID, const CHAR *msg, INT msgLen, INT flags) {
-    return (INT)send(sockID, msg, (size_t)msgLen, flags);
+    int64_t start = nsos_now_ms();
+    for (;;) {
+        ssize_t n = send(sockID, msg, (size_t)msgLen, flags);
+        if (n >= 0 || errno != EINTR) return (INT)n;
+        if (nsos_wait(sockID, POLLOUT, SO_SNDTIMEO, start) != 0) return -1;
+    }
 }
 
 INT nx_bsd_recv(INT sockID, VOID *buf, INT bufLen, INT flags) {
     nsos_rx_notify_rearm(sockID);
-    return (INT)recv(sockID, buf, (size_t)bufLen, flags);
+    int64_t start = nsos_now_ms();
+    for (;;) {
+        ssize_t n = recv(sockID, buf, (size_t)bufLen, flags);
+        if (n >= 0 || errno != EINTR) return (INT)n;
+        if (nsos_wait(sockID, POLLIN, SO_RCVTIMEO, start) != 0) return -1;
+    }
 }
 
 INT nx_bsd_sendto(INT sockID, CHAR *msg, INT msgLen, INT flags,
@@ -274,8 +369,13 @@ INT nx_bsd_sendto(INT sockID, CHAR *msg, INT msgLen, INT flags,
     socklen_t posix_len = 0;
     (void)destAddrLen;
     if (nx_to_posix_sockaddr(destAddr, &posix_addr, &posix_len) != 0) return -1;
-    return (INT)sendto(sockID, msg, (size_t)msgLen, flags,
-                       (const struct sockaddr *)&posix_addr, posix_len);
+    int64_t start = nsos_now_ms();
+    for (;;) {
+        ssize_t n = sendto(sockID, msg, (size_t)msgLen, flags,
+                           (const struct sockaddr *)&posix_addr, posix_len);
+        if (n >= 0 || errno != EINTR) return (INT)n;
+        if (nsos_wait(sockID, POLLOUT, SO_SNDTIMEO, start) != 0) return -1;
+    }
 }
 
 INT nx_bsd_recvfrom(INT sockID, CHAR *buf, INT bufLen, INT flags,
@@ -283,9 +383,16 @@ INT nx_bsd_recvfrom(INT sockID, CHAR *buf, INT bufLen, INT flags,
     struct sockaddr_storage posix_addr;
     socklen_t posix_len = sizeof(posix_addr);
     nsos_rx_notify_rearm(sockID);
-    int n = (int)recvfrom(sockID, buf, (size_t)bufLen, flags,
+    int64_t start = nsos_now_ms();
+    int n;
+    for (;;) {
+        posix_len = sizeof(posix_addr);
+        n = (int)recvfrom(sockID, buf, (size_t)bufLen, flags,
                           srcAddr ? (struct sockaddr *)&posix_addr : NULL,
                           srcAddr ? &posix_len : NULL);
+        if (n >= 0 || errno != EINTR) break;
+        if (nsos_wait(sockID, POLLIN, SO_RCVTIMEO, start) != 0) return -1;
+    }
     if (n < 0) {
         return n;
     }
@@ -375,7 +482,20 @@ INT nx_bsd_getsockopt(INT sockID, INT level, INT optName,
 
 INT nx_bsd_select(INT nfds, fd_set *readfds, fd_set *writefds,
                   fd_set *exceptfds, struct timeval *timeout) {
-    return select(nfds, readfds, writefds, exceptfds, timeout);
+    /* Linux leaves the sets alone on EINTR and counts `timeout` down to
+     * what remains, so re-issuing it keeps the caller's deadline. The sets
+     * are restored anyway: POSIX leaves them unspecified on error. */
+    fd_set r0, w0, e0;
+    if (readfds) r0 = *readfds;
+    if (writefds) w0 = *writefds;
+    if (exceptfds) e0 = *exceptfds;
+    for (;;) {
+        int n = select(nfds, readfds, writefds, exceptfds, timeout);
+        if (n >= 0 || errno != EINTR) return n;
+        if (readfds) *readfds = r0;
+        if (writefds) *writefds = w0;
+        if (exceptfds) *exceptfds = e0;
+    }
 }
 
 INT nx_bsd_fcntl(INT sockID, UINT flagType, UINT options) {

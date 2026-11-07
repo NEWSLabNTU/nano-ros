@@ -336,7 +336,12 @@ One PR per board.
   leaf rows had no cell and no consumer, so they were not carried over. The
   SIGTERM and exit-status cases in `linux_api` measure a hand-written `main`,
   so they now run the C talker witness. `matrix_fixture_coverage` models a
-  pair image row as its Example cell.
+  pair image row as its Example cell. The first nightly after it failed the
+  quiet-link cell: the image's `connect` was interrupted by the ThreadX
+  Linux port's preemption signal and reported `ConnectionFailed` at the
+  first tick (issue 2351, fixed in `nsos-netx`). The cell now prints its
+  router's state when the image does not come up, and the nightly uploads
+  `test-logs/fixtures/` per platform.
 - **zephyr native_sim (in review).** Each behaviour bringup gets
   `zephyr_<role>[_xrce|_cyclonedds]` images: 48 in all, every
   (language, role, rmw) the leaves had except Rust on Cyclone. Their router
