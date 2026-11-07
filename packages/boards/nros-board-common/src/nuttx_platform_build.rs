@@ -63,7 +63,7 @@ pub fn run_platform() {
     let cffi_include = nros_build_paths::nros_platform_cffi_include();
     let platform_src = nros_build_paths::nros_platform_posix_src();
 
-    let nuttx_cross = env::var("NUTTX_CROSS").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
+    let nuttx_cross = crate::nuttx_toolchain::resolve().gcc;
     let cflags: Vec<String> = env::var("NUTTX_PLATFORM_CFLAGS")
         .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4".to_string())
         .split_whitespace()
@@ -169,7 +169,7 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
         return;
     }
 
-    let nuttx_cross = env::var("NUTTX_CROSS").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
+    let nuttx_cross = crate::nuttx_toolchain::resolve().gcc;
     let cflags: Vec<String> = env::var("NUTTX_PLATFORM_CFLAGS")
         .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4".to_string())
         .split_whitespace()

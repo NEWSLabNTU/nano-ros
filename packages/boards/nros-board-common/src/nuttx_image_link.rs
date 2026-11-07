@@ -96,11 +96,9 @@ pub fn run_image_link(builtins_stub: &Path) {
         return;
     };
 
-    let nuttx_cross = env::var("NUTTX_CROSS").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
-    let nuttx_ar = nuttx_cross
-        .strip_suffix("gcc")
-        .map(|prefix| format!("{prefix}ar"))
-        .unwrap_or_else(|| "ar".to_string());
+    let cross = crate::nuttx_toolchain::resolve();
+    let nuttx_cross = cross.gcc.clone();
+    let nuttx_ar = cross.sibling("ar");
     let cflags: Vec<String> = env::var("NUTTX_PLATFORM_CFLAGS")
         .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4".to_string())
         .split_whitespace()

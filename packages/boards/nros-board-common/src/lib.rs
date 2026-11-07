@@ -91,6 +91,9 @@ pub mod nuttx_ffi_build;
 pub mod nuttx_image_link;
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_platform_build;
+/// phase-548 W3 — the NuttX cross compiler: the store pin, with a C++ GCC floor.
+#[cfg(feature = "build-helpers")]
+pub mod nuttx_toolchain;
 /// RFC-0049 / phase-290 — per-package platform/board knob configuration.
 ///
 /// phase-400 W6 — re-exported from `nros-platform-config`; see `manifest` above.

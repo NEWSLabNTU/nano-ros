@@ -127,6 +127,21 @@ green.
 - with the pin missing, the build refuses with the pin's name, never falls
   back silently.
 
+**Done (2026-11-07).** `nros-board-common::nuttx_toolchain::resolve()` is the
+one answer for all four NuttX build-script sites (`nuttx_ffi_build`,
+`nuttx_image_link`, both `nuttx_platform_build` passes), and the FFI build's
+cc-rs compiles now set `.compiler()` for C and C++ from it. A bare tool name
+(or the unset default) resolves `<store>/sdk/<tool>/<pin>/bin/<tool>`; a path
+in `NUTTX_CROSS` is used as given. A C++ image below GCC 11 is refused before
+the first compile. Measured on a host whose first `arm-none-eabi-g++` on PATH
+is system 10.3.1:
+- `nros new nxcpp --board qemu-armv7a-nuttx --template talker --lang cpp
+  --rmw zenoh`, `nros build`, `nros run nxcpp_node --expect 'Publishing:'`:
+  matched after 1.1 s (with a zenoh router on the host's 7447);
+- with `NROS_HOME` pointing at a store that lacks `13.2-nros5`, a fresh C image
+  refuses: `NuttX cross compiler: the pinned arm-none-eabi-gcc 13.2-nros5 is
+  not provisioned (expected …)`.
+
 ### W4 — C++ on ThreadX qemu riscv64 publishes
 
 **Code area:** `packages/boards/nros-board-threadx-qemu-riscv64/` (the C++

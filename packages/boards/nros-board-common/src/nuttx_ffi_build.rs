@@ -38,7 +38,9 @@ pub fn run_nuttx() {
     // 194.2: cross-compiler + arch cflags are per-board (the board overlay / env
     // sets them); defaults = the qemu-arm cortex-a7 hardfloat values so the
     // existing board is unchanged. A new-arch NuttX board overrides these.
-    let nuttx_cross = env::var("NUTTX_CROSS").unwrap_or_else(|_| "arm-none-eabi-gcc".to_string());
+    // phase-548 W3 — the store pin, never a bare PATH lookup (nuttx_toolchain).
+    let cross = crate::nuttx_toolchain::resolve();
+    let nuttx_cross = cross.gcc.clone();
     let arch_cflags: Vec<String> = env::var("NUTTX_ARCH_CFLAGS")
         .unwrap_or_else(|_| "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=vfpv3-d16".to_string())
         .split_whitespace()
@@ -75,7 +77,6 @@ pub fn run_nuttx() {
         .split_whitespace()
         .map(String::from)
         .collect();
-    println!("cargo:rerun-if-env-changed=NUTTX_CROSS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH_CFLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_LIBGCC_FLAGS");
     println!("cargo:rerun-if-env-changed=NUTTX_ARCH");
@@ -147,9 +148,13 @@ pub fn run_nuttx() {
         .collect();
 
     // Apply the common (language-agnostic + per-language) config to a build.
+    // phase-548 W3 — the compiler is the RESOLVED one for both languages. cc-rs
+    // chose its own before (`CXX_<target>` or a default name on PATH), which is
+    // how a system GCC 10 compiled the C++ entry.
     let configure = |build: &mut cc::Build, want_cpp: bool| {
         build
             .cpp(want_cpp)
+            .compiler(if want_cpp { &cross.gxx } else { &cross.gcc })
             .flag("-ffunction-sections")
             .flag("-fdata-sections")
             .define("NROS_PLATFORM_NUTTX", None)
@@ -295,6 +300,14 @@ pub fn run_nuttx() {
     // references each component's `__nros_c_component_<pkg>_*` seam, so the entry archive
     // must precede the `app_pkg_*` archives that define them — else the seams stay
     // unresolved (the symptom before this ordering).
+    // phase-548 W3 — a C++ image below the GCC floor is refused here, before
+    // the first compile, rather than as a designator error mid-build.
+    let iface_has_cpp = nros_build_paths::env_path_list_sep("APP_INTERFACE_SOURCES", ';')
+        .iter()
+        .any(|src| is_cxx_ext(src));
+    if !cpp_files.is_empty() || iface_has_cpp {
+        cross.require_cxx_floor();
+    }
     if !shared_cpp.is_empty() {
         let mut build_cpp = cc::Build::new();
         configure(&mut build_cpp, true);
