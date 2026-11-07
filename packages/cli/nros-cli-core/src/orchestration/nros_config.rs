@@ -97,14 +97,18 @@ pub enum NrosConfigError {
         source: Box<toml::de::Error>,
     },
 
-    /// A bringup system declares an RMW backend that
-    /// is not one of the supported set (Phase 227.2, RFC-0031).
+    /// A bringup system declares an RMW backend no provider on the
+    /// workspace's search path announces (Phase 227.2, RFC-0071 D14).
     #[error("bringup package `{package}`: {source}")]
     InvalidSystemRmw {
         package: String,
         #[source]
-        source: crate::orchestration::rmw_resolver::UnknownRmw,
+        source: crate::orchestration::rmw_index::RmwLookupError,
     },
+
+    /// The RMW providers could not be scanned (RFC-0071 D14).
+    #[error("scanning rmw providers under {workspace:?}: {message}")]
+    RmwScan { workspace: PathBuf, message: String },
 
     /// phase-420 W6 — a root `nros.toml` exists but is not readable TOML.
     ///
@@ -348,13 +352,23 @@ impl NrosConfig {
         // Phase 227.2 — validate the declared RMW on every bringup (Path A
         // and Path B) so a typo fails early with the
         // known-list rather than as a broken downstream build (RFC-0031).
-        for (name, entry) in &bringup_packages {
-            crate::orchestration::rmw_resolver::resolve_rmw(&entry.system.system.rmw).map_err(
-                |source| NrosConfigError::InvalidSystemRmw {
-                    package: name.clone(),
-                    source,
-                },
-            )?;
+        if !bringup_packages.is_empty() {
+            // phase-545 W1: threaded from build/configure after phase-530 W2
+            let rmws =
+                crate::orchestration::rmw_index::for_workspace(workspace_root).map_err(|e| {
+                    NrosConfigError::RmwScan {
+                        workspace: workspace_root.to_path_buf(),
+                        message: format!("{e:#}"),
+                    }
+                })?;
+            for (name, entry) in &bringup_packages {
+                rmws.resolve(&entry.system.system.rmw).map_err(|source| {
+                    NrosConfigError::InvalidSystemRmw {
+                        package: name.clone(),
+                        source,
+                    }
+                })?;
+            }
         }
 
         Ok(NrosConfig {
@@ -1141,6 +1155,36 @@ board = "linux"
             }
             other => panic!("expected InvalidSystemRmw, got {other:?}"),
         }
+    }
+
+    /// RFC-0071 D14 — load validation asks the workspace's provider scan, so
+    /// a backend a workspace package provides is accepted.
+    #[test]
+    fn accepts_an_rmw_a_workspace_provider_announces() {
+        let dir = scratch_dir("accepts_an_rmw_a_workspace_provider_announces");
+        fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\nresolver = \"2\"\nmembers = [\"demo_bringup\"]\n",
+        )
+        .unwrap();
+        fs::create_dir_all(dir.join("demo_bringup/src")).unwrap();
+        fs::write(
+            dir.join("demo_bringup/Cargo.toml"),
+            "[package]\nname = \"demo_bringup\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
+             [lib]\npath = \"src/lib.rs\"\n",
+        )
+        .unwrap();
+        fs::write(dir.join("demo_bringup/src/lib.rs"), "").unwrap();
+        fs::write(
+            dir.join("demo_bringup/system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"acme\"\ndomain_id = 0\n",
+        )
+        .unwrap();
+        cargo_nano_ros::rmw_resolver::test_support::write_acme_provider(
+            &dir.join("vendor/acme_rmw"),
+        );
+        let cfg = NrosConfig::from_cargo_metadata(&dir).expect("acme is provided");
+        assert!(cfg.bringup_packages.contains_key("demo_bringup"));
     }
 
     /// phase-531 W7 step 1 — a node package's `[package.metadata.nros.deploy.*]`

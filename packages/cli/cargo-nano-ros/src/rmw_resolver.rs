@@ -20,15 +20,38 @@
 //!
 //! It lives in `cargo-nano-ros` (the lower crate) so both the scaffolder here
 //! and the orchestration loader in `nros-cli-core` share one mapping.
+//!
+//! phase-545 W1 (RFC-0071 D14) — the mapping is the PROVIDER SCAN's. Every CLI
+//! site asks an [`RmwIndex`], which memoises [`resolve_rmw_in`] over one scan;
+//! the table `build.rs` bakes from `packages/rmw/` is a compile-time check and
+//! this module's test oracle, never an answer.
 
-use std::{fmt, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fmt,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use crate::{
-    provider_scan::{ResolveError, ScanResult, resolve_unique},
+    provider_scan::{
+        InTreeScope, ResolveError, ScanResult, SearchPath, resolve_unique, scan_search_path,
+        search_path_over_scoped,
+    },
     rmw_descriptor::{RMW_KIND, RmwDescriptor, agree_with_convention, parse_rmw_descriptor},
 };
 
-include!(concat!(env!("OUT_DIR"), "/rmw_table.rs"));
+// phase-545 W1 (RFC-0071 D14) — the baked table is no longer an ANSWER
+// anywhere outside this module's tests. `build.rs` still generates it, which
+// is what checks the in-tree descriptors' convention fields at compile time
+// (RFC-0087 D4), and `the_baked_table_and_the_scan_agree_on_every_in_tree_backend`
+// holds it equal to the scan. Every CLI site asks an [`RmwIndex`].
+#[cfg(test)]
+mod baked {
+    include!(concat!(env!("OUT_DIR"), "/rmw_table.rs"));
+}
+#[cfg(test)]
+use baked::RMW_ROWS;
 
 /// The RMW backends this checkout provides, **derived from the descriptors**
 /// (`packages/rmw/*/*/nros-rmw.toml`) rather than enumerated here.
@@ -39,11 +62,13 @@ include!(concat!(env!("OUT_DIR"), "/rmw_table.rs"));
 /// `nros-cpp/CMakeLists.txt`, but absent here, so `nros_rmw_dispatch`
 /// FATAL_ERROR'd on a backend the tree ships. A closed list stopped covering
 /// the tree it governed; that is why it is no longer a list.
+#[cfg(test)]
 pub fn known_rmw() -> Vec<&'static str> {
     RMW_ROWS.iter().map(|r| r.declared).collect()
 }
 
 /// A declared RMW value lowered to its per-language build forms.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedRmw {
     /// The canonical declared name, e.g. `"zenoh"`.
@@ -82,6 +107,7 @@ pub struct ResolvedRmw {
 
 /// A backend's own configuration file, as its descriptor declares it
 /// (`[rmw.config]`, RFC-0109 D8). All empty for a backend with no file format.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RmwConfigFile {
     /// The file, relative to a `system.toml`.
@@ -95,6 +121,7 @@ pub struct RmwConfigFile {
 /// How a backend reaches the final binary's link (Phase 241 W13/R1). One SSoT for
 /// the per-backend link requirement that cmake + the synthesized runtime crate
 /// both consumed via duplicated conditionals before.
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RmwDispatch {
     /// The pure-Rust backend crate force-linked **into** the umbrella as an rlib
@@ -114,11 +141,13 @@ pub struct RmwDispatch {
 }
 
 /// A declared RMW value no descriptor claims (see [`known_rmw`]).
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownRmw {
     pub declared: String,
 }
 
+#[cfg(test)]
 impl fmt::Display for UnknownRmw {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -130,62 +159,18 @@ impl fmt::Display for UnknownRmw {
     }
 }
 
+#[cfg(test)]
 impl std::error::Error for UnknownRmw {}
 
-/// The canonical backend name (`"zenoh"` / `"xrce"` / `"cyclonedds"`) from any
-/// accepted spelling — the bare name or the `rmw-<x>` feature spelling (the
-/// `rmw-<x>-cffi` one went with the API crates' features, phase-506 W4d).
-/// `None` for empty / unknown.
-///
-/// This is the single alias table; the orchestration layer's `normalize_rmw`
-/// delegates here so there is one source of truth for RMW name recognition.
-/// Does `backend`'s descriptor declare `capability`?
-///
-/// phase-347 W4 — the inverse of the old ~~`Capability::backends_supporting`~~
-/// list. The backend declares what it offers in `[rmw.capabilities]`; nothing
-/// central enumerates the pairing, so a third-party backend can offer a
-/// capability nano-ros has never heard of.
-pub fn backend_declares_capability(backend: &str, capability: &str) -> bool {
-    RMW_ROWS
-        .iter()
-        .find(|r| r.names.contains(&backend))
-        .is_some_and(|r| r.capabilities.iter().any(|(k, _)| *k == capability))
-}
+// phase-545 W1 (RFC-0071 D14) — `backend_declares_capability`,
+// `backend_states_fact`, `backends_declaring` and `backend_capability_feature`
+// read the baked table and were deleted: they are [`ResolvedRmwIn`]'s
+// `declares_capability` / `states_fact` / `capability_feature` and
+// [`RmwIndex::backends_declaring`], asked of the descriptor the scan resolved.
 
-/// What `backend`'s descriptor states for `fact` (`[rmw.facts]`, issue 2174):
-/// `Some(true)` / `Some(false)` as stated, `None` when the descriptor says
-/// nothing or the backend is unknown. A check must treat `None` as UNKNOWN,
-/// never as false.
-pub fn backend_states_fact(backend: &str, fact: &str) -> Option<bool> {
-    RMW_ROWS
-        .iter()
-        .find(|r| r.names.contains(&backend))
-        .and_then(|r| r.facts.iter().find(|(k, _)| *k == fact))
-        .map(|(_, v)| *v)
-}
-
-/// Every backend whose descriptor declares `capability`, canonical names.
-///
-/// phase-347 W4 — replaces ~~`Capability::backends_supporting`~~, whose only
-/// consumer was a diagnostic listing "which backends carry this". Derived, so
-/// the message cannot go stale the way the list did.
-pub fn backends_declaring(capability: &str) -> Vec<&'static str> {
-    RMW_ROWS
-        .iter()
-        .filter(|r| r.capabilities.iter().any(|(k, _)| *k == capability))
-        .map(|r| r.declared)
-        .collect()
-}
-
-/// The backend's own feature implementing `capability`, if it declares one.
-pub fn backend_capability_feature(backend: &str, capability: &str) -> Option<&'static str> {
-    RMW_ROWS
-        .iter()
-        .find(|r| r.names.contains(&backend))
-        .and_then(|r| r.capabilities.iter().find(|(k, _)| *k == capability))
-        .map(|(_, v)| *v)
-}
-
+/// The canonical backend name from any accepted spelling, over the BAKED
+/// table. Test-only (RFC-0071 D14): the CLI asks [`RmwIndex::canonical`].
+#[cfg(test)]
 pub fn canonical_rmw(input: &str) -> Option<&'static str> {
     RMW_ROWS
         .iter()
@@ -193,11 +178,10 @@ pub fn canonical_rmw(input: &str) -> Option<&'static str> {
         .map(|r| r.declared)
 }
 
-/// Lower a declared RMW string to its per-language build forms.
-///
-/// Accepts the canonical name or any alias ([`canonical_rmw`]). An unknown
-/// value is an error — caught early in the loader so a typo fails with a clear
-/// message rather than producing a broken build.
+/// Lower a declared RMW string over the BAKED table. Test-only (RFC-0071
+/// D14): it is the regression net that holds the table equal to the scan, and
+/// every CLI site asks an [`RmwIndex`] instead.
+#[cfg(test)]
 pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
     RMW_ROWS
         .iter()
@@ -333,8 +317,16 @@ pub fn resolve_rmw_in(scan: &ScanResult, declared: &str) -> Result<ResolvedRmwIn
         pkg.dir.join(&d.cmake_dir)
     };
 
+    let names: Vec<String> = pkg
+        .provides
+        .iter()
+        .filter(|p| p.kind == RMW_KIND)
+        .map(|p| p.name.clone())
+        .collect();
+
     Ok(ResolvedRmwIn {
         declared: canonical,
+        names,
         cargo_feature,
         cmake_value,
         c_define_token,
@@ -347,13 +339,15 @@ pub fn resolve_rmw_in(scan: &ScanResult, declared: &str) -> Result<ResolvedRmwIn
 
 /// A declared RMW value lowered against a provider scan ([`resolve_rmw_in`]).
 ///
-/// Everything [`ResolvedRmw`] carries plus WHERE the provider is — which is the
+/// Everything the baked table's row carries plus WHERE the provider is — which is the
 /// half the compile-time table cannot have, and the half a `add_subdirectory()`
 /// needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedRmwIn {
     /// The provider's first `rmw` announcement — its canonical name.
     pub declared: String,
+    /// Every `rmw` name the provider announces, the canonical one first.
+    pub names: Vec<String>,
     pub cargo_feature: String,
     pub cmake_value: String,
     pub c_define_token: String,
@@ -412,6 +406,258 @@ pub fn known_rmw_in(scan: &ScanResult) -> Vec<String> {
     names.sort();
     names.dedup();
     names
+}
+
+impl ResolvedRmwIn {
+    /// Does this backend's descriptor declare `capability` (`[rmw.capabilities]`)?
+    ///
+    /// phase-545 W1 (RFC-0071 D14) — this was `backend_declares_capability`
+    /// over the baked table, so a capability an out-of-tree backend offered
+    /// was invisible. It is now a question asked of the descriptor the scan
+    /// resolved.
+    #[must_use]
+    pub fn declares_capability(&self, capability: &str) -> bool {
+        self.descriptor
+            .capabilities
+            .iter()
+            .any(|(k, _)| k == capability)
+    }
+
+    /// The backend's own feature implementing `capability`, if it declares one.
+    #[must_use]
+    pub fn capability_feature(&self, capability: &str) -> Option<&str> {
+        self.descriptor
+            .capabilities
+            .iter()
+            .find(|(k, _)| k == capability)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// What the descriptor states for `fact` (`[rmw.facts]`, issue 2174):
+    /// `None` when it says nothing. A check must treat `None` as UNKNOWN,
+    /// never as false.
+    #[must_use]
+    pub fn states_fact(&self, fact: &str) -> Option<bool> {
+        self.descriptor
+            .facts
+            .iter()
+            .find(|(k, _)| k == fact)
+            .map(|(_, v)| *v)
+    }
+}
+
+/// One provider scan, and every RMW name resolved over it (RFC-0071 D14).
+///
+/// The one answer every CLI site asks. It memoises [`resolve_rmw_in`] by the
+/// name asked, so a build that resolves the same backend at a dozen sites
+/// reads its descriptor once. Built from a scan, never from the table
+/// `build.rs` bakes: that table is the contents of one checkout, and a
+/// workspace provider it lacks is exactly the case it answered wrongly
+/// (issue 2295).
+#[derive(Debug)]
+pub struct RmwIndex {
+    scan: ScanResult,
+    roots: Vec<PathBuf>,
+    memo: Mutex<HashMap<String, Result<Arc<ResolvedRmwIn>, RmwLookupError>>>,
+}
+
+impl RmwIndex {
+    /// An index over `scan`, whose search roots were `roots` (named in a
+    /// refusal, so a user can see where a missing provider was looked for).
+    #[must_use]
+    pub fn new(scan: ScanResult, roots: Vec<PathBuf>) -> Self {
+        Self {
+            scan,
+            roots,
+            memo: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// The index for a caller with no workspace: the SDK root alone, its root
+    /// narrowed to `packages/rmw/` ([`InTreeScope::Rmw`]), no environment.
+    ///
+    /// # Errors
+    ///
+    /// The root cannot be walked.
+    pub fn over_sdk_root(root: &Path) -> eyre::Result<Self> {
+        let path = search_path_over_scoped(
+            Some(root),
+            &SearchPath::default(),
+            root,
+            None,
+            InTreeScope::Rmw,
+        );
+        let scan = scan_search_path(&path)?;
+        Ok(Self::new(scan, path.paths()))
+    }
+
+    /// Resolve `declared` (any announced alias) to its provider's lowering.
+    ///
+    /// # Errors
+    ///
+    /// No provider announces it, several in one root do, or the winner's
+    /// descriptor is unusable — D5's message, naming the search.
+    pub fn resolve(&self, declared: &str) -> Result<Arc<ResolvedRmwIn>, RmwLookupError> {
+        let mut memo = self.memo.lock().expect("rmw index memo");
+        if let Some(hit) = memo.get(declared) {
+            return hit.clone();
+        }
+        let answer = resolve_rmw_in(&self.scan, declared)
+            .map(Arc::new)
+            .map_err(|e| RmwLookupError::new(declared, &e, &self.roots));
+        memo.insert(declared.to_string(), answer.clone());
+        answer
+    }
+
+    /// The canonical name of `declared`, or `None` when nothing provides it.
+    #[must_use]
+    pub fn canonical(&self, declared: &str) -> Option<String> {
+        self.resolve(declared).ok().map(|r| r.declared.clone())
+    }
+
+    /// Every backend announced on this search path, canonical names, sorted.
+    #[must_use]
+    pub fn known(&self) -> Vec<String> {
+        known_rmw_in(&self.scan)
+    }
+
+    /// Every announced backend whose descriptor declares `capability`.
+    ///
+    /// phase-347 W4's derived diagnostic list, over the scan rather than the
+    /// baked table. A backend whose descriptor cannot be read is left out.
+    #[must_use]
+    pub fn backends_declaring(&self, capability: &str) -> Vec<String> {
+        self.known()
+            .into_iter()
+            .filter(|n| {
+                self.resolve(n)
+                    .is_ok_and(|r| r.declares_capability(capability))
+            })
+            .collect()
+    }
+
+    /// The scan this index answers from.
+    #[must_use]
+    pub fn scan(&self) -> &ScanResult {
+        &self.scan
+    }
+
+    /// The search roots, in precedence order (later wins).
+    #[must_use]
+    pub fn roots(&self) -> &[PathBuf] {
+        &self.roots
+    }
+}
+
+/// An RMW name an [`RmwIndex`] could not resolve, with the search it made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RmwLookupError {
+    /// The name as asked.
+    pub declared: String,
+    /// Why, as [`RmwResolveError`] put it.
+    pub reason: String,
+    /// The roots searched, in order.
+    pub searched: Vec<PathBuf>,
+}
+
+impl RmwLookupError {
+    fn new(declared: &str, e: &RmwResolveError, roots: &[PathBuf]) -> Self {
+        let reason = match e {
+            RmwResolveError::Scan(ResolveError::NotFound { available, .. }) => {
+                let announced = if available.is_empty() {
+                    "none".to_string()
+                } else {
+                    available.join(", ")
+                };
+                format!("no package provides rmw `{declared}` (announced: {announced})")
+            }
+            other => other.to_string(),
+        };
+        Self {
+            declared: declared.to_string(),
+            reason,
+            searched: roots.to_vec(),
+        }
+    }
+}
+
+impl fmt::Display for RmwLookupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let searched: Vec<String> = self
+            .searched
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect();
+        write!(f, "{}; searched: {}", self.reason, searched.join(", "))
+    }
+}
+
+impl std::error::Error for RmwLookupError {}
+
+/// Fixtures for the sites' out-of-tree tests (phase-545 W1). Not API.
+#[doc(hidden)]
+pub mod test_support {
+    use std::path::{Path, PathBuf};
+
+    use super::RmwIndex;
+
+    /// Write an out-of-tree rmw provider `acme` into `dir`: a `package.xml`
+    /// announcing it, an `nros-rmw.toml`, and the cargo crate `acme-rmw` it
+    /// names. Nothing in the nano-ros tree names it.
+    pub fn write_acme_provider(dir: &Path) {
+        std::fs::create_dir_all(dir.join("src")).expect("acme dir");
+        std::fs::write(
+            dir.join("package.xml"),
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>acme_rmw</name>\n  \
+             <version>0.0.0</version>\n  <export>\n    \
+             <nano_ros_provides kind=\"rmw\" name=\"acme\"/>\n  </export>\n</package>\n",
+        )
+        .expect("acme package.xml");
+        std::fs::write(
+            dir.join("nros-rmw.toml"),
+            "[rmw]\ncpp_define = \"NROS_RMW_ACME\"\n\n\
+             [rmw.provides.cargo]\ncrate = \"acme-rmw\"\nregister = \"register\"\n\n\
+             [rmw.link]\nrlib_dep = \"acme-rmw\"\nedition_feature = \"ros-{edition}\"\n\n\
+             [rmw.capabilities]\nsafety = \"acme-safety\"\n\n\
+             [rmw.facts]\nrequest_source_timestamp = false\n\n\
+             [rmw.provides.cargo.platform_features]\nplatform-posix = \"platform-posix\"\n\n\
+             [rmw.config]\nfile = \"rmw/acme.json5\"\nformat = \"session-json5\"\n",
+        )
+        .expect("acme nros-rmw.toml");
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"acme-rmw\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [features]\ndefault = []\nros-humble = []\nros-jazzy = []\n\
+             acme-safety = []\nplatform-posix = []\n",
+        )
+        .expect("acme Cargo.toml");
+        std::fs::write(dir.join("src/lib.rs"), "pub fn register() {}\n").expect("acme lib.rs");
+    }
+
+    /// This checkout's root.
+    #[must_use]
+    pub fn checkout() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("the checkout")
+    }
+
+    /// An index over this checkout's `packages/rmw/` and `workspace` — the
+    /// shape `nros build` scans, with `acme` written into the workspace.
+    #[must_use]
+    pub fn acme_index(workspace: &Path) -> RmwIndex {
+        write_acme_provider(&workspace.join("src/acme_rmw"));
+        let roots = vec![checkout().join("packages/rmw"), workspace.to_path_buf()];
+        let scan = crate::provider_scan::scan_roots(&roots).expect("scan");
+        RmwIndex::new(scan, roots)
+    }
+
+    /// An index over this checkout's `packages/rmw/` alone.
+    #[must_use]
+    pub fn in_tree_index() -> RmwIndex {
+        RmwIndex::over_sdk_root(&checkout()).expect("the checkout scans")
+    }
 }
 
 #[cfg(test)]
@@ -555,6 +801,61 @@ mod tests {
             if !baked.cmake_target.is_empty() {
                 assert_eq!(d.cmake_target, baked.cmake_target, "{name}: cmake_target");
             }
+        }
+    }
+
+    /// RFC-0071 D14 — the index answers an out-of-tree provider from the
+    /// scan, memoises it, carries the capability helpers, and names the
+    /// search when a name resolves to nothing.
+    #[test]
+    fn the_index_resolves_an_out_of_tree_provider_and_names_the_search() {
+        let ws = tempfile::tempdir().unwrap();
+        let idx = test_support::acme_index(ws.path());
+        let acme = idx.resolve("acme").expect("acme resolves through the scan");
+        assert_eq!(acme.package, "acme_rmw");
+        assert_eq!(acme.package_dir, ws.path().join("src/acme_rmw"));
+        assert_eq!(acme.descriptor.cargo_crate, "acme-rmw");
+        assert!(acme.declares_capability("safety"));
+        assert_eq!(acme.capability_feature("safety"), Some("acme-safety"));
+        assert_eq!(acme.states_fact("request_source_timestamp"), Some(false));
+        assert!(
+            Arc::ptr_eq(&acme, &idx.resolve("acme").unwrap()),
+            "memoised"
+        );
+        assert_eq!(idx.canonical("rmw-zenoh").as_deref(), Some("zenoh"));
+        assert!(idx.known().iter().any(|n| n == "acme"));
+        let safety = idx.backends_declaring("safety");
+        assert!(safety.iter().any(|n| n == "acme") && safety.iter().any(|n| n == "zenoh"));
+        let e = idx.resolve("dust-dds").unwrap_err().to_string();
+        assert!(e.contains("no package provides rmw `dust-dds`"), "{e}");
+        assert!(e.contains("searched:") && e.contains("packages/rmw"), "{e}");
+    }
+
+    /// The helpers that moved onto [`ResolvedRmwIn`] answer what the baked
+    /// table's did, for every in-tree backend.
+    #[test]
+    fn the_moved_helpers_agree_with_the_baked_rows() {
+        let idx = test_support::in_tree_index();
+        for row in RMW_ROWS {
+            for alias in row.names {
+                let r = idx.resolve(alias).expect("an in-tree alias resolves");
+                assert_eq!(r.declared, row.declared, "{alias}");
+            }
+            let r = idx.resolve(row.declared).unwrap();
+            for (cap, feat) in row.capabilities {
+                assert!(r.declares_capability(cap), "{}: {cap}", row.declared);
+                assert_eq!(r.capability_feature(cap), Some(*feat));
+            }
+            assert_eq!(
+                r.descriptor.capabilities.len(),
+                row.capabilities.len(),
+                "{}",
+                row.declared
+            );
+            for (fact, v) in row.facts {
+                assert_eq!(r.states_fact(fact), Some(*v), "{}: {fact}", row.declared);
+            }
+            assert_eq!(r.states_fact("not-a-fact"), None);
         }
     }
 

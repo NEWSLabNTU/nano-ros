@@ -25,7 +25,15 @@
 
 use std::path::{Path, PathBuf};
 
-use cargo_nano_ros::rmw_resolver::{RmwConfigFile, resolve_rmw};
+use crate::orchestration::rmw_index::RmwIndex;
+
+/// A backend's own configuration file, as its descriptor declares it
+/// (`[rmw.config]`, RFC-0109 D8).
+struct ConfigFile {
+    file: String,
+    format: String,
+    retired: String,
+}
 
 /// An image's RMW file, found and checked.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -67,15 +75,33 @@ impl RmwFile {
 
 /// What backend `rmw`'s descriptor says about its configuration file, or
 /// `None` for an undeclared or unknown backend, or one with no file format.
-fn declared(rmw: Option<&str>) -> Option<RmwConfigFile> {
-    let r = resolve_rmw(rmw?).ok()?;
-    (!r.config.file.is_empty()).then_some(r.config)
+///
+/// The backend is resolved through `rmws`, the provider scan (RFC-0071 D14).
+/// A name it cannot resolve has no file here; the load-time validation is what
+/// refuses it.
+fn declared(rmws: &RmwIndex, rmw: Option<&str>) -> Option<ConfigFile> {
+    let r = rmws.resolve(rmw?).ok()?;
+    let d = &r.descriptor;
+    (!d.config_file.is_empty()).then(|| ConfigFile {
+        file: d.config_file.clone(),
+        format: d.config_format.clone(),
+        retired: d.config_retired.clone(),
+    })
 }
 
 /// The file backend `rmw` reads beside the `system.toml` in `dir`, if the
 /// bringup ships one. No check runs; [`resolve`] is the checked form.
+///
+/// The adapter over [`find_in`]: the index is `dir`'s workspace's.
 pub fn find(dir: &Path, rmw: Option<&str>) -> Option<PathBuf> {
-    let p = dir.join(declared(rmw)?.file);
+    // phase-545 W1: threaded from build/configure after phase-530 W2
+    let rmws = crate::orchestration::rmw_index::for_dir(dir).ok()?;
+    find_in(&rmws, dir, rmw)
+}
+
+/// [`find`] with the backend resolved through `rmws`.
+pub fn find_in(rmws: &RmwIndex, dir: &Path, rmw: Option<&str>) -> Option<PathBuf> {
+    let p = dir.join(declared(rmws, rmw)?.file);
     p.is_file().then_some(p)
 }
 
@@ -90,10 +116,31 @@ pub fn find(dir: &Path, rmw: Option<&str>) -> Option<PathBuf> {
 /// `[image_defaults]`, or the domain), never `[system]`'s project-wide
 /// default, which an image with a file simply does not use.
 ///
+/// The adapter over [`resolve_in`]: the index is `dir`'s workspace's.
+///
 /// # Errors
 ///
 /// One of the module's refusals.
 pub fn resolve(
+    dir: &Path,
+    rmw: Option<&str>,
+    explicit: Option<&str>,
+    image_locator: Option<&str>,
+    domain_id: u32,
+    at: &str,
+) -> Result<Option<RmwFile>, String> {
+    // phase-545 W1: threaded from build/configure after phase-530 W2
+    let rmws = crate::orchestration::rmw_index::for_dir(dir).map_err(|e| format!("{e:#}"))?;
+    resolve_in(&rmws, dir, rmw, explicit, image_locator, domain_id, at)
+}
+
+/// [`resolve`] with the backend resolved through `rmws`.
+///
+/// # Errors
+///
+/// One of the module's refusals.
+pub fn resolve_in(
+    rmws: &RmwIndex,
     dir: &Path,
     rmw: Option<&str>,
     explicit: Option<&str>,
@@ -108,7 +155,7 @@ pub fn resolve(
         nros_zenoh_session_config::refuse_device_facts(loc)
             .map_err(|e| format!("`[{at}]`: {e}"))?;
     }
-    let Some(cfg) = declared(rmw) else {
+    let Some(cfg) = declared(rmws, rmw) else {
         if let Some(f) = explicit {
             return Err(format!(
                 "`[{at}]` names the RMW file `{f}`, but backend `{}` reads no configuration \
@@ -119,7 +166,7 @@ pub fn resolve(
         return Ok(None);
     };
     if !cfg.retired.is_empty() {
-        let retired = dir.join(cfg.retired);
+        let retired = dir.join(&cfg.retired);
         if retired.is_file() {
             return Err(format!(
                 "{}: this format is retired (RFC-0109 D8) — write the same settings in the \
@@ -130,7 +177,7 @@ pub fn resolve(
             ));
         }
     }
-    let name = explicit.unwrap_or(cfg.file);
+    let name = explicit.unwrap_or(cfg.file.as_str());
     let path = dir.join(name);
     if !path.is_file() {
         if explicit.is_some() {
@@ -148,7 +195,7 @@ pub fn resolve(
              the file, or drop the file"
         ));
     }
-    let properties = match cfg.format {
+    let properties = match cfg.format.as_str() {
         "session-json5" => session_properties(&path)?,
         _ => {
             check_xml_domain(&path, domain_id, at)?;
@@ -158,7 +205,7 @@ pub fn resolve(
     Ok(Some(RmwFile {
         path,
         properties,
-        format: cfg.format.to_string(),
+        format: cfg.format,
     }))
 }
 
@@ -423,6 +470,36 @@ mod tests {
             e.contains("adminspace.enabled") && e.contains("zenoh.json5"),
             "{e}"
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// RFC-0071 D14 — the file an out-of-tree backend reads is its own
+    /// descriptor's `[rmw.config]`, found through the scan.
+    #[test]
+    fn an_out_of_tree_backends_file_comes_from_its_descriptor() {
+        let ws = tempfile::tempdir().unwrap();
+        let idx = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let d = dir(
+            "acme",
+            &[(
+                "rmw/acme.json5",
+                "{ connect: { endpoints: ['tcp/127.0.0.1:7501'] } }",
+            )],
+        );
+        assert_eq!(
+            find_in(&idx, &d, Some("acme")),
+            Some(d.join("rmw/acme.json5"))
+        );
+        let f = resolve_in(&idx, &d, Some("acme"), None, None, 0, "image.a")
+            .unwrap()
+            .unwrap();
+        assert_eq!(f.format, "session-json5");
+        assert_eq!(
+            f.properties,
+            [("connect".to_string(), "tcp/127.0.0.1:7501".to_string())]
+        );
+        // The zenoh file is zenoh's, not acme's.
+        assert_eq!(find_in(&idx, &d, Some("zenoh")), None);
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -863,7 +940,11 @@ mod tests {
     fn the_tracked_cyclone_files_name_a_domain_their_images_join() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         // The descriptor names the file this test reads.
-        assert_eq!(declared(Some("cyclonedds")).unwrap().file, CYCLONEDDS_FILE);
+        let idx = cargo_nano_ros::rmw_resolver::test_support::in_tree_index();
+        assert_eq!(
+            declared(&idx, Some("cyclonedds")).unwrap().file,
+            CYCLONEDDS_FILE
+        );
         for bringup in [
             "examples/workspaces/cpp/src/demo_bringup",
             "examples/workspaces/cpp/src/slirp_bringup",

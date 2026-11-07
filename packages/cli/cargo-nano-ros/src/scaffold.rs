@@ -254,12 +254,18 @@ pub struct ScaffoldConfig {
     pub board: Option<String>,
 }
 
-pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
-    scaffold_package_at(&PathBuf::from(&cfg.name), cfg)
+/// `rmws` is the index `--rmw` is checked against: with no workspace yet, the
+/// SDK root's backends (RFC-0071 D14).
+pub fn scaffold_package(cfg: &ScaffoldConfig, rmws: &rmw_resolver::RmwIndex) -> Result<()> {
+    scaffold_package_at(&PathBuf::from(&cfg.name), cfg, rmws)
 }
 
 /// [`scaffold_package`] into `dir` (the package is still named `cfg.name`).
-pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
+pub fn scaffold_package_at(
+    dir: &Path,
+    cfg: &ScaffoldConfig,
+    rmws: &rmw_resolver::RmwIndex,
+) -> Result<()> {
     let dir = dir.to_path_buf();
     if dir.exists() {
         if !cfg.force {
@@ -273,7 +279,9 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
 
     // Phase 227.4 — validate + lower the declared RMW (RFC-0031). A bad
     // `--rmw` fails here with the known-list, not as a broken downstream build.
-    let rmw = rmw_resolver::resolve_rmw(&cfg.rmw).map_err(|e| eyre::eyre!("nros new: {e}"))?;
+    let rmw = rmws
+        .resolve(&cfg.rmw)
+        .map_err(|e| eyre::eyre!("nros new: {e}"))?;
 
     // phase-304 W2b (RFC-0056) — validate the declared ROS edition (a bad
     // `--ros-edition` fails loud here). Issue 2079: it is DECLARED, in the
@@ -335,7 +343,7 @@ pub fn scaffold_package_at(dir: &Path, cfg: &ScaffoldConfig) -> Result<()> {
             cfg.lang,
             &cfg.platform,
             &spec,
-            rmw.cmake_value,
+            &rmw.cmake_value,
             &cfg.ros_edition,
             cfg.board.as_deref(),
             cfg.template,
@@ -1509,7 +1517,7 @@ mod tests {
 
     #[test]
     fn scaffold_package_rejects_unknown_rmw() {
-        // `resolve_rmw` fails before any filesystem write, so no package dir is
+        // The rmw lookup fails before any filesystem write, so no package dir is
         // created — the unique name keeps this safe without touching cwd.
         let cfg = ScaffoldConfig {
             name: "pkg_unknown_rmw_227_4_fixture".to_string(),
@@ -1523,12 +1531,42 @@ mod tests {
             force: false,
             board: None,
         };
-        let err = scaffold_package(&cfg).expect_err("unknown rmw must fail");
+        let err = scaffold_package(&cfg, &rmw_resolver::test_support::in_tree_index())
+            .expect_err("unknown rmw must fail");
         assert!(err.to_string().contains("dust-dds"), "{err}");
         assert!(
             !PathBuf::from(&cfg.name).exists(),
             "no package dir on rejected rmw"
         );
+    }
+
+    /// RFC-0071 D14 — `--rmw` is checked against the index handed in, so a
+    /// backend an out-of-tree provider announces is accepted and lands in the
+    /// package's `system.toml`.
+    #[test]
+    fn scaffold_package_accepts_a_backend_the_index_provides() {
+        let providers = tempfile::tempdir().unwrap();
+        let idx = rmw_resolver::test_support::acme_index(providers.path());
+        let out = tempfile::tempdir().unwrap();
+        let dir = out.path().join("acme_app");
+        let cfg = ScaffoldConfig {
+            name: "acme_app".to_string(),
+            lang: Language::Rust,
+            platform: "linux".to_string(),
+            rmw: "acme".to_string(),
+            ros_edition: "humble".to_string(),
+            template: Role::Talker,
+            node_name: None,
+            meta: PackageMeta::default(),
+            force: false,
+            board: None,
+        };
+        scaffold_package_at(&dir, &cfg, &idx).expect("acme is on the index");
+        let doc: toml::Table = std::fs::read_to_string(dir.join("system.toml"))
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(doc["system"]["rmw"].as_str(), Some("acme"));
     }
 
     /// phase-445 W3b — a scaffolded package states its deployment in
@@ -1742,7 +1780,8 @@ mod tests {
                 force: false,
                 board: None,
             };
-            let err = scaffold_package(&cfg).expect_err("deferred platform must bail");
+            let err = scaffold_package(&cfg, &rmw_resolver::test_support::in_tree_index())
+                .expect_err("deferred platform must bail");
             assert!(
                 err.to_string().contains("no single-package Rust scaffold")
                     && err.to_string().contains("--workspace --lang rust"),
@@ -1832,7 +1871,12 @@ mod scaffold_flow_tests {
         ] {
             let d = tempfile::tempdir().unwrap();
             let dir = d.path().join("my-zapp");
-            scaffold_package_at(&dir, &zephyr_cfg("my-zapp", lang)).unwrap();
+            scaffold_package_at(
+                &dir,
+                &zephyr_cfg("my-zapp", lang),
+                &rmw_resolver::test_support::in_tree_index(),
+            )
+            .unwrap();
             let cm = fs::read_to_string(dir.join("CMakeLists.txt")).unwrap();
             // The book's lines, verbatim, and Zephyr FIRST: it loads the
             // module that `find_package(nano_ros)` then reads.

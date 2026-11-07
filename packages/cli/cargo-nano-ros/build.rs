@@ -17,6 +17,12 @@
 //! out-of-tree backend needs runtime discovery over a workspace search path,
 //! which is phase-348 and deliberately not this wave.
 //!
+//! phase-545 W1 (RFC-0071 D14) — that runtime discovery is now the ONLY answer:
+//! every CLI site resolves through `rmw_resolver::RmwIndex` over the provider
+//! scan, and the table this script emits is read by `rmw_resolver`'s tests
+//! alone. The script stays for its compile-time check of the in-tree
+//! descriptors' convention fields (RFC-0087 D4).
+//!
 //! ## phase-420 W5 — the descriptor carries only what convention cannot produce
 //!
 //! RFC-0087 D4. Five of the fields this script used to READ were convention

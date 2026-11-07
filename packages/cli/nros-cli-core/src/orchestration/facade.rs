@@ -42,7 +42,7 @@
 use eyre::{Result, WrapErr};
 use std::path::{Path, PathBuf};
 
-use crate::orchestration::cargo_metadata_schema::SystemToml;
+use crate::orchestration::{cargo_metadata_schema::SystemToml, rmw_index::RmwIndex};
 
 /// `nros`'s capability marker for a backend that registers per-type
 /// descriptors at runtime (issue 1295; RFC-0071 — named for the capability).
@@ -192,7 +192,36 @@ fn image_backends(entry_name: &str, sys: &SystemToml) -> Vec<String> {
 ///
 /// Returns `Ok(None)` when the package is not an entry, or when no `nros`
 /// dependency can be located to attach features to.
+///
+/// The adapter over [`write_facade_in`] for a caller that holds no
+/// [`RmwIndex`]: the index is the bringup's workspace's (RFC-0071 D14).
 pub fn write_facade(
+    entry_name: &str,
+    entry_dir: &Path,
+    entry_manifest: &Path,
+    bringup_dir: &Path,
+    sys: &SystemToml,
+    generated_root: &Path,
+    sdk_root: Option<&Path>,
+) -> Result<Option<Facade>> {
+    // phase-545 W1: threaded from build/configure after phase-530 W2
+    let rmws = crate::orchestration::rmw_index::for_dir(bringup_dir)?;
+    write_facade_in(
+        &rmws,
+        entry_name,
+        entry_dir,
+        entry_manifest,
+        bringup_dir,
+        sys,
+        generated_root,
+        sdk_root,
+    )
+}
+
+/// [`write_facade`] with every RMW name resolved through `rmws`.
+#[allow(clippy::too_many_arguments)]
+pub fn write_facade_in(
+    rmws: &RmwIndex,
     entry_name: &str,
     entry_dir: &Path,
     entry_manifest: &Path,
@@ -234,6 +263,7 @@ pub fn write_facade(
         mut board_features,
         backend_features,
     } = derive(
+        rmws,
         entry_name,
         sys,
         edition,
@@ -306,7 +336,7 @@ pub fn write_facade(
          //! delivers them. The macros below are the backend registration\n\
          //! `nros::main!` expands (RFC-0071 D11).\n\
          #![no_std]\n\n{}",
-        render_backend_macros(&backends)
+        render_backend_macros(rmws, entry_name, &backends)?
     );
     write_if_changed(&dir.join("src/lib.rs"), &lib)?;
 
@@ -353,7 +383,26 @@ pub struct EntrySelection {
 ///
 /// `board_dir` is the board crate the entry depends on, `None` for a board
 /// with no crate.
+///
+/// The adapter over [`entry_selection_in`] for a caller that holds no
+/// [`RmwIndex`]. Its caller (`cmd/build.rs`) passes no workspace yet, so the
+/// interim index is the SDK root's alone: every in-tree backend resolves, and
+/// a workspace provider is refused naming the search rather than looked for
+/// relative to the process's current directory.
 pub fn entry_selection(
+    entry_name: &str,
+    sys: &SystemToml,
+    nano_ros_root: &Path,
+    board_dir: Option<&Path>,
+) -> Result<EntrySelection> {
+    // phase-545 W1: threaded from build/configure after phase-530 W2
+    let rmws = crate::orchestration::rmw_index::for_sdk_root_path(nano_ros_root)?;
+    entry_selection_in(&rmws, entry_name, sys, nano_ros_root, board_dir)
+}
+
+/// [`entry_selection`] with every RMW name resolved through `rmws`.
+pub fn entry_selection_in(
+    rmws: &RmwIndex,
     entry_name: &str,
     sys: &SystemToml,
     nano_ros_root: &Path,
@@ -368,6 +417,7 @@ pub fn entry_selection(
         mut board_features,
         backend_features,
     } = derive(
+        rmws,
         entry_name,
         sys,
         edition,
@@ -385,7 +435,7 @@ pub fn entry_selection(
         nros_features,
         board_features,
         backend_features,
-        registration: render_backend_macros_local(&linked),
+        registration: render_backend_macros_local(rmws, entry_name, &linked)?,
     })
 }
 
@@ -443,7 +493,20 @@ pub struct LeafSelectionSpec<'a> {
 /// unless the image declares a `panic` policy other than `own`, in which case
 /// the macro emits the handler and a second provider would be a duplicate
 /// lang item.
+///
+/// The adapter over [`write_leaf_selection_in`]: the index is the leaf's own
+/// workspace's (a single-package leaf is its own workspace).
 pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> Result<Facade> {
+    let rmws = crate::orchestration::rmw_index::for_dir(spec.leaf)?;
+    write_leaf_selection_in(&rmws, spec, sys)
+}
+
+/// [`write_leaf_selection`] with every RMW name resolved through `rmws`.
+pub fn write_leaf_selection_in(
+    rmws: &RmwIndex,
+    spec: &LeafSelectionSpec<'_>,
+    sys: &SystemToml,
+) -> Result<Facade> {
     let dir = spec
         .leaf
         .join(nros_orchestration_ir::leaf_system::LEAF_SELECTION_DIR);
@@ -471,6 +534,7 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
         mut board_features,
         backend_features: _,
     } = derive(
+        rmws,
         &crate_name,
         sys,
         sys.image_ros_edition(Some(spec.image_id))?,
@@ -592,7 +656,11 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
         )
         .collect();
     all_backends.extend(backends.iter().cloned());
-    lib.push_str(&render_backend_macros_gated(&all_backends));
+    lib.push_str(&render_backend_macros_gated(
+        rmws,
+        spec.image_id,
+        &all_backends,
+    )?);
 
     std::fs::create_dir_all(dir.join("src"))
         .wrap_err_with(|| format!("selection: create {}", dir.display()))?;
@@ -626,8 +694,8 @@ pub fn write_leaf_selection(spec: &LeafSelectionSpec<'_>, sys: &SystemToml) -> R
 ///   `rmw-<x>` feature, for an entry built with a Kconfig-chosen feature set.
 /// * `__nros_register_type!("<rmw>", T)` stages `T` with a backend that needs
 ///   per-type descriptors, and expands to nothing for any other backend.
-fn render_backend_macros(backends: &[String]) -> String {
-    render_backend_macros_inner(backends, false, true)
+fn render_backend_macros(rmws: &RmwIndex, image: &str, backends: &[String]) -> Result<String> {
+    render_backend_macros_inner(rmws, image, backends, false, true)
 }
 
 /// [`render_backend_macros`] for a generated entry's own source (RFC-0071
@@ -635,34 +703,53 @@ fn render_backend_macros(backends: &[String]) -> String {
 /// by bare name because they are defined above it. `unused_macros` is allowed
 /// because only the Zephyr arm and a `[[bridge]]` entry call them; every other
 /// board registers its backend in its boot path.
-fn render_backend_macros_local(backends: &[String]) -> String {
-    render_backend_macros_inner(backends, false, false)
+fn render_backend_macros_local(
+    rmws: &RmwIndex,
+    image: &str,
+    backends: &[String],
+) -> Result<String> {
+    render_backend_macros_inner(rmws, image, backends, false, false)
 }
 
 /// [`render_backend_macros`] with BOTH arms gated on the entry's own
 /// `rmw-<x>` feature — for a selection shared by several images, whose
 /// backend set is the union of theirs.
-fn render_backend_macros_gated(backends: &[String]) -> String {
-    render_backend_macros_inner(backends, true, true)
+fn render_backend_macros_gated(
+    rmws: &RmwIndex,
+    image: &str,
+    backends: &[String],
+) -> Result<String> {
+    render_backend_macros_inner(rmws, image, backends, true, true)
 }
 
-fn render_backend_macros_inner(backends: &[String], always_gated: bool, exported: bool) -> String {
-    let mut rows: Vec<cargo_nano_ros::rmw_resolver::ResolvedRmw> = backends
-        .iter()
-        .filter_map(|b| cargo_nano_ros::rmw_resolver::resolve_rmw(b).ok())
-        .collect();
-    rows.sort_by_key(|r| r.declared);
-    rows.dedup_by_key(|r| r.declared);
+/// `image` names the image (or entry) in a refusal: a backend name the index
+/// cannot resolve is RFC-0071 D5's error, naming the backend, the image and
+/// the search, never a registration silently left out (D14).
+fn render_backend_macros_inner(
+    rmws: &RmwIndex,
+    image: &str,
+    backends: &[String],
+    always_gated: bool,
+    exported: bool,
+) -> Result<String> {
+    let mut rows = Vec::new();
+    for b in backends {
+        rows.push(rmws.resolve(b).map_err(|e| {
+            eyre::eyre!("image `{image}` links rmw `{b}`, which does not resolve: {e}")
+        })?);
+    }
+    rows.sort_by(|a, b| a.declared.cmp(&b.declared));
+    rows.dedup_by(|a, b| a.declared == b.declared);
     let calls: Vec<(String, String)> = rows
         .iter()
-        .filter(|r| !r.register_crate.is_empty())
+        .filter(|r| !r.descriptor.register_crate.is_empty())
         .map(|r| {
             (
-                r.cargo_feature.to_string(),
+                r.cargo_feature.clone(),
                 format!(
                     "::{}::{}()",
-                    r.register_crate.replace('-', "_"),
-                    r.register_fn
+                    r.descriptor.register_crate.replace('-', "_"),
+                    r.descriptor.register_fn
                 ),
             )
         })
@@ -690,15 +777,18 @@ fn render_backend_macros_inner(backends: &[String], always_gated: bool, exported
     }
     out.push_str("    }};\n}\n\n");
     out.push_str(&format!("{attrs}macro_rules! __nros_register_type {{\n"));
-    for r in rows.iter().filter(|r| !r.type_register_crate.is_empty()) {
+    for r in rows
+        .iter()
+        .filter(|r| !r.descriptor.type_register_crate.is_empty())
+    {
         out.push_str(&format!(
             "    ({:?}, $t:ty) => {{{{\n        let _ = ::{}::register::<$t>();\n    }}}};\n",
             r.declared,
-            r.type_register_crate.replace('-', "_")
+            r.descriptor.type_register_crate.replace('-', "_")
         ));
     }
     out.push_str("    ($rmw:literal, $t:ty) => {{}};\n}\n");
-    out
+    Ok(out)
 }
 
 /// The features one image's selection names, derived from its `system.toml`.
@@ -718,6 +808,7 @@ struct Derived {
 /// declaration.
 #[allow(clippy::too_many_arguments)]
 fn derive(
+    rmws: &RmwIndex,
     entry_name: &str,
     sys: &SystemToml,
     edition: rosidl_codegen::RosEdition,
@@ -726,7 +817,8 @@ fn derive(
     nros_path: &Path,
     board_dir: Option<&Path>,
 ) -> Result<Derived> {
-    let rmw = crate::orchestration::rmw_resolver::resolve_rmw(declared_rmw)
+    let rmw = rmws
+        .resolve(declared_rmw)
         .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?;
 
     // `nros` carries the edition and the capabilities; the BOARD crate SELECTS
@@ -758,7 +850,7 @@ fn derive(
         // phase-347 W4 — "does this axis have a backend half at all" is now
         // `backend_feature.is_some()`; which backends carry it comes from their
         // descriptors, not a list in the registry.
-        if cap.backend_feature.is_some() && !cap.backend_supports(rmw.declared) {
+        if cap.backend_feature.is_some() && !cap.backend_supports(&rmw) {
             eprintln!(
                 "sync: facade `{entry_name}`: capability `{}` declared but the \
                  `{}` RMW does not carry it — omitted.",
@@ -770,10 +862,10 @@ fn derive(
     }
     // Issue 1295 — the type-descriptor marker, when ANY backend this image
     // links (a bridge links two) registers per-type descriptors.
-    let mut needs_types = !rmw.type_register_crate.is_empty();
+    let mut needs_types = !rmw.descriptor.type_register_crate.is_empty();
     for extra in backends {
-        match crate::orchestration::rmw_resolver::resolve_rmw(extra) {
-            Ok(r) => needs_types |= !r.type_register_crate.is_empty(),
+        match rmws.resolve(extra) {
+            Ok(r) => needs_types |= !r.descriptor.type_register_crate.is_empty(),
             Err(e) => return Err(eyre::eyre!("facade: {entry_name}: {e}")),
         }
     }
@@ -820,10 +912,10 @@ fn derive(
             // One `rmw-*` per backend this image must LINK, not only its
             // default — see `image_backends`. A bridge needs two; every other
             // image resolves to exactly the one it already had.
-            let mut wanted = vec![rmw.cargo_feature.to_string()];
+            let mut wanted = vec![rmw.cargo_feature.clone()];
             for extra in backends {
-                match crate::orchestration::rmw_resolver::resolve_rmw(extra) {
-                    Ok(r) => wanted.push(r.cargo_feature.to_string()),
+                match rmws.resolve(extra) {
+                    Ok(r) => wanted.push(r.cargo_feature.clone()),
                     // A domain naming an unknown RMW is the SYSTEM's error and
                     // is reported where the system is resolved; silently
                     // dropping it here would emit a facade missing a backend
@@ -860,7 +952,7 @@ fn derive(
     // — naming the backend crate already selects it.
     let mut backend_features = vec![edition.cargo_feature().to_string()];
     for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
-        if !sys.capability_enabled(cap.declared) || !cap.backend_supports(rmw.declared) {
+        if !sys.capability_enabled(cap.declared) || !cap.backend_supports(&rmw) {
             continue;
         }
         if let Some(bf) = cap.backend_feature {
@@ -1179,18 +1271,27 @@ fn write_if_changed(dst: &Path, body: &str) -> Result<bool> {
 mod tests {
     use super::*;
 
+    fn in_tree() -> RmwIndex {
+        cargo_nano_ros::rmw_resolver::test_support::in_tree_index()
+    }
+
     /// RFC-0071 D11 — the registration the macro expands is the descriptors'.
     /// A bridge image (zenoh + cyclonedds) registers both; only the backend with
     /// `needs-type-descriptors` gets a type arm; `uorb` names no crate and gets
     /// no call.
     #[test]
     fn backend_macros_come_from_the_descriptors() {
-        let out = render_backend_macros(&[
-            "zenoh".to_string(),
-            "cyclonedds".to_string(),
-            "uorb".to_string(),
-            "zenoh".to_string(),
-        ]);
+        let out = render_backend_macros(
+            &in_tree(),
+            "bridge",
+            &[
+                "zenoh".to_string(),
+                "cyclonedds".to_string(),
+                "uorb".to_string(),
+                "zenoh".to_string(),
+            ],
+        )
+        .unwrap();
         assert!(
             out.contains("macro_rules! __nros_register_backends"),
             "{out}"
@@ -1221,8 +1322,9 @@ mod tests {
     #[test]
     fn an_entrys_registration_is_crate_local() {
         let backends = ["zenoh".to_string(), "cyclonedds".to_string()];
-        let exported = render_backend_macros(&backends);
-        let local = render_backend_macros_local(&backends);
+        let idx = in_tree();
+        let exported = render_backend_macros(&idx, "linux", &backends).unwrap();
+        let local = render_backend_macros_local(&idx, "linux", &backends).unwrap();
         assert!(!local.contains("#[macro_export]"), "{local}");
         assert_eq!(
             local.matches("#[allow(unused_macros)]").count(),
@@ -1232,6 +1334,59 @@ mod tests {
         assert_eq!(
             local.replace("#[allow(unused_macros)]\n", ""),
             exported.replace("#[doc(hidden)]\n#[macro_export]\n", ""),
+        );
+    }
+
+    /// RFC-0071 D14 — a name nothing provides is refused naming the backend,
+    /// the image and the search. It used to be dropped by a `filter_map`, and
+    /// the image then linked with no registration for it.
+    #[test]
+    fn an_unresolvable_backend_is_refused_never_dropped() {
+        let e = render_backend_macros(&in_tree(), "linux_acme", &["acme".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("image `linux_acme`"), "{e}");
+        assert!(e.contains("rmw `acme`"), "{e}");
+        assert!(e.contains("searched:"), "{e}");
+    }
+
+    /// RFC-0071 D14 — the facade answers from the scan: an `acme` image whose
+    /// provider is a workspace package derives its selection and registers
+    /// the backend the descriptor names.
+    #[test]
+    fn an_out_of_tree_backend_is_selected_through_the_scan() {
+        let ws = tempfile::tempdir().unwrap();
+        let idx = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             features = [\"safety\"]\n\n[image.linux_acme]\nboard = \"linux\"\nrmw = \"acme\"\n",
+        )
+        .unwrap();
+        let root = cargo_nano_ros::rmw_resolver::test_support::checkout();
+        let board = root.join("packages/boards/nros-board-linux");
+        let sel = entry_selection_in(&idx, "linux_acme_entry", &sys, &root, Some(&board))
+            .expect("acme resolves through the scan");
+        assert!(
+            sel.registration.contains("let _ = ::acme_rmw::register();"),
+            "{}",
+            sel.registration
+        );
+        // `safety` reaches the backend because ACME's descriptor declares it
+        // (the backend feature name is the capability registry's).
+        assert!(
+            sel.backend_features.contains(&"safety-e2e".to_string()),
+            "{:?}",
+            sel.backend_features
+        );
+        // The in-tree board has no `rmw-acme`, so it selects no backend.
+        assert!(
+            !sel.board_features.iter().any(|f| f.starts_with("rmw-")),
+            "{:?}",
+            sel.board_features
+        );
+        // The in-tree answer is unknown to the SDK-only index, and refused.
+        assert!(
+            entry_selection_in(&in_tree(), "linux_acme_entry", &sys, &root, Some(&board)).is_err()
         );
     }
 
@@ -1252,10 +1407,11 @@ mod tests {
     /// the capability, never a backend.
     #[test]
     fn the_type_descriptor_marker_follows_the_descriptor() {
-        let cyclone = crate::orchestration::rmw_resolver::resolve_rmw("cyclonedds").unwrap();
-        let zenoh = crate::orchestration::rmw_resolver::resolve_rmw("zenoh").unwrap();
-        assert!(!cyclone.type_register_crate.is_empty());
-        assert!(zenoh.type_register_crate.is_empty());
+        let idx = in_tree();
+        let cyclone = idx.resolve("cyclonedds").unwrap();
+        let zenoh = idx.resolve("zenoh").unwrap();
+        assert!(!cyclone.descriptor.type_register_crate.is_empty());
+        assert!(zenoh.descriptor.type_register_crate.is_empty());
         let nros = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../api/nros");
         assert!(crate_declares_feature(&nros, NEEDS_TYPE_DESCRIPTORS));
         assert!(!crate_declares_feature(&nros, "rmw-cyclonedds"));

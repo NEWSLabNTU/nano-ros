@@ -1107,7 +1107,14 @@ fn check_blocking_calls(
         .iter()
         .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
         .collect();
+    // phase-545 W1: threaded from build/configure after phase-530 W2
+    let rmws = crate::orchestration::rmw_index::for_dir(
+        plan.launch_file
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new(".")),
+    )?;
     for w in crate::orchestration::service_facts::stale_after_warnings(
+        &rmws,
         &model,
         Some(&members),
         plan.session.rmw.as_deref(),

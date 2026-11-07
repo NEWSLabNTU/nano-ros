@@ -59,6 +59,8 @@ pub mod qemu_bin;
 /// RFC-0109 D8/D9 (phase-514 W3) — a bringup's own RMW file, found through
 /// its backend's descriptor and checked at sync.
 pub mod rmw_config;
+/// phase-545 W1 (RFC-0071 D14) — where a site gets its `RmwIndex`.
+pub mod rmw_index;
 
 pub mod prereq_resolve;
 /// Issue 1481 — whether a `[python.*]` remedy names apt or pip on THIS host,
@@ -97,7 +99,7 @@ pub use cargo_nano_ros::{
     capability_resolver,
     capability_resolver::{Capability, capability},
     rmw_resolver,
-    rmw_resolver::{ResolvedRmw, UnknownRmw, resolve_rmw},
+    rmw_resolver::{ResolvedRmwIn, RmwIndex, RmwLookupError},
 };
 pub use config::ComponentConfig;
 pub use nros_config::{BringupPackageEntry, ComponentPackageEntry, NrosConfig, NrosConfigError};

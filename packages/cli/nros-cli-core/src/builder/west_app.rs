@@ -355,7 +355,37 @@ pub fn cmakelists_finds_zephyr(dir: &Path) -> bool {
 ///
 /// `rmw` is the image's effective backend (`[image.<id>] rmw`, already folded
 /// with `[image_defaults]` and the system header by the caller).
+///
+/// The adapter over [`resolve_in`]: the RMW index is `workspace`'s.
 pub fn resolve(
+    workspace: &Path,
+    entry_dir: &Path,
+    nros_root: &Path,
+    image_id: &str,
+    rmw: Option<&str>,
+    platform_feature: &str,
+    patches: &std::collections::BTreeMap<String, PathBuf>,
+) -> Result<WestApp, String> {
+    // phase-545 W1: threaded from build/configure after phase-530 W2
+    let rmws = crate::orchestration::rmw_index::for_workspace(workspace)
+        .map_err(|e| format!("`{image_id}`: {e:#}"))?;
+    resolve_in(
+        &rmws,
+        workspace,
+        entry_dir,
+        nros_root,
+        image_id,
+        rmw,
+        platform_feature,
+        patches,
+    )
+}
+
+/// [`resolve`] with the image's backend resolved through `rmws` (RFC-0071
+/// D14).
+#[allow(clippy::too_many_arguments)]
+pub fn resolve_in(
+    rmws: &crate::orchestration::rmw_index::RmwIndex,
     workspace: &Path,
     entry_dir: &Path,
     nros_root: &Path,
@@ -391,9 +421,11 @@ pub fn resolve(
     // The backend. See the module docs: this is what makes the macro's
     // `register()` reachable, and an empty `rlib_dep` is a real answer.
     if let Some(declared) = rmw {
-        let resolved = cargo_nano_ros::rmw_resolver::resolve_rmw(declared)
+        let resolved = rmws
+            .resolve(declared)
             .map_err(|e| format!("`{image_id}`: {e}"))?;
-        if let Some(krate) = resolved.dispatch.rlib_dep {
+        let krate = resolved.descriptor.rlib_dep.as_str();
+        if !krate.is_empty() {
             match backend_dir(nros_root, krate) {
                 Some(dir) => {
                     let rel = relative_or_err(entry_dir, &dir)?;
@@ -406,7 +438,7 @@ pub fn resolve(
                         "{krate} = {{ path = \"{rel}\", default-features = false{feats}, \
                          optional = true }}"
                     ));
-                    app.rmw_feature = Some((resolved.cargo_feature.to_string(), krate.to_string()));
+                    app.rmw_feature = Some((resolved.cargo_feature.clone(), krate.to_string()));
                 }
                 // The table names a crate this checkout does not have. Not
                 // fatal: the image still builds its C side, and the missing
@@ -1080,6 +1112,44 @@ mod tests {
             "{:?}",
             app.deps
         );
+    }
+
+    /// RFC-0071 D14 — the west road resolves the image's backend through the
+    /// scan: an `acme` image whose provider is a workspace package is not
+    /// refused as unknown, and the SDK-only index refuses it naming the search.
+    #[test]
+    fn an_out_of_tree_backend_resolves_through_the_scan() {
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path().join("ws");
+        let acme = cargo_nano_ros::rmw_resolver::test_support::acme_index(&ws);
+        let nros_root = td.path().join("nano-ros");
+        std::fs::create_dir_all(nros_root.join("packages/tooling/nros-zephyr-build")).unwrap();
+        let entry = ws.join("build/zephyr-acme/zephyr_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        let none = std::collections::BTreeMap::new();
+        resolve_in(
+            &acme,
+            &ws,
+            &entry,
+            &nros_root,
+            "zephyr",
+            Some("acme"),
+            "platform-zephyr",
+            &none,
+        )
+        .expect("acme resolves through the scan");
+        let e = resolve_in(
+            &cargo_nano_ros::rmw_resolver::test_support::in_tree_index(),
+            &ws,
+            &entry,
+            &nros_root,
+            "zephyr",
+            Some("acme"),
+            "platform-zephyr",
+            &none,
+        )
+        .unwrap_err();
+        assert!(e.contains("`zephyr`") && e.contains("searched:"), "{e}");
     }
 
     #[test]
