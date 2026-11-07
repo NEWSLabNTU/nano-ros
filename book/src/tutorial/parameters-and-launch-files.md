@@ -345,13 +345,16 @@ nros run
 I heard: reading 2
 ```
 
-In a second terminal, list the topics and the nodes the router knows:
+In a second terminal, list the topics and the nodes the router knows.
+`--no-daemon` asks the router directly: a `ros2` daemon left over from an
+earlier chapter still holds a session to the router that `nros run` has
+since replaced, and it answers with an error.
 
 ```bash probe=760 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic list
-ros2 node list
+ros2 topic list --no-daemon --spin-time 3
+ros2 node list --no-daemon --spin-time 3
 ```
 
 ```text
