@@ -14,7 +14,7 @@ arriving in ROS 2. ThreadX's Linux port runs the kernel's threads inside one
 host process, and NetX Duo's BSD socket layer sits on your host's own TCP
 stack, so there is no emulator and no network to set up. The build is fast,
 which makes this the quickest way to try nano-ros on ThreadX. You write the
-talker in Rust or in C; pick a tab and every tab on the page follows.
+talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -63,6 +63,13 @@ cd tx_ws
 
 ```bash probe=40
 nros new tx_ws --board threadx-linux --template talker --lang c
+cd tx_ws
+```
+
+### C++
+
+```bash probe=40
+nros new tx_ws --board threadx-linux --template talker --lang cpp
 cd tx_ws
 ```
 
