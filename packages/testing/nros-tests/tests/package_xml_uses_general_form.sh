@@ -158,9 +158,13 @@ CMAKE
         echo "FAIL[$label]: configured successfully; it must not" >&2
         echo "  got: $got" >&2
         fail=1
-    # cmake wraps a long `message(FATAL_ERROR …)` across lines, so match a
-    # fragment that survives the wrap rather than the whole sentence.
-    elif ! nros_grep_q -F -- "$want" <<<"$got"; then
+    # cmake word-wraps a long `message(FATAL_ERROR …)` at spaces, and WHERE it
+    # wraps depends on how long the embedded paths are: under a long TMPDIR the
+    # fragment this matched straddled a wrap and the gate failed for a correct
+    # refusal. Collapse runs of whitespace on both sides first, so the match is
+    # about the words and not the layout.
+    elif ! nros_grep_q -F -- "$(printf '%s' "$want" | tr -s '[:space:]' ' ')" \
+            <<<"$(printf '%s' "$got" | tr -s '[:space:]' ' ')"; then
         echo "FAIL[$label]: failed for the wrong reason (wanted '$want')" >&2
         echo "  got: $got" >&2
         fail=1
