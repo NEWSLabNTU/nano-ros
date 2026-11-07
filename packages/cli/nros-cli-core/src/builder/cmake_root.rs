@@ -235,7 +235,18 @@ pub fn render(
     // and the `nano_ros_workspace(PLATFORM …)` argument both feed
     // `nros_feature_set`, and fixing only one leaves the other failing with the
     // same message from a different line — which is what happened.
-    let cmake_platform = spec.platform.replace('-', "_");
+    // The token is the platform kind's own cmake spelling
+    // (`PlatformKind::cmake_feature_set`), never the kebab form with `-`
+    // replaced: that produced `bare_metal`, which `nros_feature_set` refuses.
+    let cmake_platform =
+        crate::orchestration::board_descriptor::PlatformKind::from_kebab(&spec.platform)
+            .map(|k| k.cmake_feature_set())
+            .ok_or_else(|| {
+                format!(
+                    "cmake root: platform `{}` is no platform kind this CLI knows",
+                    spec.platform
+                )
+            })?;
 
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
@@ -548,6 +559,58 @@ mod tests {
             excluded: Default::default(),
             entries: Vec::new(),
         }
+    }
+
+    /// Every platform kind's cmake token is one `nros_feature_set()` accepts,
+    /// so a generated root never fails configure on its own `PLATFORM`. The
+    /// accepted set is read from cmake/NanoRosFeatureSet.cmake, not restated.
+    #[test]
+    fn every_platform_kinds_cmake_token_is_one_nros_feature_set_accepts() {
+        use crate::orchestration::board_descriptor::PlatformKind;
+        // Read at RUN time, not `include_str!`: a compile-time read puts
+        // `cmake/` in the CLI's freshness closure (cli-source-dirs.txt), and
+        // every cmake edit would then re-stale the CLI and every fixture.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../cmake/NanoRosFeatureSet.cmake");
+        let fs = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let accepted: Vec<&str> = fs
+            .split("_FS_PLATFORM STREQUAL \"")
+            .skip(1)
+            .filter_map(|t| t.split('"').next())
+            .collect();
+        assert!(accepted.contains(&"baremetal"), "probe read {accepted:?}");
+        for kind in [
+            PlatformKind::Posix,
+            PlatformKind::Freertos,
+            PlatformKind::BareMetal,
+            PlatformKind::Nuttx,
+            PlatformKind::ThreadxLinux,
+            PlatformKind::ThreadxRiscv64,
+            PlatformKind::Stm32,
+        ] {
+            assert_eq!(PlatformKind::from_kebab(kind.kebab()), Some(kind));
+            let token = kind.cmake_feature_set();
+            assert!(
+                accepted.contains(&token),
+                "{kind:?} -> `{token}`, which nros_feature_set refuses (accepts {accepted:?})"
+            );
+        }
+    }
+
+    /// A bare-metal image's root names `baremetal`, never `bare_metal`
+    /// (the C Tutorial on mps2-an385 failed configure on exactly that).
+    #[test]
+    fn a_bare_metal_root_names_the_platform_nros_feature_set_accepts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let node = pkg(root, "c_talker", true);
+        let mut sp = spec(root);
+        sp.platform = "bare-metal".to_string();
+        let out = render(&discovered(vec![node]), &root.join("build/bm"), &sp).unwrap();
+        assert!(out.contains("set(NROS_PLATFORM baremetal CACHE"), "{out}");
+        assert!(out.contains("PLATFORM \"baremetal\""), "{out}");
+        assert!(!out.contains("bare_metal"), "{out}");
     }
 
     /// When every cmake package was left out as another board's entry, the
