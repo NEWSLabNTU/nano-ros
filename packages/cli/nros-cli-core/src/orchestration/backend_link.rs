@@ -71,6 +71,20 @@ pub fn reexport_name(krate: &str) -> String {
     format!("__nros_backend_{}", krate.replace('-', "_"))
 }
 
+/// Does the backend name no `[rmw.provides.cargo] crate`, so that an image
+/// gets it from a C/C++ library its cmake build links rather than from an rlib
+/// (Cyclone DDS, uorb)?
+///
+/// The ONE predicate for "no rlib": [`crate_dir`] answers `None` exactly here,
+/// which is what `west_app` keys a Rust application's per-message type support
+/// on, and the `(gated)` registration arm keys the C register hook on (see
+/// `facade::render_backend_macros_inner`). Two spellings of it would be free to
+/// disagree about which backends a Zephyr Rust image has to register through C.
+#[must_use]
+pub fn is_cmake_only(r: &ResolvedRmwIn) -> bool {
+    r.descriptor.cargo_crate.is_empty()
+}
+
 /// Ruling 3 — the directory of the backend's cargo crate, or `None` when the
 /// descriptor names no `[rmw.provides.cargo] crate` (cmake-only for D15).
 ///
@@ -85,7 +99,7 @@ pub fn reexport_name(krate: &str) -> String {
 /// `crate`: the provider's error, and the scan answer is authoritative.
 pub fn crate_dir(r: &ResolvedRmwIn) -> Result<Option<PathBuf>, String> {
     let krate = r.descriptor.cargo_crate.as_str();
-    if krate.is_empty() {
+    if is_cmake_only(r) {
         return Ok(None);
     }
     let dir = if r.descriptor.register_crate == krate {

@@ -857,6 +857,28 @@ fn render_backend_macros_inner(
             "        #[cfg(feature = {feature:?})]\n        {{\n            let _ = {call};\n        }}\n"
         ));
     }
+    // phase-531 W6 — `(gated)` is the ZEPHYR arm's call, and on Zephyr a
+    // backend with no rlib (`backend_link::is_cmake_only`: Cyclone DDS) is a
+    // C/C++ library the nano-ros module compiles into the image. Its Rust call
+    // above stays off (the entry declares the feature empty and does not enable
+    // it), so what registers it is the module's `nros_app_register_backends`
+    // stub, which calls the Kconfig-selected `nros_rmw_<x>_register`. The
+    // hand-written leaves reached that stub through
+    // `nros::zephyr_component_main!`; a generated entry expands `nros::main!`,
+    // which called nothing, so the stub's object was garbage-collected along
+    // with the backend's register function and the image booted with an empty
+    // registry. This strong reference is the call AND the link anchor (the
+    // staticlib DCE class, issues 0155/0163). Ungated: the stub is itself
+    // Kconfig-gated, and registering a name twice overwrites the slot.
+    if rows.iter().any(|r| backend_link::is_cmake_only(r)) {
+        out.push_str(
+            "        {\n            unsafe extern \"C\" {\n                \
+             fn nros_app_register_backends();\n            }\n            \
+             // SAFETY: the nano-ros Zephyr module defines this C hook; it takes\n            \
+             // no arguments and only calls the backend's register entry.\n            \
+             unsafe { nros_app_register_backends() };\n        }\n",
+        );
+    }
     out.push_str("    }};\n}\n\n");
     out.push_str(&format!("{attrs}macro_rules! __nros_register_type {{\n"));
     for r in rows
@@ -1499,6 +1521,42 @@ mod tests {
         );
         assert!(!out.contains("(\"zenoh\", $t:ty)"), "{out}");
         assert!(!out.contains("uorb"), "{out}");
+    }
+
+    /// phase-531 W6 — a Zephyr image registers a backend with no rlib through
+    /// the nano-ros module's C hook, and only the `(gated)` arm (the Zephyr
+    /// arm's) calls it. An image whose backends are all Rust crates gets no
+    /// reference: nothing it links would define the hook for it.
+    #[test]
+    fn the_zephyr_arm_calls_the_c_hook_for_a_backend_with_no_rlib() {
+        let idx = in_tree();
+        let hook = "unsafe { nros_app_register_backends() };";
+        for render in [
+            render_backend_macros,
+            render_backend_macros_local,
+            render_backend_macros_gated,
+        ] {
+            let cyclone = render(&idx, "zephyr", &["cyclonedds".to_string()]).unwrap();
+            assert_eq!(cyclone.matches(hook).count(), 1, "{cyclone}");
+            let gated = cyclone.split("(gated) =>").nth(1).expect("a gated arm");
+            assert!(gated.contains(hook), "{cyclone}");
+            let ungated = cyclone.split("(gated) =>").next().unwrap();
+            assert!(!ungated.contains(hook), "{cyclone}");
+
+            // One call however many such backends, beside the Rust ones.
+            let both = render(
+                &idx,
+                "zephyr",
+                &["zenoh".to_string(), "cyclonedds".to_string()],
+            )
+            .unwrap();
+            assert_eq!(both.matches(hook).count(), 1, "{both}");
+
+            for rust_only in ["zenoh", "xrce"] {
+                let out = render(&idx, "zephyr", &[rust_only.to_string()]).unwrap();
+                assert!(!out.contains("nros_app_register_backends"), "{out}");
+            }
+        }
     }
 
     /// RFC-0071 D13 — the generated entry's copy of the macros is crate-local:
