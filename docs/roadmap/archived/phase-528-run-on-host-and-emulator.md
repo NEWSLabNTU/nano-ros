@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-06). DONE — W1, W2 and W3 landed (W3 with three items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 done: step 1 (native cells) in #3167, step 2 (QEMU cells) after it, with the tier-2 cell comparison carried to [issue 2302](../../issues/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) (`main`'s tier-2 build is red, so no run reached a cell). Its open follow-ups (issues 2172, 2273 and 2307, the orphaned image) are homed in [phase-544](../phase-544-harness-run-plan-followups.md).** Implements
+**Status (2026-11-06). DONE — W1, W2 and W3 landed (W3 with three items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 done: step 1 (native cells) in #3167, step 2 (QEMU cells) after it, with the tier-2 cell comparison carried to [issue 2302](../../issues/archived/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) (`main`'s tier-2 build is red, so no run reached a cell). Its open follow-ups (issues 2172, 2273 and 2307, the orphaned image) are homed in [phase-544](../phase-544-harness-run-plan-followups.md).** Implements
 [RFC-0118](../../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../../design/0119-cli-extension-packages.md) D8.

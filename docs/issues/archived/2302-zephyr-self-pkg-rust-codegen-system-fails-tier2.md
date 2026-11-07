@@ -1,15 +1,16 @@
 ---
 id: 2302
 title: "Tier 2 stops in the build: the `zephyr_self_pkg_rust` west fixture fails `nros dev codegen system` at configure (and a linux leaf misses `std_msgs`)"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [testing, zephyr, ci]
 related: [phase-528, 2296, 2189, 1158, phase-466]
 found: 2026-11-06
+resolved: 2026-11-07
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
 
 ## What
 
@@ -47,7 +48,7 @@ job in every one of these runs fails the same two stages.
 
 ## Cause: issue 2296 (2026-11-06)
 
-This is [issue 2296](archived/2296-fixture-model-stale-after-resolver-pin.md),
+This is [issue 2296](2296-fixture-model-stale-after-resolver-pin.md),
 filed in parallel and fixed on `main` by its own pull request. Both reds are
 one refusal. The `tier1-junit` stage logs name it:
 `SystemModel … is stale: resolver pin changed (model b5243446b761 != ours
@@ -83,3 +84,28 @@ before and after the change, and it could only compare the stage reached.
   `nros dev codegen system` with the arguments
   `nros_system_generate.cmake` passes, against
   `packages/testing/nros-tests/fixtures/zephyr_self_pkg`.
+
+## Resolution (2026-11-07)
+
+The acceptance holds: main run 42364894798 (workflow_dispatch, head
+`9d0bd000a8`, 2026-11-07 10:39) got past `just build tier2` and ran the
+cells (`just matrix-triage`: "VERDICT: cells ran and FAILED"). No run since
+issue 2296's fix has stopped on the `zephyr_self_pkg_rust` fixture.
+
+The phase-528 W5 comparison this issue carried also reached the cells on
+both sides: `tier2-before-phase-528-w5` (run 42320894038) and
+`tier2-after-phase-528-w5` (run 42355223509) each report "VERDICT: cells
+ran and FAILED", so the comparison is now one of cells, not of stages.
+
+Runs that still stopped in the build after it are other defects, each
+attributed:
+
+- 42341007273 (05:02): configure refused `diagnostic_msgs`, "on neither
+  NROS_INTERFACE_SEARCH_PATH nor AMENT_PREFIX_PATH" (the
+  runner image's ROS environment).
+- 42346220231 (06:15): `gate-lane-preflight` refused lane `dev` inside
+  `just build tier2` (no bindgen, no colcon, a shallow clone). That was the
+  CI job naming no gate lane, fixed by #3275.
+
+The cells of 42364894798 fail on `/tmp` ENOSPC in `scaffold-builds`, which
+is the disk bound #3301 handles, not this issue.
