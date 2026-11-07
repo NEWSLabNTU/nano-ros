@@ -11,7 +11,8 @@
  *   - `nros_board_log` → `uart_puts` (16550 UART at 0x10000000).
  *   - `nros_board_init_eth` → full NetX-Duo + virtio-net + BSD
  *     socket bring-up.
- *   - `nros_board_compute_rng_seed` → IP/MAC-derived.
+ *   - `nros_board_compute_rng_seed` → configured IP/MAC + device MAC + CLINT
+ *     time (issue 2357).
  *   - Strong-override `nros_board_app_stack_size` (512 KB) and
  *     `nros_board_app_priority` (15, below zenoh-pico read/lease
  *     priority 14 per the 120.3 keep-alive fix).
@@ -128,6 +129,35 @@ void nros_board_log(const char *s)
     if (s) { uart_puts(s); }
 }
 
+/* phase-548 W4b — a returned app ends the run with its own status, as on
+ * threadx-linux (issue 1752: `exit_code` is 0 iff the app succeeded). On this
+ * board nothing else would end it: the app thread finishes and the idle
+ * scheduler keeps QEMU alive until `nros run --timeout`, which then reports a
+ * timeout instead of the status. `nros_rv_virt_exit` is in trap.c. */
+extern void nros_rv_virt_exit(int code);
+
+void nros_board_app_returned(int exit_code)
+{
+    nros_rv_virt_exit(exit_code);
+}
+
+/* issue 2357 — the seed must differ between INSTANCES, not just between
+ * images. Every rv-virt-threadx image of a pair is configured with the board's
+ * default address (each QEMU has its own SLIRP network), so a seed hashed from
+ * the configured IP/MAC alone was the same in the server and the client. The
+ * platform RNG is deterministic and zenoh-pico's session ZID on ThreadX mixes
+ * only that RNG with the session's address and the 100 Hz tick, so the two
+ * images sent the router one ZID whenever those two terms happened to agree --
+ * which a change to any linked file could arrange -- and the router refused the
+ * second session (`Close`, reason MAX_LINKS) and every one of its reconnects.
+ *
+ * Folded in: the MAC the launcher gave the virtio-net DEVICE (`-device
+ * virtio-net-device,mac=...` -- distinct per instance by construction when the
+ * launcher sets it), and the CLINT counter, which differs between two boots of
+ * the same image (a router still holds a rebooted instance's old session until
+ * its lease expires). */
+extern uint64_t hwtimer_now(void);
+
 void nros_board_compute_rng_seed(uint32_t *out)
 {
     if (!out) { return; }
@@ -135,6 +165,17 @@ void nros_board_compute_rng_seed(uint32_t *out)
                   | ((uint32_t)cfg_ip[2] << 8)  | (uint32_t)cfg_ip[3];
     seed = seed * 2654435761u;  /* Knuth multiplicative hash */
     seed ^= ((uint32_t)cfg_mac[4] << 8) | (uint32_t)cfg_mac[5];
+
+    uint8_t dev_mac[6];
+    if (virtio_net_nx_read_mac(dev_mac) == 0) {
+        for (int i = 0; i < 6; i++) {
+            seed = (seed ^ dev_mac[i]) * 16777619u;  /* FNV-1a step */
+        }
+    }
+
+    uint64_t now = hwtimer_now();
+    seed ^= (uint32_t)now ^ (uint32_t)(now >> 32);
+    seed = seed * 2654435761u;
     *out = seed;
 }
 
