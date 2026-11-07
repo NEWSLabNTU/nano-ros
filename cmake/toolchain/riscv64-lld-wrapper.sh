@@ -14,6 +14,20 @@
 # different build dirs.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Issue 2316 — one link at a time per build directory. Everything below REWRITES the `.a`
+# arguments in place (strip, localize, memo restore by `cp`), and the archives
+# are shared by every executable of one configure: a workspace configure with
+# several images links them in parallel, so one link's `cp`/`llvm-objcopy`
+# truncated an archive another link's llvm tool had mapped, and that tool died
+# of SIGBUS ("Bus error"). The link runs from the build directory, so `$PWD`
+# names the set of archives that are shared. `flock` holds the lock for the
+# rewrite AND the link, since the link reads the archives too.
+if [ -z "${NROS_RISCV_LINK_LOCKED:-}" ] && command -v flock >/dev/null 2>&1; then
+    export NROS_RISCV_LINK_LOCKED=1
+    exec flock "$PWD/.nros-riscv-link.lock" "$0" "$@"
+fi
+
 RUST_LLD="${NROS_RUST_LLD}"
 LLVM_AR="${NROS_LLVM_AR}"
 STRIP_SCRIPT="$SCRIPT_DIR/../../cmake/strip-compiler-builtins.sh"

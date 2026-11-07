@@ -503,7 +503,10 @@ impl SdkLock {
         if std::fs::read_to_string(path).is_ok_and(|cur| cur == text) {
             return Ok(());
         }
-        std::fs::write(path, text).wrap_err_with(|| format!("write {}", path.display()))
+        // Atomic (temp + rename): a reader never sees a half-written lock.
+        // Several `nros build`s of one workspace record into the same file.
+        crate::atomic_file::atomic_write(path, &text)
+            .wrap_err_with(|| format!("write {}", path.display()))
     }
 }
 

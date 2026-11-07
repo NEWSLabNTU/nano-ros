@@ -132,14 +132,60 @@ static VOID nros_lock_ensure(_LOCK_T lock)
     TX_RESTORE
 }
 
-VOID __retarget_lock_init(_LOCK_T *lock)             { if (lock != 0) { nros_lock_ensure(*lock); } }
-VOID __retarget_lock_init_recursive(_LOCK_T *lock)   { if (lock != 0) { nros_lock_ensure(*lock); } }
+/* Issue 2335 — `__retarget_lock_init(_LOCK_T *lock)` ALLOCATES. `*lock` is an
+ * OUTPUT, newlib's contract, and its old value is not a lock: the STATIC locks
+ * above never come through here (newlib names them directly), so every caller
+ * is a DYNAMIC lock, e.g. `__sbprintf`'s FILE on the stack, whose `_lock` is
+ * whatever the stack held. This used to READ `*lock` as an existing lock, and
+ * on a ThreadX stack (filled with 0xEF) that faulted on the first unbuffered
+ * `fprintf` (`Load access fault`, `mtval=0xefef...`): every generated C++
+ * entry on this board died there.
+ *
+ * So a small pool, handed out and returned under the interrupt lockout. An
+ * exhausted pool stores NULL, which every hook below treats as "no lock",
+ * the state a FILE from newlib's zeroed glue had before this fix. The mutex
+ * itself is still created lazily, on first acquire. */
+#ifndef NROS_LIBC_DYNAMIC_LOCKS
+#define NROS_LIBC_DYNAMIC_LOCKS 16
+#endif
+#if NROS_LIBC_DYNAMIC_LOCKS < 1
+#error "NROS_LIBC_DYNAMIC_LOCKS must be >= 1: it sizes a C array (issue 1015)"
+#endif
+static struct __lock nros_dynamic_locks[NROS_LIBC_DYNAMIC_LOCKS];
+static UCHAR nros_dynamic_lock_used[NROS_LIBC_DYNAMIC_LOCKS];
+
+static _LOCK_T nros_lock_alloc(VOID)
+{
+    TX_INTERRUPT_SAVE_AREA
+    _LOCK_T out = (_LOCK_T) 0;
+    UINT i;
+
+    TX_DISABLE
+    for (i = 0u; i < (UINT) NROS_LIBC_DYNAMIC_LOCKS; i++) {
+        if (nros_dynamic_lock_used[i] == 0u) {
+            nros_dynamic_lock_used[i] = 1u;
+            nros_dynamic_locks[i].created = 0u;
+            out = &nros_dynamic_locks[i];
+            break;
+        }
+    }
+    TX_RESTORE
+    return out;
+}
+
+VOID __retarget_lock_init(_LOCK_T *lock)             { if (lock != 0) { *lock = nros_lock_alloc(); } }
+VOID __retarget_lock_init_recursive(_LOCK_T *lock)   { if (lock != 0) { *lock = nros_lock_alloc(); } }
 
 VOID __retarget_lock_close(_LOCK_T lock)
 {
     if ((lock != (_LOCK_T) 0) && (lock->created != 0u)) {
         (void) tx_mutex_delete(&lock->mutex);
         lock->created = 0u;
+    }
+    /* A pool lock goes back to the pool; a static one is never closed by
+     * newlib, and is left alone if it were. */
+    if ((lock >= &nros_dynamic_locks[0]) && (lock < &nros_dynamic_locks[NROS_LIBC_DYNAMIC_LOCKS])) {
+        nros_dynamic_lock_used[lock - &nros_dynamic_locks[0]] = 0u;
     }
 }
 VOID __retarget_lock_close_recursive(_LOCK_T lock)   { __retarget_lock_close(lock); }

@@ -24,8 +24,11 @@ talker/listener only (see the [coverage matrix](../README.md)).
 just threadx_riscv64 build-examples      # all rust examples via the fixtures lane
 just threadx_riscv64 zenohd &            # router
 just threadx_riscv64 talker              # boot rust/talker in QEMU
-just threadx_riscv64 listener            # peer in a second shell
 ```
+
+The peer listener is a workspace image since phase-535 W5: build and run
+`pubsub_bringup:riscv_threadx_listener` in `examples/workspaces/rust` with
+`nros build` / `nros run`, in a second shell.
 
 Test lanes: `just threadx_riscv64 test`, `test-all`.
 

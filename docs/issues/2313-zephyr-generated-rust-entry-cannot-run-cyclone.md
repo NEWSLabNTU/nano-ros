@@ -55,3 +55,20 @@ Make a generated Rust Zephyr entry register Cyclone and its message types
 (items 1 to 3), add the six `zephyr_<role>_cyclonedds` images to
 `examples/workspaces/rust/src/{pubsub,service,action}_bringup`, and retire the
 five leaves (phase-535 W6).
+
+## Also on threadx-riscv64 (phase-535 W5)
+
+Not Zephyr-only. The threadx-riscv64 Rust behaviour bringups got
+`riscv_threadx_<role>_cyclonedds` images, and they BUILD on the cargo road,
+but the listener boots to:
+
+```
+[ERROR] nros: cannot select an RMW backend — no RMW backend is registered
+Executor::open failed: Transport(InvalidConfig)
+```
+
+The leaves link Cyclone through the Corrosion/cmake seam
+(`build_threadx_cmake_rmw`), which registers the backend; the generated cargo
+entry does not. So the five threadx-riscv64 Rust listener, service and action
+leaves keep their Cyclone rows, as the Zephyr ones do, and their retirement
+waits on this issue.

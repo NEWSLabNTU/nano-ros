@@ -1,8 +1,14 @@
-# The six Rust roles this lane builds. ONE list: it was written out three times
+# The Rust leaves this lane builds. ONE list: it was written out three times
 # (the codegen pre-sync, the Corrosion fan-out, the fixture loop), and a role
 # added to two of the three is a leaf that silently never gets synced or never
-# gets built — the "one shared spelling, not a second one" rule.
+# gets built — the "one shared spelling, not a second one" rule. phase-535 W5:
+# on zenoh only the talker is a leaf now (the board's road witness, RFC-0122
+# D3); the other five roles are images of `examples/workspaces/rust`'s behaviour
+# bringups. On Cyclone all six stay leaves: a generated Rust entry registers no
+# Cyclone backend (issue 2313's class), so `RV64_RUST_ZENOH_ROLES` is the subset
+# whose zenoh leg is still a leaf.
 RV64_RUST_ROLES := "talker listener service-server service-client action-server action-client"
+RV64_RUST_ZENOH_ROLES := "talker"
 
 set working-directory := '..'
 
@@ -357,11 +363,6 @@ build-fixture-extras:
     export NROS_CMAKE_EXTRA_DEFS="$base_defs"
     bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
     bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh
-    # issue 1286 follow-up — the pure-C WORKSPACE entry (`workspace-c-threadx-riscv64`,
-    # image `riscv_threadx`), consumed by tests/entry_e2e.rs. A migrated row:
-    # `nros build` generates the root and resolves the board's own toolchain file,
-    # so none of the -D set above reaches it (NROS_CMAKE_EXTRA_DEFS is not read).
-    bash scripts/build/workspace-fixtures-build.sh threadx-riscv64 c
 
     cyclonedds_prefix="$root/build/cyclonedds-threadx-rv64-install"
     # Phase 203 decision — build the ThreadX-RV64 Cyclone fixtures BY DEFAULT so a
@@ -438,7 +439,10 @@ build-fixture-extras:
             _tx_n=0
             for _rc in {{RV64_RUST_ROLES}}; do
                 if [ -d "examples/rv-virt-threadx/rust/$_rc" ]; then
-                    for _tx_pair in "cyclonedds build-cyclonedds" "zenoh build-zenoh"; do
+                    _tx_pairs="cyclonedds build-cyclonedds"
+                    case " {{RV64_RUST_ZENOH_ROLES}} " in *" $_rc "*) _tx_pairs="$_tx_pairs|zenoh build-zenoh" ;; esac
+                    IFS='|' read -ra _tx_pair_list <<< "$_tx_pairs"
+                    for _tx_pair in "${_tx_pair_list[@]}"; do
                         # shellcheck disable=SC2086
                         set -- $_tx_pair
                         while [ "$(jobs -rp | wc -l)" -ge "$_tx_jobs" ]; do wait -n || true; done
@@ -465,6 +469,17 @@ build-fixture-extras:
         fi
     fi
     unset NROS_CMAKE_EXTRA_DEFS
+    # Every threadx-riscv64 WORKSPACE row, all languages: issue 1286's pure-C
+    # entry (`workspace-c-threadx-riscv64`, consumed by tests/entry_e2e.rs) and,
+    # since phase-535 W5, the example pairs as images of the behaviour bringups
+    # (`riscv_threadx_<role>[_cyclonedds]`). Migrated rows: `nros build`
+    # generates the root and resolves the board's own toolchain file, so none
+    # of the -D set above reaches them. The Cyclone images need the host
+    # `idlc` the leaf block above folds onto PATH.
+    if ! command -v idlc >/dev/null 2>&1 && [ -x "$root/build/cyclonedds/bin/idlc" ]; then
+        export PATH="$root/build/cyclonedds/bin:$PATH"
+    fi
+    bash scripts/build/workspace-fixtures-build.sh threadx-riscv64
 
 # Build every ThreadX RISC-V 64 sched task: core libraries, examples, and test fixtures.
 [group("full-matrix")]
@@ -560,21 +575,6 @@ _run-qemu example binary peer_index:
 
 # Run ThreadX RISC-V talker on QEMU
 talker: (_run-qemu "talker" "rv-virt-threadx-talker" "0")
-
-# Run ThreadX RISC-V listener on QEMU
-listener: (_run-qemu "listener" "rv-virt-threadx-listener" "1")
-
-# Run ThreadX RISC-V service server on QEMU
-service-server: (_run-qemu "service-server" "rv-virt-threadx-service-server" "0")
-
-# Run ThreadX RISC-V service client on QEMU
-service-client: (_run-qemu "service-client" "rv-virt-threadx-service-client" "1")
-
-# Run ThreadX RISC-V action server on QEMU
-action-server: (_run-qemu "action-server" "rv-virt-threadx-action-server" "0")
-
-# Run ThreadX RISC-V action client on QEMU
-action-client: (_run-qemu "action-client" "rv-virt-threadx-action-client" "1")
 
 # Start zenohd router for ThreadX RISC-V examples (allocator rust-pubsub port 9400)
 zenohd model="":

@@ -375,6 +375,36 @@ One PR per platform directory, each rebuilding its own lane.
 **Acceptance:** `just test <platform>` is green for each; `just ci matrix`
 (tier 2) is green at the end.
 
+- **threadx-riscv64 (in review).** Each behaviour bringup gets
+  `riscv_threadx_<role>` images for all three languages (zenoh, locator =
+  the cell's `alloc::port_of` on QEMU's SLIRP host), except C++ pubsub. 14
+  zenoh leaf rows and 8 leaves (the C and C++ service and action leaves)
+  retire. The talker
+  leaves stay as the board's witnesses; `typed-carrier` and
+  `errno-isolation` stay until W6. Cyclone stays on the leaves, so every
+  listener, service and action leaf that has a Cyclone row keeps it (the C
+  and C++ listeners, the five Rust roles): a generated Rust entry boots with
+  no Cyclone backend registered here too (issue 2313's class), and a C/C++
+  two-QEMU pair needs two network identities, which images of one configure
+  cannot have yet (issue 2336). Rust on zenoh builds through the cargo road,
+  where the leaves used a Corrosion/cmake seam. Found on the way:
+  - issue 2316: parallel image builds of one workspace raced. The riscv64 lld
+    wrapper rewrites the configure's shared archives in place (SIGBUS), and
+    parallel `nros build`s tore the workspace's `nros-sdk.lock`.
+  - issue 2335: the board's newlib `__retarget_lock_init` read `*lock`
+    instead of allocating one, so every generated C++ entry faulted on its
+    first unbuffered `fprintf`.
+  - issue 2336 (open): an image's `os_config` network file is per CONFIGURE,
+    so two images of one configure link one address.
+  - issue 2340 (open): the generated C++ talker publishes once and hangs, so
+    the C++ pubsub cell keeps its leaves.
+
+The coverage ratchet (`check-example-coverage-ratchet`) does not count the
+RMW: a tuple is (platform, lang, driver, shape, launch, entry), so a move
+that drops the last Cyclone or XRCE row of a platform passes it. Each W4/W5
+PR checks that by hand (a moved row with no cell gets a cell); the ratchet
+gaining an `rmw` field is a follow-up.
+
 ### W6 — Variants, configurations and feature demos
 
 - The 22 variants become node packages.

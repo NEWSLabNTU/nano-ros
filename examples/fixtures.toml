@@ -3350,66 +3350,6 @@ builder = "cmake"
 dir = "examples/rv-virt-threadx/rust/talker"
 
 [[fixture]]
-# phase-369 W2 — the zenoh build of this rust leaf is driven through
-# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
-# be a cargo row, which is what gave these six leaves two build paths and two
-# entry points (issues 0666/0668). Features are no longer named here: the
-# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
-platform = "threadx-riscv64"
-lang = "rust"
-rmw = "zenoh"
-builder = "cmake"
-dir = "examples/rv-virt-threadx/rust/listener"
-
-[[fixture]]
-# phase-369 W2 — the zenoh build of this rust leaf is driven through
-# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
-# be a cargo row, which is what gave these six leaves two build paths and two
-# entry points (issues 0666/0668). Features are no longer named here: the
-# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
-platform = "threadx-riscv64"
-lang = "rust"
-rmw = "zenoh"
-builder = "cmake"
-dir = "examples/rv-virt-threadx/rust/service-server"
-
-[[fixture]]
-# phase-369 W2 — the zenoh build of this rust leaf is driven through
-# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
-# be a cargo row, which is what gave these six leaves two build paths and two
-# entry points (issues 0666/0668). Features are no longer named here: the
-# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
-platform = "threadx-riscv64"
-lang = "rust"
-rmw = "zenoh"
-builder = "cmake"
-dir = "examples/rv-virt-threadx/rust/service-client"
-
-[[fixture]]
-# phase-369 W2 — the zenoh build of this rust leaf is driven through
-# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
-# be a cargo row, which is what gave these six leaves two build paths and two
-# entry points (issues 0666/0668). Features are no longer named here: the
-# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
-platform = "threadx-riscv64"
-lang = "rust"
-rmw = "zenoh"
-builder = "cmake"
-dir = "examples/rv-virt-threadx/rust/action-server"
-
-[[fixture]]
-# phase-369 W2 — the zenoh build of this rust leaf is driven through
-# `build_threadx_cmake_rmw` into `build-zenoh/`, NOT through cargo. It used to
-# be a cargo row, which is what gave these six leaves two build paths and two
-# entry points (issues 0666/0668). Features are no longer named here: the
-# RMW-neutral seam supplies them, so the manifest cannot disagree with it.
-platform = "threadx-riscv64"
-lang = "rust"
-rmw = "zenoh"
-builder = "cmake"
-dir = "examples/rv-virt-threadx/rust/action-client"
-
-[[fixture]]
 id = "threadx-riscv64-logging-smoke"
 platform = "threadx-riscv64"
 lang = "rust"
@@ -3874,41 +3814,6 @@ dir = "examples/rv-virt-threadx/c/errno-isolation"
 
 [[fixture]]
 platform = "threadx-riscv64"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/c/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/c/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/c/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/c/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/c/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
-
-[[fixture]]
-platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/cpp/talker"
@@ -3920,34 +3825,6 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/cpp/listener"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/cpp/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/cpp/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/cpp/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
-
-[[fixture]]
-platform = "threadx-riscv64"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/rv-virt-threadx/cpp/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
 
 # ===========================================================================
 # threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).
@@ -5441,6 +5318,193 @@ lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
 dir = "examples/rv-virt-threadx/rust/action-client"
+
+# phase-535 W5 (RFC-0122 D1) — the threadx-riscv64 example pairs as images
+# of the behaviour bringups (zenoh; Cyclone for C/C++ pubsub). The cells
+# resolve through nros_tests::fixtures::workspace_image.
+# The talker leaves stay: they are the board's road witnesses (RFC-0122 D3).
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-riscv64-talker"
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "riscv_threadx_talker"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/riscv-threadx-talker"
+target = "riscv64gc-unknown-none-elf"
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-riscv64-listener"
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "riscv_threadx_listener"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/riscv-threadx-listener"
+target = "riscv64gc-unknown-none-elf"
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-riscv64-service-server"
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "riscv_threadx_service_server"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/riscv-threadx-service-server"
+target = "riscv64gc-unknown-none-elf"
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-riscv64-service-client"
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "riscv_threadx_service_client"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/riscv-threadx-service-client"
+target = "riscv64gc-unknown-none-elf"
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-riscv64-action-server"
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "riscv_threadx_action_server"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/riscv-threadx-action-server"
+target = "riscv64gc-unknown-none-elf"
+
+[[workspace_fixture]]
+id = "workspace-rust-threadx-riscv64-action-client"
+platform = "threadx-riscv64"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "riscv_threadx_action_client"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/riscv-threadx-action-client"
+target = "riscv64gc-unknown-none-elf"
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-riscv64-talker"
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "riscv_threadx_talker"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-pubsub_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-riscv64-listener"
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "riscv_threadx_listener"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-pubsub_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-riscv64-service-server"
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "riscv_threadx_service_server"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-riscv64-service-client"
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "riscv_threadx_service_client"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-riscv64-action-server"
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "riscv_threadx_action_server"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-c-threadx-riscv64-action-client"
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "riscv_threadx_action_client"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-riscv64-service-server"
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "riscv_threadx_service_server"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-riscv64-service-client"
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "riscv_threadx_service_client"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-riscv64-action-server"
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "riscv_threadx_action_server"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-riscv64-action-client"
+platform = "threadx-riscv64"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "riscv_threadx_action_client"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
 
 # ===========================================================================
 # zephyr (west) — phase-350 W1.
