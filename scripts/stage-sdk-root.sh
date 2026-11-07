@@ -46,7 +46,7 @@
 #                       `packages/verification`, which no build reads but whose
 #                       absence makes the workspace manifest unloadable, and
 #                       therefore every Rust user project unbuildable.
-#   packages/cli       EXCLUDED, then four paths carved back. The directory is
+#   packages/cli       EXCLUDED, then five paths carved back. The directory is
 #                       75.9 MB tracked and mostly ships as a binary, so the
 #                       exclusion is worth having — but "nothing in a user's
 #                       graph reaches it" was FALSE, and staging is the only
@@ -68,6 +68,14 @@
 #                           `bundled_interfaces_dir` resolves, which the shipped
 #                           C++ workspace template needs for its
 #                           `<depend>std_msgs</depend>`.
+#                         probe-source-dirs.txt — the crates the metadata probe
+#                           compiles, which `probe_inputs_key` hashes to decide
+#                           whether a probe sidecar is FRESH. Without it the key
+#                           is `None` and every sidecar on a release reads stale,
+#                           so its counts are dropped: nros-0.6.0-nros7's own
+#                           talker scaffold then sized its callback table from a
+#                           contract alone (issue 2270's, which declared no
+#                           timer) and did not compile (phase-523 round two).
 #                       Anything else under `packages/cli` is the CLI's own
 #                       source or its test workspaces; a user's graph reaches
 #                       none of it, and `test ! -d nros-cli-core` below keeps
@@ -222,7 +230,8 @@ examples/qemu-armv7a-nuttx/rust-toolchain.toml
 CARVED="packages/cli/interfaces
 packages/cli/Cargo.toml
 packages/cli/nros-entry-lower
-packages/cli/nros-pkg-index"
+packages/cli/nros-pkg-index
+packages/cli/probe-source-dirs.txt"
 
 if [ "$prefix" = "--list" ]; then
     printf '%s\n' "$PATHS" "$CARVED"
@@ -295,6 +304,7 @@ need -d packages/boards "the board catalog BoardCatalog::load_with_packages read
 need -d packages/interfaces "the pre-generated msg packages core crates need before codegen runs"
 need -d packages/cli/interfaces/std_msgs "the bundled ROS .msg share dirs"
 need -f packages/cli/Cargo.toml "the CLI workspace the carved-back crates inherit their version from"
+need -f packages/cli/probe-source-dirs.txt "the probe closure a sidecar's freshness key hashes"
 refuse -d packages/cli/nros-cli-core "the CLI's own source ships as a binary"
 need -f nros-sdk-index.toml "the Corrosion + cross-toolchain pins, read from the SDK root's own position"
 

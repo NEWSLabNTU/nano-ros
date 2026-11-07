@@ -143,10 +143,9 @@ pub fn scaffold_project(p: &WorkspaceProject<'_>) -> Result<PathBuf> {
         bringup_package_xml(&bringup, p.node.name),
     )?;
     std::fs::write(bringup_dir.join("system.toml"), bringup_system_toml(p))?;
-    std::fs::write(
-        bringup_dir.join(crate::cmd::ws::LEAF_CONTRACT),
-        bringup_contract(&p.node),
-    )?;
+    if let Some(contract) = bringup_contract(&p.node) {
+        std::fs::write(bringup_dir.join(crate::cmd::ws::LEAF_CONTRACT), contract)?;
+    }
     std::fs::write(
         p.dir.join(".gitignore"),
         "/build/\n/generated/\n/target/\n/.cargo/\nCargo.lock\n/src/*/metadata/\n",
@@ -181,33 +180,51 @@ fn bringup_system_toml(p: &WorkspaceProject<'_>) -> String {
     )
 }
 
-/// The bringup's `system.contract.yaml`: what the node's endpoints DECLARE.
+/// The bringup's `system.contract.yaml`: what the node DECLARES, or `None`.
 ///
 /// Issue 2270. Without one, every buffer the declarations would size keeps a
 /// default or a worst case, and a scaffolded talker's first build reported
-/// six of them. The scaffold states what its own code does -- the talker's
-/// publisher is VOLATILE and no template declares a parameter -- so the build
-/// sizes from that and says nothing about it; a user who changes the code
-/// edits this beside it. A listener's ring depth is left unstated on purpose:
-/// stating ROS's KEEP_LAST(10) would raise the ring above the depth the
-/// backend serves by default and cost RAM, so the build notes it instead.
-fn bringup_contract(node: &NodePackage<'_>) -> String {
-    let ros = node.ros_name();
-    let mut s = String::from(
-        "# What this image's node DECLARES about its endpoints, beside system.toml.\n\
-         # The build sizes its buffers from these instead of a default; when you add\n\
-         # a publisher, a subscription or a parameter in the code, state it here.\n\
-         # `nros build --explain-sizing` lists anything still left to a default.\n\
-         \nversion: 1\n\nnodes:\n",
-    );
-    s.push_str(&format!("  {ros}:\n    params: {{}}\n"));
-    if node.template == Role::Talker {
-        s.push_str("    pub:\n      chatter:\n        qos:\n          durability: volatile\n");
-        s.push_str(&format!(
-            "\ntopics:\n  /chatter:\n    type: std_msgs/msg/String\n    pub: [{ros}/chatter]\n"
-        ));
+/// six of them. The scaffold states what its own code does: the talker's
+/// timer path, its VOLATILE publisher, and no parameters.
+///
+/// **A contract that names a node is that node's ENTITY declaration, so it
+/// must be complete.** The first version declared the talker's publisher and
+/// not its timer, and wrote `params: {}` alone for every other role. Wherever
+/// the probe sidecar is not fresh, the contract is all the derivation reads.
+/// A release is one such place, because it shipped no
+/// `probe-source-dirs.txt`, so every sidecar read stale. There a talker
+/// counted zero callbacks, and nros-0.6.0-nros7's own First Project failed
+/// to compile on `max_cbs 0` (phase-523 round two). So only the role whose
+/// whole surface is written here gets a contract. The others get none, which
+/// is the documented "no contract" road: they keep the board's configured
+/// pool knobs until a user states theirs.
+fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
+    if node.template != Role::Talker {
+        return None;
     }
-    s
+    let ros = node.ros_name();
+    Some(format!(
+        "# What this image's node DECLARES, beside system.toml. The build sizes its\n\
+         # buffers and its callback table from this, so it must list everything the\n\
+         # node creates: when you add a timer, a publisher, a subscription or a\n\
+         # parameter in the code, state it here too.\n\
+         # `nros build --explain-sizing` lists anything still left to a default.\n\
+         \nversion: 1\n\nnodes:\n\
+         \x20 {ros}:\n\
+         \x20   params: {{}}\n\
+         \x20   paths:\n\
+         \x20     on_tick:\n\
+         \x20       trigger: {{ timer: {{ rate_hz: 1 }} }}\n\
+         \x20       output: [chatter]\n\
+         \x20   pub:\n\
+         \x20     chatter:\n\
+         \x20       qos:\n\
+         \x20         durability: volatile\n\
+         \ntopics:\n\
+         \x20 /chatter:\n\
+         \x20   type: std_msgs/msg/String\n\
+         \x20   pub: [{ros}/chatter]\n"
+    ))
 }
 
 /// The bringup's `package.xml`: it builds nothing, and runs its node.
@@ -386,6 +403,19 @@ mod tests {
     /// of `package.xml` + `system.toml`, with no `launch/` and no root build
     /// file; the node names no board and is no cargo root of its own.
     #[test]
+    fn only_a_role_whose_whole_surface_is_known_gets_a_contract() {
+        // A contract that names a node is its entity declaration, so a partial
+        // one under-sizes the callback table; every role but the talker
+        // writes none and keeps the board's configured pools.
+        for role in Role::ALL {
+            let mut node = talker("x_node");
+            node.template = role;
+            let contract = bringup_contract(&node);
+            assert_eq!(contract.is_some(), role == Role::Talker, "{}", role.name());
+        }
+    }
+
+    #[test]
     fn the_project_scaffold_writes_a_node_package_and_a_bringup() {
         let ws = tmp("project");
         let bringup = scaffold_project(&WorkspaceProject {
@@ -433,6 +463,18 @@ mod tests {
         assert_eq!(
             node_c["pub"]["chatter"]["qos"]["durability"].as_str(),
             Some("volatile")
+        );
+        // A contract is the node's ENTITY declaration: the talker's 1 Hz
+        // timer must be in it, or a contract-only derivation (any host where
+        // the probe sidecar is not fresh) counts zero callbacks and the image
+        // does not compile (phase-523 round two, on nros-0.6.0-nros7).
+        assert_eq!(
+            node_c["paths"]["on_tick"]["trigger"]["timer"]["rate_hz"].as_u64(),
+            Some(1)
+        );
+        assert_eq!(
+            node_c["paths"]["on_tick"]["output"][0].as_str(),
+            Some("chatter")
         );
         assert_eq!(
             contract["topics"]["/chatter"]["pub"][0].as_str(),

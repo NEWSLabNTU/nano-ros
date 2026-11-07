@@ -34,7 +34,8 @@ their licenses, from the image's generated cargo root — the directory
 
 ```sh
 cargo metadata --format-version 1 --manifest-path <entry-dir>/Cargo.toml \
-  | jq -r '.packages[] | "\(.name) \(.version) \(.license // "-")"' | sort -u
+  | python3 -c 'import json,sys; [print(p["name"], p["version"], p.get("license") or "-") for p in json.load(sys.stdin)["packages"]]' \
+  | sort -u
 ```
 
 That lists every crate cargo resolved, build-time ones included. One of them
