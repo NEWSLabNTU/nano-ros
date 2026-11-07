@@ -20,7 +20,8 @@ and every tab on the page follows.
 
 - A Linux host with the [install](../start/install.md) done, so `nros` is on
   your `PATH`.
-- ROS 2 Humble with `ros-humble-rmw-zenoh-cpp`. ROS 2 provides the zenoh
+- ROS 2 with `ros-<distro>-rmw-zenoh-cpp`: Humble on Ubuntu 22.04, Jazzy on 24.04
+  ([which edition](../start/install.md#install-ros-2-first)). ROS 2 provides the zenoh
   router the board talks to, and the message definitions the build generates
   the talker's code from.
 - Two host packages the NuttX kernel build uses, the Python venv module and

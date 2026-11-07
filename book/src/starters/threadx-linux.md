@@ -20,7 +20,8 @@ talker in Rust or in C; pick a tab and every tab on the page follows.
 
 - A Linux host with the [install](../start/install.md) done, so `nros` is on
   your `PATH`.
-- ROS 2 Humble with `ros-humble-rmw-zenoh-cpp`. ROS 2 provides the zenoh
+- ROS 2 with `ros-<distro>-rmw-zenoh-cpp`: Humble on Ubuntu 22.04, Jazzy on 24.04
+  ([which edition](../start/install.md#install-ros-2-first)). ROS 2 provides the zenoh
   router the talker talks to, and the message definitions the build
   generates the talker's code from.
 
@@ -64,7 +65,7 @@ That wrote a workspace with two packages:
 tx_ws/
 └── src/
     ├── tx_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
-    └── tx_node_bringup/         # package.xml and system.toml: the board, the RMW, the node
+    └── tx_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
 `tx_node` is the talker, a library with no `main()` that names no board. It

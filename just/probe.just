@@ -224,6 +224,16 @@ platform-threadx-riscv64: (platform "platform-threadx-riscv64")
 [group("main")]
 flash-a-real-board: (platform "flash-a-real-board")
 
+# book/src/guide/build/install-options.md — Working offline; it fails up front
+# naming the container runtime it awaits (phase-537 W13 follow-up).
+[group("main")]
+install-offline: (platform "install-offline")
+
+# book/src/start/install.md — the ROS 2 prerequisite on a bare host; it fails
+# up front naming the bare-host runner it awaits (phase-537 W13 follow-up).
+[group("main")]
+install-ros: (platform "install-ros")
+
 # The same page with `nros flash` onto an attached Nucleo-F767ZI; it fails up
 # front naming the board it awaits (phase-537 W9).
 [group("main")]

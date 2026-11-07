@@ -19,7 +19,7 @@ see [Use XRCE-DDS](use-xrce-dds.md); WiFi is not covered yet.
 
 - The board provisioned for zenoh, for example
   `nros setup mps2-an385-baremetal --rmw zenoh`.
-- ROS 2 with `ros-<distro>-rmw-zenoh-cpp` ([which edition](../../start/install.md#before-you-start)), sourced in each terminal.
+- ROS 2 with `ros-<distro>-rmw-zenoh-cpp` ([which edition](../../start/install.md#install-ros-2-first)), sourced in each terminal.
   It provides the router.
 
 ## Steps

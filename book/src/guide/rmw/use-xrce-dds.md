@@ -18,7 +18,7 @@ connectivity until it comes back.
 
 - A workspace, such as the host one from
   [Run a talker](../../tutorial/run-a-talker.md#no-qemu-no-router-run-it-on-this-machine).
-- ROS 2 ([which edition](../../start/install.md#before-you-start)), to see the image from ROS 2.
+- ROS 2 ([which edition](../../start/install.md#install-ros-2-first)), to see the image from ROS 2.
 
 ## Steps
 

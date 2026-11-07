@@ -19,7 +19,8 @@ under it, which is what "bare-metal" means.
 
 - A Linux host with the [install](../start/install.md) done, so `nros` is on
   your `PATH`.
-- ROS 2 Humble with `ros-humble-rmw-zenoh-cpp`. ROS 2 provides the zenoh
+- ROS 2 with `ros-<distro>-rmw-zenoh-cpp`: Humble on Ubuntu 22.04, Jazzy on 24.04
+  ([which edition](../start/install.md#install-ros-2-first)). ROS 2 provides the zenoh
   router the board talks to, and the message definitions the build generates
   the talker's code from.
 
@@ -52,7 +53,7 @@ That wrote a workspace with two packages:
 bm_ws/
 └── src/
     ├── bm_node/                 # the talker: package.xml, Cargo.toml (a library), src/lib.rs
-    └── bm_node_bringup/         # package.xml and system.toml: the board, the RMW, the node
+    └── bm_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
 `bm_node` is the talker, a library with no `main()` that names no board. It
@@ -120,7 +121,7 @@ looks for one, so nothing else needs to be configured.
   it and run again.
 - **`nros run` stops at once and names the router:** it could not find
   `rmw_zenohd`. Source ROS 2 in that shell, and install
-  `ros-humble-rmw-zenoh-cpp` if it is missing.
+  `ros-<distro>-rmw-zenoh-cpp` if it is missing.
 - **No `Publishing:` line within a minute of boot:** the router started but
   the board did not reach it. `nros run` names the router's log under
   `build/nros/run/` when it stops. A router you started yourself on the same
