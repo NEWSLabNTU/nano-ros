@@ -1,6 +1,6 @@
 # Phase 528 — `nros run` on host and emulator: RunPlan, runner packages, and the test harness on the same path
 
-**Status (2026-11-06). DONE — W1, W2 and W3 landed (W3 with three items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 done: step 1 (native cells) in #3167, step 2 (QEMU cells) after it, with the tier-2 cell comparison carried to [issue 2302](../../issues/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) (`main`'s tier-2 build is red, so no run reached a cell). Its open follow-ups (issues 2172, 2273 and 2307, the orphaned image) are homed in [phase-544](../phase-544-harness-run-plan-followups.md).** Implements
+**Status (2026-11-06). DONE — W1, W2 and W3 landed (W3 with three items carried, and the ESP32 one moot); W4 done for host, QEMU and `native_sim` images, its serial-talker acceptance unblocked by issue 2231's fix; W5 done: step 1 (native cells) in #3167, step 2 (QEMU cells) after it, its tier-2 cell comparison met on 2026-11-07 (same pass set, wall time −0.3 %, after [issue 2302](../../issues/archived/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) cleared). Its open follow-ups (issues 2172, 2273 and 2307, the orphaned image) are homed in [phase-544](../phase-544-harness-run-plan-followups.md).** Implements
 [RFC-0118](../../design/0118-target-execution-model.md) D1 to D5 and D8 for host
 processes and emulators, and the host and emulator runners of
 [RFC-0119](../../design/0119-cli-extension-packages.md) D8.
@@ -453,15 +453,13 @@ Decision step: if the verb's overhead breaks the 5 % bound on short cells,
 fix the cost in the verb (lazy resolution, no rebuild check under `--plan`),
 never by giving the harness a private path.
 
-Status: **done (2026-11-06), with the tier-2 cell comparison carried.** Step 1
-(native cells) landed in #3167, step 2 (QEMU cells) in the pull request that
-carries this line. The `qemu-system-` gate is `check-harness-qemu-literals`.
-Step 2's tier-2 before/after was dispatched on the CI runner, but neither run
-reached a cell: `main` is red in the tier-2 fixture build (issue 2302), so
-both runs stopped in the same build stages and the comparison could only be
-the stage reached. The cell-level comparison and the wall-time bound for the
-QEMU cells are carried to issue 2302: re-dispatch `run-matrix.yml` once it
-is fixed and compare against the 2026-11-05 runs, which reached the cells.
+Status: **done (2026-11-07), acceptance met.** Step 1 (native cells) landed
+in #3167, step 2 (QEMU cells) in #3203. The `qemu-system-` gate is
+`check-harness-qemu-literals`. Step 2's first tier-2 before/after reached no
+cell, because `main` was red in the tier-2 fixture build (issue 2302, a
+duplicate of issue 2296, fixed by `0676fd2cf3`). Re-dispatched with that fix
+in both refs, both runs reached the cells, and the QEMU cells' pass set and
+wall time are unchanged (measured below).
 
 Step 1, what landed:
 
@@ -609,12 +607,24 @@ Measured:
   | 42155998964 (before) | `main` `a9e1941b13` | build | zephyr | none ran |
   | 42173661457 (before, schedule) | `main` `658f2d8ac1` | build | zephyr, linux | none ran |
   | 42195214776 (after) | the step-2 branch | build | zephyr, linux | none ran |
+  | 42320894038 (before, with the 2296 fix) | `27b822a7e4`, `main` just before W5 | cells | — | ran |
+  | 42355223509 (after, with the 2296 fix) | `2c5019190d`, the W5 step-2 merge | cells | — | ran |
 
-  The before and after runs fail identically, in fixture builds this change
-  does not touch: the `zephyr_self_pkg_rust` west fixture's `nros dev
-  codegen system` and a linux leaf with no `std_msgs` manifest (issue 2302).
-  So the pass set and the 5 % wall-time bound for the QEMU cells are not
-  measured yet; they are carried to issue 2302.
+  The first before and after runs failed identically, in fixture builds this
+  change does not touch: the `zephyr_self_pkg_rust` west fixture's `nros dev
+  codegen system` and a linux leaf with no `std_msgs` manifest (issue 2302,
+  the stale-resolver-pin refusal of issue 2296). The last two rows are the
+  comparison, read from each run's `post-submit-junit` artifact. A QEMU cell
+  is a testcase in one of the 25 test binaries that boot a guest:
+
+  - **Pass set, unchanged:** 151 QEMU cells in both runs; 66 pass, 0 fail, 85
+    out of lane, and no cell changed outcome.
+  - **Wall time, within the 5 % bound:** the 66 cells passing in both took
+    282.8 s before and 281.8 s after (−0.3 %; per-cell median +1.2 %). The 31
+    cells of 1 s or more took 279.0 s and 278.0 s (median +0.6 %).
+  - Each run has the same one failure outside the QEMU cells, the native
+    `linux_orchestration_sched_tasks::multi_sched_task_binary_boots_into_run_sched_tasks`,
+    present before the change too.
 
 ## Acceptance
 

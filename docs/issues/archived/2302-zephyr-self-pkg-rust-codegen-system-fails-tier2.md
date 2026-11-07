@@ -1,12 +1,14 @@
 ---
 id: 2302
 title: "Tier 2 stops in the build: the `zephyr_self_pkg_rust` west fixture fails `nros dev codegen system` at configure (and a linux leaf misses `std_msgs`)"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [testing, zephyr, ci]
 related: [phase-528, 2296, 2189, 1158, phase-466]
 found: 2026-11-06
+resolved: 2026-11-07
+resolved_in: "issue 2296 (0676fd2cf3)"
 ---
 
 **Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
@@ -47,7 +49,7 @@ job in every one of these runs fails the same two stages.
 
 ## Cause: issue 2296 (2026-11-06)
 
-This is [issue 2296](archived/2296-fixture-model-stale-after-resolver-pin.md),
+This is [issue 2296](2296-fixture-model-stale-after-resolver-pin.md),
 filed in parallel and fixed on `main` by its own pull request. Both reds are
 one refusal. The `tier1-junit` stage logs name it:
 `SystemModel … is stale: resolver pin changed (model b5243446b761 != ours
@@ -63,9 +65,12 @@ were built at the last green commit (`1d287ef110`) and then rebuilt at
 current `main` with the build dirs and in-source models kept. Current `main`
 passes 5/5. The step-2 branch run (42195214776) was cut before the fix.
 
-What is left here is the acceptance: a tier-2 run that reaches the cells.
-The before and after runs for phase-528 W5 were dispatched with the fix in
-both (see below). This issue closes when they report.
+## Resolution (2026-11-07)
+
+A duplicate of issue 2296, fixed by `0676fd2cf3`. With that fix in both refs,
+the phase-528 W5 before and after runs (42320894038 at `27b822a7e4`,
+42355223509 at `2c5019190d`) both reached the cells, which was the acceptance
+here. Phase-528 W5 records the comparison they made.
 
 ## Why it matters
 
