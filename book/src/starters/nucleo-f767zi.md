@@ -154,7 +154,7 @@ need no sourced shell:
 
 ```bash probe=50 probe-run=1500 track=installed
 source /opt/ros/humble/setup.bash
-nros run nucleo_node --expect 'Publishing:'
+nros run nucleo_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=50

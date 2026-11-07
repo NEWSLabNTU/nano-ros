@@ -111,7 +111,7 @@ later runs of it need no sourced shell:
 
 ```bash probe=60 probe-run=1500
 source /opt/ros/humble/setup.bash
-nros run nx_node --expect 'Publishing:'
+nros run nx_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=60

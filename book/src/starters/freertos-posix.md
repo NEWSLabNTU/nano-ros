@@ -109,7 +109,7 @@ records the ROS 2 prefix in the workspace, so later runs of it need no
 sourced shell:
 
 ```bash probe=50
-nros run fp_node --expect 'Publishing:' --timeout 600
+nros run fp_node --expect "Publishing: 'Hello World: 1'" --timeout 600
 ```
 
 `nros run` builds the talker with CMake (the first build compiles the
