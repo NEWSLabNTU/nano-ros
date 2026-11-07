@@ -1241,6 +1241,17 @@ fn registration_path(
     // fact every possible answer agreed on. That was the model road's whole
     // refusal for a Cyclone image: several packages, no ONE entry language, and
     // no language needed.
+    // Issue 2348 -- an OBSERVATION outranks the backend: it is what this
+    // registration claimed. It used to be read only after a descriptor-carrying
+    // backend had already answered `TypedBound`, so a Rust declaration's
+    // `unbounded` row (the type-erased registrar claims `RX_BUF` on every
+    // backend) was overruled and its arena priced at the type's bound.
+    use crate::entity_inventory::ObservedBufferedRow;
+    match observed_buffered_row {
+        Some(ObservedBufferedRow::TypedBound) => return Ok(RegistrationPath::TypedBound),
+        Some(ObservedBufferedRow::Unbounded) => return Ok(RegistrationPath::Unbounded),
+        None => {}
+    }
     if schema == BackendSchema::Descriptors {
         return Ok(RegistrationPath::TypedBound);
     }
@@ -1252,12 +1263,6 @@ fn registration_path(
     // entry language -- and it is right where the language was a proxy: a
     // hint-less C/C++ registration claims `RX_BUF` exactly like a Rust generic
     // one (issue 1319), and the language called it `TypedBound`.
-    use crate::entity_inventory::ObservedBufferedRow;
-    match observed_buffered_row {
-        Some(ObservedBufferedRow::TypedBound) => return Ok(RegistrationPath::TypedBound),
-        Some(ObservedBufferedRow::Unbounded) => return Ok(RegistrationPath::Unbounded),
-        None => {}
-    }
     let Some(language) = inputs.language else {
         // Nobody observed it and no single entry language exists (the model
         // road). Refused: guessing a row is what issue 1648 removed.
