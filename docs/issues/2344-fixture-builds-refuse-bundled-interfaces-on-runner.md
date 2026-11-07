@@ -1,15 +1,39 @@
 ---
 id: 2344
 title: "Fixture builds stop on issue 2278's bundled-interfaces refusal on a host with no ROS discoverable, so tier 2 reaches no cell"
-status: resolved
+status: open
 type: bug
 severity: high
 area: [ci, testing, cmake, runner]
-related: [2278, 2302, 2356, phase-528, phase-530]
+related: [2278, 2302, 2356, phase-528, phase-489]
 found: 2026-11-07
-resolved: 2026-11-07
-resolved_in: "the runner image installs every interface package the CLI bundles and sets AMENT_PREFIX_PATH to the ROS prefix (scripts/ci/runner-container.sh)"
 ---
+**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** (the runner image is CI build infrastructure).
+
+## Reopened 2026-11-07: a runner whose image predates the fix
+
+Tier-2 run 42393593998 (workflow_dispatch on main 15ae9b72b0, 16:53 UTC), job
+128466122834, ran on **`nano-ros-runner-newslab-server-241`**, not on 118. It
+stopped in `just build tier2` → `build-compile-check-fixtures` (line 1985, exit
+2), on this issue's refusal:
+
+```text
+no-ros: the message package `diagnostic_msgs` is on neither
+NROS_INTERFACE_SEARCH_PATH nor AMENT_PREFIX_PATH, and nano-ros does not
+generate it from its bundled copy in place of your ROS install (issue 2278).
+```
+
+So the fix holds only for a runner whose image was rebuilt after it. The
+resolution was measured on 118's image, rebuilt at 07:53Z. The 241 runner's
+image is older, and the `source ./activate.sh` path the resolution relied on
+did not set `AMENT_PREFIX_PATH` in that job. It is NOT issue 2356: the run
+never reached `check::default`.
+
+**What would close it:** the 241 runner image rebuilt from main (which now
+carries `ENV AMENT_PREFIX_PATH` in `scripts/ci/runner-container.sh`), the same
+for 118 (its handover lists that rebuild as pending), and one tier-2 run on
+each that gets past `build-compile-check-fixtures`.
+
 
 ## Measured
 
