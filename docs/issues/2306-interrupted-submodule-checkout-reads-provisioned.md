@@ -9,6 +9,8 @@ found: 2026-11-06
 related: [1513, phase-543]
 ---
 
+**Home: [phase-543](../roadmap/phase-543-nextest-gates.md).**
+
 ## Measured
 
 On 2026-11-06, a `just setup-worktree` in a fresh worktree (`nros-wt543`) was

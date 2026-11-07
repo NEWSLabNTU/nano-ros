@@ -9,6 +9,8 @@ found: 2026-11-07
 related: [2221, 1980, 1997, phase-543]
 ---
 
+**Home: [phase-543](../roadmap/phase-543-nextest-gates.md).**
+
 ## Measured
 
 phase-543's order-independence check (`just check gate-order build`) runs the

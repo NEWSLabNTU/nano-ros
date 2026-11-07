@@ -9,6 +9,8 @@ found: 2026-11-07
 related: [phase-535, 1299]
 ---
 
+**Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md).**
+
 ## What happens
 
 Phase-535 W5 gave the threadx-riscv64 Cyclone pair two images in one

@@ -6,8 +6,10 @@ type: bug
 area: [cpp, threadx, platform]
 severity: medium
 found: 2026-11-07
-related: [2335, phase-535]
+related: [2335, phase-535, phase-548]
 ---
+
+**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md).**
 
 ## What happens
 

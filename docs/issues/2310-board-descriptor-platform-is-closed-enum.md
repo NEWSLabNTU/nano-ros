@@ -4,11 +4,11 @@ title: "A board descriptor's `platform` is a closed enum, so no board can name a
 status: open
 type: bug
 area: cli, boards, platform
-related: [2292, 2291]
+related: [2292, 2291, phase-545]
 found: 2026-11-07
 ---
 
-**Home: none yet.** Found while fixing issue 2292 (phase-537 W12 follow-up).
+**Home: [phase-545](../roadmap/phase-545-rmw-provider-scan-build-road.md).** Found while fixing issue 2292 (phase-537 W12 follow-up).
 
 ## Symptom
 

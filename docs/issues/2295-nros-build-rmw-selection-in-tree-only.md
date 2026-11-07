@@ -8,7 +8,7 @@ related: [rfc-0071, rfc-0094, rfc-0087, phase-439, phase-537, phase-545, 1214]
 found: 2026-11-06
 ---
 
-**Home: [RFC-0071 Amendment 2026-11-07](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-07--nros-build-selects-an-rmw-through-the-provider-scan-issue-2295)
+**Home: [phase-545](../roadmap/phase-545-rmw-provider-scan-build-road.md), implementing [RFC-0071 Amendment 2026-11-07](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-07--nros-build-selects-an-rmw-through-the-provider-scan-issue-2295)
 (D14–D16), accepted 2026-11-07 (user ruling), implemented by
 [phase-545](../roadmap/phase-545-rmw-provider-scan-build-road.md).** The
 issue stays open until phase-545 W3's acceptance passes. Reported by the phase-537 W12 book session with an in-tree CLI. This is issue 1214's shape on the CLI build road. 1214 closed

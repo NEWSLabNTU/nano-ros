@@ -489,3 +489,9 @@ All per RFC-0122 D2.
 - The measured fixture-build time of `lane=all` is recorded before W3 and
   after W7.
 - Every RFC-0114 cadence has a job (W8), or has been lowered.
+
+## Issues homed here (2026-11-07)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2336](../issues/2336-board-net-is-per-configure-not-per-image.md) | An image's `os_config` network file is applied per cmake configure, so images sharing one configure clash: found in this phase's workspace images. |

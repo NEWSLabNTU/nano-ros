@@ -6,8 +6,10 @@ type: bug
 area: [cli, zephyr, rmw-cyclonedds]
 severity: medium
 found: 2026-11-07
-related: [phase-535, 0155, 0163, 1288]
+related: [phase-535, 0155, 0163, 1288, phase-548]
 ---
+
+**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md).**
 
 ## What happens
 

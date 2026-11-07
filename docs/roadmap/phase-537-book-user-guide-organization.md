@@ -499,3 +499,9 @@ and W9 wait.
 - Rewriting the Internals book's structure; only pages moved into it are
   touched.
 - Translations.
+
+## Issues homed here (2026-11-07)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2304](../issues/2304-c-param-server-cyclone-exits-after-store.md) | Found by this phase's W5 book session: a C talker with `rclc_parameter_server` exits 1 on Linux, so the chapter that uses it cannot be probed. |

@@ -4,11 +4,11 @@ title: "`nros run --dry-run` says it would configure, then refuses the stale Sys
 status: open
 type: bug
 area: cli-run
-related: []
+related: [phase-544]
 found: 2026-11-07
 ---
 
-**Home: none yet.** Found replaying Tutorial 9 (`tutorial/another-target.md`)
+**Home: [phase-544](../roadmap/phase-544-harness-run-plan-followups.md).** Found replaying Tutorial 9 (`tutorial/another-target.md`)
 on main e55d53507b with the release asset of an earlier main.
 
 ## Symptom

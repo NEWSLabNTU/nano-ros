@@ -1091,3 +1091,9 @@ this phase will fix it.
 - [issue 2239](../issues/archived/2239-gate-scratch-dirs-leak-in-tmp.md) — RESOLVED 2026-11-05: both build gates take their scratch trees from `scripts/build/gate-scratch.sh`; a pass leaves none, a failure is kept until the next run of its gate and scope, an interrupted run's tree goes at exit or at the next run (`just check gate-scratch`). The interrupted-`nros build` jobserver directory it also found is [issue 2254](../issues/archived/2254-nros-build-jobserver-fifo-dir-leaks-on-signal.md).
 - [issue 2254](../issues/archived/2254-nros-build-jobserver-fifo-dir-leaks-on-signal.md) — RESOLVED 2026-11-06: each new `nros build` jobserver retires the `nros-jobserver-*` directories whose owner is provably gone (pid plus `/proc` start time, both recorded in the name), and a failed build drops its pool before `exit`; three interrupted builds then one more run leave 0, where they left 3.
 - [issue 2240](../issues/archived/2240-selftests-escape-into-enclosing-repo.md) — RESOLVED 2026-11-06: a self-test's scratch repo with `TMPDIR` inside a checkout discovered that checkout (`fixture-tree.sh`'s broken-store case wrecked it); `nros_bound_git_discovery` bounds discovery at the temp root for every caller of the clearing helper, the gate runner refuses a checkout-internal `TMPDIR`, and `check-hook-repo-side-effects` gained a `tmpdir` probe.
+
+## Issues homed here (2026-11-07)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2299](../issues/2299-sync-central-patch-unused-in-host-tools.md) | Three "patch … was not used" warnings per host-tool cargo call: build noise on the CI build path this phase owns. |

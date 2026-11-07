@@ -5,7 +5,10 @@ status: open
 type: bug
 area: gates, ci
 found: 2026-11-05
+related: [phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
 
 ## Measured
 

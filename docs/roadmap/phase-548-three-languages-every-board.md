@@ -340,3 +340,10 @@ no marker means no action.
 - Every cell of the matrix above is green and re-measured on main.
 - Every user-book starter and Tutorial chapter shows the Rust, C and C++ tabs,
   each replayed by its own probe track, with no `awaits` left.
+
+## Issues homed here (2026-11-07)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2313](../issues/2313-zephyr-generated-rust-entry-cannot-run-cyclone.md) | A generated Rust Zephyr entry cannot run Cyclone DDS: the Rust cell on every Zephyr board with Cyclone, beside issue 2354. |
+| [#2340](../issues/2340-threadx-riscv64-generated-cpp-talker-hangs-after-first-publish.md) | The generated C++ talker on threadx-riscv64 publishes once then spins: the C++ cell of W4 on that board. |

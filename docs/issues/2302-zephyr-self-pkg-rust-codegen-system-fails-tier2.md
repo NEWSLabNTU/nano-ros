@@ -5,9 +5,11 @@ status: open
 type: bug
 severity: high
 area: [testing, zephyr, ci]
-related: [phase-528, 2296, 2189, 1158]
+related: [phase-528, 2296, 2189, 1158, phase-466]
 found: 2026-11-06
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
 
 ## What
 

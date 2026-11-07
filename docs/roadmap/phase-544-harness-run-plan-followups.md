@@ -74,3 +74,9 @@ guest run finds no survivor (a `/proc` scan, as phase-528 W4's Ctrl-C test does)
 
 Real boards (phase-529, phase-533) and the Renode and Wokwi twins
 (phase-524).
+
+## Issues homed here (2026-11-07)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2350](../issues/2350-run-dry-run-refuses-stale-model.md) | `nros run --dry-run` says it would configure, then refuses the stale SystemModel: a run-plan follow-up. |

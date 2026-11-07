@@ -5,9 +5,11 @@ status: open
 type: bug
 severity: low
 area: [testing, executor]
-related: [phase-521]
+related: [phase-521, phase-543]
 found: 2026-11-05
 ---
+
+**Home: [phase-543](../roadmap/phase-543-nextest-gates.md).**
 
 ## What
 

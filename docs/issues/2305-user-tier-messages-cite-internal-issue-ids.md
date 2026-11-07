@@ -4,11 +4,11 @@ title: "User-tier messages cite internal issue ids (`(issue 1352)`) where they s
 status: open
 type: tech-debt
 area: cli, ux, logging, build
-related: [phase-537, rfc-0117, 2270]
+related: [phase-537, rfc-0117, 2270, phase-523]
 found: 2026-11-06
 ---
 
-**Home: none yet.** Found by the phase-537 W5 book session (PR #3187).
+**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md).** Found by the phase-537 W5 book session (PR #3187).
 Issue 2270 is one measured instance (the default talker's configure and
 boot). This issue is the rule.
 
