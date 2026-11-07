@@ -133,6 +133,26 @@ Left: the zenoh Rust cell, once #3273 (issue 2342) lands.
 **Acceptance:** the C++ cells of mps2-an385 Zephyr and Zephyr native_sim are
 green.
 
+**Status (2026-11-07): DONE.** Cause confirmed: `CONFIG_NROS_CPP_API` selects
+`CONFIG_CPP`, and Zephyr 3.7's default standard is `CONFIG_STD_CPP11`, so the
+generated entry TU compiled at `-std=c++11`. The generated application's
+`prj.conf` (`builder/west_app.rs`, `render_prj_conf`) now adds `CONFIG_CPP=y`
+and `CONFIG_STD_CPP17=y` when the image's `LANG` is `cpp`. The standard is
+C++17, not 14: it is the `cxx_std_17` floor nros-cpp declares, and what every
+hand-written Zephyr C++ leaf and the `nros new` single-package scaffold already
+state. The file is merged first, so a board or image fragment that names a
+newer standard still wins. A C image's `prj.conf` is byte-identical to before,
+and a Rust one gets no C++ line. Unit test:
+`the_prj_conf_states_the_cpp_standard_only_for_a_cpp_image`, which reads the
+floor from `packages/api/nros-cpp/CMakeLists.txt`.
+Measured in the box: `nros new --lang cpp --rmw zenoh`, `nros build`,
+`nros run <ws>_node --expect 'Publishing:'` on `mps2-an385-zephyr` (router
+started by hand on `0.0.0.0:7447`, as the starter page says) and on `zephyr`
+(native_sim); both match, and `ros2 topic echo /chatter` receives from both.
+The hand-written leaves, templates and test bins were swept: every Zephyr C++
+application already states `CONFIG_STD_CPP17`; the ones without a standard
+are C.
+
 - Found while measuring W2, outside it: issue 2353 (`nros run` on
   mps2-an385 Zephyr finds no west workspace without `ZEPHYR_BASE` and starts
   no router for the board's `10.0.2.2` locator) and issue 2354 (a generated
