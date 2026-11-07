@@ -40,6 +40,11 @@ def on_path(*tools: str) -> str | None:
     return f"none of {', '.join(tools)} is on PATH"
 
 
+def all_on_path(*tools: str) -> str | None:
+    missing = [t for t in tools if not shutil.which(t)]
+    return None if not missing else f"not on PATH: {', '.join(missing)}"
+
+
 def env_dir(var: str) -> str | None:
     v = os.environ.get(var, "")
     if v and Path(v).is_dir():
@@ -121,7 +126,7 @@ REMEDY = {
     "ros2": "source /opt/ros/<distro>/setup.bash (or ./activate.sh with ROS installed)",
     "colcon": "install colcon (python3 -m pip install colcon-common-extensions)",
     "bindgen": "just setup linux",
-    "cmake": "install cmake",
+    "cmake": "install cmake and ninja",
     "cc": "install a C/C++ compiler",
     "zephyr-tree": "the sparse header clone in gate.yml's fast job, or a west workspace",
     "zephyr": "just zephyr setup",
@@ -134,8 +139,8 @@ REMEDY = {
 
 PROBES = {
     "cli": probe_cli,
-    "cmake": lambda: on_path("cmake"),
-    "cc": lambda: on_path("cc", "gcc", "clang"),
+    "cmake": lambda: all_on_path("cmake", "ninja"),
+    "cc": lambda: on_path("cc", "gcc", "clang") or all_on_path("ar", "nm", "objcopy"),
     "bindgen": lambda: on_path("bindgen"),
     "ros2": lambda: None if os.environ.get("AMENT_PREFIX_PATH") else "AMENT_PREFIX_PATH is unset",
     "colcon": lambda: on_path("colcon"),

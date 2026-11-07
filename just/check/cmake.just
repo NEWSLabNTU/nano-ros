@@ -157,6 +157,8 @@ cmake-image-policy:
 # nano-ros build, no SDK, seconds — so it belongs on the fast line where every
 # task runs it. Loud skip when the host has no cmake/ninja/compiler: `check-fast`
 # is documented to run green on a pristine worktree.
+[group('needs:cmake')]
+[group('needs:cc')]
 cmake-support-library:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -180,6 +182,8 @@ cmake-support-library:
 # archives against the HOST compiler plus a source scan for the class -- no
 # nano-ros build, ~1 s -- so it belongs on the fast line beside
 # `cmake-support-library`. Loud skip when the host lacks a tool.
+[group('needs:cmake')]
+[group('needs:cc')]
 cmake-second-staticlib:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -522,6 +526,7 @@ workspace-system-required:
     nros_gate_require_store_corrosion workspace-system-required "$_cli" || exit 0
     NROS_CLI="$_cli" ./tests/cmake-workspace-system-required-tests.sh
 
+[group('needs:cmake')]
 reconfigure-on-change:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -547,6 +552,7 @@ reconfigure-on-change:
 # Same skip ledger and the same reason as its sibling above: "the tool is
 # absent" is a different claim from "it passed", and a gate that says the second
 # when it means the first is worth less than no gate.
+[group('needs:cmake')]
 resolved-seed:
     #!/usr/bin/env bash
     set -euo pipefail

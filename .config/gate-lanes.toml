@@ -13,8 +13,8 @@
 # `check-gate-needs` refuses a `needs:` naming a capability not listed here.
 [capabilities]
 cli = "the in-tree `nros` CLI (just setup-cli)"
-cmake = "cmake on PATH"
-cc = "a host C/C++ compiler"
+cmake = "cmake and ninja on PATH"
+cc = "a host C/C++ compiler and binutils (ar, nm, objcopy)"
 bindgen = "bindgen-cli at the pin"
 ros2 = "a sourced ROS 2 (AMENT_PREFIX_PATH)"
 colcon = "colcon on PATH"
@@ -59,6 +59,16 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # the gates that need them run in `fast`/`queue` instead.
 tiers = ["fast", "build"]
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
+
+[lane.runner]
+# The self-hosted runner image (nros-qemu, nros-sdk-zephyr, nros-big), at the
+# point `just build <lane>` / `just ci matrix` run the gate tiers: BEFORE any
+# fixture build, in a shallow checkout, with no bindgen or colcon and only the
+# submodules its own lanes provision. Measured from the preflight's refusal on
+# run 42346220231. The gates that need more run in gate.yml's hosted jobs; the
+# Zephyr and fixture gates run as named steps after the build there.
+tiers = ["fast", "build"]
+claims = ["cli", "cmake", "cc", "ros2", "sources"]
 
 [lane.pristine]
 # `check pristine-checkout`: a worktree with no submodules and no CLI

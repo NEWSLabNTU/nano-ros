@@ -158,7 +158,10 @@ default: cli-fresh fast api-parity probe-workspace-caps build
 [group("main")]
 [metadata("tier", "exempt", "lane verb: the fast tier through the gate harness (`scripts/build/gate-lane.sh`)")]
 fast:
-    @bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scope="$(bash scripts/build/gate-scope.sh)"
+    exec bash scripts/build/gate-lane.sh "$scope" -E 'test(/^fast::/)'
 
 # The serial runner — phase-395 W11, emptied by this commit.
 #
@@ -187,7 +190,10 @@ fast:
 [group("main")]
 [metadata("tier", "exempt", "lane verb: the same lane, one gate at a time, fail-fast")]
 fast-serial:
-    @NROS_GATE_JOBS=1 bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)' --fail-fast
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scope="$(bash scripts/build/gate-scope.sh)"
+    NROS_GATE_JOBS=1 exec bash scripts/build/gate-lane.sh "$scope" -E 'test(/^fast::/)' --fail-fast
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
 # embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
@@ -229,7 +235,8 @@ build:
     if [ -n "${NROS_BUILD_GATE_SHARD:-}" ]; then
         part=(--partition "slice:$NROS_BUILD_GATE_SHARD")
     fi
-    exec bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^build::/)' "${part[@]}"
+    scope="$(bash scripts/build/gate-scope.sh)"
+    exec bash scripts/build/gate-lane.sh "$scope" -E 'test(/^build::/)' "${part[@]}"
 
 # Fast tier — BUILDLESS, SOURCE-FREE gates only (fmt/clang-format AST checks,
 # ABI/board mirrors, manifest + convention scripts). No cargo build/clippy/test
