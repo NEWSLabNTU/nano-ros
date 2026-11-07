@@ -158,7 +158,7 @@ shell:
 
 ```bash probe=60 probe-run=1500 track=installed
 source /opt/ros/humble/setup.bash
-nros run zm_node --expect 'Publishing:'
+nros run zm_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=60
