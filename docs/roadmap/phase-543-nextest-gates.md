@@ -481,6 +481,11 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
   need their growth bounded first. Why one run is that large: issue
   [2318](../issues/2318-cmake-leaf-recompiles-host-tooling.md) (every CMake
   leaf recompiles the same host tooling; ~80% of `corrosion-cargo` is host-side).
+- [Issue 2356](../issues/2356-gate-units-overfill-runner-tmpfs.md): W2's
+  one-test-per-unit left phase-489's disk bound with one unit to bound, so a
+  tier-2 run started 44 `scaffold-builds`/`template-copy-out` units at once and
+  filled the runner's 48 GiB /tmp. They now share the `scratch-tree` resource,
+  whose `max-threads` is TMPDIR's free space over the measured unit size.
 
 ## Open questions
 
