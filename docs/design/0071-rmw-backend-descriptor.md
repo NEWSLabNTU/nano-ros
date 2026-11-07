@@ -179,6 +179,10 @@ signature, and a backend that declares nothing pays nothing.
 
 ### D5 — resolution is BY NAME over a SEARCH PATH OF WORKSPACES (revised twice)
 
+> **Amendment proposed 2026-11-07 (D14–D16 below, issue 2295), awaiting
+> maintainer review:** the CLI's build road resolves through the scan too,
+> and the baked in-tree table stops being a second answer.
+
 The first draft used a central registry. The second replaced it with name-based
 resolution plus a search path. This third revision fixes what the search path
 *is*, and the answer generalises past RMW.
@@ -578,6 +582,147 @@ Rejected, for owned entries (maintainer decision, 2026-11-05):
 - an `include!` of generated registration. Features cannot reach cargo
   without a manifest, so this solves half the problem.
 
+## Amendment 2026-11-07 — `nros build` selects an RMW through the provider scan (issue 2295)
+
+**Status: Proposed — awaiting maintainer review.** Nothing below is
+implemented. Issue 2295 is homed here and stays open until this is ruled on.
+
+D5's acceptance test, "a backend added out-of-tree with zero core edits",
+passes on the cmake road and fails on `nros build`. Issue 1214 moved the cmake
+seam (`nros dev rmw dispatch`) onto `resolve_rmw_in`, which reads the winning
+provider's descriptor at selection time. Every CLI build and configure site
+still calls `resolve_rmw`, which reads `RMW_ROWS`, the table
+`cargo-nano-ros/build.rs` bakes from one checkout's `packages/rmw/`. The sites
+are `orchestration/facade.rs` (`derive`, its extra-backend loops, and the
+`filter_map(… .ok())` in `render_backend_macros_inner`, which drops an
+unresolvable name silently), `orchestration/nros_config.rs` (the load-time
+validation), `cmd/codegen_system.rs` (`rmw_token`), `builder/west_app.rs`,
+`orchestration/rmw_config.rs` and `orchestration/bridge_gen.rs`. The
+capability helpers (`backend_declares_capability`, `backend_states_fact`,
+`backends_declaring`, `backend_capability_feature`, `canonical_rmw`,
+`known_rmw`) read the same table. An image that declares `rmw = "acme"` for a
+workspace provider is therefore refused as an unknown RMW.
+
+### D14 — one answer: the baked table becomes the scan's in-tree root
+
+**Decision.** Every CLI site resolves an RMW name with `resolve_rmw_in` over
+a provider scan. `RMW_ROWS` stops being an answer anywhere in `nros-cli-core`.
+It is not kept as a fallback for callers with no workspace.
+
+* **The in-tree backends are already providers.** Each of
+  `packages/rmw/{zenoh,xrce,cyclonedds,uorb}/nros-rmw-*` carries a
+  `package.xml` and an `nros-rmw.toml`. D5's precondition, that a provider
+  without a `package.xml` cannot be scanned, no longer holds for this axis.
+  Root 0 of the scan gives the same set the table holds.
+* **A caller with no workspace still has an SDK root.** Examples are
+  `nros new`'s `--rmw` check (`cargo-nano-ros/src/scaffold.rs`,
+  `workspace_scaffold.rs`) and help text that lists backends. The SDK-root
+  ladder always answers for a working `nros`: the checkout, or
+  `share/nano-ros` beside a released binary. Such a caller scans
+  `[<sdk root>]` alone (`search_path_over(Some(root), cwd)`). If no SDK root
+  resolves, the build has no backend sources either, so the caller fails with
+  `nano_ros_root::not_found_help()`. A table that still answered there would
+  name backends whose sources are absent.
+* **One scan per invocation, scoped.** A whole-checkout walk costs about
+  2,000 directories (phase-528 W5 measured this for runners). A new
+  `InTreeScope::Rmw`, the sibling of `InTreeScope::Runners`, narrows root 0
+  to `packages/rmw/`. User roots keep their full walk. `nros build` and
+  `nros configure` compute the scan once and pass it to every site, wrapped
+  in a small `RmwIndex` that memoises `resolve_rmw_in` by name. The scan
+  already reaches `plan_host_tools`.
+* **What stays baked.** `build.rs` still reads the in-tree descriptors. It
+  checks their convention fields at compile time (RFC-0087 D4), and the
+  existing test that holds the baked rows equal to the scanned ones remains
+  the regression net for that check. The table's public lookups
+  (`resolve_rmw`, `known_rmw`, `canonical_rmw` and the capability helpers)
+  become `#[cfg(test)]` or are deleted. The helpers move onto
+  `ResolvedRmwIn` and the descriptor it carries.
+* **Errors name the search.** "No package provides rmw `x`; searched: …" is
+  D5's message. The silent `filter_map` in `facade.rs` becomes that refusal,
+  naming the backend and the image.
+
+Rejected: keeping the table as a fallback. Two answers to one question is
+how this issue arose. The fallback would also run in exactly the case where
+it is wrong, a workspace that has a provider the table lacks.
+
+### D15 — linking a backend the board crate does not name
+
+D13 links a Rust backend through the board crate's `rmw-<x>` feature, and the
+board registers it in its boot path. An in-tree board has no
+`rmw-acme` feature, so that edge does not exist for an out-of-tree backend.
+The facade already asks whether the board declares the feature
+(`crate_declares_feature`) and says nothing when it does not. Today that
+means the backend is not linked at all.
+
+**Decision.** Exactly one party registers each backend:
+
+* **The board declares `rmw-<x>`.** Nothing changes: the board links and
+  registers the backend.
+* **The board does not declare it.** The image registers the backend. The
+  generated entry, or an owned entry's `<entry>_nros_derived` adapter, gets a
+  direct path dependency on the crate named by `[rmw.provides.cargo] crate`.
+  The dependency points at `ResolvedRmwIn::package_dir`, with
+  `default-features = false`. Its features are the edition, the backend's
+  capability features, and the board descriptor's `platform_feature` when
+  the backend crate declares that feature. This is `west_app`'s rule today,
+  stated once. If the crate's `Cargo.toml` `[package].name` differs from the
+  descriptor's `crate`, the configure is refused.
+* **Registration.** The facade renders `__nros_register_backends!` with the
+  backends of the second kind only. `nros::main!` calls it on every arm, not
+  only the Zephyr and bridge arms. For an image whose board registers its
+  own backend the macro is empty, so no backend is registered twice and the
+  in-tree images expand as they do today.
+* **A backend with no `[rmw.provides.cargo]`** (a cmake-only backend) on a
+  cargo-rooted image is refused with D7's message. A C or C++ image is
+  unchanged: D9's umbrella crate already takes the crate from the
+  descriptor.
+* **Patches.** The backend crate depends on `nros-rmw` and its siblings by
+  version. The entry's `[patch]` set (`cmd::build::registry_patches`)
+  already covers every SDK crate, so these resolve to this SDK with no new
+  rule.
+
+**`west_app`.** `backend_dir` (a walk of
+`<sdk>/packages/rmw/{zenoh,cyclonedds,xrce,uorb,dds}/<crate>`) is deleted.
+The backend's directory is the scan's answer,
+`ResolvedRmwIn::package_dir`, so a backend outside the SDK root is found the
+same way as one inside it. Its "warn and link no Rust backend" arm becomes a
+refusal: a descriptor whose `crate` is not at its own package directory is
+the provider's error, and the scan answer is authoritative.
+
+### D16 — acceptance and gate
+
+**Acceptance test** (1214's, on this road). This is a fixture workspace,
+`packages/testing/nros-tests/fixtures/out-of-tree-rmw/`. It holds
+`src/acme_rmw/` (a `package.xml` announcing `rmw acme`, an `nros-rmw.toml`
+and a cargo crate on `nros-rmw`) plus a talker package and a bringup whose
+image is `board = "linux"`, `rmw = "acme"`. To keep the fixture small, the
+crate implements the seam by delegating to `nros-rmw-zenoh`. It is out of tree
+in the way that matters: nothing under `packages/` names it.
+
+1. `nros build` builds the image with no edit outside the fixture. The test
+   asserts that the generated manifest path-deps `acme_rmw` and that the
+   register macro names it.
+2. The native e2e harness runs the image against a router and sees the
+   talker publish through backend `acme`.
+3. The same image with `board = "native_sim"` builds through `west_app`,
+   which proves D15's directory rule.
+
+Unit tests come first, one per site: the facade, `nros_config` load,
+`codegen_system`, `rmw_config`, `bridge_gen` and `west_app`. Each takes a
+scan that holds an `acme` provider and asserts the out-of-tree answer.
+
+**Gate.** `check-rmw-resolve-sites` runs on the fast lane. It refuses
+`resolve_rmw(`, `RMW_ROWS` and the static capability helpers in
+`packages/cli/nros-cli-core/` and `packages/cli/cargo-nano-ros/src/`. The
+exceptions are `rmw_resolver.rs`'s own tests and `build.rs`, and the
+allowlist is empty once the migration lands. Steps 1 and 3 run in
+`check-cli-tests`. Step 2 runs in the native e2e lane, beside 1214's cmake
+fixture.
+
+Open for the reviewer: whether step 3 (Zephyr) belongs in this RFC's
+acceptance or in a follow-up phase, since it needs the Zephyr SDK on the
+lane that runs it.
+
 ## What this does NOT change
 
 * **The vtable ABI.** RFC-0035 is not the gap. A backend still populates
@@ -731,3 +876,10 @@ machinery.
   registration itself. An owned entry keeps a generated adapter crate, renamed
   `<entry>_nros_derived`, which carries both (maintainer decision, option A;
   phase-531 W5). D3 and D11 carry pointers.
+- 2026-11-07: D14–D16 proposed (awaiting maintainer review, issue 2295).
+  `nros build` and `nros configure` resolve an RMW through the provider scan,
+  and the baked table is no longer an answer. A backend the board crate does
+  not name is linked and registered by the image. `west_app` takes the
+  backend directory from the scan. The acceptance test and gate are an
+  out-of-tree `acme` backend built through `nros build`, plus
+  `check-rmw-resolve-sites`. D5 carries a pointer.
