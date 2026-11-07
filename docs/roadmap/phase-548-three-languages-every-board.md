@@ -84,6 +84,13 @@ cyclonedds cargo bridge.
     another board's alias;
   - give cyclonedds a cargo bridge (or a `sys_crate`) that this board links.
 
+- Cyclone DDS half landed with #3289: the `freertos-posix-rust` probe track
+  passes (W8 replay, 2026-11-07).
+- Zenoh half still open. Zenoh on this board landed with #3284. The Rust
+  zenoh image (`freertos-posix-zenoh-rust`) now builds, but it exits 1
+  within 0.2 s and prints nothing on the console. The C and C++ zenoh tracks
+  pass.
+
 **Acceptance:** the freertos-posix Rust cell is green on cyclonedds, and on
 zenoh once 2342 lands. An image whose board names no crate is refused with
 the board's name.
