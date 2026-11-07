@@ -13,7 +13,11 @@
 #   2. AMENT_PREFIX_PATH           (env; ROS 2 install-prefix layout —
 #       `<prefix>/share/<pkg>/{msg,srv,action}/`).
 #   3. Bundled                     (`<nano-ros>/packages/cli/interfaces/<pkg>/`
-#       and `<nano-ros>/share/nano-ros/interfaces/<pkg>/`).
+#       and `<nano-ros>/share/nano-ros/interfaces/<pkg>/`), ONLY when
+#       NROS_INTERFACE_SEARCH_PATH names that root (issue 2278). Named or not,
+#       the root is read here, after AMENT, never as a layer-1 entry. A
+#       package only the bundled copy holds, with no opt-in, is refused with
+#       `nros configure`'s remedy (`_nros_refuse_bundled_interfaces`).
 #
 # Shadowing: a workspace shadowing an AMENT pkg takes the higher layer; we
 # log a `message(STATUS ...)` line so the user knows which copy won.
@@ -33,6 +37,9 @@ set(_NROS_FIND_ROS_MSG_PACKAGE_INCLUDED TRUE)
 # when the include happens inside a `find_package()` frame — unlike the normal
 # variable guard above it.
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosPackageXml.cmake")
+# Issue 2278 — the bundled-interfaces opt-in and refusal. Included here, ahead
+# of the stub emission below, because the generators are loaded later.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosBundledInterfaces.cmake")
 
 # --- workspace-pkg Find-stub emission ----------------------------------------
 #
@@ -146,6 +153,14 @@ function(_nros_emit_workspace_find_stubs)
         if(NOT IS_DIRECTORY "${_root}")
             continue()
         endif()
+        # Issue 2278 — the bundled root is an opt-in, not a workspace: its
+        # packages resolve through the shipped modules, after AMENT.
+        if(DEFINED _NANO_ROS_PREFIX)
+            _nros_is_bundled_interface_root("${_root}" "${_NANO_ROS_PREFIX}" _ews_bundled)
+            if(_ews_bundled)
+                continue()
+            endif()
+        endif()
         # phase-363 W2 — CONFIGURE_DEPENDS: these roots are the USER's
         # (`NROS_INTERFACE_SEARCH_PATH`), so a newly added msg PACKAGE is
         # invisible until something unrelated forces a reconfigure.
@@ -251,6 +266,14 @@ function(_nros_find_msg_package_root pkg out_var)
     endif()
 
     foreach(_root ${_search_roots})
+        # Issue 2278 — a bundled root on the search path is the OPT-IN to
+        # layer 3, not a layer-1 root: read there, it would shadow AMENT.
+        if(DEFINED _NANO_ROS_PREFIX)
+            _nros_is_bundled_interface_root("${_root}" "${_NANO_ROS_PREFIX}" _nfrm_bundled)
+            if(_nfrm_bundled)
+                continue()
+            endif()
+        endif()
         # Subdir-level match: <root>/<pkg>/package.xml
         if(EXISTS "${_root}/${pkg}/package.xml")
             set(${out_var} "${_root}/${pkg}" PARENT_SCOPE)
@@ -311,12 +334,16 @@ function(_nros_find_msg_package_root pkg out_var)
         # rung the stub silently generated NOTHING for a dep package and
         # the cpp-ffi closure compiled a consumer whose embedded
         # `std_msgs_msg_header_t` did not exist (local_msg_pkg fixture).
+        set(_nfrm_bundled_root "")
         if(EXISTS "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${pkg}/package.xml")
-            set(${out_var} "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${pkg}" PARENT_SCOPE)
-            return()
+            set(_nfrm_bundled_root "${_NANO_ROS_PREFIX}/packages/cli/interfaces/${pkg}")
+        elseif(EXISTS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${pkg}")
+            set(_nfrm_bundled_root "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${pkg}")
         endif()
-        if(EXISTS "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${pkg}")
-            set(${out_var} "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${pkg}" PARENT_SCOPE)
+        if(_nfrm_bundled_root)
+            # Issue 2278 — only behind the opt-in; otherwise configure's refusal.
+            _nros_refuse_bundled_interfaces(${pkg} "${_NANO_ROS_PREFIX}" "${_nfrm_bundled_root}/package.xml")
+            set(${out_var} "${_nfrm_bundled_root}" PARENT_SCOPE)
             return()
         endif()
     endif()

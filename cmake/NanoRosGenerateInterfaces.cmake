@@ -271,6 +271,11 @@ function(nros_generate_interfaces target)
     endif()
   endif()
 
+  # Issue 2278 — whichever tier answered (an explicit file, `resolve-deps`'s
+  # closure or auto-discovery), a bundled copy is generated only behind the
+  # opt-in, as `nros configure` generates it only from the host's ROS.
+  _nros_refuse_bundled_interfaces(${target} "${_NANO_ROS_PREFIX}" ${_interface_files})
+
   # Output directory — language-specific subdirectory
   if(_ARG_LANGUAGE STREQUAL "CPP")
     set(_subdir "nano_ros_cpp")
@@ -1170,6 +1175,13 @@ function(nros_workspace_interfaces)
   set(_seen "")
   foreach(_root ${_roots})
     if(NOT IS_DIRECTORY "${_root}")
+      continue()
+    endif()
+    # Issue 2278 — the bundled root on the search path is the opt-in to the
+    # bundled copies as a fallback, not a workspace whose every package is
+    # built here.
+    _nros_is_bundled_interface_root("${_root}" "${_NANO_ROS_PREFIX}" _ws_bundled)
+    if(_ws_bundled)
       continue()
     endif()
     # phase-360 W2 — a NEW msg package appearing under a scanned root is an

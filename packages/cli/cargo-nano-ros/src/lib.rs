@@ -898,12 +898,9 @@ pub fn load_index_with_search_path(search_path: Option<&str>, verbose: bool) -> 
     // node whose package.xml depends on a sibling workspace msg pkg resolved
     // nothing, so the C/C++ verbs never generated typed bindings for it.
     let mut index = AmentIndex::from_path_string("")?;
+    let bundled = bundled_interfaces_dir();
     if let Some(search_path) = search_path {
-        for root in search_path
-            .split([':', ';'])
-            .filter(|s| !s.is_empty())
-            .map(std::path::Path::new)
-        {
+        for root in search_roots_without_bundled(search_path, bundled.as_deref()) {
             match AmentIndex::from_directory(root) {
                 Ok(ws_index) => {
                     if verbose && ws_index.package_count() > 0 {
@@ -944,7 +941,7 @@ pub fn load_index_with_search_path(search_path: Option<&str>, verbose: bool) -> 
     }
 
     // Merge bundled interfaces (ament packages take precedence)
-    if let Some(bundled_dir) = bundled_interfaces_dir() {
+    if let Some(bundled_dir) = bundled {
         match AmentIndex::from_directory(&bundled_dir) {
             Ok(bundled_index) => {
                 if verbose {
@@ -967,6 +964,27 @@ pub fn load_index_with_search_path(search_path: Option<&str>, verbose: bool) -> 
     }
 
     Ok(index)
+}
+
+/// The `NROS_INTERFACE_SEARCH_PATH` roots to read as the first layer: every
+/// entry but the bundled interfaces directory.
+///
+/// Issue 2278 — naming the bundled root on the search path is how a CMake
+/// build opts in to the bundled copies (`_nros_refuse_bundled_interfaces`).
+/// Read as a first-layer root it would shadow the ament index, so the CMake
+/// resolver and this one keep it where it always was: merged last, after
+/// ament.
+fn search_roots_without_bundled<'a>(
+    search_path: &'a str,
+    bundled: Option<&std::path::Path>,
+) -> Vec<&'a std::path::Path> {
+    let bundled = bundled.and_then(|b| std::fs::canonicalize(b).ok());
+    search_path
+        .split([':', ';'])
+        .filter(|s| !s.is_empty())
+        .map(std::path::Path::new)
+        .filter(|root| bundled.is_none() || std::fs::canonicalize(root).ok() != bundled)
+        .collect()
 }
 
 /// Resolve transitive dependencies
@@ -3108,5 +3126,38 @@ mod ament_witness_tests {
             .expect("output from another emitter must regenerate");
         assert!(line.contains("different emitter"), "{line}");
         assert_ne!(fs::read(&witness).unwrap(), fs::read(&record).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod bundled_opt_in_tests {
+    use super::*;
+
+    /// Issue 2278 — the bundled root on the search path is dropped from the
+    /// first layer (it is merged last, after ament, as before), however it
+    /// is spelled; every other root keeps its place and order.
+    #[test]
+    fn the_bundled_root_is_not_a_first_layer_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (a, bundled, b) = (
+            tmp.path().join("a"),
+            tmp.path().join("bundled"),
+            tmp.path().join("b"),
+        );
+        for d in [&a, &bundled, &b] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let spelled_twice = format!("{}/./", bundled.display());
+        let search = format!(
+            "{}:{}:{};{}",
+            a.display(),
+            bundled.display(),
+            b.display(),
+            spelled_twice
+        );
+        let got = search_roots_without_bundled(&search, Some(&bundled));
+        assert_eq!(got, [a.as_path(), b.as_path()]);
+        // With no bundled directory, nothing is dropped.
+        assert_eq!(search_roots_without_bundled(&search, None).len(), 4);
     }
 }

@@ -231,6 +231,11 @@ function(nros_generate_interfaces target)
     endif()
   endif()
 
+  # Issue 2278 — a bundled copy only behind the opt-in (see the core's
+  # `_nros_refuse_bundled_interfaces`). This tree's prefix is the repo root.
+  get_filename_component(_nros_bundled_prefix "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../.." ABSOLUTE)
+  _nros_refuse_bundled_interfaces(${target} "${_nros_bundled_prefix}" ${_interface_files})
+
   # --- Output directory ---
   if(_ARG_LANGUAGE STREQUAL "CPP")
     set(_output_dir "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp/${target}")
