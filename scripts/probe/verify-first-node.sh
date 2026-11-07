@@ -133,26 +133,37 @@ echo '=== probe verify: scaffolded talker -> scaffolded listener ==='
 pair=/tmp/probe_template_pair
 rm -rf "$pair"
 mkdir -p "$pair"
+# Each binary is the one `nros build` names (its `artifact:` line), never a
+# path typed here: this block read `build/linux/target/debug/tpl_<role>` long
+# after the build moved to a generated entry under `build/<coord>/`, so it
+# failed as "a scaffolded node exited" while both nodes built fine (found with
+# issue 2346, whose ROS 2 refusal had stopped the probe ahead of it).
 for role in talker listener; do
     ( cd "$pair" && nros new "tpl_$role" --platform linux --rmw cyclonedds --template "$role" )
-    ( cd "$pair/tpl_$role" && nros configure && nros build )
+    build_log="/tmp/template_${role}_build.log"
+    if ! ( cd "$pair/tpl_$role" && nros configure && nros build ) >"$build_log" 2>&1; then
+        tail -n 40 "$build_log"
+        echo "PROBE FAIL: the scaffolded $role did not build"
+        exit 1
+    fi
+    bin="$(sed -n 's/^ *artifact: //p' "$build_log" | tail -n 1)"
+    [ -x "$bin" ] || { tail -n 20 "$build_log"; echo "PROBE FAIL: nros build named no runnable artifact for the $role (got '$bin')"; exit 1; }
+    eval "${role}_bin=\$bin"
 done
-"${NROS_DEADLINE[@]}" 60 "$pair/tpl_listener/build/linux/target/debug/tpl_listener" \
-    >/tmp/template_listener.log 2>&1 &
+"${NROS_DEADLINE[@]}" 60 "$listener_bin" >/tmp/template_listener.log 2>&1 &
 listener_pid=$!
-"${NROS_DEADLINE[@]}" 60 "$pair/tpl_talker/build/linux/target/debug/tpl_talker" \
-    >/tmp/template_talker.log 2>&1 &
+"${NROS_DEADLINE[@]}" 60 "$talker_bin" >/tmp/template_talker.log 2>&1 &
 talker_pid=$!
 deadline=$((SECONDS + 45))
 until grep -q "I heard: \[Hello World: " /tmp/template_listener.log; do
     if ! kill -0 "$listener_pid" 2>/dev/null || ! kill -0 "$talker_pid" 2>/dev/null; then
         echo "PROBE FAIL: a scaffolded node exited before the listener heard the talker"
-        tail -20 /tmp/template_talker.log /tmp/template_listener.log
+        tail -n 20 /tmp/template_talker.log /tmp/template_listener.log
         exit 1
     fi
     if ((SECONDS >= deadline)); then
         echo "PROBE FAIL: the scaffolded listener heard nothing from the scaffolded talker in 45 s"
-        tail -20 /tmp/template_talker.log /tmp/template_listener.log
+        tail -n 20 /tmp/template_talker.log /tmp/template_listener.log
         exit 1
     fi
     sleep 2
