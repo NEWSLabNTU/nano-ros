@@ -11,7 +11,7 @@ resolved: 2026-11-07
 resolved_in: "issue 2296 (0676fd2cf3)"
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
 
 ## What
 
