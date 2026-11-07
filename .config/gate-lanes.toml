@@ -39,10 +39,13 @@ root-target = 2   # the root workspace's `target/` (cargo's build-directory lock
 # cold in their own tree under $TMPDIR (scripts/build/gate-scratch.sh). Each unit
 # is its own nextest test (phase-543 W2), so the in-gate bound
 # (`nros_gate_unit_jobs`) never sees more than one; this is the bound. Sized from
-# disk, not chosen: max-threads is TMPDIR's free space when the config is
-# generated over `scratch-gib`, the measured peak of the largest unit (a C++
-# scaffold or workspace copy, 4.7 GiB on newslab-118; Rust units 2.0 GiB).
-scratch-tree = { scratch-gib = 5 }
+# the host, not chosen: max-threads is the smaller of TMPDIR's free space when
+# the config is generated over `scratch-gib`, the measured peak of the largest
+# unit (a C++ scaffold or workspace copy, 4.7 GiB on newslab-118; Rust units
+# 2.0 GiB), and the run's CPUs over `cpus`, since every unit runs its own
+# parallel build (phase-489's one unit per 8 CPUs). The disk bound alone let a
+# disk-backed /tmp admit dozens, and a 32-core host sat at load 100-130.
+scratch-tree = { scratch-gib = 5, cpus = 8 }
 
 [lane.fast]
 # `check / fast` on the hosted runner: the ci-base image provides these.

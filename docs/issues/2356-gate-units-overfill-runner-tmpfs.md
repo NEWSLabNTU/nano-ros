@@ -99,16 +99,26 @@ Whether the runner should also point `TMPDIR` (and with it gcc's and
 sccache's temp files) at `_work` is a runner change and the operator's call;
 it is not needed for the scheduling fix above.
 
+## The same missing bound, as overload
+
+On newslab-243 (32 cores, disk-backed /tmp, so free space bounded nothing),
+three local `just ci gate` runs ended in 2400 s nextest timeouts in
+`check::build` with the load average at about 100-130; `NROS_GATE_JOBS=8` got
+the run through. phase-489's in-gate bound also capped units at one per 8 CPUs,
+and W2 removed that half too. So the bound has to be CPU as well as disk.
+
 ## Fix (landed; awaiting the tier-2 confirmation)
 
 - `.config/gate-lanes.toml` `[resources]` gains `scratch-tree =
-  { scratch-gib = 5 }`, and both recipes carry `[group('uses:scratch-tree')]`.
-  `check-gate-lists.py` (`resource_capacity`) turns a `scratch-gib` resource
-  into nextest's `max-threads` as `$TMPDIR`'s free space at config time over
-  the per-unit size, never below 1, and 1 when free space cannot be measured.
-  The harness generates that config per run, so the bound is the host's and
-  the moment's: 9 on the 48 GiB runner tmpfs, 12 on a 63 GiB one, 182 on a
-  931 GiB disk-backed /tmp.
+  { scratch-gib = 5, cpus = 8 }`, and both recipes carry
+  `[group('uses:scratch-tree')]`. `check-gate-lists.py` (`resource_capacity`)
+  turns that into nextest's `max-threads` as the smaller of `$TMPDIR`'s free
+  space at config time over 5 GiB and the run's CPUs over 8, never below 1,
+  and 1 for a bound it cannot measure. The harness generates that config per
+  run, so the bound is the host's and the moment's: on 48 CPUs, 6 whatever the
+  disk; on the 48 GiB runner tmpfs with 96 CPUs it would be 9 (disk); on 32
+  cores, 4. `check-gate-needs` validates `[resources]` through the same
+  function instead of its own integer check.
 - `nros_gate_unit_jobs`'s per-unit default is 5 GiB (it was 3, and
   `check-scaffold-builds.sh` passed 4), the measured 4.7 GiB rounded up.
 

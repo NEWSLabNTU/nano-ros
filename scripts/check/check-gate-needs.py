@@ -72,12 +72,12 @@ def check(groups: dict[str, set[str]], bodies: dict[str, str], cfg: dict,
                 problems.append(f"  {name}: `cpu:{c}` is not a positive integer")
     # One rule for what a resource may say, the one that sizes it
     # (check-gate-lists.py `resource_capacity`): a count >= 1, or
-    # `{ scratch-gib = N }` (issue 2356). Asked with a fixed free space so the
-    # answer is about the spelling, not about this host's disk.
+    # a table of `scratch-gib`/`cpus` bounds (issue 2356). Asked with a fixed
+    # disk and CPU count so the answer is about the spelling, not this host.
     capacity = _gate_lists().resource_capacity
     for r, n in sorted(resources.items()):
         try:
-            capacity(r, n, 1 << 30)
+            capacity(r, n, 1 << 30, 64)
         except SystemExit as e:
             problems.append(f"  {e}")
     claimed: set[str] = set()
@@ -125,7 +125,7 @@ def self_test() -> None:
     assert any("delete it from" in x for x in p), p
     # Both resource spellings pass; a bad one of each is refused.
     ok = {"capabilities": {"a": ""}, "lane": {"l": {"claims": ["a"]}},
-          "resources": {"n": 2, "s": {"scratch-gib": 5}}}
+          "resources": {"n": 2, "s": {"scratch-gib": 5, "cpus": 8}}}
     p, _ = check({}, {}, ok, set())
     assert not any("[resources]" in x for x in p), p
     for bad in (0, {"scratch-gib": 0}, {"gib": 5}):

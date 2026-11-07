@@ -362,30 +362,52 @@ def scratch_free_kib() -> int | None:
     return st.f_bavail * st.f_frsize // 1024
 
 
-def resource_capacity(name: str, spec, free_kib: int | None) -> int:
+def host_cpus() -> int | None:
+    """CPUs this process may run on (its affinity mask, else the host's)."""
+    import os
+    try:
+        return len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return os.cpu_count()
+
+
+def resource_capacity(name: str, spec, free_kib: int | None,
+                      cpus: int | None = None) -> int:
     """How many tests may hold resource `name` at once.
 
-    An integer is taken as given. `{ scratch-gib = N }` is a resource sized
-    from SCRATCH DISK (issue 2356): each holder keeps a tree of up to N GiB
-    under `$TMPDIR`, so the count is TMPDIR's free space at config time over
-    N, and never below 1. The config is generated per run, so the count is the
-    free space of the host and moment that run has, not a number chosen for
-    one machine. Unmeasurable free space keeps one holder: the safe side."""
+    An integer is taken as given. A table sizes the resource from the host
+    (issue 2356), each key one bound and the count the smallest, never below 1:
+
+    * `scratch-gib = N` — each holder keeps a tree of up to N GiB under
+      `$TMPDIR`, so TMPDIR's free space at config time over N;
+    * `cpus = N` — each holder runs its own parallel build, so the CPUs this
+      run may use over N.
+
+    The config is generated per run, so the count is the host and moment that
+    run has, not a number chosen for one machine. A bound that cannot be
+    measured allows one holder: the safe side."""
     if isinstance(spec, bool):
         raise SystemExit(f"check-gate-lists: [resources] {name} = {spec!r} is not a count")
     if isinstance(spec, int):
         if spec < 1:
             raise SystemExit(f"check-gate-lists: [resources] {name} = {spec}; a resource needs >= 1 holder")
         return spec
-    if isinstance(spec, dict) and set(spec) == {"scratch-gib"}:
-        gib = spec["scratch-gib"]
-        if isinstance(gib, bool) or not isinstance(gib, (int, float)) or gib <= 0:
-            raise SystemExit(f"check-gate-lists: [resources] {name}: scratch-gib must be > 0, got {gib!r}")
-        if free_kib is None:
-            return 1
-        return max(1, int(free_kib // (gib * 1024 * 1024)))
-    raise SystemExit(f"check-gate-lists: [resources] {name} = {spec!r}; "
-                     "want a count, or { scratch-gib = <GiB per holder> }")
+    keys = {"scratch-gib": free_kib, "cpus": cpus}
+    if isinstance(spec, dict) and spec and set(spec) <= set(keys):
+        bounds = []
+        for key, value in sorted(spec.items()):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+                raise SystemExit(f"check-gate-lists: [resources] {name}: {key} must be > 0, got {value!r}")
+            have = keys[key]
+            if have is None:
+                bounds.append(1)
+            elif key == "scratch-gib":
+                bounds.append(int(have // (value * 1024 * 1024)))
+            else:
+                bounds.append(int(have // value))
+        return max(1, min(bounds))
+    raise SystemExit(f"check-gate-lists: [resources] {name} = {spec!r}; want a count, or a "
+                     "table of { scratch-gib = <GiB per holder>, cpus = <CPUs per holder> }")
 
 
 def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
@@ -418,9 +440,9 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
         "",
         "[test-groups]",
     ]
-    free_kib = scratch_free_kib()
+    free_kib, cpus = scratch_free_kib(), host_cpus()
     for r, spec in sorted(resources.items()):
-        n = resource_capacity(r, spec, free_kib)
+        n = resource_capacity(r, spec, free_kib, cpus)
         lines.append(f'"@tool:{TOOL}:{r}" = {{ max-threads = {n} }}')
     lines.append("")
     for tier in ("fast", "build", "exempt"):
@@ -548,7 +570,16 @@ def self_test() -> None:
     assert resource_capacity("s", {"scratch-gib": 5}, None) == 1
     assert resource_capacity("s", {"scratch-gib": 2.5}, 10 * gib) == 4
     assert resource_capacity("r", 2, None) == 2
-    for bad in (0, True, {"scratch-gib": 0}, {"scratch-gib": "5"}, {"gib": 5}, "2"):
+    # Both bounds: the smaller wins, so a big disk does not admit a holder per
+    # CPU (issue 2356 on a disk-backed /tmp: load 100-130 on 32 cores).
+    both = {"scratch-gib": 5, "cpus": 8}
+    assert resource_capacity("s", both, 931 * gib, 48) == 6
+    assert resource_capacity("s", both, 48 * gib, 96) == 9
+    assert resource_capacity("s", both, 931 * gib, 4) == 1
+    assert resource_capacity("s", both, 931 * gib, None) == 1
+    assert resource_capacity("s", {"cpus": 8}, None, 32) == 4
+    for bad in (0, True, {}, {"scratch-gib": 0}, {"scratch-gib": "5"}, {"gib": 5},
+                {"cpus": 0}, {"cpus": 8, "x": 1}, "2"):
         try:
             resource_capacity("x", bad, 48 * gib)
         except SystemExit:

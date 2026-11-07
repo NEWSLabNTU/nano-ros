@@ -485,7 +485,8 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
   one-test-per-unit left phase-489's disk bound with one unit to bound, so a
   tier-2 run started 44 `scaffold-builds`/`template-copy-out` units at once and
   filled the runner's 48 GiB /tmp. They now share the `scratch-tree` resource,
-  whose `max-threads` is TMPDIR's free space over the measured unit size.
+  whose `max-threads` is the smaller of TMPDIR's free space over the measured
+  unit size and the run's CPUs over 8 (the same gap loaded 243 to 100-130).
 
 ## Open questions
 
