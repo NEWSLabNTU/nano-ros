@@ -17,8 +17,10 @@
   `.field` names back and compares them to the canonical declaration order, so
   the two halves cannot drift apart.
 
-  C++ designated initialisers are C++20, and this tree pins C++14 (Zephyr's
-  `CONFIG_STD_CPP14=y`, `-std=c++14` in three cross toolchains). MEASURED as
+  C++ designated initialisers are C++20, and this tree's floor is C++17 (the
+  `cxx_std_17` nros-cpp declares; on Zephyr the generated application's
+  `CONFIG_STD_CPP17=y`, phase-548 W2), with `-std=c++14` still in three cross
+  toolchains' defaults. MEASURED as
   accepted at `-std=c++14 -Wall -Wextra` by g++ 11.4, clang++ 14,
   arm-none-eabi-g++ 13.2, arm-zephyr-eabi-g++ 12.2 and riscv64-unknown-elf-g++
   10.2 — every compiler this tree reaches. Only `-Wpedantic` objects

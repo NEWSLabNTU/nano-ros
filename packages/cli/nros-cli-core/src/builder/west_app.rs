@@ -787,13 +787,9 @@ pub fn write(app: &WestApp, dir: &Path) -> Result<(), String> {
     // fragments), so this one states only what THIS directory is: a nano-ros
     // application (`CONFIG_NROS`), and, for a Rust one, a Rust application
     // (`CONFIG_RUST`, without which `rust_cargo_application()` cannot build
-    // the `zephyr` crate).
-    let prj = if app.cmake.is_some() {
-        GENERATED_PRJ_CONF.to_string()
-    } else {
-        format!("{GENERATED_PRJ_CONF}{GENERATED_RUST_PRJ_CONF}")
-    };
-    write_if_changed(&dir.join("prj.conf"), &prj)?;
+    // the `zephyr` crate), and, for a C++ one, its C++ standard -- see
+    // [`render_prj_conf`].
+    write_if_changed(&dir.join("prj.conf"), &render_prj_conf(app))?;
     // A C/C++ application has no cargo half, so no `build.rs`: that file exists
     // to bridge Kconfig into RUSTC, and there is no rustc on this road.
     if app.cmake.is_some() {
@@ -818,6 +814,39 @@ CONFIG_NROS=y\n";
 /// about the board or the image.
 const GENERATED_RUST_PRJ_CONF: &str =
     "\n# This application is Rust (zephyr-lang-rust).\nCONFIG_RUST=y\n";
+
+/// What a generated C++ application adds: C++ itself and the standard the
+/// nano-ros C++ API is written against (`cxx_std_17`, the floor
+/// `packages/api/nros-cpp/CMakeLists.txt` declares). Phase-548 W2: without it
+/// `CONFIG_NROS_CPP_API` selects `CONFIG_CPP` and Zephyr's own default,
+/// `CONFIG_STD_CPP11` on the 3.7 line, compiled the generated entry TU at
+/// `-std=c++11`, where `rclcpp/qos.hpp`'s `constexpr` constructors do not
+/// compile. A hand-written leaf states the same two lines in its own
+/// `prj.conf` (`examples/zephyr/cpp/talker`, the `nros new` scaffold).
+///
+/// This file is merged FIRST, so a board or image fragment that names a newer
+/// standard still wins; that is why the line lives here and not in the
+/// module's rendered fragment, which is merged last.
+const GENERATED_CPP_PRJ_CONF: &str = "\n# This application is C++, at the standard nros-cpp requires (cxx_std_17).\n\
+CONFIG_CPP=y\n\
+CONFIG_STD_CPP17=y\n";
+
+/// The `prj.conf` [`write`] puts beside the generated `CMakeLists.txt`: the
+/// nano-ros line, plus the application's own language. A C application gets
+/// nothing more -- its entry TU is C.
+#[must_use]
+pub fn render_prj_conf(app: &WestApp) -> String {
+    use nros_lang::Language;
+    let Some(c) = &app.cmake else {
+        return format!("{GENERATED_PRJ_CONF}{GENERATED_RUST_PRJ_CONF}");
+    };
+    // `CmakeApp::lang` is `c` or `cpp` (`resolve_cmake`); anything else
+    // states no language, as a C application does.
+    match Language::parse(&c.lang) {
+        Ok(Language::Cpp) => format!("{GENERATED_PRJ_CONF}{GENERATED_CPP_PRJ_CONF}"),
+        Ok(Language::C | Language::Rust) | Err(_) => GENERATED_PRJ_CONF.to_string(),
+    }
+}
 
 /// Write only when the content differs — see [`super::entry`]'s note on the
 /// mtime treadmill.
@@ -1272,6 +1301,49 @@ mod tests {
         );
         let m = cmake_app(td2.path(), &mixed, None);
         assert_eq!(m.cmake.as_ref().unwrap().lang, "cpp");
+    }
+
+    /// Phase-548 W2 -- a C++ application's `prj.conf` states C++ and the
+    /// standard nros-cpp declares as its floor; a C or Rust one states no C++
+    /// at all. The number is read back from the floor's one home, so moving the
+    /// floor without moving this file fails here.
+    #[test]
+    fn the_prj_conf_states_the_cpp_standard_only_for_a_cpp_image() {
+        let floor_file =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../api/nros-cpp/CMakeLists.txt");
+        let cmake = std::fs::read_to_string(&floor_file).unwrap();
+        let floor = cmake
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .find_map(|l| l.split("INTERFACE cxx_std_").nth(1))
+            .and_then(|r| r.trim_end_matches(')').trim().parse::<u32>().ok())
+            .expect("nros-cpp declares its cxx_std floor");
+
+        let td = tempfile::tempdir().unwrap();
+        let nodes = cmake_workspace(td.path(), &[("talker_pkg", true, false)]);
+        let cpp = render_prj_conf(&cmake_app(td.path(), &nodes, None));
+        let lines: Vec<&str> = cpp.lines().collect();
+        assert!(lines.contains(&"CONFIG_NROS=y"), "{cpp}");
+        assert!(lines.contains(&"CONFIG_CPP=y"), "{cpp}");
+        assert!(
+            lines.contains(&format!("CONFIG_STD_CPP{floor}=y").as_str()),
+            "{cpp}"
+        );
+        assert!(!lines.contains(&"CONFIG_RUST=y"), "{cpp}");
+
+        let td2 = tempfile::tempdir().unwrap();
+        let c_nodes = cmake_workspace(td2.path(), &[("talker_pkg", false, false)]);
+        let c = render_prj_conf(&cmake_app(td2.path(), &c_nodes, None));
+        assert_eq!(c, GENERATED_PRJ_CONF, "a C image's prj.conf is unchanged");
+
+        let rust = render_prj_conf(&WestApp::default());
+        assert!(!rust.contains("CONFIG_CPP"), "{rust}");
+        assert!(rust.lines().any(|l| l == "CONFIG_RUST=y"), "{rust}");
+
+        // `write` puts exactly this text on disk.
+        let out = td.path().join("app");
+        write(&cmake_app(td.path(), &nodes, None), &out).unwrap();
+        assert_eq!(std::fs::read_to_string(out.join("prj.conf")).unwrap(), cpp);
     }
 
     /// `PANIC` is emitted only when the image declares one, and `LANG c` only
