@@ -330,6 +330,7 @@ static NATIVE_WORKSPACE_MIXED_ACTION_CLIENT_ENTRY_BINARY: OnceCell<PathBuf> = On
 /// Host processes: FreeRTOS tasks are pthreads and the sockets are the host's,
 /// so these are the freertos family's first entries with no QEMU behind them.
 static FREERTOS_POSIX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static FREERTOS_POSIX_WORKSPACE_C_ZENOH_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_POSIX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2a — cached path to the threadx-linux C workspace EMBEDDED entry
@@ -3724,7 +3725,23 @@ pub fn build_freertos_posix_workspace_c_entry() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// phase-370 W3 — the C++ projection of the entry above.
+/// issue 2342 (phase-546) — the same board's zenoh C entry, over zenoh-pico's
+/// FreeRTOS host-socket arm. Its locator is baked by the image
+/// (`tcp/127.0.0.1:<port_of>`), so the cell starts a router there.
+pub fn build_freertos_posix_workspace_c_zenoh_entry() -> TestResult<&'static Path> {
+    FREERTOS_POSIX_WORKSPACE_C_ZENOH_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-freertos-posix-zenoh",
+                "c",
+                "build/freertos-zenoh-freertos-posix-demo_bringup/cmake",
+                "freertos_posix_zenoh_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-370 W3 — the C++ projection of the cyclone entry above.
 pub fn build_freertos_posix_workspace_cpp_entry() -> TestResult<&'static Path> {
     FREERTOS_POSIX_WORKSPACE_CPP_ENTRY_BINARY
         .get_or_try_init(|| {

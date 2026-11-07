@@ -339,8 +339,13 @@ pub struct ExtraSource {
 /// [`ConditionalPath`], one field over: a NAME instead of a path.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ConditionalDefine {
-    /// Define name, passed to `cc::Build::define(name, None)`.
+    /// Define name, passed to `cc::Build::define(name, value)`.
     pub name: String,
+    /// issue 2342 — the define's value, verbatim (`None` ⇒ a bare `-DNAME`).
+    /// zenoh-pico's custom-platform hook `ZP_SYSTEM_PLATFORM_HEADER` is a
+    /// QUOTED header name, so the FreeRTOS host-socket arm needs one.
+    #[serde(default)]
+    pub value: Option<String>,
     /// Matcher table; see [`WhenMatcher`].
     pub when: WhenMatcher,
 }
@@ -908,6 +913,23 @@ mod capability_matcher_tests {
         ));
     }
 
+    /// issue 2342 — a conditional define may carry a VALUE, verbatim, which is
+    /// how the FreeRTOS host-socket arm names zenoh-pico's
+    /// `ZP_SYSTEM_PLATFORM_HEADER` (a quoted header name).
+    #[test]
+    fn a_conditional_define_carries_its_value() {
+        let m: PlatformManifest = toml::from_str(
+            "[platform.p]\n\
+             defines_conditional = [\n\
+               { name = \"ZP_SYSTEM_PLATFORM_HEADER\", value = '\"h.h\"', \
+                 when = { capability = { host_stack = true } } },\n\
+             ]\n",
+        )
+        .expect("parse");
+        let r = m.for_platform("p").expect("resolve");
+        assert_eq!(r.defines_conditional[0].value.as_deref(), Some("\"h.h\""));
+    }
+
     /// `defines_conditional` and `extra_sources.when` parse, and an
     /// `extra_sources` row written before the field still parses without it.
     #[test]
@@ -927,6 +949,7 @@ mod capability_matcher_tests {
         let r = m.for_platform("p").expect("resolve");
         assert_eq!(r.defines_conditional.len(), 1);
         assert_eq!(r.defines_conditional[0].name, "ZENOH_ORIN_SPE");
+        assert_eq!(r.defines_conditional[0].value, None);
         let no_caps = BTreeMap::new();
         // The legacy row has no `when`, so it survives with no capabilities;
         // the gated one does not.
