@@ -630,6 +630,13 @@ vocabulary (platform, rmw, feature-sig) — **never a new ad-hoc suffix**. One
 configure per coordinate, so switching board or RMW selects a different tree
 rather than thrashing one.
 
+**Amended 2026-11-07 (issue 2287).** A CMake workspace's coordinate also names
+the BRINGUP, last: `build/<platform>-<rmw>[-<board>][-cfg<hash>]-<bringup>/`.
+The generated root is per bringup (`nano_ros_workspace(SYSTEM <bringup>)` and
+that bringup's entries), so is the shared runtime's sizing descriptor, and two
+bringups on one board took turns rewriting one tree, recompiling the Rust
+runtime on every switch. The cargo coordinate is unchanged.
+
 Finished artifacts land in **`dist/<image>/`**, and that directory holds a
 **set** plus a manifest naming which member is flashable:
 
@@ -1231,6 +1238,8 @@ rejected here, because neither has a derivation to perform.
 
 ## Changelog
 
+- **2026-11-07** — D8 amended (issue 2287): the cmake coordinate names the
+  bringup, so each bringup has its own build dir and runtime.
 - **2026-11-05** — D5 names the owned entry's adapter crate,
   `<entry>_nros_derived` (RFC-0071 D13, phase-531 W5). A generated entry
   states its features itself; a materialised one keeps the adapter, so its

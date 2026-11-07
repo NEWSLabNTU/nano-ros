@@ -628,8 +628,10 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
 
     // The cmake coordinate carries the BOARD as well as the platform (W10.a):
     // one board per CMake cache, and `examples/workspaces/c` has two boards on
-    // the freertos platform.
-    let generated = tmp.path().join("build/posix-zenoh-linux/CMakeLists.txt");
+    // the freertos platform. It names the BRINGUP last (issue 2287).
+    let generated = tmp
+        .path()
+        .join("build/posix-zenoh-linux-demo_bringup/CMakeLists.txt");
     assert!(generated.is_file(), "root written under build/");
     let body = std::fs::read_to_string(&generated).unwrap();
     assert!(body.contains("nano_ros_workspace("), "{body}");
@@ -645,12 +647,18 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     // configure — so `nros build` on a cmake workspace produced no binary at
     // all. CMake cannot do both in one invocation at the 3.22 floor.
     let cfg = plans[0].configure.as_ref().expect("configure").display();
-    assert!(cfg.starts_with("cmake -S build/posix-zenoh-linux"), "{cfg}");
-    assert!(cfg.contains("-B build/posix-zenoh-linux/cmake"), "{cfg}");
+    assert!(
+        cfg.starts_with("cmake -S build/posix-zenoh-linux-demo_bringup"),
+        "{cfg}"
+    );
+    assert!(
+        cfg.contains("-B build/posix-zenoh-linux-demo_bringup/cmake"),
+        "{cfg}"
+    );
 
     let shown = plans[0].handoff.as_ref().expect("handoff").display();
     assert!(
-        shown.starts_with("cmake --build build/posix-zenoh-linux/cmake"),
+        shown.starts_with("cmake --build build/posix-zenoh-linux-demo_bringup/cmake"),
         "the handoff must BUILD, not configure: {shown}"
     );
 
@@ -667,6 +675,84 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
             pre.display()
         );
     }
+}
+
+/// Issue 2287 — two bringups on ONE board get two cmake build dirs.
+///
+/// The generated root is per bringup (`nano_ros_workspace(SYSTEM <bringup>)`
+/// and that bringup's entries), and so is the shared runtime's sizing
+/// descriptor. When the coordinate named no bringup, building `other` after
+/// `demo` rewrote `demo`'s root in place, and the next `demo` build
+/// reconfigured and recompiled the whole Rust runtime. Measured on
+/// `examples/workspaces/c`: 22–32 s per switch.
+///
+/// Configure `demo`, then `other`, then `demo` again: `demo`'s root must be
+/// the same file, untouched by `other`, so its cmake tree has nothing to redo.
+#[test]
+fn two_bringups_on_one_board_never_share_a_cmake_build_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    write(
+        &tmp.path().join("src/talker_pkg/CMakeLists.txt"),
+        "# c pkg\n",
+    );
+    write(
+        &tmp.path().join("src/other_bringup/package.xml"),
+        &pkg_xml("other_bringup"),
+    );
+    write(
+        &tmp.path().join("src/other_bringup/system.toml"),
+        "[system]\nname = \"other\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+         [image_defaults]\nrmw = \"zenoh\"\n\n\
+         [image.other_linux]\nboard = \"linux\"\n",
+    );
+
+    let plan = |qual: &str| {
+        let plans = plan_builds(&args(tmp.path(), &[qual])).expect("resolves");
+        assert_eq!(plans[0].driver, Driver::CMake, "{qual}");
+        plans[0]
+            .cmake_build_dir
+            .clone()
+            .expect("a cmake image names its build dir")
+    };
+    let root_of = |build_dir: &str| {
+        tmp.path()
+            .join(build_dir)
+            .parent()
+            .expect("the root sits above cmake/")
+            .join("CMakeLists.txt")
+    };
+
+    let demo = plan("demo_bringup:linux");
+    let demo_root = root_of(&demo);
+    let before = std::fs::read_to_string(&demo_root).expect("demo's root written");
+    let stamp = std::fs::metadata(&demo_root).unwrap().modified().unwrap();
+    assert!(before.contains("demo_bringup"), "{before}");
+
+    let other = plan("other_bringup:other_linux");
+    assert_ne!(demo, other, "each bringup owns its build dir");
+    let other_body = std::fs::read_to_string(root_of(&other)).expect("other's root written");
+    assert!(other_body.contains("other_bringup"), "{other_body}");
+
+    assert_eq!(
+        std::fs::read_to_string(&demo_root).unwrap(),
+        before,
+        "building `other` must not rewrite `demo`'s root"
+    );
+    assert_eq!(
+        std::fs::metadata(&demo_root).unwrap().modified().unwrap(),
+        stamp,
+        "building `other` must not touch `demo`'s root"
+    );
+
+    // And back: the same dir, the same root, still untouched.
+    assert_eq!(plan("demo_bringup:linux"), demo);
+    assert_eq!(std::fs::read_to_string(&demo_root).unwrap(), before);
+    assert_eq!(
+        std::fs::metadata(&demo_root).unwrap().modified().unwrap(),
+        stamp,
+        "switching back finds `demo`'s root as it was left"
+    );
 }
 
 #[test]
@@ -911,8 +997,11 @@ fn entries_for_other_boards_are_not_listed() {
     let plans = plan_builds(&args(tmp.path(), &["linux"])).expect("resolves");
     assert_eq!(plans[0].driver, Driver::CMake);
 
-    let body =
-        std::fs::read_to_string(tmp.path().join("build/posix-zenoh-linux/CMakeLists.txt")).unwrap();
+    let body = std::fs::read_to_string(
+        tmp.path()
+            .join("build/posix-zenoh-linux-demo_bringup/CMakeLists.txt"),
+    )
+    .unwrap();
     assert!(
         body.contains("posix_entry"),
         "the board's own entry: {body}"
@@ -1376,8 +1465,11 @@ fn a_selection_narrows_the_generated_cmake_root() {
         plan_builds(&selected_args(tmp.path(), &["linux"], &[], &["app_pkg"])).expect("resolves");
     assert_eq!(plans[0].driver, Driver::CMake);
 
-    let body =
-        std::fs::read_to_string(tmp.path().join("build/posix-zenoh-linux/CMakeLists.txt")).unwrap();
+    let body = std::fs::read_to_string(
+        tmp.path()
+            .join("build/posix-zenoh-linux-demo_bringup/CMakeLists.txt"),
+    )
+    .unwrap();
     assert!(body.contains("talker_pkg"), "{body}");
     assert!(
         !body.contains("other_pkg"),
@@ -1685,12 +1777,12 @@ fn cmake_and_cargo_plans_record_where_their_handoff_builds() {
             .as_ref()
             .unwrap()
             .display()
-            .contains("--build build/posix-zenoh-linux/cmake")
+            .contains("--build build/posix-zenoh-linux-demo_bringup/cmake")
     );
     assert_eq!(
         plans[0].output,
         Some(BuildOutput::CMake {
-            build_dir: root.join("build/posix-zenoh-linux/cmake"),
+            build_dir: root.join("build/posix-zenoh-linux-demo_bringup/cmake"),
             executable: Some("linux_entry".into()),
         })
     );

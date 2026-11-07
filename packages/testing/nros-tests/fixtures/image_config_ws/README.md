@@ -2,9 +2,9 @@
 
 phase-481 W4 (RFC-0098 D12). Two native images on ONE coordinate:
 
-- `plain` states nothing, so it keeps `build/posix-zenoh-linux/`;
+- `plain` states nothing, so it builds in `build/posix-zenoh-linux-probe_bringup/`;
 - `warn` states `[image.warn] env`, so it gets its own configure
-  (`build/posix-zenoh-linux-cfg<hash>/`) and its own runtime build.
+  (`build/posix-zenoh-linux-cfg<hash>-probe_bringup/`) and its own runtime build.
 
 `probe_pkg`'s component prints what its image compiled in;
 `tests/image_config_workspace.rs` asserts each binary saw its own image's

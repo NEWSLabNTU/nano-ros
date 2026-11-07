@@ -19,7 +19,7 @@
 fn assert_entry(id: &str) -> nros_tests::TestResult<()> {
     let exe = nros_tests::fixtures::require_cmake_fixture(
         id,
-        "build/posix-zenoh-linux/cmake/linux_entry",
+        "build/posix-zenoh-linux-demo_bringup/cmake/linux_entry",
     )?;
     assert!(
         exe.is_file(),

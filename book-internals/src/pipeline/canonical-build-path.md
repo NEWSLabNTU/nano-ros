@@ -156,7 +156,7 @@ stay in the conf fragment `<build>/nros/<image>.conf`, LAST in
 `[env]` file on the Zephyr cargo commands. A Zephyr leaf's conf files hold no
 nano-ros knob at all (gate `check-leaf-conf-nros-knobs`). A workspace
 image whose configuration differs gets its own cmake configure
-(`build/<coord>-cfg<hash>/`, D12).
+(`build/<coord>-cfg<hash>-<bringup>/`, D12; the bringup since issue 2287).
 
 Beside the ladder sit two things that are **facts, not rungs**, and the
 distinction matters because a fact has no `$DOTCONFIG` counterpart:
