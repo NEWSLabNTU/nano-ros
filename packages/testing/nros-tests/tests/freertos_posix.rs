@@ -37,7 +37,7 @@
 use nros_tests::{
     alloc::{domain_of, port_of},
     fixtures::{
-        ManagedProcess, ZenohRouter, build_freertos_posix_workspace_c_entry,
+        ManagedProcess, RequireFixture, ZenohRouter, build_freertos_posix_workspace_c_entry,
         build_freertos_posix_workspace_c_zenoh_entry, build_freertos_posix_workspace_cpp_entry,
         freertos,
     },
@@ -222,12 +222,8 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
 #[test]
 fn freertos_posix_c_entry_delivers_over_zenoh() {
     require_freertos();
-    let entry = build_freertos_posix_workspace_c_zenoh_entry().unwrap_or_else(|e| {
-        nros_tests::unmet!(
-            "freertos-posix C zenoh workspace entry not built \
-             (just freertos build-fixtures): {e:?}"
-        )
-    });
+    let entry = build_freertos_posix_workspace_c_zenoh_entry()
+        .require("freertos-posix C zenoh workspace entry (just freertos build-fixtures)");
     let port = port_of(PlatformId::FreertosPosix, Lang::C, Workload::EntryPubsub);
     // Bound to `_router`, not `_`: dropping the guard kills the router.
     let _router = ZenohRouter::start_on("127.0.0.1", port)

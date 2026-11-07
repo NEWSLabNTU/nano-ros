@@ -89,7 +89,6 @@ BlockLink_t
 INCLUDE_uxTaskGetStackHigh
 Queue_t
 StaticQueue_t
-StaticSemaphore_t
 TCB_t
 configPRINTF
 configUSE_NEWLIB_REENTRANT
