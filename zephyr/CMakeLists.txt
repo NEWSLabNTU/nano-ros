@@ -1193,6 +1193,38 @@ endif()
 if(CONFIG_NROS_RUST_API)
     nros_set_cargo_env_from_kconfig()
 
+    # Issue 2359: a Rust entry registers its nodes on Zephyr's MAIN thread,
+    # and the Rust API's registration frames are deep. A `nros new --lang rust`
+    # talker on nucleo-f767zi (thumbv7em) peaked at 28,280 bytes of main stack
+    # (CONFIG_INIT_STACKS, measured in the Renode twin), against the 16,384 the
+    # board stated. The overflow ran past the MPU guard (Renode does not
+    # enforce it) into the idle thread's stack, so the first park switched to
+    # an idle thread whose saved frame was zeros, and the image halted with
+    # nothing on the console: it looked like a spin that never returns. The C
+    # and C++ talkers fit in 16 KiB, which is why only Rust failed.
+    #
+    # A REFUSAL, because nothing at run time says it. Not on native_sim
+    # (CONFIG_ARCH_POSIX): there a Zephyr thread runs on a host pthread's own
+    # stack, and MAIN_STACK_SIZE bounds nothing the Rust frames use. The floor
+    # is a cache variable so an image that measured its own peak can state a
+    # lower one. `scripts/check-zephyr-rust-main-stack.py` reads the number
+    # from this line and holds every Rust-capable board package to it.
+    set(NROS_RUST_MAIN_STACK_FLOOR 32768 CACHE STRING
+        "Least CONFIG_MAIN_STACK_SIZE a Rust nano-ros entry is built with (issue 2359)")
+    if(NOT CONFIG_ARCH_POSIX
+       AND DEFINED CONFIG_MAIN_STACK_SIZE
+       AND CONFIG_MAIN_STACK_SIZE LESS NROS_RUST_MAIN_STACK_FLOOR)
+        message(FATAL_ERROR
+            "nros: CONFIG_MAIN_STACK_SIZE=${CONFIG_MAIN_STACK_SIZE} is below the "
+            "${NROS_RUST_MAIN_STACK_FLOOR} bytes a Rust nano-ros entry needs. It "
+            "registers its nodes on the main thread, and a Rust talker measured a "
+            "28,280-byte peak there (issue 2359). An overflow corrupts the idle "
+            "thread's stack and halts the image with no message. Set "
+            "CONFIG_MAIN_STACK_SIZE=${NROS_RUST_MAIN_STACK_FLOOR} or more in the "
+            "board's or the image's conf, or, for an image whose own peak you "
+            "measured (CONFIG_INIT_STACKS), pass -DNROS_RUST_MAIN_STACK_FLOOR=<bytes>.")
+    endif()
+
     # Issue 0155 (Phase 160.A sibling) — pure-Rust images need the same
     # strong `nros_app_register_backends` stub the C/C++ branches emit:
     # `nros::zephyr_component_main!` calls the hook before `Executor::open`

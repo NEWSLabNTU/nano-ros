@@ -485,6 +485,14 @@ leaf-conf-nros-knobs:
 nsos-single-source:
     @python3 scripts/check-nsos-single-source.py
 
+# issue 2359 -- a Rust entry registers its nodes on Zephyr's main thread, and a
+# Rust talker peaked at 28,280 bytes there: every Rust-capable, non-native_sim
+# Zephyr board package must give main at least the module's
+# NROS_RUST_MAIN_STACK_FLOOR, or the overflow halts the image silently.
+[group("checks")]
+zephyr-rust-main-stack:
+    @python3 scripts/check-zephyr-rust-main-stack.py
+
 # issue 1512 — bare metal is the one platform whose `nros-platform/platform-*`
 # feature is BOARD-specific, so one platform needs THREE arms plus a CMake row
 # instead of one name in each file. Nobody was checking, and the measured state
