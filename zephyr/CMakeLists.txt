@@ -425,6 +425,10 @@ nros_resolve_cargo_dirs()
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_zenoh.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_xrce.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_cyclonedds.cmake)
+# phase-531 W6 -- the per-message descriptor functions, for EVERY image: a Rust
+# application on Cyclone needs them too, and it never includes
+# `nros_generate_interfaces.cmake` (the C/C++ binding generator).
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cyclonedds_typesupport.cmake)
 
 if(CONFIG_NROS_RMW_ZENOH)
     nros_zephyr_configure_rmw_zenoh()

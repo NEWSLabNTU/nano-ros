@@ -321,6 +321,62 @@ pub fn image_closure_bound_tables(
     tables.into_iter().collect()
 }
 
+/// phase-531 W6 — the interface packages of ONE IMAGE's message closure, in
+/// DEPENDENCY ORDER (every package after the ones it depends on).
+///
+/// The same walk as [`image_closure_bound_tables`] (seeded from the node
+/// packages, through the workspace `<depend>` graph and the generated crates'
+/// own path dependencies), answering a different question: not "which bound
+/// tables price this image" but "which packages need per-message type support,
+/// and in what order". A generated Rust west application on a backend that has
+/// a per-message hook and no rlib (Cyclone DDS on Zephyr) emits this list into
+/// `nros_zephyr_interface_typesupport(PACKAGES …)`, and idlc needs a
+/// dependency's IDL on the shared include root before a dependent's
+/// (`std_msgs` after `builtin_interfaces`).
+///
+/// Only names with a `generated/<name>` crate are returned: that is what makes
+/// a name a message package of this workspace, the same test the bound walk
+/// applies. The order is a post-order DFS that visits each package's
+/// dependencies sorted by name, so two runs over one tree emit one list.
+pub fn image_interface_packages(
+    root: &Path,
+    seeds: impl IntoIterator<Item = String>,
+    depends_of: impl Fn(&str) -> Option<Vec<String>>,
+) -> Vec<String> {
+    fn visit(
+        name: &str,
+        generated: &Path,
+        depends_of: &dyn Fn(&str) -> Option<Vec<String>>,
+        seen: &mut std::collections::BTreeSet<String>,
+        out: &mut Vec<String>,
+    ) {
+        if !seen.insert(name.to_string()) {
+            return;
+        }
+        let pkg = generated.join(name);
+        let mut next: Vec<String> = depends_of(name).unwrap_or_default();
+        next.extend(generated_sibling_deps(&pkg, generated));
+        next.sort();
+        next.dedup();
+        for dep in &next {
+            visit(dep, generated, depends_of, seen, out);
+        }
+        if pkg.join("Cargo.toml").is_file() {
+            out.push(name.to_string());
+        }
+    }
+    let generated = root.join(GENERATED_DIR);
+    let mut seeds: Vec<String> = seeds.into_iter().collect();
+    seeds.sort();
+    seeds.dedup();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for s in &seeds {
+        visit(s, &generated, &depends_of, &mut seen, &mut out);
+    }
+    out
+}
+
 /// The sibling `generated/` packages a generated crate path-depends on, by
 /// directory name.
 fn generated_sibling_deps(pkg: &Path, generated: &Path) -> Vec<String> {
@@ -711,5 +767,35 @@ mod tests {
             ],
             "the closure is the launched node's reach, and nothing else in generated/"
         );
+    }
+
+    /// phase-531 W6 — the interface closure in dependency order: a package
+    /// after its dependencies, nothing the launched node does not reach, and a
+    /// workspace interface package (`my_msgs`) reached through `<depend>`.
+    #[test]
+    fn interface_packages_come_in_dependency_order() {
+        let ws = scratch("iface-order");
+        let generated = ws.join(GENERATED_DIR);
+        let pkg = |name: &str, deps: &[&str]| {
+            let dir = generated.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut manifest = format!("[package]\nname = \"{name}\"\n\n[dependencies]\n");
+            for d in deps {
+                manifest.push_str(&format!("{d} = {{ path = \"../{d}\" }}\n"));
+            }
+            std::fs::write(dir.join("Cargo.toml"), manifest).unwrap();
+        };
+        pkg("builtin_interfaces", &[]);
+        pkg("std_msgs", &["builtin_interfaces"]);
+        pkg("my_msgs", &["std_msgs"]);
+        pkg("example_interfaces", &[]);
+        let depends_of = |name: &str| match name {
+            "talker" => Some(vec!["my_msgs".to_string(), "nros".to_string()]),
+            "my_msgs" => Some(vec!["std_msgs".to_string()]),
+            _ => None,
+        };
+        let got = image_interface_packages(&ws, ["talker".to_string()], depends_of);
+        let _ = std::fs::remove_dir_all(&ws);
+        assert_eq!(got, ["builtin_interfaces", "std_msgs", "my_msgs"]);
     }
 }
