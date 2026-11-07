@@ -127,27 +127,40 @@ green.
 - with the pin missing, the build refuses with the pin's name, never falls
   back silently.
 
-### W4 — C++ on ThreadX qemu riscv64 boots
+### W4 — C++ on ThreadX qemu riscv64 publishes
 
-**Code area:**
-`packages/boards/nros-board-threadx-qemu-riscv64/c/reent.c` (the libc lock
-shim).
+**Code area:** `packages/boards/nros-board-threadx-qemu-riscv64/` (the C++
+entry's start-up path on this board).
 
-- Measured: after `[app_thread] Calling c_app_main (FFI)...`, the board
-  prints `[EXCEPTION] mcause=0x5 Load access fault`, with
-  `mepc=0x80065184` (`__retarget_lock_init_recursive`) and
-  `mtval=0xefef000001010160`.
-- The `0xefef…` value looks like ThreadX's stack fill, which points to an
-  uninitialised lock pointer: the shim dereferences `*lock` (line 136).
-- C and Rust on the same board run.
-- After the fault QEMU spins until `nros run` times out, instead of exiting.
-- Work:
-  - find the root cause and fix the shim;
-  - make a fault exit QEMU with a failing status, so `nros run` reports it at
-    once.
+- The boot fault is fixed by #3278 (phase-535 W5): the newlib
+  `__retarget_lock_init` shim read `*lock` instead of allocating.
+- Re-measured on #3278's head (76e4ff51de, 2026-11-07), with a router on
+  7447: the C++ talker boots with no fault, but the console prints
+  `[app_thread] Calling c_app_main (FFI)...` and then
+  `[app_thread] c_app_main returned` at once. It prints no error and
+  publishes nothing. The C talker on the same board, with the same router,
+  prints `Publishing: 'Hello World: 1'` onward. The C++ talker on ThreadX
+  Linux publishes.
+- Work: find why the C++ entry returns. If it is an error path, it must print
+  its reason on the board's console. Then fix it.
 
-**Acceptance:** the C++ cell is green, and a deliberate fault ends the run
-with a non-zero status.
+**Acceptance:** the C++ cell is green.
+
+### W4b — A board fault or an early return ends the QEMU run
+
+**Code area:** the ThreadX qemu riscv64 board's trap handler and app thread
+(`packages/boards/nros-board-threadx-qemu-riscv64/`), and how `nros run`
+learns that the emulator stopped.
+
+- Measured: after the boot fault above, and after `c_app_main returned`, QEMU
+  keeps running until `nros run --timeout` expires (300 s). The run then
+  reports a timeout, not the fault.
+- Work: on a trap, and when `c_app_main` returns, exit QEMU with a failing
+  status (semihosting or the virt test device). `nros run` then reports the
+  status at once.
+
+**Acceptance:** a deliberate fault, and a `c_app_main` that returns, each end
+the run with a non-zero status within seconds.
 
 ### W5 — `nros setup` outside a checkout reads the current index
 
