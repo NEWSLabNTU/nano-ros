@@ -1,5 +1,14 @@
 # Phase 523 — The education lab series, the adoption probes and the industrial extras
 
+**Status (2026-11-07, round two). W3 round two RUN for industrial and
+education on `nros-0.6.0-nros7`: industrial 13 stops, education 8 stops →
+17 issues (2317, 2319–2334; four stops shared). Both are below what round one
+closed (industrial 14, education 11), so the decision step rewrites no
+chapter. One stop was a regression from a round-one fix (2317: the release's
+First Project did not compile), now fixed on `main`; one (the crate listing
+needing `jq`) was fixed while filing. Neither probe asked for ESP32. Left: the
+field probe, and the 16 open round-two issues.**
+
 **Status (2026-11-07, later). Release `nros-0.6.0-nros7` is cut from `main`
 (538ccb9084) and pinned in the index, so 2255 is closed and W3 round two runs
 against it next. Every round-one stop is closed but 2269 (homed in phase-537). Fixed on `main`:
@@ -168,6 +177,37 @@ Decision step: if round two for a purpose finds more stops than round one
 closed, that purpose's chapters are rewritten before phase-524 adds another
 board. If the field and education probes both ask for ESP32 by name, ESP32
 revival opens as its own phase (RFC-0116's evaluation table).
+
+**Round two (2026-11-07), industrial and education.** Two fresh Claude
+sessions, one after the other, ran the same briefs against the book exported
+from `main` and the release `nros-0.6.0-nros7` installed by `install.sh` in
+pristine `ubuntu:24.04` containers with Jazzy. Reports:
+[runs/](../development/adoption-probes/runs/) (`2026-11-07-round-2-*`).
+
+| Purpose | Stops | Round one closed | Rewrite? | Headline |
+| --- | --- | --- | --- | --- |
+| industrial | 13 | 14 | no | First Project compiles only with a knob edit (2317); Jazzy echo receives nothing (2320); provenance and reproducibility gaps (2321, 2322, 2327, 2328) |
+| education | 8 | 11 | no | install to first QEMU output 8 min 55 s (budget 15); same compile stop and echo stop; build output vocabulary (2332) |
+
+| issue | purpose | what |
+| --- | --- | --- |
+| [#2317](../issues/archived/2317-release-sidecars-always-stale-talker-max-cbs-zero.md) | both | **Resolved** 2026-11-07: release sidecars always read stale, and the talker contract sized its callback table to 0 |
+| [#2319](../issues/2319-first-project-scaffold-before-ros-source.md) | both | First Project scaffolds before sourcing ROS 2 |
+| [#2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md) | both | Jazzy `ros2 topic echo` receives nothing from the QEMU talker; type hash INVALID |
+| [#2321](../issues/2321-lock-provenance-incomplete.md) | industrial | `nros-sdk.lock` omits Rust, source packages, corrosion hash |
+| [#2322](../issues/2322-image-not-reproducible-across-paths.md) | industrial | Image embeds the absolute workspace path |
+| [#2323](../issues/2323-offline-deb-recipe-omits-ros-base.md) | industrial | Offline `.deb` recipe omits ROS 2 itself |
+| [#2324](../issues/2324-offline-error-no-nros-offline-hint.md) | industrial | Offline failure does not name `NROS_OFFLINE=1` |
+| [#2325](../issues/2325-board-support-no-last-run-date.md) | industrial | Board support gives cadence, not last run |
+| [#2326](../issues/2326-mem-report-not-shipped.md) | industrial | Memory report not in the release; `llvm-tools` needs the network |
+| [#2327](../issues/2327-per-image-c-components-unlisted.md) | industrial | No per-image list of linked C components; fork on a personal account |
+| [#2328](../issues/2328-doctor-report-missing-release-facts.md) | industrial | `doctor --report` missing release tag, Rust, ROS, hashes, image digest |
+| [#2329](../issues/2329-no-lts-security-eol-policy.md) | industrial | No LTS, security advisory, SBOM or EOL policy |
+| [#2330](../issues/2330-ros-install-leaves-book.md) | education | ROS 2 install leaves the book and hits the GitHub API rate limit |
+| [#2331](../issues/2331-book-links-repo-and-rfcs.md) | education | Education pages cite RFCs and link the repo |
+| [#2332](../issues/2332-build-output-internal-vocabulary.md) | education | Build output full of internal terms |
+| [#2333](../issues/2333-sdk-lock-lands-in-cwd.md) | both | `nros-sdk.lock` lands in the cwd |
+| [#2334](../issues/2334-nros-version-hides-release-suffix.md) | both | `nros version` hides the `-nrosN` suffix |
 
 ### W4 — The industrial extras
 
