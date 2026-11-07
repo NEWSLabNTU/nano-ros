@@ -456,7 +456,7 @@ these stops on pages this phase owns. They land as one follow-up after #3183
 - [2323](../issues/2323-offline-deb-recipe-omits-ros-base.md): Working offline's `.deb` recipe runs in
   `ros:jazzy-ros-base`, so it omits ROS 2 and the base image's packages.
   Re-measure it in a plain Ubuntu image.
-- [2330](../issues/2330-ros-install-leaves-book.md): Install sends the reader to docs.ros.org for the
+- [2330](../issues/archived/2330-ros-install-leaves-book.md): Install sends the reader to docs.ros.org for the
   ROS 2 apt source, and its GitHub API lookup is rate-limited behind a lab NAT.
 - [2331](../issues/archived/2331-book-links-repo-and-rfcs.md): education-route pages cite RFC numbers and link
   into the repository. Drop the repository links; RFC numbers stay only in a
