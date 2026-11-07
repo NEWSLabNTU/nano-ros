@@ -110,7 +110,7 @@ struct Slot {
     bool constructed = false;
 
     CallbackSlotImpl *adapter() {
-        return reinterpret_cast<CallbackSlotImpl *>(storage);
+        return static_cast<CallbackSlotImpl *>(static_cast<void *>(storage));
     }
 };
 

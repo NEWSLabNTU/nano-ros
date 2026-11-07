@@ -37,7 +37,6 @@
 #include "nros/rmw_entity.h"
 #include "nros/rmw_ret.h"
 
-#include <atomic>
 #include <cstdlib>
 #include <new>
 
@@ -53,7 +52,7 @@ struct SubscriberState {
     // surfaces any sample latched between subscribe + first call).
     // On the slow path (callback registration failed) we pin this
     // to `true` so take_serialized always falls through to orb_check.
-    std::atomic<bool> ready;
+    bool ready;
     // `true` if `nros_orb_register_callback` succeeded — used by
     // destroy to decide whether to unregister.
     bool callback_active;
@@ -64,16 +63,16 @@ struct SubscriberState {
     // either through its executor's wake hook (issue 2225). Called from the
     // broker's context: atomics only.
     void* session;
-    std::atomic<rmw_event_callback_t> on_new;
-    std::atomic<const void*> on_new_ud;
+    rmw_event_callback_t on_new;
+    const void* on_new_ud;
 };
 
 extern "C" void subscriber_ready_callback(void* arg) {
     auto* state = static_cast<SubscriberState*>(arg);
-    state->ready.store(true, std::memory_order_release);
-    rmw_event_callback_t cb = state->on_new.load(std::memory_order_acquire);
+    __atomic_store_n(&state->ready, true, __ATOMIC_RELEASE);
+    rmw_event_callback_t cb = __atomic_load_n(&state->on_new, __ATOMIC_ACQUIRE);
     if (cb != nullptr) {
-        cb(state->on_new_ud.load(std::memory_order_acquire), 1);
+        cb(__atomic_load_n(&state->on_new_ud, __ATOMIC_ACQUIRE), 1);
     } else {
         session_wake(state->session);
     }
@@ -128,7 +127,7 @@ subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* /*
         state->callback_active = true;
         // Start "ready" so the first poll surfaces any sample the
         // broker latched between subscribe + callback install.
-        state->ready.store(true, std::memory_order_relaxed);
+        __atomic_store_n(&state->ready, true, __ATOMIC_RELAXED);
     } else {
 #ifdef NROS_RMW_UORB_PX4_GLUE
         // phase-521 W8 (d) — with the glue linked, the session told the
@@ -143,7 +142,7 @@ subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* /*
 #else
         // Slow path (the host test double): pin ready so has_data /
         // take_serialized never short-circuit on the flag.
-        state->ready.store(true, std::memory_order_relaxed);
+        __atomic_store_n(&state->ready, true, __ATOMIC_RELAXED);
 #endif
     }
     out->backend_data = state;
@@ -162,9 +161,9 @@ rmw_ret_t subscription_set_on_new_message_callback(rmw_subscription_t* subscribe
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
-    state->on_new.store(nullptr, std::memory_order_release);
-    state->on_new_ud.store(user_data, std::memory_order_release);
-    state->on_new.store(callback, std::memory_order_release);
+    __atomic_store_n(&state->on_new, nullptr, __ATOMIC_RELEASE);
+    __atomic_store_n(&state->on_new_ud, user_data, __ATOMIC_RELEASE);
+    __atomic_store_n(&state->on_new, callback, __ATOMIC_RELEASE);
     return NROS_RMW_RET_OK;
 }
 
@@ -218,7 +217,7 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
     // the broker fires our callback. Skip the orb_check syscall
     // when we know nothing is pending. On the slow path the flag
     // is pinned to `true` so we always fall through.
-    if (state->callback_active && !state->ready.load(std::memory_order_acquire)) {
+    if (state->callback_active && !__atomic_load_n(&state->ready, __ATOMIC_ACQUIRE)) {
         *taken = false;
         return NROS_RMW_RET_OK;
     }
@@ -230,7 +229,7 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
         // Re-arm: nothing in the queue; reset the flag so the next
         // callback fires us back into the fast path.
         if (state->callback_active) {
-            state->ready.store(false, std::memory_order_release);
+            __atomic_store_n(&state->ready, false, __ATOMIC_RELEASE);
         }
         *taken = false;
         return NROS_RMW_RET_OK;
@@ -248,7 +247,7 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
     if (state->callback_active) {
         // Sample drained; clear the flag. Next sample re-arms via
         // the broker callback.
-        state->ready.store(false, std::memory_order_release);
+        __atomic_store_n(&state->ready, false, __ATOMIC_RELEASE);
     }
     *out_len = static_cast<size_t>(state->meta->o_size);
     *taken = true;
@@ -266,7 +265,7 @@ rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_da
     }
     auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
     // Fast path: the callback flag is the authoritative signal.
-    if (state->callback_active && !state->ready.load(std::memory_order_acquire)) {
+    if (state->callback_active && !__atomic_load_n(&state->ready, __ATOMIC_ACQUIRE)) {
         *out_has_data = false;
         return NROS_RMW_RET_OK;
     }

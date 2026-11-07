@@ -282,6 +282,11 @@ set(_NROS_PX4_INCLUDES
 # STUB of the same name whose body is the #error above; if that directory is
 # searched first, the stub wins and the real header is never seen. Include order
 # is the whole mechanism here.
+# phase-547 spike: PX4's NuttX C++ has no libstdc++ (-nostdinc++); serve the
+# freestanding headers nros-cpp needs from the riscv64-threadx shim.
+if(PX4_PLATFORM STREQUAL "nuttx")
+    list(PREPEND _NROS_PX4_INCLUDES "${NROS_REPO_DIR}/packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat")
+endif()
 list(PREPEND _NROS_PX4_INCLUDES
     "${_NROS_PX4_C_INCLUDE}"
     "${_NROS_PX4_CPP_INCLUDE}")
@@ -592,6 +597,10 @@ function(nros_px4_add_module)
     endif()
 
     px4_add_module(${_fwd})
+    # phase-547 spike: PX4 builds modules as gnu++14; nros-cpp needs C++17.
+    if(TARGET ${NPX_MODULE})
+        set_target_properties(${NPX_MODULE} PROPERTIES CXX_STANDARD 17)
+    endif()
 
     if(NOT TARGET ${NPX_MODULE})
         message(FATAL_ERROR "nros_px4_add_module: px4_add_module did not create ${NPX_MODULE}")

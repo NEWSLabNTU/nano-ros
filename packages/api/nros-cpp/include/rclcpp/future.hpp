@@ -148,7 +148,7 @@ struct PendingList {
         return true;
     }
 
-    void link(PendingLink* l) {
+    void link_front(PendingLink* l) {
         l->next = head;
         head = l;
     }
@@ -567,7 +567,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         link_.storage = storage;
         link_.seq = seq;
         link_.list = list;
-        if (list != nullptr) list->link(&link_);
+        if (list != nullptr) list->link_front(&link_);
     }
 
     // Issue 2011 — a GOAL-KEYED action future: it joins `list` (the action
@@ -584,7 +584,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         for (int i = 0; i < 16; ++i)
             link_.goal_id[i] = goal[i];
         link_.list = list;
-        if (list != nullptr) list->link(&link_);
+        if (list != nullptr) list->link_front(&link_);
     }
 
     bool live() const { return slot_ >= 0 && !link_.orphaned; }

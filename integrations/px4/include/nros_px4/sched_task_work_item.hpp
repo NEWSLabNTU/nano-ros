@@ -45,7 +45,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <chrono>
+#include <drivers/drv_hrt.h>
 
 namespace nros_px4
 {
@@ -336,9 +336,7 @@ private:
 
 	static uint64_t now_ns()
 	{
-		return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-						     std::chrono::steady_clock::now().time_since_epoch())
-						     .count());
+		return static_cast<uint64_t>(hrt_absolute_time()) * 1000u;
 	}
 };
 

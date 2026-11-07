@@ -21,7 +21,6 @@
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -47,8 +46,8 @@ struct SessionState {
     // phase-521 W8 (d), issue 2218 — the executor's wake. Read from the
     // broker's callback context, so the pair is atomic: `ctx` is stored
     // before `cb` and read after it.
-    std::atomic<void (*)(void *)> wake_cb{nullptr};
-    std::atomic<void *> wake_ctx{nullptr};
+    void (*wake_cb)(void *) = nullptr;
+    void *wake_ctx = nullptr;
 };
 
 // Copy a null-terminated C string into a fixed buffer, truncating to
@@ -119,9 +118,9 @@ rmw_ret_t session_set_wake_callback(rmw_session_t *session, void (*cb)(void *ctx
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     auto *state = static_cast<SessionState *>(session->backend_data);
-    state->wake_cb.store(nullptr, std::memory_order_release);
-    state->wake_ctx.store(ctx, std::memory_order_release);
-    state->wake_cb.store(cb, std::memory_order_release);
+    __atomic_store_n(&state->wake_cb, nullptr, __ATOMIC_RELEASE);
+    __atomic_store_n(&state->wake_ctx, ctx, __ATOMIC_RELEASE);
+    __atomic_store_n(&state->wake_cb, cb, __ATOMIC_RELEASE);
     return NROS_RMW_RET_OK;
 }
 
@@ -130,9 +129,9 @@ void session_wake(void *session_backend_data) {
         return;
     }
     auto *state = static_cast<SessionState *>(session_backend_data);
-    void (*cb)(void *) = state->wake_cb.load(std::memory_order_acquire);
+    void (*cb)(void *) = __atomic_load_n(&state->wake_cb, __ATOMIC_ACQUIRE);
     if (cb != nullptr) {
-        cb(state->wake_ctx.load(std::memory_order_acquire));
+        cb(__atomic_load_n(&state->wake_ctx, __ATOMIC_ACQUIRE));
     }
 }
 
