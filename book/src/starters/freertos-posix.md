@@ -157,7 +157,7 @@ reliable publisher alike.
 
 To talk over zenoh instead, the talker dials a zenoh router on this machine,
 at `tcp/127.0.0.1:7447`. Install ROS 2's zenoh middleware, which brings the
-router, and provision the board for zenoh:
+router `nros run` starts, and provision the board for zenoh:
 
 ```bash probe=80 variant=zenoh
 sudo apt-get install -y ros-humble-rmw-zenoh-cpp
@@ -194,18 +194,9 @@ cd fpz_ws
 
 <!-- /tabs -->
 
-Start the router in its own terminal:
-
-```bash probe=84 probe-run=60 probe-keep variant=zenoh
-source /opt/ros/humble/setup.bash
-ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=84 variant=zenoh
-Started Zenoh router with id
-```
-
-Then, back in the workspace, build and run the talker:
+Build and run the talker. `nros run` starts a zenoh router on
+`tcp/127.0.0.1:7447` for the run and stops it after, so there is nothing to
+start beside it:
 
 ```bash probe=86 probe-run=900 variant=zenoh
 source /opt/ros/humble/setup.bash
@@ -217,9 +208,9 @@ Publishing: 'Hello World: 1'
 nros run: matched after
 ```
 
-Start it again without `--expect` and leave it going. In another terminal,
-`ros2` reads it through the same router, with `RMW_IMPLEMENTATION` set to
-`rmw_zenoh_cpp`:
+Start it again without `--expect` and leave it going; its router stays up
+while it runs. In another terminal, `ros2` reads it through that router, with
+`RMW_IMPLEMENTATION` set to `rmw_zenoh_cpp`:
 
 ```bash probe=88 probe-run=120 probe-keep variant=zenoh
 nros run fpz_node
@@ -244,9 +235,8 @@ data: 'Hello World:
 - **`nros run` stops at once and names `AMENT_PREFIX_PATH`:** this shell has
   not sourced ROS 2, and no earlier build of the workspace recorded it.
   Source it and run again.
-- **The zenoh talker prints no `Publishing:` line:** it waits for the
-  router. Check that `rmw_zenohd` is running and printed its
-  `Started Zenoh router` line.
+- **`nros run` says the router exited:** another zenoh router already holds
+  port 7447 on this machine. Stop it; `nros run` starts its own.
 - **`ros2 topic echo` prints nothing:** check the `RMW_IMPLEMENTATION` line,
   and that neither shell sets a `ROS_DOMAIN_ID` other than 0. A firewall that
   drops multicast also stops DDS discovery.
