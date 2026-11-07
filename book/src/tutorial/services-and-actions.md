@@ -59,8 +59,8 @@ nros new client_node --template client --lang cpp --to sensor_node_bringup
 
 <!-- /tabs -->
 
-Both templates use `example_interfaces/srv/AddTwoInts`, which comes with ROS
-2: two `int64` fields in the request, `a` and `b`, and one in the reply,
+Both templates use `example_interfaces/srv/AddTwoInts`, a standard ROS 2
+interface package: two `int64` fields in the request, `a` and `b`, and one in the reply,
 `sum`. Each package's `package.xml` depends on `example_interfaces`, and the
 next build generates it like any message package. A service type is a pair
 of messages, so a `.srv` file in a package of your own, beside chapter 5's
@@ -336,7 +336,15 @@ result last=
 
 <!-- /tabs -->
 
-In a second terminal, call the board's service:
+The `ros2` command needs the `example_interfaces` package on the host to call
+the board. A ROS 2 desktop install has it; a `ros-base` install does not.
+In a second terminal, install it if it is missing:
+
+```bash probe=645 track=installed variant=qemu
+sudo apt-get install -y ros-humble-example-interfaces
+```
+
+Then call the board's service:
 
 ```bash probe=650 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
