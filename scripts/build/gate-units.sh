@@ -27,14 +27,33 @@
 # the others. Both callers' units already did.
 
 # The number of units to run at once: `$<var>` if set, else one per 8 CPUs,
-# clamped to 1..8. A 4-vCPU hosted runner stays serial, as it was.
+# clamped to 1..8 — and never more than the scratch filesystem holds. Each unit
+# keeps a scratch tree under `$TMPDIR` (`gate-scratch.sh`), measured at up to
+# ~2.5 GiB for a scaffold or template copy, so `<unit-GiB>` (default 3, or
+# `NROS_GATE_UNIT_DISK_GIB`) bounds the count by `$TMPDIR`'s free space too. A
+# self-hosted runner's /tmp is a tmpfs (8 GiB, then 24 GiB: scripts/lib/
+# runner-tmpfs.sh), and six units at once filled the 8 GiB one on 2026-11-07
+# (`No space left on device` in run 42258540290). An explicit `$<var>` is taken
+# as given: the operator who sets it owns the disk.
 nros_gate_unit_jobs() {
-    local var="$1" jobs
+    local var="$1" unit_gib="${2:-${NROS_GATE_UNIT_DISK_GIB:-3}}" jobs free_kib by_disk
     jobs="${!var:-}"
     if [ -z "$jobs" ]; then
         jobs=$(( $(nproc 2>/dev/null || echo 4) / 8 ))
         [ "$jobs" -ge 1 ] || jobs=1
         [ "$jobs" -le 8 ] || jobs=8
+        free_kib="$(df -Pk "${TMPDIR:-/tmp}" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+        case "$free_kib" in
+            ''|*[!0-9]*) ;;  # unmeasurable: keep the CPU bound
+            *)
+                by_disk=$(( free_kib / (unit_gib * 1024 * 1024) ))
+                [ "$by_disk" -ge 1 ] || by_disk=1
+                if [ "$by_disk" -lt "$jobs" ]; then
+                    echo "gate-units: ${TMPDIR:-/tmp} has $(( free_kib / 1024 / 1024 )) GiB free, so $by_disk unit(s) at once (not $jobs; ${unit_gib} GiB each)" >&2
+                    jobs="$by_disk"
+                fi
+                ;;
+        esac
     fi
     case "$jobs" in
         ''|*[!0-9]*|0)
@@ -127,6 +146,14 @@ _nros_gate_units_self_test() {
     t1="$(date +%s%N)"
     if [ $(( (t1 - t0) / 1000000 )) -ge 1800 ]; then
         echo "gate-units self-test FAIL: 2 one-second units at 2 jobs took $(( (t1 - t0) / 1000000 )) ms — they ran serially" >&2
+        fail=1
+    fi
+    # The disk bound: with less free scratch than one unit's worth per CPU
+    # slot, the count drops to what fits (and never below 1).
+    local fits
+    fits="$(nros_gate_unit_jobs NROS_GATE_UNITS_TEST_UNSET 100000 2>/dev/null)"
+    if [ "$fits" != 1 ]; then
+        echo "gate-units self-test FAIL: 100000 GiB units on $(df -Ph "${TMPDIR:-/tmp}" | awk 'NR==2{print $4}') free gave $fits job(s), want 1" >&2
         fail=1
     fi
     if NROS_GATE_UNITS_TEST_JOBS=0 nros_gate_unit_jobs NROS_GATE_UNITS_TEST_JOBS >/dev/null 2>&1; then
