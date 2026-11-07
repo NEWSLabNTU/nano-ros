@@ -1,12 +1,14 @@
 ---
 id: 2341
 title: "The FreeRTOS POSIX board sets its port for CMake only, so a zenoh image stops in zpico-sys on `FREERTOS_PORT not set`"
-status: open
+status: resolved
 type: bug
 area: [boards, build, cmake]
 severity: high
 found: 2026-11-07
 related: [issue-2287, issue-0941]
+resolved: 2026-11-07
+resolved_in: "fix-issue-2341 branch: the FreeRTOS POSIX board states its port for cargo"
 ---
 
 ## Measured
@@ -65,3 +67,38 @@ never build zpico-sys. Nothing built a zenoh image for this board, so nothing
 asked for the port on the cargo road. The board's cmake module records the
 road before W2b: the repo-wide `activate.sh` exported the Cortex-M port, which
 is the wrong one for a host binary.
+
+## Resolution
+
+`packages/boards/nros-board-freertos-posix/nros-board.toml` now has a
+`cargo_config` with two forced `[env]` rows, as the other FreeRTOS boards do:
+`FREERTOS_PORT = "GCC_POSIX"` and `FREERTOS_CONFIG_DIR` set to the board's own
+`config/`. It has no `[build] target`, because the image is a host process.
+
+Test: `every_board_states_its_platforms_required_env` in
+`packages/cli/nros-cli-core/src/cmd/board_facts.rs`. For every in-tree board,
+it reads the board's platform manifest. Each `required_env` entry with no
+`when` must appear among the descriptor's `[env]` rows. Before the fix it
+failed and named exactly
+`freertos-posix (freertos): FREERTOS_PORT` and `... FREERTOS_CONFIG_DIR`. All
+other boards already passed.
+
+Measured after the fix, with the same scaffold: the configure says
+`6 value(s) delivered to cargo`. zpico-sys now compiles with
+`-I .../portable/ThirdParty/GCC/Posix` and
+`-I .../nros-board-freertos-posix/config`, so the port reaches the cargo step.
+
+### What the fix uncovers (not this issue)
+
+The zenoh image still does not build. The next stop is
+`lwip/opt.h: fatal error: lwipopts.h: No such file or directory`.
+zenoh-pico's `[port.freertos]` row
+(`packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml`) chooses
+`ZENOH_FREERTOS_LWIP` and the lwIP sources on the platform capability
+`ip_stack = true`. This board has no lwIP: the host owns the network
+(`[board.net] stack = "host"`, `supported_netstacks = []`). So zenoh has no
+FreeRTOS port for a host network stack, and that needs its own issue. The
+board's CycloneDDS road works: `nros new fpc_ws --board freertos-posix
+--template talker --lang c --rmw cyclonedds`, then `nros build`, builds, and the
+image prints `Publishing: 'Hello World: 1'` and the lines after it. A starter
+for this board should scaffold `--rmw cyclonedds` until zenoh has that port.
