@@ -173,6 +173,86 @@ zephyr-mps2: (platform "zephyr-mps2")
 [group("main")]
 freertos-posix: (platform "freertos-posix")
 
+# book/src/starters/linux-host.md — the Rust tab (phase-548 W8).
+[group("main")]
+linux-rust: (platform "linux-rust")
+
+# book/src/starters/linux-host.md — the C tab (phase-548 W8).
+[group("main")]
+linux-c: (platform "linux-c")
+
+# book/src/starters/mps2-an385-bare-metal.md — the C tab (phase-548 W8).
+[group("main")]
+baremetal-c: (platform "baremetal-c")
+
+# book/src/starters/mps2-an385-bare-metal.md — the C++ tab (phase-548 W8).
+[group("main")]
+baremetal-cpp: (platform "baremetal-cpp")
+
+# book/src/starters/mps2-an385-freertos.md — the C++ tab (phase-548 W8).
+[group("main")]
+freertos-cpp: (platform "freertos-cpp")
+
+# book/src/starters/threadx-linux.md — the C++ tab (phase-548 W8).
+[group("main")]
+threadx-linux-cpp: (platform "threadx-linux-cpp")
+
+# book/src/starters/threadx-riscv64.md — the C tab (phase-548 W8).
+[group("main")]
+threadx-riscv64-c: (platform "threadx-riscv64-c")
+
+# book/src/starters/threadx-riscv64.md — the C++ tab (phase-548 W8).
+[group("main")]
+threadx-riscv64-cpp: (platform "threadx-riscv64-cpp")
+
+# book/src/starters/nuttx-arm.md — the C++ tab (phase-548 W8).
+[group("main")]
+nuttx-arm-cpp: (platform "nuttx-arm-cpp")
+
+# book/src/starters/nuttx-riscv.md — the C++ tab (phase-548 W8).
+[group("main")]
+nuttx-riscv-cpp: (platform "nuttx-riscv-cpp")
+
+# book/src/starters/zephyr-native-sim.md — the C++ tab (phase-548 W8).
+[group("main")]
+zephyr-cpp: (platform "zephyr-cpp")
+
+# book/src/starters/mps2-an385-zephyr.md — the C tab (phase-548 W8).
+[group("main")]
+zephyr-mps2-c: (platform "zephyr-mps2-c")
+
+# book/src/starters/mps2-an385-zephyr.md — the C++ tab (phase-548 W8).
+[group("main")]
+zephyr-mps2-cpp: (platform "zephyr-mps2-cpp")
+
+# book/src/starters/freertos-posix.md — the Rust tab (phase-548 W8).
+[group("main")]
+freertos-posix-rust: (platform "freertos-posix-rust")
+
+# book/src/starters/freertos-posix.md — the C++ tab (phase-548 W8).
+[group("main")]
+freertos-posix-cpp: (platform "freertos-posix-cpp")
+
+# book/src/starters/freertos-posix.md — the zenoh section, Rust tab (phase-548 W8).
+[group("main")]
+freertos-posix-zenoh-rust: (platform "freertos-posix-zenoh-rust")
+
+# book/src/starters/freertos-posix.md — the zenoh section, C tab (phase-548 W8).
+[group("main")]
+freertos-posix-zenoh: (platform "freertos-posix-zenoh")
+
+# book/src/starters/freertos-posix.md — the zenoh section, C++ tab (phase-548 W8).
+[group("main")]
+freertos-posix-zenoh-cpp: (platform "freertos-posix-zenoh-cpp")
+
+# book/src/starters/nucleo-f767zi.md — the Rust tab, in the Renode twin (phase-548 W8).
+[group("main")]
+renode-nucleo-rust: (platform "renode-nucleo-rust")
+
+# book/src/starters/nucleo-f767zi.md — the C++ tab, in the Renode twin (phase-548 W8).
+[group("main")]
+renode-nucleo-cpp: (platform "renode-nucleo-cpp")
+
 # book/src/guide/platforms/linux-host.md — the the Linux host platform page, after its
 # starter: the run plan and the native build line (phase-537 W9).
 [group("main")]
