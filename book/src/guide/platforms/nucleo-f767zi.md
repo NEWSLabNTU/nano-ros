@@ -65,7 +65,9 @@ an image's boot report, so you can see how much room a change leaves.
   384 KiB of main SRAM and 128 KiB of DTCM, on Zephyr 3.7. The west
   workspace needs Zephyr's `hal_stm32` module, and
   `nros setup board nucleo-f767zi-zephyr --zephyr-workspace <ws>` applies
-  nano-ros's patches to it and adds the `thumbv7em-none-eabihf` Rust target.
+  nano-ros's patches to it and adds the `thumbv7em-none-eabi` Rust target.
+  The image is soft-float: Zephyr's board configuration leaves `CONFIG_FPU`
+  off.
 - **The twin boots the same ELF.** Renode's `nucleo_f767zi` machine runs the
   image you flash, with USART3 on a host terminal device. A twin result
   predicts the board result for the parts the twin models.

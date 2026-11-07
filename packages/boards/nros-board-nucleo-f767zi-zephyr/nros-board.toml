@@ -66,9 +66,12 @@ crate_root_deps = ["zephyr = \"0.1.0\"", "log = \"0.4\""]
 
 [board.zephyr]
 west_board = "nucleo_f767zi"
-# Cortex-M7 with the FPU on (Zephyr's board defconfig): `nros_detect_rust_target`
-# picks the hard-float triple for CPU_CORTEX_M7 + FPU.
-rust_target = "thumbv7em-none-eabihf"
+# Cortex-M7, soft-float ABI: Zephyr's board defconfig leaves CONFIG_FPU and
+# CONFIG_FP_HARDABI off, so zephyr-lang-rust's `_rust_map_target` builds
+# `thumbv7em-none-eabi`, and so does the C image's Rust runtime. The
+# hard-float triple stated here before was refused at configure (issue 2204's
+# check); measured by phase-548 W7.
+rust_target = "thumbv7em-none-eabi"
 rust_prereqs = ["clang", "libclang-dev"]
 rust_components = ["clippy"]
 # Derived, so absent on purpose: prj.conf and boards/nucleo_f767zi.overlay
@@ -126,7 +129,7 @@ host_serial = "serial@40004800#baudrate=115200"
 # target. The `hal_stm32` module comes from `west.yml` (phase-524 W2).
 [board.provisioning]
 zephyr_line = "3.7"
-rust_targets = ["thumbv7em-none-eabihf"]
+rust_targets = ["thumbv7em-none-eabi"]
 
 # The board's RAM budget (issue 2194; the header above says why only this one).
 [knobs.zenoh]
