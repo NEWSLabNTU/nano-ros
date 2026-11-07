@@ -197,7 +197,7 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | [#2321](../issues/archived/2321-lock-provenance-incomplete.md) | industrial | **Resolved** 2026-11-07: source builds lock their origin; `[rust]` recorded |
 | [#2322](../issues/2322-image-not-reproducible-across-paths.md) | industrial | Open: a rebuild at another path differs because cargo hashes the absolute path of local crates; the book states the contract (same path ⇒ same bytes) |
 | [#2323](../issues/archived/2323-offline-deb-recipe-omits-ros-base.md) | industrial | **Resolved** 2026-11-07: the recipe downloads in plain Ubuntu with the ROS 2 source; 606 debs, 227 MB |
-| [#2324](../issues/2324-offline-error-no-nros-offline-hint.md) | industrial | Offline failure does not name `NROS_OFFLINE=1` |
+| [#2324](../issues/archived/2324-offline-error-no-nros-offline-hint.md) | industrial | **Resolved** 2026-11-07: a name-resolution failure in the metadata probe names `NROS_OFFLINE=1` |
 | [#2325](../issues/archived/2325-board-support-no-last-run-date.md) | industrial | **Resolved** 2026-11-07: the release records each lane's last run; `board show` and doctor print it |
 | [#2326](../issues/archived/2326-mem-report-not-shipped.md) | industrial | **Resolved** 2026-11-07: the report runs from a release; setup installs llvm-tools |
 | [#2327](../issues/2327-per-image-c-components-unlisted.md) | industrial | Open: doctor now lists the sources each build read; the fork's home is the maintainer's |

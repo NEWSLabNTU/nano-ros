@@ -789,10 +789,17 @@ pub fn build_metadata(o: &MetadataBuildOptions) -> Result<()> {
                  → a vendored source it resolves is not provisioned — {remedy}",
                 o.component_id
             ),
-            None => bail!(
-                "metadata-mode harness failed (exit {code}) for component '{}': {excerpt}",
-                o.component_id
-            ),
+            None => {
+                // Issue 2324 — a host with no network gets the one variable
+                // that builds from the carried stores.
+                let hint = super::rust_toolchain::offline_hint(&stderr)
+                    .map(|h| format!("\n  → {h}"))
+                    .unwrap_or_default();
+                bail!(
+                    "metadata-mode harness failed (exit {code}) for component '{}': {excerpt}{hint}",
+                    o.component_id
+                )
+            }
         }
     }
     if !o.output_path.is_file() {

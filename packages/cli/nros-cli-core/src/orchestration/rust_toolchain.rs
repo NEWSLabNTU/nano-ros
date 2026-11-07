@@ -233,6 +233,33 @@ pub fn expose_offline_to_cargo() {
     unsafe { std::env::set_var("CARGO_NET_OFFLINE", value) };
 }
 
+/// The one line a failed cargo step adds when its output says name
+/// resolution failed and `$NROS_OFFLINE` is not set; `None` otherwise.
+///
+/// Issue 2324: in an air-gapped seat `nros run` died in the metadata probe on
+/// `Could not resolve host: index.crates.io` while the carried stores could
+/// have answered offline, and nothing named the variable. Failure path only:
+/// a caller asks this about output it is already reporting as an error.
+#[must_use]
+pub fn offline_hint(output: &str) -> Option<&'static str> {
+    offline_hint_for(output, std::env::var_os("NROS_OFFLINE").is_some())
+}
+
+fn offline_hint_for(output: &str, nros_offline: bool) -> Option<&'static str> {
+    // Name resolution only: a refused connection or a 5xx is a network that
+    // exists, and going offline is not the remedy for it.
+    const MARKS: &[&str] = &[
+        "Could not resolve host",
+        "Couldn't resolve host",
+        "Temporary failure in name resolution",
+        "failed to lookup address information",
+    ];
+    if nros_offline || !MARKS.iter().any(|m| output.contains(m)) {
+        return None;
+    }
+    Some("no network: set NROS_OFFLINE=1 to build from the carried stores")
+}
+
 fn cargo_bin_to_prepend_with(
     path: Option<&std::ffi::OsStr>,
     candidates: &[PathBuf],
@@ -525,6 +552,23 @@ pub fn ensure(index: &SdkIndex, host: &str, dry_run: bool) -> Result<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// issue 2324 — a name-resolution failure names NROS_OFFLINE, once, and
+    /// only when it is not already set.
+    #[test]
+    fn a_name_resolution_failure_names_nros_offline() {
+        let cargo = "error: failed to get `x` as a dependency\n\
+                     Caused by:\n  [6] Couldn't resolve host name \
+                     (Could not resolve host: index.crates.io)";
+        let hint = offline_hint_for(cargo, false).expect("a DNS failure gets the hint");
+        assert!(hint.contains("NROS_OFFLINE=1"), "{hint}");
+        assert_eq!(offline_hint_for(cargo, true), None);
+        assert_eq!(
+            offline_hint_for("error[E0432]: unresolved import", false),
+            None
+        );
+        assert_eq!(offline_hint_for("Connection refused", false), None);
+    }
 
     /// issue 2197 — NROS_OFFLINE turns cargo offline too, and never overrides
     /// a CARGO_NET_OFFLINE the user set (to `false` included).
