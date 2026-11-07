@@ -90,11 +90,6 @@ pub fn is_cmake_available() -> bool {
 // =============================================================================
 
 static THREADX_RV64_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_RV64_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_RV64_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_RV64_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_RV64_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static THREADX_RV64_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // issue 0556 — go through the manifest ROW, never a hand-spelled leaf path.
@@ -118,47 +113,26 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     super::build_threadx_rv64_rust_example_rmw(name, binary_name, super::Rmw::Zenoh)
 }
 
+/// One role of a `(ThreadxRiscv64, lang, rmw)` pair cell: its workspace image
+/// (phase-535 W5, RFC-0122 D1/D4), resolved by `fixtures::workspace_image`.
+/// The talker LEAVES (`examples/rv-virt-threadx/<lang>/talker`) are the
+/// board's road witnesses; the pair cells run the workspace talker.
+pub fn pair_image(
+    lang: crate::matrix::Lang,
+    role: crate::fixtures::workspace_image::PairRole,
+    rmw: crate::matrix::Rmw,
+) -> TestResult<&'static Path> {
+    crate::fixtures::workspace_image::resolve_coord_cached(
+        crate::matrix::PlatformId::ThreadxRiscv64,
+        lang,
+        rmw,
+        role,
+    )
+}
+
 pub fn build_threadx_rv64_talker() -> TestResult<&'static Path> {
     THREADX_RV64_TALKER_BINARY
         .get_or_try_init(|| build_rust_example("talker", "riscv64_threadx_rust_talker"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_rv64_listener() -> TestResult<&'static Path> {
-    THREADX_RV64_LISTENER_BINARY
-        .get_or_try_init(|| build_rust_example("listener", "riscv64_threadx_rust_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_rv64_service_server() -> TestResult<&'static Path> {
-    THREADX_RV64_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_rust_example("service-server", "riscv64_threadx_rust_service_server")
-        })
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_rv64_service_client() -> TestResult<&'static Path> {
-    THREADX_RV64_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_rust_example("service-client", "riscv64_threadx_rust_service_client")
-        })
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_rv64_action_server() -> TestResult<&'static Path> {
-    THREADX_RV64_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_rust_example("action-server", "riscv64_threadx_rust_action_server")
-        })
-        .map(|p| p.as_path())
-}
-
-pub fn build_threadx_rv64_action_client() -> TestResult<&'static Path> {
-    THREADX_RV64_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_rust_example("action-client", "riscv64_threadx_rust_action_client")
-        })
         .map(|p| p.as_path())
 }
 
@@ -167,20 +141,11 @@ pub fn build_threadx_rv64_action_client() -> TestResult<&'static Path> {
 // =============================================================================
 
 static RV64_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_C_ERRNO_ISOLATION_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_C_TYPED_CARRIER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static RV64_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Resolve a ThreadX-RV64 cmake example's artifact for a NAMED rmw.
 ///
@@ -230,36 +195,6 @@ pub fn build_rv64_c_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-pub fn build_rv64_c_listener() -> TestResult<&'static Path> {
-    RV64_C_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "listener", "c_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_c_service_server() -> TestResult<&'static Path> {
-    RV64_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-server", "c_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_c_service_client() -> TestResult<&'static Path> {
-    RV64_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-client", "c_service_client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_c_action_server() -> TestResult<&'static Path> {
-    RV64_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-server", "c_action_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_c_action_client() -> TestResult<&'static Path> {
-    RV64_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-client", "c_action_client"))
-        .map(|p| p.as_path())
-}
-
 /// issue 0680 — the per-thread-`errno` probe. Self-contained: one image, two
 /// tasks, no peer and no messaging, so it is resolved like any other cmake
 /// example but run alone.
@@ -284,32 +219,10 @@ pub fn build_rv64_cpp_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// The C++ pubsub pair stays on its leaves (phase-535 W5): the generated C++
+/// talker hangs after its first publish on this board (issue 2340).
 pub fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
     RV64_CPP_LISTENER_BINARY
         .get_or_try_init(|| build_cmake_example("cpp", "listener", "cpp_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_cpp_service_server() -> TestResult<&'static Path> {
-    RV64_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-server", "cpp_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_cpp_service_client() -> TestResult<&'static Path> {
-    RV64_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-client", "cpp_service_client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_cpp_action_server() -> TestResult<&'static Path> {
-    RV64_CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-server", "cpp_action_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_rv64_cpp_action_client() -> TestResult<&'static Path> {
-    RV64_CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-client", "cpp_action_client"))
         .map(|p| p.as_path())
 }

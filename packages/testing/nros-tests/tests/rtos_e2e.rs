@@ -17,7 +17,7 @@ use nros_tests::{
         is_qemu_riscv64_available, nuttx, threadx_linux, threadx_riscv64,
         workspace_image::PairRole, zenohd_unavailable_reason,
     },
-    matrix::Lang as MLang,
+    matrix::{Lang as MLang, Rmw as MRmw},
     output::{ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER},
     platform,
     process::ManagedProcess,
@@ -539,44 +539,74 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
             second_builder: || threadx_linux::pair_image(MLang::Cpp, PairRole::ActionClient),
         },
 
-        // ThreadX RISC-V — Rust
+        // ThreadX RISC-V — every language: the workspace images (phase-535 W5)
         (Platform::ThreadxRiscv64, Lang::Rust, Variant::Pubsub) => BinaryPair {
-            first_builder: threadx_riscv64::build_threadx_rv64_talker,
-            second_builder: threadx_riscv64::build_threadx_rv64_listener,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::Rust, PairRole::Talker, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::Rust, PairRole::Listener, MRmw::Zenoh)
+            },
         },
         (Platform::ThreadxRiscv64, Lang::Rust, Variant::Service) => BinaryPair {
-            first_builder: threadx_riscv64::build_threadx_rv64_service_server,
-            second_builder: threadx_riscv64::build_threadx_rv64_service_client,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::Rust, PairRole::ServiceServer, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::Rust, PairRole::ServiceClient, MRmw::Zenoh)
+            },
         },
         (Platform::ThreadxRiscv64, Lang::Rust, Variant::Action) => BinaryPair {
-            first_builder: threadx_riscv64::build_threadx_rv64_action_server,
-            second_builder: threadx_riscv64::build_threadx_rv64_action_client,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::Rust, PairRole::ActionServer, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::Rust, PairRole::ActionClient, MRmw::Zenoh)
+            },
         },
-        // ThreadX RISC-V — C
         (Platform::ThreadxRiscv64, Lang::C, Variant::Pubsub) => BinaryPair {
-            first_builder: threadx_riscv64::build_rv64_c_talker,
-            second_builder: threadx_riscv64::build_rv64_c_listener,
+            first_builder: || threadx_riscv64::pair_image(MLang::C, PairRole::Talker, MRmw::Zenoh),
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::C, PairRole::Listener, MRmw::Zenoh)
+            },
         },
         (Platform::ThreadxRiscv64, Lang::C, Variant::Service) => BinaryPair {
-            first_builder: threadx_riscv64::build_rv64_c_service_server,
-            second_builder: threadx_riscv64::build_rv64_c_service_client,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::C, PairRole::ServiceServer, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::C, PairRole::ServiceClient, MRmw::Zenoh)
+            },
         },
         (Platform::ThreadxRiscv64, Lang::C, Variant::Action) => BinaryPair {
-            first_builder: threadx_riscv64::build_rv64_c_action_server,
-            second_builder: threadx_riscv64::build_rv64_c_action_client,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::C, PairRole::ActionServer, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::C, PairRole::ActionClient, MRmw::Zenoh)
+            },
         },
-        // ThreadX RISC-V — C++
+        // The C++ pubsub pair stays on its leaves: the generated C++ talker
+        // hangs after its first publish on this board (issue 2340).
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Pubsub) => BinaryPair {
             first_builder: threadx_riscv64::build_rv64_cpp_talker,
             second_builder: threadx_riscv64::build_rv64_cpp_listener,
         },
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Service) => BinaryPair {
-            first_builder: threadx_riscv64::build_rv64_cpp_service_server,
-            second_builder: threadx_riscv64::build_rv64_cpp_service_client,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::Cpp, PairRole::ServiceServer, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::Cpp, PairRole::ServiceClient, MRmw::Zenoh)
+            },
         },
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Action) => BinaryPair {
-            first_builder: threadx_riscv64::build_rv64_cpp_action_server,
-            second_builder: threadx_riscv64::build_rv64_cpp_action_client,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::Cpp, PairRole::ActionServer, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::Cpp, PairRole::ActionClient, MRmw::Zenoh)
+            },
         },
     }
 }

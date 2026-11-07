@@ -97,7 +97,9 @@ COVERAGE=(
     # stack overflow). (`_tx_initialize_low_level` is deliberately NOT here — it
     # is a weak SOLE def the board ships as overridable; see the allowlist.)
     "examples/rv-virt-threadx/rust|rv-virt-threadx-talker|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
-    "examples/rv-virt-threadx/rust|rv-virt-threadx-listener|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
+    # phase-535 W5 — the listener is a workspace image now (the talker leaf
+    # stays as the board's witness), so its row names that image's target dir.
+    "examples/workspaces/rust/target-fixtures/riscv-threadx-listener|riscv_threadx_listener_entry|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
     # PENDING (no image target yet): px4 uorb `nros_orb_{register,unregister}_callback`
     # — strong in px4_callback_glue.cpp, but no Cargo.toml currently links
     # `nros-rmw-uorb` into an example/fixture, so there is no final image to nm.

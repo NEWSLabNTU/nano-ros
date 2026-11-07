@@ -465,6 +465,36 @@ pub fn resolve_coord(
     resolve(cell, role)
 }
 
+/// [`resolve_coord`], cached for the process: the `BinaryPair` tables hold
+/// `fn() -> TestResult<&'static Path>`, so a resolved image lives as long as
+/// the test binary. One cache for every platform, keyed on the coordinate.
+pub fn resolve_coord_cached(
+    platform: PlatformId,
+    lang: Lang,
+    rmw: Rmw,
+    role: PairRole,
+) -> TestResult<&'static std::path::Path> {
+    use std::{collections::HashMap, path::Path, sync::Mutex};
+    static CACHE: Mutex<Option<HashMap<String, &'static Path>>> = Mutex::new(None);
+    let key = format!("{platform:?}/{lang:?}/{rmw:?}/{}", role.token());
+    if let Some(p) = CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .get(&key)
+    {
+        return Ok(p);
+    }
+    let path = resolve_coord(platform, lang, rmw, role)?;
+    let leaked: &'static Path = Box::leak(path.into_boxed_path());
+    CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(key, leaked);
+    Ok(leaked)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

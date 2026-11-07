@@ -126,8 +126,26 @@ max_subscribers = 1
 max_service_servers = 0
 max_service_clients = 3
 
+# ThreadX on QEMU rv-virt (riscv64, NetX Duo, SLIRP). `locator` is the
+# cell's `alloc::port_of`. They came from the `examples/rv-virt-threadx`
+# leaves. Each QEMU has its own SLIRP network, so the board's default address
+# serves both roles of a pair.
+
+[image.riscv_threadx_action_server]
+board = "rv-virt-threadx"
+launch = "action_server.launch.xml"
+locator = "tcp/10.0.2.2:9420"
+
+[image.riscv_threadx_action_client]
+board = "rv-virt-threadx"
+launch = "action_client.launch.xml"
+locator = "tcp/10.0.2.2:9420"
+
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
 
 [board_config."threadx-linux"]
+netstack = "netxduo"
+
+[board_config."rv-virt-threadx"]
 netstack = "netxduo"

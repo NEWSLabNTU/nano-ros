@@ -155,6 +155,16 @@ PROBE_CONTEXT = {
         "why": "nros_cpp_config_generated.h (reached through rclcpp.hpp) is a per-build artifact",
         "enclosing": "none — the guard sits at file scope, after the #ifndef default",
     },
+    # issue 2335 — the newlib dynamic-lock pool. `reent.c` includes `tx_api.h`
+    # and the riscv64 port's `tx_port.h`, which no host lane configures.
+    "packages/boards/nros-board-threadx-qemu-riscv64/c/reent.c": {
+        "mode": "preprocess",
+        "cc": "cc",
+        "std": "c11",
+        "defines": [],
+        "why": "tx_api.h needs the ThreadX riscv64 port headers, which no host lane configures",
+        "enclosing": "none — the guard sits at file scope, after the #ifndef default",
+    },
     "packages/platform/nros-platform-threadx/src/timer.c": {
         "mode": "preprocess",
         "cc": "cc",

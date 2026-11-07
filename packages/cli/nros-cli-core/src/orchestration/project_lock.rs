@@ -330,6 +330,19 @@ pub fn record(rec: &BuildRecord, nano_ros_root: Option<&Path>) -> eyre::Result<R
     use crate::orchestration::sdk_store::SdkLock;
     let mut drifts = Vec::new();
     let lock_path = crate::orchestration::store::lock_path_for(&rec.project);
+    // Issue 2316 — one recorder at a time per lock. A workspace's images build in parallel
+    // (`workspace-fixtures-build.sh` runs one `nros build` per row), and each
+    // ends here with a load -> merge -> save of the SAME lock: unserialised,
+    // one build's save lands between another's load and save (a lost record),
+    // and a load can read a save half-written ("invalid nros-sdk.lock",
+    // which failed the build). The advisory lock is taken on the lock's
+    // DIRECTORY, which every recorder of this lock shares, so no lock file of
+    // our own appears in the tree (an untracked file there is a staleness
+    // input, issue 1845). Held until this function returns.
+    let _serialise = lock_path
+        .parent()
+        .and_then(|d| std::fs::File::open(d).ok())
+        .and_then(|f| crate::file_lock::lock_exclusive(&f).ok().map(|()| f));
     let mut lock = SdkLock::load(&lock_path)?;
     let before = lock.clone();
 
