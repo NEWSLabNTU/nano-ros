@@ -453,7 +453,7 @@ these stops on pages this phase owns. They land as one follow-up after #3183
 - [2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md): the book half only. Tutorial 1 already states
   the talker's publisher is reliable on #3183; the interop half is
   phase-523's.
-- [2323](../issues/2323-offline-deb-recipe-omits-ros-base.md): Working offline's `.deb` recipe runs in
+- [2323](../issues/archived/2323-offline-deb-recipe-omits-ros-base.md): Working offline's `.deb` recipe runs in
   `ros:jazzy-ros-base`, so it omits ROS 2 and the base image's packages.
   Re-measure it in a plain Ubuntu image.
 - [2330](../issues/archived/2330-ros-install-leaves-book.md): Install sends the reader to docs.ros.org for the

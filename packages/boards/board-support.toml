@@ -1070,7 +1070,7 @@ notes = "phase-537 W9 — Flash a real board on a bench: the flash-a-real-board 
 track = "install-offline"
 chapter = "guide/build/install-options.md"
 variant = "offline"
-awaits = ["docker inside the probe container: Working offline's first step downloads the host packages with `docker run ros:jazzy-ros-base`, and the probe container runs no docker daemon"]
+awaits = ["docker inside the probe container: Working offline's first step downloads the host packages and ROS 2 with `docker run ubuntu:24.04`, and the probe container runs no docker daemon"]
 weekly = false
 notes = "phase-537 W13 follow-up — Install options' Working offline steps on the installed track: the download-only container, the pinned installer's --dry-run, and `nros setup --offline-dirs`. It fails up front until a probe runner can start containers."
 

@@ -212,25 +212,40 @@ architecture as the offline one, then carry four things across.
 
 ### 1. Carry the host packages
 
-apt downloads only what is not installed,
-so download them in a clean container of the same release. The ROS image
-already has the ROS 2 repository, so one command covers
-[Install](../../start/install.md)'s host packages and the ROS 2 ones:
+Download them in a plain container of the offline machine's Ubuntu release,
+with the ROS 2 apt repository added as
+[Install](../../start/install.md#install-ros-2-first) adds it. apt downloads
+only what it thinks is missing, so an empty package status tells it nothing
+is installed. It then carries Install's host packages, ROS 2, and everything
+they need:
 
 ```sh probe=310 track=installed variant=offline
 mkdir debs
-docker run --rm -v "$PWD/debs:/debs" ros:jazzy-ros-base bash -c '
-  apt-get update &&
-  apt-get install -y --download-only git curl ca-certificates build-essential \
+docker run --rm -v "$PWD/debs:/debs" ubuntu:24.04 bash -c '
+  set -e
+  apt-get update
+  apt-get install -y curl ca-certificates
+  curl -fL -o /tmp/ros2-apt-source.deb \
+    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/1.3.0/ros2-apt-source_1.3.0.$(. /etc/os-release && echo "$VERSION_CODENAME")_all.deb"
+  dpkg -i /tmp/ros2-apt-source.deb
+  apt-get update
+  : > /tmp/nothing-installed
+  apt-get install -y --download-only -o Dir::State::status=/tmp/nothing-installed \
+    git curl ca-certificates build-essential \
     cmake pkg-config python3 python3-dev zstd \
     python3-catkin-pkg python3-empy python3-lark python3-yaml \
-    ros-jazzy-rmw-zenoh-cpp &&
+    ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp
   cp /var/cache/apt/archives/*.deb /debs/'
 ```
 
-Use `ros:humble-ros-base` and `ros-humble-…` for Ubuntu 22.04. On the
-offline machine, after installing ROS 2 the same way, run
-`sudo apt install ./debs/*.deb`.
+For Humble, use `ubuntu:22.04` and `ros-humble-…`. For Jazzy on 2026-11-07,
+this downloaded 606 packages, 227 MB. On the offline machine,
+`sudo apt install ./debs/*.deb` installs them all, ROS 2 included.
+
+The container's release must match the offline machine's. apt takes each
+package's newest version on the day, and a carried package older than the
+offline machine's own copy would be a downgrade, so download after that
+machine's last update.
 
 ### 2. Mirror the release asset
 
