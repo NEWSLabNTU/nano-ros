@@ -301,12 +301,49 @@ as running nowhere, visibly.
   `third-party/nuttx/libc` was added to the file now (for `leaf-lockfiles`).
   W5 makes the lane's claims the one provisioning list.
 
-### W4 — Resources
+### W4 — Resources — IN PROGRESS
 
 The generated tool config (`writes:`, `cpu:`, `disk:`, `priority`), the fixed
 test groups, the disk preflight, the order-independence self-test.
 
+**Cache trim — DONE (in its pull request).** Decided (maintainer, 2026-11-07):
+keep caches that runs use, remove the ones they do not.
+
+- The leak's source: `scaffold-builds` scaffolds each variant at a fresh
+  `mktemp` path, and in the checkout's shared `corrosion-cargo` / `sizes-probe`
+  its image builds got a new key every run. Measured: 2.4-3.1 GB left behind
+  per variant per run, about 50 GB a gate run, with no speed-up from sharing
+  (50 s, then 47 s). [Issue 2318](../issues/2318-cmake-leaf-recompiles-host-tooling.md)
+  measures the duplication underneath. Each unit now keeps its caches in its
+  own scratch tree, which goes with it: 57-62 s cold, 0 MB left in the checkout,
+  across two runs. `NROS_KEEP_CACHES=1` restores the shared cache.
+- `scripts/build/trim-caches.py` evicts whole cargo target dirs in
+  `corrosion-cargo` and `sizes-probe`, least recently used first, to
+  `.config/cache-budgets.toml` (60 G and 40 G). It never evicts a unit used in
+  the last 12 h. "Used" is the newest atime/mtime of a FILE in the unit's
+  `.fingerprint`, which cargo reads on every build. A directory's atime is not
+  evidence, because listing it refreshes it: the first version's own scan made
+  every unit look used now, and the self-test catches that by mutation. Unit
+  boundaries come from `CACHEDIR.TAG`, with triples from `rustc --print
+  target-list` and not a pattern.
+- A blanket `gc-shared-cargo --prune` was measured and NOT used: template-copy-out
+  deletes its copies after each run, so the stores its copies reuse read as
+  unreachable between runs, and pruning them makes every run start cold.
+- It runs at the end of every `just ci gate`, pass or fail, and cannot change
+  the verdict. Fast gate `cache-trim` runs its report and self-test.
+- On this host its first run freed 42.5 G (22 + 30 target dirs from earlier
+  days). Both areas were then at budget, apart from what the last 12 h used.
+- The self-hosted runner is NOT touched: `runner-sweep.sh` `_evict` budgets the
+  same directories there, and #3239 caps its host target dirs. Agreed with
+  nros 133 p466: two evictors over the same dirs would fight.
+
 ### W5 — Wrapper and lanes
+
+- The post-step also refuses UNTRACKED files a gate left inside the source tree
+  (outside `build/`, `target/`, `tmp/` and other ignored output roots). The old
+  runner checks tracked files only, and only on the fast lane. Found while
+  building W4: a scaffold unit with an empty `NROS_SIZES_PROBE_TARGET_DIR`
+  wrote 1.1 G of probe cache into `packages/api/nros-c/`, and no gate saw it.
 
 - The lane's `claims` become the one provisioning list: `setup-worktree`, the
   wrapper's preflight and CI's provisioning steps read them, so a claimed

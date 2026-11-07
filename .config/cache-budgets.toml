@@ -1,0 +1,14 @@
+# Budgets for `scripts/build/trim-caches.py` (phase-543 W4): the worktree caches
+# made of many cargo target directories, kept to a size by evicting the least
+# recently used target dir first. A dev worktree and `just ci gate` only; the
+# self-hosted runner budgets the same directories in `runner-sweep.sh`.
+#
+# A budget is about 1.5x what one gate run reads, measured on 2026-11-07 after
+# scaffold-builds stopped writing here: a warm run fits with room for a second
+# configuration.
+
+[area.corrosion-cargo]
+budget_gib = 60
+
+[area.sizes-probe]
+budget_gib = 40

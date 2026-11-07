@@ -84,7 +84,17 @@ gate:
     # its POSITION is the point (issue 1320) — a stale CLI fails here, first,
     # instead of as a confusing CMake error inside the fast fan-out.
     steps=(check::cli-fresh check::launch-resolve-fresh check::fast check::pristine-checkout check::api-parity check::probe-workspace-caps check::build test-unit test-lane-contracts check::out-of-lane-deselected)
-    if bash scripts/ci/run-lane-steps.sh gate "${steps[@]}"; then
+    gate_rc=0
+    bash scripts/ci/run-lane-steps.sh gate "${steps[@]}" || gate_rc=$?
+    # phase-543 W4 — keep this worktree's multi-target build caches to their
+    # budgets (`.config/cache-budgets.toml`), least recently used first, after
+    # every run: five runs in one worktree once grew them by 160 G. A run's own
+    # cache is never evicted (used in the last 12 h). The trim cannot change
+    # the verdict: a failure here is reported, and the gate's status stands.
+    # `NROS_KEEP_CACHES=1` reports instead.
+    python3 scripts/build/trim-caches.py --apply \
+        || echo "ci gate: cache trim FAILED (see above); the gate's verdict is unaffected" >&2
+    if [ "$gate_rc" -eq 0 ]; then
         echo "CI gate passed (compile + unit; no fixtures were built or needed)."
         exit 0
     fi

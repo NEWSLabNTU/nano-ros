@@ -331,3 +331,11 @@ nextest-gates *args:
 [private]
 gate-needs:
     @python3 scripts/check/check-gate-needs.py
+
+# phase-543 W4 — the worktree cache trim (`scripts/build/trim-caches.py`,
+# run at the end of `just ci gate`). Report only; the script runs its own
+# negative controls first (unit boundaries, least-recently-used order, the keep
+# window, and that its own scan does not refresh the access times it reads).
+[private]
+cache-trim:
+    @python3 scripts/build/trim-caches.py
