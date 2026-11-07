@@ -188,12 +188,10 @@ fi
 # provisions — imports `rosidl_adapter.cli`, and `cli` imports catkin_pkg, yaml
 # and em (issues 1457, 1482).
 #
-# THE RUNNER DOES NOT NEED A ROS INSTALL FOR THIS. Issue 0368 / phase-327
-# created the `[python.*]` layer precisely so the cyclone msg->IDL road works
-# without one, and the runner keeps it that way: AMENT_PREFIX_PATH is never set
-# here, so no ament package becomes discoverable to a build. The ONE ROS package
-# the image does carry is the zenoh router (the ROS layer below, issue 1695) --
-# a binary, not a message source.
+# THE CYCLONE MSG->IDL ROAD DOES NOT NEED A ROS INSTALL. Issue 0368 / phase-327
+# created the `[python.*]` layer precisely so it works without one. The message
+# PACKAGES are a different matter: they come from the ROS install (the ROS layer
+# below), and AMENT_PREFIX_PATH points at it (issue 2344).
 #
 # WHY THE IMAGE AND NOT THE HOST. The container runs `--cap-drop ALL
 # --security-opt no-new-privileges` as a non-root user, so nothing inside it can
@@ -244,8 +242,17 @@ fi
 # phase-489 W2 added `ros-interface-packages` (std_msgs, geometry_msgs,
 # sensor_msgs, example_interfaces) so `check-cli-tests` can run here: its
 # rosidl parity tests run `--ignored` once `/opt/ros/$ROS_DISTRO/share` exists
-# and FAIL on an absent package. The paragraphs below describe the router; they
-# still hold, and AMENT_PREFIX_PATH is still not set.
+# and FAIL on an absent package. The paragraphs below describe the router.
+#
+# Issue 2344: since issue 2278 a cmake configure takes a message package only
+# from the ament install, never from nano-ros's bundled copy ("the msgs must
+# respect those from ROS; bundled msgs only work around the internal dep
+# issues", user ruling 2026-11-07). So the image installs EVERY interface
+# package a build here names (the whole `[prereq.ros-interface-packages]`
+# list, which since 2278 is every package the CLI bundles), and sets
+# AMENT_PREFIX_PATH to the ROS prefix so they are discoverable. A job's
+# `source ./activate.sh` sources the same prefix's setup script; the ENV makes
+# a shell that does not (a `docker exec`, a step that skips it) agree with it.
 #
 #
 # Issue 1695. Tier 2 holds zenoh cells, and since issue 1670 a lane that runs
@@ -267,9 +274,8 @@ fi
 # ROS_DISTRO goes into the image ENV and is the whole of the environment this
 # layer adds: it is the third step of `nros_zenohd_bin` (scripts/dev/zenohd.sh),
 # the resolver the lane gate, the harness and `runner-doctor.sh nros-ros2`
-# share. AMENT_PREFIX_PATH is deliberately NOT set -- that would make the ROS
-# prefix's message packages discoverable to every build on this runner, which
-# is a different decision from "has a router".
+# share. AMENT_PREFIX_PATH is the other half (issue 2344, above): the ROS
+# prefix's message packages are what every build on this runner resolves.
 #
 # THE REPOSITORY GOES IN BEFORE THE PYTHON LAYER, the package after it -- and
 # that order was MEASURED, not chosen. The python layer measures the apt
@@ -366,6 +372,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         @ROS_PACKAGES@ \
     && rm -rf /var/lib/apt/lists/*
 ENV ROS_DISTRO=@ROS_DISTRO@
+ENV AMENT_PREFIX_PATH=/opt/ros/@ROS_DISTRO@
 COPY zenohd.sh /opt/nros-ros/zenohd.sh
 RUN bash -c '. /opt/nros-ros/zenohd.sh && nros_zenohd_bin \
       && rc=0 \
