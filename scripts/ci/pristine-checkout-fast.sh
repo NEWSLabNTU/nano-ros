@@ -122,11 +122,32 @@ fi
 # would read this job's event payload against a clone that cannot resolve it),
 # and no strict-skip knob — a SKIP is the documented outcome here, a FAIL is the
 # defect.
+# The pin baseline is resolved HERE, in the source checkout, and handed to the
+# clone as a commit. A `--local --shared` clone's `origin` is this repository,
+# so its `origin/main` is this repository's LOCAL `main`, which in a primary
+# checkout nobody pulls can be hundreds of commits old: measured 774 behind on
+# one host, so every pin moved since read "moved, NOT VERIFIED" and, once a
+# skip became a red, `check::pristine-checkout` failed in every worktree of it.
+# The caller's own baseline wins; else this checkout's `origin/main`. The
+# objects are shared, so the clone resolves the commit. Neither resolvable:
+# unset, and the clone's gate says so as it always did.
+pin_baseline=""
+for cand in "${NROS_SUBMODULE_PIN_BASELINE:-}" origin/main; do
+    [ -n "$cand" ] || continue
+    if pin_baseline="$(git -C "$repo_root" rev-parse --verify -q "${cand}^{commit}")"; then
+        break
+    fi
+    pin_baseline=""
+done
+
 run_in_clone() {
     (
         cd "$clone" || exit 2
         unset NROS_CHECK_SKIP_STRICT NROS_SUBMODULE_PIN_BASELINE \
             GITHUB_ACTIONS CI GITHUB_EVENT_NAME GITHUB_EVENT_PATH
+        if [ -n "$pin_baseline" ]; then
+            export NROS_SUBMODULE_PIN_BASELINE="$pin_baseline"
+        fi
         # shellcheck disable=SC1091
         NROS_QUIET_ACTIVATE=1 source ./activate.sh >/dev/null 2>&1
         export NROS_GATE_SCOPE=pristine
