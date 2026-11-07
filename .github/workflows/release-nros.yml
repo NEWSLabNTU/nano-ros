@@ -86,6 +86,11 @@
 #                                     an index in, so `nros setup <board>` fails
 #                                     outright without this (phase-431 W5,
 #                                     `setup::shipped_index`)
+#   share/nros/sbom.cdx.json          the CycloneDX SBOM: every crate compiled
+#                                     into the binaries and archives above
+#                                     (issue 2329). Also published beside the
+#                                     asset, so a review reads it without
+#                                     unpacking anything
 #   <asset>.sha256                    `install.sh` REFUSES an asset it cannot
 #                                     verify, so a release without this is
 #                                     un-installable by design
@@ -121,6 +126,8 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+      # issue 2325 — read the board-verifying lanes' last runs (record-lane-runs.py).
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -268,6 +275,8 @@ jobs:
           fi
 
       - name: Stage the prefix
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # `share/nros/manifest.toml` is already here — the recording step
@@ -309,6 +318,19 @@ jobs:
           # knew would be checked nowhere, and could not be run by a person
           # asking "what does the asset carry?".
           sh scripts/stage-sdk-root.sh "$stage"
+          # issue 2325 — when each board-verifying lane last ran and what it
+          # said, so an installed `nros board show` / `nros doctor --report`
+          # answers "when was it last run" with no network. Read by
+          # `board_support::LaneRuns` at the SDK root's RUNS_FILE.
+          # A release always has the token; the installed-path probe, which runs
+          # these steps outside GitHub (scripts/probe/extract-workflow-steps.py),
+          # has neither the token nor `gh`, and its asset says "not recorded".
+          if [ -n "${GH_TOKEN:-}" ]; then
+              python3 scripts/release/record-lane-runs.py --repo "$GITHUB_REPOSITORY" \
+                  --out "$stage/share/nano-ros/packages/boards/board-support-runs.json"
+          else
+              echo "note: no GH_TOKEN — the lanes' last runs are not recorded in this asset"
+          fi
           # phase-527 W6 (RFC-0119 D4) — the release underlay. Every package in
           # the SDK root that announces a `runner` or `command` becomes a
           # PREBUILT package, `share/nros/packages/<package>/` (`package.xml`,
@@ -334,6 +356,25 @@ jobs:
           test -f "$stage/share/nano-ros/prebuilt/px4-posix/lib/libnros_platform_posix.a"
           test -x "$stage/share/nros/packages/nros_runner_qemu/bin/nros-runner-qemu"
           test -x "$stage/share/nros/packages/nros_runner_native/bin/nros-runner-native"
+          # issue 2329 — the SBOM, over every cargo build above that ships a
+          # binary or an archive: the same packages, the same host target, and
+          # for the PX4 archives the module's own feature set, read from its one
+          # spelling exactly as stage-px4-posix-archives.sh reads it. A new
+          # shipped build needs a root here too.
+          px4_features="$(sed -n 's/^set(_NROS_PX4_UORB_FEATURES "\([^"]*\)")$/\1/p' \
+              integrations/px4/NanoRosPx4Module.cmake)"
+          [ -n "$px4_features" ] || { echo "::error::could not read _NROS_PX4_UORB_FEATURES" >&2; exit 1; }
+          python3 scripts/release/gen-sbom.py \
+              --version '${{ inputs.version }}' --commit "$(git rev-parse HEAD)" \
+              --out "$stage/share/nros/sbom.cdx.json" \
+              packages/cli/Cargo.toml:nros-cli \
+              packages/cli/nros-launch-resolve/Cargo.toml:nros-launch-resolve \
+              Cargo.toml:nros-build-profile \
+              'packages/runners/Cargo.toml:*' \
+              packages/rmw/zenoh/nros_zenoh_tools/Cargo.toml:nros_zenoh_tools \
+              packages/rmw/xrce/nros_px4_tools/Cargo.toml:nros_px4_tools \
+              "Cargo.toml:nros-cpp:$px4_features"
+          cp "$stage/share/nros/sbom.cdx.json" "$RUNNER_TEMP/nros-linux-x86_64.cdx.json"
           # Prefix-rooted, the mirror shape every other dist in the index uses,
           # so `sdk_store::execute`'s default unpack lands it unchanged.
           tar --zstd -cf "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" -C "$stage" bin share
@@ -417,6 +458,7 @@ jobs:
           path: |
             ${{ runner.temp }}/nros-linux-x86_64.tar.zst
             ${{ runner.temp }}/nros-linux-x86_64.tar.zst.sha256
+            ${{ runner.temp }}/nros-linux-x86_64.cdx.json
 
       - name: Publish the release
         if: ${{ inputs.publish }}
@@ -455,4 +497,5 @@ jobs:
               --title "nros ${{ inputs.version }}" \
               --notes-file "$RUNNER_TEMP/notes.md" \
               "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" \
-              "$RUNNER_TEMP/nros-linux-x86_64.tar.zst.sha256"
+              "$RUNNER_TEMP/nros-linux-x86_64.tar.zst.sha256" \
+              "$RUNNER_TEMP/nros-linux-x86_64.cdx.json"

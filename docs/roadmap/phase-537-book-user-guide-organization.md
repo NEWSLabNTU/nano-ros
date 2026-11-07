@@ -450,7 +450,7 @@ these stops on pages this phase owns. They land as one follow-up after #3183
 - [2319](../issues/archived/2319-first-project-scaffold-before-ros-source.md): First Project scaffolds
   before it sources ROS 2, so a Jazzy host gets a Humble image. Source ROS 2
   ahead of "Scaffold the project" in Tutorial 1 and every starter.
-- [2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md): the book half only. Tutorial 1 already states
+- [2320](../issues/archived/2320-jazzy-echo-qemu-talker-type-hash-invalid.md): the book half only. Tutorial 1 already states
   the talker's publisher is reliable on #3183; the interop half is
   phase-523's.
 - [2323](../issues/archived/2323-offline-deb-recipe-omits-ros-base.md): Working offline's `.deb` recipe runs in

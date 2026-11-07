@@ -19,3 +19,12 @@ found: 2026-11-07
 ## Next
 
 Report per image which C components and features were linked, for example in `nros doctor --report` against a built image. Move the forks under the organisation.
+
+## Progress (2026-11-07)
+
+- Per image: `nros doctor --report` now prints the lock's `[source.*]` table,
+  the vendored trees a build actually READ, with commit and origin. That is
+  the recorded list of C third-party code an image compiled, instead of the
+  board's provisioning list. Issue 2328's change.
+- Left: the zenoh-pico fork's home, `jerry73204/zenoh-pico` on a personal
+  account. Moving the forks under the organisation is a maintainer decision.
