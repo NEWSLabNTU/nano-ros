@@ -15,7 +15,7 @@ found: 2026-11-07
 A scaffolded Rust package prints:
 
 ```text
-nros sync    # message crates + build/<image>/nros-cargo.toml
+nros sync    # message crates + build/<image>/nros-cargo.toml   (should read: nros configure)
 ```
 
 `nros sync` became an old spelling of `nros configure` on 2026-11-04.
@@ -27,7 +27,7 @@ main 50b443bd3f) still pushes the old verb, and its doc comment (line 422)
 names it. `just check cli-old-spellings` does not scan the CLI's own
 printed strings, so the gate missed it. Other comments and help strings in
 `scaffold.rs` (lines 333, 551, 660) and `provider_scan.rs:1385` (a printed
-remedy, "re-run `nros sync`") carry the same old verb.
+remedy, "re-run `nros sync`", should be `nros configure`) carry the same old verb.
 
 ## Acceptance
 
