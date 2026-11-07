@@ -73,13 +73,13 @@ zephyr c west multi generated generated
 zephyr c west single generated generated
 zephyr cpp west multi authored generated
 zephyr cpp west multi generated generated
-zephyr cpp west single generated generated
 zephyr mixed west multi authored generated
 zephyr rust west multi authored generated
 zephyr rust west multi generated generated
 zephyr rust west single generated generated
-zephyr-cortex-m c west single generated generated
+zephyr-cortex-m c west multi generated generated
 zephyr-cortex-m c west single generated manual
+zephyr-cortex-m cpp west multi generated generated
 zephyr-cortex-m cpp west single generated generated
-zephyr-cortex-m rust west single generated generated
-zephyr-nucleo-f767zi c west single generated generated
+zephyr-cortex-m rust west multi generated generated
+zephyr-nucleo-f767zi c west multi generated generated

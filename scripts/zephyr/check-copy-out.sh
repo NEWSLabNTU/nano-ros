@@ -150,6 +150,23 @@ export PATH="$(nros dev sdk path make)/bin:$(nros dev sdk path ninja)/bin:$PATH"
 
 echo "[copy-out] building (west via venv python) ..."
 set +e
+if [ -f "$copied/.colcon_workspace" ]; then
+    # phase-531 W6 — a migrated witness is a single-node WORKSPACE, so the copy
+    # is built the way a user builds one: `nros build <bringup>:<image>` from
+    # it, which generates the west application. The image declares its board.
+    bringups=("$copied"/src/*_bringup)
+    case "$BOARD" in
+    native_sim*) image="zephyr_$RMW" ;;
+    mps2*) image="mps2_$RMW" ;;
+    *) echo "FAIL: no image of examples/zephyr/$EXAMPLE for board $BOARD"; exit 1 ;;
+    esac
+    (
+        cd "$workspace"
+        PATH="$(realpath "$venvbin"):$PATH" "$codegen_tool" build \
+            "$(basename "${bringups[0]}"):$image" --workspace "$copied" -- -d "$bd"
+    )
+    rc=$?
+else
 (
     cd "$workspace"
     "$(realpath "$venvbin")/python" -m west build \
@@ -161,6 +178,7 @@ set +e
         -DMAKE="$make_bin"
 )
 rc=$?
+fi
 set -e
 
 elf="$bd/zephyr/zephyr.elf"

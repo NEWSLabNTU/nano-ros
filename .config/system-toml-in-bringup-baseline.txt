@@ -97,10 +97,7 @@ examples/threadx-linux/c/talker/system.toml
 examples/threadx-linux/cpp/talker/system.toml
 examples/threadx-linux/rust/listener/system.toml
 examples/threadx-linux/rust/talker/system.toml
-examples/zephyr/c/talker/system.toml
-examples/zephyr/cpp/talker/system.toml
 examples/zephyr/rust/action-server/system.toml
-examples/zephyr/rust/talker/system.toml
 packages/testing/nros-bench/large-msg-baremetal/system.toml
 packages/testing/nros-bench/loan-copy-count/system.toml
 packages/testing/nros-bench/wake-latency-cortex-m3/system.toml
@@ -116,7 +113,6 @@ packages/testing/nros-tests/bins/constrained-link-probe/system.toml
 packages/testing/nros-tests/bins/contract-monitor-cpp/system.toml
 packages/testing/nros-tests/bins/entry-poc/system.toml
 packages/testing/nros-tests/bins/graph-probe/system.toml
-packages/testing/nros-tests/bins/idle-wake-zephyr-mps2/system.toml
 packages/testing/nros-tests/bins/image-env-probe-c/system.toml
 packages/testing/nros-tests/bins/in-place-subscriptions/system.toml
 packages/testing/nros-tests/bins/int32-sink/system.toml

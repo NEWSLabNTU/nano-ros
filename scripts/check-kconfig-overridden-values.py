@@ -44,6 +44,7 @@ import os
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
@@ -132,6 +133,98 @@ def fixture_rows():
     return rows
 
 
+# The west platforms a `[[workspace_fixture]]` row builds through `nros build`
+# — `scripts/build/fixtures-manifest.py`'s `ZEPHYR_WEST_PLATFORMS`.
+ZEPHYR_WEST_PLATFORMS = ("zephyr", "zephyr-cortex-m", "zephyr-nucleo-f767zi")
+DTS_EXTENSIONS = (".overlay", ".dts", ".dtsi")
+
+
+def _load_toml(path):
+    try:
+        import tomllib  # Python 3.11+
+    except ModuleNotFoundError:
+        import tomli as tomllib
+    with open(path, "rb") as fh:
+        return tomllib.load(fh)
+
+
+def _image(system, image_id):
+    """`[image.<id>]` over the `[image]` base table, the specific block winning
+    per field (`ImageBlock::with_base`)."""
+    images = system.get("image") or {}
+    base = {k: v for k, v in images.items() if not isinstance(v, dict)}
+    spec = images.get(image_id)
+    if not isinstance(spec, dict):
+        return None
+    return {**base, **spec}
+
+
+def image_conf_files(bringup, image, west_board, board_dir):
+    """The fragments `nros build` merges for one west image, in merge order.
+
+    The same composition `cmd/build.rs` hands Zephyr, minus the generated
+    image rendering (merged last, and owned by nobody to edit):
+
+    1. the bringup's per-board `prj.conf` — `<bringup>/boards/<west board>/`
+       is `APPLICATION_CONFIG_DIR` (`builder::zephyr::resolve_in`), so its
+       `prj.conf` is Zephyr's CONF_FILE and merges before every extra;
+    2. the board package's own `prj.conf` and `boards/<flat>.conf`
+       (`board_projection::board_files`), ahead of the image's fragments;
+    3. the image's `os_config` fragments, each looked up in the per-board
+       directory, then the bringup (`resolve_fragment`).
+    """
+    config_dir = os.path.join(bringup, "boards", west_board.replace("/", "_"))
+    files = []
+    base = os.path.join(config_dir, "prj.conf")
+    if not os.path.isdir(config_dir):
+        base = os.path.join(bringup, "prj.conf")
+    files.append(base)
+    if board_dir:
+        flat = re.sub(r"[/@.]", "_", west_board)
+        files.append(os.path.join(board_dir, "prj.conf"))
+        files.append(os.path.join(board_dir, "boards", f"{flat}.conf"))
+    for name in image.get("os_config") or []:
+        if name.endswith(".toml") or name.endswith(DTS_EXTENSIONS):
+            continue
+        hit = next((c for c in (os.path.join(config_dir, name), os.path.join(bringup, name))
+                    if os.path.isfile(c)), os.path.join(bringup, name))
+        files.append(os.path.normpath(hit))
+    return files
+
+
+def workspace_rows(manifest=None, root=ROOT, index=None):
+    """[(build_name, bringup, [abs conf paths])] for every west
+    `[[workspace_fixture]]` row — the rows `fixture_rows` cannot see.
+
+    The leaf records emit `[[fixture]]` rows only, so when phase-531 W6 moved
+    the Zephyr talkers to workspace rows the boot-report image's
+    `CONFIG_NET_LOG=n` override left this gate's reach (issue 0196's shape).
+    """
+    from board_registry import descriptor_index
+
+    manifest = manifest or os.path.join(root, "examples", "fixtures.toml")
+    index = index if index is not None else descriptor_index(Path(root))
+    rows = []
+    for row in _load_toml(manifest).get("workspace_fixture", []):
+        if row.get("platform") not in ZEPHYR_WEST_PLATFORMS:
+            continue
+        image_id, west_board = row.get("image"), row.get("board")
+        if not image_id or not west_board:
+            continue
+        bringup = os.path.join(root, row["dir"], row.get("bringup", ""))
+        system_toml = os.path.join(bringup, "system.toml")
+        if not os.path.isfile(system_toml):
+            continue
+        image = _image(_load_toml(system_toml), image_id)
+        if image is None:
+            continue
+        key = index["by_name"].get(image.get("board", ""))
+        board_dir = os.path.join(root, os.path.dirname(key[0])) if key else None
+        rows.append((row.get("west_build_name") or row["id"], bringup,
+                     image_conf_files(bringup, image, west_board, board_dir)))
+    return rows
+
+
 def load_baseline():
     if not os.path.exists(BASELINE):
         return None
@@ -176,7 +269,7 @@ def main():
         return selftest(verbose=True)
     selftest()
 
-    current = overrides(fixture_rows())
+    current = overrides(fixture_rows() + workspace_rows())
 
     if args.update:
         os.makedirs(os.path.dirname(BASELINE), exist_ok=True)
@@ -290,6 +383,56 @@ def selftest(verbose=False):
     chk("a new override fails", verdict(one, [])[0] == one)
     chk("a baseline entry the tree no longer has fails, naming the entry",
         verdict([], one)[1] != [] and any("CONFIG_A" in ln for ln in verdict([], one)[1]))
+
+    # The workspace road (phase-531 W6): the composition `workspace_rows`
+    # feeds the same finder. Built on disk, because the lookups are file
+    # existence — the per-board directory decides where CONF_FILE comes from.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        bringup = os.path.join(tmp, "bringup")
+        cfg = os.path.join(bringup, "boards", "mps2_an385")
+        board = os.path.join(tmp, "board")
+        os.makedirs(cfg)
+        os.makedirs(os.path.join(board, "boards"))
+        for path, text in ((os.path.join(cfg, "prj.conf"), "CONFIG_NET_LOG=y\n"),
+                           (os.path.join(bringup, "prj-zenoh.conf"), "CONFIG_X=1\n"),
+                           (os.path.join(board, "prj.conf"), "CONFIG_X=2\n"),
+                           (os.path.join(tmp, "quiet.conf"), "CONFIG_NET_LOG=n\n")):
+            with open(path, "w", encoding="utf8") as fh:
+                fh.write(text)
+        image = {"os_config": ["prj-zenoh.conf", "../quiet.conf", "x.overlay", "k.toml"]}
+        files = image_conf_files(bringup, image, "mps2/an385", board)
+        chk("a workspace image merges per-board prj.conf, board package, then os_config",
+            [rel(f, tmp) for f in files] == [
+                "bringup/boards/mps2_an385/prj.conf", "board/prj.conf",
+                "board/boards/mps2_an385.conf", "bringup/prj-zenoh.conf", "quiet.conf"])
+        found = {(d["symbol"], d["dead_in"], d["beaten_by"])
+                 for d in overrides([("ws", bringup, files)], root=tmp)}
+        chk("an image fragment overriding the per-board prj.conf is found",
+            ("CONFIG_NET_LOG", "bringup/boards/mps2_an385/prj.conf", "quiet.conf") in found)
+        chk("an image fragment overriding the BOARD package is found, the board losing",
+            ("CONFIG_X", "board/prj.conf", "bringup/prj-zenoh.conf") in found)
+        chk("devicetree and .toml entries are not Kconfig fragments",
+            not any(f.endswith((".overlay", ".toml")) for f in files))
+
+        # The reach itself: a manifest row reaches the composition, and a
+        # non-west or image-less row does not.
+        with open(os.path.join(bringup, "system.toml"), "w", encoding="utf8") as fh:
+            fh.write('[image]\nrmw = "zenoh"\n[image.mps2]\nboard = "b"\n'
+                     'os_config = ["prj-zenoh.conf", "../quiet.conf"]\n')
+        manifest = os.path.join(tmp, "fixtures.toml")
+        with open(manifest, "w", encoding="utf8") as fh:
+            fh.write('[[workspace_fixture]]\nid = "w"\nplatform = "zephyr-cortex-m"\n'
+                     'dir = "."\nbringup = "bringup"\nimage = "mps2"\nboard = "mps2/an385"\n'
+                     'west_build_name = "build-w"\n'
+                     '[[workspace_fixture]]\nid = "n"\nplatform = "native"\n'
+                     'dir = "."\nbringup = "bringup"\nimage = "mps2"\nboard = "mps2/an385"\n')
+        idx = {"by_name": {"b": ("board/nros-board.toml", 0)}}
+        ws = workspace_rows(manifest, root=tmp, index=idx)
+        chk("a west workspace row is reached, a native one is not",
+            [r[0] for r in ws] == ["build-w"])
+        chk("the reached row carries the image's composition",
+            ws and [rel(f, tmp) for f in ws[0][2]] == [rel(f, tmp) for f in files])
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")

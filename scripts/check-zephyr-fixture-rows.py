@@ -97,6 +97,15 @@ def manifest_rows():
         role = row.get("west_role") or Path(d).name
         rmw = row.get("rmw") or ("default" if role == "logging-smoke" else "zenoh")
         out.add((row["board"], row["lang"], role, rmw))
+    # phase-531 W6 -- a single-node witness migrated into a workspace keeps its
+    # leaf's `west_role` (`talker`, `idle-wake`, ...) on a
+    # `[[workspace_fixture]]` row, and the emitter builds it as that role. Only
+    # the `entry` rows stay out of scope, as in `emitted_leaves`.
+    for row in manifest.get("workspace_fixture", []):
+        role = row.get("west_role")
+        if not role or role == "entry":
+            continue
+        out.add((row["board"], row["lang"], role, row.get("rmw") or "zenoh"))
     return out
 
 

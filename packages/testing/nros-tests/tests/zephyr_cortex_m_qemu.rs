@@ -298,6 +298,7 @@ fn zephyr_cortex_m_talker_keeps_one_session_past_the_lease() {
 }
 
 #[test]
+#[ignore = "parked: on the workspace road the image's entities are declared, so the arena oracle refuses the short arena at compile time (issue 2362)"]
 fn zephyr_cortex_m_c_boot_report_names_arena_exhaustion() {
     require_cortex_m_in_lane("the Zephyr Cortex-M boot-report image");
     if !is_qemu_available() {

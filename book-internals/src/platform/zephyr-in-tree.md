@@ -121,32 +121,11 @@ source zephyr-workspace/env.sh
 
 cd zephyr-workspace
 
-# Rust — `nros configure` first, once per checkout location. It writes the
-# generated message bindings and the [patch.crates-io] table the leaf's
-# (GITIGNORED, never committed — phase-445 W6) .cargo/config.toml
-# includes. Zephyr is the one lane that still needs that file rather than
-# build/<image>/nros-cargo.toml: west drives cargo through
-# zephyr-lang-rust's rust_cargo_application, which passes no --config
-# (issue 1288). This applies to cargo under WEST too: west
-# drives the same leaf, so without sync the build fails while PARSING the
-# manifest, with an error that never names sync (issue 0694).
-#
-# The sync also runs the source-metadata probe over the leaf's `node/`
-# package, a host build of the component. That writes `node/metadata/*.json`,
-# which the configure composes into the image's pool sizes (issue 1662).
-# Without it the pools fall back to crate defaults, and the XRCE talker's
-# session no longer fits its heap (issue 2133). Do not pass `--no-metadata`.
-nros configure ../examples/zephyr/rust/talker
-
-# Build Zephyr talker (Rust + zenoh, default backend).
-#
-# `../examples/...` rather than `<name>/examples/...`: the workspace's link
-# back to the checkout is named after YOUR checkout directory
-# (`scripts/zephyr/setup.sh` uses `basename "$NROS_REPO_DIR"`), so it reads
-# `nano-ros/` for a plain `git clone` and `nros/` only if you renamed the
-# directory. For the in-tree workspace this page sets up, `..` IS the
-# checkout and needs no name at all.
-west build -b native_sim/native/64 ../examples/zephyr/rust/talker
+# Build the Zephyr talker (Rust + zenoh, default backend). It is a
+# single-node workspace (phase-531 W6): `nros build` resolves the bringup's
+# image, syncs the message crates and generates the west application.
+(cd ../examples/zephyr/rust/talker && \
+    nros build zephyr_talker_node_bringup:zephyr_zenoh -- -d "$OLDPWD/build")
 
 # Run (no sudo needed)
 ./build/zephyr/zephyr.exe
@@ -157,11 +136,11 @@ west build -b native_sim/native/64 ../examples/zephyr/rust/talker
 How an image's `system.toml` becomes the Zephyr build's Kconfig — and why a
 `prj*.conf` never carries a `CONFIG_NROS_*` line — is user material:
 [Zephyr native_sim § Configure the platform](../../guide/platforms/zephyr-native-sim.html#configure-the-platform).
-For the in-tree examples, each leaf's `system.toml` declares one image per
-RMW; pick one with `-DNROS_IMAGE=<id>`:
+For the in-tree talkers, the bringup's `system.toml` declares one image per
+RMW; pick one by naming it:
 
 ```bash
-west build -b native_sim/native/64 ../examples/zephyr/c/talker -- -DNROS_IMAGE=zephyr_xrce
+(cd ../examples/zephyr/c/talker && nros build nros_zephyr_talker_c_bringup:zephyr_xrce -- -d "$OLDPWD/build")
 ```
 
 ## API Selection

@@ -612,6 +612,55 @@ from before W6.
   - It unblocks the three configured rows W6 moves: `link-tls` on the Rust
     talker, `zenoh-reply-slots` on `bins/action-server-concurrent`, and
     `unstable-zenoh-api` on `bins/message-info-observer`.
+- **Batch 8, Zephyr (in progress).** `examples/zephyr/{c,cpp,rust}/talker`
+  and `packages/testing/nros-tests/bins/idle-wake-zephyr-mps2` are single-node
+  workspaces; their 17 `[[fixture]]` rows (c 6, cpp 4, rust 5, idle-wake 2)
+  are `[[workspace_fixture]]` rows on a bringup image, each keeping its
+  coordinate, `west_role`, build-dir name and leaf id. Measured: `coords`
+  515 lines before and after with an identical coordinate multiset, and
+  `west-leaves` 98 records before and after whose identity fields (board,
+  lang, role, build dir, id, isolation, coordinate) are unchanged; only the
+  conf list and image columns moved to `ws_dir` / `nros_image`.
+  - The mps2/an385 rows build their own images (`mps2_zenoh`,
+    `mps2_boot_report`, `mps2_serial`; the idle-wake images name the board
+    package). A workspace image merges its board package's Kconfig BEFORE its
+    `os_config`, where the standalone leaf merged the board file last. The
+    talkers' `prj-zenoh.conf` disagreed with the mps2 board on 5 symbols
+    (`HEAP_MEM_POOL_SIZE` and the four NET_PKT/NET_BUF counts;
+    `MAIN_STACK_SIZE` is the module's per-image default since issue 2365),
+    so on this road it would have overridden the board's measured
+    budget. Those values are native_sim's, so they moved to
+    `prj-zenoh-native-sim.conf`, which only the native_sim image names; the
+    board's budget wins on mps2 as it did before. Listing the board file last
+    was the other option and was not taken: it is a file of another package,
+    reachable only by a repo-relative path, and it would restate the board's
+    own merge.
+  - `check-kconfig-overridden-values` reached only the `[[fixture]]` rows'
+    `conf_files`, so the move took four overrides out of its sight (the
+    boot-report overlay's `NET_LOG`/`LOG`/`EARLY_CONSOLE`, the serial
+    image's `NETWORKING`). It now also composes every west
+    `[[workspace_fixture]]` row's fragments in `nros build`'s merge order.
+    Its baseline went from 0 to 6: the four are back, and two pre-existing
+    workspace overrides (the features C++ image's `RUST=n`, the Nucleo
+    board's `NETWORKING=n`) are recorded for the first time.
+  - The C++ leaf's vendored `msg/String.msg` (unused since phase-277; the
+    code publishes `std_msgs/String`) made its node package an interface
+    package to the generated entry, which then wanted a Cargo crate there.
+    Deleted.
+  - **Parked: the boot-report row** ([issue 2362](../issues/2362-boot-report-cell-refused-by-arena-oracle-on-workspace-road.md)).
+    On this road the image's entities are declared, so phase-412's
+    compile-time arena oracle refuses the 32 B arena the cell needs. The
+    row builds with a derived arena and its test SKIPS naming the issue.
+    **W6 acceptance (empty W2 allowlists) is blocked on that decision.**
+  - The Nucleo-F767ZI row is migrated but not verified on this host: the
+    Zephyr workspace has no `hal_stm32`, which is deliberately outside the
+    west allowlist.
+  - Shared edits: `fixtures-manifest.py` reads Nucleo-F767ZI workspace rows
+    as west rows (`ZEPHYR_WEST_PLATFORMS`) and `west-overrides` reads
+    workspace rows; `check-zephyr-fixture-rows.py` reads a workspace row's
+    non-entry `west_role`; `zephyr/module.yml` drops the three talker
+    samples; `just zephyr build-one` and `check-copy-out.sh` build a
+    workspace witness through `nros build`.
 
 ### W7 — Retirement
 
