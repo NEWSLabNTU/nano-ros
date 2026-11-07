@@ -53,6 +53,12 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
+#   2359 — filed in #3297 (phase-548 W7), cited by the WIP fix branch
+#         issue-2359-rust-serial-spin. REMOVE THESE ROWS when #3297 merges.
+#
+docs/issues/2360-zephyr-rust-registration-stack-frames.md:2359
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
+just/check/platform.just:2359
 scripts/build/rustdoc-set.sh:1110
+scripts/check-zephyr-rust-main-stack.py:2359
