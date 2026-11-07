@@ -284,7 +284,7 @@ QEMU itself exits with the code (156 for the no-router return). `nros run`
 reports 1, because a runner's exit is the 0/1/2 contract
 (`nros_extension::exit`). The status is on the console in both cases.
 
-### W5 — `nros setup` outside a checkout reads the current index
+### W5 — `nros setup` outside a checkout reads the current index — DONE
 
 **Code area:** `nros-cli-core` `cmd/setup.rs` (`resolve_index`).
 
@@ -301,6 +301,8 @@ reports 1, because a runner's exit is the 0/1/2 contract
 
 **Acceptance:** a test that seeds a stale fetched index and asserts that
 `nros setup <board>` resolves a board present only in the current one.
+
+**Done (2026-11-07).** `resolve_index` gained a rung, `own_sdk_root_index()`: the release's `share/nano-ros` index, or for an in-tree `nros` its own checkout's. It answers after the checkout walk-up and before the store's fetched cache, and `$NROS_INDEX_URL` still outranks it. The cache rung that remains prints a note when the cache is older than the binary, naming `NROS_INDEX_REFRESH=1`. `cmd::setup::tests` passes 54/54, including the acceptance test above.
 
 ### W6 — `nros build` reconfigures after a toolchain change — DONE
 
