@@ -227,6 +227,18 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   every rebase — a patch-id skip and a silently lost commit look identical until
   you do. The one thing stacking still buys is that a REJECTED parent cannot ship
   inside the child. -> AGENTS.md "What stacking costs".
+- **Never wait idle on CI — keep working while a PR's checks run** (user ruling,
+  2026-11-07). Once a PR is up and its `CI`, gate, merge-queue or any other
+  online job is running, start the next item or a parallel one; don't sit
+  watching it. If the next item needs the in-flight PR's commits, branch from
+  that PR's head and keep working locally. When the earlier PR finishes, push
+  the new one as its own PR based on `main` (per the bullet above, not a
+  GitHub stack): the carried commits drop by patch-id once the earlier PR
+  merges, and the merge queue absorbs them. Watch the in-flight job with a
+  background monitor (`Monitor` with an until-loop on `gh pr checks` /
+  `gh run view`), not a foreground wait, and come back when it reports. A
+  red result still comes first: fix the earlier PR before you push anything
+  stacked on it.
 - **Never `git add -A` / `git add .`** — stage the paths you actually changed
   (`git add <path>…`, or `git add -u <dir>` for tracked-only edits). A blanket add
   scoops up build output, leftover dirs and stray artifacts. Twice in one session it
