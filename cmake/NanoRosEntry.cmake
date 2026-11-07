@@ -53,6 +53,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")  # phase-518
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryAgreement.cmake")  # issue 1894
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")  # issue 2332
 # Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # `nros_panic_policy_feature` — the ONE policy->feature mapping, shared with the
@@ -254,8 +255,12 @@ function(_nros_entry_require_fresh_census)
         # line among hundreds is the state the issue is about: this image's
         # pools come from a contract nothing compared with the code.
         message(WARNING "nano_ros_entry(${_RFC_NAME}): ${_rfc_out}")
-    elseif(NOT _rfc_out STREQUAL "")
+    elseif(_rfc_out MATCHES " [1-9][0-9]* warning\\(s\\)")
         message(STATUS "nano-ros: ${_rfc_out}")
+    elseif(NOT _rfc_out STREQUAL "")
+        # Issue 2332 -- a clean check (or "no contract") is how a correct
+        # build works, not something to act on: shown under `nros build -v`.
+        nros_message_detail("nano-ros: ${_rfc_out}")
     endif()
 endfunction()
 

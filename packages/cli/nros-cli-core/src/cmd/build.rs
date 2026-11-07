@@ -1354,8 +1354,14 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         args.nano_ros_path.clone(),
                     ) {
                         Ok((observed, _, notes)) => {
-                            for n in notes {
-                                eprintln!("nros build:   {n}");
+                            // A skipped sidecar names its remedy, so it always
+                            // prints; the closing tally (always last, see
+                            // `observe_workspace_registrations`) is detail.
+                            if let Some((tally, skipped)) = notes.split_last() {
+                                for n in skipped {
+                                    eprintln!("nros build:   {n}");
+                                }
+                                crate::build_notes::detail(format!("nros build:   {tally}"));
                             }
                             observed
                         }
@@ -1381,10 +1387,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         },
                     ) {
                         Ok(Some(written)) => {
-                            eprintln!(
+                            crate::build_notes::detail(format!(
                                 "nros build:   sizing descriptor → {}",
                                 written.path.display()
-                            );
+                            ));
                             // phase-454 W6.c — the four Cyclone facts a
                             // `cc::Build` cannot read from a file. All four are
                             // refused on this road today (they are `[types]`
@@ -3076,6 +3082,7 @@ pub(crate) fn workspace_generated_missing(root: &std::path::Path) -> Vec<String>
 pub fn run(args: Args) -> Result<()> {
     let args = args.split_cmake_args()?;
     crate::sizing_descriptor::set_explain_sizing(args.explain_sizing);
+    crate::build_notes::enter_driver(args.verbose);
     // phase-429 W2 — the codegen version guard, BEFORE planning. `nros build`
     // is RFC-0065's front door and was the one codegen path with no guard on
     // it at all; planning is where the generated root is written, so the check
@@ -5027,11 +5034,13 @@ fn derived_pool_env(
             },
         ),
     ] {
+        // Issue 2332 — a safe default, which the sizing summary line already
+        // counts (`--explain-sizing` names it): detail, not a warning.
         if let Some(reason) = reason {
-            eprintln!(
+            crate::build_notes::detail(format!(
                 "nros build:   {what} not derived for `{}`, so the crate default stands: {reason}",
                 resolved.image.entry
-            );
+            ));
         }
     }
     let body = crate::leaf_entity_env::render_env_sidecar(knobs, &payload, &take, &resolved.source);

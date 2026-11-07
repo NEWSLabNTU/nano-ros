@@ -698,6 +698,9 @@ Options:
       --why
           Add the ladder rung that supplied each field
 
+  -v, --verbose
+          Also print the build's detail: the notes a correct build keeps quiet (as `nros build -v`)
+
       --port <PORT>
           The console device
 

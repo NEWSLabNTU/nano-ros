@@ -817,6 +817,10 @@ pub struct Args {
     /// Add the ladder rung that supplied each field.
     #[arg(long)]
     pub why: bool,
+    /// Also print the build's detail: the notes a correct build keeps quiet
+    /// (as `nros build -v`).
+    #[arg(short, long)]
+    pub verbose: bool,
     /// The console device.
     // RFC-0118 D5 rung 1.
     #[arg(long)]
@@ -838,6 +842,7 @@ pub struct Args {
 /// Planning the build failed. A plan that cannot resolve exits 3 (RFC-0118
 /// D2); otherwise the process exits with the code the execution gives.
 pub fn run(args: Args) -> eyre::Result<()> {
+    crate::build_notes::enter_driver(args.verbose);
     if let Some(file) = &args.exec.plan {
         return crate::cmd::run_exec::run_plan_file(&args, file);
     }

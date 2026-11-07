@@ -241,7 +241,9 @@ fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
          \ntopics:\n\
          \x20 /chatter:\n\
          \x20   type: std_msgs/msg/String\n\
-         \x20   pub: [{ros}/chatter]\n"
+         \x20   pub: [{ros}/chatter]\n\
+         \x20   # Read outside this workspace, by `ros2 topic echo` or a ROS 2 node.\n\
+         \x20   external: sub\n"
     ))
 }
 
@@ -497,6 +499,12 @@ mod tests {
         assert_eq!(
             contract["topics"]["/chatter"]["pub"][0].as_str(),
             Some("sensor_node/chatter")
+        );
+        // issue 2332 -- the reader is outside the workspace, so the resolver's
+        // `[dangling-entity]` warning does not fire on a clean scaffold.
+        assert_eq!(
+            contract["topics"]["/chatter"]["external"].as_str(),
+            Some("sub")
         );
         let sys: toml::Table =
             toml::from_str(&std::fs::read_to_string(bringup.join("system.toml")).unwrap()).unwrap();

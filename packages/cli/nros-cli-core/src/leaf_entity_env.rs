@@ -1152,12 +1152,12 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
                 } else {
                     "`NROS_SUBSCRIBER_BUFFER_SIZE`"
                 };
-                eprintln!(
+                crate::build_notes::detail(format!(
                     // issue 1125.
                     "{who}: {}: payload classes not derived, so {kept} keeps the \
                      crate default: {reason}",
                     leaf.display()
-                );
+                ));
             }
             // Issue 1233 — a THIRD basis: the take buffer is derived over the
             // leaf's whole `generated/` closure, so it refuses on inputs the
@@ -1165,12 +1165,12 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             // subscribes to nothing still links types it publishes).
             let take = crate::leaf_take_buffer::take_buffer_for_leaf(leaf);
             if let crate::leaf_take_buffer::TakeBuffer::Refused { reason } = &take {
-                eprintln!(
+                crate::build_notes::detail(format!(
                     // issue 1233.
                     "{who}: {}: take buffer not derived, so `RX_BUF` keeps the crate \
                      default: {reason}",
                     leaf.display()
-                );
+                ));
             }
             let body = render_env_sidecar(&knobs, &payload, &take, &inv.source);
             let env = env_rows(&body);
@@ -1180,11 +1180,11 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             }
         }
         other => {
-            eprintln!(
+            crate::build_notes::detail(format!(
                 "{who}: {}: pool budgets not derived ({}); crate defaults stay",
                 leaf.display(),
                 other.tag()
-            );
+            ));
             LeafEnv {
                 sidecar: None,
                 env: BTreeMap::new(),

@@ -632,6 +632,10 @@ pub fn build_image(args: &crate::cmd::run_plan::Selection, image: &str) -> Resul
     // D5), which `nros build` does not take, so it is named the one way first.
     let (args, _) = crate::cmd::run_plan::name_target(args)?;
     cmd.arg("build").args(args.build_args());
+    // `nros run -v` reaches the build it runs the way `-v` reaches cmake.
+    if crate::build_notes::verbose() {
+        cmd.env("NROS_VERBOSE", "1");
+    }
     let stderr = io::stderr()
         .as_fd_dup()
         .map_err(|e| format!("duplicating stderr: {e}"))?;
