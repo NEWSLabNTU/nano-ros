@@ -9,8 +9,8 @@ found: 2026-11-06
 ---
 
 **Home: [RFC-0071 Amendment 2026-11-07](../design/0071-rmw-backend-descriptor.md#amendment-2026-11-07--nros-build-selects-an-rmw-through-the-provider-scan-issue-2295)
-(D14–D16), proposed and awaiting maintainer review.** No code change until it
-is ruled on. Reported by the phase-537 W12 book session with an in-tree CLI. This is issue 1214's shape on the CLI build road. 1214 closed
+(D14–D16), accepted 2026-11-07 (user ruling).** The issue stays open until
+the amendment is implemented. Reported by the phase-537 W12 book session with an in-tree CLI. This is issue 1214's shape on the CLI build road. 1214 closed
 the cmake road only.
 
 ## Symptom
