@@ -209,6 +209,12 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | [#2333](../issues/2333-sdk-lock-lands-in-cwd.md) | both | `nros-sdk.lock` lands in the cwd |
 | [#2334](../issues/2334-nros-version-hides-release-suffix.md) | both | `nros version` hides the `-nrosN` suffix |
 
+Found after round two, while fixing the probes:
+
+| issue | purpose | what |
+| --- | --- | --- |
+| [#2348](../issues/2348-rust-workspace-listener-arena-underderived.md) | both | A scaffolded Rust workspace's listener dies at boot: arena priced for `typed_bound`, runtime registers a buffered raw entry |
+
 ### W4 — The industrial extras
 
 - An offline install probe: the release asset and the SDK store are staged on
