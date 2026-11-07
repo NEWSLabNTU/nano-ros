@@ -1,15 +1,17 @@
 ---
 id: 2359
 title: "A Rust talker on nucleo-f767zi-zephyr over the serial link boots and never runs its timer callback; C and C++ on the same board and link publish"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [zephyr, rust, zenoh, serial, executor]
 related: [phase-548, 2358, 2164]
 found: 2026-11-07
+resolved: 2026-11-07
+resolved_in: "zephyr/CMakeLists.txt refuses a Rust image whose CONFIG_MAIN_STACK_SIZE is below NROS_RUST_MAIN_STACK_FLOOR (32768); the nucleo-f767zi, rpi-pico-w and fvp-aemv8r-smp confs move to 32768"
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**
+**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**
 (found by W7; it is the Rust cell's remaining red on `nucleo-f767zi-zephyr`).
 
 ## What
@@ -85,3 +87,19 @@ caller's timeout. The second is phase-548 W4's class on Zephyr.
   `nros run nucleo_rs_node --expect 'Publishing:'` in the Renode twin, and
   `ros2 topic echo /chatter` receives it.
 - The phase-548 table's nucleo-f767zi Rust cell reads ok.
+
+## Resolution (2026-11-07)
+
+**Cause:** the main thread overflows its 16 KiB stack while it registers the
+node (peak measured at 28,280 B). The overflow zeroes the idle thread's frame,
+and idle then faults with `K_ERR_ARM_USAGE_ILLEGAL_EPSR`. Renode does not
+enforce the MPU stack guard, so nothing prints. `mps2-an385-zephyr` works only
+because its main stack is 128 KiB.
+
+**Fix:** `zephyr/CMakeLists.txt` refuses a Rust image whose
+`CONFIG_MAIN_STACK_SIZE` is below `NROS_RUST_MAIN_STACK_FLOOR` = 32768
+(native_sim is exempt). The prj.conf of nucleo-f767zi, rpi-pico-w and
+fvp-aemv8r-smp moves to 32768, and the new gate `just check zephyr-rust-main-stack`
+holds the floor. Measured: Rust and C on the Nucleo, and Rust on mps2, all
+publish, and `ros2 topic echo` receives. Not measured: the rpi-pico-w's RAM fit
+at 32 KiB. Whether action and graph frames fit in 32 KiB is issue 2360.
