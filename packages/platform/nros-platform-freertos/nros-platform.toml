@@ -83,6 +83,12 @@ pool.app = [1, 3]
 [capabilities]
 ip_stack = true    # lwIP / FreeRTOS-Plus-TCP, both named in [build]
 clock = true       # issue 1037 — exports nros_platform_clock_ns (src/platform.c)
+# issue 2342 (phase-546) — the family brings its own network stack, so its
+# sockets are not the host's. A board whose network the HOST owns
+# (`[board.net] stack = "host"`, the FreeRTOS POSIX port) answers `true` on the
+# board rung; the value is DERIVED from that line, never written as a board
+# capability (`BoardKnobsFile::board_capabilities`).
+host_stack = false
 
 [arch.cortex-m3]
 target_match = "thumbv7m"

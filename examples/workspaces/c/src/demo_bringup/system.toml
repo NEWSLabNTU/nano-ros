@@ -94,12 +94,17 @@ locator = "tcp/10.0.2.2:7930"
 
 [image.freertos_posix]
 board = "freertos-posix"
-# NOT the `[image_defaults]` zenoh. zenoh-pico's FreeRTOS backend is lwIP-only
-# (`system/freertos/lwip/network.c`), and this board has no lwIP — so a zenoh
-# build of it compiles that TU and dies at link with 63 `undefined reference to
-# lwip_*`. The pre-migration fixture row built cyclonedds for exactly this
-# reason; the RMW is a property of the image, so it belongs here.
+# The board's Cyclone image (phase-370 W3: the backend the ASI consumer this
+# board exists for runs). The RMW is a property of the image, so it is stated
+# here rather than taken from `[image_defaults]`.
 rmw = "cyclonedds"
+
+# issue 2342 (phase-546) — the same board on the `[image_defaults]` zenoh, through
+# zenoh-pico's FreeRTOS host-socket arm (the board's `[board.net] stack = "host"`
+# selects it). 11130 = `alloc::port_of(FreertosPosix, C, EntryPubsub)`.
+[image.freertos_posix_zenoh]
+board = "freertos-posix"
+locator = "tcp/127.0.0.1:11130"
 
 [image.linux]
 board = "linux"

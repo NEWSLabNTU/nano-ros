@@ -58,6 +58,17 @@ Rule 3 keeps the two halves of 1143 wired to one string: the Rust selector
 the manifest rows have to name the same capability, and a rename on one side
 that leaves the other alone is exactly the silent-inert shape rule 1 describes.
 
+Issue 2342 (phase-546) added a THIRD platform-header arm, and two refinements
+with it. The arm is zenoh-pico's own custom-platform hook,
+`ZP_SYSTEM_PLATFORM_HEADER`, whose VALUE names a nano-ros header (the FreeRTOS
+POSIX port: FreeRTOS system types beside host BSD sockets), gated on the
+`host_stack` capability. So rule 2's partition counts only the rows that SELECT
+a platform header -- a dispatch macro or the hook -- and not a tuning define
+riding on the same fact; and rule 4 reads the hook's header too, found on the
+`include_paths_conditional` row gated exactly like the define (the header and
+its directory move together, or the build cannot find what it selected), and
+requires a real socket from it when the arm is `host_stack = true`.
+
 Usage::
 
     check-capability-conditionals.py          # the gate (selftest runs first)
@@ -89,6 +100,13 @@ PLATFORM_INCLUDE_ROOT = ZENOH_PICO / "include"
 # `#elif defined(ZENOH_X)` / `#include "zenoh-pico/system/platform/y.h"` pairs.
 DISPATCH_MACRO = re.compile(r"^#\s*(?:el)?if\s+defined\s*\(\s*([A-Z0-9_]+)\s*\)")
 DISPATCH_INCLUDE = re.compile(r'^#\s*include\s+"([^"]+)"')
+
+# issue 2342 — zenoh-pico's custom-platform hook (`system/common/platform.h`
+# tests it before every built-in arm). Its VALUE is the header.
+CUSTOM_HEADER_MACRO = "ZP_SYSTEM_PLATFORM_HEADER"
+# The capability whose `true` arm is the host-socket header (issue 2342).
+HOST_STACK = "host_stack"
+ZPICO_SYS = ROOT / "packages/rmw/zenoh/zpico-sys"
 
 # `pub const IP_STACK: &str = "ip_stack";`
 RUST_CONST = re.compile(r'pub const\s+([A-Z0-9_]+)\s*:\s*&str\s*=\s*"([^"]+)"\s*;')
@@ -268,6 +286,31 @@ def socket_is_placeholder(header_text: str) -> bool | None:
     return all("_placeholder" in m_ for m_ in members)
 
 
+def custom_header_path(block: dict, row: dict) -> str | None:
+    """The file a `ZP_SYSTEM_PLATFORM_HEADER` row selects, as an absolute path.
+
+    Found on an `include_paths_conditional` row whose `when` is IDENTICAL to the
+    define's, `{nros}` read as the zpico-sys package. `None` when no such row
+    exists -- the caller reports that, because a define naming a header no
+    include root carries is a header the compiler cannot find.
+    """
+    name = str(row.get("value") or "").strip().strip('"')
+    if not name:
+        return None
+    for inc in block.get("include_paths_conditional") or []:
+        if not isinstance(inc, dict) or inc.get("when") != row.get("when"):
+            continue
+        root = str(inc.get("path", "")).replace("{nros}", str(ZPICO_SYS))
+        return f"{root}/{name}"
+    return None
+
+
+def selects_header(row: dict, dispatch: dict[str, str]) -> bool:
+    """Does this `defines_conditional` row choose the platform header?"""
+    name = str(row.get("name", ""))
+    return name == CUSTOM_HEADER_MACRO or name in dispatch
+
+
 # ── the rules ────────────────────────────────────────────────────────────────
 
 
@@ -306,9 +349,11 @@ def check_manifest(
                 )
 
         # Rule 2 — the define arms on one capability must partition.
+        # issue 2342 — only rows that SELECT a platform header partition; a
+        # tuning define gated on the same fact is not an arm.
         by_cap: dict[str, list[bool]] = {}
-        for field, cap, want, _row in rows:
-            if field == "defines_conditional":
+        for field, cap, want, row in rows:
+            if field == "defines_conditional" and selects_header(row, dispatch):
                 by_cap.setdefault(cap, []).append(want)
         for cap, wants in sorted(by_cap.items()):
             for value in (True, False):
@@ -335,6 +380,9 @@ def check_manifest(
             if field != "defines_conditional":
                 continue
             name = str(row.get("name", ""))
+            if name == CUSTOM_HEADER_MACRO:
+                problems += check_custom_header(label, component, block, row, cap, want, header_text)
+                continue
             header = dispatch.get(name)
             if header is None:
                 # Not a zenoh-pico platform macro; nothing to cross-check.
@@ -460,6 +508,42 @@ def check_manifest(
     return problems
 
 
+def check_custom_header(
+    label: str, component: str, block: dict, row: dict, cap: str, want: bool, header_text
+) -> list[str]:
+    """Rule 4 for the `ZP_SYSTEM_PLATFORM_HEADER` arm (issue 2342)."""
+    path = custom_header_path(block, row)
+    if path is None:
+        return [
+            f"{label}: [build.{component}] defines `{CUSTOM_HEADER_MACRO}` "
+            f"({row.get('value')!r}) with no `include_paths_conditional` row gated "
+            f"exactly like it.\n"
+            f"    The header and its directory have to move together: a define "
+            f"naming a header no include root carries is a header the compiler "
+            f"cannot find, on exactly the boards that select it."
+        ]
+    text = header_text(path)
+    if text is None:
+        return [
+            f"{label}: [build.{component}] defines `{CUSTOM_HEADER_MACRO}` -> "
+            f"`{path}`, which is not present in this tree."
+        ]
+    placeholder = socket_is_placeholder(text)
+    if placeholder is None:
+        return [
+            f"{label}: [build.{component}] `{CUSTOM_HEADER_MACRO}` -> `{path}` "
+            f"declares no `_z_sys_net_socket_t`."
+        ]
+    if cap == HOST_STACK and want is True and placeholder:
+        return [
+            f"{label}: [build.{component}] selects `{path}` when "
+            f"`{HOST_STACK} = true`, but its `_z_sys_net_socket_t` is a PLACEHOLDER.\n"
+            f"    A board whose sockets are the host's would hand the POSIX links "
+            f"a struct with no fd in it (issue 0135)."
+        ]
+    return []
+
+
 def rust_ip_stack_name(_cache: dict = {}) -> str:
     """The capability string `LinkPolicy::for_board` keys on.
 
@@ -580,8 +664,40 @@ typedef struct {
 } _z_sys_net_socket_t;
 """
 
+_HOST_HEADER = """
+typedef struct {
+    union {
+        int _fd;
+    };
+} _z_sys_net_socket_t;
+"""
+
 _DISPATCH = {"ZENOH_FREERTOS_LWIP": "lwip.h", "ZENOH_ORIN_SPE": "orin_spe.h"}
-_HEADERS = {"lwip.h": _LWIP_HEADER, "orin_spe.h": _SPE_HEADER}
+_HEADERS = {
+    "lwip.h": _LWIP_HEADER,
+    "orin_spe.h": _SPE_HEADER,
+    f"{ZPICO_SYS}/c/platform/host/host.h": _HOST_HEADER,
+    f"{ZPICO_SYS}/c/platform/spe/host.h": _SPE_HEADER,
+}
+
+# issue 2342 — the three-arm shape the FreeRTOS port row has: lwIP, mailbox-only
+# and the host-socket custom header, plus a tuning define on the host arm that
+# is NOT an arm.
+_THREE_ARMS = """
+[capabilities]
+ip_stack = true
+host_stack = false
+[build.zenoh]
+defines_conditional = [
+  { name = "ZENOH_FREERTOS_LWIP", when = { capability = { ip_stack = true, host_stack = false } } },
+  { name = "ZENOH_ORIN_SPE", when = { capability = { ip_stack = false } } },
+  { name = "ZP_SYSTEM_PLATFORM_HEADER", value = '"host.h"', when = { capability = { host_stack = true } } },
+  { name = "Z_RUNTIME_IDLE_READ_TASK_SLEEP", value = "2", when = { capability = { host_stack = true } } },
+]
+include_paths_conditional = [
+  { path = "{nros}/c/platform/host", when = { capability = { host_stack = true } } },
+]
+"""
 
 _GOOD = """
 [capabilities]
@@ -686,6 +802,28 @@ def self_test(quiet: bool = True) -> int:
                 'include_paths = ["{env:FREERTOS_DIR}/include", "{env:LWIP_DIR}/src/include"]',
             ),
             "inconsistent conditions",
+        ),
+        ("issue 2342: three header arms and a tuning define pass", _THREE_ARMS, None),
+        (
+            "issue 2342: the custom header's include root not gated like it",
+            _THREE_ARMS.replace(
+                '{ path = "{nros}/c/platform/host", when = { capability = { host_stack = true } } }',
+                '{ path = "{nros}/c/platform/host", when = { capability = { ip_stack = true } } }',
+            ),
+            "no `include_paths_conditional` row gated",
+        ),
+        (
+            "issue 2342: the host arm selects a placeholder-socket header",
+            _THREE_ARMS.replace("{nros}/c/platform/host", "{nros}/c/platform/spe"),
+            "is a PLACEHOLDER",
+        ),
+        (
+            "issue 2342: a second header on the host arm",
+            _THREE_ARMS.replace(
+                'name = "Z_RUNTIME_IDLE_READ_TASK_SLEEP", value = "2"',
+                'name = "ZENOH_FREERTOS_LWIP"',
+            ),
+            "defines 2 conditional defines for `host_stack = true`",
         ),
         (
             "rule 5: a netstack source with the fact undeclared",
@@ -795,8 +933,9 @@ def main() -> int:
         dispatch = dispatch_map(PLATFORM_DISPATCH.read_text(encoding="utf-8"))
 
         def header_text(rel: str) -> str | None:
-            # The dispatch chain spells its includes relative to `include/`.
-            p = PLATFORM_INCLUDE_ROOT / rel
+            # The dispatch chain spells its includes relative to `include/`; a
+            # custom header (issue 2342) arrives as an absolute path.
+            p = pathlib.Path(rel) if rel.startswith("/") else PLATFORM_INCLUDE_ROOT / rel
             return p.read_text(encoding="utf-8") if p.is_file() else None
 
     else:
