@@ -33,7 +33,7 @@ repository; W8 re-measures every cell.
 | NuttX qemu-armv7a (zenoh) | ok | ok | **W3** |
 | NuttX rv-virt (zenoh) | ok | ok | ok |
 | ThreadX Linux (zenoh) | ok | ok | ok |
-| ThreadX qemu riscv64 (zenoh) | ok | ok | **W4** |
+| ThreadX qemu riscv64 (zenoh) | ok | **W9** | **W4**, **W9** |
 | nucleo-f767zi Zephyr (zenoh) | **W7** | **W7** | **W7** |
 
 Gaps already owned outside this phase. This phase does not repeat them; W8
@@ -307,6 +307,43 @@ no marker means no action.
 
 **Acceptance:** all three cells measured, with each red cell filed.
 
+### W9 — C and C++ on ThreadX qemu riscv64 find `llvm-ar` in a clean install
+
+**Code area:** `cmake/toolchain/riscv64-threadx.cmake` (around line 430),
+and what `nros setup rv-virt-threadx` provisions.
+
+- Measured (W8 replay, 2026-11-07, the installed release in a clean
+  container): the C talker's configure stops with `llvm-ar not found
+  alongside rust-lld at /root/.rustup/toolchains/1.99.0-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin
+  — needed by riscv64-lld-wrapper.sh to strip soft-float
+  compiler_builtins`.
+- The survey's host cell passed only because that host's default toolchain
+  had `llvm-tools`. The toolchain file looks beside the *default*
+  toolchain's `rust-lld`. The pinned toolchains in `nros-sdk-index.toml`
+  carry `llvm-tools`, and the default stable toolchain does not.
+- Work: resolve `rust-lld` and `llvm-ar` from the toolchain the build pins,
+  or have `nros setup` add `llvm-tools` to the toolchain the C and C++ road
+  uses.
+
+**Acceptance:** the `threadx-riscv64-c` probe track passes in a clean
+container.
+
+### W10 — `nros run --expect` lets the matching line finish
+
+**Code area:** `nros run`'s console matcher in `nros-cli-core`.
+
+- Measured (W8 replay): on NuttX the C++ talker writes its line in pieces.
+  `--expect 'Publishing:'` matched the prefix and stopped QEMU mid-line, so
+  the console showed `Publishing: 'Hello` and the probe's documented line
+  never appeared. The C talker writes the line at once and passes.
+- The starters now expect the whole line (`--expect "Publishing: 'Hello
+  World: 1'"`), so the book does not depend on this.
+- Work: after a match, keep reading to the end of that line, with a short
+  limit, before stopping the emulator.
+
+**Acceptance:** a test whose fake console writes a line in two pieces sees
+the whole line printed before the run stops.
+
 ### W8 — The book: three tabs on every starter, each probed
 
 **Code area:** `book/src/starters/`, `book/src/tutorial/`, the probe rows in
@@ -328,7 +365,7 @@ no marker means no action.
     board takes only C and C++.
   - Re-measure the cells owned outside this phase (2342, 531, 3268) as they
     land, and drop their awaits.
-- Depends on W1 to W4 and W7 for its awaits to clear, not to start.
+- Depends on W1 to W4, W7 and W9 for its awaits to clear, not to start.
 
 **Acceptance:**
 - every starter and Tutorial chapter has Rust, C and C++ tabs;
