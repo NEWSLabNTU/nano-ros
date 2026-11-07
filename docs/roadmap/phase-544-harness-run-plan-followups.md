@@ -79,4 +79,4 @@ Real boards (phase-529, phase-533) and the Renode and Wokwi twins
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2350](../issues/2350-run-dry-run-refuses-stale-model.md) | `nros run --dry-run` says it would configure, then refuses the stale SystemModel: a run-plan follow-up. |
+| [#2350](../issues/archived/2350-run-dry-run-refuses-stale-model.md) | RESOLVED 2026-11-07. `nros run --dry-run` says it would configure, then refuses the stale SystemModel: a run-plan follow-up. |

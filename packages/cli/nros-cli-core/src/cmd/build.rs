@@ -24,6 +24,8 @@ use std::{
 use clap::Parser;
 use eyre::{Result, WrapErr};
 
+use crate::model_gate::StaleModel;
+
 use crate::builder::{
     discover,
     handoff::Handoff,
@@ -574,7 +576,15 @@ enum Planning {
 /// binary and without exec'ing anything. That separation is also why
 /// `--dry-run` is trivially correct rather than a second code path.
 pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
-    plan_for(args, Planning::Generate)
+    plan_builds_with(args, StaleModel::Refuse)
+}
+
+/// [`plan_builds`] with the model door's policy for a stale model (issue
+/// 2350): a dry run's front door passes what its implicit configure answered
+/// ([`StaleModel::for_dry_run`]); everything else plans through
+/// [`plan_builds`], which refuses.
+pub fn plan_builds_with(args: &Args, stale: StaleModel) -> Result<Vec<ResolvedBuild>> {
+    plan_for(args, Planning::Generate, stale)
 }
 
 /// Stages 1–3 only: every image identified exactly as [`plan_builds`]
@@ -585,17 +595,17 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
 /// The one caller is `nros image-facts`, which a Zephyr configure runs; see
 /// [`Planning`] for why it must not regenerate what that configure just read.
 pub fn plan_query(args: &Args) -> Result<Vec<ResolvedBuild>> {
-    plan_for(args, Planning::Query)
+    plan_for(args, Planning::Query, StaleModel::Refuse)
 }
 
 /// Stages 1–3 with the toolchain preflight, writing nothing ([`Planning::Preflight`]).
 /// `Err` carrying a [`crate::builder::preflight::PreflightRefusal`] is a
 /// refusal; `Ok` means every selected image's preflight passes.
 pub(crate) fn preflight_query(args: &Args) -> Result<()> {
-    plan_for(args, Planning::Preflight).map(|_| ())
+    plan_for(args, Planning::Preflight, StaleModel::Refuse).map(|_| ())
 }
 
-fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
+fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<ResolvedBuild>> {
     let root = match &args.workspace {
         Some(w) => w.clone(),
         None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
@@ -628,7 +638,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         named.board = None;
         named.images = vec![image];
         named.workspace = Some(root);
-        return plan_for(&named, planning);
+        return plan_for(&named, planning, stale);
     }
 
     // phase-445 W4b (RFC-0098 D1) — a single-package example is a workspace of
@@ -636,7 +646,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     // `build/<image>/nros-cargo.toml`. Decided before discovery, because the
     // workspace road below would treat the package's own `[workspace]` marker
     // as a root build file to retire (D9) and generate an entry it does not need.
-    if let Some(plans) = plan_single_package(args, &root, planning)? {
+    if let Some(plans) = plan_single_package(args, &root, planning, stale)? {
         return Ok(plans);
     }
     // Issues 1296/1308 — and its C/C++ twin: the leaf's OWN `CMakeLists.txt`.
@@ -1084,6 +1094,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             // instead of recomposing: a west image crossing out of Rust, i.e.
             // the generated C/C++ application.
             driver == Driver::West && image_has_non_rust(&image, &bringup_dir),
+            stale,
         );
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
 
@@ -1162,6 +1173,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     // construction here — passed as the predicate rather than
                     // as a literal so the two cannot drift apart.
                     image_has_non_rust(&image, &bringup_dir),
+                    stale,
                 )?;
                 if let Some(d) = &generated.dir {
                     eprintln!("nros build:   entry → {}", d.display());
@@ -2098,6 +2110,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         &platform,
                         nano_ros_root.as_deref(),
                         image_has_non_rust(&image, &bringup_dir),
+                        stale,
                     )?
                 };
                 let app = match (&generated.dir, leaf_app.as_ref()) {
@@ -2449,6 +2462,7 @@ fn plan_single_package(
     args: &Args,
     root: &std::path::Path,
     planning: Planning,
+    stale: StaleModel,
 ) -> Result<Option<Vec<ResolvedBuild>>> {
     // issue 1641 — the one ladder, not a hand-spelled one. This was
     // `explicit > env > walk-up`, the order 1510 fixed in `nano_ros_root` and
@@ -2490,7 +2504,7 @@ fn plan_single_package(
     let Some(img) = crate::cmd::leaf_settings::resolve_image(root, &nros_root, image)? else {
         return Ok(None);
     };
-    plan_leaf_image(args, root, &nros_root, planning, img)
+    plan_leaf_image(args, root, &nros_root, planning, img, stale)
 }
 
 /// Stage 1 over the source roots `--base-paths` names (or the default ones):
@@ -2598,6 +2612,7 @@ fn plan_leaf_image(
     nros_root: &std::path::Path,
     planning: Planning,
     img: crate::cmd::leaf_settings::LeafImage,
+    stale: StaleModel,
 ) -> Result<Option<Vec<ResolvedBuild>>> {
     let nros_root = nros_root.to_path_buf();
     let qual = plan::qualified(&img.package, &img.image_id);
@@ -2639,8 +2654,11 @@ fn plan_leaf_image(
     // line naming the bug, never cargo's manifest error four frames down.
     // phase-460 W1 follow-up -- a model sync refused (or one whose inputs
     // moved since) is not "unsynced": it names its own remedy.
+    // Issue 2350 -- unless a dry run's configure would re-resolve it first.
     if let Err(r) = crate::leaf_entity_env::leaf_model_path(root) {
-        eyre::bail!("{}: {r}", root.display());
+        stale
+            .admit(r)
+            .map_err(|r| eyre::eyre!("{}: {r}", root.display()))?;
     }
     let unsynced: Vec<String> = unsynced_inputs(root, &img);
     if !unsynced.is_empty() && args.dry_run {
@@ -3104,7 +3122,7 @@ pub fn run(args: Args) -> Result<()> {
     // configure is C1 too, so a `<depend>` added since the last configure
     // (package.xml and Cargo.toml are stamp inputs) reaches its managed row
     // and its generated crate there; build no longer runs that step itself.
-    let root = configure_implicitly(&args, "build")?;
+    let (root, stale) = configure_implicitly(&args, "build")?;
 
     // RFC-0104 D5 / issue 1780 — the generated message crates are the LOCAL
     // half, a function of the host's ament install. The configure stamp keys
@@ -3120,7 +3138,7 @@ pub fn run(args: Args) -> Result<()> {
         observe_system(&args, &regenerated);
     }
 
-    let mut plans = plan_with_host_tools(&args)?;
+    let mut plans = plan_with_host_tools_and(&args, stale)?;
     if args.verbose {
         for p in &mut plans {
             for h in p.configure.iter_mut().chain(p.handoff.iter_mut()) {
@@ -3199,7 +3217,14 @@ pub fn run(args: Args) -> Result<()> {
 /// image here exactly as planning resolves it.
 ///
 /// `verb` is the front door's own (`build`, `run`), for a refusal to name.
-pub(crate) fn configure_implicitly(args: &Args, verb: &str) -> Result<PathBuf> {
+///
+/// Also returns the model door's policy for the planning that follows (issue
+/// 2350): a dry run that WOULD have configured admits a stale model, since
+/// the real run re-resolves it first; every other run refuses one.
+pub(crate) fn configure_implicitly(
+    args: &Args,
+    verb: &'static str,
+) -> Result<(PathBuf, StaleModel)> {
     let root = match &args.workspace {
         Some(w) => w.clone(),
         None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
@@ -3220,8 +3245,12 @@ pub(crate) fn configure_implicitly(args: &Args, verb: &str) -> Result<PathBuf> {
         }
         None => args.images.clone(),
     };
-    crate::cmd::configure::ensure_current(&root, &images, args.dry_run, args.offline, verb)?;
-    Ok(root)
+    let would_configure =
+        crate::cmd::configure::ensure_current(&root, &images, args.dry_run, args.offline, verb)?;
+    Ok((
+        root,
+        StaleModel::for_dry_run(args.dry_run, would_configure, verb),
+    ))
 }
 
 /// RFC-0104 D9 (phase-485 W4) — what can be checked BEFORE the build: each
@@ -4298,7 +4327,13 @@ fn plan_packages(
 ///
 /// As [`plan_builds`], or a host tool that cannot be planned.
 pub fn plan_with_host_tools(args: &Args) -> Result<Vec<ResolvedBuild>> {
-    let images = plan_builds(args)?;
+    plan_with_host_tools_and(args, StaleModel::Refuse)
+}
+
+/// [`plan_with_host_tools`] with the model door's policy (issue 2350), for
+/// `nros build`'s own front door.
+fn plan_with_host_tools_and(args: &Args, stale: StaleModel) -> Result<Vec<ResolvedBuild>> {
+    let images = plan_builds_with(args, stale)?;
     // `--check` type-checks images; a host tool is not part of one.
     if args.check.is_some() {
         return Ok(images);
@@ -4595,6 +4630,8 @@ fn generate_entry(
     // that made `has_cpp` answer for the workspace when the question was about
     // the image.
     has_non_rust: bool,
+    // Issue 2350 -- the front door's answer for a stale model.
+    stale: StaleModel,
 ) -> Result<GeneratedEntry> {
     use crate::{
         builder::entry::{BoardFacts, EntrySpec},
@@ -4625,7 +4662,7 @@ fn generate_entry(
     // phase-460 W1 follow-up -- the gated door, as every other consumer of a
     // resolved model. A refused or stale model stops the build here; only an
     // UNRESOLVABLE one keeps the warning below.
-    let model_path = match open_model(bringup_dir, &model_rel) {
+    let model_path = match open_model(bringup_dir, &model_rel, stale) {
         Ok(p) => p,
         Err(ModelDoor::Refused(r)) => eyre::bail!("`{image_id}`: {r}"),
         Err(ModelDoor::Unresolved(e)) => {
@@ -5809,11 +5846,14 @@ enum ModelDoor {
 /// holds a model does it resolve one from the inputs (`ensure_model`, which
 /// itself refuses on a marker), so a model this build resolved a moment ago
 /// is current by construction.
+///
+/// `stale` is the front door's policy for a stale model (issue 2350).
 fn open_model(
     bringup_dir: &std::path::Path,
     model_rel: &str,
+    stale: StaleModel,
 ) -> Result<std::path::PathBuf, ModelDoor> {
-    match crate::model_gate::open(bringup_dir, model_rel) {
+    match crate::model_gate::open_with(bringup_dir, model_rel, stale) {
         Err(r) => Err(ModelDoor::Refused(r)),
         Ok(Some(p)) => Ok(p),
         Ok(None) => nros_orchestration_ir::model_location::ensure_model(bringup_dir, model_rel)
@@ -5862,6 +5902,7 @@ fn resolve_image(
     nano_ros_root: Option<&std::path::Path>,
     rx_cost: Option<crate::entity_inventory::RxFrameCost>,
     compose_registered: bool,
+    stale: StaleModel,
 ) -> Option<ResolvedImage> {
     use crate::{
         entity_inventory::EntityInventory,
@@ -5899,7 +5940,7 @@ fn resolve_image(
         // phase-460 W1 follow-up -- the gated door. This phase cannot fail a
         // build, so a refused or stale model is its refusal reason: no number
         // is read from it.
-        let model_path = open_model(bringup_dir, &model_rel).map_err(|e| match e {
+        let model_path = open_model(bringup_dir, &model_rel, stale).map_err(|e| match e {
             ModelDoor::Refused(r) => r.to_string(),
             ModelDoor::Unresolved(e) => format!("cannot resolve the SystemModel: {e}"),
         })?;
@@ -9990,7 +10031,7 @@ mod model_door_tests {
     #[test]
     fn a_refused_model_stops_the_entry_generator() {
         let (_ws, bringup, rel) = bringup_with_marker();
-        match open_model(&bringup, &rel) {
+        match open_model(&bringup, &rel, StaleModel::Refuse) {
             Err(ModelDoor::Refused(r)) => {
                 assert!(r.to_string().contains("contract-check"), "{r}")
             }
