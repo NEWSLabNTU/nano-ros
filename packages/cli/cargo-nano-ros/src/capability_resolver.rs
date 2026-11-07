@@ -40,7 +40,7 @@ pub struct Capability {
     // naming backends (RFC-0071), and it made offering `safety` from a
     // third-party backend impossible without editing this file. The relation is
     // now declared by the BACKEND, in its `nros-rmw.toml` `[rmw.capabilities]`,
-    // and read through `crate::rmw_resolver::backend_declares_capability`.
+    // and read through `crate::rmw_resolver::ResolvedRmwIn::declares_capability`.
     /// Phase 261 — the C/C++ preprocessor macro the bake emits into
     /// `system_config.h` when the axis is enabled, e.g.
     /// `"NROS_SYSTEM_SAFETY_E2E"` (the analog of `NROS_SYSTEM_RMW_<TOKEN>`).
@@ -55,14 +55,13 @@ pub struct Capability {
 }
 
 impl Capability {
-    /// `true` if this capability's backend feature applies to `backend` (a
-    /// canonical RMW name, e.g. `"zenoh"`).
-    pub fn backend_supports(&self, backend: &str) -> bool {
+    /// `true` if this capability's backend feature applies to `backend`, a
+    /// backend the provider scan resolved (RFC-0071 D14).
+    pub fn backend_supports(&self, backend: &crate::rmw_resolver::ResolvedRmwIn) -> bool {
         // Asks the backend's descriptor, not a list kept here. A capability the
         // backend does not declare no-ops exactly as before — the difference is
         // only WHERE the relation is recorded.
-        self.backend_feature.is_some()
-            && crate::rmw_resolver::backend_declares_capability(backend, self.declared)
+        self.backend_feature.is_some() && backend.declares_capability(self.declared)
     }
 }
 
@@ -134,15 +133,21 @@ pub fn capability(declared: &str) -> Option<&'static Capability> {
 mod tests {
     use super::*;
 
+    fn backend(name: &str) -> std::sync::Arc<crate::rmw_resolver::ResolvedRmwIn> {
+        crate::rmw_resolver::test_support::in_tree_index()
+            .resolve(name)
+            .expect("an in-tree backend")
+    }
+
     #[test]
     fn safety_lowers_to_all_three_targets_zenoh_only() {
         let c = capability("safety").expect("safety axis");
         assert_eq!(c.nros_feature, "safety-e2e");
         assert_eq!(c.backend_feature, Some("safety-e2e"));
-        assert!(c.backend_supports("zenoh"));
+        assert!(c.backend_supports(&backend("zenoh")));
         // xrce / cyclonedds have no CRC path → no backend feature.
-        assert!(!c.backend_supports("xrce"));
-        assert!(!c.backend_supports("cyclonedds"));
+        assert!(!c.backend_supports(&backend("xrce")));
+        assert!(!c.backend_supports(&backend("cyclonedds")));
         // Phase 261 W1 — C/C++ lowering slots.
         assert_eq!(c.c_define, Some("NROS_SYSTEM_SAFETY_E2E"));
         assert_eq!(c.cmake_token, Some("NROS_SAFETY_E2E"));
@@ -153,7 +158,7 @@ mod tests {
         let c = capability("rosout").expect("rosout axis");
         assert_eq!(c.nros_feature, "rosout");
         assert_eq!(c.backend_feature, None);
-        assert!(!c.backend_supports("zenoh"));
+        assert!(!c.backend_supports(&backend("zenoh")));
         assert_eq!(c.c_define, Some("NROS_SYSTEM_ROSOUT"));
         assert_eq!(c.cmake_token, None);
     }
@@ -163,7 +168,7 @@ mod tests {
         let c = capability("param_services").expect("param_services axis");
         assert_eq!(c.nros_feature, "param-services");
         assert_eq!(c.backend_feature, None);
-        assert!(!c.backend_supports("zenoh"));
+        assert!(!c.backend_supports(&backend("zenoh")));
         // Phase 261 W1 — informational `#define`, no CMake knob.
         assert_eq!(c.c_define, Some("NROS_SYSTEM_PARAM_SERVICES"));
         assert_eq!(c.cmake_token, None);
@@ -185,7 +190,7 @@ mod tests {
         let c = capability("lifecycle").expect("lifecycle axis");
         assert_eq!(c.nros_feature, "lifecycle-services");
         assert_eq!(c.backend_feature, None);
-        assert!(!c.backend_supports("zenoh"));
+        assert!(!c.backend_supports(&backend("zenoh")));
         // Phase 269 W2 — informational `#define`, no CMake knob (always compiled in).
         assert_eq!(c.c_define, Some("NROS_SYSTEM_LIFECYCLE"));
         assert_eq!(c.cmake_token, None);

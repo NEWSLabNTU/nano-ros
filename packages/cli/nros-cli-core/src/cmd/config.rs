@@ -162,7 +162,14 @@ fn explain(args: ExplainArgs) -> Result<()> {
     // platform / board states its table; the others have no such tenant.
     let plat_knobs = tree.knobs_for(&args.platform).map_err(|e| eyre!("{e}"))?;
     let mut warnings = Vec::new();
-    for rmw in crate::orchestration::rmw_resolver::known_rmw() {
+    // RFC-0071 D14 — the backends the workspace's provider scan announces.
+    let ws = match &args.workspace {
+        Some(w) => w.clone(),
+        None => std::env::current_dir().wrap_err("resolve cwd")?,
+    };
+    let rmws = crate::orchestration::rmw_index::for_dir(&ws)?;
+    for rmw in rmws.known() {
+        let rmw = rmw.as_str();
         let declared = plat_knobs.backends.contains_key(rmw)
             || board
                 .as_ref()

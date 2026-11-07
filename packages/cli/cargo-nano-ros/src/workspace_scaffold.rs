@@ -229,7 +229,7 @@ pub struct WorkspaceScaffold {
     /// template of its own. It is now an arm of an exhaustive match, so it
     /// reads as a scope decision rather than as an unparsed string.
     pub lang: Language,
-    /// A backend this checkout provides (`rmw_resolver::known_rmw()`).
+    /// A backend the SDK root provides (checked against an `RmwIndex`).
     pub rmw: String,
     pub force: bool,
 }
@@ -266,7 +266,12 @@ fn parameterize(_lang: Language, rmw: &str, rel: &str, text: &str) -> Result<Str
     Ok(out)
 }
 
-pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
+/// `rmws` is the index `cfg.rmw` is checked against: with no workspace yet,
+/// the SDK root's backends (RFC-0071 D14).
+pub fn scaffold_workspace(
+    cfg: &WorkspaceScaffold,
+    rmws: &crate::rmw_resolver::RmwIndex,
+) -> Result<()> {
     let files: &[(&str, &str)] = match cfg.lang {
         Language::Cpp => CPP_FILES,
         Language::Rust => RUST_FILES,
@@ -279,7 +284,7 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
     // RFC-0071 D11 (phase-506 W2, issue 1300) — the backends this checkout
     // provides, derived from their descriptors, never a literal list. The
     // literal this replaced rejected `uorb`, a backend the tree ships.
-    crate::rmw_resolver::resolve_rmw(&cfg.rmw)
+    rmws.resolve(&cfg.rmw)
         .map_err(|e| eyre::eyre!("nros new --workspace: {e}"))?;
     if cfg.dir.exists() && !cfg.force {
         bail!(
@@ -335,9 +340,36 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn scaffold_in_tree(cfg: &WorkspaceScaffold) -> Result<()> {
+        scaffold_workspace(cfg, &crate::rmw_resolver::test_support::in_tree_index())
+    }
+
+    /// RFC-0071 D14 — `--rmw` is checked against the index the caller hands
+    /// in, so a backend a provider announces is accepted whatever the
+    /// checkout's own set is.
+    #[test]
+    fn a_backend_on_the_index_is_accepted_though_the_checkout_lacks_it() {
+        let providers = tempfile::tempdir().unwrap();
+        let idx = crate::rmw_resolver::test_support::acme_index(providers.path());
+        let tmp = tempfile::tempdir().unwrap();
+        scaffold_workspace(
+            &WorkspaceScaffold {
+                dir: tmp.path().join("ws"),
+                lang: Language::Cpp,
+                rmw: "acme".into(),
+                force: false,
+            },
+            &idx,
+        )
+        .expect("acme is on the index");
+        let sys =
+            std::fs::read_to_string(tmp.path().join("ws/src/demo_bringup/system.toml")).unwrap();
+        assert!(sys.contains("rmw = \"acme\""), "{sys}");
+    }
+
     fn scaffold(lang: Language, rmw: &str) -> tempfile::TempDir {
         let tmp = tempfile::tempdir().expect("tempdir");
-        scaffold_workspace(&WorkspaceScaffold {
+        scaffold_in_tree(&WorkspaceScaffold {
             dir: tmp.path().join("ws"),
             lang,
             rmw: rmw.into(),
@@ -349,17 +381,18 @@ mod tests {
 
     /// Issue 1300 — the accepted set is the descriptors', not a literal. The
     /// literal accepted three of the four backends the tree ships (`uorb` was
-    /// refused), so this walks `known_rmw()` rather than naming any.
+    /// refused), so this walks the index's `known()` rather than naming any.
     #[test]
     fn every_provided_backend_is_accepted_and_an_unknown_one_is_not() {
-        for rmw in crate::rmw_resolver::known_rmw() {
+        for rmw in crate::rmw_resolver::test_support::in_tree_index().known() {
+            let rmw = rmw.as_str();
             let tmp = scaffold(Language::Cpp, rmw);
             let sys = std::fs::read_to_string(tmp.path().join("ws/src/demo_bringup/system.toml"))
                 .unwrap();
             assert!(sys.contains(&format!("rmw = \"{rmw}\"")), "{rmw}: {sys}");
         }
         let tmp = tempfile::tempdir().expect("tempdir");
-        let err = scaffold_workspace(&WorkspaceScaffold {
+        let err = scaffold_in_tree(&WorkspaceScaffold {
             dir: tmp.path().join("ws"),
             lang: Language::Cpp,
             rmw: "not-a-backend".into(),
@@ -430,7 +463,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("ws");
         std::fs::create_dir_all(&dir).unwrap();
-        let err = scaffold_workspace(&WorkspaceScaffold {
+        let err = scaffold_in_tree(&WorkspaceScaffold {
             dir,
             lang: Language::Cpp,
             rmw: "cyclonedds".into(),

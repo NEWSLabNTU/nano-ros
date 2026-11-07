@@ -7,7 +7,7 @@
 //! backend's wire, and core may not name a backend (RFC-0071), so the backend
 //! states it in its `nros-rmw.toml` (`[rmw.facts] request_source_timestamp`)
 //! and this check asks for the fact by key
-//! (`cargo_nano_ros::rmw_resolver::backend_states_fact`).
+//! (`ResolvedRmwIn::states_fact`, over the provider scan).
 //!
 //! A WARNING, not a refusal, on the `[safety]` precedent in
 //! `planner::collect_plan_warnings`: the contract states something the backend
@@ -31,14 +31,20 @@ pub const REQUEST_SOURCE_TIMESTAMP: &str = "request_source_timestamp";
 /// server in the model. A server's backend is its node's
 /// `execution.deploy.<fqn>.rmw` when the model states one, else `image_rmw`;
 /// with neither, the server is not checked.
+///
+/// `rmws` is the index the backends resolve through (RFC-0071 D14). A name
+/// it cannot resolve states nothing, so it is not checked here: the load-time
+/// validation is what refuses it.
 pub fn stale_after_warnings(
+    rmws: &crate::orchestration::rmw_index::RmwIndex,
     model: &SystemModel,
     members: Option<&[&str]>,
     image_rmw: Option<&str>,
 ) -> Vec<String> {
     stale_after_warnings_with(model, members, image_rmw, |rmw| {
-        let canonical = cargo_nano_ros::rmw_resolver::canonical_rmw(rmw)?;
-        cargo_nano_ros::rmw_resolver::backend_states_fact(canonical, REQUEST_SOURCE_TIMESTAMP)
+        rmws.resolve(rmw)
+            .ok()?
+            .states_fact(REQUEST_SOURCE_TIMESTAMP)
     })
 }
 
@@ -156,13 +162,26 @@ mod tests {
     #[test]
     fn the_in_tree_descriptors_state_the_fact() {
         let m = model(STALE, "");
-        assert_eq!(stale_after_warnings(&m, None, Some("xrce")).len(), 1);
-        assert!(stale_after_warnings(&m, None, Some("zenoh")).is_empty());
-        assert!(stale_after_warnings(&m, None, Some("cyclonedds")).is_empty());
+        let idx = cargo_nano_ros::rmw_resolver::test_support::in_tree_index();
+        assert_eq!(stale_after_warnings(&idx, &m, None, Some("xrce")).len(), 1);
+        assert!(stale_after_warnings(&idx, &m, None, Some("zenoh")).is_empty());
+        assert!(stale_after_warnings(&idx, &m, None, Some("cyclonedds")).is_empty());
         assert_eq!(
-            cargo_nano_ros::rmw_resolver::backend_states_fact("uorb", REQUEST_SOURCE_TIMESTAMP),
+            idx.resolve("uorb")
+                .unwrap()
+                .states_fact(REQUEST_SOURCE_TIMESTAMP),
             None
         );
-        assert!(stale_after_warnings(&m, None, Some("uorb")).is_empty());
+        assert!(stale_after_warnings(&idx, &m, None, Some("uorb")).is_empty());
+    }
+
+    /// RFC-0071 D14 — an out-of-tree backend's own `[rmw.facts]` answer: the
+    /// `acme` fixture states `request_source_timestamp = false`.
+    #[test]
+    fn an_out_of_tree_descriptor_states_the_fact() {
+        let ws = tempfile::tempdir().unwrap();
+        let idx = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let m = model(STALE, "");
+        assert_eq!(stale_after_warnings(&idx, &m, None, Some("acme")).len(), 1);
     }
 }

@@ -76,6 +76,12 @@ pub struct RmwDescriptor {
     pub cmake_dir: String,
     /// Whether a `[rmw.provides.cmake]` table was present at all.
     pub has_cmake_provision: bool,
+    /// `[rmw.provides.cargo] crate` — the backend's own cargo crate, which an
+    /// image whose board does not link it depends on directly (RFC-0071 D15).
+    /// Empty: the descriptor names none.
+    pub cargo_crate: String,
+    /// Whether a `[rmw.provides.cargo]` table was present at all.
+    pub has_cargo_provision: bool,
     /// `[rmw.link].rlib_dep` — the Rust backend crate bundled into the
     /// umbrella, or empty for a backend that is not Rust.
     pub rlib_dep: String,
@@ -180,6 +186,9 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             section = name.to_string();
             if section == "rmw.provides.cmake" {
                 d.has_cmake_provision = true;
+            }
+            if section == "rmw.provides.cargo" {
+                d.has_cargo_provision = true;
             }
             continue;
         }
@@ -295,8 +304,9 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
         d.register_fn = "register".to_string();
     }
     if !d.register_fn.is_empty() && d.register_crate.is_empty() {
-        d.register_crate = cargo_crate;
+        d.register_crate = cargo_crate.clone();
     }
+    d.cargo_crate = cargo_crate;
     if !d.register_fn.is_empty() && d.register_crate.is_empty() {
         return Err(format!(
             "{origin}: [rmw.provides.cargo].register names a function but no `crate` \

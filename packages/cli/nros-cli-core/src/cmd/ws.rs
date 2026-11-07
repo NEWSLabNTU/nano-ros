@@ -1322,6 +1322,26 @@ pub fn runner_search_path_for(
     )
 }
 
+/// [`provider_search_path_for`] for an RMW lookup (RFC-0071 D14): the
+/// implicit nano-ros root narrows to its `packages/rmw/`
+/// ([`provider_scan::InTreeScope::Rmw`]); every root the user names keeps its
+/// full walk, so a workspace provider is found beside the in-tree backends.
+///
+/// # Errors
+///
+/// As [`provider_search_path_for`].
+pub fn rmw_search_path_for(
+    workspace: &Path,
+    base_paths: &[PathBuf],
+) -> Result<provider_scan::SearchPath> {
+    provider_search_path_scoped(
+        nano_ros_underlay(workspace).as_deref(),
+        workspace,
+        base_paths,
+        provider_scan::InTreeScope::Rmw,
+    )
+}
+
 /// The nano-ros tree that is root 0: the checkout the workspace sits in, else
 /// this binary's own SDK root.
 fn nano_ros_underlay(workspace: &Path) -> Option<PathBuf> {
@@ -3423,6 +3443,8 @@ fn generate_facade_crates(
         }
     }
 
+    // RFC-0071 D14 — one RMW index for every facade this sync writes.
+    let rmws = crate::orchestration::rmw_index::for_workspace(ws_root)?;
     for (pkg_name, pkg_dir) in &candidates {
         // The CARGO manifest — NOT `WsPkg::manifest`, which is the ament
         // `package.xml`, and which the cargo-only members do not have at all.
@@ -3430,7 +3452,8 @@ fn generate_facade_crates(
         if !cargo_toml.is_file() {
             continue;
         }
-        let Some(f) = crate::orchestration::facade::write_facade(
+        let Some(f) = crate::orchestration::facade::write_facade_in(
+            &rmws,
             pkg_name,
             pkg_dir,
             &cargo_toml,

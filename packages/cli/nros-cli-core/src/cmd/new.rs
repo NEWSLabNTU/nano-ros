@@ -865,6 +865,10 @@ pub fn run(args: Args) -> Result<()> {
                  --board <board>` (see the book's Growing Your Project section)."
             );
         }
+        // RFC-0071 D14 — no workspace exists yet, so `--rmw` is checked
+        // against the SDK root's backends alone.
+        let cwd = std::env::current_dir().map_err(|e| eyre::eyre!("resolving cwd: {e}"))?;
+        let rmws = crate::orchestration::rmw_index::for_sdk_root(&cwd)?;
         return cargo_nano_ros::workspace_scaffold::scaffold_workspace(
             &cargo_nano_ros::workspace_scaffold::WorkspaceScaffold {
                 dir: PathBuf::from(&name),
@@ -872,6 +876,7 @@ pub fn run(args: Args) -> Result<()> {
                 rmw,
                 force: args.force,
             },
+            &rmws,
         );
     }
 

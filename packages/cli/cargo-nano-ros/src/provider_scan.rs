@@ -470,10 +470,18 @@ pub enum InTreeScope {
     /// it outran their readiness windows). It also reached test-only runner
     /// fixtures under `packages/cli`, which no user `nros run` should see.
     Runners,
+    /// Only [`IN_TREE_RMW_DIR`], where the checkout's RMW backends live — the
+    /// root an RMW lookup needs (RFC-0071 D14, phase-545 W1). Every CLI site
+    /// resolves a backend through the scan, so `nros build` must not pay a
+    /// whole-checkout walk for it.
+    Rmw,
 }
 
 /// Where a nano-ros tree keeps its runner packages (RFC-0119 D8).
 pub const IN_TREE_RUNNERS_DIR: &str = "packages/runners";
+
+/// Where a nano-ros tree keeps its RMW backends (RFC-0071 D14).
+pub const IN_TREE_RMW_DIR: &str = "packages/rmw";
 
 /// [`search_path_over`] with the in-tree root narrowed to `scope`.
 ///
@@ -496,6 +504,7 @@ pub fn search_path_over_scoped(
             InTreeScope::Runners if r.join(IN_TREE_RUNNERS_DIR).is_dir() => {
                 r.join(IN_TREE_RUNNERS_DIR)
             }
+            InTreeScope::Rmw if r.join(IN_TREE_RMW_DIR).is_dir() => r.join(IN_TREE_RMW_DIR),
             _ => r.to_path_buf(),
         };
         push_root(&mut out, root, RootOrigin::NanoRosTree, None);
@@ -2850,6 +2859,32 @@ mod tests {
             InTreeScope::Runners,
         );
         assert_eq!(p.roots[0].path, bare.path());
+    }
+
+    /// RFC-0071 D14 — an RMW lookup walks the tree's `packages/rmw/` only, and
+    /// the workspace keeps its own root, so its provider is found beside them.
+    #[test]
+    fn the_rmw_scope_narrows_root_zero_to_the_backends() {
+        let repo = tempfile::tempdir().unwrap();
+        write(
+            &repo.path().join("packages/rmw/z/nros-rmw-z/package.xml"),
+            &provider_xml("nros_rmw_z", "rmw", "z"),
+        );
+        write(
+            &repo.path().join("packages/boards/b/package.xml"),
+            &provider_xml("b", "board", "b"),
+        );
+        let ws = repo.path().join("examples/ws");
+        write(
+            &ws.join("src/acme_rmw/package.xml"),
+            &provider_xml("acme_rmw", "rmw", "acme"),
+        );
+        let sources = source_roots(&ws, &[], &[]).unwrap();
+        let p = search_path_over_scoped(Some(repo.path()), &sources, &ws, None, InTreeScope::Rmw);
+        assert_eq!(p.roots[0].path, repo.path().join(IN_TREE_RMW_DIR));
+        let scan = scan_search_path(&p).unwrap();
+        let names: Vec<&str> = scan.providers.iter().map(|p| p.package.as_str()).collect();
+        assert_eq!(names, vec!["nros_rmw_z", "acme_rmw"]);
     }
 
     /// The default source roots are the workspace and its `package_paths`,

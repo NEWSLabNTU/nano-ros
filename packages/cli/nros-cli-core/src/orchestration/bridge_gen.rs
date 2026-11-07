@@ -8,9 +8,30 @@
 //! * `nros-build` (the `nros::main!` build.rs emitter) splices the bridge entry
 //!   support fns into a `[[bridge]]` entry ([`render_bridge_entry_fns`]).
 
-use super::{NrosPlan, plan::PlanBuildOptions};
+use super::{NrosPlan, plan::PlanBuildOptions, rmw_index::RmwIndex};
 
+/// The adapter over [`render_bridge_runtime_config_in`]: the RMW index is
+/// `ws_root`'s (RFC-0071 D14).
+///
+/// # Panics
+///
+/// The workspace's providers cannot be scanned.
 pub fn render_bridge_runtime_config(plan: &NrosPlan, ws_root: &std::path::Path) -> Option<String> {
+    if plan.bridges.is_empty() {
+        return None;
+    }
+    let rmws = super::rmw_index::for_workspace(ws_root)
+        .unwrap_or_else(|e| panic!("bridge config: scanning rmw providers: {e:#}"));
+    render_bridge_runtime_config_in(&rmws, plan, ws_root)
+}
+
+/// [`render_bridge_runtime_config`] with every RMW name canonicalised through
+/// `rmws`.
+pub fn render_bridge_runtime_config_in(
+    rmws: &RmwIndex,
+    plan: &NrosPlan,
+    ws_root: &std::path::Path,
+) -> Option<String> {
     use core::fmt::Write as _;
     if plan.bridges.is_empty() {
         return None;
@@ -19,9 +40,7 @@ pub fn render_bridge_runtime_config(plan: &NrosPlan, ws_root: &std::path::Path) 
     type Session = (String, u32, Option<String>, Vec<(String, String)>);
     let mut sessions: Vec<Session> = Vec::new();
     let intern = |sessions: &mut Vec<Session>, ep: &super::plan::PlanBridgeEndpoint| -> usize {
-        let rmw = normalize_rmw(&ep.rmw)
-            .unwrap_or(ep.rmw.as_str())
-            .to_string();
+        let rmw = normalize_rmw(rmws, &ep.rmw).unwrap_or_else(|| ep.rmw.clone());
         let key = (rmw, ep.domain, ep.locator.clone(), ep.properties.clone());
         match sessions.iter().position(|s| *s == key) {
             Some(i) => i,
@@ -229,13 +248,14 @@ fn resolve_topic_interface<'a>(
 /// endpoint matches the transport with the same canonical rmw + domain +
 /// locator. `None` ⇒ the endpoint names a session the build didn't open.
 fn bridge_endpoint_session_idx(
+    rmws: &RmwIndex,
     plan: &NrosPlan,
     ep: &super::plan::PlanBridgeEndpoint,
 ) -> Option<usize> {
-    let ep_rmw = normalize_rmw(&ep.rmw).unwrap_or(ep.rmw.as_str());
+    let ep_rmw = normalize_rmw(rmws, &ep.rmw).unwrap_or_else(|| ep.rmw.clone());
     plan.build.transports.iter().position(|t| {
         let t_rmw = t.rmw.as_deref().unwrap_or(plan.build.rmw.as_str());
-        let t_rmw = normalize_rmw(t_rmw).unwrap_or(t_rmw);
+        let t_rmw = normalize_rmw(rmws, t_rmw).unwrap_or_else(|| t_rmw.to_string());
         t_rmw == ep_rmw
             && t.domain.unwrap_or(0) == ep.domain
             && t.locator.as_deref().unwrap_or("") == ep.locator.as_deref().unwrap_or("")
@@ -253,7 +273,7 @@ fn bridge_endpoint_session_idx(
 /// builder is the Phase 189.M1 surface; the planner emits one `[[transport]]`
 /// per distinct bridge endpoint and only forwards declared topics, so the
 /// `expect`s here cannot fire on a planner-produced plan.
-fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan) {
+fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan, rmws: &RmwIndex) {
     if plan.bridges.is_empty() {
         return;
     }
@@ -268,7 +288,7 @@ fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan) {
         ));
         // One bridge node per endpoint session.
         for (ei, ep) in bridge.connect.iter().enumerate() {
-            let idx = bridge_endpoint_session_idx(plan, ep)
+            let idx = bridge_endpoint_session_idx(rmws, plan, ep)
                 .expect("planner emits a transport per bridge endpoint");
             let node_name = format!("{}_ep{ei}", bridge.name);
             out.push_str(&format!(
@@ -332,7 +352,26 @@ fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan) {
 /// This is the single source of truth for the bridge relay codegen (the dead
 /// ~~`build_generated_package`~~ entry path that emitted the same shape inline was
 /// removed with `orchestration::generate`).
+///
+/// The adapter over [`render_bridge_entry_fns_in`]. Its caller (`nros-build`,
+/// from an entry's build script) passes no index, so it is the workspace the
+/// current directory — the entry package — sits in (RFC-0071 D14).
+///
+/// # Panics
+///
+/// The workspace's providers cannot be scanned.
 pub fn render_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
+    if !plan.build.is_bridge() {
+        return None;
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let rmws = super::rmw_index::for_dir(&cwd)
+        .unwrap_or_else(|e| panic!("bridge entry: scanning rmw providers: {e:#}"));
+    render_bridge_entry_fns_in(&rmws, plan)
+}
+
+/// [`render_bridge_entry_fns`] with every RMW name resolved through `rmws`.
+pub fn render_bridge_entry_fns_in(rmws: &RmwIndex, plan: &NrosPlan) -> Option<String> {
     if !plan.build.is_bridge() {
         return None;
     }
@@ -345,7 +384,7 @@ pub fn render_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
     ));
     for t in &plan.build.transports {
         let rmw = t.rmw.as_deref().unwrap_or(plan.build.rmw.as_str());
-        let canonical = normalize_rmw(rmw).unwrap_or(rmw);
+        let canonical = normalize_rmw(rmws, rmw).unwrap_or_else(|| rmw.to_string());
         let locator = t.locator.as_deref().unwrap_or("");
         let domain = match t.domain {
             Some(d) => format!(".domain_id({d})"),
@@ -368,7 +407,7 @@ pub fn render_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
     }
     out.push_str("];\n\n");
 
-    render_backend_register_fn(&mut out, plan);
+    render_backend_register_fn(&mut out, plan, rmws);
 
     out.push_str(
         "\npub fn build_executor_bridge() -> Result<nros::Executor<'static>, nros::NodeError> {\n",
@@ -377,12 +416,12 @@ pub fn render_bridge_entry_fns(plan: &NrosPlan) -> Option<String> {
     out.push_str("    nros::Executor::open_multi(&SESSION_SPECS)\n");
     out.push_str("}\n");
 
-    render_register_bridges_fn(&mut out, plan);
+    render_register_bridges_fn(&mut out, plan, rmws);
 
     Some(out)
 }
 
-fn render_backend_register_fn(out: &mut String, plan: &NrosPlan) {
+fn render_backend_register_fn(out: &mut String, plan: &NrosPlan, rmws: &RmwIndex) {
     out.push_str("pub fn register_backends() {\n");
     // Phase 173.5 — register every RMW the transports bind to (bridge
     // mode registers 2+ before `Executor::open_multi`). Single-RMW emits
@@ -392,8 +431,8 @@ fn render_backend_register_fn(out: &mut String, plan: &NrosPlan) {
     // backend's own `[rmw.provides.cargo]` statement, `<crate>::<register>()`,
     // never a `match` on its name here. A backend that names no crate
     // registers through the C ABI only and gets no line.
-    for rmw in rmw_set(&plan.build) {
-        if let Some(call) = rust_register_call(rmw, &plan.build) {
+    for rmw in rmw_set(rmws, &plan.build) {
+        if let Some(call) = rust_register_call(rmws, &rmw, &plan.build) {
             out.push_str(&format!("    let _ = {call};\n"));
         }
     }
@@ -408,12 +447,13 @@ fn render_backend_register_fn(out: &mut String, plan: &NrosPlan) {
 /// through the C ABI at the CMake layer, so no Rust call is emitted there
 /// (byte-identical to before). That rule used to be spelled for `cyclonedds`
 /// by name; it is now a property of the link strategy.
-fn rust_register_call(rmw: &str, build: &PlanBuildOptions) -> Option<String> {
-    let row = cargo_nano_ros::rmw_resolver::resolve_rmw(rmw).ok()?;
-    if row.register_crate.is_empty() {
+fn rust_register_call(rmws: &RmwIndex, rmw: &str, build: &PlanBuildOptions) -> Option<String> {
+    let row = rmws.resolve(rmw).ok()?;
+    let d = &row.descriptor;
+    if d.register_crate.is_empty() {
         return None;
     }
-    if row.dispatch.link_strategy == cargo_nano_ros::rmw_descriptor::LINK_CMAKE
+    if d.link_strategy == cargo_nano_ros::rmw_descriptor::LINK_CMAKE
         // The host board is the cargo case, under either of its names (issue 1109).
         && !nros_orchestration_ir::is_host_board_key(&build.board)
     {
@@ -421,21 +461,22 @@ fn rust_register_call(rmw: &str, build: &PlanBuildOptions) -> Option<String> {
     }
     Some(format!(
         "{}::{}()",
-        row.register_crate.replace('-', "_"),
-        row.register_fn
+        d.register_crate.replace('-', "_"),
+        d.register_fn
     ))
 }
 
-fn normalize_rmw(rmw: &str) -> Option<&'static str> {
-    crate::orchestration::rmw_resolver::canonical_rmw(rmw)
+/// The canonical name of `rmw` on the provider scan (RFC-0071 D14).
+fn normalize_rmw(rmws: &RmwIndex, rmw: &str) -> Option<String> {
+    rmws.canonical(rmw)
 }
 
 /// Phase 173.5 — the set of canonical RMW backends the build links: the
 /// union of every `[[transport]].rmw` (falling back to `build.rmw` when
 /// a transport omits it), deduped. With no transports declared it is
 /// just `build.rmw` — so single-RMW builds are byte-identical.
-fn rmw_set(build: &PlanBuildOptions) -> Vec<&'static str> {
-    let mut set: Vec<&'static str> = Vec::new();
+fn rmw_set(rmws: &RmwIndex, build: &PlanBuildOptions) -> Vec<String> {
+    let mut set: Vec<String> = Vec::new();
     let mut raw: Vec<&str> = if build.transports.is_empty() {
         vec![build.rmw.as_str()]
     } else {
@@ -450,7 +491,7 @@ fn rmw_set(build: &PlanBuildOptions) -> Vec<&'static str> {
     // multi-RMW path. Empty ⇒ no change ⇒ single-RMW build byte-identical.
     raw.extend(build.bridged_rmws.iter().map(String::as_str));
     for r in raw {
-        if let Some(n) = normalize_rmw(r)
+        if let Some(n) = normalize_rmw(rmws, r)
             && !set.contains(&n)
         {
             set.push(n);
@@ -550,6 +591,27 @@ mod tests {
     use super::*;
     use crate::orchestration::plan::PlanTransport;
 
+    fn idx() -> RmwIndex {
+        cargo_nano_ros::rmw_resolver::test_support::in_tree_index()
+    }
+
+    /// RFC-0071 D14 — a bridge leg on an out-of-tree backend registers
+    /// through ITS descriptor, and its aliases canonicalise through the scan.
+    #[test]
+    fn an_out_of_tree_backend_registers_from_its_descriptor() {
+        let ws = tempfile::tempdir().unwrap();
+        let acme = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let mut b = build_with(vec![]);
+        b.bridged_rmws = vec!["acme".to_string()];
+        assert_eq!(rmw_set(&acme, &b), vec!["zenoh", "acme"]);
+        assert_eq!(
+            rust_register_call(&acme, "acme", &b).as_deref(),
+            Some("acme_rmw::register()")
+        );
+        // The SDK-only index has no `acme`, so the leg is not registered.
+        assert_eq!(rmw_set(&idx(), &b), vec!["zenoh"]);
+    }
+
     fn build_with(transports: Vec<PlanTransport>) -> PlanBuildOptions {
         let mut build: PlanBuildOptions = serde_json::from_value(serde_json::json!({
             "target": "x", "board": "linux", "rmw": "zenoh",
@@ -571,21 +633,21 @@ mod tests {
         embedded.board = "mps2-an385".to_string();
         for b in [&host, &embedded] {
             assert_eq!(
-                rust_register_call("zenoh", b).as_deref(),
+                rust_register_call(&idx(), "zenoh", b).as_deref(),
                 Some("nros_rmw_zenoh::register()")
             );
             assert_eq!(
-                rust_register_call("xrce", b).as_deref(),
+                rust_register_call(&idx(), "xrce", b).as_deref(),
                 Some("nros_rmw_xrce_cffi::register()")
             );
-            assert_eq!(rust_register_call("uorb", b), None);
+            assert_eq!(rust_register_call(&idx(), "uorb", b), None);
         }
         // A CMake-linked backend registers in Rust only where cargo links it.
         assert_eq!(
-            rust_register_call("cyclonedds", &host).as_deref(),
+            rust_register_call(&idx(), "cyclonedds", &host).as_deref(),
             Some("nros_rmw_cyclonedds_sys::register()")
         );
-        assert_eq!(rust_register_call("cyclonedds", &embedded), None);
+        assert_eq!(rust_register_call(&idx(), "cyclonedds", &embedded), None);
     }
 
     /// Phase 255 Wave 5 — `rmw_set` folds the `bridged_rmws` link set (from a
@@ -595,11 +657,11 @@ mod tests {
     fn rmw_set_unions_bridged_rmws() {
         let mut b = build_with(vec![]);
         // Single-RMW build, no bridges → just `build.rmw`.
-        assert_eq!(rmw_set(&b), vec!["zenoh"]);
+        assert_eq!(rmw_set(&idx(), &b), vec!["zenoh"]);
 
         // A cross-RMW bridge adds cyclonedds; zenoh stays deduped.
         b.bridged_rmws = vec!["zenoh".to_string(), "cyclonedds".to_string()];
-        assert_eq!(rmw_set(&b), vec!["zenoh", "cyclonedds"]);
+        assert_eq!(rmw_set(&idx(), &b), vec!["zenoh", "cyclonedds"]);
     }
 
     /// Build a bridge plan: two zenoh transports (domains 0 + 5), a `[[bridge]]`
@@ -815,7 +877,7 @@ mod tests {
     fn register_bridges_emits_relay() {
         let plan = bridge_plan(&["/chatter"], true);
         let mut tables = String::new();
-        render_register_bridges_fn(&mut tables, &plan);
+        render_register_bridges_fn(&mut tables, &plan, &idx());
         // register_bridges fn + per-endpoint bridge nodes bound to their session.
         assert!(tables.contains("pub fn register_bridges"), "{tables}");
         assert!(

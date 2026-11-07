@@ -238,6 +238,21 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
 }
 
 pub fn check_plan_file(path: &Path) -> Result<CheckReport> {
+    // RFC-0071 D14 — the backends a plan links resolve through the scan of
+    // the workspace the plan file sits in.
+    let rmws = crate::orchestration::rmw_index::for_dir(
+        path.parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new(".")),
+    )?;
+    check_plan_file_in(&rmws, path)
+}
+
+/// [`check_plan_file`] with the backends resolved through `rmws`.
+pub fn check_plan_file_in(
+    rmws: &crate::orchestration::rmw_index::RmwIndex,
+    path: &Path,
+) -> Result<CheckReport> {
     let raw = fs::read_to_string(path)
         .wrap_err_with(|| format!("failed to read plan {}", path.display()))?;
     let plan: NrosPlan = serde_json::from_str(&raw)
@@ -251,7 +266,7 @@ pub fn check_plan_file(path: &Path) -> Result<CheckReport> {
             errors.join("; ")
         ));
     }
-    let messages = collect_plan_warnings(&plan);
+    let messages = collect_plan_warnings(&plan, rmws);
     Ok(CheckReport {
         errors: 0,
         warnings: messages.len(),
@@ -265,7 +280,10 @@ pub fn check_plan_file(path: &Path) -> Result<CheckReport> {
 /// `[[transport]]` entries) is supported on hosted / gateway-Linux targets,
 /// but typically cannot link on an embedded target — warn rather than fail so
 /// the user can confirm the target really does provide every backend.
-fn collect_plan_warnings(plan: &NrosPlan) -> Vec<String> {
+fn collect_plan_warnings(
+    plan: &NrosPlan,
+    index: &crate::orchestration::rmw_index::RmwIndex,
+) -> Vec<String> {
     let mut warnings = Vec::new();
     let rmws = linked_rmw_set(&plan.build);
     if rmws.len() > 1 && !plan_target_is_hosted(&plan.build) {
@@ -288,7 +306,8 @@ fn collect_plan_warnings(plan: &NrosPlan) -> Vec<String> {
         && let Some(cap) = crate::orchestration::capability("safety")
     {
         for rmw in &rmws {
-            if !cap.backend_supports(rmw) {
+            // A name nothing provides carries nothing; the load refuses it.
+            if !index.resolve(rmw).is_ok_and(|r| cap.backend_supports(&r)) {
                 warnings.push(format!(
                     "[safety] is declared but the resolved RMW `{rmw}` has no E2E \
                      integrity (CRC) path; the axis no-ops on this backend (only {} \
@@ -296,7 +315,7 @@ fn collect_plan_warnings(plan: &NrosPlan) -> Vec<String> {
                      switch the RMW or drop [safety].",
                     // phase-347 W4 — derived from the descriptors, so this
                     // message cannot name a stale set.
-                    cargo_nano_ros::rmw_resolver::backends_declaring(cap.declared).join("/"),
+                    index.backends_declaring(cap.declared).join("/"),
                 ));
             }
         }
@@ -4874,6 +4893,27 @@ topics:
             check(plan("cyclonedds", false), "no-safety-cyclone.json").warnings,
             0
         );
+
+        // RFC-0071 D14 — an out-of-tree backend answers from its own
+        // descriptor: `acme` declares `safety`, so no warning, and the list a
+        // warning names is the scan's, `acme` included.
+        let ws = tempfile::tempdir().unwrap();
+        let idx = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let path = root.join("safety-acme.json");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&plan("acme", true)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(check_plan_file_in(&idx, &path).unwrap().warnings, 0);
+        let path = root.join("safety-xrce-acme.json");
+        fs::write(
+            &path,
+            serde_json::to_string_pretty(&plan("xrce", true)).unwrap(),
+        )
+        .unwrap();
+        let r = check_plan_file_in(&idx, &path).unwrap();
+        assert!(r.messages[0].contains("acme"), "{:?}", r.messages);
     }
 
     #[cfg(feature = "play-launch-parser")]
