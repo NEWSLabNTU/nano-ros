@@ -8,6 +8,7 @@
 # phase-336 — the shared cargo-profile resolver (`nros dev profile`), included at
 # FILE scope so a function body never include()s inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRustToolchain.cmake")  # issue 2312
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCliRows.cmake")  # issue 2200
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosArtifactLayout.cmake")  # issue 1852
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
@@ -2336,10 +2337,14 @@ function(nros_cargo_build)
     # Tier-2/3 embedded targets (armv7a / thumbv* / riscv32) need a
     # nightly toolchain with rust-src + build-std. The workspace's
     # stable rust-toolchain.toml doesn't ship those targets, so
-    # override via RUSTUP_TOOLCHAIN and add `-Z build-std`.
+    # override via RUSTUP_TOOLCHAIN and add `-Z build-std`. Issue 2312: the
+    # channel is the pinned nightly read from its one source, the same one
+    # `nros setup board` installs and `nros build`'s preflight checks.
     set(_rustup_override "")
-    if(NROS_RUST_TARGET MATCHES "^(armv7a|thumbv|riscv32)")
-        set(_rustup_override RUSTUP_TOOLCHAIN=nightly-2026-04-11)
+    nros_rust_target_builds_std("${NROS_RUST_TARGET}" _nros_builds_std)
+    if(_nros_builds_std)
+        nros_pinned_nightly(_nros_nightly)
+        set(_rustup_override RUSTUP_TOOLCHAIN=${_nros_nightly})
         list(APPEND CARGO_ARGS -Z "build-std=core,alloc,compiler_builtins")
     endif()
 

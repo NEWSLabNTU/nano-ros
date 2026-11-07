@@ -1,11 +1,13 @@
 ---
 id: 2312
 title: "`nros setup board <zephyr-board>` provisions the SDK root's stable toolchain, but the Zephyr C road builds `nros-c` on a nightly hardcoded in two cmake files, so a fresh host's first `nros run` dies in rustup"
-status: open
+status: resolved
 type: bug
 area: cli, setup, zephyr, toolchain, cmake
 related: [phase-537, 2151, 2285, 2288, 1447, 1672]
 found: 2026-11-06
+resolved: 2026-11-07
+resolved_in: "fix-issue-2312 branch: the Zephyr C road reads the pinned nightly, and setup installs it"
 ---
 
 **Home: none yet.** Found by the phase-537 book session's renode-nucleo
@@ -108,3 +110,68 @@ Acceptance: on a host whose `RUSTUP_HOME` has only the SDK's stable
 toolchain, `nros setup board nucleo-f767zi-zephyr` then `west build -b
 nucleo_f767zi` of the C talker builds, and no rustup auto-install line
 appears.
+
+## Resolution
+
+All three halves of the fix direction, on one source: the first `nightly-*`
+row of `config/rust-toolchains.txt` (the fold that carries
+`tools/rust-toolchain.toml`, and what an installed SDK root ships).
+
+1. **The build reads it.** `cmake/NanoRosRustToolchain.cmake` holds
+   `nros_pinned_nightly()` and `nros_rust_target_builds_std()` (the
+   `armv7a|thumbv|riscv32` predicate). `zephyr/cmake/nros_cargo_build.cmake`
+   sets `RUSTUP_TOOLCHAIN` from the first, and
+   `zephyr/cmake/nros_generate_interfaces.cmake` writes the FFI crate's
+   `rust-toolchain.toml` channel from it. The two NuttX toolchain files
+   (`cmake/toolchain/armv7a-nuttx-eabi.cmake`,
+   `riscv32imac-nuttx-elf.cmake`) carried the same literal for Corrosion's
+   `Rust_TOOLCHAIN` and read it the same way now. `check-rust-targets-covered`
+   refuses a `nightly-<date>` literal in any tracked cmake file outside a
+   comment, and a fixture row's `RUSTUP_TOOLCHAIN` (TOML, which cannot read
+   a file) that differs from the pin.
+2. **Setup installs it.** `builder::preflight::zephyr_runtime_needs` is the
+   Rust side of the same predicate: for a Zephyr board whose
+   `[board.provisioning] rust_targets` or `[board.zephyr] rust_target` is an
+   embedded triple, the pinned nightly with `cargo`, `rust-src`, `rustfmt`
+   (the FFI crate's toolchain file names it) and the triple. `nros setup
+   board` runs it as step (c2) through `rust_toolchain::ensure_needs`
+   (minimal profile, then each component and target), and `nros setup
+   <board>` adds the same rows to `board_rust_needs`. `cargo` is a need
+   because the reader's toolchain was a partial install without it; `rustup
+   component add cargo` repairs one.
+3. **Preflight asks it.** `nros build` / `nros run` of a C/C++ image on a
+   Zephyr board refuse before cmake when the nightly is absent, or lacks a
+   component or the triple, naming `nros setup board <board>
+   --zephyr-workspace <ws>` (`check_zephyr_runtime`).
+
+```text
+$ nros setup board nucleo-f767zi-zephyr --zephyr-workspace <ws> --dry-run
+  (c) rust targets: rustup target add thumbv7em-none-eabihf
+  (c2) runtime nightly: rustup toolchain install nightly-2026-04-11 --profile minimal --component cargo,rust-src,rustfmt --target thumbv7em-none-eabihf
+```
+
+Tests: `a_cortex_m_zephyr_board_needs_the_pinned_nightly_for_its_runtime`
+and `a_missing_runtime_nightly_is_refused_naming_setup_board`
+(`builder/preflight.rs`), `setup_for_a_cortex_m_zephyr_board_installs_the_runtime_nightly`
+and `the_board_setup_plan_line_is_one_rustup_command` (`cmd/setup.rs`), and
+the gate's self-test cases.
+
+Verified on a host whose `RUSTUP_HOME` held only `1.99.0` (minimal), on
+2026-11-07, with a scaffolded C talker:
+
+- `mps2-an385-zephyr` (Cortex-M3, `thumbv7m-none-eabi`): `nros build`
+  refused naming `nros setup board`; `nros setup board mps2-an385-zephyr`
+  added the target to the nightly; `nros build` then ran `west build` to
+  `zephyr.elf`, with the generated FFI `rust-toolchain.toml` and both
+  `RUSTUP_TOOLCHAIN` settings on `nightly-2026-04-11`, no rustup
+  auto-install line, and no toolchain in `RUSTUP_HOME` but the two.
+- `nucleo-f767zi-zephyr`: the preflight refused before setup, `nros setup
+  board` installed `nightly-2026-04-11` with `cargo`, `rust-src`, `rustfmt`
+  and `thumbv7em-none-eabihf`, and the next `nros build` passed preflight and
+  reached `west build`. That build stopped at Zephyr's devicetree
+  (`st/f7/stm32f767zitx-pinctrl.dtsi`): the host's west workspace has no
+  `hal_stm32`. The acceptance's Nucleo `west build` is NOT verified here.
+
+The `renode-nucleo` probe row in `packages/boards/board-support.toml` still
+`awaits` this; it can drop that once a release carries the fix and the
+track replays green.

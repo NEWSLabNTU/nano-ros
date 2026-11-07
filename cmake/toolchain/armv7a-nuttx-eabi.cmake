@@ -55,7 +55,13 @@ set(Rust_CARGO_TARGET "armv7a-nuttx-eabihf" CACHE STRING "Rust target triple" FO
 # examples/qemu-armv7a-nuttx/rust-toolchain.toml — the SSOT). A generic "nightly"
 # (a) isn't what's installed (the pin is dated) and (b) would break the libc
 # match. Keep in lockstep with examples/qemu-armv7a-nuttx/rust-toolchain.toml.
-set(Rust_TOOLCHAIN "nightly-2026-04-11" CACHE STRING "Rust toolchain" FORCE)
+# The channel is the first `nightly-*` row of config/rust-toolchains.txt, the
+# same row the CLI builds a nightly board with (`board_rust_channel`); that row
+# lists the example's file among its sources while the two pins agree.
+# Issue 2312 — read from its one source, never a literal.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosRustToolchain.cmake")
+nros_pinned_nightly(_nros_nightly)
+set(Rust_TOOLCHAIN "${_nros_nightly}" CACHE STRING "Rust toolchain" FORCE)
 
 # Don't search host paths for libraries / headers when cross-compiling.
 # PROGRAM is NEVER so CMake can still find host tools (cmake, ninja, etc.).

@@ -1031,6 +1031,19 @@ fn board_rust_needs(
                 }
             }
         }
+        // Issue 2312 — and the pinned nightly a C/C++ image's runtime builds
+        // with on an embedded Zephyr triple, whatever the descriptor's
+        // `toolchain` says: that one names zephyr-lang-rust's channel.
+        if let Some((nightly, needs)) =
+            crate::builder::preflight::zephyr_runtime_needs(d, Some(sdk_root))
+        {
+            for n in needs {
+                let row = (Some(nightly.clone()), n);
+                if !out.contains(&row) {
+                    out.push(row);
+                }
+            }
+        }
     }
     out
 }
@@ -1395,6 +1408,29 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         }
     }
 
+    // (c2) Issue 2312 -- the pinned nightly the board's C/C++ runtime builds
+    //      with (`-Z build-std` on an embedded triple), plus `rust-src`,
+    //      `rustfmt` and the triple on it. Installed here because nothing else
+    //      does: the descriptor's `toolchain` names zephyr-lang-rust's channel,
+    //      and rustup's auto-install inside the cmake build was the only
+    //      provisioner, and a partial one stopped the build.
+    if let Some((nightly, needs)) =
+        crate::builder::preflight::zephyr_runtime_needs(board, Some(&root))
+    {
+        eprintln!("  (c2) {}", zephyr_runtime_plan(&nightly, &needs));
+        let rows: Vec<_> = needs
+            .into_iter()
+            .map(|n| (Some(nightly.clone()), n))
+            .collect();
+        if args.dry_run {
+            eprintln!("      (--dry-run: skipped)");
+        } else {
+            let line = crate::orchestration::rust_toolchain::ensure_needs(&rows, false)
+                .map_err(|e| eyre::eyre!("nros setup board: {e}"))?;
+            eprintln!("      {line}");
+        }
+    }
+
     // (d) Ensure the zephyr-lang-rust module is in the consumer's tree. The
     //     module fetch itself is west-native (the board ships a
     //     `west-downstream.yml` `import:false` fragment — Phase 215.J.3); here
@@ -1415,6 +1451,32 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Issue 2312 -- step (c2)'s plan line: the rustup command that installs the
+/// runtime nightly with everything on it, which is what `ensure_needs` does.
+fn zephyr_runtime_plan(nightly: &str, needs: &[crate::builder::preflight::RustNeed]) -> String {
+    use crate::builder::preflight::RustNeed;
+    let components: Vec<&str> = needs
+        .iter()
+        .filter_map(|n| match n {
+            RustNeed::Component(c) => Some(c.as_str()),
+            RustNeed::Target(_) => None,
+        })
+        .collect();
+    let targets: Vec<&str> = needs
+        .iter()
+        .filter_map(|n| match n {
+            RustNeed::Target(t) => Some(t.as_str()),
+            RustNeed::Component(_) => None,
+        })
+        .collect();
+    format!(
+        "runtime nightly: rustup toolchain install {nightly} --profile minimal \
+         --component {} --target {}",
+        components.join(","),
+        targets.join(",")
+    )
 }
 
 /// The targets `nros setup board` adds, and which of them is the image target
@@ -7582,6 +7644,62 @@ mod source_workspace_tests {
         let cache = index_in(&root.join("store/fetch"));
         let got = source_workspace(&cache, &[Some(cache.clone())], || None);
         assert_eq!(got, root.join("store/fetch"));
+    }
+}
+
+#[cfg(test)]
+mod zephyr_runtime_setup_tests {
+    use crate::builder::preflight::RustNeed;
+
+    /// Issue 2312 — `nros setup nucleo-f767zi-zephyr` installs the pinned
+    /// nightly the C/C++ runtime builds with, with cargo, rust-src, rustfmt and
+    /// the board's triple on it, beside the stable needs it already had.
+    #[test]
+    fn setup_for_a_cortex_m_zephyr_board_installs_the_runtime_nightly() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let index = super::SdkIndex::load(&root.join("nros-sdk-index.toml")).expect("index");
+        let nightly = crate::builder::preflight::pinned_nightly(Some(&root)).unwrap();
+        assert_eq!(
+            index
+                .rust
+                .toolchain
+                .get("nightly-pinned")
+                .map(|t| t.channel.clone()),
+            Some(nightly.clone()),
+            "the index and the file name one nightly"
+        );
+        let needs =
+            super::board_rust_needs(&root, &index, &[("nucleo-f767zi-zephyr".to_string(), None)]);
+        for n in [
+            RustNeed::Component("cargo".into()),
+            RustNeed::Component("rust-src".into()),
+            RustNeed::Component("rustfmt".into()),
+            RustNeed::Target("thumbv7em-none-eabihf".into()),
+        ] {
+            assert!(
+                needs.contains(&(Some(nightly.clone()), n.clone())),
+                "{n:?} on {nightly} missing from {needs:?}"
+            );
+        }
+        // zephyr-lang-rust's own target stays on the stable channel.
+        assert!(needs.contains(&(None, RustNeed::Target("thumbv7em-none-eabihf".into()))));
+    }
+
+    #[test]
+    fn the_board_setup_plan_line_is_one_rustup_command() {
+        let line = super::zephyr_runtime_plan(
+            "nightly-x",
+            &[
+                RustNeed::Component("cargo".into()),
+                RustNeed::Component("rust-src".into()),
+                RustNeed::Target("thumbv7em-none-eabihf".into()),
+            ],
+        );
+        assert_eq!(
+            line,
+            "runtime nightly: rustup toolchain install nightly-x --profile minimal \
+             --component cargo,rust-src --target thumbv7em-none-eabihf"
+        );
     }
 }
 

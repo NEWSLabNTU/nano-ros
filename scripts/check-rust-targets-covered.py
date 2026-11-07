@@ -377,6 +377,60 @@ def check_channels(channels, rustup_alias, pins):
     return 1 if bad else 0
 
 
+NIGHTLY_LITERAL = re.compile(r"nightly-\d{4}-\d{2}-\d{2}")
+
+
+def nightly_literals(files, pinned):
+    """Issue 2312 — a dated nightly spelled outside the toolchain files.
+
+    `files` maps path -> text. A cmake file may spell none at all: it reads the
+    channel through `nros_pinned_nightly` (`cmake/NanoRosRustToolchain.cmake`),
+    because the Zephyr C road's two literals sat outside this gate and a bump
+    left them behind. Any other file named here (a fixture row's
+    `RUSTUP_TOOLCHAIN`, which TOML cannot read from a file) may spell only the
+    pin. Returns `(path, line_no, literal, why)` rows.
+    """
+    bad = []
+    for path, text in files.items():
+        cmake = path.endswith((".cmake", ".cmake.in")) or path.endswith("CMakeLists.txt")
+        for no, line in enumerate(text.splitlines(), 1):
+            if cmake and line.lstrip().startswith("#"):
+                continue
+            for lit in NIGHTLY_LITERAL.findall(line):
+                if cmake:
+                    bad.append((path, no, lit, "use nros_pinned_nightly()"))
+                elif lit != pinned:
+                    bad.append((path, no, lit, f"the pin is {pinned}"))
+    return bad
+
+
+def nightly_literal_files():
+    out = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z", "*.cmake", "*.cmake.in",
+         "*CMakeLists.txt", "examples/fixtures.toml"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    files = {}
+    for p in out.split("\0"):
+        if p and not p.startswith("third-party/"):
+            try:
+                files[p] = (ROOT / p).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+    return files
+
+
+def check_nightly_literals(pinned):
+    bad = nightly_literals(nightly_literal_files(), pinned)
+    for path, no, lit, why in bad:
+        print(f"{path}:{no}: `{lit}` -- {why} (issue 2312)", file=sys.stderr)
+    if bad:
+        print("      The pinned nightly lives in tools/rust-toolchain.toml "
+              "(config/rust-toolchains.txt); `nros setup` installs that one.",
+              file=sys.stderr)
+    return 1 if bad else 0
+
+
 def pinned_channels():
     return {
         None: ("rust-toolchain.toml", toml_channel(ROOT / "rust-toolchain.toml")),
@@ -436,6 +490,19 @@ def self_test():
             ok = False
             print(f"  self-test FAIL {name}: rc={rc} want {want_rc}")
 
+    # issue 2312 — the nightly-literal check, each verdict.
+    for name, files, want in [
+        ("cmake reads the helper", {"a.cmake": "nros_pinned_nightly(n)\n"}, 0),
+        ("cmake literal", {"z/a.cmake": "set(T nightly-2026-01-01)\n"}, 1),
+        ("cmake comment is prose", {"CMakeLists.txt": "# was nightly-2026-01-01\n"}, 0),
+        ("fixture row on the pin", {"examples/fixtures.toml": 'X = "nightly-2026-04-11"\n'}, 0),
+        ("fixture row drifted", {"examples/fixtures.toml": 'X = "nightly-2026-01-01"\n'}, 1),
+    ]:
+        got = len(nightly_literals(files, "nightly-2026-04-11"))
+        if got != want:
+            ok = False
+            print(f"  self-test FAIL nightly literal {name}: {got} row(s), want {want}")
+
     # A spec PATH names its file stem — the directory is not part of the triple
     # (phase-445: `../riscv32imac-unknown-nuttx-elf.json` read as a target named
     # `../riscv32imac-unknown-nuttx-elf` when only the extension was stripped).
@@ -489,6 +556,8 @@ def main():
     if check_toolchain_file(known) != 0:
         return 1
     if check_channels(*index_toolchain_channels(), pinned_channels()) != 0:
+        return 1
+    if check_nightly_literals(toml_channel(ROOT / "tools" / "rust-toolchain.toml")) != 0:
         return 1
 
     rustup = sum(1 for k in known.values() if k == "rustup")
