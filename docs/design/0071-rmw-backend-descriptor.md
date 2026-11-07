@@ -584,8 +584,10 @@ Rejected, for owned entries (maintainer decision, 2026-11-05):
 
 ## Amendment 2026-11-07 — `nros build` selects an RMW through the provider scan (issue 2295)
 
-**Status: Proposed — awaiting maintainer review.** Nothing below is
-implemented. Issue 2295 is homed here and stays open until this is ruled on.
+**Status: Accepted (user ruling, 2026-11-07), not yet implemented.** The
+ruling: it enables third-party RMW backends on the `nros build` road. Issue
+2295 is homed here and stays open until D14–D16 are implemented and D16's
+acceptance passes.
 
 D5's acceptance test, "a backend added out-of-tree with zero core edits",
 passes on the cmake road and fails on `nros build`. Issue 1214 moved the cmake
@@ -719,7 +721,8 @@ allowlist is empty once the migration lands. Steps 1 and 3 run in
 `check-cli-tests`. Step 2 runs in the native e2e lane, beside 1214's cmake
 fixture.
 
-Open for the reviewer: whether step 3 (Zephyr) belongs in this RFC's
+Left to the implementing phase (the 2026-11-07 ruling accepted D14–D16
+without deciding it): whether step 3 (Zephyr) belongs in this RFC's
 acceptance or in a follow-up phase, since it needs the Zephyr SDK on the
 lane that runs it.
 
@@ -876,7 +879,8 @@ machinery.
   registration itself. An owned entry keeps a generated adapter crate, renamed
   `<entry>_nros_derived`, which carries both (maintainer decision, option A;
   phase-531 W5). D3 and D11 carry pointers.
-- 2026-11-07: D14–D16 proposed (awaiting maintainer review, issue 2295).
+- 2026-11-07: D14–D16 proposed, then accepted the same day (user ruling: it
+  enables third-party RMW backends). Not yet implemented (issue 2295).
   `nros build` and `nros configure` resolve an RMW through the provider scan,
   and the baked table is no longer an answer. A backend the board crate does
   not name is linked and registered by the image. `west_app` takes the
