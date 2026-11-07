@@ -101,8 +101,8 @@ a CI cache step. For a CMake tree that is not a nano-ros workspace, see
 
 ## If it doesn't work
 
-- **A zenoh image prints no `Publishing:` line:** it waits for its router.
-  Start `rmw_zenohd` on the host first.
+- **`nros run` says the router exited:** another zenoh router already holds
+  port 7447. Stop it; `nros run` starts one for a zenoh image on this board.
 - **`ros2 topic echo` prints nothing:** set
   `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`, and check that both sides use the
   same domain. A firewall that drops multicast also stops DDS discovery.
