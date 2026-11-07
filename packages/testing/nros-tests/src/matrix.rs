@@ -134,9 +134,11 @@ impl PlatformId {
             // and `Px4` still bake nothing (tier 3 / CarveOut), so their windows
             // remain unreachable arithmetic wherever they sit; a witness with
             // Runtime cells cannot say the same. If either ever gains a Runtime
-            // cell, `domains_valid` fails immediately — which is the right
-            // answer, because at that point the window scheme is genuinely full
-            // and needs narrowing, not another renumber.
+            // cell that joins a DDS domain (Cyclone or XRCE), `domains_valid`
+            // fails immediately — which is the right answer, because at that
+            // point the window scheme is genuinely full and needs narrowing, not
+            // another renumber. A uORB or zenoh cell joins none, so the gate
+            // does not ask it (`alloc::has_dds_domain`, phase-542 W5).
             PlatformId::ZephyrQemuCortexM => 9,
             // phase-370 takes 10 on the rule the paragraph above states: a LOW
             // index is the scarce resource and belongs to a platform that

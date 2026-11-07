@@ -156,9 +156,22 @@ Depends on issue 2243 being fixed (phase-466) and on W0.3.
 
 - If W0.3 accepts a named Gated job: the row moves to `cadence = "daily"`, and
   `check-board-registry` accepts the `px4-sitl` job as the row's lane.
-- If W0.3 requires a Runtime cell: narrow the domain window in
-  `nros_tests::alloc` first, so `domains_valid` holds with `Px4` baking, and
-  then flip the cell.
+- If W0.3 requires a Runtime cell (ruled 2026-11-07: it does):
+  - **Allocator: done, without narrowing.** The uORB cell joins no DDS domain
+    and dials no router port, so `domains_valid` and `ports_in_band` now ask a
+    cell only about what its RMW uses (`alloc::has_dds_domain`,
+    `alloc::dials_router_port`); the injectivity gate already did. No baked
+    value moves. Measured with the cell flipped to `Runtime`: the old gates
+    fail both checks, the new ones pass. The window still narrows when a
+    domain-joining PX4 cell (the XRCE companion, W6) bakes.
+  - **Still to do before the flip.** The flip measured two reds in
+    `matrix_fixture_coverage`: `every_runtime_cell_has_a_fixture_row` (the
+    SITL build is `just px4 build-sitl-example`, not a `fixtures.toml` row)
+    and `every_fixture_token_is_producible_by_the_module_that_owns_it` (no
+    fixture module produces `px4`). A Runtime cell also enters tier 2's 1-wise
+    platform cover, so either the tier-2 runner builds SITL or the lane scope
+    states that `px4` runs only in the `px4-sitl` job.
+  - Then flip the cell.
 - The job carries its verdict: a red is reported by
   `just nightly-triage` like any other nightly cell.
 
