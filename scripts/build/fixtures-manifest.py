@@ -2001,6 +2001,12 @@ def main():
             # `<west_id>\x1f<ID>=<value>` line each. Its own command rather than
             # a `west-leaves` column, so no record width moves under a reader.
             "west-overrides",
+            # phase-531 W6 -- the distinct roots of the zephyr west
+            # `[[workspace_fixture]]` rows that are NOT under
+            # `examples/workspaces/` (those the lane prepares by name): the
+            # single-node witnesses migrated in place, which the fixture lane
+            # must `nros configure` before `nros build --dry-run` accepts them.
+            "west-witness-dirs",
             # Issue 0482 — shape-check `[[fixture]]` rows. `validate-workspaces`
             # has required `platform`/`lang`/`rmw` on workspace rows since
             # phase-295; plain rows had no validator at all, so a row missing
@@ -2089,6 +2095,17 @@ def main():
         for e in rows:
             for knob, value in west_overrides(e):
                 sys.stdout.write(f"{west_id(e)}{SEP}{knob}={value}\n")
+        return
+
+    if a.command == "west-witness-dirs":
+        seen = []
+        for e in load_workspace_fixtures(a.manifest):
+            d = e.get("dir", "").rstrip("/")
+            if (e.get("platform") in ZEPHYR_WEST_PLATFORMS and d
+                    and not d.startswith("examples/workspaces/") and d not in seen):
+                seen.append(d)
+        for d in seen:
+            sys.stdout.write(f"{d}\n")
         return
 
     if a.command == "west-leaves":
