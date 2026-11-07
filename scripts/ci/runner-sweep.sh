@@ -93,6 +93,9 @@
 #   NROS_SWEEP_BUDGET_FIXTURES_GIB  default 280, capped at 40% of the volume
 #                                   holding the build root (issue 2191)
 #   NROS_SWEEP_BUDGET_WORK_GIB      default 40
+#   NROS_SWEEP_CARGO_DAYS           default 21 — host target dirs: prune artifacts older
+#   NROS_SWEEP_BUDGET_CARGO_TARGET_GIB  default 8 — then cap EACH host target dir
+#                                   at this size, oldest artifacts first
 #   NROS_SWEEP_UNBUDGETED_WARN_GIB  default 40 — warn when this much of the
 #                                   checkout sits in no area (issue 1353)
 #   NROS_SWEEP_UNBUDGETED_SHOW_MIB  default 1024 — name entries at least this big
@@ -983,6 +986,38 @@ _sweep_disk() {
                 esac
             fi
         done
+
+        # A SIZE cap per root, after the age prune. Age alone never fires on a
+        # runner that builds every day: on runner 133 (2026-11-07)
+        # `packages/cli/target` held 15.5 GiB, all of it written by ONE job —
+        # 71 debug test binaries of ~200 MB from `check cli-tests` — so
+        # "older than 21d" found nothing and the 15.5 GiB sat on a shared
+        # volume until the next job rewrote it. `--maxsize` removes the OLDEST
+        # artifacts first, so the cap keeps the most recent build warm; what it
+        # can drop is a cache, rebuilt (from sccache where it hits) next job.
+        # The in-tree `nros` is rebuilt whenever its sources move (the CLI
+        # source stamp), which a new job's commit does anyway.
+        local cap_gib="${NROS_SWEEP_BUDGET_CARGO_TARGET_GIB:-8}"
+        case "$cap_gib" in
+            ''|*[!0-9]*) _warn "runner-sweep: NROS_SWEEP_BUDGET_CARGO_TARGET_GIB='$cap_gib' is not a whole number of GiB — no size cap"; cap_gib="" ;;
+        esac
+        if [ -n "$cap_gib" ]; then
+            for root in "${cargo_roots[@]}"; do
+                [ -d "$root/target" ] || continue
+                sz="$(_du_bytes "$root/target")"
+                [ "$sz" -gt $(( cap_gib * gib )) ] || continue
+                # cargo-sweep reads a bare number as MB; GiB -> MiB keeps the
+                # cap at or under what was asked.
+                if [ "$CHECK" -eq 1 ]; then
+                    dirty=1
+                    _would "cargo-sweep --maxsize $((cap_gib * 1024)) $root ($(_human "$sz") > ${cap_gib} GiB)"
+                else
+                    "$cargo_sweep" sweep --maxsize "$((cap_gib * 1024))" "$root" >/dev/null 2>&1 || true
+                    dirty=1
+                    _did "cargo-sweep --maxsize ${cap_gib} GiB $root: $(_human "$sz") -> $(_human "$(_du_bytes "$root/target")")"
+                fi
+            done
+        fi
     fi
 
     # --- sccache: reported, never evicted ------------------------------------
