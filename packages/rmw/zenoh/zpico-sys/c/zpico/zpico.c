@@ -29,6 +29,18 @@
 #include <unistd.h>
 #endif
 
+/* issue 2342 (phase-546) — the FreeRTOS KERNEL, whatever owns the sockets.
+ * The arms below that use FreeRTOS primitives (the spin semaphore, the task
+ * attributes, the clock-seeded ZID) are facts of the kernel, and two zenoh-pico
+ * platforms have it: lwIP (`ZENOH_FREERTOS_LWIP`) and the host-socket arm
+ * (`NROS_ZENOH_FREERTOS_HOST`, set by `nros_zenoh_freertos_host.h`, which
+ * `<zenoh-pico.h>` has already included through `ZP_SYSTEM_PLATFORM_HEADER`).
+ * The lwIP-only arms (semihosting printk, the stack report) keep testing
+ * `ZENOH_FREERTOS_LWIP`. */
+#if defined(ZENOH_FREERTOS_LWIP) || defined(NROS_ZENOH_FREERTOS_HOST)
+#define ZPICO_FREERTOS_KERNEL 1
+#endif
+
 #ifdef ZENOH_ZEPHYR
 #include <zephyr/kernel.h> // For printk
 #include <zephyr/random/random.h>
@@ -594,7 +606,7 @@ typedef void (*zpico_graph_change_fn)(int32_t session_index);
 // Some struct members need platform types whose headers were previously pulled
 // in inside the spin-primitive section; hoist those includes above the struct.
 #if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP)
-#if defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
 #include <FreeRTOS.h>
 #include <semphr.h>
 #elif defined(ZENOH_NUTTX)
@@ -731,7 +743,7 @@ struct zpico_session {
     // spin_once() wakes immediately when application data arrives, rather than
     // sleeping for the full timeout duration.
 #if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP)
-#if defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
     // FreeRTOS: binary semaphore — lightweight, no mutex needed.
     SemaphoreHandle_t spin_sem;
 #elif defined(ZENOH_NUTTX)
@@ -864,7 +876,7 @@ static inline int _zpico_unpack_slot(void* ctx) {
 // sleeping for the full timeout duration. Callers have `s` in hand.
 #if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP)
 
-#if defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
 // FreeRTOS: binary semaphore — lightweight, no mutex needed.
 static inline void _zpico_wake_spinner(struct zpico_session* s) {
     if (s->spin_sem != NULL) {
@@ -895,7 +907,7 @@ static inline void _zpico_wake_spinner(struct zpico_session* s) {
         _z_mutex_unlock(&s->spin_mutex);
     }
 }
-#endif // ZENOH_FREERTOS_LWIP / ZENOH_NUTTX
+#endif // ZPICO_FREERTOS_KERNEL / ZENOH_NUTTX
 
 #else
 static inline void _zpico_wake_spinner(struct zpico_session* s) {
@@ -982,7 +994,7 @@ static z_task_attr_t g_default_read_task_attr;
  * POSIX-like honour them, others ignore the attr. */
 static bool g_default_flush_task_configured = false;
 static z_task_attr_t g_default_flush_task_attr;
-#if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
 /* The stack depth of zenoh-pico's FreeRTOS default task attributes
  * (src/system/freertos/system.c) — what the flush task got while it was spawned
  * with a NULL attr. */
@@ -1004,7 +1016,7 @@ static uint64_t zpico_splitmix64(uint64_t* state) {
     return z ^ (z >> 31);
 }
 
-#if defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_THREADX)
+#if defined(ZPICO_FREERTOS_KERNEL) || defined(ZENOH_THREADX)
 static void zpico_mix_clock_bytes(uint64_t* seed, const void* data, size_t len) {
     const uint8_t* bytes = (const uint8_t*)data;
     for (size_t i = 0; i < len; i++) {
@@ -1068,7 +1080,7 @@ static void zpico_fill_session_zid(struct zpico_session* s, uint8_t bytes[ZPICO_
 #elif defined(ZPICO_SERIAL)
     seed ^= z_random_u64();
     seed ^= z_random_u64() << 1;
-#elif defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_THREADX)
+#elif defined(ZPICO_FREERTOS_KERNEL) || defined(ZENOH_THREADX)
     z_clock_t now = z_clock_now();
     zpico_mix_clock_bytes(&seed, &now, sizeof(now));
     seed ^= z_random_u64();
@@ -1975,7 +1987,7 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes) {
     // z_task_attr_t varies by platform — only FreeRTOS and POSIX-like
     // platforms have meaningful fields. ThreadX and generic use void*
     // and zenoh-pico ignores the attr entirely on those platforms.
-#if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
     g_default_read_task_attr.name = "zpico_read";
     g_default_read_task_attr.priority = (UBaseType_t)read_priority;
     g_default_read_task_attr.stack_depth = read_stack_bytes / sizeof(StackType_t);
@@ -2127,7 +2139,7 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes) {
 void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
 #if ZPICO_TX_BATCH_THREAD == 1
     memset(&g_default_flush_task_attr, 0, sizeof(g_default_flush_task_attr));
-#if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
     g_default_flush_task_attr.name = "zpico_flush";
     g_default_flush_task_attr.priority = (UBaseType_t)priority;
     /* issue 1534 — 0 means "the port default", as on every other port: the
@@ -2201,7 +2213,7 @@ static void zpico_flush_task_follows_read(void) {
     g_default_flush_nros_attr.flags = g_default_read_nros_attr.flags;
     g_default_flush_nros_attr.name = "zpico_flush";
     g_default_flush_task_configured = true;
-#elif defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+#elif defined(ZPICO_FREERTOS_KERNEL)
     zpico_set_flush_task_config((uint32_t)g_default_read_task_attr.priority, 0u);
 #endif
 }
@@ -2463,7 +2475,7 @@ int32_t zpico_open(zpico_session_t* session) {
     // read, lease, keep-alive, query timeout and reconnect. CALLER mode
     // (ThreadX, bare metal) starts nothing: zpico_spin_once() runs the executor.
 #if defined(ZPICO_DRIVE_THREAD)
-#if defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
     s->spin_sem = xSemaphoreCreateBinary();
 #elif defined(ZENOH_NUTTX)
     if (sem_init(&s->spin_sem_posix, 0, 0) == 0) {
@@ -2713,7 +2725,7 @@ void zpico_close(zpico_session_t* session) {
         // Stop the executor thread (RFC-0110 D2; `z_close` would stop it too).
         zp_stop_read_task(z_session_loan_mut(&s->session));
 
-#if defined(ZENOH_FREERTOS_LWIP)
+#if defined(ZPICO_FREERTOS_KERNEL)
         if (s->spin_sem != NULL) {
             vSemaphoreDelete(s->spin_sem);
             s->spin_sem = NULL;
@@ -3576,7 +3588,7 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     }
     return 0;
 
-#elif defined(ZENOH_FREERTOS_LWIP)
+#elif defined(ZPICO_FREERTOS_KERNEL)
     // FreeRTOS+lwIP: the executor thread handles data and keep-alives
     // (RFC-0110 D2). Wait on a binary semaphore that _zpico_notify_spin()
     // signals when application data arrives (subscriptions, query replies).

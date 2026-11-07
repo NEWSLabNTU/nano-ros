@@ -1905,6 +1905,14 @@ pub enum ConfigError {
         capability: String,
         boards: String,
     },
+    /// issue 2342 — a board fact the capability rung DERIVES could not be
+    /// derived: a `[board.net] stack` no reader accepts, or a
+    /// `[board.capabilities]` row naming the derived key itself.
+    DerivedBoardCapability {
+        capability: String,
+        boards: String,
+        detail: String,
+    },
     /// RFC-0103 D6 / phase-484 W8 — a `[[board]]` entry states the RETIRED
     /// `[board.knobs]`; the board rung is the top-level `[knobs]`.
     RetiredBoardKnobs {
@@ -1949,6 +1957,14 @@ impl std::fmt::Display for ConfigError {
                 "nros-board.toml declares several boards ({boards}) that disagree about \
                  `[board.capabilities] {capability}`, and no NROS_BOARD names one. \
                  Set NROS_BOARD, or make the entries agree."
+            ),
+            ConfigError::DerivedBoardCapability {
+                capability,
+                boards,
+                detail,
+            } => write!(
+                f,
+                "nros-board.toml board {boards}: capability `{capability}`: {detail}"
             ),
             ConfigError::RetiredBoardKnobs { path, boards } => write!(
                 f,
@@ -3265,6 +3281,48 @@ pub struct BoardEntryFacts {
     _rest: BTreeMap<String, toml::Value>,
 }
 
+/// issue 2342 (phase-546) — the RFC-0086 capability that says this board's
+/// sockets are the HOST operating system's. DERIVED from `[board.net] stack`
+/// (RFC-0109 D2), never authored: the stack owner is already one line of the
+/// descriptor, and a second spelling of it would be a second fact that can
+/// disagree. The zenoh port row's `[port.freertos]` reads it to choose between
+/// the lwIP arm and the host-socket one.
+pub const HOST_STACK_CAPABILITY: &str = "host_stack";
+
+impl BoardEntryFacts {
+    /// `[board.capabilities]` plus the capabilities the board's other tables
+    /// imply — today only [`HOST_STACK_CAPABILITY`], from `[board.net] stack`.
+    /// A board that states no stack leaves the key absent, so its platform's
+    /// answer stands (the RFC-0049 ladder).
+    pub fn resolved_capabilities(&self) -> Result<BTreeMap<String, bool>, ConfigError> {
+        let boards = || self.names.join("/");
+        if self.capabilities.contains_key(HOST_STACK_CAPABILITY) {
+            return Err(ConfigError::DerivedBoardCapability {
+                capability: HOST_STACK_CAPABILITY.to_string(),
+                boards: boards(),
+                detail: "is derived from `[board.net] stack` (RFC-0109 D2); remove the \
+                         `[board.capabilities]` row and state `[board.net] stack = \"host\"` \
+                         instead"
+                    .to_string(),
+            });
+        }
+        let mut caps = self.capabilities.clone();
+        if let Some(net) = &self.net
+            && net.stack.is_some()
+        {
+            let host = net
+                .host_stack()
+                .map_err(|detail| ConfigError::DerivedBoardCapability {
+                    capability: HOST_STACK_CAPABILITY.to_string(),
+                    boards: boards(),
+                    detail,
+                })?;
+            caps.insert(HOST_STACK_CAPABILITY.to_string(), host);
+        }
+        Ok(caps)
+    }
+}
+
 /// `[board.net]` — a board's network identity defaults (phase-484 W4b).
 ///
 /// The fallback an image uses when its `system.toml` states nothing for a
@@ -3688,16 +3746,16 @@ impl BoardKnobsFile {
                 .iter()
                 .find(|b| b.names.iter().any(|n| n.eq_ignore_ascii_case(want)))
         {
-            return Ok(entry.capabilities.clone());
+            return entry.resolved_capabilities();
         }
         if let [only] = self.boards.as_slice() {
-            return Ok(only.capabilities.clone());
+            return only.resolved_capabilities();
         }
         // Several entries and nothing naming one: take what they agree on and
         // refuse to guess at the rest.
         let mut merged: BTreeMap<String, bool> = BTreeMap::new();
         for entry in &self.boards {
-            for (k, v) in &entry.capabilities {
+            for (k, v) in &entry.resolved_capabilities()? {
                 match merged.get(k) {
                     Some(prev) if prev != v => {
                         return Err(ConfigError::AmbiguousBoardCapability {
@@ -3802,6 +3860,56 @@ mod board_capability_tests {
         assert_eq!(caps.get("heap"), Some(&true));
         // Reading the top-level table instead would find nothing.
         assert!(f.capabilities.is_empty());
+    }
+
+    /// issue 2342 — `host_stack` is DERIVED from `[board.net] stack`: true for
+    /// `"host"`, false for the other owners, absent when no stack is stated
+    /// (so the platform's answer stands), and refused when authored as a
+    /// capability, which would be a second spelling of one fact.
+    #[test]
+    fn host_stack_is_derived_from_the_board_net_stack() {
+        let with = |stack: &str| {
+            file(&format!(
+                "[[board]]\nnames = [\"m\"]\n\n[board.net]\n{stack}\n\n\
+                 [board.capabilities]\nheap = true\n"
+            ))
+            .board_capabilities(None)
+        };
+        let host = with("stack = \"host\"").expect("caps");
+        assert_eq!(host.get(HOST_STACK_CAPABILITY), Some(&true));
+        assert_eq!(host.get("heap"), Some(&true));
+        for owner in ["os", "board"] {
+            let caps = with(&format!("stack = \"{owner}\"")).expect("caps");
+            assert_eq!(caps.get(HOST_STACK_CAPABILITY), Some(&false), "{owner}");
+        }
+        let unstated = with("links = [\"tcp\"]").expect("caps");
+        assert_eq!(unstated.get(HOST_STACK_CAPABILITY), None);
+        let bad = with("stack = \"rtos\"").expect_err("an unknown owner");
+        assert!(
+            matches!(bad, ConfigError::DerivedBoardCapability { .. }),
+            "{bad}"
+        );
+        let authored =
+            file("[[board]]\nnames = [\"m\"]\n\n[board.capabilities]\nhost_stack = true\n")
+                .board_capabilities(None)
+                .expect_err("an authored derived key");
+        assert!(
+            authored.to_string().contains("[board.net] stack"),
+            "{authored}"
+        );
+    }
+
+    /// The in-tree FreeRTOS POSIX board answers `host_stack = true`, which is
+    /// what selects the zenoh host-socket arm for it (issue 2342).
+    #[test]
+    fn the_freertos_posix_board_states_a_host_stack() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../boards/nros-board-freertos-posix/nros-board.toml");
+        let caps = BoardKnobsFile::load_for_board(&path, Some("freertos-posix"))
+            .expect("load")
+            .board_capabilities(Some("freertos-posix"))
+            .expect("caps");
+        assert_eq!(caps.get(HOST_STACK_CAPABILITY), Some(&true));
     }
 
     /// RFC-0103 D6 — the canonical spelling is a top-level `[knobs]`, which

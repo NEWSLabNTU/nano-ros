@@ -1072,6 +1072,14 @@ status = 'Runtime'
 
 [[cell]]
 comment = '''
+// issue 2342 (phase-546) — the board's zenoh image, over zenoh-pico's
+// FreeRTOS host-socket arm. Answered by `freertos_posix.rs` with a router.
+'''
+at = ["FreertosPosix", "C", "Zenoh", "EntryPubsub", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
+comment = '''
 // phase-511 B1 — the FreeRTOS C++ Cyclone workspace entry, answered by
 // `freertos_qemu` on the mps3-an536 entry (`workspace-cpp-mps3-an536-freertos`),
 // which boots under QEMU and delivers in-image. The coordinate is the
