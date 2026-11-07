@@ -1854,6 +1854,14 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 };
                 crate::builder::cmake_root::write(&found, &manifest_dir, &spec)
                     .map_err(|e| eyre::eyre!("{e}"))?;
+                // Issue 2343 — the root this configuration had before issue
+                // 2287 named the bringup, left beside this one by a tree that
+                // outlived the change.
+                retire_legacy_cmake_root(
+                    &root.join("build"),
+                    &cmake_configuration_key(&platform, &image, &bringup_dir),
+                    &manifest_dir,
+                );
                 let rel_src = manifest_dir
                     .strip_prefix(&root)
                     .unwrap_or(&manifest_dir)
@@ -6048,6 +6056,103 @@ fn cmake_coordinate(
         "{}-{bringup}",
         cmake_configuration_key(platform, image, bringup_dir)
     )
+}
+
+/// Issue 2343 — remove the cmake root a configuration had BEFORE issue 2287,
+/// `build/<key>/`, once its bringup-keyed successor `current` is written.
+///
+/// A tree that outlives the rename (a CI runner's persistent fixture tree, a
+/// developer's checkout) keeps the old root beside the new one, each holding
+/// the entry's binary, and every reader that searches the roots finds two
+/// (the entity census refused: "names a binary in 2 image roots"). Before
+/// 2287 every bringup on one configuration shared the root, so whichever of
+/// them builds first retires it.
+///
+/// Deletes only what it can positively identify, and never outside `build`:
+///
+/// - `key` is one plain path component, and `build/<key>` is a real directory
+///   (not a symlink) other than `current`;
+/// - its `CMakeLists.txt` is a regular file that opens with
+///   [`GENERATED_HEADER`](crate::builder::cmake_root::GENERATED_HEADER) and
+///   names a bringup (`SYSTEM <b>`), which every workspace-image root carries
+///   and a package-mode root (`build/<pkg>/`, no bringup) does not;
+/// - the dir's name does not end in `-<b>`, which would make it a CURRENT
+///   root of some other configuration.
+///
+/// What it removes is the root's own files: `cmake/`, the image-env file and
+/// the `CMakeLists.txt` (last, so an interrupted retire is retried). The
+/// directory itself goes only if that left it empty: a west build dir can sit
+/// under the same name ([`west_build_dir`] uses the cargo [`coordinate`]).
+/// Failures warn and the build goes on; the reader that sees two roots says so.
+fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    let mut parts = Path::new(key).components();
+    if !matches!(
+        (parts.next(), parts.next()),
+        (Some(Component::Normal(_)), None)
+    ) {
+        return None;
+    }
+    let legacy = build.join(key);
+    if legacy == current
+        || !std::fs::symlink_metadata(&legacy).is_ok_and(|m| m.file_type().is_dir())
+    {
+        return None;
+    }
+    let root_file = legacy.join("CMakeLists.txt");
+    if !std::fs::symlink_metadata(&root_file).is_ok_and(|m| m.file_type().is_file()) {
+        return None;
+    }
+    let body = std::fs::read_to_string(&root_file).ok()?;
+    if !body.starts_with(crate::builder::cmake_root::GENERATED_HEADER) {
+        return None;
+    }
+    let system = body.lines().find_map(|l| {
+        let rest = l.trim_start().strip_prefix("SYSTEM")?;
+        rest.starts_with([' ', '\t'])
+            .then(|| rest.trim())
+            .filter(|s| !s.is_empty())
+    })?;
+    if key.ends_with(&format!("-{system}")) {
+        return None;
+    }
+
+    let remove = |p: &Path| -> std::io::Result<()> {
+        match std::fs::symlink_metadata(p) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+            Ok(m) if m.file_type().is_dir() => std::fs::remove_dir_all(p),
+            Ok(_) => std::fs::remove_file(p),
+        }
+    };
+    let shown = |p: &Path| {
+        p.strip_prefix(build.parent().unwrap_or(build))
+            .unwrap_or(p)
+            .display()
+            .to_string()
+    };
+    for p in [
+        legacy.join("cmake"),
+        legacy.join(crate::builder::cmake_root::IMAGE_ENV_FILE),
+        root_file,
+    ] {
+        if let Err(e) = remove(&p) {
+            eprintln!(
+                "nros build: warning: cannot remove the stale pre-issue-2287 build dir's `{}`: {e}",
+                shown(&p)
+            );
+            return None;
+        }
+    }
+    // Only if empty: anything else under this name is not the root's.
+    let _ = std::fs::remove_dir(&legacy);
+    eprintln!(
+        "nros build: removed the stale pre-issue-2287 build dir {}/ (cmake roots are per \
+         bringup now, at {}/; the old one held a second copy of each entry's binary)",
+        shown(&legacy),
+        shown(current)
+    );
+    Some(legacy)
 }
 
 /// [`ResolvedBuild::cmake_build_dir`] for a workspace image: its cmake binary
