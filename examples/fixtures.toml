@@ -5754,36 +5754,6 @@ cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx" }
 #                   about the fixture)
 # ===========================================================================
 
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/rust/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/rust/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
 # phase-535 W4 — kept (RFC-0122: a leaf may stay, with its reason):
 # `zephyr_rust_zenoh_action_goal_completion_rate` reads this leaf's
 # `reply-slot: refusals=` heartbeat, which the workspace action server does not
@@ -5797,138 +5767,6 @@ rmw = "zenoh"
 builder = "west"
 dir = "examples/zephyr/rust/action-server"
 board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/c/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "c"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/c/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/cpp/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "xrce"
-builder = "west"
-dir = "examples/zephyr/cpp/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
-[[fixture]]
-platform = "zephyr"
-lang = "cpp"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/cpp/talker"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr-cortex-m"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/talker"
-board = "mps2/an385"
-west_build_name = "build-cortex-m-c-talker-zenoh"
-west_zenoh_locator = "tcp/10.0.2.2:10700"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-# phase-524 W4c (RFC-0115 D4) -- the (ZephyrNucleoF767zi, C, Zenoh, Pubsub)
-# cell: the same talker's serial image for the Nucleo-F767ZI, booted in its
-# Renode twin by tests/zephyr_renode_twin.rs. Built through the leaf road:
-# `[image.nucleo_serial]` names the board, whose package supplies the serial
-# Kconfig (merged after this `prj.conf`), the console overlay and the RAM
-# knob (`[knobs]`, issue 2194), so the row states no knob of its own. The
-# locator is the image's, restated because a row with no authored locator gets
-# the allocator's TCP one, which would override the image's serial link. No
-# router port is baked: the image dials nothing, the router opens the link.
-[[fixture]]
-platform = "zephyr-nucleo-f767zi"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/talker"
-board = "nucleo_f767zi"
-west_build_name = "build-nucleo-f767zi-c-talker-serial"
-west_zenoh_locator = "serial/serial@40004800#baudrate=115200"
-conf_files = ["prj.conf"]
-west_image = "nucleo_serial"
-
-# Issue 1036 — the (ZephyrQemuCortexM, C, BootReport) cell. The same talker,
-# console-less, with an executor arena too small for its first entity: the
-# boot report is the only witness, and the test dumps it over the QEMU monitor
-# and decodes it with scripts/read-boot-report.py, the operator's own tool.
-# The overlay is the TEST's, so it lives beside the test rather than in the
-# copy-out example. Port 10787 = `alloc::port_of(ZephyrQemuCortexM, C,
-# BootReport)`: the image must open its session before it registers anything,
-# so the cell needs a router. Consumed by tests/zephyr_cortex_m_qemu.rs.
-#
-# phase-484 W5b — the arena size is a KNOB, prompt-less in a project with a
-# `system.toml`, so the overlay can no longer set it: it rides the transient
-# channel instead (`-DNROS_OVERRIDE_EXECUTOR_ARENA_SIZE=32`, `west_overrides`).
-# The talker's first registration claims 48 B, so 32 B is short by 16.
-[[fixture]]
-platform = "zephyr-cortex-m"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/c/talker"
-board = "mps2/an385"
-west_role = "boot-report-arena-exhausted"
-west_build_name = "build-cortex-m-c-boot-report-zenoh"
-west_zenoh_locator = "tcp/10.0.2.2:10787"
-conf_files = ["prj.conf", "../../../../packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf"]
-west_image = "zephyr_zenoh"
-west_overrides = { EXECUTOR_ARENA_SIZE = "32" }
-
-[[fixture]]
-platform = "zephyr-cortex-m"
-lang = "cpp"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/cpp/talker"
-board = "mps2/an385"
-west_build_name = "build-cortex-m-cpp-talker-zenoh"
-west_zenoh_locator = "tcp/10.0.2.2:10800"
 conf_files = ["prj.conf"]
 west_image = "zephyr_zenoh"
 
@@ -5992,44 +5830,6 @@ west_build_name = "build-cortex-m-cpp-port-ament-workspace-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10886"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 
-[[fixture]]
-platform = "zephyr-cortex-m"
-lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/talker"
-board = "mps2/an385"
-west_build_name = "build-cortex-m-rust-talker-zenoh"
-west_zenoh_locator = "tcp/10.0.2.2:10600"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-# Issue 2078 -- the same Rust talker with NO IP stack: zenoh over a UART. The
-# entry `nros::main!` emits calls `nros_platform_zephyr_wait_network` whatever
-# the transport, and the symbol was compiled only with CONFIG_NET_SOCKETS, so a
-# serial-only Rust image did not link. A LINK witness: the tests in
-# `tests/zephyr_link_layout.rs` read the ELF, nothing boots it. The locator
-# names uart1, the board's free UART (uart0 is the console).
-#
-# `cmake/zephyr/mps2-an385-serial.conf` is a delta that must merge AFTER the
-# board tail (it turns the tail's networking off), so the row lists the whole
-# order itself, tail included, and the leaves script does not append the tail
-# again. For the same reason it names no `west_image`: the image's
-# `prj-zenoh.conf` would be appended after the delta and turn TCP back on. The
-# leaf's default image is `zephyr_zenoh` (issue 1757), and the module skips the
-# `prj-zenoh.conf` the row already names.
-[[fixture]]
-platform = "zephyr-cortex-m"
-lang = "rust"
-rmw = "zenoh"
-builder = "west"
-dir = "examples/zephyr/rust/talker"
-board = "mps2/an385"
-west_role = "talker-serial"
-west_build_name = "build-cortex-m-rust-talker-serial-zenoh"
-west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
-conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../packages/boards/nros-board-mps2-an385-zephyr/prj.conf", "../../../../cmake/zephyr/mps2-an385-serial.conf"]
-
 # Issue 2084 -- CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM must move the sched task stack pool
 # (`nros_sched_task_stacks`) as well as the task stacks. The image spawns one level
 # on the pool (that is what keeps the pool in the link) on an mps2_an385 whose
@@ -6037,46 +5837,6 @@ conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../packages/boards/nros-bo
 # witness: `tests/zephyr_link_layout.rs` reads the ELF and requires both stack
 # arrays in the DTCM output section. Nothing boots it, so the locator is only
 # a placeholder the leaf needs.
-# phase-521 W7 (RFC-0113 D2) -- the RTOS idle-wake witness, the
-# (ZephyrQemuCortexM, C, {Zenoh, Xrce}, IdleWake) cells. One idle subscription
-# and one 1 s timer; the image counts its executor thread's switch-ins over five
-# periods and prints them. The XRCE row states NO isolation values: its Agent
-# port (5784) and domain (218) are the allocator's, read by the west lane from
-# `cell-isolation` (issue 2251); the agent ADDRESS (10.0.2.2, QEMU's
-# user-network host) is the leaf's own `system.toml`, since the leaf exists only
-# for this board. The zenoh row must state its locator, because its host is the
-# SLIRP gateway rather than the native_sim 127.0.0.1, and with it the domain
-# (209) its host peer joins (`west_cyclone_domain` sets CONFIG_NROS_DOMAIN_ID for
-# any RMW). Both are checked against `alloc` at emit time: a row that is a
-# cell's image and states a value the allocator does not give it refuses to
-# build. The XRCE row is the first XRCE
-# image on an RTOS QEMU board. Consumed by tests/zephyr_cortex_m_qemu.rs.
-[[fixture]]
-platform = "zephyr-cortex-m"
-lang = "c"
-rmw = "zenoh"
-builder = "west"
-dir = "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2"
-board = "mps2/an385"
-west_role = "idle-wake"
-west_build_name = "build-cortex-m-c-idle-wake-zenoh"
-west_cyclone_domain = 209
-west_zenoh_locator = "tcp/10.0.2.2:10784"
-conf_files = ["prj.conf"]
-west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr-cortex-m"
-lang = "c"
-rmw = "xrce"
-builder = "west"
-dir = "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2"
-board = "mps2/an385"
-west_role = "idle-wake"
-west_build_name = "build-cortex-m-c-idle-wake-xrce"
-conf_files = ["prj.conf"]
-west_image = "zephyr_xrce"
-
 [[fixture]]
 platform = "zephyr-cortex-m"
 lang = "c"
@@ -6110,6 +5870,326 @@ west_role = "logging-smoke"
 west_build_name = "build-logging-smoke"
 west_id = "zephyr/native_sim/native/64/logging-smoke"
 
+
+# ---------------------------------------------------------------------------
+# zephyr single-node WITNESSES — phase-531 W6 batch 8 (RFC-0121, RFC-0122 D1).
+#
+# `examples/zephyr/{c,cpp,rust}/talker` and the idle-wake witness under
+# `packages/testing/` are single-node workspaces now (`src/<node>` +
+# `src/<node>_bringup`), so their rows are `[[workspace_fixture]]` rows on a
+# bringup image and `nros build` generates each west application. Each row
+# keeps the coordinate, the `west_role`, the build-dir name and the leaf id the
+# standalone `[[fixture]]` row had, so `row_coord()`, lane membership and every
+# test's binary path are unchanged. `conf_files` is gone: the base `prj.conf`
+# lives in `<bringup>/boards/<west board>/`, the image's APPLICATION_CONFIG_DIR,
+# and the RMW fragments are the image's `os_config`. The isolation values
+# (`west_zenoh_locator`, `west_cyclone_domain`) stay row facts.
+#
+# The mps2/an385 rows build their own images (`mps2_*`, board
+# `mps2-an385-zephyr`): a workspace image declares its board and the lane
+# passes no `-b`. They name the zenoh fragment without its native_sim budget
+# (`prj-zenoh-native-sim.conf`), because a workspace image merges its board
+# package's Kconfig BEFORE its own fragments: the standalone leaf merged the
+# board file last, so the board's budget won there, and it must win here.
+#
+# `skip_probe = true` for the reason the workspace entries below carry it: the
+# WEST lane builds these, and the cargo/cmake workspace lane's stamp is never
+# written for them.
+# ---------------------------------------------------------------------------
+
+[[workspace_fixture]]
+id = "zephyr-rust-talker-zenoh"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/zephyr/rust/talker"
+bringup = "src/zephyr_talker_node_bringup"
+image = "zephyr_zenoh"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-rust-talker-zenoh"
+west_id = "zephyr/native_sim/native/64/rust/talker/zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-rust-talker-xrce"
+platform = "zephyr"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/zephyr/rust/talker"
+bringup = "src/zephyr_talker_node_bringup"
+image = "zephyr_xrce"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-rust-talker-xrce"
+west_id = "zephyr/native_sim/native/64/rust/talker/xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-rust-talker-cyclonedds"
+platform = "zephyr"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/zephyr/rust/talker"
+bringup = "src/zephyr_talker_node_bringup"
+image = "zephyr_cyclonedds"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-rust-talker-cyclonedds"
+west_id = "zephyr/native_sim/native/64/rust/talker/cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-c-talker-zenoh"
+platform = "zephyr"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/zephyr/c/talker"
+bringup = "src/nros_zephyr_talker_c_bringup"
+image = "zephyr_zenoh"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-c-talker-zenoh"
+west_id = "zephyr/native_sim/native/64/c/talker/zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-c-talker-xrce"
+platform = "zephyr"
+lang = "c"
+rmw = "xrce"
+dir = "examples/zephyr/c/talker"
+bringup = "src/nros_zephyr_talker_c_bringup"
+image = "zephyr_xrce"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-c-talker-xrce"
+west_id = "zephyr/native_sim/native/64/c/talker/xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-c-talker-cyclonedds"
+platform = "zephyr"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/zephyr/c/talker"
+bringup = "src/nros_zephyr_talker_c_bringup"
+image = "zephyr_cyclonedds"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-c-talker-cyclonedds"
+west_id = "zephyr/native_sim/native/64/c/talker/cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cpp-talker-zenoh"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/zephyr/cpp/talker"
+bringup = "src/zephyr_cpp_talker_bringup"
+image = "zephyr_zenoh"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-cpp-talker-zenoh"
+west_id = "zephyr/native_sim/native/64/cpp/talker/zenoh"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cpp-talker-xrce"
+platform = "zephyr"
+lang = "cpp"
+rmw = "xrce"
+dir = "examples/zephyr/cpp/talker"
+bringup = "src/zephyr_cpp_talker_bringup"
+image = "zephyr_xrce"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-cpp-talker-xrce"
+west_id = "zephyr/native_sim/native/64/cpp/talker/xrce"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cpp-talker-cyclonedds"
+platform = "zephyr"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/zephyr/cpp/talker"
+bringup = "src/zephyr_cpp_talker_bringup"
+image = "zephyr_cyclonedds"
+board = "native_sim/native/64"
+west_role = "talker"
+west_build_name = "build-cpp-talker-cyclonedds"
+west_id = "zephyr/native_sim/native/64/cpp/talker/cyclonedds"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cortex-m-c-talker-zenoh"
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/zephyr/c/talker"
+bringup = "src/nros_zephyr_talker_c_bringup"
+image = "mps2_zenoh"
+board = "mps2/an385"
+west_role = "talker"
+west_build_name = "build-cortex-m-c-talker-zenoh"
+west_id = "zephyr/mps2/an385/c/talker/zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10700"
+skip_probe = true
+
+# phase-524 W4c (RFC-0115 D4) -- the (ZephyrNucleoF767zi, C, Zenoh, Pubsub)
+# cell: the talker's serial image for the Nucleo-F767ZI, booted in its Renode
+# twin by tests/zephyr_renode_twin.rs. `[image.nucleo_serial]` names the board,
+# whose package supplies the serial Kconfig (merged after the bringup's
+# `boards/nucleo_f767zi/prj.conf`), the console overlay and the RAM knob
+# (`[knobs]`, issue 2194), so the row states no knob of its own. The locator is
+# the image's, restated because a row with no authored locator gets the
+# allocator's TCP one, which would override the image's serial link. No router
+# port is baked: the image dials nothing, the router opens the link.
+[[workspace_fixture]]
+id = "zephyr-nucleo-f767zi-c-talker-serial"
+platform = "zephyr-nucleo-f767zi"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/zephyr/c/talker"
+bringup = "src/nros_zephyr_talker_c_bringup"
+image = "nucleo_serial"
+board = "nucleo_f767zi"
+west_role = "talker"
+west_build_name = "build-nucleo-f767zi-c-talker-serial"
+west_id = "zephyr/nucleo_f767zi/c/talker/zenoh"
+west_zenoh_locator = "serial/serial@40004800#baudrate=115200"
+skip_probe = true
+
+# Issue 1036 — the (ZephyrQemuCortexM, C, BootReport) cell. The same talker,
+# console-less, with an executor arena too small for its first entity: the
+# boot report is the only witness, and the test dumps it over the QEMU monitor
+# and decodes it with scripts/read-boot-report.py, the operator's own tool.
+# The overlay is the TEST's, so it lives beside the test rather than in the
+# copy-out example; `[image.mps2_boot_report] os_config` names it. Port 10787
+# = `alloc::port_of(ZephyrQemuCortexM, C, BootReport)`: the image must open its
+# session before it registers anything, so the cell needs a router. Consumed
+# by tests/zephyr_cortex_m_qemu.rs.
+#
+# phase-484 W5b — the arena size is a KNOB, prompt-less in a project with a
+# `system.toml`, so the overlay can no longer set it: it rides the transient
+# channel instead (`-DNROS_OVERRIDE_EXECUTOR_ARENA_SIZE=32`, `west_overrides`).
+# The talker's first registration claims 48 B, so 32 B is short by 16.
+[[workspace_fixture]]
+id = "zephyr-cortex-m-c-boot-report-zenoh"
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/zephyr/c/talker"
+bringup = "src/nros_zephyr_talker_c_bringup"
+image = "mps2_boot_report"
+board = "mps2/an385"
+west_role = "boot-report-arena-exhausted"
+west_build_name = "build-cortex-m-c-boot-report-zenoh"
+west_id = "zephyr/mps2/an385/c/boot-report-arena-exhausted/zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10787"
+# Issue 2362 -- PARKED. On this road the image's entities are DECLARED, so
+# phase-412's compile-time arena oracle refuses `EXECUTOR_ARENA_SIZE = "32"`
+# (2112 B modelled). The row builds with the derived arena and its test is
+# `#[ignore]`d until the issue decides what the cell becomes.
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cortex-m-cpp-talker-zenoh"
+platform = "zephyr-cortex-m"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/zephyr/cpp/talker"
+bringup = "src/zephyr_cpp_talker_bringup"
+image = "mps2_zenoh"
+board = "mps2/an385"
+west_role = "talker"
+west_build_name = "build-cortex-m-cpp-talker-zenoh"
+west_id = "zephyr/mps2/an385/cpp/talker/zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10800"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cortex-m-rust-talker-zenoh"
+platform = "zephyr-cortex-m"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/zephyr/rust/talker"
+bringup = "src/zephyr_talker_node_bringup"
+image = "mps2_zenoh"
+board = "mps2/an385"
+west_role = "talker"
+west_build_name = "build-cortex-m-rust-talker-zenoh"
+west_id = "zephyr/mps2/an385/rust/talker/zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10600"
+skip_probe = true
+
+# Issue 2078 -- the same Rust talker with NO IP stack: zenoh over a UART. The
+# entry `nros::main!` emits calls `nros_platform_zephyr_wait_network` whatever
+# the transport, and the symbol was compiled only with CONFIG_NET_SOCKETS, so a
+# serial-only Rust image did not link. A LINK witness: the tests in
+# `tests/zephyr_link_layout.rs` read the ELF, nothing boots it. The locator
+# names uart1, the board's free UART (uart0 is the console). The serial delta
+# (`cmake/zephyr/mps2-an385-serial.conf`) must merge after the board's
+# networking, and on this road it does: `[image.mps2_serial] os_config` names
+# it last, after the board package's Kconfig.
+[[workspace_fixture]]
+id = "zephyr-cortex-m-rust-talker-serial-zenoh"
+platform = "zephyr-cortex-m"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/zephyr/rust/talker"
+bringup = "src/zephyr_talker_node_bringup"
+image = "mps2_serial"
+board = "mps2/an385"
+west_role = "talker-serial"
+west_build_name = "build-cortex-m-rust-talker-serial-zenoh"
+west_id = "zephyr/mps2/an385/rust/talker-serial/zenoh"
+west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
+skip_probe = true
+
+# phase-521 W7 (RFC-0113 D2) -- the RTOS idle-wake witness, the
+# (ZephyrQemuCortexM, C, {Zenoh, Xrce}, IdleWake) cells. One idle subscription
+# and one 1 s timer; the image counts its executor thread's switch-ins over five
+# periods and prints them. The XRCE row states NO isolation values: its Agent
+# port (5784) and domain (218) are the allocator's, read by the west lane from
+# `cell-isolation` (issue 2251); the agent ADDRESS (10.0.2.2, QEMU's
+# user-network host) is the bringup's own `system.toml`, since the witness
+# exists only for this board. The zenoh row must state its locator, because its
+# host is the SLIRP gateway rather than the native_sim 127.0.0.1, and with it
+# the domain (209) its host peer joins (`west_cyclone_domain` sets
+# CONFIG_NROS_DOMAIN_ID for any RMW). Both are checked against `alloc` at emit
+# time. Consumed by tests/zephyr_cortex_m_qemu.rs.
+[[workspace_fixture]]
+id = "zephyr-cortex-m-c-idle-wake-zenoh"
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2"
+bringup = "src/nros_idle_wake_witness_c_bringup"
+image = "zephyr_zenoh"
+board = "mps2/an385"
+west_role = "idle-wake"
+west_build_name = "build-cortex-m-c-idle-wake-zenoh"
+west_id = "zephyr/mps2/an385/c/idle-wake/zenoh"
+west_cyclone_domain = 209
+west_zenoh_locator = "tcp/10.0.2.2:10784"
+skip_probe = true
+
+[[workspace_fixture]]
+id = "zephyr-cortex-m-c-idle-wake-xrce"
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "xrce"
+dir = "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2"
+bringup = "src/nros_idle_wake_witness_c_bringup"
+image = "zephyr_xrce"
+board = "mps2/an385"
+west_role = "idle-wake"
+west_build_name = "build-cortex-m-c-idle-wake-xrce"
+west_id = "zephyr/mps2/an385/c/idle-wake/xrce"
+skip_probe = true
 
 # ---------------------------------------------------------------------------
 # zephyr west WORKSPACE entries — phase-350 W1.

@@ -157,7 +157,9 @@ string `Published: 5` to appear in stdout.
 
 ### Example 2 — Zephyr `talker` across multiple boards
 
-`examples/zephyr/cpp/talker/sample.yaml`:
+`examples/zephyr/cpp/talker/sample.yaml`, as it stood before phase-531 W6 made
+the talker a workspace (a generated west application carries no `sample.yaml`;
+`examples/zephyr/rust/listener/sample.yaml` is a live one of the same shape):
 
 ```yaml
 sample:

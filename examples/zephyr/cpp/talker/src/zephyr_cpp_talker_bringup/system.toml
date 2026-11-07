@@ -1,0 +1,67 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses, and the same file a Rust leaf writes.
+# Replaces the `package.xml` `<nano_ros deploy= board= rmw=/>` tuple:
+# `find_package(nano_ros)` reads this through `nros dev image leaf-system`, which
+# derives the platform (`zephyr`) from the board. Switching board is editing
+# `[image.*] board`.
+#
+# ONE IMAGE PER RMW (phase-481 W3, RFC-0098 D10/D11). The nano-ros Zephyr
+# module renders the selected image into a Kconfig fragment merged after every
+# conf file: the RMW choice from `rmw`, the language API from the package, the
+# agent endpoint from `locator`, and every `env` knob. So the `prj*.conf` files
+# hold Zephyr's own settings only, and each image's `conf` names the fragment
+# its RMW needs (networking, POSIX, heap), which the module adds before that
+# rendering. Build one with `west build ... -- -DNROS_IMAGE=<id>`; with none,
+# `default_images` builds zenoh.
+
+[system]
+name = "zephyr_cpp_talker"
+# The system default every image below overrides with its own `rmw`.
+rmw = "zenoh"
+domain_id = 0
+default_images = ["zephyr_zenoh"]
+
+[[component]]
+pkg = "zephyr_cpp_talker"
+class = "zephyr_cpp_talker::Talker"
+name = "talker"
+
+# The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the
+# west `-b` argument, resolved through the board catalog.
+[image.zephyr_zenoh]
+board = "zephyr"
+rmw = "zenoh"
+os_config = ["prj-zenoh.conf", "prj-zenoh-native-sim.conf"]
+
+[image.zephyr_xrce]
+board = "zephyr"
+rmw = "xrce"
+os_config = ["prj-xrce.conf"]
+# The Micro-XRCE-DDS agent. A test harness passes its own port per run
+# (`-DCONFIG_NROS_XRCE_AGENT_PORT=…`, which merges after this).
+locator = "udp/127.0.0.1:2018"
+# Issue 1033 -- `xrce_session_state_t` is one platform-heap allocation sized
+# by the subscriber and service caps at BUILD time; at the crate defaults it is
+# 6.4x the 64 KiB arena and the image cannot boot. Those caps are DERIVED now:
+# this leaf states no `entities`, so it is counted by its census (RFC-0120 D4)
+# -- the talker, built for the host and run in counting mode, creates one
+# publisher and one timer -- and the census reaches the subscriber and
+# service-server caps through the entity inventory, and the service-client cap
+# through the sizing descriptor (`XRCE_MAX_SERVICE_CLIENTS`, knobs.toml).
+
+[image.zephyr_cyclonedds]
+board = "zephyr"
+rmw = "cyclonedds"
+os_config = ["prj-cyclonedds.conf"]
+
+# phase-531 W6 -- the mps2/an385 image, the one QEMU boots
+# (`tests/zephyr_cortex_m_qemu.rs`). The board package supplies the board's
+# Kconfig and RAM budget (`packages/boards/nros-board-mps2-an385-zephyr/
+# prj.conf`), merged ahead of `os_config`, so the image names the shared zenoh
+# fragment only: `prj-zenoh-native-sim.conf` would override the board's budget.
+# The zenoh locator (the QEMU SLIRP host, a per-cell port) is the fixture
+# row's isolation value, not the image's.
+[image.mps2_zenoh]
+board = "mps2-an385-zephyr"
+rmw = "zenoh"
+os_config = ["prj-zenoh.conf"]

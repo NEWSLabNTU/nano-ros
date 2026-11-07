@@ -5,16 +5,19 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ## Build
 
+A single-node workspace: the node package is `src/zephyr_talker_node`, and
+`src/zephyr_talker_node_bringup` holds the `system.toml` that says what to build. `nros build`
+generates the west application from it.
+
 ```bash
 cp -r examples/zephyr/rust/talker ~/my-talker && cd ~/my-talker
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros configure                                # generated/ message crates
+nros build zephyr_talker_node_bringup:zephyr_zenoh         # or zephyr_xrce, zephyr_cyclonedds
 ```
 
-Zephyr is the carve-out: the build verb is `west`, not `nros build`. The
-board is west's `-b`, and the RMW is one of this leaf's `system.toml`
-images (`-DNROS_IMAGE=zephyr_<rmw>`) — see the
-[zephyr README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/README.md).
+Each `[image.*]` is one build: `zephyr_<rmw>` targets `native_sim/native/64`
+and `mps2_zenoh` targets `mps2/an385`. From the checkout,
+`just zephyr build-one rust/talker zenoh` does the same.
 
 ## Run
 
@@ -23,8 +26,10 @@ QEMU / flashing steps live in the [zephyr README](https://github.com/NEWSLabNTU/
 
 ## Config
 
-Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
-(`[image.zephyr_zenoh]` + `[system]`, RFC-0098 D3/D5). No build command
-carries any of them.
+Board, RMW, domain and locator: `src/zephyr_talker_node_bringup/system.toml`
+(`[image.*]` + `[system]`, RFC-0098 D3/D5). The base Zephyr `prj.conf` of each
+board is `boards/<board>/prj.conf` in the bringup, and each image's
+`os_config` names its RMW fragments. Switching board is choosing another
+image; no build command names a board.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

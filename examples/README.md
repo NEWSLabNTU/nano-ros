@@ -514,9 +514,9 @@ just qemu talker      # spawns QEMU + nros-rs-talker
 ```bash
 just setup zephyr
 source ~/nano-ros-workspace/env.sh
-west build -b native_sim/native/64 nano-ros/examples/zephyr/c/talker \
-  -- -DCONF_FILE=prj.conf -DNROS_IMAGE=zephyr_cyclonedds
-./build/zephyr/zephyr.exe
+cd nano-ros/examples/zephyr/c/talker
+nros build nros_zephyr_talker_c_bringup:zephyr_cyclonedds
+# the build prints the west build directory; run its zephyr/zephyr.exe
 ```
 
 ## ROS 2 interoperability

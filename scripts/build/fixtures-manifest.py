@@ -768,6 +768,13 @@ def west_id(entry):
 KNOB_REGISTRY = SCRIPT_ROOT / "packages/tooling/nros-zephyr-build/knobs.toml"
 
 
+# The platforms whose `[[workspace_fixture]]` rows the WEST lane builds. A
+# workspace row has no `builder` key, so the platform says it. phase-531 W6:
+# the Nucleo-F767ZI joined when the C talker's serial image became a
+# workspace row.
+ZEPHYR_WEST_PLATFORMS = ("zephyr", "zephyr-cortex-m", "zephyr-nucleo-f767zi")
+
+
 def west_overrides(entry):
     """`[(ID, value)]` from a west row's `west_overrides` table — phase-484 W5b.
 
@@ -1843,7 +1850,7 @@ def validate_workspace_fixture(entry):
         # application cannot build without is its Kconfig, which lives in
         # `<bringup>/boards/<board>/` and is what `builder::zephyr::resolve_in`
         # passes as `-DAPPLICATION_CONFIG_DIR`.
-        if platform in ("zephyr", "zephyr-cortex-m"):
+        if platform in ZEPHYR_WEST_PLATFORMS:
             pkg = image_entry_package(entry)
             if not pkg:
                 _fail(
@@ -2071,9 +2078,15 @@ def main():
         return
 
     if a.command == "west-overrides":
-        for e in load(a.manifest):
-            if e.get("builder") != "west":
-                continue
+        # Both tables: a zephyr workspace row is a west row too (see
+        # `west-leaves`), and phase-531 W6's boot-report row carries one.
+        rows = [e for e in load(a.manifest) if e.get("builder") == "west"]
+        rows += [
+            e
+            for e in load_workspace_fixtures(a.manifest)
+            if e.get("platform") in ZEPHYR_WEST_PLATFORMS
+        ]
+        for e in rows:
             for knob, value in west_overrides(e):
                 sys.stdout.write(f"{west_id(e)}{SEP}{knob}={value}\n")
         return
@@ -2107,7 +2120,7 @@ def main():
         # say so, so the platform is the discriminator.
         west_rows = [e for e in load(a.manifest) if e.get("builder") == "west"]
         for e in load_workspace_fixtures(a.manifest):
-            if e.get("platform") not in ("zephyr", "zephyr-cortex-m"):
+            if e.get("platform") not in ZEPHYR_WEST_PLATFORMS:
                 continue
             e = dict(e)
             # phase-383 W9.b — the WORKSPACE root, kept before `dir` is

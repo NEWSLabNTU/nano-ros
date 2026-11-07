@@ -5772,9 +5772,11 @@ pub fn build_zephyr_cortex_m_leaf(
     )
 }
 
-/// The overlay the `build-cortex-m-c-boot-report-zenoh` row merges after the
-/// talker's `prj.conf` — relative to the talker, as the row states it, so the
-/// staleness probe watches the same file the build reads (issue 1036).
+/// The overlay `[image.mps2_boot_report]` merges after the talker's zenoh
+/// fragment — relative to the talker WORKSPACE root, so the staleness probe
+/// watches the same file the build reads (issue 1036). It lives outside the
+/// workspace (it is the test's), which is why it is named at all: everything
+/// under the workspace is watched already.
 pub const ZEPHYR_BOOT_REPORT_CONF: &str =
     "../../../../packages/testing/nros-tests/fixtures/zephyr-boot-report/arena-exhausted.conf";
 
@@ -5786,14 +5788,13 @@ pub fn build_zephyr_cortex_m_c_boot_report() -> TestResult<PathBuf> {
     let leaf = "examples/zephyr/c/talker";
     let binary_path =
         zephyr_build_root().join("build-cortex-m-c-boot-report-zenoh/zephyr/zephyr.elf");
-    let conf_files = format!("prj.conf;{ZEPHYR_BOOT_REPORT_CONF}");
     require_prebuilt_binary_fresh_zephyr(
         &binary_path,
         ZephyrLeafSource {
             dir: leaf,
             lang: Some("c"),
             rmw: Some(Rmw::Zenoh.cmake_value()),
-            conf_files: Some(&conf_files),
+            conf_files: Some(ZEPHYR_BOOT_REPORT_CONF),
         },
     )
 }
@@ -5813,11 +5814,12 @@ pub fn build_zephyr_nucleo_c_serial_talker() -> TestResult<PathBuf> {
     )
 }
 
-/// Issue 2078 -- the `build-cortex-m-rust-talker-serial-zenoh` row's conf list,
-/// relative to the talker as the row states it: the board tail is listed by the
-/// row so the serial delta can merge after it.
-pub const ZEPHYR_CORTEX_M_SERIAL_CONF: &str = "prj.conf;prj-zenoh.conf;\
-     ../../../../packages/boards/nros-board-mps2-an385-zephyr/prj.conf;../../../../cmake/zephyr/mps2-an385-serial.conf";
+/// Issue 2078 -- the files outside the talker workspace that
+/// `[image.mps2_serial]` merges: the board package's Kconfig and the serial
+/// delta after it. Relative to the workspace root; everything inside it is
+/// watched already.
+pub const ZEPHYR_CORTEX_M_SERIAL_CONF: &str = "../../../../packages/boards/nros-board-mps2-an385-zephyr/prj.conf;\
+     ../../../../cmake/zephyr/mps2-an385-serial.conf";
 
 /// Issue 2078 -- the `examples/zephyr/rust/talker` image for `mps2_an385` with
 /// NO IP stack (zenoh over a UART). A link witness: the test reads its ELF.

@@ -137,7 +137,7 @@ registry, not written here:
    ```
 
    Copy
-   [`examples/zephyr/rust/talker/prj-cyclonedds.conf`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/rust/talker/prj-cyclonedds.conf)
+   [`examples/zephyr/rust/talker/src/zephyr_talker_node_bringup/prj-cyclonedds.conf`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/rust/talker/src/zephyr_talker_node_bringup/prj-cyclonedds.conf)
    beside `system.toml`. Its lines that matter for Cyclone are
    `CONFIG_NET_IPV4_IGMP=y`, the `CONFIG_NET_PKT_*` and `CONFIG_NET_BUF_*`
    counts, and `CONFIG_HEAP_MEM_POOL_SIZE`, with `CONFIG_NET_SOCKETS_POLL_MAX=8`

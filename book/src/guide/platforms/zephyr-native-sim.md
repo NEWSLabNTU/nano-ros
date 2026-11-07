@@ -64,7 +64,7 @@ lists the knobs.
 
 A bringup built for several backends states one image per RMW and picks one
 at build time. The copy-out C talker,
-[`examples/zephyr/c/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/c/talker/system.toml),
+[`examples/zephyr/c/talker/src/nros_zephyr_talker_c_bringup/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/zephyr/c/talker/src/nros_zephyr_talker_c_bringup/system.toml),
 does this:
 
 ```toml
@@ -77,7 +77,7 @@ default_images = ["zephyr_zenoh"]
 [image.zephyr_zenoh]
 board = "zephyr"
 rmw = "zenoh"
-os_config = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf", "prj-zenoh-native-sim.conf"]
 
 [image.zephyr_xrce]
 board = "zephyr"

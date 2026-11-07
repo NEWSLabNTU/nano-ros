@@ -104,10 +104,12 @@ without bridge configuration.
 # Source environment
 source ../nano-ros-workspace/env.sh
 
-# Build Zephyr talker (Rust + Zenoh)
+# Build Zephyr talker (Rust + Zenoh). It is a single-node workspace
+# (phase-531 W6), so `nros build` names its bringup's image and generates the
+# west application.
 cd ../nano-ros-workspace
-west build -b native_sim/native/64 nros/examples/zephyr/rust/talker \
-  -- -DEXTRA_CONF_FILE=prj-zenoh.conf
+(cd nros/examples/zephyr/rust/talker && \
+  nros build zephyr_talker_node_bringup:zephyr_zenoh -- -d "$OLDPWD/build")
 
 # Run (no sudo needed)
 ./build/zephyr/zephyr.exe

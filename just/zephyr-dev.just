@@ -73,6 +73,31 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     codegen_tool="$(nros_cargo_codegen_c_bin)"
     src="$(pwd)/examples/zephyr/{{example}}"
     [ -d "$src" ] || { echo "no example at $src"; exit 1; }
+    # phase-531 W6 — a migrated witness is a single-node WORKSPACE
+    # (`src/<node>` + `src/<node>_bringup`), whose west application `nros build`
+    # generates. The image declares its board, so `-b` is not passed: the board
+    # picks the image instead (`zephyr_<rmw>` on native_sim, `mps2_<rmw>` on
+    # mps2/an385, the bringup's names).
+    if [ -f "$src/.colcon_workspace" ]; then
+        bringups=("$src"/src/*_bringup)
+        [ "${#bringups[@]}" = 1 ] && [ -f "${bringups[0]}/system.toml" ] \
+            || { echo "zephyr/{{example}}: expected ONE src/*_bringup, found ${bringups[*]}"; exit 1; }
+        case "{{board}}" in
+        native_sim*) image="zephyr_{{rmw}}" ;;
+        mps2*) image="mps2_{{rmw}}" ;;
+        *) echo "zephyr/{{example}}: no image for board {{board}} (the bringup names native_sim and mps2/an385 images)"; exit 1 ;;
+        esac
+        build_root="$(scripts/lib/zephyr-workspace.sh --version "{{NROS_ZEPHYR_VERSION}}" build-root)"
+        mkdir -p "$build_root"
+        bd="$build_root/build-one-$(echo '{{example}}' | tr '/' '-')-{{rmw}}-$(echo '{{board}}' | tr '/' '-')"
+        target="$(basename "${bringups[0]}"):$image"
+        echo "Zephyr {{NROS_ZEPHYR_VERSION}}: nros build $target (zephyr/{{example}}) -> $bd"
+        path="$PATH"
+        [ -z "$venvbin" ] || path="$(realpath "$venvbin"):$PATH"
+        (cd "$workspace" && PATH="$path" "$codegen_tool" build "$target" --workspace "$src" -- -d "$bd")
+        echo "Built: $bd/zephyr/zephyr.elf"
+        exit 0
+    fi
     # Rust examples consume the generated interface crates (std_msgs +
     # transitively builtin_interfaces, …) as cargo path-deps via
     # .cargo/config.toml's [patch.crates-io] — those crates must exist before the

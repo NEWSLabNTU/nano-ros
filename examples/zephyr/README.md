@@ -28,9 +28,14 @@ your own `EXTRA_CONF_FILE`. So no conf file in an example states a
 `CONFIG_NROS_*` knob (`just check leaf-conf-nros-knobs` refuses one).
 
 ```sh
-west build -b native_sim/native/64 examples/zephyr/c/talker -- \
+west build -b native_sim/native/64 examples/zephyr/rust/listener -- \
     -DCONF_FILE=prj.conf -DNROS_IMAGE=zephyr_xrce
 ```
+
+The three talkers (`c/`, `cpp/`, `rust/`) are single-node WORKSPACES instead
+(phase-531 W6): `src/<node>` plus `src/<node>_bringup`, built with
+`nros build <node>_bringup:<image>` from the talker directory, which generates
+the west application. See each talker's README.
 
 The host-socket network (NSOS) comes from the board: `[board.zephyr] snippets`
 names `nros-nsos`, and the module adds it to `SNIPPET` (issue 2157).

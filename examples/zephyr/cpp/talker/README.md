@@ -17,17 +17,27 @@ carrier** generates the entry:
 
 ## Build
 
-From the repo root (Zephyr workspace provisioned via `just setup zephyr`):
+A single-node workspace: the node package is `src/zephyr_cpp_talker`, and
+`src/zephyr_cpp_talker_bringup` holds the `system.toml` that says what to build. `nros build`
+generates the west application from it.
 
-```sh
-just zephyr build-one cpp/talker zenoh          # native_sim/native/64 default
-just zephyr build-one cpp/talker xrce
-just zephyr build-one cpp/talker cyclonedds
+```bash
+cp -r examples/zephyr/cpp/talker ~/my-talker && cd ~/my-talker
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
+nros build zephyr_cpp_talker_bringup:zephyr_zenoh         # or zephyr_xrce, zephyr_cyclonedds
 ```
 
-The RMW is one of the `system.toml` images, selected with
-`-DNROS_IMAGE=zephyr_<rmw>` (`zephyr_zenoh`, `zephyr_xrce`, `zephyr_cyclonedds`);
-each image's `conf` names its Zephyr-native `prj-<rmw>.conf` (phase-481).
+Each `[image.*]` is one build: `zephyr_<rmw>` targets `native_sim/native/64`
+and `mps2_zenoh` targets `mps2/an385`. From the checkout,
+`just zephyr build-one cpp/talker zenoh` does the same.
+
+## Config
+
+Board, RMW, domain and locator: `src/zephyr_cpp_talker_bringup/system.toml`
+(`[image.*]` + `[system]`, RFC-0098 D3/D5). The base Zephyr `prj.conf` of each
+board is `boards/<board>/prj.conf` in the bringup, and each image's
+`os_config` names its RMW fragments. Switching board is choosing another
+image; no build command names a board.
 
 ## History
 
