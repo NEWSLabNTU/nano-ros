@@ -162,8 +162,8 @@ impl fmt::Display for UnknownRmw {
 #[cfg(test)]
 impl std::error::Error for UnknownRmw {}
 
-// phase-545 W1 (RFC-0071 D14) — `backend_declares_capability`,
-// `backend_states_fact`, `backends_declaring` and `backend_capability_feature`
+// phase-545 W1 (RFC-0071 D14) — ~~`backend_declares_capability`~~,
+// ~~`backend_states_fact`~~, the free `backends_declaring` and ~~`backend_capability_feature`~~
 // read the baked table and were deleted: they are [`ResolvedRmwIn`]'s
 // `declares_capability` / `states_fact` / `capability_feature` and
 // [`RmwIndex::backends_declaring`], asked of the descriptor the scan resolved.
@@ -411,7 +411,7 @@ pub fn known_rmw_in(scan: &ScanResult) -> Vec<String> {
 impl ResolvedRmwIn {
     /// Does this backend's descriptor declare `capability` (`[rmw.capabilities]`)?
     ///
-    /// phase-545 W1 (RFC-0071 D14) — this was `backend_declares_capability`
+    /// phase-545 W1 (RFC-0071 D14) — this was ~~`backend_declares_capability`~~
     /// over the baked table, so a capability an out-of-tree backend offered
     /// was invisible. It is now a question asked of the descriptor the scan
     /// resolved.
