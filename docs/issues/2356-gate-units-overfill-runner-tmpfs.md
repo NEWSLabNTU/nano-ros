@@ -98,3 +98,19 @@ units grows; the scheduling is what has no bound.
 Whether the runner should also point `TMPDIR` (and with it gcc's and
 sccache's temp files) at `_work` is a runner change and the operator's call;
 it is not needed for the scheduling fix above.
+
+## Fix (landed; awaiting the tier-2 confirmation)
+
+- `.config/gate-lanes.toml` `[resources]` gains `scratch-tree =
+  { scratch-gib = 5 }`, and both recipes carry `[group('uses:scratch-tree')]`.
+  `check-gate-lists.py` (`resource_capacity`) turns a `scratch-gib` resource
+  into nextest's `max-threads` as `$TMPDIR`'s free space at config time over
+  the per-unit size, never below 1, and 1 when free space cannot be measured.
+  The harness generates that config per run, so the bound is the host's and
+  the moment's: 9 on the 48 GiB runner tmpfs, 12 on a 63 GiB one, 182 on a
+  931 GiB disk-backed /tmp.
+- `nros_gate_unit_jobs`'s per-unit default is 5 GiB (it was 3, and
+  `check-scaffold-builds.sh` passed 4), the measured 4.7 GiB rounded up.
+
+The issue stays open until a tier-2 run on newslab-118 passes `check::default`
+on its 48 GiB tmpfs.

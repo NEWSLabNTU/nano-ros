@@ -351,6 +351,43 @@ def order_priorities(names: list[str], order: str) -> dict[str, int]:
             for i, name in enumerate(ordered)}
 
 
+def scratch_free_kib() -> int | None:
+    """Free KiB under `$TMPDIR` (else /tmp), where the gates' scratch trees go
+    (scripts/build/gate-scratch.sh). None when it cannot be measured."""
+    import os
+    try:
+        st = os.statvfs(os.environ.get("TMPDIR") or "/tmp")
+    except OSError:
+        return None
+    return st.f_bavail * st.f_frsize // 1024
+
+
+def resource_capacity(name: str, spec, free_kib: int | None) -> int:
+    """How many tests may hold resource `name` at once.
+
+    An integer is taken as given. `{ scratch-gib = N }` is a resource sized
+    from SCRATCH DISK (issue 2356): each holder keeps a tree of up to N GiB
+    under `$TMPDIR`, so the count is TMPDIR's free space at config time over
+    N, and never below 1. The config is generated per run, so the count is the
+    free space of the host and moment that run has, not a number chosen for
+    one machine. Unmeasurable free space keeps one holder: the safe side."""
+    if isinstance(spec, bool):
+        raise SystemExit(f"check-gate-lists: [resources] {name} = {spec!r} is not a count")
+    if isinstance(spec, int):
+        if spec < 1:
+            raise SystemExit(f"check-gate-lists: [resources] {name} = {spec}; a resource needs >= 1 holder")
+        return spec
+    if isinstance(spec, dict) and set(spec) == {"scratch-gib"}:
+        gib = spec["scratch-gib"]
+        if isinstance(gib, bool) or not isinstance(gib, (int, float)) or gib <= 0:
+            raise SystemExit(f"check-gate-lists: [resources] {name}: scratch-gib must be > 0, got {gib!r}")
+        if free_kib is None:
+            return 1
+        return max(1, int(free_kib // (gib * 1024 * 1024)))
+    raise SystemExit(f"check-gate-lists: [resources] {name} = {spec!r}; "
+                     "want a count, or { scratch-gib = <GiB per holder> }")
+
+
 def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
                    order: str | None = None) -> str:
     """phase-543 W4 — the harness's nextest TOOL config, generated from the
@@ -381,8 +418,10 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
         "",
         "[test-groups]",
     ]
-    for r, n in sorted(resources.items()):
-        lines.append(f'"@tool:{TOOL}:{r}" = {{ max-threads = {int(n)} }}')
+    free_kib = scratch_free_kib()
+    for r, spec in sorted(resources.items()):
+        n = resource_capacity(r, spec, free_kib)
+        lines.append(f'"@tool:{TOOL}:{r}" = {{ max-threads = {n} }}')
     lines.append("")
     for tier in ("fast", "build", "exempt"):
         for n in b[tier]:
@@ -501,6 +540,20 @@ def self_test() -> None:
     assert asc == {"a": 100, "b": 0, "c": -100}, asc
     assert desc == {"a": -100, "b": 0, "c": 100}, desc
     assert order_priorities(["x"], "asc") == {"x": 0}
+    # issue 2356 — a scratch-sized resource admits what TMPDIR holds, at least
+    # one, and one when free space cannot be measured; a count is as given.
+    gib = 1024 * 1024
+    assert resource_capacity("s", {"scratch-gib": 5}, 48 * gib) == 9
+    assert resource_capacity("s", {"scratch-gib": 5}, 4 * gib) == 1
+    assert resource_capacity("s", {"scratch-gib": 5}, None) == 1
+    assert resource_capacity("s", {"scratch-gib": 2.5}, 10 * gib) == 4
+    assert resource_capacity("r", 2, None) == 2
+    for bad in (0, True, {"scratch-gib": 0}, {"scratch-gib": "5"}, {"gib": 5}, "2"):
+        try:
+            resource_capacity("x", bad, 48 * gib)
+        except SystemExit:
+            continue
+        raise AssertionError(f"selftest: accepted [resources] x = {bad!r}")
     # Both directions, on synthetic input. `check-gate-selftests` requires
     # this on the normal path: a control nobody runs decays into a comment.
     mini = "\n".join([

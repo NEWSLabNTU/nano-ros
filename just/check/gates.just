@@ -327,9 +327,10 @@ nextest-gates *args:
     # jobs. The checkout holds the build caches. TMPDIR holds the gates' fixtures
     # and the units' scratch trees (scripts/build/gate-scratch.sh), and is often
     # a RAM-backed tmpfs: 20 GiB on one contributor host, so one 30 GiB floor for
-    # both refused every run there. How many units run at once already scales to
-    # TMPDIR's free space (`nros_gate_unit_jobs`, #3234), so TMPDIR's floor is
-    # only room for one unit (~4 GiB) and the fixtures. `=0` turns either off.
+    # both refused every run there. How many units run at once scales to
+    # TMPDIR's free space (the `scratch-tree` resource, issue 2356), so TMPDIR's
+    # floor is only room for one unit (~5 GiB) and the fixtures. `=0` turns
+    # either off.
     floor() {   # <dir> <min-gib> <knob>
         local free_kb
         free_kb="$(df -Pk "$1" | awk 'NR==2 {print $4}')"
