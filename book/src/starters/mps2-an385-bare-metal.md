@@ -8,12 +8,13 @@
 > **Status:** Verified in emulator (daily). From the board support registry: [`nros-board-mps2-an385`](../reference/boards/mps2-an385.md); [Board Support Levels](../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED starter status -->
 
-This starter puts a Rust talker on an Arm Cortex-M3 board with no operating
+This starter puts a talker on an Arm Cortex-M3 board with no operating
 system at all, emulated by QEMU, and shows its messages arriving in ROS 2. The
 board is Arm's MPS2-AN385, which QEMU models closely. No one buys one: it is
 the board this book teaches nano-ros on, because it costs nothing and behaves
 like a real microcontroller. The talker runs as one loop with no scheduler
 under it, which is what "bare-metal" means.
+You write the talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -51,17 +52,37 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
 ```bash probe=40
 nros new bm_ws --board mps2-an385-baremetal --template talker --lang rust --rmw zenoh
 cd bm_ws
 ```
+
+### C
+
+```bash probe=40
+nros new bm_ws --board mps2-an385-baremetal --template talker --lang c --rmw zenoh
+cd bm_ws
+```
+
+### C++
+
+```bash probe=40
+nros new bm_ws --board mps2-an385-baremetal --template talker --lang cpp --rmw zenoh
+cd bm_ws
+```
+
+<!-- /tabs -->
 
 That wrote a workspace with two packages:
 
 ```text
 bm_ws/
 └── src/
-    ├── bm_node/                 # the talker: package.xml, Cargo.toml (a library), src/lib.rs
+    ├── bm_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
     └── bm_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
@@ -77,7 +98,7 @@ comes from ROS 2):
 
 ```bash probe=50 probe-run=1500
 source /opt/ros/humble/setup.bash
-nros run bm_node --expect 'Publishing:'
+nros run bm_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=50

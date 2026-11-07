@@ -8,11 +8,12 @@
 > **Status:** Verified in emulator (daily). From the board support registry: [`nros-board-threadx-qemu-riscv64`](../reference/boards/threadx-qemu-riscv64.md); [Board Support Levels](../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED starter status -->
 
-This starter puts a Rust talker on Eclipse ThreadX (formerly Azure RTOS
+This starter puts a talker on Eclipse ThreadX (formerly Azure RTOS
 ThreadX), on QEMU's 64-bit RISC-V `virt` machine, and shows its messages
 arriving in ROS 2. ThreadX runs the talker as a thread, with NetX Duo as its
 TCP/IP stack on a virtio-net device. You install no RISC-V cross-compiler and
 no QEMU of your own: `nros setup` fetches both.
+You write the talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -50,17 +51,37 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
 ```bash probe=40
 nros new tx_ws --board rv-virt-threadx --template talker --lang rust
 cd tx_ws
 ```
+
+### C
+
+```bash probe=40
+nros new tx_ws --board rv-virt-threadx --template talker --lang c
+cd tx_ws
+```
+
+### C++
+
+```bash probe=40
+nros new tx_ws --board rv-virt-threadx --template talker --lang cpp
+cd tx_ws
+```
+
+<!-- /tabs -->
 
 That wrote a workspace with two packages:
 
 ```text
 tx_ws/
 └── src/
-    ├── tx_node/                 # the talker: package.xml, Cargo.toml (a library), src/lib.rs
+    ├── tx_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
     └── tx_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
@@ -94,7 +115,7 @@ later runs of it need no sourced shell:
 
 ```bash probe=60 probe-run=1500
 source /opt/ros/humble/setup.bash
-nros run tx_node --expect 'Publishing:'
+nros run tx_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=60

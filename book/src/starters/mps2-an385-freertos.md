@@ -13,7 +13,7 @@ and shows its messages arriving in ROS 2. The board is Arm's MPS2-AN385 in
 QEMU, the board this book teaches nano-ros on: it costs nothing and behaves
 like a real microcontroller. FreeRTOS runs the talker as a task, with lwIP as
 its network stack on the board's emulated LAN9118 ethernet. You write the
-talker in Rust or in C; pick a tab and every tab on the page follows.
+talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -66,6 +66,13 @@ nros new fr_ws --board mps2-an385-freertos --template talker --lang c
 cd fr_ws
 ```
 
+### C++
+
+```bash probe=40
+nros new fr_ws --board mps2-an385-freertos --template talker --lang cpp
+cd fr_ws
+```
+
 <!-- /tabs -->
 
 That wrote a workspace with two packages:
@@ -106,7 +113,7 @@ no sourced shell:
 
 ```bash probe=60 probe-run=1500
 source /opt/ros/humble/setup.bash
-nros run fr_node --expect 'Publishing:'
+nros run fr_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=60

@@ -13,7 +13,7 @@ machine (`rv32imac`), and shows its messages arriving in ROS 2. NuttX is a
 POSIX-style RTOS, so the talker runs as an ordinary NuttX task, with NuttX's
 own network stack on a virtio-net device. You need no NuttX checkout of your
 own: `nros setup` fetches the kernel and its apps tree, and `nros run` links
-your node into a bootable kernel. You write the talker in Rust or in C; pick
+your node into a bootable kernel. You write the talker in Rust, C or C++; pick
 a tab and every tab on the page follows.
 
 ## What you need
@@ -80,6 +80,14 @@ nros new nx_ws --board rv-virt-nuttx --template talker --lang c
 cd nx_ws
 ```
 
+### C++
+
+```bash probe=40
+export QEMU_SYSTEM_RISCV32="$(command -v qemu-system-riscv32)"
+nros new nx_ws --board rv-virt-nuttx --template talker --lang cpp
+cd nx_ws
+```
+
 <!-- /tabs -->
 
 That wrote a workspace with two packages: `src/nx_node/`, the talker, a
@@ -113,7 +121,7 @@ runs of it need no sourced shell:
 
 ```bash probe=60 probe-run=1500
 source /opt/ros/humble/setup.bash
-nros run nx_node --expect 'Publishing:'
+nros run nx_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=60

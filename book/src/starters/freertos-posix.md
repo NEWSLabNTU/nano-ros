@@ -8,18 +8,18 @@
 > **Status:** Verified on host (daily). From the board support registry: [`nros-board-freertos-posix`](../reference/boards/freertos-posix.md); [Board Support Levels](../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED starter status -->
 
-This starter puts a C talker on the FreeRTOS kernel running as an ordinary
+This starter puts a talker on the FreeRTOS kernel running as an ordinary
 program on your Linux machine, and shows its messages arriving in ROS 2.
 FreeRTOS's POSIX port runs the kernel's tasks as threads of one host process,
 and the talker uses your host's own sockets, so there is no emulator and no
 network to set up. It is the quickest way to see a FreeRTOS application talk
-to ROS 2. The board takes C and C++ nodes; for a Rust talker on FreeRTOS, use
-the [mps2-an385 board](mps2-an385-freertos.md).
+to ROS 2.
+You write the talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 The talker uses Cyclone DDS, which runs inside the talker's own process and
 finds its peers on the network the way any ROS 2 node does, so there is no
-router to start. Zenoh on this board is not supported yet: a zenoh image for
-it does not build. [Zenoh on this board](#zenoh-on-this-board) says more.
+router to start. The board runs zenoh too, through a router on this machine:
+[Zenoh on this board](#zenoh-on-this-board) shows how.
 
 ## What you need
 
@@ -61,17 +61,37 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
+```bash probe=40
+nros new fp_ws --board freertos-posix --template talker --lang rust --rmw cyclonedds
+cd fp_ws
+```
+
+### C
+
 ```bash probe=40
 nros new fp_ws --board freertos-posix --template talker --lang c --rmw cyclonedds
 cd fp_ws
 ```
+
+### C++
+
+```bash probe=40
+nros new fp_ws --board freertos-posix --template talker --lang cpp --rmw cyclonedds
+cd fp_ws
+```
+
+<!-- /tabs -->
 
 That wrote a workspace with two packages:
 
 ```text
 fp_ws/
 └── src/
-    ├── fp_node/                 # the talker: package.xml, CMakeLists.txt, src/Talker.c
+    ├── fp_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
     └── fp_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
@@ -89,7 +109,7 @@ records the ROS 2 prefix in the workspace, so later runs of it need no
 sourced shell:
 
 ```bash probe=50
-nros run fp_node --expect 'Publishing:' --timeout 600
+nros run fp_node --expect "Publishing: 'Hello World: 1'" --timeout 600
 ```
 
 `nros run` builds the talker with CMake (the first build compiles the
@@ -135,22 +155,88 @@ reliable publisher alike.
 
 ## Zenoh on this board
 
-Zenoh on FreeRTOS POSIX is not supported yet. `nros new --rmw zenoh` (the
-default when you name no RMW) scaffolds a workspace for this board, but its
-image does not build: zenoh's FreeRTOS support expects lwIP, and this board's
-network is the host's own. The build stops with
-`lwipopts.h: No such file or directory`. Until it is supported, use Cyclone
-DDS, as this page does, or zenoh on the emulated
-[mps2-an385 FreeRTOS board](mps2-an385-freertos.md).
+To talk over zenoh instead, the talker dials a zenoh router on this machine,
+at `tcp/127.0.0.1:7447`. Install ROS 2's zenoh middleware, which brings the
+router `nros run` starts, and provision the board for zenoh:
+
+```bash probe=80 variant=zenoh
+sudo apt-get install -y ros-humble-rmw-zenoh-cpp
+nros setup freertos-posix
+```
+
+Scaffold a second workspace beside the first, this time naming zenoh:
+
+<!-- tabs -->
+
+### Rust
+
+```bash probe=82 variant=zenoh
+cd ..
+nros new fpz_ws --board freertos-posix --template talker --lang rust --rmw zenoh
+cd fpz_ws
+```
+
+### C
+
+```bash probe=82 variant=zenoh
+cd ..
+nros new fpz_ws --board freertos-posix --template talker --lang c --rmw zenoh
+cd fpz_ws
+```
+
+### C++
+
+```bash probe=82 variant=zenoh
+cd ..
+nros new fpz_ws --board freertos-posix --template talker --lang cpp --rmw zenoh
+cd fpz_ws
+```
+
+<!-- /tabs -->
+
+Build and run the talker. `nros run` starts a zenoh router on
+`tcp/127.0.0.1:7447` for the run and stops it after, so there is nothing to
+start beside it:
+
+```bash probe=86 probe-run=900 variant=zenoh
+source /opt/ros/humble/setup.bash
+nros run fpz_node --expect "Publishing: 'Hello World: 1'" --timeout 600
+```
+
+```text probe-expect=86 variant=zenoh
+Publishing: 'Hello World: 1'
+nros run: matched after
+```
+
+Start it again without `--expect` and leave it going; its router stays up
+while it runs. In another terminal, `ros2` reads it through that router, with
+`RMW_IMPLEMENTATION` set to `rmw_zenoh_cpp`:
+
+```bash probe=88 probe-run=120 probe-keep variant=zenoh
+nros run fpz_node
+```
+
+```text probe-expect=88 variant=zenoh
+Publishing: 'Hello World: 2'
+```
+
+```bash probe=89 probe-run=90 variant=zenoh
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+```
+
+```text probe-expect=89 variant=zenoh
+data: 'Hello World:
+```
 
 ## If it doesn't work
 
 - **`nros run` stops at once and names `AMENT_PREFIX_PATH`:** this shell has
   not sourced ROS 2, and no earlier build of the workspace recorded it.
   Source it and run again.
-- **The build stops on `lwipopts.h`:** the workspace was scaffolded with
-  zenoh, which this board does not support yet. Scaffold it again with
-  `--rmw cyclonedds`.
+- **`nros run` says the router exited:** another zenoh router already holds
+  port 7447 on this machine. Stop it; `nros run` starts its own.
 - **`ros2 topic echo` prints nothing:** check the `RMW_IMPLEMENTATION` line,
   and that neither shell sets a `ROS_DOMAIN_ID` other than 0. A firewall that
   drops multicast also stops DDS discovery.
