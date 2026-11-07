@@ -10,7 +10,7 @@
 //! `codegen/entry/packs/entry/shared/boot_config.jinja`), and with the store's
 //! 13.2-nros5 it builds and runs.
 //!
-//! [`resolve`] is the ONE answer, so the four call sites cannot disagree:
+//! [`resolve`](crate::nuttx_toolchain::resolve) is the ONE answer, so the four call sites cannot disagree:
 //!
 //! - `NUTTX_CROSS` holding a PATH (it has a `/`) is the operator's choice and
 //!   is used as given.
@@ -28,7 +28,7 @@
 //! The floor is the C++ one `cmake/toolchain/NanoRosCrossToolchain.cmake`
 //! enforces on the FreeRTOS road (issue 1936, `NROS_CROSS_GCC_FLOOR_MAJOR`):
 //! a C++ image below it is refused before the first compile, by
-//! [`CrossGcc::require_cxx_floor`]. A C-only image keeps building, since the
+//! [`CrossGcc::require_cxx_floor`](crate::nuttx_toolchain::CrossGcc::require_cxx_floor). A C-only image keeps building, since the
 //! failing constructs are C++.
 
 use std::path::{Path, PathBuf};
