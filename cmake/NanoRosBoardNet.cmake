@@ -4,11 +4,14 @@
 # descriptor.
 #
 #   nros_board_net_c(<board> <out_var> [ROOT <nano-ros root>]
-#                    [GATEWAY_VAR <var>] [OPTIONAL])
+#                    [GATEWAY_VAR <var>] [STACK_VAR <var>] [OPTIONAL])
 #
 # `GATEWAY_VAR` also returns the resolved gateway (dotted), which the
 # entry-locator resolver turns into the board's default router
-# (`tcp/<gateway>:<port>`, RFC-0103 D10). `OPTIONAL` returns "" instead of
+# (`tcp/<gateway>:<port>`, RFC-0103 D10). `STACK_VAR` returns the board's
+# `[board.net] stack` (RFC-0109 D2; "" when unstated), which the same resolver
+# reads to send a host-stack board to the host's loopback router (issue 2342).
+# `OPTIONAL` returns "" instead of
 # failing when there is no CLI or the board has no descriptor.
 #
 # Sets <out_var> to the `.network = { … }` body of a C `nros_app_config_t`
@@ -36,7 +39,7 @@ include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")
 
 function(nros_board_net_c board out_var)
-    cmake_parse_arguments(_NBN "OPTIONAL" "ROOT;GATEWAY_VAR" "" ${ARGN})
+    cmake_parse_arguments(_NBN "OPTIONAL" "ROOT;GATEWAY_VAR;STACK_VAR" "" ${ARGN})
     if(NOT _NBN_ROOT)
         get_filename_component(_NBN_ROOT "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
     endif()
@@ -93,6 +96,10 @@ function(nros_board_net_c board out_var)
     set(${out_var} "${NROS_BOARD_NET_C}" PARENT_SCOPE)
     if(_NBN_GATEWAY_VAR)
         set(${_NBN_GATEWAY_VAR} "${NROS_BOARD_NET_GATEWAY}" PARENT_SCOPE)
+    endif()
+    # issue 2342 — the board's `[board.net] stack` (RFC-0109 D2), "" if unstated.
+    if(_NBN_STACK_VAR)
+        set(${_NBN_STACK_VAR} "${NROS_BOARD_NET_STACK}" PARENT_SCOPE)
     endif()
 endfunction()
 

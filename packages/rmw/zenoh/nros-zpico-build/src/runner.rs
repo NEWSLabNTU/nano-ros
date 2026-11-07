@@ -2165,6 +2165,29 @@ pub fn run() {
                 &target,
             )
         });
+    // issue 2342 — the probe measures the socket type the LIBRARY compiles,
+    // so it takes the library's own `when`-gated defines: on FreeRTOS those
+    // pick the platform header (lwIP, host sockets or mailbox-only), and a
+    // probe that hardcoded the lwIP arm measured a header the image never
+    // includes (and could not compile it without lwIP at all).
+    let probe_conditional_defines: Vec<(String, Option<String>)> = platform_name
+        .and_then(|name| platform_manifest.for_platform(name).ok())
+        .map(|resolved| {
+            resolved
+                .defines_conditional
+                .iter()
+                .filter(|c| {
+                    manifest::matches(
+                        &c.when,
+                        &target,
+                        is_embedded_target(&target),
+                        &board_capabilities,
+                    )
+                })
+                .map(|c| (c.name.clone(), c.value.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
     if backend_count > 0 && !use_zephyr {
         probe_net_type_sizes(
             &c_dir,
@@ -2175,6 +2198,7 @@ pub fn run() {
             use_freertos,
             use_nuttx,
             use_threadx,
+            &probe_conditional_defines,
         );
     }
 
@@ -2494,6 +2518,7 @@ fn probe_net_type_sizes(
     use_freertos: bool,
     use_nuttx: bool,
     use_threadx: bool,
+    conditional_defines: &[(String, Option<String>)],
 ) {
     let mut build = cc::Build::new();
     // issue 0383 — implicit-function-declaration / int-conversion as errors.
@@ -2530,8 +2555,27 @@ fn probe_net_type_sizes(
         let platform_dir = c_dir.join("platform");
         build.include(&platform_dir);
     } else if use_freertos {
-        build.define("ZENOH_FREERTOS_LWIP", None);
-        // lwIP + FreeRTOS headers needed
+        // issue 2342 — the platform header is whichever arm the library's
+        // `when`-gated defines chose (see the caller). None resolved means no
+        // board rung was read (a plain `cargo build -p zpico-sys`), which has
+        // always meant the lwIP arm.
+        let lwip = conditional_defines.is_empty()
+            || conditional_defines
+                .iter()
+                .any(|(name, _)| name == "ZENOH_FREERTOS_LWIP");
+        if conditional_defines.is_empty() {
+            build.define("ZENOH_FREERTOS_LWIP", None);
+        }
+        for (name, value) in conditional_defines {
+            build.define(name, value.as_deref());
+        }
+        if conditional_defines
+            .iter()
+            .any(|(name, _)| name == "ZP_SYSTEM_PLATFORM_HEADER")
+        {
+            build.include(c_dir.join("platform/freertos-host"));
+        }
+        // FreeRTOS headers needed (and lwIP's on the lwIP arm)
         // phase-471 W6 — every path here through `nros_build_paths::env_path`;
         // phase-484 W2c — the source TREES through `locate::try_source`, the
         // one ladder (env override, store, checkout), so no export is needed.
@@ -2557,7 +2601,7 @@ fn probe_net_type_sizes(
         if let Some(dir) = nros_build_paths::env_path("FREERTOS_CONFIG_DIR") {
             build.include(dir);
         }
-        if let Ok(lwip) = nros_build_paths::locate::try_source("lwip") {
+        if lwip && let Ok(lwip) = nros_build_paths::locate::try_source("lwip") {
             build.include(lwip.join("src/include"));
         }
     } else if use_nuttx {
@@ -3246,7 +3290,7 @@ fn build_zenoh_pico_unified(
         if !manifest::matches(&cond.when, target, is_embedded, caps) {
             continue;
         }
-        build.define(&cond.name, None);
+        build.define(&cond.name, cond.value.as_deref());
     }
     for (key, value) in &plat.defines_kv {
         build.define(key, value.as_str());

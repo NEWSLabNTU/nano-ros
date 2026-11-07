@@ -87,7 +87,7 @@ schema is `PortRow` in `packages/tooling/nros-platform-config/src/manifest.rs`.
 | Key | Type | Use |
 |-----|------|-----|
 | `defines` | list[str] | `define(name, None)`. |
-| `defines_conditional` | list[{name, when}] | A define gated by a [`when`](#when-matcher) matcher. FreeRTOS uses it to pick `ZENOH_FREERTOS_LWIP` or `ZENOH_ORIN_SPE` from the board's `ip_stack` capability. |
+| `defines_conditional` | list[{name, value?, when}] | A define gated by a [`when`](#when-matcher) matcher, with an optional verbatim value. FreeRTOS uses it to pick its zenoh-pico platform header from two board capabilities: `ZENOH_FREERTOS_LWIP` (`ip_stack`, no `host_stack`), `ZENOH_ORIN_SPE` (no `ip_stack`), or `ZP_SYSTEM_PLATFORM_HEADER = "nros_zenoh_freertos_host.h"` for a board whose sockets are the host's (`host_stack`, derived from `[board.net] stack = "host"`). |
 | `defines_kv` | map | `define(name, Some(value))`. |
 | `defines_env` | map of {env, default} | Value from env var `env`, else the literal `default`. |
 | `include` | list[str] | Directories under `zenoh-pico/src/` this port relies on. **Not** a source selection — that is `zenoh-sources.txt` plus `extra_sources`. The build checks each exists and holds a `.c` file, and watches it for rebuilds: the drift check against a submodule bump. |
