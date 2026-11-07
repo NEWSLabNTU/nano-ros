@@ -213,6 +213,7 @@ Found after round two, while fixing the probes:
 
 | issue | purpose | what |
 | --- | --- | --- |
+| [#2346](../issues/archived/2346-quickstart-probe-no-ros-vs-configure-refusal.md) | both | **Resolved** 2026-11-07: the checkout probe's quickstart track runs `ros:jazzy` and sources it; `activate.sh` keeps a sourced ROS 2 |
 | [#2348](../issues/archived/2348-rust-workspace-listener-arena-underderived.md) | both | **Resolved** 2026-11-07: the Rust probe states the buffered row beside `in_place`; the observation outranks the backend default |
 
 ### W4 — The industrial extras
