@@ -417,7 +417,7 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
     let runs = crate::cmd::board_support::LaneRuns::load(&root);
     let today = crate::cmd::board_support::today();
     println!("nros doctor --report ({today})");
-    println!("  nros       {}", env!("CARGO_PKG_VERSION"));
+    println!("  nros       {}", crate::cmd::version::release_version());
     println!("  registry   {}", status.path.display());
     let store = crate::orchestration::store::root();
     println!(
