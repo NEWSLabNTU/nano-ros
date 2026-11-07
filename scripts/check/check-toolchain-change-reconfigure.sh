@@ -88,8 +88,8 @@ printf 'cmake_minimum_required(VERSION 3.20)\nproject(t C CXX)\n' > "$tmp/src/CM
 
 fail=0
 configure() {   # <prefix-dir>
-    NROS_TEST_FAKE_PREFIX="$1/fake" cmake -S "$tmp/src" -B "$tmp/build" \
-        -DCMAKE_TOOLCHAIN_FILE="$tmp/toolchain.cmake" > "$tmp/log" 2>&1
+    local tc="-DCMAKE_TOOLCHAIN_FILE=$tmp/toolchain.cmake"
+    NROS_TEST_FAKE_PREFIX="$1/fake" cmake -S "$tmp/src" -B "$tmp/build" "$tc" > "$tmp/log" 2>&1  # copy-out-root-ok: a non-nano-ros project that includes only the toolchain module
 }
 marker="$tmp/build/.nros-toolchain-changed"
 
@@ -119,7 +119,7 @@ if ! configure "$tmp/b"; then
     fail=1
 elif [ -e "$marker" ]; then
     echo "FAIL: a successful reconfigure left the marker" >&2; fail=1
-elif ! cat "$tmp/build/CMakeFiles/"*/CMakeCCompiler.cmake 2>/dev/null | nros_grep_q -F "$tmp/b/fake-gcc"; then
+elif ! nros_grep_q -F "$tmp/b/fake-gcc" <<<"$(cat "$tmp/build/CMakeFiles/"*/CMakeCCompiler.cmake 2>/dev/null)"; then
     echo "FAIL: after the reconfigure the build tree does not use prefix B's compiler" >&2; fail=1
 fi
 
