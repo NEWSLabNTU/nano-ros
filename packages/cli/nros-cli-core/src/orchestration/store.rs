@@ -668,12 +668,74 @@ pub fn discover_pin_files(start: &Path) -> Vec<PathBuf> {
 /// (issue 1101) — and in-tree every ancestor of a test's cwd is this checkout,
 /// which HAS an `nros-sdk-index.toml`, so a cwd-keyed derivation could never
 /// observe the fallback here.
+///
+/// Issue 2333 — "a project" is [`project_of`]: a pin file OR a bringup /
+/// workspace marker, nearest first. A workspace before its first pin used to
+/// fall through to whatever pin file lay further up — the nano-ros checkout it
+/// sat in, or a stray `~/nros-sdk.lock` — and record its tools there.
 pub fn lock_path_for(start: &Path) -> PathBuf {
-    start
-        .ancestors()
-        .find(|dir| PIN_FILE_NAMES.iter().any(|n| dir.join(n).is_file()))
+    project_of(start)
+        .as_deref()
         .unwrap_or(start)
         .join(LOCK_FILE)
+}
+
+/// The nearest ancestor of `start` that is a nano-ros PROJECT, or `None`.
+///
+/// A project is a directory that carries a pin file ([`PIN_FILE_NAMES`]), a
+/// bringup (`system.toml`, which a single-package project holds at its root),
+/// or a workspace (`src/<pkg>/system.toml` — the definition
+/// `image_facts::workspace_root_from` and `nros build` use). Nearest wins, so a
+/// project nested inside another is its own — except a bringup at
+/// `<ws>/src/<pkg>/`, whose project is the workspace `<ws>` (`nros build`
+/// records there, so a setup run from the bringup must too).
+#[must_use]
+pub fn project_of(start: &Path) -> Option<PathBuf> {
+    let is_workspace = |dir: &Path| {
+        std::fs::read_dir(dir.join("src")).is_ok_and(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.path().join("system.toml").is_file())
+        })
+    };
+    for dir in start.ancestors() {
+        if PIN_FILE_NAMES.iter().any(|n| dir.join(n).is_file()) || is_workspace(dir) {
+            return Some(dir.to_path_buf());
+        }
+        if dir.join("system.toml").is_file() {
+            let ws = dir
+                .parent()
+                .filter(|src| src.file_name().is_some_and(|n| n == "src"))
+                .and_then(Path::parent);
+            return Some(ws.unwrap_or(dir).to_path_buf());
+        }
+    }
+    None
+}
+
+/// Where `nros setup` records what it installed when run from `start`
+/// (issue 2333): the project's lock when `start` is inside one
+/// ([`project_of`]), else the STORE's own `<store>/nros-sdk.lock`.
+///
+/// [`lock_path_for`]'s fallback is the working directory, which is right for a
+/// caller that already knows its project (`nros build`, `nros update`) and was
+/// wrong for setup: `nros setup <board>` run in `~` left `~/nros-sdk.lock`,
+/// and since a lock is itself a pin file every project under `~` that had no
+/// pin of its own then had its tools recorded there instead. Setup run outside
+/// a project provisions the store, so the store is what records it — and
+/// `nros store gc` consults that lock wherever it runs ([`store_lock`]).
+#[must_use]
+pub fn setup_lock_path_for(start: &Path, store_root: &Path) -> PathBuf {
+    match project_of(start) {
+        Some(project) => project.join(LOCK_FILE),
+        None => store_lock(store_root),
+    }
+}
+
+/// `<store>/nros-sdk.lock` — the lock `nros setup` writes outside a project.
+#[must_use]
+pub fn store_lock(store_root: &Path) -> PathBuf {
+    store_root.join(LOCK_FILE)
 }
 
 /// The pin sources a reclaim verb should consult: the files named explicitly,
@@ -1041,6 +1103,51 @@ mod tests {
                 from.display()
             );
         }
+    }
+
+    /// Issue 2333 — `nros setup` outside any project records into the STORE,
+    /// never the working directory; inside one (a pin file, a bringup, or a
+    /// workspace with no pin yet) it records into the project.
+    #[test]
+    fn setup_outside_a_project_locks_in_the_store() {
+        let dir = crate::test_support::scratch_dir("setup_lock_path");
+        let store = dir.join("store");
+        let home = dir.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        assert_eq!(project_of(&home), None);
+        assert_eq!(setup_lock_path_for(&home, &store), store.join(LOCK_FILE));
+
+        // A workspace before its first build: `src/<pkg>/system.toml`, no pin.
+        let ws = home.join("ws");
+        std::fs::create_dir_all(ws.join("src").join("bringup")).unwrap();
+        std::fs::write(ws.join("src").join("bringup").join("system.toml"), "").unwrap();
+        assert_eq!(
+            setup_lock_path_for(&ws.join("src").join("bringup"), &store),
+            ws.join(LOCK_FILE),
+            "a bringup inside a workspace records into the workspace, as `nros build` does"
+        );
+        assert_eq!(lock_path_for(&ws), ws.join(LOCK_FILE));
+
+        // A single-package project: `system.toml` at its own root.
+        let single = home.join("app");
+        std::fs::create_dir_all(single.join("src")).unwrap();
+        std::fs::write(single.join("system.toml"), "").unwrap();
+        assert_eq!(
+            setup_lock_path_for(&single.join("src"), &store),
+            single.join(LOCK_FILE)
+        );
+        std::fs::create_dir_all(ws.join("tmp")).unwrap();
+        assert_eq!(
+            setup_lock_path_for(&ws.join("tmp"), &store),
+            ws.join(LOCK_FILE)
+        );
+
+        // A pinned project wins over the store, from a subdirectory too.
+        let pinned = project(&home, "pinned", &[super::super::pin::FILE_NAME]);
+        assert_eq!(
+            setup_lock_path_for(&pinned.join("sub"), &store),
+            pinned.join(LOCK_FILE)
+        );
     }
 
     /// No lock yet, so the directory that declares what the project

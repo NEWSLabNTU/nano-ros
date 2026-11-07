@@ -294,10 +294,16 @@ indistinguishable from a skip that fetched nothing.
     each of them still records it. Asking for a tool is what puts it in the lock.
   - *Anchored to the project, never to the working directory* (issue 1262). The
     lock is written beside the nearest pin file up the path
-    (`nros-sdk.lock`, `nros-sdk-index.toml`, `nros-toolchain.toml`), falling back
-    to the directory the command ran in when a project carries none yet. That is
-    the same walk `nros toolchain gc` reads these files back with, so a lock is
-    always written where its readers look.
+    (`nros-sdk.lock`, `nros-sdk-index.toml`, `nros-toolchain.toml`) or the
+    nearest bringup/workspace (`system.toml`, `src/<pkg>/system.toml`) when a
+    project carries no pin yet. That is the same walk `nros toolchain gc` reads
+    these files back with, so a lock is always written where its readers look.
+  - *Outside any project, the store's own lock* (issue 2333). `nros setup`
+    run where no project is found records into `<store>/nros-sdk.lock`, never
+    the working directory: a lock left in `~` is itself a pin file, so every
+    project under `~` without a pin of its own had its tools recorded there. gc
+    consults the store's lock wherever it runs, like an installed toolchain's
+    index (RFC-0103 D5).
 - **Bumping a tool:** edit `version` in the index → CI builds the new per-host
   assets under the new tag → users get it on the next `nros setup` (or stay on
   the locked version until they update). The source `ref` bumps in lockstep, so
