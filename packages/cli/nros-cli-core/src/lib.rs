@@ -36,6 +36,8 @@ pub mod builder;
 // discipline "every other sync-owned file uses"; the metadata sidecar was not
 // using it and died mid-sweep on a half-written read.
 pub mod atomic_file;
+// Issue 2332 — what a correct `nros build`/`nros run` prints: detail only on `-v`.
+pub mod build_notes;
 pub mod build_output;
 // RFC-0087 D2 / phase-420 W2 — the `<build_type>` vocabulary. Old spellings and
 // new resolve to one build path here, so a reader taught `nros_cargo` does not

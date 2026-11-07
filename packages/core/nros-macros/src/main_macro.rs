@@ -3575,7 +3575,7 @@ fn executor_sizing_for(
                      entities on this entry but `[package.metadata.nros.entry] \
                      max_callbacks = {cbs}` sizes the executor for {cbs}. Raise it to at \
                      least {} in this pkg's Cargo.toml (the count is a lower bound — the \
-                     model cannot see timers). issue 0257",
+                     model cannot see timers).",
                     sizing::derive_max_callbacks(model_callbacks)
                 ),
             ));
@@ -3624,10 +3624,9 @@ fn executor_capacity_assert(
     };
     let msg = format!(
         "nros::main!: the SystemModel registers {model_callbacks} callback entities but the \
-         executor callback table compiled in is smaller ({advice}). Raise \
-         `NROS_EXECUTOR_MAX_CBS` (e.g. to {}) in the entry's `.cargo/config.toml` `[env]` \
-         and rebuild from clean — resizing the executor arena mixes stale objects. \
-         issue 0257",
+         executor callback table compiled in is smaller ({advice}). Raise it in the \
+         bringup's `system.toml`: `[image.<id>.knobs.executor] max_cbs = {}`, and \
+         rebuild from clean — resizing the executor arena mixes stale objects.",
         sz::derive_max_callbacks(model_callbacks)
     );
     quote! {
@@ -5862,7 +5861,7 @@ mod derived_sizing_tests {
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
         assert!(err.contains("max_callbacks = 4"), "got: {err}");
         assert!(err.contains("at least 12"), "got: {err}");
-        assert!(err.contains("0257"), "got: {err}");
+        assert!(!err.contains("0257"), "no tracker id in user text: {err}");
     }
 
     #[test]
@@ -5874,8 +5873,12 @@ mod derived_sizing_tests {
         syn::parse2::<syn::File>(tokens.clone()).expect("assert parses as an item");
         let ts = tokens.to_string();
         assert!(ts.contains("EXECUTOR_MAX_CBS"), "got: {ts}");
-        assert!(ts.contains("NROS_EXECUTOR_MAX_CBS"), "got: {ts}");
-        assert!(ts.contains("issue 0257"), "got: {ts}");
+        // Issue 2332 -- the remedy is the system.toml knob, never a
+        // generated `.cargo/config.toml`, and it names no tracker id.
+        assert!(ts.contains("knobs.executor"), "got: {ts}");
+        assert!(ts.contains("max_cbs = 12"), "got: {ts}");
+        assert!(!ts.contains("cargo/config.toml"), "got: {ts}");
+        assert!(!ts.contains("0257"), "got: {ts}");
     }
 
     #[test]

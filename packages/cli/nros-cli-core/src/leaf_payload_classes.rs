@@ -416,8 +416,7 @@ pub fn join(
             reason: format!(
                 "{} type(s) this leaf RECEIVES carry no derived bound, so their payload \
                  class cannot be sized:\n    {}\n  Bound the member in its `.msg` \
-                 (`string<=64`) or cap it `inline` in the package's `nros-codegen.toml` \
-                 (RFC-0033).",
+                 (`string<=64`) or cap it `inline` in the package's `nros-codegen.toml`.",
                 open.len(),
                 open.join("\n    ")
             ),

@@ -605,10 +605,10 @@ pub fn check_executor_capacity(
         None => (
             build_default,
             format!(
-                "set `NROS_EXECUTOR_MAX_CBS` (currently {build_default}) to at least {} in \
-                 the build env, and rebuild from clean — resizing the executor arena mixes \
-                 stale objects",
-                sz::derive_max_callbacks(counted)
+                "raise it from {build_default} to at least {need} in the bringup's \
+                 `system.toml` (`[image.<id>.knobs.executor] max_cbs = {need}`), and rebuild \
+                 from clean — resizing the executor arena mixes stale objects",
+                need = sz::derive_max_callbacks(counted)
             ),
         ),
     };
@@ -1024,7 +1024,11 @@ mod executor_capacity_tests {
             .expect_err("9 entities do not fit the default 4")
             .to_string();
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
-        assert!(err.contains("NROS_EXECUTOR_MAX_CBS"), "got: {err}");
+        // Issue 2332 -- the remedy is the system.toml knob.
+        assert!(
+            err.contains("[image.<id>.knobs.executor] max_cbs = 12"),
+            "got: {err}"
+        );
         assert!(err.contains("at least 12"), "got: {err}");
         assert!(!err.contains("0257"), "no tracker id in user text: {err}");
     }

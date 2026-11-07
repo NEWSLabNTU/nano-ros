@@ -481,10 +481,10 @@ fn take_census(args: TakeArgs) -> Result<()> {
     };
 
     if is_host(&image) {
-        println!(
+        crate::build_notes::detail_out(format!(
             "entity-census take {asked_q}: a host image is the census PRODUCER, and its own \
              configure checks nothing -- nothing to take"
-        );
+        ));
         return Ok(());
     }
 
@@ -496,11 +496,11 @@ fn take_census(args: TakeArgs) -> Result<()> {
 
     // Same question the configure asks first, answered the same way.
     if discover_contract(Some(&model_path)).is_none() {
-        println!(
+        crate::build_notes::detail_out(format!(
             "entity-census take {asked_q}: no contract -- `{}` folds in no `*.contract.yaml`, so \
              its configure has nothing for a census to reconcile",
             model_path.display()
-        );
+        ));
         return Ok(());
     }
 
@@ -511,10 +511,10 @@ fn take_census(args: TakeArgs) -> Result<()> {
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
             .is_some_and(|c| incomplete_reason(&c).is_none());
         if complete {
-            println!(
+            crate::build_notes::detail_out(format!(
                 "entity-census take {asked_q}: fresh -> {}",
                 census_path.display()
-            );
+            ));
             return Ok(());
         }
     }
@@ -856,11 +856,11 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
             .is_some_and(|c| incomplete_reason(&c).is_none());
         if complete {
-            println!(
+            crate::build_notes::detail_out(format!(
                 "entity-census take --leaf {}: fresh -> {}",
                 leaf.display(),
                 out.display()
-            );
+            ));
             return Ok(());
         }
     }
@@ -994,11 +994,11 @@ fn check_census(args: CheckArgs) -> Result<()> {
         None => match discover_contract(args.model.as_deref()) {
             Some(p) => p,
             None if args.model.is_some() => {
-                println!(
+                crate::build_notes::detail_out(
                     // See issue 1419.
                     "census check: no contract -- the model folds in no `*.contract.yaml`, so no \
                      pool of this image is derived from one and there is nothing for a census \
-                     to reconcile"
+                     to reconcile",
                 );
                 return Ok(());
             }
@@ -1072,7 +1072,12 @@ fn check_census(args: CheckArgs) -> Result<()> {
         waivers: &waivers,
         strict: args.strict,
     });
-    print!("{}", report.render());
+    // Issue 2332 -- a clean check is detail inside `nros build`; a finding prints.
+    if report.errors() == 0 && report.warnings() == 0 {
+        crate::build_notes::detail_out(report.render().trim_end());
+    } else {
+        print!("{}", report.render());
+    }
 
     // Issue 1419 -- a census whose run stopped early refuses WHATEVER its rows
     // say: the rows above are what was compared, and nothing after the failure

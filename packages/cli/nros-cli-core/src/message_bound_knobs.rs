@@ -456,7 +456,7 @@ fn join_subscribed(
     }
     if !open_subscribed.is_empty() {
         return Some(refused(format!(
-            "{} type(s) this image RECEIVES carry no derived bound, so their payload class cannot be sized:\n    {}\n  Bound the member in its `.msg` (`string<=64`) or cap it `inline` in the package's `nros-codegen.toml` (RFC-0033). Narrowing to the subscribed set does not help here -- these are in it.",
+            "{} type(s) this image RECEIVES carry no derived bound, so their payload class cannot be sized:\n    {}\n  Bound the member in its `.msg` (`string<=64`) or cap it `inline` in the package's `nros-codegen.toml`. Narrowing to the subscribed set does not help here -- these are in it.",
             open_subscribed.len(),
             open_subscribed.join("\n    ")
         )));

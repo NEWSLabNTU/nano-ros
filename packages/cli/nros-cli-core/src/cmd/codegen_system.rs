@@ -2563,7 +2563,7 @@ execution:
             )
             .to_string();
         assert!(err.contains("registers 9 callback entities"), "got: {err}");
-        assert!(err.contains("NROS_EXECUTOR_MAX_CBS"), "got: {err}");
+        assert!(err.contains("knobs.executor] max_cbs"), "got: {err}");
         assert!(!err.contains("0257"), "no tracker id in user text: {err}");
     }
 

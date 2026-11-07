@@ -103,7 +103,7 @@ pub fn derive(bounds: impl FnOnce() -> Result<Vec<(String, BoundState)>, String>
                 "{} type(s) in this image's closure carry no derived bound, so the largest \
                  type it could send or receive is unknown:\n    {}\n  Bound the member in \
                  its `.msg` (`string<=64`) or cap it `inline` in the package's \
-                 `nros-codegen.toml` (RFC-0033).",
+                 `nros-codegen.toml`.",
                 open.len(),
                 open.join("\n    ")
             ),
