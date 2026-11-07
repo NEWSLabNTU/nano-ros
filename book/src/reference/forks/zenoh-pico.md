@@ -7,11 +7,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 81 |
+| Commits on top | 82 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 107, +9641/−214 |
+| Files changed | 107, +9649/−214 |
 
-**Pinned commit:** `c78dbffd91ed5c271bbe127bad9e21ef1e376b11`
+**Pinned commit:** `cf228437371f005b66d84aa8ae95f12141e262f0`
 
 ## Commits on top of upstream
 
@@ -98,9 +98,10 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [fed5d711d7](https://github.com/jerry73204/zenoh-pico/commit/fed5d711d79bca0cd2dd12a5dd10b31ff980b38f) | fix(zephyr serial): accept a UART with no runtime configuration |
 | [50e059eaa7](https://github.com/jerry73204/zenoh-pico/commit/50e059eaa790ea398dc05156f40e9be42dbba62f) | fix: read the connect timeout without the unstable API |
 | [c78dbffd91](https://github.com/jerry73204/zenoh-pico/commit/c78dbffd91ed5c271bbe127bad9e21ef1e376b11) | feat: zp_next_wake_ms in a multi-thread build |
+| [cf22843737](https://github.com/jerry73204/zenoh-pico/commit/cf228437371f005b66d84aa8ae95f12141e262f0) | feat: FreeRTOS system layer under a custom platform header |
 
 Reproduce:
 
 ```bash
-gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:c78dbffd91ed5c271bbe127bad9e21ef1e376b11 --jq '.ahead_by'
+gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:cf228437371f005b66d84aa8ae95f12141e262f0 --jq '.ahead_by'
 ```
