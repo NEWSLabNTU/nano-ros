@@ -419,7 +419,7 @@ fn component_node_name(cfg: &ComponentScaffoldConfig) -> Result<String> {
 /// The "Next steps" a scaffolded package prints — the build flow the book
 /// documents for that language and platform, never another road's:
 ///
-/// * Rust (`first-node-rust.md`, `bare-metal.md`): `nros sync`, then
+/// * Rust (`first-node-rust.md`, `bare-metal.md`): `nros configure`, then
 ///   `nros build` — a Rust leaf's message crates and cargo settings must exist
 ///   before cargo parses anything.
 /// * C/C++ (`first-node-c.md`, `freertos.md`, …): `nros build` alone — the
@@ -437,7 +437,7 @@ pub fn next_steps(name: &str, lang: Language, platform: &str) -> Vec<String> {
     }
     match (lang, platform) {
         (Language::Rust, _) => {
-            v.push("nros sync    # message crates + build/<image>/nros-cargo.toml".into());
+            v.push("nros configure    # message crates + build/<image>/nros-cargo.toml".into());
             v.push("nros build   # builds the image system.toml declares".into());
         }
         (Language::C | Language::Cpp, "zephyr") => {
@@ -1958,7 +1958,7 @@ mod scaffold_flow_tests {
                 match (lang, p) {
                     (Language::Rust, _) => {
                         assert_eq!(steps[0], "cd pkg");
-                        assert!(steps[1].starts_with("nros sync"), "{all}");
+                        assert!(steps[1].starts_with("nros configure"), "{all}");
                         assert!(steps[2].starts_with("nros build"), "{all}");
                     }
                     (_, "zephyr") => {
@@ -1973,12 +1973,15 @@ mod scaffold_flow_tests {
                             "the book no longer names the module so"
                         );
                         assert!(west.contains(" pkg "), "{west}");
-                        assert!(!all.contains("nros sync"), "{all}");
+                        assert!(!all.contains("nros configure"), "{all}");
                     }
                     _ => {
                         assert_eq!(steps[0], "cd pkg");
                         assert!(steps[1].starts_with("nros build"), "{all}");
-                        assert!(!all.contains("nros sync"), "C/C++ has no sync step:\n{all}");
+                        assert!(
+                            !all.contains("nros configure"),
+                            "C/C++ has no configure step:\n{all}"
+                        );
                     }
                 }
             }

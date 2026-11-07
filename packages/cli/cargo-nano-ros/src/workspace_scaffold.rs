@@ -321,14 +321,14 @@ pub fn scaffold_workspace(
             // phase-532 W9: run with `nros run`, which starts the image
             // `nros build` names, rather than a build-tree path; and point at
             // the user-tier `nros locate nano-ros`, not the dev tier.
-            "Next steps:\n  cd {0}\n  nros setup\n  nros sync\n  nros build\n  nros run\n\
+            "Next steps:\n  cd {0}\n  nros setup\n  nros configure\n  nros build\n  nros run\n\
              (`nros build` finds nano-ros itself; `nros locate nano-ros --why` prints the root it uses.)",
             cfg.dir.display(),
         ),
         _ => format!(
             // The cargo road's coordinate carries the RMW too (`posix-<rmw>`);
             // only the cmake road appends the board.
-            "Next steps:\n  cd {0}\n  nros setup\n  nros sync\n  nros build\n  RUST_LOG=info nros run",
+            "Next steps:\n  cd {0}\n  nros setup\n  nros configure\n  nros build\n  RUST_LOG=info nros run",
             cfg.dir.display(),
         ),
     };

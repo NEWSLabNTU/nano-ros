@@ -32,7 +32,13 @@ A following `-` or word character ends no match, so `nros generate-px4-msgs`
 is not `nros generate`.
 
 SCOPE: tracked files under cmake/, just/, scripts/, zephyr/, examples/, tests/,
-book/src/ and docs/ (RFC-0117 D5), and the root justfile. Exempt:
+book/src/ and docs/ (RFC-0117 D5), the root justfile, and packages/ (issue
+2347: what the CLI prints and what every package emits). In packages/' Rust
+sources only a string literal counts, and packages/ is a RATCHET against
+`.config/cli-old-spellings-baseline.json` (see `BASELINE`). A spelling that must
+stay old is exempt by construction, not by a path list: a refusal or rename
+note names the new spelling beside the old (the rule below), and a RETIRED name
+is no alias row, so this gate never reads it. Exempt:
 
   * HISTORY — every phase doc (docs/roadmap/: each W-item is a dated record of
     what was run), archived issues and adoption-probe run reports
@@ -55,10 +61,23 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCOPE = ["cmake", "just", "scripts", "zephyr", "examples", "book/src", "docs", "justfile", "tests"]
+SCOPE = ["cmake", "just", "scripts", "zephyr", "examples", "book/src", "docs", "justfile", "tests",
+         "packages"]
+# Issue 2347 — the packages. What the CLI PRINTS teaches a spelling as surely
+# as a doc does (`nros new`'s next steps said `nros sync` after RFC-0117 D5
+# renamed it), and what any package EMITS (a scaffold's comments, a generated
+# file's banner, an orchestration-ir header) lands in the user's tree. In their
+# Rust sources only a STRING LITERAL counts: a comment there is the code's own
+# history, never shown to anyone. Every other file under them (templates,
+# packs, READMEs, leaf manifests, fixtures) is text a reader sees, scanned like
+# the rest of SCOPE.
+RUST_LITERALS_ONLY = ("packages/",)
 # Adoption-probe run reports (phase-523 W3) are history too: each records what
 # a released CLI printed on a dated run, verbatim.
 HISTORY_PREFIXES = (
+    # Committed generator OUTPUT: it follows its generator on the next
+    # `just generate-interfaces`, and is never edited by hand.
+    "packages/interfaces/generated/",
     "docs/roadmap/",
     "docs/issues/archived/",
     "docs/development/adoption-probes/runs/",
@@ -183,6 +202,81 @@ def first_words(compiled) -> re.Pattern:
     return re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, words)) + r")(?![\w-])")
 
 
+def rust_string_spans(text: str) -> list[tuple[int, int]]:
+    """`(start, end)` offsets of every string literal's CONTENT in Rust source:
+    `"…"` (escapes honoured), `b"…"`, and raw `r#"…"#` at any `#` depth, which
+    is how a scaffold's multi-line file template is written. Comments (`//`,
+    `/* */`) and char literals are skipped, so a `"` inside them opens nothing."""
+    spans: list[tuple[int, int]] = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+        elif text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        elif c == "'":
+            # 'x' or '\x…' is a char literal; anything else is a lifetime.
+            if i + 2 < n and text[i + 2] == "'":
+                i += 3
+            elif i + 1 < n and text[i + 1] == "\\":
+                j = text.find("'", i + 2)
+                i = i + 1 if j < 0 else j + 1
+            else:
+                i += 1
+        elif c == "r" and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            j = i + 1
+            while j < n and text[j] == "#":
+                j += 1
+            if j < n and text[j] == '"':
+                close = '"' + text[i + 1:j]
+                k = text.find(close, j + 1)
+                k = n if k < 0 else k
+                spans.append((j + 1, k))
+                i = k + len(close)
+            else:
+                i += 1
+        elif c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            spans.append((i + 1, j))
+            i = j + 1
+        else:
+            i += 1
+    return spans
+
+
+def line_uses(rel: str, text: str, compiled, pre) -> list[tuple[int, str, str]]:
+    """Every `(line number, old spelling, line)` use in one file's text."""
+    spans = None
+    if rel.endswith(".rs") and rel.startswith(RUST_LITERALS_ONLY):
+        spans = rust_string_spans(text)
+    out = []
+    off = 0
+    for n, line in enumerate(text.split("\n"), 1):
+        if pre.search(line):
+            for r, use, beside in compiled:
+                if beside.search(line):
+                    continue
+                hit = False
+                for m in use.finditer(line):
+                    if not counts(r, m):
+                        continue
+                    pos = off + m.start()
+                    if spans is not None and not any(a <= pos < b for a, b in spans):
+                        continue
+                    hit = True
+                    break
+                if hit:
+                    out.append((n, r["old"], line))
+                    break
+        off += len(line) + 1
+    return out
+
+
 def scan(compiled) -> list[tuple[str, int, str, str]]:
     hits = []
     pre = first_words(compiled)
@@ -195,11 +289,8 @@ def scan(compiled) -> list[tuple[str, int, str, str]]:
             continue
         if "nros" not in text and "$" not in text:
             continue
-        for n, line in enumerate(text.splitlines(), 1):
-            if not pre.search(line):
-                continue
-            for old in uses(line, compiled):
-                hits.append((rel, n, old, line.strip()))
+        for n, old, line in line_uses(rel, text, compiled, pre):
+            hits.append((rel, n, old, line.strip()))
     return hits
 
 
@@ -241,6 +332,17 @@ def self_test() -> None:
     assert rewrite("run([cli, 'init'])", c) == "run([cli, 'setup', 'presets'])"
     assert rewrite('X "${_nros}" ws board-facts --y', c) == 'X "${_nros}" dev image board-facts --y'
     assert rewrite("nros init . && git init", c) == "nros setup presets . && git init"
+    # Issue 2347 — in the CLI's Rust, a literal counts and a comment does not;
+    # a raw multi-line template is a literal throughout.
+    rs = ('// history: `nros generate rust` was the old verb\n'
+          'println!("next: nros generate rust");\n'
+          'let t = r#"line one\n# run `nros init` here\n"#;\n'
+          "let c = '\"'; // nros init\n")
+    got = [(n, old) for n, old, _ in line_uses("packages/cli/x/src/a.rs", rs, c, first_words(c))]
+    assert got == [(2, "generate"), (4, "init")], f"self-test: rust literals: {got}"
+    got = [(n, old) for n, old, _ in line_uses("examples/a.rs", rs, c, first_words(c))]
+    assert got == [(1, "generate"), (2, "generate"), (4, "init"), (6, "init")], \
+        f"self-test: outside packages/cli a .rs file is scanned whole: {got}"
     pre = first_words(c)
     for line, want in cases.items():
         got = uses(line, c)
@@ -249,8 +351,61 @@ def self_test() -> None:
         assert not want or pre.search(line), f"self-test: prefilter skips {line!r}"
 
 
+# Issue 2347 — `packages/` joined SCOPE holding ~500 old spellings, and one
+# mechanical rewrite of all of them collides with every session editing under
+# `packages/`. So the gate lands as a RATCHET there: a committed per-file count
+# a file may only shrink. A file not in the baseline holds zero, a file above
+# its count fails with its hits named, and everything outside `packages/` keeps
+# zero tolerance. The sweep that empties it is `--fix` then `--update-baseline`.
+BASELINE = ROOT / ".config" / "cli-old-spellings-baseline.json"
+RATCHETED = ("packages/",)
+
+
+def load_baseline() -> dict[str, int]:
+    try:
+        return {k: int(v) for k, v in json.loads(BASELINE.read_text(encoding="utf-8")).items()}
+    except FileNotFoundError:
+        return {}
+
+
+def ratcheted_counts(hits) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for rel, _n, _old, _line in hits:
+        if rel.startswith(RATCHETED):
+            out[rel] = out.get(rel, 0) + 1
+    return out
+
+
+def write_baseline(counts: dict[str, int]) -> None:
+    BASELINE.write_text(json.dumps(dict(sorted(counts.items())), indent=1) + "\n",
+                        encoding="utf-8")
+
+
+def ratchet(hits, baseline: dict[str, int]):
+    """`(grown, shrunk)`: the hits no baseline covers -- all of a file's hits once
+    it exceeds its count, so the reader sees every candidate -- and the files now
+    below theirs, as `{file: (now, baseline)}`."""
+    counts = ratcheted_counts(hits)
+    grown = [h for h in hits
+             if not h[0].startswith(RATCHETED) or counts[h[0]] > baseline.get(h[0], 0)]
+    shrunk = {rel: (counts.get(rel, 0), was) for rel, was in baseline.items()
+              if counts.get(rel, 0) < was}
+    return grown, shrunk
+
+
+def ratchet_self_test() -> None:
+    h = [("packages/a.rs", 1, "sync", "x"), ("packages/a.rs", 2, "sync", "y"),
+         ("packages/b.rs", 1, "init", "z"), ("docs/c.md", 1, "init", "w")]
+    grown, shrunk = ratchet(h, {"packages/a.rs": 2, "packages/d.rs": 3})
+    assert [g[0] for g in grown] == ["packages/b.rs", "docs/c.md"], grown
+    assert shrunk == {"packages/d.rs": (0, 3)}, shrunk
+    grown, _ = ratchet(h, {"packages/a.rs": 1, "packages/b.rs": 1})
+    assert [g[0] for g in grown] == ["packages/a.rs", "packages/a.rs", "docs/c.md"], grown
+
+
 def main() -> int:
     self_test()
+    ratchet_self_test()
     cli = cli_path()
     if cli is None:
         print("no in-tree nros CLI (just setup-cli) to read the alias table from")
@@ -263,31 +418,48 @@ def main() -> int:
     compiled = compile_rows(rows)
     if "--fix" in sys.argv:
         changed = 0
-        for rel in sorted({h[0] for h in scan(compiled)}):
+        # Only the lines that HIT are rewritten, so a Rust comment that names
+        # an old spelling as history keeps it (`line_uses` never counts one).
+        hit_lines: dict[str, set[int]] = {}
+        for rel, n, _old, _line in scan(compiled):
+            hit_lines.setdefault(rel, set()).add(n)
+        for rel in sorted(hit_lines):
             path = ROOT / rel
             text = path.read_text(encoding="utf-8")
-            new = "\n".join(rewrite(l, compiled) for l in text.split("\n"))
+            new = "\n".join(rewrite(l, compiled) if i in hit_lines[rel] else l
+                            for i, l in enumerate(text.split("\n"), 1))
             if new != text:
                 path.write_text(new, encoding="utf-8")
                 changed += 1
         print(f"check-cli-old-spellings --fix: rewrote {changed} file(s)")
     hits = scan(compiled)
-    if hits:
-        print(f"check-cli-old-spellings: FAIL — {len(hits)} old nros spelling(s) in the tree:")
+    baseline = load_baseline()
+    if "--update-baseline" in sys.argv:
+        write_baseline(ratcheted_counts(hits))
+        baseline = load_baseline()
+    grown, shrunk = ratchet(hits, baseline)
+    if grown:
+        print(f"check-cli-old-spellings: FAIL — {len(grown)} old nros spelling(s) in the tree:")
         new_of = {r["old"]: r["new"] for r in rows}
-        for rel, n, old, line in hits:
+        for rel, n, old, line in grown:
             print(f"  {rel}:{n}: `nros {old}` -> `nros {new_of[old]}`\n      {line[:160]}")
         print("Write the new spelling (`nros help --aliases` lists every pair). An old "
               "spelling may stay only beside its new one, or in a phase doc.")
         return 1
-    print(f"check-cli-old-spellings: OK — {len(rows)} alias(es), no old spelling in "
-          f"{', '.join(SCOPE)} (phase docs and archived issues are history)")
+    held = sum(baseline.values())
+    for rel, (now, was) in sorted(shrunk.items()):
+        print(f"  note: {rel}: {now} old spelling(s), baseline {was} -- "
+              "`--update-baseline` tightens it")
+    print(f"check-cli-old-spellings: OK — {len(rows)} alias(es), no NEW old spelling in "
+          f"{', '.join(SCOPE)} (phase docs and archived issues are history; "
+          f"{held} held in packages/ by {BASELINE.relative_to(ROOT)}, issue 2347)")
     return 0
 
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         self_test()
+        ratchet_self_test()
         print("check-cli-old-spellings self-test: OK")
         sys.exit(0)
     sys.exit(main())
