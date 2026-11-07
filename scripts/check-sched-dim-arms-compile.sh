@@ -51,6 +51,15 @@ nros_locate_sdk_trees
 
 fail=0
 
+# phase-543 W5 — one unit per arm, so a lane scopes each by what it needs:
+# the nuttx arm needs the NuttX sources (`needs:nuttx`), which a lane may not
+# claim while it still checks the other two.
+if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
+    printf 'freertos\nnuttx\tneeds:nuttx\nthreadx\n'
+    exit 0
+fi
+_arm() { [ -z "${NROS_GATE_UNIT:-}" ] || [ "$NROS_GATE_UNIT" = "$1" ]; }
+
 say()  { printf '  %s\n' "$*"; }
 head2() { printf '\n== %s ==\n' "$*"; }
 
@@ -87,7 +96,9 @@ head2 "freertos core-pin arm (vTaskCoreAffinitySet)"
 # again on a specific `nuttx/config.h`, threadx on `$THREADX_DIR/common_smp/inc`.
 # This one checked a level too shallow. Issue 0196's class — a probe narrower
 # than the rule it enforces.
-if [ -z "${FREERTOS_DIR:-}" ] || [ ! -f "${FREERTOS_DIR}/include/FreeRTOS.h" ]; then
+if ! _arm freertos; then
+    :
+elif [ -z "${FREERTOS_DIR:-}" ] || [ ! -f "${FREERTOS_DIR}/include/FreeRTOS.h" ]; then
     nros_check_skip "sched-dim-arms(freertos)" "FreeRTOS kernel not provisioned, or no include/FreeRTOS.h (nros setup --source freertos-kernel)"
 elif [ -z "$arm_gcc_usable" ]; then
     nros_check_skip "sched-dim-arms(freertos)" "$arm_gcc_unusable_why"
@@ -143,7 +154,9 @@ fi
 # together, with no synthetic port needed. No STUB-DRIFT arm here for that
 # reason: there are no stubs to drift.
 head2 "nuttx core-pin arm (pthread_setaffinity_np)"
-if [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
+if ! _arm nuttx; then
+    :
+elif [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
     nros_check_skip "sched-dim-arms(nuttx)" "NUTTX_DIR unset/absent (source ./activate.sh)"
 elif [ -z "$arm_gcc_usable" ]; then
     nros_check_skip "sched-dim-arms(nuttx)" "$arm_gcc_unusable_why"
@@ -193,7 +206,9 @@ fi
 # has a 4-byte ULONG and satisfies it, so `cortex_a5_smp` is used with the same
 # arm-none-eabi-gcc the other arms need.
 head2 "threadx core-pin arm (tx_thread_smp_core_exclude)"
-if [ -z "${THREADX_DIR:-}" ] || [ ! -d "${THREADX_DIR}/common_smp/inc" ]; then
+if ! _arm threadx; then
+    :
+elif [ -z "${THREADX_DIR:-}" ] || [ ! -d "${THREADX_DIR}/common_smp/inc" ]; then
     nros_check_skip "sched-dim-arms(threadx)" "ThreadX not provisioned, or no common_smp/inc (nros setup --source threadx)"
 elif [ -z "$arm_gcc_usable" ]; then
     nros_check_skip "sched-dim-arms(threadx)" "$arm_gcc_unusable_why"

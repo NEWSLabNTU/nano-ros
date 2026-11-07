@@ -369,21 +369,55 @@ keep caches that runs use, remove the ones they do not.
   same directories there, and #3239 caps its host target dirs. Agreed with
   nros 133 p466: two evictors over the same dirs would fight.
 
-### W5 — Wrapper and lanes
+### W5 — Wrapper and lanes — DONE (the switch of `ci gate` and `pre-push` is W6)
 
-- The post-step also refuses UNTRACKED files a gate left inside the source tree
-  (outside `build/`, `target/`, `tmp/` and other ignored output roots). The old
-  runner checks tracked files only, and only on the fast lane. Found while
-  building W4: a scaffold unit with an empty `NROS_SIZES_PROBE_TARGET_DIR`
-  wrote 1.1 G of probe cache into `packages/api/nros-c/`, and no gate saw it.
+`just check lane <lane> [nextest args]` runs `scripts/build/gate-lane.sh`: the
+old runner's pre- and post-steps around `just check nextest-gates`, with the
+scheduling left to nextest.
 
-- The lane's `claims` become the one provisioning list: `setup-worktree`, the
-  wrapper's preflight and CI's provisioning steps read them, so a claimed
-  capability is provisioned by construction, and a missing one is named before
-  any gate runs (issue 2306's fix belongs here too).
-
-One wrapper recipe per lane (names: open question 1), the pre/post steps moved from
-`run-gates-parallel.sh`; `pre-push` and `ci gate` call them.
+- Before: refuse a TMPDIR inside a checkout and bound git discovery (issue
+  2240), the skip-ledger self-test, clear the `GITHUB_*` step files, complete
+  the pinned Rust toolchains as `[INFRA]` (issue 1868), the claims preflight,
+  and one CPU budget (`NROS_GATE_CPU_SHARE`). The lane runs under
+  `nros_guard_lane`, so stopping it stops every gate.
+- After, on EVERY lane: no tracked file changed (issue 2186; the old runner
+  checked the fast lane only), and no untracked, unignored file appeared.
+  Mutation-tested: a file touched mid-run under `packages/api/` turns the lane
+  red and is named. This is the check that would have caught the 1.1 G of probe
+  cache W4 found written into `packages/api/nros-c/`.
+- Claims preflight: `scripts/check/gate-lane-preflight.py <lane>` probes each
+  claimed capability and names every missing one at once, before any gate. The
+  probes are coarse ("is it there at all"). The precise answer stays with the
+  gate, whose skip is red under the harness. `submodules` and `cli` call the
+  checks that already exist (`_require-worktree-provisioning`, this checkout's
+  CLI), so neither has a second spelling. `zephyr` asks for `.west/`, which a
+  sparse header clone cannot satisfy: issue 2308's question answered in one
+  place (its readers still move in W6).
+  Fast gate `gate-lane-preflight` checks that every capability has a probe and
+  that every lane claims only listed ones.
+- New lane `dev`: a worktree after `just setup-worktree` with ROS 2 sourced,
+  both tiers, no Zephyr and no fixture build.
+- Measured on this host: `just check lane pristine` is 511 tests, 76 out of
+  scope, 62-73 s wall. The long pole is `hook-repo-side-effects` (62 s), now
+  started first by the junit priority.
+- First full `just check lane dev` (both tiers): 582 run, 580 passed, 45 out
+  of scope, 885 s wall. The 2 reds were gates the old runner reported as
+  passes over a skip, so this is the harness doing its job:
+  - `sched-dim-arms` skipped its nuttx arm (`NUTTX_DIR` absent) and passed.
+    It is a `[group('units')]` gate now, one unit per arm, and the nuttx unit
+    `needs:nuttx`, so `dev` runs freertos and threadx and leaves nuttx out of
+    scope, by name. No lane claims `nuttx` yet, so that arm runs nowhere, and
+    `check-gate-needs` says so on every run.
+  - `cli-tests` skipped its colcon flag parity tests: the nested submodule
+    `packages/cli/testing_workspaces/ros2_rust_examples` was not checked out,
+    and `.config/worktree-provisioning.txt` did not list it. It does now.
+  Re-run of the three tests: all pass (`cli-tests` 414 s).
+- Lane claims as the ONE provisioning list (`setup-worktree` and CI's
+  provisioning steps reading them) is not done here. The preflight reads the
+  claims, so a lane that claims what its job does not provision fails before
+  any gate. Making the provisioning steps read the same list is W6, with the
+  CI jobs it changes.
+- Order independence (moved from W4): still open, W6.
 
 ### W6 — CI, then retire the old runner
 

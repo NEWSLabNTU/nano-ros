@@ -350,6 +350,22 @@ nextest-gates *args:
         --tool-config-file "nros-gates:$cfg_dir/nextest-gates.toml" \
         --test-threads "${NROS_GATE_JOBS:-$(nproc)}" "$@"
 
+# phase-543 W5 — run one gate LANE (`.config/gate-lanes.toml`) through the
+# nextest harness: claims preflight, the old runner's pre-steps, and a refusal
+# of any tracked or untracked change a gate left in the source tree.
+#   just check lane fast
+#   just check lane build --partition slice:1/3
+[positional-arguments]
+lane name *args:
+    @bash scripts/build/gate-lane.sh "$@"
+
+# phase-543 W5 — the lane preflight's probes cover every capability in
+# `.config/gate-lanes.toml`, and every lane claims only listed ones. Asks no
+# host state; self-tests on its normal path.
+[private]
+gate-lane-preflight:
+    @python3 scripts/check/gate-lane-preflight.py --check
+
 # phase-543 W3 — every gate's scope is declared and every capability has a
 # home: a `needs:` names a capability `.config/gate-lanes.toml` lists, a
 # capability no lane claims is listed on every run (its gates run nowhere),
