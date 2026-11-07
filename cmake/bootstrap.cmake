@@ -53,6 +53,13 @@ elseif(_plat_tag MATCHES "^threadx")
     set(_plat_tag "threadx")
 elseif(_plat_tag MATCHES "^nuttx")
     set(_plat_tag "nuttx")
+elseif(_plat_tag STREQUAL "baremetal")
+    # The CMake platform-MODULE token is `baremetal`
+    # (cmake/platform/nano-ros-baremetal.cmake, issue 1512); setup.sh keys on
+    # the descriptor spelling `bare-metal`. Without this arm every bare-metal
+    # configure in a checkout with an uninitialised submodule ran
+    # `setup.sh --target=baremetal-<rmw>` and stopped on "unknown platform".
+    set(_plat_tag "bare-metal")
 endif()
 
 # Quick check: are the submodules already populated? Run a `git

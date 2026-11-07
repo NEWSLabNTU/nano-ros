@@ -98,6 +98,45 @@ impl PlatformKind {
         }
     }
 
+    /// The variant whose [`kebab`](Self::kebab) is `token`, or `None`.
+    pub fn from_kebab(token: &str) -> Option<Self> {
+        [
+            PlatformKind::Posix,
+            PlatformKind::Freertos,
+            PlatformKind::BareMetal,
+            PlatformKind::Nuttx,
+            PlatformKind::Zephyr,
+            PlatformKind::ThreadxLinux,
+            PlatformKind::ThreadxRiscv64,
+            PlatformKind::Stm32,
+        ]
+        .into_iter()
+        .find(|k| k.kebab() == token)
+    }
+
+    /// The `PLATFORM` token `nros_feature_set()` (cmake/NanoRosFeatureSet.cmake)
+    /// accepts for this platform — what a generated cmake root passes as
+    /// `NROS_PLATFORM` and `nano_ros_workspace(PLATFORM …)`.
+    ///
+    /// Not [`kebab`](Self::kebab) with `-` replaced by `_`: that rule held for
+    /// `threadx-linux` / `threadx-riscv64` and produced `bare_metal` for
+    /// `bare-metal`, which `nros_feature_set` refuses (it takes `baremetal` or
+    /// `bare-metal`). It was unreachable until `nros new` wrote a workspace
+    /// (phase-531 W3/W4) and put a C bare-metal image on the generated root.
+    /// `Stm32` takes the bare-metal arm, as [`platform_feature`](Self::platform_feature)
+    /// does; the catch-all would ask for a `platform-stm32` feature no crate has.
+    pub fn cmake_feature_set(self) -> &'static str {
+        match self {
+            PlatformKind::Posix => "posix",
+            PlatformKind::Freertos => "freertos",
+            PlatformKind::BareMetal | PlatformKind::Stm32 => "baremetal",
+            PlatformKind::Nuttx => "nuttx",
+            PlatformKind::Zephyr => "zephyr",
+            PlatformKind::ThreadxLinux => "threadx_linux",
+            PlatformKind::ThreadxRiscv64 => "threadx_riscv64",
+        }
+    }
+
     /// The C/C++ DEPLOY token this platform is built with — the
     /// `NROS_PLATFORM` module axis (`cmake/platform/nano-ros-<x>.cmake`,
     /// with the host spelled `native`), which is a platform FAMILY, not a
