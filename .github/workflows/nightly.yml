@@ -816,11 +816,16 @@ jobs:
       fail-fast: false
       matrix:
         line: ["3.7", "4.4"]
+        # phase-535 W4 (#3233) moved the C and C++ listener programs into the
+        # workspace behaviour bringups as `zephyr_listener[_<rmw>]` images, and
+        # `build-one` builds a leaf, not an image. They build on the 3.7 line in
+        # the fixture lane (`just build zephyr`); this job's 4.4-line build of
+        # them returns with phase-535 W8's Zephyr nightly reshape. Every entry
+        # here must be a directory under examples/zephyr/
+        # (`check-workflow-build-one-paths`).
         example:
           - c/talker
-          - c/listener
           - cpp/talker
-          - cpp/listener
           - rust/talker
           - rust/listener
           - rust/service-client

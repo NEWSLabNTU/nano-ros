@@ -870,3 +870,11 @@ hook-repo-side-effects:
 # ledger's real board-ci narrowing too.
 live-peer-board-build:
     @bash scripts/ci/live-peer-board-build.sh selftest
+
+# phase-535 W4 fallout — every leaf a workflow builds with `just <platform>
+# build-one` exists, literal or through a matrix list. #3233 deleted two
+# Zephyr listener leaves the nightly matrix still named; four nightly jobs
+# went red reporting `no example at …` before anything else noticed.
+[private]
+workflow-build-one-paths:
+    @python3 scripts/check-workflow-build-one-paths.py
