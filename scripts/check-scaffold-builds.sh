@@ -734,8 +734,9 @@ fi
 # `$NROS_SCAFFOLD_JOBS` at once (`scripts/build/gate-units.sh`) and report in
 # variant order. Serial, this gate WAS `check::build`'s wall clock: 1197 s at
 # 5255 CPU-seconds on a 48-CPU host; 6 at once measured 303 s.
-# A unit's scratch tree now holds its build caches too (~3.1 GB measured).
-jobs="$(nros_gate_unit_jobs NROS_SCAFFOLD_JOBS 4)" || exit 2
+# A unit's scratch tree now holds its build caches too: 2.0 GiB for a Rust
+# variant, 4.7 GiB for a C++ one (issue 2356), so the default 5 GiB a unit.
+jobs="$(nros_gate_unit_jobs NROS_SCAFFOLD_JOBS)" || exit 2
 echo "check-scaffold-builds: compiling ${#selected[@]} scaffold variant(s) outside the checkout, $jobs at a time"
 nros_gate_scratch reports scaffold-builds-reports || exit 3
 fail=0

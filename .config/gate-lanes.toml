@@ -35,6 +35,14 @@ build-tree = "artifacts a fixture or image build produced"
 # that can run.
 [resources]
 root-target = 2   # the root workspace's `target/` (cargo's build-directory lock)
+# issue 2356 — the units of `scaffold-builds` and `template-copy-out` each build
+# cold in their own tree under $TMPDIR (scripts/build/gate-scratch.sh). Each unit
+# is its own nextest test (phase-543 W2), so the in-gate bound
+# (`nros_gate_unit_jobs`) never sees more than one; this is the bound. Sized from
+# disk, not chosen: max-threads is TMPDIR's free space when the config is
+# generated over `scratch-gib`, the measured peak of the largest unit (a C++
+# scaffold or workspace copy, 4.7 GiB on newslab-118; Rust units 2.0 GiB).
+scratch-tree = { scratch-gib = 5 }
 
 [lane.fast]
 # `check / fast` on the hosted runner: the ci-base image provides these.

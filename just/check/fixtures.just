@@ -149,6 +149,7 @@ example-matrix:
 [private]
 [group('units')]
 [group('needs:cli')]
+[group('uses:scratch-tree')]
 [metadata("tier", "build")]
 scaffold-builds:
     #!/usr/bin/env bash
@@ -200,6 +201,7 @@ workspace-fixture-units:
 [private]
 [group('units')]
 [group('needs:cli')]
+[group('uses:scratch-tree')]
 [metadata("tier", "build")]
 template-copy-out:
     #!/usr/bin/env bash

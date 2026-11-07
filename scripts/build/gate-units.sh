@@ -29,14 +29,17 @@
 # The number of units to run at once: `$<var>` if set, else one per 8 CPUs,
 # clamped to 1..8 — and never more than the scratch filesystem holds. Each unit
 # keeps a scratch tree under `$TMPDIR` (`gate-scratch.sh`), measured at up to
-# ~2.5 GiB for a scaffold or template copy, so `<unit-GiB>` (default 3, or
-# `NROS_GATE_UNIT_DISK_GIB`) bounds the count by `$TMPDIR`'s free space too. A
+# 4.7 GiB for a C++ scaffold or template copy (2.0 GiB for a Rust one; issue
+# 2356), so `<unit-GiB>` (default 5, or `NROS_GATE_UNIT_DISK_GIB`) bounds the
+# count by `$TMPDIR`'s free space too. This bounds the units ONE gate process
+# runs; under the nextest harness each unit is its own test, and the bound
+# across them is the `scratch-tree` resource in `.config/gate-lanes.toml`. A
 # self-hosted runner's /tmp is a tmpfs (8 GiB, then 24 GiB: scripts/lib/
 # runner-tmpfs.sh), and six units at once filled the 8 GiB one on 2026-11-07
 # (`No space left on device` in run 42258540290). An explicit `$<var>` is taken
 # as given: the operator who sets it owns the disk.
 nros_gate_unit_jobs() {
-    local var="$1" unit_gib="${2:-${NROS_GATE_UNIT_DISK_GIB:-3}}" jobs free_kib by_disk
+    local var="$1" unit_gib="${2:-${NROS_GATE_UNIT_DISK_GIB:-5}}" jobs free_kib by_disk
     jobs="${!var:-}"
     if [ -z "$jobs" ]; then
         jobs=$(( $(nproc 2>/dev/null || echo 4) / 8 ))
