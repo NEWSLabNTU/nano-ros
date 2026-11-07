@@ -162,6 +162,18 @@ fn vendored_build() {
         .flag_if_supported("-Wno-unused-parameter")
         .flag_if_supported("-Wno-pedantic");
     forward_derived_knobs(&mut cc_cpp);
+    // phase-548 W1 — the cargo twin of the cmake road's
+    // `NROS_RMW_CYCLONEDDS_FOREIGN_WAKE=OFF` + `..._FOREIGN_WAKE_BRIDGE=ON`
+    // (`nros-rmw-cyclonedds/CMakeLists.txt`): `session.cpp` then forwards a
+    // data arrival through `<nros/platform_foreign_wake.h>` rather than calling
+    // the runtime's wake from Cyclone's (non-kernel) receive thread, which on
+    // FreeRTOS's POSIX port asserts in `vPortYield` (issue 1237).
+    if env::var_os("CARGO_FEATURE_FOREIGN_WAKE_BRIDGE").is_some() {
+        cc_cpp
+            .define("NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE", "1")
+            .define("NROS_RMW_CYCLONEDDS_FOREIGN_WAKE_BRIDGE", "1")
+            .include(nros_build_paths::nros_platform_cffi_include());
+    }
     for f in cpp_files {
         cc_cpp.file(backend_src.join(f));
     }

@@ -303,8 +303,8 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
 /// descriptors' `entry_kind`, so the two cannot drift.
 ///
 /// Rows, grouped:
-/// - FreeRTOS — MPS2-AN385 Cortex-M3 (the only FreeRTOS board today). The RTOS
-///   calls `main()`; the board ZST impls `BoardEntry`.
+/// - FreeRTOS — MPS2-AN385 Cortex-M3, and the POSIX port (`freertos-posix`,
+///   phase-548 W1). The board ZST impls `BoardEntry`.
 /// - NuttX — phase-337 W3: ONE crate, two witnesses. Both keys resolve to the
 ///   SAME ZST: the board marker only selects trait impls, and those never
 ///   differed between arm virt and rv-virt (the arch delta is defconfig +
@@ -339,6 +339,16 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
     (
         "mps2-an385-freertos",
         "::nros_board_mps2_an385_freertos::Mps2An385",
+        false,
+    ),
+    // phase-548 W1 — the FreeRTOS POSIX port, a host process. `false` for
+    // issue 1759's reason (threadx-linux below): the entry is `#![no_std]` +
+    // `#![no_main]` (`entry_kind = "board-run"`) and glibc's crt0 calls the
+    // C-ABI `main` the macro emits. Before this row the key missed, and the
+    // platform word `freertos` above answered with the mps2 crate.
+    (
+        "freertos-posix",
+        "::nros_board_freertos_posix::FreertosPosix",
         false,
     ),
     // issue 1759 — `false` although it builds for the HOST triple: the entry is

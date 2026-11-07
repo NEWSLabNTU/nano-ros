@@ -124,8 +124,9 @@ pub fn lower(plan: &Plan) -> LoweredEntry {
 /// pack knows. That is the message `nros::main!` gives for the same key,
 /// from the same `board_path_keys_csv`. It used to fall back to `LinuxBoard`
 /// (issue 1285 follow-up), which rendered a host `BoardEntry::run` for any key
-/// it did not know. The parity corpus had one such case: `freertos-posix`, a
-/// C-only board, rendered as `LinuxBoard`.
+/// it did not know. The parity corpus had one such case: `freertos-posix`,
+/// then a C-only board, rendered as `LinuxBoard` (it has a Rust board crate
+/// since phase-548 W1).
 ///
 /// A board key whose FRAMEWORK is not `owned-spin` is the second refusal, and
 /// it is issue 1435. See [`refuse_non_owned_spin`].
@@ -519,6 +520,20 @@ mod tests {
         assert!(src.contains("::talker_pkg::register(runtime)?;"));
     }
 
+    /// phase-548 W1 — the POSIX port renders its OWN board, never the mps2
+    /// board that the platform word `freertos` names.
+    #[test]
+    fn freertos_posix_board_maps_to_its_own_zst() {
+        let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
+        plan.board = "freertos-posix".into();
+        let src = emit(&plan).expect("freertos-posix has a Rust board ZST");
+        assert!(
+            src.contains("::nros_board_freertos_posix::FreertosPosix"),
+            "{src}"
+        );
+        assert!(!src.contains("nros_board_mps2_an385_freertos"), "{src}");
+    }
+
     #[test]
     fn freertos_board_maps_to_correct_zst() {
         let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
@@ -529,12 +544,13 @@ mod tests {
 
     /// Issue 1285 follow-up — a key with no Rust board ZST is refused, naming
     /// the keys the Rust pack knows. It used to render `LinuxBoard`. The keys
-    /// here are a C-only board (`freertos-posix`, which the parity corpus used
-    /// to name), a key the family table knows but the Rust pack does not
-    /// (`s32z270`), and one it has never heard of.
+    /// here are a key the family table knows but the Rust pack does not
+    /// (`s32z270`), and one it has never heard of. (`freertos-posix`, the
+    /// C-only board the parity corpus used to name, has its own ZST since
+    /// phase-548 W1: see `freertos_posix_board_maps_to_its_own_zst`.)
     #[test]
     fn a_board_with_no_rust_zst_is_refused_not_rendered_as_linux() {
-        for board in ["freertos-posix", "s32z270", "zigos"] {
+        for board in ["s32z270", "zigos"] {
             let mut plan = fixture_plan(&[("talker_pkg", "talker")]);
             plan.board = board.into();
             let err = emit(&plan).expect_err(board);

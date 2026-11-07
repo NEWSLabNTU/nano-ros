@@ -29,6 +29,10 @@ members = [
     # `reference-mps2` back-edge (a package cycle) was removed.
     "packages/platform/nros-baremetal-common",
     "packages/boards/nros-board-freertos",
+    # phase-548 W1 — the FreeRTOS POSIX-port board: a host-triple crate. With no
+    # board `[env]` (a workspace build) its build.rs compiles nothing, like the
+    # family crate above.
+    "packages/boards/nros-board-freertos-posix",
     "packages/boards/nros-board-threadx",
     "packages/boards/nros-board-nuttx",
     "packages/core/nros-node",

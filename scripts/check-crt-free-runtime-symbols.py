@@ -49,6 +49,7 @@ NEVER_EXITS = {
 }
 HOSTED_CRT = {
     "cmake/board/nano-ros-board-freertos-posix.cmake": "a Linux process: glibc's crt defines them",
+    "packages/boards/nros-board-freertos-posix/build.rs": "a Linux process: glibc's crt defines them (the Rust road of the board above, phase-548 W1)",
     "cmake/board/nano-ros-board-threadx-linux.cmake": "a Linux process: glibc's crt defines them",
     "packages/boards/nros-board-nuttx-qemu/build.rs": "NuttX links its own libc runtime",
 }

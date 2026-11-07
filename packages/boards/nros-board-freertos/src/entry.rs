@@ -49,15 +49,17 @@ use core::{
 
 use nros_platform::{BakedBootConfig, BoardExit, BoardInit, BoardPrint, RuntimeCtx, SchedTaskSpec};
 
-use crate::{
-    Config,
-    error::{Error, Result as FrResult},
-};
+use crate::Config;
+// Only `init_network` returns these, and the POSIX port has no network init.
+#[cfg(not(feature = "posix-port"))]
+use crate::error::{Error, Result as FrResult};
 
 unsafe extern "C" {
     fn nros_trace_scheduler_started();
     fn nros_trace_trigger_and_dump();
 
+    // lwIP (`c/network_glue.c`) — not linked on the POSIX port.
+    #[cfg(not(feature = "posix-port"))]
     fn nros_freertos_init_network(
         mac: *const u8,
         ip: *const u8,
@@ -66,6 +68,7 @@ unsafe extern "C" {
     ) -> i32;
 
     /// The one network drain loop (`c/network_glue.c`, issue 0917). Never returns.
+    #[cfg(not(feature = "posix-port"))]
     fn nros_freertos_net_drain_loop(poll_ms: u32);
     fn nros_freertos_start_scheduler();
 
@@ -77,6 +80,7 @@ unsafe extern "C" {
         priority: u32,
     ) -> i32;
 
+    #[cfg(not(feature = "posix-port"))]
     fn nros_freertos_get_netif_state() -> i32;
 
     /// issue 1598 — `xTaskCreateStatic` over caller-owned stack + control
@@ -106,6 +110,7 @@ unsafe extern "C" {
 }
 
 /// Network polling task stack size in words (1 KB = 256 words).
+#[cfg(not(feature = "posix-port"))]
 const POLL_TASK_STACK: u32 = 256;
 
 // #191 — `log`-crate sink for the entry runtime. The Node components
@@ -172,6 +177,7 @@ struct AppContext<F> {
     closure: F,
 }
 
+#[cfg(not(feature = "posix-port"))]
 static mut POLL_INTERVAL_MS: u32 = 5;
 
 /// Say, once, how much of the task's stack the deepest point of bring-up
@@ -250,9 +256,30 @@ unsafe extern "C" {
     /// `nros_platform_task_stack_unused_bytes` is not enough — that ABI's
     /// `nros_platform_heap_used_bytes` is the INSTANTANEOUS figure, and a
     /// default has to cover the peak.
+    #[cfg(not(feature = "posix-port"))]
     fn xPortGetMinimumEverFreeHeapSize() -> usize;
+    /// The instantaneous figure. phase-548 W1 — the POSIX port builds heap_3
+    /// (host `malloc`), which keeps no high-water, so the reporter there samples
+    /// this and keeps the maximum itself, as the C entry's `heap_peak_task` does.
+    #[cfg(feature = "posix-port")]
+    fn nros_platform_heap_used_bytes() -> usize;
     /// `configTOTAL_HEAP_SIZE`, which is a C macro and has no Rust spelling.
     fn nros_platform_heap_total_bytes() -> usize;
+}
+
+/// The heap's peak use so far, folding in `prev` (the last answer). heap_4
+/// keeps its own monotone high-water; heap_3 is sampled and the maximum kept.
+fn heap_peak_used(prev: usize) -> usize {
+    #[cfg(not(feature = "posix-port"))]
+    {
+        let _ = prev;
+        let total = unsafe { nros_platform_heap_total_bytes() };
+        total.saturating_sub(unsafe { xPortGetMinimumEverFreeHeapSize() })
+    }
+    #[cfg(feature = "posix-port")]
+    {
+        prev.max(unsafe { nros_platform_heap_used_bytes() })
+    }
 }
 
 unsafe extern "C" fn heap_peak_task_entry<B>(_arg: *mut c_void)
@@ -266,30 +293,30 @@ where
 
     unsafe { vTaskDelay(HEAP_PEAK_FIRST_MS) };
 
-    let mut prev = usize::MAX;
+    let mut peak = heap_peak_used(0);
     let mut stable = 0u32;
     for _ in 0..HEAP_PEAK_MAX_SAMPLES {
-        let free = unsafe { xPortGetMinimumEverFreeHeapSize() };
-        if free == prev {
+        let now = heap_peak_used(peak);
+        if now == peak {
             stable += 1;
             if stable >= HEAP_PEAK_STABLE_SAMPLES {
                 break;
             }
         } else {
             stable = 0;
-            prev = free;
+            peak = now;
         }
         unsafe { vTaskDelay(HEAP_PEAK_PERIOD_MS) };
     }
 
     let total = unsafe { nros_platform_heap_total_bytes() };
-    let free = unsafe { xPortGetMinimumEverFreeHeapSize() };
+    let peak = heap_peak_used(peak);
     B::println(format_args!(
         "nros: heap peak {} of {} bytes ({} free) \
          — raise with NROS_FREERTOS_HEAP_KB",
-        total.saturating_sub(free),
+        peak,
         total,
-        free
+        total.saturating_sub(peak)
     ));
 
     unsafe { vTaskDelete(core::ptr::null_mut()) };
@@ -410,6 +437,7 @@ where
 /// 0917 this lane kept its own `vTaskDelay(interval)` loop, which never
 /// registered as the RX wake target, so on a Rust image the NIC's interrupt
 /// woke nobody and every burst waited out the full poll interval.
+#[cfg(not(feature = "posix-port"))]
 unsafe extern "C" fn poll_task_entry(_arg: *mut c_void) {
     let interval = unsafe { POLL_INTERVAL_MS };
     unsafe { nros_freertos_net_drain_loop(interval) }
@@ -438,17 +466,24 @@ where
     // nothing. The C/C++ lane's `freertos_c_entry.c` does the same at the same
     // point; the walk itself is idempotent, and its bounds come from the shared
     // linker script's `.init_array` KEEP block.
-    unsafe extern "C" {
-        fn nros_board_freertos_run_init_array();
-    }
-    unsafe { nros_board_freertos_run_init_array() };
+    //
+    // phase-548 W1 — the POSIX port is a host process: glibc's start-up code
+    // walks `.init_array` before `main`, and the HOST owns the network
+    // (`[board.net] stack = "host"`), so there is no lwIP to bring up.
+    #[cfg(not(feature = "posix-port"))]
+    {
+        unsafe extern "C" {
+            fn nros_board_freertos_run_init_array();
+        }
+        unsafe { nros_board_freertos_run_init_array() };
 
-    if let Err(e) = init_network(config) {
-        B::println(format_args!("Error initializing network: {:?}", e));
-        B::exit_failure();
+        if let Err(e) = init_network(config) {
+            B::println(format_args!("Error initializing network: {:?}", e));
+            B::exit_failure();
+        }
+        B::println(format_args!("Network ready."));
+        B::println(format_args!(""));
     }
-    B::println(format_args!("Network ready."));
-    B::println(format_args!(""));
 
     // Seed the platform RNG so distinct sessions get distinct xorshift output.
     {
@@ -469,6 +504,7 @@ where
         unsafe { nros_platform_freertos_seed_rng(seed) };
     }
 
+    #[cfg(not(feature = "posix-port"))]
     let poll_pri = config.poll_priority as u32; // issue 0623 — already raw
 
     #[cfg(feature = "rmw-zenoh")]
@@ -503,21 +539,26 @@ where
         nros_trace_scheduler_started();
     }
 
-    unsafe {
-        POLL_INTERVAL_MS = config.poll_interval_ms;
-    }
-    let ret = unsafe {
-        nros_freertos_create_task(
-            poll_task_entry,
-            c"net_poll".as_ptr().cast::<u8>(),
-            POLL_TASK_STACK,
-            core::ptr::null_mut(),
-            poll_pri,
-        )
-    };
-    if ret != 0 {
-        B::println(format_args!("Error creating network poll task"));
-        B::exit_failure();
+    // The lwIP drain task. The POSIX port has no lwIP: the host kernel
+    // receives, so there is nothing to drain (phase-548 W1).
+    #[cfg(not(feature = "posix-port"))]
+    {
+        unsafe {
+            POLL_INTERVAL_MS = config.poll_interval_ms;
+        }
+        let ret = unsafe {
+            nros_freertos_create_task(
+                poll_task_entry,
+                c"net_poll".as_ptr().cast::<u8>(),
+                POLL_TASK_STACK,
+                core::ptr::null_mut(),
+                poll_pri,
+            )
+        };
+        if ret != 0 {
+            B::println(format_args!("Error creating network poll task"));
+            B::exit_failure();
+        }
     }
 
     // issue 1197 — the one-shot heap high-water reporter. Priority 1, one above
@@ -540,23 +581,27 @@ where
         B::println(format_args!("nros: heap peak reporter not started"));
     }
 
-    // Brief delay so the poll task flushes stale RX + the TAP settles.
-    unsafe {
-        unsafe extern "C" {
-            fn vTaskDelay(ticks: u32);
+    // Brief delay so the poll task flushes stale RX + the TAP settles, then
+    // the netif check. Both are about lwIP; the POSIX port has none.
+    #[cfg(not(feature = "posix-port"))]
+    {
+        unsafe {
+            unsafe extern "C" {
+                fn vTaskDelay(ticks: u32);
+            }
+            vTaskDelay(2000);
         }
-        vTaskDelay(2000);
-    }
 
-    let netif_state = unsafe { nros_freertos_get_netif_state() };
-    if netif_state & 0xF != 0xF {
-        B::println(format_args!(
-            "WARNING: lwIP netif not ready (default={} up={} link={} ip={})",
-            netif_state & 1 != 0,
-            netif_state & 2 != 0,
-            netif_state & 4 != 0,
-            netif_state & 8 != 0,
-        ));
+        let netif_state = unsafe { nros_freertos_get_netif_state() };
+        if netif_state & 0xF != 0xF {
+            B::println(format_args!(
+                "WARNING: lwIP netif not ready (default={} up={} link={} ip={})",
+                netif_state & 1 != 0,
+                netif_state & 2 != 0,
+                netif_state & 4 != 0,
+                netif_state & 8 != 0,
+            ));
+        }
     }
 }
 
@@ -1290,6 +1335,7 @@ fn report_sched_tasks_above_transport<B: BoardPrint>(
     }
 }
 
+#[cfg(not(feature = "posix-port"))]
 fn init_network(config: &Config) -> FrResult<()> {
     let ret = unsafe {
         nros_freertos_init_network(
@@ -1372,20 +1418,30 @@ where
     B::println(format_args!("========================================"));
     B::println(format_args!(""));
 
+    #[cfg(not(feature = "posix-port"))]
     B::println(format_args!("Initializing LAN9118 + lwIP..."));
+    // The POSIX port uses the host's interfaces, so these would name an
+    // address nothing is configured with.
+    #[cfg(feature = "posix-port")]
     B::println(format_args!(
-        "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        config.base.mac[0],
-        config.base.mac[1],
-        config.base.mac[2],
-        config.base.mac[3],
-        config.base.mac[4],
-        config.base.mac[5],
+        "FreeRTOS POSIX port (host process, host network)"
     ));
-    B::println(format_args!(
-        "  IP:  {}.{}.{}.{}",
-        config.base.ip[0], config.base.ip[1], config.base.ip[2], config.base.ip[3],
-    ));
+    #[cfg(not(feature = "posix-port"))]
+    {
+        B::println(format_args!(
+            "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+            config.base.mac[0],
+            config.base.mac[1],
+            config.base.mac[2],
+            config.base.mac[3],
+            config.base.mac[4],
+            config.base.mac[5],
+        ));
+        B::println(format_args!(
+            "  IP:  {}.{}.{}.{}",
+            config.base.ip[0], config.base.ip[1], config.base.ip[2], config.base.ip[3],
+        ));
+    }
 
     // Per-board pre-scheduler init. New 212.N.1 `BoardInit::init_hardware`
     // is parameterless — board crates read any needed config off their

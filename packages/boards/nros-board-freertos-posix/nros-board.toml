@@ -21,10 +21,20 @@ names = ["freertos-posix"]
 cmake_module = "freertos-posix"
 platform = "freertos"
 toolchain = "stable"
-# `hosted-main` and not the mps2 board's `board-run`: the image IS a host
-# process, and its `main` is an ordinary one that starts the scheduler. The
-# entry is `c/freertos_posix_entry.c`.
-entry_kind = "hosted-main"
+# phase-548 W1 — `board-run`, like the host-process ThreadX board
+# (`nros-board-threadx-linux`). It was `hosted-main`, which describes the C/C++
+# road's `c/freertos_posix_entry.c` (an ordinary `main` that starts the
+# scheduler) and is only read for the RUST entry's shape. A Rust image here is a
+# `#![no_std]` entry whose C-ABI `main` (`[board.entry]` below) calls
+# `<FreertosPosix as BoardEntry>::run`; a `std` entry would put the std tier
+# next to `platform-freertos`, which issue 1778 removed.
+entry_kind = "board-run"
+# The Rust board crate (phase-548 W1). Without one, the image's board key fell
+# through to the platform word `freertos` -- the mps2 board's alias -- and the
+# generated entry depended on the lwIP/Cortex-M3 crate.
+board_crate = "nros-board-freertos-posix"
+# The image's Rust allocator funnels into `nros_platform_alloc` (heap_3).
+board_features = ["image-runtime"]
 supported_netstacks = []
 # Issue 2341 — the board's port and RTOS config dir, stated here as every
 # other FreeRTOS board states them (phase-484 W2b, RFC-0103 D1/D3). The board
@@ -49,6 +59,10 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-freerto
 stack = "host"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
+
+# phase-548 W1 — the Rust entry's `main`: the C runtime's, as on threadx-linux.
+[board.entry]
+signature = "#[unsafe(no_mangle)]\nextern \"C\" fn main(argc: i32, argv: *const *const c_char) -> i32"
 
 # phase-528 W2 (RFC-0118 D4) — the image is a host process.
 [board.run]
