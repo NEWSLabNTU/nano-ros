@@ -1,7 +1,8 @@
 # Phase 547 — Spike: does PX4's NuttX firmware for a shippable Pixhawk boot in an emulator?
 
 **Status (2026-11-07). OPEN — W1 done; W2 reaches `nsh>` with one firmware
-deviation (console TX DMA off) that a DMA-model fix removes; W3 next.** A time-boxed spike (about
+deviation (console TX DMA off); W3: the nano-ros module builds, links and
+opens its uORB session on the emulated 6X, then a heap corruption stops it.** A time-boxed spike (about
 three working days). It decides the board and emulator for first-class PX4
 support. It writes no RFC and changes no shipped code: the RFC amendment and
 the implementation phase are drafted from its findings, after the maintainer
@@ -146,3 +147,37 @@ adapter (I2C) and configuration: every remaining stop was a missing
 instance or a width or framing mismatch, not a missing peripheral class.
 Only one deviation from the hardware firmware remains, the console TX DMA, and
 it is a defect in Renode's DMA model.
+
+### W3 — the nano-ros uORB module on the emulated 6X (in progress)
+
+Nothing in the tree built the module for a flight controller before this
+(phase-542 W8.b deferred it). Reaching a session took the following; each is
+a finding against nano-ros, not PX4, unless marked:
+
+| Stop | Cause | Spike measure (fix it implies) |
+|---|---|---|
+| `nros-c`'s size probe fails, `_SC_HOST_NAME_MAX` | its nested `std` build needs the NuttX-patched `libc` | initialise `third-party/nuttx/libc` (no change) |
+| — | no recipe cross-builds `nros-cpp` for a PX4 FMU | `cargo build -p nros-cpp --target thumbv7em-nuttx-eabihf -Zbuild-std=core,alloc,panic_abort`, features `alloc,log,panic-platform,rmw-cffi,platform-nuttx`, `NUTTX_DIR` = PX4's NuttX tree (its `config.h` is generated there). Builds in 8 m 49 s |
+| `timer.c`: `SIGEV_THREAD` undeclared | PX4's fmu-v6x NuttX has no `CONFIG_SIG_EVTHREAD`; our NuttX boards enable it | timer functions stubbed. Fix: a work-queue timer backend for PX4, or a required NuttX fragment |
+| `nros_platform_panic` unresolved | no board provides it on PX4 | stubbed. Fix: the PX4 integration provides it |
+| `<atomic>`, `<type_traits>`, `<new>`, `<chrono>` not found | PX4 compiles C++ with `-nostdinc++` against NuttX's C-only `include/cxx` | `__atomic` builtins in `nros-rmw-uorb` (`session.cpp`, `subscriber.cpp`); the riscv64-threadx `cxx-compat` shim on the module's include path; PX4's `hrt_absolute_time()` in `sched_task_work_item.hpp`. Fix: a shared freestanding shim for PX4 NuttX |
+| `macro "link" requires 2 arguments` | NuttX's `unistd.h` defines `link(p1, p2)`; `rclcpp/future.hpp` has a member `link()` | renamed `link_front`. Fix: rename, plus a gate for NuttX/libc macro names in public headers |
+| `-Wcast-align` error | PX4 builds with `-Wcast-align -Werror`; `px4_callback_glue.cpp` casts `unsigned char*` to an aligned type | cast through `void *` |
+| `inline variables … C++17` | PX4 builds modules as `gnu++14` | `CXX_STANDARD 17` on the module target (a `-std=` flag loses to the property) |
+| `FLASH overflowed by 297,844 B` | stock 6X firmware already fills 99 % of its 1920 KiB; `libnros_cpp.a` at `opt-level=3` | `opt-level=z`, fat LTO, `codegen-units=1`: nano-ros then costs **207,845 B** of flash (`libnros_cpp.a` 195,003 B, the largest archive in the image, above `ekf2`'s 166,517 B; module 6,734 B; platform 6,108 B). Room made by dropping UAVCAN, the ICM-42688P and GPS drivers and temperature compensation (none can run in the emulator). `.bss` grows from 96 KiB to 198 KiB |
+| UsageFault in `arm_dma_initialize`, before the first `[boot]` | **`.nros_boot_config` is an orphan section** to PX4's linker script; `ld` placed it at `_eronly`, so NuttX copied it into `.data` and every initialised global moved by 0x10c (Zephyr has `zephyr/nros_boot_config.ld`; NuttX/PX4 have nothing) | `KEEP(*(.nros_boot_config))` in the scratch `script.ld`. Fix: a section name every stock script absorbs (`.rodata.nros_boot_config`), found by symbol rather than section. Affects every NuttX/PX4 target whose script we do not own |
+| typed `nros_uorb_demo start` not seen | not investigated (the console's RX DMA, or typed before the prompt) | started from `rc.board_sensors` instead |
+| **MemManage fault in `mm_free`** (task `netinit`, freeing `0xffffff90`) just after `nros: session open (rmw=uorb)` | **heap corruption**; open | not a work-queue stack overflow: the same fault with `wq:rate_ctrl` at 24,000 B (PX4 caps that option at 10,000 B, itself worth noting — the generated entry runs nano-ros on `rate_ctrl`, 3,150 B by default). **Leading suspect:** the cross-built Rust side sizes NuttX `pthread` storage from a size probe over a default NuttX config, while PX4's NuttX 12.12 config may make `pthread_mutex_t` / condvar larger (e.g. priority inheritance) — a `repr(C)` mirror mismatch. Next: compare `sizeof` of each platform type under PX4's `config.h` with what the probe baked |
+
+The scratch edits are saved as `px4-scratch-patches.diff` (PX4) and
+`nros-spike-patches.diff` (nano-ros) in the spike's build directory, outside
+the repository.
+
+### Where this leaves the board decision
+
+The emulator side holds up: stock Renode plus small models runs stock PX4 for
+the 6X to `nsh>`, and runs nano-ros's module far enough to open a uORB session.
+Every stop since has been a nano-ros portability defect that a real Pixhawk
+would hit identically, which is what the twin is for. The open question has
+moved from "can it be emulated" to "how much nano-ros work makes PX4-on-NuttX a
+supported target", and the table above is that list.
