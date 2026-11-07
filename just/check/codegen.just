@@ -146,6 +146,7 @@ build-tool-verbs-exempt:
 # The Rust half is NOT covered here — see the script's header for why, and for
 # the by-hand verification that stands in for it.
 [private]
+[group('needs:cli')]
 codegen-version-refusal:
     @./tests/codegen-version-refusal-tests.sh
 
@@ -358,6 +359,7 @@ census-hooks-complete:
 # is under test here is the freshness rule and the policy. With no in-tree CLI
 # the gate SKIPS through the shared ledger, which is how the fast tier keeps
 # its pristine-worktree property.
+[group('needs:cli')]
 entity-census:
     @bash scripts/check-entity-census.sh
 
@@ -611,6 +613,7 @@ interface-glob-configure-depends:
 # SILENT on the C++ arena dispatch path. `cmake -P` against hand-written
 # fragments -- no build, no codegen, no toolchain, seconds -- so it belongs on the
 # fast line beside its cmake sibling above.
+[group('needs:cli')]
 message-bound-knobs:
     #!/usr/bin/env bash
     set -euo pipefail

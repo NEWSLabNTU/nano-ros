@@ -342,6 +342,7 @@ platform-rmws:
 # against a two-file cmake cell and a one-binary cargo leaf, and carries its own
 # negative control: the pre-fix decision rules are re-applied to the same trees
 # and must FIRE.
+[group('needs:cli')]
 fixture-staleness-probes:
     #!/usr/bin/env bash
     set -euo pipefail

@@ -779,6 +779,7 @@ workspace-build-output:
     @bash scripts/check-workspace-build-output.sh
 
 [private]
+[group('needs:cli')]
 workspace-order:
     @bash packages/testing/nros-tests/tests/workspace_order_gate.sh
 

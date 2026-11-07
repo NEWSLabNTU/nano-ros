@@ -1223,6 +1223,7 @@ cli-clippy:
 # cause beats failing minutes in with a cargo resolution error. The post-submit
 # lane runs this same predicate before its own dep-chain step.
 [private]
+[group('needs:cli')]
 cli-fresh:
     @bash scripts/check-cli-fresh.sh
 

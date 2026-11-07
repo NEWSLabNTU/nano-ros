@@ -149,9 +149,14 @@ default: cli-fresh fast api-parity probe-workspace-caps build
 #
 # `just fast-serial` is the escape hatch: fail-fast ordering, one gate's
 # output at a time.
+#
+# phase-543 W6 — through the nextest harness: `just check lane <scope>`
+# restricted to the fast tier. `NROS_GATE_SCOPE` names the lane
+# (`.config/gate-lanes.toml`); unset is `dev`, a set-up worktree. CI's fast job
+# sets `fast`, the pristine-checkout gate `pristine`.
 [group("main")]
 fast:
-    @bash scripts/build/run-gates-parallel.sh
+    @bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)'
 
 # The terminator both gate registries end on — a no-op that exists only to give
 # the LAST real gate a trailing `\`.
@@ -198,23 +203,7 @@ _gate-list-end:
 # the qualified closing report, so the body is the one line.
 [group("main")]
 fast-serial:
-    @bash scripts/build/run-gates-parallel.sh --serial
-
-    # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
-    # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
-    # depend on a root recipe, so it is called rather than depended on. It must
-    # still run FIRST: it truncates the ledger every gate below appends to.
-    @just _check-skip-reset
-    #!/usr/bin/env bash
-    set -e
-    # issue 0650 — the closing sentence is REPORTED, not asserted. Six gates in
-    # this lane skip on a missing optional tool (bindgen, ROS 2, colcon, the
-    # in-tree CLI), which they must: this tier is documented to run green on a
-    # pristine worktree. What they may not do is let "Fast checks passed!" stand
-    # for gates that never ran.
-    # shellcheck source=scripts/build/check-skip.sh
-    source scripts/build/check-skip.sh
-    nros_check_skip_report "Fast checks passed!"
+    @NROS_GATE_JOBS=1 bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)' --fail-fast
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
 # embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
@@ -244,9 +233,18 @@ fast-serial:
 # without something built, which is a property you can TEST rather than assume —
 # `borrowed-e2e` stayed because it compiles `nros-c` and reads the generated
 # config header, and the pristine run is what proved it.
+#
+# phase-543 W6 — through the nextest harness, like `fast`. A CI shard
+# (`NROS_BUILD_GATE_SHARD=<k>/<n>`) is nextest's `--partition slice:<k>/<n>`.
 [group("main")]
 build:
-    @NROS_GATE_LANE=build-serial bash scripts/build/run-gates-parallel.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    part=()
+    if [ -n "${NROS_BUILD_GATE_SHARD:-}" ]; then
+        part=(--partition "slice:$NROS_BUILD_GATE_SHARD")
+    fi
+    exec bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^build::/)' "${part[@]}"
 
 # The BUILD gate list, and the serial runner — mirrors `fast-serial` above.
 # `run-gates-parallel.sh` derives its list from this dependency line, so the
@@ -323,4 +321,4 @@ build-serial: \
 # Kept as an alias for anyone with it in muscle memory; `check-fast` IS this now.
 [private]
 fast-parallel:
-    @bash scripts/build/run-gates-parallel.sh
+    @just check fast

@@ -225,6 +225,7 @@ stack-floor:
 # SKIPS rather than failing when the tools it drives are absent — a bare
 # worktree has no built CLI, and `check-fast` must stay green there.
 [private]
+[group('needs:cli')]
 nros-installer:
     #!/usr/bin/env bash
     set -euo pipefail

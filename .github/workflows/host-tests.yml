@@ -458,6 +458,8 @@ jobs:
           # which gates finished.
           NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
           NROS_GATE_PROGRESS: "1"
+          # phase-543 W6 — the hosted image's lane (.config/gate-lanes.toml).
+          NROS_GATE_SCOPE: build
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs
@@ -484,6 +486,8 @@ jobs:
           # which gates finished.
           NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
           NROS_GATE_PROGRESS: "1"
+          # phase-543 W6 — the hosted image's lane (.config/gate-lanes.toml).
+          NROS_GATE_SCOPE: build
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs

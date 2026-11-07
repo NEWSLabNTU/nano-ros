@@ -346,6 +346,7 @@ retired-cmake-names:
 # (`nros help --aliases --json`), so with no CLI built this records a skip
 # rather than passing. `--fix` rewrites in place. Self-tests its matcher.
 [private]
+[group('needs:cli')]
 cli-old-spellings:
     #!/usr/bin/env bash
     set -euo pipefail

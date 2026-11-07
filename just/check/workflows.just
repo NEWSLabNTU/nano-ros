@@ -346,6 +346,7 @@ provider-announcements:
     @python3 scripts/check-provider-announcements.py
 
 [private]
+[group('needs:cli')]
 provider-index:
     @bash packages/testing/nros-tests/tests/provider_index_gate.sh
 

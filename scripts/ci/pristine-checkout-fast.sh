@@ -24,12 +24,12 @@
 # EDITING, not only what you committed. Nothing outside the clone is written,
 # and the clone is removed on exit.
 #
-# A gate that SKIPS there is fine, provided it says so: the inner `check fast`
-# prints its skips in the closing `[SKIPPED]` block, and this script repeats
-# them. A gate that FAILS there is the defect. Fix it by taking the ledger route
-# (`nros_check_skip` / `check_skip.unverified`) with a remedy a worktree can run
-# (`just setup-worktree`, or `git submodule update --init <path>`). Never fix it
-# by provisioning the clone.
+# The inner run is the `pristine` lane (`.config/gate-lanes.toml`, phase-543):
+# it claims no submodules and no CLI, so a gate that declares
+# `[group('needs:submodules')]` (or `needs:cli`) is out of its scope and listed
+# as not run, by name. A gate that FAILS there is the defect, and so is one that
+# SKIPS: under the nextest harness a skip is a red. Fix it by declaring what the
+# gate needs on its recipe. Never fix it by provisioning the clone.
 #
 # Not a fast gate (it RUNS the fast tier, so the tier would recurse). It is in
 # `.config/gate-lane-exempt.txt`, and `just ci gate` runs it after `check::fast`.
@@ -129,6 +129,7 @@ run_in_clone() {
             GITHUB_ACTIONS CI GITHUB_EVENT_NAME GITHUB_EVENT_PATH
         # shellcheck disable=SC1091
         NROS_QUIET_ACTIVATE=1 source ./activate.sh >/dev/null 2>&1
+        export NROS_GATE_SCOPE=pristine
         "$@"
     )
 }
@@ -158,16 +159,16 @@ pristine_selftest() {
     cp "$clone/$probe_file" "$tmp/lanes.just.orig"
     printf '\npristine-selftest-probe:\n    @[ -n "$(ls -A %s 2>/dev/null)" ]\n' "$sub" \
         >> "$clone/$probe_file"
-    printf 'pristine-selftest-probe\n' > "$tmp/probe.list"
     src=0
-    run_in_clone bash scripts/build/run-gates-parallel.sh "$tmp/probe.list" \
+    run_in_clone bash scripts/build/gate-lane.sh pristine \
+        -E 'test(=fast::check::pristine-selftest-probe)' \
         > "$tmp/probe.log" 2>&1 || src=$?
     cp "$tmp/lanes.just.orig" "$clone/$probe_file"
     # Non-zero is not enough: the runner also exits non-zero when it cannot RUN
     # the list, which would pass this control while proving nothing. Require the
     # planted gate's own FAIL record.
     rec=0
-    nros_grep_q '^===== FAIL (pristine-selftest-probe,' "$tmp/probe.log" || rec=$?
+    nros_grep_q 'FAIL .* fast::check::pristine-selftest-probe$' "$tmp/probe.log" || rec=$?
     if [ "$rec" -ge 2 ]; then
         echo "pristine-checkout SELFTEST: could not read $tmp/probe.log" >&2
         exit 2
@@ -189,20 +190,21 @@ log="$tmp/fast.log"
 rc=0
 run_in_clone just check fast > "$log" 2>&1 || rc=$?
 
-# The closing lines carry the verdict and the [SKIPPED] block.
-sed -n '/^check-fast (parallel):/,$p' "$log"
+# nextest's closing block carries the verdict: the Summary line and, on a
+# red, each failing test's name.
+sed -n '/^ *Summary \[/,$p' "$log"
 if [ "$rc" -ne 0 ]; then
     echo "" >&2
-    # Each FAIL record is its header PLUS the gate's own output, up to the
-    # next record or the lane summary (run-gates-parallel.sh). Printing the
-    # headers alone dropped the reason, so a red here named a gate and never
-    # said why (issue 2008). Capped per record; the clone has the rest.
-    if nros_grep_q '^===== FAIL' "$log"; then
+    # Each failing test's own output, as nextest printed it (`FAIL [...]` plus
+    # its stdout/stderr), so a red here names the gate AND says why (issue
+    # 2008). Capped per record; the clone has the rest.
+    if nros_grep_q '^ *FAIL \[' "$log"; then
         awk -v cap="${NROS_PRISTINE_FAIL_LINES:-60}" '
-            /^===== FAIL/                { on = 1; n = 0; print; next }
-            /^check-fast \(parallel\):/  { on = 0 }
-            on && ++n <= cap             { print }
-            on && n == cap + 1           { print "    ... (record truncated; re-run with --keep)" }
+            /^ *FAIL \[/                     { on = 1; n = 0; print; next }
+            /^ *(PASS|SLOW|SIGKILL|START) \[/ { on = 0 }
+            /^ *Summary \[/                  { on = 0 }
+            on && ++n <= cap                 { print }
+            on && n == cap + 1               { print "    ... (record truncated; re-run with --keep)" }
         ' "$log" >&2
     else
         tail -40 "$log" >&2
@@ -210,9 +212,9 @@ if [ "$rc" -ne 0 ]; then
     echo "" >&2
     echo "pristine-checkout: FAILED (rc=$rc) -- the fast tier is red in a checkout" >&2
     echo "  with no submodules, which is what \`git worktree add\` produces." >&2
-    echo "  A gate whose subject lives in a submodule must report NOT VERIFIED" >&2
-    echo "  through the nros_check_skip ledger, with a remedy a worktree can run" >&2
-    echo "  (\`just setup-worktree\`) -- never fail (issues 1373, 1345, 1043)." >&2
+    echo "  A gate whose subject lives in a submodule declares it on its recipe," >&2
+    echo "  \`[group('needs:submodules')]\`, so this lane leaves it out of scope by" >&2
+    echo "  name (phase-543; issues 1373, 1345, 1043). A skip here is a red too." >&2
     echo "  Re-run with --keep to inspect the clone." >&2
     exit 1
 fi

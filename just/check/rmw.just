@@ -89,6 +89,7 @@ cyclone-domain-not-pinned:
 # cmake, a C and a C++ compiler and a built `nros` -- and SKIPS rather than
 # passing when any is missing, because a gate that examined nothing must not
 # read as a pass.
+[group('needs:cli')]
 declared-qos-header:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -426,6 +427,7 @@ zenoh-config-template:
 # it is a RECORDED skip, not an OK; `gate.yml` provisions zenoh-pico before
 # `check fast` on pull_request / merge_group, where it runs. ~5 s at 4 jobs.
 [private]
+[group('needs:submodules')]
 zenoh-feature-off-compile:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -495,6 +497,7 @@ zenohd-spawn-sites:
 # Skips rather than fails when the zenoh-pico submodule is absent: `check-fast`
 # must stay green on a pristine detached worktree (issue 0650).
 [private]
+[group('needs:submodules')]
 zpico-config-keys:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -552,6 +555,7 @@ zenoh-source-manifest:
 # in-body derivation + template read), plus the client's expected micro-CDR and
 # the authored `nros-sdk-index.toml` rows. Buildless, ~30 ms.
 [private]
+[group('needs:submodules')]
 xrce-vendored-versions:
     @python3 scripts/check-xrce-vendored-versions.py
 
