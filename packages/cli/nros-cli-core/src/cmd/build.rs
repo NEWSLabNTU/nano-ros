@@ -4713,6 +4713,9 @@ fn generate_entry(
     // Snapshotted before the spec takes `nodes`: the Zephyr arm below seeds its
     // `[patch]` walk from them (`registry_patches_from`).
     let spec_nodes_dirs: Vec<PathBuf> = nodes.iter().map(|(_, d)| d.clone()).collect();
+    // phase-531 W6 -- and the names, which seed the interface closure a Rust
+    // west application names for per-message type support.
+    let spec_node_names: Vec<String> = nodes.iter().map(|(n, _)| n.clone()).collect();
 
     // Every Rust road reaches this spec, so the key is checked here once.
     crate::orchestration::image::validate_before_boot(image.before_boot.as_deref())
@@ -4792,6 +4795,18 @@ fn generate_entry(
                         image_id,
                         "rust",
                     )?);
+                    // phase-531 W6 -- a backend whose topic lookup is a
+                    // per-message table (Cyclone DDS) needs the image's
+                    // interface closure named, since a Rust application calls
+                    // no `find_package(<pkg>)` to generate it.
+                    if app.needs_message_typesupport {
+                        app.typesupport_packages = interface_typesupport_specs(
+                            root,
+                            &entry_dir_for_deps,
+                            &spec_node_names,
+                        )
+                        .map_err(|e| e.to_string())?;
+                    }
                     Ok(app)
                 })
                 .map_err(|e| eyre::eyre!("{e}"))?,
@@ -4936,6 +4951,39 @@ fn derived_pool_env(
     }
     let body = crate::leaf_entity_env::render_env_sidecar(knobs, &payload, &take, &resolved.source);
     crate::leaf_entity_env::env_rows(&body)
+}
+
+/// phase-531 W6 — `nros_zephyr_interface_typesupport(PACKAGES …)` specs for
+/// the interface closure of `seeds` (the image's node packages), in dependency
+/// order: `<pkg>=<dir>` when the package is a member of this workspace (its
+/// `.msg` files are in `<dir>`, written relative to `entry_dir` so the
+/// generated file is the same on every machine), `<pkg>` otherwise (found through
+/// `AMENT_PREFIX_PATH` at configure time, as `find_package(<pkg>)` would).
+fn interface_typesupport_specs(
+    root: &std::path::Path,
+    entry_dir: &std::path::Path,
+    seeds: &[String],
+) -> Result<Vec<String>> {
+    let (packages, _) = cargo_nano_ros::provider_scan::scan_workspace_packages(root)?;
+    let order = crate::leaf_payload_classes::image_interface_packages(
+        root,
+        seeds.iter().cloned(),
+        |name| {
+            packages
+                .iter()
+                .find(|p| p.name == name)
+                .map(|p| p.depends.iter().cloned().collect())
+        },
+    );
+    order
+        .into_iter()
+        .map(|name| match packages.iter().find(|p| p.name == name) {
+            Some(p) => crate::builder::paths::relative_or_err(entry_dir, &p.dir)
+                .map(|rel| format!("{name}={rel}"))
+                .map_err(|e| eyre::eyre!("{e}")),
+            None => Ok(name),
+        })
+        .collect()
 }
 
 /// Issue 2298 — the bound tables of one image's message closure: the node

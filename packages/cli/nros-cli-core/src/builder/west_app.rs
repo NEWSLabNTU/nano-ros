@@ -54,9 +54,13 @@
 //! backend's own `nros-rmw.toml`, at the directory the provider scan resolved
 //! (RFC-0071 D15, amended ruling 3; the walk of `packages/rmw/<family>/` that
 //! stood here is gone). Cyclone DDS and uorb name no `crate` (C/C++ CMake
-//! projects the Zephyr C port links), so they get no feature and no dep, which
-//! is exactly right: the macro's `#[cfg]` is then correctly off and the backend
-//! arrives through cmake.
+//! projects the Zephyr C port links), so they get no dep, and the backend
+//! arrives through cmake. Such a backend still DECLARES the feature, empty and
+//! off by default: the macro's `#[cfg(feature = …)]` names it, and an
+//! undeclared feature is an `unexpected_cfgs` error in the `-D warnings` clippy
+//! pass zephyr-lang-rust runs; enabled, its arm calls
+//! `::nros_rmw_cyclonedds_sys::register()`, a crate a Zephyr image does not
+//! link (phase-531 W6, both measured on the Cyclone Rust talker).
 
 use std::path::{Path, PathBuf};
 
@@ -73,9 +77,13 @@ pub struct WestApp {
     /// cmake `project()` identifier.
     pub project: String,
     /// `(cargo feature, backend crate)` — the `[features]` row the entry
-    /// defaults to, and the optional dep it enables. `None` when the image's
-    /// RMW is not a Rust crate.
-    pub rmw_feature: Option<(String, String)>,
+    /// defaults to, and the optional dep it enables. The crate is `None` when
+    /// the image's RMW is not a Rust crate (Cyclone DDS): the feature is still
+    /// declared, empty, because `nros::main!` names it in a `#[cfg]` and an
+    /// undeclared one is an `unexpected_cfgs` error under the `-D warnings`
+    /// clippy pass zephyr-lang-rust runs (phase-531 W6, measured). `None`
+    /// altogether only when the image names no RMW.
+    pub rmw_feature: Option<(String, Option<String>)>,
     /// `[dependencies]` lines this road adds (the backend, the `zephyr` crate).
     pub deps: Vec<String>,
     /// `[build-dependencies]` lines.
@@ -103,6 +111,19 @@ pub struct WestApp {
     /// the nano-ros module's `module_ext_root` hook. `None` renders nothing
     /// (and the hook finds no `system.toml` beside a generated application).
     pub image: Option<ImageStatement>,
+    /// phase-531 W6 -- does the image's backend need per-message type support
+    /// that a Rust application has no other way to get? True when the backend
+    /// declares a `[rmw.codegen] per_message` hook and no `[rmw.provides.cargo]
+    /// crate` (Cyclone DDS: the Zephyr port links the C++ library, whose
+    /// topic lookup is an idlc descriptor table). A C/C++ application gets the
+    /// descriptors through `find_package(<pkg>)`; a Rust one calls neither, so
+    /// [`Self::typesupport_packages`] carries them instead.
+    pub needs_message_typesupport: bool,
+    /// The image's interface closure in dependency order, as
+    /// `nros_zephyr_interface_typesupport(PACKAGES …)` specs: `<pkg>` for an
+    /// ament package, `<pkg>=<dir>` for one in the workspace. Filled by the
+    /// caller when [`Self::needs_message_typesupport`]; empty renders nothing.
+    pub typesupport_packages: Vec<String>,
 }
 
 /// phase-481 W1 (RFC-0098 D11) -- the three facts a generated application
@@ -418,9 +439,11 @@ pub fn resolve_in(
         // real answer (cyclonedds, uorb: C/C++ projects the Zephyr C port
         // links); a `crate` with no such crate at its directory is the
         // provider's error, refused rather than built with no Rust backend.
-        if let Some(dir) = crate::orchestration::backend_link::crate_dir(&resolved)
-            .map_err(|e| format!("`{image_id}`: {e}"))?
-        {
+        let crate_dir = crate::orchestration::backend_link::crate_dir(&resolved)
+            .map_err(|e| format!("`{image_id}`: {e}"))?;
+        app.needs_message_typesupport =
+            crate_dir.is_none() && !resolved.descriptor.per_message_hook.is_empty();
+        if let Some(dir) = crate_dir {
             let krate = resolved.descriptor.cargo_crate.as_str();
             let rel = relative_or_err(entry_dir, &dir)?;
             let feats = if declares_feature(&dir, platform_feature) {
@@ -432,7 +455,12 @@ pub fn resolve_in(
                 "{krate} = {{ path = \"{rel}\", default-features = false{feats}, \
                  optional = true }}"
             ));
-            app.rmw_feature = Some((resolved.cargo_feature.clone(), krate.to_string()));
+            app.rmw_feature = Some((resolved.cargo_feature.clone(), Some(krate.to_string())));
+        } else {
+            // No crate to enable, and still a feature to declare: the macro's
+            // `#[cfg(feature = "<rmw feature>")]` arm is evaluated on THIS crate.
+            // The hand-written leaves carried `rmw-cyclonedds = []` for it.
+            app.rmw_feature = Some((resolved.cargo_feature.clone(), None));
         }
     }
 
@@ -604,10 +632,31 @@ fn render_cmakelists_body(app: &WestApp) -> String {
          {}{}\
          find_package(Zephyr REQUIRED HINTS $ENV{{ZEPHYR_BASE}})\n\
          project({})\n\n\
+         {}\
          rust_cargo_application()\n",
         image_statement_cmake(app.image.as_ref()),
         capability_kconfig_cmake(&app.capabilities),
-        app.project
+        app.project,
+        typesupport_cmake(&app.typesupport_packages),
+    )
+}
+
+/// phase-531 W6 -- the per-message type support of a Rust application, or
+/// nothing. See [`WestApp::needs_message_typesupport`]: before this, a Rust
+/// Cyclone image got its idlc descriptors only from a hand-written block in the
+/// leaf's `CMakeLists.txt`, so a generated one had none and every
+/// `find_descriptor()` failed at run time.
+fn typesupport_cmake(packages: &[String]) -> String {
+    if packages.is_empty() {
+        return String::new();
+    }
+    format!(
+        "# The image's backend looks each topic type up in a per-message table\n\
+         # that a C/C++ image fills through `find_package(<pkg>)`. A Rust image\n\
+         # calls no find_package, so its interface closure is named here, in\n\
+         # dependency order.\n\
+         nros_zephyr_interface_typesupport(PACKAGES\n    {})\n\n",
+        packages.join("\n    ")
     )
 }
 
@@ -1083,7 +1132,7 @@ mod tests {
 
         assert_eq!(
             app.rmw_feature,
-            Some(("rmw-zenoh".to_string(), "nros-rmw-zenoh".to_string()))
+            Some(("rmw-zenoh".to_string(), Some("nros-rmw-zenoh".to_string())))
         );
         assert!(
             app.deps.iter().any(|d| d.starts_with("nros-rmw-zenoh =")
@@ -1131,7 +1180,7 @@ mod tests {
         );
         assert_eq!(
             app.rmw_feature,
-            Some(("rmw-acme".to_string(), "acme-rmw".to_string()))
+            Some(("rmw-acme".to_string(), Some("acme-rmw".to_string())))
         );
         // ... and a `crate` the directory does not hold is refused, not
         // warned past.
@@ -1191,11 +1240,72 @@ mod tests {
         )
         .expect("resolves");
 
-        assert_eq!(app.rmw_feature, None);
+        // The feature is declared with no dep (an undeclared one fails
+        // `-D unexpected-cfgs`); no crate is pulled in.
+        assert_eq!(app.rmw_feature, Some(("rmw-cyclonedds".to_string(), None)));
         assert!(
             !app.deps.iter().any(|d| d.contains("nros-rmw-cyclonedds")),
             "{:?}",
             app.deps
+        );
+    }
+
+    /// phase-531 W6 -- a backend with a per-message hook and no rlib (Cyclone)
+    /// marks the application as needing type support. A Rust backend does not:
+    /// its messages register through the crate.
+    #[test]
+    fn only_a_per_message_backend_without_an_rlib_needs_type_support() {
+        let td = tempfile::tempdir().unwrap();
+        let nros_root = td.path().join("nano-ros");
+        std::fs::create_dir_all(nros_root.join("packages/tooling/nros-zephyr-build")).unwrap();
+        let entry = td.path().join("ws/build/zephyr/zephyr_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        let app_for = |rmw: &str| {
+            resolve(
+                &td.path().join("ws"),
+                &entry,
+                &nros_root,
+                "zephyr",
+                Some(rmw),
+                "platform-zephyr",
+                &std::collections::BTreeMap::new(),
+            )
+            .expect("resolves")
+        };
+        assert!(app_for("cyclonedds").needs_message_typesupport);
+        assert!(!app_for("zenoh").needs_message_typesupport);
+        assert!(!app_for("xrce").needs_message_typesupport);
+    }
+
+    /// phase-531 W6 -- a Rust application on a Cyclone image names its
+    /// interface closure after `project()` (the call links into `app`, which
+    /// `find_package(Zephyr)` creates) and before `rust_cargo_application()`.
+    /// Without the call, every topic's `find_descriptor()` fails at run time.
+    #[test]
+    fn a_rust_cyclone_application_names_its_interface_closure() {
+        let with = render_cmakelists(&WestApp {
+            project: "p".into(),
+            typesupport_packages: vec![
+                "builtin_interfaces".into(),
+                "std_msgs".into(),
+                "my_msgs=../../../src/my_msgs".into(),
+            ],
+            ..Default::default()
+        });
+        let call = with
+            .find("nros_zephyr_interface_typesupport(PACKAGES\n    builtin_interfaces\n    std_msgs\n    my_msgs=../../../src/my_msgs)")
+            .unwrap_or_else(|| panic!("no type-support call in:\n{with}"));
+        let project = with.find("project(p)").unwrap();
+        let rust = with.rfind("rust_cargo_application()").unwrap();
+        assert!(project < call && call < rust, "{with}");
+
+        let without = render_cmakelists(&WestApp {
+            project: "p".into(),
+            ..Default::default()
+        });
+        assert!(
+            !without.contains("nros_zephyr_interface_typesupport"),
+            "{without}"
         );
     }
 

@@ -665,8 +665,18 @@ pub fn render_manifest(
     // `builder::west_app`.
     if let Some((feature, krate)) = spec.west.as_ref().and_then(|w| w.rmw_feature.as_ref()) {
         out.push_str("[features]\n");
-        out.push_str(&format!("default = [\"{feature}\"]\n"));
-        out.push_str(&format!("{feature} = [\"dep:{krate}\"]\n\n"));
+        match krate {
+            Some(krate) => {
+                out.push_str(&format!("default = [\"{feature}\"]\n"));
+                out.push_str(&format!("{feature} = [\"dep:{krate}\"]\n\n"));
+            }
+            // A backend with no rlib (Cyclone DDS): DECLARED, so the macro's
+            // `#[cfg(feature = …)]` names a known feature, and NOT enabled,
+            // because its arm calls the cargo road's register crate, which a
+            // Zephyr image does not link (the C++ backend registers through
+            // the C ABI). Both measured (`builder::west_app`).
+            None => out.push_str(&format!("{feature} = []\n\n")),
+        }
     }
 
     out.push_str("[dependencies]\n");
