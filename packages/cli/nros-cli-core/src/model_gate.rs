@@ -186,6 +186,62 @@ impl std::fmt::Display for Refusal {
 
 impl std::error::Error for Refusal {}
 
+/// Issue 2350 — what a consumer door does with a [`Refusal::Stale`] model.
+///
+/// A dry run never configures (Ruling R43), so a model whose inputs moved is
+/// still stale when the dry run plans, though the real run would re-resolve it
+/// first. Only the front door that RAN that implicit configure knows whether
+/// it would have, so it hands the answer down; nothing else may relax the
+/// gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StaleModel {
+    /// Refuse a stale model: every real build and run, and a dry run whose
+    /// implicit configure would not run (nothing would refresh the model).
+    #[default]
+    Refuse,
+    /// A dry run whose implicit configure reported it WOULD configure: read
+    /// the model as it stands and say it would be re-resolved. `verb` is the
+    /// front door's word (`run`, `build`) for that note.
+    WouldReResolve {
+        /// The front door's word.
+        verb: &'static str,
+    },
+}
+
+impl StaleModel {
+    /// The policy for a front door: [`StaleModel::WouldReResolve`] only for a
+    /// dry run whose implicit configure reported it would configure.
+    #[must_use]
+    pub fn for_dry_run(dry_run: bool, would_configure: bool, verb: &'static str) -> Self {
+        if dry_run && would_configure {
+            StaleModel::WouldReResolve { verb }
+        } else {
+            StaleModel::Refuse
+        }
+    }
+
+    /// THE decision: a stale model passes only under
+    /// [`StaleModel::WouldReResolve`], and is announced; a model its producer
+    /// refused (the marker) is refused under every policy, because a configure
+    /// would refuse it again.
+    ///
+    /// # Errors
+    ///
+    /// The refusal, when this policy does not admit it.
+    pub fn admit(self, refusal: Refusal) -> Result<PathBuf, Refusal> {
+        match (self, refusal) {
+            (StaleModel::WouldReResolve { verb }, Refusal::Stale { model, reason }) => {
+                eprintln!(
+                    "nros {verb}: --dry-run: would re-resolve {}: {reason}",
+                    model.display()
+                );
+                Ok(model)
+            }
+            (_, r) => Err(r),
+        }
+    }
+}
+
 /// CONSUMER side -- the one gate.
 ///
 /// `model` is the path the consumer is about to open. `bringup_dir` is the
@@ -284,6 +340,20 @@ pub fn open(bringup_dir: &Path, model_rel: &str) -> Result<Option<PathBuf>, Refu
         verify(&found, Some(bringup_dir))?;
     }
     Ok(Some(found))
+}
+
+/// [`open`] under a [`StaleModel`] policy (issue 2350): a stale model a dry
+/// run's configure would refresh is opened as it stands.
+///
+/// # Errors
+///
+/// As [`open`], less what `stale` admits.
+pub fn open_with(
+    bringup_dir: &Path,
+    model_rel: &str,
+    stale: StaleModel,
+) -> Result<Option<PathBuf>, Refusal> {
+    open(bringup_dir, model_rel).or_else(|r| stale.admit(r).map(Some))
 }
 
 /// Issue 0320 -- content-addressed staleness, moved here from `cmd/ws.rs`
@@ -927,6 +997,101 @@ mod tests {
         assert!(
             s.starts_with("20") && s.ends_with('Z') && s.as_bytes()[8] == b'T',
             "{s}"
+        );
+    }
+
+    // Issue 2350 -- the dry-run policy at the model door.
+
+    /// A stale model and a refused one, as `verify` reports them.
+    fn stale_and_refused(dir: &Path) -> (Refusal, Refusal) {
+        std::fs::write(dir.join("system.toml"), b"[system]\n").unwrap();
+        let model = write_model(dir, vec![("system.toml".into(), sha(b"edited since"))]);
+        let stale = verify(&model, Some(dir)).expect_err("the input moved");
+        assert!(matches!(stale, Refusal::Stale { .. }), "{stale:?}");
+        std::fs::write(
+            marker_path(&model),
+            "check: contract-check\ninput: system.toml\n",
+        )
+        .unwrap();
+        let refused = verify(&model, Some(dir)).expect_err("the marker refuses");
+        assert!(matches!(refused, Refusal::Refused { .. }), "{refused:?}");
+        (stale, refused)
+    }
+
+    #[test]
+    fn only_a_dry_run_that_would_configure_admits_a_stale_model() {
+        let tmp = tempfile::tempdir().unwrap();
+        let would = StaleModel::WouldReResolve { verb: "run" };
+        let (stale, _) = stale_and_refused(tmp.path());
+        let tmp = tempfile::tempdir().unwrap();
+        let model = match &stale {
+            Refusal::Stale { model, .. } => model.clone(),
+            Refusal::Refused { .. } => unreachable!(),
+        };
+        assert_eq!(would.admit(stale).expect("a dry run reads it"), model);
+        let (stale, _) = stale_and_refused(tmp.path());
+        assert!(
+            matches!(StaleModel::Refuse.admit(stale), Err(Refusal::Stale { .. })),
+            "a real run must still refuse a stale model"
+        );
+        assert_eq!(StaleModel::for_dry_run(true, true, "run"), would);
+        for (dry, pending) in [(false, false), (false, true), (true, false)] {
+            assert_eq!(
+                StaleModel::for_dry_run(dry, pending, "run"),
+                StaleModel::Refuse,
+                "dry_run={dry} would_configure={pending}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_refused_model_is_refused_under_every_policy() {
+        for policy in [
+            StaleModel::Refuse,
+            StaleModel::WouldReResolve { verb: "build" },
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let (_, refused) = stale_and_refused(tmp.path());
+            assert!(
+                matches!(policy.admit(refused), Err(Refusal::Refused { .. })),
+                "{policy:?} admitted a refused model"
+            );
+        }
+    }
+
+    /// `open_with` is `open` plus the policy, on the search ladder itself.
+    #[test]
+    fn open_with_reads_a_stale_model_only_under_the_dry_run_policy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(bringup.join("system.toml"), b"[system]\n").unwrap();
+        let rel = nros_orchestration_ir::model_location::launch_to_model_rel(&bringup, None, &[])
+            .unwrap();
+        // The sync rung, where `nros configure` writes the model.
+        let rung = tmp
+            .path()
+            .join("build/nros/models/demo_bringup")
+            .join("system_model.yaml");
+        assert!(
+            nros_orchestration_ir::model_location::model_search_paths(&bringup, &rel)
+                .contains(&rung),
+            "{} is a rung",
+            rung.display()
+        );
+        std::fs::create_dir_all(rung.parent().unwrap()).unwrap();
+        let written = write_model(
+            rung.parent().unwrap(),
+            vec![("system.toml".into(), sha(b"edited since"))],
+        );
+        std::fs::rename(&written, &rung).unwrap();
+        assert!(matches!(
+            open_with(&bringup, &rel, StaleModel::Refuse),
+            Err(Refusal::Stale { .. })
+        ));
+        assert_eq!(
+            open_with(&bringup, &rel, StaleModel::WouldReResolve { verb: "run" }).unwrap(),
+            Some(rung)
         );
     }
 }

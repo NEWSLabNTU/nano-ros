@@ -859,8 +859,10 @@ pub fn run(args: Args) -> eyre::Result<()> {
     let (named, rung) = name_target(&Selection::from(&args)).unwrap_or_else(|e| unresolved(&e));
     let mut bargs = selection_build_args(&named).map_err(|e| eyre::eyre!(e))?;
     bargs.dry_run = args.dry_run;
-    crate::cmd::build::configure_implicitly(&bargs, "run")?;
-    let one = match select_target(&named, "run") {
+    // Issue 2350 -- a dry run that would have configured plans past a model
+    // that configure would re-resolve, and says so.
+    let (_, stale) = crate::cmd::build::configure_implicitly(&bargs, "run")?;
+    let one = match select_target_with(&named, "run", stale) {
         Ok(one) => one,
         Err(e) => unresolved(&e),
     };
@@ -1031,7 +1033,21 @@ pub fn select_target(
     sel: &Selection,
     verb: &str,
 ) -> Result<crate::cmd::build::ResolvedBuild, String> {
-    select_target_why(sel, verb).map(|(one, _)| one)
+    select_target_with(sel, verb, crate::model_gate::StaleModel::Refuse)
+}
+
+/// [`select_target`] with the model door's policy for a stale model (issue
+/// 2350), which only a front door that ran the implicit configure can answer.
+///
+/// # Errors
+///
+/// As [`select_target`].
+pub(crate) fn select_target_with(
+    sel: &Selection,
+    verb: &str,
+    stale: crate::model_gate::StaleModel,
+) -> Result<crate::cmd::build::ResolvedBuild, String> {
+    select_target_why_with(sel, verb, stale).map(|(one, _)| one)
 }
 
 /// RFC-0121 D5 — the selection with its target word rewritten to the
@@ -1093,10 +1109,25 @@ pub fn select_target_why(
     ),
     String,
 > {
+    select_target_why_with(sel, verb, crate::model_gate::StaleModel::Refuse)
+}
+
+fn select_target_why_with(
+    sel: &Selection,
+    verb: &str,
+    stale: crate::model_gate::StaleModel,
+) -> Result<
+    (
+        crate::cmd::build::ResolvedBuild,
+        crate::builder::plan::TargetRung,
+    ),
+    String,
+> {
     let (sel, rung) = name_target(sel)?;
     let sel = &sel;
     let bargs = selection_build_args(sel)?;
-    let mut plans = crate::cmd::build::plan_builds(&bargs).map_err(|e| format!("{e:#}"))?;
+    let mut plans =
+        crate::cmd::build::plan_builds_with(&bargs, stale).map_err(|e| format!("{e:#}"))?;
     let one = match plans.len() {
         1 => plans.remove(0),
         0 => return Err(format!("no image to {verb}: the workspace declares none")),

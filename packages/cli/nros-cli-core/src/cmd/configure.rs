@@ -99,13 +99,19 @@ pub(crate) fn configure_with(args: Args, held: Option<&std::ffi::OsStr>) -> Resu
 /// call this before they plan (RFC-0120 D3); `dry_run` is theirs, handed to
 /// stage 4 unchanged. `verb` is the caller's own (`build`, `run`): a refusal
 /// tells the reader to run `nros <verb>` again, the command they typed.
+///
+/// Returns whether a DRY run found an image a real run would configure
+/// (issue 2350): its model may be stale only because the dry run did not
+/// refresh it, which the caller's model door is then told
+/// ([`crate::model_gate::StaleModel::for_dry_run`]). Always `false` for a
+/// real run, which configured.
 pub fn ensure_current(
     project: &Path,
     images: &[String],
     dry_run: bool,
     offline: bool,
     verb: &str,
-) -> Result<()> {
+) -> Result<bool> {
     ensure_current_with(
         project,
         images,
@@ -133,13 +139,13 @@ pub(crate) fn ensure_current_with(
     offline: bool,
     held: Option<&std::ffi::OsStr>,
     verb: &str,
-) -> Result<()> {
+) -> Result<bool> {
     let project = project_root(Some(project))?;
     // Ruling R20: a parent configure of THIS project holds its lock and is
     // what spawned us (stage 3.4's census runs `nros build`). It is already
     // configuring; waiting on its lock would deadlock both.
     if held_by_parent(&project, held) {
-        return Ok(());
+        return Ok(false);
     }
     let mut argv = vec![
         "configure".to_string(),
@@ -163,12 +169,13 @@ pub(crate) fn ensure_current_with(
     // codegen, model, lock seed or stamp). It says what a real run would do,
     // and the caller plans from the project as it stands.
     if dry_run {
-        for (key, why) in would_configure(&project, &sync, images)? {
-            eprintln!("nros build: --dry-run: would configure {key}: {why}");
+        let pending = would_configure(&project, &sync, images)?;
+        for (key, why) in &pending {
+            eprintln!("nros {verb}: --dry-run: would configure {key}: {why}");
         }
-        return Ok(());
+        return Ok(!pending.is_empty());
     }
-    configure_project(&project, sync, images, false, verb).map(|_| ())
+    configure_project(&project, sync, images, false, verb).map(|_| false)
 }
 
 /// Ruling R43 — the `(stamp key, reason)` of every image a configure of
@@ -673,7 +680,8 @@ mod tests {
         let (project, held) = (project.to_path_buf(), held.to_path_buf());
         thread::spawn(move || {
             let r =
-                ensure_current_with(&project, &[], false, true, Some(held.as_os_str()), "build");
+                ensure_current_with(&project, &[], false, true, Some(held.as_os_str()), "build")
+                    .map(|_| ());
             let _ = tx.send(r);
         });
         rx.recv_timeout(wait).ok()
