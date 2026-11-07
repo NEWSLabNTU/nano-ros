@@ -734,6 +734,14 @@ pub fn render_manifest(
         out.push('\n');
     }
 
+    // RFC-0071 D15 — a backend the board crate does not link is the entry's
+    // own direct path dependency, registered through the macro's `(image)`
+    // arm ([`render_source`]). Not on a west half: the west build's backend
+    // dependency below is D15's dependency there (amended ruling 2).
+    if spec.west.is_none() {
+        out.push_str(&image_backend_lines(spec, board, entry_dir)?);
+    }
+
     // Node packages, in launch order. Each is an rlib the macro's emitted
     // `register()` calls reach; `default-features = false` keeps a node from
     // dragging a platform choice into an entry that already made one.
@@ -795,6 +803,68 @@ pub fn render_manifest(
         }
     }
     Ok(out)
+}
+
+/// RFC-0071 D15 — the `[dependencies]` lines for the backends the board crate
+/// does not link ([`crate::orchestration::facade::EntrySelection::image_backends`]):
+/// a path dependency on each one's `[rmw.provides.cargo] crate`,
+/// `default-features = false`, with the edition and capability features the
+/// selection derived plus the board's `platform_feature` when the crate
+/// declares it. A carried refusal (a cmake-only backend, a crate whose name
+/// does not match) is returned here, where the image is known to have no west
+/// half. A crate the bringup already names directly (a bridge's backend) is
+/// not named twice.
+fn image_backend_lines(
+    spec: &EntrySpec,
+    board: &BoardFacts,
+    entry_dir: &Path,
+) -> Result<String, String> {
+    let Some(selection) = &spec.selection else {
+        return Ok(String::new());
+    };
+    let named: Vec<String> = spec
+        .bringup_deps
+        .iter()
+        .chain(board.crate_root_deps.iter())
+        .filter_map(|l| l.split_once('=').map(|(k, _)| k.trim().to_string()))
+        .collect();
+    let mut out = String::new();
+    for row in &selection.image_backends {
+        let b = row.clone()?;
+        if named.contains(&b.krate) {
+            continue;
+        }
+        let mut features = b.features.clone();
+        if crate::orchestration::facade::crate_declares_feature(&b.dir, &board.platform_feature) {
+            features.push(board.platform_feature.clone());
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        features.retain(|f| seen.insert(f.clone()));
+        let rel = relative_or_err(entry_dir, &b.dir)?;
+        let line = format!(
+            "{} = {{ path = \"{rel}\", default-features = false, features = [{}] }}",
+            b.krate,
+            quoted_list(&features)
+        );
+        out.push_str(&mark_derived(&line, &features));
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// RFC-0071 D15 — the D15 backends this generated entry registers itself,
+/// or none on a west half.
+fn image_registered_backends(
+    spec: &EntrySpec,
+) -> Vec<crate::orchestration::backend_link::ImageBackend> {
+    if spec.west.is_some() {
+        return Vec::new();
+    }
+    spec.selection
+        .iter()
+        .flat_map(|s| s.image_backends.iter())
+        .filter_map(|r| r.as_ref().ok().cloned())
+        .collect()
 }
 
 /// `"a", "b"` — a TOML array body.
@@ -942,7 +1012,16 @@ pub fn render_source(spec: &EntrySpec, board: &BoardFacts) -> String {
     {
         out.push_str(DERIVED_SOURCE_BEGIN);
         out.push('\n');
-        out.push_str(sel.registration.trim_end());
+        // RFC-0071 D15 — the `(image)` arm, only when the image links a
+        // backend the board does not; otherwise byte-identical.
+        let registration = crate::orchestration::backend_link::with_image_arm(
+            &sel.registration,
+            &crate::orchestration::backend_link::image_arm(
+                &image_registered_backends(spec),
+                crate::orchestration::backend_link::Root::Direct,
+            ),
+        );
+        out.push_str(registration.trim_end());
         out.push('\n');
         out.push_str(DERIVED_SOURCE_END);
         out.push_str("\n\n");
@@ -1072,6 +1151,7 @@ mod tests {
             registration:
                 "#[allow(unused_macros)]\nmacro_rules! __nros_register_backends { () => {{}}; }\n"
                     .into(),
+            image_backends: Vec::new(),
         });
         let m = render_manifest(
             &s,
@@ -1186,6 +1266,165 @@ mod tests {
     }
 
     const DIR: &str = "/ws/build/posix-zenoh/linux_entry";
+
+    // ---- RFC-0071 D15 (phase-545 W2) ---------------------------------------
+
+    fn d15_sys(
+        image: &str,
+        rmw: &str,
+        extra: &str,
+    ) -> crate::orchestration::cargo_metadata_schema::SystemToml {
+        toml::from_str(&format!(
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+             features = [\"safety\"]\n{extra}\n[image.{image}]\nboard = \"linux\"\nrmw = \"{rmw}\"\n"
+        ))
+        .unwrap()
+    }
+
+    /// `spec()` for `image`, against this checkout, with the selection the
+    /// facade derives through `rmws` for `board_crate`.
+    fn d15_spec(
+        rmws: &crate::orchestration::rmw_index::RmwIndex,
+        image: &str,
+        sys: &crate::orchestration::cargo_metadata_schema::SystemToml,
+        board_crate: &str,
+    ) -> EntrySpec {
+        let root = cargo_nano_ros::rmw_resolver::test_support::checkout();
+        let board = root.join("packages/boards").join(board_crate);
+        let mut s = spec();
+        s.image_id = image.to_string();
+        s.nano_ros_root = root.clone();
+        s.nodes.clear();
+        s.selection = Some(
+            crate::orchestration::facade::entry_selection_in(
+                rmws,
+                &package_name(image),
+                sys,
+                &root,
+                Some(&board),
+            )
+            .expect("selection"),
+        );
+        s
+    }
+
+    /// D15 — an out-of-tree `acme` on a board with no `rmw-acme`: the entry
+    /// path-depends on the descriptor's crate at the scan's directory, with
+    /// the edition, its capability feature and the board's platform feature,
+    /// and the macro's `(image)` arm registers it.
+    #[test]
+    fn an_out_of_tree_backend_is_the_entrys_own_dependency_and_registration() {
+        let ws = tempfile::tempdir().unwrap();
+        let idx = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let sys = d15_sys("linux_acme", "acme", "");
+        let s = d15_spec(&idx, "linux_acme", &sys, "nros-board-linux");
+        let entry_dir = ws.path().join("build/posix-acme/linux_acme_entry");
+        let m = render_manifest(&s, &hosted(), &entry_dir).expect("renders");
+        let line = m
+            .lines()
+            .find(|l| l.starts_with("acme-rmw = "))
+            .unwrap_or_else(|| panic!("no acme-rmw dependency: {m}"));
+        assert!(
+            line.contains("path = \"../../../src/acme_rmw\"")
+                && line.contains("default-features = false")
+                && line.contains("\"ros-humble\"")
+                && line.contains("\"acme-safety\"")
+                && line.contains("\"platform-posix\""),
+            "{line}"
+        );
+        let doc: toml::Value = toml::from_str(&m).expect("a manifest");
+        assert!(doc["dependencies"].get("acme-rmw").is_some());
+        let src = render_source(&s, &hosted());
+        assert!(
+            src.contains("    (image) => {{\n        let _ = ::acme_rmw::register();\n    }};"),
+            "{src}"
+        );
+        // The bridge arm is unchanged and still names it (a direct dep now).
+        assert!(
+            src.contains("() => {{\n        let _ = ::acme_rmw::register();"),
+            "{src}"
+        );
+    }
+
+    /// D15 — an in-tree linux image: the board links zenoh, so nothing is
+    /// added and the registration is the facade's, byte for byte.
+    #[test]
+    fn an_in_tree_image_gains_no_dependency_and_no_image_arm() {
+        let idx = cargo_nano_ros::rmw_resolver::test_support::in_tree_index();
+        let sys = d15_sys("linux", "zenoh", "");
+        let s = d15_spec(&idx, "linux", &sys, "nros-board-linux");
+        let sel = s.selection.clone().unwrap();
+        assert!(sel.image_backends.is_empty(), "{:?}", sel.image_backends);
+        let m = render_manifest(&s, &hosted(), Path::new(DIR)).expect("renders");
+        assert!(!m.contains("nros-rmw-zenoh"), "{m}");
+        let src = render_source(&s, &hosted());
+        assert!(!src.contains("(image)"), "{src}");
+        assert!(src.contains(sel.registration.trim_end()), "{src}");
+    }
+
+    /// D15 — a linux bridge still registers its `bridge_entry_deps` through
+    /// the unchanged `()` arm; the board links both backends, so there is no
+    /// `(image)` arm.
+    #[test]
+    fn a_bridge_image_still_registers_its_bridge_backends() {
+        let idx = cargo_nano_ros::rmw_resolver::test_support::in_tree_index();
+        let sys = d15_sys(
+            "linux",
+            "zenoh",
+            "\n[[domain]]\nname = \"zen\"\nrmw = \"zenoh\"\n\n\
+             [[domain]]\nname = \"dds\"\nrmw = \"cyclonedds\"\n\n\
+             [[bridge]]\nname = \"gw\"\nfrom = \"zenoh:zen\"\nto = \"cyclonedds:dds\"\n",
+        );
+        let s = d15_spec(&idx, "linux", &sys, "nros-board-linux");
+        assert!(s.selection.as_ref().unwrap().image_backends.is_empty());
+        let src = render_source(&s, &hosted());
+        assert!(!src.contains("(image)"), "{src}");
+        let unit = src.split("(gated)").next().unwrap();
+        assert!(
+            unit.contains("let _ = ::nros_rmw_zenoh::register();")
+                && unit.contains("let _ = ::nros_rmw_cyclonedds_sys::register();"),
+            "{src}"
+        );
+    }
+
+    /// D15 / amended ruling 3 — cyclonedds names no `crate`, so on a board
+    /// without `rmw-cyclonedds` a cargo-rooted image is refused with D7's
+    /// message. With a west half the west build's dependency is D15's and
+    /// nothing is refused.
+    #[test]
+    fn a_cmake_only_backend_the_board_does_not_link_is_refused() {
+        let idx = cargo_nano_ros::rmw_resolver::test_support::in_tree_index();
+        let sys = d15_sys("freertos", "cyclonedds", "");
+        let mut s = d15_spec(&idx, "freertos", &sys, "nros-board-mps2-an385-freertos");
+        let e = render_manifest(&s, &freertos(), Path::new(DIR)).unwrap_err();
+        assert!(
+            e.contains("backend `cyclonedds` provides only a cmake target")
+                && e.contains("`sys_crate` bridge"),
+            "{e}"
+        );
+        s.west = Some(crate::builder::west_app::WestApp::default());
+        render_manifest(&s, &freertos(), Path::new(DIR)).expect("a west half is not D15's");
+        assert!(!render_source(&s, &freertos()).contains("(image)"));
+    }
+
+    /// D15 / amended ruling 3 — a crate whose directory holds another package
+    /// is refused when the entry is written.
+    #[test]
+    fn a_backend_crate_name_mismatch_is_refused_for_the_entry() {
+        let ws = tempfile::tempdir().unwrap();
+        let idx = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let manifest = ws.path().join("src/acme_rmw/Cargo.toml");
+        let raw = std::fs::read_to_string(&manifest).unwrap();
+        std::fs::write(
+            &manifest,
+            raw.replace("name = \"acme-rmw\"", "name = \"other-rmw\""),
+        )
+        .unwrap();
+        let sys = d15_sys("linux_acme", "acme", "");
+        let s = d15_spec(&idx, "linux_acme", &sys, "nros-board-linux");
+        let e = render_manifest(&s, &hosted(), Path::new(DIR)).unwrap_err();
+        assert!(e.contains("is `other-rmw`"), "{e}");
+    }
 
     #[test]
     fn a_hosted_entry_is_a_bin_with_no_no_std() {
