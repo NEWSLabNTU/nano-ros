@@ -4067,6 +4067,7 @@ no-std:
 # reader of the process environment — is behind a non-default `env` feature for
 # the same reason, so its 11 tests were in no lane the hour they were written.
 # Same recipe, because it is the same defect class, not a new one.
+[group('uses:root-target')]
 node-std-tests:
     #!/usr/bin/env bash
     set -e
@@ -4444,6 +4445,7 @@ nros-log-riscv32:
 # `Executor::signal_fd()` had been dead on every Linux host (issue 0667). Same
 # thesis as the three above, one capability further out.
 [group("test")]
+[group('uses:root-target')]
 required-features-tests:
     #!/usr/bin/env bash
     set -e
@@ -4573,6 +4575,7 @@ sched-matrix:
 # wrapped here so `just check` runs the identical set. Compiles nros-tests, so
 # slower than the buildless gates but still a static/precondition check.
 [private]
+[group('uses:root-target')]
 source-gates:
     #!/usr/bin/env bash
     set -e
@@ -4629,6 +4632,7 @@ source-gates:
 # the `--allow-multiple-definition` masked dups are ONLY the shared Rust dep
 # closure (no app ODR violation). The `check.yml` staticlib step (SSoT).
 [private]
+[group('uses:root-target')]
 staticlib-symbols:
     #!/usr/bin/env bash
     set -e
@@ -4671,6 +4675,7 @@ staticlib-symbols:
 # while buildless gates stay green — twice in one session) is untouched: the
 # gate still runs, in the tier that can actually compile.
 [private]
+[group('uses:root-target')]
 test-targets:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -4752,6 +4757,7 @@ workspace: workspace-fmt
 # via `CARGO_BUILD_JOBS` so total parallelism stays bounded (same knob the
 # build recipes thread — no hardcoded `-j`). Both still run standalone.
 [private]
+[group('uses:root-target')]
 workspace-all:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -4845,6 +4851,7 @@ linux-check:
 
 # Check workspace with various feature combinations
 [private]
+[group('uses:root-target')]
 workspace-features:
     @echo "Checking feature combinations..."
     # Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature deleted; the

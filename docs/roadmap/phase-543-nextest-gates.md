@@ -301,10 +301,42 @@ as running nowhere, visibly.
   `third-party/nuttx/libc` was added to the file now (for `leaf-lockfiles`).
   W5 makes the lane's claims the one provisioning list.
 
-### W4 — Resources — IN PROGRESS
+### W4 — Resources — DONE (except order independence, moved to W5)
 
-The generated tool config (`writes:`, `cpu:`, `disk:`, `priority`), the fixed
-test groups, the disk preflight, the order-independence self-test.
+**Generated tool config — DONE.** `check-gate-lists.py --list nextest-config`
+writes `build/gates/nextest-gates.toml` on every `nextest-gates` run, passed as
+`--tool-config-file nros-gates:<path>`. It is derived from the recipes, so it
+cannot drift from them:
+
+- `[group('uses:<res>')]` puts every test of the gate (units included) in the
+  test group `"@tool:nros-gates:<res>"`. `max-threads` is `[resources]` in
+  `.config/gate-lanes.toml`. Tool groups must be quoted, since `@` is not a
+  bare TOML key. A test is in ONE group, so a gate may use one resource; the
+  generator refuses two.
+- First resource: `root-target = 2`, the root workspace's `target/`. Its seven
+  gates (`node-std-tests`, `required-features-tests`, `source-gates`,
+  `staticlib-symbols`, `test-targets`, `workspace-all`, `workspace-features`)
+  serialise on cargo's build-directory lock anyway. Bounding them keeps the
+  other slots for gates that can run.
+- `[group('cpu:<n>')]` becomes `threads-required = n`. No gate declares one yet.
+- The previous run's `junit.xml` gives `priority` (whole tens of seconds,
+  capped at 100), so the slowest test starts first. A missing or unreadable
+  junit means no priority. Never an error.
+- `check-gate-needs` refuses a `uses:` that `[resources]` does not list, a
+  non-integer `cpu:`, and a non-positive holder count. It does this by mutation
+  in its self-test.
+- Disk preflight: `nextest-gates` refuses to start with less than
+  `NROS_GATE_MIN_FREE_GIB` (default 30) free under the checkout or `$TMPDIR`,
+  and names the trim command. Unit fan-out stays bounded by free space as well
+  (`nros_gate_unit_jobs`, #3234).
+- `writes:` and `disk:` were dropped from the design. A write that collides is
+  a resource (`uses:`). Disk is bounded per unit by free space, which a static
+  declaration would only restate badly.
+
+**Order independence — NOT DONE, moved to W5.** nextest has no shuffle, and
+proving that verdicts do not depend on order needs two full runs in different
+orders (generated `priority` can reverse one). That is a lane, not a fast gate,
+so it belongs with the lane wrappers.
 
 **Cache trim — DONE (in its pull request).** Decided (maintainer, 2026-11-07):
 keep caches that runs use, remove the ones they do not.

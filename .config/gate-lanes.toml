@@ -27,6 +27,14 @@ nuttx = "the NuttX sources (NUTTX_DIR)"
 fsp = "the NVIDIA Orin SPE FSP tree (NV_SPE_FSP_DIR)"
 build-tree = "artifacts a fixture or image build produced"
 
+# Shared resources a gate USES, with how many gates may hold one at once
+# (`[group('uses:<res>')]` on the recipe; phase-543 W4). Each becomes a nextest
+# test group in the harness's generated config. A gate blocked on a cargo build
+# lock still holds a test slot, so bounding the holders keeps slots for gates
+# that can run.
+[resources]
+root-target = 2   # the root workspace's `target/` (cargo's build-directory lock)
+
 [lane.fast]
 # `check / fast` on the hosted runner: the ci-base image provides these.
 tiers = ["fast"]
