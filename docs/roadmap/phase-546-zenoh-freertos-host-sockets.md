@@ -1,12 +1,12 @@
 # Phase 546 — zenoh on the FreeRTOS POSIX board: a host-socket FreeRTOS arm
 
-**Status (2026-11-07). IN PROGRESS.** W1 to W4 are implemented and measured
-in the box; they land with the zenoh-pico fork commit W2 needs (the fork's
-`nano-ros-1.10.1` branch, then a pin bump). W5 waits on the book's zenoh
-variant of the FreeRTOS POSIX starter, W6 on the issue landing on `main`.
+**Status (2026-11-07). IN PROGRESS.** W1 to W4 and W6 are implemented and
+measured in the box; they land with the zenoh-pico fork commit W2 needs (the
+fork's `nano-ros-1.10.1` branch, then a pin bump). W5 waits on the book's zenoh
+variant of the FreeRTOS POSIX starter probe track.
 Implements [RFC-0109 Amendment 2026-11-07](../design/0109-network-config-layers.md#amendment-2026-11-07--the-stack-owner-selects-the-zenoh-pico-socket-arm-issue-2342)
 (D11). Closes
-[issue 2342](../issues/2342-zenoh-freertos-host-netstack-port.md).
+[issue 2342](../issues/archived/2342-zenoh-freertos-host-netstack-port.md).
 
 Maintainer ruling 2026-11-07: add a host-socket FreeRTOS arm for zenoh, do
 not refuse zenoh on the board.
@@ -102,9 +102,10 @@ passes. **Done in the box**; lands with the fork pin.
 
 - When the book's zenoh variant of the FreeRTOS POSIX starter probe track
   carries `awaits` naming issue 2342, drop the `awaits` (registry, then
-  regenerate). NOT STARTED: that variant is not on `main` yet.
+  regenerate). NOT STARTED: no probe track on `main` names issue 2342 yet
+  (the starter on `main` already scaffolds zenoh).
 
 ### W6 — Close issue 2342
 
 - Issue 2342 `status: resolved`, archived, `changelog.d/2342.feat.md`.
-  NOT STARTED: the issue lands with PR #3257.
+  **Done.**
