@@ -774,25 +774,10 @@ jobs:
       # then verify.
       - name: Provision the sources the fast-line source gates read
         timeout-minutes: 8
-        run: |
-          git submodule update --init --depth 1 \
-            packages/rmw/zenoh/zpico-sys/zenoh-pico \
-            packages/rmw/xrce/xrce-sys/micro-cdr \
-            packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
-            third-party/nuttx/libc
-          rev="$(awk '/- name: zephyr$/ { z = 1 } z && /revision:/ { print $2; exit }' west.yml)"
-          [ -n "$rev" ] || { echo "no zephyr revision in west.yml" >&2; exit 1; }
-          if [ ! -d zephyr-workspace/zephyr/lib/cpp/minimal/include ]; then
-            git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$rev" \
-              https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace/zephyr
-            git -C zephyr-workspace/zephyr sparse-checkout set lib/cpp/minimal/include
-          fi
-          # issue 1483 -- `check-python-entry-provenance` compares each
-          # `[python.*]` mirror with upstream rosidl's own package.xml, so it
-          # needs the pinned rosidl clone; without it the gate reports NOT
-          # VERIFIED, which the gate harness reports as a red.
-          source ./activate.sh
-          nros setup --source rosidl
+        # One script for every job that runs the `fast` lane: this step was
+        # two copies, and they drifted (issue 1483's rosidl clone reached only
+        # one, so the warm job went red once a skip became a red).
+        run: bash scripts/ci/provision-fast-lane.sh
 
       # phase-543 W6 — the `fast` lane of .config/gate-lanes.toml, through the
       # nextest harness. Its claims are what this image provides; a gate needing
@@ -3380,19 +3365,10 @@ jobs:
 
       - name: Provision the sources the fast-line source gates read
         timeout-minutes: 8
-        run: |
-          git submodule update --init --depth 1 \
-            packages/rmw/zenoh/zpico-sys/zenoh-pico \
-            packages/rmw/xrce/xrce-sys/micro-cdr \
-            packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
-            third-party/nuttx/libc
-          rev="$(awk '/- name: zephyr$/ { z = 1 } z && /revision:/ { print $2; exit }' west.yml)"
-          [ -n "$rev" ] || { echo "no zephyr revision in west.yml" >&2; exit 1; }
-          if [ ! -d zephyr-workspace/zephyr/lib/cpp/minimal/include ]; then
-            git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$rev" \
-              https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace/zephyr
-            git -C zephyr-workspace/zephyr sparse-checkout set lib/cpp/minimal/include
-          fi
+        # One script for every job that runs the `fast` lane: this step was
+        # two copies, and they drifted (issue 1483's rosidl clone reached only
+        # one, so the warm job went red once a skip became a red).
+        run: bash scripts/ci/provision-fast-lane.sh
 
       # NOT `continue-on-error`: this runs a gate, and `ci-ok` hears it
       # (`check-default-gates-run-somewhere`). The save below is `!cancelled()`
