@@ -544,6 +544,19 @@ from before W6.
     builds its RMW, keeping `platform`, `lang` and `rmw`. A row carrying a
     key a workspace row does not read (`features`, `cmake_defs`, `builder`,
     `target`, the `west_*` keys) is left alone and reported.
+- Two gaps the first Zephyr trial migration found, fixed in the tool:
+  - It wrote no `.colcon_workspace` marker at the new workspace root, so the
+    generated entry's `nros::main!` walked up to `.git/` and reported
+    `pkg not found ... Known pkgs: []`. The root now gets the marker
+    (an existing one stays where it is).
+  - It moved a west application's base `prj.conf` to the bringup root and
+    suggested naming it in `os_config`. That does nothing: the generated
+    application has a placeholder `prj.conf` of its own, which
+    `resolve_fragment` finds first. The file now goes to
+    `<bringup>/boards/<west board>/prj.conf`, the image's
+    APPLICATION_CONFIG_DIR, once per west board the images build for (the
+    board package through the catalog, `west_build_board`). A board that
+    does not resolve keeps the old move and is reported.
 - `fixtures-manifest.py validate-workspaces` accepts a bringup with no
   `launch/` and at least one `[[component]]` row: its launch file is
   generated (RFC-0121 D3).
