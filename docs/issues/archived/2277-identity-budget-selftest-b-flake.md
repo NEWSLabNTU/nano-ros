@@ -1,14 +1,16 @@
 ---
 id: 2277
 title: "`check-artifact-identity-budget --self-test` case (b) failed once inside `pristine-checkout`, then passed"
-status: open
+status: resolved
 type: bug
 area: gates, ci
 found: 2026-11-05
+resolved: 2026-11-07
+resolved_in: "check-artifact-identity-budget.sh: a fixture write that fails is a SETUP FAILED, not a case FAIL, and the live gate fails closed (window_ref)"
 related: [phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
 
 ## Measured
 
@@ -53,3 +55,21 @@ Two hypotheses, neither tested:
 Per CLAUDE.md, the fix is the race, not a retry. The run's evidence is in
 the phase-535 measuring checkout, `tmp/p535/w3r-gate-run1.log`, which is not
 committed.
+
+## Resolution (2026-11-07)
+
+**Cause** (reproduced by 133 p466): with `TMPDIR` full, a fixture write in the
+self-test fails. Case (b) then reported a false `FAIL` instead of naming the
+broken setup. The live gate had the same blind spot the other way: over an
+unfiltered count it said "ruled out" where it should have refused.
+
+**Fix** (`scripts/check-artifact-identity-budget.sh`):
+- `window_ref` makes the live gate fail closed;
+- a `set -E` + ERR trap reports a failed fixture write as `SETUP FAILED`, not a
+  case verdict;
+- `_st_gate` runs each case;
+- a new case (k) with a negative control covers the full-`TMPDIR` shape.
+
+The self-test passes 11/11, and the author's `just check fast` passed 524/524.
+The author's full `ci gate` run was stopped before it finished, so PR CI is the
+first full run.
