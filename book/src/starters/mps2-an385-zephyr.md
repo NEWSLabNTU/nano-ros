@@ -8,13 +8,14 @@
 > **Status:** Verified in emulator (daily). From the board support registry: [`nros-board-mps2-an385-zephyr`](../reference/boards/mps2-an385-zephyr.md); [Board Support Levels](../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED starter status -->
 
-This starter puts a Rust talker on Zephyr 3.7, on an emulated Arm Cortex-M3
+This starter puts a talker on Zephyr 3.7, on an emulated Arm Cortex-M3
 board, and shows its messages arriving in ROS 2. The board is Arm's
 MPS2-AN385 in QEMU, the board this book teaches nano-ros on: it costs nothing
 and behaves like a real microcontroller. Zephyr runs the talker with its own
 IP stack on the board's emulated SMSC911x ethernet. nano-ros is a Zephyr
 module here: `nros run` writes the Zephyr application for your image and
 builds it with Zephyr's `west`.
+You write the talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -103,6 +104,10 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
 ```bash probe=40 track=installed
 . "$HOME/.cargo/env"
 nros new zm_ws --board mps2-an385-zephyr --template talker --lang rust
@@ -110,18 +115,34 @@ cd zm_ws
 nros setup --sudo
 ```
 
-That wrote a workspace with two packages: `src/zm_node/`, the talker, a
-library with no `main()` that names no board, and `src/zm_node_bringup/`,
-which says what the talker runs on. The Zephyr application itself is
-generated under `build/` when you build, so you write no `CMakeLists.txt` and
-no `prj.conf`.
-
 A Rust application on Zephyr needs three things a C one does not: the Rust
 target the board implies (`thumbv7m-none-eabi`), rustup's `clippy` (Zephyr's
 Rust support lints every Rust app as it builds), and clang with libclang, for
 the bindings it generates from Zephyr's headers. `nros setup` in the
 workspace installs the target and `clippy`, and with `--sudo` the two
 packages. Without `--sudo` it prints the install command instead.
+
+### C
+
+```bash probe=40 track=installed
+nros new zm_ws --board mps2-an385-zephyr --template talker --lang c
+cd zm_ws
+```
+
+### C++
+
+```bash probe=40 track=installed
+nros new zm_ws --board mps2-an385-zephyr --template talker --lang cpp
+cd zm_ws
+```
+
+<!-- /tabs -->
+
+That wrote a workspace with two packages: `src/zm_node/`, the talker, a
+library with no `main()` that names no board, and `src/zm_node_bringup/`,
+which says what the talker runs on. The Zephyr application itself is
+generated under `build/` when you build, so you write no `CMakeLists.txt` and
+no `prj.conf`.
 
 ## Run it in QEMU
 

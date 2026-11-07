@@ -8,13 +8,14 @@
 > **Status:** Verified on host (merge). From the board support registry: [`nros-board-linux`](../reference/boards/linux.md); [Board Support Levels](../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED starter status -->
 
-This starter builds a C++ talker as an ordinary program on your Linux
+This starter builds a talker as an ordinary program on your Linux
 machine, runs it, and shows its messages arriving in ROS 2. It is the fastest
 way to try nano-ros: no emulator, no cross-compiler, and no router. The
 talker uses Cyclone DDS, which runs inside the talker's own process and finds
 its peers on the network the way any ROS 2 node does. The project has the
 same shape as every board's: change the board in the scaffold line and the
 same steps target an embedded board.
+You write the talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -54,17 +55,37 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
+```bash probe=40 track=installed
+nros new host_ws --board linux --template talker --lang rust --rmw cyclonedds
+cd host_ws
+```
+
+### C
+
+```bash probe=40 track=installed
+nros new host_ws --board linux --template talker --lang c --rmw cyclonedds
+cd host_ws
+```
+
+### C++
+
 ```bash probe=40 track=installed
 nros new host_ws --board linux --template talker --lang cpp --rmw cyclonedds
 cd host_ws
 ```
+
+<!-- /tabs -->
 
 That wrote a workspace with two packages:
 
 ```text
 host_ws/
 └── src/
-    ├── host_node/              # the talker: package.xml, CMakeLists.txt, its C++ source
+    ├── host_node/              # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
     └── host_node_bringup/      # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
