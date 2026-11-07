@@ -198,6 +198,21 @@ mod tests {
         assert!(bad.is_empty(), "issue 1581:\n  {}", bad.join("\n  "));
     }
 
+    /// Issue 2342 (phase-546) — the freertos-posix zenoh row's bringup states
+    /// its locator by hand while its test starts the router on `port_of`, so
+    /// the two are held equal here, without a fixture build.
+    #[test]
+    fn freertos_posix_zenoh_row_dials_its_allocator_port() {
+        let want = port_of(PlatformId::FreertosPosix, Lang::C, Workload::EntryPubsub);
+        let loc = baked_locator_in(&crate::project_root(), "workspace-c-freertos-posix-zenoh")
+            .unwrap_or_else(|e| panic!("issue 1581: {e}"));
+        assert_eq!(
+            locator_port(&loc),
+            Some(want),
+            "issue 1581: workspace-c-freertos-posix-zenoh bakes `{loc}`, cell wants port {want}"
+        );
+    }
+
     /// Issue 1865 — the RTIC run-plan leaf dials its own allocator slot.
     /// `just qemu test-rtic-main-e2e` starts its router on whatever the leaf
     /// states, so the two cannot part; this holds the STATED port to the
