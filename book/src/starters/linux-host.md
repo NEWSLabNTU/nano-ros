@@ -102,7 +102,7 @@ later runs of `host_ws` need no sourced shell:
 
 ```bash probe=50 track=installed
 source /opt/ros/humble/setup.bash
-nros run host_node --expect 'Publishing:' --timeout 120
+nros run host_node --expect "Publishing: 'Hello World: 1'" --timeout 120
 ```
 
 `nros run` builds the talker (the first build compiles nano-ros, a minute or

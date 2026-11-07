@@ -127,7 +127,7 @@ prefix in the workspace, so a later build of it needs no sourced shell. The
 router still does, because it is a ROS 2 program.
 
 ```bash probe=50 probe-run=1500 track=installed variant=qemu
-nros run sensor_node --expect 'Publishing:'
+nros run sensor_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=50 variant=qemu

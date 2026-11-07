@@ -156,7 +156,7 @@ comes from ROS 2):
 
 ```bash probe=50 probe-run=1500
 source /opt/ros/humble/setup.bash
-nros run zs_node --expect 'Publishing:'
+nros run zs_node --expect "Publishing: 'Hello World: 1'"
 ```
 
 ```text probe-expect=50
