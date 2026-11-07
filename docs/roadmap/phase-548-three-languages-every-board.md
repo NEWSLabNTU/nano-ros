@@ -226,6 +226,30 @@ entry's start-up path on this board).
 
 **Acceptance:** the C++ cell is green.
 
+**Done (2026-11-07).** Two separate things looked like one:
+
+- With no router reachable, `rclcpp::init_in` returns `TransportError`
+  (-100), and `c_app_main` returns at once. The console said nothing about
+  why. It now prints `[app_thread] c_app_main returned, exit code 156` (the
+  status as an exit code, `-100 & 0xff`), and with W4b the run ends with it.
+  With a router on 7447 the image does not return.
+- With a router, the talker printed `Hello World: 1` and then went silent:
+  issue 2340, the same bug. The riscv64 port's `TX_DISABLE` asm was not
+  `volatile`, so GCC hoisted it out of a zero-trip loop in
+  `_tx_mutex_delete`, and that function returned with interrupts masked.
+  newlib deletes a mutex inside `printf`, so after the first print the tick
+  stopped. The fix is in
+  `packages/boards/nros-board-threadx-port-riscv64/port/inc/tx_port.h`.
+  Measured: the scaffolded C++ talker prints `Hello World: 1` to `10` in
+  10.1 s.
+- A third bug turned up while proving the lane: issue 2357. The C service
+  pair on this board went red after an edit to `threadx_hooks.c`, because
+  the server and the client opened their sessions with one zenoh ZID, and
+  the router refused the second. The board's RNG seed came from the
+  configured address, which every image of a pair shares. It now also folds
+  in the virtio device MAC and the CLINT counter. Measured: the cell passes
+  3 of 3 runs, 1.8 s each.
+
 ### W4b — A board fault or an early return ends the QEMU run
 
 **Code area:** the ThreadX qemu riscv64 board's trap handler and app thread
@@ -241,6 +265,24 @@ learns that the emulator stopped.
 
 **Acceptance:** a deliberate fault, and a `c_app_main` that returns, each end
 the run with a non-zero status within seconds.
+
+**Done (2026-11-07).** `trap.c` ends QEMU through the `virt` machine's SiFive
+test finisher (0x100000): a trap ends it with status 134, after the register
+dump and the line `[EXCEPTION] ending the run (exit status 134)`. The board's
+strong `nros_board_app_returned` ends it with the app's own exit code (0 for
+success, as on threadx-linux), after
+`[app_thread] c_app_main returned, exit code N`. Measured with `nros run …
+--timeout 120`:
+- a deliberate store fault in the talker's second tick ends the run after
+  2.1 s: `the target exited with code 1`;
+- `c_app_main` returning with no router ends it after 0.1 s.
+
+Found on the way: issue 2355 (`nros-c`'s `critical_section` impl drops the
+restore token on non-arm targets).
+
+QEMU itself exits with the code (156 for the no-router return). `nros run`
+reports 1, because a runner's exit is the 0/1/2 contract
+(`nros_extension::exit`). The status is on the console in both cases.
 
 ### W5 — `nros setup` outside a checkout reads the current index
 
@@ -384,4 +426,4 @@ std_msgs/msg/String --qos-reliability best_effort` beside it.
 | issue | why it belongs here |
 | --- | --- |
 | [#2313](../issues/2313-zephyr-generated-rust-entry-cannot-run-cyclone.md) | A generated Rust Zephyr entry cannot run Cyclone DDS: the Rust cell on every Zephyr board with Cyclone, beside issue 2354. |
-| [#2340](../issues/2340-threadx-riscv64-generated-cpp-talker-hangs-after-first-publish.md) | The generated C++ talker on threadx-riscv64 publishes once then spins: the C++ cell of W4 on that board. |
+| [#2340](../issues/archived/2340-threadx-riscv64-generated-cpp-talker-hangs-after-first-publish.md) | RESOLVED 2026-11-07 by W4. The generated C++ talker on threadx-riscv64 publishes once then spins: the C++ cell of W4 on that board. |

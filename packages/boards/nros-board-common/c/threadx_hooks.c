@@ -263,6 +263,36 @@ void nros_app_main_returned(int exit_code)
     c_app_exit_code = exit_code;
 }
 
+/* "[app_thread] <what> returned, exit code <n>\n" — the status is the only
+ * reason a C/C++ app that returns early has to give (phase-548 W4: a C++
+ * talker on rv-virt-threadx returned at once, and the console said only
+ * "c_app_main returned"). Formatted by hand: this file is built on boards
+ * whose libc is not ours to assume. */
+static void log_app_returned(const char *what, int exit_code)
+{
+    /* ONE call: a board's `nros_board_log` may end every call with a line
+     * break (rv-virt-threadx does). */
+    static const char head[] = "[app_thread] ";
+    static const char mid[] = " returned, exit code ";
+    char line[96];
+    size_t n = 0;
+    for (const char *p = head; *p && n < sizeof(line) - 16; p++) line[n++] = *p;
+    for (const char *p = what; *p && n < sizeof(line) - 40; p++) line[n++] = *p;
+    for (const char *p = mid; *p && n < sizeof(line) - 16; p++) line[n++] = *p;
+    char num[12];
+    int i = (int)sizeof(num);
+    unsigned int v = exit_code < 0 ? 0u - (unsigned int)exit_code : (unsigned int)exit_code;
+    do {
+        num[--i] = (char)('0' + v % 10u);
+        v /= 10u;
+    } while (v != 0u && i > 1);
+    if (exit_code < 0) num[--i] = '-';
+    while (i < (int)sizeof(num)) line[n++] = num[i++];
+    line[n++] = '\n';
+    line[n] = '\0';
+    nros_board_log(line);
+}
+
 /* ---- App thread entry: invokes Rust callback or C/C++ app_main ---- */
 static void app_thread_entry(ULONG input)
 {
@@ -278,7 +308,7 @@ static void app_thread_entry(ULONG input)
     if (c_app_main) {
         nros_board_log("[app_thread] Calling c_app_main (FFI)...\n");
         c_app_main();
-        nros_board_log("[app_thread] c_app_main returned\n");
+        log_app_returned("c_app_main", c_app_exit_code);
         nros_board_app_returned(c_app_exit_code);
         return;
     }
@@ -286,7 +316,7 @@ static void app_thread_entry(ULONG input)
     if (app_main) {
         nros_board_log("[app_thread] Calling app_main (weak)...\n");
         app_main();
-        nros_board_log("[app_thread] app_main returned\n");
+        log_app_returned("app_main", c_app_exit_code);
         nros_board_app_returned(c_app_exit_code);
         return;
     }

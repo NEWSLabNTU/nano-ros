@@ -401,8 +401,11 @@ One PR per platform directory, each rebuilding its own lane.
     first unbuffered `fprintf`.
   - issue 2336 (open): an image's `os_config` network file is per CONFIGURE,
     so two images of one configure link one address.
-  - issue 2340 (open): the generated C++ talker publishes once and hangs, so
-    the C++ pubsub cell keeps its leaves.
+  - issue 2340 (resolved by phase-548 W4): the generated C++ talker
+    published once and hung, because the riscv64 port's `TX_DISABLE` asm
+    was not `volatile` and `_tx_mutex_delete` returned with interrupts
+    masked. The C++ pubsub cell still resolves its leaves; adding the
+    workspace C++ pubsub images is now unblocked.
 
 The coverage ratchet (`check-example-coverage-ratchet`) does not count the
 RMW: a tuple is (platform, lang, driver, shape, launch, entry), so a move

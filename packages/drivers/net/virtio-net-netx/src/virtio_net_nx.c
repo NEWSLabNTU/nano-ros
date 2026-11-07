@@ -91,6 +91,55 @@ static int  virtio_net_isr(int irqno);
 static void rx_fill_initial(void);
 
 /* --------------------------------------------------------------------------
+ * Device discovery -- shared by the driver and `virtio_net_nx_read_mac`
+ * ----------------------------------------------------------------------- */
+
+/* Scan all 8 QEMU virt MMIO slots for the first virtio-net device. Reads
+ * only the identification registers. */
+static int find_net_device(uint64_t *base_out, uint32_t *ver_out)
+{
+    for (uint64_t scan = 0x10001000; scan <= 0x10008000; scan += 0x1000) {
+        uint32_t magic = virtio_mmio_read32(scan, VIRTIO_MMIO_MAGIC_VALUE);
+        uint32_t ver   = virtio_mmio_read32(scan, VIRTIO_MMIO_VERSION);
+        uint32_t devid = virtio_mmio_read32(scan, VIRTIO_MMIO_DEVICE_ID);
+#if VIRTIO_DEBUG
+        uart_puts("  "); dbg_hex64(scan);
+        uart_puts(" magic="); dbg_hex32(magic);
+        uart_puts(" ver="); dbg_hex32(ver);
+        uart_puts(" devid="); dbg_hex32(devid);
+        uart_puts("\n");
+#endif
+        if (magic == VIRTIO_MMIO_MAGIC && (ver == 1 || ver == 2) && devid == VIRTIO_DEV_NET) {
+            *base_out = scan;
+            *ver_out = ver;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+/* The MAC sits at the start of the device config space (offset 0x100). */
+static void read_config_mac(uint64_t base, uint8_t mac[6])
+{
+    for (int i = 0; i < 6; i++) {
+        /* Each byte at config + i; read 32-bit and mask */
+        uint32_t val = virtio_mmio_read32(base, VIRTIO_MMIO_CONFIG + (i & ~3));
+        mac[i] = (uint8_t)(val >> (8 * (i & 3)));
+    }
+}
+
+int virtio_net_nx_read_mac(unsigned char mac[6])
+{
+    uint64_t base;
+    uint32_t ver;
+    if (mac == NULL || find_net_device(&base, &ver) != 0) {
+        return -1;
+    }
+    read_config_mac(base, mac);
+    return 0;
+}
+
+/* --------------------------------------------------------------------------
  * Public API
  * ----------------------------------------------------------------------- */
 
@@ -159,36 +208,19 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
     UINT          iface_idx  = iface->nx_interface_index;
     uint64_t      base       = driver_config.mmio_base;
 
-    /* 1. Probe VirtIO MMIO device.
-     * Scan all 8 QEMU virt MMIO slots to find the net device. */
+    /* 1. Probe VirtIO MMIO device. */
     {
-        int found = 0;
-        for (uint64_t scan = 0x10001000; scan <= 0x10008000; scan += 0x1000) {
-            uint32_t magic = virtio_mmio_read32(scan, VIRTIO_MMIO_MAGIC_VALUE);
-            uint32_t ver   = virtio_mmio_read32(scan, VIRTIO_MMIO_VERSION);
-            uint32_t devid = virtio_mmio_read32(scan, VIRTIO_MMIO_DEVICE_ID);
-#if VIRTIO_DEBUG
-            uart_puts("  "); dbg_hex64(scan);
-            uart_puts(" magic="); dbg_hex32(magic);
-            uart_puts(" ver="); dbg_hex32(ver);
-            uart_puts(" devid="); dbg_hex32(devid);
-            uart_puts("\n");
-#endif
-            if (magic == VIRTIO_MMIO_MAGIC && (ver == 1 || ver == 2) && devid == VIRTIO_DEV_NET && !found) {
-                base = scan;
-                driver_config.mmio_base = base;
-                driver_config.irq_num = (int)((scan - 0x10000000) / 0x1000);
-                virtio_net_hdr_size = (ver == 2) ? VIRTIO_NET_HDR_SIZE_V2 : VIRTIO_NET_HDR_SIZE_V1;
-                extern uint32_t virtio_mmio_version;
-                virtio_mmio_version = ver;
-                found = 1;
-            }
-        }
-        if (!found) {
+        uint32_t ver = 0;
+        if (find_net_device(&base, &ver) != 0) {
             uart_puts("[virtio] ERROR: no net device found\n");
             driver_req->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
             return;
         }
+        driver_config.mmio_base = base;
+        driver_config.irq_num = (int)((base - 0x10000000) / 0x1000);
+        virtio_net_hdr_size = (ver == 2) ? VIRTIO_NET_HDR_SIZE_V2 : VIRTIO_NET_HDR_SIZE_V1;
+        extern uint32_t virtio_mmio_version;
+        virtio_mmio_version = ver;
     }
 
     /* 2. Reset and set ACKNOWLEDGE + DRIVER */
@@ -222,12 +254,7 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
 
     /* 6. Read MAC address from device config space (offset 0x100) */
     if (features & VIRTIO_NET_F_MAC) {
-        for (int i = 0; i < 6; i++) {
-            /* Each byte at config + i; read 32-bit and mask */
-            uint32_t val = virtio_mmio_read32(base,
-                VIRTIO_MMIO_CONFIG + (i & ~3));
-            device_mac[i] = (uint8_t)(val >> (8 * (i & 3)));
-        }
+        read_config_mac(base, device_mac);
     } else {
         /* Fallback MAC: locally administered */
         device_mac[0] = 0x52;

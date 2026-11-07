@@ -18,6 +18,11 @@
 #define TICKNUM_PER_SECOND  10000000
 #define TICKNUM_PER_TIMER   (TICKNUM_PER_SECOND / 100)  /* 100 Hz */
 
+uint64_t hwtimer_now(void)
+{
+    return *((volatile uint64_t *)CLINT_TIME);
+}
+
 int hwtimer_init(void)
 {
     int hart = riscv_get_core();

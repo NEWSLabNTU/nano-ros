@@ -278,11 +278,22 @@ ULONG64                                         _tx_thread_interrupt_control(uns
 #else
 
 #define TX_INTERRUPT_SAVE_AREA                  ULONG64 interrupt_save;
-/* Atomically read mstatus into interrupt_save and clear bit 3 of mstatus.  */
-#define TX_DISABLE                              {__asm__ ("csrrci %0, mstatus, 0x08" : "=r" (interrupt_save) : );};
+/* Atomically read mstatus into interrupt_save and clear bit 3 of mstatus.
+ *
+ * phase-548 W4 / issue 2340 — `volatile` and the "memory" clobber are
+ * load-bearing, and upstream ThreadX 6.4.1's risc-v64/gnu port has neither.
+ * An asm with an output and no `volatile` is a pure expression to GCC, so it
+ * may be hoisted, merged or dropped. Measured in `_tx_mutex_delete`: the
+ * TX_DISABLE at the top of the "resume suspended threads" loop was hoisted
+ * out of it, so with no thread suspended on the mutex the function returned
+ * with mstatus.MIE clear. newlib deletes a mutex on every `__sbprintf`, so the
+ * first `printf` from a thread masked interrupts for good: the tick stopped
+ * and the C++ talker published once. Without the clobber, the protected
+ * loads and stores may also move across the lockout. */
+#define TX_DISABLE                              {__asm__ volatile ("csrrci %0, mstatus, 0x08" : "=r" (interrupt_save) : : "memory");};
 /* We only care about mstatus.mie (bit 3), so mask interrupt_save and write to mstatus.  */
 #define TX_RESTORE                              {register ULONG64 __tempmask = interrupt_save & 0x08; \
-                                                __asm__ ("csrrs x0, mstatus, %0 \n\t" : : "r" (__tempmask) : );};
+                                                __asm__ volatile ("csrrs x0, mstatus, %0 \n\t" : : "r" (__tempmask) : "memory");};
 
 #endif
 

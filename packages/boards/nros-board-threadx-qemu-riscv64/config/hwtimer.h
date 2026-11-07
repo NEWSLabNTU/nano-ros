@@ -21,4 +21,7 @@ int hwtimer_init(void);
 
 int hwtimer_handler(void);
 
+/* The CLINT `mtime` counter (10 MHz, free-running since the machine started). */
+uint64_t hwtimer_now(void);
+
 #endif

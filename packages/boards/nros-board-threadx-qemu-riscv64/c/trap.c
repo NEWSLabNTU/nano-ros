@@ -32,6 +32,28 @@ static void print_hex(uintptr_t val)
     uart_puts(buf);
 }
 
+/* phase-548 W4b — end the emulator with a status instead of spinning.
+ *
+ * QEMU's `virt` machine has a SiFive test finisher at 0x100000: 0x5555 exits
+ * QEMU with status 0, and `(code << 16) | 0x3333` exits it with `code`. A
+ * board that spins after a fault or after its app returned left `nros run`
+ * (and every cell) waiting out its whole timeout, then reporting a timeout
+ * instead of what happened. A real `virt` target has no finisher; this board
+ * is QEMU's by definition. */
+#define NROS_RV_VIRT_TEST_FINISHER ((volatile uint32_t *) 0x100000u)
+
+/* The status a trap ends the run with: 128 + SIGABRT, the shape a host
+ * process's abnormal end has, so it never reads as the app's own code. */
+#define NROS_RV_VIRT_TRAP_EXIT_CODE 134
+
+void nros_rv_virt_exit(int code)
+{
+    uint32_t c = (uint32_t) code & 0xffffu;
+    *NROS_RV_VIRT_TEST_FINISHER = (c == 0u) ? 0x5555u : ((c << 16) | 0x3333u);
+    /* Not reached under QEMU. */
+    while (1) ;
+}
+
 void trap_handler(uintptr_t mcause, uintptr_t mepc, uintptr_t mtval)
 {
     if (OS_IS_INTERUPT(mcause)) {
@@ -42,13 +64,13 @@ void trap_handler(uintptr_t mcause, uintptr_t mepc, uintptr_t mtval)
             int ret = plic_irq_intr();
             if (ret) {
                 uart_puts("[INTERRUPT]: handler irq error!\n");
-                while (1) ;
+                nros_rv_virt_exit(NROS_RV_VIRT_TRAP_EXIT_CODE);
             }
         } else {
             uart_puts("[INTERRUPT]: unhandled interrupt, mcause=0x");
             print_hex(mcause);
             uart_puts("\n");
-            while (1) ;
+            nros_rv_virt_exit(NROS_RV_VIRT_TRAP_EXIT_CODE);
         }
     } else {
         uart_puts("\n[EXCEPTION] mcause=0x");
@@ -87,6 +109,7 @@ void trap_handler(uintptr_t mcause, uintptr_t mepc, uintptr_t mtval)
         uart_puts(" sp=0x"); print_hex(sp_val);
         uart_puts("\n");
 
-        while (1) ;
+        uart_puts("[EXCEPTION] ending the run (exit status 134)\n");
+        nros_rv_virt_exit(NROS_RV_VIRT_TRAP_EXIT_CODE);
     }
 }
