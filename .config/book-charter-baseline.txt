@@ -44,7 +44,8 @@ guide/build/organize-a-larger-workspace.md unprobed-steps=8    # probe coverage 
 guide/deploy/deploy-to-production.md unprobed-steps=5          # probe coverage follow-up
 guide/deploy/troubleshoot.md unprobed-steps=3                  # probe coverage follow-up
 guide/deploy/use-simulated-time.md unprobed-steps=3            # probe coverage follow-up
-guide/platforms/px4.md unprobed-steps=6                        # probe coverage follow-up
+guide/platforms/px4.md unprobed-steps=4                        # probe coverage follow-up
+guide/platforms/px4.md unadmitted-board                        # user ruling 2026-11-05: PX4 stays in Platforms until phase-542 makes px4-sitl Verified on host
 guide/port/move-a-ros2-project.md unprobed-steps=5             # probe coverage follow-up
 guide/port/port-a-cpp-node.md unprobed-steps=3                 # probe coverage follow-up
 guide/realtime/analyze-timing.md unprobed-steps=4              # probe coverage follow-up
