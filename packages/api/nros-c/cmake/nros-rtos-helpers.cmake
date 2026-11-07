@@ -68,10 +68,26 @@ set(_NROS_RTOS_HELPERS_INCLUDED TRUE)
 # resolves CMAKE_CURRENT_LIST_DIR against the caller).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosRustTool.cmake")
 
+#
+# phase-548 W9 — the sysroot is the PINNED toolchain's, the one every cargo
+# command of this build runs (issue 1914's `nros_pin_default_rust_toolchain`).
+# Asked before the pin, `rustc` answered with rustup's default for the
+# configure's cwd: outside this checkout that is whatever the host's default
+# is, and a default without `llvm-tools` (a bare `nightly`) has rust-lld but
+# no llvm-ar, so the RISC-V toolchain refused a host where `nros setup` had
+# provisioned the pin correctly. Idempotent, and a decision already made (an
+# override, `RUSTUP_TOOLCHAIN`, `-DRust_TOOLCHAIN`) is kept.
 function(nros_host_rustlib_bin out_var)
+    nros_pin_default_rust_toolchain()
     nros_rust_tool(_rustc rustc)
+    # An explicit `-DRust_TOOLCHAIN` is a CMake variable, not an environment
+    # one, so the rustup proxy would not see it: hand it over for this query.
+    set(_tc_env "")
+    if(DEFINED Rust_TOOLCHAIN AND "$ENV{RUSTUP_TOOLCHAIN}" STREQUAL "")
+        set(_tc_env "${CMAKE_COMMAND}" -E env "RUSTUP_TOOLCHAIN=${Rust_TOOLCHAIN}")
+    endif()
     execute_process(
-        COMMAND "${_rustc}" --print sysroot
+        COMMAND ${_tc_env} "${_rustc}" --print sysroot
         OUTPUT_VARIABLE _rust_sysroot
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)
