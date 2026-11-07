@@ -509,6 +509,10 @@ notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, s
 crate = "px4-sitl"
 external = "PX4-Autopilot"
 matrix_platform = "Px4"
+# phase-542 W0.2: no board crate here can say the flavour, so the row states
+# it. The module links nros-cpp, whose root is `#![no_std]`, built with no
+# `std` feature (NanoRosPx4Module.cmake).
+flavour = "no_std"
 book_run = "guide/platforms/px4.md#run-on-the-sitl-simulator"
 runs = "host"
 cadence = "manual"

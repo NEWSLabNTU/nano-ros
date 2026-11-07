@@ -1,7 +1,9 @@
 # Phase 542 — PX4 becomes a supported platform: registry evidence, a user-tier build, and every PX4 cell in a lane
 
-**Status (2026-11-06). OPEN — W0 (the registry questions) first; nothing
-started.** Implements the 2026-11-06 revision of
+**Status (2026-11-07). OPEN — W0 ruled (user, 2026-11-07); W1 on PR #3169.**
+W0.1 and W0.2 are applied on #3169: host + manual reads "Boots, manual", and
+the `px4-sitl` row states `flavour = "no_std"`, which `check-flavour-lanes`
+checks. W0.3 (a real Runtime cell, so the DDS domain window narrows) is W5's. Implements the 2026-11-06 revision of
 [RFC-0039](../design/0039-px4-integration-architecture.md), whose D1 states
 what "PX4 supported" means in RFC-0114 D10 status words: PX4 SITL reads
 **Verified on host (daily)**, and Pixhawk hardware reads **Boots on hardware,
@@ -69,7 +71,14 @@ SITL on a direct spawn; none of them plans the rest.
 Ownership: the maintainer owns PX4 as a Tier 1 framework (RFC-0113 D9), so
 each item's owner is the maintainer unless it names another.
 
-### W0 — The registry questions RFC-0114 D10 leaves open (S)
+### W0 — The registry questions RFC-0114 D10 leaves open (S) — RULED 2026-11-07
+
+**Rulings (user, 2026-11-07), recorded in RFC-0114's decision log:**
+(1) widen "Boots, manual (date)" to `runs = "host"`, no new word;
+(2) an external row with no board crate states its `flavour` in an explicit
+field that `check-flavour-lanes` reads, and the gate still checks it;
+(3) PX4 gets a real Runtime cell, which needs `alloc::domain_of`'s window
+narrowed so 12 or more platforms fit (W5).
 
 RFC-0114 D10 carries a note (2026-11-06) that these are open and owned here.
 Each needs a maintainer ruling, recorded in RFC-0114's decision log, before W1

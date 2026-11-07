@@ -38,6 +38,7 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 RUNS = ("none", "host", "emulator", "hardware")
 CADENCES = ("merge", "daily", "weekly", "manual")
 EMULATOR_KINDS = ("qemu", "renode", "fvp")  # free and open source only (RFC-0115 Amendment 1)
+FLAVOURS = ("std", "no_std")
 EVIDENCE_FIELDS = ("runs", "emulator", "hardware", "cadence", "last_run", "breadth")
 DEFAULT_STALE_DAYS = 120
 
@@ -165,6 +166,23 @@ def shape_errors(row: dict, platforms: set[str]) -> list[str]:
             errs.append(f"{where}: an infra row carries no evidence field, and this "
                         f"one has {', '.join(extra)}")
         return errs
+
+    # RFC-0114 D10, phase-542 W0.2 (user ruling 2026-11-07): an `external`
+    # row's board package lives in someone else's tree, so no crate here can
+    # say its std/no_std flavour. Such a row with a `matrix_platform` STATES
+    # it, and `check-flavour-lanes` reads the stated value; every other row's
+    # flavour is read from its crate, so it may not state one.
+    if "flavour" in row:
+        if not row.get("external"):
+            errs.append(f"{where}: `flavour` is only for an `external` row; this "
+                        "row's flavour is read from its board crate")
+        elif row["flavour"] not in FLAVOURS:
+            errs.append(f"{where}: `flavour` is one of {', '.join(FLAVOURS)} "
+                        f"(got {row['flavour']!r})")
+    elif row.get("external") and row.get("matrix_platform"):
+        errs.append(f"{where}: an `external` row with a `matrix_platform` states "
+                    "its `flavour` (\"std\" or \"no_std\"): no board crate here "
+                    "can say it")
 
     runs = row.get("runs")
     if runs not in RUNS:
@@ -393,6 +411,12 @@ def self_test() -> None:
     assert status_word(ok, True, today=today) == "Verified on host (merge)"
 
     assert shape_errors({**ok, "runs": "qemu"}, plats), "unknown runs must fail"
+    ext_ok = {**ok, "external": "elsewhere", "matrix_platform": "P", "flavour": "no_std"}
+    assert not shape_errors(ext_ok, plats), shape_errors(ext_ok, plats)
+    assert shape_errors({k: v for k, v in ext_ok.items() if k != "flavour"}, plats), \
+        "an external row with a matrix_platform must state its flavour"
+    assert shape_errors({**ext_ok, "flavour": "nostd"}, plats), "flavour value checked"
+    assert shape_errors({**ok, "flavour": "std"}, plats), "a crate row states no flavour"
     assert shape_errors({"crate": "e", "runs": "emulator", "cadence": "daily",
                          "breadth": "witness"}, plats), "emulator needs a machine"
     assert shape_errors({**ok, "emulator": "qemu"}, plats), "emulator needs kind:machine"
