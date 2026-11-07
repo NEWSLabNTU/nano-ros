@@ -6,7 +6,9 @@
 #
 # What it verifies is multi-node-linux.md's whole promise: `nros new --workspace`
 # scaffolds a C++ workspace that builds with two cmake commands and publishes
-# with NOTHING else running — no router, no daemon, no ROS 2 install. The
+# with NOTHING else running — no router, no daemon. It does need a ROS 2
+# install, sourced: the build generates its messages from it (issue 2275), so
+# it is sourced before the scaffold, the way the book orders it (issue 2346). The
 # previous version of this file asserted `zenohd` on PATH after `nros setup`,
 # which has been false since the router became ROS 2's `rmw_zenohd` (we ship
 # none) — the probe was green only while nothing re-ran it, and the first
@@ -27,6 +29,21 @@ source ./activate.sh
 command -v nros >/dev/null || { echo "PROBE FAIL: nros not on PATH after bootstrap+activate"; exit 1; }
 nros version
 command -v cmake >/dev/null || { echo "PROBE FAIL: cmake not present — the host-prereqs block must install it"; exit 1; }
+
+# Issue 2346 — source ROS 2 before the scaffold (which picks its edition from
+# it) and before configure (which refuses without it). The image is the
+# reader's ROS 2 host; a probe image without one fails here, by name.
+if [ -z "${AMENT_PREFIX_PATH:-}" ]; then
+    ros_setup="/opt/ros/${ROS_DISTRO:-jazzy}/setup.bash"
+    [ -f "$ros_setup" ] || { echo "PROBE FAIL: no ROS 2 install at $ros_setup — the quick start's reader has one (issue 2275)"; exit 1; }
+    # ROS's setup scripts are not `set -u`-clean; restore what the caller had.
+    case $- in *u*) had_nounset=1 ;; *) had_nounset="" ;; esac
+    set +u
+    # shellcheck disable=SC1090
+    . "$ros_setup"
+    if [ -n "$had_nounset" ]; then set -u; fi
+fi
+[ -n "${AMENT_PREFIX_PATH:-}" ] || { echo "PROBE FAIL: sourcing ROS 2 left AMENT_PREFIX_PATH unset"; exit 1; }
 
 # multi-node-linux.md, verbatim in spirit: scaffold outside the checkout, the
 # way a user would.

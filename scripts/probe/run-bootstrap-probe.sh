@@ -2,8 +2,8 @@
 # Clean-system bootstrap probe (issue #204).
 #
 # Executes the book's documented setup steps VERBATIM on a pristine
-# `ubuntu:24.04` container (nothing preinstalled beyond what the book's own
-# "host prerequisites" block installs), then asserts the first-node
+# `ros:jazzy` container — `ubuntu:24.04` plus ROS 2 Jazzy, nothing else beyond
+# what the book's own "host prerequisites" block installs (issue 2346), then asserts the first-node
 # chapter's documented outcome. Steps are extracted from the book by
 # extract-book-steps.py — the book is the single source of truth, so the
 # probe cannot drift from what users actually read.
@@ -16,7 +16,7 @@
 #   PROBE_CLONE_URL  clone source inside the container
 #                    (default: the local checkout, mounted read-only)
 #   PROBE_BRANCH     branch to clone (default: current branch)
-#   PROBE_IMAGE      container image (default: ubuntu:24.04)
+#   PROBE_IMAGE      container image (default: ros:jazzy for quickstart)
 #   PROBE_KEEP       set to 1 to keep the container on failure (debug)
 #   PROBE_TRACK      quickstart (default) | zenoh — which documented flow runs.
 #                    `zenoh` is the ROS-interop story (phase-368 follow-up):
@@ -89,7 +89,12 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 PROBE_TRACK="${PROBE_TRACK:-quickstart}"
 case "$PROBE_TRACK" in
-    quickstart) default_image="ubuntu:24.04" ;;
+    # Issue 2346 — a first build generates its messages from the reader's ROS 2
+    # install, and configure refuses an unset AMENT_PREFIX_PATH (issue 2275's
+    # standing ruling), so the reader this track stands for has ROS 2. The
+    # book's Install names it a prerequisite, not a step, so the image provides
+    # it: noble, the same base `ubuntu:24.04` was, plus Jazzy.
+    quickstart) default_image="ros:jazzy" ;;
     zenoh)      default_image="ros:humble" ;;
     # Resolved from the release workflow's `runs-on` below, once it is read.
     installed)  default_image="" ;;

@@ -28,7 +28,11 @@ set -q PYO3_USE_ABI3_FORWARD_COMPATIBILITY; or set -gx PYO3_USE_ABI3_FORWARD_COM
 # we leave AMENT/CMAKE prefix paths unset. The recipes that need ROS
 # either source it themselves (just/zephyr.just) or document the
 # requirement in their README.
-if test -f /opt/ros/humble/setup.fish
+# Issue 2346 — keep a ROS 2 the caller already sourced (any edition), as
+# activate.sh does.
+if set -q ROS_DISTRO; and set -q AMENT_PREFIX_PATH
+    true
+else if test -f /opt/ros/humble/setup.fish
     source /opt/ros/humble/setup.fish
 else if test -f /opt/ros/humble/setup.bash
     echo "activate.fish: fish shell — /opt/ros/humble/setup.bash exists but no setup.fish." >&2
