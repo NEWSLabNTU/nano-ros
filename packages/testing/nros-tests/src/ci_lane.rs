@@ -37,10 +37,15 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 21 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 12 | 11 | 21 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 46 | 40 | 75 % |
-//! | tier 3 | everything | 257 | 53 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 20 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 12 | 11 | 20 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 47 | 41 | 76 % |
+//! | tier 3 | everything | 258 | 54 | 100 % |
+//!
+//! Re-measured 2026-11-07 (phase-546, issue 2342): `FreertosPosix` gained a C
+//! zenoh cell on its own coordinate (`freertos-posix,c,zenoh`). Nightly takes it:
+//! 46 / 40 -> 47 / 41; tier 3 257 -> 258 cells over 53 -> 54 coordinates; tier 1
+//! and tier 2 did not move.
 //!
 //! Re-measured 2026-11-04 (phase-524 W4c): `ZephyrNucleoF767zi` joined with one
 //! cell (the Renode smoke cell) on its own coordinate
@@ -1134,7 +1139,7 @@ _tier-build:
         let documented = [
             (CiLane::Tier1, 25, 11),
             (CiLane::Tier2, 12, 11),
-            (CiLane::Tier2Nightly, 46, 40),
+            (CiLane::Tier2Nightly, 47, 41),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -1156,12 +1161,12 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 257,
-            "the table's tier-3 cell count (257) is stale; recomputed {total_cells}"
+            total_cells, 258,
+            "the table's tier-3 cell count (258) is stale; recomputed {total_cells}"
         );
         assert_eq!(
-            total_coords, 53,
-            "the table's tier-3 denominator (53 coordinates) is stale; recomputed \
+            total_coords, 54,
+            "the table's tier-3 denominator (54 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }
