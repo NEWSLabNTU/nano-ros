@@ -112,9 +112,9 @@ The installer downloads the newest release for your host, checks its
 checksum, and ends with lines like these:
 
 ```text
-nros-install: installed 0.6.0
-nros-install:   /home/you/.nros/sdk/nros/0.6.0
-nros-install:   /home/you/.nros/bin/nros -> /home/you/.nros/sdk/nros/0.6.0/bin/nros
+nros-install: installed 0.6.0-nros8
+nros-install:   /home/you/.nros/sdk/nros/0.6.0-nros8
+nros-install:   /home/you/.nros/bin/nros -> /home/you/.nros/sdk/nros/0.6.0-nros8/bin/nros
 
 nros-install: next →  nros setup <board>    (e.g. `nros setup linux`)
 ```
@@ -132,13 +132,16 @@ It prints the version of the command, of the code it generates, and of the
 libraries it was built with:
 
 ```text
-nros 0.6.0
+nros 0.6.0-nros8
 codegen version 18
 play_launch d9b79f2bf4505a04b5351c83e916aefaadaf805e
 ros-launch-manifest v0.2.0
 ```
 
-Your numbers are those of the release you installed.
+Your numbers are those of the release you installed. The first line is the
+release, suffix included: the same `0.6.0-nros8` the installer printed and a
+project's pin names. A `nros` built from a source checkout has no release, so
+it prints `0.6.0 (checkout build, no release version; …)` instead.
 
 ### 4. Provision your board
 
