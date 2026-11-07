@@ -318,7 +318,11 @@ own_artifacts() {
             for src in "$dir/src/$node"/src/*.c "$dir/src/$node"/src/*.cpp; do
                 [ -f "$src" ] || continue
                 rel="$(basename "$src")"
-                find "$dir/build" -path '*CMakeFiles*' -name "$rel.o" -newer "$stamp" 2>/dev/null
+                # Never the metadata probe's own build of the component (issue
+                # 2339): it compiles the emitted source too, so its object
+                # answered for an image whose own build had produced nothing.
+                find "$dir/build" -path '*CMakeFiles*' -not -path '*/nros-metadata/*' \
+                     -name "$rel.o" -newer "$stamp" 2>/dev/null
             done
             find "$dir/build" -path '*/deps/*' -name "lib${node}-*.rlib" -newer "$stamp" 2>/dev/null
         } | sed '/^$/d' | sort -u
@@ -355,6 +359,39 @@ own_artifacts() {
             done
         done < <(cargo_target_dirs "$dir")
     } | sed '/^$/d' | sort -u
+}
+
+# Issue 2339 — a workspace scaffold's build also runs the metadata probe, which
+# compiles the node against a generated probe entry and writes the node's
+# sidecar. A probe that fails is a sync NOTE ("no producer for <pkg>::<node>"),
+# so `nros configure` and `nros build` both exit 0 — and every C++ scaffold's
+# probe failed for weeks under a green gate, because the image built. The probe
+# is the scaffold compiled against a generated entry, so it is asked here: no
+# "no producer" note in the log, and a sidecar per node package written by THIS
+# build. Not a workspace (component mode, no `src/*/package.xml`): no probe.
+probe_ok() {
+    local variant="$1" dir="$2" stamp="$3" log="$4" pkg node fresh
+    [ "$(road_of "$dir")" = workspace ] || return 0
+    if grep -q 'no producer for' "$log"; then
+        echo "  $variant: FAIL — the metadata probe failed, though the image built" >&2
+        grep -n -m3 'no producer for' "$log" | sed 's/^/      /' >&2
+        echo "      ^ the node does not compile against its" >&2
+        echo "        generated probe entry, though the image built" >&2
+        echo "      full log: $log" >&2
+        return 1
+    fi
+    for pkg in "$dir"/src/*/; do
+        [ -f "$pkg/package.xml" ] || continue
+        node="$(basename "$pkg")"
+        case "$node" in *_bringup) continue ;; esac
+        fresh="$(find "$pkg/metadata" -maxdepth 1 -name '*.json' -newer "$stamp" 2>/dev/null | head -1)"
+        if [ -z "$fresh" ]; then
+            echo "  $variant: FAIL — no metadata sidecar under src/$node/metadata/ from this build" >&2
+            echo "      full log: $log" >&2
+            return 1
+        fi
+    done
+    return 0
 }
 
 run_one() {
@@ -433,6 +470,10 @@ run_one() {
         done < <(cargo_target_dirs "$dir")
         echo "        $dir/build  (cmake, depth 2, plus CMakeFiles/*.o for src/*)" >&2
         echo "      full log: $work/build.log" >&2
+        nros_gate_scratch_failed "$work"
+        return 1
+    fi
+    if ! probe_ok "$variant" "$dir" "$stamp" "$work/build.log"; then
         nros_gate_scratch_failed "$work"
         return 1
     fi

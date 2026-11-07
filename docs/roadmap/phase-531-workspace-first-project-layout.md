@@ -288,6 +288,12 @@ one), so "marks it generated" is not done here.
   packages from the bringup's default launch, or from the `[[component]]`
   rows when that launch is generated.
 
+  Follow-up (the C++ starters, issue 2339): the metadata probe takes a C++
+  component's shape from the verb that declared it. One `rclcpp` fallback
+  sent every scaffolded `nano_ros_add_node` class down the
+  construct-with-handle arm. `check-scaffold-builds` now fails a scaffold
+  whose probe fails: before, the image built, so the gate stayed green.
+
 **Acceptance:** `nros new sensor_ws --board mps2-an385-baremetal --template
 talker && cd sensor_ws && nros run sensor_node --expect 'Publishing: 0'`
 passes on QEMU. A workspace with two bringups naming one node refuses `nros run

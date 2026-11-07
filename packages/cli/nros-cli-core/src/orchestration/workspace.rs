@@ -154,7 +154,8 @@ pub struct CmakeNodeSummary {
     pub header: Option<String>,
     /// phase-308 W1 — `SHAPE rclcpp|configure`. Decides how the probe drives
     /// the declaration: call `configure(node)` directly, or go through the
-    /// rclcpp-compat factory. Defaults to `rclcpp` in the cmake verb.
+    /// rclcpp-compat factory. Always stated: the call's own, else its verb's
+    /// default ([`stated_shape`], issue 2339).
     pub shape: Option<String>,
     /// phase-308 W1 — the CMake library target the component's sources build
     /// into (`nros_components_register_node(<lib> …)`, or the node name for
@@ -582,9 +583,15 @@ impl ComponentDeclaration {
     }
 
     /// phase-308 W1 — how the probe drives the declaration path.
-    /// Defaults to `rclcpp`, matching the cmake verb's own default.
+    ///
+    /// The cmake scanners always state it, with the VERB's own default when
+    /// the call names none ([`stated_shape`]), because the two verbs disagree:
+    /// a single fallback here was `rclcpp` for every verb and routed each
+    /// `nano_ros_add_node` component — the shape `nros new` scaffolds — through
+    /// the construct-with-handle arm its class does not have (issue 2339). The
+    /// fallback below is reached only by a declaration no cmake verb produced.
     pub fn probe_shape(&self) -> &str {
-        self.shape.as_deref().unwrap_or("rclcpp")
+        self.shape.as_deref().unwrap_or(NODE_REGISTER_DEFAULT_SHAPE)
     }
 
     /// Absolute path to the `[metadata].source_metadata` file the
@@ -700,6 +707,23 @@ fn discover_package(root: &Path) -> Result<Package> {
 /// failing the whole discovery — partial information beats none for
 /// `nros metadata --build`. A future hardening pass can promote
 /// skipped-call diagnostics to warnings.
+/// The SHAPE `nano_ros_node_register` gives a call that names none, and so
+/// `nano_ros_add_node`, which forwards SHAPE only when given
+/// (`cmake/NanoRosNodeRegister.cmake`: `set(_nrc_shape "configure")`).
+pub(crate) const NODE_REGISTER_DEFAULT_SHAPE: &str = "configure";
+
+/// The SHAPE `nros_components_register_node` gives a call that names none
+/// (`cmake/NanoRosVerbs.cmake`: `set(_NCR_SHAPE rclcpp)`) — the IS-A-node shape
+/// upstream rclcpp components have.
+pub(crate) const REGISTER_NODE_DEFAULT_SHAPE: &str = "rclcpp";
+
+/// A scanned call's shape: the call's own value, lowercased as cmake lowercases
+/// it (`string(TOLOWER)`), else the verb's default. Issue 2339 — the probe must
+/// take the arm the image's entry takes, and the entry takes cmake's.
+fn stated_shape(explicit: Option<String>, verb_default: &str) -> Option<String> {
+    Some(explicit.map_or_else(|| verb_default.to_string(), |s| s.to_ascii_lowercase()))
+}
+
 fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<CmakeNodeSummary>> {
     let cmakelists = root.join("CMakeLists.txt");
     if !cmakelists.is_file() {
@@ -726,7 +750,7 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
             language,
             deploy_targets: args.multi("DEPLOY"),
             header: args.single("HEADER"),
-            shape: args.single("SHAPE"),
+            shape: stated_shape(args.single("SHAPE"), NODE_REGISTER_DEFAULT_SHAPE),
             // The library `nano_ros_node_register` builds is
             // `<PROJECT_NAME>_<NAME>_component` (NanoRosNodeRegister.cmake), NOT the
             // bare node name — and it exists under that name even in EXISTING_TARGET
@@ -861,7 +885,7 @@ fn parse_register_node_call(
         language,
         deploy_targets: deploy,
         header,
-        shape,
+        shape: stated_shape(shape, REGISTER_NODE_DEFAULT_SHAPE),
         library_target: target,
         manifest_path: cmakelists.to_path_buf(),
     })
@@ -983,7 +1007,7 @@ fn parse_add_node_call(
         language,
         deploy_targets: deploy,
         header,
-        shape,
+        shape: stated_shape(shape, NODE_REGISTER_DEFAULT_SHAPE),
         // `nano_ros_add_node(<name> …)` builds a target of that name.
         // Same naming as node_register: this verb forwards to it. Issue 0939.
         library_target: Some(component_library_target(package_name, &name)),
@@ -1848,13 +1872,84 @@ mod probe_target_tests {
         assert_eq!(decl(None, None, None).probe_header(), None);
     }
 
-    /// Defaults match the cmake verb's own default.
+    /// A declared shape is what the probe drives.
     #[test]
-    fn shape_defaults_to_rclcpp() {
-        assert_eq!(decl(Some("p::C"), None, None).probe_shape(), "rclcpp");
+    fn a_declared_shape_is_the_probes() {
         assert_eq!(
             decl(Some("p::C"), None, Some("configure")).probe_shape(),
             "configure"
+        );
+        assert_eq!(
+            decl(Some("p::C"), None, Some("rclcpp")).probe_shape(),
+            "rclcpp"
+        );
+    }
+
+    fn scanned_shape(body: &str) -> Option<String> {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("CMakeLists.txt"), body).unwrap();
+        let found = discover_cmake_node_metadata(dir.path(), "p").unwrap();
+        assert_eq!(found.len(), 1, "one declaration in: {body}");
+        found[0].shape.clone()
+    }
+
+    /// Issue 2339 — a call that names no SHAPE takes ITS VERB's default, the
+    /// one cmake gives the image's entry. One fallback (`rclcpp`) for every
+    /// verb sent each `nano_ros_add_node` component — what `nros new`
+    /// scaffolds — down the construct-with-handle arm, and the probe failed
+    /// on `no matching function for call to 'Talker::Talker(rclcpp::NodeHandle&)'`
+    /// and `'class Talker' has no member named 'ok'`.
+    #[test]
+    fn an_unstated_shape_is_the_verbs_own_default() {
+        assert_eq!(
+            scanned_shape("nano_ros_add_node(n CLASS p::C SOURCES src/C.cpp)\n").as_deref(),
+            Some("configure")
+        );
+        assert_eq!(
+            scanned_shape(
+                "nano_ros_node_register(NAME n CLASS p::C LANGUAGE CPP SOURCES src/C.cpp)\n"
+            )
+            .as_deref(),
+            Some("configure")
+        );
+        assert_eq!(
+            scanned_shape(
+                "nano_ros_auto_add_library(lib src/C.cpp)\n\
+                 nros_components_register_node(lib PLUGIN p::C EXECUTABLE e)\n"
+            )
+            .as_deref(),
+            Some("rclcpp")
+        );
+        // cmake lowercases the value (`string(TOLOWER)`), so the scanner does.
+        assert_eq!(
+            scanned_shape("nano_ros_add_node(n CLASS p::C SHAPE RCLCPP SOURCES src/C.cpp)\n")
+                .as_deref(),
+            Some("rclcpp")
+        );
+    }
+
+    /// The two defaults above are cmake's, read from the cmake source, so a
+    /// verb whose default moves fails here instead of in a user's probe.
+    #[test]
+    fn the_scanner_defaults_are_the_cmake_verbs_defaults() {
+        let cmake = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../cmake");
+        let register = std::fs::read_to_string(cmake.join("NanoRosNodeRegister.cmake")).unwrap();
+        assert!(
+            register.contains(&format!(
+                "set(_nrc_shape \"{NODE_REGISTER_DEFAULT_SHAPE}\")"
+            )),
+            "nano_ros_node_register's default is no longer `{NODE_REGISTER_DEFAULT_SHAPE}`"
+        );
+        let verbs = std::fs::read_to_string(cmake.join("NanoRosVerbs.cmake")).unwrap();
+        assert!(
+            verbs.contains(&format!("set(_NCR_SHAPE {REGISTER_NODE_DEFAULT_SHAPE})")),
+            "nros_components_register_node's default is no longer `{REGISTER_NODE_DEFAULT_SHAPE}`"
+        );
+        // nano_ros_add_node forwards SHAPE only when the call gives one, so it
+        // inherits nano_ros_node_register's default.
+        assert!(
+            verbs.contains("if(_NRN_SHAPE)\n        list(APPEND _extra_args SHAPE ${_NRN_SHAPE})"),
+            "nano_ros_add_node no longer forwards SHAPE only when given"
         );
     }
 }
