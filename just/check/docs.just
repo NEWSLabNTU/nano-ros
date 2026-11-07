@@ -304,6 +304,7 @@ doc-recipe-refs:
 # passed!" spoke for a gate that verified nothing — issue 0650's defect, and
 # the same lane as issue 1476's. rc 78 puts it in the skip ledger instead.
 [private]
+[group('needs:git-history')]
 doc-commit-citations:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -454,6 +455,7 @@ issue-phase-links:
 # middle one: NOT VERIFIED, recorded in the skip ledger so the lane's closing
 # line names it instead of letting "Fast checks passed!" stand for it.
 [private]
+[group('needs:git-history')]
 roadmap-commit-refs:
     #!/usr/bin/env bash
     set -euo pipefail

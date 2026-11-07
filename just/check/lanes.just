@@ -1246,6 +1246,9 @@ launch-resolve-fresh:
 # `parity_helpers::ros_share_root` ($ROS_DISTRO, else exactly one /opt/ros/<d>/share).
 # Where none is, the ledger says so (`nros_check_unverified`, phase-472 F2).
 [private]
+[group('needs:ros2')]
+[group('needs:colcon')]
+[group('needs:submodules')]
 cli-tests:
     #!/usr/bin/env bash
     set -e
@@ -4517,6 +4520,7 @@ rmw-uorb:
 #
 # Each skips LOUDLY (counted by `scripts/build/check-skip.sh`) when its
 # prerequisite is absent, so "not built here" can never read as "builds".
+[group('needs:submodules')]
 rmw-xrce:
     #!/usr/bin/env bash
     set -e

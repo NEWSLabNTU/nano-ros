@@ -19,6 +19,7 @@
 # `pre-push` on a libclang-23 host). The script owns the whole verdict: OK,
 # stale (FAIL), or NOT VERIFIED (no runnable bindgen, or a libclang whose doc
 # comments differ from the committed libclang-14 bytes while the code matches).
+[group('needs:bindgen')]
 abi-bindings:
     @bash scripts/gen-abi-bindings.sh --check
 

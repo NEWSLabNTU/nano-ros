@@ -156,7 +156,10 @@ default: cli-fresh fast api-parity probe-workspace-caps build
 # sets `fast`, the pristine-checkout gate `pristine`.
 [group("main")]
 fast:
-    @bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scope="$(bash scripts/build/gate-scope.sh)"
+    exec bash scripts/build/gate-lane.sh "$scope" -E 'test(/^fast::/)'
 
 # The terminator both gate registries end on — a no-op that exists only to give
 # the LAST real gate a trailing `\`.
@@ -203,7 +206,10 @@ _gate-list-end:
 # the qualified closing report, so the body is the one line.
 [group("main")]
 fast-serial:
-    @NROS_GATE_JOBS=1 bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)' --fail-fast
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scope="$(bash scripts/build/gate-scope.sh)"
+    NROS_GATE_JOBS=1 exec bash scripts/build/gate-lane.sh "$scope" -E 'test(/^fast::/)' --fail-fast
 
 # Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
 # embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
@@ -244,7 +250,8 @@ build:
     if [ -n "${NROS_BUILD_GATE_SHARD:-}" ]; then
         part=(--partition "slice:$NROS_BUILD_GATE_SHARD")
     fi
-    exec bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^build::/)' "${part[@]}"
+    scope="$(bash scripts/build/gate-scope.sh)"
+    exec bash scripts/build/gate-lane.sh "$scope" -E 'test(/^build::/)' "${part[@]}"
 
 # The BUILD gate list, and the serial runner — mirrors `fast-serial` above.
 # `run-gates-parallel.sh` derives its list from this dependency line, so the

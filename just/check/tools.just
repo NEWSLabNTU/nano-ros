@@ -99,6 +99,7 @@ python:
 # stat an edge's inputs until it runs the edge, so 38 such manifests sat in the
 # OK column for seventeen days and one of them killed the native fixture build.
 # A selftest made only of unparseable manifests would have left the gate there.
+[group('needs:cmake')]
 reconfigure-stale:
     #!/usr/bin/env bash
     set -euo pipefail
