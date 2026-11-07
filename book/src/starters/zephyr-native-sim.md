@@ -14,7 +14,7 @@ its messages arriving in ROS 2. There is no emulator: the Zephyr kernel runs
 inside one host process, and its sockets are your host's, so the talker
 reaches a router on this machine with no network setup. nano-ros is a Zephyr
 module here: `nros run` writes the Zephyr application for your image and
-builds it with Zephyr's `west`. You write the talker in Rust or in C; pick a
+builds it with Zephyr's `west`. You write the talker in Rust, C or C++; pick a
 tab and every tab on the page follows.
 
 ## What you need
@@ -127,6 +127,15 @@ install command instead.
 export NROS_ZEPHYR_WORKSPACE="$PWD"
 cd ..
 nros new zs_ws --board zephyr --template talker --lang c --rmw zenoh
+cd zs_ws
+```
+
+### C++
+
+```bash probe=40
+export NROS_ZEPHYR_WORKSPACE="$PWD"
+cd ..
+nros new zs_ws --board zephyr --template talker --lang cpp --rmw zenoh
 cd zs_ws
 ```
 
