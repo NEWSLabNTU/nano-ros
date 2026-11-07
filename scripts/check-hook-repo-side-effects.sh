@@ -506,13 +506,20 @@ run_probe() {
         *) echo "DIRTY"; echo "  unknown shape $shape"; rm -rf "$v"; return 0 ;;
     esac
 
+    # The subject's OWN skips are not this gate's. Under the nextest gate
+    # harness (phase-543 W3) the gate is handed a skip ledger in
+    # NROS_GATE_SKIP_LEDGER and fails when anything lands in it. The subject
+    # runs inside a repo this probe built, with no submodules checked out, so
+    # e.g. the pre-push hook's `submodule-pins` records NOT VERIFIED there on
+    # every run. Inherited, that skip failed this gate on every host, and with
+    # it every push. The verdict here is the byte-for-byte comparison below.
     if [ "$shape" = tmpdir ]; then
         # No inherited git environment in this shape, by definition, and no
         # ceiling the caller happened to have: the probe asks what the SCRIPT does.
         ( cd "$cwd" && env -u GIT_CEILING_DIRECTORIES -u GIT_DIR -u GIT_WORK_TREE \
-              "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
+              -u NROS_GATE_SKIP_LEDGER "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
     else
-        ( cd "$cwd" && env "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
+        ( cd "$cwd" && env -u NROS_GATE_SKIP_LEDGER "${env_args[@]}" "$@" ) > "$PROBE_LOG" 2>&1
     fi
     rc=$?
     printf '%s\n' "$rc" > "$PROBE_RC_FILE"
