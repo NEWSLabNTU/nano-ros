@@ -6,7 +6,7 @@ default:
 # Clean-system bootstrap probe (issue #204): run the book's documented setup
 # steps verbatim in pristine containers and assert the documented outcome —
 # BOTH front doors, because they are two different machines:
-#   1. the CHECKOUT track (ubuntu:24.04): clone + bootstrap, then the first-node
+#   1. the CHECKOUT track (ros:jazzy: ubuntu:24.04 + ROS 2): clone + bootstrap, then the first-node
 #      chapter. What everyone does until the first release is cut.
 #   2. the INSTALLED track (phase-447 A3): install a release, then
 #      run-a-talker.md (the serial QEMU chapter, timed) with NO checkout on the host.

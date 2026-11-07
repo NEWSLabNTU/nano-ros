@@ -184,7 +184,13 @@ fi
 # and, when there is none, says so and names the remedy. This file was the one
 # that assumed its own shell.
 _nros_ros_setup=""
-if [ -n "${BASH_VERSION:-}" ] && [ -f /opt/ros/humble/setup.bash ]; then
+# Issue 2346 — a ROS 2 the caller already sourced (any edition: Jazzy on 24.04)
+# is the one to keep. Sourcing Humble over it would mix two installs, and
+# reporting Humble "not found" would tell a correctly set-up Jazzy shell it is
+# broken.
+if [ -n "${ROS_DISTRO:-}" ] && [ -n "${AMENT_PREFIX_PATH:-}" ]; then
+    _nros_ros_sourced=1
+elif [ -n "${BASH_VERSION:-}" ] && [ -f /opt/ros/humble/setup.bash ]; then
     _nros_ros_setup=/opt/ros/humble/setup.bash
 elif [ -f /opt/ros/humble/setup.sh ]; then
     _nros_ros_setup=/opt/ros/humble/setup.sh
@@ -192,7 +198,9 @@ elif [ -f /opt/ros/humble/setup.bash ]; then
     _nros_ros_setup=/opt/ros/humble/setup.bash
 fi
 
-if [ -n "$_nros_ros_setup" ]; then
+if [ -n "${_nros_ros_sourced:-}" ]; then
+    unset _nros_ros_sourced
+elif [ -n "$_nros_ros_setup" ]; then
     # ROS's setup scripts are not `set -u`-clean (`AMENT_TRACE_SETUP_FILES:
     # unbound variable` at setup.bash:8) — a strict-mode shell (`set -u`, the
     # probe's extracted script, any CI runner using `set -euo pipefail`) dies
@@ -223,19 +231,21 @@ if [ -n "$_nros_ros_setup" ]; then
     unset _nros_ros_setup _nros_shell
 else
     # issue 0373 F3 — the bare "ROS-dependent recipes will fail" left a
-    # first-time reader unable to tell whether their setup was broken. It is
-    # not: setup, `nros sync`, codegen and every BUILD work without ROS 2
-    # (interface sources are vendored in packages/cli/interfaces/, verified
-    # end-to-end on a ROS-less host). Name what actually needs it.
+    # first-time reader unable to tell whether their setup was broken. Name
+    # what actually needs it. Since issue 2275 that includes BUILDING an image:
+    # configure generates its messages from a sourced ROS 2 and refuses an
+    # unset AMENT_PREFIX_PATH (issue 2346 corrected the line below, which said
+    # every build works without it).
     #
     # issue 0653 — RUNNING split off from BUILDING when RFC-0075 made the zenoh
     # router `rmw_zenoh_cpp/rmw_zenohd`, which ships with ROS. zenoh-pico is a
     # client, so a two-process zenoh example now needs that router and this host
     # has none. Say so here: the alternative is a silent hang in `Executor::open`
     # with nothing connecting it back to the missing ROS install.
-    echo "activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes will fail" \
-        "(interop tests, \`ros2\` CLI verification). Setup, codegen and every BUILD do not" \
-        "need it. RUNNING a multi-process zenoh example does: its router is ROS's" \
+    echo "activate.sh: no ROS 2 sourced and /opt/ros/humble/setup.bash not found." \
+        "Setup does not need it; BUILDING an image does — configure generates its" \
+        "messages from a sourced ROS 2 (source /opt/ros/<distro>/setup.bash first)." \
+        "RUNNING a multi-process zenoh example also does: its router is ROS's" \
         "rmw_zenohd (set NROS_RMW_ZENOHD to override), or use --rmw cyclonedds, which" \
         "needs no daemon — see book/src/start/install.md" >&2
 fi
