@@ -50,6 +50,15 @@ installs a router: the router is ROS's `rmw_zenohd`.
 
 ## Scaffold the project
 
+Source ROS 2 first, in the shell you scaffold from. `nros new` writes
+the ROS 2 edition the project speaks, and it takes it from the sourced
+ROS 2; with none sourced, it writes Humble. On Jazzy, source
+`/opt/ros/jazzy/setup.bash` instead:
+
+```bash probe=38
+source /opt/ros/humble/setup.bash
+```
+
 `QEMU_SYSTEM_RISCV32` names the emulator `nros run` boots the board with, so
 set it in the shell you build and run from:
 

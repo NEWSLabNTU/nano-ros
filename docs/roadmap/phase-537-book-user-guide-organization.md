@@ -447,7 +447,7 @@ Phase-523's second adoption round, run on release `nros-0.6.0-nros7`, filed
 these stops on pages this phase owns. They land as one follow-up after #3183
 (W4, W5, W9, W13), since every one is on a page #3183 rewrites:
 
-- [2319](../issues/2319-first-project-scaffold-before-ros-source.md): First Project scaffolds
+- [2319](../issues/archived/2319-first-project-scaffold-before-ros-source.md): First Project scaffolds
   before it sources ROS 2, so a Jazzy host gets a Humble image. Source ROS 2
   ahead of "Scaffold the project" in Tutorial 1 and every starter.
 - [2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md): the book half only. Tutorial 1 already states

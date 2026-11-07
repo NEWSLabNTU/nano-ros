@@ -192,7 +192,7 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | issue | purpose | what |
 | --- | --- | --- |
 | [#2317](../issues/archived/2317-release-sidecars-always-stale-talker-max-cbs-zero.md) | both | **Resolved** 2026-11-07: release sidecars always read stale, and the talker contract sized its callback table to 0 |
-| [#2319](../issues/2319-first-project-scaffold-before-ros-source.md) | both | First Project scaffolds before sourcing ROS 2 |
+| [#2319](../issues/archived/2319-first-project-scaffold-before-ros-source.md) | both | **Resolved** 2026-11-07: Tutorial 1 and every starter source ROS 2 before they scaffold |
 | [#2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md) | both | Jazzy `ros2 topic echo` receives nothing from the QEMU talker; type hash INVALID |
 | [#2321](../issues/2321-lock-provenance-incomplete.md) | industrial | `nros-sdk.lock` omits Rust, source packages, corrosion hash |
 | [#2322](../issues/2322-image-not-reproducible-across-paths.md) | industrial | Image embeds the absolute workspace path |
