@@ -42,6 +42,15 @@ is installed system-wide. It installs no router: the router is ROS's
 
 ## Scaffold the project
 
+Source ROS 2 first, in the shell you scaffold from. `nros new` writes
+the ROS 2 edition the project speaks, and it takes it from the sourced
+ROS 2; with none sourced, it writes Humble. On Jazzy, source
+`/opt/ros/jazzy/setup.bash` instead:
+
+```bash probe=38
+source /opt/ros/humble/setup.bash
+```
+
 ```bash probe=40
 nros new bm_ws --board mps2-an385-baremetal --template talker --lang rust --rmw zenoh
 cd bm_ws

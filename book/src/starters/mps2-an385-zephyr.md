@@ -94,6 +94,15 @@ nros setup board mps2-an385-zephyr --zephyr-workspace "$PWD"
 
 ## Scaffold the project
 
+Source ROS 2 first, in the shell you scaffold from. `nros new` writes
+the ROS 2 edition the project speaks, and it takes it from the sourced
+ROS 2; with none sourced, it writes Humble. On Jazzy, source
+`/opt/ros/jazzy/setup.bash` instead:
+
+```bash probe=38 track=installed
+source /opt/ros/humble/setup.bash
+```
+
 ```bash probe=40 track=installed
 . "$HOME/.cargo/env"
 nros new zm_ws --board mps2-an385-zephyr --template talker --lang rust

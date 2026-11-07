@@ -61,6 +61,15 @@ each one needs beside your program.
 
 ## Scaffold the project
 
+Source ROS 2 first, in the shell you scaffold from. `nros new` writes
+the ROS 2 edition the project speaks, and it takes it from the sourced
+ROS 2; with none sourced, it writes Humble. On Jazzy, source
+`/opt/ros/jazzy/setup.bash` instead:
+
+```bash probe=38 track=installed variant=qemu
+source /opt/ros/humble/setup.bash
+```
+
 Pick the language you will write the project in. Every later chapter shows
 its code in the same three languages, and the project keeps the language you
 pick here.
@@ -112,14 +121,13 @@ in the nano-ros repository.
 
 ## Run it
 
-Source ROS 2 first, then run. ROS 2 provides the router the board talks to,
-and its message definitions are what `nros run` generates the talker's
-`std_msgs` code from. This first run records the ROS 2 prefix in the
-workspace, so a later build of it needs no sourced shell. The router still
-does, because it is a ROS 2 program.
+Run it from the same shell, where ROS 2 is sourced. ROS 2 provides the
+router the board talks to, and its message definitions are what `nros run`
+generates the talker's `std_msgs` code from. This first run records the ROS 2
+prefix in the workspace, so a later build of it needs no sourced shell. The
+router still does, because it is a ROS 2 program.
 
 ```bash probe=50 probe-run=1500 track=installed variant=qemu
-source /opt/ros/humble/setup.bash
 nros run sensor_node --expect 'Publishing:'
 ```
 
