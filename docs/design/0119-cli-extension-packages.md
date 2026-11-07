@@ -481,6 +481,14 @@ CMake code when they build it, so this adds no new boundary.
   field that differs from its derived value.
 - `nros dev runner check <name>` and `nros dev command check <name>` build the
   package, call `describe`, check `protocol`, and resolve a dry-run plan.
+
+  > **Amended 2026-11-07 (user ruling, issue 2294):** the user-tier spelling
+  > is `nros check <name>`, which works out the package's kind and runs the
+  > runner check or the command check above (or a board's check). The `nros
+  > dev` spellings stay as silent aliases. An extension's author is this
+  > RFC's audience, and the dev tier is hidden from them (RFC-0117 D1). See
+  > RFC-0117's
+  > [Amendment 2026-11-07](0117-cli-command-tiers.md#amendment-2026-11-07--one-user-tier-check-for-a-package).
 - `check-board-runner-resolves`: every in-tree board's `[board.run]` and
   `[board.flash]` resolve to a runner package that exists and states every
   placeholder the board's facts need.
@@ -583,3 +591,7 @@ CMake code when they build it, so this adds no new boundary.
   unchanged. A checkout's host tool is found in the target directory of the
   cargo workspace it belongs to, which covers `packages/runners/` and a
   command package alike.
+- 2026-11-07 — D10: the runner and command checks are reached as the
+  user-tier `nros check <name>`, which dispatches on the package kind; the
+  `nros dev runner|command check` spellings stay as aliases. User ruling,
+  issue 2294 (RFC-0117 Amendment 2026-11-07).

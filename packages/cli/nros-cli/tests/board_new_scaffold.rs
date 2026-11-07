@@ -438,5 +438,49 @@ fn the_out_of_tree_next_steps_name_no_contributor_step() {
             !text.contains("just ") && !text.contains("nros dev"),
             "a user-road next step names a contributor step:\n{text}"
         );
+        // Issue 2294 — and it names the user's own check.
+        assert!(
+            text.contains("nros check userboard"),
+            "the next steps name no check:\n{text}"
+        );
     }
+}
+
+/// Issue 2294 — the check the scaffold names runs: `nros check <key>` from
+/// a directory in no workspace finds the out-of-tree board by its key and by
+/// its package name, and a name nothing answers to fails naming the forms.
+#[test]
+fn nros_check_runs_the_board_check_on_a_scaffolded_board() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    scaffold(tmp.path(), &["vendorboard", "--platform", "freertos"]);
+    let cwd = outside_every_checkout();
+    let check = |name: &str| {
+        Command::new(nros())
+            .args(["check", name, "--nano-ros-path"])
+            .arg(repo_root())
+            .env("NROS_EXTRA_BOARD_PATH", tmp.path())
+            .current_dir(cwd.path())
+            .output()
+            .expect("run nros check")
+    };
+    for name in ["vendorboard", "nros_board_vendorboard"] {
+        let out = check(name);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "`nros check {name}` failed: {}{stdout}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            stdout.contains("board `vendorboard`: OK"),
+            "{name}: {stdout}"
+        );
+    }
+    let out = check("no_such_package");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success());
+    assert!(
+        stderr.contains("no runner, command or board package answers to it"),
+        "{stderr}"
+    );
 }

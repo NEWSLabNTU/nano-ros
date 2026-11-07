@@ -56,10 +56,12 @@ pub enum Noun {
     Metadata(metadata::Args),
     /// Check a runner package: built, answers `describe`, speaks our protocol.
     // phase-527 W7 (RFC-0119 D10). Born under `nros dev`: no old spelling.
+    // Since issue 2294 the alias of the user-tier `nros check <name>`.
     #[command(subcommand)]
     Runner(cmd::extension_check::RunnerSub),
     /// Check a command package: built, its descriptor and executable usable.
     // phase-527 W7 (RFC-0119 D10). Born under `nros dev`: no old spelling.
+    // Since issue 2294 the alias of the user-tier `nros check <name>`.
     #[command(subcommand)]
     Command(cmd::extension_check::CommandSub),
     /// Turn a standalone package into a workspace: a node package plus a

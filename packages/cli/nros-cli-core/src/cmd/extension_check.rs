@@ -1,5 +1,9 @@
-//! `nros dev runner check <name>` and `nros dev command check <name>`
-//! (RFC-0119 D10, phase-527 W7).
+//! `nros check <package>` (issue 2294), and its aliases `nros dev runner
+//! check <name>` and `nros dev command check <name>` (RFC-0119 D10,
+//! phase-527 W7; amended 2026-11-07).
+//!
+//! [`package_check`] works out what a package is (a runner, a command, a
+//! board) and runs that kind's check; a board's is `board::board_check`.
 //!
 //! The question a package author asks before anyone else runs their package:
 //! does nros find it, build it, and talk to it?
@@ -122,6 +126,132 @@ fn build(a: &CheckArgs, ws: &Path, package: &str, dir: &Path) -> Result<()> {
         bail!("`nros build --packages-select {package}` failed ({status})");
     }
     ok("build", format!("nros build --packages-select {package}"));
+    Ok(())
+}
+
+/// What a package checked by name is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PackageKind {
+    Runner,
+    Command,
+    Board,
+}
+
+impl PackageKind {
+    fn from_provision(kind: &str) -> Option<Self> {
+        match kind {
+            "runner" => Some(Self::Runner),
+            "command" => Some(Self::Command),
+            "board" => Some(Self::Board),
+            _ => None,
+        }
+    }
+}
+
+/// The checks `name` asks for: one `(kind, provision name)` per runner,
+/// command or board that the name answers to, in that order.
+///
+/// A provision answers to its own name and to its package's name, so
+/// `nros check nros_board_acme` and `nros check acme` both find the board
+/// the scaffold wrote. A board is also any catalog descriptor that answers
+/// to `name` (an alias), or whose `package.xml` is named `name`: a board on
+/// `$NROS_EXTRA_BOARD_PATH` is in the catalog and not in the provider scan.
+/// `root` is the SDK root the catalog's in-tree sources are relative to.
+pub fn kinds_of(
+    scan: &cargo_nano_ros::provider_scan::ScanResult,
+    boards: &crate::orchestration::board_descriptor::BoardCatalog,
+    root: &Path,
+    name: &str,
+) -> Vec<(PackageKind, String)> {
+    let mut out: Vec<(PackageKind, String)> = Vec::new();
+    for p in &scan.providers {
+        for pr in &p.provides {
+            let Some(kind) = PackageKind::from_provision(&pr.kind) else {
+                continue;
+            };
+            if pr.name != name && p.package != name {
+                continue;
+            }
+            // A board package announces every name of its boards; one check
+            // covers the descriptor they share.
+            if kind == PackageKind::Board && out.iter().any(|(k, _)| *k == kind) {
+                continue;
+            }
+            let row = (kind, pr.name.clone());
+            if !out.contains(&row) {
+                out.push(row);
+            }
+        }
+    }
+    if !out.iter().any(|(k, _)| *k == PackageKind::Board) {
+        if boards.descriptors().iter().any(|d| d.answers_to(name)) {
+            out.push((PackageKind::Board, name.to_string()));
+        } else if let Some(key) = boards.descriptors().iter().find_map(|d| {
+            let dir = crate::orchestration::board_projection::descriptor_dir(d, root)?;
+            let scan = cargo_nano_ros::provider_scan::scan_root(&dir, 0).ok()?;
+            let named = scan
+                .providers
+                .iter()
+                .any(|p| p.dir == dir && p.package == name);
+            if named {
+                d.names.first().cloned()
+            } else {
+                None
+            }
+        }) {
+            out.push((PackageKind::Board, key));
+        }
+    }
+    out.sort_by_key(|(k, _)| *k as u8);
+    out
+}
+
+/// `nros check <package>`: work out the package's kind and run its check.
+///
+/// # Errors
+///
+/// No runner, command or board answers to the name, or a check fails.
+pub fn package_check(a: CheckArgs) -> Result<()> {
+    let ws = workspace_of(&a);
+    let root = crate::orchestration::nano_ros_root::resolve(a.nano_ros_path.clone(), &ws);
+    let path = crate::cmd::ws::provider_search_path_for(&ws, &[])?;
+    let scan = cargo_nano_ros::provider_scan::scan_search_path(&path)
+        .map_err(|e| eyre!("scanning the provider search path: {e}"))?;
+    let boards = match &root {
+        Some(r) => crate::cmd::board::workspace_catalog(r, &ws)?,
+        None => Default::default(),
+    };
+    let kinds = kinds_of(&scan, &boards, root.as_deref().unwrap_or(&ws), &a.name);
+    if kinds.is_empty() {
+        bail!(
+            "nothing here is named `{name}`: no file or directory `{name}`, and no runner, \
+             command or board package answers to it.\n  \
+             Run it from the workspace root. `nros list` names the workspace's packages, \
+             `nros board list` the boards; an out-of-tree board is reached through \
+             $NROS_EXTRA_BOARD_PATH.",
+            name = a.name
+        );
+    }
+    for (kind, name) in kinds {
+        let one = CheckArgs {
+            name,
+            workspace: Some(ws.clone()),
+            nano_ros_path: a.nano_ros_path.clone(),
+            image: a.image.clone(),
+            allow_overriding: a.allow_overriding.clone(),
+            no_build: a.no_build,
+        };
+        match kind {
+            PackageKind::Runner => runner_check(one)?,
+            PackageKind::Command => command_check(one)?,
+            PackageKind::Board => {
+                let root = root.as_deref().ok_or_else(|| {
+                    eyre!("{}", crate::orchestration::nano_ros_root::not_found_help())
+                })?;
+                crate::cmd::board::board_check(root, &ws, &one.name)?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -255,7 +385,7 @@ fn dry_run_plan(a: &CheckArgs, ws: &Path) -> Result<Option<RunPlan>> {
         let err = String::from_utf8_lossy(&out.stderr);
         if a.image.is_none() {
             eprintln!(
-                "nros dev runner check: `nros run --dry-run` named no image: {}",
+                "nros check: `nros run --dry-run` named no image: {}",
                 err.trim()
             );
             return Ok(None);
@@ -354,4 +484,106 @@ pub fn command_check(a: CheckArgs) -> Result<()> {
     }
     println!("command `{}`: OK", c.name);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::orchestration::board_descriptor::BoardCatalog;
+
+    fn pkg(root: &Path, dir: &str, name: &str, provides: &[(&str, &str)]) -> PathBuf {
+        let d = root.join(dir);
+        std::fs::create_dir_all(&d).unwrap();
+        let tags: String = provides
+            .iter()
+            .map(|(k, n)| format!("<nano_ros_provides kind=\"{k}\" name=\"{n}\"/>"))
+            .collect();
+        std::fs::write(
+            d.join("package.xml"),
+            format!(
+                "<?xml version=\"1.0\"?><package format=\"3\"><name>{name}</name>\
+                 <version>0.1.0</version><description>x</description>\
+                 <maintainer email=\"a@b.c\">a</maintainer><license>MIT</license>\
+                 <export>{tags}</export></package>"
+            ),
+        )
+        .unwrap();
+        d
+    }
+
+    /// Issue 2294 — one name, whatever kind its package is: a runner and a
+    /// command by provision or package name, a board by its key, its package
+    /// or a catalog alias; nothing for a name nothing answers to.
+    #[test]
+    fn a_name_finds_the_kind_of_its_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+        pkg(
+            ws,
+            "src/acme_flash",
+            "acme_flash",
+            &[("runner", "acme_flash")],
+        );
+        pkg(ws, "src/tools_pkg", "tools_pkg", &[("command", "report")]);
+        pkg(ws, "src/msgs", "msgs", &[("rmw", "msgs")]);
+        let board = pkg(
+            ws,
+            "src/nros-board-acme",
+            "nros_board_acme",
+            &[("board", "acme"), ("board", "acme-alt")],
+        );
+        std::fs::write(
+            board.join("nros-board.toml"),
+            "[[board]]\nnames = [\"acme\", \"acme-alt\", \"acme-old\"]\nplatform = \"posix\"\n\
+             toolchain = \"stable\"\nplatform_feature = \"platform-posix\"\nentry_kind = \"hosted-main\"\n",
+        )
+        .unwrap();
+        let scan = cargo_nano_ros::provider_scan::scan_roots(&[ws.to_path_buf()]).unwrap();
+        let sdk = tmp.path().join("sdk");
+        std::fs::create_dir_all(sdk.join("packages/boards")).unwrap();
+        let boards = BoardCatalog::load_with_extra(&sdk, &[ws.join("src")]).unwrap();
+
+        let k = |n: &str| kinds_of(&scan, &boards, &sdk, n);
+        assert_eq!(
+            k("acme_flash"),
+            [(PackageKind::Runner, "acme_flash".into())]
+        );
+        assert_eq!(k("report"), [(PackageKind::Command, "report".into())]);
+        assert_eq!(k("tools_pkg"), [(PackageKind::Command, "report".into())]);
+        assert_eq!(k("acme"), [(PackageKind::Board, "acme".into())]);
+        assert_eq!(k("nros_board_acme"), [(PackageKind::Board, "acme".into())]);
+        // An alias the descriptor holds and the announcement does not.
+        assert_eq!(k("acme-old"), [(PackageKind::Board, "acme-old".into())]);
+        // A board the catalog holds and the scan does not (an extra board
+        // root), by its package name.
+        let empty = cargo_nano_ros::provider_scan::ScanResult::default();
+        assert_eq!(
+            kinds_of(&empty, &boards, &sdk, "nros_board_acme"),
+            [(PackageKind::Board, "acme".into())]
+        );
+        // Another kind of provider, and nothing at all, ask for no check.
+        assert!(k("msgs").is_empty());
+        assert!(k("nobody").is_empty());
+    }
+
+    /// A package that is both a runner and a command gets both checks,
+    /// runner first.
+    #[test]
+    fn a_package_of_two_kinds_gets_both_checks() {
+        let tmp = tempfile::tempdir().unwrap();
+        pkg(
+            tmp.path(),
+            "src/both",
+            "both",
+            &[("command", "both"), ("runner", "both")],
+        );
+        let scan = cargo_nano_ros::provider_scan::scan_roots(&[tmp.path().to_path_buf()]).unwrap();
+        assert_eq!(
+            kinds_of(&scan, &BoardCatalog::default(), tmp.path(), "both"),
+            [
+                (PackageKind::Runner, "both".into()),
+                (PackageKind::Command, "both".into())
+            ]
+        );
+    }
 }

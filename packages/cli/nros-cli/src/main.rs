@@ -19,7 +19,7 @@ use std::io;
                   nros new <name>      scaffold a project\n  \
                   nros configure       generate msg bindings, models and build settings\n  \
                   nros plan            resolve a launch topology\n  \
-                  nros check           validate a plan or workspace\n  \
+                  nros check           check a package, a plan or a workspace\n  \
                   nros doctor          check SDK paths / toolchains / env\n\n\
                   Run `nros setup --list` to see available packages, and \
                   `nros help --all` for the build-system tier as well.",

@@ -1,16 +1,17 @@
 ---
 id: 2294
 title: "The runner, command and board scaffolds name `nros dev … check` and `just check fast` as the next step, so a user has no check step for a package they made"
-status: open
+status: resolved
 type: enhancement
 area: cli, ux, scaffold
 related: [rfc-0117, rfc-0119, phase-527, phase-537, 2291]
 found: 2026-11-06
+resolved: 2026-11-07
+resolved_in: "fix-issue-2294 branch: one user-tier `nros check <package>`, dispatching on the package kind"
 ---
 
-**Home: none yet.** Reported by the phase-537 W12 book session with an
-in-tree CLI. No RFC or phase plans a user-tier check verb (see below), so
-this issue proposes one.
+**Home: RFC-0117 Amendment 2026-11-07** (user ruling). Reported by the
+phase-537 W12 book session with an in-tree CLI.
 
 ## Symptom
 
@@ -80,3 +81,51 @@ verb in their own tier.
 - Add a gate or unit test asserting that no `nros new` / `nros board new`
   next-step line names a `nros dev` verb or a `just` recipe on the user
   road.
+
+## Resolution
+
+User ruling, 2026-11-07: one user-tier verb, `nros check <package>`, which
+works out the package's kind and runs that kind's check. Recorded as RFC-0117
+Amendment 2026-11-07 (D2, D3) and in RFC-0119 D10.
+
+- **Telling a package from the workspace forms.** `nros check` already took a
+  path positional (default `build/nros/nros-plan.json`) and `--workspace`. A
+  positional that exists on disk, or holds `/` or `.`, is a path as before. A
+  bare name (`[A-Za-z0-9_-]`) with nothing of that name on disk is a package
+  (`check::package_name_of`). No path form could read such a name, so every
+  command that worked before means the same thing. `--workspace` and
+  `--bringup` are unchanged.
+- **Finding the kind.** `extension_check::kinds_of` reads the provider scan
+  and the board catalog a build uses. A name matches a provision by its own
+  name or by its package's name (`acme` and `nros_board_acme` both find the
+  scaffolded board), and also matches a board by any catalog alias. A runner
+  gets the existing runner check and a command the command check. A package
+  of both kinds gets both checks.
+- **The board check** (`board::board_check`) reuses the validation that
+  already existed. The descriptor resolves through the catalog, which parses
+  it and requires its `package.xml` announcement. The announced names must
+  equal the declared ones (`check-provider-announcements` A2, applied to one
+  package outside the tree). `[board.net]` must resolve, and a
+  `[board.zephyr]` board must project into the cmake variables `nros board
+  info` prints. No `nros board check` was added; this is that verb.
+- **Scaffolds.** `nros new <name> --kind runner|command` prints `nros build
+  --packages-select <name> && nros check <name>`, and its README says
+  `nros check <name>`. `nros board new` prints `nros check <key>` on both
+  arms, and `just check fast` stays on the in-tree arm only, after it. The
+  `nros new --kind` help names the check, and the `nros` quick start says
+  `nros check` checks a package. `nros dev runner|command check`
+  stay as silent aliases. `scripts/check-template-copy-out.sh`'s runner
+  acceptance now runs `nros check acme_runner --no-build`.
+
+Tests: `check::tests::a_bare_name_not_on_disk_is_a_package_and_every_path_stays_a_path`,
+`the_workspace_form_and_the_package_form_parse`,
+`extension_check::tests::a_name_finds_the_kind_of_its_package`,
+`a_package_of_two_kinds_gets_both_checks`,
+`board_new::tests::the_next_steps_name_the_user_check`,
+`a_scaffolded_board_passes_the_board_check` (each platform, plus a drifted
+announcement that must fail),
+`new_extension::tests::the_next_step_and_the_readme_name_the_user_check`, and
+in `nros-cli/tests/board_new_scaffold.rs`
+`nros_check_runs_the_board_check_on_a_scaffolded_board` (end to end, from a
+directory in no checkout) and the extended
+`the_out_of_tree_next_steps_name_no_contributor_step`.

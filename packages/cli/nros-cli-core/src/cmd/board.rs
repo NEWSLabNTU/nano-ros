@@ -397,6 +397,121 @@ fn resolve(root: &Path, name: &str) -> Result<(BoardDescriptor, PathBuf)> {
     Ok((board, dir))
 }
 
+/// The board catalog a build in `ws` resolves against: `root`'s boards,
+/// `$NROS_EXTRA_BOARD_PATH`, and the board packages the workspace carries.
+///
+/// # Errors
+///
+/// A descriptor that does not parse, or one with no `package.xml` announcing
+/// it (`BoardCatalog::load_with_packages`).
+pub(crate) fn workspace_catalog(root: &Path, ws: &Path) -> Result<BoardCatalog> {
+    let members = crate::builder::discover::cargo_members_or_walk(ws);
+    let pkg_dirs: Vec<PathBuf> = crate::builder::discover::discover(ws, &members)
+        .map(|found| found.packages.iter().map(|p| p.dir.clone()).collect())
+        .unwrap_or_default();
+    BoardCatalog::load_with_packages(root, &pkg_dirs).map_err(|e| eyre!("board catalog: {e}"))
+}
+
+/// `nros check <board>` (issue 2294): what a board package must get right
+/// before an image is built on it.
+///
+/// # Errors
+///
+/// The first step that fails, named.
+pub(crate) fn board_check(root: &Path, ws: &Path, name: &str) -> Result<()> {
+    board_check_in(&workspace_catalog(root, ws)?, root, name)
+}
+
+/// [`board_check`] over a loaded catalog. Loading it already parsed every
+/// descriptor and required the `package.xml` beside each to announce a board
+/// (RFC-0064 R5 D5); this adds the rest of what a board package states:
+///
+/// - **resolve**: the name resolves through the catalog, as a build's
+///   `board = "<name>"` does (`nros board info` reads the same answer);
+/// - **announce**: the board names `package.xml` announces equal the names
+///   its descriptor declares (`check-provider-announcements` A2, for one
+///   package and outside the tree);
+/// - **net**: `[board.net]` resolves over the platform default (what
+///   `nros dev board net` prints and the image's network starts from);
+/// - **project**: a `[board.zephyr]` board projects into the cmake variables
+///   `nano_ros_use_board()` reads (what `nros board info` prints).
+pub(crate) fn board_check_in(catalog: &BoardCatalog, root: &Path, name: &str) -> Result<()> {
+    let say = |step: &str, what: String| println!("ok    {step:<10} {what}");
+    let board = catalog
+        .descriptors()
+        .iter()
+        .find(|d| d.answers_to(name))
+        .ok_or_else(|| {
+            eyre!(
+                "no board named `{name}` in the board catalog. `nros board list` names the \
+                 boards; an out-of-tree board is reached through $NROS_EXTRA_BOARD_PATH."
+            )
+        })?;
+    let dir = board_projection::descriptor_dir(board, root)
+        .ok_or_else(|| eyre!("board `{name}` has no recorded descriptor path"))?;
+    let descriptor = dir.join("nros-board.toml");
+    say(
+        "resolve",
+        format!("board `{name}` is {}", descriptor.display()),
+    );
+
+    // Every `[[board]]` entry of this one descriptor file.
+    let mut declared: Vec<String> = catalog
+        .descriptors()
+        .iter()
+        .filter(|d| board_projection::descriptor_dir(d, root).as_deref() == Some(dir.as_path()))
+        .flat_map(|d| d.names.iter().cloned())
+        .collect();
+    let scan = cargo_nano_ros::provider_scan::scan_root(&dir, 0)
+        .map_err(|e| eyre!("reading {}: {e}", dir.join("package.xml").display()))?;
+    let mut announced: Vec<String> = scan
+        .providers
+        .iter()
+        .filter(|p| p.dir == dir)
+        .flat_map(|p| p.provides.iter())
+        .filter(|pr| pr.kind == "board")
+        .map(|pr| pr.name.clone())
+        .collect();
+    declared.sort();
+    declared.dedup();
+    announced.sort();
+    announced.dedup();
+    if declared != announced {
+        eyre::bail!(
+            "{} announces boards {announced:?}, but {} declares {declared:?}; the two must \
+             name the same boards",
+            dir.join("package.xml").display(),
+            descriptor.display()
+        );
+    }
+    say(
+        "announce",
+        format!("package.xml announces {announced:?}, as the descriptor declares"),
+    );
+
+    use nros_board_common::board_net::{ResolvedNet, resolve as resolve_net};
+    let n = resolve_net(&descriptor, Some(name), ResolvedNet::platform_default())
+        .map_err(|e| eyre!("{}: {e}", descriptor.display()))?;
+    let dotted = |o: &[u8]| o.iter().map(u8::to_string).collect::<Vec<_>>().join(".");
+    say(
+        "net",
+        format!("ip {} gateway {}", dotted(&n.ip), dotted(&n.gateway)),
+    );
+
+    if board.zephyr.is_some() {
+        let module_dir = dir.join("<build-dir>/nros-board-rust-support");
+        board_projection::project(board, &dir, &module_dir)?;
+        say("project", "cmake variables for nano_ros_use_board()".into());
+    } else {
+        say(
+            "project",
+            "skipped: no [board.zephyr], so no cmake projection".into(),
+        );
+    }
+    println!("board `{name}`: OK");
+    Ok(())
+}
+
 fn net(args: NetArgs) -> Result<()> {
     use nros_board_common::board_net::{ResolvedNet, resolve as resolve_net};
     let root = catalog_root(args.workspace)?;

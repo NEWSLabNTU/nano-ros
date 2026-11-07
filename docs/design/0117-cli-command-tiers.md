@@ -74,6 +74,12 @@ its output format, because cmake, west and `just` parse that output.
 
 ### D2 — The user tier
 
+> **Amended 2026-11-07 (user ruling, issue 2294):** `check` joins the Inspect
+> group as one verb, `nros check <package>`, which works out whether the
+> package is a runner, a command or a board and runs that kind's check. It
+> replaces the unbuilt `board check`. See
+> [Amendment 2026-11-07](#amendment-2026-11-07--one-user-tier-check-for-a-package).
+
 | Group | Verbs |
 | --- | --- |
 | Start | `new` · `setup` (absorbs `init`) |
@@ -102,7 +108,7 @@ the package that provides it.
 | `dev ws` | `ws env`, `ws order`, `ws providers` |
 | `dev sdk` | `sdk-front`, `sdk-path`, `sdk-root`, `toolchain manifest` |
 | `dev metadata` | `metadata` |
-| `dev runner` / `dev command` | new: `check` for an extension package — RFC-0119 |
+| `dev runner` / `dev command` | new: `check` for an extension package — RFC-0119; since 2026-11-07 the silent alias of `nros check <package>` (Amendment 2026-11-07) |
 
 Three of today's verbs leave the core binary rather than moving within it:
 `ws qemu-nic` is absorbed by the QEMU runner package (RFC-0118), and
@@ -189,6 +195,40 @@ does and the contributor keeps the history beside the code. phase-525 W1's
 `check-user-surface-ids` is the gate, and runs after this tree has landed so
 the sweep happens once, over the final verb names.
 
+## Amendment 2026-11-07 — one user-tier check for a package
+
+User ruling, 2026-11-07 (issue 2294). D2 gave a user no way to check a
+package they wrote. The runner and command checks sat in the dev tier (D3),
+`board check` was listed and never built, and the scaffolds therefore named
+`nros dev … check` and `just check fast` as their next step.
+
+- **One verb.** `nros check <package>` is the user-tier check for a package
+  of any kind. It finds the package through the provider scan and the board
+  catalog a build uses, by the name it announces or by its package name. A
+  runner gets the RFC-0119 D10 runner check, a command the command check and
+  a board the board check below. A package of two kinds gets both checks.
+  Per-kind verbs (`nros runner check`, `nros command check`, `nros board
+  check`) were the other option and were not chosen: they add three nouns to
+  the user tier, and a user would have to know the kind before checking.
+- **The workspace forms stay.** `nros check` already took a path (a plan, a
+  `system.toml`, a bringup directory) and `--workspace`. A positional that
+  exists on disk, or that holds a character no package name holds (`/`,
+  `.`), is a path as before. Only a bare name (`[A-Za-z0-9_-]`) with nothing
+  of that name on disk is a package. No path form could read such a name, so
+  no command that worked before changes meaning. `--workspace` keeps its
+  meaning; the package form takes the workspace from the current directory,
+  as `nros build` does.
+- **The board check** is the validation that already existed, run for one
+  board: the descriptor resolves through the catalog (parsed, and announced
+  by its `package.xml`, RFC-0064 R5 D5); the announced names equal the
+  declared ones (`check-provider-announcements` A2, which only sees the
+  tree); `[board.net]` resolves; a `[board.zephyr]` board projects into the
+  cmake variables `nros board info` prints.
+- **Aliases.** `nros dev runner check <name>` and `nros dev command check
+  <name>` stay as silent dev aliases (D5). The scaffolds name
+  `nros check <name>`; `nros board new` keeps `just check fast` on its
+  in-tree arm only, after `nros check`, as the contributor's acceptance.
+
 ## Alternatives considered
 
 - **Delete the dev verbs from the CLI and make them library calls.** Their
@@ -225,3 +265,6 @@ the sweep happens once, over the final verb names.
   roots, as RFC-0119 D4 defines them); `sync` lists it, and its earlier
   meaning there (replace the whole provider search path, underlay included)
   is gone. phase-527 W2d.
+- 2026-11-07 — D2/D3: one user-tier `nros check <package>` dispatches on the
+  package kind (runner, command, board); `nros dev runner|command check` stay
+  as its aliases, and `board check` is that verb. User ruling, issue 2294.

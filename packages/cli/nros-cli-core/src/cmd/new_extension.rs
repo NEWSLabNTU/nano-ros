@@ -386,11 +386,11 @@ fn readme(kind: ExtKind, lang: Lang, name: &str) -> String {
                  ```toml\n[image.<id>.run]\nmethod = \"{name}\"\n```\n\n\
                  then `nros run <id>`."
             ),
-            format!("nros dev runner check {name}"),
+            format!("nros check {name}"),
         ),
         ExtKind::Command => (
             format!("Run it as `nros {name} <args...>`; `nros help --all` lists it."),
-            format!("nros dev command check {name}"),
+            format!("nros check {name}"),
         ),
     };
     let lang = match lang {
@@ -476,22 +476,42 @@ pub fn scaffold(args: &crate::cmd::new::Args, kind: ExtKind) -> Result<()> {
         }
         std::fs::write(&path, body)?;
     }
-    let check = match kind {
-        ExtKind::Runner => "runner",
-        ExtKind::Command => "command",
-    };
     eprintln!(
-        "nros new: scaffolded {} package `{name}` at {}\n  next: nros build --packages-select \
-         {name} && nros dev {check} check {name}",
+        "nros new: scaffolded {} package `{name}` at {}\n  next: {}",
         kind.as_str(),
-        dir.display()
+        dir.display(),
+        next_step(name)
     );
     Ok(())
+}
+
+/// The scaffold's next step: build it, then check it with the user-tier
+/// verb (issue 2294; `nros dev runner|command check` is its alias).
+fn next_step(name: &str) -> String {
+    format!("nros build --packages-select {name} && nros check {name}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2294 — the next step and the README name the user-tier check,
+    /// never a `nros dev` verb or a `just` recipe.
+    #[test]
+    fn the_next_step_and_the_readme_name_the_user_check() {
+        let step = next_step("acme_tool");
+        assert_eq!(
+            step,
+            "nros build --packages-select acme_tool && nros check acme_tool"
+        );
+        for kind in [ExtKind::Runner, ExtKind::Command] {
+            for lang in [Lang::Rust, Lang::Cpp] {
+                let r = readme(kind, lang, "acme_tool");
+                assert!(r.contains("nros check acme_tool"), "{r}");
+                assert!(!r.contains("nros dev") && !r.contains("just "), "{r}");
+            }
+        }
+    }
 
     #[test]
     fn each_kind_and_language_writes_its_files() {

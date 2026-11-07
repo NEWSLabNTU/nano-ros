@@ -53,6 +53,7 @@ fn orchestration_metadata_plan_check_commands_share_artifacts() {
         package_xml_drift: Vec::new(),
         bringup: false,
         workspace: None,
+        ..Default::default()
     })
     .expect("check command validates generated plan");
 

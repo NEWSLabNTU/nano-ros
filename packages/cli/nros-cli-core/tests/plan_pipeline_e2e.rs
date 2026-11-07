@@ -101,6 +101,7 @@ fn fixture_workspace_plans_and_checks() {
         package_xml_drift: Vec::new(),
         bringup: false,
         workspace: None,
+        ..Default::default()
     })
     .expect("check command validates generated plan");
 

@@ -38,7 +38,7 @@ Quick start:
   nros new <name>      scaffold a project
   nros configure       generate msg bindings, models and build settings
   nros plan            resolve a launch topology
-  nros check           validate a plan or workspace
+  nros check           check a package, a plan or a workspace
   nros doctor          check SDK paths / toolchains / env
 
 Run `nros setup --list` to see available packages, and `nros help --all` for the build-system tier as well.
@@ -74,7 +74,7 @@ Inspect:
   board        Inspect supported boards
   config       Inspect or validate the current project's resolved configuration
   plan         Resolve launch files, manifests, and metadata into nros-plan.json
-  check        Validate a generated nros-plan.json
+  check        Check a runner, command or board package, a plan, a system.toml or a workspace
   explain      Render a generated nros-plan.json in human-readable form
 
 Toolchain:
@@ -228,7 +228,7 @@ Options:
       --kind <KIND>
           `runner` or `command`: scaffold a runner or command package.
           
-          The package holds its `package.xml`, its descriptor and a stub on `nros-extension` (`--lang rust`, the default) or a CMake executable that speaks the protocol JSON itself (`--lang cpp`). Inside a workspace it lands in `src/<name>/`.
+          The package holds its `package.xml`, its descriptor and a stub on `nros-extension` (`--lang rust`, the default) or a CMake executable that speaks the protocol JSON itself (`--lang cpp`). Inside a workspace it lands in `src/<name>/`. Check it with `nros check <name>`.
 
       --target <TARGET>
           Deprecated: accepted and ignored.
@@ -1382,13 +1382,15 @@ Options:
 ### `nros check`
 
 ```text
-Validate a generated nros-plan.json
+Check a runner, command or board package, a plan, a system.toml or a workspace
 
 Usage: nros check [OPTIONS] [PLAN]
 
 Arguments:
   [PLAN]
-          Path to nros-plan.json, a bringup `system.toml` (or a directory containing one), or a `<bringup>` pkg directory when `--bringup` is set
+          Path to nros-plan.json, a bringup `system.toml` (or a directory containing one), or a `<bringup>` pkg directory when `--bringup` is set. Or the name of a runner, command or board package.
+          
+          A bare name (letters, digits, `_` and `-`) with no file or directory of that name here is a package: the check that package's kind needs runs. A runner or command is built, located and asked whether it speaks this nros's protocol; a board's descriptor is resolved through the board catalog, its announcement compared and its network and Zephyr projection resolved.
           
           [default: build/nros/nros-plan.json]
 
@@ -1407,6 +1409,18 @@ Options:
           Walk a workspace root and run the workspace layout checks.
           
           Checks `<pkg>::<Class>` enforcement on every `[[component]]` row, a stray `system.toml` next to a component pkg, and a per-pkg `.cargo/config.toml` carrying `[patch.crates-io]` (warn-only). When the flag is passed with no value the workspace defaults to the current directory.
+
+      --image <IMAGE>
+          Package form: the image whose run plan a runner check resolves. Omitted: the workspace's one image, if it has one
+
+      --allow-overriding <NAME>
+          Package form: approve an override of a nano-ros runner or command by this name
+
+      --no-build
+          Package form: check what is already built; do not run `nros build`
+
+      --nano-ros-path <NANO_ROS_PATH>
+          Package form: nano-ros checkout (auto-detected if omitted)
 
   -h, --help
           Print help (see a summary with '-h')
