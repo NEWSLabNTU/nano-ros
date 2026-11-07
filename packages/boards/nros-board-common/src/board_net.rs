@@ -181,10 +181,41 @@ fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
     }
     println!("cargo:rerun-if-env-changed=NROS_BOARD");
     let board = std::env::var("NROS_BOARD").ok().filter(|b| !b.is_empty());
-    let net = resolve(descriptor, board.as_deref(), fallback)
-        .unwrap_or_else(|e| panic!("{}: {e}", descriptor.display()));
-    write_consts(&format!("{} [board.net]", descriptor.display()), net);
+    let fail = |e: String| -> ! { panic!("{}: {e}", descriptor.display()) };
+    let net = resolve(descriptor, board.as_deref(), fallback).unwrap_or_else(|e| fail(e));
+    let router = router_host(descriptor, board.as_deref(), &net).unwrap_or_else(|e| fail(e));
+    write_consts(
+        &format!("{} [board.net]", descriptor.display()),
+        net,
+        router,
+    );
     net
+}
+
+/// The address the board's router default dials (RFC-0103 D10): its gateway,
+/// unless the board is on the HOST's stack (`[board.net] stack = "host"`, a
+/// simulator running as a host process), whose router is on loopback — the
+/// cargo-road twin of the cmake road's `NROS_LOCATOR_ENTRY_HOST_STACK`
+/// (issue 2342). Only the router address moves: the identity `net` states is
+/// left alone, since a host-stack board may still hand it to its own stack
+/// (threadx-linux's NetX over NSOS).
+///
+/// # Errors
+///
+/// The descriptor's error, as [`resolve`].
+pub fn router_host(
+    descriptor: &Path,
+    board: Option<&str>,
+    net: &ResolvedNet,
+) -> Result<[u8; 4], String> {
+    if !descriptor.is_file() {
+        return Ok(net.gateway);
+    }
+    let file = BoardKnobsFile::load_for_board(descriptor, board).map_err(|e| e.to_string())?;
+    Ok(match file.board_net(board)? {
+        Some(n) if n.host_stack()? => [127, 0, 0, 1],
+        _ => net.gateway,
+    })
 }
 
 /// RFC-0109 D2 (phase-514 W4) — a board whose RTOS owns its network
@@ -228,11 +259,11 @@ pub fn emit_from_kconfig(config: &Path, fallback: ResolvedNet) -> ResolvedNet {
     let text = std::fs::read_to_string(config)
         .unwrap_or_else(|e| panic!("read {}: {e}", config.display()));
     let net = from_kconfig(&text, fallback).unwrap_or_else(|e| panic!("{}: {e}", config.display()));
-    write_consts(&config.display().to_string(), net);
+    write_consts(&config.display().to_string(), net, net.gateway);
     net
 }
 
-fn write_consts(source: &str, net: ResolvedNet) {
+fn write_consts(source: &str, net: ResolvedNet, router: [u8; 4]) {
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("nros_board_net.rs");
     let body = format!(
         "// Generated from {} (phase-484 W4b, RFC-0109 D2). Do not edit.\n\
@@ -244,10 +275,11 @@ fn write_consts(source: &str, net: ResolvedNet) {
          pub(crate) const BOARD_NET_GATEWAY: [u8; 4] = {:?};\n\
          #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_MAC: [u8; 6] = {:?};\n\
-         /// The board's router default: its gateway (RFC-0103 D10).\n\
+         /// The board's router default: its gateway, or loopback on the\n\
+         /// host's stack (RFC-0103 D10, issue 2342).\n\
          #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_LOCATOR: &str = \"tcp/{}.{}.{}.{}:7447\";\n\
-         /// `tcp/<the board's gateway>:<port>` for a board whose router\n\
+         /// `tcp/<the router default's host>:<port>` for a board whose router\n\
          /// listens elsewhere (`board_net_locator!(\"7448\")`).\n\
          #[allow(unused_macros)]\n\
          macro_rules! board_net_locator {{ ($port:literal) => {{ concat!(\"tcp/{}.{}.{}.{}:\", $port) }}; }}\n",
@@ -256,14 +288,14 @@ fn write_consts(source: &str, net: ResolvedNet) {
         net.netmask,
         net.gateway,
         net.mac,
-        net.gateway[0],
-        net.gateway[1],
-        net.gateway[2],
-        net.gateway[3],
-        net.gateway[0],
-        net.gateway[1],
-        net.gateway[2],
-        net.gateway[3]
+        router[0],
+        router[1],
+        router[2],
+        router[3],
+        router[0],
+        router[1],
+        router[2],
+        router[3]
     );
     std::fs::write(&out, body).unwrap_or_else(|e| panic!("write {}: {e}", out.display()));
 }
@@ -271,6 +303,41 @@ fn write_consts(source: &str, net: ResolvedNet) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2342 — a host-stack board's router default is loopback (the
+    /// cmake road's `NROS_LOCATOR_ENTRY_HOST_STACK`), its address untouched;
+    /// any other board's is its gateway. The in-tree FreeRTOS POSIX board is
+    /// the case that dialled `192.0.3.1` from a host process.
+    #[test]
+    fn a_host_stack_board_dials_its_router_on_loopback() {
+        let d = std::env::temp_dir().join(format!("nros-board-net-h-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("nros-board.toml");
+        let pd = ResolvedNet::platform_default();
+        std::fs::write(
+            &f,
+            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nstack = \"host\"\n",
+        )
+        .unwrap();
+        let net = resolve(&f, None, pd).unwrap();
+        assert_eq!(net, pd);
+        assert_eq!(router_host(&f, None, &net).unwrap(), [127, 0, 0, 1]);
+        std::fs::write(
+            &f,
+            "[[board]]\nnames = [\"b\"]\n\n[board.net]\nnetwork = \"qemu\"\n",
+        )
+        .unwrap();
+        let q = resolve(&f, None, pd).unwrap();
+        assert_eq!(router_host(&f, None, &q).unwrap(), [10, 0, 2, 2]);
+        assert_eq!(
+            router_host(&d.join("absent.toml"), None, &pd).unwrap(),
+            pd.gateway
+        );
+        std::fs::remove_dir_all(&d).ok();
+        let posix = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../nros-board-freertos-posix/nros-board.toml");
+        assert_eq!(router_host(&posix, None, &pd).unwrap(), [127, 0, 0, 1]);
+    }
 
     /// RFC-0109 D2 — an `"os"`-stack board reads its kernel config's address:
     /// each of the three keys, an unset one keeping the fallback, and a value

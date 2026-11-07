@@ -24,7 +24,7 @@ repository; W8 re-measures every cell.
 | Board (RMW) | Rust | C | C++ |
 |---|---|---|---|
 | linux (cyclonedds) | ok | ok | ok |
-| freertos-posix (zenoh) | 2342 | 2342 | 2342 |
+| freertos-posix (zenoh) | ok (W1) | ok | 2342 |
 | freertos-posix (cyclonedds) | **W1** | ok | ok |
 | mps2-an385 bare metal (zenoh), Tutorial 1 to 10 | ok | 531 | 531 |
 | mps2-an385 FreeRTOS (zenoh) | ok | ok | ok |
@@ -113,7 +113,20 @@ Measured:
   `nros-board-mps3-an536-freertos`, and is refused naming the board:
   `nros::main!: unknown board 'mps3-an536-freertos'`.
 
-Left: the zenoh Rust cell, once #3273 (issue 2342) lands.
+- `nros new fz --board freertos-posix --template talker --lang rust --rmw
+  zenoh`, `nros build`, then `nros run fz_node --router none --expect
+  'Publishing:'` against a router on `tcp/0.0.0.0:7447`: matched after 1.1 s.
+
+The zenoh cell needed one more fix after #3284 (issue 2342) landed. The cargo
+road's router default was the board's gateway, so the image dialled the
+FreeRTOS family's `tcp/192.0.3.1:7447` from a host process and failed with
+`Executor::open failed: Transport(ConnectionFailed)`. The cmake road already
+used loopback for a host-stack board (`NROS_LOCATOR_ENTRY_HOST_STACK`).
+`board_net::router_host` now gives the same answer: loopback for
+`[board.net] stack = "host"`, the gateway otherwise. It changes only the
+locator. The address constants stay, because threadx-linux hands them to NetX.
+
+`nros run` starts no router for this image, so the run needs one already up.
 
 ### W2 — C++ on Zephyr compiles as C++14
 
