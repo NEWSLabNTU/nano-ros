@@ -102,6 +102,36 @@ def probe_build_tree() -> str | None:
     return None if stamp.exists() else "no fixture build stamp (just build-test-fixtures)"
 
 
+def probe_nextest() -> str | None:
+    """The harness's own runner, at the index's pin. Not a capability a gate
+    needs: every lane needs it, so it is asked first, with the same remedy."""
+    r = subprocess.run(["python3", "scripts/lib/index_tool.py", "resolve", "cargo-nextest",
+                        "cargo-nextest"], cwd=ROOT, capture_output=True, text=True)
+    return None if r.returncode == 0 else "the pinned cargo-nextest is not installed"
+
+
+# What fixes each missing claim. A refusal names the fix, never only the gap:
+# a fresh agent worktree is how most sessions work, and `check fast` is what
+# its pre-push hook runs.
+REMEDY = {
+    "cli": "just setup-cli",
+    "submodules": "just setup-worktree",
+    "git-history": "git fetch --unshallow",
+    "sources": "nros setup --source <name> (the index's [source.*] rows)",
+    "ros2": "source /opt/ros/<distro>/setup.bash (or ./activate.sh with ROS installed)",
+    "colcon": "install colcon (python3 -m pip install colcon-common-extensions)",
+    "bindgen": "just setup linux",
+    "cmake": "install cmake",
+    "cc": "install a C/C++ compiler",
+    "zephyr-tree": "the sparse header clone in gate.yml's fast job, or a west workspace",
+    "zephyr": "just zephyr setup",
+    "nuttx": "nros setup --source nuttx",
+    "fsp": "provision NV_SPE_FSP_DIR (not on any runner)",
+    "build-tree": "just build-test-fixtures",
+    "nextest": "just setup-worktree",
+}
+
+
 PROBES = {
     "cli": probe_cli,
     "cmake": lambda: on_path("cmake"),
@@ -129,17 +159,19 @@ def lane_claims(cfg: dict, lane: str) -> list[str]:
 
 
 def coverage(cfg: dict) -> list[str]:
-    """Every capability has a probe and every probe a capability."""
+    """Every capability has a probe and a remedy, and every probe a capability."""
     caps = set(cfg.get("capabilities", {}))
     return ([f"capability `{c}` has no probe here" for c in sorted(caps - PROBES.keys())]
-            + [f"probe `{p}` names no capability" for p in sorted(PROBES.keys() - caps)])
+            + [f"probe `{p}` names no capability" for p in sorted(PROBES.keys() - caps)]
+            + [f"capability `{c}` has no remedy here" for c in sorted(caps - REMEDY.keys())])
 
 
 def self_test() -> None:
     cfg = {"capabilities": {k: "" for k in PROBES}, "lane": {"x": {"claims": ["cmake"]}}}
     assert coverage(cfg) == [], coverage(cfg)
     cfg["capabilities"]["new"] = ""
-    assert coverage(cfg) == ["capability `new` has no probe here"], coverage(cfg)
+    assert coverage(cfg) == ["capability `new` has no probe here",
+                             "capability `new` has no remedy here"], coverage(cfg)
     assert lane_claims(cfg, "x") == ["cmake"]
     assert on_path("nros-no-such-tool-543") is not None
     assert env_dir("NROS_NO_SUCH_VAR_543") == "$NROS_NO_SUCH_VAR_543 is unset"
@@ -173,13 +205,20 @@ def main(argv: list[str]) -> int:
     tiers = list(cfg["lane"][lane]["tiers"])
     missing = [(c, why) for c in claims
                if (why := (probe_submodules(tiers) if c == "submodules" else PROBES[c]())) is not None]
+    if (why := probe_nextest()) is not None:
+        missing.insert(0, ("nextest", why))
     if missing:
         print(f"gate-lane-preflight: lane `{lane}` claims what this host does not have:",
               file=sys.stderr)
         for c, why in missing:
-            print(f"  {c}: {why}", file=sys.stderr)
-        print("  Provision it, or run a lane that does not claim it "
-              "(.config/gate-lanes.toml). No gate ran.", file=sys.stderr)
+            print(f"  {c}: {why}\n      fix: {REMEDY.get(c, '(see .config/gate-lanes.toml)')}",
+                  file=sys.stderr)
+        fixes = sorted({REMEDY[c] for c, _ in missing if REMEDY.get(c, "").startswith(("just ", "git "))})
+        if fixes:
+            print("  In one go: " + " && ".join(fixes), file=sys.stderr)
+        print("  Or run a lane that claims less, e.g. `NROS_GATE_SCOPE=pristine just check fast`\n"
+              "  (its out-of-scope gates are listed by name, never passed). No gate ran.",
+              file=sys.stderr)
         return 1
     print(f"gate-lane-preflight: lane `{lane}`: {len(claims)} claimed capabilities present")
     return 0

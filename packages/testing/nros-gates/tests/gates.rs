@@ -112,6 +112,10 @@ fn run(root: &Path, name: &str, target: &str, unit: Option<&str>) -> ExitCode {
         .current_dir(root)
         .env_remove("NROS_GATE_LIST_UNITS")
         .env("NROS_GATE_SKIP_LEDGER", &ledger)
+        // The ledger and strict mode belong to THIS checkout's gates; a gate's
+        // nested subject in a scratch checkout keeps its own
+        // (`scripts/build/check-skip.sh`, `_nros_check_skip_nested`).
+        .env("NROS_GATE_SKIP_ROOT", root)
         .env("NROS_CHECK_SKIP_STRICT", "1");
     match unit {
         Some(u) => cmd.env("NROS_GATE_UNIT", u),
