@@ -1,0 +1,1 @@
+The pinned `nros` release is now `0.6.0-nros8`, cut from `main` at 9c5113d010. It carries the fix for First Project failing to compile on `0.6.0-nros7` (`max_cbs 0`): a release now trusts its probe sidecars, and the talker scaffold declares its timer.
