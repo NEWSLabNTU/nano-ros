@@ -265,7 +265,4 @@ book builds on that shape.
 ## Design background
 
 Speaking `rmw_zenoh_cpp`'s wire format, with ROS 2's own router, follows
-[RFC-0075](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0075-zenoh-router-provenance-and-the-unstable-seam.md);
-saying plainly where nano-ros differs is
-[RFC-0124](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0124-book-user-guide-organization.md)
-Principle 13.
+RFC-0075; saying plainly where nano-ros differs is RFC-0124 Principle 13.

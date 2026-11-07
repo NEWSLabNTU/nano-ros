@@ -452,8 +452,6 @@ a ported node keeps.
 
 ## Design background
 
-The templates follow the ROS 2 demos' roles and interfaces
-([RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
-D4); one Tutorial path that adds services and actions to the same project is
-[RFC-0124](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0124-book-user-guide-organization.md)
+The templates follow the ROS 2 demos' roles and interfaces (RFC-0121 D4); one
+Tutorial path that adds services and actions to the same project is RFC-0124
 D3.

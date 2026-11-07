@@ -498,5 +498,4 @@ exactly that system, if you tell it what the nodes create.
 ## Design background
 
 Resolving the launch file at build time, with the ROS 2 launch parser, follows
-[RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
-D2 and D3.
+RFC-0121 D2 and D3.

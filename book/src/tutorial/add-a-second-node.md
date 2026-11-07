@@ -403,8 +403,5 @@ every field of the two roles.
 
 ## Design background
 
-The workspace layout and `nros new --to` follow
-[RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md);
-one page for the three languages follows
-[RFC-0124](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0124-book-user-guide-organization.md)
-D9.
+The workspace layout and `nros new --to` follow RFC-0121; one page for the
+three languages follows RFC-0124 D9.

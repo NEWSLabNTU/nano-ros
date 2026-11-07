@@ -115,9 +115,8 @@ sensor_ws/
 on. The scaffold filled it in, and this chapter never needs you to open it.
 The next chapter opens both.
 
-The same shape, kept for reading beside this chapter, is
-[`examples/mps2-an385-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker)
-in the nano-ros repository.
+To keep an untouched copy to read beside the one you change, run the same
+`nros new` line again with another workspace name.
 
 ## Run it
 
@@ -320,9 +319,5 @@ step. Chapter 9 adds the host to this project as its second target.
 
 ## Design background
 
-The chapter follows [RFC-0116](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0116-adoption-purposes-and-front-doors.md)
-D5 and D6, [RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
-D4 and D5, and [RFC-0124](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0124-book-user-guide-organization.md)
-D3: one Tutorial project on a Verified board. Its pointer to the copy-out
-talker follows [RFC-0122](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md)
-D3.
+The chapter follows RFC-0116 D5 and D6, RFC-0121 D4 and D5, and RFC-0124 D3:
+one Tutorial project on a Verified board.
