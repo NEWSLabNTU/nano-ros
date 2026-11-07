@@ -415,11 +415,10 @@ mod tests {
     /// passthrough in `<dir>/flashed`; `console` prints the port it was
     /// handed, then the board's banner.
     fn fake(dir: &Path, flash_exit: u8) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let p = dir.join("fake-runner");
-        std::fs::write(
+        crate::test_support::write_executable_stub(
             &p,
-            format!(
+            &format!(
                 "#!/bin/sh\n\
                  if [ \"$1\" = describe ]; then\n\
                  echo '{{\"protocol\":[1],\"verbs\":[\"flash\",\"console\"],\"needs\":[]}}'; exit 0\n\
@@ -434,9 +433,7 @@ mod tests {
                  exit 2\n",
                 d = dir.display()
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         p
     }
 
