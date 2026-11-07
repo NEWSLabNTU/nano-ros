@@ -1106,6 +1106,66 @@ mod tests {
         );
     }
 
+    /// Issue 2341 — every in-tree board states, as a descriptor `[env]` row,
+    /// each `required_env` fact its platform manifest lists, because that row
+    /// is the only carrier of the fact to the cargo half of a CMake build
+    /// (`zpico-sys` panics on its absence). `freertos-posix` set its port on
+    /// the CMake half only, so its zenoh image never built.
+    #[test]
+    fn every_board_states_its_platforms_required_env() {
+        let root = repo_root();
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+            .expect("in-tree catalog");
+        let mut manifests: Vec<(Vec<String>, Vec<String>)> = Vec::new();
+        for e in std::fs::read_dir(root.join("packages/platform")).unwrap() {
+            let p = e.unwrap().path().join(PLATFORM_CONFIG_FILENAME);
+            let Ok(text) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            let doc: toml::Table = text.parse().expect("platform manifest parses");
+            let strs = |v: Option<&toml::Value>, key: Option<&str>| -> Vec<String> {
+                v.and_then(toml::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter(|row| key.is_none() || row.get("when").is_none())
+                    .filter_map(|row| match key {
+                        Some(k) => row.get(k)?.as_str(),
+                        None => row.as_str(),
+                    })
+                    .map(str::to_string)
+                    .collect()
+            };
+            manifests.push((
+                strs(doc.get("names"), None),
+                strs(doc.get("required_env"), Some("name")),
+            ));
+        }
+        let mut missing = Vec::new();
+        for d in catalog.descriptors() {
+            let Some(src) = d.source.as_deref() else {
+                continue;
+            };
+            if !root.join(src).starts_with(root.join("packages/boards")) {
+                continue;
+            }
+            let kebab = d.platform.kebab();
+            let required = manifests
+                .iter()
+                .filter(|(names, _)| names.iter().any(|n| n == kebab))
+                .flat_map(|(_, req)| req.iter());
+            let rows = descriptor_env_rows_with(d, &root, |_| false);
+            for name in required {
+                if !rows.iter().any(|(k, _)| k == name) {
+                    missing.push(format!("{} ({kebab}): {name}", d.names[0]));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "boards missing a required_env row in their descriptor `[env]`: {missing:?}"
+        );
+    }
+
     #[test]
     fn a_cargo_leaf_gets_its_boards_descriptor_env_rows() {
         let root = repo_root();

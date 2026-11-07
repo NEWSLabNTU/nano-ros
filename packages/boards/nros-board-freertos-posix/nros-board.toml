@@ -26,6 +26,18 @@ toolchain = "stable"
 # entry is `c/freertos_posix_entry.c`.
 entry_kind = "hosted-main"
 supported_netstacks = []
+# Issue 2341 — the board's port and RTOS config dir, stated here as every
+# other FreeRTOS board states them (phase-484 W2b, RFC-0103 D1/D3). The board
+# cmake module sets the port for the CMake half, but these `[env]` rows are
+# the only carrier to the CARGO half (`nros ws board-facts` → Corrosion), and
+# `zpico-sys` refuses to build without them: a zenoh image here stopped on
+# "FREERTOS_PORT not set". No `[build] target`: the image is a host process.
+cargo_config = '''
+[env]
+# Upstream FreeRTOS-Kernel's enum for `portable/ThirdParty/GCC/Posix`.
+FREERTOS_PORT = { value = "GCC_POSIX", force = true }
+FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-freertos-posix/config", force = true }
+'''
 
 # RFC-0042 D2 — declared capabilities (SSoT). Same three as the mps2 board: the
 # kernel supplies heap and threads, and the host supplies atomics natively
