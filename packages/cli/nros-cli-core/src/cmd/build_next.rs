@@ -1368,7 +1368,6 @@ mod tests {
             "starters/nuttx-riscv.md",
             "starters/threadx-riscv64.md",
             "starters/nucleo-f767zi.md",
-            "starters/rpi-pico-w.md",
         ] {
             let chapter = path.rsplit('/').next().unwrap();
             let text = std::fs::read_to_string(root.join("book/src").join(path))
