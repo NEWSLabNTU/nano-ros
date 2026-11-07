@@ -129,6 +129,7 @@ Each `[[board]]` row carries, in place of `tier`:
 | `cadence` | `merge`, `daily`, `weekly`, `manual` | How often the run in `runs` happens: a merge-gating lane, the nightly, the weekly probe, or a maintainer by hand. |
 | `last_run` | an ISO date | Required when `cadence = "manual"`; refused otherwise, because a lane's last run is a question for the lane, not the registry. |
 | `infra` | `true` | Replaces `tier = "infra"`: shared traits, family drivers, ABI mirrors, PACs. No other evidence field is allowed on an infra row. |
+| `flavour` | `std`, `no_std` | Only on an `external` row (its board package is in someone else's tree), and required there when the row has a `matrix_platform`: no board crate here can say the image's std flavour, so the row states it and `check-flavour-lanes` checks the stated value like a read one. Refused on every other row, whose flavour is read from its crate. Added 2026-11-07 (phase-542 W0.2). |
 
 **Amended 2026-11-04 by [RFC-0122](0122-behaviour-bringups-road-witnesses-cadence-backed-ci.md) D8/D9:** each `cadence` value names exactly
 one workflow job that runs the board's cells at that cadence (`merge` is the
@@ -141,7 +142,7 @@ The status word is generated, never typed:
 | --- | --- |
 | **Not supported** | `runs = "none"` and the row has no build cell |
 | **Builds** | `runs = "none"` and the row has at least one BuildOnly cell |
-| **Boots, manual (date)** | `runs` is `emulator` or `hardware`, `cadence = "manual"` |
+| **Boots, manual (date)** | `runs` is `emulator`, `hardware` or `host`, `cadence = "manual"` (`host` added 2026-11-07, phase-542 W0.1) |
 | **Verified in emulator (cadence)** | `runs = "emulator"`, cadence merge, daily or weekly |
 | **Verified on host (cadence)** | `runs = "host"`, cadence merge, daily or weekly |
 | **Verified on hardware (cadence)** | `runs = "hardware"`, cadence merge, daily or weekly (needs a hardware runner; no row qualifies today) |
@@ -163,23 +164,16 @@ requires `last_run`. Maintainer counts key on the status word: a Verified row
 needs two named maintainers, a Boots or Builds row one, with the existing
 grandfather baseline unchanged.
 
-> **Open, owned by [phase-542](../roadmap/phase-542-px4-supported-platform.md)
-> W0 (noted 2026-11-06; not decided here).** PX4 SITL's row (PR #3169) meets
-> three cases D10 does not cover. They are the phase's questions for the
-> maintainer, and D10 is amended when they are ruled:
+> **Ruled 2026-11-07 (user, phase-542 W0; see the decision log).** PX4 SITL's
+> row (PR #3169) met three cases D10 did not cover:
 >
-> 1. **Host + manual.** "Boots, manual" names `runs = emulator|hardware`; a
->    `runs = "host"`, `cadence = "manual"` row has no status word.
-> 2. **An `external` row with a `matrix_platform` and no board crate.**
->    `check-flavour-lanes` reads a board crate's flavour for every such row;
->    `px4-sitl` has neither a `Cargo.toml` nor an `nros-board.toml` under
->    `packages/boards/`. (`s32k344-safety-island`, the other `external` row,
->    carries no `matrix_platform`.)
-> 3. **An automated cadence on Gated cells.** The predicates above key an
->    automated cadence on a Runtime cell of the row's platform. Every PX4 cell
->    is Gated (run by the hosted `px4-sitl` nightly job), and a PX4 Runtime
->    cell would overflow the 232-domain matrix window
->    (`nros_tests::alloc::domain_of`).
+> 1. **Host + manual** reads "Boots, manual (date)". No new word.
+> 2. **An `external` row with a `matrix_platform` and no board crate** states
+>    its `flavour` (field table above); `check-flavour-lanes` checks it, and
+>    external rows are not excluded from the gate.
+> 3. **An automated cadence for PX4** is backed by a real Runtime cell, not a
+>    Gated one. That needs `nros_tests::alloc::domain_of`'s window narrowed
+>    so 12 or more platforms fit (phase-542 W5).
 
 ### D11 — Breadth is derived and inherited
 
@@ -357,6 +351,17 @@ stated reversal.
 
 ## Decision log
 
+- 2026-11-07 — phase-542 W0, three user rulings for PX4 SITL's row (PR #3169):
+  (1) "Boots, manual (date)" widens to `runs = "host"`; no new status word,
+  so `status_word` needs no change (it already read so) and only D10's table
+  moves. (2) An `external` row with a `matrix_platform` and no board crate
+  states its `flavour` (`std` or `no_std`) in a new field, which
+  `check-flavour-lanes` reads in place of a crate; the gate still checks the
+  row rather than excluding external rows, and `shape_errors` refuses the
+  field anywhere else. (3) `cadence = "daily"` for PX4 needs a real Runtime
+  cell, so the DDS domain window (`alloc::domain_of`, 21 wide, 11 platforms;
+  `Px4` is index 12) is narrowed so 12 or more platforms fit. That is
+  phase-542 W5's, and until it lands the row stays `cadence = "manual"`.
 - 2026-11-01 — Where the clock is applied. D10 says a stale manual row reads
   Builds in every generated view. The committed views (the book's markdown
   pages, the status file) carry no clock: a tracked file that changed on a day

@@ -186,13 +186,23 @@ def _is_declarative(crate):
 def derive():
     """platform -> {flavour: [crates]}, plus rows whose crate is unreadable."""
     rows = parse_registry(REGISTRY.read_text())
-    by_platform, unreadable, declarative = {}, [], []
+    by_platform, unreadable, declarative, external, unstated = {}, [], [], [], []
     for r in rows:
         platform = r.get("matrix_platform")
         crate = r.get("crate")
         if not platform or not crate:
             continue  # `infra` rows carry no platform, by design
         fl = board_flavour(crate)
+        if fl is None and r.get("external"):
+            # phase-542 W0.2 (user ruling 2026-11-07): the board package is in
+            # someone else's tree, so the row states its flavour and this gate
+            # checks the stated value like any read one. A missing or unknown
+            # value fails, so an external row cannot slip the gate.
+            fl = r.get("flavour")
+            if fl not in ("std", "no_std"):
+                unstated.append((crate, platform))
+                continue
+            external.append((crate, platform, fl))
         if fl is None:
             if _is_declarative(crate):
                 declarative.append((crate, platform))
@@ -200,11 +210,11 @@ def derive():
                 unreadable.append((crate, platform))
             continue
         by_platform.setdefault(platform, {}).setdefault(fl, []).append(crate)
-    return by_platform, unreadable, declarative
+    return by_platform, unreadable, declarative, external, unstated
 
 
 def main():
-    by_platform, unreadable, declarative = derive()
+    by_platform, unreadable, declarative, external, unstated = derive()
 
     if "--print" in sys.argv:
         for platform in sorted(by_platform):
@@ -241,11 +251,23 @@ def main():
         for crate, platform in unreadable:
             print(f"    {crate} (platform {platform}) — no packages/boards/{crate}/Cargo.toml", file=sys.stderr)
         rc = 1
+    if unstated:
+        print(f"\n[FAIL] {len(unstated)} external row(s) state no valid flavour:", file=sys.stderr)
+        for crate, platform in unstated:
+            print(f"    {crate} (platform {platform}) — set `flavour = \"std\"` or "
+                  f"`\"no_std\"` on its registry row", file=sys.stderr)
+        rc = 1
     if rc == 0:
         note = ""
+        if external:
+            names = ", ".join(f"{c} ({p}, {f})" for c, p, f in sorted(external))
+            note += (
+                f"\n  {len(external)} external board(s) state their flavour on the "
+                f"registry row: {names}"
+            )
         if declarative:
             names = ", ".join(f"{c} ({p})" for c, p in sorted(declarative))
-            note = (
+            note += (
                 f"\n  {len(declarative)} declarative board(s) carry no Rust crate and so no "
                 f"flavour to partition: {names}"
             )
