@@ -25,6 +25,13 @@
 //! * The selection-crate dependency, the `[[bin]]` that named the deleted
 //!   `main` and the `[workspace]` table are removed from the manifest, and its
 //!   relative `path =` dependencies are re-rooted for the new location.
+//! * The root gets a `.colcon_workspace` marker, where `nros::main!`'s package
+//!   walk stops; without it the generated entry finds no packages.
+//! * A west application's base `prj.conf` goes to
+//!   `<bringup>/boards/<west board>/prj.conf`, once per west board the images
+//!   build for. That directory is the image's APPLICATION_CONFIG_DIR; an
+//!   `os_config` entry would not reach Zephyr, because the generated
+//!   application's own placeholder `prj.conf` is found first.
 //! * A Zephyr west application whose node is already its own package (a
 //!   subdirectory with a `package.xml`) keeps that package as the node, and
 //!   its west glue (`CMakeLists.txt`, the image crate, `sample.yaml`) is
@@ -77,9 +84,44 @@ pub struct Plan {
     pub report: Vec<String>,
 }
 
+/// The west board an image of the migrated bringup builds for, by image id.
+///
+/// [`plan`] answers it from the board catalog; tests supply their own. `None`
+/// means the board did not resolve, which [`plan`] reports.
+pub type WestBoardOf<'a> =
+    dyn Fn(&str, &crate::orchestration::image::ImageBlock) -> Option<String> + 'a;
+
+/// The real [`WestBoardOf`]: the image's board package through the board
+/// catalog of the nano-ros checkout `dir` sits in, and that package's
+/// `west build -b` board — the spelling `nros build` names the
+/// `<bringup>/boards/<board>/` directory by (`west_build_board`).
+fn catalog_west_board(dir: &Path) -> Box<WestBoardOf<'static>> {
+    // Loaded on first use: only a west application asks.
+    let dir = dir.to_path_buf();
+    let catalog = std::cell::OnceCell::new();
+    Box::new(move |id, image| {
+        let catalog = catalog
+            .get_or_init(|| {
+                crate::orchestration::nano_ros_root::resolve(None, &dir).and_then(|root| {
+                    crate::orchestration::board_descriptor::BoardCatalog::load_with_packages(
+                        &root,
+                        &[],
+                    )
+                    .ok()
+                })
+            })
+            .as_ref()?;
+        let d = crate::orchestration::image::resolve_image_board(catalog, id, image).ok()?;
+        Some(d.west_build_board(image.board.as_deref()?))
+    })
+}
+
 /// Top-level names that stay at the workspace root.
 fn stays_at_root(name: &str) -> bool {
-    name.starts_with("README") || name.starts_with("LICENSE") || name == ".gitignore"
+    name.starts_with("README")
+        || name.starts_with("LICENSE")
+        || name == ".gitignore"
+        || name == ".colcon_workspace"
 }
 
 /// Build output and per-host state: never moved, never deleted.
@@ -390,6 +432,11 @@ fn rename_class_paths(system_text: &str, old: &str, new: &str) -> Result<String>
 
 /// Plan the migration of `dir`. Pure: reads, never writes.
 pub fn plan(dir: &Path) -> Result<Plan> {
+    plan_with(dir, &*catalog_west_board(dir))
+}
+
+/// [`plan`] with the west-board answer supplied.
+pub fn plan_with(dir: &Path, west_board_of: &WestBoardOf<'_>) -> Result<Plan> {
     let system_path = dir.join("system.toml");
     if !system_path.is_file() {
         bail!(
@@ -456,6 +503,42 @@ pub fn plan(dir: &Path) -> Result<Plan> {
         .collect();
     entries.sort();
 
+    // The `<bringup>/boards/<dir>/` names the images' west boards map to.
+    let mut board_dirs: Vec<String> = Vec::new();
+    let images = system
+        .get("image")
+        .and_then(toml::Value::as_table)
+        .filter(|_| is_west);
+    for (id, raw) in images.into_iter().flatten() {
+        let west = raw
+            .clone()
+            .try_into::<crate::orchestration::image::ImageBlock>()
+            .ok()
+            .and_then(|image| west_board_of(id, &image));
+        match west {
+            Some(b) => {
+                let flat = crate::builder::zephyr::sanitize_board(&b);
+                if !board_dirs.contains(&flat) {
+                    board_dirs.push(flat);
+                }
+            }
+            None => plan.report.push(format!(
+                "`[image.{id}]`'s board did not resolve to a west board, so the base \
+                 `prj.conf` has no `boards/<board>/` directory to go to for it"
+            )),
+        }
+    }
+
+    // A workspace root holds the marker `nros::main!`'s package walk stops
+    // at. Without it the walk reaches `.git/` and the generated entry
+    // reports `pkg not found ... Known pkgs: []`.
+    if !dir.join(".colcon_workspace").exists() {
+        plan.ops.push(Op::Write {
+            path: dir.join(".colcon_workspace"),
+            text: cargo_nano_ros::workspace_scaffold::WORKSPACE_MARKER.to_string(),
+        });
+    }
+
     let mut moved_main: Option<String> = None;
     let mut system_edit: Option<String> = None;
     for name in &entries {
@@ -476,8 +559,41 @@ pub fn plan(dir: &Path) -> Result<Plan> {
             });
             continue;
         }
-        // Zephyr configuration nothing in `system.toml` names (the base
-        // `prj.conf`, an overlay, a Kconfig fragment) is the image's, not the
+        // The base `prj.conf` of a west application. A generated application
+        // carries a placeholder `prj.conf` of its own, which `resolve_fragment`
+        // finds before the bringup's, so naming this file in `os_config` does
+        // nothing. The directory that does reach Zephyr is the image's
+        // APPLICATION_CONFIG_DIR, `<bringup>/boards/<west board>/`: Zephyr
+        // takes `prj.conf` from there. One copy per west board the images
+        // build for.
+        if is_west && name == "prj.conf" && !board_dirs.is_empty() {
+            let text = std::fs::read_to_string(&path)?;
+            for (i, flat) in board_dirs.iter().enumerate() {
+                let to = bringup_dir.join("boards").join(flat).join("prj.conf");
+                if i == 0 {
+                    plan.ops.push(Op::Move {
+                        from: path.clone(),
+                        to,
+                    });
+                } else {
+                    plan.ops.push(Op::Write {
+                        path: to,
+                        text: text.clone(),
+                    });
+                }
+            }
+            plan.report.push(format!(
+                "moved `prj.conf` to `boards/<board>/prj.conf` in the bringup, for {}: \
+                 that directory is the image's APPLICATION_CONFIG_DIR, and an \
+                 `os_config` entry would find the generated application's own \
+                 placeholder first",
+                board_dirs.join(", ")
+            ));
+            continue;
+        }
+        // Zephyr configuration nothing in `system.toml` names (an overlay, a
+        // Kconfig fragment, a base `prj.conf` whose board did not resolve) is
+        // the image's, not the
         // node's: it follows the bringup, where a person decides whether the
         // generated west application should read it (`boards/<board>/`).
         if is_west
@@ -1255,7 +1371,7 @@ std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-man
         );
         write(&d.join("node/src/lib.rs"), "pub struct Talker;\n");
 
-        let p = plan(&d).unwrap();
+        let p = plan_with(&d, &native_sim).unwrap();
         assert_eq!(p.node, "zephyr_talker_node");
         apply(&p).unwrap();
         let node = d.join("src/zephyr_talker_node");
@@ -1270,13 +1386,20 @@ std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-man
         let m = std::fs::read_to_string(node.join("Cargo.toml")).unwrap();
         assert!(m.contains("path = \"../../generated/std_msgs\""), "{m}");
         assert!(
-            bringup.join("prj.conf").is_file(),
-            "an unnamed fragment follows the bringup too"
+            bringup
+                .join("boards/native_sim_native_64/prj.conf")
+                .is_file(),
+            "the base prj.conf goes to the image's APPLICATION_CONFIG_DIR"
         );
+        assert!(!bringup.join("prj.conf").exists());
         assert!(
             p.report.iter().any(|r| r.contains("prj.conf")),
             "and is reported: {:?}",
             p.report
+        );
+        assert!(
+            d.join(".colcon_workspace").is_file(),
+            "the root is marked a workspace"
         );
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -1310,7 +1433,7 @@ std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-man
             "[system]\nname = \"t\"\n\n[[component]]\npkg = \"nros_zephyr_talker_c\"\n\n\
              [image.zephyr_zenoh]\nboard = \"zephyr\"\nos_config = [\"prj-zenoh.conf\"]\n",
         );
-        let p = plan(&d).unwrap();
+        let p = plan_with(&d, &native_sim).unwrap();
         apply(&p).unwrap();
         let node = d.join("src/nros_zephyr_talker_c");
         let bringup = d.join("src/nros_zephyr_talker_c_bringup");
@@ -1319,11 +1442,138 @@ std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-man
         assert!(cmake.contains("nano_ros_auto_add_library"), "{cmake}");
         assert!(node.join("src/Talker.c").is_file());
         assert!(bringup.join("prj-zenoh.conf").is_file());
-        assert!(bringup.join("prj.conf").is_file());
+        assert!(
+            bringup
+                .join("boards/native_sim_native_64/prj.conf")
+                .is_file()
+        );
         assert!(
             !p.report.iter().any(|r| r.contains("defines `main`")),
             "a component defines no main: {:?}",
             p.report
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Every image builds `native_sim/native/64`, as `board = "zephyr"` does.
+    fn native_sim(_: &str, _: &crate::orchestration::image::ImageBlock) -> Option<String> {
+        Some("native_sim/native/64".to_string())
+    }
+
+    fn west_c_leaf(d: &Path, images: &str) {
+        write(
+            &d.join("CMakeLists.txt"),
+            "find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})\nproject(t)\n\
+             nano_ros_auto_add_library(talker_lib STATIC src/Talker.c)\n",
+        );
+        write(&d.join("package.xml"), &package_xml("zt", "nros_cmake"));
+        write(
+            &d.join("src/Talker.c"),
+            "static int t(void) { return 0; }\n",
+        );
+        write(&d.join("prj.conf"), "CONFIG_BASE=y\n");
+        write(
+            &d.join("system.toml"),
+            &format!("[system]\nname = \"t\"\n\n[[component]]\npkg = \"zt\"\n\n{images}"),
+        );
+    }
+
+    /// The base `prj.conf` reaches every west board the images build for:
+    /// one copy per `boards/<board>/` directory, since each is its own
+    /// APPLICATION_CONFIG_DIR.
+    #[test]
+    fn the_base_prj_conf_goes_to_each_west_boards_config_dir() {
+        let d = scratch("west-boards");
+        west_c_leaf(
+            &d,
+            "[image.zephyr]\nboard = \"zephyr\"\n\n[image.zephyr_cyclonedds]\nboard = \"zephyr\"\n\
+             rmw = \"cyclonedds\"\n\n[image.mps2]\nboard = \"mps2-zephyr\"\n",
+        );
+        let by_board = |_: &str, i: &crate::orchestration::image::ImageBlock| {
+            Some(match i.board.as_deref()? {
+                "zephyr" => "native_sim/native/64".to_string(),
+                _ => "mps2/an385".to_string(),
+            })
+        };
+        let p = plan_with(&d, &by_board).unwrap();
+        apply(&p).unwrap();
+        let bringup = d.join("src/zt_bringup");
+        for flat in ["native_sim_native_64", "mps2_an385"] {
+            let conf = bringup.join("boards").join(flat).join("prj.conf");
+            assert_eq!(
+                std::fs::read_to_string(&conf).unwrap(),
+                "CONFIG_BASE=y\n",
+                "{}",
+                conf.display()
+            );
+        }
+        assert!(!d.join("prj.conf").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A board that does not resolve leaves `prj.conf` at the bringup root,
+    /// as before, and says why.
+    #[test]
+    fn an_unresolved_board_leaves_prj_conf_in_the_bringup_and_says_so() {
+        let d = scratch("west-unresolved");
+        west_c_leaf(&d, "[image.zephyr]\nboard = \"nowhere\"\n");
+        let p = plan_with(&d, &|_, _| None).unwrap();
+        apply(&p).unwrap();
+        assert!(d.join("src/zt_bringup/prj.conf").is_file());
+        assert!(
+            p.report
+                .iter()
+                .any(|r| r.contains("[image.zephyr]") && r.contains("west board")),
+            "{:?}",
+            p.report
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The real answer comes from this checkout's board catalog, in the west
+    /// spelling `nros build` names `<bringup>/boards/<board>/` by.
+    #[test]
+    fn the_catalog_answers_the_west_board() {
+        let d = scratch("catalog");
+        let of = catalog_west_board(&d);
+        let image = |board: &str| {
+            toml::Value::Table(
+                [("board".to_string(), toml::Value::String(board.into()))]
+                    .into_iter()
+                    .collect(),
+            )
+            .try_into::<crate::orchestration::image::ImageBlock>()
+            .unwrap()
+        };
+        assert_eq!(
+            of("zephyr", &image("zephyr")).as_deref(),
+            Some("native_sim/native/64")
+        );
+        assert_eq!(
+            of("mps2", &image("mps2-an385-zephyr")).as_deref(),
+            Some("mps2/an385")
+        );
+        assert_eq!(of("x", &image("no-such-board")), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// An existing marker is left alone, not moved into the node.
+    #[test]
+    fn an_existing_workspace_marker_stays_at_the_root() {
+        let d = scratch("marker");
+        west_c_leaf(&d, "[image.zephyr]\nboard = \"zephyr\"\n");
+        write(&d.join(".colcon_workspace"), "# mine\n");
+        let p = plan_with(&d, &native_sim).unwrap();
+        assert!(
+            !p.ops.iter().any(|o| matches!(o, Op::Write { path, .. }
+                if path.ends_with(".colcon_workspace"))),
+            "{:?}",
+            p.ops
+        );
+        apply(&p).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(d.join(".colcon_workspace")).unwrap(),
+            "# mine\n"
         );
         let _ = std::fs::remove_dir_all(&d);
     }
