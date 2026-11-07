@@ -1322,12 +1322,12 @@ Usage: nros plan [OPTIONS] <SYSTEM_PKG> [LAUNCH_FILE] [LAUNCH_ARGS]...
 
 Arguments:
   <SYSTEM_PKG>
-          System package name used for build/<system_pkg>/nros output. When omitted, derived from the `<launch_file>` directory's package name (the self-bringup shape)
+          System package name used for build/<system_pkg>/nros output. A directory here, with no `<launch_file>`, is the bringup directory and names the package
 
   [LAUNCH_FILE]
           ROS 2 launch file to parse, or a package directory to resolve.
           
-          A directory resolves by the multi-launch policy: the launch file named after the package, then `system.launch.xml`, then a single launch file, then a synthesised launch for a self-bringup package. When omitted (`nros plan <pkg-dir>`), defaults to the `<system_pkg>` argument, treated as a directory path.
+          A directory is the discovery root for its resolved SystemModel. When omitted (`nros plan <bringup-dir>`), defaults to the `<system_pkg>` argument, treated as a directory path.
           
           [default: ""]
 
@@ -1340,12 +1340,6 @@ Options:
 
       --model <system_model.yaml>
           Plan from a resolved SystemModel (canonical). With a package-dir input, a committed `<dir>/config/system_model.yaml` is discovered automatically; this flag overrides with an explicit path
-
-      --file <FILE>
-          When `<launch_file>` is a directory, prefer `<dir>/launch/<file>` (or cwd-relative / absolute as fallback)
-
-      --exec <EXEC>
-          Disambiguates the synthesised `<node exec="…">` when the package declares multiple `[[bin]]` / `add_executable` targets
 
       --workspace <WORKSPACE>
           Workspace root containing colcon-like src/* packages

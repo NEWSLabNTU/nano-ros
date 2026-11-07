@@ -1,13 +1,14 @@
-//! Self-bringup pkg discovery + 1-node model synthesis.
+//! Package / executable discovery from Cargo and CMake metadata.
 //!
 //! R-code (phase-296 R4): the launch-XML resolution/synthesis that lived
 //! here is DELETED — the canonical config path is the play_launch-resolved
 //! SystemModel (convention-discovered `config/system_model.yaml`,
-//! `--model`, or a pre-baked `--record`). What remains is the self-bringup
-//! kernel: pkg/exec discovery from Cargo/CMake metadata, launch-file
-//! enumeration (used to detect "launchless" pkgs), and
-//! [`synthesise_self_model`] — the in-memory 1-node SystemModel that
-//! replaces the old 1-node `<launch>` XML synth for the L.7 dev loop.
+//! `--model`, or a pre-baked `--record`). phase-531 W7 step 2 deleted the
+//! launchless-package detection and the in-memory 1-node model
+//! (~~`synthesise_self_model`~~) that `nros plan <pkg-dir>` planned from. What
+//! remains is [`discover_pkg_name`] / [`discover_exec_target`], read by the
+//! single-package leaf's launch synthesis (`cmd/ws.rs`), which retires with
+//! the leaf road (W7 step 5).
 
 use std::{
     fs,
@@ -16,40 +17,19 @@ use std::{
 
 use eyre::{Result, eyre};
 
-/// Errors specific to launch resolution. Wrapped in `eyre` at the
+/// Errors from package / executable discovery. Wrapped in `eyre` at the
 /// callsite; declared as a real enum so tests can match on the failure
 /// mode without parsing strings.
 #[derive(Debug, thiserror::Error)]
 pub enum LaunchResolveError {
     #[error(
-        "no launch file resolved under {pkg}/launch and pkg is a Path A bringup \
-         (no Cargo.toml / CMakeLists.txt) — synthesis is disallowed for multi-node bringups"
-    )]
-    PathABringupNoLaunch { pkg: PathBuf },
-
-    #[error(
-        "multiple launch files under {pkg}/launch ({candidates:?}) — pass `--file <name>` \
-         to pick one (try one of: {candidates:?})"
-    )]
-    AmbiguousMultiLaunch {
-        pkg: PathBuf,
-        candidates: Vec<String>,
-    },
-
-    #[error(
         "package {pkg} declares multiple executables ({candidates:?}); \
-         pass `--exec <name>` to pick one"
+         name the executable explicitly"
     )]
     AmbiguousExec {
         pkg: PathBuf,
         candidates: Vec<String>,
     },
-
-    #[error(
-        "--file {file:?} does not resolve to an existing launch file (tried \
-         {pkg}/launch/{file}, ./{file}, and absolute)"
-    )]
-    FileArgUnresolved { pkg: PathBuf, file: String },
 
     #[error(
         "could not determine pkg name for {pkg} (no Cargo.toml [package].name, no project() in CMakeLists.txt)"
@@ -60,40 +40,6 @@ pub enum LaunchResolveError {
         "could not determine executable for {pkg} (no [[bin]] in Cargo.toml, no add_executable in CMakeLists.txt)"
     )]
     UnknownExec { pkg: PathBuf },
-}
-
-/// True when `pkg_dir` is a component or application pkg eligible for
-/// synthesis: has a `Cargo.toml` or `CMakeLists.txt`. Path A bringup
-/// pkgs (no Cargo.toml + no CMakeLists.txt + has system.toml) are
-/// disqualified.
-pub fn is_self_bringup_eligible(pkg_dir: &Path) -> bool {
-    let has_cargo = pkg_dir.join("Cargo.toml").is_file();
-    let has_cmake = pkg_dir.join("CMakeLists.txt").is_file();
-    has_cargo || has_cmake
-}
-
-/// Enumerate `*.launch.xml` files directly under `<pkg>/launch/` (no
-/// recursion). Returns sorted basenames.
-pub fn enumerate_launch_files(pkg_dir: &Path) -> Vec<String> {
-    let dir = pkg_dir.join("launch");
-    let mut out = Vec::new();
-    let Ok(rd) = fs::read_dir(&dir) else {
-        return out;
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if name.ends_with(".launch.xml") {
-            out.push(name.to_string());
-        }
-    }
-    out.sort();
-    out
 }
 
 /// Read `pkg-name`:
@@ -265,29 +211,6 @@ fn read_cmake_add_executables(cmake: &Path) -> Result<Vec<String>> {
         }
     }
     Ok(out)
-}
-
-/// Render the synth XML body for a single-node bringup.
-/// R-code precondition #3 — the 1-node model synth for the self-bringup
-/// shape (same
-/// `discover_pkg_name`/`discover_exec_target` inputs). The planner consumes
-/// it via `plan_record_from_model`, so the XML synth (and its parser round
-/// trip) dies with this module.
-pub fn synthesise_self_model(
-    pkg_name: &str,
-    exec_name: &str,
-) -> ros_launch_manifest_model::SystemModel {
-    let mut m = ros_launch_manifest_model::SystemModel::default();
-    m.meta.version = ros_launch_manifest_model::SCHEMA_VERSION;
-    m.structure.nodes.insert(
-        format!("/{exec_name}"),
-        ros_launch_manifest_model::NodeInstance {
-            pkg: Some(pkg_name.to_string()),
-            exec: Some(exec_name.to_string()),
-            ..Default::default()
-        },
-    );
-    m
 }
 
 #[cfg(test)]

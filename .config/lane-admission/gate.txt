@@ -59,7 +59,6 @@ platform_header_compile
 repo_root_is_unified
 sched_dims_model_coverage
 schema_serializer_round_trip
-self_bringup
 serialized_size_bound
 system_toml_sched_tasks_parse
 time_to_ros_msg

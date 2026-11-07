@@ -115,8 +115,8 @@ Lines are non-test lines. "WS reach" uses the classes defined above.
 | Item | Lines | WS reach | Evidence | W7 step |
 | --- | --- | --- | --- | --- |
 | `orchestration/nros_config.rs` `synthesise_self_bringup` + the `is_self_bringup_eligible` loop in `from_cargo_metadata`; `[package.metadata.nros.deploy.*]` schema | 198 + ~25 | none | not run on either road; no example declares `[deploy.*]` | 1 — **deleted** (W7 step 1). The schema keeps a `RetiredTable` slot so discovery refuses the key by name |
-| `orchestration/launch_synth.rs` `synthesise_self_model`, `enumerate_launch_files`, `is_self_bringup_eligible`; the `cmd/plan.rs` self-bringup block (lines 189–225) | 42 + ~37 | none | reached only from `nros plan <pkg-dir>` | 2 |
-| `launch_synth.rs` `discover_pkg_name`, `discover_exec_target` and their four readers | 147 | leaf-only | ran on the leaf road only, via `synthesise_leaf_launch` | 2 (W3's bringup generator reads `[[component]]` and needs none of them) |
+| `orchestration/launch_synth.rs` `synthesise_self_model`, `enumerate_launch_files`, `is_self_bringup_eligible`; the `cmd/plan.rs` self-bringup block (lines 189–225) | 42 + ~37 | none | reached only from `nros plan <pkg-dir>` | 2 — **deleted** (W7 step 2), with `nros plan`'s `--exec` / `--file` flags, which only that block read |
+| `launch_synth.rs` `discover_pkg_name`, `discover_exec_target` and their four readers | 147 | leaf-only | ran on the leaf road only, via `synthesise_leaf_launch` | **moved to 5** (measured 2026-11-07): `synthesise_leaf_launch` in `cmd/ws.rs` still reads them, so they go with the leaf road, not with step 2 |
 | `cmd/ws.rs` `synthesise_leaf_launch`, `carry_leaf_contract` | 65 + 28 | probe / leaf-only | `synthesise_leaf_launch` ran 26 times on the workspace road, each time returning `None` (no `system.toml` beside code) | **kept, moved**: W3 rewrites it to read bringups (RFC-0121 D3) |
 | `orchestration/facade.rs` `write_leaf_selection`; `leaf_system::LEAF_SELECTION_DIR` | 168 | leaf-only | the workspace road writes its facade through `write_facade` | 3 |
 | `cmd/leaf_settings.rs` `write_selection`, `write_selection_for`, `depends_on_selection`, `check_board_crate_dependency`, `check_lowered_edition_features`, `dependency_tables`, `system_toml`, `image_ros_edition` | 210 | probe / leaf-only | `write_selection` ran 7 times on the workspace road, from `run_sync`'s per-package loop, always returning `None` | 3 |
@@ -600,7 +600,7 @@ replacement.
 **Acceptance:** W1's table has every row marked deleted or kept-with-reason;
 `just ci gate` and `just ci matrix` green after the last step.
 
-**Status (2026-11-07): step 1 done.**
+**Status (2026-11-07): steps 1 and 2 done.**
 
 - **Step 1 (done).** Re-measured before deleting: `git grep
   'metadata\.nros\.deploy' -- '*Cargo.toml'` finds no tracked manifest, and
@@ -618,6 +618,23 @@ replacement.
   the table live were corrected in the same sweep (`image.rs`,
   `main_macro.rs`, `nros-platform` `board/entry.rs`, `nros-orchestration-ir`
   `lib.rs`, `cmd/config.rs`).
+
+- **Step 2 (done).** Re-measured: `synthesise_self_model`,
+  `launch_synth::is_self_bringup_eligible` and `enumerate_launch_files` had
+  one caller, the self-bringup block in `cmd/plan.rs`, and no tracked script,
+  cmake module or recipe runs `nros plan` on a package directory or passes
+  `--exec` / `--file` (the one in-tree caller,
+  `cmake/nano_ros_workspace_metadata.cmake`, passes a bringup's launch
+  file). Deleted: that
+  block, the three functions, `nros plan`'s `--exec` and `--file` (read by
+  nothing else), the three `LaunchResolveError` variants only launch
+  resolution raised, and `nros-tests/tests/self_bringup.rs` with its
+  `matrix.rs` and lane-admission rows. W1 put `discover_pkg_name` /
+  `discover_exec_target` in this step; they are still read by
+  `synthesise_leaf_launch`, so they go in step 5. `nros codegen-system`
+  carries the same two dead flags (`--exec`, `--file`, read by nothing since
+  the launch-XML path went in phase-296); they are left for step 5's sweep of
+  the leaf-only arguments.
 
 ### W8 — Book rewrite
 
