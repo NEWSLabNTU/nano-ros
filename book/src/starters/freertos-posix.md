@@ -143,17 +143,6 @@ network is the host's own. The build stops with
 DDS, as this page does, or zenoh on the emulated
 [mps2-an385 FreeRTOS board](mps2-an385-freertos.md).
 
-This is the zenoh run that is expected to work once it is supported. It does
-not work yet:
-
-```bash probe=80 variant=zenoh
-nros setup freertos-posix --rmw zenoh
-cd ..
-nros new fpz_ws --board freertos-posix --template talker --lang c --rmw zenoh
-cd fpz_ws
-nros run fpz_node --expect 'Publishing:' --timeout 600
-```
-
 ## If it doesn't work
 
 - **`nros run` stops at once and names `AMENT_PREFIX_PATH`:** this shell has
