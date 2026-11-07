@@ -941,7 +941,16 @@ chapter = "starters/freertos-posix.md"
 variant = ""
 weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
-notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process, `nros run` starting the router on loopback, then `ros2 topic echo`. The board's first track (its row's evidence is the daily lane). Not weekly yet; its `awaits` names the CLI fix it waits on."
+notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process over Cyclone DDS (no router), then `ros2 topic echo` over rmw_cyclonedds_cpp. The board's first track (its row's evidence is the daily lane's two cyclonedds fixtures). The starter scaffolds `--rmw cyclonedds` until zenoh builds on this board (user ruling 2026-11-07); the `freertos-posix-zenoh` track below holds the zenoh run. Not weekly yet."
+
+[[probe]]
+track = "freertos-posix-zenoh"
+chapter = "starters/freertos-posix.md"
+variant = "zenoh"
+awaits = ["issue 2342: zenoh-pico has no FreeRTOS port for a host-owned network stack, so a zenoh image on freertos-posix stops on `lwipopts.h: No such file or directory`"]
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-537 W4 follow-up — the FreeRTOS POSIX starter's cyclonedds steps, then its \"Zenoh on this board\" step: the zenoh talker scaffolded and run to `Publishing:`. It fails up front until issue 2342 lands; then the starter goes back to the zenoh default and this track's step becomes the starter's own."
 
 # phase-537 W9 (RFC-0124 D8) — the User guide platform pages. Each replays its
 # starter first (`after`), then the platform page's own steps: the run plan

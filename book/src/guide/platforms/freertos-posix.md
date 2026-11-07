@@ -9,40 +9,34 @@
 <!-- END GENERATED platform status -->
 
 The [starter](../../starters/freertos-posix.md) scaffolded a C talker for
-`board = "freertos-posix"` and ran it: the FreeRTOS kernel, through its POSIX
-port, as an ordinary Linux process. This page covers what comes after it: the
+`board = "freertos-posix"` over Cyclone DDS and ran it: the FreeRTOS kernel,
+through its POSIX port, as an ordinary Linux process. This page covers what comes after it: the
 image's configuration, what is particular to the simulator, moving a
 workspace between it and the emulated Cortex-M3, and the native build.
 
 ## Configure the platform
 
 The bringup's `src/fp_node_bringup/system.toml` holds one image. Its
-`[system]` table and image, with a `locator` added, read:
+`[system]` table and image read:
 
 ```toml
 [system]
 name = "fp_node"
-rmw = "zenoh"
+rmw = "cyclonedds"
 domain_id = 0
 
 [image.freertos]
 board = "freertos-posix"
-locator = "tcp/127.0.0.1:7447"
 ```
 
-The image dials the router on the host directly: there is no emulator and no
-gateway between them. With no `locator`, as scaffolded, it dials the default,
-`tcp/127.0.0.1:7447`, and `nros run` starts ROS's `rmw_zenohd` there. To
-use a router you already run, pass `--router <its locator>`.
-
-A FreeRTOS image gives up after one attempt to open its session, with
-`Failed to open session`, when no router answers. An image that should wait
-for a router started later sets a knob:
-
-```toml
-[image.freertos.knobs.zenoh.limits]
-connect_forever = true        # or connect_timeout_ms = 30000 for a bounded wait
-```
+The RMW comes from `[system] rmw`, and an image can override it with its own
+`rmw` key. On this board, use `cyclonedds`. Zenoh on this board is not
+supported yet: its image does not build, because zenoh's FreeRTOS support
+expects lwIP and this board's network is the host's own. Cyclone DDS runs
+inside the image's process and finds its peers by multicast discovery on the
+host's network, so the image has no `locator` and nothing runs beside it.
+`domain_id` is the DDS domain, which ROS 2 calls `ROS_DOMAIN_ID`; a ROS 2
+node on another domain does not see the talker.
 
 Task stacks and priorities come from the board crate's defaults.
 [Configure an image](../build/configure-an-image.md) lists the keys and
@@ -58,17 +52,22 @@ declares sched tasks with `[tasks.<name>.freertos]` priorities.
 - **C and C++ only.** The board has no Rust entry shape. For a Rust node on
   FreeRTOS, use the emulated [mps2-an385 board](freertos.md).
 - **The network is the host's.** The image uses the host's sockets, so it
-  reaches a router on loopback with no network setup and no root access.
+  finds its DDS peers with no network setup and no root access. For the same
+  reason it has no lwIP, which zenoh on FreeRTOS needs, so zenoh is not
+  supported on this board yet.
 - **The console is standard output.**
 
 ## Move a workspace to the emulated board
 
 The node package names no board, so the same C or C++ workspace builds for
-the mps2-an385 FreeRTOS board in QEMU. Add an image for it beside the first:
+the mps2-an385 FreeRTOS board in QEMU. Add an image for it beside the first.
+That board's starter runs zenoh, so the image names it, with the router it
+dials:
 
 ```toml
 [image.freertos_qemu]
 board = "mps2-an385-freertos"
+rmw = "zenoh"
 locator = "tcp/10.0.2.2:7447"
 ```
 
@@ -86,9 +85,8 @@ From the starter's workspace, print the plan `nros run` follows:
 nros run fp_node --dry-run --why
 ```
 
-The target is a host process, its console is standard output, and its link
-is the image's `locator` on loopback. `--why` names where each fact came
-from.
+The target is a host process and its console is standard output. `--why`
+names where each fact came from.
 
 ## Drive the native build yourself
 
@@ -106,8 +104,11 @@ a CI cache step. For a CMake tree that is not a nano-ros workspace, see
 
 ## If it doesn't work
 
-- **`Failed to open session`:** no router answered the image's one attempt.
-  Start the router first, or set `connect_forever`.
+- **The build stops on `lwipopts.h`:** the image's RMW is zenoh, which this
+  board does not support yet. Set `rmw = "cyclonedds"`.
+- **`ros2 topic echo` prints nothing:** set
+  `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`, and check that both sides use the
+  same domain. A firewall that drops multicast also stops DDS discovery.
 - **`nros new --lang rust` refuses the board:** it is a C and C++ board.
 - **Everything else:** [Troubleshoot](../deploy/troubleshoot.md).
 
