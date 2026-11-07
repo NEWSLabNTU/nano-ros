@@ -128,6 +128,15 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub before_boot: Option<String>,
 
+    /// RFC-0121 D9 — cargo features of this image's Rust node packages (not
+    /// [`Self::features`], which names capability axes). `"<feat>"` turns `<feat>` on in every node package of the image whose
+    /// manifest declares it; `"<pkg>/<feat>"` in that node package only. The
+    /// generated entry states them on the node's dependency line, so every
+    /// road that builds a Rust entry carries them; the C/C++ road refuses
+    /// them. A feature no node package declares is refused, never dropped.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub node_features: Vec<String>,
+
     /// RMW backend for this image. Absent ⇒ the system header's `rmw`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
@@ -499,6 +508,13 @@ impl ImageBlock {
             },
             panic: pick(&self.panic, &base.panic),
             before_boot: pick(&self.before_boot, &base.before_boot),
+            // RFC-0121 D9 — a configuration of the image, so the image's own
+            // list replaces the base's rather than adding to it.
+            node_features: if self.node_features.is_empty() {
+                base.node_features.clone()
+            } else {
+                self.node_features.clone()
+            },
             rmw: pick(&self.rmw, &base.rmw),
             domain_id: self.domain_id.or(base.domain_id),
             locator: pick(&self.locator, &base.locator),
@@ -920,6 +936,101 @@ pub fn validate_before_boot(path: Option<&str>) -> Result<(), String> {
             "`before_boot = \"{p}\"` is not a path to a function in a package \
              (expected `<package>::<fn>`, e.g. `\"my_pkg::open_can\"`)"
         ))
+    }
+}
+
+/// RFC-0121 D9 — `[image.<id>] features` resolved against the image's Rust
+/// node packages: `(crate name, the manifest's declared feature names)` per
+/// node, in launch order. Returns the features to turn on per node, in the
+/// node order given. A `<pkg>/` prefix names a node by crate name (`-` and
+/// `_` agree, as cargo's do); a bare feature goes to every node declaring it.
+/// A feature that reaches no node is an error naming what each node declares.
+pub fn resolve_image_features(
+    image_id: &str,
+    features: &[String],
+    nodes: &[(String, Vec<String>)],
+) -> Result<Vec<Vec<String>>, String> {
+    let norm = |s: &str| s.replace('-', "_");
+    let mut out: Vec<Vec<String>> = vec![Vec::new(); nodes.len()];
+    for f in features {
+        let (pkg, feat) = match f.split_once('/') {
+            Some((p, x)) => (Some(p), x),
+            None => (None, f.as_str()),
+        };
+        if feat.is_empty() || pkg.is_some_and(str::is_empty) {
+            return Err(format!(
+                "`[image.{image_id}] node_features`: `{f}` is not `<feature>` or `<package>/<feature>`"
+            ));
+        }
+        let mut hit = false;
+        for (i, (name, declared)) in nodes.iter().enumerate() {
+            if pkg.is_some_and(|p| norm(p) != norm(name)) {
+                continue;
+            }
+            if declared.iter().any(|d| d == feat) {
+                if !out[i].iter().any(|x| x == feat) {
+                    out[i].push(feat.to_string());
+                }
+                hit = true;
+            }
+        }
+        if !hit {
+            let seen = nodes
+                .iter()
+                .map(|(n, d)| format!("{n} [{}]", d.join(", ")))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(format!(
+                "`[image.{image_id}] node_features`: `{f}` is declared by no Rust node package of \
+                 this image (node packages and their features: {seen}). Add it to the node's \
+                 `[features]`, or remove it from the image."
+            ));
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod image_features_tests {
+    use super::resolve_image_features;
+
+    fn nodes() -> Vec<(String, Vec<String>)> {
+        vec![
+            ("native-rs-talker".into(), vec!["link-tls".into()]),
+            ("other_node".into(), vec!["link-tls".into(), "extra".into()]),
+        ]
+    }
+
+    #[test]
+    fn a_bare_feature_reaches_every_node_declaring_it() {
+        let got = resolve_image_features("i", &["link-tls".into()], &nodes()).unwrap();
+        assert_eq!(
+            got,
+            vec![vec!["link-tls".to_string()], vec!["link-tls".to_string()]]
+        );
+    }
+
+    #[test]
+    fn a_package_prefix_reaches_that_node_only() {
+        let got =
+            resolve_image_features("i", &["native_rs_talker/link-tls".into()], &nodes()).unwrap();
+        assert_eq!(
+            got,
+            vec![vec!["link-tls".to_string()], Vec::<String>::new()]
+        );
+    }
+
+    #[test]
+    fn a_feature_no_node_declares_is_refused_not_dropped() {
+        let e = resolve_image_features("i", &["nope".into()], &nodes()).unwrap_err();
+        assert!(
+            e.contains("nope") && e.contains("native-rs-talker [link-tls]"),
+            "{e}"
+        );
+        let e =
+            resolve_image_features("i", &["native-rs-talker/extra".into()], &nodes()).unwrap_err();
+        assert!(e.contains("declared by no Rust node package"), "{e}");
+        assert!(resolve_image_features("i", &["/x".into()], &nodes()).is_err());
     }
 }
 

@@ -1612,6 +1612,20 @@ def _validate_cmake_workspace(entry, root, entry_dir):
         )
 
 
+def image_features(entry):
+    """`[image.<id>] node_features` of a workspace row's image, or None when the row
+    names no image or its bringup's `system.toml` cannot be read (RFC-0121 D9)."""
+    image = entry.get("image")
+    if not image:
+        return None
+    path = SCRIPT_ROOT / entry["dir"] / entry["bringup"] / "system.toml"
+    try:
+        doc = tomllib.loads(path.read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    return list(((doc.get("image") or {}).get(image) or {}).get("node_features") or [])
+
+
 def validate_workspace_fixture(entry):
     required_keys = ("id", "platform", "lang", "dir", "rmw", "bringup")
     for key in required_keys:
@@ -1636,6 +1650,26 @@ def validate_workspace_fixture(entry):
     lang = entry["lang"]
     if lang not in FIXTURE_LANGS:
         _fail(entry, f"unsupported workspace fixture lang {lang!r}")
+
+    # RFC-0121 D9 — `node_features` on a workspace row is the row's identity,
+    # and restates `[image.<id>] node_features`. The two must agree, or the
+    # row would name a configuration its image does not build.
+    if entry.get("features"):
+        _fail(
+            entry,
+            "a workspace row has no `features`: a node package's cargo features are "
+            "an image fact, `[image.<id>] node_features` (RFC-0121 D9), restated "
+            "on the row as `node_features`",
+        )
+    want = image_features(entry)
+    have = sorted(entry.get("node_features") or [])
+    if want is not None and have != sorted(want):
+        _fail(
+            entry,
+            f"`node_features = {have}` disagrees with "
+            f"[image.{entry.get('image')}] node_features = {sorted(want)} in "
+            f"{entry['dir']}/{entry['bringup']}/system.toml (RFC-0121 D9)",
+        )
 
     # Issue 2139 — a served coordinate must be another row's coordinate, never
     # this one's own (that says nothing), and must parse.

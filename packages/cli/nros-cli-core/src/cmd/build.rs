@@ -1736,6 +1736,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         if img.before_boot.is_some() {
                             return Some(Err(before_boot_not_on_c_road(&id)));
                         }
+                        if !img.node_features.is_empty() {
+                            return Some(Err(features_not_on_c_road(&id)));
+                        }
                         let b = img.board.clone().unwrap_or_default();
                         let resolved = nros_orchestration_ir::leaf_system::read_image(&bd, &id);
                         Some(Ok(crate::builder::cmake_root::CmakeEntry {
@@ -4630,6 +4633,9 @@ fn generate_entry(
         if image.before_boot.is_some() {
             return Err(before_boot_not_on_c_road(image_id));
         }
+        if !image.node_features.is_empty() {
+            return Err(features_not_on_c_road(image_id));
+        }
         let mut app = crate::builder::west_app::resolve_cmake(
             root,
             &entry_dir_for_deps,
@@ -4725,6 +4731,9 @@ fn generate_entry(
     // Every Rust road reaches this spec, so the key is checked here once.
     crate::orchestration::image::validate_before_boot(image.before_boot.as_deref())
         .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
+    // RFC-0121 D9 — the image's node features, resolved here once for every
+    // Rust road against what each node package's manifest declares.
+    let node_features = image_node_features(image_id, &image.node_features, &nodes)?;
     let mut spec = EntrySpec {
         image_id: image_id.to_string(),
         launch,
@@ -4732,6 +4741,7 @@ fn generate_entry(
         panic: image.panic.clone(),
         before_boot: image.before_boot.clone(),
         nodes,
+        node_features,
         nano_ros_root: nros_root.to_path_buf(),
         // Derived below, once the board crate is known.
         selection: None,
@@ -6464,6 +6474,49 @@ fn generated_output_collision_message(collisions: &[(PathBuf, Vec<String>)]) -> 
 /// has a home only in a Rust entry. A C/C++ generated entry is a
 /// `nano_ros_entry(...)` TU with no such hook yet; refusing names the image
 /// rather than dropping the step silently.
+/// RFC-0121 D9 — a C/C++ entry has no cargo dependency line to carry a
+/// node feature on, so the key is refused by name rather than dropped.
+fn features_not_on_c_road(image_id: &str) -> eyre::Report {
+    eyre::eyre!(
+        "`[image.{image_id}] node_features` turns on cargo features of the image's Rust node \
+         packages, and this image's entry is C/C++ (its package graph holds a C/C++ \
+         package), which has no cargo dependency line to carry them. Select the \
+         configuration through the image's `env` or a CMake option instead."
+    )
+}
+
+/// RFC-0121 D9 — `[image.<id>] node_features` per node package, from each node's
+/// own `Cargo.toml` `[features]` table.
+fn image_node_features(
+    image_id: &str,
+    features: &[String],
+    nodes: &[(String, PathBuf)],
+) -> Result<std::collections::BTreeMap<String, Vec<String>>> {
+    if features.is_empty() {
+        return Ok(Default::default());
+    }
+    let declared: Vec<(String, Vec<String>)> = nodes
+        .iter()
+        .map(|(name, dir)| {
+            let feats = std::fs::read_to_string(dir.join("Cargo.toml"))
+                .ok()
+                .and_then(|t| t.parse::<toml::Table>().ok())
+                .and_then(|t| t.get("features").and_then(|f| f.as_table()).cloned())
+                .map(|f| f.keys().cloned().collect())
+                .unwrap_or_default();
+            (name.clone(), feats)
+        })
+        .collect();
+    let per = crate::orchestration::image::resolve_image_features(image_id, features, &declared)
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    Ok(nodes
+        .iter()
+        .map(|(n, _)| n.clone())
+        .zip(per)
+        .filter(|(_, f)| !f.is_empty())
+        .collect())
+}
+
 fn before_boot_not_on_c_road(image_id: &str) -> eyre::Report {
     eyre::eyre!(
         "`[image.{image_id}] before_boot` applies to a Rust entry, and this image's entry is \
