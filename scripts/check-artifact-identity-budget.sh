@@ -165,8 +165,40 @@ _resolve_ws_roots() { # <manifest> -> ws build dir, then image dirs (repo-relati
 # (else the fix has made every reading unfiltered and the gate stops
 # distinguishing).
 if [ "${1:-}" = "--self-test" ]; then
+    # issue 2277 — a fixture write that FAILS must stop the self-test as a
+    # SETUP failure, never fall through to a case verdict. With TMPDIR full
+    # (a loaded host: `pristine-checkout` runs this under /tmp beside the
+    # scaffold gates' trees), case (b)'s `printf 'started_at=…' > stamp` failed,
+    # the gate read an EMPTY stamp, and the run reported "FAIL (b): a filtered
+    # reading lost its 'do not delete' advice" — a false claim about the gate's
+    # logic, reproduced exactly with a full tmpfs on /tmp. ONE guard for the
+    # whole block rather than one per write, so a write added later is covered:
+    # every fixture write is a plain statement, while every case's own probe
+    # sits in `if` / `||` context, where ERR does not fire.
+    _st_setup_fail() {
+        trap - ERR
+        echo "check-artifact-identity-budget --self-test: SETUP FAILED at line $2: $1" >&2
+        echo "  a fixture write failed (is ${TMPDIR:-/tmp} full?), so no case verdict is reported (issue 2277)." >&2
+        exit 2
+    }
+    set -E
+    trap '_st_setup_fail "$BASH_COMMAND" "$LINENO"' ERR
     _st_tmp="$(mktemp -d)"
     trap 'rm -rf "$_st_tmp"' EXIT
+    # The other half of the same rule: the GATE run can hit the full TMPDIR
+    # too, after the fixture was written (its window reference is a TMPDIR
+    # file). It then fails closed naming the reason, which no case expects, so
+    # every gate run goes through here and that reason ends the self-test as
+    # SETUP, not as whichever case happened to be running.
+    _st_gate() {
+        local out rc=0
+        out="$(bash "$0" 2>&1)" || rc=$?
+        printf '%s\n' "$out"
+        case "$out" in
+            *"could not create the window's reference file"*) : > "$_st_tmp/.window-unavailable" ;;
+        esac
+        return "$rc"
+    }
     _st_deps="$_st_tmp/tree/cargo/root_a/x86_64-unknown-linux-gnu/profile/deps"
     mkdir -p "$_st_deps"
     # Five identities of the budget crate: over any sane budget, so the gate
@@ -186,7 +218,7 @@ if [ "${1:-}" = "--self-test" ]; then
     # this the EARLY widening rather than the stampless path.
     touch -d '2035-01-01 00:00:00' "$_st_deps/libother-9999999999999999.rlib"
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_a" \
-        bash "$0" 2>&1 || true)"
+        _st_gate || true)"
     if nros_grep_q 'accumulation is ruled out' <<<"$_st_out"; then
         echo "  FAIL (a): an UNFILTERED reading claimed accumulation was ruled out" >&2
         _st_fails=$((_st_fails + 1))
@@ -205,7 +237,7 @@ if [ "${1:-}" = "--self-test" ]; then
     touch -d '2020-01-01 00:00:00' "$_st_deps"/libnros_core-*.rlib
     printf 'started_at=2010-01-01T00:00:00Z\n' > "$_st_stamp_b"
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_b" \
-        bash "$0" 2>&1 || true)"
+        _st_gate || true)"
     if nros_grep_q 'accumulation is ruled out' <<<"$_st_out"; then
         echo "  ok   (b) a filtered reading still keeps the evidence"
     else
@@ -229,7 +261,7 @@ if [ "${1:-}" = "--self-test" ]; then
     touch -d '2020-01-01 00:00:00' "$_st_deps"/libnros_core-*.rlib
     printf '2010-01-01T00:00:00Z\n' > "$_st_stamp_c.started"
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_c" \
-        bash "$0" 2>&1 || true)"
+        _st_gate || true)"
     # Issue 2090: case (c) has failed twice in CI and never locally, and the
     # verdict line alone cannot say which reading the script took. On failure,
     # print the output it was judged on.
@@ -259,7 +291,7 @@ if [ "${1:-}" = "--self-test" ]; then
         'rmw = "zenoh"' 'dir = "examples/workspaces/mixed"' \
         'bringup = "src/demo_bringup"' 'image = "threadx"' \
         'build_subdir = "build/other/cmake"' > "$_st_man"
-    _st_got="$(_resolve_tree "$_st_man")"
+    _st_got="$(_resolve_tree "$_st_man")" || true  # a probe: its failure is the case verdict, not SETUP
     if [ "$_st_got" != "examples/workspaces/mixed/build/moved-here/cmake" ]; then
         echo "  FAIL (d) the tree is the row's artifact root, got '$_st_got'" >&2
         _st_fails=$((_st_fails + 1))
@@ -310,7 +342,7 @@ if [ "${1:-}" = "--self-test" ]; then
     _st_stamp_x="$_st_tmp/stamp_x"
     printf 'started_at=2010-01-01T00:00:00Z\n' > "$_st_stamp_x"
     _st_run_x() {
-        NROS_IDENTITY_BUDGET_MANIFEST="$_st_xman" NROS_FIXTURE_STAMP="$_st_stamp_x" bash "$0" 2>&1
+        NROS_IDENTITY_BUDGET_MANIFEST="$_st_xman" NROS_FIXTURE_STAMP="$_st_stamp_x" _st_gate
     }
 
     # (e) two images, each within budget: they do NOT add up.
@@ -388,7 +420,7 @@ if [ "${1:-}" = "--self-test" ]; then
         > "$_st_ti/CMakeFiles/x.dir/build.make"
     _st_rc=0
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_ti" NROS_FIXTURE_STAMP="$_st_tmp/no-stamp" \
-        bash "$0" 2>&1)" || _st_rc=$?
+        _st_gate)" || _st_rc=$?
     if [ "$_st_rc" -eq 0 ] && nros_grep_q 'issue 1985): live_12' <<<"$_st_out"; then
         echo "  ok   (i) a retired cargo root is left out, and the reading names it"
     else
@@ -403,7 +435,7 @@ if [ "${1:-}" = "--self-test" ]; then
         >> "$_st_ti/CMakeFiles/x.dir/build.make"
     _st_rc=0
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_ti" NROS_FIXTURE_STAMP="$_st_tmp/no-stamp" \
-        bash "$0" 2>&1)" || _st_rc=$?
+        _st_gate)" || _st_rc=$?
     if [ "$_st_rc" -ne 0 ] && nros_grep_q 'nros_core has 6 distinct' <<<"$_st_out"; then
         echo "  ok   (j) a root a build file names is still counted"
     else
@@ -412,11 +444,40 @@ if [ "${1:-}" = "--self-test" ]; then
         _st_fails=$((_st_fails + 1))
     fi
 
+    # (k) issue 2277 — a stamp whose started_at the gate cannot APPLY (here its
+    # reference file cannot be made: a full TMPDIR) fails closed and names the
+    # cause. It used to count the whole tree and still print "accumulation is
+    # ruled out — do NOT delete the tree" over that unfiltered count. Run
+    # directly, not through `_st_gate`: this failure is the case's subject.
+    _st_shim="$_st_tmp/shim"
+    mkdir -p "$_st_shim"
+    printf '#!/bin/sh\necho "mktemp: No space left on device" >&2\nexit 1\n' > "$_st_shim/mktemp"
+    chmod +x "$_st_shim/mktemp"
+    touch -d '2020-01-01 00:00:00' "$_st_deps"/libnros_core-*.rlib
+    _st_rc=0
+    _st_out="$(PATH="$_st_shim:$PATH" NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" \
+        NROS_FIXTURE_STAMP="$_st_stamp_b" bash "$0" 2>&1)" || _st_rc=$?
+    if [ "$_st_rc" -ne 0 ] \
+        && nros_grep_q "could not create the window's reference file" <<<"$_st_out" \
+        && ! nros_grep_q 'accumulation is ruled out' <<<"$_st_out"; then
+        echo "  ok   (k) a window the gate cannot apply fails closed and says why"
+    else
+        echo "  FAIL (k) an unapplicable window was not reported (rc=$_st_rc):" >&2
+        printf '%s\n' "$_st_out" | sed 's/^/        /' >&2
+        _st_fails=$((_st_fails + 1))
+    fi
+
+    if [ -e "$_st_tmp/.window-unavailable" ]; then
+        trap - ERR
+        echo "check-artifact-identity-budget --self-test: SETUP FAILED: a gate run could not create its started_at window reference" >&2
+        echo "  (is ${TMPDIR:-/tmp} full?), so no case verdict is reported (issue 2277)." >&2
+        exit 2
+    fi
     if [ "$_st_fails" -ne 0 ]; then
         echo "check-artifact-identity-budget --self-test: $_st_fails case(s) FAILED" >&2
         exit 1
     fi
-    echo "check-artifact-identity-budget --self-test: 10 case(s) OK"
+    echo "check-artifact-identity-budget --self-test: 11 case(s) OK"
     exit 0
 fi
 
@@ -626,6 +687,27 @@ _accumulation_hint() {
     echo "      python3 scripts/build/prune-superseded-artifacts.py $TREE --apply" >&2
 }
 
+# issue 2277 — the started_at window compares against a reference FILE, which
+# lives in TMPDIR. Making it can fail for two different reasons, and each
+# caller used to name neither or the wrong one: the main window fell through to
+# an unfiltered count that `era_verdict` still called "accumulation is ruled
+# out" (measured with a failing `mktemp`), and the per-root axis reported a
+# full TMPDIR as "started_at does not parse". On success prints the path; on
+# failure prints the reason and returns 1.
+window_ref() {
+    local ref
+    if ! ref="$(mktemp 2>&1)"; then
+        echo "could not create the window's reference file in ${TMPDIR:-/tmp} ($ref)"
+        return 1
+    fi
+    if ! touch -d "$1" "$ref" 2>/dev/null; then
+        rm -f "$ref"
+        echo "started_at=$1 does not parse"
+        return 1
+    fi
+    echo "$ref"
+}
+
 era_verdict() {
     # issue 0513 — `_era_filtered`, not `_started`: the filter can be ACTIVE and
     # still have been stepped around for this crate, and then "do not delete the
@@ -691,10 +773,8 @@ cross_root_axis() { # -> 0 ok / not verified, 1 over the ceiling
         return 0
     fi
     local ref rows verdict
-    ref="$(mktemp)"
-    if ! touch -d "$_started" "$ref" 2>/dev/null; then
-        rm -f "$ref"
-        echo "  per-root copies: NOT VERIFIED — started_at=$_started does not parse."
+    if ! ref="$(window_ref "$_started")"; then
+        echo "  per-root copies: NOT VERIFIED — $ref."
         return 0
     fi
     # `<root> <crate> <hash> <path>`, one per rlib written since started_at.
@@ -845,9 +925,15 @@ if [ "$_started_from_sidecar" = "1" ]; then
     _started_src=" (from ${STAMP}.started — the last build did NOT finish, so this window covers a PARTIAL build)"
 fi
 _ref=""
-if [ -n "$_started" ]; then
-    _ref="$(mktemp)"
-    touch -d "$_started" "$_ref" 2>/dev/null || { rm -f "$_ref"; _ref=""; }
+# issue 2277 — a stamp that HAS a started_at the gate cannot apply is not the
+# stampless case: counting the whole tree under it is exactly the count
+# `era_verdict` would then announce as "accumulation is ruled out — do NOT
+# delete the tree". Fail closed and say why instead.
+if [ -n "$_started" ] && ! _ref="$(window_ref "$_started")"; then
+    echo "[FAIL] artifact-identity budget: $STAMP gives started_at=$_started$_started_src,"
+    echo "       but the window cannot be applied: $_ref."
+    echo "       No count from this tree is attributable to that build (issue 2277)."
+    exit 1
 fi
 
 if [ -n "$_ref" ] && [ -n "$_all" ]; then
