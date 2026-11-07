@@ -56,6 +56,35 @@ second fix below is no longer only a CI convenience. The book does not tell
 the reader to provision `make`, so the first fix alone leaves the reader's
 path broken. The `bootstrap-probe` job passed on 2026-11-02 and 2026-11-03.
 
+## Third sighting: the pinned make IS on PATH, and the build dir runs another (2026-11-07)
+
+This is the same stop on a host that HAS the pinned make. `nros build` of a
+scaffolded Zephyr Rust workspace on native_sim compiled the Rust lane, then
+died at the native simulator link:
+
+    cd …/rs_node_bringup__zephyr_west/zephyr && /usr/bin/make -f …/scripts/native_simulator/Makefile all …
+    make: *** internal error: invalid --jobserver-auth string 'fifo:/tmp/nros-jobserver-2594758-438158719-0/fifo'.  Stop.
+
+`make` on PATH was `~/.nros/sdk/make/4.4.1/bin/make`, so `jobserver.rs`
+chose the FIFO form. The build dir, however, had been configured once before
+that make was first on PATH, and its `CMakeCache.txt` held
+`MAKE:FILEPATH=/usr/bin/make` (GNU Make 4.3). That cached make is the one
+Zephyr's native simulator step runs. A fresh build dir of the same image
+cached `MAKE:FILEPATH=/home/aeon/.nros/sdk/make/4.4.1/bin/make` and linked;
+`nros run` then matched.
+
+The class: `jobserver.rs` asks the make on PATH which form to hand out, but
+a configured build dir runs the make its cache recorded
+(`CMAKE_MAKE_PROGRAM`, or a `find_program` result such as `MAKE`). This
+fits fix 2 below, keyed on the make the build will actually run: read the
+cache of a build dir that has one, and use the pipe form if any make it
+names is older than 4.4. Fix 1 does not cover it, because the pin was
+provisioned here.
+
+Evidence, kept unmodified: the stale build dir at
+`/tmp/claude-1000005/-home-aeon-repos-nano-ros/dc771fa6-8a06-42be-acf2-5de5cbc99c73/scratchpad/agent-a2000a-repro/agent-a2000a-stale-make-west-dir`
+(host newslab-241; a scratch path, so it does not outlive the session).
+
 ## What it is not
 
 - **Not issue 2058's build-script half.** That fix is working:
