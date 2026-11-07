@@ -395,6 +395,17 @@ build-fixtures:
         ( cd examples/workspaces/levels-cpp
           "$nros_cli" configure >/dev/null )
     fi
+    # phase-531 W6 — the single-node witnesses migrated in place
+    # (`examples/zephyr/<lang>/talker`, the mps2 idle-wake bin) are workspaces
+    # too, and `nros build --dry-run` refuses one that was never configured
+    # ("this workspace has never been synced"). DERIVED from the manifest's
+    # west workspace rows, so a batch that migrates another witness needs no
+    # new block here.
+    while IFS= read -r ws; do
+        [ -d "$ws" ] || continue
+        echo "  → witness workspace prep (nros configure): $ws"
+        ( cd "$ws" && "$nros_cli" configure >/dev/null )
+    done < <(python3 scripts/build/fixtures-manifest.py west-witness-dirs)
 
     # Issue 1419 -- the census each contracted workspace image's configure will
     # check, taken here, SERIALLY, before the leaves fan out: two leaves of one

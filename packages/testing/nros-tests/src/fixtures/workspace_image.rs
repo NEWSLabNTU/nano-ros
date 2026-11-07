@@ -280,12 +280,20 @@ const CONFIGS: [Config; 4] = [
 /// workspace is (see [`workspace_row_models_example_cell`]). The test keys on
 /// the DIRECTORY because that is the one fact every witness row states. A west
 /// row's `west_role` would also work, but a linux row has none.
+///
+/// A test-tree bin migrated the same way (`packages/testing/nros-tests/bins/
+/// <name>`, e.g. the mps2 idle-wake witness in batch 8) is one too: its rows
+/// were `[[fixture]]` rows of the `Kind::Example` cell, and moving them to a
+/// bringup image changes the road, not the cell.
 pub fn is_witness_workspace(dir: &str) -> bool {
     let parts: Vec<&str> = dir.trim_end_matches('/').split('/').collect();
     matches!(
         parts.as_slice(),
         ["examples", plat, "rust" | "c" | "cpp", name]
             if !matches!(*plat, "workspaces" | "templates") && !name.is_empty()
+    ) || matches!(
+        parts.as_slice(),
+        ["packages", "testing", "nros-tests", "bins", name] if !name.is_empty()
     )
 }
 
@@ -585,6 +593,7 @@ mod tests {
             "examples/linux/cpp/talker",
             "examples/linux/c/custom-platform",
             "examples/zephyr-nucleo-f767zi/c/talker",
+            "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2",
         ] {
             assert!(is_witness_workspace(dir), "{dir} should be a witness");
             assert!(workspace_row_models_example_cell(
@@ -601,6 +610,8 @@ mod tests {
             "examples/zephyr/c",
             "examples/zephyr/c/talker/src/talker_pkg",
             "packages/testing/zephyr/c/talker",
+            "packages/testing/nros-tests/fixtures/image_config_ws",
+            "packages/testing/nros-tests/bins",
             "examples/workspaces/features",
         ] {
             assert!(!is_witness_workspace(dir), "{dir} should not be a witness");
