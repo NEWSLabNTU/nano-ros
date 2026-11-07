@@ -438,8 +438,18 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         // into its `SubscriptionRequest`. Gated by
         // `check-declared-subscription-shape`.
         if metadata.kind == EntityKind::Subscription && metadata.in_place_capable.is_none() {
-            metadata.in_place_capable =
-                Some(metadata.declared_subscription_shape().in_place_capable());
+            let shape = metadata.declared_subscription_shape();
+            metadata.in_place_capable = Some(shape.in_place_capable());
+            // Issue 2348 -- and the BUFFERED row, which the same observation
+            // carries on the C/C++ road (`buffered_row` is "present together
+            // with `in_place_capable` or not at all"). Without it the composer
+            // fell to the backend's default and priced a Cyclone listener at
+            // its type's bound while the runtime claimed `RX_BUF`.
+            metadata.buffered_row = Some(if shape.claims_closure_buffer() {
+                crate::node_metadata::BufferedRow::Unbounded
+            } else {
+                crate::node_metadata::BufferedRow::TypedBound
+            });
         }
         self.push_entity(metadata)?;
         Ok(())

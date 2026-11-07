@@ -281,6 +281,15 @@ def analyse(
             f"without it every Rust endpoint's registration path refuses "
             f"(issue 1522)."
         )
+    elif "buffered_row" not in create_entity or "claims_closure_buffer()" not in create_entity:
+        problems.append(
+            f"  - `MetadataRecorder`'s `create_entity` states `in_place_capable` "
+            f"but not `buffered_row` from the shape's `claims_closure_buffer()`. "
+            f"The two are one observation (present together or not at all); "
+            f"with only the first, a descriptor-carrying backend's default "
+            f"priced a Rust Cyclone listener at its type's bound while the "
+            f"runtime claimed `RX_BUF` (issue 2348)."
+        )
 
     # ---- 5: one mask -------------------------------------------------------
     mask = find_block(metadata_src, f"pub fn {CLASSIFIER}(")
@@ -368,9 +377,15 @@ def self_test() -> None:
     # (4) the recorder stops stating it.
     assert mutated(
         "recorder_src",
-        "Some(metadata.declared_subscription_shape().in_place_capable())",
-        "None",
-    ), "a recorder that does not state the path must FAIL"
+        "let shape = metadata.declared_subscription_shape();",
+        f"let shape = {ENUM_NAME}::BufferedRaw;",
+    ), "a recorder that does not read the classifier must FAIL"
+    # (4b) ...or states it without the buffered row (issue 2348).
+    assert mutated(
+        "recorder_src",
+        "if shape.claims_closure_buffer() {",
+        "if true {",
+    ), "a recorder that does not state the buffered row from the shape must FAIL"
 
     # (5) a second mask.
     assert mutated(

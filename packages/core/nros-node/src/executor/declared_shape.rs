@@ -119,6 +119,24 @@ impl DeclaredSubscriptionShape {
             Self::BufferedRawSafety => false,
         }
     }
+
+    /// Does a registration of this shape claim the closure buffer (`RX_BUF`)
+    /// when it does NOT dispatch in place, rather than a bound the call site
+    /// stated?
+    ///
+    /// Issue 2348. Both entry points are type-erased and write
+    /// `slot_bytes: RX_BUF` into their `SubscriptionRequest`, which is what
+    /// `registration_observer` reports as `claims_closure_buffer`. The Rust
+    /// probe declares without registering, so it states this from the shape —
+    /// beside [`in_place_capable`](Self::in_place_capable), because a row that
+    /// carries one of the two facts and not the other was priced by a backend
+    /// default: a scaffolded Cyclone listener got the 12-byte bound of its type
+    /// and died at boot short of `RX_BUF`.
+    pub const fn claims_closure_buffer(self) -> bool {
+        match self {
+            Self::BufferedRaw | Self::BufferedRawSafety => true,
+        }
+    }
 }
 
 #[cfg(test)]

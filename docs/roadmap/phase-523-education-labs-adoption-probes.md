@@ -213,7 +213,7 @@ Found after round two, while fixing the probes:
 
 | issue | purpose | what |
 | --- | --- | --- |
-| [#2348](../issues/2348-rust-workspace-listener-arena-underderived.md) | both | A scaffolded Rust workspace's listener dies at boot: arena priced for `typed_bound`, runtime registers a buffered raw entry |
+| [#2348](../issues/archived/2348-rust-workspace-listener-arena-underderived.md) | both | **Resolved** 2026-11-07: the Rust probe states the buffered row beside `in_place`; the observation outranks the backend default |
 
 ### W4 — The industrial extras
 
