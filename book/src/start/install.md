@@ -164,11 +164,19 @@ Replace `<board>` and the middleware with the ones you run first:
 When the board is ready, the last line names it:
 
 ```text
-nros setup: linux ready; locked in /home/you/.nros/…
+nros setup: linux ready; locked in /home/you/.nros/nros-sdk.lock
 ```
 
 A board whose packages are already present prints
 `nros setup: linux — all packages already present` instead.
+
+`nros-sdk.lock` records which version of each tool and source the store
+holds, so another machine can install the same set. Run outside a project,
+as here, `nros setup` writes the store's own lock, `~/.nros/nros-sdk.lock`.
+Run inside a project (a directory with a `system.toml`, a workspace, or a
+pinned `nros-toolchain.toml`), it writes the project's lock beside them
+instead, and that is the one to commit. The nearest project up the path wins.
+To move a version a project's lock records, run `nros update`.
 
 ## If it doesn't work
 

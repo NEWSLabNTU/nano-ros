@@ -206,7 +206,7 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | [#2330](../issues/archived/2330-ros-install-leaves-book.md) | education | **Resolved** 2026-11-07: Install adds the ROS 2 apt source inline, at a pinned version |
 | [#2331](../issues/archived/2331-book-links-repo-and-rfcs.md) | education | **Resolved** 2026-11-07: RFC numbers stay as plain text in "Design background"; no repository links |
 | [#2332](../issues/2332-build-output-internal-vocabulary.md) | education | Build output full of internal terms |
-| [#2333](../issues/2333-sdk-lock-lands-in-cwd.md) | both | `nros-sdk.lock` lands in the cwd |
+| [#2333](../issues/archived/2333-sdk-lock-lands-in-cwd.md) | both | **Resolved** 2026-11-07: setup outside a project locks in the store, and Install explains the lock |
 | [#2334](../issues/archived/2334-nros-version-hides-release-suffix.md) | both | **Resolved** 2026-11-07: `nros version` and `doctor --report` print the release version with its suffix |
 
 Found after round two, while fixing the probes:

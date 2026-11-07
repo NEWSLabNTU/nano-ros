@@ -2583,10 +2583,16 @@ pub(crate) fn index_workspace(index: &Path) -> PathBuf {
 /// An unreadable working directory falls back to the bare relative name, which
 /// is the pre-1262 behaviour and the only thing left to do when the process
 /// cannot say where it is.
+///
+/// Outside a project the lock is the STORE's (issue 2333,
+/// [`crate::orchestration::store::setup_lock_path_for`]): a setup run in `~`
+/// used to write `~/nros-sdk.lock`, which every project under `~` without a
+/// pin of its own then shared.
 fn project_lock_path() -> PathBuf {
+    let store = crate::orchestration::store::root();
     match std::env::current_dir() {
-        Ok(cwd) => crate::orchestration::store::lock_path_for(&cwd),
-        Err(_) => PathBuf::from(crate::orchestration::sdk_store::LOCK_FILE),
+        Ok(cwd) => crate::orchestration::store::setup_lock_path_for(&cwd, &store),
+        Err(_) => crate::orchestration::store::store_lock(&store),
     }
 }
 
@@ -4651,13 +4657,9 @@ mod tests {
                 .map(|(i, l)| (i + 1, l.trim()))
                 .filter(|(_, l)| l.contains("LOCK_FILE") && !l.starts_with("//"))
                 .collect();
-            // The one resolver's own fallback, and nothing else.
-            let expected: &[&str] = match rel {
-                "setup.rs" => {
-                    &["Err(_) => PathBuf::from(crate::orchestration::sdk_store::LOCK_FILE),"]
-                }
-                _ => &[],
-            };
+            // None at all: even the unreadable-cwd fallback is the store's
+            // lock (`store::store_lock`, issue 2333), never a bare name.
+            let expected: &[&str] = &[];
             let found: Vec<&str> = uses.iter().map(|(_, l)| *l).collect();
             assert_eq!(
                 found,

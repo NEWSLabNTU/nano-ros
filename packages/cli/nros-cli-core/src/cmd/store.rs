@@ -219,6 +219,12 @@ pub fn gc(args: GcArgs, pin_search_from: Option<&std::path::Path>) -> Result<()>
         Vec::new()
     } else {
         let mut s = store::collect_pins(&args.pin_file, pin_search_from)?;
+        // Issue 2333 — what `nros setup` provisioned outside any project is
+        // recorded in the store's own lock, and is live wherever gc runs from.
+        let store_lock = store::store_lock(&root);
+        if store_lock.is_file() && !s.iter().any(|p| p.path == store_lock) {
+            s.push(store::load_pin_file(&store_lock)?);
+        }
         // RFC-0103 D5 — what an INSTALLED toolchain needs is live wherever gc
         // runs from (a source tree's `+sha8` key is named by no project file).
         for index in store::installed_toolchain_indexes(&root) {
