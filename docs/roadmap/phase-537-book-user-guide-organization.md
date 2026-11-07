@@ -412,6 +412,30 @@ deliverable as W5, a lab series, so it moved here. W5 carries these as well:
   phase-524 W5, whose hardware work is deferred.
 - **Acceptance.** `just probe <chapter>` passes for every graded chapter.
 
+## Adoption probe round two (phase-523, 2026-11-07)
+
+Phase-523's second adoption round, run on release `nros-0.6.0-nros7`, filed
+these stops on pages this phase owns. They land as one follow-up after #3183
+(W4, W5, W9, W13), since every one is on a page #3183 rewrites:
+
+- [2319](../issues/2319-first-project-scaffold-before-ros-source.md): First Project scaffolds
+  before it sources ROS 2, so a Jazzy host gets a Humble image. Source ROS 2
+  ahead of "Scaffold the project" in Tutorial 1 and every starter.
+- [2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md): the book half only. Tutorial 1 already states
+  the talker's publisher is reliable on #3183; the interop half is
+  phase-523's.
+- [2323](../issues/2323-offline-deb-recipe-omits-ros-base.md): Working offline's `.deb` recipe runs in
+  `ros:jazzy-ros-base`, so it omits ROS 2 and the base image's packages.
+  Re-measure it in a plain Ubuntu image.
+- [2330](../issues/2330-ros-install-leaves-book.md): Install sends the reader to docs.ros.org for the
+  ROS 2 apt source, and its GitHub API lookup is rate-limited behind a lab NAT.
+- [2331](../issues/2331-book-links-repo-and-rfcs.md): education-route pages cite RFC numbers and link
+  into the repository. Drop the repository links; RFC numbers stay only in a
+  closing "Design background" (Principle 5).
+
+**Acceptance:** each issue resolved, its chapter's track replays on the
+release, and `check-book-audience` passes with no new baseline row.
+
 ## Order
 
 ```

@@ -5,7 +5,7 @@ status: open
 type: bug
 area: rmw-zenoh, interop, book
 purpose: [industrial, education]
-related: [phase-523, issue-2260]
+related: [phase-523, phase-537, issue-2260]
 found: 2026-11-07
 ---
 

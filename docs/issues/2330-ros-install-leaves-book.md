@@ -5,7 +5,7 @@ status: open
 type: enhancement
 area: book, install
 purpose: [education]
-related: [phase-523]
+related: [phase-523, phase-537]
 found: 2026-11-07
 ---
 

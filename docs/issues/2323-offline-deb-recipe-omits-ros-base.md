@@ -5,7 +5,7 @@ status: open
 type: bug
 area: book, offline
 purpose: [industrial]
-related: [phase-523, issue-2264]
+related: [phase-523, phase-537, issue-2264]
 found: 2026-11-07
 ---
 
