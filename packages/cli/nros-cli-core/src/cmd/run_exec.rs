@@ -1323,11 +1323,10 @@ mod tests {
     // (`describe`, `run --plan <file>`): nothing is compiled.
 
     fn fake_runner(dir: &Path, body: &str) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let p = dir.join("fake-runner");
-        std::fs::write(
+        crate::test_support::write_executable_stub(
             &p,
-            format!(
+            &format!(
                 "#!/bin/sh\n\
                  if [ \"$1\" = describe ]; then\n\
                  echo '{{\"protocol\":[1],\"verbs\":[\"run\"],\"needs\":[]}}'; exit 0\n\
@@ -1335,9 +1334,7 @@ mod tests {
                  [ \"$1\" = run ] && [ \"$2\" = --plan ] && [ -f \"$3\" ] || exit 2\n\
                  {body}\n"
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         p
     }
 
@@ -1409,7 +1406,6 @@ mod tests {
     /// the shell-script fake, placed where the CMake road puts it.
     #[test]
     fn executor_finds_a_workspace_runner_package() {
-        use std::os::unix::fs::PermissionsExt;
         let _g = crate::target_session::tests::FLAG
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -1436,7 +1432,6 @@ mod tests {
         let script = fake_runner(&built, "echo 'Publishing: 0'; sleep 30");
         let exe = built.join("w4-fake-runner");
         std::fs::rename(&script, &exe).unwrap();
-        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
 
         let l = locate_runner(&ws, None, "w4fake", &[], &[]).unwrap();
         assert_eq!(l.exe, exe);
@@ -1520,15 +1515,12 @@ mod tests {
 
     #[test]
     fn a_runner_without_the_verb_or_the_protocol_is_refused() {
-        use std::os::unix::fs::PermissionsExt;
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("old-runner");
-        std::fs::write(
+        crate::test_support::write_executable_stub(
             &p,
             "#!/bin/sh\necho '{\"protocol\":[9],\"verbs\":[\"run\"],\"needs\":[]}'\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let e = check_runner(&p, "old", Verb::Run).unwrap_err();
         assert!(e.contains("protocol"), "{e}");
         let x = ExecArgs {
