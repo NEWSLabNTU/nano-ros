@@ -53,6 +53,20 @@ void virtio_net_nx_configure(const struct virtio_net_nx_config *config);
  */
 VOID virtio_net_nx_driver(NX_IP_DRIVER *driver_req_ptr);
 
+/**
+ * Read the MAC address the virtio-net device was given, without touching the
+ * device's state (no reset, no feature negotiation).
+ *
+ * The device MAC is the per-instance identity a QEMU launcher sets
+ * (`-device virtio-net-device,mac=...`), so a board folds it into its RNG
+ * seed: the image's configured address can be the same for every instance.
+ * Safe to call before `nx_ip_create()`.
+ *
+ * @param mac  Output, 6 bytes.
+ * @return 0 on success, -1 if no virtio-net device was found.
+ */
+int virtio_net_nx_read_mac(unsigned char mac[6]);
+
 #ifdef __cplusplus
 }
 #endif
