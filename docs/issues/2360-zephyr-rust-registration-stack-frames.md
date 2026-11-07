@@ -9,7 +9,7 @@ related: [2359]
 found: 2026-11-07
 ---
 
-Found while fixing [issue 2359](archived/2359-zephyr-rust-talker-nucleo-never-publishes.md).
+Found while fixing issue 2359.
 
 ## What
 
