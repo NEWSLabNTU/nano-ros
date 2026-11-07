@@ -4576,7 +4576,58 @@ fn resolve_sync_edition(
             .image_ros_edition(image.as_deref())
             .wrap_err_with(|| format!("sync: ros_edition in {}", sys_toml.display()));
     }
+    if leaf_image.is_none()
+        && let Some(e) = bringup_edition(ws_root)?
+    {
+        return Ok(e);
+    }
     Ok(RosEdition::Humble)
+}
+
+/// A WORKSPACE's edition, from its bringups (issue 2320).
+///
+/// A workspace keeps no `system.toml` at its root: `nros new <ws>` writes it in
+/// `src/<pkg>_bringup/`. Reading only the root therefore generated every
+/// workspace's messages as Humble whatever the bringup said, and a Jazzy image
+/// published `TypeHashNotSupported` — which a Jazzy graph lists and never
+/// delivers. The bringups are found the way the planner finds them; the
+/// workspace's message crates are shared, so they must agree on one edition.
+fn bringup_edition(ws_root: &Path) -> Result<Option<RosEdition>> {
+    let mut found: Vec<(PathBuf, RosEdition)> = Vec::new();
+    for dir in [ws_root.to_path_buf(), ws_root.join("src")] {
+        if !dir.is_dir() {
+            continue;
+        }
+        for b in crate::cmd::bringup::discover_bringups(&dir)
+            .wrap_err_with(|| format!("sync: find the bringups under {}", dir.display()))?
+        {
+            let path = b.dir.join("system.toml");
+            let raw = std::fs::read_to_string(&path)
+                .wrap_err_with(|| format!("sync: read {}", path.display()))?;
+            let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+                toml::from_str(&raw).wrap_err_with(|| format!("sync: parse {}", path.display()))?;
+            let e = sys
+                .system
+                .ros_edition()
+                .wrap_err_with(|| format!("sync: ros_edition in {}", path.display()))?;
+            found.push((path, e));
+        }
+    }
+    let Some((_, first)) = found.first() else {
+        return Ok(None);
+    };
+    if let Some((path, other)) = found.iter().find(|(_, e)| e != first) {
+        bail!(
+            "sync: this workspace's bringups name two ROS 2 editions ({} in {}, {} in {}); its \
+             message crates are shared, so set one `ros_edition` in every bringup's \
+             `[system]`, or pass --ros-edition",
+            first.as_str(),
+            found[0].0.display(),
+            other.as_str(),
+            path.display()
+        );
+    }
+    Ok(Some(*first))
 }
 
 // The interface index over `search` (the run's interface search path, then
@@ -9904,5 +9955,66 @@ mod bringup_launch_tests {
         let (_t, dir) = bringup("leaf", "[system]\nname = \"l\"\n");
         std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"l\"\n").unwrap();
         assert_eq!(synthesise_bringup_launch(&dir).unwrap(), None);
+    }
+}
+
+#[cfg(test)]
+mod sync_edition_tests {
+    use super::resolve_sync_edition;
+    use rosidl_codegen::RosEdition;
+
+    fn bringup(ws: &std::path::Path, name: &str, edition: &str) {
+        let d = ws.join("src").join(name);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(
+            d.join("package.xml"),
+            format!("<package format=\"3\"><name>{name}</name><version>0.1.0</version></package>"),
+        )
+        .unwrap();
+        std::fs::write(
+            d.join("system.toml"),
+            format!(
+                "[system]\nname = \"{name}\"\nrmw = \"zenoh\"\ndomain_id = 0\nros_edition = \"{edition}\"\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// Issue 2320 — `nros new <ws>` keeps `system.toml` under
+    /// `src/<pkg>_bringup/`, and a workspace sync read only the root, so a
+    /// Jazzy workspace generated Humble messages (`TypeHashNotSupported`).
+    #[test]
+    fn a_workspace_takes_its_edition_from_its_bringups() {
+        let d = tempfile::tempdir().unwrap();
+        bringup(d.path(), "robot_bringup", "jazzy");
+        assert_eq!(
+            resolve_sync_edition(None, d.path(), None).unwrap(),
+            RosEdition::Jazzy
+        );
+        // The flag still wins, and no bringup at all keeps the default.
+        assert_eq!(
+            resolve_sync_edition(Some("humble"), d.path(), None).unwrap(),
+            RosEdition::Humble
+        );
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(
+            resolve_sync_edition(None, empty.path(), None).unwrap(),
+            RosEdition::Humble
+        );
+    }
+
+    /// Shared message crates have one edition, so two bringups that disagree
+    /// are refused with both files named, never resolved by whichever comes
+    /// first.
+    #[test]
+    fn bringups_that_disagree_on_the_edition_are_refused() {
+        let d = tempfile::tempdir().unwrap();
+        bringup(d.path(), "a_bringup", "jazzy");
+        bringup(d.path(), "b_bringup", "humble");
+        let e = format!(
+            "{:#}",
+            resolve_sync_edition(None, d.path(), None).unwrap_err()
+        );
+        assert!(e.contains("a_bringup") && e.contains("b_bringup"), "{e}");
     }
 }
