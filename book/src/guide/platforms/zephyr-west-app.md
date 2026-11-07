@@ -470,10 +470,14 @@ EOF
 Each `<depend>` also gets a `find_package(<pkg> REQUIRED)` line in
 `CMakeLists.txt`. The definitions come from the first place that has the
 package: the directories in `NROS_INTERFACE_SEARCH_PATH`, then a sourced ROS 2
-install, then copies nano-ros carries of a few standard packages. Build from a
-shell that has sourced ROS 2, so the types match your peers. For your own
-messages, put their interface package anywhere on disk and add its parent
-directory to `NROS_INTERFACE_SEARCH_PATH`.
+install (`AMENT_PREFIX_PATH`). Sourcing ROS 2 is required: if neither names a
+package, the configure stops and says to source ROS 2, the same rule
+`nros configure` follows. nano-ros also carries copies of a few standard
+packages, but they are one ROS 2 distro's, and the build reads them only if
+you add the directory the refusal names (`packages/cli/interfaces` in the SDK
+root) to `NROS_INTERFACE_SEARCH_PATH`; a sourced ROS 2 install is still read
+first. For your own messages, put their interface package anywhere on disk
+and add its parent directory to `NROS_INTERFACE_SEARCH_PATH`.
 
 ### Finish a Rust application
 

@@ -26,8 +26,6 @@
 - [1. Run a talker on an emulated board](./tutorial/run-a-talker.md)
 - [2. What you just built](./tutorial/what-you-just-built.md)
 - [3. Add a second node](./tutorial/add-a-second-node.md)
-  - [First Node — C (Linux)](./tutorial/add-a-second-node-c.md)
-  - [First Node — C++ (Linux)](./tutorial/add-a-second-node-cpp.md)
 - [4. Pick and configure the RMW](./tutorial/pick-the-rmw.md)
 - [5. Your own message](./tutorial/your-own-message.md)
 - [6. Services and actions](./tutorial/services-and-actions.md)
