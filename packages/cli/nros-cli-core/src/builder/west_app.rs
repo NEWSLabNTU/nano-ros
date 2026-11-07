@@ -50,12 +50,13 @@
 //! selection facade cannot supply it: a `#[cfg(feature = …)]` is evaluated on
 //! THIS crate, and `::nros_rmw_zenoh::` has to be a name in THIS crate's scope.
 //!
-//! Which crate that is comes from `[rmw.link] rlib_dep` in the backend's own
-//! `nros-rmw.toml` — the table that already exists to answer "is this backend a
-//! Rust crate?", and which answers `""` for cyclonedds and uorb (C/C++ CMake
-//! projects the Zephyr C port links). An empty `rlib_dep` therefore emits no
-//! feature and no dep, which is exactly right: the macro's `#[cfg]` is then
-//! correctly off and the backend arrives through cmake.
+//! Which crate that is comes from `[rmw.provides.cargo] crate` in the
+//! backend's own `nros-rmw.toml`, at the directory the provider scan resolved
+//! (RFC-0071 D15, amended ruling 3; the walk of `packages/rmw/<family>/` that
+//! stood here is gone). Cyclone DDS and uorb name no `crate` (C/C++ CMake
+//! projects the Zephyr C port links), so they get no feature and no dep, which
+//! is exactly right: the macro's `#[cfg]` is then correctly off and the backend
+//! arrives through cmake.
 
 use std::path::{Path, PathBuf};
 
@@ -282,19 +283,6 @@ pub struct CmakeApp {
     pub features: Vec<String>,
 }
 
-/// Where a backend crate lives, given its name.
-///
-/// `packages/rmw/<family>/<crate>` — LOCATED rather than assumed, because the
-/// family directory is not the crate name (`nros-rmw-xrce-cffi` lives under
-/// `xrce/`). Same search `cmd::build::bridge_entry_deps` makes, for the same
-/// reason.
-fn backend_dir(nros_root: &Path, krate: &str) -> Option<PathBuf> {
-    ["zenoh", "cyclonedds", "xrce", "uorb", "dds"]
-        .iter()
-        .map(|fam| nros_root.join("packages/rmw").join(fam).join(krate))
-        .find(|p| p.join("Cargo.toml").is_file())
-}
-
 /// Does the crate at `dir` declare `feature`?
 ///
 /// Named before it is emitted, because a missing feature is a build the user can
@@ -419,40 +407,32 @@ pub fn resolve_in(
         .push(format!("nros-zephyr-build = {{ path = \"{rel}\" }}"));
 
     // The backend. See the module docs: this is what makes the macro's
-    // `register()` reachable, and an empty `rlib_dep` is a real answer.
+    // `register()` reachable, and no `crate` is a real answer.
     if let Some(declared) = rmw {
         let resolved = rmws
             .resolve(declared)
             .map_err(|e| format!("`{image_id}`: {e}"))?;
-        let krate = resolved.descriptor.rlib_dep.as_str();
-        if !krate.is_empty() {
-            match backend_dir(nros_root, krate) {
-                Some(dir) => {
-                    let rel = relative_or_err(entry_dir, &dir)?;
-                    let feats = if declares_feature(&dir, platform_feature) {
-                        format!(", features = [\"{platform_feature}\"]")
-                    } else {
-                        String::new()
-                    };
-                    app.deps.push(format!(
-                        "{krate} = {{ path = \"{rel}\", default-features = false{feats}, \
-                         optional = true }}"
-                    ));
-                    app.rmw_feature = Some((resolved.cargo_feature.clone(), krate.to_string()));
-                }
-                // The table names a crate this checkout does not have. Not
-                // fatal: the image still builds its C side, and the missing
-                // `register()` fails loudly at run time with the backend
-                // named, which is more use than refusing a build here over a
-                // path.
-                None => {
-                    eprintln!(
-                        "nros build: warning: `{image_id}` declares rmw `{declared}`, whose \
-                         `[rmw.link] rlib_dep = \"{krate}\"` names no crate under \
-                         packages/rmw/ — the entry will link no Rust backend"
-                    );
-                }
-            }
+        // RFC-0071 D15 — the crate is `[rmw.provides.cargo] crate`, at the
+        // directory the scan resolved (amended ruling 3), so a backend outside
+        // the SDK root is found the same way as one inside it. No `crate` is a
+        // real answer (cyclonedds, uorb: C/C++ projects the Zephyr C port
+        // links); a `crate` with no such crate at its directory is the
+        // provider's error, refused rather than built with no Rust backend.
+        if let Some(dir) = crate::orchestration::backend_link::crate_dir(&resolved)
+            .map_err(|e| format!("`{image_id}`: {e}"))?
+        {
+            let krate = resolved.descriptor.cargo_crate.as_str();
+            let rel = relative_or_err(entry_dir, &dir)?;
+            let feats = if declares_feature(&dir, platform_feature) {
+                format!(", features = [\"{platform_feature}\"]")
+            } else {
+                String::new()
+            };
+            app.deps.push(format!(
+                "{krate} = {{ path = \"{rel}\", default-features = false{feats}, \
+                 optional = true }}"
+            ));
+            app.rmw_feature = Some((resolved.cargo_feature.clone(), krate.to_string()));
         }
     }
 
@@ -1127,7 +1107,7 @@ mod tests {
         let entry = ws.join("build/zephyr-acme/zephyr_entry");
         std::fs::create_dir_all(&entry).unwrap();
         let none = std::collections::BTreeMap::new();
-        resolve_in(
+        let app = resolve_in(
             &acme,
             &ws,
             &entry,
@@ -1138,6 +1118,43 @@ mod tests {
             &none,
         )
         .expect("acme resolves through the scan");
+        // RFC-0071 D15 — the backend's directory is the scan's, outside the
+        // SDK root (the deleted `backend_dir` looked only under it).
+        assert!(
+            app.deps.contains(
+                &"acme-rmw = { path = \"../../../src/acme_rmw\", default-features = false, \
+                  optional = true }"
+                    .to_string()
+            ),
+            "{:?}",
+            app.deps
+        );
+        assert_eq!(
+            app.rmw_feature,
+            Some(("rmw-acme".to_string(), "acme-rmw".to_string()))
+        );
+        // ... and a `crate` the directory does not hold is refused, not
+        // warned past.
+        let manifest = ws.join("src/acme_rmw/Cargo.toml");
+        let raw = std::fs::read_to_string(&manifest).unwrap();
+        std::fs::write(
+            &manifest,
+            raw.replace("name = \"acme-rmw\"", "name = \"other\""),
+        )
+        .unwrap();
+        let e = resolve_in(
+            &acme,
+            &ws,
+            &entry,
+            &nros_root,
+            "zephyr",
+            Some("acme"),
+            "platform-zephyr",
+            &none,
+        )
+        .unwrap_err();
+        assert!(e.contains("is `other`"), "{e}");
+        std::fs::write(&manifest, raw).unwrap();
         let e = resolve_in(
             &cargo_nano_ros::rmw_resolver::test_support::in_tree_index(),
             &ws,
@@ -1154,7 +1171,7 @@ mod tests {
 
     #[test]
     fn a_cmake_backend_gets_no_feature_and_no_dep() {
-        // cyclonedds declares `rlib_dep = ""` — it is a C++ library the Zephyr
+        // cyclonedds names no cargo `crate` — it is a C++ library the Zephyr
         // C port links, so the macro's `#[cfg(feature = "rmw-cyclonedds")]`
         // register is correctly absent rather than missing.
         let td = tempfile::tempdir().unwrap();

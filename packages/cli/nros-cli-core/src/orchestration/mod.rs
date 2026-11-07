@@ -22,6 +22,8 @@ pub mod drift;
 // `redispatch()` before clap — and because one parser of `nros-toolchain.toml`
 // in the tree is the whole point of moving it rather than copying it.
 pub use nros_launcher::dispatch;
+// phase-545 W2 (RFC-0071 D15) — linking a backend the board does not name.
+pub mod backend_link;
 pub mod facade;
 /// phase-383 W1 — `[image.<id>]`, the buildable unit (RFC-0065 D6).
 pub mod image;

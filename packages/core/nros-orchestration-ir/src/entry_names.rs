@@ -48,6 +48,13 @@ pub fn legacy_adapter_crate_name(entry: &str) -> String {
 /// The directory [`legacy_adapter_crate_name`] lived in.
 pub const LEGACY_ADAPTER_DIR: &str = "nros-selection";
 
+/// RFC-0071 D15 — the arm of `__nros_register_backends!` that registers the
+/// backends the IMAGE links itself (the board crate does not). The facade
+/// renders it only when the image has such a backend, and `nros::main!`'s
+/// ordinary arms call `__nros_register_backends!(image)` only when the
+/// registration source defines it, so an image without one expands as before.
+pub const IMAGE_REGISTRATION_ARM: &str = "(image) =>";
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1832,6 +1832,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `[rmw.provides.cargo]` statement; this macro names no backend. `gated`
     // keeps each call behind the entry's own `rmw-<x>` feature, so an entry
     // built with a Kconfig-chosen feature set still compiles.
+    // RFC-0071 D15 — the ordinary arms' registration of the backends the image
+    // links itself (see [`image_registration_call`]).
+    let image_registration_ts = image_registration_call(&manifest_dir);
+
     let zephyr_rmw_register_ts: proc_macro2::TokenStream = deploy_for_framework
         .as_deref()
         .and(leaf_decl.as_ref())
@@ -2329,6 +2333,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 <#board_path as ::nros::__macro_support::nros_platform::BoardEntry>::setup_transport(
                     &#deploy_overlay_ts,
                 );
+                // RFC-0071 D15 — a backend the board crate does not link is
+                // registered here, by the image: after `before_boot` and
+                // `setup_transport` (whatever installs a transport the backend
+                // reads at `register`), before the board opens the executor.
+                // Empty unless the image links such a backend.
+                #image_registration_ts
                 // Phase 249 P1 — the RMW backend register is OWNED BY THE BOARD
                 // (Phase 248 C5a: each board's boot path calls its linked
                 // `nros_rmw_<x>::register()`, gated on the board's `rmw-<x>` feature),
@@ -2717,6 +2727,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                                 cx.core,
                                 &#deploy_overlay_ts,
                             );
+                        // RFC-0071 D15 — a backend the board crate does not
+                        // link, registered by the image after the board's
+                        // bring-up and before `__nros_run` opens the executor.
+                        // Empty unless the image links such a backend.
+                        #image_registration_ts
                         __nros_run::spawn().unwrap();
                         (
                             Shared {},
@@ -3143,6 +3158,73 @@ fn entry_adapter_crate(manifest_dir: &Path) -> Option<Ident> {
         .into_iter()
         .find(|n| keys.contains(n))
         .map(|n| Ident::new(&n, Span::call_site()))
+}
+
+/// RFC-0071 D15 — the `__nros_register_backends!(image)` call an ordinary
+/// (OwnedSpin / RTIC) arm makes, registering the backends the IMAGE links
+/// because its board crate does not. The board registers every other backend
+/// in its own boot path.
+///
+/// Emitted only when the entry's registration source DEFINES that arm
+/// ([`nros_orchestration_ir::entry_names::IMAGE_REGISTRATION_ARM`]): the
+/// facade renders it only for an image with such a backend, so every other
+/// entry expands exactly as before. An entry with no registration source at
+/// all gets nothing here, not [`no_selection_error`]: the board registers
+/// (amended ruling 4).
+fn image_registration_call(manifest_dir: &Path) -> proc_macro2::TokenStream {
+    let arm = nros_orchestration_ir::entry_names::IMAGE_REGISTRATION_ARM;
+    let defines_arm =
+        |text: &str| text.contains("macro_rules! __nros_register_backends") && text.contains(arm);
+    if let Some(adapter) = entry_adapter_crate(manifest_dir) {
+        let defined = entry_adapter_dir(manifest_dir, &adapter.to_string())
+            .and_then(|d| std::fs::read_to_string(d.join("src/lib.rs")).ok())
+            .is_some_and(|s| defines_arm(&s));
+        return if defined {
+            quote! {
+                {
+                    #[allow(unused_imports)]
+                    use ::#adapter::__nros_register_backends;
+                    __nros_register_backends!(image);
+                }
+            }
+        } else {
+            proc_macro2::TokenStream::new()
+        };
+    }
+    let defined = ["src/main.rs", "src/lib.rs"]
+        .iter()
+        .any(|f| std::fs::read_to_string(manifest_dir.join(f)).is_ok_and(|s| defines_arm(&s)));
+    if defined {
+        quote! { __nros_register_backends!(image); }
+    } else {
+        proc_macro2::TokenStream::new()
+    }
+}
+
+/// The directory of the adapter crate `adapter` (hyphens folded) as the
+/// entry's manifest path-depends on it, in any dependency table.
+fn entry_adapter_dir(manifest_dir: &Path, adapter: &str) -> Option<PathBuf> {
+    let raw = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).ok()?;
+    let doc: toml::Table = toml::from_str(&raw).ok()?;
+    let scopes = std::iter::once(&doc).chain(
+        doc.get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values().filter_map(|v| v.as_table())),
+    );
+    for scope in scopes {
+        let Some(deps) = scope.get("dependencies").and_then(|d| d.as_table()) else {
+            continue;
+        };
+        for (k, v) in deps {
+            if k.replace('-', "_") == adapter
+                && let Some(p) = v.get("path").and_then(|p| p.as_str())
+            {
+                return Some(manifest_dir.join(p));
+            }
+        }
+    }
+    None
 }
 
 /// RFC-0071 D13 — does the entry's own source define the registration
@@ -5579,6 +5661,78 @@ mod bridge_rmw_tests {
                 .expect("generated")
                 .is_empty()
         );
+        super::ENTRY_ENV_OVERRIDE.with(|m| m.borrow_mut().clear());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// RFC-0071 D15 (amended rulings 1 and 4) — the ordinary arms call
+    /// `__nros_register_backends!(image)` only when the registration source
+    /// defines that arm; an entry with no arm, or no source at all, gets
+    /// nothing (the board registers).
+    #[test]
+    fn the_image_arm_is_called_only_where_it_is_defined() {
+        let dir = std::env::temp_dir().join(format!("nros-macros-d15-{}", std::process::id()));
+        let adapter = dir.join("adapter");
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(adapter.join("src")).unwrap();
+        super::ENTRY_ENV_OVERRIDE.with(|m| {
+            m.borrow_mut()
+                .insert("CARGO_PKG_NAME".into(), "demo_entry".into());
+        });
+        let manifest = |deps: &str| {
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!("[package]\nname = \"demo_entry\"\n\n[dependencies]\n{deps}"),
+            )
+            .unwrap();
+        };
+        let call = || super::image_registration_call(&dir).to_string();
+
+        // A hand-written entry with no registration source: nothing.
+        manifest("");
+        std::fs::write(dir.join("src/main.rs"), "nros::main!(launch = \"b\");\n").unwrap();
+        assert!(call().is_empty(), "{}", call());
+
+        // A generated entry: its own macros, with and without the arm.
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "macro_rules! __nros_register_backends { () => {{}}; }\nnros::main!(launch = \"b\");\n",
+        )
+        .unwrap();
+        assert!(call().is_empty(), "no arm, no call: {}", call());
+        std::fs::write(
+            dir.join("src/main.rs"),
+            "macro_rules! __nros_register_backends {\n    (image) => {{ let _ = ::acme_rmw::register(); }};\n    () => {{}};\n}\nnros::main!(launch = \"b\");\n",
+        )
+        .unwrap();
+        let ts = call();
+        assert!(ts.contains("__nros_register_backends ! (image)"), "{ts}");
+        assert!(
+            !ts.contains("use"),
+            "a generated entry imports nothing: {ts}"
+        );
+
+        // An owned entry: the adapter's macros, imported, when they carry it.
+        std::fs::write(dir.join("src/main.rs"), "nros::main!(launch = \"b\");\n").unwrap();
+        manifest("demo_entry_nros_derived = { path = \"adapter\" }\n");
+        std::fs::write(
+            adapter.join("src/lib.rs"),
+            "#[macro_export]\nmacro_rules! __nros_register_backends { () => {{}}; }\n",
+        )
+        .unwrap();
+        assert!(call().is_empty(), "adapter without the arm: {}", call());
+        std::fs::write(
+            adapter.join("src/lib.rs"),
+            "#[macro_export]\nmacro_rules! __nros_register_backends {\n    (image) => {{ let _ = $crate::__nros_backend_acme_rmw::register(); }};\n    () => {{}};\n}\n",
+        )
+        .unwrap();
+        let ts = call();
+        assert!(
+            ts.contains("use :: demo_entry_nros_derived :: __nros_register_backends"),
+            "{ts}"
+        );
+        assert!(ts.contains("__nros_register_backends ! (image)"), "{ts}");
+
         super::ENTRY_ENV_OVERRIDE.with(|m| m.borrow_mut().clear());
         std::fs::remove_dir_all(&dir).unwrap();
     }
