@@ -75,10 +75,22 @@ board = "threadx-linux"
 launch = "service_server.launch.xml"
 locator = "tcp/127.0.0.1:9210"
 
+[image.threadx_service_server_cyclonedds]
+board = "threadx-linux"
+launch = "service_server.launch.xml"
+rmw = "cyclonedds"
+domain_id = 108
+
 [image.threadx_service_client]
 board = "threadx-linux"
 launch = "service_client.launch.xml"
 locator = "tcp/127.0.0.1:9210"
+
+[image.threadx_service_client_cyclonedds]
+board = "threadx-linux"
+launch = "service_client.launch.xml"
+rmw = "cyclonedds"
+domain_id = 108
 
 # Zephyr native_sim: one image per (role, rmw). The router port, Agent port
 # and DDS domain are the cell's `nros_tests::alloc` values (the
