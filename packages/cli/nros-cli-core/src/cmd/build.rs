@@ -885,7 +885,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     .ok()?;
             Some((
                 plan::qualified(&b, &id),
-                generated_outputs(&root, &id, &img, &platform, driver, &bd),
+                generated_outputs(&root, &id, &img, &platform, driver, &b, &bd),
             ))
         })
         .collect();
@@ -992,7 +992,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 kernel: None,
                 configure: None,
                 entry_root: None,
-                cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
+                cmake_build_dir: cmake_build_dir_for(
+                    driver,
+                    &platform,
+                    &image,
+                    &bringup,
+                    &bringup_dir,
+                ),
                 qualified: qual,
                 board,
                 platform,
@@ -1655,9 +1661,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             Driver::CMake => {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
                 // this root DOES live under build/<coord> (RFC-0065 D8).
-                let manifest_dir =
-                    root.join("build")
-                        .join(cmake_coordinate(&platform, &image, &bringup_dir));
+                let manifest_dir = root.join("build").join(cmake_coordinate(
+                    &platform,
+                    &image,
+                    &bringup,
+                    &bringup_dir,
+                ));
                 record_dirs.push(manifest_dir.clone());
                 // W4.b — every image that lands on THIS coordinate.
                 //
@@ -1671,7 +1680,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // nothing — it is a discovered SUBDIR, and a second target of
                 // that name would collide. Delete the package and the next
                 // build emits its call (D13, incremental).
-                let coord = cmake_coordinate(&platform, &image, &bringup_dir);
+                let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
                 // A C++ source ANYWHERE in a package, not just at its top —
                 // `builder::discover::holds_cpp_source`, the one spelling the
                 // west application's `LANG` also reads (phase-470 W5.b3). The
@@ -1693,7 +1702,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                                         d.entry_kind,
                                         image_has_non_rust(img, bd),
                                     ) == Ok(Driver::CMake)
-                                        && cmake_coordinate(d.platform.kebab(), img, bd) == coord
+                                        && cmake_coordinate(d.platform.kebab(), img, b, bd) == coord
                                 })
                                 .unwrap_or(false)
                     })
@@ -2355,7 +2364,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             kernel: nuttx_kernel,
             configure: cmake_configure.or(cargo_prepare),
             entry_root,
-            cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup_dir),
+            cmake_build_dir: cmake_build_dir_for(driver, &platform, &image, &bringup, &bringup_dir),
             qualified: qual,
             board,
             platform,
@@ -5977,7 +5986,10 @@ fn coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -
 /// ONCE per configure and it compiles into the shared `nros_rmw_<backend>`,
 /// so two bringups with different configs on one configure each got whichever
 /// was baked last. `bringup_dir` is the image's bringup.
-fn cmake_coordinate(
+///
+/// This is the configure's CONFIGURATION key. The build dir also names the
+/// bringup: [`cmake_coordinate`].
+fn cmake_configuration_key(
     platform: &str,
     image: &crate::orchestration::image::ImageBlock,
     bringup_dir: &Path,
@@ -5993,18 +6005,47 @@ fn cmake_coordinate(
     }
 }
 
+/// The coordinate of a workspace image's cmake build dir: its
+/// [`cmake_configuration_key`], then its BRINGUP (issue 2287).
+///
+/// The generated root a configure reads is per bringup: it carries
+/// `nano_ros_workspace(SYSTEM <bringup>)`, which picks the capability axes the
+/// C/C++ libraries build with, and only that bringup's entries, so the shared
+/// runtime's sizing descriptor (RFC-0100 D12) covers that bringup's images. Two
+/// bringups on one board used to take turns rewriting one dir, and every switch
+/// recompiled the whole Rust runtime (22–32 s measured on
+/// `examples/workspaces/c`). Each bringup now has its own dir and runtime. The
+/// cost is one runtime build per bringup instead of one per configuration; a
+/// user who keeps two bringups for one board (two launch files, two settings)
+/// stops paying a rebuild on every switch. Ruled 2026-11-07: option 2.
+///
+/// The bringup is a ROS package name (`[a-z0-9_]`), so it needs no escaping
+/// and cannot be mistaken for a coordinate's `-` separated parts.
+fn cmake_coordinate(
+    platform: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    bringup: &str,
+    bringup_dir: &Path,
+) -> String {
+    format!(
+        "{}-{bringup}",
+        cmake_configuration_key(platform, image, bringup_dir)
+    )
+}
+
 /// [`ResolvedBuild::cmake_build_dir`] for a workspace image: its cmake binary
 /// dir when the driver is cmake, else `None`.
 fn cmake_build_dir_for(
     driver: Driver,
     platform: &str,
     image: &crate::orchestration::image::ImageBlock,
+    bringup: &str,
     bringup_dir: &Path,
 ) -> Option<String> {
     matches!(driver, Driver::CMake).then(|| {
         format!(
             "build/{}/cmake",
-            cmake_coordinate(platform, image, bringup_dir)
+            cmake_coordinate(platform, image, bringup, bringup_dir)
         )
     })
 }
@@ -6180,6 +6221,7 @@ fn generated_outputs(
     image: &crate::orchestration::image::ImageBlock,
     platform: &str,
     driver: Driver,
+    bringup: &str,
     bringup_dir: &Path,
 ) -> Vec<PathBuf> {
     let pkg = crate::builder::entry::package_name(image_id);
@@ -6195,7 +6237,7 @@ fn generated_outputs(
         }
         Driver::CMake => vec![
             PathBuf::from("build")
-                .join(cmake_coordinate(platform, image, bringup_dir))
+                .join(cmake_coordinate(platform, image, bringup, bringup_dir))
                 .join(format!("<target {pkg}>")),
         ],
     }
@@ -8725,10 +8767,10 @@ mod generated_output_collision_tests {
         platform: &str,
         driver: Driver,
     ) -> (String, Vec<PathBuf>) {
-        let id = qual.split_once(':').expect("qualified").1;
+        let (bringup, id) = qual.split_once(':').expect("qualified");
         (
             qual.to_string(),
-            generated_outputs(root, id, image, platform, driver, root),
+            generated_outputs(root, id, image, platform, driver, bringup, root),
         )
     }
 
@@ -8789,7 +8831,15 @@ mod generated_output_collision_tests {
     fn the_claimed_entry_dir_is_the_generated_one() {
         let t = tempfile::tempdir().unwrap();
         let z = img("zephyr");
-        let outs = generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West, t.path());
+        let outs = generated_outputs(
+            t.path(),
+            "zephyr",
+            &z,
+            "zephyr",
+            Driver::West,
+            "b",
+            t.path(),
+        );
         assert_eq!(
             t.path().join(&outs[0]),
             generated_entry_dir(t.path(), "zephyr", &z, "zephyr")
@@ -8807,7 +8857,7 @@ mod generated_output_collision_tests {
         let z = img("zephyr");
         for d in [Driver::West, Driver::Cargo, Driver::CMake] {
             assert!(
-                generated_outputs(t.path(), "zephyr", &z, "zephyr", d, t.path()).is_empty(),
+                generated_outputs(t.path(), "zephyr", &z, "zephyr", d, "b", t.path()).is_empty(),
                 "{d:?}"
             );
         }
@@ -8869,6 +8919,7 @@ mod generated_output_collision_tests {
                 &image,
                 "zephyr_robot1",
                 Driver::West,
+                "b",
                 t.path()
             )
             .is_empty(),
@@ -8885,6 +8936,7 @@ mod generated_output_collision_tests {
                 &image,
                 "zephyr_robot1",
                 Driver::Cargo,
+                "b",
                 t.path()
             )
             .is_empty()
@@ -8900,19 +8952,38 @@ mod generated_output_collision_tests {
         let mut z = img("zephyr");
         z.entry = Some("app".to_string());
         assert!(
-            generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::West, t.path()).is_empty()
+            generated_outputs(
+                t.path(),
+                "zephyr",
+                &z,
+                "zephyr",
+                Driver::West,
+                "b",
+                t.path()
+            )
+            .is_empty()
         );
         assert!(
-            !generated_outputs(t.path(), "zephyr", &z, "zephyr", Driver::Cargo, t.path())
-                .is_empty()
+            !generated_outputs(
+                t.path(),
+                "zephyr",
+                &z,
+                "zephyr",
+                Driver::Cargo,
+                "b",
+                t.path()
+            )
+            .is_empty()
         );
     }
 
-    /// cmake: one id on one coordinate is one target in one root — the pair
-    /// `realtime-c`'s `smp_bringup` used to repeat — while the same id on two
-    /// DIFFERENT boards lands in two roots and is fine.
+    /// cmake: one id is one target in one root. Since issue 2287 a root is per
+    /// BRINGUP as well as per board, so the pair `realtime-c`'s `smp_bringup`
+    /// used to repeat (one id, one board, two bringups) lands in two roots and
+    /// is fine, as the same id on two different boards always was. One
+    /// bringup cannot declare one id twice, so a cmake id never collides.
     #[test]
-    fn a_cmake_id_collides_only_on_one_coordinate() {
+    fn a_cmake_id_never_collides_across_bringups() {
         let t = tempfile::tempdir().unwrap();
         let native = img("native");
         let same = vec![
@@ -8931,7 +9002,7 @@ mod generated_output_collision_tests {
                 Driver::CMake,
             ),
         ];
-        assert_eq!(generated_output_collisions(&same).len(), 1);
+        assert!(generated_output_collisions(&same).is_empty());
 
         let other = img("mps2-an385-freertos");
         let apart = vec![
@@ -9168,13 +9239,44 @@ mod per_image_configure_tests {
         }
     }
 
-    /// An image that states nothing keeps EXACTLY the path it had, which is
-    /// what keeps the book's paths and every existing fixture row valid.
+    /// An image that states nothing gets no `-cfg` suffix, so its key is the
+    /// RFC-0070 R2 coordinate alone.
     #[test]
     fn an_image_stating_nothing_keeps_its_coordinate() {
         assert_eq!(
-            cmake_coordinate("native", &image(&[], None), Path::new("/nonexistent")),
+            cmake_configuration_key("native", &image(&[], None), Path::new("/nonexistent")),
             "native-zenoh"
+        );
+    }
+
+    /// Issue 2287 — the build dir names the bringup after the configuration
+    /// key, so two bringups on one board never share a configure, and one
+    /// bringup's images (whatever their configuration) stay apart from
+    /// another's.
+    #[test]
+    fn the_build_dir_names_the_bringup() {
+        let none = Path::new("/nonexistent");
+        let plain = image(&[], None);
+        assert_eq!(
+            cmake_coordinate("native", &plain, "demo_bringup", none),
+            "native-zenoh-demo_bringup"
+        );
+        assert_ne!(
+            cmake_coordinate("native", &plain, "demo_bringup", none),
+            cmake_coordinate("native", &plain, "pubsub_bringup", none)
+        );
+        let warn = image(&[("APP_LOG_LEVEL", "warn")], None);
+        let keyed = cmake_coordinate("native", &warn, "demo_bringup", none);
+        assert_eq!(
+            keyed,
+            format!(
+                "{}-demo_bringup",
+                cmake_configuration_key("native", &warn, none)
+            )
+        );
+        assert_eq!(
+            cmake_build_dir_for(Driver::CMake, "native", &plain, "demo_bringup", none).as_deref(),
+            Some("build/native-zenoh-demo_bringup/cmake")
         );
     }
 
@@ -9183,24 +9285,24 @@ mod per_image_configure_tests {
     /// were spelled in `system.toml` (a `BTreeMap` has no insertion order).
     #[test]
     fn configuration_decides_which_configure_an_image_shares() {
-        let warn = cmake_coordinate(
+        let warn = cmake_configuration_key(
             "native",
             &image(&[("APP_LOG_LEVEL", "warn")], None),
             Path::new("/nonexistent"),
         );
-        let debug = cmake_coordinate(
+        let debug = cmake_configuration_key(
             "native",
             &image(&[("APP_LOG_LEVEL", "debug")], None),
             Path::new("/nonexistent"),
         );
         assert!(warn.starts_with("native-zenoh-cfg"), "{warn}");
         assert_ne!(warn, debug);
-        let ab = cmake_coordinate(
+        let ab = cmake_configuration_key(
             "native",
             &image(&[("A", "1"), ("B", "2")], None),
             Path::new("/nonexistent"),
         );
-        let ba = cmake_coordinate(
+        let ba = cmake_configuration_key(
             "native",
             &image(&[("B", "2"), ("A", "1")], None),
             Path::new("/nonexistent"),
@@ -9233,17 +9335,17 @@ mod per_image_configure_tests {
         let a2 = bringup("a2", Some("<CycloneDDS>a</CycloneDDS>"));
         let b = bringup("b", Some("<CycloneDDS>b</CycloneDDS>"));
         let img = cyclone(&[]);
-        let base = cmake_coordinate("freertos", &img, Path::new("/nonexistent"));
+        let base = cmake_configuration_key("freertos", &img, Path::new("/nonexistent"));
         assert!(!base.contains("-cfg"), "{base}");
-        assert_eq!(cmake_coordinate("freertos", &img, &plain), base);
-        let ca = cmake_coordinate("freertos", &img, &a);
+        assert_eq!(cmake_configuration_key("freertos", &img, &plain), base);
+        let ca = cmake_configuration_key("freertos", &img, &a);
         assert!(ca.starts_with(&format!("{base}-cfg")), "{ca}");
-        assert_eq!(ca, cmake_coordinate("freertos", &img, &a2));
-        assert_ne!(ca, cmake_coordinate("freertos", &img, &b));
+        assert_eq!(ca, cmake_configuration_key("freertos", &img, &a2));
+        assert_ne!(ca, cmake_configuration_key("freertos", &img, &b));
         // A zenoh image ignores a bringup's Cyclone file.
         assert_eq!(
-            cmake_coordinate("freertos", &image(&[], None), &a),
-            cmake_coordinate("freertos", &image(&[], None), Path::new("/nonexistent"))
+            cmake_configuration_key("freertos", &image(&[], None), &a),
+            cmake_configuration_key("freertos", &image(&[], None), Path::new("/nonexistent"))
         );
     }
 
@@ -9252,14 +9354,14 @@ mod per_image_configure_tests {
     /// IP image — and it reads the same rule the cargo road does.
     #[test]
     fn a_transport_implication_is_configuration() {
-        let serial = cmake_coordinate(
+        let serial = cmake_configuration_key(
             "native",
             &image(&[], Some("serial/UART_0")),
             Path::new("/nonexistent"),
         );
         assert_ne!(
             serial,
-            cmake_coordinate("native", &image(&[], None), Path::new("/nonexistent"))
+            cmake_configuration_key("native", &image(&[], None), Path::new("/nonexistent"))
         );
         assert_eq!(
             crate::cmd::leaf_settings::image_block_layers(None, &image(&[], Some("serial/UART_0")))
@@ -9334,7 +9436,7 @@ mod per_image_configure_tests {
             let driver = plan::driver_for_board(platform, d.entry_kind, non_rust);
             let Some(want) = driver
                 .ok()
-                .and_then(|dr| cmake_build_dir_for(dr, platform, &img, &bd))
+                .and_then(|dr| cmake_build_dir_for(dr, platform, &img, bringup_name, &bd))
             else {
                 continue;
             };

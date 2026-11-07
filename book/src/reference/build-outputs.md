@@ -62,9 +62,9 @@ board's own command that runs or flashes it — never running either:
 
 ```text
 nros build: next for `c_talker_node_bringup:linux`:
-  artifact: /home/you/c_talker_ws/build/posix-zenoh-linux/cmake/linux_entry
+  artifact: /home/you/c_talker_ws/build/posix-zenoh-linux-c_talker_node_bringup/cmake/linux_entry
   run:
-    /home/you/c_talker_ws/build/posix-zenoh-linux/cmake/linux_entry
+    /home/you/c_talker_ws/build/posix-zenoh-linux-c_talker_node_bringup/cmake/linux_entry
 ```
 
 What the `run:` (or `flash`) line is depends on the board: the binary for a
@@ -143,9 +143,15 @@ executable lands at the top of that directory:
 <ws>/build/<coordinate>/cmake/<image>_entry
 ```
 
+The coordinate is `<platform>-<rmw>`, then the board when it is not the
+platform, then a `-cfg<hash>` when the image states configuration, and last
+the bringup. Each bringup gets its own directory: its root carries only its
+own images, and the Rust runtime it builds is sized for them, so switching
+between two bringups for one board rebuilds nothing.
+
 For example, [`examples/workspaces/c`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c) builds `[image.linux]` to
-`build/posix-zenoh-linux/cmake/linux_entry` and its FreeRTOS image to
-`build/freertos-zenoh-mps2-an385-freertos/cmake/freertos_entry`. (Node packages
+`build/posix-zenoh-linux-demo_bringup/cmake/linux_entry` and its FreeRTOS image to
+`build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake/freertos_entry`. (Node packages
 also build their own executables, under `cmake/pkg/<pkg>/<pkg>`; the *image* is
 the one at the top level.)
 

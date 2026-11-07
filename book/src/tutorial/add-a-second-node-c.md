@@ -204,7 +204,7 @@ When it finishes, `nros build` prints what it built and how to run it:
 
 ```text
 nros build: next for `c_talker_node_bringup:linux`:
-  artifact: /home/you/c_talker_ws/build/posix-zenoh-linux/cmake/linux_entry
+  artifact: /home/you/c_talker_ws/build/posix-zenoh-linux-c_talker_node_bringup/cmake/linux_entry
   run:
     nros run c_talker_node
 ```

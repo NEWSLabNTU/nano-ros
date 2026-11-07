@@ -30,7 +30,14 @@ marker_hits="$(find / -xdev \( -path /proc -o -path "$nros_store" \) -prune -o \
 # produces a working binary: without this check, a configure that stopped
 # finding the provisioned dist would still pass the Run step below, and the
 # prebuilt RFC-0099 D4 prefers would silently stop being used.
-cache=./build/posix-cyclonedds-linux/cmake/CMakeCache.txt
+# The build dir names the bringup (issue 2287); the scaffold has exactly one.
+cache=""
+for c in ./build/posix-cyclonedds-linux-*_bringup/cmake/CMakeCache.txt; do
+    [ -f "$c" ] || continue
+    [ -z "$cache" ] || probe_fail "more than one bringup configured: $cache, $c"
+    cache="$c"
+done
+cache="${cache:-./build/posix-cyclonedds-linux-<bringup>/cmake/CMakeCache.txt}"
 [ -f "$cache" ] || probe_fail "no $PWD/${cache#./} — the Build step never configured (`nros build` drives cmake under build/<coord>/cmake)"
 cyclone_dir="$(sed -n 's/^CycloneDDS_DIR:[A-Z]*=//p' "$cache")"
 # The prefix is ASKED for, never matched with a version wildcard (issue 0625,

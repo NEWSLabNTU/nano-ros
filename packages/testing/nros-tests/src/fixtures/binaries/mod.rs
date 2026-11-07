@@ -3204,7 +3204,7 @@ pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Pat
             build_workspace_cmake_entry_in(
                 "workspace-safety-c-talker",
                 "safety",
-                "build/posix-zenoh-linux/cmake",
+                "build/posix-zenoh-linux-demo_bringup/cmake",
                 "linux_c_safety_talker_entry",
             )
         })
@@ -3220,7 +3220,7 @@ pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static P
             build_workspace_cmake_entry_in(
                 "workspace-safety-c-listener",
                 "safety",
-                "build/posix-zenoh-linux/cmake",
+                "build/posix-zenoh-linux-demo_bringup/cmake",
                 "linux_c_safety_listener_entry",
             )
         })
@@ -3608,7 +3608,7 @@ pub fn build_threadx_linux_workspace_c_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-c-threadx-linux",
                 "c",
-                "build-workspace-fixtures-threadx",
+                "build/threadx-linux-zenoh-demo_bringup/cmake",
                 // `threadx_entry`, not the `native_`-prefixed one — the manifest row
                 // and the workspace agree on the former (issue 0411). phase-331
                 // W2b unified entry names to the platform vocabulary and this
@@ -3632,7 +3632,7 @@ pub fn build_threadx_riscv64_workspace_c_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-c-threadx-riscv64",
                 "c",
-                "build/threadx-riscv64-zenoh-rv-virt-threadx/cmake",
+                "build/threadx-riscv64-zenoh-rv-virt-threadx-demo_bringup/cmake",
                 "riscv_threadx_entry",
             )
         })
@@ -3651,7 +3651,7 @@ pub fn build_freertos_posix_workspace_c_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-c-freertos-posix",
                 "c",
-                "build-workspace-fixtures-freertos-posix",
+                "build/freertos-cyclonedds-freertos-posix-demo_bringup/cmake",
                 "freertos_posix_entry",
             )
         })
@@ -3665,7 +3665,7 @@ pub fn build_freertos_posix_workspace_cpp_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos-posix",
                 "cpp",
-                "build-workspace-fixtures-freertos-posix",
+                "build/freertos-cyclonedds-freertos-posix-cfg1ff0492eb1-demo_bringup/cmake",
                 "freertos_posix_entry",
             )
         })
@@ -3682,7 +3682,7 @@ pub fn build_freertos_workspace_c_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-c-freertos",
                 "c",
-                "build-workspace-fixtures-freertos",
+                "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake",
                 "freertos_entry",
             )
         })
@@ -3701,7 +3701,7 @@ pub fn build_nuttx_workspace_c_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-c-nuttx",
                 "c",
-                "build-workspace-fixtures-nuttx",
+                "build/nuttx-zenoh-qemu-armv7a-nuttx-demo_bringup/cmake",
                 "nuttx_entry",
             )
         })
@@ -3723,7 +3723,7 @@ pub fn build_nuttx_workspace_cpp_realtime_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-nuttx-realtime",
                 "realtime-cpp",
-                "build-workspace-fixtures-nuttx",
+                "build/nuttx-zenoh-qemu-armv7a-nuttx-demo_bringup/cmake",
                 "nuttx_entry",
             )
         })
@@ -3745,7 +3745,7 @@ pub fn build_nuttx_workspace_c_realtime_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-c-nuttx-realtime",
                 "realtime-c",
-                "build-workspace-fixtures-nuttx",
+                "build/nuttx-zenoh-qemu-armv7a-nuttx-demo_bringup/cmake",
                 "nuttx_entry",
             )
         })
@@ -3764,7 +3764,7 @@ pub fn build_nuttx_riscv_workspace_cpp_realtime_entry() -> TestResult<&'static P
             build_workspace_cmake_entry_in(
                 "workspace-cpp-nuttx-riscv-realtime",
                 "realtime-cpp",
-                "build-workspace-fixtures-nuttx-riscv",
+                "build/nuttx-zenoh-rv-virt-nuttx-demo_bringup/cmake",
                 "riscv_nuttx_entry",
             )
         })
@@ -3783,7 +3783,7 @@ pub fn build_nuttx_riscv_workspace_c_realtime_entry() -> TestResult<&'static Pat
             build_workspace_cmake_entry_in(
                 "workspace-c-nuttx-riscv-realtime",
                 "realtime-c",
-                "build-workspace-fixtures-nuttx-riscv",
+                "build/nuttx-zenoh-rv-virt-nuttx-demo_bringup/cmake",
                 "riscv_nuttx_entry",
             )
         })
@@ -3928,7 +3928,7 @@ pub fn build_threadx_linux_workspace_cpp_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-threadx-linux",
                 "cpp",
-                "build-workspace-fixtures-threadx",
+                "build/threadx-linux-zenoh-demo_bringup/cmake",
                 "threadx_entry",
             )
         })
@@ -3946,7 +3946,7 @@ pub fn build_freertos_workspace_cpp_an536_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-mps3-an536-freertos",
                 "cpp",
-                "build/freertos-cyclonedds-mps3-an536-freertos-cfg1ff0492eb1/cmake",
+                "build/freertos-cyclonedds-mps3-an536-freertos-cfg1ff0492eb1-demo_bringup/cmake",
                 "mps3_an536_entry",
             )
         })
@@ -3965,7 +3965,7 @@ pub fn build_freertos_workspace_cpp_an536_slirp_entry() -> TestResult<&'static P
             build_workspace_cmake_entry_in(
                 "workspace-cpp-mps3-an536-freertos-slirp",
                 "cpp",
-                "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake",
+                "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a-slirp_bringup/cmake",
                 "mps3_an536_slirp_entry",
             )
         })
@@ -3984,7 +3984,7 @@ pub fn build_freertos_workspace_cpp_an536_slirp_bulk_entry() -> TestResult<&'sta
             build_workspace_cmake_entry_in(
                 "workspace-cpp-mps3-an536-freertos-slirp-bulk",
                 "cpp",
-                "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake",
+                "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a-slirp_bringup/cmake",
                 "mps3_an536_slirp_bulk_entry",
             )
         })
@@ -3998,7 +3998,7 @@ pub fn build_freertos_workspace_cpp_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos",
                 "cpp",
-                "build-workspace-fixtures-freertos",
+                "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake",
                 "freertos_entry",
             )
         })
@@ -4081,7 +4081,7 @@ pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos-realtime",
                 "realtime-cpp",
-                "build-workspace-fixtures-freertos",
+                "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake",
                 "freertos_entry",
             )
         })
@@ -4107,7 +4107,7 @@ pub fn build_freertos_workspace_cpp_subnode_portable_entry() -> TestResult<&'sta
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos-realtime-subnode-portable",
                 "realtime-cpp-subnode-portable",
-                "build-workspace-fixtures-freertos",
+                "build/freertos-zenoh-mps2-an385-freertos-deploy_bringup/cmake",
                 "freertos_entry",
             )
         })
@@ -4125,7 +4125,7 @@ pub fn build_freertos_workspace_c_realtime_entry() -> TestResult<&'static Path> 
             build_workspace_cmake_entry_in(
                 "workspace-c-freertos-realtime",
                 "realtime-c",
-                "build-workspace-fixtures-freertos",
+                "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake",
                 "freertos_entry",
             )
         })
@@ -4140,7 +4140,7 @@ pub fn build_threadx_linux_workspace_mixed_entry() -> TestResult<&'static Path> 
             build_workspace_cmake_entry_in(
                 "workspace-mixed-threadx-linux",
                 "mixed",
-                "build-workspace-fixtures-threadx",
+                "build/threadx-linux-zenoh-demo_bringup/cmake",
                 "threadx_entry",
             )
         })
@@ -4156,7 +4156,7 @@ pub fn build_freertos_workspace_mixed_entry() -> TestResult<&'static Path> {
             build_workspace_cmake_entry_in(
                 "workspace-mixed-freertos",
                 "mixed",
-                "build-workspace-fixtures-freertos",
+                "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake",
                 "freertos_entry",
             )
         })
@@ -4238,7 +4238,7 @@ pub fn build_native_workspace_cpp_lifecycle_managed_entry() -> TestResult<&'stat
             build_workspace_cmake_entry_in(
                 "workspace-managed-cpp-native",
                 "managed",
-                "build-workspace-fixtures",
+                "build/posix-zenoh-linux-demo_bringup/cmake",
                 "linux_managed_entry",
             )
         })
@@ -4254,7 +4254,7 @@ pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static P
             build_workspace_cmake_entry_in(
                 "workspace-safety-cpp-talker",
                 "safety",
-                "build/posix-zenoh-linux/cmake",
+                "build/posix-zenoh-linux-demo_bringup/cmake",
                 "linux_cpp_safety_talker_entry",
             )
         })
@@ -4270,7 +4270,7 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
             build_workspace_cmake_entry_in(
                 "workspace-safety-cpp-listener",
                 "safety",
-                "build/posix-zenoh-linux/cmake",
+                "build/posix-zenoh-linux-demo_bringup/cmake",
                 "linux_cpp_safety_listener_entry",
             )
         })

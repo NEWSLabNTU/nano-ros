@@ -279,7 +279,7 @@ every image of a configure, is not a builder change. The seven rows of one
 C/C++ configure belong to four bringups, and the generated root carries one
 bringup's entries at a time. Within a bringup, the untargeted `cmake --build`
 already builds every entry in one ninja graph. Each bringup switch rebuilds
-the Rust runtime, 22 to 32 s measured: issue 2287.
+the Rust runtime, 22 to 32 s measured: [issue 2287](../issues/archived/2287-cmake-coordinate-bringup-switch-rebuilds-runtime.md), resolved by giving each bringup its own build dir.
 
 **Final re-measure (2026-11-06): W3 done.** Two interleaved runs per tree,
 cold, no run discarded for load:

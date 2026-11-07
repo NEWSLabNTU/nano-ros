@@ -41,7 +41,7 @@ cd "$ws"
 nros configure
 nros build
 
-bin=build/posix-cyclonedds-linux/cmake/linux_entry
+bin=build/posix-cyclonedds-linux-demo_bringup/cmake/linux_entry
 [ -x "$bin" ] || { echo "PROBE FAIL: entry binary missing at $bin"; exit 1; }
 
 # CycloneDDS: no router to start. The scaffold's talker prints `Published: N`

@@ -42,8 +42,10 @@ runs each image in a docker container granted it, so no `sudo`; the book's
 [Real-Time Execution Model](../../../book/src/background/execution-model.md)
 chapter says how to run it.
 
-They share one bringup, not one each, because every Linux cmake image of a
-workspace builds in one cmake tree (`build/posix-zenoh-linux/cmake`).
+They share one bringup, not one each, so they build in one cmake tree
+(`build/posix-zenoh-linux-demo_bringup/cmake`) over one runtime. A cmake
+build dir is per bringup (issue 2287), so a bringup each would build the
+runtime once per bringup.
 
 ## Configure
 

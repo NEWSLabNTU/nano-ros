@@ -680,7 +680,7 @@ dir = "packages/testing/nros-tests/fixtures/image_config_ws"
 bringup = "src/probe_bringup"
 image = "plain"
 codegen_out = "build-workspace-codegen/probe_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-probe_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-image-config-warn"
@@ -691,7 +691,7 @@ dir = "packages/testing/nros-tests/fixtures/image_config_ws"
 bringup = "src/probe_bringup"
 image = "warn"
 codegen_out = "build-workspace-codegen/probe_bringup"
-build_subdir = "build/posix-zenoh-linux-cfga50aa93c83/cmake"
+build_subdir = "build/posix-zenoh-linux-cfga50aa93c83-probe_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native"
@@ -702,7 +702,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-263 A1 (services, C) — the AddTwoInts cross-process round-trip (issue 0096): the
 # server + client run as TWO entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_c_service cell)
@@ -716,7 +716,7 @@ dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "linux_service_server"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-service-client"
@@ -727,7 +727,7 @@ dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "linux_service_client"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-service_bringup/cmake"
 
 # phase-263 A4 (actions, C) — the Fibonacci action cross-process round-trip (issue 0096): the
 # server + client run as TWO entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_c_action cell)
@@ -741,7 +741,7 @@ dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "linux_action_server"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-action-client"
@@ -752,7 +752,7 @@ dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "linux_action_client"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-action_bringup/cmake"
 
 # phase-535 W4 (RFC-0122 D1) — the linux example pairs as images of the
 # behaviour bringups, all three RMWs. The cells keep Kind::Example and resolve
@@ -766,7 +766,7 @@ dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "linux_talker"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-talker-xrce"
@@ -777,7 +777,7 @@ dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "linux_talker_xrce"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-talker-cyclonedds"
@@ -788,7 +788,7 @@ dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "linux_talker_cyclonedds"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-listener"
@@ -799,7 +799,7 @@ dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "linux_listener"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-listener-xrce"
@@ -810,7 +810,7 @@ dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "linux_listener_xrce"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-listener-cyclonedds"
@@ -821,7 +821,7 @@ dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "linux_listener_cyclonedds"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-service-server-xrce"
@@ -832,7 +832,7 @@ dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "linux_service_server_xrce"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-service-server-cyclonedds"
@@ -843,7 +843,7 @@ dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "linux_service_server_cyclonedds"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-service-client-xrce"
@@ -854,7 +854,7 @@ dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "linux_service_client_xrce"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-service-client-cyclonedds"
@@ -865,7 +865,7 @@ dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "linux_service_client_cyclonedds"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-action-server-xrce"
@@ -876,7 +876,7 @@ dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "linux_action_server_xrce"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-action-server-cyclonedds"
@@ -887,7 +887,7 @@ dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "linux_action_server_cyclonedds"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-action-client-xrce"
@@ -898,7 +898,7 @@ dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "linux_action_client_xrce"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-c-native-action-client-cyclonedds"
@@ -909,7 +909,7 @@ dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "linux_action_client_cyclonedds"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-action_bringup/cmake"
 
 # phase-326 — per-host C entries for the multihost demo. `linux_robot1_entry`
 # bakes the talker, `linux_robot2_entry` the listener, each consuming its
@@ -925,7 +925,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "linux_robot1"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # Issue 2139 — this listener is also the shared observer of `entry_e2e`'s RTOS
 # `EntryPubsub` cells (`spawn_c_listener_observer`), so it is in a lane whenever
@@ -942,7 +942,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "linux_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 serves = [
     "freertos,c,zenoh",
     "freertos,cpp,zenoh",
@@ -967,7 +967,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "threadx"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 # issue 1286 follow-up — the rv-virt (riscv64 QEMU virt, NetX Duo over
@@ -985,7 +985,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "riscv_threadx"
-build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx/cmake"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "rv-virt-threadx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9530" }
 
 # phase-263 C2b (issue 0097) — the FIRST QEMU-cross embedded C workspace entry:
@@ -1015,7 +1015,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "freertos_posix"
-build_subdir = "build/freertos-cyclonedds-freertos-posix/cmake"
+build_subdir = "build/freertos-cyclonedds-freertos-posix-demo_bringup/cmake"
 # Issue 1769 -- the C row SELF-PROVISIONS Cyclone (what a host with no ROS 2
 # gets), the C++ row below takes the host's: the two provenances differ in
 # whether Cyclone's own threads reach this board's heap (issue 0832's funnel
@@ -1032,7 +1032,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "freertos_posix"
-build_subdir = "build/freertos-cyclonedds-freertos-posix-cfg1ff0492eb1/cmake"
+build_subdir = "build/freertos-cyclonedds-freertos-posix-cfg1ff0492eb1-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "freertos-posix" }
 
 [[workspace_fixture]]
@@ -1043,7 +1043,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "freertos"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 # phase-372 W2 — the S32Z270 RTU (Cortex-R52) link-completeness witness: no
@@ -1060,7 +1060,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "s32z270"
-build_subdir = "build/freertos-cyclonedds-s32z270-freertos-cfg1ff0492eb1/cmake"
+build_subdir = "build/freertos-cyclonedds-s32z270-freertos-cfg1ff0492eb1-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "s32z270-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
 
 # phase-385 W4 — the AN536 (Cortex-R52 on QEMU) cell. Same CPU, same kernel
@@ -1080,7 +1080,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "mps3_an536"
-build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg1ff0492eb1/cmake"
+build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg1ff0492eb1-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7941" }
 
 # phase-441 W6 — the same board's C++ talker as a CycloneDDS guest behind QEMU
@@ -1098,7 +1098,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/slirp_bringup"
 image = "mps3_an536_slirp"
-build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake"
+build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a-slirp_bringup/cmake"
 # The domain (54) is the image's own `domain_id` in `slirp_bringup/system.toml`,
 # not a `cmake_defs` row: since issue 1946 the CMake road carries it.
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos" }
@@ -1115,7 +1115,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/slirp_bringup"
 image = "mps3_an536_slirp_bulk"
-build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a/cmake"
+build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos-cfg691ce9d54a-slirp_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps3-an536-freertos" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
@@ -1130,7 +1130,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "nuttx"
-build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-SCHED-TASKS workspace entry
@@ -1149,7 +1149,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "nuttx"
-build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
 
 # #199 follow-up — the rv-virt (riscv32) C++ RT-SCHED-TASKS workspace entry: the
@@ -1164,7 +1164,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "riscv_nuttx"
-build_subdir = "build/nuttx-zenoh-rv-virt-nuttx/cmake"
+build_subdir = "build/nuttx-zenoh-rv-virt-nuttx-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-SCHED-TASKS workspace entry
@@ -1182,7 +1182,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "nuttx"
-build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
 
 # #199 follow-up — the rv-virt (riscv32) C RT-SCHED-TASKS workspace entry: the riscv
@@ -1199,7 +1199,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "riscv_nuttx"
-build_subdir = "build/nuttx-zenoh-rv-virt-nuttx/cmake"
+build_subdir = "build/nuttx-zenoh-rv-virt-nuttx-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8791" }
 
 [[workspace_fixture]]
@@ -1211,7 +1211,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-263 A1 (services, C++) — the AddTwoInts cross-process round-trip (issue 0096): server +
 # client as two entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_service cell).
@@ -1224,7 +1224,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "linux_service_server"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-client"
@@ -1235,7 +1235,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "linux_service_client"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-service_bringup/cmake"
 
 # phase-263 A4 (actions, C++) — the Fibonacci action cross-process round-trip (issue 0096): server
 # + client as two entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_action cell) (the client
@@ -1249,7 +1249,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "linux_action_server"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-client"
@@ -1260,7 +1260,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "linux_action_client"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-action_bringup/cmake"
 
 # phase-535 W4 (RFC-0122 D1) — the linux example pairs as images of the
 # behaviour bringups, all three RMWs. The cells keep Kind::Example and resolve
@@ -1274,7 +1274,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "linux_talker"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-talker-xrce"
@@ -1285,7 +1285,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "linux_talker_xrce"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-talker-cyclonedds"
@@ -1296,7 +1296,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "linux_talker_cyclonedds"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-listener"
@@ -1307,7 +1307,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "linux_listener"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-listener-xrce"
@@ -1318,7 +1318,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "linux_listener_xrce"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-listener-cyclonedds"
@@ -1329,7 +1329,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "linux_listener_cyclonedds"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-pubsub_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-server-xrce"
@@ -1340,7 +1340,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "linux_service_server_xrce"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-server-cyclonedds"
@@ -1351,7 +1351,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "linux_service_server_cyclonedds"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-client-xrce"
@@ -1362,7 +1362,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "linux_service_client_xrce"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-client-cyclonedds"
@@ -1373,7 +1373,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "linux_service_client_cyclonedds"
 codegen_out = "build-workspace-codegen/service_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-server-xrce"
@@ -1384,7 +1384,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "linux_action_server_xrce"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-server-cyclonedds"
@@ -1395,7 +1395,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "linux_action_server_cyclonedds"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-client-xrce"
@@ -1406,7 +1406,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "linux_action_client_xrce"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-client-cyclonedds"
@@ -1417,7 +1417,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "linux_action_client_cyclonedds"
 codegen_out = "build-workspace-codegen/action_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-action_bringup/cmake"
 
 # phase-326 — per-host C++ entries for the multihost demo (per-host models
 # `multihost_robot<N>_model.yaml`). Consumed by tests/multihost_e2e.rs (native_cpp cell).
@@ -1430,7 +1430,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "linux_robot1"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-robot2"
@@ -1441,7 +1441,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "linux_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # Phase 269 W1 — parameterised C workspace. [param_services] bakes nros_cpp_declare_param
 # calls into the generated entry; the C component reads the live value via
@@ -1455,7 +1455,7 @@ dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # Phase 269 W4 — 2-sched-task sched-context C++ workspace. [tasks.high]/[tasks.low] + [[node_overrides]]
 # bake nros_cpp_create_sched_context + NodeBuilder::sched() calls into the generated entry;
@@ -1470,7 +1470,7 @@ dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # Issue 1733 — the NATIVE derived-sched-task C++ image: `derived-sched-tasks-cpp`'s four
 # components, no authored `[tasks.*]`, a contract, so the C++ entry derives one
@@ -1490,7 +1490,7 @@ dir = "examples/workspaces/derived-sched-tasks-cpp"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-509 P10 -- the THREE-LEVEL C++ image on the HOST (levels-cpp's linux
 # image): the derivation gives three levels and `nros_board_native_run_levels_in`
@@ -1507,7 +1507,7 @@ dir = "examples/workspaces/levels-cpp"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-162 W2 -- RFC-0002 S1 on levels (levels-cpp's `linux_s1` image): a
 # 1 kHz critical loop on its own level and S1's 5 ms telemetry on a less urgent
@@ -1522,7 +1522,7 @@ dir = "examples/workspaces/levels-cpp"
 bringup = "src/demo_bringup"
 image = "linux_s1"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-162 W2 -- the negative control for the row above (`linux_s1_flat`):
 # the same two nodes on ONE authored sched task, so the test sees misses and the
@@ -1536,7 +1536,7 @@ dir = "examples/workspaces/levels-cpp"
 bringup = "src/demo_bringup"
 image = "linux_s1_flat"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-162 W1 -- a spawned level past its SCHED_DEADLINE budget
 # (`linux_budget`): 10 ms of CPU per release against 2 ms per 10 ms. Consumed
@@ -1552,7 +1552,7 @@ dir = "examples/workspaces/levels-cpp"
 bringup = "src/demo_bringup"
 image = "linux_budget"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of realtime-cpp.
 # Same 2-sched-task scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
@@ -1568,7 +1568,7 @@ dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "linux_rclcpp"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # Phase 273 W4 (RFC-0047) — sub-node 2-group realtime workspace. ONE component
 # (subnode_pkg::SubNode) with TWO callback groups: "ctrl" (10 ms, high sched task) and
@@ -1584,7 +1584,7 @@ dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "linux_subnode"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # Phase 273 W4 (RFC-0047) — portability fixture. Same subnode_pkg::SubNode but
 # deployed with "fast"/"bulk" sched task names instead of "high"/"low". No change to the
@@ -1600,7 +1600,7 @@ dir = "examples/workspaces/realtime-cpp-subnode-portable"
 bringup = "src/deploy_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/deploy_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-deploy_bringup/cmake"
 
 # Phase 274.W3 (RFC-0015 Model 1 embedded) — 2-sched-task C++ realtime workspace on
 # FreeRTOS/mps2-an385 (QEMU). The codegen gate (board_is_freertos_embedded) emits
@@ -1653,7 +1653,7 @@ dir = "examples/workspaces/realtime-cpp"
 # exist here (`deploy_bringup` belongs to realtime-cpp-subnode-portable).
 bringup = "src/demo_bringup"
 image = "freertos"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8091", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the Rust sched tasks
@@ -1695,7 +1695,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp-subnode-portable"
 bringup = "src/deploy_bringup"
 image = "freertos"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-deploy_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8092", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release, like every other mps2 row (#126). The locator is
 # baked but never dialled — nothing runs this image yet; 8092 is free beside the
@@ -1718,7 +1718,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "freertos"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:7991", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the C++ sched tasks
@@ -1737,7 +1737,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "threadx"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -1748,16 +1748,17 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "freertos"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 # ===========================================================================
 # phase-535 W3 (RFC-0122 D1) — the mps2-an385-freertos example pairs, as
 # images of the language workspaces' behaviour bringups. One row per (lang,
 # role); `nros_tests::fixtures::workspace_image` maps a cell's role to its row.
-# The C and C++ rows of one language share ONE configure
-# (`build/freertos-zenoh-mps2-an385-freertos/cmake`), so the runtime is built
-# once per language rather than once per leaf; each image's locator and
+# The rows of one bringup share ONE configure
+# (`build/freertos-zenoh-mps2-an385-freertos-<bringup>/cmake`, issue 2287), so
+# the runtime is built once per bringup rather than once per leaf, and two
+# bringups never take turns rewriting one tree; each image's locator and
 # address reach its own entry (`LOCATOR` / `IMAGE_NET` in the generated root).
 # A Rust image is its own cargo root (issue 0616), so it has its own target
 # dir. `examples/mps2-an385-freertos/<lang>/talker` stays as the witness
@@ -1844,7 +1845,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "freertos_talker"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1855,7 +1856,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "freertos_listener"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1866,7 +1867,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "freertos_service_server"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1877,7 +1878,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "freertos_service_client"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1888,7 +1889,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "freertos_action_server"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1899,7 +1900,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "freertos_action_client"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1910,7 +1911,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "freertos_talker"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1921,7 +1922,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "freertos_listener"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1932,7 +1933,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "freertos_service_server"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1943,7 +1944,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "freertos_service_client"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1954,7 +1955,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "freertos_action_server"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1965,7 +1966,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "freertos_action_client"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos" }
 
 [[workspace_fixture]]
@@ -1983,7 +1984,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-263 A1 (services, MIXED) — cross-language AddTwoInts round-trip: a C server + a C++
 # client, as two entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_service cell).
@@ -2002,7 +2003,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux_service_server"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-service-client"
@@ -2019,7 +2020,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux_service_client"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-263 A4 (actions, MIXED) — Fibonacci action round-trip: a C server + a C client, as two
 # entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_action cell).
@@ -2038,7 +2039,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux_action_server"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-action-client"
@@ -2055,7 +2056,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux_action_client"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-326 — per-host mixed entries for the multihost demo. robot1 bakes the C
 # talker + Rust heartbeat, robot2 the C++ listener (per-host models
@@ -2075,7 +2076,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux_robot1"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-robot2"
@@ -2092,7 +2093,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-263 C2c — the MIXED (C talker + C++ listener + Rust heartbeat) embedded workspace
 # entry on threadx-linux. The Rust node links via the `nros_ws_runtime` umbrella, which on
@@ -2113,7 +2114,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "threadx"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9330" }
 
 # phase-263 C2c — the MIXED (C + C++ + no_std Rust) entry on FreeRTOS QEMU. Unlike the
@@ -2136,7 +2137,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "freertos"
-build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos-demo_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8130" }
 
 # ===========================================================================
@@ -4044,7 +4045,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "threadx_talker"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4055,7 +4056,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "threadx_talker_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4066,7 +4067,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "threadx_listener"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4077,7 +4078,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/pubsub_bringup"
 image = "threadx_listener_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4088,7 +4089,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "threadx_service_server"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4099,7 +4100,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "threadx_service_server_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4110,7 +4111,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "threadx_service_client"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4121,7 +4122,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/service_bringup"
 image = "threadx_service_client_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4132,7 +4133,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "threadx_action_server"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4143,7 +4144,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "threadx_action_server_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4154,7 +4155,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "threadx_action_client"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4165,7 +4166,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/action_bringup"
 image = "threadx_action_client_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4176,7 +4177,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "threadx_talker"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4187,7 +4188,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "threadx_talker_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4198,7 +4199,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "threadx_listener"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4209,7 +4210,7 @@ rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/pubsub_bringup"
 image = "threadx_listener_cyclonedds"
-build_subdir = "build/threadx-linux-cyclonedds/cmake"
+build_subdir = "build/threadx-linux-cyclonedds-pubsub_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4220,7 +4221,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "threadx_service_server"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4231,7 +4232,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "threadx_service_client"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4242,7 +4243,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "threadx_action_server"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4253,7 +4254,7 @@ rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "threadx_action_client"
-build_subdir = "build/threadx-linux-zenoh/cmake"
+build_subdir = "build/threadx-linux-zenoh-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 # ===========================================================================
@@ -4623,7 +4624,7 @@ output = "workspace_port_nodes/workspace_port"
 # have no root build file any more, so `cmake-configure` builds them the way a
 # user does: a staged copy, `nros configure` + `nros build` (see
 # `build_cmake_fixture`). The three with a bringup build their one
-# `[image.linux]` through the generated root (`build/posix-zenoh-linux/cmake`,
+# `[image.linux]` through the generated root (`build/posix-zenoh-linux-demo_bringup/cmake`,
 # its generated entry `linux_entry` in place of the deleted `src/robot_entry`,
 # node packages under `pkg/<name>/`); the two with none build package by
 # package (`build/<pkg>/cmake`, the package under `pkg/<pkg>/`). The ids keep
@@ -4632,19 +4633,19 @@ output = "workspace_port_nodes/workspace_port"
 id = "cpp_robot_entry"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "build/posix-zenoh-linux/cmake/linux_entry"
+output = "build/posix-zenoh-linux-demo_bringup/cmake/linux_entry"
 
 [[compile_check_fixture]]
 id = "c_mixed_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/c-and-cpp-mixed-workspace"
-output = "build/posix-zenoh-linux/cmake/linux_entry"
+output = "build/posix-zenoh-linux-demo_bringup/cmake/linux_entry"
 
 [[compile_check_fixture]]
 id = "pure_c_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/pure-c-workspace"
-output = "build/posix-zenoh-linux/cmake/linux_entry"
+output = "build/posix-zenoh-linux-demo_bringup/cmake/linux_entry"
 
 # issue 1650 (phase-477 D3) — the two RUST workspace templates, which no lane
 # compiled (`native.just`'s example sweep excludes both by name). Same staged
@@ -4696,7 +4697,7 @@ output = "smoke"
 id = "metadata_cpp"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "build/posix-zenoh-linux/cmake/nros-metadata.json"
+output = "build/posix-zenoh-linux-demo_bringup/cmake/nros-metadata.json"
 
 [[compile_check_fixture]]
 id = "node_register_cpp"
@@ -4866,7 +4867,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_c_qos_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-c-qos-listener"
@@ -4877,7 +4878,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_c_qos_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-c-params"
@@ -4888,7 +4889,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_c_params"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-c-lifecycle"
@@ -4899,7 +4900,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_c_lifecycle"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-c-custom-msg-talker"
@@ -4910,7 +4911,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_c_custom_msg_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-c-custom-msg-listener"
@@ -4921,7 +4922,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_c_custom_msg_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-qos-talker"
@@ -4932,7 +4933,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_cpp_qos_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-qos-listener"
@@ -4943,7 +4944,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_cpp_qos_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-params"
@@ -4954,7 +4955,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_cpp_params"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-426 W5 — the CROSS-LANGUAGE parameter image, and the acceptance W5
 # stated but never built. `workspace-features-{c,cpp}-params` above are two
@@ -4973,7 +4974,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_mixed_params"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-lifecycle"
@@ -4984,7 +4985,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_cpp_lifecycle"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-custom-msg-talker"
@@ -4995,7 +4996,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_cpp_custom_msg_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-cpp-custom-msg-listener"
@@ -5006,7 +5007,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_cpp_custom_msg_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-331 W2 — the MANUAL-transition lifecycle demo. It cannot live in
 # `features/`: that workspace's system declares `[lifecycle] autostart`, and one
@@ -5022,7 +5023,7 @@ dir = "examples/workspaces/managed"
 bringup = "src/demo_bringup"
 image = "linux_managed"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 env = { NROS_EXECUTOR_MAX_CBS = "8" }
 
 [[workspace_fixture]]
@@ -5121,7 +5122,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_mixed_qos_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-mixed-qos-listener"
@@ -5138,7 +5139,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_mixed_qos_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-mixed-custom-msg-talker"
@@ -5155,7 +5156,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_mixed_custom_msg_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-features-mixed-custom-msg-listener"
@@ -5172,7 +5173,7 @@ dir = "examples/workspaces/features"
 bringup = "src/demo_bringup"
 image = "linux_mixed_custom_msg_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 # phase-331 W4 (RFC-0066) — the consolidated E2E-safety workspace. Its system
 # declares `features = ["safety"]`; a system carries exactly ONE feature set, so
@@ -5188,7 +5189,7 @@ dir = "examples/workspaces/safety"
 bringup = "src/demo_bringup"
 image = "linux_c_safety_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-safety-c-listener"
@@ -5199,7 +5200,7 @@ dir = "examples/workspaces/safety"
 bringup = "src/demo_bringup"
 image = "linux_c_safety_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-safety-cpp-talker"
@@ -5210,7 +5211,7 @@ dir = "examples/workspaces/safety"
 bringup = "src/demo_bringup"
 image = "linux_cpp_safety_talker"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-safety-cpp-listener"
@@ -5221,7 +5222,7 @@ dir = "examples/workspaces/safety"
 bringup = "src/demo_bringup"
 image = "linux_cpp_safety_listener"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-zenoh-linux/cmake"
+build_subdir = "build/posix-zenoh-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-safety-rust-talker"
@@ -5259,7 +5260,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "linux_cyclonedds"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-cyclonedds"
@@ -5270,7 +5271,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "linux_cyclonedds"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-cyclonedds-linux-cfg1ff0492eb1/cmake"
+build_subdir = "build/posix-cyclonedds-linux-cfg1ff0492eb1-demo_bringup/cmake"
 
 # issue 2159 — `mixed` on Cyclone. Its C and C++ packages reach the same message
 # packages in ONE configure, and Cyclone's typesupport is per package, so this is
@@ -5285,7 +5286,7 @@ dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
 image = "linux_cyclonedds"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-cyclonedds-linux/cmake"
+build_subdir = "build/posix-cyclonedds-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-xrce"
@@ -5296,7 +5297,7 @@ dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
 image = "linux_xrce"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-demo_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-cyclonedds"
@@ -5329,7 +5330,7 @@ dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "linux_xrce"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build/posix-xrce-linux/cmake"
+build_subdir = "build/posix-xrce-linux-demo_bringup/cmake"
 
 [[fixture]]
 # phase-344 W2 — the cyclonedds build of this rust leaf is driven through
