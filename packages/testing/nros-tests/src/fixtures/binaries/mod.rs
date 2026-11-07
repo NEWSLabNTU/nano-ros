@@ -3731,6 +3731,17 @@ pub fn build_freertos_posix_workspace_c_entry() -> TestResult<&'static Path> {
 pub fn build_freertos_posix_workspace_c_zenoh_entry() -> TestResult<&'static Path> {
     FREERTOS_POSIX_WORKSPACE_C_ZENOH_ENTRY_BINARY
         .get_or_try_init(|| {
+            // issue 1581 — the image must dial the router this cell's test
+            // starts on `port_of`; a drift names both instead of reading as
+            // "no delivery".
+            crate::fixtures::baked_locator::assert_row_dials_port(
+                "workspace-c-freertos-posix-zenoh",
+                crate::alloc::port_of(
+                    crate::matrix::PlatformId::FreertosPosix,
+                    crate::matrix::Lang::C,
+                    crate::matrix::Workload::EntryPubsub,
+                ),
+            );
             build_workspace_cmake_entry_in(
                 "workspace-c-freertos-posix-zenoh",
                 "c",
