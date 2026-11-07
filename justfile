@@ -894,8 +894,17 @@ _require-worktree-provisioning:
             -*) missing+=("submodule  $p${row:+  (or: nros setup --source $row)}") ;;
             "") missing+=("NOT A SUBMODULE of this checkout: $p (renamed? fix .config/worktree-provisioning.txt)") ;;
         esac
-    done < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*$//' \
-        .config/worktree-provisioning.txt)
+    done < <(
+        # phase-543 W6 — `NROS_PROVISION_TIERS="fast build"` keeps only the
+        # rows a tier reads (each row's comment names it, `# check::<tier>`):
+        # what a gate lane's `submodules` claim means for that lane's tiers.
+        # Unset: every row, which is what `just ci gate` needs.
+        if [ -n "${NROS_PROVISION_TIERS:-}" ]; then
+            pat="$(printf '%s\n' $NROS_PROVISION_TIERS | sed 's/^/# check::/' | paste -sd'|')"
+            grep -E "($pat)" .config/worktree-provisioning.txt | grep -v '^[[:space:]]*#'
+        else
+            cat .config/worktree-provisioning.txt
+        fi | sed -e 's/#.*//' -e '/^[[:space:]]*$/d' -e 's/[[:space:]]*$//')
     # The two binaries the lane builds nothing without. `check::cli-fresh` and
     # `check::launch-resolve-fresh` run first and SKIP when a binary is absent —
     # correct for a fresh clone, and the reason an absent one otherwise surfaces

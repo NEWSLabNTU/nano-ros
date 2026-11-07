@@ -47,15 +47,16 @@ def env_dir(var: str) -> str | None:
     return f"${var} is {'unset' if not v else f'{v!r}, not a directory'}"
 
 
-def probe_submodules() -> str | None:
+def probe_submodules(tiers: list[str]) -> str | None:
     # The one provisioning check `ci gate` already runs (store-first sources
-    # included, RFC-0103 D5); never a second spelling of it.
+    # included, RFC-0103 D5), narrowed to the rows the lane's tiers read.
+    # Its binary lines are a different claim (`cli`), so they are not read.
+    env = dict(os.environ, NROS_PROVISION_TIERS=" ".join(tiers))
     r = subprocess.run(["just", "_require-worktree-provisioning"], cwd=ROOT,
-                       capture_output=True, text=True)
-    if r.returncode == 0:
-        return None
-    lines = [l.strip() for l in r.stderr.splitlines() if l.strip().startswith(("submodule", "NOT A", "binary"))]
-    return "; ".join(lines) or "just _require-worktree-provisioning failed"
+                       capture_output=True, text=True, env=env)
+    lines = [l.strip() for l in r.stderr.splitlines()
+             if l.strip().startswith(("submodule", "NOT A"))]
+    return "; ".join(lines) if lines else None
 
 
 def probe_cli() -> str | None:
@@ -109,7 +110,7 @@ PROBES = {
     "ros2": lambda: None if os.environ.get("AMENT_PREFIX_PATH") else "AMENT_PREFIX_PATH is unset",
     "colcon": lambda: on_path("colcon"),
     "sources": probe_sources,
-    "submodules": probe_submodules,
+    "submodules": None,  # needs the lane's tiers: probed in main()
     "git-history": probe_git_history,
     "zephyr-tree": probe_zephyr_tree,
     "zephyr": probe_zephyr,
@@ -169,7 +170,9 @@ def main(argv: list[str]) -> int:
         return 0
     lane = argv[0]
     claims = lane_claims(cfg, lane)
-    missing = [(c, why) for c in claims if (why := PROBES[c]()) is not None]
+    tiers = list(cfg["lane"][lane]["tiers"])
+    missing = [(c, why) for c in claims
+               if (why := (probe_submodules(tiers) if c == "submodules" else PROBES[c]())) is not None]
     if missing:
         print(f"gate-lane-preflight: lane `{lane}` claims what this host does not have:",
               file=sys.stderr)
