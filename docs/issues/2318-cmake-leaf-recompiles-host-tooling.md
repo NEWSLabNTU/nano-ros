@@ -63,6 +63,31 @@ Most of those bytes are DWARF. `strip -g` on two of them:
 The profile is `nros-relwithdebinfo` (`inherits = "release"`, `debug = 1`), and
 its build scripts and proc-macros carry that debuginfo.
 
+### Second sighting: runner newslab-118, 2026-11-07
+
+Tier-2 run 42364894798 (workflow_dispatch on 9d0bd000a8), job 128383215067,
+step `just ci matrix` (`check::default`), 11:39–12:23 UTC.
+- At 10:52 the job's disk report read `fixtures: 279.8 GiB used / 280.0 GiB
+  budget (high-water 496.1 GiB)`, `cargo-targets: 80.6 GiB`, and 968 G free
+  in `/home/runner/_work`.
+- About 50 minutes into `check::default`, 62 lines read
+  `gate-units.sh: line 79: echo: write error: No space left on device`, and
+  `ld terminated with signal 6 [Aborted]` (`nros-platform-cffi` build
+  script).
+- Several gates had failed before that first ENOSPC line:
+  `scaffold-builds` (19 variants), `template-copy-out` (11) and
+  `census-hooks-complete`. Most of them are probably the same exhaustion, but
+  the earliest ones (`scaffold-builds#rust_project_server` at 11:50) were not
+  separated from it.
+- Tier 1 in the same run went green, so this is about disk, not about the code
+  at 9d0bd000a8.
+- Not measured: which filesystem filled. 968 G was free on the work volume at
+  the start, so either the 61 parallel gate units wrote most of it, or the
+  units' scratch (`/tmp/nros-scaffold-builds.*`,
+  `/tmp/nros-template-copy-out.*`) sits on a smaller filesystem inside the
+  container. A `df` of `/tmp` and of `_work` at the failure point would decide
+  which.
+
 ## Why the directories are separate
 
 Separation is deliberate. Issue 0616: `-C metadata` includes the path spelling a
