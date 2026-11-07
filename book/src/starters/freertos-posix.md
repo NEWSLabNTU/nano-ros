@@ -13,34 +13,42 @@ program on your Linux machine, and shows its messages arriving in ROS 2.
 FreeRTOS's POSIX port runs the kernel's tasks as threads of one host process,
 and the talker uses your host's own sockets, so there is no emulator and no
 network to set up. It is the quickest way to see a FreeRTOS application talk
-to ROS 2, and the same talker builds for the emulated
-[mps2-an385 board](mps2-an385-freertos.md) by changing the board. The board
-takes C and C++ nodes; for a Rust talker on FreeRTOS, use the mps2-an385
-board.
+to ROS 2. The board takes C and C++ nodes; for a Rust talker on FreeRTOS, use
+the [mps2-an385 board](mps2-an385-freertos.md).
+
+The talker uses Cyclone DDS, which runs inside the talker's own process and
+finds its peers on the network the way any ROS 2 node does, so there is no
+router to start. Zenoh on this board is not supported yet: a zenoh image for
+it does not build. [Zenoh on this board](#zenoh-on-this-board) says more.
 
 ## What you need
 
 - A Linux host with the [install](../start/install.md) done, so `nros` is on
   your `PATH`, and the C toolchain and CMake the install's host packages
   bring.
-- ROS 2 with `ros-<distro>-rmw-zenoh-cpp`: Humble on Ubuntu 22.04, Jazzy on 24.04
-  ([which edition](../start/install.md#install-ros-2-first)). ROS 2 provides the zenoh
-  router the talker talks to, and the message definitions the build
-  generates the talker's code from.
+- ROS 2 (Humble on Ubuntu 22.04, Jazzy on 24.04;
+  [which edition](../start/install.md#install-ros-2-first)), with its Cyclone
+  DDS middleware, so that `ros2 topic echo` can read what the talker
+  publishes. The build also generates the talker's message code from ROS 2's
+  message definitions. On Debian or Ubuntu:
 
-Nothing else: no board, no cable, no root access. The talker reaches the
-router on this machine's loopback interface.
+```bash probe=30
+sudo apt-get install -y ros-humble-rmw-cyclonedds-cpp
+```
+
+Nothing else: no board, no cable, and nothing to keep running beside the
+talker.
 
 ## Provision
 
-```bash probe=30
-nros setup freertos-posix --rmw zenoh
+```bash probe=32
+nros setup freertos-posix --rmw cyclonedds
 ```
 
-That fetches the FreeRTOS kernel sources, with its POSIX port, and the
-zenoh-pico sources into a shared store under `~/.nros`. There is no
-cross-compiler to fetch: the simulator builds with your host's compilers. It
-installs no router: the router is ROS's `rmw_zenohd`.
+That fetches the FreeRTOS kernel sources, with its POSIX port, and what
+Cyclone DDS needs, into a shared store under `~/.nros`. Nothing is installed
+system-wide. There is no cross-compiler to fetch: the simulator builds with
+your host's compilers.
 
 ## Scaffold the project
 
@@ -54,7 +62,7 @@ source /opt/ros/humble/setup.bash
 ```
 
 ```bash probe=40
-nros new fp_ws --board freertos-posix --template talker --lang c
+nros new fp_ws --board freertos-posix --template talker --lang c --rmw cyclonedds
 cd fp_ws
 ```
 
@@ -70,37 +78,35 @@ fp_ws/
 `fp_node` is the talker, a library with no `main()` that names no board. It
 publishes `std_msgs/String` on `/chatter` once a second. `fp_node_bringup`
 says what the talker runs on: its `system.toml` holds one image,
-`[image.freertos]`, with `board = "freertos-posix"`. The FreeRTOS startup
-task that runs your node is generated from it when you build.
+`[image.freertos]`, with `board = "freertos-posix"`, and names Cyclone DDS as
+the RMW. The FreeRTOS startup task that runs your node is generated from it
+when you build.
 
 ## Run it on this machine
 
-Source ROS 2, then build and run. This first run records the ROS 2 prefix in
-the workspace, so later runs of it need no sourced shell (the router still
-comes from ROS 2):
+Build and run from the same shell, where ROS 2 is sourced. This first run
+records the ROS 2 prefix in the workspace, so later runs of it need no
+sourced shell:
 
-```bash probe=50 probe-run=600
-source /opt/ros/humble/setup.bash
-nros run fp_node --expect 'Publishing:'
+```bash probe=50
+nros run fp_node --expect 'Publishing:' --timeout 600
 ```
 
-```text probe-expect=50
+`nros run` builds the talker with CMake (the first build compiles the
+FreeRTOS kernel, Cyclone DDS and nano-ros, a few minutes; later builds take
+seconds) and runs it. With `--expect` it stops the talker and exits 0 at the
+first line containing that text, and exits 1 if the talker stops first or
+`--timeout` runs out. It prints lines like:
+
+```text
 Publishing: 'Hello World: 1'
 nros run: matched after
 ```
 
-The talker dials a router on this machine's port 7447, so `nros run` starts
-that router, ROS's `rmw_zenohd`, then builds the talker with CMake (the first
-build compiles the FreeRTOS kernel and nano-ros, a few minutes; later builds
-take seconds) and runs it. Don't start a router of your own on the same port.
-With `--expect` it stops everything and exits 0 at the first line containing
-that text, and exits 1 if the talker stops first.
-
-Without `--expect` it keeps running until you press Ctrl-C, which stops the
-talker and the router together. Start it that way in one terminal:
+Without `--expect` it keeps running until you press Ctrl-C. Start it that way
+in one terminal:
 
 ```bash probe=60 probe-run=120 probe-keep
-source /opt/ros/humble/setup.bash
 nros run fp_node
 ```
 
@@ -110,11 +116,12 @@ Publishing: 'Hello World: 2'
 
 ## See it in ROS 2
 
-Leave `nros run` going. In a second terminal:
+Leave `nros run` going. In a second terminal, ask ROS 2 for the topic over
+Cyclone DDS:
 
 ```bash probe=70 probe-run=90
 source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
@@ -122,20 +129,42 @@ ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 data: 'Hello World:
 ```
 
-The talker publishes best-effort, and `ros2 topic echo` defaults to reliable,
-which receives nothing from it. That is why the command asks for best-effort.
+Both sides use domain 0, the ROS 2 default, so they find each other with no
+configuration. Asking for best-effort receives from a best-effort or a
+reliable publisher alike.
+
+## Zenoh on this board
+
+Zenoh on FreeRTOS POSIX is not supported yet. `nros new --rmw zenoh` (the
+default when you name no RMW) scaffolds a workspace for this board, but its
+image does not build: zenoh's FreeRTOS support expects lwIP, and this board's
+network is the host's own. The build stops with
+`lwipopts.h: No such file or directory`. Until it is supported, use Cyclone
+DDS, as this page does, or zenoh on the emulated
+[mps2-an385 FreeRTOS board](mps2-an385-freertos.md).
+
+This is the zenoh run that is expected to work once it is supported. It does
+not work yet:
+
+```bash probe=80 variant=zenoh
+nros setup freertos-posix --rmw zenoh
+cd ..
+nros new fpz_ws --board freertos-posix --template talker --lang c --rmw zenoh
+cd fpz_ws
+nros run fpz_node --expect 'Publishing:' --timeout 600
+```
 
 ## If it doesn't work
 
-- **`nros run` stops at once and names the router:** it could not find
-  `rmw_zenohd`, or another router already holds port 7447. Source ROS 2 in
-  that shell, or stop the other router. To use a router you already run,
-  pass `--router <its locator>`.
 - **`nros run` stops at once and names `AMENT_PREFIX_PATH`:** this shell has
   not sourced ROS 2, and no earlier build of the workspace recorded it.
-- **No `Publishing:` line:** `nros run` names the router's log when it
-  stops. A talker that started before its router makes one connection
-  attempt and stops with `Failed to open session`; run it again.
+  Source it and run again.
+- **The build stops on `lwipopts.h`:** the workspace was scaffolded with
+  zenoh, which this board does not support yet. Scaffold it again with
+  `--rmw cyclonedds`.
+- **`ros2 topic echo` prints nothing:** check the `RMW_IMPLEMENTATION` line,
+  and that neither shell sets a `ROS_DOMAIN_ID` other than 0. A firewall that
+  drops multicast also stops DDS discovery.
 - **Everything else:** [Troubleshooting - First 10 Minutes](../reference/troubleshooting-index.md).
 
 ## Next
