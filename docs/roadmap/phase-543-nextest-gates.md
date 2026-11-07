@@ -335,7 +335,9 @@ uploaded. Retire `run-gates-parallel.sh`, `gate-shard.py`,
 - `build/corrosion-cargo` and `build/sizes-probe` grew 51 -> 160 G and
   38 -> 93 G over five gate runs in one worktree, and filled a 1.8 T disk
   twice in a day. Nothing prunes them. W4's disk declarations and preflight
-  need their growth bounded first.
+  need their growth bounded first. Why one run is that large: issue
+  [2318](../issues/2318-cmake-leaf-recompiles-host-tooling.md) (every CMake
+  leaf recompiles the same host tooling; ~80% of `corrosion-cargo` is host-side).
 
 ## Open questions
 
