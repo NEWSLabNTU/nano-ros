@@ -172,6 +172,11 @@ fn rust_zst_family() -> BTreeMap<&'static str, Option<BoardFamily>> {
             "::nros_board_mps2_an385_freertos::Mps2An385",
             Some(BoardFamily::Freertos),
         ),
+        // phase-548 W1 — the FreeRTOS POSIX port's own board crate.
+        (
+            "::nros_board_freertos_posix::FreertosPosix",
+            Some(BoardFamily::Freertos),
+        ),
         (
             "::nros_board_threadx_linux::ThreadxLinux",
             Some(BoardFamily::Threadx),
@@ -238,7 +243,6 @@ fn family_keys_without_a_rust_board_are_exactly_these() {
         c_cpp_only,
         BTreeSet::from([
             "an536",
-            "freertos-posix",
             "mps3-an536-freertos",
             "s32z270",
             "s32z270-freertos",

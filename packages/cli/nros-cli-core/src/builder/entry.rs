@@ -390,9 +390,38 @@ pub fn schedule_board_features(
 /// that order, `[image.mps2-an385-baremetal] board = "rtic-mps2-an385"` took
 /// `board-entry` instead of `rtic` once `mps2-an385-baremetal` became a
 /// `BOARD_PATHS` key (phase-517 W2).
+///
+/// **Only the resolved board's OWN `names` count** (phase-548 W1). The image
+/// id and the platform are kept in that order when the descriptor answers to
+/// them, and dropped when it does not: the platform word `freertos` is the mps2
+/// board's ALIAS, so for the `freertos-posix` board (`platform = "freertos"`) it
+/// picked `nros-board-mps2-an385-freertos` — the lwIP/Cortex-M3 crate — for a
+/// host image, and the build died far from the cause. The same fall-through
+/// gave `mps3-an536-freertos` and `s32z270-freertos`, which name crates of
+/// their own, the mps2 crate. The descriptor's other names follow, so a board
+/// written by one alias still finds the key another alias is spelled by. When
+/// none of them is a `BOARD_PATHS` key, nothing answers and the Rust emitter
+/// refuses the board by name, instead of another board's crate answering.
 #[must_use]
-pub fn deploy_candidates<'a>(board: &'a str, image_id: &'a str, platform: &'a str) -> [&'a str; 3] {
-    [board, image_id, platform]
+pub fn deploy_candidates<'a>(
+    board: &'a str,
+    image_id: &'a str,
+    platform: &'a str,
+    names: &'a [String],
+) -> Vec<&'a str> {
+    let own = |k: &str| names.iter().any(|n| n.eq_ignore_ascii_case(k));
+    let mut out: Vec<&'a str> = Vec::new();
+    for k in [board, image_id, platform] {
+        if !k.is_empty() && own(k) && !out.contains(&k) {
+            out.push(k);
+        }
+    }
+    for n in names {
+        if !out.iter().any(|k| k.eq_ignore_ascii_case(n)) {
+            out.push(n.as_str());
+        }
+    }
+    out
 }
 
 /// The board-crate feature that turns on the ENTRY surface `nros::main!`
@@ -1112,16 +1141,63 @@ fn write_if_changed(path: &Path, body: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
 
+    /// phase-548 W1 — the platform word and the image id count only when the
+    /// board answers to them. `freertos-posix` (platform `freertos`, scaffolded
+    /// image id `freertos`) took the mps2 crate through either; it now resolves
+    /// to its own, and a board with no key of its own resolves to nothing.
+    #[test]
+    fn only_the_boards_own_names_pick_its_crate() {
+        let posix: Vec<String> = vec!["freertos-posix".into()];
+        let c = deploy_candidates("freertos-posix", "freertos", "freertos", &posix);
+        assert_eq!(c, vec!["freertos-posix"]);
+        assert_eq!(
+            macro_board_crate(&c).as_deref(),
+            Some("nros-board-freertos-posix")
+        );
+        let mps3: Vec<String> = vec!["mps3-an536-freertos".into()];
+        let c = deploy_candidates("mps3-an536-freertos", "freertos", "freertos", &mps3);
+        assert_eq!(
+            macro_board_crate(&c),
+            None,
+            "the mps2 alias must not answer for mps3"
+        );
+        // An alias the board is written by still finds the key another alias is.
+        let threadx: Vec<String> = vec!["threadx".into(), "threadx-linux".into()];
+        let c = deploy_candidates("threadx", "native", "threadx-linux", &threadx);
+        assert_eq!(
+            macro_board_crate(&c).as_deref(),
+            Some("nros-board-threadx-linux")
+        );
+    }
+
     /// phase-517 W2 — an RTIC leaf whose image id is itself a board key keeps
     /// its board word's framework: the declared board is searched first.
     #[test]
     fn a_declared_board_outranks_an_image_id_that_is_also_a_board_key() {
-        let candidates = deploy_candidates("rtic-mps2-an385", "mps2-an385-baremetal", "bare-metal");
+        let names: Vec<String> = [
+            "mps2-an385-baremetal",
+            "baremetal",
+            "bare-metal",
+            "rtic-mps2-an385",
+        ]
+        .map(String::from)
+        .to_vec();
+        let candidates = deploy_candidates(
+            "rtic-mps2-an385",
+            "mps2-an385-baremetal",
+            "bare-metal",
+            &names,
+        );
         assert_eq!(
             entry_surface_features(&candidates, |_| true),
             vec!["rtic".to_string()]
         );
-        let candidates = deploy_candidates("mps2-an385-baremetal", "rtic-mps2-an385", "bare-metal");
+        let candidates = deploy_candidates(
+            "mps2-an385-baremetal",
+            "rtic-mps2-an385",
+            "bare-metal",
+            &names,
+        );
         assert_eq!(
             entry_surface_features(&candidates, |_| true),
             vec!["board-entry".to_string()]

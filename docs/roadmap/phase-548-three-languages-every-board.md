@@ -88,6 +88,33 @@ cyclonedds cargo bridge.
 zenoh once 2342 lands. An image whose board names no crate is refused with
 the board's name.
 
+**Cyclone half done (2026-11-07).** The new crate `nros-board-freertos-posix`
+compiles the GCC_POSIX kernel with heap_3, the FreeRTOS platform port without
+`net.c`, and the family task glue, mirroring
+`cmake/board/nano-ros-board-freertos-posix.cmake`. `nros-board-freertos`
+gained a `posix-port` feature: no lwIP bring-up, drain task or netif check,
+no `.init_array` walk, and a heap_3 heap reporter. Cyclone links through the
+board's own `rmw-cyclonedds` feature, as on linux, and
+`nros-rmw-cyclonedds-sys`'s new `foreign-wake-bridge` feature carries the
+cmake road's `NO_FOREIGN_WAKE` + `FOREIGN_WAKE_BRIDGE` (issue 1237). The
+descriptor is `entry_kind = "board-run"` with a C-ABI `main`, like
+threadx-linux.
+
+The board crate is now picked only by the board's OWN names
+(`builder::entry::deploy_candidates`). The image id and the platform word no
+longer answer for a board they do not name. That fall-through also gave
+`mps3-an536-freertos` and `s32z270-freertos` the mps2 crate.
+
+Measured:
+- `nros new fpr --board freertos-posix --template talker --lang rust --rmw
+  cyclonedds`, `nros build`, then `nros run fpr_node --expect 'Publishing:'`:
+  matched after 1.1 s.
+- `nros new m3 --board mps3-an536-freertos --lang rust` now depends on
+  `nros-board-mps3-an536-freertos`, and is refused naming the board:
+  `nros::main!: unknown board 'mps3-an536-freertos'`.
+
+Left: the zenoh Rust cell, once #3273 (issue 2342) lands.
+
 ### W2 — C++ on Zephyr compiles as C++14
 
 **Code area:** the Zephyr entry's `prj.conf` writer in `nros-cli-core`

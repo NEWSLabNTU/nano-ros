@@ -1,0 +1,53 @@
+[package]
+name = "nros-board-freertos-posix"
+version = "0.4.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "FreeRTOS POSIX-port board crate for nros: a host process on the host's network"
+
+[lib]
+name = "nros_board_freertos_posix"
+
+# phase-548 W1 — the Rust board crate this board did not have. Until it existed
+# the descriptor named no `board_crate`, and a Rust image's board key fell
+# through to the platform word `freertos`, which is the mps2 board's ALIAS, so
+# the generated entry depended on the lwIP/Cortex-M3 crate.
+#
+# Shape: the FreeRTOS family's Rust entry (`nros-board-freertos`, with its
+# `posix-port` feature: no lwIP, heap_3 reporting) over a kernel built with
+# `portable/ThirdParty/GCC/Posix`. The C compile is THIS crate's `build.rs`,
+# mirroring `cmake/board/nano-ros-board-freertos-posix.cmake` (the C/C++ road)
+# file for file, because the family crate's `build.rs` compiles lwIP and the
+# Cortex-M hooks and skips a host target.
+
+[dependencies]
+nros-board-freertos = { path = "../nros-board-freertos", features = ["posix-port"] }
+nros-board-common = { path = "../nros-board-common", default-features = false, features = ["deploy-overlay"] }
+# The `nros_platform_*` symbols are the FreeRTOS C port's (`platform.c`,
+# `timer.c`), compiled by build.rs; this edge selects the Rust side of the same
+# port. NOT `platform-posix`: that is a second port, and issue 1779 allows one
+# provider per linked graph.
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-features = false }
+# Cyclone links the way it does on `nros-board-linux`: the board crate links the
+# backend's register crate, so `backend_link::board_links` finds it
+# (RFC-0071 D7). `foreign-wake-bridge` is the POSIX port's requirement: the
+# receive thread is a host thread that may not enter the kernel (issue 1237).
+# `platform-posix` is deliberately left off (see `nros-platform` above).
+nros-rmw-cyclonedds-sys = { path = "../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", optional = true, features = ["foreign-wake-bridge"] }
+
+[build-dependencies]
+nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
+cc = "1"
+
+[features]
+default = []
+# The board descriptor's `board_features`: the image's Rust allocator funnels
+# into `nros_platform_alloc` (heap_3, host malloc), as on threadx-linux.
+image-runtime = ["nros-platform/global-allocator"]
+rmw-cyclonedds = ["dep:nros-rmw-cyclonedds-sys"]
+ros-humble = ["nros-board-freertos/ros-humble", "nros-rmw-cyclonedds-sys?/ros-humble"]
+ros-iron = ["nros-board-freertos/ros-iron", "nros-rmw-cyclonedds-sys?/ros-iron"]
+ros-jazzy = ["nros-board-freertos/ros-jazzy", "nros-rmw-cyclonedds-sys?/ros-jazzy"]

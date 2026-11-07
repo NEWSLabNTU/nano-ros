@@ -67,6 +67,13 @@ std = []
 # link fails (issue 0063). Embedded (Zephyr/ThreadX) consumers get the wake
 # symbols from their own platform port and keep this OFF.
 platform-posix = ["dep:nros-platform", "nros-platform/platform-posix"]
+# phase-548 W1 (issues 1237, 2217) — for a port whose Cyclone receive thread is
+# NOT a kernel thread (FreeRTOS's POSIX port): that thread may not enter the
+# kernel, so the data_available listener posts the platform's foreign-wake
+# bridge instead of calling the runtime's wake. Same two defines the cmake road
+# sets from NROS_RMW_CYCLONEDDS_FOREIGN_WAKE=OFF + ..._FOREIGN_WAKE_BRIDGE=ON
+# (nros-rmw-cyclonedds/CMakeLists.txt); the board that needs it enables it.
+foreign-wake-bridge = []
 # Phase 212.K.2 — compile the C++ backend
 # (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/*.cpp`) + the bundled
 # `rmw_dds_common_graph` descriptor as part of this crate's build,

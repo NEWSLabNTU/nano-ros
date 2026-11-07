@@ -103,6 +103,14 @@ default = []
 # every TU that includes FreeRTOSConfig.h). `nros build` turns it on through
 # the board crate for a multi-sched-task schedule (`schedule_board_features`).
 level-image = []
+# phase-548 W1 — the FreeRTOS POSIX port (`portable/ThirdParty/GCC/Posix`): the
+# image is a host process on the host's network (`[board.net] stack = "host"`).
+# The shared entry then skips everything that is about lwIP (network init, the
+# drain task, the netif check) and the flat image's `.init_array` walk (glibc's
+# start-up runs it), and its heap reporter samples heap_3 instead of reading
+# heap_4's high-water. The kernel/platform compile is the board crate's
+# (`nros-board-freertos-posix`); this crate's `build.rs` skips a host target.
+posix-port = []
 # `reference-mps2` removed (issue 1309). It named an optional dep that formed a
 # package cycle; its re-export was retired by phase-313 and nothing enabled the
 # feature afterwards.

@@ -952,8 +952,12 @@ fn write_selection_for(
     let Some(d) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
         bail!("board `{}` is claimed by no board descriptor", img.board);
     };
-    let candidates =
-        crate::builder::entry::deploy_candidates(&img.board, &img.image_id, &img.platform);
+    let candidates = crate::builder::entry::deploy_candidates(
+        &img.board,
+        &img.image_id,
+        &img.platform,
+        &d.names,
+    );
     let facts = crate::builder::entry::BoardFacts::from_descriptor_for(d, &candidates);
     let sys = system_toml(img)?;
     let spec = crate::orchestration::facade::LeafSelectionSpec {

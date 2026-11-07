@@ -104,6 +104,14 @@ def check_entry(rel, entry):
     platform = entry.get("platform", "")
     if not triples and kind == "board-run" and platform in HOST_TRIPLE_PLATFORMS:
         return "exempt", f"{names} ({kind} on {platform}: {HOST_TRIPLE_PLATFORMS[platform]})"
+    # phase-548 W1 — the same fact stated by the BOARD rather than its platform.
+    # `freertos-posix` shares the platform word `freertos` with the cross boards
+    # (mps2, s32z270), so the platform cannot say its triple is the host's; its
+    # descriptor's `[board.run] host = true` (RFC-0118 D4: the image is a host
+    # process) does.
+    run = entry.get("run")
+    if not triples and kind == "board-run" and isinstance(run, dict) and run.get("host") is True:
+        return "exempt", f"{names} ({kind}, `[board.run] host = true`: host triple)"
     has_triple = bool(triples) or kind == "board-run"
     if not has_triple:
         # A kind this gate does not know and no triple configured: say so
@@ -151,12 +159,14 @@ def self_test():
         proj = d / "leaf" / ".cargo"
         proj.mkdir(parents=True)
 
-        def run(kind, blob=None, platform=None):
+        def run(kind, blob=None, platform=None, host=False):
             text = head.format(kind=kind)
             if platform is not None:
                 text += 'platform = "%s"\n' % platform
             if blob is not None:
                 text += "cargo_config = '''\n%s'''\n" % blob
+            if host:
+                text += "[board.run]\nhost = true\n"
             path.write_text(text, encoding="utf-8")
             return scan(tmp)
 
@@ -189,6 +199,14 @@ def self_test():
         assert any("`board-run` board" in p for p in problems), problems
         # …and a host-simulator board that configures a triple is judged.
         _, _, problems = run("board-run", target, platform="threadx-linux")
+        assert any("no `[build] target`" in p for p in problems), problems
+        # phase-548 W1 — a host-process board on a CROSS platform word states
+        # it with `[board.run] host = true`; without it, the same row is the gap.
+        _, exempt, problems = run("board-run", platform="freertos", host=True)
+        assert not problems and exempt, (exempt, problems)
+        _, _, problems = run("board-run", platform="freertos")
+        assert any("`board-run` board" in p for p in problems), problems
+        _, _, problems = run("board-run", target, platform="freertos", host=True)
         assert any("no `[build] target`" in p for p in problems), problems
         _, exempt, problems = run("zephyr-staticlib")
         assert not problems and exempt, (exempt, problems)
