@@ -450,6 +450,43 @@ pub struct SdkLock {
     /// semver range.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cargo_override: BTreeMap<String, CargoOverride>,
+    /// The Rust toolchain `nros setup` left as the default (issue 2321): the
+    /// compiler is a build input like any `[tool.*]`, and it is not one, because
+    /// rustup installs it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rust: Option<RustRecord>,
+}
+
+/// `[rust]` — the compiler a project's images are built with, as `rustc -Vv`
+/// reports it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RustRecord {
+    /// `release:` — e.g. `1.99.0`.
+    pub release: String,
+    /// `commit-hash:` — the rust-lang/rust commit that release was built from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    /// `host:` — the triple of the compiler itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+}
+
+impl RustRecord {
+    /// Parse `rustc -Vv`; `None` when it names no `release:`.
+    #[must_use]
+    pub fn from_verbose_version(text: &str) -> Option<Self> {
+        let field = |k: &str| {
+            text.lines()
+                .find_map(|l| l.strip_prefix(k))
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty() && v != "unknown")
+        };
+        Some(Self {
+            release: field("release:")?,
+            commit: field("commit-hash:"),
+            host: field("host:"),
+        })
+    }
 }
 
 /// `[cargo_override.<name>]` — one crate a project pins differently from its SDK.
@@ -467,6 +504,13 @@ pub struct LockEntry {
     pub provenance: ProvenanceKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// A source build's origin (issue 2321): the git remote or tarball URL it
+    /// was fetched from. Prebuilt tools are identified by `sha256` alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// The commit a git source build checked out.
+    #[serde(rename = "ref", default, skip_serializing_if = "Option::is_none")]
+    pub git_ref: Option<String>,
 }
 
 impl SdkLock {
@@ -486,6 +530,8 @@ impl SdkLock {
                 version: p.version.clone(),
                 provenance: p.kind,
                 sha256: p.sha256.clone(),
+                source: p.git.clone(),
+                git_ref: p.git_ref.clone(),
             },
         );
     }
@@ -918,13 +964,37 @@ fn execute_install(
                 )
                 .wrap_err("install step")?;
             }
+            // Issue 2321 — a source build records WHAT it was built from, or the
+            // lock says `provenance = "source"` and nothing a reviewer can
+            // re-fetch: the git remote and commit, or the tarball's digest.
+            let (git, git_ref, sha256) = match fetch {
+                // The COMMIT checked out, not the ref asked for: an index ref
+                // may be a tag (corrosion's is `v0.6.1`), and a tag can move.
+                SourceFetch::Git { git, git_ref } => {
+                    let commit = crate::source_stamp::nros_git_command("git")
+                        .args(["-C", &src.to_string_lossy(), "rev-parse", "HEAD"])
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .filter(|c| !c.is_empty());
+                    (
+                        Some(git.clone()),
+                        Some(commit.unwrap_or_else(|| git_ref.clone())),
+                        None,
+                    )
+                }
+                SourceFetch::Tarball { url, sha256 } => {
+                    (Some(url.clone()), None, Some(sha256.clone()))
+                }
+            };
             let p = Provenance {
                 kind: ProvenanceKind::Source,
                 version: version.to_string(),
-                sha256: None,
+                sha256,
                 post_install: None,
-                git_ref: None,
-                git: None,
+                git_ref,
+                git,
             };
             p.write(prefix)?;
             Ok(p)
@@ -3158,6 +3228,38 @@ mod tests {
         p.write(&prefix).unwrap();
         assert_eq!(Provenance::read(&prefix).as_ref(), Some(&p));
         std::fs::remove_dir_all(&prefix).ok();
+    }
+
+    #[test]
+    fn a_source_build_locks_where_it_came_from() {
+        let mut lock = SdkLock::default();
+        lock.record(
+            "corrosion",
+            &Provenance {
+                kind: ProvenanceKind::Source,
+                version: "0.6.1-nros1".into(),
+                sha256: None,
+                post_install: None,
+                git_ref: Some("0123abcd".into()),
+                git: Some("https://github.com/x/corrosion".into()),
+            },
+        );
+        lock.rust = RustRecord::from_verbose_version(
+            "rustc 1.99.0 (abc 2026-08-27)\nbinary: rustc\ncommit-hash: abc\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\n",
+        );
+        let text = toml::to_string_pretty(&lock).unwrap();
+        assert!(
+            text.contains("source = \"https://github.com/x/corrosion\""),
+            "{text}"
+        );
+        assert!(text.contains("ref = \"0123abcd\""), "{text}");
+        assert!(
+            text.contains("[rust]") && text.contains("release = \"1.99.0\""),
+            "{text}"
+        );
+        let back: SdkLock = toml::from_str(&text).unwrap();
+        assert_eq!(back, lock);
+        assert_eq!(RustRecord::from_verbose_version("nothing here"), None);
     }
 
     #[test]

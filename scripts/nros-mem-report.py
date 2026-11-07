@@ -2197,12 +2197,17 @@ def main():
     if args.selftest:
         return selftest()
     # Always, not only behind the flag (phase-472 W9): a negative control
-    # nobody runs decays into a comment. Quiet on success.
-    with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
-        _selftest_rc = selftest()
-    if _selftest_rc:
-        sys.stdout.write(_selftest_out.getvalue())
-        return _selftest_rc
+    # nobody runs decays into a comment. Quiet on success. Only in a CHECKOUT:
+    # the selftest checks this script against the tree it measures (a `git
+    # grep`, `zephyr/Kconfig`), and an installed release's SDK root is no git
+    # tree — there it would refuse every report (issue 2326). `--selftest`
+    # still runs it anywhere, and every checkout run still does.
+    if os.path.exists(os.path.join(ROOT, ".git")):
+        with contextlib.redirect_stdout(io.StringIO()) as _selftest_out:
+            _selftest_rc = selftest()
+        if _selftest_rc:
+            sys.stdout.write(_selftest_out.getvalue())
+            return _selftest_rc
     if not args.elf:
         ap.error("give at least one ELF, or --selftest")
     if args.levels:

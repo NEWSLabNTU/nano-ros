@@ -257,6 +257,7 @@ fn own_sdk_root() -> Option<PathBuf> {
 fn show(args: ShowArgs) -> Result<()> {
     let root = catalog_root(args.workspace)?;
     let status = crate::cmd::board_support::Status::load(&root)?;
+    let runs = crate::cmd::board_support::LaneRuns::load(&root);
     let (notes, other) = crate::cmd::board_support::other_copy(&root, own_sdk_root().as_deref());
     let mut rows = status.rows_named(&args.name);
     if rows.is_empty() {
@@ -293,6 +294,9 @@ fn show(args: ShowArgs) -> Result<()> {
         }
         println!("  runs on    {}", r.runs_on());
         println!("  cadence    {}", r.cadence_text());
+        if let Some(t) = r.last_run_text(runs.as_ref()) {
+            println!("  last run   {t}");
+        }
         if let Some(d) = &r.stale_from {
             println!(
                 "  stale from {d} (a manual boot older than the registry's limit reads Builds)"

@@ -414,6 +414,7 @@ fn report_overrides() -> usize {
 fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<()> {
     let root = crate::cmd::board::catalog_root(workspace)?;
     let status = crate::cmd::board_support::Status::load(&root)?;
+    let runs = crate::cmd::board_support::LaneRuns::load(&root);
     let today = crate::cmd::board_support::today();
     println!("nros doctor --report ({today})");
     println!("  nros       {}", env!("CARGO_PKG_VERSION"));
@@ -429,6 +430,21 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
         Some(p) => println!("  index      {}", p.display()),
         None => println!("  index      none found: the toolchain lines below cannot be resolved"),
     }
+    // Issue 2328 — the compiler and the ROS 2 install are build inputs too: the
+    // report a reviewer attaches must name them, not leave them to a session log.
+    match crate::orchestration::sdk_store::RustRecord::from_verbose_version(&command_stdout(
+        "rustc",
+        &["-Vv"],
+    )) {
+        Some(r) => println!(
+            "  rust       {} (commit {}, host {})",
+            r.release,
+            r.commit.as_deref().unwrap_or("unknown"),
+            r.host.as_deref().unwrap_or("unknown")
+        ),
+        None => println!("  rust       none: `rustc -Vv` did not run"),
+    }
+    println!("  ros 2      {}", ros2_line());
     let Some(config) = resolve_config(config) else {
         println!("  images     none: no system.toml here (pass --config <bringup>)");
         return Ok(());
@@ -473,11 +489,122 @@ fn support_report(config: Option<&Path>, workspace: Option<PathBuf>) -> Result<(
                 r.runs_on(),
                 r.cadence_text()
             );
+            if let Some(t) = r.last_run_text(runs.as_ref()) {
+                println!("    last run   {t}");
+            }
         }
         let rmw = img.rmw.clone().unwrap_or_else(|| system.system.rmw.clone());
+        match system.image_ros_edition(Some(id)) {
+            Ok(e) => println!("    edition    ROS 2 {}", e.as_str()),
+            Err(e) => println!("    edition    invalid: {e:#}"),
+        }
         report_image_toolchain(id, board, &rmw, index.as_deref());
     }
+    report_project_lock(pin_from);
     Ok(())
+}
+
+/// The sourced ROS 2 and the `rmw_zenoh_cpp` it carries, from the environment
+/// a `setup.bash` sets — the install an image's messages were generated from.
+fn ros2_line() -> String {
+    let Ok(distro) = std::env::var("ROS_DISTRO") else {
+        return "none sourced (source /opt/ros/<distro>/setup.bash)".to_string();
+    };
+    let rmw = std::env::var_os("AMENT_PREFIX_PATH")
+        .into_iter()
+        .flat_map(|v| std::env::split_paths(&v).collect::<Vec<_>>())
+        .find_map(|p| package_xml_version(&p.join("share/rmw_zenoh_cpp/package.xml")));
+    match rmw {
+        Some(v) => format!("{distro} (rmw_zenoh_cpp {v})"),
+        None => format!("{distro} (no rmw_zenoh_cpp on AMENT_PREFIX_PATH)"),
+    }
+}
+
+/// `<version>` of an ament `package.xml`, when the file exists.
+fn package_xml_version(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let start = text.find("<version>")? + "<version>".len();
+    let end = start + text[start..].find("</version>")?;
+    Some(text[start..end].trim().to_string())
+}
+
+/// What the project's builds RECORDED (issues 2327/2328): the lock beside the
+/// pins, its Rust toolchain, every vendored source tree a build read (so the C
+/// third-party code an image compiled is a recorded fact, not a guess from the
+/// board's provisioning list), and the digest of each image `nros run`
+/// last started.
+fn report_project_lock(from: &Path) {
+    let path = crate::orchestration::store::lock_path_for(from);
+    let lock = match crate::orchestration::sdk_store::SdkLock::load(&path) {
+        Ok(l) => l,
+        Err(e) => {
+            println!("  lock       {}: unreadable: {e:#}", path.display());
+            return;
+        }
+    };
+    if !path.is_file() {
+        println!(
+            "  lock       none at {}: `nros setup` and `nros build` write it",
+            path.display()
+        );
+    } else {
+        println!("  lock       {}", path.display());
+    }
+    if let Some(r) = &lock.rust {
+        println!(
+            "    rust     {} (commit {})",
+            r.release,
+            r.commit.as_deref().unwrap_or("unknown")
+        );
+    }
+    for (name, src) in &lock.source {
+        println!(
+            "    source   {name} {}{} (from {})",
+            src.commit,
+            if src.dirty { ", DIRTY" } else { "" },
+            src.origin
+        );
+    }
+    let ws = path.parent().unwrap_or(from);
+    let run_root = crate::cmd::run_exec::run_dir(ws, "x");
+    let run_root = run_root.parent().unwrap_or(ws);
+    let mut plans: Vec<PathBuf> = std::fs::read_dir(run_root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path().join("plan.json"))
+        .filter(|p| p.is_file())
+        .collect();
+    plans.sort();
+    if plans.is_empty() {
+        println!("    artifact none recorded (`nros run` records the image it starts)");
+    }
+    for plan in plans {
+        let Ok(p) = nros_extension::plan::RunPlan::read(&plan) else {
+            continue;
+        };
+        let Some(elf) = crate::cmd::run_plan::elf(&p) else {
+            continue;
+        };
+        match sha256_file(elf) {
+            Some(d) => println!("    artifact {}: {} sha256 {d}", p.image, elf.display()),
+            None => println!("    artifact {}: {} (not readable)", p.image, elf.display()),
+        }
+    }
+}
+
+fn sha256_file(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).ok()?;
+    Some(format!("{:x}", Sha256::digest(&bytes)))
+}
+
+fn command_stdout(cmd: &str, args: &[&str]) -> String {
+    std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
 }
 
 /// The toolchain lines of one image's board (phase-523 W4): every package the

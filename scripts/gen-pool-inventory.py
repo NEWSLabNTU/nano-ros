@@ -51,7 +51,11 @@ import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 import book_pages  # noqa: E402
 
-OUT = str(book_pages.page_file("reference/static-pool-inventory.md"))
+def out_path() -> str:
+    """The rendered page. A function, not a module constant: the memory report
+    imports this module for its scanner from an installed SDK root, which
+    ships no book (issue 2326), and only the writer needs the page."""
+    return str(book_pages.page_file("reference/static-pool-inventory.md"))
 
 # The spellings a knob is read by. Each yields (NAME, default-literal).
 #
@@ -134,11 +138,27 @@ POOL_ANNOT = re.compile(
 )
 
 
+def source_files(suffix):
+    """Files under ROOT ending in `suffix`, relative to it: the TRACKED ones in
+    a checkout, every one in an installed SDK root — which is a `git archive`
+    of the tracked tree and no git repository, and is where the memory report
+    runs from a release (issue 2326)."""
+    if os.path.exists(os.path.join(ROOT, ".git")):
+        return subprocess.run(
+            ["git", "ls-files", "*" + suffix], cwd=ROOT, capture_output=True, text=True,
+            check=True,
+        ).stdout.split()
+    from repo_walk import walk  # issue 1565 — stops at every nested repository
+    out = []
+    for d, dirs, files in walk(ROOT):
+        dirs[:] = sorted(x for x in dirs if x not in ("target", "build"))
+        out += [os.path.relpath(os.path.join(d, f), ROOT) for f in sorted(files)
+                if f.endswith(suffix)]
+    return out
+
+
 def tracked_rust():
-    out = subprocess.run(
-        ["git", "ls-files", "*.rs"], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.split()
-    return [f for f in out if "/third-party/" not in f]
+    return [f for f in source_files(".rs") if "/third-party/" not in f]
 
 
 def crate_of(rel):
@@ -567,10 +587,7 @@ _CRATE_DIRS = {}
 def crate_dir_named(ident):
     """The tracked crate directory whose package name is `ident` (`-` == `_`)."""
     if not _CRATE_DIRS:
-        out = subprocess.run(
-            ["git", "ls-files", "*Cargo.toml"], cwd=ROOT, capture_output=True, text=True
-        ).stdout.split()
-        for rel in out:
+        for rel in source_files("Cargo.toml"):
             if "/third-party/" in rel:
                 continue
             try:
@@ -1040,6 +1057,7 @@ def main():
         # so parallel gates never race on the gitignored file.
         sys.stdout.write(text)
         return
+    OUT = out_path()
     if "--check" in sys.argv:
         try:
             with open(OUT, encoding="utf8") as fh:

@@ -800,6 +800,12 @@ def render_status_json(reg: Registry) -> str:
             "emulator": row.get("emulator"),
             "hardware": row.get("hardware"),
             "cadence": row.get("cadence"),
+            # Issue 2325 — the lane job that verifies this row, so a reader can
+            # name its last run: the nightly sweep's per-platform job is named
+            # after the token, and a weekly row's evidence is its probe tracks.
+            "nightly_token": row.get("nightly_token"),
+            "probe_tracks": [p["track"] for p in reg.probes
+                             if p.get("row") == board_registry.row_name(row)],
             "last_run": row.get("last_run"),
             "stale_from": until.isoformat() if until else None,
             "breadth": breadth_text(reg, row),

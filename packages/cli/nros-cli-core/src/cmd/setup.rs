@@ -913,7 +913,13 @@ fn provision_boards(
     // phase-517 W10 — and the target each board's images cross-compile for,
     // read off the board descriptors that provision through these keys: the
     // one fact `nros build`'s preflight refuses on, installed here instead.
-    let needs = board_rust_needs(&workspace, index, boards);
+    let mut needs = board_rust_needs(&workspace, index, boards);
+    // Issue 2326 — the components the index declares for the default toolchain
+    // (`[rust.toolchain.<rustup's>].components`), which the bootstrap's
+    // `--profile minimal` leaves out: `llvm-tools` is what the book's static
+    // memory recipe and `scripts/nros-mem-report.py` read an image with, and
+    // installing it here is what lets them work offline afterwards.
+    needs.extend(default_toolchain_components(index));
     let line = crate::orchestration::rust_toolchain::ensure_needs(&needs, args.dry_run)
         .map_err(|e| eyre::eyre!("nros setup: {e}"))?;
     eprintln!("  {:<22} {line}", "rust target");
@@ -931,6 +937,10 @@ fn provision_boards(
     // Folded by `finish` in PLAN order, with the lock — never in the order the
     // installs happened to complete (RFC-0099 D7).
     let bin_dirs = std::mem::take(&mut report.bin_dirs);
+    // Issue 2321 — the compiler is recorded beside the tools it builds with.
+    if let Some(path) = lock {
+        record_rust_in_lock(path)?;
+    }
 
     if args.dry_run {
         eprintln!("(--dry-run: nothing installed)");
@@ -969,6 +979,27 @@ fn provision_boards(
 /// is one of these index keys, through the preflight rule
 /// ([`crate::builder::preflight::rust_need`]). No catalog under `sdk_root`
 /// contributes none: the build's own preflight still names a missing need.
+/// The default toolchain's declared components, as setup needs (issue 2326).
+fn default_toolchain_components(
+    index: &SdkIndex,
+) -> Vec<(Option<String>, crate::builder::preflight::RustNeed)> {
+    let Some(r) = index.rust.rustup.as_ref() else {
+        return Vec::new();
+    };
+    let Some(t) = index.rust.toolchain.get(&r.toolchain) else {
+        return Vec::new();
+    };
+    t.components
+        .iter()
+        .map(|c| {
+            (
+                None,
+                crate::builder::preflight::RustNeed::Component(c.clone()),
+            )
+        })
+        .collect()
+}
+
 fn board_rust_needs(
     sdk_root: &Path,
     index: &SdkIndex,
@@ -1899,11 +1930,12 @@ pub fn report_toolchain(index_path: &Path, board: &str, rmw: &str) -> Result<Vec
                 action,
                 ..
             } => lines.push(format!(
-                "{} {}: {}; {}",
+                "{} {}: {}; {}{}",
                 step.name,
                 tool.version,
                 prefix.display(),
-                describe(action, &tool.version, &host)
+                describe(action, &tool.version, &host),
+                installed_identity(prefix)
             )),
             session::StepKind::Source(src) => lines.push(format!(
                 "{} {}: source {}@{}",
@@ -1916,6 +1948,21 @@ pub fn report_toolchain(index_path: &Path, board: &str, rmw: &str) -> Result<Vec
         }
     }
     Ok(lines)
+}
+
+/// What the installed prefix says it is (issue 2328): a prebuilt's digest, or
+/// a source build's origin. Empty for a prefix not installed, or installed
+/// before its marker recorded either.
+fn installed_identity(prefix: &Path) -> String {
+    let Some(p) = crate::orchestration::sdk_store::Provenance::read(prefix) else {
+        return String::new();
+    };
+    match (&p.sha256, &p.git, &p.git_ref) {
+        (_, Some(git), Some(r)) => format!("; source {git}@{r}"),
+        (Some(sha), Some(url), None) => format!("; source {url} sha256 {sha}"),
+        (Some(sha), None, _) => format!("; sha256 {sha}"),
+        _ => String::new(),
+    }
 }
 
 /// Method A — prepend the store `bin/` dirs (from [`ensure_tools`]) to this
@@ -4405,6 +4452,22 @@ fn run_check_all(index: &SdkIndex, workspace: &Path) -> Result<()> {
 /// Captured stdout of a probe command; empty string when it cannot run (the
 /// caller's listing check then reports missing, which carries the right
 /// remedy anyway).
+/// Record the default `rustc` in the project lock (issue 2321). A host whose
+/// `rustc` cannot be run records nothing rather than a guess.
+fn record_rust_in_lock(path: &std::path::Path) -> Result<()> {
+    use crate::orchestration::sdk_store::{RustRecord, SdkLock};
+    crate::orchestration::rust_toolchain::expose_cargo_bin();
+    let Some(rust) = RustRecord::from_verbose_version(&command_stdout("rustc", &["-Vv"])) else {
+        return Ok(());
+    };
+    let mut l = SdkLock::load(path)?;
+    if l.rust.as_ref() != Some(&rust) {
+        l.rust = Some(rust);
+        l.save(path)?;
+    }
+    Ok(())
+}
+
 fn command_stdout(cmd: &str, args: &[&str]) -> String {
     std::process::Command::new(cmd)
         .args(args)

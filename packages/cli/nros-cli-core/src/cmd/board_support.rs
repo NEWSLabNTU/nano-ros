@@ -36,6 +36,12 @@ pub struct Row {
     pub emulator: Option<String>,
     pub hardware: Option<String>,
     pub cadence: Option<String>,
+    /// The nightly sweep's per-platform job that verifies this row (a daily row).
+    #[serde(default)]
+    pub nightly_token: Option<String>,
+    /// The weekly probe tracks that verify this row.
+    #[serde(default)]
+    pub probe_tracks: Vec<String>,
     pub last_run: Option<String>,
     /// First ISO day a manual row reads "Builds".
     pub stale_from: Option<String>,
@@ -110,6 +116,105 @@ impl Row {
                 .and_then(|p| Path::new(p).file_stem())
                 .and_then(|s| s.to_str())
                 == Some(name)
+    }
+}
+
+/// Where a release records each verifying lane's last run (issue 2325),
+/// written by `scripts/release/record-lane-runs.py` when the release is cut.
+/// A checkout has none: its lanes are on GitHub, not in the tree.
+pub const RUNS_FILE: &str = "packages/boards/board-support-runs.json";
+
+/// `board-support-runs.json` — one lane per automated cadence.
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct LaneRuns {
+    /// The day the release recorded them.
+    pub recorded: String,
+    pub lanes: std::collections::BTreeMap<String, Lane>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Lane {
+    pub workflow: String,
+    pub run: Option<LaneRun>,
+    #[serde(default)]
+    pub jobs: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct LaneRun {
+    pub url: String,
+    pub date: String,
+    pub conclusion: String,
+    pub commit: String,
+}
+
+impl LaneRuns {
+    /// The release's record under `root`, if it carries one.
+    #[must_use]
+    pub fn load(root: &Path) -> Option<Self> {
+        let raw = std::fs::read_to_string(root.join(RUNS_FILE)).ok()?;
+        serde_json::from_str(&raw).ok()
+    }
+}
+
+impl Row {
+    /// "When was this row last verified, and what did it say?" — `None` for a
+    /// row with no automated cadence (a manual row's date is in
+    /// [`Row::cadence_text`]).
+    #[must_use]
+    pub fn last_run_text(&self, runs: Option<&LaneRuns>) -> Option<String> {
+        let cadence = self.cadence.as_deref()?;
+        if cadence == "manual" {
+            return None;
+        }
+        let Some(runs) = runs else {
+            return Some(
+                "not recorded here (a release records each lane's last run when it is cut)"
+                    .to_string(),
+            );
+        };
+        let Some(lane) = runs.lanes.get(cadence) else {
+            return Some(format!("no {cadence} lane in the release's record"));
+        };
+        let Some(run) = &lane.run else {
+            return Some(format!(
+                "{} had no completed run when this release was cut ({})",
+                lane.workflow, runs.recorded
+            ));
+        };
+        // The job that is THIS row's evidence, where the lane names one: the
+        // nightly sweep's per-platform job, or the weekly probe's track jobs.
+        let mine: Vec<(&String, &String)> = lane
+            .jobs
+            .iter()
+            .filter(|(name, _)| {
+                self.nightly_token
+                    .as_deref()
+                    .is_some_and(|t| name.as_str() == t)
+                    || self
+                        .probe_tracks
+                        .iter()
+                        .any(|t| name.as_str() == format!("book probe — {t}"))
+            })
+            .collect();
+        let verdict = if mine.is_empty() {
+            format!(
+                "{} (the whole run; no job is named for this board)",
+                run.conclusion
+            )
+        } else {
+            mine.iter()
+                .map(|(n, c)| format!("{c} ({n})"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        Some(format!(
+            "{} {verdict} — {} at {} {}",
+            run.date,
+            lane.workflow,
+            &run.commit[..run.commit.len().min(10)],
+            run.url
+        ))
     }
 }
 
@@ -260,6 +365,8 @@ mod tests {
             infra: false,
             runs: Some("emulator".into()),
             emulator: Some("fvp:FVP_BaseR_AEMv8R".into()),
+            nightly_token: None,
+            probe_tracks: Vec::new(),
             hardware: None,
             cadence: Some("manual".into()),
             last_run: Some("2026-09-06".into()),
@@ -280,6 +387,11 @@ mod tests {
         assert_eq!(r.status_on("2027-01-04"), "Boots, manual (2026-09-06)");
         assert_eq!(r.status_on("2027-01-05"), "Builds (last booted 2026-09-06)");
         assert_eq!(r.cadence_text(), "manual (2026-09-06)");
+        assert_eq!(
+            r.last_run_text(None),
+            None,
+            "a manual row's date is the cadence's"
+        );
         assert_eq!(r.runs_on(), "fvp:FVP_BaseR_AEMv8R");
     }
 
@@ -392,6 +504,40 @@ mod tests {
         assert!(
             lines.is_empty() && other.is_none(),
             "one copy is no disagreement"
+        );
+    }
+
+    /// Issue 2325 — a daily row names ITS job's verdict and the run, a release
+    /// without a record says so, and a run naming no job for the row reports
+    /// the whole run rather than borrowing a sibling's.
+    #[test]
+    fn a_row_names_its_lanes_last_run() {
+        let runs: LaneRuns = serde_json::from_str(
+            r#"{"recorded":"2026-11-07","lanes":{"daily":{"workflow":"nightly.yml",
+              "run":{"url":"https://x/runs/7","date":"2026-11-06","conclusion":"failure",
+                     "commit":"658f2d8ac19d49e6"},
+              "jobs":{"qemu":"success","nuttx":"failure"}}}}"#,
+        )
+        .unwrap();
+        let mut r: Row = serde_json::from_str(
+            r#"{"key":"k","crate":"c","matrix_platform":null,"status":"s","built":true,
+               "infra":false,"runs":"emulator","emulator":null,"hardware":null,
+               "cadence":"daily","nightly_token":"qemu","last_run":null,"stale_from":null,
+               "breadth":"b","external":null,"book_run":null,"book_flash":null,"page":null}"#,
+        )
+        .unwrap();
+        let t = r.last_run_text(Some(&runs)).unwrap();
+        assert!(t.starts_with("2026-11-06 success (qemu)"), "{t}");
+        assert!(t.contains("https://x/runs/7"), "{t}");
+        assert!(r.last_run_text(None).unwrap().contains("not recorded here"));
+        r.nightly_token = Some("esp32".into());
+        let t = r.last_run_text(Some(&runs)).unwrap();
+        assert!(t.contains("failure (the whole run"), "{t}");
+        r.cadence = Some("weekly".into());
+        assert!(
+            r.last_run_text(Some(&runs))
+                .unwrap()
+                .contains("no weekly lane")
         );
     }
 }

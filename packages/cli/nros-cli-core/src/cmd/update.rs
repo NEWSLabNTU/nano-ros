@@ -208,6 +208,8 @@ fn update_project(index: &SdkIndex, args: &Args, project: &Path) -> Result<()> {
                 version: t.version.clone(),
                 provenance: ProvenanceKind::Prebuilt,
                 sha256: t.dist_for(&host).map(|d| d.sha256.clone()),
+                source: None,
+                git_ref: None,
             },
         );
     } else {

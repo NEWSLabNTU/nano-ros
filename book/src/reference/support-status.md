@@ -30,6 +30,16 @@ That output is the record to attach to a review.
 - **Release assets stay published.** A release's tag is never deleted
   or moved, and its assets stay on GitHub Releases, so a pinned version
   installs the same bytes later.
+- **No long-term support before 1.0.** A release reaches end of life
+  when the next one is published; there is no LTS line to stay on.
+- **Security.** Report a vulnerability privately at
+  <https://github.com/NEWSLabNTU/nano-ros/security/advisories/new>, not
+  in a public issue. A fixed one is published as a GitHub Security
+  Advisory naming the affected releases and the release with the fix.
+- **SBOM.** Each release publishes `nros-linux-x86_64.cdx.json` beside
+  its asset and installs it as `share/nros/sbom.cdx.json`: a CycloneDX
+  list of every crate compiled into the toolchain. What one firmware
+  image is built from is in your project's `nros-sdk.lock`.
 
 ## CI tiers — what "supported" means
 

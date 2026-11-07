@@ -14,9 +14,9 @@ comment can see.
 
 For that, measure the image you built. Two ways:
 
-- **Without a nano-ros checkout**, read the ELF with the LLVM tools rustup
-  ships (`rustup component add llvm-tools` once). They read an image for any
-  target:
+- **With the LLVM tools**, read the ELF directly. `nros setup` installs
+  them with the Rust toolchain, so this works offline afterwards. They read an
+  image for any target:
 
   ```text
   bin="$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin"
@@ -26,9 +26,15 @@ For that, measure the image you built. Two ways:
 
   `llvm-size -A` gives the section totals; `llvm-nm --size-sort` lists the
   largest statics last, each with its size in bytes.
-- **With a checkout**, the memory report below does the attribution for you.
-  It ships in the nano-ros source tree, not in a release; running it: see
-  [Internals → The memory report](../../internals/realtime/mem-report.html).
+- **With the memory report**, the attribution is done for you. It ships in
+  every release, inside the toolchain:
+
+  ```text
+  python3 "$(nros locate nano-ros)/scripts/nros-mem-report.py" build/.../your-image
+  ```
+
+  `--json` writes the same report as data, and `--baseline before.json`
+  prints the change against an earlier one.
 
 On the Tutorial's board, `mps2-an385-baremetal`, two figures are worth
 knowing before you read either output:

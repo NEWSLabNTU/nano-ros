@@ -193,16 +193,16 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | --- | --- | --- |
 | [#2317](../issues/archived/2317-release-sidecars-always-stale-talker-max-cbs-zero.md) | both | **Resolved** 2026-11-07: release sidecars always read stale, and the talker contract sized its callback table to 0 |
 | [#2319](../issues/archived/2319-first-project-scaffold-before-ros-source.md) | both | **Resolved** 2026-11-07: Tutorial 1 and every starter source ROS 2 before they scaffold |
-| [#2320](../issues/2320-jazzy-echo-qemu-talker-type-hash-invalid.md) | both | Jazzy `ros2 topic echo` receives nothing from the QEMU talker; type hash INVALID |
-| [#2321](../issues/2321-lock-provenance-incomplete.md) | industrial | `nros-sdk.lock` omits Rust, source packages, corrosion hash |
-| [#2322](../issues/2322-image-not-reproducible-across-paths.md) | industrial | Image embeds the absolute workspace path |
+| [#2320](../issues/archived/2320-jazzy-echo-qemu-talker-type-hash-invalid.md) | both | **Resolved** 2026-11-07: workspace sync generated Humble messages; it now takes the bringups' edition, and Jazzy echo receives the talker |
+| [#2321](../issues/archived/2321-lock-provenance-incomplete.md) | industrial | **Resolved** 2026-11-07: source builds lock their origin; `[rust]` recorded |
+| [#2322](../issues/2322-image-not-reproducible-across-paths.md) | industrial | Open: a rebuild at another path differs because cargo hashes the absolute path of local crates; the book states the contract (same path ⇒ same bytes) |
 | [#2323](../issues/archived/2323-offline-deb-recipe-omits-ros-base.md) | industrial | **Resolved** 2026-11-07: the recipe downloads in plain Ubuntu with the ROS 2 source; 606 debs, 227 MB |
 | [#2324](../issues/2324-offline-error-no-nros-offline-hint.md) | industrial | Offline failure does not name `NROS_OFFLINE=1` |
-| [#2325](../issues/2325-board-support-no-last-run-date.md) | industrial | Board support gives cadence, not last run |
-| [#2326](../issues/2326-mem-report-not-shipped.md) | industrial | Memory report not in the release; `llvm-tools` needs the network |
-| [#2327](../issues/2327-per-image-c-components-unlisted.md) | industrial | No per-image list of linked C components; fork on a personal account |
-| [#2328](../issues/2328-doctor-report-missing-release-facts.md) | industrial | `doctor --report` missing release tag, Rust, ROS, hashes, image digest |
-| [#2329](../issues/2329-no-lts-security-eol-policy.md) | industrial | No LTS, security advisory, SBOM or EOL policy |
+| [#2325](../issues/archived/2325-board-support-no-last-run-date.md) | industrial | **Resolved** 2026-11-07: the release records each lane's last run; `board show` and doctor print it |
+| [#2326](../issues/archived/2326-mem-report-not-shipped.md) | industrial | **Resolved** 2026-11-07: the report runs from a release; setup installs llvm-tools |
+| [#2327](../issues/2327-per-image-c-components-unlisted.md) | industrial | Open: doctor now lists the sources each build read; the fork's home is the maintainer's |
+| [#2328](../issues/archived/2328-doctor-report-missing-release-facts.md) | industrial | **Resolved** 2026-11-07: doctor prints Rust, ROS 2, digests, sources and the image digest |
+| [#2329](../issues/archived/2329-no-lts-security-eol-policy.md) | industrial | **Resolved** 2026-11-07: SECURITY.md, a CycloneDX SBOM per release, the policy in the book |
 | [#2330](../issues/archived/2330-ros-install-leaves-book.md) | education | **Resolved** 2026-11-07: Install adds the ROS 2 apt source inline, at a pinned version |
 | [#2331](../issues/archived/2331-book-links-repo-and-rfcs.md) | education | **Resolved** 2026-11-07: RFC numbers stay as plain text in "Design background"; no repository links |
 | [#2332](../issues/2332-build-output-internal-vocabulary.md) | education | Build output full of internal terms |
