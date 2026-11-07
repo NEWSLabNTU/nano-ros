@@ -81,12 +81,22 @@ step `just ci matrix` (`check::default`), 11:39–12:23 UTC.
   separated from it.
 - Tier 1 in the same run went green, so this is about disk, not about the code
   at 9d0bd000a8.
-- Not measured: which filesystem filled. 968 G was free on the work volume at
-  the start, so either the 61 parallel gate units wrote most of it, or the
-  units' scratch (`/tmp/nros-scaffold-builds.*`,
-  `/tmp/nros-template-copy-out.*`) sits on a smaller filesystem inside the
-  container. A `df` of `/tmp` and of `_work` at the failure point would decide
-  which.
+- **The filesystem that filled is `/tmp`, not the work volume.** In the
+  runner container `/tmp` is a memory-backed tmpfs of 48 G
+  (`HostConfig.Tmpfs "/tmp": "rw,exec,nosuid,size=48g"`), while
+  `/home/runner/_work` is 3.6 T with 940 G free and 6 % of inodes used
+  (`df` by the runner's owner, 13:4x UTC; the container restarted at 13:14,
+  so it could not show `/tmp`'s contents at the failure). The log itself
+  settles it: the ENOSPC writes are gcc's own temporaries, e.g.
+  `fatal error: error writing to /tmp/cc9TTIeF.s: No space left on device`
+  (8 such lines). The gates' scratch roots there are
+  `/tmp/nros-template-copy-out.*` (53 mentions), `/tmp/nros-scaffold-builds.*`
+  (11) and `/tmp/nros-template-selftest.*` (4), each holding cargo target
+  dirs for the copies it builds.
+- So this sighting is the per-copy build output of this issue landing in a
+  48 G tmpfs, not a full disk. A fix on the runner side (TMPDIR under
+  `_work`, or a larger tmpfs) would hide it without changing what is built,
+  and either one is a runner change that needs the maintainer's OK.
 
 ## Why the directories are separate
 
