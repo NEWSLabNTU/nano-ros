@@ -692,6 +692,32 @@ same way as one inside it. Its "warn and link no Rust backend" arm becomes a
 refusal: a descriptor whose `crate` is not at its own package directory is
 the provider's error, and the scan answer is authoritative.
 
+> **D15 as amended, user ruling 2026-11-07.** Three rulings replace the
+> bullets above where they disagree.
+>
+> 1. **Registration.** `__nros_register_backends!` keeps meaning "every
+>    linked backend". `nros::main!` calls it on every arm, the bridge arm
+>    included, which relies on it. There is no separate image-only macro or
+>    arm. Registering a backend twice is a documented no-op in
+>    `register_linked_rmw`, so a backend the board also registers is
+>    harmless. A backend linked by D15's entry dependency is included in the
+>    macro.
+> 2. **West half.** On an image with a west half, the west build's backend
+>    dependency (`nros-rmw-<x> = {…, optional = true}` plus `[features]
+>    default` in the west entry) is D15's dependency. D15's entry-side path
+>    dependency applies only to an image with no west half. Zephyr output is
+>    unchanged.
+> 3. **Crate directory.** The backend crate's directory is
+>    `package_dir.join(register_dir)` when `crate` is the register crate,
+>    else `package_dir`. The configure is refused when that directory's
+>    `Cargo.toml` `[package].name` differs from `crate`. This reproduces the
+>    deleted `backend_dir`'s answer for all four in-tree backends (xrce's
+>    `nros-rmw-xrce-cffi` sits at `../nros-rmw-xrce-cffi`). A
+>    `[rmw.provides.cargo]` table with no `crate` key counts as cmake-only
+>    here: a cargo-rooted image whose board lacks `rmw-<x>` is refused with
+>    D7's message. Cyclone DDS on a board that declares `rmw-cyclonedds` is
+>    unaffected.
+
 ### D16 — acceptance and gate
 
 **Acceptance test** (1214's, on this road). This is a fixture workspace,
@@ -888,3 +914,8 @@ machinery.
   backend directory from the scan. The acceptance test and gate are an
   out-of-tree `acme` backend built through `nros build`, plus
   `check-rmw-resolve-sites`. D5 carries a pointer.
+- 2026-11-07: D15 amended by user ruling (phase-545 W2): the register macro
+  keeps naming every linked backend and runs on every `nros::main!` arm; a
+  west half's backend dependency is D15's dependency; the crate directory is
+  `package_dir` joined with `register_dir` for the register crate, and a
+  `[rmw.provides.cargo]` table with no `crate` counts as cmake-only.
