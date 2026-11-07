@@ -1,11 +1,13 @@
 ---
 id: 2347
 title: "`nros new` prints `nros sync` in a Rust package's next steps; the verb is `nros configure`"
-status: open
+status: resolved
 type: bug
 area: cli-scaffold
 related: [issue-2346, phase-523]
 found: 2026-11-07
+resolved: 2026-11-07
+resolved_in: "the issue-2339 pull request"
 ---
 
 **Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md).** Seen in the same checkout-track log as issue 2346.
@@ -34,3 +36,13 @@ remedy, "re-run `nros sync`", should be `nros configure`) carry the same old ver
 - `next_steps()` and every printed remedy say `nros configure`.
 - `cli-old-spellings` scans the CLI's printed strings, or a unit test
   asserts that `next_steps()` names no old spelling.
+
+## Resolution (2026-11-07)
+
+`nros new`'s next steps (both the package scaffold and the workspace
+scaffold) and the provider-scan remedy now print `nros configure`. The class
+is closed by `check-cli-old-spellings`, which now reads the string literals of
+every Rust source under `packages/`, not only `book/` and `docs/`. The uses it
+finds today are held by a per-file ratchet,
+`.config/cli-old-spellings-baseline.json`, that may only shrink; a sweep to
+zero follows separately.

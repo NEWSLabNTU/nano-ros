@@ -1382,7 +1382,7 @@ impl ProviderIndex {
         if idx.version != INDEX_VERSION {
             bail!(
                 "provider index {} is version {} but this nros speaks {} — \
-                 delete it and re-run `nros sync`",
+                 delete it and re-run `nros configure`",
                 path.display(),
                 idx.version,
                 INDEX_VERSION

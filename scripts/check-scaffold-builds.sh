@@ -372,7 +372,7 @@ own_artifacts() {
 probe_ok() {
     local variant="$1" dir="$2" stamp="$3" log="$4" pkg node fresh
     [ "$(road_of "$dir")" = workspace ] || return 0
-    if grep -q 'no producer for' "$log"; then
+    if nros_grep_q -F -- 'no producer for' "$log"; then
         echo "  $variant: FAIL — the metadata probe failed, though the image built" >&2
         grep -n -m3 'no producer for' "$log" | sed 's/^/      /' >&2
         echo "      ^ the node does not compile against its" >&2
