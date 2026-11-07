@@ -419,7 +419,7 @@ scheduling left to nextest.
   CI jobs it changes.
 - Order independence (moved from W4): still open, W6.
 
-### W6 — CI, then retire the old runner — DONE (order independence still open)
+### W6 — CI, then retire the old runner — DONE
 
 **First half (#3252):** `just check fast`, `fast-serial` and `build` run
 `gate-lane.sh` with the lane in `NROS_GATE_SCOPE` (default `dev`), restricted
@@ -451,8 +451,20 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
 - The pre-push log's per-gate timings (`NROS_GATE_TIMINGS_FILE`) come from
   nextest's junit (`check-gate-lists.py --junit-tsv`); cpu time is not measured
   under nextest and reads 0.
-- Order independence: still open. nextest has no shuffle; two runs with the
-  generated `priority` reversed would test it, at the cost of a second lane.
+- Order independence: `just check gate-order [fast|build]`
+  (`scripts/check/check-gate-order.sh`). It runs one tier of this machine's
+  lane twice. The generated tool config spreads priority by NAME over
+  nextest's whole range, ascending in one run and descending in the other, so
+  the tests start in opposite orders and next to different neighbours.
+  `NROS_GATE_ORDER=asc|desc` selects it. The check reports any test whose
+  verdict differs between the two runs, any red in both, and any test only one
+  run listed. It costs two runs of the tier, so it is on no lane.
+  Measured on 2026-11-07, lane `dev`:
+  - fast tier: 523 tests, the same verdict in both orders, 2 x ~55 s;
+  - build tier: 63 tests, one order-dependent. `required-features-tests`
+    failed ascending and passed descending: one `entity_wake` race test hung
+    to its 60 s timeout beside the other build gates, while it passes alone
+    and 48 times at once. Filed as issue 2352.
 
 ## Found on the way
 
