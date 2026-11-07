@@ -111,6 +111,8 @@ cd "$repo_root" || exit 2
 
 # shellcheck source=scripts/build/cargo.sh
 . "$repo_root/scripts/build/cargo.sh"
+# shellcheck source=scripts/build/build-root.sh
+. "$repo_root/scripts/build/build-root.sh"   # nros_build_dir, NROS_KIND_* (cache trim)
 # shellcheck source=scripts/build/gate-scratch.sh
 . "$repo_root/scripts/build/gate-scratch.sh"
 # shellcheck source=scripts/build/gate-units.sh
@@ -360,6 +362,29 @@ run_one() {
     nros_gate_scratch work scaffold-builds || return 3
     parent="$work"
     dir="$parent/$variant"
+    # The build caches live in THIS scratch tree, and go with it (phase-543
+    # cache trim). A scaffold sits at a fresh `mktemp` path every run, so in the
+    # checkout's shared `corrosion-cargo` / `sizes-probe` its image builds got a
+    # new key each time and were never read again: measured 2.4-3.1 GB left
+    # behind per variant per run (about 50 GB per `ci gate`), with no speed-up
+    # from sharing (50 s, then 47 s). Cold in its own tree it takes 57 s and
+    # leaves nothing. `local -x` reaches only this unit's build.
+    # `NROS_KEEP_CACHES=1` restores the shared cache, for diagnosing it.
+    if [ "${NROS_KEEP_CACHES:-}" != 1 ]; then
+        local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
+        NROS_BUILD_ROOT="$work/build-root"
+        NROS_SIZES_PROBE_TARGET_DIR="$(nros_build_dir "$NROS_KIND_SIZES_PROBE")" || NROS_SIZES_PROBE_TARGET_DIR=""
+        # An empty or relative value is not "no override": the probe resolves
+        # it against the crate it builds and writes its cache INTO the source
+        # tree (measured: `packages/api/nros-c/rustc-…/`, 1.1 G). Refuse.
+        case "$NROS_SIZES_PROBE_TARGET_DIR" in
+            /*) ;;
+            *)
+                echo "  $variant: FAIL — could not derive this unit's sizes-probe dir (got '$NROS_SIZES_PROBE_TARGET_DIR')" >&2
+                nros_gate_scratch_failed "$work"
+                return 1 ;;
+        esac
+    fi
 
     if ! scaffold_one "$variant" "$parent" "$work/new.log"; then
         if [ ! -s "$work/new.log" ] || ! [ -d "$dir" ]; then
@@ -709,7 +734,8 @@ fi
 # `$NROS_SCAFFOLD_JOBS` at once (`scripts/build/gate-units.sh`) and report in
 # variant order. Serial, this gate WAS `check::build`'s wall clock: 1197 s at
 # 5255 CPU-seconds on a 48-CPU host; 6 at once measured 303 s.
-jobs="$(nros_gate_unit_jobs NROS_SCAFFOLD_JOBS)" || exit 2
+# A unit's scratch tree now holds its build caches too (~3.1 GB measured).
+jobs="$(nros_gate_unit_jobs NROS_SCAFFOLD_JOBS 4)" || exit 2
 echo "check-scaffold-builds: compiling ${#selected[@]} scaffold variant(s) outside the checkout, $jobs at a time"
 nros_gate_scratch reports scaffold-builds-reports || exit 3
 fail=0
