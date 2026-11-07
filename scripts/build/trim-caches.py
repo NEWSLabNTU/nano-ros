@@ -110,14 +110,24 @@ def last_used(unit: Path) -> float:
     return best
 
 
-def size_of(path: Path) -> int:
+def size_of(path: Path, seen: set[tuple[int, int]] | None = None) -> int:
+    """Bytes on disk, each inode ONCE. cargo hardlinks a build's outputs
+    (`deps/` into the profile dir), so summing every link counted 135.5 G
+    for an area `du` measures at 93 G. `seen` is shared across an area's
+    units, so a link between two units is not counted twice either."""
+    seen = set() if seen is None else seen
     total = 0
     for dirpath, _, filenames in os.walk(path):  # walk-ok: build output under build/, never git-tracked
         for f in filenames:
             try:
-                total += os.lstat(os.path.join(dirpath, f)).st_blocks * 512
+                st = os.lstat(os.path.join(dirpath, f))
             except OSError:
-                pass
+                continue
+            key = (st.st_dev, st.st_ino)
+            if key in seen:
+                continue
+            seen.add(key)
+            total += st.st_blocks * 512
     return total
 
 
@@ -149,7 +159,8 @@ def trim(apply: bool, keep_hours: float, budgets_file: Path = BUDGETS) -> int:
         if not area.is_dir():
             continue
         budget = int(float(spec["budget_gib"]) * GIB)
-        units = [(u, size_of(u), last_used(u)) for u in units_in(area, triples)]
+        seen: set[tuple[int, int]] = set()
+        units = [(u, size_of(u, seen), last_used(u)) for u in units_in(area, triples)]
         total = sum(s for _, s, _ in units)
         drop = plan(units, budget, keep_after)
         gone = sum(s for p, s, _ in units if p in drop)
@@ -210,6 +221,10 @@ def self_test() -> None:
         assert plan(rows, 30, now - 12 * 3600) == []
         # Everything recent: nothing goes, whatever the budget.
         assert plan(rows, 0, now - 72 * 3600) == []
+        # A hardlinked file is counted once, not once per link.
+        blob = t / "area" / "old" / "debug" / "blob"
+        os.link(blob, t / "area" / "old" / "debug" / "blob-link")
+        assert size_of(t / "area" / "old") == size_of(t / "area" / "mid"), "a hardlink was counted twice"
         # A key dir named like a triple to a regex is still a unit.
         k = t / "keys" / "nros-c-image_9d89b"
         k.mkdir(parents=True)
