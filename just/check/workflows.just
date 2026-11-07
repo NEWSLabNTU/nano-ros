@@ -870,3 +870,10 @@ hook-repo-side-effects:
 # ledger's real board-ci narrowing too.
 live-peer-board-build:
     @bash scripts/ci/live-peer-board-build.sh selftest
+
+# issue 2278 — every interface package the CLI bundles is one the images'
+# ROS install carries (`[prereq.ros-interface-packages]`), so no fixture
+# refuses at configure for a package the bundled copy used to stand in for.
+[private]
+bundled-interfaces-provisioned:
+    @python3 scripts/check/check-bundled-interfaces-provisioned.py
