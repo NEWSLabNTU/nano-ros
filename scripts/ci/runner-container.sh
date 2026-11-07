@@ -666,10 +666,24 @@ NROS_RUNNER_REPO_ROOT="$root" NROS_SWEEP_WORK="$work" "$sweep" "${flags[@]}" \
     || echo "runner sweep: the sweep reported a problem -- continuing"
 df -h "$work" | tail -1
 '
+    # The sweep's budgets (`NROS_SWEEP_*`, documented in runner-sweep.sh) are
+    # the OPERATOR's knobs — host disk is the operator's to size — so each one
+    # set here is forwarded. Without this the sweep inside the container saw
+    # none of them and always ran on its defaults: on 2026-11-07 runner 133's
+    # fixture tree reached 184 GiB under the default 280 GiB budget on a volume
+    # it shares with other work, the volume hit 0 bytes free, and the loop
+    # stopped after three failed starts — with NROS_SWEEP_BUDGET_FIXTURES_GIB
+    # exported and silently ignored.
+    SWEEP_ENV=()
+    while IFS= read -r var; do
+        SWEEP_ENV+=(-e "$var")
+    done < <(compgen -e | grep '^NROS_SWEEP_' || true)
     echo "runner-container: sweeping the runner volumes in a throwaway container"
+    [ "${#SWEEP_ENV[@]}" -gt 0 ] && echo "  forwarding: $(compgen -e | grep '^NROS_SWEEP_' | tr '\n' ' ')"
     run_or_echo "$ENGINE" run --rm --name "$NAME-sweep" \
         "${CONFINE_ARGS[@]}" \
         "${VOLUME_ARGS[@]}" \
+        "${SWEEP_ENV[@]}" \
         -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
         --entrypoint bash \
         "$IMAGE" -c "$SWEEP_SH"
