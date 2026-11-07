@@ -1069,7 +1069,7 @@ notes = "phase-537 W13 follow-up — Install options' Working offline steps on t
 track = "install-ros"
 chapter = "start/install.md"
 variant = "fresh-host"
-awaits = ["a host without ROS 2: the probe image ships ROS 2 preinstalled, so Install's `apt install ros-<distro>-ros-base` step is never replayed on a bare host"]
+awaits = ["a host without ROS 2: the probe image ships ROS 2 preinstalled, so Install's ROS 2 apt-source step and its `apt-get install ros-<distro>-ros-base` step are never replayed on a bare host"]
 weekly = false
 notes = "phase-537 W13 follow-up — Install's ROS 2 prerequisite on a host that has none. It fails up front until a bare-host runner exists."
 

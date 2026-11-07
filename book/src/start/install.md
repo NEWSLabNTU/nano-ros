@@ -20,12 +20,31 @@ checkout and no system-wide install: everything lands under `~/.nros`.
 ### Install ROS 2 first
 
 The edition follows your Ubuntu release: **Humble on 22.04, Jazzy on 24.04**
-(Humble has no 24.04 packages). Add the ROS 2 apt repository as the
-[ROS 2 documentation](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html)
-shows, then:
+(Humble has no 24.04 packages). If ROS 2 is already installed, skip to
+[Steps](#steps).
+
+First add the ROS 2 apt repository. The `ros2-apt-source` package holds its
+address and signing key; these lines install release 1.3.0 of it for your
+Ubuntu release:
+
+```sh probe=4 track=installed variant=fresh-host
+sudo apt-get update
+sudo apt-get install -y curl ca-certificates software-properties-common
+sudo add-apt-repository -y universe
+curl -fL -o /tmp/ros2-apt-source.deb \
+    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/1.3.0/ros2-apt-source_1.3.0.$(. /etc/os-release && echo "$VERSION_CODENAME")_all.deb"
+sudo dpkg -i /tmp/ros2-apt-source.deb
+sudo apt-get update
+```
+
+The version is written out, so the step asks GitHub for nothing but the file.
+A newer release of `ros2-apt-source` works the same way: replace both
+`1.3.0`s with its number.
+
+Then install ROS 2 and its zenoh middleware:
 
 ```sh probe=5 track=installed variant=fresh-host
-sudo apt install ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp   # humble on 22.04
+sudo apt-get install -y ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp   # humble on 22.04
 ```
 
 nano-ros generates your project's message bindings from this install, and
@@ -38,6 +57,11 @@ repository is added, it blocks ROS's catkin package, and the ROS install
 fails with `trying to overwrite '/usr/lib/python3/dist-packages/catkin_pkg/__init__.py'`.
 If that already happened, `sudo apt remove python3-catkin-pkg` and run the
 ROS 2 install again.
+
+**For a lab of many seats,** prepare one machine or image with this page and
+the first board's `nros setup` done, then copy it to each seat. Thirty seats
+then download nothing in class, and none of them depends on the network that
+day.
 
 ## Steps
 

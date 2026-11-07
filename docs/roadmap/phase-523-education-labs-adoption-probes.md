@@ -203,7 +203,7 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | [#2327](../issues/2327-per-image-c-components-unlisted.md) | industrial | No per-image list of linked C components; fork on a personal account |
 | [#2328](../issues/2328-doctor-report-missing-release-facts.md) | industrial | `doctor --report` missing release tag, Rust, ROS, hashes, image digest |
 | [#2329](../issues/2329-no-lts-security-eol-policy.md) | industrial | No LTS, security advisory, SBOM or EOL policy |
-| [#2330](../issues/2330-ros-install-leaves-book.md) | education | ROS 2 install leaves the book and hits the GitHub API rate limit |
+| [#2330](../issues/archived/2330-ros-install-leaves-book.md) | education | **Resolved** 2026-11-07: Install adds the ROS 2 apt source inline, at a pinned version |
 | [#2331](../issues/archived/2331-book-links-repo-and-rfcs.md) | education | **Resolved** 2026-11-07: RFC numbers stay as plain text in "Design background"; no repository links |
 | [#2332](../issues/2332-build-output-internal-vocabulary.md) | education | Build output full of internal terms |
 | [#2333](../issues/2333-sdk-lock-lands-in-cwd.md) | both | `nros-sdk.lock` lands in the cwd |
