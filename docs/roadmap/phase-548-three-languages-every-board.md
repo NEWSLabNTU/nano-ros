@@ -247,7 +247,7 @@ the run with a non-zero status within seconds.
 **Acceptance:** a test that seeds a stale fetched index and asserts that
 `nros setup <board>` resolves a board present only in the current one.
 
-### W6 — `nros build` reconfigures after a toolchain change
+### W6 — `nros build` reconfigures after a toolchain change — DONE
 
 **Code area:** `cmake/toolchain/NanoRosCrossToolchain.cmake:363` and the
 cmake call in `nros build`.
@@ -255,11 +255,31 @@ cmake call in `nros build`.
 - Measured: after the pinned GCC is installed, `nros build` stops with "build
   directory is already configured with a DIFFERENT C compiler". The user must
   delete the build directory by hand.
-- Work: when the cached compiler differs from the resolved one, `nros build`
-  configures that image's build directory fresh and says so.
+- Done: the toolchain file's refusal also writes
+  `<build>/.nros-toolchain-changed` (language, the compiler the tree has, the
+  one that resolves now, and where from), and a configure that gets past the
+  check removes any stale one. A file, because the configure's output goes
+  straight to the terminal, and a message's wording is not an interface.
+- `nros build`'s cmake road answers the marker once
+  (`reconfigure_after_toolchain_change`, cmd/build.rs). It removes that
+  directory's `CMakeCache.txt` and `CMakeFiles/`, which is what
+  `cmake --fresh` does, without depending on a cmake new enough to have it.
+  Then it configures again and prints which compiler changed to which.
+  Build outputs stay. This is the one state the toolchain file's own comment
+  names as unrecoverable in place, so it is not the `rm -rf` antipattern.
+- A bare `cmake` keeps the refusal, with a line saying `nros build` handles
+  it. The west road is untouched (agreed with phase-530, whose W7 skips a
+  no-change west reconfigure; extending this there needs that check to see a
+  compiler change).
 
-**Acceptance:** a test changes the resolved compiler between two builds, and
-the second build succeeds.
+**Acceptance:** gate `toolchain-change-reconfigure` drives the real module
+through real configures with two stand-in compilers whose real paths differ.
+A configure with A succeeds. A configure with B in the same dir is refused and
+writes a marker naming both. After the fresh step, a configure with B succeeds,
+and the tree's compiler is B. Negative control: without the cmake change the
+gate fails ("the refusal wrote no … .nros-toolchain-changed"). The `nros build`
+half is unit-tested: the marker clears the configure state and only that, and
+no marker means no action.
 
 ### W7 — Measure nucleo-f767zi
 

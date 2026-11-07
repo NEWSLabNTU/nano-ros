@@ -720,3 +720,14 @@ generated-root-profiles:
 [private]
 cmake-user-output-refs:
     @python3 scripts/check-cmake-user-output-refs.py
+
+# phase-548 W6 — a build dir whose resolved cross compiler changed is
+# reconfigured, not refused: NanoRosCrossToolchain.cmake writes
+# `.nros-toolchain-changed` beside its refusal, and `nros build` answers it
+# with cmake --fresh's two removals. Real configures, two stand-in compilers;
+# the nros build half is unit-tested in cmd/build.rs.
+[private]
+[group('needs:cmake')]
+[group('needs:cc')]
+toolchain-change-reconfigure:
+    @bash scripts/check/check-toolchain-change-reconfigure.sh

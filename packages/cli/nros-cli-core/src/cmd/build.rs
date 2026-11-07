@@ -3972,6 +3972,58 @@ fn run_configure(cfg: &Handoff) -> Result<()> {
     Ok(())
 }
 
+/// The file `cmake/toolchain/NanoRosCrossToolchain.cmake` writes in a build
+/// dir when it refuses because the dir was configured with a different
+/// compiler than the one that resolves now (phase-548 W6).
+const TOOLCHAIN_CHANGED_MARKER: &str = ".nros-toolchain-changed";
+
+/// phase-548 W6 — after a failed configure, if the toolchain file refused
+/// because the resolved compiler changed (the pinned GCC was just installed,
+/// say), make the dir configurable again the way `cmake --fresh` does: remove
+/// its `CMakeCache.txt` and `CMakeFiles/`, and nothing else. Returns the
+/// sentence to print, or `None` when the failure was something else.
+///
+/// CMake bakes the compiler into `CMakeFiles/<ver>/CMake<LANG>Compiler.cmake`
+/// on the first configure and declares a change unrecoverable in place, so
+/// this is the one state where removing configure state is the answer rather
+/// than the `rm -rf` antipattern: no dependency edge can express it. The
+/// build outputs stay, and `cmake --build` decides what they still need.
+fn reconfigure_after_toolchain_change(build_dir: &std::path::Path) -> Result<Option<String>> {
+    let marker = build_dir.join(TOOLCHAIN_CHANGED_MARKER);
+    let Ok(text) = std::fs::read_to_string(&marker) else {
+        return Ok(None);
+    };
+    let field = |k: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .unwrap_or("?")
+            .to_string()
+    };
+    let msg = format!(
+        "nros build: {} was configured with a different {} compiler ({}); the toolchain \
+         now resolves {} (via {}). Reconfiguring it fresh: its CMakeCache.txt and \
+         CMakeFiles/ are regenerated, and nothing else is removed.",
+        build_dir.display(),
+        field("lang"),
+        field("have"),
+        field("want"),
+        field("origin"),
+    );
+    for f in [build_dir.join("CMakeCache.txt"), marker] {
+        match std::fs::remove_file(&f) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).wrap_err_with(|| format!("removing {}", f.display())),
+        }
+    }
+    let files = build_dir.join("CMakeFiles");
+    if files.is_dir() {
+        std::fs::remove_dir_all(&files)
+            .wrap_err_with(|| format!("removing {}", files.display()))?;
+    }
+    Ok(Some(msg))
+}
+
 fn run_configure_step(cfg: &Handoff) -> Result<()> {
     let st = cfg
         .command()
@@ -3979,6 +4031,26 @@ fn run_configure_step(cfg: &Handoff) -> Result<()> {
         .wrap_err_with(|| format!("running `{}`", cfg.display()))?;
     if st.success() {
         return Ok(());
+    }
+    // phase-548 W6 — a configure refused for a changed compiler is
+    // reconfigured fresh, once, and says so.
+    if let Some(dir) = crate::builder::cmake_configure::ConfigureStamp::of(cfg)
+        .map(|s| s.build_dir().to_path_buf())
+        && let Some(msg) = reconfigure_after_toolchain_change(&dir)?
+    {
+        eprintln!("{msg}");
+        let st = cfg
+            .command()
+            .status()
+            .wrap_err_with(|| format!("running `{}`", cfg.display()))?;
+        if st.success() {
+            return Ok(());
+        }
+        eyre::bail!(
+            "configure failed after a fresh reconfigure: `{}` exited {}",
+            cfg.display(),
+            st
+        );
     }
 
     let Some(online) = cfg.without_offline() else {
@@ -9947,6 +10019,50 @@ mod nuttx_kernel_step_tests {
 }
 
 /// Issue 2194 -- the workspace cmake road's image rows carry the board rung.
+#[cfg(test)]
+mod toolchain_change_tests {
+    use super::*;
+
+    /// The marker the toolchain file writes makes the dir configurable again
+    /// (cache and CMakeFiles gone, outputs kept) and names both compilers;
+    /// with no marker the failure is left alone.
+    #[test]
+    fn a_toolchain_change_marker_clears_the_configure_state_and_only_that() {
+        let d = tempfile::tempdir().unwrap();
+        let b = d.path();
+        assert!(
+            reconfigure_after_toolchain_change(b).unwrap().is_none(),
+            "no marker, no action"
+        );
+
+        std::fs::write(b.join("CMakeCache.txt"), "x").unwrap();
+        std::fs::create_dir_all(b.join("CMakeFiles/3.28.0")).unwrap();
+        std::fs::write(b.join("CMakeFiles/3.28.0/CMakeCCompiler.cmake"), "x").unwrap();
+        std::fs::write(b.join("app.elf"), "built").unwrap();
+        std::fs::write(
+            b.join(TOOLCHAIN_CHANGED_MARKER),
+            "lang=C\nhave=/usr/bin/arm-none-eabi-gcc\nwant=/store/bin/arm-none-eabi-gcc\norigin=SDK store\n",
+        )
+        .unwrap();
+        let msg = reconfigure_after_toolchain_change(b)
+            .unwrap()
+            .expect("a marker is acted on");
+        assert!(
+            msg.contains("/usr/bin/arm-none-eabi-gcc")
+                && msg.contains("/store/bin/arm-none-eabi-gcc"),
+            "{msg}"
+        );
+        assert!(!b.join("CMakeCache.txt").exists());
+        assert!(!b.join("CMakeFiles").exists());
+        assert!(!b.join(TOOLCHAIN_CHANGED_MARKER).exists());
+        assert!(b.join("app.elf").exists(), "a build output was removed");
+        assert!(
+            reconfigure_after_toolchain_change(b).unwrap().is_none(),
+            "acted on twice"
+        );
+    }
+}
+
 #[cfg(test)]
 mod board_knob_rung_tests {
     use super::*;

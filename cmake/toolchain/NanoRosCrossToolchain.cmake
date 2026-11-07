@@ -322,6 +322,7 @@ function(nros_cross_toolchain_report)
     # directory" is the honest answer rather than the `rm -rf` antipattern:
     # CMake itself declares a compiler change unrecoverable in place, and no
     # dependency edge can express it.
+    file(REMOVE "${CMAKE_BINARY_DIR}/.nros-toolchain-changed")
     foreach(_lang_pair "C:gcc" "CXX:g++")
         string(REPLACE ":" ";" _lp "${_lang_pair}")
         list(GET _lp 0 _lang)
@@ -360,6 +361,13 @@ function(nros_cross_toolchain_report)
         get_filename_component(_have_real "${_have}" REALPATH)
         get_filename_component(_want_real "${_want}" REALPATH)
         if(NOT "${_have_real}" STREQUAL "${_want_real}")
+            # phase-548 W6 — say so to `nros build` in a file, not only in the
+            # message: it reconfigures this directory fresh when it finds one
+            # (cmd/build.rs, `TOOLCHAIN_CHANGED_MARKER`). A file because the
+            # configure's output goes straight to the terminal, and a message's
+            # wording is not an interface. A bare `cmake` keeps the refusal.
+            file(WRITE "${CMAKE_BINARY_DIR}/.nros-toolchain-changed"
+                 "lang=${_lang}\nhave=${_have}\nwant=${_want}\norigin=${_A_ORIGIN}\n")
             message(FATAL_ERROR
                 "nano-ros: this build directory is already configured with a DIFFERENT "
                 "${_lang} compiler.\n"
@@ -371,7 +379,8 @@ function(nros_cross_toolchain_report)
                 "  place — and it does not complain, which is how issue 1117 happens twice:\n"
                 "  the provenance line above would describe a compiler nothing here uses.\n"
                 "  Configure into a FRESH build directory (or delete this one) so the\n"
-                "  resolved toolchain is the one that compiles.\n"
+                "  resolved toolchain is the one that compiles. 'nros build' does this for\n"
+                "  you: it reconfigures this directory fresh and says so (phase-548 W6).\n"
                 "  If the build tree's compiler is the one you want, select it explicitly:\n"
                 "      -D${_A_OVERRIDE_VAR}=<prefix of ${_have}>")
         endif()
