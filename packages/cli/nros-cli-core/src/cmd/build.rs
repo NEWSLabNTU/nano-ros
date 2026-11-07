@@ -8300,7 +8300,17 @@ mod multi_image_drive_tests {
             }
             let now = running.fetch_add(1, Ordering::SeqCst) + 1;
             peak.fetch_max(now, Ordering::SeqCst);
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            // The two independent jobs wait for EACH OTHER rather than sleep
+            // a fixed 100 ms: on a loaded host the second job could start
+            // after the first had slept out, so a correct scheduler read as
+            // serial. A scheduler that never overlaps them still fails, after
+            // the deadline, with peak 1.
+            if name != "joined" {
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                while peak.load(Ordering::SeqCst) < 2 && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
             running.fetch_sub(1, Ordering::SeqCst);
             finished.lock().unwrap().push(name);
             Ok(())
