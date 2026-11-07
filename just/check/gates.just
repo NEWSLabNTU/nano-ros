@@ -349,8 +349,14 @@ nextest-gates *args:
         | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
     cfg_dir="$PWD/build/gates"; mkdir -p "$cfg_dir"
     cfg_rc=0
+    # `NROS_GATE_ORDER=asc|desc` starts the tests in name order instead of
+    # slowest first: the order-independence check (check-gate-order.sh).
+    order_args=(--junit "$tgt/nextest/default/junit.xml")
+    if [ -n "${NROS_GATE_ORDER:-}" ]; then
+        order_args=(--order "$NROS_GATE_ORDER")
+    fi
     python3 scripts/check/check-gate-lists.py --list nextest-config \
-        --junit "$tgt/nextest/default/junit.xml" > "$cfg_dir/nextest-gates.toml.new" || cfg_rc=$?
+        "${order_args[@]}" > "$cfg_dir/nextest-gates.toml.new" || cfg_rc=$?
     if [ "$cfg_rc" -ne 0 ]; then
         echo "nextest-gates: could not generate the tool config (rc=$cfg_rc)" >&2
         exit 1
@@ -377,6 +383,14 @@ nextest-gates *args:
 [positional-arguments]
 lane name *args:
     @bash scripts/build/gate-lane.sh "$@"
+
+# phase-543 — is every gate's verdict independent of the order gates run in?
+# Runs one tier of this machine's lane twice, tests started in opposite name
+# orders, and compares each test's verdict. Two runs of the tier, so it is on
+# no lane: run it on demand (`just check gate-order [fast|build]`).
+[positional-arguments]
+gate-order tier="fast":
+    @bash scripts/check/check-gate-order.sh "$1"
 
 # phase-543 W5 — the lane preflight's probes cover every capability in
 # `.config/gate-lanes.toml`, and every lane claims only listed ones. Asks no

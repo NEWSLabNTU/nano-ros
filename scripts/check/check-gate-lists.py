@@ -340,7 +340,19 @@ def junit_tsv(path: Path) -> str:
     return "\n".join(rows) + ("\n" if rows else "")
 
 
-def nextest_config(b: dict[str, list[str]], junit: Path | None = None) -> str:
+def order_priorities(names: list[str], order: str) -> dict[str, int]:
+    """Spread `names` over nextest's priority range (-100..=100) by NAME, in
+    `asc` or `desc` order, so two runs start the tests in opposite orders
+    (phase-543's order-independence check, `scripts/check/check-gate-order.sh`).
+    Neighbours share a level when there are more tests than levels."""
+    ordered = sorted(names, reverse=(order == "asc"))  # higher priority starts first
+    n = len(ordered)
+    return {name: (round(i * 200 / (n - 1)) - 100 if n > 1 else 0)
+            for i, name in enumerate(ordered)}
+
+
+def nextest_config(b: dict[str, list[str]], junit: Path | None = None,
+                   order: str | None = None) -> str:
     """phase-543 W4 — the harness's nextest TOOL config, generated from the
     recipes' attributes so it cannot drift from them.
 
@@ -390,6 +402,17 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None) -> str:
             if cpus:
                 lines.append(f"threads-required = {max(cpus)}")
             lines.append("")
+    if order is not None:
+        # The order-independence check: priority by NAME, not by last run's
+        # time, so the two runs it compares differ in order and in nothing else.
+        for name, prio in order_priorities([n for n, _ in test_names(b)], order).items():
+            if "'" in name:
+                continue
+            lines.append("[[profile.default.overrides]]")
+            lines.append(f"filter = 'test(={name})'")
+            lines.append(f"priority = {prio}")
+            lines.append("")
+        return "\n".join(lines)
     # Slowest first. Bucketed to whole tens of seconds so a run-to-run jitter
     # does not reorder the whole list; nextest's range is -100..=100.
     for name, t in sorted(secs.items(), key=lambda kv: (-kv[1], kv[0])):
@@ -472,6 +495,12 @@ def self_test() -> None:
         j.write_text("<testsuites")
         assert junit_seconds(j) == {}
         assert junit_seconds(Path(t) / "absent.xml") == {}
+    # phase-543 — the order check's two orders are exact opposites, and use
+    # the whole priority range.
+    asc, desc = order_priorities(["a", "b", "c"], "asc"), order_priorities(["a", "b", "c"], "desc")
+    assert asc == {"a": 100, "b": 0, "c": -100}, asc
+    assert desc == {"a": -100, "b": 0, "c": 100}, desc
+    assert order_priorities(["x"], "asc") == {"x": 0}
     # Both directions, on synthetic input. `check-gate-selftests` requires
     # this on the normal path: a control nobody runs decays into a comment.
     mini = "\n".join([
@@ -597,7 +626,11 @@ def main(argv: list[str]) -> int:
         if lane == "nextest-config":
             # `--list nextest-config [--junit <path>]`: the harness's tool config.
             junit = Path(argv[argv.index("--junit") + 1]) if "--junit" in argv else None
-            print(nextest_config(b, junit))
+            order = argv[argv.index("--order") + 1] if "--order" in argv else None
+            if order not in (None, "asc", "desc"):
+                print(f"check-gate-lists: --order is asc or desc, not `{order}`", file=sys.stderr)
+                return 2
+            print(nextest_config(b, junit, order))
             return 0
         if lane == "all":
             names = sorted(b["fast"] + b["build"])
