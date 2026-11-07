@@ -1844,21 +1844,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             Some(import) => quote! {
                 #import
                 __nros_register_backends!(gated);
-                // Issue 2354 -- a backend with no Rust crate (Cyclone DDS: a
-                // C++ library the Zephyr module compiles) has no gated arm to
-                // call, so the registry stayed empty and the image failed at
-                // `Executor::open`. The module emits this hook for every
-                // pure-Rust image with an RMW selected, referencing that
-                // backend's C entry; `nros::zephyr_component_main!` already
-                // calls it, so both Zephyr Rust roads now register the same
-                // way. Registration is same-name idempotent, so a backend the
-                // gated arm already registered is harmless here.
-                {
-                    unsafe extern "C" {
-                        fn nros_app_register_backends();
-                    }
-                    unsafe { nros_app_register_backends() };
-                }
+                // Issue 2354 / phase-531 W6 -- a backend with no Rust crate
+                // (Cyclone DDS, a C++ library the Zephyr module compiles)
+                // registers through the module's C hook. The `(gated)` arm
+                // above calls it, emitted by the facade from the backend's
+                // descriptor (`backend_link::is_cmake_only`), so this macro
+                // names no hook and no backend.
             },
             None => no_selection_error("this Zephyr entry's backend registration"),
         })

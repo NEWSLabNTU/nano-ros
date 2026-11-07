@@ -48,7 +48,7 @@ nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
 nros-cpp                          1117  45     0     430      0
 nros-log                            24   0     7       1      0
-nros-macros                         14   0     1       2      0
+nros-macros                         13   0     1       1      0
 nros-node                          754  263    35     176      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0

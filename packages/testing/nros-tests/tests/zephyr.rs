@@ -863,6 +863,9 @@ fn boot_smoke(#[case] smoke: Smoke) {
     // the e2e cell of its variant; hold it so the two never share a bus.
     let _identity = hold_baked_identity(&baked_identity_key(smoke.rmw, smoke.lang, smoke.case));
     let _domain = hold_baked_dds_domain(smoke.rmw, smoke.lang, smoke.case);
+    if smoke.rmw == Rmw::Cyclonedds {
+        assert_registers_cyclonedds(&bin, &id);
+    }
     let mut p = ZephyrProcess::start(&bin, ZephyrPlatform::NativeSim)
         .unwrap_or_else(|e| panic!("Failed to start {id}: {e:?}"));
 
@@ -896,6 +899,37 @@ fn boot_smoke(#[case] smoke: Smoke) {
                 "[{id}] did not reach the subscription wait state:\n{out}"
             );
         }
+    }
+}
+
+/// phase-531 W6 — a Zephyr Cyclone image registers its backend through the
+/// nano-ros module's C hook, and `--gc-sections` drops both the hook and
+/// `nros_rmw_cyclonedds_register` from an image whose Rust entry never calls
+/// it. That image links and boots, then fails at `Executor::open` with "no RMW
+/// backend is registered"; reading the symbol table names the cause before the
+/// run does. (`nm` reads the prebuilt artifact; nothing is compiled here.)
+fn assert_registers_cyclonedds(bin: &std::path::Path, id: &str) {
+    let out = std::process::Command::new("nm")
+        .arg("--defined-only")
+        .arg(bin)
+        .output()
+        .unwrap_or_else(|e| panic!("[{id}] cannot run `nm` on {}: {e}", bin.display()));
+    assert!(
+        out.status.success(),
+        "[{id}] `nm {}` failed: {}",
+        bin.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let table = String::from_utf8_lossy(&out.stdout);
+    for sym in ["nros_app_register_backends", "nros_rmw_cyclonedds_register"] {
+        assert!(
+            table
+                .lines()
+                .any(|l| l.split_whitespace().last() == Some(sym)),
+            "[{id}] {} defines no `{sym}`: the image cannot register its Cyclone \
+             backend, so it will boot with an empty RMW registry",
+            bin.display()
+        );
     }
 }
 
