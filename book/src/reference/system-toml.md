@@ -41,6 +41,7 @@ Precedence, highest first: a command-line or build flag, `[image.<id>]`,
 | `profile` | cargo or CMake build profile name |
 | `variant` | Framework build variant (Zephyr `prj_<buildtype>.conf`) |
 | `features` | Capability axes for this image, added to `[system]`'s |
+| `node_features` | Cargo features of the image's Rust node packages: `"<feat>"` in every node declaring it, `"<pkg>/<feat>"` in that node only. Refused on a C/C++ entry and for a feature no node declares |
 | `serdes`, `ros_edition` | Serialization provider and ROS edition. Absent: the `[system]` value |
 | `env` | `{ NAME = "value" }` for an application's own build variable. A registry knob here is an error naming its `knobs` spelling |
 | `entry` | The workspace package that is this image's application, when it cannot be derived |
@@ -55,6 +56,7 @@ Retired and refused by name: `ip`, `gateway`, `netmask`, `transport`,
 | Kind of key | How a specific block folds over the defaults |
 | --- | --- |
 | scalars (`board`, `rmw`, `profile`, …) | replaced |
+| `node_features` | replaced as a whole when the image states it |
 | `args` | merged |
 | `os_config`, `features` | concatenated, defaults first |
 

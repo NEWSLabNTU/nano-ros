@@ -273,6 +273,46 @@ workspace, `examples/<plat>/<lang>/<example>/` with `src/` inside. **Amended
 2026-11-04 by RFC-0122:** that holds for the single-node witnesses only; the
 pairs move into the language workspaces as image rows.
 
+### D9 — An image turns on its Rust nodes' cargo features
+
+A leaf could build a configured variant with `cargo build --features <f>`,
+because its node package was also the package cargo built. In a workspace, the
+generated entry is what cargo builds, and a node package is one of its path
+dependencies. A node's cargo feature (`link-tls`, `zenoh-reply-slots`) then
+has nowhere to be stated. It is an image fact, so the image states it:
+
+```toml
+[image.linux_tls]
+node_features = ["link-tls"]                  # every node package declaring it
+# node_features = ["native_rs_talker/link-tls"]  # that node package only
+```
+
+The key is `node_features` because `[image.<id>] features` already names
+the image's capability axes (RFC-0031). Those are a different vocabulary, a
+registry of declared capabilities rather than one package's cargo features.
+
+- **What it names:** cargo features declared in a Rust node package's own
+  `[features]` table, and nothing else. A bare `<feature>` goes to every node
+  package of the image that declares it. `<package>/<feature>` goes to that
+  package only, and `-` and `_` match as they do for cargo. A feature no node
+  package declares is refused with the list of what each one declares; it is
+  never dropped.
+- **Which roads carry it:** every road that builds a generated Rust entry.
+  The generated entry's dependency line on the node package carries it
+  (`features = [..]` beside `default-features = false`). The cargo road reads
+  that manifest, and so does the west road's Rust staticlib entry. There is
+  one emitter (`builder::entry`), so the roads cannot disagree. This is a
+  manifest fact, not an environment knob, so it adds no row to the carrier
+  map in `scripts/nros-build-wiring.py`.
+- **Which roads refuse it:** a C/C++ entry, which is the CMake road and a west
+  C/C++ application. It has no cargo dependency line, so the key is refused
+  by name with the reason, like `before_boot`.
+- A `[[workspace_fixture]]` row that builds such an image states the same list
+  in `node_features`. That makes it the row's identity, the way a leaf row's
+  `features` was, so the selector and the lane keep seeing a configured row.
+  The manifest reader checks the row's list against the image's,
+  and refuses a cargo `features` key on a workspace row.
+
 ## Amendments to other RFCs
 
 | RFC | Amendment |
@@ -349,3 +389,8 @@ some `leaf_*` code also serves workspace entries.
 - 2026-11-05: phase-531 W4. The open question on bringup naming is settled
   (`<node>_bringup`, D4), D4 records the node-package name and the serial
   locator from `[board.net] host_serial`, and D5 records where the rungs live.
+- 2026-11-07: D9 — `[image.<id>] node_features`, the per-image cargo features of
+  the image's Rust node packages (maintainer decision, phase-531 W6). It
+  replaces a leaf row's `features` for the three configured rows W6 moves
+  (`link-tls`, `zenoh-reply-slots`, `unstable-zenoh-api`). A TLS knob implied
+  by a `tls/` endpoint was considered and not taken.

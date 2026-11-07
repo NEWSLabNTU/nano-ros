@@ -74,6 +74,11 @@ pub struct EntrySpec {
     pub before_boot: Option<String>,
     /// Node packages the launch file names, as (crate name, directory).
     pub nodes: Vec<(String, PathBuf)>,
+    /// RFC-0121 D9 — `[image.<id>] features`, resolved per node package
+    /// (`orchestration::image::resolve_image_features`): crate name -> the
+    /// features its dependency line turns on. Absent or empty for a node
+    /// writes the line with none.
+    pub node_features: BTreeMap<String, Vec<String>>,
     /// The nano-ros checkout, for `nros` / board / platform crate paths.
     pub nano_ros_root: PathBuf,
     /// The features and backend registration this image's declarations imply
@@ -747,8 +752,15 @@ pub fn render_manifest(
     // dragging a platform choice into an entry that already made one.
     for (name, dir) in &spec.nodes {
         let rel = relative_or_err(entry_dir, dir)?;
+        // RFC-0121 D9 — the image's features for this node, on its own line.
+        let feats = spec
+            .node_features
+            .get(name)
+            .filter(|f| !f.is_empty())
+            .map(|f| format!(", features = [{}]", quoted_list(f)))
+            .unwrap_or_default();
         out.push_str(&format!(
-            "{name} = {{ path = \"{rel}\", default-features = false }}\n"
+            "{name} = {{ path = \"{rel}\", default-features = false{feats} }}\n"
         ));
     }
 
@@ -1228,6 +1240,7 @@ mod tests {
                     PathBuf::from("/ws/src/listener_pkg"),
                 ),
             ],
+            node_features: BTreeMap::new(),
             nano_ros_root: PathBuf::from("/nros"),
             selection: None,
             bringup_deps: Vec::new(),
@@ -1620,6 +1633,26 @@ mod tests {
         s.args.insert("host".to_string(), "robot1".to_string());
         let src = render_source(&s, &hosted());
         assert!(src.contains("args = [(\"host\", \"robot1\")]"), "{src}");
+    }
+
+    #[test]
+    fn image_features_land_on_their_node_dependency_line_only() {
+        let mut s = spec();
+        s.node_features
+            .insert("talker_pkg".to_string(), vec!["link-tls".to_string()]);
+        let m = render_manifest(&s, &hosted(), Path::new("/ws/build/linux")).unwrap();
+        let talker = m.lines().find(|l| l.starts_with("talker_pkg = ")).unwrap();
+        let listener = m
+            .lines()
+            .find(|l| l.starts_with("listener_pkg = "))
+            .unwrap();
+        assert!(
+            talker.ends_with("default-features = false, features = [\"link-tls\"] }"),
+            "{talker}"
+        );
+        assert!(!listener.contains("features = ["), "{listener}");
+        let plain = render_manifest(&spec(), &hosted(), Path::new("/ws/build/linux")).unwrap();
+        assert!(!plain.contains("link-tls"));
     }
 
     #[test]

@@ -553,6 +553,30 @@ from before W6.
   - the rows carrying platform knobs (`cmake_defs`, `builder`, `target`,
     `skip_probe`, the `west_*` keys) and the Rust talker's `link-tls`
     feature row.
+- The verb merged as PR #3230 (2026-11-07).
+- The shared test-side fallback for a migrated leaf (PR #3250):
+  `nros_tests::fixtures::migrated_leaf` and `migrated_leaf_binary`.
+  - `build_example`, `build_example_rmw` and `build_cmake_leaf_rmw` take it
+    first.
+  - A leaf with no `[[fixture]]` row left resolves through its
+    `[[workspace_fixture]]` rows, selected by RMW and a variant (plain, an
+    `env`, or an image).
+- A leaf row's cargo `features` has a workspace home now: RFC-0121 D9,
+  `[image.<id>] node_features` (maintainer decision 2026-11-07, over a TLS
+  knob implied by a `tls/` endpoint).
+  - The generated entry states the features on the node package's
+    dependency line, so every road that builds a Rust entry carries them; a
+    C/C++ entry refuses the key by name.
+  - A `[[workspace_fixture]]` row restates the list as `node_features`, and
+    the manifest reader checks it against the image.
+  - Measured on a copy of the migrated `linux/rust/talker` with
+    `[image.linux_tls] node_features = ["link-tls"]`: `nros build linux_tls`
+    built, its entry manifest reads `native_talker = { …, features =
+    ["link-tls"] }` (the `linux` entry's line has none), and the binary
+    links `_z_f_link_*_tls`.
+  - It unblocks the three configured rows W6 moves: `link-tls` on the Rust
+    talker, `zenoh-reply-slots` on `bins/action-server-concurrent`, and
+    `unstable-zenoh-api` on `bins/message-info-observer`.
 
 ### W7 — Retirement
 
