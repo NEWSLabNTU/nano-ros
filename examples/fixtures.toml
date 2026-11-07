@@ -4225,6 +4225,17 @@ build_subdir = "build/threadx-linux-zenoh-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-service-server-cyclonedds"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "threadx_service_server_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
 id = "workspace-cpp-threadx-linux-service-client"
 platform = "threadx-linux"
 lang = "cpp"
@@ -4233,6 +4244,17 @@ dir = "examples/workspaces/cpp"
 bringup = "src/service_bringup"
 image = "threadx_service_client"
 build_subdir = "build/threadx-linux-zenoh-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-service-client-cyclonedds"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "threadx_service_client_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds-service_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
@@ -4247,6 +4269,17 @@ build_subdir = "build/threadx-linux-zenoh-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 [[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-action-server-cyclonedds"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "threadx_action_server_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
 id = "workspace-cpp-threadx-linux-action-client"
 platform = "threadx-linux"
 lang = "cpp"
@@ -4255,6 +4288,17 @@ dir = "examples/workspaces/cpp"
 bringup = "src/action_bringup"
 image = "threadx_action_client"
 build_subdir = "build/threadx-linux-zenoh-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-threadx-linux-action-client-cyclonedds"
+platform = "threadx-linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "threadx_action_client_cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds-action_bringup/cmake"
 cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 
 # ===========================================================================
