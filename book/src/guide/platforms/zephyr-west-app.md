@@ -471,11 +471,9 @@ Each `<depend>` also gets a `find_package(<pkg> REQUIRED)` line in
 `CMakeLists.txt`. The definitions come from the first place that has the
 package: the directories in `NROS_INTERFACE_SEARCH_PATH`, then a sourced ROS 2
 install (`AMENT_PREFIX_PATH`). Sourcing ROS 2 is required: if neither names a
-package, the configure stops and says to source ROS 2, the same rule
-`nros configure` follows. nano-ros also carries copies of a few standard
-packages, but they are one ROS 2 distro's, and the build reads them only if
-you add the directory the refusal names (`packages/cli/interfaces` in the SDK
-root) to `NROS_INTERFACE_SEARCH_PATH`; a sourced ROS 2 install is still read
+package, the configure stops and says so, as `nros configure` does. nano-ros's
+own copies of a few standard packages are read only if you add the directory
+the refusal names to `NROS_INTERFACE_SEARCH_PATH`, and ROS 2 still comes
 first. For your own messages, put their interface package anywhere on disk
 and add its parent directory to `NROS_INTERFACE_SEARCH_PATH`.
 
