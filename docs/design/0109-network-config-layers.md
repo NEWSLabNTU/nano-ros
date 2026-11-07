@@ -4,8 +4,8 @@ title: "Network and middleware configuration in three layers: the OS owns the
   devices, the RMW's own file owns the wiring, nano-ros owns only ROS-level facts"
 status: Draft
 since: 2026-10
-last-reviewed: 2026-10-29
-implements-tracked-by: [phase-514]
+last-reviewed: 2026-11-07
+implements-tracked-by: [phase-514, phase-546]
 supersedes: []
 superseded-by: null
 ---
@@ -392,6 +392,36 @@ controller up and setting its rate are layer 1:
 
 The link then assumes a started controller and reports a clear error when it
 is not. The fork change follows the vendored-fork branch workflow.
+
+## Amendment 2026-11-07 — the stack owner selects the zenoh-pico socket arm (issue 2342)
+
+### D11 — `host_stack`, derived from `[board.net] stack`
+
+D2's `stack` answers who owns layer 1. On one family it also decides which
+socket code an RMW compiles: FreeRTOS holds lwIP boards (`"board"`) and the
+POSIX simulator (`"host"`, tasks on the FreeRTOS kernel, sockets the host's
+BSD ones). zenoh-pico's FreeRTOS arms were lwIP and mailbox-only, both chosen
+by RFC-0086's `ip_stack`, so the host board had no arm (issue 2342).
+
+- The board rung of the RFC-0086 capability map carries `host_stack`,
+  DERIVED from `stack`: `"host"` is true, `"os"` and `"board"` false, unstated
+  absent (the platform's answer stands). It is never authored: a
+  `[board.capabilities] host_stack` row is refused, since it would be a second
+  spelling of `stack` that can disagree with it.
+- `nros-platform-freertos` declares `host_stack = false`.
+- The zenoh port row's `[port.freertos]` has three header arms:
+  `ZENOH_FREERTOS_LWIP` (`ip_stack = true, host_stack = false`),
+  `ZENOH_ORIN_SPE` (`ip_stack = false`), and zenoh-pico's own custom-platform
+  hook `ZP_SYSTEM_PLATFORM_HEADER` (`host_stack = true`), which names a
+  nano-ros header pairing the FreeRTOS system types with the unix socket type.
+  The arm compiles upstream's `system/freertos/system.c`,
+  `system/unix/network.c` and the POSIX links; no source is copied.
+- The entry-locator default for a `"host"` board is the host's loopback router
+  (`tcp/127.0.0.1:7447`), keyed on `stack`, not on a board name.
+
+Not: a `freertos-posix` name match (the predicate is the fact the board already
+states); a new `[board.capabilities]` key (two spellings of one fact); copying
+`tcp_posix.c` into nano-ros (a second POSIX link to keep in step).
 
 ## Examples by platform
 

@@ -552,6 +552,17 @@ fn net(args: NetArgs) -> Result<()> {
                     .collect::<Vec<_>>()
                     .join(".")
             );
+            // issue 2342 (phase-546) — who owns the network (RFC-0109 D2). On a
+            // `"host"` board the gateway above is the platform default and
+            // means nothing: the image is a host process, and the router it
+            // dials by default is the host's own loopback one. The resolver
+            // keys that rung on this fact, not on a board name.
+            let descriptor = dir.join("nros-board.toml");
+            let stack = crate::orchestration::image_net::board_net(&descriptor, &args.name)
+                .map_err(|e| eyre!("{e}"))?
+                .stack
+                .unwrap_or_default();
+            println!("set(NROS_BOARD_NET_STACK \"{stack}\")");
         }
         "toml" => {
             let dotted = |o: &[u8]| o.iter().map(u8::to_string).collect::<Vec<_>>().join(".");

@@ -81,9 +81,10 @@ args   = { host = "robot2" }
 rmw = "zenoh"
 
 # Boards and RMWs mirror the fixture rows these images replace — read from the
-# rows rather than defaulted, which is the lesson of issue 0842: zenoh-pico's
-# FreeRTOS backend is lwIP-only, so a FreeRTOS board without lwIP must declare
-# the cyclonedds its row always built.
+# rows rather than defaulted, which is the lesson of issue 0842: a FreeRTOS
+# board without lwIP declares the cyclonedds its row always built. (zenoh has a
+# host-socket FreeRTOS arm since issue 2342; this workspace's zenoh image of
+# that board is the C one.)
 [image.freertos]
 board = "mps2-an385-freertos"
 # phase-535 W3 — stated here, not as the row's `-DNROS_ENTRY_LOCATOR`: the

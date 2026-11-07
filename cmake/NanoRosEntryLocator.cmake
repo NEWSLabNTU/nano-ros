@@ -86,6 +86,13 @@ set(NROS_LOCATOR_ENTRY_THREADX_LINUX "tcp/127.0.0.1:7447"
 # real hardware) still answers 192.0.3.1, now from its descriptor.
 set(NROS_LOCATOR_DEFAULT_PORT "7447"
     CACHE INTERNAL "nano-ros: the router port a board-derived default dials")
+# issue 2342 (phase-546) — a board whose network the HOST owns
+# (`[board.net] stack = "host"`, RFC-0109 D2: freertos-posix) is a host process
+# dialling the host's own router, on loopback. Its gateway rung would answer the
+# platform default, a network that is not there. Keyed on the stack fact, so it
+# is not one more board-name rung like threadx-linux's above.
+set(NROS_LOCATOR_ENTRY_HOST_STACK "tcp/127.0.0.1:7447"
+    CACHE INTERNAL "nano-ros: entry-lane locator default, a host-stack board")
 # Every other embedded board: QEMU slirp routes the guest to the host at
 # 10.0.2.2.
 set(NROS_LOCATOR_ENTRY_DEFAULT "tcp/10.0.2.2:7447"
@@ -114,7 +121,8 @@ set(NROS_LOCATOR_NODEREG_FREERTOS "tcp/10.0.2.2:7447"
 #   configure dial different routers, so it outranks the configure-wide `-D`,
 #   and a `-D` that disagrees is reported, not silently dropped)
 #   > `NROS_ENTRY_LOCATOR` (the `-D` cache override every RTOS fixture row passes)
-#   > board threadx-linux > the board's own gateway (RFC-0103 D10)
+#   > board threadx-linux > a host-stack board's loopback (issue 2342)
+#   > the board's own gateway (RFC-0103 D10)
 #   > the QEMU-slirp default.
 #
 # Precedence, node-register lane:
@@ -152,8 +160,10 @@ function(_nros_resolve_entry_locator lane platform board out_var)
     set(_board_loc "")
     if(NOT "${board}" STREQUAL "" AND NOT board STREQUAL "threadx-linux"
        AND COMMAND nros_board_net_c)
-        nros_board_net_c("${board}" _unused_net GATEWAY_VAR _gw OPTIONAL)
-        if(_gw)
+        nros_board_net_c("${board}" _unused_net GATEWAY_VAR _gw STACK_VAR _stack OPTIONAL)
+        if(_stack STREQUAL "host")
+            set(_board_loc "${NROS_LOCATOR_ENTRY_HOST_STACK}")
+        elseif(_gw)
             set(_board_loc "tcp/${_gw}:${NROS_LOCATOR_DEFAULT_PORT}")
         endif()
     endif()
