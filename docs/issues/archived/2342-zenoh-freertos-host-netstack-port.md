@@ -1,14 +1,15 @@
 ---
 id: 2342
 title: "zenoh-pico has no FreeRTOS port for a host-owned network stack, so a zenoh image on the FreeRTOS POSIX board does not build"
-status: open
+status: resolved
 type: bug
 area: rmw-zenoh, freertos, boards
-related: [issue-2341, issue-1143]
+related: [issue-2341, issue-1143, phase-546]
 found: 2026-11-07
 ---
 
-**Home: none yet.** Found while fixing issue 2341.
+**Home:** [phase-546](../../roadmap/phase-546-zenoh-freertos-host-sockets.md)
+(W1 to W4). Found while fixing issue 2341.
 
 ## Symptom
 
@@ -55,3 +56,31 @@ Until one lands, the book's FreeRTOS POSIX starter scaffolds `--rmw cyclonedds`.
 A scaffolded zenoh talker on `freertos-posix` builds and `nros run` prints
 `Publishing:`, or zenoh on that board is refused at configure with a remedy,
 and the scaffold no longer defaults to it.
+
+## Resolution
+
+Option 1, by maintainer ruling 2026-11-07 ([phase-546](../../roadmap/phase-546-zenoh-freertos-host-sockets.md),
+RFC-0109 D11).
+
+- The board fact is `host_stack`, DERIVED from `[board.net] stack = "host"` on
+  the board capability rung; `nros-platform-freertos` declares it false, so the
+  lwIP boards keep their arm.
+- `[port.freertos]` gets a third header arm on `host_stack = true`: zenoh-pico's
+  own custom-platform hook `ZP_SYSTEM_PLATFORM_HEADER`, naming
+  `zpico-sys/c/platform/freertos-host/nros_zenoh_freertos_host.h` (FreeRTOS
+  system types, the unix socket type, `ZP_PLATFORM_SOCKET_POSIX`). It compiles
+  upstream's `system/freertos/system.c`, `system/unix/network.c` and the POSIX
+  TCP/UDP links. One fork patch: `system.c` refused any header but its three.
+- The read future rests 2 ms between polls on this arm. A FreeRTOS task blocked
+  in a host `recv` is RUNNING to the kernel, so without the rest the image
+  connected and never published (the read task looped on `EINTR` from the
+  port's tick signal).
+- A host-stack board's default router is `tcp/127.0.0.1:7447`; it dialled the
+  platform default `192.0.3.1` before.
+
+Measured in the ROS 2 box: a scaffolded C talker and C listener on
+`freertos-posix` (`nros new ... --board freertos-posix`, `nros build`) against
+`rmw_zenohd` on `tcp/127.0.0.1:27447`: 13 of 13 samples reached the listener,
+and `ros2 topic echo /chatter` printed `data: 'Hello World: 5'` onward. The
+fixture row `workspace-c-freertos-posix-zenoh` and
+`freertos_posix_c_entry_delivers_over_zenoh` pass.
