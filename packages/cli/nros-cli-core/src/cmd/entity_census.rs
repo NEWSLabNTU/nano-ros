@@ -473,6 +473,8 @@ fn take_census_verb(args: TakeArgs) -> Result<()> {
             std::slice::from_ref(image),
             false,
             args.offline,
+            // Issue 2279: a refusal names the command the reader typed.
+            "ws entity-census take",
         )?;
     }
     take_census(args)
@@ -598,7 +600,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
     // RFC-0120 C3 -- the host toolchain, before the host image is planned:
     // the same check `take --leaf` makes, so a missing compiler is named
     // rather than surfacing as a CMake or cargo error (phase-530 W2, M5).
-    let missing = crate::builder::preflight::check_host_toolchain(Some(&nano_ros_root));
+    let missing = crate::builder::preflight::check_host_toolchain(&root, Some(&nano_ros_root));
     if !missing.is_empty() {
         bail!(
             "`{asked_q}` is checked against a census, a HOST build of `{native_q}`, and this host \
@@ -890,14 +892,18 @@ fn take_leaf_census(leaf: &Path, image: Option<&str>, timeout_secs: u64) -> Resu
 /// cmake step (`configure`, `build`). A seam, so the refusals are testable
 /// without a host that lacks a compiler or sources that fail to build.
 pub(crate) struct HostSteps<'a> {
-    pub missing: &'a dyn Fn(&Path) -> Vec<crate::builder::preflight::Missing>,
+    /// `(project, nano_ros_root)`: the leaf the host build runs in, and the
+    /// nano-ros tree whose index pins the store tools.
+    pub missing: &'a dyn Fn(&Path, &Path) -> Vec<crate::builder::preflight::Missing>,
     pub run: &'a dyn Fn(&mut Command) -> std::io::Result<std::process::ExitStatus>,
 }
 
 impl HostSteps<'static> {
     fn real() -> Self {
         HostSteps {
-            missing: &|root| crate::builder::preflight::check_host_toolchain(Some(root)),
+            missing: &|project, root| {
+                crate::builder::preflight::check_host_toolchain(project, Some(root))
+            },
             run: &|cmd| cmd.status(),
         }
     }
@@ -982,7 +988,7 @@ pub(crate) fn take_leaf_census_with(
         .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
     // RFC-0120 C3 -- the host toolchain, before anything is configured, so a
     // missing compiler is named rather than surfacing as a CMake error.
-    let missing = (host.missing)(&root);
+    let missing = (host.missing)(&leaf, &root);
     if !missing.is_empty() {
         bail!(
             "{}: its entities are counted by its census, a HOST build of its sources, and this \
@@ -2104,7 +2110,7 @@ mod tests {
         );
         let ran = std::cell::Cell::new(0);
         let host = HostSteps {
-            missing: &|_| Vec::new(),
+            missing: &|_, _| Vec::new(),
             run: &|_| {
                 ran.set(ran.get() + 1);
                 Ok(std::process::ExitStatus::from_raw(1 << 8))
@@ -2138,7 +2144,7 @@ mod tests {
         );
         let removed = std::cell::RefCell::new(Vec::new());
         let host = HostSteps {
-            missing: &|_| Vec::new(),
+            missing: &|_, _| Vec::new(),
             run: &|cmd| {
                 let gone: Vec<String> = cmd
                     .get_envs()
@@ -2167,7 +2173,7 @@ mod tests {
         let td = tempfile::tempdir().unwrap();
         default_census_leaf(td.path(), "");
         let host = HostSteps {
-            missing: &|_| Vec::new(),
+            missing: &|_, _| Vec::new(),
             run: &|_| Ok(std::process::ExitStatus::from_raw(1 << 8)),
         };
         let msg = format!(
@@ -2193,7 +2199,7 @@ mod tests {
             "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n",
         );
         let host = HostSteps {
-            missing: &|_| {
+            missing: &|_, _| {
                 vec![crate::builder::preflight::Missing {
                     what: "a host C++ compiler".into(),
                     remedy: "install one".into(),

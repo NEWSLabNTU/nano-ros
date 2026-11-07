@@ -597,12 +597,16 @@ pub(crate) struct HostProbe<'a> {
 /// store-provisioned Corrosion. A census is a host build of the leaf's own
 /// sources, so a host without one of these cannot count anything; this names
 /// the one that is missing instead of a CMake error four frames deep.
+///
+/// `project` is the directory the census's host build runs its cargo in, so
+/// rustup is asked from there (issue 2288: each answer is about the toolchain
+/// that directory pins).
 #[must_use]
-pub fn check_host_toolchain(nano_ros_root: Option<&Path>) -> Vec<Missing> {
+pub fn check_host_toolchain(project: &Path, nano_ros_root: Option<&Path>) -> Vec<Missing> {
     let on_path = |p: &str| which_on_path(p);
     let host_target = || {
         let host = crate::orchestration::metadata_build::host_triple();
-        installed_rust_targets()
+        installed_rust_targets(project)
             .as_ref()
             .map(|list| (host.clone(), list.iter().any(|l| l == &host)))
     };
