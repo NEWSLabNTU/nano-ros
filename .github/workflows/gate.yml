@@ -790,24 +790,21 @@ jobs:
           # issue 1483 -- `check-python-entry-provenance` compares each
           # `[python.*]` mirror with upstream rosidl's own package.xml, so it
           # needs the pinned rosidl clone; without it the gate reports NOT
-          # VERIFIED and `check-fast-skip-allowlist` refuses the lane.
+          # VERIFIED, which the gate harness reports as a red.
           source ./activate.sh
           nros setup --source rosidl
 
+      # phase-543 W6 — the `fast` lane of .config/gate-lanes.toml, through the
+      # nextest harness. Its claims are what this image provides; a gate needing
+      # anything else (an FSP tree, a west workspace, a fixture build) is out of
+      # scope and listed as not run, by name. A gate in scope that skips is red,
+      # which is what the retired skip allowlist enforced one ledger later.
       - name: just check fast
+        env:
+          NROS_GATE_SCOPE: fast
         run: |
           source ./activate.sh
           just check fast
-
-      # The skip ledger is a CONTRACT here, not a report: every gate this job
-      # cannot give an input to is named in .config/ci-check-fast-skips.txt with
-      # the reason, and any other NOT VERIFIED fails the job. Without it, a gate
-      # that loses its input in CI goes quiet instead of red -- which is how the
-      # six gates above stopped verifying, one at a time, unnoticed.
-      - name: CI may skip only the allowlisted gates
-        run: |
-          source ./activate.sh
-          scripts/ci/check-fast-skip-allowlist.sh
 
       # A pin naming a commit no remote can serve is a repo that builds only on
       # the machine that made it: every clone and every CI run dies at
@@ -995,8 +992,7 @@ jobs:
           source ./activate.sh
           just check api-parity
 
-      # Neither gate is in `.config/ci-check-fast-skips.txt`, so neither may
-      # skip here: a recorded skip (no CLI, no cmake, no store Corrosion) is a
+      # Neither gate may skip here: a recorded skip (no CLI, no cmake, no store Corrosion) is a
       # missing input this job must provide, never a pass.
       - name: These gates may not skip
         if: ${{ !cancelled() }}
@@ -3055,6 +3051,7 @@ jobs:
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         env:
           NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/3
+          NROS_GATE_SCOPE: build
         run: |
           source ./activate.sh
           just check build
@@ -3402,6 +3399,8 @@ jobs:
       # instead, so a gate that flakes on main still leaves the ~1 GB of
       # compiles that DID finish.
       - name: just check fast (warms the compiles `check-fast` makes)
+        env:
+          NROS_GATE_SCOPE: fast
         run: |
           source ./activate.sh
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"

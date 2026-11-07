@@ -41,8 +41,10 @@ tiers = ["fast"]
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
 
 [lane.build]
-# `check / build tier` shards on the hosted runner: same image.
-tiers = ["build"]
+# The hosted runner's other jobs: `check / build tier` shards (gate.yml) and
+# host-tests' tier-1 gates, which run `just check` and so both tiers. Same
+# image as `fast`, without the sparse Zephyr header clone.
+tiers = ["fast", "build"]
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
 
 [lane.queue]

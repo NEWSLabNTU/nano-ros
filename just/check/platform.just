@@ -331,6 +331,7 @@ zephyr-heap-exhaustion:
 #
 # Buildless, and its negative control runs first on every invocation.
 [group("check")]
+[group('needs:submodules')]
 capability-conditionals:
     @python3 scripts/check-capability-conditionals.py
 

@@ -131,6 +131,7 @@ contract-format:
 # for byte, so the page cannot drift from `nros --help`. No in-tree CLI, or a
 # stale one (`cli-fresh` owns that failure), is NOT VERIFIED. ~1 s.
 [private]
+[group('needs:cli')]
 cli-reference:
     @python3 scripts/gen-cli-reference.py --check
 
@@ -219,6 +220,7 @@ book-no-just:
 # needs the in-tree CLI and is NOT VERIFIED (skip ledger) without one; the
 # rest is buildless, ~1 s.
 [private]
+[group('needs:cli')]
 user-surface-ids:
     @python3 scripts/check/check-user-surface-ids.py
 

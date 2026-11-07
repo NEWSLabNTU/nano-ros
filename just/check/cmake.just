@@ -702,6 +702,7 @@ freertos-shell-diagnostics:
 # default `panic = "unwind"`, and every threadx-linux C/C++ image failed at the
 # nightly's CMAKE_BUILD_TYPE=Release. Three cmake script runs, no compiler; ~0.3 s.
 [private]
+[group('needs:cli')]
 generated-root-profiles:
     @python3 scripts/check-generated-root-profiles.py
 
