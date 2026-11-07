@@ -7737,7 +7737,7 @@ mod zephyr_runtime_setup_tests {
             RustNeed::Component("cargo".into()),
             RustNeed::Component("rust-src".into()),
             RustNeed::Component("rustfmt".into()),
-            RustNeed::Target("thumbv7em-none-eabihf".into()),
+            RustNeed::Target("thumbv7em-none-eabi".into()),
         ] {
             assert!(
                 needs.contains(&(Some(nightly.clone()), n.clone())),
@@ -7745,7 +7745,7 @@ mod zephyr_runtime_setup_tests {
             );
         }
         // zephyr-lang-rust's own target stays on the stable channel.
-        assert!(needs.contains(&(None, RustNeed::Target("thumbv7em-none-eabihf".into()))));
+        assert!(needs.contains(&(None, RustNeed::Target("thumbv7em-none-eabi".into()))));
     }
 
     #[test]

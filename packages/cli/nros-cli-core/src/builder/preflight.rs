@@ -886,7 +886,7 @@ mod tests {
                 RustNeed::Component("cargo".into()),
                 RustNeed::Component("rust-src".into()),
                 RustNeed::Component("rustfmt".into()),
-                RustNeed::Target("thumbv7em-none-eabihf".into()),
+                RustNeed::Target("thumbv7em-none-eabi".into()),
             ]
         );
         let native_sim =
@@ -941,7 +941,7 @@ mod tests {
         let whats: Vec<&str> = no_src_no_target.iter().map(|m| m.what.as_str()).collect();
         assert_eq!(whats.len(), 2, "{whats:?}");
         assert!(whats[0].contains("`rust-src`"), "{whats:?}");
-        assert!(whats[1].contains("`thumbv7em-none-eabihf`"), "{whats:?}");
+        assert!(whats[1].contains("`thumbv7em-none-eabi`"), "{whats:?}");
 
         assert!(check(&|_| Some(true)).is_empty());
         assert!(
