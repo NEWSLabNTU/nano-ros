@@ -587,7 +587,8 @@ Rejected, for owned entries (maintainer decision, 2026-11-05):
 **Status: Accepted (user ruling, 2026-11-07), not yet implemented.** The
 ruling: it enables third-party RMW backends on the `nros build` road. Issue
 2295 is homed here and stays open until D14–D16 are implemented and D16's
-acceptance passes.
+acceptance passes; [phase-545](../roadmap/phase-545-rmw-provider-scan-build-road.md)
+implements them.
 
 D5's acceptance test, "a backend added out-of-tree with zero core edits",
 passes on the cmake road and fails on `nros build`. Issue 1214 moved the cmake
