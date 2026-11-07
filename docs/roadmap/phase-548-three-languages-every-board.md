@@ -34,7 +34,7 @@ repository; W8 re-measures every cell.
 | NuttX rv-virt (zenoh) | ok | ok | ok |
 | ThreadX Linux (zenoh) | ok | ok | ok |
 | ThreadX qemu riscv64 (zenoh) | ok | ok | **W4** |
-| nucleo-f767zi Zephyr (zenoh) | **W7** | **W7** | **W7** |
+| nucleo-f767zi Zephyr (zenoh), Renode twin, serial | 2358, 2359 | ok | ok |
 
 Gaps already owned outside this phase. This phase does not repeat them; W8
 re-measures their cells once they land:
@@ -263,16 +263,54 @@ the second build succeeds.
 
 ### W7 — Measure nucleo-f767zi
 
+**Status (2026-11-07): MEASURED.** C ok, C++ ok, Rust red (issues 2358 and
+2359).
+
 **Code area:** none yet. This item is a measurement.
 
-- Not measured on 2026-11-07: the shared Zephyr 3.7 west workspace has no
-  `hal_stm32` (`st/f7/stm32f767zitx-pinctrl.dtsi: No such file or
-  directory`), and the host has no Renode.
+- Not measured on 2026-11-07 at first: the shared Zephyr 3.7 west workspace
+  has no `hal_stm32` (`st/f7/stm32f767zitx-pinctrl.dtsi: No such file or
+  directory`), and the host had no Renode.
 - Work: measure the three cells in a west workspace that `nros setup
   nucleo-f767zi-zephyr` provisions, under Renode. File each failure it finds
   as an issue and add it to this phase.
 
 **Acceptance:** all three cells measured, with each red cell filed.
+
+Measured in the `ros2` box (Humble, Zephyr 3.7, Renode 1.17.0 from the
+store), on the serial link only (ethernet in Renode needs `CAP_NET_ADMIN`).
+The west workspace is the one `book/src/starters/nucleo-f767zi.md` writes
+(`hal_stm32` in its allowlist), given the 3.7 patch set by
+`nros setup board nucleo-f767zi-zephyr --zephyr-workspace "$PWD"`. Each cell
+is `nros new <ws> --board nucleo-f767zi-zephyr --template talker --lang <l>
+--rmw zenoh`, then `nros run <ws>_node --expect 'Publishing:'`, then a
+second `nros run <ws>_node` with `ros2 topic echo /chatter
+std_msgs/msg/String --qos-reliability best_effort` beside it.
+
+- **C: ok.** `nros run: matched after 8.7 s: Publishing: 'Hello World: 1'`;
+  the echo printed `data: 'Hello World: 28'` onward.
+- **C++: ok.** `nros run: matched after 8.3 s: Publishing: 'Hello World: 1'`;
+  the echo printed `data: 'Hello World: 28'` onward.
+- **Rust: red.** First, the starter's workspace has no `zephyr-lang-rust`,
+  and the hint `nros setup board` prints names a fragment that does not exist
+  by an absolute path west refuses (issue 2358). Second, the board stated
+  `rust_target = "thumbv7em-none-eabihf"` while its image is soft-float
+  (`CONFIG_FPU` off), so issue 2204's check refused the configure; fixed
+  here, in the descriptor, to `thumbv7em-none-eabi`. Third, with both out of
+  the way the image boots to `nros: zephyr workspace entry up (1 nodes)`
+  and its timer callback never runs (issue 2359). The same template
+  publishes on `mps2-an385-zephyr`, so the fault is the Rust entry on a
+  serial session, not Rust on Zephyr.
+- The starter's `echo 'locator = ...' >> system.toml` step wrote a second
+  `locator` under `[image.zephyr]`: the scaffold already writes it (issue
+  2290), and `nros build` stopped with ``duplicate key `locator` ``. Fixed
+  here: the step now shows the scaffolded line.
+- Issue 2353 did not show here: the `nros new` workspace sits inside the
+  west workspace, and `nros run` found it with `ZEPHYR_BASE` unset.
+- `nros setup nucleo-f767zi-zephyr` exits 1 in the box: the Zephyr SDK's
+  host-tools step needs `file`, which the box lacks
+  (`sudo apt-get install file`). The build does not use the host tools, so
+  no cell flips on it.
 
 ### W8 — The book: three tabs on every starter, each probed
 

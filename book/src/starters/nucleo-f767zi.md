@@ -80,7 +80,8 @@ export ZEPHYR_BASE="$PWD/zephyr"
 Last, give the west workspace the patches nano-ros carries for Zephyr 3.7.
 The same command installs the Rust toolchain the C talker's runtime is
 compiled with: a pinned nightly, with `rust-src` and the board's
-`thumbv7em-none-eabihf` target:
+`thumbv7em-none-eabi` target (the board's Zephyr configuration builds
+soft-float):
 
 ```bash probe=36 track=installed
 nros setup board nucleo-f767zi-zephyr --zephyr-workspace "$PWD"
@@ -105,17 +106,22 @@ cd nucleo_ws
 That wrote a workspace with two packages: `src/nucleo_node/`, the C talker,
 and `src/nucleo_node_bringup/`, which says what the talker runs on. The board
 reaches the router on your host through USART3, which Zephyr calls
-`serial@40004800`, at 115200 baud. Say so with one line at the end of the
-bringup's `system.toml`:
+`serial@40004800`, at 115200 baud. The scaffold already said so, with a
+`locator` line in the bringup's `system.toml`:
 
 ```bash probe=45 track=installed
-echo 'locator = "serial/serial@40004800#baudrate=115200"' >> src/nucleo_node_bringup/system.toml
+grep '^locator' src/nucleo_node_bringup/system.toml
 ```
 
-The line lands in the `[image.zephyr]` block, under the
-`board = "nucleo-f767zi-zephyr"` line the scaffold wrote. The board's own
-configuration already turns Zephyr's IP stack off and gives USART3 to zenoh.
-Its console is USART6.
+```text
+locator = "serial/serial@40004800#baudrate=115200"
+```
+
+The line sits in the `[image.zephyr]` block, under the
+`board = "nucleo-f767zi-zephyr"` line. Do not add a second one: TOML refuses
+a duplicate key, and `nros build` stops with ``duplicate key `locator` ``.
+The board's own configuration already turns Zephyr's IP stack off and gives
+USART3 to zenoh. Its console is USART6.
 
 ## Run it in the Renode twin
 
