@@ -438,11 +438,15 @@ node `"std_msgs.hpp"`.
 
 The message definitions come from the first of these that has the package:
 the directories in `NROS_INTERFACE_SEARCH_PATH`, then a sourced ROS 2
-install (`AMENT_PREFIX_PATH`), then copies nano-ros carries of a few
-standard packages. Those copies are one ROS 2 distro's, so build from a shell
-that has sourced your ROS 2 install (`source /opt/ros/humble/setup.bash`):
-the types then match your ROS 2 peers. A Rust application's `nros configure`
-([below](#a-rust-application)) does not fall back to the copies at all. For
+install (`AMENT_PREFIX_PATH`). Build from a shell that has sourced your ROS 2
+install (`source /opt/ros/humble/setup.bash`), so the types match your ROS 2
+peers. This is required: if neither names a package, the configure stops and
+says to source ROS 2. That is the rule a Rust application's `nros configure`
+([below](#a-rust-application)) follows too. nano-ros also carries copies of
+a few standard packages, but they are one ROS 2 distro's, and the build uses
+them only if you ask: add the directory the refusal names (`packages/cli/interfaces`
+in the SDK root) to `NROS_INTERFACE_SEARCH_PATH`. Even then a sourced ROS 2
+install is read first. For
 your own messages, keep them in a ROS 2 interface
 package (its `package.xml` and `msg/` directory) anywhere on disk, add the
 directory that holds it to `NROS_INTERFACE_SEARCH_PATH`, and depend on it like

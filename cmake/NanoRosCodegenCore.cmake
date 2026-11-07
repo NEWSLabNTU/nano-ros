@@ -69,6 +69,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosReconfigure.cmake")
 # and any combination of interface archives links without duplicate
 # `nros_cpp_*` definitions. OWN files keep both halves.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
+# Issue 2278 — the bundled-interfaces opt-in and refusal every generator applies.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBundledInterfaces.cmake")
 
 # _nros_rs_type_key(<file> <out_var>) -- issue 1469.
 #

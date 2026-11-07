@@ -285,7 +285,9 @@ render_probe() {
         echo 'set(CMAKE_CXX_STANDARD_REQUIRED ON)'
         echo 'set(NROS_EXTRA_CPP_FEATURES "metadata-mode")'
         echo 'set(NROS_GEN_CACHE_DIR "${CMAKE_BINARY_DIR}/nros-codegen")'
-        echo "set(NROS_INTERFACE_SEARCH_PATH \"$WS/src\")"
+        # Issue 2278 -- the bundled interfaces are an explicit opt-in: this
+        # gate configures on hosts with no ROS sourced, so it names them.
+        echo "set(NROS_INTERFACE_SEARCH_PATH \"$WS/src;$PROJECT_ROOT/packages/cli/interfaces\")"
         echo 'find_package(nano_ros REQUIRED)'
         echo 'nros_workspace_interfaces()'
         local p

@@ -394,6 +394,36 @@ probe-shared-types:
     nros_gate_require_store_corrosion probe-shared-types "$_cli" || exit 0
     NROS_CLI="$_cli" ./tests/cmake-probe-shared-types-tests.sh
 
+# issue 2278 -- the CMake road refuses the bundled interfaces the way `nros
+# configure` does. `find_package(<msg pkg>)` and `nros_generate_interfaces` fail
+# with configure's remedy when neither NROS_INTERFACE_SEARCH_PATH nor
+# AMENT_PREFIX_PATH names the package and only the bundled copy holds it;
+# naming the bundled root on the search path opts in and keeps it after AMENT
+# (tests/cmake-bundled-interfaces-tests.sh). On the fast line: configure-only,
+# no compiler runs. SKIPS in a pristine worktree for want of the in-tree CLI.
+[private]
+[group('needs:cli')]
+[group('needs:cmake')]
+cmake-bundled-interfaces:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-bundled-interfaces "missing host tool(s): cmake"
+        exit 0
+    fi
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — this checkout's CLI (or an explicit $NROS_CLI), never PATH.
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-bundled-interfaces "no in-tree CLI -- run \`just setup-cli\`"
+        exit 0
+    fi
+    NROS_CLI="$_cli" ./tests/cmake-bundled-interfaces-tests.sh
+
 # issue 1470 -- the probe and the real build must agree about whether a type is
 # BOUNDED.
 #

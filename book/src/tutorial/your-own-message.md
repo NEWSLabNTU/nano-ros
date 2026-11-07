@@ -248,7 +248,11 @@ Find-stub forwarding `find_package(my_msgs)` → `my_msgs::my_msgs`.
 |---|---|---|
 | 1 | `NROS_INTERFACE_SEARCH_PATH` | Colon/semicolon-separated colcon-`src/`-style roots; immediate subdirs with `package.xml` are candidates. |
 | 2 | `AMENT_PREFIX_PATH` | The standard ROS install-prefix layout (`<prefix>/share/<pkg>/{msg,srv,action}/`). |
-| 3 | Bundled | `<nano-ros>/packages/cli/interfaces/<pkg>/` (in-tree bundled definitions). |
+| 3 | Bundled | `<nano-ros>/packages/cli/interfaces/<pkg>/` (the copies nano-ros carries). Read only when `NROS_INTERFACE_SEARCH_PATH` names that directory, and still after layer 2. |
+
+A package that layers 1 and 2 do not have and only the bundled copies hold
+stops the configure, unless you opted in to them. The error says to source
+ROS 2, which is what `nros configure` requires too.
 
 Shadowing — a workspace `my_msgs` and an AMENT `my_msgs` resolve to the
 workspace one, with a `message(STATUS ...)` line noting the shadow.
@@ -263,7 +267,8 @@ layer wins** — silently and deterministically. Concretely:
    The message-package resolver
    (`cmake/find/_NrosFindRosMsgPackage.cmake`) walks the
    three layers in order; the first hit wins. Lower layers are
-   skipped entirely.
+   skipped entirely. The bundled layer is there only when you opted
+   in, as the table above says.
 
 2. **The configure pass emits a `message(STATUS ...)` line** noting
    the resolved path, e.g.

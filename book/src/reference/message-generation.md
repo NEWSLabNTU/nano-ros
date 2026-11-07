@@ -314,12 +314,26 @@ them, because they would silently fix a ROS 2 distro and the types would
 stop matching a peer on another one. A message package in your own
 workspace shadows the installed one of the same name.
 
+A CMake or plain `west` application never runs `nros configure`, and it
+follows the same rule. `find_package(<pkg>)` and `nros_generate_interfaces`
+stop when neither `NROS_INTERFACE_SEARCH_PATH` nor `AMENT_PREFIX_PATH` names
+the package. To build such an application from the bundled copies on
+purpose, add their directory to `NROS_INTERFACE_SEARCH_PATH` (the error names
+it: `packages/cli/interfaces` in the SDK root). A sourced ROS 2 install is
+still read first.
+
 ## Troubleshooting
 
 **"`AMENT_PREFIX_PATH` is unset, and … has no earlier configure that recorded one"**
 - This shell has not sourced ROS 2, and this project has never been
   configured from one that had. Run `source /opt/ros/humble/setup.bash`
   (or your overlay's `install/setup.bash`), then build again.
+
+**"the message package `X` is on neither NROS_INTERFACE_SEARCH_PATH nor AMENT_PREFIX_PATH"**
+- A CMake or `west` configure found `X` only in nano-ros's bundled copies.
+  Source ROS 2 (`source /opt/ros/humble/setup.bash`) and configure again, or
+  opt in to the bundled copies by adding the directory the error names to
+  `NROS_INTERFACE_SEARCH_PATH`.
 
 **"Package 'X' not found in ament index or bundled interfaces"**
 - Source the ROS 2 environment: `source /opt/ros/humble/setup.bash`
