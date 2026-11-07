@@ -6,8 +6,10 @@ type: bug
 area: [cli, build]
 severity: low
 found: 2026-11-06
-related: [phase-527, phase-287, 0457]
+related: [phase-527, phase-287, 0457, phase-489]
 ---
+
+**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md).**
 
 ## What happens
 

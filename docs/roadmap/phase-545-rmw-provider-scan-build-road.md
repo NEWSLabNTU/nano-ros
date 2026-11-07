@@ -137,3 +137,10 @@ crate does not name, and an acceptance test with a gate.
   `nros build`, with no core edit.
 - No CLI site reads `RMW_ROWS`, enforced by the gate.
 - Issue 2295 is resolved.
+
+## Issues homed here (2026-11-07)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2295](../issues/2295-nros-build-rmw-selection-in-tree-only.md) | This phase closes it: `nros build` finds an RMW provider outside the in-tree table (RFC-0071 Amendment 2026-11-07, D14 to D16). |
+| [#2310](../issues/2310-board-descriptor-platform-is-closed-enum.md) | A board descriptor's `platform` is a closed enum, so no out-of-tree platform: the platform-side twin of the out-of-tree RMW this phase enables. |

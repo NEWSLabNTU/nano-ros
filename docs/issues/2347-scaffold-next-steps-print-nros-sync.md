@@ -4,11 +4,11 @@ title: "`nros new` prints `nros sync` in a Rust package's next steps; the verb i
 status: open
 type: bug
 area: cli-scaffold
-related: [issue-2346]
+related: [issue-2346, phase-523]
 found: 2026-11-07
 ---
 
-**Home: none yet.** Seen in the same checkout-track log as issue 2346.
+**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md).** Seen in the same checkout-track log as issue 2346.
 
 ## Symptom
 

@@ -9,6 +9,8 @@ found: 2026-11-06
 related: [1387, phase-543]
 ---
 
+**Home: [phase-543](../roadmap/phase-543-nextest-gates.md).**
+
 ## Measured
 
 CI's fast job provisions Zephyr's C++ minimal-libc headers with a sparse clone

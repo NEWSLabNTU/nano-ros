@@ -286,3 +286,10 @@ toolchains, ESP32 until W3 reopens it, a per-purpose book.
 
 - **W1, W3.** Lab and probe command sequences have no `nros sync` step. `nros build` / `nros run` configure implicitly, so a probe's timed path includes configure.
 - **W2, the instructor image.** It must carry a host C/C++ compiler: the census sizes every undeclared leaf, the Zephyr hardware labs included (RFC-0120 D4).
+
+## Issues homed here (2026-11-07)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md) | A user-tier message cites an internal issue id: an adoption stop of the same kind as issue 2332 (internal terms in a First Project build). |
+| [#2347](../issues/2347-scaffold-next-steps-print-nros-sync.md) | `nros new` prints `nros sync` in a Rust package's next steps: an adoption-probe stop from the checkout-track log of the scheduled probe run. |

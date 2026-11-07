@@ -8,7 +8,7 @@ related: [phase-537, 1268, 1269, 1293]
 found: 2026-11-06
 ---
 
-**Home: none yet.** Found by the phase-537 W5 book session (PR #3187),
+**Home: [phase-537](../roadmap/phase-537-book-user-guide-organization.md).** Found by the phase-537 W5 book session (PR #3187),
 writing the parameters chapter.
 
 ## Symptom
