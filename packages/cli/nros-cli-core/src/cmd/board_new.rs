@@ -298,13 +298,22 @@ fn append_registry_row(root: &Path, args: &NewArgs) -> Result<()> {
 
 fn print_next_steps(args: &NewArgs, dir: &Path) {
     println!("\nnext:");
+    for line in next_steps(args, dir) {
+        println!("  {line}");
+    }
+}
+
+/// The scaffold's next-step lines. Every one on the out-of-tree road is a
+/// user's step: no `just` recipe, no `nros dev` verb (issue 2294).
+fn next_steps(args: &NewArgs, dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
     if let Some(base) = &args.out_of_tree {
-        println!(
-            "  export NROS_EXTRA_BOARD_PATH={}   # how this board is reached",
+        out.push(format!(
+            "export NROS_EXTRA_BOARD_PATH={}   # how this board is reached",
             base.display()
-        );
+        ));
     } else {
-        println!("  packages/boards/board-support.toml  # row added at runs = \"none\"");
+        out.push("packages/boards/board-support.toml  # row added at runs = \"none\"".into());
     }
     if args.platform == "zephyr" {
         let flat: String = args
@@ -314,23 +323,110 @@ fn print_next_steps(args: &NewArgs, dir: &Path) {
             .chars()
             .map(|c| if matches!(c, '/' | '@' | '.') { '_' } else { c })
             .collect();
-        println!(
-            "  {}/boards/{flat}.conf      # optional, picked up if present",
+        out.push(format!(
+            "{}/boards/{flat}.conf      # optional, picked up if present",
             dir.display()
-        );
-        println!(
-            "  {}/boards/{flat}.overlay   # optional, picked up if present",
+        ));
+        out.push(format!(
+            "{}/boards/{flat}.overlay   # optional, picked up if present",
             dir.display()
-        );
-        println!(
-            "  nano_ros_use_board({})  # in the consumer's CMakeLists",
+        ));
+        out.push(format!(
+            "nano_ros_use_board({})  # in the consumer's CMakeLists",
             args.name
-        );
+        ));
     }
+    out.push(format!(
+        "nros check {}   # resolves the board, its announcement, network and projection",
+        args.name
+    ));
     // The checkout's own acceptance, and only the checkout has the recipe. The
     // out-of-tree road is a user's, who has no `just` recipes to run (issue
     // 2292 routed `nros new board` here too).
     if args.out_of_tree.is_none() {
-        println!("  just check fast   # the scaffold's acceptance: green before the first commit");
+        out.push(
+            "just check fast   # the scaffold's acceptance: green before the first commit".into(),
+        );
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(platform: &str, west_board: Option<&str>, out_of_tree: Option<&Path>) -> NewArgs {
+        NewArgs {
+            name: "acme".into(),
+            platform: platform.into(),
+            west_board: west_board.map(Into::into),
+            out_of_tree: out_of_tree.map(Path::to_path_buf),
+            workspace: None,
+            dry_run: false,
+        }
+    }
+
+    /// Issue 2294 — the out-of-tree road names `nros check <key>` and no
+    /// contributor step; the in-tree arm keeps the checkout's `just check
+    /// fast` after it.
+    #[test]
+    fn the_next_steps_name_the_user_check() {
+        let dir = Path::new("/x/nros-board-acme");
+        for (platform, wb) in [("freertos", None), ("zephyr", Some("acme/soc"))] {
+            let user = next_steps(&args(platform, wb, Some(Path::new("/x"))), dir);
+            assert!(
+                user.iter().any(|l| l.starts_with("nros check acme ")),
+                "{user:?}"
+            );
+            assert!(
+                user.iter()
+                    .all(|l| !l.contains("just ") && !l.contains("nros dev")),
+                "{user:?}"
+            );
+            let tree = next_steps(&args(platform, wb, None), dir);
+            let check = tree.iter().position(|l| l.starts_with("nros check acme "));
+            let fast = tree.iter().position(|l| l.starts_with("just check fast"));
+            assert!(check.is_some() && check < fast, "{tree:?}");
+        }
+    }
+
+    /// The scaffold's own output passes `nros check`'s board steps: what it
+    /// writes is a board the check accepts, Zephyr projection included.
+    #[test]
+    fn a_scaffolded_board_passes_the_board_check() {
+        use crate::orchestration::board_descriptor::BoardCatalog;
+        for (platform, wb) in [
+            ("freertos", None),
+            ("posix", None),
+            ("zephyr", Some("acme_board/acme_soc")),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let sdk = tmp.path().join("sdk");
+            std::fs::create_dir_all(sdk.join("packages/boards")).unwrap();
+            let base = tmp.path().join("boards");
+            let a = args(platform, wb, Some(&base));
+            let dir = base.join("nros-board-acme");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("nros-board.toml"), render_descriptor(&a)).unwrap();
+            std::fs::write(dir.join("package.xml"), render_package_xml(&a)).unwrap();
+            let catalog = BoardCatalog::load_with_extra(&sdk, std::slice::from_ref(&base)).unwrap();
+            crate::cmd::board::board_check_in(&catalog, &sdk, "acme")
+                .unwrap_or_else(|e| panic!("{platform}: {e:#}"));
+
+            // An announcement that drifts from the descriptor fails the check.
+            let xml = render_package_xml(&a).replace(
+                "name=\"acme\"/>",
+                "name=\"acme\"/>\n    <nano_ros_provides kind=\"board\" name=\"other\"/>",
+            );
+            std::fs::write(dir.join("package.xml"), xml).unwrap();
+            let catalog = BoardCatalog::load_with_extra(&sdk, std::slice::from_ref(&base)).unwrap();
+            let err = crate::cmd::board::board_check_in(&catalog, &sdk, "acme")
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains("announces boards") && err.contains("other"),
+                "{err}"
+            );
+        }
     }
 }

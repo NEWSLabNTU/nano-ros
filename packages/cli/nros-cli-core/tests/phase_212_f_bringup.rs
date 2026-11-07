@@ -154,6 +154,7 @@ fn cli_nros_check_rejects_cargo_toml_in_bringup() {
         package_xml_drift: vec![],
         bringup: true,
         workspace: None,
+        ..Default::default()
     })
     .unwrap_err();
     let msg = err.to_string();

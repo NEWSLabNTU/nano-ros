@@ -780,7 +780,7 @@ scaffold_shape_violations() {
 }
 
 # phase-527 W7 acceptance: a scaffolded runner, copied out of the tree, builds
-# in a fresh workspace, passes `nros dev runner check`, and runs the native
+# in a fresh workspace, passes `nros check` (issue 2294), and runs the native
 # talker through `method = "<its name>"` at the image level. The workspace is
 # a copy of `multi-node-workspace` (tracked files, worktree content), the
 # runner is written by `nros new acme_runner --kind runner` inside it, and the
@@ -811,7 +811,7 @@ run_runner_package() {
         copy_cache_vars "$work"
     fi
     { (cd "$ws" && "$nros" configure) && (cd "$ws" && "$nros" build) \
-        && (cd "$ws" && "$nros" dev runner check acme_runner --no-build); } >> "$log" 2>&1 || rc=$?
+        && (cd "$ws" && "$nros" check acme_runner --no-build); } >> "$log" 2>&1 || rc=$?
     if [ "$rc" -ne 0 ]; then
         report_build_failure "$label" "$log"
         nros_gate_scratch_failed "$work"
@@ -825,7 +825,7 @@ run_runner_package() {
         nros_gate_scratch_failed "$work"
         return 1
     fi
-    echo "  $label: OK — built, \`nros dev runner check\` passed, the talker ran through it"
+    echo "  $label: OK — built, \`nros check\` passed, the talker ran through it"
     rm -rf "$work"
     return 0
 }

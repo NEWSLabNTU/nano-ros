@@ -329,7 +329,8 @@ pub enum Cmd {
     /// Resolve launch files, manifests, and metadata into nros-plan.json
     Plan(plan::Args),
 
-    /// Validate a generated nros-plan.json
+    /// Check a runner, command or board package, a plan, a system.toml or a
+    /// workspace
     Check(check::Args),
 
     /// Render a generated nros-plan.json in human-readable form

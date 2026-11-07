@@ -1,6 +1,12 @@
 //! `nros check` - validate a generated nros-plan.json, a bringup
-//! `system.toml` (RFC-0004 §4), or (Phase 212.F) a `<bringup>` pkg directory
-//! for pure-declarative shape.
+//! `system.toml` (RFC-0004 §4), (Phase 212.F) a `<bringup>` pkg directory
+//! for pure-declarative shape, or (issue 2294) a runner, command or board
+//! package by name.
+//!
+//! The positional argument is a path unless it is a bare name with nothing
+//! of that name on disk ([`package_name_of`]); a bare name is a package, and
+//! its kind picks the check (RFC-0117 D2 and RFC-0119 D10, amended
+//! 2026-11-07).
 
 use crate::{
     cmd::{
@@ -60,8 +66,15 @@ fn legacy_overlay_warnings(system_toml_path: &Path) -> Result<Vec<String>> {
 pub struct Args {
     /// Path to nros-plan.json, a bringup `system.toml` (or a directory
     /// containing one), or a `<bringup>` pkg directory when `--bringup` is
-    /// set.
-    // The `--bringup` form is Phase 212.F.
+    /// set. Or the name of a runner, command or board package.
+    ///
+    /// A bare name (letters, digits, `_` and `-`) with no file or directory
+    /// of that name here is a package: the check that package's kind needs
+    /// runs. A runner or command is built, located and asked whether it
+    /// speaks this nros's protocol; a board's descriptor is resolved through
+    /// the board catalog, its announcement compared and its network and
+    /// Zephyr projection resolved.
+    // The `--bringup` form is Phase 212.F; the package form is issue 2294.
     #[arg(default_value = "build/nros/nros-plan.json")]
     pub plan: PathBuf,
 
@@ -92,6 +105,39 @@ pub struct Args {
     // Phase 212.L — the three checks are L.4 / L.8 / L.11.
     #[arg(long, num_args = 0..=1, default_missing_value = ".", value_name = "DIR")]
     pub workspace: Option<PathBuf>,
+
+    /// Package form: the image whose run plan a runner check resolves.
+    /// Omitted: the workspace's one image, if it has one.
+    #[arg(long)]
+    pub image: Option<String>,
+
+    /// Package form: approve an override of a nano-ros runner or command by
+    /// this name.
+    #[arg(long, value_name = "NAME")]
+    pub allow_overriding: Vec<String>,
+
+    /// Package form: check what is already built; do not run `nros build`.
+    #[arg(long)]
+    pub no_build: bool,
+
+    /// Package form: nano-ros checkout (auto-detected if omitted).
+    #[arg(long)]
+    pub nano_ros_path: Option<PathBuf>,
+}
+
+/// The package a positional argument names, or `None` for a path.
+///
+/// A path keeps every form it had: anything on disk, and anything with a
+/// character no package name holds (`/`, `.`), is a path. What is left is a
+/// bare name with nothing of that name here, which no path form could have
+/// read, so taking it as a package changes no command that worked before.
+// Issue 2294. Package names are ROS names (`[a-z0-9_]`); board keys add `-`.
+pub(crate) fn package_name_of(arg: &Path) -> Option<&str> {
+    let s = arg.to_str()?;
+    let bare = !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    (bare && !arg.exists()).then_some(s)
 }
 
 pub fn run(args: Args) -> Result<()> {
@@ -108,6 +154,23 @@ pub fn run(args: Args) -> Result<()> {
             report.warnings.len()
         );
         return Ok(());
+    }
+
+    // Issue 2294 — a bare name that is no path is a package; check it by
+    // its kind.
+    if !args.bringup
+        && let Some(name) = package_name_of(&args.plan)
+    {
+        return crate::cmd::extension_check::package_check(
+            crate::cmd::extension_check::CheckArgs {
+                name: name.to_string(),
+                workspace: None,
+                nano_ros_path: args.nano_ros_path.clone(),
+                image: args.image.clone(),
+                allow_overriding: args.allow_overriding.clone(),
+                no_build: args.no_build,
+            },
+        );
     }
 
     // Phase 212.F — `--bringup` switches the `plan` argument into a directory
@@ -232,6 +295,64 @@ domain_id = 0
 [image.linux]
 board = \"linux\"
 ";
+
+    /// Issue 2294 — a bare name with nothing of that name on disk is a
+    /// package; every path form stays a path, the default included.
+    #[test]
+    fn a_bare_name_not_on_disk_is_a_package_and_every_path_stays_a_path() {
+        let dir = scratch("nros-check-package-name");
+        let on_disk = dir.join("my_runner");
+        std::fs::create_dir_all(&on_disk).unwrap();
+        let file = dir.join("plan");
+        std::fs::write(&file, "{}").unwrap();
+
+        for name in ["my_runner", "acme_flash", "my-board", "fvp-aemv8r-smp"] {
+            assert_eq!(package_name_of(Path::new(name)), Some(name), "{name}");
+        }
+        for path in [
+            Path::new("build/nros/nros-plan.json"),
+            Path::new("nros-plan.json"),
+            Path::new("system.toml"),
+            Path::new("."),
+            Path::new("./my_runner"),
+            Path::new(""),
+            on_disk.as_path(),
+            file.as_path(),
+        ] {
+            assert_eq!(package_name_of(path), None, "{}", path.display());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The default positional and `--workspace` still parse into the forms
+    /// they always did, and the package flags parse beside a name.
+    #[test]
+    fn the_workspace_form_and_the_package_form_parse() {
+        use clap::Parser;
+        #[derive(Debug, Parser)]
+        struct Cli {
+            #[command(flatten)]
+            a: Args,
+        }
+        let ws = Cli::try_parse_from(["check", "--workspace"]).unwrap().a;
+        assert_eq!(ws.workspace.as_deref(), Some(Path::new(".")));
+        assert_eq!(ws.plan, Path::new("build/nros/nros-plan.json"));
+        let pkg = Cli::try_parse_from([
+            "check",
+            "acme_flash",
+            "--no-build",
+            "--image",
+            "linux",
+            "--allow-overriding",
+            "qemu",
+        ])
+        .unwrap()
+        .a;
+        assert_eq!(package_name_of(&pkg.plan), Some("acme_flash"));
+        assert!(pkg.no_build && pkg.workspace.is_none());
+        assert_eq!(pkg.image.as_deref(), Some("linux"));
+        assert_eq!(pkg.allow_overriding, ["qemu"]);
+    }
 
     #[test]
     fn checks_a_system_toml_file() {

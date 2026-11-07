@@ -51,6 +51,7 @@ fn check_workspace(root: &Path) -> eyre::Result<()> {
         package_xml_drift: Vec::new(),
         bringup: false,
         workspace: Some(root.to_path_buf()),
+        ..Default::default()
     })
 }
 

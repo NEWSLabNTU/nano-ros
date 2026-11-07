@@ -232,9 +232,8 @@ pub struct Args {
     /// The package holds its `package.xml`, its descriptor and a stub on
     /// `nros-extension` (`--lang rust`, the default) or a CMake executable
     /// that speaks the protocol JSON itself (`--lang cpp`). Inside a workspace
-    /// it lands in `src/<name>/`.
-    // Check it with `nros dev runner check <name>` or `nros dev command check
-    // <name>` (the build-system tier, so not in the user help).
+    /// it lands in `src/<name>/`. Check it with `nros check <name>`.
+    // `nros dev runner|command check <name>` are its aliases (issue 2294).
     // phase-527 W7. With `--deploy` this keeps its deprecated meaning (issue
     // 0951): `self` scaffolds a host, anything else an image.
     #[arg(long)]

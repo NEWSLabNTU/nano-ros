@@ -69,6 +69,7 @@ fn check_workspace_rejects_rtos_deploy() {
         package_xml_drift: Vec::new(),
         bringup: false,
         workspace: Some(root.clone()),
+        ..Default::default()
     })
     .expect_err("application pkg with RTOS deploy must be rejected");
     let msg = err.to_string();

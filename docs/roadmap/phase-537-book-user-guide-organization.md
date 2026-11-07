@@ -374,7 +374,7 @@ absent (gate `zephyr-patch-set-workspace`). Filed, not fixed:
 board --for-platform` writes no `package.xml`),
 [2293](../issues/archived/2293-config-explain-misses-out-of-tree-platforms.md) (`config
 explain` misses workspace and scaffolded platforms),
-[2294](../issues/2294-extension-scaffold-check-step-is-dev-tier.md) (scaffolds
+[2294](../issues/archived/2294-extension-scaffold-check-step-is-dev-tier.md) (scaffolds
 name `nros dev`/`just` check steps; no user-tier check verb is planned), and
 [2295](../issues/2295-nros-build-rmw-selection-in-tree-only.md) (`nros build`
 selects in-tree RMWs only). The Extending pages should say what these mean for
