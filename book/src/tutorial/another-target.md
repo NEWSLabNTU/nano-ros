@@ -309,8 +309,6 @@ written twice.
 
 ## Design background
 
-Images as rows of the bringup, and the target names `nros run` accepts,
-follow
-[RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md);
-the board descriptor that supplies an image's target facts follows
-[RFC-0098](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md).
+Images as rows of the bringup, and the target names `nros run` accepts, follow
+RFC-0121; the board descriptor that supplies an image's target facts follows
+RFC-0098.

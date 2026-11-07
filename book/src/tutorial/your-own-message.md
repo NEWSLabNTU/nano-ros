@@ -658,8 +658,5 @@ build generates and the CMake functions behind it.
 
 ## Design background
 
-Generating message code from the stock ROS 2 package shape, with the
-workspace first on the search path, follows
-[RFC-0094](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0094-resolve-before-configure.md)
-and
-[RFC-0098](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md).
+Generating message code from the stock ROS 2 package shape, with the workspace
+first on the search path, follows RFC-0094 and RFC-0098.

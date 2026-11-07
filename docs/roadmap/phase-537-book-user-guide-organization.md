@@ -458,7 +458,7 @@ these stops on pages this phase owns. They land as one follow-up after #3183
   Re-measure it in a plain Ubuntu image.
 - [2330](../issues/2330-ros-install-leaves-book.md): Install sends the reader to docs.ros.org for the
   ROS 2 apt source, and its GitHub API lookup is rate-limited behind a lab NAT.
-- [2331](../issues/2331-book-links-repo-and-rfcs.md): education-route pages cite RFC numbers and link
+- [2331](../issues/archived/2331-book-links-repo-and-rfcs.md): education-route pages cite RFC numbers and link
   into the repository. Drop the repository links; RFC numbers stay only in a
   closing "Design background" (Principle 5).
 

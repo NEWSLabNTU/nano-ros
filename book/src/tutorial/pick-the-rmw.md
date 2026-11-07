@@ -260,12 +260,6 @@ Three facts carry over to every board and every later chapter:
 
 ## Design background
 
-Choosing the backend at build time follows
-[RFC-0031](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md);
-using ROS 2's own router follows
-[RFC-0075](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0075-zenoh-router-provenance-and-the-unstable-seam.md);
-`nros run` starting it follows
-[RFC-0118](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0118-target-execution-model.md)
-D8. RMW use before RMW implementation is
-[RFC-0124](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0124-book-user-guide-organization.md)
-D5.
+Choosing the backend at build time follows RFC-0031; using ROS 2's own router
+follows RFC-0075; `nros run` starting it follows RFC-0118 D8. RMW use before
+RMW implementation is RFC-0124 D5.

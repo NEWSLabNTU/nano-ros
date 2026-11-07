@@ -349,7 +349,5 @@ than written.
 
 ## Design background
 
-The two roles and the generated program follow
-[RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md)
-D1 to D3. The run plan `--dry-run` prints is
-[RFC-0118](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0118-target-execution-model.md)'s.
+The two roles and the generated program follow RFC-0121 D1 to D3. The run plan
+`--dry-run` prints is RFC-0118's.

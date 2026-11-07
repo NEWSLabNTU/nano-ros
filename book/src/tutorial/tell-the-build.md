@@ -304,8 +304,6 @@ bounds.
 
 ## Design background
 
-The contract and the sizing it drives follow
-[RFC-0124](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0124-book-user-guide-organization.md)
-D6 for this walkthrough; the census follows the contract's retirement of the
-per-component `ENTITIES` list, which declared counts beside the code with
-nothing comparing the two.
+The contract and the sizing it drives follow RFC-0124 D6 for this walkthrough;
+the census follows the contract's retirement of the per-component `ENTITIES`
+list, which declared counts beside the code with nothing comparing the two.
