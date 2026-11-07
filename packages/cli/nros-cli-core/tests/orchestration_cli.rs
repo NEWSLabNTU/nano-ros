@@ -35,8 +35,6 @@ fn orchestration_metadata_plan_check_commands_share_artifacts() {
         launch_file: root.join("system.launch.xml"),
         record: Some(root.join("record.json")),
         model: None,
-        file: None,
-        exec: None,
         workspace: Some(root.clone()),
         out_dir: Some(out_dir.clone()),
         metadata: Vec::new(),

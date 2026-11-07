@@ -146,6 +146,7 @@ They are retired: each is refused, naming what to write instead.
 | Retired | Use instead | What happens now |
 |---|---|---|
 | `[package.metadata.nros.deploy.<target>]` in a node package's `Cargo.toml` (the package became its own one-node bringup) | a bringup package (`package.xml` + `system.toml`) whose `[image.<id>]` names the `board` and `rmw`, with the session in `[system]` or `[host.<name>]`; `nros new --image <id> --board <board>` writes it | workspace discovery fails, naming the table |
+| `nros plan <pkg-dir>` on a package with no launch file (planned a synthesised one-node model), and its `--exec` / `--file` flags | `nros plan <bringup-dir>`: the bringup's `[[component]]` rows generate its launch file, and `nros configure` resolves the model it plans from | `nros plan` reports that it found no SystemModel; the two flags are unknown arguments |
 
 ## Old command spellings
 

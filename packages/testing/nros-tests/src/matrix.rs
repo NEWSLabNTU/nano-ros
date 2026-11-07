@@ -1285,7 +1285,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("sched_dims_model_coverage", NonCell::Static),
     ("schema_serializer_round_trip", NonCell::Static),
-    ("self_bringup", NonCell::Static),
     ("serialized_size_bound", NonCell::Static),
     (
         "service_roundtrip_inprocess_e2e",

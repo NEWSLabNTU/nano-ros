@@ -83,8 +83,6 @@ fn fixture_workspace_plans_and_checks() {
         launch_file: demo_pkg.clone(),
         record: None,
         model: Some(model),
-        file: None,
-        exec: None,
         workspace: Some(fixture.clone()),
         out_dir: Some(out_dir.clone()),
         metadata: Vec::new(),

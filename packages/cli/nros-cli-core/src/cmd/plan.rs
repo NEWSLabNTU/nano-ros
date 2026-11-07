@@ -3,8 +3,9 @@
 //! R-code (phase-296 R4): the canonical input is a resolved SystemModel —
 //! convention-discovered from a package-dir input
 //! (`<dir>/config/system_model.yaml`), overridden with `--model`, or a
-//! pre-baked record via `--record`. A launchless self-bringup pkg plans a
-//! synthesized 1-node model. The launch-XML parse path is deleted.
+//! pre-baked record via `--record`. The launch-XML parse path is deleted,
+//! and so (phase-531 W7 step 2) is the synthesised 1-node model a launchless
+//! package dir used to plan from: a package plans through its bringup.
 
 use crate::orchestration::planner::{PlanOptions, plan_system};
 use clap::Args as ClapArgs;
@@ -14,20 +15,15 @@ use std::path::PathBuf;
 #[derive(Debug, ClapArgs)]
 pub struct Args {
     /// System package name used for build/<system_pkg>/nros output.
-    /// When omitted, derived from the `<launch_file>` directory's
-    /// package name (the self-bringup shape).
-    // Phase 212.L.7 self-bringup shape.
+    /// A directory here, with no `<launch_file>`, is the bringup directory
+    /// and names the package.
     pub system_pkg: String,
 
     /// ROS 2 launch file to parse, or a package directory to resolve.
     ///
-    /// A directory resolves by the multi-launch policy: the launch file named
-    /// after the package, then `system.launch.xml`, then a single launch file,
-    /// then a synthesised launch for a self-bringup package. When omitted
-    /// (`nros plan <pkg-dir>`), defaults to the `<system_pkg>` argument,
-    /// treated as a directory path.
-    // The multi-launch policy is Phase 212.L.6; the single-argument
-    // invocation is Phase 212.L.7.
+    /// A directory is the discovery root for its resolved SystemModel. When
+    /// omitted (`nros plan <bringup-dir>`), defaults to the `<system_pkg>`
+    /// argument, treated as a directory path.
     #[arg(default_value = "")]
     pub launch_file: PathBuf,
 
@@ -40,18 +36,6 @@ pub struct Args {
     /// automatically; this flag overrides with an explicit path.
     #[arg(long, value_name = "system_model.yaml")]
     pub model: Option<PathBuf>,
-
-    /// When `<launch_file>` is a directory, prefer `<dir>/launch/<file>`
-    /// (or cwd-relative / absolute as fallback).
-    // Phase 212.L.6 multi-launch disambiguation.
-    #[arg(long = "file")]
-    pub file: Option<String>,
-
-    /// Disambiguates the synthesised `<node exec="…">` when the package
-    /// declares multiple `[[bin]]` / `add_executable` targets.
-    // Phase 212.L.6 multi-launch disambiguation.
-    #[arg(long = "exec")]
-    pub exec: Option<String>,
 
     /// Workspace root containing colcon-like src/* packages
     #[arg(long)]
@@ -106,11 +90,9 @@ pub struct Args {
 pub fn run(args: Args) -> Result<()> {
     let workspace_root = args.workspace.unwrap_or(std::env::current_dir()?);
 
-    // Phase 212.L.7 — single-arg self-bringup shape. When the user
-    // passes only `<pkg-dir>` (no positional launch_file), `clap`
-    // sees `launch_file` as the empty path; default it to the
-    // `system_pkg` argument treated as a directory path. The
-    // launch_synth resolver handles the rest.
+    // The single-argument shape: when the user passes only `<dir>` (no
+    // positional launch_file), `clap` sees `launch_file` as the empty path;
+    // default it to the `system_pkg` argument treated as a directory path.
     let launch_input_path = if args.launch_file.as_os_str().is_empty() {
         PathBuf::from(&args.system_pkg)
     } else {
@@ -118,7 +100,7 @@ pub fn run(args: Args) -> Result<()> {
     };
 
     // Derive the system_pkg from the dir name when the user passed a
-    // dir as `<system_pkg>` (single-arg self-bringup shape).
+    // dir as `<system_pkg>` (the single-argument shape).
     let system_pkg =
         if args.launch_file.as_os_str().is_empty() && PathBuf::from(&args.system_pkg).is_dir() {
             PathBuf::from(&args.system_pkg)
@@ -170,55 +152,6 @@ pub fn run(args: Args) -> Result<()> {
             system_pkg,
             workspace_root,
             launch_file: model_path.clone(),
-            record_file: Some(tmp.path().to_path_buf()),
-            out_root,
-            metadata_files: args.metadata,
-            manifest_files: args.manifests,
-            launch_args: args.launch_args,
-            rmw: args.rmw,
-            image: args.image,
-        })?;
-        drop(tmp);
-        eprintln!(
-            "nros plan: wrote {} and {}",
-            output.record_path.display(),
-            output.plan_path.display()
-        );
-        return Ok(());
-    }
-    // R-code precondition #3 — the L.7 self-bringup dev loop (`nros plan
-    // <pkg-dir>` with no launch files) synthesizes a 1-node MODEL instead of
-    // 1-node launch XML: same discovered (pkg, exec) inputs, planned through
-    // the same record plumbing model mode uses — no parser round trip.
-    if args.record.is_none()
-        && launch_input_path.is_dir()
-        && args.file.is_none()
-        && crate::orchestration::launch_synth::is_self_bringup_eligible(&launch_input_path)
-        && crate::orchestration::launch_synth::enumerate_launch_files(&launch_input_path).is_empty()
-    {
-        let pkg_name = crate::orchestration::launch_synth::discover_pkg_name(&launch_input_path)?;
-        let exec_name = match args.exec.as_deref() {
-            Some(e) => e.to_string(),
-            None => crate::orchestration::launch_synth::discover_exec_target(
-                &launch_input_path,
-                &pkg_name,
-            )?,
-        };
-        eprintln!(
-            "nros plan: {} is a self-bringup pkg with no launch files; \
-             planning a synthesized 1-node model ({pkg_name}/{exec_name})",
-            launch_input_path.display()
-        );
-        let model =
-            crate::orchestration::launch_synth::synthesise_self_model(&pkg_name, &exec_name);
-        let record = crate::orchestration::model_ingest::plan_record_from_model(&model);
-        let tmp = tempfile::NamedTempFile::new()?;
-        std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;
-        let output = plan_system(PlanOptions {
-            nano_ros_path: args.nano_ros_path.clone(),
-            system_pkg,
-            workspace_root,
-            launch_file: launch_input_path.clone(),
             record_file: Some(tmp.path().to_path_buf()),
             out_root,
             metadata_files: args.metadata,
