@@ -2,7 +2,6 @@
 //! tools that records its arguments. No board and no Zephyr tree.
 
 use std::{
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -27,15 +26,28 @@ impl Drop for Dir {
 fn fake_west(dir: &Dir, code: i32) -> PathBuf {
     let p = dir.0.join("west");
     let log = dir.0.join("argv");
+    // Written to a sidecar and `cp`'d into place by a child process, so this
+    // process never holds the stub's write descriptor while another test
+    // forks: that is ETXTBSY on exec (issue 0476). The same steps as
+    // `nros_launcher::test_support::write_executable_stub`, which this
+    // standalone runner package cannot depend on.
+    let src = p.with_extension("stub-src");
     std::fs::write(
-        &p,
+        &src,
         format!(
             "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nexit {code}\n",
             log.display()
         ),
     )
     .unwrap();
-    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    for (tool, args) in [
+        ("cp", [src.as_os_str(), p.as_os_str()]),
+        ("chmod", ["755".as_ref(), p.as_os_str()]),
+    ] {
+        let ok = Command::new(tool).args(args).status().unwrap().success();
+        assert!(ok, "{tool} failed for {}", p.display());
+    }
+    let _ = std::fs::remove_file(&src);
     p
 }
 

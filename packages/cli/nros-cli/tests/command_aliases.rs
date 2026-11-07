@@ -12,7 +12,6 @@
 #![cfg(unix)]
 
 use std::{
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Command, Output},
 };
@@ -49,12 +48,10 @@ fn package(ws: &Path, pkg: &str, verb: &str, bin: &str) {
     .unwrap();
     let exe = ws.join("build/nros/host").join(pkg).join("cmake").join(bin);
     std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
-    std::fs::write(
+    nros_launcher::test_support::write_executable_stub(
         &exe,
-        format!("#!/bin/sh\necho {verb}:\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n"),
-    )
-    .unwrap();
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        &format!("#!/bin/sh\necho {verb}:\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n"),
+    );
 }
 
 fn workspace() -> (tempfile::TempDir, PathBuf) {

@@ -388,3 +388,11 @@ cmake-function-list-dir:
 [private]
 cmake-ferried-compile-definitions:
     @python3 scripts/check/check-cmake-ferried-compile-definitions.py
+
+# issue 0476 — a test writes an executable stub through
+# `write_executable_stub`, never `fs::write` + chmod: holding the write
+# descriptor while a sibling test forks is ETXTBSY on exec. Buildless; scans
+# tracked `.rs` test code and self-tests its own rule first.
+[private]
+executable-stub-writes:
+    @python3 scripts/check/check-executable-stub-writes.py

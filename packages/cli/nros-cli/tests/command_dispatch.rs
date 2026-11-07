@@ -15,7 +15,6 @@
 #![cfg(unix)]
 
 use std::{
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Command, Output},
 };
@@ -56,15 +55,13 @@ fn build(ws: &Path, package: &str, bin: &str) {
         .join("cmake")
         .join(bin);
     std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
-    std::fs::write(
+    nros_launcher::test_support::write_executable_stub(
         &exe,
         "#!/bin/sh\n\
          for a in \"$@\"; do printf 'arg:%s\\n' \"$a\"; done\n\
          printf 'ws:%s\\ntoolchain:%s\\ncli:%s\\n' \"$NROS_WS_ROOT\" \"$NROS_TOOLCHAIN\" \"$NROS_CLI\"\n\
          exit 7\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    );
 }
 
 /// Add a command package announcing the built-in verb `build`. Written into

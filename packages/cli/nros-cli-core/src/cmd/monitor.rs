@@ -252,9 +252,8 @@ mod tests {
     /// A console runner in shell: open the plan's port, send `args.send`, and
     /// copy what the board says to stdout.
     fn fake_console(dir: &Path) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let p = dir.join("fake-serial");
-        std::fs::write(
+        crate::test_support::write_executable_stub(
             &p,
             "#!/bin/sh\n\
              if [ \"$1\" = describe ]; then\n\
@@ -267,9 +266,7 @@ mod tests {
              exec 3<>\"$port\"\n\
              printf '%s\\n' \"$send\" >&3\n\
              exec cat <&3\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         p
     }
 
