@@ -692,16 +692,27 @@ same way as one inside it. Its "warn and link no Rust backend" arm becomes a
 refusal: a descriptor whose `crate` is not at its own package directory is
 the provider's error, and the scan answer is authoritative.
 
-> **D15 as amended, user ruling 2026-11-07.** Three rulings replace the
-> bullets above where they disagree.
+> **D15 as amended, user ruling 2026-11-07.** Four rulings replace the
+> bullets above where they disagree. Ruling 1 was revised the same day; its
+> first form is struck below.
 >
-> 1. **Registration.** `__nros_register_backends!` keeps meaning "every
->    linked backend". `nros::main!` calls it on every arm, the bridge arm
->    included, which relies on it. There is no separate image-only macro or
->    arm. Registering a backend twice is a documented no-op in
->    `register_linked_rmw`, so a backend the board also registers is
->    harmless. A backend linked by D15's entry dependency is included in the
->    macro.
+> 1. **Registration.** `__nros_register_backends!` registers, on each arm,
+>    exactly the backends the entry depends on directly. The bridge arm
+>    (`()`) keeps its `bridge_entry_deps`, unchanged. Zephyr's `(gated)` arm
+>    is unchanged. A backend D15 adds as an entry path dependency is
+>    registered through the `(image)` arm, which the facade renders only when
+>    the image has such a backend. `nros::main!` calls `(image)` on the
+>    ordinary (OwnedSpin and RTIC) arms when the entry's registration source
+>    defines it, after `before_boot` and `setup_transport`. A backend that
+>    arrives through the board's `rmw-<x>` feature is registered by the board,
+>    as today, so no arm names it for the ordinary path. The in-tree images
+>    expand as before.
+>
+>    ~~The macro keeps meaning "every linked backend" and `nros::main!`
+>    calls it on every arm.~~ Rejected the same day: a `::<crate>` path
+>    resolves only for a direct dependency of the entry, and a backend linked
+>    through the board's feature is not one, so calling the macro on every
+>    arm does not compile.
 > 2. **West half.** On an image with a west half, the west build's backend
 >    dependency (`nros-rmw-<x> = {…, optional = true}` plus `[features]
 >    default` in the west entry) is D15's dependency. D15's entry-side path
@@ -717,6 +728,13 @@ the provider's error, and the scan answer is authoritative.
 >    here: a cargo-rooted image whose board lacks `rmw-<x>` is refused with
 >    D7's message. Cyclone DDS on a board that declares `rmw-cyclonedds` is
 >    unaffected.
+> 4. **Owned entry with no registration source.** On the ordinary arms
+>    (not Zephyr, not a bridge), a hand-written entry that names neither its
+>    adapter nor macros of its own registers nothing itself: the board
+>    registers, as today. `no_selection_error` stays reachable only on the
+>    Zephyr and bridge arms. An owned entry whose image names a backend the
+>    board does not link, and that depends on neither its adapter nor the
+>    backend crate, is refused at configure: nothing would link it.
 
 ### D16 — acceptance and gate
 
@@ -915,7 +933,12 @@ machinery.
   out-of-tree `acme` backend built through `nros build`, plus
   `check-rmw-resolve-sites`. D5 carries a pointer.
 - 2026-11-07: D15 amended by user ruling (phase-545 W2): the register macro
-  keeps naming every linked backend and runs on every `nros::main!` arm; a
+  names exactly the entry's direct backend dependencies on each arm, with
+  D15's backends on an `(image)` arm the ordinary `nros::main!` arms call; a
   west half's backend dependency is D15's dependency; the crate directory is
   `package_dir` joined with `register_dir` for the register crate, and a
-  `[rmw.provides.cargo]` table with no `crate` counts as cmake-only.
+  `[rmw.provides.cargo]` table with no `crate` counts as cmake-only; an owned
+  entry with no registration source leaves registration to the board, and
+  one whose backend nothing links is refused. The first form of the
+  registration ruling ("every linked backend on every arm") was revised the
+  same day: `::<crate>` paths resolve only for direct dependencies.
