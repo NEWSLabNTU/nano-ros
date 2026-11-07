@@ -1212,7 +1212,37 @@ const KNOBS_THAT_CANNOT_CHANGE_A_SIZE: &[(&str, &str)] = &[
     ("NROS_ZEPHYR_BUILD_ROOT", "where Zephyr builds go"),
     ("NROS_ZEPHYR_CCACHE_DIR", "ccache location"),
     ("NROS_ZEPHYR_CCACHE_TEMPDIR", "ccache scratch location"),
+    (
+        "NROS_KEEP_CACHES",
+        "whether a gate keeps its caches in the shared store (phase-543 W4); \
+         where a build lives, never what it builds",
+    ),
 ];
+
+/// Knobs whose value is a FILE, keyed by the file's CONTENT, not its path.
+///
+/// `NROS_SIZING_DESCRIPTOR` names a descriptor that `nros configure` writes
+/// beside each image, so a copied-out leaf (`template-copy-out`, a scaffold)
+/// names a different path on every run while saying the same thing. Keyed by
+/// path, every such run minted a new probe directory (measured 2026-11-07).
+/// Keyed by content, the same descriptor shares a probe, and a CHANGED
+/// descriptor at the same path now splits it, which the path never did.
+const KNOBS_KEYED_BY_CONTENT: &[&str] = &["NROS_SIZING_DESCRIPTOR"];
+
+fn content_identity(path: &str) -> String {
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            for b in &bytes {
+                h ^= u64::from(*b);
+                h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            format!("content:{h:016x}")
+        }
+        // Unreadable: the path is all there is to key on.
+        Err(_) => path.to_string(),
+    }
+}
 
 /// Whole FAMILIES that cannot change a probed size.
 ///
@@ -1234,6 +1264,17 @@ const KNOB_PREFIXES_THAT_CANNOT_CHANGE_A_SIZE: &[(&str, &str)] = &[
         "build orchestration: job counts and TIMESTAMPED log dirs \
          (`NROS_BUILD_LOG_DIR` carries a timestamp and pid, so it differs every run)",
     ),
+    (
+        "NROS_GATE_",
+        "the gate harness (phase-543): lane, job count, CPU share, the unit being \
+         run and a per-test skip ledger whose path carries a pid, so it differs \
+         every run. Measured 2026-11-07: ~160 probe keys in one day of `ci gate`",
+    ),
+    (
+        "NROS_CHECK_",
+        "gate verdict policy (`NROS_CHECK_SKIP_STRICT` turns a skip into a red); \
+         it decides what a gate reports, never what a crate compiles",
+    ),
 ];
 
 /// True when `name` is argued not to reach any probed size.
@@ -1252,6 +1293,14 @@ fn knob_identity() -> Vec<(String, String)> {
         // phase-353 W4 — drop the names and families argued above.
         // Everything else still keys.
         .filter(|(k, _)| !knob_is_excluded(k))
+        .map(|(k, v)| {
+            if KNOBS_KEYED_BY_CONTENT.contains(&k.as_str()) {
+                let id = content_identity(&v);
+                (k, id)
+            } else {
+                (k, v)
+            }
+        })
         .collect();
     // Zephyr's Kconfig reaches the crate through `$DOTCONFIG`, so it reaches the
     // SIZE too — and a leaf that sets a knob there sets nothing in the env.
@@ -2359,6 +2408,54 @@ mod tests {
             unsafe { env::remove_var(name) }
         }
 
+        restore_knob_env(prior);
+    }
+
+    /// phase-543 — the gate harness's own variables and a copied-out leaf's
+    /// descriptor path vary every run and must not split the key; a changed
+    /// descriptor must.
+    #[test]
+    fn gate_plumbing_and_descriptor_paths_do_not_split_the_probe_key() {
+        let _g = env_lock();
+        let prior = clear_knob_env();
+        let base = probe_key("x86_64-unknown-linux-gnu", &[]);
+        for (k, v) in [
+            ("NROS_GATE_SKIP_LEDGER", "/tmp/nros-gate-skips-1234-x"),
+            ("NROS_GATE_UNIT", "pure-c-workspace"),
+            ("NROS_CHECK_SKIP_STRICT", "1"),
+            ("NROS_KEEP_CACHES", "1"),
+        ] {
+            unsafe { env::set_var(k, v) }
+            assert_eq!(
+                base,
+                probe_key("x86_64-unknown-linux-gnu", &[]),
+                "{k} split the key"
+            );
+            unsafe { env::remove_var(k) }
+        }
+        let d = std::env::temp_dir().join(format!("nros-sizes-desc-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let (a, b, c) = (d.join("a.toml"), d.join("b.toml"), d.join("c.toml"));
+        std::fs::write(&a, "[pools]\nx = 1\n").unwrap();
+        std::fs::write(&b, "[pools]\nx = 1\n").unwrap();
+        std::fs::write(&c, "[pools]\nx = 2\n").unwrap();
+        let key_for = |p: &std::path::Path| {
+            unsafe { env::set_var("NROS_SIZING_DESCRIPTOR", p) }
+            let k = probe_key("x86_64-unknown-linux-gnu", &[]);
+            unsafe { env::remove_var("NROS_SIZING_DESCRIPTOR") }
+            k
+        };
+        assert_eq!(
+            key_for(&a),
+            key_for(&b),
+            "the same descriptor at two paths split the key"
+        );
+        assert_ne!(
+            key_for(&a),
+            key_for(&c),
+            "a changed descriptor did not split the key"
+        );
+        let _ = std::fs::remove_dir_all(&d);
         restore_knob_env(prior);
     }
 
