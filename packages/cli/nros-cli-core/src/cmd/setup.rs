@@ -2357,7 +2357,32 @@ fn store_index(fetch: bool) -> Result<(PathBuf, IndexOrigin)> {
     if got.1 == IndexOrigin::Fetched {
         eprintln!("nros: fetched the SDK index → {}", got.0.display());
     }
+    if got.1 == IndexOrigin::Cached
+        && let Some(note) = cache_older_than_binary(
+            &got.0,
+            nros_launcher::checkout::canonical_current_exe().as_deref(),
+        )
+    {
+        eprintln!("{note}");
+    }
     Ok(got)
+}
+
+/// Phase-548 W5 — a cached index older than the `nros` reading it is SAID, with
+/// the remedy, because nothing ages the cache: it is what a fetch left, however
+/// long ago, and a binary built since may know boards and pins it does not.
+/// `None` when either mtime is unreadable or the cache is the newer.
+pub(crate) fn cache_older_than_binary(cache: &Path, exe: Option<&Path>) -> Option<String> {
+    let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let (c, e) = (mtime(cache)?, mtime(exe?)?);
+    let age = e.duration_since(c).ok()?;
+    let days = age.as_secs() / 86_400;
+    Some(format!(
+        "nros: the SDK index cached at {} is older than this `nros` ({days} day(s) \
+         before it was built); it may lack boards and pins this binary knows.\n  \
+         NROS_INDEX_REFRESH=1 replaces it, or pass --index <path>.",
+        cache.display()
+    ))
 }
 
 /// Issue 2257 — the index a released `nros` provisions from: its own shipped
@@ -2423,11 +2448,14 @@ pub(crate) fn shipped_index() -> Option<PathBuf> {
 /// checkout's own file is the source that cache was fetched from. `--index` and
 /// `$NROS_INDEX_URL` keep outranking it (arg and env, D3's first two rungs): a
 /// mirror the operator named is read even inside a checkout. The walk-up is
-/// ONLY the enclosing checkout, never the binary's own root
-/// ([`crate::orchestration::nano_ros_root`]'s last rung): a released `nros`
-/// stages the index into `share/nano-ros/` too, and the store rung answers a
-/// release with its shipped copy of that same file (issue 2257), so a
-/// release's setup and its SDK root read one index.
+/// ONLY the enclosing checkout; the binary's own root
+/// ([`crate::orchestration::nano_ros_root`]'s last rung) is a SEPARATE rung
+/// after it and before the store (phase-548 W5, [`own_sdk_root_index`]). A
+/// release's own root is `share/nano-ros/`, which carries the same file it
+/// ships (issue 2257); an in-tree `nros` built in a checkout reads that
+/// checkout's index from anywhere, as its build already did. So setup, build
+/// and run read one index, and the store cache answers only a binary with no
+/// root of its own or an operator-named mirror.
 pub fn resolve_index(explicit: &Path) -> Result<PathBuf> {
     resolve_index_explained(explicit).map(|(p, _)| p)
 }
@@ -2454,23 +2482,55 @@ pub(crate) fn resolve_index_explained(explicit: &Path) -> Result<(PathBuf, Index
         return Ok((explicit.to_path_buf(), IndexWhence::Explicit));
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let own = own_sdk_root_index();
     resolve_default_index(
         explicit,
         enclosing_checkout_index(&cwd).as_deref(),
+        own.as_ref().map(|(p, w)| (p.as_path(), *w)),
         std::env::var_os("NROS_INDEX_URL").is_some(),
         || store_index(/* fetch */ true),
     )
+}
+
+/// Phase-548 W5 — the index of the SDK root THIS binary belongs to: the
+/// release's `share/nano-ros`, or the checkout an in-tree `nros` was built in.
+///
+/// That root is the one `nros build` and `nros run` read when no checkout
+/// encloses the workspace ([`crate::orchestration::nano_ros_root`]'s last
+/// rung), so its index is what they take their pins from (QEMU, sources). The
+/// store cache has no pin and nothing ages it; serving it here, outside a
+/// checkout, is how `nros setup` answered "unknown board" for two boards the
+/// current index has while `nros run` asked for a QEMU the cache did not name.
+/// Only the OWN-root rungs: the workspace walk-up is [`enclosing_checkout_index`].
+fn own_sdk_root_index() -> Option<(PathBuf, IndexWhence)> {
+    use crate::orchestration::nano_ros_root::{Rung, Rungs, resolve_explained_from};
+    let (root, rung) = resolve_explained_from(Rungs {
+        explicit: None,
+        workspace: None,
+        exe: nros_launcher::checkout::canonical_current_exe(),
+        built_in: Some(nros_launcher::checkout::built_in_dir().to_path_buf()),
+    })?;
+    let whence = match rung {
+        Rung::OwnShipped => IndexWhence::Store(IndexOrigin::Shipped),
+        Rung::OwnCheckout => IndexWhence::Checkout,
+        Rung::Explicit | Rung::Workspace => return None,
+    };
+    let index = root.join(INDEX_FILE);
+    index.is_file().then_some((index, whence))
 }
 
 /// The default rung order, with every input a parameter so the ORDER is
 /// testable from a cwd that is itself inside a checkout (every test here is).
 ///
 /// `default` is the bare name, resolved against the cwd; `checkout_index` is
-/// the enclosing checkout's file (already known to exist); `url_overridden` is
+/// the enclosing checkout's file (already known to exist); `own_root_index` is
+/// this binary's own SDK root's file and its origin (phase-548 W5, read before
+/// the store so setup, build and run agree); `url_overridden` is
 /// `$NROS_INDEX_URL` being set; `store` is the D5 rung.
 fn resolve_default_index(
     default: &Path,
     checkout_index: Option<&Path>,
+    own_root_index: Option<(&Path, IndexWhence)>,
     url_overridden: bool,
     store: impl FnOnce() -> Result<(PathBuf, IndexOrigin)>,
 ) -> Result<(PathBuf, IndexWhence)> {
@@ -2484,6 +2544,9 @@ fn resolve_default_index(
     }
     if !url_overridden && let Some(p) = checkout_index {
         return Ok((p.to_path_buf(), IndexWhence::Checkout));
+    }
+    if !url_overridden && let Some((p, whence)) = own_root_index {
+        return Ok((p.to_path_buf(), whence));
     }
     store().map(|(p, origin)| (p, IndexWhence::Store(origin)))
 }
@@ -5084,6 +5147,7 @@ mod tests {
         let (got, whence) = resolve_default_index(
             &dir.join("no-such-default.toml"),
             Some(&checkout_index),
+            None,
             /* url_overridden */ false,
             counting_store(&hits, store_copy.clone()),
         )
@@ -5103,6 +5167,7 @@ mod tests {
         let (got, whence) = resolve_default_index(
             &dir.join("no-such-default.toml"),
             None,
+            None,
             false,
             counting_store(&hits, store_copy.clone()),
         )
@@ -5112,6 +5177,104 @@ mod tests {
             (store_copy, IndexWhence::Store(IndexOrigin::Cached))
         );
         assert_eq!(hits.get(), 1);
+    }
+
+    /// Phase-548 W5 acceptance: outside every checkout, a STALE fetched index
+    /// in the store loses to this binary's own SDK root's index, so a board
+    /// only the current index has resolves — the measured failure was
+    /// `nros setup mps2-an385-zephyr` answering "unknown board" off a 26-day-old
+    /// `~/.nros/fetch` copy while `nros run` read the root's pins.
+    #[test]
+    fn outside_a_checkout_the_own_root_index_beats_a_stale_store_cache() {
+        let dir = crate::test_support::scratch_dir("p548w5_own_root");
+        let stale = dir.join("store/fetch").join(INDEX_FILE);
+        std::fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        std::fs::write(&stale, "[board.old-board]\npackages = []\n").unwrap();
+        let own = dir.join("own-root").join(INDEX_FILE);
+        std::fs::create_dir_all(own.parent().unwrap()).unwrap();
+        std::fs::write(
+            &own,
+            "[board.old-board]\npackages = []\n\n[board.only-current-board]\npackages = []\n",
+        )
+        .unwrap();
+        let hits = std::cell::Cell::new(0);
+
+        let (got, whence) = resolve_default_index(
+            &dir.join("no-such-default.toml"),
+            /* checkout_index */ None,
+            Some((&own, IndexWhence::Checkout)),
+            /* url_overridden */ false,
+            counting_store(&hits, stale.clone()),
+        )
+        .unwrap();
+        assert_eq!((got.clone(), whence), (own.clone(), IndexWhence::Checkout));
+        assert_eq!(hits.get(), 0, "the stale store cache was consulted");
+        let index = SdkIndex::load(&got).unwrap();
+        assert_eq!(
+            canonical_setup_board(&index, None, "only-current-board").unwrap(),
+            "only-current-board"
+        );
+        assert!(
+            !SdkIndex::load(&stale)
+                .unwrap()
+                .board
+                .contains_key("only-current-board"),
+            "the seeded cache must be the stale one, or this proves nothing"
+        );
+
+        // A release's own root carries the shipped origin through, so a load
+        // failure names the reinstall remedy rather than the checkout gate.
+        let (_, whence) = resolve_default_index(
+            &dir.join("no-such-default.toml"),
+            None,
+            Some((&own, IndexWhence::Store(IndexOrigin::Shipped))),
+            false,
+            counting_store(&hits, stale.clone()),
+        )
+        .unwrap();
+        assert_eq!(whence, IndexWhence::Store(IndexOrigin::Shipped));
+
+        // An operator-named mirror still outranks the own root (D3's env rung).
+        let (got, _) = resolve_default_index(
+            &dir.join("no-such-default.toml"),
+            None,
+            Some((&own, IndexWhence::Checkout)),
+            /* url_overridden */ true,
+            counting_store(&hits, stale.clone()),
+        )
+        .unwrap();
+        assert_eq!(got, stale);
+        assert_eq!(hits.get(), 1);
+    }
+
+    /// The cache rung that remains (no own root, no mirror) SAYS when it is
+    /// older than the binary, with the remedy; a newer cache says nothing.
+    #[test]
+    fn a_cache_older_than_the_binary_is_said_with_its_remedy() {
+        let dir = crate::test_support::scratch_dir("p548w5_cache_age");
+        let cache = dir.join(INDEX_FILE);
+        let exe = dir.join("nros");
+        std::fs::write(&cache, "").unwrap();
+        std::fs::write(&exe, "").unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(26 * 86_400);
+        std::fs::File::options()
+            .write(true)
+            .open(&cache)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let note = cache_older_than_binary(&cache, Some(&exe)).expect("an older cache is said");
+        assert!(note.contains("NROS_INDEX_REFRESH=1"), "{note}");
+        assert!(note.contains("day(s) before it was built"), "{note}");
+
+        std::fs::File::options()
+            .write(true)
+            .open(&exe)
+            .unwrap()
+            .set_modified(old - std::time::Duration::from_secs(86_400))
+            .unwrap();
+        assert_eq!(cache_older_than_binary(&cache, Some(&exe)), None);
+        assert_eq!(cache_older_than_binary(&cache, None), None);
     }
 
     /// `$NROS_INDEX_URL` is the env rung and keeps outranking the checkout: an
@@ -5128,6 +5291,7 @@ mod tests {
         let (got, whence) = resolve_default_index(
             &dir.join("no-such-default.toml"),
             Some(&checkout_index),
+            None,
             /* url_overridden */ true,
             counting_store(&hits, store_copy.clone()),
         )
