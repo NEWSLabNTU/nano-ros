@@ -371,12 +371,16 @@ preflight_self_test() {
 
 # Build one copied-out HOST project with `nros configure` + `nros build`. Returns 0
 # on success, 1 on a build failure, 3 when there is no `nros` to build with.
-# Issue 2100 — where one copy's build cache lives. By default the copies share
-# this checkout's cache, so one warm `corrosion-cargo` group serves them all.
-# Measured cold, that group and the copies' sizes and metadata output left 13 G
-# behind. On a lane that releases its output, a copy's cache lives under its own
-# scratch dir (the directory of its build log), which the caller already
-# deletes, so the cache goes with the copy.
+# Issue 2100, phase-543 W4 — where one copy's build cache lives: under its own
+# scratch dir (the directory of its build log), on EVERY lane. It used to share
+# the checkout's `corrosion-cargo` group unless the lane released its output,
+# on the reasoning that one warm group serves them all. Measured, it served
+# nothing: each copy's image crates land in per-leaf folders named by a hash
+# that is new on every run (`nros-{c,cpp}-image_<hash>`, ~10 per `ci gate`, none
+# read again), so the group grew 71 -> 135 G in one day of gate runs while every
+# copy built cold anyway. The scratch path is stable and emptied when handed out,
+# so the cache now costs one unit's tree and no more. `NROS_KEEP_CACHES=1`
+# restores the shared cache, for diagnosing it.
 #
 # The caller declares `local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR`;
 # bash scoping is dynamic, so the assignments land in the caller's locals and
@@ -386,12 +390,20 @@ preflight_self_test() {
 # sourced; without that, every copy's probe still landed in the checkout.
 copy_cache_vars() {
     NROS_BUILD_ROOT="$1/build-root"
-    NROS_SIZES_PROBE_TARGET_DIR="$(nros_build_dir "$NROS_KIND_SIZES_PROBE")"
+    NROS_SIZES_PROBE_TARGET_DIR="$(nros_build_dir "$NROS_KIND_SIZES_PROBE")" || NROS_SIZES_PROBE_TARGET_DIR=""
+    # An empty or relative value is not "no override": the probe resolves it
+    # against the crate it builds and writes its cache INTO the source tree
+    # (phase-543 W4 measured 1.1 G in `packages/api/nros-c/`). Refuse.
+    case "$NROS_SIZES_PROBE_TARGET_DIR" in
+        /*) ;;
+        *) echo "check-template-copy-out: could not derive a copy's sizes-probe dir (got '$NROS_SIZES_PROBE_TARGET_DIR')" >&2
+           exit 2 ;;
+    esac
 }
 
 build_copy() {
     local ws="$1" log="$2" nros rc
-    if nros_gate_prune_enabled; then
+    if [ "${NROS_KEEP_CACHES:-}" != 1 ]; then
         local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
         copy_cache_vars "$(dirname "$log")"
     fi
@@ -470,7 +482,7 @@ unit_part() {
 # NROS_CHECK_SKIP_STRICT=1, where it is a failure.
 build_cross() {
     local proj="$1" board="$2" log="$3" label="$4" nros rc facts err
-    if nros_gate_prune_enabled; then
+    if [ "${NROS_KEEP_CACHES:-}" != 1 ]; then
         local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
         copy_cache_vars "$(dirname "$log")"
     fi
@@ -806,7 +818,7 @@ run_runner_package() {
         return 1
     fi
     printf '\n[image.linux.run]\nmethod = "acme_runner"\n' >> "$ws/src/demo_bringup/system.toml"
-    if nros_gate_prune_enabled; then
+    if [ "${NROS_KEEP_CACHES:-}" != 1 ]; then
         local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
         copy_cache_vars "$work"
     fi
@@ -861,7 +873,7 @@ run_scaffold() {
         nros_gate_scratch_failed "$work"
         return 1
     fi
-    if nros_gate_prune_enabled; then
+    if [ "${NROS_KEEP_CACHES:-}" != 1 ]; then
         local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
         copy_cache_vars "$work"
     fi
