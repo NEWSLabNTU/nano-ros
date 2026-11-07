@@ -14,6 +14,14 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 pass=0
+# phase-543 — two units: rows 1-8 (west stubbed, run anywhere) and row 9
+# (real west, `needs:west`), so a lane without west keeps rows 1-8 and leaves
+# row 9 out of scope by name instead of turning the whole gate red.
+if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
+    printf 'stubbed\nreal-west\tneeds:west\n'
+    exit 0
+fi
+unit="${NROS_GATE_UNIT:-}"
 fail=0
 check() {
     if [ "$2" = ok ]; then
@@ -50,6 +58,7 @@ run() {   # -> rc, out
 }
 calls() { wc -l < "$tmp/west.log" | tr -d ' '; }
 
+if [ "$unit" != real-west ]; then
 # 1. Current copy: no network, rc 0.
 fresh new; run
 [ "$rc" -eq 0 ] && [ "$(calls)" = 0 ] && check "a current manifest runs no west update" ok \
@@ -104,6 +113,8 @@ printf 'old44\n' > "$tmp/ws/nano-ros/west-4.4.yml"; printf 'new44\n' > "$tmp/co/
 [ "$rc" -eq 0 ] && [ "$(cat "$tmp/ws/nano-ros/west-4.4.yml")" = new44 ] && [ "$(calls)" = 1 ] && r=ok || r=bad
 check "the config's manifest file is the one compared" "$r"
 
+fi
+
 # 9. REAL west, end to end — the runner's exact shape. Rows 1-8 stub west, so
 # they prove the script CALLS `west update`; they cannot prove that an update
 # against the refreshed manifest fetches a module the old one lacked. That is
@@ -116,7 +127,9 @@ check "the config's manifest file is the one compared" "$r"
 # reported NOT VERIFIED through the skip ledger, never passed.
 source "$repo_root/scripts/build/zephyr-python.sh"
 real_py="$(NROS_PYTHON= nros_zephyr_python)"
-if [ -n "$real_py" ] && PATH="$(dirname "$real_py"):$PATH" command -v west >/dev/null 2>&1; then
+if [ "$unit" = stubbed ]; then
+    :
+elif [ -n "$real_py" ] && PATH="$(dirname "$real_py"):$PATH" command -v west >/dev/null 2>&1; then
     real_bin="$(dirname "$real_py")"
     up="$tmp/up"
     gitq() {

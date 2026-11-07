@@ -470,6 +470,7 @@ report-interlock-coverage:
 # network, and a failed update restores the old copy so the next run retries.
 # `west` stubbed, tmpdir, <1 s.
 [private]
+[group('units')]
 zephyr-sync-workspace-manifest:
     @bash tests/zephyr-sync-workspace-manifest-tests.sh
 
