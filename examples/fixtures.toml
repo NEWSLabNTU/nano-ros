@@ -1024,6 +1024,19 @@ build_subdir = "build/freertos-cyclonedds-freertos-posix-demo_bringup/cmake"
 # FreeRTOS assert from a Cyclone thread.
 cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "freertos-posix", CMAKE_DISABLE_FIND_PACKAGE_CycloneDDS = "ON" }
 
+# issue 2342 (phase-546) — the board's zenoh image, over zenoh-pico's FreeRTOS
+# host-socket arm. A router on the image's baked locator, so the cell starts one.
+[[workspace_fixture]]
+id = "workspace-c-freertos-posix-zenoh"
+platform = "freertos-posix"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+image = "freertos_posix_zenoh"
+build_subdir = "build/freertos-zenoh-freertos-posix-demo_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "freertos-posix" }
+
 [[workspace_fixture]]
 id = "workspace-cpp-freertos-posix"
 platform = "freertos-posix"

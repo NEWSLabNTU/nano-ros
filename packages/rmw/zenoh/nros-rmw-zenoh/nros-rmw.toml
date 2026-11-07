@@ -126,9 +126,25 @@ defines = ["ZENOH_GENERIC"]
 # `#ifdef` in `zenoh-pico/config.h` selecting the generated
 # `zenoh_generic_config.h`, and in the `#elif` chain both FreeRTOS arms are
 # tested BEFORE it, so it never competes for the type header.
+#
+# issue 2342 (phase-546) — the THIRD arm: a board whose network is the HOST's
+# (`[board.net] stack = "host"`, the FreeRTOS POSIX port) has sockets but no
+# lwIP, so neither vendor FreeRTOS header can describe it. It gets zenoh-pico's
+# own custom-platform hook, `ZP_SYSTEM_PLATFORM_HEADER`, naming a header that
+# puts `freertos/lwip.h`'s system types beside `unix.h`'s socket types. The fact
+# is `host_stack`, derived from `[board.net] stack` (never written as a
+# capability); the FreeRTOS platform declares it `false`, so every lwIP board
+# keeps its arm without saying anything new.
 defines_conditional = [
-  { name = "ZENOH_FREERTOS_LWIP", when = { capability = { ip_stack = true } } },
+  { name = "ZENOH_FREERTOS_LWIP", when = { capability = { ip_stack = true, host_stack = false } } },
   { name = "ZENOH_ORIN_SPE", when = { capability = { ip_stack = false } } },
+  { name = "ZP_SYSTEM_PLATFORM_HEADER", value = '"nros_zenoh_freertos_host.h"', when = { capability = { host_stack = true } } },
+  # A FreeRTOS task blocked in a HOST `recv` is still RUNNING to the kernel, so
+  # the read future must hand the CPU back between polls or it starves every
+  # task below it (the POSIX port's tick interrupts the `recv` with EINTR each
+  # millisecond, which is what bounds one poll). 2 ms, not 1: the background
+  # executor waits only when the next wake-up is more than 1 ms away.
+  { name = "Z_RUNTIME_IDLE_READ_TASK_SLEEP", value = "2", when = { capability = { host_stack = true } } },
 ]
 # Phase 154 — `Z_FEATURE_LINK_UDP_MULTICAST = 0` disables the
 # vendor `_z_close_udp_multicast` codepath in
@@ -160,7 +176,11 @@ extra_sources = [
   # vendor impls are the working path. build.rs skips the alias TU entirely on
   # FreeRTOS via `if !use_freertos { ... alias_build.compile(...) }`.
   { path = "{src}/system/freertos/system.c" },
-  { path = "{src}/system/socket/lwip.c", when = { capability = { ip_stack = true } } },
+  { path = "{src}/system/socket/lwip.c", when = { capability = { ip_stack = true, host_stack = false } } },
+  # issue 2342 — the host-socket arm's socket wait / close / blocking half; the
+  # TCP and UDP links are `src/link/transport/*/*_posix.c`, compiled by the core
+  # `link` group once the platform header sets `ZP_PLATFORM_SOCKET_POSIX`.
+  { path = "{src}/system/unix/network.c", when = { capability = { host_stack = true } } },
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 include_paths = [
@@ -179,8 +199,10 @@ include_paths = [
 # has no `LWIP_DIR` to point at, and an unconditional entry here would make one
 # a hard requirement of every FreeRTOS zenoh build.
 include_paths_conditional = [
-  { path = "{source:lwip}/src/include", when = { capability = { ip_stack = true } } },
-  { path = "{source:lwip}/contrib/ports/freertos/include", when = { capability = { ip_stack = true } } },
+  { path = "{source:lwip}/src/include", when = { capability = { ip_stack = true, host_stack = false } } },
+  { path = "{source:lwip}/contrib/ports/freertos/include", when = { capability = { ip_stack = true, host_stack = false } } },
+  # issue 2342 — where `ZP_SYSTEM_PLATFORM_HEADER` is found.
+  { path = "{nros}/c/platform/freertos-host", when = { capability = { host_stack = true } } },
 ]
 # issue 0491 — VALUE knobs only. `FREERTOS_PORT` is a port NAME and stays; the
 # three PATH variables were dropped, because cargo compares an env value as

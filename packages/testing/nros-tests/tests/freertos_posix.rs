@@ -6,6 +6,10 @@
 //! stack is the HOST's — so the RMW is the same host CycloneDDS the native
 //! cells use, and the whole cell costs a process spawn.
 //!
+//! Issue 2342 (phase-546) added the board's zenoh image: the same pair over
+//! zenoh-pico's FreeRTOS host-socket arm, with a router this file starts on the
+//! image's baked port.
+//!
 //! # Why these cells are not in `entry_e2e.rs`
 //!
 //! That file owns the RTOS `EntryPubsub` subset, and every cell in it is
@@ -31,10 +35,11 @@
 //! Run with: `cargo nextest run -p nros-tests --test freertos_posix`
 
 use nros_tests::{
-    alloc::domain_of,
+    alloc::{domain_of, port_of},
     fixtures::{
-        ManagedProcess, build_freertos_posix_workspace_c_entry,
-        build_freertos_posix_workspace_cpp_entry, freertos,
+        ManagedProcess, ZenohRouter, build_freertos_posix_workspace_c_entry,
+        build_freertos_posix_workspace_c_zenoh_entry, build_freertos_posix_workspace_cpp_entry,
+        freertos,
     },
     matrix::{Lang, PlatformId, Workload},
     output::{LISTENER_LOG_PREFIX, TALKER_PAYLOAD_PREFIX},
@@ -208,6 +213,36 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
     );
 }
 
+/// issue 2342 (phase-546) — the same in-image talker/listener pair over ZENOH,
+/// through zenoh-pico's FreeRTOS host-socket arm. Zenoh routes through a
+/// router, so the cell starts one on the port the image bakes
+/// (`tcp/127.0.0.1:<port_of>`, its `system.toml`); the listener line after the
+/// talker's is then a sample that left the image over a host socket, crossed
+/// the router and came back, with the read and the app on FreeRTOS tasks.
+#[test]
+fn freertos_posix_c_entry_delivers_over_zenoh() {
+    require_freertos();
+    let entry = build_freertos_posix_workspace_c_zenoh_entry().unwrap_or_else(|e| {
+        nros_tests::unmet!(
+            "freertos-posix C zenoh workspace entry not built \
+             (just freertos build-fixtures): {e:?}"
+        )
+    });
+    let port = port_of(PlatformId::FreertosPosix, Lang::C, Workload::EntryPubsub);
+    // Bound to `_router`, not `_`: dropping the guard kills the router.
+    let _router = ZenohRouter::start_on("127.0.0.1", port)
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+    let domain = domain_of(PlatformId::FreertosPosix, Lang::C, Workload::EntryPubsub);
+    let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-c-zenoh");
+    assert_delivered(
+        &out,
+        TALKER_PAYLOAD_PREFIX,
+        LISTENER_LOG_PREFIX,
+        domain,
+        "freertos-posix-c-zenoh",
+    );
+}
+
 /// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
 /// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
 /// added, retiered or reassigned without this list moving is a red here.
@@ -231,6 +266,13 @@ fn cases_bound_to_matrix_cells() {
                 P::FreertosPosix,
                 L::Cpp,
                 R::Cyclonedds,
+                W::EntryPubsub,
+                K::Workspace,
+            ),
+            (
+                P::FreertosPosix,
+                L::C,
+                R::Zenoh,
                 W::EntryPubsub,
                 K::Workspace,
             ),
