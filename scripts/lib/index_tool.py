@@ -24,6 +24,12 @@ program is absent there, so a caller can name the remedy. It never searches
 PATH: a PATH copy is how an unpinned tool wins (on one host `~/.cargo/bin` held
 cargo-nextest 0.9.99 ahead of the 0.9.143 pin).
 
+`resolve <tool> <program>` is `path`, then a PATH copy only if it PASSES THE
+ROW'S OWN SMOKE PROBE (`smoke = [{ run = "bin/<program> ...", expect }]`): the
+ci-base image installs the pinned dist under `/usr/local`, outside any store,
+and a version check is what tells that copy from an unpinned one. A row with
+no smoke probe for the program never resolves from PATH.
+
 `install` takes only the PREBUILT dist for this host. A tool with no dist for
 it is an error naming the host, never a source build: this runs in image
 builds and lane preflights, where minutes of compiling would be a surprise.
@@ -70,6 +76,35 @@ def program_path(name: str, program: str, tool: dict | None = None) -> Path:
     prefix = store_root() / "sdk" / name / tool["version"]
     root = index_packages.tool_root(tool)
     return (prefix / root if root else prefix) / "bin" / program
+
+
+def smoke_ok(tool: dict, program: str, exe: str) -> bool:
+    """Does `exe` pass every smoke probe the row states for `program`?"""
+    probes = [p for p in tool.get("smoke", [])
+              if p.get("run", "").split()[:1] == [f"bin/{program}"]]
+    if not probes:
+        return False
+    for p in probes:
+        argv = [exe] + p["run"].split()[1:]
+        try:
+            out = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if p.get("expect", "") not in out.stdout + out.stderr:
+            return False
+    return True
+
+
+def resolve(name: str, program: str, tool: dict | None = None) -> Path | None:
+    import shutil
+    tool = tool or load_tool(name)
+    p = program_path(name, program, tool)
+    if os.access(p, os.X_OK):
+        return p
+    found = shutil.which(program)
+    if found and smoke_ok(tool, program, found):
+        return Path(found)
+    return None
 
 
 def install(name: str, prefix: Path, tool: dict | None = None) -> None:
@@ -122,6 +157,10 @@ def self_test() -> None:
     assert program_path("t", "p", tool) == Path("/h/sdk/t/1.2.3/t-1.2.3/bin/p")
     tool.pop("subdir")
     assert program_path("t", "p", tool) == Path("/h/sdk/t/1.2.3/bin/p")
+    # A PATH copy counts only when the row's smoke probe passes on it.
+    assert smoke_ok({"smoke": [{"run": "bin/echo 1.2.3", "expect": "1.2.3"}]}, "echo", "/bin/echo")
+    assert not smoke_ok({"smoke": [{"run": "bin/echo 9.9.9", "expect": "1.2.3"}]}, "echo", "/bin/echo")
+    assert not smoke_ok({"smoke": []}, "echo", "/bin/echo"), "no probe must never resolve from PATH"
     try:
         install("t", Path("/nonexistent"), tool)
     except SystemExit as e:
@@ -139,6 +178,10 @@ def main(argv: list[str]) -> int:
         p = program_path(argv[1], argv[2])
         print(p)
         return 0 if os.access(p, os.X_OK) else 1
+    if len(argv) == 3 and argv[0] == "resolve":
+        r = resolve(argv[1], argv[2])
+        print(r if r else program_path(argv[1], argv[2]))
+        return 0 if r else 1
     if len(argv) in (4, 6) and argv[0] == "install" and argv[2] == "--prefix":
         index = Path(argv[5]) if len(argv) == 6 and argv[4] == "--index" else None
         install(argv[1], Path(argv[3]), load_tool(argv[1], index))

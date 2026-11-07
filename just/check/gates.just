@@ -312,7 +312,9 @@ nextest-gates *args:
     #!/usr/bin/env bash
     set -euo pipefail
     nx_rc=0
-    nx="$(python3 scripts/lib/index_tool.py path cargo-nextest cargo-nextest)" || nx_rc=$?
+    # The store copy, else a PATH copy that passes the pin's own smoke probe
+    # (the ci-base image installs the pinned dist under /usr/local).
+    nx="$(python3 scripts/lib/index_tool.py resolve cargo-nextest cargo-nextest)" || nx_rc=$?
     if [ "$nx_rc" -ne 0 ]; then
         echo "nextest-gates: the pinned cargo-nextest is not installed at $nx" >&2
         echo "  Remedy: just setup linux   (or: python3 scripts/lib/index_tool.py install cargo-nextest --prefix \"$(dirname "$(dirname "$nx")")\")" >&2
