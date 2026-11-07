@@ -79,7 +79,10 @@ pip3 install --user -r zephyr/scripts/requirements-base.txt
 export ZEPHYR_BASE="$PWD/zephyr"
 ```
 
-Last, give the workspace the patches nano-ros carries for Zephyr 3.7:
+Last, give the workspace the patches nano-ros carries for Zephyr 3.7. The
+same command installs the Rust toolchain the C talker's runtime is compiled
+with: a pinned nightly, with `rust-src` and the board's `thumbv7em-none-eabihf`
+target.
 
 ```bash probe=36 track=installed
 nros setup board nucleo-f767zi-zephyr --zephyr-workspace "$PWD"

@@ -411,6 +411,175 @@ fn rust_target_installed(target: &str, root: &Path) -> bool {
     }
 }
 
+/// Issue 2312 — whether the C/C++ runtime (`nros-c` / `nros-cpp`) for `triple`
+/// builds `core`/`alloc` from source on the pinned nightly: the embedded
+/// triples (`armv7a*`, `thumbv*`, `riscv32*`). The SAME rule as cmake's
+/// `nros_rust_target_builds_std` (`cmake/NanoRosRustToolchain.cmake`), which
+/// picks the channel the Zephyr C road builds with.
+#[must_use]
+pub fn runtime_builds_std(triple: &str) -> bool {
+    ["armv7a", "thumbv", "riscv32"]
+        .iter()
+        .any(|p| triple.starts_with(p))
+}
+
+/// Issue 2312 — the components the Zephyr C road's nightly needs: `cargo`
+/// (the issue's partial install had a toolchain without it, and `rustup
+/// component add cargo` repairs one), `rust-src` for `-Z build-std`, and
+/// `rustfmt`, which the FFI crate's generated `rust-toolchain.toml`
+/// (`zephyr/cmake/nros_generate_interfaces.cmake`) names, so a toolchain
+/// without it is auto-installed by rustup.
+pub const ZEPHYR_RUNTIME_COMPONENTS: [&str; 3] = ["cargo", "rust-src", "rustfmt"];
+
+/// Issue 2312 — what a Zephyr board's C/C++ runtime needs on the pinned
+/// nightly: the channel, then [`ZEPHYR_RUNTIME_COMPONENTS`] and every board
+/// triple ([`runtime_builds_std`]) as needs on it.
+///
+/// A C image on a Cortex-M Zephyr board still builds `nros-c` with cargo, on
+/// the pinned nightly with `-Z build-std` (`zephyr/cmake/nros_cargo_build.cmake`).
+/// Nothing installed that channel: the descriptor says `toolchain = "stable"`
+/// and the nightly was a cmake literal, so rustup's auto-install was the only
+/// provisioner, and a partial one stopped the build inside a cmake custom
+/// command. `None` for a non-Zephyr board, one whose triples are all host
+/// ones (native_sim), or when the pin cannot be read.
+#[must_use]
+pub fn zephyr_runtime_needs(
+    board: &BoardDescriptor,
+    nano_ros_root: Option<&Path>,
+) -> Option<(String, Vec<RustNeed>)> {
+    let z = board.zephyr.as_ref()?;
+    let mut triples: Vec<String> = board
+        .provisioning
+        .as_ref()
+        .map(|p| p.rust_targets.clone())
+        .unwrap_or_default();
+    triples.extend(z.rust_target_for_host());
+    triples.retain(|t| runtime_builds_std(t));
+    let mut seen = std::collections::BTreeSet::new();
+    triples.retain(|t| seen.insert(t.clone()));
+    if triples.is_empty() {
+        return None;
+    }
+    let channel = pinned_nightly(nano_ros_root)?;
+    let needs = ZEPHYR_RUNTIME_COMPONENTS
+        .iter()
+        .map(|c| RustNeed::Component((*c).to_string()))
+        .chain(triples.into_iter().map(RustNeed::Target))
+        .collect();
+    Some((channel, needs))
+}
+
+/// One question [`check_zephyr_runtime_with`] asks rustup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RustupQuery {
+    /// Is the toolchain installed at all?
+    Toolchain(String),
+    /// Is the component installed on the toolchain? `cargo` is asked this way.
+    Component { toolchain: String, name: String },
+    /// Is the target installed on the toolchain?
+    Target { toolchain: String, triple: String },
+}
+
+/// The real rustup answer to a [`RustupQuery`], asked from `root`. `None`: no
+/// rustup, or it could not answer, which the check reads as installed (the
+/// false-negative-is-safe rule of [`rust_target_installed`]).
+fn rustup_answers(q: &RustupQuery, root: &Path) -> Option<bool> {
+    let lines = |args: &[&str]| -> Option<Vec<String>> {
+        let out = rustup_in(root).args(args).output().ok()?;
+        out.status.success().then(|| {
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(|l| l.trim().to_string())
+                .collect()
+        })
+    };
+    match q {
+        RustupQuery::Toolchain(t) => {
+            let list = lines(&["toolchain", "list"])?;
+            Some(list.iter().any(|l| {
+                l.split_whitespace()
+                    .next()
+                    .is_some_and(|name| name == t || name.starts_with(&format!("{t}-")))
+            }))
+        }
+        RustupQuery::Component { toolchain, name } => {
+            let list = lines(&["component", "list", "--installed", "--toolchain", toolchain])?;
+            Some(
+                list.iter()
+                    .any(|l| l == name || l.starts_with(&format!("{name}-"))),
+            )
+        }
+        RustupQuery::Target { toolchain, triple } => {
+            let list = lines(&["target", "list", "--installed", "--toolchain", toolchain])?;
+            Some(list.iter().any(|l| l == triple))
+        }
+    }
+}
+
+/// Issue 2312 — refuse a C/C++ image on a Zephyr board BEFORE cmake when the
+/// pinned nightly its runtime builds with ([`zephyr_runtime_needs`]) is
+/// absent, lacks `cargo`, or lacks a component or target. `remedy` is the
+/// `nros setup board` line that installs all of it. Asks rustup from `root`.
+#[must_use]
+pub fn check_zephyr_runtime(
+    board: &BoardDescriptor,
+    root: &Path,
+    nano_ros_root: Option<&Path>,
+    remedy: &str,
+) -> Vec<Missing> {
+    check_zephyr_runtime_with(board, nano_ros_root, remedy, |q| rustup_answers(q, root))
+}
+
+/// [`check_zephyr_runtime`] with rustup's answers passed in, so the rule is
+/// testable without a rustup or a toolchain on the host.
+pub fn check_zephyr_runtime_with(
+    board: &BoardDescriptor,
+    nano_ros_root: Option<&Path>,
+    remedy: &str,
+    answers: impl Fn(&RustupQuery) -> Option<bool>,
+) -> Vec<Missing> {
+    let Some((channel, needs)) = zephyr_runtime_needs(board, nano_ros_root) else {
+        return Vec::new();
+    };
+    let name = &board.names[0];
+    let absent = |q: RustupQuery| answers(&q) == Some(false);
+    let miss = |what: String| Missing {
+        what,
+        remedy: remedy.to_string(),
+    };
+    if absent(RustupQuery::Toolchain(channel.clone())) {
+        return vec![miss(format!(
+            "the pinned nightly `{channel}` that the C/C++ runtime on board `{name}` builds \
+             with (`-Z build-std`)"
+        ))];
+    }
+    let mut out = Vec::new();
+    for n in &needs {
+        let (query, what) = match n {
+            RustNeed::Component(c) => (
+                RustupQuery::Component {
+                    toolchain: channel.clone(),
+                    name: c.clone(),
+                },
+                format!("rustup component `{c}`"),
+            ),
+            RustNeed::Target(t) => (
+                RustupQuery::Target {
+                    toolchain: channel.clone(),
+                    triple: t.clone(),
+                },
+                format!("Rust target `{t}`"),
+            ),
+        };
+        if absent(query) {
+            out.push(miss(format!(
+                "{what} on `{channel}` (the C/C++ runtime on board `{name}`)"
+            )));
+        }
+    }
+    out
+}
+
 /// Stage 3's refusal, as a typed error (phase-530 W1).
 ///
 /// Its `Display` is exactly [`report`]. Typed so `nros configure` can tell
@@ -696,6 +865,96 @@ mod tests {
         let freertos = crate::cmd::board_facts::resolve_board(&cat, "mps2-an385-freertos")
             .expect("freertos board");
         assert_eq!(board_rust_channel(freertos, Some(&root)), None);
+    }
+
+    /// Issue 2312 — the Nucleo's C/C++ runtime builds on the pinned nightly
+    /// (the row the cmake road reads), so that is what its needs name: the
+    /// toolchain with cargo, rust-src and rustfmt, and the board's triple on
+    /// it. native_sim's runtime compiles for the host and needs none.
+    #[test]
+    fn a_cortex_m_zephyr_board_needs_the_pinned_nightly_for_its_runtime() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let cat = BoardCatalog::load(&root).expect("catalog");
+        let nucleo = crate::cmd::board_facts::resolve_board(&cat, "nucleo-f767zi-zephyr")
+            .expect("nucleo board");
+        let (channel, needs) = zephyr_runtime_needs(nucleo, Some(&root)).expect("nightly needs");
+        assert_eq!(Some(channel.clone()), pinned_nightly(Some(&root)));
+        assert!(channel.starts_with("nightly-"), "{channel}");
+        assert_eq!(
+            needs,
+            vec![
+                RustNeed::Component("cargo".into()),
+                RustNeed::Component("rust-src".into()),
+                RustNeed::Component("rustfmt".into()),
+                RustNeed::Target("thumbv7em-none-eabihf".into()),
+            ]
+        );
+        let native_sim =
+            crate::cmd::board_facts::resolve_board(&cat, "zephyr").expect("native_sim board");
+        assert_eq!(zephyr_runtime_needs(native_sim, Some(&root)), None);
+        // Not a Zephyr board at all.
+        let freertos = crate::cmd::board_facts::resolve_board(&cat, "mps2-an385-freertos")
+            .expect("freertos board");
+        assert_eq!(zephyr_runtime_needs(freertos, Some(&root)), None);
+        for (t, want) in [
+            ("thumbv7em-none-eabihf", true),
+            ("armv7a-none-eabi", true),
+            ("riscv32imc-unknown-none-elf", true),
+            ("x86_64-unknown-none", false),
+            ("i686-unknown-linux-gnu", false),
+        ] {
+            assert_eq!(runtime_builds_std(t), want, "{t}");
+        }
+    }
+
+    /// Issue 2312 — the build refuses before cmake, naming `nros setup board`,
+    /// for each shape of a missing nightly: absent, present without cargo (the
+    /// partial install the issue's reader had), or without a component or the
+    /// triple. A rustup that cannot answer refuses nothing.
+    #[test]
+    fn a_missing_runtime_nightly_is_refused_naming_setup_board() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let cat = BoardCatalog::load(&root).expect("catalog");
+        let nucleo = crate::cmd::board_facts::resolve_board(&cat, "nucleo-f767zi-zephyr")
+            .expect("nucleo board");
+        let channel = pinned_nightly(Some(&root)).unwrap();
+        let remedy = "nros setup board nucleo-f767zi-zephyr --zephyr-workspace /ws";
+        let check = |answers: &dyn Fn(&RustupQuery) -> Option<bool>| {
+            check_zephyr_runtime_with(nucleo, Some(&root), remedy, answers)
+        };
+
+        let none = check(&|q| Some(!matches!(q, RustupQuery::Toolchain(_))));
+        assert_eq!(none.len(), 1, "{none:?}");
+        assert!(none[0].what.contains(&channel), "{}", none[0].what);
+        assert_eq!(none[0].remedy, remedy);
+
+        let no_cargo =
+            check(&|q| Some(!matches!(q, RustupQuery::Component { name, .. } if name == "cargo")));
+        assert_eq!(no_cargo.len(), 1, "{no_cargo:?}");
+        assert!(no_cargo[0].what.contains("`cargo`"), "{}", no_cargo[0].what);
+
+        let no_src_no_target = check(&|q| match q {
+            RustupQuery::Component { name, .. } => Some(name != "rust-src"),
+            RustupQuery::Target { .. } => Some(false),
+            RustupQuery::Toolchain(_) => Some(true),
+        });
+        let whats: Vec<&str> = no_src_no_target.iter().map(|m| m.what.as_str()).collect();
+        assert_eq!(whats.len(), 2, "{whats:?}");
+        assert!(whats[0].contains("`rust-src`"), "{whats:?}");
+        assert!(whats[1].contains("`thumbv7em-none-eabihf`"), "{whats:?}");
+
+        assert!(check(&|_| Some(true)).is_empty());
+        assert!(
+            check(&|_| None).is_empty(),
+            "no rustup answer refuses nothing"
+        );
+
+        // A C image on native_sim builds its runtime for the host: nothing asked.
+        let native_sim =
+            crate::cmd::board_facts::resolve_board(&cat, "zephyr").expect("native_sim board");
+        assert!(
+            check_zephyr_runtime_with(native_sim, Some(&root), remedy, |_| Some(false)).is_empty()
+        );
     }
 
     /// Issue 2151 — a Rust image on a Zephyr board is refused before anything

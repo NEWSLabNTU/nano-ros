@@ -49,7 +49,10 @@ set(CMAKE_ASM_FLAGS_INIT "-march=rv32imac -mabi=ilp32")
 # pin in lockstep with the arm NuttX toolchain file / the example's
 # rust-toolchain.toml (the build-std libc match is nightly-version-sensitive).
 set(Rust_CARGO_TARGET "riscv32imac-unknown-nuttx-elf" CACHE STRING "Rust target triple" FORCE)
-set(Rust_TOOLCHAIN "nightly-2026-04-11" CACHE STRING "Rust toolchain" FORCE)
+# Issue 2312 — read from its one source, never a literal.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosRustToolchain.cmake")
+nros_pinned_nightly(_nros_nightly)
+set(Rust_TOOLCHAIN "${_nros_nightly}" CACHE STRING "Rust toolchain" FORCE)
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)

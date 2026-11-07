@@ -233,7 +233,7 @@ entity census read an action declared only by `actions:` wiring as
 `missing-in-contract` (the contract schema has no node-level action key), so
 a bringup with a host image refused. The zenoh warning that ended in a bare
 internal id was already fixed on main by issue 2270. Filed:
-[2312](../issues/2312-zephyr-c-road-nightly-not-provisioned-by-setup-board.md)
+[2312](../issues/archived/2312-zephyr-c-road-nightly-not-provisioned-by-setup-board.md)
 (`nros setup board` does not provision the nightly the Zephyr C road builds
 `nros-c` with),
 [2304](../issues/2304-c-param-server-cyclone-exits-after-store.md) (a C

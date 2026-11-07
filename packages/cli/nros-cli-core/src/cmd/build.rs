@@ -976,6 +976,23 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 },
             ));
         }
+        // Issue 2312 — a C/C++ image on an embedded Zephyr triple builds its
+        // runtime on the pinned nightly; refuse before cmake when that is
+        // missing, rather than meeting rustup's auto-install inside it.
+        if planning != Planning::Query
+            && platform == "zephyr"
+            && image_has_non_rust(&image, &bringup_dir)
+        {
+            missing.extend(crate::builder::preflight::check_zephyr_runtime(
+                descriptor,
+                &root,
+                nano_ros_root.as_deref(),
+                &zephyr_runtime_remedy(
+                    descriptor,
+                    zephyr_base(&root, args.zephyr_workspace.as_deref()).as_deref(),
+                ),
+            ));
+        }
         if !missing.is_empty() {
             return Err(crate::builder::preflight::PreflightRefusal(missing).into());
         }
@@ -6560,6 +6577,23 @@ fn zephyr_base(root: &std::path::Path, flag: Option<&std::path::Path>) -> Option
         )),
         &line,
         root,
+    )
+}
+
+/// Issue 2312 — the `nros setup board` line that provisions a Zephyr board's
+/// runtime nightly, naming the west workspace when one was found (the parent
+/// of `ZEPHYR_BASE`).
+fn zephyr_runtime_remedy(
+    board: &crate::orchestration::board_descriptor::BoardDescriptor,
+    zephyr_base: Option<&std::path::Path>,
+) -> String {
+    let ws = zephyr_base.and_then(std::path::Path::parent).map_or_else(
+        || "<west workspace>".to_string(),
+        |p| p.display().to_string(),
+    );
+    format!(
+        "nros setup board {} --zephyr-workspace {ws}",
+        board.canonical_name()
     )
 }
 
