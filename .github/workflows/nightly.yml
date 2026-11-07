@@ -543,6 +543,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # The router logs a cell asked for (`ROUTER_SESSION_LOG_FILTER` makes
+      # `ZenohRouter` write `test-logs/fixtures/zenohd-<port>.log`). The
+      # quiet-link cell went red on threadx_linux with the image refused at its
+      # first connect and did not reproduce locally; the junit holds the
+      # image's side, this holds the router's. A few KB per cell. The log is
+      # per PORT, so a later cell on the same baked port overwrites it; the
+      # failing cell also prints its router's state into the junit.
+      - name: Upload fixture logs (${{ matrix.plat }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.plat }}-fixture-logs
+          path: test-logs/fixtures/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # ===== PX4 SITL (phase-521 W8 (e), RFC-0113 D9) ======================
   # PX4 is a Tier 1 framework, and Tier 1 admission needs a DELIVERING CI
   # cell (RFC-0112 D3). Its cells are `Gated` in `matrix::CELLS`: a SITL build

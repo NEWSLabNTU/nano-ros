@@ -146,6 +146,7 @@ _tx_execution_
 _tx_execution_thread_enter
 _tx_linux_mutex
 _tx_linux_thread_entry
+_tx_linux_thread_suspend
 _txe_event_flags_delete
 bsd_initialize
 nx_bsd_in_addr_t
@@ -257,6 +258,7 @@ write_hb_liveliness
 # POSIX, Linux, libc and newlib
 AF_UNIX
 EM_RISCV
+ERESTARTSYS
 ETXTBSY
 HRTICK_DL
 IFNAMSIZ

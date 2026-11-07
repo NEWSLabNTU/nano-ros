@@ -1049,6 +1049,34 @@ fn assert_nuttx_eth0_on_slirp(output: &str, cmdline: &str) {
     );
 }
 
+/// What the router looked like when an image failed to come up against it:
+/// alive or not, whether its port still accepts, and its log.
+///
+/// A readiness failure is otherwise ambiguous between "the router went away"
+/// and "the router was there and refused the session", and those point at
+/// different layers. Printed to stderr, which the junit keeps.
+fn router_state_at_failure(zenohd: &mut ZenohRouter) -> String {
+    let port = zenohd.port();
+    let alive = zenohd.is_running();
+    let accepts = std::net::TcpStream::connect(("127.0.0.1", port)).is_ok();
+    let log_path = zenohd.log_path();
+    let log = std::fs::read_to_string(&log_path)
+        .unwrap_or_else(|e| format!("<cannot read {}: {e}>", log_path.display()));
+    let tail_from = log.len().saturating_sub(8192);
+    let tail_from = (tail_from..log.len())
+        .find(|&i| log.is_char_boundary(i))
+        .unwrap_or(log.len());
+    format!(
+        "router at failure: port {port}, process alive: {alive}, 127.0.0.1:{port} accepts: \
+         {accepts}\nRouter:   {}\nRouter log ({}, last {} of {} bytes):\n{}",
+        zenohd.launch_line(),
+        log_path.display(),
+        log.len() - tail_from,
+        log.len(),
+        &log[tail_from..],
+    )
+}
+
 fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform, cmdline: &str) {
     if output.contains(readiness_pattern) {
         if platform == Platform::Nuttx {
@@ -1353,7 +1381,7 @@ fn test_rtos_quiet_link_keeps_its_session(
     require_cell_runnable(platform, lang, Variant::Pubsub);
     let (_talker_bin, listener_bin) = build_pair(platform, lang, Variant::Pubsub);
 
-    let zenohd = platform
+    let mut zenohd = platform
         .zenoh_router_start(Variant::Pubsub, lang, Some(ROUTER_SESSION_LOG_FILTER))
         .expect("Failed to start zenohd");
     let mut listener = platform
@@ -1362,6 +1390,14 @@ fn test_rtos_quiet_link_keeps_its_session(
 
     let ready_marker = listener_ready_marker(platform, lang);
     let boot = listener.collect_until(ready_marker, boot_budget(platform));
+    if !boot.contains(ready_marker) {
+        // Issue 2094's cell went red on the threadx_linux nightly with the
+        // image refused at its first connect, 0.01 s after a router that had
+        // just answered the readiness probe — and not locally. The router log
+        // is per PORT, so the next cell on this baked port truncates it before
+        // anyone reads it: say what the router was doing HERE, in the verdict.
+        eprintln!("{}", router_state_at_failure(&mut zenohd));
+    }
     ensure_ready(&boot, ready_marker, platform, &listener.command_line());
 
     // Nothing to wait FOR — the point is that nothing happens. Collect until a
