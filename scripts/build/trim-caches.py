@@ -70,7 +70,7 @@ def target_triples() -> set[str]:
 def units_in(area: Path, triples: set[str]) -> list[Path]:
     """The cargo target dirs under `area`, outermost only."""
     found: set[Path] = set()
-    for dirpath, dirnames, filenames in os.walk(area):
+    for dirpath, dirnames, filenames in os.walk(area):  # walk-ok: build output under build/, never git-tracked
         if "CACHEDIR.TAG" in filenames:
             d = Path(dirpath)
             found.add(d.parent if d.name in triples else d)
@@ -90,7 +90,7 @@ def last_used(unit: Path) -> float:
     the use record. A directory's is not: listing one (this scan included)
     refreshes it. Files are only stat'ed here, which changes nothing."""
     best = 0.0
-    for dirpath, dirnames, _ in os.walk(unit):
+    for dirpath, dirnames, _ in os.walk(unit):  # walk-ok: build output under build/, never git-tracked
         if ".fingerprint" not in dirnames:
             continue
         fp = Path(dirpath) / ".fingerprint"
@@ -112,7 +112,7 @@ def last_used(unit: Path) -> float:
 
 def size_of(path: Path) -> int:
     total = 0
-    for dirpath, _, filenames in os.walk(path):
+    for dirpath, _, filenames in os.walk(path):  # walk-ok: build output under build/, never git-tracked
         for f in filenames:
             try:
                 total += os.lstat(os.path.join(dirpath, f)).st_blocks * 512
