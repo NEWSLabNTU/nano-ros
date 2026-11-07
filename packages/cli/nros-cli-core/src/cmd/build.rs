@@ -6138,7 +6138,7 @@ fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<P
     ] {
         if let Err(e) = remove(&p) {
             eprintln!(
-                "nros build: warning: cannot remove the stale pre-issue-2287 build dir's `{}`: {e}",
+                "nros build: warning: cannot remove the stale old-layout build dir's `{}`: {e}",
                 shown(&p)
             );
             return None;
@@ -6147,7 +6147,7 @@ fn retire_legacy_cmake_root(build: &Path, key: &str, current: &Path) -> Option<P
     // Only if empty: anything else under this name is not the root's.
     let _ = std::fs::remove_dir(&legacy);
     eprintln!(
-        "nros build: removed the stale pre-issue-2287 build dir {}/ (cmake roots are per \
+        "nros build: removed the stale old-layout build dir {}/ (cmake roots are per \
          bringup now, at {}/; the old one held a second copy of each entry's binary)",
         shown(&legacy),
         shown(current)
