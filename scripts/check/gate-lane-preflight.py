@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""Is every capability a gate lane CLAIMS actually present? (phase-543 W5)
+
+A lane's `claims` in `.config/gate-lanes.toml` put the gates that need those
+capabilities in its scope. A claimed capability that is missing turns each of
+those gates red, one at a time, each with its own message. This asks first and
+names every missing claim at once, before any gate runs. Where a probe has an
+existing check (`_require-worktree-provisioning`, this checkout's CLI), it
+calls that check rather than spell it again.
+
+A probe is deliberately coarse: "is it there at all", in a few milliseconds.
+The precise question stays with the gate, whose skip under the harness is a red
+(`NROS_CHECK_SKIP_STRICT=1`). A coarse probe that passes over a partial
+provision is caught there. A probe that fails is never wrong about absence.
+
+  gate-lane-preflight.py <lane>     # exit 1 naming every missing claim
+  gate-lane-preflight.py --check    # probes cover the capabilities (no host)
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
+ROOT = Path(__file__).resolve().parents[2]
+LANES = ROOT / ".config" / "gate-lanes.toml"
+
+
+def on_path(*tools: str) -> str | None:
+    if any(shutil.which(t) for t in tools):
+        return None
+    return f"none of {', '.join(tools)} is on PATH"
+
+
+def env_dir(var: str) -> str | None:
+    v = os.environ.get(var, "")
+    if v and Path(v).is_dir():
+        return None
+    return f"${var} is {'unset' if not v else f'{v!r}, not a directory'}"
+
+
+def probe_submodules() -> str | None:
+    # The one provisioning check `ci gate` already runs (store-first sources
+    # included, RFC-0103 D5); never a second spelling of it.
+    r = subprocess.run(["just", "_require-worktree-provisioning"], cwd=ROOT,
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        return None
+    lines = [l.strip() for l in r.stderr.splitlines() if l.strip().startswith(("submodule", "NOT A", "binary"))]
+    return "; ".join(lines) or "just _require-worktree-provisioning failed"
+
+
+def probe_cli() -> str | None:
+    # This checkout's CLI, never PATH or the store (issue 1850).
+    r = subprocess.run(["bash", "-c", "source scripts/build/cargo.sh && NROS_CLI= nros_cli_bin --checkout-only"],
+                       cwd=ROOT, capture_output=True, text=True)
+    return None if r.returncode == 0 else "this checkout's `nros` is not built (just setup-cli)"
+
+
+def probe_git_history() -> str | None:
+    r = subprocess.run(["git", "rev-parse", "--is-shallow-repository"], cwd=ROOT,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return "not a git checkout"
+    return "the clone is shallow" if r.stdout.strip() == "true" else None
+
+
+def probe_sources() -> str | None:
+    d = Path(os.environ.get("NROS_HOME") or Path.home() / ".nros") / "sources"
+    if d.is_dir() and any(d.iterdir()):
+        return None
+    return f"no provisioned source clone under {d} (nros setup --source)"
+
+
+def probe_zephyr_tree() -> str | None:
+    inc = ROOT / "zephyr-workspace" / "zephyr" / "lib" / "cpp" / "minimal" / "include"
+    return None if inc.is_dir() else f"{inc.relative_to(ROOT)} is absent"
+
+
+def probe_zephyr() -> str | None:
+    r = subprocess.run(["bash", "scripts/lib/zephyr-workspace.sh", "--absolute", "resolve"],
+                       cwd=ROOT, capture_output=True, text=True)
+    ws = r.stdout.strip()
+    # A west workspace, not a source tree: `.west/` is what `west` resolves
+    # from (issue 2308: a sparse header clone passed a `zephyr/` test).
+    if r.returncode == 0 and ws and (Path(ws) / ".west").is_dir():
+        return None
+    return "no west workspace resolves (`.west/` absent)"
+
+
+def probe_build_tree() -> str | None:
+    stamp = ROOT / os.environ.get("NROS_FIXTURE_STAMP", "target/nextest/.fixtures-built")
+    return None if stamp.exists() else "no fixture build stamp (just build-test-fixtures)"
+
+
+PROBES = {
+    "cli": probe_cli,
+    "cmake": lambda: on_path("cmake"),
+    "cc": lambda: on_path("cc", "gcc", "clang"),
+    "bindgen": lambda: on_path("bindgen"),
+    "ros2": lambda: None if os.environ.get("AMENT_PREFIX_PATH") else "AMENT_PREFIX_PATH is unset",
+    "colcon": lambda: on_path("colcon"),
+    "sources": probe_sources,
+    "submodules": probe_submodules,
+    "git-history": probe_git_history,
+    "zephyr-tree": probe_zephyr_tree,
+    "zephyr": probe_zephyr,
+    "nuttx": lambda: env_dir("NUTTX_DIR"),
+    "fsp": lambda: env_dir("NV_SPE_FSP_DIR"),
+    "build-tree": probe_build_tree,
+}
+
+
+def lane_claims(cfg: dict, lane: str) -> list[str]:
+    lanes = cfg.get("lane", {})
+    if lane not in lanes:
+        raise SystemExit(f"gate-lane-preflight: no lane `{lane}` in {LANES.relative_to(ROOT)} "
+                         f"(lanes: {', '.join(sorted(lanes))})")
+    return list(lanes[lane]["claims"])
+
+
+def coverage(cfg: dict) -> list[str]:
+    """Every capability has a probe and every probe a capability."""
+    caps = set(cfg.get("capabilities", {}))
+    return ([f"capability `{c}` has no probe here" for c in sorted(caps - PROBES.keys())]
+            + [f"probe `{p}` names no capability" for p in sorted(PROBES.keys() - caps)])
+
+
+def self_test() -> None:
+    cfg = {"capabilities": {k: "" for k in PROBES}, "lane": {"x": {"claims": ["cmake"]}}}
+    assert coverage(cfg) == [], coverage(cfg)
+    cfg["capabilities"]["new"] = ""
+    assert coverage(cfg) == ["capability `new` has no probe here"], coverage(cfg)
+    assert lane_claims(cfg, "x") == ["cmake"]
+    assert on_path("nros-no-such-tool-543") is not None
+    assert env_dir("NROS_NO_SUCH_VAR_543") == "$NROS_NO_SUCH_VAR_543 is unset"
+
+
+def main(argv: list[str]) -> int:
+    self_test()
+    if not argv:
+        print(__doc__, file=sys.stderr)
+        return 2
+    cfg = tomllib.loads(LANES.read_text())
+    problems = coverage(cfg)
+    if problems:
+        print("gate-lane-preflight: probes and capabilities disagree:", file=sys.stderr)
+        print("\n".join(f"  {p}" for p in problems), file=sys.stderr)
+        return 1
+    if argv[0] == "--check":
+        # The gate (`check gate-lane-preflight`): every capability has a probe
+        # and every lane claims only listed capabilities. Asks no host.
+        bad = [f"lane `{n}` claims `{c}`, which [capabilities] does not list"
+               for n, l in sorted(cfg.get("lane", {}).items())
+               for c in l["claims"] if c not in PROBES]
+        if bad:
+            print("\n".join(bad), file=sys.stderr)
+            return 1
+        print(f"gate-lane-preflight OK — {len(PROBES)} capabilities probed, "
+              f"{len(cfg.get('lane', {}))} lanes")
+        return 0
+    lane = argv[0]
+    claims = lane_claims(cfg, lane)
+    missing = [(c, why) for c in claims if (why := PROBES[c]()) is not None]
+    if missing:
+        print(f"gate-lane-preflight: lane `{lane}` claims what this host does not have:",
+              file=sys.stderr)
+        for c, why in missing:
+            print(f"  {c}: {why}", file=sys.stderr)
+        print("  Provision it, or run a lane that does not claim it "
+              "(.config/gate-lanes.toml). No gate ran.", file=sys.stderr)
+        return 1
+    print(f"gate-lane-preflight: lane `{lane}`: {len(claims)} claimed capabilities present")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

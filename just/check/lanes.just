@@ -4558,6 +4558,7 @@ rmw-xrce:
 # truth; the script has covered all three since it landed, so the comment was
 # describing a state that never shipped. Read the script, not this line, when
 # they disagree: it prints one section per arm.
+[group('units')]
 sched-dim-arms:
     @bash scripts/check-sched-dim-arms-compile.sh
 

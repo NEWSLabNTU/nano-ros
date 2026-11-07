@@ -51,6 +51,13 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 tiers = ["fast", "build"]
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree", "zephyr", "build-tree"]
 
+[lane.dev]
+# A developer worktree after `just setup-worktree` with ROS 2 sourced: what
+# `just check lane dev` runs before a push. No Zephyr and no fixture build, so
+# the gates that need them run in `fast`/`queue` instead.
+tiers = ["fast", "build"]
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
+
 [lane.pristine]
 # `check pristine-checkout`: a worktree with no submodules and no CLI
 # (issues 0650, 1373).
