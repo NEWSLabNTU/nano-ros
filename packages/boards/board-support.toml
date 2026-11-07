@@ -1097,6 +1097,34 @@ row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-548 W8 — the C++ tab of the same starter."
 
 [[probe]]
+track = "freertos-posix-zenoh-rust"
+chapter = "starters/freertos-posix.md"
+variant = "zenoh"
+lang = "rust"
+awaits = ["Rust on the FreeRTOS POSIX board: the generated entry links the mps2-an385 FreeRTOS board crate through the `freertos` alias, and cyclonedds has no cargo bridge (phase-548 W1)"]
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-548 W8 — the starter's zenoh section in its Rust tab, after the Cyclone DDS steps; zenoh on this board landed with #3284."
+
+[[probe]]
+track = "freertos-posix-zenoh"
+chapter = "starters/freertos-posix.md"
+variant = "zenoh"
+lang = "c"
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-548 W8 — the starter's zenoh section in its C tab, after the Cyclone DDS steps; zenoh on this board landed with #3284."
+
+[[probe]]
+track = "freertos-posix-zenoh-cpp"
+chapter = "starters/freertos-posix.md"
+variant = "zenoh"
+lang = "cpp"
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-548 W8 — the starter's zenoh section in its C++ tab, after the Cyclone DDS steps; zenoh on this board landed with #3284."
+
+[[probe]]
 track = "platform-linux"
 chapter = "guide/platforms/linux-host.md"
 variant = ""
