@@ -43,6 +43,16 @@ UNCLAIMED_OK = {
 SKIP_CALL = re.compile(r"\bnros_check_(skip|unverified)\b")
 
 
+def _gate_lists():
+    """check-gate-lists.py as a module (its file name is not importable)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "check_gate_lists", REPO / "scripts/check/check-gate-lists.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def check(groups: dict[str, set[str]], bodies: dict[str, str], cfg: dict,
           baseline: set[str]) -> tuple[list[str], list[str]]:
     caps = set(cfg.get("capabilities", {}))
@@ -60,9 +70,16 @@ def check(groups: dict[str, set[str]], bodies: dict[str, str], cfg: dict,
         for c in sorted(x.removeprefix("cpu:") for x in g if x.startswith("cpu:")):
             if not c.isdigit() or int(c) < 1:
                 problems.append(f"  {name}: `cpu:{c}` is not a positive integer")
+    # One rule for what a resource may say, the one that sizes it
+    # (check-gate-lists.py `resource_capacity`): a count >= 1, or
+    # `{ scratch-gib = N }` (issue 2356). Asked with a fixed free space so the
+    # answer is about the spelling, not about this host's disk.
+    capacity = _gate_lists().resource_capacity
     for r, n in sorted(resources.items()):
-        if not isinstance(n, int) or n < 1:
-            problems.append(f"  [resources] {r} = {n!r}: max holders must be a positive integer")
+        try:
+            capacity(r, n, 1 << 30)
+        except SystemExit as e:
+            problems.append(f"  {e}")
     claimed: set[str] = set()
     for lane, spec in cfg.get("lane", {}).items():
         for c in spec.get("claims", []):
@@ -106,6 +123,14 @@ def self_test() -> None:
     assert "no lane claims `z`" in text, text
     p, _ = check({"old": {"needs:a"}}, {}, {"capabilities": {"a": ""}, "lane": {"l": {"claims": ["a"]}}}, {"old"})
     assert any("delete it from" in x for x in p), p
+    # Both resource spellings pass; a bad one of each is refused.
+    ok = {"capabilities": {"a": ""}, "lane": {"l": {"claims": ["a"]}},
+          "resources": {"n": 2, "s": {"scratch-gib": 5}}}
+    p, _ = check({}, {}, ok, set())
+    assert not any("[resources]" in x for x in p), p
+    for bad in (0, {"scratch-gib": 0}, {"gib": 5}):
+        p, _ = check({}, {}, {**ok, "resources": {"x": bad}}, set())
+        assert any("[resources] x" in x for x in p), (bad, p)
 
 
 def main() -> int:
