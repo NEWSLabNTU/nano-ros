@@ -106,6 +106,11 @@ the board's name.
 **Acceptance:** the C++ cells of mps2-an385 Zephyr and Zephyr native_sim are
 green.
 
+- Found while measuring W2, outside it: issue 2353 (`nros run` on
+  mps2-an385 Zephyr finds no west workspace without `ZEPHYR_BASE` and starts
+  no router for the board's `10.0.2.2` locator) and issue 2354 (a generated
+  Rust Zephyr image on Cyclone DDS probably needs `CONFIG_CPP`; not measured).
+
 ### W3 — The NuttX cross compiler is the pinned one, with a GCC floor
 
 **Code area:** `packages/boards/nros-board-common/src/nuttx_ffi_build.rs`.
