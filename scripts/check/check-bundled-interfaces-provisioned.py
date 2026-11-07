@@ -33,13 +33,17 @@ def missing(bundled: set[str], listed: set[str]) -> list[str]:
     return sorted(bundled - listed)
 
 
+def self_test() -> None:
+    assert missing({"a", "b"}, {"a"}) == ["b"], "a bundled package the row lacks was not reported"
+    assert missing({"a"}, {"a", "c"}) == [], "an extra row entry was reported"
+
+
 def bundled_packages() -> set[str]:
     return {d.name for d in BUNDLED.iterdir() if (d / "package.xml").is_file()}
 
 
 def main() -> int:
-    assert missing({"a", "b"}, {"a"}) == ["b"]
-    assert missing({"a"}, {"a", "c"}) == []
+    self_test()
     bundled = bundled_packages()
     if not bundled:
         print(f"check-bundled-interfaces-provisioned: no package under {BUNDLED.relative_to(ROOT)}; "
