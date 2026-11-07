@@ -36,9 +36,8 @@ knowing before you read either output:
 - **The heap is a static.** `nros_platform_mps2_an385::memory::HEAP` is a
   128 KiB allocator (`NROS_HEAP_SIZE` changes it, in bytes), so it is
   already inside the RAM total. Its symbol reads a little over 128 KiB
-  (132,792 B measured) because the allocator's own state sits beside the
-  arena. It lands in `.data`, not `.bss`, so today it occupies flash as
-  well.
+  (132,816 B measured) because the allocator's own state sits beside the
+  arena. It starts all-zero, so it is in `.bss` and costs no flash.
 - **The stack has no budget.** The main stack starts at the top of the
   board's 4 MiB SRAM and grows down toward the end of `.bss`, with no guard
   between them; nothing in the image reserves or checks a stack size. On this

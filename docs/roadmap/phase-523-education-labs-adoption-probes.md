@@ -5,7 +5,7 @@
 against it next. Every round-one stop is closed but 2269 (homed in phase-537). Fixed on `main`:
 2256–2268, 2270–2272 and 2197; 2262 and 2272 were already fixed by
 phase-537's serial page. Release support is ruled: latest release only. One
-new issue from the work, 2309 (the bare-metal heap static lands in `.data`).
+issue filed from the work, 2309, was retracted: it was measured on a stale image, and the heap is in `.bss`.
 Left: round two on the next release, the field probe (a person with a board),
 and W2 (phase-537 W5's lab sources).**
 
@@ -157,7 +157,7 @@ Issues homed here (each has a `**Home:**` line pointing here):
 | [#2270](../issues/archived/2270-default-talker-prints-internal-warnings.md) | education | **Resolved** 2026-11-06: the descriptor writer reports defaults as one line, the scaffold declares its contract, and no user-facing text cites a tracker id (gated) |
 | [#2271](../issues/archived/2271-install-sh-no-longer-prints-path-export.md) | education | **Resolved** 2026-11-06: not reproduced — install.sh prints the line, above the closing `next` lines |
 | [#2272](../issues/archived/2272-serial-flow-needs-socat-unlisted.md) | education | **Resolved** 2026-11-07: Fixed on main: no `socat` in the serial flow |
-| [#2309](../issues/2309-heap-static-lands-in-data.md) | both | The bare-metal 128 KiB heap static lands in `.data`, so it costs flash (found answering 2265) |
+| [#2309](../issues/archived/2309-heap-static-lands-in-data.md) | both | **Retracted** 2026-11-07: measured on a stale image; a fresh build places HEAP in `.bss` |
 Round one has not run.
 
 Acceptance: three briefs committed under `docs/development/adoption-probes/`;
