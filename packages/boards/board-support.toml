@@ -804,22 +804,65 @@ notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: c
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""
+lang = "cpp"
 weekly = true
 row = "nros-board-linux@Linux"
 notes = "The Linux host starter (phase-537 W4; the first chapter's \"run it on this machine\" section until then): a C++ talker scaffolded for the Linux host over Cyclone DDS, no router, then `ros2 topic echo` over rmw_cyclonedds_cpp. Weekly since phase-525 W4 made the serial QEMU run the installed track's default."
 
 [[probe]]
+track = "linux-rust"
+chapter = "starters/linux-host.md"
+variant = ""
+lang = "rust"
+weekly = true
+row = "nros-board-linux@Linux"
+notes = "phase-548 W8 — the Rust tab of the same starter."
+
+[[probe]]
+track = "linux-c"
+chapter = "starters/linux-host.md"
+variant = ""
+lang = "c"
+weekly = true
+row = "nros-board-linux@Linux"
+notes = "phase-548 W8 — the C tab of the same starter."
+
+[[probe]]
 track = "baremetal"
 chapter = "starters/mps2-an385-bare-metal.md"
 variant = ""
+lang = "rust"
 weekly = true
 row = "nros-board-mps2-an385@QemuBaremetal"
+qemu_board = "mps2-an385-baremetal"
+
+[[probe]]
+track = "baremetal-c"
+chapter = "starters/mps2-an385-bare-metal.md"
+variant = ""
+lang = "c"
+awaits = ["C and C++ on mps2-an385 bare metal: the image is routed to a generated Rust entry that owns reset (phase-531 W6 batch 2); today configure stops at `tools/setup.sh: unknown platform 'bare_metal'`"]
+weekly = true
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-548 W8 — the C tab of the same starter."
+qemu_board = "mps2-an385-baremetal"
+
+[[probe]]
+track = "baremetal-cpp"
+chapter = "starters/mps2-an385-bare-metal.md"
+variant = ""
+lang = "cpp"
+awaits = ["C and C++ on mps2-an385 bare metal: the image is routed to a generated Rust entry that owns reset (phase-531 W6 batch 2); today configure stops at `tools/setup.sh: unknown platform 'bare_metal'`"]
+weekly = true
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-548 W8 — the C++ tab of the same starter."
 qemu_board = "mps2-an385-baremetal"
 
 [[probe]]
 track = "offline"
 chapter = "starters/mps2-an385-bare-metal.md"
 variant = ""
+lang = "rust"
 weekly = true
 row = "nros-board-mps2-an385@QemuBaremetal"
 offline = true
@@ -845,6 +888,16 @@ row = "nros-board-mps2-an385-freertos@FreertosMps2"
 qemu_board = "mps2-an385-freertos"
 
 [[probe]]
+track = "freertos-cpp"
+chapter = "starters/mps2-an385-freertos.md"
+variant = ""
+lang = "cpp"
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-548 W8 — the C++ tab of the same starter."
+qemu_board = "mps2-an385-freertos"
+
+[[probe]]
 track = "threadx-linux"
 chapter = "starters/threadx-linux.md"
 variant = ""
@@ -856,8 +909,30 @@ row = "nros-board-threadx-linux@ThreadxLinux"
 track = "threadx-riscv64"
 chapter = "starters/threadx-riscv64.md"
 variant = ""
+lang = "rust"
 weekly = true
 row = "nros-board-threadx-qemu-riscv64@ThreadxRiscv64"
+qemu_board = "rv-virt-threadx"
+
+[[probe]]
+track = "threadx-riscv64-c"
+chapter = "starters/threadx-riscv64.md"
+variant = ""
+lang = "c"
+weekly = true
+row = "nros-board-threadx-qemu-riscv64@ThreadxRiscv64"
+notes = "phase-548 W8 — the C tab of the same starter."
+qemu_board = "rv-virt-threadx"
+
+[[probe]]
+track = "threadx-riscv64-cpp"
+chapter = "starters/threadx-riscv64.md"
+variant = ""
+lang = "cpp"
+awaits = ["C++ on ThreadX qemu riscv64: the entry returns from `c_app_main` at once and publishes nothing (phase-548 W4)"]
+weekly = true
+row = "nros-board-threadx-qemu-riscv64@ThreadxRiscv64"
+notes = "phase-548 W8 — the C++ tab of the same starter."
 qemu_board = "rv-virt-threadx"
 
 [[probe]]
@@ -869,12 +944,31 @@ weekly = true
 row = "nros-board-threadx-linux@ThreadxLinux"
 
 [[probe]]
+track = "threadx-linux-cpp"
+chapter = "starters/threadx-linux.md"
+variant = ""
+lang = "cpp"
+weekly = true
+row = "nros-board-threadx-linux@ThreadxLinux"
+notes = "phase-548 W8 — the C++ tab of the same starter."
+
+[[probe]]
 track = "nuttx-arm"
 chapter = "starters/nuttx-arm.md"
 variant = ""
 lang = "c"
 weekly = true
 row = "nros-board-nuttx-qemu@NuttxArm"
+qemu_board = "qemu-armv7a-nuttx"
+
+[[probe]]
+track = "nuttx-arm-cpp"
+chapter = "starters/nuttx-arm.md"
+variant = ""
+lang = "cpp"
+weekly = true
+row = "nros-board-nuttx-qemu@NuttxArm"
+notes = "phase-548 W8 — the C++ tab of the same starter."
 qemu_board = "qemu-armv7a-nuttx"
 
 [[probe]]
@@ -896,6 +990,16 @@ row = "nros-board-nuttx-qemu@NuttxRiscv"
 qemu_board = "rv-virt-nuttx"
 
 [[probe]]
+track = "nuttx-riscv-cpp"
+chapter = "starters/nuttx-riscv.md"
+variant = ""
+lang = "cpp"
+weekly = true
+row = "nros-board-nuttx-qemu@NuttxRiscv"
+notes = "phase-548 W8 — the C++ tab of the same starter."
+qemu_board = "rv-virt-nuttx"
+
+[[probe]]
 track = "nuttx-riscv-rust"
 chapter = "starters/nuttx-riscv.md"
 variant = ""
@@ -914,6 +1018,16 @@ weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 
 [[probe]]
+track = "zephyr-cpp"
+chapter = "starters/zephyr-native-sim.md"
+variant = ""
+lang = "cpp"
+awaits = ["an entropy source in the generated native_sim entry: the link fails on `z_impl_sys_rand_get` (CLI owner bug 2)", "C++ on Zephyr: the generated entry's prj.conf sets no `CONFIG_CPP`/`CONFIG_STD_CPP14`, so it compiles as C++11 and rclcpp's headers refuse (phase-548 W2)"]
+weekly = true
+row = "nros-board-zephyr@ZephyrNativeSim"
+notes = "phase-548 W8 — the C++ tab of the same starter."
+
+[[probe]]
 track = "zephyr-rust"
 chapter = "starters/zephyr-native-sim.md"
 variant = ""
@@ -926,18 +1040,58 @@ row = "nros-board-zephyr@ZephyrNativeSim"
 track = "zephyr-mps2"
 chapter = "starters/mps2-an385-zephyr.md"
 variant = ""
+lang = "rust"
 awaits = ["a Rust Zephyr workspace entry that sees its bringup package: the generated zephyr_entry fails `nros::main!: pkg `<bringup>` not found in workspace … Known pkgs: []` (CLI owner bug 4, reported 2026-11-06)"]
 weekly = false
 row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
 notes = "phase-537 W4 — the mps2-an385 Zephyr starter: a Rust talker on Zephyr's `mps2/an385` in QEMU, from `nros setup` and a fresh west workspace to `ros2 topic echo`. Until W4 the zephyr-rust track replayed this run as a second image of the native_sim chapter's workspace. Not weekly yet; its `awaits` names the CLI fix it waits on."
 
 [[probe]]
+track = "zephyr-mps2-c"
+chapter = "starters/mps2-an385-zephyr.md"
+variant = ""
+lang = "c"
+weekly = false
+row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
+notes = "phase-548 W8 — the C tab of the same starter."
+
+[[probe]]
+track = "zephyr-mps2-cpp"
+chapter = "starters/mps2-an385-zephyr.md"
+variant = ""
+lang = "cpp"
+awaits = ["C++ on Zephyr: the generated entry's prj.conf sets no `CONFIG_CPP`/`CONFIG_STD_CPP14`, so it compiles as C++11 and rclcpp's headers refuse (phase-548 W2)"]
+weekly = false
+row = "nros-board-mps2-an385-zephyr@ZephyrQemuCortexM"
+notes = "phase-548 W8 — the C++ tab of the same starter."
+
+[[probe]]
 track = "freertos-posix"
 chapter = "starters/freertos-posix.md"
 variant = ""
+lang = "c"
 weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process over Cyclone DDS (no router), then `ros2 topic echo` over rmw_cyclonedds_cpp. The board's first track (its row's evidence is the daily lane's two cyclonedds fixtures). The starter scaffolds `--rmw cyclonedds` until zenoh builds on this board (user ruling 2026-11-07); Not weekly yet."
+
+[[probe]]
+track = "freertos-posix-rust"
+chapter = "starters/freertos-posix.md"
+variant = ""
+lang = "rust"
+awaits = ["Rust on the FreeRTOS POSIX board: the generated entry links the mps2-an385 FreeRTOS board crate through the `freertos` alias, and cyclonedds has no cargo bridge (phase-548 W1)"]
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-548 W8 — the Rust tab of the same starter."
+
+[[probe]]
+track = "freertos-posix-cpp"
+chapter = "starters/freertos-posix.md"
+variant = ""
+lang = "cpp"
+weekly = false
+row = "nros-board-freertos-posix@FreertosPosix"
+notes = "phase-548 W8 — the C++ tab of the same starter."
 
 [[probe]]
 track = "platform-linux"
@@ -1157,6 +1311,7 @@ notes = "Issue 2168 — the same project with the PUBLISHED release `[tool.nros]
 track = "renode-nucleo"
 chapter = "starters/nucleo-f767zi.md"
 variant = ""
+lang = "c"
 awaits = ["`nros setup board nucleo-f767zi-zephyr` provisioning the Rust toolchain the Zephyr build pins: rustup auto-installs nightly-2026-04-11 without cargo and the build stops (reported to the CLI owner 2026-11-06)"]
 weekly = true
 row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
@@ -1165,9 +1320,34 @@ twin_locator = "serial/serial@40004800#baudrate=115200"
 notes = "phase-524 W4a — the Nucleo-F767ZI's Renode twin: zenoh over USART3 on a host pty, the console on USART6. The RAM knob is the board descriptor's `[knobs]` (issue 2194). phase-524 W4b — the track replays the board's own chapter (the row's `book_run`): setup, scaffold, then `nros run` in the twin through the `renode` runner and `ros2 topic echo`, so the probe's twin smoke script no longer runs for it. The `twin` facts stay for the test harness's Renode launcher (`nros_tests::renode`)."
 
 [[probe]]
+track = "renode-nucleo-rust"
+chapter = "starters/nucleo-f767zi.md"
+variant = ""
+lang = "rust"
+awaits = ["`nros setup board nucleo-f767zi-zephyr` provisioning the Rust toolchain the Zephyr build pins: rustup auto-installs nightly-2026-04-11 without cargo and the build stops (reported to the CLI owner 2026-11-06)", "the Nucleo-F767ZI Rust and C++ cells measured (phase-548 W7)"]
+weekly = true
+row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
+notes = "phase-548 W8 — the Rust tab of the same starter."
+twin = "nucleo-f767zi-zephyr"
+twin_locator = "serial/serial@40004800#baudrate=115200"
+
+[[probe]]
+track = "renode-nucleo-cpp"
+chapter = "starters/nucleo-f767zi.md"
+variant = ""
+lang = "cpp"
+awaits = ["`nros setup board nucleo-f767zi-zephyr` provisioning the Rust toolchain the Zephyr build pins: rustup auto-installs nightly-2026-04-11 without cargo and the build stops (reported to the CLI owner 2026-11-06)", "the Nucleo-F767ZI Rust and C++ cells measured (phase-548 W7)"]
+weekly = true
+row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
+notes = "phase-548 W8 — the C++ tab of the same starter."
+twin = "nucleo-f767zi-zephyr"
+twin_locator = "serial/serial@40004800#baudrate=115200"
+
+[[probe]]
 track = "nucleo-f767zi-bench"
 chapter = "starters/nucleo-f767zi.md"
 variant = "bench"
+lang = "c"
 awaits = ["a Nucleo-F767ZI attached to the machine the probe runs on: no CI runner has a board, so the starter's `nros flash --monitor` is run by hand on a bench. The step never exits, so it gains `probe-run` and the output to expect once a bench run measures them"]
 weekly = false
 row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"

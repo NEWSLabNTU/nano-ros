@@ -8,12 +8,13 @@
 > **Status:** Boots, manual (2026-11-01); reads *Builds* from 2027-03-02. From the board support registry: [`nros-board-nucleo-f767zi-zephyr`](../reference/boards/nucleo-f767zi-zephyr.md); [Board Support Levels](../reference/board-support-levels.md) explains the words. The image runs in the board's twin, `renode:nucleo_f767zi`, and on the board, `nucleo-f767zi`.
 <!-- END GENERATED starter status -->
 
-This starter puts a C talker on an ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7)
+This starter puts a talker on an ST Nucleo-F767ZI (STM32F767ZI, Cortex-M7)
 running Zephyr 3.7, talking to ROS 2 over the board's USB serial port. You do
 not need the board to start: [Renode](https://renode.io) emulates it on your
 machine, and wires USART3, the UART the Nucleo's ST-LINK carries to your USB
 port, to your host the way the cable would. The image you run in Renode is
 the image you later flash to the board.
+You write the talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 ## What you need
 
@@ -78,7 +79,7 @@ export ZEPHYR_BASE="$PWD/zephyr"
 ```
 
 Last, give the west workspace the patches nano-ros carries for Zephyr 3.7.
-The same command installs the Rust toolchain the C talker's runtime is
+The same command installs the Rust toolchain the talker's runtime is
 compiled with: a pinned nightly, with `rust-src` and the board's
 `thumbv7em-none-eabihf` target:
 
@@ -97,12 +98,39 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
+```bash probe=40 track=installed
+. "$HOME/.cargo/env"
+nros new nucleo_ws --board nucleo-f767zi-zephyr --template talker --lang rust
+cd nucleo_ws
+nros setup --sudo
+```
+
+A Rust application on Zephyr also needs the Rust target the board
+implies (`thumbv7em-none-eabihf`), rustup's `clippy`, and clang with
+libclang. `nros setup` in the workspace installs the target and `clippy`,
+and with `--sudo` the two packages.
+
+### C
+
 ```bash probe=40 track=installed
 nros new nucleo_ws --board nucleo-f767zi-zephyr --template talker --lang c
 cd nucleo_ws
 ```
 
-That wrote a workspace with two packages: `src/nucleo_node/`, the C talker,
+### C++
+
+```bash probe=40 track=installed
+nros new nucleo_ws --board nucleo-f767zi-zephyr --template talker --lang cpp
+cd nucleo_ws
+```
+
+<!-- /tabs -->
+
+That wrote a workspace with two packages: `src/nucleo_node/`, the talker,
 and `src/nucleo_node_bringup/`, which says what the talker runs on. The board
 reaches the router on your host through USART3, which Zephyr calls
 `serial@40004800`, at 115200 baud. Say so with one line at the end of the

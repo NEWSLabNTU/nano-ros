@@ -8,13 +8,13 @@
 > **Status:** Verified on host (daily). From the board support registry: [`nros-board-freertos-posix`](../reference/boards/freertos-posix.md); [Board Support Levels](../reference/board-support-levels.md) explains the words.
 <!-- END GENERATED starter status -->
 
-This starter puts a C talker on the FreeRTOS kernel running as an ordinary
+This starter puts a talker on the FreeRTOS kernel running as an ordinary
 program on your Linux machine, and shows its messages arriving in ROS 2.
 FreeRTOS's POSIX port runs the kernel's tasks as threads of one host process,
 and the talker uses your host's own sockets, so there is no emulator and no
 network to set up. It is the quickest way to see a FreeRTOS application talk
-to ROS 2. The board takes C and C++ nodes; for a Rust talker on FreeRTOS, use
-the [mps2-an385 board](mps2-an385-freertos.md).
+to ROS 2.
+You write the talker in Rust, C or C++; pick a tab and every tab on the page follows.
 
 The talker uses Cyclone DDS, which runs inside the talker's own process and
 finds its peers on the network the way any ROS 2 node does, so there is no
@@ -61,17 +61,37 @@ ROS 2; with none sourced, it writes Humble. On Jazzy, source
 source /opt/ros/humble/setup.bash
 ```
 
+<!-- tabs -->
+
+### Rust
+
+```bash probe=40
+nros new fp_ws --board freertos-posix --template talker --lang rust --rmw cyclonedds
+cd fp_ws
+```
+
+### C
+
 ```bash probe=40
 nros new fp_ws --board freertos-posix --template talker --lang c --rmw cyclonedds
 cd fp_ws
 ```
+
+### C++
+
+```bash probe=40
+nros new fp_ws --board freertos-posix --template talker --lang cpp --rmw cyclonedds
+cd fp_ws
+```
+
+<!-- /tabs -->
 
 That wrote a workspace with two packages:
 
 ```text
 fp_ws/
 └── src/
-    ├── fp_node/                 # the talker: package.xml, CMakeLists.txt, src/Talker.c
+    ├── fp_node/                 # the talker: package.xml, Cargo.toml or CMakeLists.txt, its source
     └── fp_node_bringup/         # package.xml, system.toml, system.contract.yaml: the board, the RMW, the node
 ```
 
