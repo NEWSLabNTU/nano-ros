@@ -289,6 +289,7 @@ emitter-just-spelling:
 # carry exactly those facts, plus the recorder's and the backend's own tests.
 # `build-serial`, not the fast line: the fixture links `nros-cpp` with
 # `metadata-mode` on.
+[metadata("tier", "build")]
 census-hooks-complete:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -369,6 +370,7 @@ entity-census:
 # builds the fixture twice (the census host build and the image), so it is a
 # BUILD-tier gate (`build-serial`), and gate.yml runs it in the merge group
 # beside `template-copy-out`.
+[metadata("tier", "build")]
 ament-census-sizing:
     @bash scripts/check-ament-census-sizing.sh
 

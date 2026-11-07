@@ -26,6 +26,7 @@ flake-quarantine:
 # fixture-backed comparison is `static_memory_declared_pools`, which resolves a
 # built image through the harness and so inherits the staleness probe.
 [private]
+[metadata("tier", "build")]
 mem-report:
     @python3 scripts/nros-mem-report.py --selftest
 
@@ -206,6 +207,7 @@ stack-elf elf top="30":
 # image from a `check` lane would need a fixture (banned) or would skip when
 # absent, and a skip is exactly the silence this gate exists to end.
 [private]
+[metadata("tier", "exempt", "in no lane and no caller found — issue 1071's class")]
 stack-floor:
     @python3 scripts/check-stack-floor.py --selftest
     @python3 scripts/check-stack-floor.py --claims
@@ -253,6 +255,7 @@ nros-installer:
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute
 # attempt. Run at the head of `ci`; callable directly to check a tree before
 # committing to a run.
+[metadata("tier", "exempt", "a PRECONDITION reporter; runs at the head of `just ci`")]
 tier-preconditions:
     @bash scripts/check-tier-preconditions.sh
 

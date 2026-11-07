@@ -77,6 +77,7 @@ arch-profile-resolution:
 # Needs built output, so it belongs with the lanes that produce it rather than
 # in `check-fast`.
 [private]
+[metadata("tier", "exempt", "needs a built CMake image link line; `build-test-fixtures` (justfile) runs it after the build, so every fixture lane reaches it (issue 1739: \"no caller found\" was stale)")]
 archive-lang-items:
     @bash scripts/check-archive-lang-items.sh
 
@@ -182,6 +183,7 @@ board-registry:
 # derivation in a script would drift from it; `cli-tests` runs it with the
 # rest of the CLI suite, and this recipe runs it alone.
 [group("checks")]
+[metadata("tier", "exempt", "compiles the CLI test target; its test is one of `cli-tests`' (a `build-serial` gate), which runs on every event that lane does, so a second build-tier entry would only build it twice")]
 board-runner-resolves:
     cargo test --quiet --manifest-path packages/cli/Cargo.toml -p nros-cli-core --test board_runner_resolves
 
@@ -989,6 +991,7 @@ zenoh-platform-macros:
 # OK with a footnote. It used to fail only when NO line was present, so the
 # ordinary dev host — 3.7 present, 4.4 nowhere — went green having measured
 # nothing about the line the gate exists for.
+[metadata("tier", "exempt", "needs the fetched Zephyr Kconfig trees (~600 MB)")]
 zephyr-kconfig-symbols:
     @python3 scripts/check-zephyr-kconfig-symbols.py
 

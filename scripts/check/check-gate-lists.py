@@ -22,11 +22,11 @@ SERVER-SIDE, where `.gitattributes` drivers do not run; the fix that reached the
 queue for `open.md` was to stop committing the shared line at all. The same
 answer applies here, and this file is it:
 
-    a recipe in `just/check.just` is a FAST-LANE GATE unless it is listed in
-    `build-serial:` (it needs something built), named in
-    `.config/gate-lane-exempt.txt` (with a reason), or declares parameters
-    (a gate is invoked as `just check <name>` with no arguments, so a recipe
-    that requires one cannot be one).
+    a recipe in `just/check.just` is a FAST-LANE GATE unless it carries
+    `[metadata("tier", "build")]` (it needs something built) or
+    `[metadata("tier", "exempt", "<why>")]` (in no lane, with a reason), or
+    declares parameters (a gate is invoked as `just check <name>` with no
+    arguments, so a recipe that requires one cannot be one).
 
 Adding a gate is now writing its recipe. Nothing shared is touched, so two
 authors adding gates cannot collide on a registry that no longer exists.
@@ -44,9 +44,10 @@ used to mean the gate NEVER RAN — silent, and the repo's most-repeated defect
 (issue 0196's class). Forgetting to exempt a new recipe now means it runs on the
 fast lane, which is loud and lands on the author's own pull request.
 
-`build-serial:` stays an authored dependency list. It holds ~20 names, none of
-the 13 registry additions across the pull requests open on 2026-09-05 went to
-it, and `scripts/check-gate-visibility.py` reads its members directly.
+phase-543 W6 finished the inversion: the build tier and the exemptions moved
+from the `build-serial:` list and `.config/gate-lane-exempt.txt` onto the
+recipes, as `tier` metadata read through `just --dump`. No authored list of
+gates is left anywhere.
 
 FOR A NAME-SET RATCHET
 ----------------------
@@ -67,7 +68,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 JUSTFILE = REPO / "just" / "check.just"
 
-EXEMPT_FILE = REPO / ".config" / "gate-lane-exempt.txt"
 # phase-425/issue 1071 — the deletion ratchet's baseline. It survived the
 # 1072 rewrite unchanged in CONTENT: its 239 names are byte-identical to the
 # derived fast+build set, so inverting where membership is WRITTEN did not
@@ -85,18 +85,13 @@ BASELINE_HEADER = (
     "#   python3 scripts/check/check-gate-lists.py --write-baseline\n"
 )
 
-# The one lane whose membership is still authored. A build gate is the
-# EXCEPTION — it cannot run without something compiled — so it is listed, and
-# `check-gate-visibility` reads this same list to decide which gates no
-# merge-gating job reaches.
-BUILD_REGISTRY = "build-serial"
-
-# The no-op `build-serial:` ends on, so the LAST real gate carries a trailing
-# backslash like every other. Without it the final entry is the one line with
-# different syntax, and a gate that sorts last must edit someone else's line to
-# add the backslash — two such PRs conflict with CERTAINTY rather than by bad
-# luck. The "trailing comma" fix.
-SENTINEL = "_gate-list-end"
+# phase-543 W6 — a recipe's TIER is an attribute on the recipe itself:
+#   [metadata("tier", "build")]             compiles, or needs something built
+#   [metadata("tier", "exempt", "<why>")]   in no lane; the reason is required
+# No attribute: a fast gate. There is no list to append to, so two pull
+# requests adding gates never touch the same line (issues 0883/0884/1072), and
+# the reason for an exemption sits beside the recipe it explains.
+TIERS = ("build", "exempt")
 
 # A recipe header at column 0. Variables use `:=`, attributes start with `[`,
 # comments with `#`, and bodies are indented, so none of them match.
@@ -146,183 +141,64 @@ def recipes(lines: list[str]) -> dict[str, bool]:
     return out
 
 
-def dep_block(lines: list[str], name: str) -> tuple[int, int]:
-    """(start, end) of `name:`'s dependency lines, end EXCLUSIVE.
-
-    A recipe's dependencies run to the first line that does not end in a
-    backslash — that last line is a dependency too, not the body.
-    """
-    for i, line in enumerate(lines):
-        if line.startswith(f"{name}:"):
-            j = i
-            while lines[j].rstrip().endswith("\\"):
-                j += 1
-                if j >= len(lines):
-                    raise SystemExit(f"{name}: unterminated continuation")
-            return i, j + 1
-    raise SystemExit(f"check-gate-lists: no recipe `{name}` in {JUSTFILE}")
-
-
-def names_per_line(lines: list[str], s: int, e: int) -> list[list[str]]:
-    """The dependency names, grouped by the line they sit on."""
-    out = []
-    for k in range(s, e):
-        text = lines[k].strip().rstrip("\\").strip()
-        if k == s:
-            text = text.split(":", 1)[1]
-        out.append([n for n in text.split() if n])
-    return out
+def recipe_tiers() -> dict[str, list[str]]:
+    """Every `check` recipe's `[metadata("tier", ...)]` values (without the
+    leading "tier"), from `just --dump`, the one view of a recipe's attributes."""
+    out = subprocess.run(
+        ["just", "--dump", "--dump-format", "json"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    ).stdout
+    recs = json.loads(out)["modules"]["check"]["recipes"]
+    tiers: dict[str, list[str]] = {}
+    for name, r in recs.items():
+        for a in r.get("attributes", []):
+            if isinstance(a, dict) and isinstance(a.get("metadata"), list) \
+                    and a["metadata"][:1] == ["tier"]:
+                tiers[name] = a["metadata"][1:]
+    return tiers
 
 
-def parse_exempt(text: str) -> tuple[list[str], list[str]]:
-    """(names, problems). Every entry needs a name and a `# reason`."""
-    names: list[str] = []
-    problems: list[str] = []
-    for lineno, raw in enumerate(text.split("\n"), 1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        name, sep, reason = line.partition("#")
-        name = name.strip()
-        if " " in name or not re.fullmatch(r"[a-z_][a-z0-9_-]*", name or ""):
-            problems.append(
-                f"  {EXEMPT_FILE.name}:{lineno}: `{line}` is not `<name>  # reason`"
-            )
-            continue
-        if not sep or not reason.strip():
-            problems.append(
-                f"  {EXEMPT_FILE.name}:{lineno}: `{name}` has no reason.\n"
-                f"      Say why it is not a fast gate; a bare name is how a\n"
-                f"      temporary exclusion becomes permanent."
-            )
-        names.append(name)
-    if names != sorted(names):
-        first = next((a for a, b in zip(names, sorted(names)) if a != b), "?")
-        problems.append(
-            f"  {EXEMPT_FILE.name}: not sorted (first out of order: `{first}`)."
-        )
-    dupes = sorted({n for n in names if names.count(n) > 1})
-    if dupes:
-        problems.append(f"  {EXEMPT_FILE.name}: listed twice: {', '.join(dupes)}")
-    return names, problems
-
-
-def check_registry(lines: list[str], name: str) -> tuple[list[str], list[str]]:
-    """(gate names, problems) for an authored dependency-line registry."""
-    s, e = dep_block(lines, name)
-    per_line = names_per_line(lines, s, e)
-    flat = [n for group in per_line for n in group]
-    problems = []
-
-    # The sentinel is REQUIRED and must be last. Checked before it is dropped:
-    # if it drifts into the middle it stops terminating anything, and the last
-    # real gate silently becomes the odd line again.
-    if flat and flat[-1] == SENTINEL:
-        flat = flat[:-1]
-        per_line = per_line[:-1]
-    elif SENTINEL in flat:
-        problems.append(
-            f"  {name}: `{SENTINEL}` is present but not LAST.\n"
-            f"      It exists to give the final real gate a trailing backslash;\n"
-            f"      anywhere else it terminates nothing."
-        )
-        flat = [n for n in flat if n != SENTINEL]
-        per_line = [[n for n in g if n != SENTINEL] for g in per_line]
-        per_line = [g for g in per_line if g]
-    else:
-        problems.append(
-            f"  {name}: missing the `{SENTINEL}` terminator.\n"
-            f"      End the list with it so every real gate's line looks the\n"
-            f"      same; otherwise a gate that sorts last has to edit the\n"
-            f"      previous line too, and two such PRs always conflict."
-        )
-
-    crowded = sum(1 for group in per_line if len(group) > 1)
-    if crowded:
-        problems.append(
-            f"  {name}: {crowded} line(s) carry more than one gate.\n"
-            f"      Two agents adding unrelated gates then edit the SAME line and\n"
-            f"      git conflicts on changes that do not overlap in meaning."
-        )
-
-    if flat != sorted(flat):
-        first = next((a for a, b in zip(flat, sorted(flat)) if a != b), "?")
-        problems.append(
-            f"  {name}: not sorted (first out of order: `{first}`).\n"
-            f"      Sorted order is what makes a new gate's line position\n"
-            f"      predictable, and so unlikely to abut someone else's."
-        )
-
-    dupes = sorted({n for n in flat if flat.count(n) > 1})
-    if dupes:
-        problems.append(f"  {name}: listed twice: {', '.join(dupes)}")
-
-    # Issue 1882 -- the registry is a LIST, and its body never runs: the runner
-    # reads the names and calls `just check <gate>` for each. `@just linux
-    # check` sat in this body for six weeks after #0993 and linted nothing.
-    # A command that must run is a gate on the list, not a line under it.
-    k = e
-    dead = []
-    while k < len(lines) and (lines[k].startswith((" ", "\t")) or not lines[k].strip()):
-        t = lines[k].strip()
-        if t and not t.startswith("#"):
-            dead.append(t)
-        k += 1
-    if dead:
-        problems.append(
-            f"  {name}: has a recipe body ({len(dead)} line(s), first: `{dead[0]}`).\n"
-            f"      The runner derives its work from the dependency NAMES and never\n"
-            f"      runs this body, so nothing under the list executes. Make the\n"
-            f"      command a gate recipe and list it (issue 1882)."
-        )
-
-    return flat, problems
-
-
-def classify(just_text: str, exempt_text: str) -> tuple[dict[str, list[str]], list[str]]:
+def classify(just_text: str, tiers: dict[str, list[str]]) -> tuple[dict[str, list[str]], list[str]]:
     """Split every recipe into fast / build / exempt / parameterized.
 
-    Returns (buckets, problems). This is the whole contract: a recipe lands in
-    exactly one bucket, and the fast lane is whatever is left over.
+    Returns (buckets, problems). A recipe lands in exactly one bucket: its
+    `tier` metadata says build or exempt, a recipe with parameters can never
+    be a gate, and the fast lane is whatever is left over.
     """
-    lines = just_text.split("\n")
-    rec = recipes(lines)
-    build, problems = check_registry(lines, BUILD_REGISTRY)
-    exempt, ex_problems = parse_exempt(exempt_text)
-    problems += ex_problems
-
+    rec = recipes(just_text.split("\n"))
+    problems: list[str] = []
     parameterized = sorted(n for n, has_args in rec.items() if has_args)
+    build: list[str] = []
+    exempt: list[str] = []
+    for name, vals in sorted(tiers.items()):
+        tier = vals[0] if vals else ""
+        if name not in rec:
+            problems.append(f"  `{name}`: a tier for a recipe this file set does not define")
+            continue
+        if tier not in TIERS:
+            problems.append(
+                f"  `{name}`: tier `{tier}` is not one of {', '.join(TIERS)}.\n"
+                f"      A fast gate carries no tier attribute at all."
+            )
+            continue
+        if rec[name]:
+            problems.append(
+                f"  `{name}`: declares parameters but carries a tier.\n"
+                f"      A recipe with arguments can never run as `just check <name>`,\n"
+                f"      so it is excluded structurally and needs no attribute."
+            )
+            continue
+        if tier == "exempt":
+            if len(vals) < 2 or not vals[1].strip():
+                problems.append(
+                    f"  `{name}`: exempt with no reason.\n"
+                    f'      Write `[metadata("tier", "exempt", "<why>")]`: say why it is not\n'
+                    f"      a gate. A bare exemption is how a temporary one becomes permanent."
+                )
+            exempt.append(name)
+        else:
+            build.append(name)
     plain = {n for n, has_args in rec.items() if not has_args}
-
-    ghost_build = [n for n in build if n not in rec]
-    if ghost_build:
-        problems.append(
-            f"  {BUILD_REGISTRY}: names with no recipe: {', '.join(sorted(ghost_build))}.\n"
-            f"      `just check <name>` would fail; delete the entry with the recipe."
-        )
-    ghost_exempt = [n for n in exempt if n not in rec]
-    if ghost_exempt:
-        problems.append(
-            f"  {EXEMPT_FILE.name}: names with no recipe: "
-            f"{', '.join(sorted(ghost_exempt))}.\n"
-            f"      A stale exemption is a note nobody can act on — and the next\n"
-            f"      recipe to take that name inherits it silently."
-        )
-    both = sorted(set(build) & set(exempt))
-    if both:
-        problems.append(
-            f"  in `{BUILD_REGISTRY}` AND exempt: {', '.join(both)}.\n"
-            f"      A gate has one home; pick the lane or the exemption."
-        )
-    args_claimed = sorted((set(build) | set(exempt)) & set(parameterized))
-    if args_claimed:
-        problems.append(
-            f"  declares parameters but is listed as a gate/exemption: "
-            f"{', '.join(args_claimed)}.\n"
-            f"      A recipe with arguments can never run as `just check <name>`,\n"
-            f"      so it is excluded structurally and needs no entry."
-        )
-
     fast = sorted(plain - set(build) - set(exempt))
     if not fast:
         problems.append(
@@ -330,12 +206,8 @@ def classify(just_text: str, exempt_text: str) -> tuple[dict[str, list[str]], li
             "      Refusing to report OK over nothing — the runner would too."
         )
     return (
-        {
-            "fast": fast,
-            "build": sorted(build),
-            "exempt": sorted(exempt),
-            "parameterized": parameterized,
-        },
+        {"fast": fast, "build": sorted(build), "exempt": sorted(exempt),
+         "parameterized": parameterized},
         problems,
     )
 
@@ -457,6 +329,17 @@ def junit_seconds(path: Path | None) -> dict[str, float]:
     return {c.get("name", ""): float(c.get("time") or 0) for c in root.iter("testcase")}
 
 
+def junit_tsv(path: Path) -> str:
+    """`name rc wall_ms cpu_ms` per test, the pre-push log's format."""
+    import xml.etree.ElementTree as ET
+    rows = []
+    for c in ET.parse(path).getroot().iter("testcase"):
+        failed = any(x.tag in ("failure", "error") for x in c)
+        rows.append(f"{c.get('name', '')}\t{1 if failed else 0}\t"
+                    f"{int(float(c.get('time') or 0) * 1000)}\t0")
+    return "\n".join(rows) + ("\n" if rows else "")
+
+
 def nextest_config(b: dict[str, list[str]], junit: Path | None = None) -> str:
     """phase-543 W4 — the harness's nextest TOOL config, generated from the
     recipes' attributes so it cannot drift from them.
@@ -521,10 +404,7 @@ def nextest_config(b: dict[str, list[str]], junit: Path | None = None) -> str:
 
 
 def buckets() -> tuple[dict[str, list[str]], list[str]]:
-    return classify(
-        justfile_text(),
-        EXEMPT_FILE.read_text(encoding="utf-8") if EXEMPT_FILE.is_file() else "",
-    )
+    return classify(justfile_text(), recipe_tiers())
 
 
 def gate_names() -> list[str]:
@@ -588,66 +468,12 @@ def self_test() -> None:
                      '<testcase name="fast::check::y" classname="nros-gates::gates" time="0.4"/>'
                      '</testsuite></testsuites>')
         assert junit_seconds(j) == {"build::check::x": 125.5, "fast::check::y": 0.4}, junit_seconds(j)
+        assert junit_tsv(j) == "build::check::x\t0\t125500\t0\nfast::check::y\t0\t400\t0\n", junit_tsv(j)
         j.write_text("<testsuites")
         assert junit_seconds(j) == {}
         assert junit_seconds(Path(t) / "absent.xml") == {}
-    """Both directions, on synthetic input.
-
-    `check-gate-selftests` requires this on the normal path: a control nobody
-    runs decays into a comment.
-    """
-    good = [f"{BUILD_REGISTRY}: \\", "    alpha \\", "    beta \\", "    gamma \\",
-            f"    {SENTINEL}"]
-    assert check_registry(good, BUILD_REGISTRY)[1] == [], "selftest: rejected a well-formed list"
-
-    # Issue 1882: a body on the registry is code the runner never reaches.
-    with_body = good + ["    @just linux check"]
-    assert any("body" in p for p in check_registry(with_body, BUILD_REGISTRY)[1]), (
-        "selftest: missed a registry body"
-    )
-    commented = good + ["    # a comment is not a command"]
-    assert check_registry(commented, BUILD_REGISTRY)[1] == [], (
-        "selftest: refused a comment under the registry"
-    )
-
-    crowded = [f"{BUILD_REGISTRY}: \\", "    alpha beta \\", "    gamma \\",
-               f"    {SENTINEL}", "    @echo hi"]
-    assert any("more than one gate" in p for p in check_registry(crowded, BUILD_REGISTRY)[1]), (
-        "selftest: missed two names sharing a line"
-    )
-
-    unsorted = [f"{BUILD_REGISTRY}: \\", "    gamma \\", "    alpha \\",
-                f"    {SENTINEL}", "    @echo hi"]
-    assert any("not sorted" in p for p in check_registry(unsorted, BUILD_REGISTRY)[1]), (
-        "selftest: missed an out-of-order list"
-    )
-
-    dup = [f"{BUILD_REGISTRY}: \\", "    alpha \\", "    alpha \\",
-           f"    {SENTINEL}", "    @echo hi"]
-    assert any("listed twice" in p for p in check_registry(dup, BUILD_REGISTRY)[1]), (
-        "selftest: missed a duplicate"
-    )
-
-    no_sentinel = [f"{BUILD_REGISTRY}: \\", "    alpha \\", "    beta", "    @echo hi"]
-    assert any("missing the" in p for p in check_registry(no_sentinel, BUILD_REGISTRY)[1]), (
-        "selftest: missed an absent terminator"
-    )
-
-    misplaced = [f"{BUILD_REGISTRY}: \\", f"    {SENTINEL} \\", "    alpha \\",
-                 "    beta", "    @echo hi"]
-    assert any("not LAST" in p for p in check_registry(misplaced, BUILD_REGISTRY)[1]), (
-        "selftest: missed a misplaced terminator"
-    )
-    assert not any("not sorted" in p for p in check_registry(good, BUILD_REGISTRY)[1]), (
-        "selftest: the sentinel was sorted as if it were a gate"
-    )
-
-    body = [f"{BUILD_REGISTRY}: \\", "    alpha", "    zzz-not-a-dep", "    @echo hi"]
-    assert dep_block(body, BUILD_REGISTRY) == (0, 2), "selftest: block boundary wrong"
-
-    # --- the derivation itself -------------------------------------------
-    # A miniature justfile: two plain recipes, one build gate, one exempt
-    # verb, one parameterized helper.
+    # Both directions, on synthetic input. `check-gate-selftests` requires
+    # this on the normal path: a control nobody runs decays into a comment.
     mini = "\n".join([
         "NIGHTLY := `true`",
         "",
@@ -660,11 +486,6 @@ def self_test() -> None:
         "    @true",
         "",
         "[private]",
-        f"{BUILD_REGISTRY}: \\",
-        "    heavy-gate \\",
-        f"    {SENTINEL}",
-        "",
-        "[private]",
         "heavy-gate:",
         "    @true",
         "",
@@ -673,48 +494,42 @@ def self_test() -> None:
         "    @true",
         "",
         "[private]",
-        f"{SENTINEL}:",
-        "",
-        "[private]",
         'stack-elf elf top="30":',
         "    @true",
     ])
-    ex = f"{SENTINEL}  # terminator\n{BUILD_REGISTRY}  # the registry\nsome-verb  # a verb\n"
-    b, problems = classify(mini, ex)
+    t = {"heavy-gate": ["build"], "some-verb": ["exempt", "a verb"]}
+    b, problems = classify(mini, t)
     assert problems == [], f"selftest: rejected a well-formed tree: {problems}"
     assert b["fast"] == ["alpha-gate", "beta-gate"], b["fast"]
     assert b["build"] == ["heavy-gate"], b["build"]
+    assert b["exempt"] == ["some-verb"], b["exempt"]
     assert b["parameterized"] == ["stack-elf"], b["parameterized"]
 
-    # A NEW recipe joins the fast lane with no list to edit — the whole point.
+    # A NEW recipe joins the fast lane with nothing else to edit.
     plus = mini + "\n\n[private]\ngamma-gate:\n    @true\n"
-    assert classify(plus, ex)[0]["fast"] == ["alpha-gate", "beta-gate", "gamma-gate"], (
+    assert classify(plus, t)[0]["fast"] == ["alpha-gate", "beta-gate", "gamma-gate"], (
         "selftest: a new recipe did not become a fast gate"
     )
-
     # A reason is mandatory.
-    assert any("has no reason" in p for p in classify(mini, ex + "orphan\n")[1]), (
+    assert any("no reason" in p for p in classify(mini, {**t, "beta-gate": ["exempt"]})[1]), (
         "selftest: accepted an exemption with no reason"
     )
-    # An exemption naming nothing.
-    assert any("no recipe" in p for p in classify(mini, ex + "ghost  # gone\n")[1]), (
-        "selftest: accepted an exemption for a recipe that does not exist"
+    assert any("no reason" in p for p in classify(mini, {**t, "beta-gate": ["exempt", " "]})[1]), (
+        "selftest: accepted a blank reason"
     )
-    # Exempt AND in the build registry.
-    assert any("AND exempt" in p for p in classify(mini, ex + "heavy-gate  # both\n")[1]), (
-        "selftest: accepted a gate claimed twice"
+    # An unknown tier.
+    assert any("is not one of" in p for p in classify(mini, {**t, "beta-gate": ["slow"]})[1]), (
+        "selftest: accepted an unknown tier"
     )
-    # A parameterized recipe cannot be listed.
+    # A parameterized recipe cannot carry one.
     assert any("declares parameters" in p
-               for p in classify(mini, ex + "stack-elf  # nope\n")[1]), (
-        "selftest: accepted an entry for a parameterized recipe"
+               for p in classify(mini, {**t, "stack-elf": ["build"]})[1]), (
+        "selftest: accepted a tier on a parameterized recipe"
     )
-    # The ledger must be sorted, like the registry.
-    assert any("not sorted" in p
-               for p in classify(mini, f"some-verb  # v\n{SENTINEL}  # t\n")[1]), (
-        "selftest: missed an unsorted exemption ledger"
-    )
-
+    # Everything tiered away: an empty fast lane is refused.
+    assert any("EMPTY" in p for p in classify(mini, {
+        "alpha-gate": ["build"], "beta-gate": ["build"], "heavy-gate": ["build"],
+        "some-verb": ["build"]})[1]), "selftest: accepted an empty fast lane"
 
     # --- the deletion ratchet (issue 1071) -------------------------------
     # Carried through the 1072 rewrite. What changed is only WHERE the present
@@ -740,6 +555,9 @@ def self_test() -> None:
     assert ratchet({"alpha"}, None), "selftest: a missing baseline passed"
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["--junit-tsv"]:
+        print(junit_tsv(Path(argv[1])), end="")
+        return 0
     b, problems = buckets()
 
     if "--write-baseline" in argv:
@@ -801,10 +619,10 @@ def main(argv: list[str]) -> int:
         print("check-gate-lists: the gate classification does not hold\n")
         print("\n".join(problems))
         print(
-            "\nA recipe in just/check.just is a FAST gate unless it is in\n"
-            "`build-serial:`, named in .config/gate-lane-exempt.txt with a\n"
-            "reason, or declares parameters. There is deliberately no\n"
-            "fast-lane registry to append to: a shared authored list is the\n"
+            "\nA recipe in just/check.just is a FAST gate unless it carries\n"
+            "`[metadata(\"tier\", \"build\")]`, `[metadata(\"tier\", \"exempt\", \"<why>\")]`,\n"
+            "or declares parameters. There is deliberately no gate list to\n"
+            "append to: a shared authored list is the\n"
             "conflict issues 0883/0884/1072 measured, and no merge driver can\n"
             "fix it because GitHub rebases queue entries server-side."
         )
@@ -812,7 +630,7 @@ def main(argv: list[str]) -> int:
 
     print(
         f"check-gate-lists OK — {len(b['fast'])} fast gate(s) derived, "
-        f"{len(b['build'])} in `{BUILD_REGISTRY}` (one per line and sorted), "
+        f"{len(b['build'])} build-tier, "
         f"{len(b['exempt'])} exempt with a reason, "
         f"{len(b['parameterized'])} parameterized recipe(s) excluded."
     )

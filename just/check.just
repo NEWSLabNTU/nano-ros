@@ -118,11 +118,12 @@ import 'check/workflows.just'
 #
 # phase-489 W5 — `api-parity` and `probe-workspace-caps` are back on this line,
 # and this time they are NOT also in `fast`: both compile, so they left the
-# buildless fast lane (`.config/gate-lane-exempt.txt`) for gate.yml's
+# buildless fast lane (exempt by their `tier` metadata) for gate.yml's
 # `check-fast-compile` job, which runs beside `check-fast` on every event it
 # runs on. Named here so `just check` (and `just ci tier1 gates`) still runs
 # them exactly once.
 [group("main")]
+[metadata("tier", "exempt", "lane verb: `cli-fresh` + `fast` + `build` + `api-parity` + `probe-workspace-caps`")]
 default: cli-fresh fast api-parity probe-workspace-caps build
     #!/usr/bin/env bash
     set -e
@@ -155,33 +156,16 @@ default: cli-fresh fast api-parity probe-workspace-caps build
 # (`.config/gate-lanes.toml`); unset is `dev`, a set-up worktree. CI's fast job
 # sets `fast`, the pristine-checkout gate `pristine`.
 [group("main")]
+[metadata("tier", "exempt", "lane verb: the fast tier through the gate harness (`scripts/build/gate-lane.sh`)")]
 fast:
     @bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)'
-
-# The terminator both gate registries end on — a no-op that exists only to give
-# the LAST real gate a trailing `\`.
-#
-# Without it the final entry is the one line in the list with different syntax,
-# so every gate that sorts last must edit SOMEONE ELSE's line to add the
-# backslash as well as adding its own. Two such pull requests then conflict with
-# certainty rather than by bad luck — the "trailing comma" problem, and the one
-# residual conflict class the one-name-per-line format could not reach.
-#
-# `_`-prefixed on purpose: `run-gates-parallel.sh` filters derived names with
-# `^[a-z][a-z0-9-]*$`, so the sentinel is excluded from the fan-out without that
-# script needing to know it exists. `check-gate-lists` DOES know — it requires
-# the sentinel to be last and excludes it from the sort, which is what keeps
-# this from being a name someone quietly moves.
-[private]
-_gate-list-end:
 
 # The serial runner — phase-395 W11, emptied by this commit.
 #
 # The 230-name dependency list that used to live here is GONE, for the third
 # time of asking. Issue 1072 removed the registry as a CONCEPT — `check-fast`
 # membership is derived (`check-gate-lists.py --list`), and
-# `run-gates-parallel.sh`, `check-gate-lists.py` and `check-default-gates-run-
-# somewhere.py` all say in their own comments that the line no longer exists.
+# `check-gate-lists.py` and `check-default-gates-run-somewhere.py` all say in their own comments that the line no longer exists.
 # It did. `6c52892cc`, whose subject is "delete the 218-name gate registry",
 # left all 230 names in place, so the repo has been carrying a shared append
 # target that its own documentation describes as deleted.
@@ -198,10 +182,10 @@ _gate-list-end:
 # same line with certainty. Two of the four genuinely conflicting open PRs on
 # 2026-09-06 collided here and nowhere else.
 #
-# `--serial` runs the same derived set one gate at a time, fail-fast, output
-# unshredded. `run-gates-parallel.sh` already owns the skip-ledger reset and
-# the qualified closing report, so the body is the one line.
+# Runs the same derived set one gate at a time, fail-fast, through the same
+# harness as `fast` (phase-543 W6).
 [group("main")]
+[metadata("tier", "exempt", "lane verb: the same lane, one gate at a time, fail-fast")]
 fast-serial:
     @NROS_GATE_JOBS=1 bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^fast::/)' --fail-fast
 
@@ -237,6 +221,7 @@ fast-serial:
 # phase-543 W6 — through the nextest harness, like `fast`. A CI shard
 # (`NROS_BUILD_GATE_SHARD=<k>/<n>`) is nextest's `--partition slice:<k>/<n>`.
 [group("main")]
+[metadata("tier", "exempt", "lane verb: the build tier through the gate harness (`scripts/build/gate-lane.sh`)")]
 build:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -245,54 +230,6 @@ build:
         part=(--partition "slice:$NROS_BUILD_GATE_SHARD")
     fi
     exec bash scripts/build/gate-lane.sh "${NROS_GATE_SCOPE:-dev}" -E 'test(/^build::/)' "${part[@]}"
-
-# The BUILD gate list, and the serial runner — mirrors `fast-serial` above.
-# `run-gates-parallel.sh` derives its list from this dependency line, so the
-# list has exactly one home.
-#
-# issue 1320 — `cli-fresh` LEFT this list, which is how it joins the fast lane
-# (a recipe here is a fast gate unless `build-serial` names it). It reads a
-# stamp and nothing else: 0.024 s measured, and it SKIPS when no in-tree binary
-# exists yet, so a fresh clone is unaffected.
-#
-# It belongs on the lane `pre-push` runs because that is where the cost landed.
-# A stale CLI does not announce itself there — `check-declared-qos-header` fails
-# instead, reporting it as `CMake Error at NanoRosNodeRegister.cmake:1542`, four
-# frames from the remedy and naming the QoS header machinery rather than the
-# CLI. Four times in one day on one branch: three from rebases, once from an
-# ordinary edit to a codegen source. This script's own header says what it
-# contributes is POSITION; this is that argument, one lane earlier.
-[private]
-build-serial: \
-    ament-census-sizing \
-    board-transport-variants \
-    borrowed-e2e \
-    c \
-    census-hooks-complete \
-    cli-tests \
-    cpp \
-    cpp-ffi-tests \
-    dist-runtime-deps \
-    embedded-feature-unification \
-    excluded-crate-tests \
-    launch-resolve-builds \
-    linux-check \
-    mem-report \
-    node-std-tests \
-    nros-log-riscv32 \
-    required-features-tests \
-    rmw-cyclonedds \
-    rmw-uorb \
-    rmw-xrce \
-    scaffold-builds \
-    sched-dim-arms \
-    source-gates \
-    staticlib-symbols \
-    template-copy-out \
-    test-targets \
-    workspace-all \
-    workspace-features \
-    _gate-list-end
 
 # Fast tier — BUILDLESS, SOURCE-FREE gates only (fmt/clang-format AST checks,
 # ABI/board mirrors, manifest + convention scripts). No cargo build/clippy/test
@@ -320,5 +257,6 @@ build-serial: \
 # people stop running.
 # Kept as an alias for anyone with it in muscle memory; `check-fast` IS this now.
 [private]
+[metadata("tier", "exempt", "retired alias for `fast`, kept for muscle memory")]
 fast-parallel:
     @just check fast

@@ -13,8 +13,8 @@ fail-fast = false
 # A gate is a whole `just` recipe. Build gates compile for minutes, so the
 # slow mark is informational and the cap is the build lane's own scale.
 slow-timeout = { period = "120s", terminate-after = 20 }
-# A plain run is every gate in a lane. `exempt::` gates (named in
-# `.config/gate-lane-exempt.txt`) are in no lane: they need an image, a
+# A plain run is every gate in a lane. `exempt::` gates (recipes carrying
+# `[metadata("tier", "exempt", "<why>")]`) are in no lane: they need an image, a
 # provisioned SDK, or are run by name. Ask for them with `-E 'test(/^exempt::/)'`
 # plus `--ignore-default-filter`.
 default-filter = "not test(/^exempt::/)"

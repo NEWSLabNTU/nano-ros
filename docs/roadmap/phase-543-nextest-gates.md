@@ -419,12 +419,40 @@ scheduling left to nextest.
   CI jobs it changes.
 - Order independence (moved from W4): still open, W6.
 
-### W6 — CI, then retire the old runner
+### W6 — CI, then retire the old runner — DONE (order independence still open)
 
-`gate.yml` fast and build jobs on the wrapper, `--partition slice:`, junit
-uploaded. Retire `run-gates-parallel.sh`, `gate-shard.py`,
-`.config/build-gate-weights.txt`, `.config/gate-lane-exempt.txt`, the
-`build-serial` list; CLAUDE.md and AGENTS.md lines that name them.
+**First half (#3252):** `just check fast`, `fast-serial` and `build` run
+`gate-lane.sh` with the lane in `NROS_GATE_SCOPE` (default `dev`), restricted
+to their tier; a CI shard `NROS_BUILD_GATE_SHARD=k/n` is `--partition
+slice:k/n`. gate.yml's fast job and cache warm run `fast`, the nightly build
+shards and host-tests' tier-1 gates run `build` (now both tiers). The CI skip
+allowlist is retired: its four gates already declared a `needs:` the `fast`
+lane does not claim, and any other skip is red under the harness. The
+pristine-checkout gate runs the `pristine` lane. 17 gates that skipped there
+declare `needs:cli` (13) or `needs:submodules` (4).
+
+**Second half:** the tier is an attribute on the recipe,
+`[metadata("tier", "build")]` or `[metadata("tier", "exempt", "<why>")]`, read
+through `just --dump`. Deleted: the `build-serial:` list and its
+`_gate-list-end` sentinel, `.config/gate-lane-exempt.txt` (each reason moved
+onto its recipe), `scripts/build/run-gates-parallel.sh` and
+`.config/build-gate-weights.txt`. Same split as before: 525 fast, 28 build,
+33 exempt.
+
+- `scripts/build/gate-shard.py` STAYS: `template-copy-out` shards its own units
+  with it (`.config/template-copy-out-weights.txt`).
+- `check-gate-visibility` regex-parsed `build-serial:` and went vacuous the
+  moment it was deleted: 28 "now reachable" lines for gates nothing new
+  reached. It asks the derivation for both tiers now and refuses an empty one.
+- `check-lane-stop-kills-fanout` drove the old runner. It drives
+  `nros_guard_lane` itself now, the guard `gate-lane.sh` runs its lane under,
+  through a four-line fan-out driver. All six cases and the guard-disabled
+  control pass.
+- The pre-push log's per-gate timings (`NROS_GATE_TIMINGS_FILE`) come from
+  nextest's junit (`check-gate-lists.py --junit-tsv`); cpu time is not measured
+  under nextest and reads 0.
+- Order independence: still open. nextest has no shuffle; two runs with the
+  generated `priority` reversed would test it, at the cost of a second lane.
 
 ## Found on the way
 

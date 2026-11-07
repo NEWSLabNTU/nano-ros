@@ -6,7 +6,7 @@ question, "does this gate report", and both halves have now failed in
 production:
 
   R1 PLACEMENT   Every gate `just check` runs -- the derived fast lane, the
-                 `build-serial:` registry, and the names on `default:` -- AND
+                 build tier, and the names on `default:` -- AND
                  every step of `just ci gate` must be reached by SOME workflow
                  event. A gate no event runs is invisible between local
                  full-tier runs, so its reds accumulate until whoever next runs
@@ -71,8 +71,9 @@ MEMBERSHIP IS READ, NEVER RE-DERIVED
 
 `check-gate-lists.py --list <lane>` is the one place lane membership lives
 (issue 1072 deleted the authored `fast-serial:` registry; a fast gate is now any
-recipe in `just/check.just` that is not in `build-serial:`, not exempt in
-`.config/gate-lane-exempt.txt`, and takes no parameters). A second derivation
+recipe in `just/check.just` with no `[metadata("tier", ...)]` attribute and
+no parameters; phase-543 W6 moved the build tier and the exemptions onto the
+recipes too). A second derivation
 here would be the two-spellings bug this repo has paid for repeatedly -- and it
 would answer from a stale set the day the derivation moves again.
 
@@ -113,7 +114,8 @@ EVENTS = ("pull_request", "merge_group", "push", "schedule", "workflow_dispatch"
 # quietly narrowing the scope above.
 #
 # NOT the place for "it is not really a gate": that classification already has a
-# home in `.config/gate-lane-exempt.txt`, which decides lane MEMBERSHIP. This
+# home in the recipe's `[metadata("tier", "exempt", ...)]`, which decides lane
+# MEMBERSHIP. This
 # file only ever asks whether something already in a lane is heard.
 # ---------------------------------------------------------------------------
 NO_PLACEMENT_NEEDED: "dict[str, str]" = {}

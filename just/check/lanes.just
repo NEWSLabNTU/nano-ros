@@ -45,6 +45,7 @@
 #
 # Verify the user API still corresponds to rclc / rclcpp / rclrs.
 [group("check")]
+[metadata("tier", "exempt", "compiles (rustdoc JSON of `nros` + deps, clang AST): gate.yml's `check-fast-compile` job runs it by name on every event `check-fast` runs on, beside it; `default:` and `just ci gate` name it (phase-489 W5)")]
 api-parity:
     @python3 scripts/api-parity.py --edition all --check --require-disposition
 
@@ -54,6 +55,7 @@ api-parity:
 # config-variant anchor) is the `borrowed_e2e` `fixture-script` row (issue 1656),
 # so this builds exactly that row — the same stamp every fixture lane builds.
 [private]
+[metadata("tier", "build")]
 borrowed-e2e:
     #!/usr/bin/env bash
     set -e
@@ -68,6 +70,7 @@ borrowed-e2e:
 # issue 0083) to emit the OPAQUE_U64S macro header, so it needs sources/CLI
 # submodule → build tier (check-build), NOT the source-free push lane.
 [private]
+[metadata("tier", "build")]
 c: c-fmt
     #!/usr/bin/env bash
     set -e
@@ -1192,6 +1195,7 @@ c: c-fmt
 #   * `--locked` sits BEFORE `--`: after `--` it would reach clippy-driver
 #     ("Unrecognized option: 'locked'", issue 0384).
 [private]
+[metadata("tier", "exempt", "called by `check-cli-fmt`'s body, not run standalone")]
 cli-clippy:
     #!/usr/bin/env bash
     set -e
@@ -1236,6 +1240,7 @@ cli-fresh:
 # 0409's sync refusal — correct, load-bearing, and unable to name the recipe
 # that fixes it. `check-tier-preconditions` knew, but only WARNS, and `ci gate`
 # does not run it. Buildless; SKIPs when no resolver has been built yet.
+[metadata("tier", "exempt", "needs the resolver BUILT: a step of `ci gate`, and gate.yml runs it right after `just setup-launch-resolve` on every event that builds it (issue 1739)")]
 launch-resolve-fresh:
     @bash scripts/check-launch-resolve-fresh.sh
 
@@ -1246,6 +1251,7 @@ launch-resolve-fresh:
 # `parity_helpers::ros_share_root` ($ROS_DISTRO, else exactly one /opt/ros/<d>/share).
 # Where none is, the ledger says so (`nros_check_unverified`, phase-472 F2).
 [private]
+[metadata("tier", "build")]
 cli-tests:
     #!/usr/bin/env bash
     set -e
@@ -1313,6 +1319,7 @@ cli-tests:
 # appears under `--no-default-features` survives this and is caught in the
 # queue. It is a smoke test, and the name says so.
 [private]
+[metadata("tier", "exempt", "gate.yml runs it by name on pull_request; needs a compile")]
 compile-smoke:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1442,6 +1449,7 @@ compile-smoke:
 # `rmw-cffi` surface now; its target dir keeps its `-zenoh` name, whose
 # `.gitignore` row `check-scoped-target-dirs-ignored` holds.)
 [private]
+[metadata("tier", "build")]
 cpp: cpp-fmt
     #!/usr/bin/env bash
     set -e
@@ -3821,6 +3829,7 @@ decoupling:
 # everywhere (CI sources ROS).
 [private]
 [group('needs:ros2')]
+[metadata("tier", "exempt", "post-submit.yml runs it by name; needs codegen output")]
 dep-chain:
     #!/usr/bin/env bash
     set -e
@@ -3851,6 +3860,7 @@ dep-chain:
 # Embedded feature-unification guard — no `feature "std"` activation path may
 # reach an embedded target's production-link view. The `check.yml` step (SSoT).
 [private]
+[metadata("tier", "build")]
 embedded-feature-unification:
     #!/usr/bin/env bash
     set -e
@@ -3888,6 +3898,7 @@ embedded-feature-unification:
 # lane answers a different question — "can this be checked?" — and the honest
 # answer without the submodule is no.
 [private]
+[metadata("tier", "build")]
 launch-resolve-builds:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -3926,6 +3937,7 @@ no-alloc-image:
 # schedule/dispatch (`just check no-std`, .github/workflows/gate.yml:982). Bare
 # portable crates only — no SDKs, no link.
 [group("ci")]
+[metadata("tier", "exempt", "gate.yml + `just ci` run it by name; cross-compiles riscv32")]
 no-std:
     #!/usr/bin/env bash
     set -e
@@ -4069,6 +4081,7 @@ no-std:
 # the same reason, so its 11 tests were in no lane the hour they were written.
 # Same recipe, because it is the same defect class, not a new one.
 [group('uses:root-target')]
+[metadata("tier", "build")]
 node-std-tests:
     #!/usr/bin/env bash
     set -e
@@ -4415,6 +4428,7 @@ node-std-tests:
 # riscv32imc so portable-atomic fallback regressions surface in
 # the standard check tier.
 [private]
+[metadata("tier", "build")]
 nros-log-riscv32:
     @echo "Checking nros-log for riscv32imc..."
     cargo check -p nros-log --target riscv32imc-unknown-none-elf --no-default-features
@@ -4447,6 +4461,7 @@ nros-log-riscv32:
 # thesis as the three above, one capability further out.
 [group("test")]
 [group('uses:root-target')]
+[metadata("tier", "build")]
 required-features-tests:
     #!/usr/bin/env bash
     set -e
@@ -4471,6 +4486,7 @@ required-features-tests:
 # initialised (typical for contributors not touching the DDS backend). The
 # `cyclonedds::ci` recipe itself fails hard on real test failures.
 [private]
+[metadata("tier", "build")]
 rmw-cyclonedds:
     #!/usr/bin/env bash
     set -e
@@ -4490,6 +4506,7 @@ rmw-cyclonedds:
 rmw-feature-matrix:
     @python3 scripts/gen-rmw-feature-matrix.py --check
 
+[metadata("tier", "build")]
 rmw-uorb:
     #!/usr/bin/env bash
     set -e
@@ -4517,6 +4534,7 @@ rmw-uorb:
 #
 # Each skips LOUDLY (counted by `scripts/build/check-skip.sh`) when its
 # prerequisite is absent, so "not built here" can never read as "builds".
+[metadata("tier", "build")]
 rmw-xrce:
     #!/usr/bin/env bash
     set -e
@@ -4560,6 +4578,7 @@ rmw-xrce:
 # describing a state that never shipped. Read the script, not this line, when
 # they disagree: it prints one section per arm.
 [group('units')]
+[metadata("tier", "build")]
 sched-dim-arms:
     @bash scripts/check-sched-dim-arms-compile.sh
 
@@ -4578,6 +4597,7 @@ sched-matrix:
 # slower than the buildless gates but still a static/precondition check.
 [private]
 [group('uses:root-target')]
+[metadata("tier", "build")]
 source-gates:
     #!/usr/bin/env bash
     set -e
@@ -4635,6 +4655,7 @@ source-gates:
 # closure (no app ODR violation). The `check.yml` staticlib step (SSoT).
 [private]
 [group('uses:root-target')]
+[metadata("tier", "build")]
 staticlib-symbols:
     #!/usr/bin/env bash
     set -e
@@ -4678,6 +4699,7 @@ staticlib-symbols:
 # gate still runs, in the tier that can actually compile.
 [private]
 [group('uses:root-target')]
+[metadata("tier", "build")]
 test-targets:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -4749,6 +4771,7 @@ feature-sweep *args:
 # all: 20 errors in nros-node's own test target and a `needless_borrow` in
 # nros-tests reached main. `workspace-all` now calls `test-targets` directly.
 [private]
+[metadata("tier", "exempt", "aggregate: depends on `workspace-fmt`, echoes where its jobs went")]
 workspace: workspace-fmt
     @echo "check-workspace: fmt only; host clippy is check-test-targets."
 
@@ -4760,6 +4783,7 @@ workspace: workspace-fmt
 # build recipes thread — no hardcoded `-j`). Both still run standalone.
 [private]
 [group('uses:root-target')]
+[metadata("tier", "build")]
 workspace-all:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -4801,6 +4825,7 @@ workspace-all:
 # thumbv7 artifacts never share cargo's per-target-dir build lock with the
 # host clippy — letting `check-workspace-all` run the two concurrently.
 [private]
+[metadata("tier", "exempt", "cross-compiles the workspace for thumbv7; minutes")]
 workspace-embedded:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -4848,12 +4873,14 @@ workspace-embedded:
 # decided by the leaf's shape, so no hand sync and no `just generate-bindings`
 # (issue 1892).
 [private]
+[metadata("tier", "build")]
 linux-check:
     @just linux check
 
 # Check workspace with various feature combinations
 [private]
 [group('uses:root-target')]
+[metadata("tier", "build")]
 workspace-features:
     @echo "Checking feature combinations..."
     # Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature deleted; the
@@ -4940,6 +4967,7 @@ workspace-features:
 
 # Check zenoh transport
 [private]
+[metadata("tier", "exempt", "`cargo clippy -p nros-rmw`; a compile, not a source gate")]
 zenoh:
     cargo clippy --quiet -p nros-rmw --features alloc,log
 
@@ -4950,6 +4978,7 @@ zenoh:
 # every C/C++ native link broke. Run after
 # `cargo build -p nros-rmw-zenoh-staticlib --release`.
 [group("debug")]
+[metadata("tier", "exempt", "reads a built `libnros_rmw_zenoh_staticlib.a`")]
 zenoh-archive:
     # profile-literal-ok: symbol fixture: the archive built by build-zenoh-posix-fixture
     @bash scripts/check-zenoh-archive-symbols.sh target/release/libnros_rmw_zenoh_staticlib.a
@@ -4969,6 +4998,7 @@ zenoh-archive:
 #
 # On the BUILD lane: it compiles three crates. 0.6 s warm.
 [private]
+[metadata("tier", "build")]
 excluded-crate-tests:
     @bash scripts/run-excluded-crate-tests.sh
 
@@ -4978,6 +5008,7 @@ excluded-crate-tests:
 # variant was compiled by nothing and `nros-board-esp32-qemu` stopped building
 # with it. Subjects, triples and feature sets are derived; ~37 s cold.
 [private]
+[metadata("tier", "build")]
 board-transport-variants:
     @python3 scripts/check/check-board-transport-variants.py
 
@@ -4991,6 +5022,7 @@ board-transport-variants:
 # generated config header into a path with no feature in it, and the `cpp`
 # lane's probes compile against that header under a DIFFERENT feature set.
 [private]
+[metadata("tier", "build")]
 cpp-ffi-tests:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -5006,6 +5038,7 @@ cpp-ffi-tests:
 # of 456 gates and misses both of the gates the issue was filed about.
 # ~55 s (it IS the fast tier, in a `--local --shared` clone). Not a fast gate,
 # because the tier would recurse; `just ci gate` runs it after `check::fast`.
+[metadata("tier", "exempt", "RUNS `check fast` in a submodule-free clone, so as a fast gate the tier would recurse; `just ci gate` runs it after `check::fast` (issue 1373)")]
 pristine-checkout:
     @bash scripts/ci/pristine-checkout-fast.sh
 

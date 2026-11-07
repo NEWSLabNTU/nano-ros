@@ -167,6 +167,7 @@ claim-protocol:
 # the programs nano-ros RUNS from it (its `smoke` probes), so it is green, and
 # ~1.5 s warm over a full store.
 [private]
+[metadata("tier", "build")]
 dist-runtime-deps:
     @python3 scripts/check-dist-runtime-deps.py
 
@@ -540,6 +541,7 @@ sdk-guard-can-fire:
 # that after a provision (and CI never provisions esp32-qemu), so the static
 # half lives here.
 [group("ci")]
+[metadata("tier", "exempt", "NETWORK — downloads and sha256-checks SDK release assets")]
 sdk-index:
     GH_TOKEN="${GH_TOKEN:-$(gh auth token 2>/dev/null || true)}" python3 scripts/sdk/verify-index.py nros-sdk-index.toml
     ./scripts/sdk/check-qemu-configure.sh
