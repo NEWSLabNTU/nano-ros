@@ -1,6 +1,7 @@
 # Phase 547 — Spike: does PX4's NuttX firmware for a shippable Pixhawk boot in an emulator?
 
-**Status (2026-11-07). OPEN — W1 in progress.** A time-boxed spike (about
+**Status (2026-11-07). OPEN — W1 done; W2 reaches `nsh>` with one firmware
+deviation (console TX DMA off) that a DMA-model fix removes; W3 next.** A time-boxed spike (about
 three working days). It decides the board and emulator for first-class PX4
 support. It writes no RFC and changes no shipped code: the RFC amendment and
 the implementation phase are drafted from its findings, after the maintainer
@@ -94,4 +95,54 @@ RFC amendment (RFC-0039 / RFC-0115) and the implementation phase follow.
 
 ## Findings
 
-(Filled in as work items complete.)
+### W1 — stock build (done, 2026-11-07)
+
+`make px4_fmu-v6x_default` at the PX4-Autopilot commit our
+`third-party/px4/PX4-Autopilot` submodule pins (dated 2026-04-24; PX4 1.17.0,
+NuttX 12.12.0), Arm GNU 13.2.1 from the SDK store, PX4's
+`Tools/setup/requirements.txt` in a venv with `PYTHONPATH` cleared: exit 0,
+81 s. Text 1,954,824 B, data 5,200 B, bss 98,140 B. The app is linked at
+`0x08020000` (after the 128 KiB bootloader); `.data`'s load address ends at
+`0x081fe858`.
+
+### W2 — boot in stock Renode 1.17.0 (`nsh>` reached)
+
+Booted with `sysbus LoadBinary <app>.bin 0x08020000` and the vector table at
+`0x08020000`, no bootloader. `LoadELF` fails, because it zero-fills `.bss` at
+its load address in flash (`0x081fe858 + 0x1775c`, past the 2 MiB bank).
+
+What it took, each found by the boot stopping on it:
+
+| Stop | Cause | Fix (spike artifact) |
+|---|---|---|
+| polled forever on SPI5 status | base `stm32h7.repl` models SPI4 only | `SPI.STM32H7_SPI` at SPI1/2/3/5/6 |
+| `failed to initialize mtd driver`, endlessly | nothing answers the FRAM's RDID | a 32 KiB FM25V02A model (C#, ~120 lines) on SPI5, framed by its chip select PG7. Renode's H7 SPI ends a "transmission" after every byte, so only the CS delimits a command |
+| `failed to initialize EEPROM driver` | no 24LC64 on I2C3/I2C4 | Renode's `Memory.GenericI2cEeprom`, `addressBitSize: 16`, `pageSize: 32`, backed by `MappedMemory` so a reboot keeps it (the default 8-bit addressing made `netman` reboot forever) |
+| silent after the EEPROM probe | Renode's `STM32F7_I2C` (sealed) drops 16-bit accesses; NuttX reads ISR/RXDR and writes TXDR 16 bits wide | a width adapter at the real I2C3/I2C4 addresses, forwarding to the stock model moved to a spare address |
+| polled forever on SDMMC2 status | the base models SDMMC1 only | `SD.STM32HSDMMC` at SDMMC2, IRQ 124, plus a 64 MiB FAT image. **NuttX still does not detect the card** (`mount failed: No such device`); not yet investigated |
+| `HW arch: PX4_FMU_V6X` printed ~5 million times | **USART3 TX DMA**: NuttX's `up_dma_txcallback` credits the bytes sent only when the DMA status carries the transfer-complete flag. Renode's `STM32DMA` raises the interrupt without it, and also leaves the stream's EN bit set at `NDTR = 0`, so the driver resends one buffer forever | **diagnostic only:** `CONFIG_USART3_TXDMA` off in the scratch build. The real fix is in the DMA model (it is sealed, so a replacement stream model, or an upstream fix) |
+
+With those, the firmware boots through the full `rcS` to **`NuttShell (NSH)
+NuttX-12.12.0` / `nsh>`**: the version banner, parameters imported from the
+emulated FRAM, `uorb`, `logger`, `ekf2`, `dataman` (which fails without the SD
+card), MAVLink on `/dev/ttyS6` and **on Ethernet (UDP 14550)** through Renode's
+Synopsys DWC QoS MAC, and `uavcan`.
+
+What fails, as expected without models:
+- every sensor (`bmi088`, `icm42688p`, `icm20649`, `bmm150`, `ist8310`,
+  `bmp388`: "no device on bus");
+- PX4IO (the STM32F103 I/O co-processor on USART6);
+- the SD card (above) and so `dataman` and logging;
+- the hardware-revision ADC reads 0 (`V6X000`).
+
+**Not yet measured:** the real-time factor. A boot to `nsh>` took well
+under 220 s of host time.
+
+### What this means so far
+
+Stock Renode carries the Pixhawk 6X much further than the research
+suggested. The model work so far is one small device model (FRAM), one access
+adapter (I2C) and configuration: every remaining stop was a missing
+instance or a width or framing mismatch, not a missing peripheral class.
+Only one deviation from the hardware firmware remains, the console TX DMA, and
+it is a defect in Renode's DMA model.
