@@ -1,14 +1,16 @@
 ---
 id: 2346
 title: "The checkout probe's quick-start verifier promises a build with no ROS 2 install, but configure refuses an unset AMENT_PREFIX_PATH"
-status: open
+status: resolved
 type: bug
 area: probe, cli-configure
-related: [issue-2275, issue-2279, issue-2319]
+related: [phase-523, issue-2275, issue-2279, issue-2319, issue-2348]
 found: 2026-11-07
+purpose: [education, industrial]
+resolved_in: "probe-checkout-ros2 branch: the quickstart track runs ros:jazzy and the verifier sources ROS 2"
 ---
 
-**Home: none yet.** Found from scheduled probe run 42354245272 (main
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)** (maintainer routing, 2026-11-07). Found from scheduled probe run 42354245272 (main
 50b443bd3f), job 128348717207 "book probe — checkout track".
 
 ## Symptom
@@ -58,3 +60,22 @@ Option 1 follows the standing ruling.
 
 - The checkout track is green on main.
 - `activate.sh`'s warning matches what configure requires.
+
+## Resolution (2026-11-07)
+
+Option 1, which keeps issue 2275's ruling.
+
+- The quickstart track defaults to `ros:jazzy`: noble (the base
+  `ubuntu:24.04` was) plus the ROS 2 the book names as a prerequisite.
+- `verify-first-node.sh` sources it before the scaffold (which picks its
+  edition from it) and before configure, and fails by name on an image
+  without one. Its header no longer promises "no ROS 2 install".
+- `activate.sh` / `activate.fish` keep a ROS 2 the caller already sourced (any
+  edition). Before, they looked only for `/opt/ros/humble` and told a Jazzy
+  shell it had none. The no-ROS message no longer says every build works
+  without it.
+
+**Verified:** the quickstart track was run (`PROBE_TRACK=quickstart`). It
+passed configure and printed `PROBE PASS: scaffolded C++ workspace published
+on a pristine host, no router running`. The Rust step then failed on a separate
+defect it had been hiding, issue 2348, which is fixed on the same branch.
