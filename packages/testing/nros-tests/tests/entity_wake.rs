@@ -433,6 +433,76 @@ fn an_arrival_a_trigger_held_back_is_dispatched_when_it_passes(zenohd_unique: Ze
     );
 }
 
+/// Issue 2352 — where `an_arrival_racing_a_drain_is_never_left_undispatched`
+/// is, for its watchdog. Round `n` is `STAGE_ROUND + n`.
+const STAGE_OPEN: u32 = 1;
+const STAGE_SETUP: u32 = 2;
+const STAGE_JOIN: u32 = 3;
+const STAGE_DROP: u32 = 4;
+const STAGE_ROUND: u32 = 100;
+/// Below nextest's 60 s timeout for this binary, above every bound the test
+/// asserts (two arrival budgets, 10 s).
+const WATCHDOG_AFTER: Duration = Duration::from_secs(45);
+
+fn stage_name(stage: u32) -> String {
+    match stage {
+        STAGE_OPEN => "opening the executor (session open to the router)".into(),
+        STAGE_SETUP => "registering the subscription and publisher".into(),
+        STAGE_JOIN => "joining the publisher thread (a publish that never returned)".into(),
+        STAGE_DROP => "dropping the executor (session close)".into(),
+        n if n >= STAGE_ROUND => format!("round {} of the dispatch loop", n - STAGE_ROUND),
+        n => format!("unknown stage {n}"),
+    }
+}
+
+/// Aborts the test process, naming the stage, if the test is still running
+/// after `WATCHDOG_AFTER`. Stops when dropped.
+struct Watchdog(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Watchdog {
+    fn start(stage: std::sync::Arc<std::sync::atomic::AtomicU32>) -> Self {
+        use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        let done_w = done.clone();
+        std::thread::spawn(move || {
+            let start = Instant::now();
+            while !done_w.load(SeqCst) {
+                if start.elapsed() >= WATCHDOG_AFTER {
+                    // Written to the stderr HANDLE, not `eprintln!`: libtest
+                    // captures the macro's output (in spawned threads too)
+                    // and an abort discards the capture, which is how the
+                    // first version of this printed nothing.
+                    use std::io::Write as _;
+                    let _ = writeln!(
+                        std::io::stderr(),
+                        "issue 2352: still running after {WATCHDOG_AFTER:?}, stuck while {}. \
+                         Aborting so the stage is on record instead of only nextest's TIMEOUT.",
+                        stage_name(stage.load(SeqCst))
+                    );
+                    std::process::abort();
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        });
+        Watchdog(done)
+    }
+}
+
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Sets a stage when dropped.
+struct StageOnDrop(std::sync::Arc<std::sync::atomic::AtomicU32>, u32);
+
+impl Drop for StageOnDrop {
+    fn drop(&mut self) {
+        self.0.store(self.1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// The two dispatch shapes a raw subscription can take.
 #[derive(Debug, Clone, Copy)]
 enum Shape {
@@ -466,7 +536,18 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     let locator = zenohd_unique.locator();
     let domain = u32::from(nros_tests::unique_ros_domain_id());
 
+    // Issue 2352: this test once ran to nextest's 60 s timeout beside the
+    // build gates, and every bound below is 10 s or less, so something
+    // blocked with no bound of its own. The watchdog says WHERE: it reports
+    // the stage the test is in and aborts before the timeout, so the next
+    // occurrence names its stage instead of only `TIMEOUT`.
+    let stage = std::sync::Arc::new(AtomicU32::new(STAGE_OPEN));
+    let _watchdog = Watchdog::start(stage.clone());
     let mut exec = open(&locator, "entity_wake_race", domain);
+    // Declared after `exec`, so it drops first: the stage then reads
+    // "dropping the executor" while `exec` closes its session.
+    let _closing = StageOnDrop(stage.clone(), STAGE_DROP);
+    stage.store(STAGE_SETUP, SeqCst);
     let node = exec.node_builder("entity_wake_race").build().expect("node");
     // The highest sequence number dispatched, and whether a callback is
     // running right now.
@@ -555,6 +636,7 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
 
     let mut raced_rounds = 0;
     for round in 0..ROUNDS {
+        stage.store(STAGE_ROUND + round, SeqCst);
         let first = 1 + round * BURST;
         let last = first + BURST - 1;
         to_publisher.send(first).unwrap();
@@ -605,6 +687,7 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
         raced_rounds += u32::from(raced_this_round);
     }
     drop(to_publisher);
+    stage.store(STAGE_JOIN, SeqCst);
     publisher_thread.join().unwrap();
     // Control: the race this test exists for really happened.
     assert!(
