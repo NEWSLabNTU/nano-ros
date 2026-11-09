@@ -8,7 +8,6 @@
 
 # zenoh-pico and the zenoh protocol
 DownsamplingItemConf
-InitAck
 OpenSyn
 PublicationCache
 UDP_CONFIG_IFACE_KEY
