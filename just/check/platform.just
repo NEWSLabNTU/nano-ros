@@ -1026,6 +1026,14 @@ zephyr-knob-agreement:
 zephyr-workspace-resolvers:
     @python3 scripts/check-zephyr-workspace-resolvers.py
 
+# Issue 2308 -- "is a west workspace provisioned" is answered by the ONE
+# resolver, and a Zephyr SOURCE tree (CI's sparse header clone at
+# `zephyr-workspace/zephyr`, no `.west/`) is not one. Rows: nothing, the sparse
+# tree, the same tree after `west init`, the override. Buildless, tmpdir.
+[private]
+zephyr-workspace-resolve:
+    @bash tests/zephyr-workspace-resolve-tests.sh
+
 # Issue 1379 — a `west build` that configures a nano-ros image must name THIS
 # checkout's `nros` module. The workspace supplies one otherwise, and since
 # phase-440 W4 that workspace is shared by every checkout on the host: the
