@@ -1,5 +1,28 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-11-09). Every scheduled lane read again. Each red now has a
+named cause; none is untracked.**
+
+Latest scheduled run per lane, by failing step (`just matrix-triage`,
+`just nightly-triage`, and the job logs):
+
+| lane | run | stops at | cause |
+| --- | --- | --- | --- |
+| `run-matrix` tier 2 | 42572877658 (sched), 42605683876 (dispatch) | `just build tier2` | issue 2365 (nucleo RAM; fixed, #3345 merged), then two rows of one leaf racing on its census dir (#3367, which files it) |
+| `nightly` tier 2 | 42577453343 | `just build tier2-nightly` | issue 2344 on the 241 runner before its image was rebuilt (two `cortex-m-cpp-port-*` rows refuse the bundled interfaces) |
+| `nightly` zephyr jobs | 42565600377 | `Set up Zephyr 3.7/4.4 workspace` | a GitHub release 504 in `nros setup`: issue 2369 (#3362) |
+| `nightly` px4 sitl | 42577453343 | `stock_px4_listener_reads_a_nano_ros_publication` | issue 2243 (two PX4 daemons at once), a verdict about the test |
+| `gate` build shards | 42548650793 | lane preflight, no gate ran | issue 2382 (the `build` lane claims submodules and history its hosted jobs never provide; since phase-543 W5/W6, 11-07) |
+| `host-tests` tier-1 gates | 42555181729 | the same preflight | issue 2382 |
+| `host-tests` feature sweep | 42555181729 | `nros-board-zephyr` fmt diff | phase-536's rename left `entry_sched_tasks.rs` unformatted; #3363 |
+| `live-peer` | 42560467078 | one UNMET cell | issue 2383 (the derived host fixture set misses the C workspace's Cyclone rows after phase-535 W4) |
+| `probe` | 42584277829 | `Install just` | a release 504: issue 2369 (#3362) |
+| `lane-census`, `pr-verdicts`, `next-stable` | | | green |
+
+So every red is a verdict or a tracked stop. Left: issue 2344's confirmation
+(a `tier2-nightly` on each rebuilt runner), a clean tier 2 once #3367 lands,
+then issue 2193, W5's C++ cells, and the acceptance.
+
 **Status (2026-11-05). Tier 2 (run-matrix) reached its cells and PASSED; W6 is
 met and issue 2004 is resolved. The tier-2 NIGHTLY still stops in the zephyr
 build, on a false preflight refusal (fixed in PR #3153).**
