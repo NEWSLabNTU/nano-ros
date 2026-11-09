@@ -2618,7 +2618,7 @@ mod tests {
                         missing: &|_, _| Vec::new(),
                         run: &run,
                     };
-                    let _ = take_leaf_census_with(&leaf, None, 5, &host);
+                    let _ = take_leaf_census_with(&leaf, None, 5, false, &host);
                 })
             })
             .collect();
