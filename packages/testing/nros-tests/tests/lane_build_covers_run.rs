@@ -980,3 +980,71 @@ for x in missing[:8]:
         );
     }
 }
+
+/// phase-544 W2 (issue 2273) -- the BUILD half of `ci_lane::pinned_tier2_reqs`.
+/// The unit test `ci_lane::tests::tier2_selects_every_pinned_cell`
+/// proves tier 2 RUNS every violation-channel cell; this proves the tier-2
+/// BUILD produces each one's west leaf, read off the manifest's own
+/// `west-leaves --coords-from` over the coordinates the prebuilt `lane-coords`
+/// prints. A pin that selected the cell while the build omitted its leaf would
+/// leave the cell to fail on a missing fixture, which is 0828's shape.
+/// MEMBERSHIP per cell, keyed on the leaf's workspace and coordinate.
+/// Negative control (measured): without the `pinned_tier2_reqs` arm in
+/// `ci_lane::reqs_of` the Cortex-M leaf is absent and this fails.
+#[test]
+fn the_tier2_build_carries_every_pinned_cell_leaf() {
+    use nros_tests::matrix::{CELLS, Consumer, consumer_of};
+    // The one workspace the ViolationChannel consumer's cells are images of
+    // (`examples/fixtures.toml`, `workspace-zephyr*-cpp-violation`).
+    const VIOLATION_WS: &str = "examples/workspaces/violation-cpp";
+    let repo = nros_tests::project_root();
+    let pinned: Vec<_> = CELLS
+        .iter()
+        .filter(|c| consumer_of(c) == Some(Consumer::ViolationChannel))
+        .collect();
+    assert!(
+        !pinned.is_empty(),
+        "matrix::CELLS has no ViolationChannel cell -- this test checks nothing"
+    );
+    let coords = lane_coords_file("tier2");
+    let out = Command::new("python3")
+        .args([
+            "scripts/build/fixtures-manifest.py",
+            "west-leaves",
+            "--coords-from",
+        ])
+        .arg(&coords)
+        .current_dir(&repo)
+        .output()
+        .expect("run west-leaves");
+    assert!(
+        out.status.success(),
+        "west-leaves failed:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // (src dir, coordinate) of every leaf the tier-2 build produces.
+    let built: BTreeSet<(String, String)> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| {
+            let f: Vec<&str> = l.split('\x1f').collect();
+            (
+                f.get(5).copied().unwrap_or_default().to_string(),
+                f.last().copied().unwrap_or_default().to_string(),
+            )
+        })
+        .collect();
+    for c in pinned {
+        let lang = format!("{:?}", c.lang).to_lowercase();
+        let rmw = format!("{:?}", c.rmw).to_lowercase();
+        for p in c.platform.fixture_tokens() {
+            let coord = format!("{p},{lang},{rmw}");
+            assert!(
+                built.contains(&(VIOLATION_WS.to_string(), coord.clone())),
+                "pinned tier-2 cell {c:?}: the tier-2 build has no {VIOLATION_WS} \
+                 west leaf at {coord}, so the run selects a cell whose fixture no \
+                 tier-2 build produces"
+            );
+        }
+    }
+}
