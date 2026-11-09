@@ -1143,12 +1143,16 @@ mod tests {
         // another root, and refuses it.
         let ladder = mr::probe_nano_ros_root(&p, None);
         assert_ne!(ladder, explicit);
-        let (rows, _, notes) = mr::fresh_probe_rows(&p, ladder.as_deref()).unwrap();
+        let (rows, inputs, notes) = mr::fresh_probe_rows(&p, ladder.as_deref()).unwrap();
         assert!(
             rows.is_empty(),
             "the ladder's key read a sidecar keyed elsewhere"
         );
         assert!(notes.iter().any(|n| n.contains("stale")), "{notes:?}");
+        // Issue 2361 -- a STALE sidecar is still a configure input, so the
+        // `nros configure` that makes it current re-runs the configure that
+        // refused it. Before, a stale configure registered none.
+        assert_eq!(inputs, read, "the stale sidecar stays a configure input");
     }
 
     /// R5: a sidecar stamped `UNKEYED` has nothing to compare, so it is not

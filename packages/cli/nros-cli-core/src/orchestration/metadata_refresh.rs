@@ -529,8 +529,8 @@ fn build_options(
 /// Two sidecars naming one component are both dropped: the join keys rows by
 /// component, so either would be attributed to the other's endpoints.
 ///
-/// Returns the inventory, the sidecar paths it READ (configure-time inputs —
-/// issue 1018), and one note per skip.
+/// Returns the inventory, the sidecar paths it CONSULTED (configure-time inputs —
+/// issue 1018; stale ones included, issue 2361), and one note per skip.
 pub fn fresh_probe_inventory(
     ws_root: &Path,
     nano_ros: Option<&Path>,
@@ -799,6 +799,19 @@ pub struct ProbeRow {
 /// [`fresh_probe_inventory`] documents -- that function and issue 1694's
 /// count floor ([`crate::entity_inventory::EntityInventory::recorded_for_launch`])
 /// read ONE set of sidecars through this.
+///
+/// The second value is every sidecar this CONSULTED -- fresh, stale or
+/// unreadable -- because it is what a caller registers as configure inputs
+/// (issue 1018), and the inputs must not depend on the state they track
+/// (issue 2361). It used to be the fresh ones only, so a configure that found
+/// the sidecars stale registered none of them, and the `nros configure` that
+/// made them current again re-ran nothing: measured on the safety island, the
+/// image stayed sized from the closure fallback (`registration_path` refused on
+/// six subscriptions, `region 'DTCM' overflowed by 18336 bytes`) until a fresh
+/// configure was forced. A sidecar that does not exist is not listed: a
+/// configure input with no file is a ninja load error, and its directory is
+/// not a safe stand-in (anything the configure writes there would re-date it
+/// past `build.ninja`).
 pub fn fresh_probe_rows(
     ws_root: &Path,
     nano_ros: Option<&Path>,
@@ -814,6 +827,8 @@ pub fn fresh_probe_rows(
         if !sidecar.is_file() {
             continue;
         }
+        // Issue 2361 -- an input whatever its state, before any `continue`.
+        read.push(sidecar.clone());
         let fresh = probe_inputs_key(&decl.package_root, nano_ros)
             .is_some_and(|k| sidecar_is_fresh(&sidecar, &k));
         if !fresh {
@@ -831,7 +846,6 @@ pub fn fresh_probe_rows(
                 let executable = serde_json::from_str::<serde_json::Value>(&raw)
                     .ok()
                     .and_then(|v| v.get("executable")?.as_str().map(str::to_string));
-                read.push(sidecar);
                 rows.push(ProbeRow {
                     executable,
                     entities: ComponentEntities {

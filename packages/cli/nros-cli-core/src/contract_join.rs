@@ -548,8 +548,9 @@ pub fn observe_registrations(
 /// for a workspace cargo image), so the two cannot come to read different
 /// sidecars.
 ///
-/// Returns the observed inventory, the sidecars read (configure inputs), and the
-/// notes to print — one per skipped sidecar plus a one-line tally.
+/// Returns the observed inventory, the sidecars consulted (configure inputs,
+/// stale ones included -- issue 2361), and the notes to print — one per skipped
+/// sidecar plus a one-line tally.
 pub fn observe_workspace_registrations(
     target: &EntityInventory,
     model: &nros_orchestration_ir::overlay::LoadedModel,
@@ -565,10 +566,10 @@ pub fn observe_workspace_registrations(
     )?;
     let observed = observe_registrations(target, &probe, model);
     notes.push(format!(
-        "registration observed for {} of {} subscription row(s), from {} probe sidecar(s)",
+        "registration observed for {} of {} subscription row(s), from {} fresh probe sidecar(s)",
         observed.observed,
         observed.observed + observed.unobserved,
-        read.len()
+        probe.components().len()
     ));
     Ok((observed.inventory, read, notes))
 }
