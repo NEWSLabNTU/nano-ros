@@ -96,6 +96,13 @@ example-leaf-build-dirs:
 census-prepass-parallel:
     @./tests/census-prepass-parallel-tests.sh
 
+# issue 2390 — the pre-pass's leaf list (`fixtures-manifest.py census-leaves`)
+# includes the Zephyr `west` rows, which every other listing keeps out, so a
+# Zephyr leaf counted by its census has it taken before its configure.
+[private]
+census-leaves-west-rows:
+    @./tests/census-leaves-west-rows-tests.sh
+
 # phase-340 P2 — nothing may write an `examples/**/target/` dir. That is the
 # invariant item 7 / P4 stands on (`examples/**/target-*/` is globally ignored;
 # a plain `target/` survives only through 391 per-leaf .gitignore files), and it
