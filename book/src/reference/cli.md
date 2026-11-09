@@ -1605,7 +1605,7 @@ Usage: nros locate [OPTIONS] [NAMES]...
 
 Arguments:
   [NAMES]...
-          Resources to locate: a `[source.<name>]` of the index, or `store` / `nano-ros` for the two roots. `artifact <name>…` instead locates a cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>` a host binary (`nros-launch-resolve`, `renode`, or `qemu-system-<arch>` through the one QEMU ladder), or the install directory of an SDK tool `nros setup <board>` provisioned (`tool zephyr-sdk`)
+          Resources to locate: a `[source.<name>]` of the index, or `store` / `nano-ros` for the two roots. `artifact <name>…` instead locates a cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>` a host binary (`nros-launch-resolve`, `renode`, or `qemu-system-<arch>` through the one QEMU ladder), the install directory of an SDK tool `nros setup <board>` provisioned (`tool zephyr-sdk`), or `configured` where `nros configure` put an image's answer (with `--project` and `--image`)
 
 Options:
       --all
@@ -1642,6 +1642,9 @@ Options:
           `artifact` mode: the directory a build PLACED its config headers in.
           
           REQUIRED for the header artifacts, which live only in cargo's `$OUT_DIR`; an archive is never placed, so naming one with this is refused.
+
+      --image <IMAGE>
+          `configured` mode: the image, by its configure key (an image id for a single-package leaf, `<bringup>:<id>` for a workspace)
 
       --project <PROJECT>
           The project whose `system.toml` `[sources]` is rung 3.
