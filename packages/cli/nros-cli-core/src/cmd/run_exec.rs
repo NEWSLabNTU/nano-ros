@@ -295,9 +295,16 @@ fn zenoh_router(endpoint: &str) -> Result<Command, String> {
         .and_then(Path::parent)
         .and_then(Path::parent)
         .map(Path::to_path_buf);
+    // Sourced means `<prefix>/lib` is on the loader path, which is what the
+    // router needs to RUN -- not AMENT_PREFIX_PATH naming the prefix: the
+    // runner image sets that as a plain ENV with nothing sourced (issue 2344),
+    // and keyed on it the router died on `libament_index_cpp.so`. Twins:
+    // scripts/dev/zenohd.sh `nros_router_env_exec`, nros-tests
+    // `unsourced_prefix_setup`.
     let sourced = |p: &Path| {
-        std::env::var_os("AMENT_PREFIX_PATH")
-            .is_some_and(|v| std::env::split_paths(&v).any(|x| x == p))
+        let lib = p.join("lib");
+        std::env::var_os("LD_LIBRARY_PATH")
+            .is_some_and(|v| std::env::split_paths(&v).any(|x| x == lib))
     };
     let setup = prefix
         .as_deref()
