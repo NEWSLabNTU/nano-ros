@@ -575,9 +575,93 @@ def host_compile_checks_for(cells, ids, known=None, read=None, helpers=None) -> 
 # EVERY native workspace row (`just linux build-workspace-fixtures`, 121 rows)
 # for a membership that reaches a handful, and filled a 146 G disk with 111 G
 # free after the reclaim (run 37883358718, 2026-10-09).
-def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None) -> list[str]:
+def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None,
+                                pairs=None) -> list[str]:
     known = _table_ids("workspace_fixture") if known is None else known
-    return host_rows_for(cells, ids, known, read, helpers)
+    pairs = _linux_pair_rows() if pairs is None else pairs
+    out = set(host_rows_for(cells, ids, known, read, helpers))
+    out |= _pair_rows_for_cells(cells, ids, pairs)
+    out |= _pair_rows_named(cells, ids, pairs, read, helpers)
+    return sorted(out)
+
+
+# Issue 2383 — phase-535 W4 (RFC-0122 D1) moved the linux example PAIRS out of
+# `[[fixture]]` leaves into images of the workspace behaviour bringups, so
+# `fixtures-build.sh linux <lang> <rmw>` (`host_builds_for`) stopped building
+# them, and no test names a pair row's id as a literal (they resolve through
+# `nros_tests::fixtures::workspace_image`, which COMPUTES it). The two halves
+# above therefore both missed the pair images, and live-peer's bridge and C
+# Cyclone cells came up UNMET every night from 2026-11-07.
+#
+# Two rules, both read from the manifest, never a hand list:
+# - by COORDINATE: a host cell on (lang, rmw) gets every linux pair image of
+#   that (lang, rmw), which is what `fixtures-build.sh linux <lang> <rmw>`
+#   built for it before the move;
+# - by NAME: a `linux_pair_image("<lang>", "<role>", Rmw::<R>)` call the cell's
+#   test (or a helper it calls) makes, because a cell may resolve a pair image
+#   OFF its own coordinate (the Rust/Zenoh bridge cell's Cyclone listener is
+#   `linux/c/listener`). A variable argument is a wildcard: it errs toward
+#   building, which costs a build; a missed row costs the red.
+PAIR_BRINGUPS = ("src/pubsub_bringup", "src/service_bringup", "src/action_bringup")
+_PAIR_CALL = re.compile(
+    r'linux_pair_image\(\s*(?:"(?P<lang>[\w-]+)"|[A-Za-z_]\w*)\s*,'
+    r'\s*(?:"(?P<role>[\w-]+)"|[A-Za-z_]\w*)\s*,'
+    r'\s*(?:Rmw::(?P<rmw>\w+)|[A-Za-z_]\w*)\s*\)'
+)
+
+
+def _linux_pair_rows(rows=None) -> "list[dict]":
+    """[{id, lang, rmw, role}] for every linux pair image in the manifest."""
+    if rows is None:
+        rows = tomllib.loads(FIXTURES_TOML.read_text()).get("workspace_fixture", [])
+    out = []
+    for r in rows:
+        if r.get("platform") != "linux" or r.get("bringup") not in PAIR_BRINGUPS:
+            continue
+        image, rmw = r.get("image", ""), r.get("rmw", "zenoh")
+        if not image.startswith("linux_"):
+            continue
+        role = image[len("linux_"):]
+        if rmw != "zenoh" and role.endswith(f"_{rmw}"):
+            role = role[: -len(rmw) - 1]
+        out.append({"id": r["id"], "lang": r.get("lang"), "rmw": rmw,
+                    "role": role.replace("_", "-")})
+    return out
+
+
+def _pair_rows_for_cells(cells, ids, pairs) -> set[str]:
+    by_id = {c["id"]: c for c in cells}
+    want = set()
+    for cid in set(ids):
+        c = by_id.get(cid)
+        if c is None or runner_of(c["platform"]) != "host":
+            continue
+        want.add((HOST_BUILD_LANG.get(c["lang"]), HOST_BUILD_RMW.get(c["rmw"])))
+    return {p["id"] for p in pairs if (p["lang"], p["rmw"]) in want}
+
+
+def _pair_rows_named(cells, ids, pairs, read=None, helpers=None) -> set[str]:
+    by_id = {c["id"]: c for c in cells}
+    read = (lambda t: (TESTS_DIR / f"{t}.rs").read_text()) if read is None else read
+    helpers = _helper_bodies() if helpers is None else helpers
+    out: set[str] = set()
+    for test in sorted({by_id[c]["test"] for c in set(ids)
+                        if c in by_id and runner_of(by_id[c]["platform"]) == "host"}):
+        try:
+            text = read(test)
+        except OSError:
+            continue
+        reached = text + "".join(
+            body for name, body in helpers.items()
+            if re.search(rf"\b{re.escape(name)}\b", text)
+        )
+        for m in _PAIR_CALL.finditer(reached):
+            rmw = m["rmw"] and HOST_BUILD_RMW.get(m["rmw"], m["rmw"].lower())
+            out |= {p["id"] for p in pairs
+                    if (m["lang"] is None or p["lang"] == m["lang"])
+                    and (m["role"] is None or p["role"] == m["role"])
+                    and (rmw is None or p["rmw"] == rmw)}
+    return out
 
 
 # Issue 1800 — ROS 2 tests that are not interop cells. Tiers 1, 2 and the
@@ -1786,6 +1870,48 @@ def _self_test_runner_split(
     assert _q, "selftest: native-qos-override-rust-zenoh left CELLS — update this check"
     assert "workspace-features-rust-qos" in host_workspace_fixtures_for(_q, [_q[0]["id"]]), \
         "selftest: qos_override_e2e resolves workspace-features-rust-qos through its helper"
+
+    # Issue 2383 — linux pair images, which no test names by id. The manifest
+    # shape is parsed (rmw suffix stripped, `_` -> `-`), a host cell gets its
+    # own (lang, rmw)'s pairs, a named call reaches OFF its coordinate, and a
+    # variable argument is a wildcard. A board cell contributes nothing.
+    _pairs = _linux_pair_rows([
+        {"id": "c-l", "platform": "linux", "lang": "c", "bringup": "src/pubsub_bringup",
+         "image": "linux_listener"},
+        {"id": "c-l-cy", "platform": "linux", "lang": "c", "rmw": "cyclonedds",
+         "bringup": "src/pubsub_bringup", "image": "linux_listener_cyclonedds"},
+        {"id": "c-ss-cy", "platform": "linux", "lang": "c", "rmw": "cyclonedds",
+         "bringup": "src/service_bringup", "image": "linux_service_server_cyclonedds"},
+        {"id": "r-t", "platform": "linux", "lang": "rust", "bringup": "src/pubsub_bringup",
+         "image": "linux_talker"},
+        {"id": "demo", "platform": "linux", "lang": "c", "bringup": "src/demo_bringup",
+         "image": "linux"},
+        {"id": "nx", "platform": "nuttx", "lang": "c", "bringup": "src/pubsub_bringup",
+         "image": "nuttx_listener"},
+    ])
+    assert {p["id"]: p["role"] for p in _pairs} == {
+        "c-l": "listener", "c-l-cy": "listener", "c-ss-cy": "service-server", "r-t": "talker",
+    }, _pairs
+    _pc = [
+        {"id": "rz", "platform": HOST_PLATFORM, "lang": "Rust", "rmw": "Zenoh", "test": "t_rz"},
+        {"id": "bz", "platform": "ZephyrQemuCortexM", "lang": "C", "rmw": "Cyclonedds",
+         "test": "t_bz"},
+    ]
+    assert host_workspace_fixtures_for(
+        _pc, ["rz", "bz"], known=set(), pairs=_pairs, helpers={},
+        read={"t_rz": 'linux_pair_image("c", "listener", Rmw::Cyclonedds)',
+              "t_bz": 'linux_pair_image("c", case, Rmw::Cyclonedds)'}.__getitem__,
+    ) == ["c-l-cy", "r-t"], "selftest: pair rows by coordinate + by named call"
+    assert host_workspace_fixtures_for(
+        _pc, ["rz"], known=set(), pairs=_pairs, helpers={},
+        read={"t_rz": 'linux_pair_image("c", case, Rmw::Cyclonedds)'}.__getitem__,
+    ) == ["c-l-cy", "c-ss-cy", "r-t"], "selftest: a variable role is a wildcard"
+    # And on the real tree: the cell that was UNMET for this reason.
+    _b = [c for c in runtime_cells() if c["id"] == "bridge-zenoh-to-cyclone-imperative"]
+    assert _b, "selftest: bridge-zenoh-to-cyclone-imperative left CELLS — update this check"
+    assert "workspace-c-native-listener-cyclonedds" in host_workspace_fixtures_for(
+        _b, [_b[0]["id"]]
+    ), "selftest: bridge_zenoh_to_cyclonedds resolves the C Cyclone listener pair image"
 
     # And on the real tree: the cell that was red for this reason.
     _real = [c for c in runtime_cells() if c["id"] == "native-multinode-cpp-zenoh"]

@@ -544,5 +544,5 @@ All per RFC-0122 D2.
 | issue | why it belongs here |
 | --- | --- |
 | [#2336](../issues/2336-board-net-is-per-configure-not-per-image.md) | An image's `os_config` network file is applied per cmake configure, so images sharing one configure clash: found in this phase's workspace images. |
-| [#2383](../issues/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). |
+| [#2383](../issues/archived/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). Resolved: the derivation now reaches pair images by coordinate and by `linux_pair_image` call. |
 | [#2377](../issues/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road has no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stay leaves (W5). |
