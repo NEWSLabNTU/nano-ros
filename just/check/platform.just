@@ -493,6 +493,13 @@ nsos-single-source:
 zephyr-rust-main-stack:
     @python3 scripts/check-zephyr-rust-main-stack.py
 
+# issue 2365 — a conf that raises CONFIG_MAIN_STACK_SIZE also states the zenoh
+# task stack, or every zenoh task inherits main's size (two of them): 2359's
+# 16 -> 32 KiB main raise grew the nucleo C talker 48 KiB and overflowed RAM.
+[group("checks")]
+zephyr-task-stack-stated:
+    @python3 scripts/check-zephyr-task-stack-stated.py
+
 # issue 1512 — bare metal is the one platform whose `nros-platform/platform-*`
 # feature is BOARD-specific, so one platform needs THREE arms plus a CMake row
 # instead of one name in each file. Nobody was checking, and the measured state
