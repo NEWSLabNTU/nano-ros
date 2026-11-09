@@ -1808,7 +1808,7 @@ impl ParameterServiceServers {
     /// `create` makes the backend handle of one service; the six are created
     /// in [`ParameterServiceServers::process`]'s order and each is written
     /// straight into its field. Building the set by value and moving it into
-    /// the executor's inline table (what [`Self::new`] does) put the whole
+    /// the executor's inline table (what the removed `new` did) put the whole
     /// set -- six backend handles and the node's name -- on the registering
     /// thread's stack more than once, and that overflowed the S32K344
     /// island's 16 KiB main during entity registration (a `memcpy` into the
