@@ -114,6 +114,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosRosEdition.cmake")
 # phase-530 W5 -- `nros_configure_hook`, the one `nros configure` call every
 # hooked host makes (RFC-0120 D5).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosConfigureHook.cmake")
+# Issue 2395 -- `nros_message_detail`, for the reason a configure is skipped.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosDiagnostics.cmake")
 
 # The module root, captured at FILE scope (inside a function
 # `CMAKE_CURRENT_LIST_DIR` names the caller's file).
@@ -486,6 +488,14 @@ endfunction()
 # (`~/ros_ws/src/my_leaf/`) is its own project (Ruling R31). The IMAGE is the
 # one this configure renders: `-DNROS_IMAGE`, else the leaf's own
 # `default_images` -- the image `nros build` builds.
+#
+# Issue 2395 -- a generated application whose bringup is NOT under a `src/`
+# (a flat workspace: packages beside each other at a root that a Cargo
+# `[workspace]` declares) has no project `nros configure` can take. The
+# bringup alone is not one (its `<depend>`s and its entry are siblings), and
+# configure refuses the flat root ("no `src/<pkg>/package.xml`"). So the hook
+# does not configure it, says why, and the image's readers take the unseeded
+# path, as they did before phase-530 W4.
 function(_nros_image_kconfig_configure _nros _dir _image _generated)
     set(_project "${_dir}")
     if(_generated)
@@ -493,6 +503,14 @@ function(_nros_image_kconfig_configure _nros _dir _image _generated)
         get_filename_component(_parent_name "${_parent}" NAME)
         if(_parent_name STREQUAL "src")
             get_filename_component(_project "${_parent}" DIRECTORY)
+        else()
+            message(STATUS
+                "nano-ros: `nros configure` not run for image `${_image}`: its bringup "
+                "${_dir} is not in a `<workspace>/src/` directory, so no workspace "
+                "configure can take it; its readers are unseeded")
+            nros_message_detail("nano-ros: a flat workspace (packages beside its bringup, "
+                "no src/) is not one `nros configure` can take (issue 2395)")
+            return()
         endif()
     endif()
     nros_configure_hook(DIR "${_dir}" IMAGE "${_image}" PROJECT "${_project}"
