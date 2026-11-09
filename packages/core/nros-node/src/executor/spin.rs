@@ -13916,12 +13916,38 @@ impl<'s> Executor<'s> {
             return Err(NodeError::Transport(TransportError::BadAlloc));
         }
         for (index, name, namespace) in todo {
-            let servers = match self.build_parameter_service_set(
-                nros_params::NodeKey::new(index),
-                &name,
-                &namespace,
-            ) {
-                Ok(servers) => servers,
+            // Issue 2387 -- the set is built IN PLACE, in the state's next
+            // inline slot. It used to come back from the builder by value and
+            // be pushed, which moved six backend handles and a name through
+            // this frame and the builder's; on the S32K344 island that
+            // overflowed main's 16 KiB while the entities registered. `params`
+            // is `Some`: the scan above returned early otherwise (issue 0756:
+            // a `ParamState` is never built by value either).
+            let Some(params) = self.params.as_deref_mut() else {
+                return Err(NodeError::Transport(TransportError::BadAlloc));
+            };
+            let services = &mut params.services;
+            if services.is_full() {
+                return Err(NodeError::NodeTableFull);
+            }
+            let len = services.len();
+            // SAFETY: `len < capacity`, so the slot is inside the vector's
+            // storage and past its initialised prefix; `set_len` below runs
+            // only once the builder has initialised it.
+            let slot = unsafe { services.as_mut_ptr().add(len) };
+            let built = unsafe {
+                Self::build_parameter_service_set_at(
+                    &mut self.session,
+                    self.domain_id,
+                    slot,
+                    nros_params::NodeKey::new(index),
+                    &name,
+                    &namespace,
+                )
+            };
+            match built {
+                // SAFETY: the builder initialised the slot at `len`.
+                Ok(()) => unsafe { services.set_len(len + 1) },
                 Err((e, service)) => {
                     // Issue 1268 — keep WHAT failed and WHERE, for the one log
                     // line, and decide once whether retrying could ever help.
@@ -13930,50 +13956,17 @@ impl<'s> Executor<'s> {
                     // `rcl_interfaces` types), so a later spin asks the same
                     // question and gets the same answer.
                     let permanent = matches!(e, NodeError::Transport(TransportError::Unsupported));
-                    if let Some(params) = self.params.as_deref_mut() {
-                        let mut node_fqn = heapless::String::<256>::new();
-                        if let Ok(fqn) = crate::names::fully_qualified_name(&name, &namespace) {
-                            let _ = node_fqn.push_str(fqn.as_str());
-                        }
-                        params.reconcile_failure =
-                            Some(crate::parameter_services::ParamServiceReconcileFailure {
-                                node_fqn,
-                                service,
-                                permanent,
-                            });
+                    let mut node_fqn = heapless::String::<256>::new();
+                    if let Ok(fqn) = crate::names::fully_qualified_name(&name, &namespace) {
+                        let _ = node_fqn.push_str(fqn.as_str());
                     }
+                    params.reconcile_failure =
+                        Some(crate::parameter_services::ParamServiceReconcileFailure {
+                            node_fqn,
+                            service,
+                            permanent,
+                        });
                     return Err(e);
-                }
-            };
-            // Issue 1812 -- the set lives INLINE in the (carved) state now, not
-            // in a box of its own.
-            // Issue 0745 — PRESERVE an already-initialized store: launch-param
-            // seeding may have run before any node existed (services can't be
-            // registered that early). Overwriting here would wipe the seeds.
-            match &mut self.params {
-                Some(params) => params
-                    .services
-                    .push(servers)
-                    .map_err(|_| NodeError::NodeTableFull)?,
-                None => {
-                    // Issue 0756 — see new_param_state: never build a ParamState
-                    // by value, it does not fit an embedded thread stack.
-                    // Issue 1706 -- the store is fallible; the refusal is
-                    // reported once by `ensure_parameter_store`'s spelling.
-                    if self.param_store_refused {
-                        return Err(NodeError::Transport(TransportError::BadAlloc));
-                    }
-                    let Some(mut state) = Self::new_param_state(
-                        core::mem::take(&mut self.param_slots),
-                        core::mem::take(&mut self.param_home),
-                    ) else {
-                        self.param_store_refused = true;
-                        report_parameter_store_refused();
-                        return Err(NodeError::Transport(TransportError::BadAlloc));
-                    };
-                    state.requested = true;
-                    let _ = state.services.push(servers);
-                    self.params = Some(state);
                 }
             }
             // phase-430 W2 — "declare `use_sim_time` on EVERY node, as rclcpp
@@ -14015,17 +14008,28 @@ impl<'s> Executor<'s> {
     /// the six `create_param_srv` call sites are what
     /// `check-infra-queryable-counts` reads to hold `PARAM_SERVICE_QUERYABLES`
     /// to the number of queryables a set actually claims.
+    ///
+    /// Issue 2387 -- the set is written at `slot`
+    /// ([`ParameterServiceServers::init_at`]), never returned by value. An
+    /// associated fn over the session alone, so the caller can hold the slot
+    /// (inside `self.params`) while the session creates the handles.
+    ///
+    /// # Safety
+    ///
+    /// As [`ParameterServiceServers::init_at`]: `slot` is valid for writes and
+    /// holds no live value; on `Ok` it holds an initialised set.
     #[inline(never)]
-    fn build_parameter_service_set(
-        &mut self,
+    unsafe fn build_parameter_service_set_at(
+        session: &mut session::ConcreteSession,
+        domain_id: u32,
+        slot: *mut crate::parameter_services::ParameterServiceServers,
         node: nros_params::NodeKey,
         node_name: &str,
         namespace: &str,
-    ) -> Result<crate::parameter_services::ParameterServiceServers, (NodeError, &'static str)> {
+    ) -> Result<(), (NodeError, &'static str)> {
         use crate::parameter_services::{
             DescribeParameters, GetParameterTypes, GetParameters, ListParameters,
-            ParamServiceHandle as PSrv, ParameterServiceServers, SetParameters,
-            SetParametersAtomically,
+            ParamService as Svc6, ParameterServiceServers, SetParameters, SetParametersAtomically,
         };
         use nros_core::RosService;
 
@@ -14045,6 +14049,10 @@ impl<'s> Executor<'s> {
         ///
         /// Issue 1268 — the error carries the SUFFIX, so a failure can name the
         /// service a tool would have called instead of "one of six".
+        ///
+        /// Issue 2387 -- never inlined: its name buffer and `ServiceInfo`
+        /// are one frame at a time, not six side by side in the builder's.
+        #[inline(never)]
         fn create_param_srv<Svc>(
             session: &mut session::ConcreteSession,
             domain_id: u32,
@@ -14105,72 +14113,89 @@ impl<'s> Executor<'s> {
                 .map_err(|e| (NodeError::Transport(e), suffix))
         }
 
-        let get_handle = create_param_srv::<GetParameters>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "get_parameters",
-        )?;
-        let set_handle = create_param_srv::<SetParameters>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "set_parameters",
-        )?;
-        let set_atomic_handle = create_param_srv::<SetParametersAtomically>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "set_parameters_atomically",
-        )?;
-        let list_handle = create_param_srv::<ListParameters>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "list_parameters",
-        )?;
-        let desc_handle = create_param_srv::<DescribeParameters>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "describe_parameters",
-        )?;
-        let types_handle = create_param_srv::<GetParameterTypes>(
-            &mut self.session,
-            self.domain_id,
-            &node_fqn,
-            ns,
-            nn,
-            "get_parameter_types",
-        )?;
-
-        Ok(ParameterServiceServers::new(
-            // phase-426 W3 — the set carries the node whose parameters it
-            // serves, so a handler can never read the store without saying
-            // whose parameters it means.
-            node,
-            // Issue 1271 -- carried so a dropped request is reported against
-            // the service a tool actually called.
-            node_fqn,
-            // Issue 1270 -- handles only. The buffers are the executor's one
-            // shared pair (`ParamState::buffers`), not six per node.
-            PSrv::<GetParameters>::new(get_handle),
-            PSrv::<SetParameters>::new(set_handle),
-            PSrv::<SetParametersAtomically>::new(set_atomic_handle),
-            PSrv::<ListParameters>::new(list_handle),
-            PSrv::<DescribeParameters>::new(desc_handle),
-            PSrv::<GetParameterTypes>::new(types_handle),
-        ))
+        // SAFETY: the caller's contract is `init_at`'s, passed through.
+        unsafe {
+            ParameterServiceServers::init_at(
+                slot,
+                // phase-426 W3 — the set carries the node whose parameters it
+                // serves, so a handler can never read the store without saying
+                // whose parameters it means.
+                node,
+                // Issue 1271 -- carried so a dropped request is reported
+                // against the service a tool actually called.
+                node_fqn.as_str(),
+                // Issue 1270 -- handles only. The buffers are the executor's
+                // one shared pair (`ParamState::buffers`), not six per node.
+                |svc| match svc {
+                    Svc6::Get => {
+                        let h = create_param_srv::<GetParameters>(
+                            session,
+                            domain_id,
+                            &node_fqn,
+                            ns,
+                            nn,
+                            "get_parameters",
+                        )?;
+                        Ok(h)
+                    }
+                    Svc6::Set => {
+                        let h = create_param_srv::<SetParameters>(
+                            session,
+                            domain_id,
+                            &node_fqn,
+                            ns,
+                            nn,
+                            "set_parameters",
+                        )?;
+                        Ok(h)
+                    }
+                    Svc6::SetAtomically => {
+                        let h = create_param_srv::<SetParametersAtomically>(
+                            session,
+                            domain_id,
+                            &node_fqn,
+                            ns,
+                            nn,
+                            "set_parameters_atomically",
+                        )?;
+                        Ok(h)
+                    }
+                    Svc6::List => {
+                        let h = create_param_srv::<ListParameters>(
+                            session,
+                            domain_id,
+                            &node_fqn,
+                            ns,
+                            nn,
+                            "list_parameters",
+                        )?;
+                        Ok(h)
+                    }
+                    Svc6::Describe => {
+                        let h = create_param_srv::<DescribeParameters>(
+                            session,
+                            domain_id,
+                            &node_fqn,
+                            ns,
+                            nn,
+                            "describe_parameters",
+                        )?;
+                        Ok(h)
+                    }
+                    Svc6::GetTypes => {
+                        let h = create_param_srv::<GetParameterTypes>(
+                            session,
+                            domain_id,
+                            &node_fqn,
+                            ns,
+                            nn,
+                            "get_parameter_types",
+                        )?;
+                        Ok(h)
+                    }
+                },
+            )
+        }
     }
 
     /// phase-426 W3 — the node FQNs this executor publishes parameter services

@@ -19,8 +19,10 @@ use core::mem::MaybeUninit;
 
 use nros_params::ParameterServer;
 
-#[cfg(any(feature = "param-services", feature = "sim-time"))]
+#[cfg(feature = "sim-time")]
 use crate::param_sizing::MAX_SERVICE_SETS;
+#[cfg(feature = "param-services")]
+use crate::param_sizing::PARAM_SERVICE_SETS;
 #[cfg(feature = "param-services")]
 use crate::parameter_services::{
     ParamServiceBuffers, ParamServiceReconcileFailure, ParameterServiceServers,
@@ -130,7 +132,7 @@ pub(crate) struct ParamState<'s> {
     ///
     /// Present only with `param-services` (issue 1897).
     #[cfg(feature = "param-services")]
-    pub(crate) services: heapless::Vec<ParameterServiceServers, MAX_SERVICE_SETS>,
+    pub(crate) services: heapless::Vec<ParameterServiceServers, PARAM_SERVICE_SETS>,
     /// phase-426 W3 — whether a caller asked for parameter services at all.
     ///
     /// Registration cannot happen where the request is made. `nros::main!`
@@ -217,8 +219,8 @@ pub(crate) struct ParamState<'s> {
     /// because it is a fact about the STORE's contents, and because a table
     /// that scales with a knob does not belong in the `Executor` value —
     /// `the_executor_value_does_not_scale_with_the_knobs` (issue 0961) is the
-    /// test that says so. `ParamState` is boxed, and the bound is the one
-    /// [`ParamState::services`] already uses: one entry per node key.
+    /// test that says so. `ParamState` is boxed, and the bound is the node
+    /// table's, [`MAX_SERVICE_SETS`]: one entry per node key.
     #[cfg(feature = "sim-time")]
     pub(crate) sim_time_seeded: [bool; MAX_SERVICE_SETS],
     /// Issue 1203 — a node whose `use_sim_time` was handed to a

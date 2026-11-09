@@ -1447,7 +1447,7 @@ type ParamServer<Svc> = ParamServiceHandle<Svc>;
 /// The six, in the order [`ParameterServiceServers::process`] polls them. The
 /// discriminant is the service's slot in the once-only report mask.
 #[derive(Clone, Copy)]
-enum ParamService {
+pub(crate) enum ParamService {
     Get,
     Set,
     SetAtomically,
@@ -1552,31 +1552,6 @@ pub struct ParameterServiceServers {
 }
 
 impl ParameterServiceServers {
-    /// Create a new set of parameter service servers
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
-        node: NodeKey,
-        fqn: crate::names::ResolvedName,
-        get_parameters: ParamServer<GetParameters>,
-        set_parameters: ParamServer<SetParameters>,
-        set_parameters_atomically: ParamServer<SetParametersAtomically>,
-        list_parameters: ParamServer<ListParameters>,
-        describe_parameters: ParamServer<DescribeParameters>,
-        get_parameter_types: ParamServer<GetParameterTypes>,
-    ) -> Self {
-        Self {
-            node,
-            get_parameters,
-            set_parameters,
-            set_parameters_atomically,
-            list_parameters,
-            describe_parameters,
-            get_parameter_types,
-            fqn,
-            reported: 0,
-        }
-    }
-
     /// Process all six, answering at most one pending request each, through
     /// the executor's shared `buffers` (issue 1270).
     ///
@@ -1827,6 +1802,109 @@ impl ParameterServiceServers {
     pub(crate) fn param_node(&self) -> NodeKey {
         self.node
     }
+
+    /// Issue 2387 -- build a set of six IN PLACE, at `slot`.
+    ///
+    /// `create` makes the backend handle of one service; the six are created
+    /// in [`ParameterServiceServers::process`]'s order and each is written
+    /// straight into its field. Building the set by value and moving it into
+    /// the executor's inline table (what [`Self::new`] does) put the whole
+    /// set -- six backend handles and the node's name -- on the registering
+    /// thread's stack more than once, and that overflowed the S32K344
+    /// island's 16 KiB main during entity registration (a `memcpy` into the
+    /// stack guard on the QEMU island).
+    ///
+    /// On `Err` nothing is left at `slot`: the handles already created are
+    /// dropped (which undeclares them) before the error is returned.
+    ///
+    /// # Safety
+    ///
+    /// `slot` must be valid for writes of one `ParameterServiceServers` and
+    /// must not hold a live value (it is overwritten, not dropped). On `Ok`
+    /// the slot holds an initialised set the caller now owns.
+    pub(crate) unsafe fn init_at<E>(
+        slot: *mut Self,
+        node: NodeKey,
+        fqn: &str,
+        mut create: impl FnMut(ParamService) -> Result<crate::session::RmwServiceServer, E>,
+    ) -> Result<(), E> {
+        use core::ptr::{addr_of_mut, drop_in_place};
+        const ORDER: [ParamService; 6] = [
+            ParamService::Get,
+            ParamService::Set,
+            ParamService::SetAtomically,
+            ParamService::List,
+            ParamService::Describe,
+            ParamService::GetTypes,
+        ];
+        for (written, svc) in ORDER.iter().copied().enumerate() {
+            let handle = match create(svc) {
+                Ok(handle) => handle,
+                Err(e) => {
+                    // SAFETY: exactly the first `written` handle fields were
+                    // written by the passes before this one.
+                    unsafe {
+                        for done in ORDER.iter().take(written) {
+                            match done {
+                                ParamService::Get => {
+                                    drop_in_place(addr_of_mut!((*slot).get_parameters))
+                                }
+                                ParamService::Set => {
+                                    drop_in_place(addr_of_mut!((*slot).set_parameters))
+                                }
+                                ParamService::SetAtomically => {
+                                    drop_in_place(addr_of_mut!((*slot).set_parameters_atomically))
+                                }
+                                ParamService::List => {
+                                    drop_in_place(addr_of_mut!((*slot).list_parameters))
+                                }
+                                ParamService::Describe => {
+                                    drop_in_place(addr_of_mut!((*slot).describe_parameters))
+                                }
+                                ParamService::GetTypes => {
+                                    drop_in_place(addr_of_mut!((*slot).get_parameter_types))
+                                }
+                            }
+                        }
+                    }
+                    return Err(e);
+                }
+            };
+            // SAFETY: `slot` is valid for writes (the caller's contract); each
+            // field is written once, and none of them held a live value.
+            unsafe {
+                match svc {
+                    ParamService::Get => {
+                        addr_of_mut!((*slot).get_parameters).write(ParamServiceHandle::new(handle))
+                    }
+                    ParamService::Set => {
+                        addr_of_mut!((*slot).set_parameters).write(ParamServiceHandle::new(handle))
+                    }
+                    ParamService::SetAtomically => addr_of_mut!((*slot).set_parameters_atomically)
+                        .write(ParamServiceHandle::new(handle)),
+                    ParamService::List => {
+                        addr_of_mut!((*slot).list_parameters).write(ParamServiceHandle::new(handle))
+                    }
+                    ParamService::Describe => addr_of_mut!((*slot).describe_parameters)
+                        .write(ParamServiceHandle::new(handle)),
+                    ParamService::GetTypes => addr_of_mut!((*slot).get_parameter_types)
+                        .write(ParamServiceHandle::new(handle)),
+                }
+            }
+        }
+        // SAFETY: as above. The plain fields go last, so a failure above
+        // leaves nothing to drop but the handles. The name is copied into the
+        // slot's own string rather than built on the stack and moved in.
+        unsafe {
+            addr_of_mut!((*slot).node).write(node);
+            let name = addr_of_mut!((*slot).fqn);
+            name.write(crate::names::ResolvedName::new());
+            // `fqn` is a `ResolvedName`'s text at the caller, so it fits.
+            let _ = (*name).push_str(fqn);
+            addr_of_mut!((*slot).reported).write(0);
+        }
+        Ok(())
+    }
 }
 
 /// Issue 1268 -- why a node has no parameter services.
@@ -1924,12 +2002,41 @@ mod tests {
     /// Issue 1270 -- one node's set of six, over mock handles.
     #[cfg(not(feature = "rmw-cffi"))]
     fn one_set_of_six() -> ParameterServiceServers {
-        fn h<S>() -> ParamServiceHandle<S> {
-            ParamServiceHandle::new(crate::mock::MockServiceServer::new())
+        let mut slot = MaybeUninit::<ParameterServiceServers>::uninit();
+        // SAFETY: a fresh slot; `init_at` returned `Ok`, so it is initialised.
+        unsafe {
+            ParameterServiceServers::init_at(slot.as_mut_ptr(), NODE, "/probe", |_| {
+                Ok::<_, ()>(crate::mock::MockServiceServer::new())
+            })
+            .unwrap();
+            slot.assume_init()
         }
-        let mut fqn = crate::names::ResolvedName::new();
-        fqn.push_str("/probe").unwrap();
-        ParameterServiceServers::new(NODE, fqn, h(), h(), h(), h(), h(), h())
+    }
+
+    /// Issue 2387 -- a set built in place carries what it was given, and a
+    /// failure part-way stops at the failing service and reports its error.
+    #[cfg(not(feature = "rmw-cffi"))]
+    #[test]
+    fn a_set_is_built_in_place_and_a_failure_stops_it() {
+        let set = one_set_of_six();
+        assert_eq!(set.param_node(), NODE);
+        assert_eq!(set.fqn.as_str(), "/probe");
+        assert_eq!(set.reported, 0);
+
+        let mut slot = MaybeUninit::<ParameterServiceServers>::uninit();
+        let mut asked = 0;
+        // SAFETY: a fresh slot; on `Err` nothing is left in it to drop.
+        let r = unsafe {
+            ParameterServiceServers::init_at(slot.as_mut_ptr(), NODE, "/probe", |svc| {
+                asked += 1;
+                match svc {
+                    ParamService::List => Err("list"),
+                    _ => Ok(crate::mock::MockServiceServer::new()),
+                }
+            })
+        };
+        assert_eq!(r.err(), Some("list"));
+        assert_eq!(asked, 4, "get, set, set_atomically, then list fails");
     }
 
     /// Queue one `get_parameters` request for `name` on the set's mock server.

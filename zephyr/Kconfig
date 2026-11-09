@@ -443,6 +443,20 @@ config NROS_CONSOLE_WHOLE_LINES_BUFFER
       Thread-local storage, so every thread pays it. A longer line is sent in
       pieces, each still whole.
 
+config NROS_EDMA_WARM_RESET_QUIESCE
+    bool "Quiesce eDMA v3 channels a warm reset left running"
+    depends on DMA_MCUX_EDMA_V3
+    default y
+    help
+      Issue 2387. A functional reset (SYSRESETREQ) of the S32K344 does not
+      reset the eDMA channels, and Zephyr's eDMA v3 driver does not clear
+      them at init: a channel the previous image used keeps its interrupt
+      flag and request enable, and the first interrupt unlock faults in
+      EDMA_HandleIRQ on a handle that does not exist yet. With this on, a
+      PRE_KERNEL_2 hook disables every channel's request, clears its DONE,
+      ERR and INT flags and the controller's NVIC pending bits before any
+      interrupt is unlocked. No channel is in use that early.
+
 config NROS_FAULT_LOG
     bool "Record a post-mortem fault record that survives reset"
     default n

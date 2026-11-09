@@ -14615,15 +14615,16 @@ fn the_carved_home_reserves_the_services_only_when_the_image_serves_them() {
     #[cfg(feature = "param-services")]
     {
         use crate::{
-            param_sizing::{MAX_SERVICE_SETS, param_service_buffer_bytes},
+            param_sizing::{PARAM_SERVICE_SETS, param_service_buffer_bytes},
             parameter_services::ParameterServiceServers,
         };
         // Issue 1812's guarantee, held: a home with the services in it, so an
         // image that serves them asks the heap for nothing.
         assert_eq!(HOME_BUFFER_BYTES, param_service_buffer_bytes());
         assert!(
-            size_of::<ParamState<'_>>() >= MAX_SERVICE_SETS * size_of::<ParameterServiceServers>(),
-            "the sets are inline, one per node slot"
+            size_of::<ParamState<'_>>()
+                >= PARAM_SERVICE_SETS * size_of::<ParameterServiceServers>(),
+            "the sets are inline, one per served node"
         );
         assert!(size_of::<ParamHome>() >= size_of::<ParamState<'_>>() + 2 * HOME_BUFFER_BYTES);
         assert!(executor.register_parameter_services().is_ok());
