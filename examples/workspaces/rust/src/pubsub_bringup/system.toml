@@ -53,6 +53,44 @@ launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:10200"
 os_config = ["board-net-16.toml"]
 
+# Bare metal over UART0 (phase-535 W6, RFC-0122 D2): the `serial`
+# configuration of the same two packages. The locator IS the link: a
+# `serial/...` (zenoh) or `custom://uart` (XRCE) locator makes `nros configure`
+# derive `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0`, so the image carries no IP
+# stack and no `os_config`. The router (or Agent) sits on the other end of a
+# socat PTY pair, so these images dial no port.
+
+[image.baremetal_talker_serial]
+board = "mps2-an385-baremetal"
+launch = "talker.launch.xml"
+locator = "serial/UART_0#baudrate=115200"
+
+[image.baremetal_listener_serial]
+board = "mps2-an385-baremetal"
+launch = "listener.launch.xml"
+locator = "serial/UART_0#baudrate=115200"
+
+# XRCE framed over UART0. The board installs the XRCE custom-transport vtable
+# for `rmw = "xrce"` over the `custom` link the locator names (RFC-0109 D6,
+# issue 1601). The knobs are the APP rung (RFC-0049): phase 207.6 shrank
+# `xrce_session_state_t` from ~390 KB at the defaults to ~12 KB at these, so
+# its calloc fits the board's heap. The other bare-metal images want the
+# defaults, so they are not a board fact, and the XRCE pools take no part in
+# the entity derivation (RFC-0098 D7 covers `ZPICO_*` only).
+[image.baremetal_talker_xrce_serial]
+board = "mps2-an385-baremetal"
+launch = "talker.launch.xml"
+rmw = "xrce"
+locator = "custom://uart"
+
+[image.baremetal_talker_xrce_serial.knobs.xrce]
+# MTU matches the serial transport's; the default is 4096.
+custom_transport_mtu = 512
+buffer_size = 256
+max_subscribers = 1
+max_service_servers = 1
+max_service_clients = 1
+
 # Linux: one image per (role, rmw). The router locator is ephemeral
 # (NROS_LOCATOR at run time), so none is baked here.
 

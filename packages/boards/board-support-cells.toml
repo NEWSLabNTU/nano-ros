@@ -798,6 +798,21 @@ status = 'CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")'
 
 [[cell]]
 comment = '''
+// phase-535 W6 — the pair over UART0 (zenohd serial), and the XRCE talker
+// over the same UART against a serial Agent. Images of the Rust
+// workspace's pubsub bringup, `tests/emulator.rs` runs both.
+'''
+at = ["QemuBaremetal", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::Serial]'
+
+[[cell]]
+at = ["QemuBaremetal", "Rust", "Xrce", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::Serial]'
+
+[[cell]]
+comment = '''
 // issue 1512 — the C/C++ API on the same board. Cargo-rooted leaves
 // (`builder = "cargo"` rows): the Rust startup owns the link and compiles
 // the C/C++ application in. RUNTIME since the image's declared locator

@@ -494,12 +494,21 @@ and a test asks for it by name (`resolve_coord_variant`).
   generated entry cannot express on the host. RFC-0122 D10 keeps such a
   `main`. On mps2-an385 the RTIC pattern is a board (`rtic-mps2-an385`), so
   those leaves become images.
-- **linux serial (in review).** On linux a serial link is not a build
+- **linux serial (merged, #3404).** On linux a serial link is not a build
   configuration: the locator is runtime env, and the XRCE session routes a
   `serial://<path>` locator to its POSIX serial transport. The
   `rust/serial-{talker,listener}` leaves retire, with their 2 rows, and
   `xrce.rs`'s serial cases run the plain XRCE talker witness and the
   `linux_listener_xrce` image with `NROS_LOCATOR=serial://<pty>`.
+- **bare-metal serial and XRCE (in review).** The mps2-an385
+  `rust/serial-{talker,listener}` and `rust/talker-xrce` leaves retire, with
+  their 3 rows. They become images of the Rust workspace's `pubsub_bringup`:
+  `baremetal_{talker,listener}_serial` (`serial/UART_0`) and
+  `baremetal_talker_xrce_serial` (`custom://uart`, XRCE knobs on the image).
+  A new `matrix::Config::Serial` (registry row `[knob.NROS_LINK_IP]`) names
+  the configuration, and two configured Runtime cells, Rust zenoh and Rust
+  xrce, bind `emulator.rs`'s serial and xrce cases. A serial image dials no
+  router port, so the port check skips it.
 
 ### W7 — Retire the old leaves, add `road_witness_e2e`
 

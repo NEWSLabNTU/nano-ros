@@ -185,9 +185,9 @@ which also registers its backend first and logs each message. A C image that
 loops the bytes through a ring buffer, and exits non-zero unless all four
 callbacks ran, is
 [`examples/linux/c/custom-transport-loopback`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/custom-transport-loopback).
-On a board,
-[`examples/mps2-an385-baremetal/rust/talker-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker-xrce)
-runs XRCE-DDS over the board's UART through `locator = "custom://uart"`.
+On a board, the Rust workspace's
+[`baremetal_talker_xrce_serial` image](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/rust/src/pubsub_bringup/system.toml)
+runs XRCE-DDS over the mps2-an385 UART through `locator = "custom://uart"`.
 
 ## If it doesn't work
 

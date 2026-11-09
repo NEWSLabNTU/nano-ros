@@ -41,13 +41,10 @@ examples/mps2-an385-baremetal/rust/action-server-rtic/Cargo.toml  qemu_rtic_acti
 examples/mps2-an385-baremetal/rust/listener-rtic-mixed/Cargo.toml  qemu_rtic_mixed_listener_nros_selection
 examples/mps2-an385-baremetal/rust/listener-rtic/Cargo.toml  qemu_rtic_listener_nros_selection
 examples/mps2-an385-baremetal/rust/listener/Cargo.toml  qemu_bsp_listener_nros_selection
-examples/mps2-an385-baremetal/rust/serial-listener/Cargo.toml  qemu_serial_listener_nros_selection
-examples/mps2-an385-baremetal/rust/serial-talker/Cargo.toml  qemu_serial_talker_nros_selection
 examples/mps2-an385-baremetal/rust/service-client-rtic/Cargo.toml  qemu_rtic_service_client_nros_selection
 examples/mps2-an385-baremetal/rust/service-server-rtic/Cargo.toml  qemu_rtic_service_server_nros_selection
 examples/mps2-an385-baremetal/rust/talker-rtic-mixed/Cargo.toml  qemu_rtic_mixed_talker_nros_selection
 examples/mps2-an385-baremetal/rust/talker-rtic/Cargo.toml  qemu_rtic_talker_nros_selection
-examples/mps2-an385-baremetal/rust/talker-xrce/Cargo.toml  qemu_talker_xrce_nros_selection
 examples/mps2-an385-baremetal/rust/talker/Cargo.toml  qemu_bsp_talker_nros_selection
 examples/mps2-an385-freertos/rust/talker/Cargo.toml  freertos_rs_talker_nros_selection
 examples/qemu-armv7a-nuttx/rust/talker/Cargo.toml  nuttx_rs_talker_nros_selection

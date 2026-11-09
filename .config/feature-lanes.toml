@@ -135,6 +135,11 @@ class = "config"
 config = "Multisession"
 reason = "a zenoh-pico session pool larger than 1: two sessions in one process"
 
+[knob.NROS_LINK_IP]
+class = "config"
+config = "Serial"
+reason = "`0` for an image whose locator names a UART (`serial/...`, `custom://uart`): the session runs over the serial link with no IP stack — same messages, different link"
+
 # ── Lanes ──────────────────────────────────────────────────────────────────
 # runner     the recipe that runs the lane (`generated = true`: by calling
 #            `feature-lanes.py run <runner>`; false: it spells its own

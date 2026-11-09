@@ -688,6 +688,10 @@ pub enum Config {
     SignalFdWake,
     /// zenoh-pico over a caller-supplied link instead of its own sockets.
     CustomTransport,
+    /// The session runs over a UART instead of an IP stack: a `serial/...`
+    /// (zenoh) or `custom://uart` (XRCE) locator, from which the build derives
+    /// `NROS_LINK_IP=0`. Same messages, different link (phase-535 W6).
+    Serial,
 }
 
 impl Config {
@@ -697,6 +701,7 @@ impl Config {
             Config::Multisession => "multisession",
             Config::SignalFdWake => "signal-fd-wake",
             Config::CustomTransport => "custom-transport",
+            Config::Serial => "serial",
         }
     }
 }
@@ -1444,6 +1449,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         return match (cell.platform, cell.config) {
             (P::Linux, [Config::Lending, Config::Multisession]) => Some(LoanE2e),
             (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
+            (P::QemuBaremetal, [Config::Serial]) => Some(Emulator),
             _ => None,
         };
     }
