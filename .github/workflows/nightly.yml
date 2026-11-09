@@ -838,15 +838,13 @@ jobs:
         # the fixture lane (`just build zephyr`); this job's 4.4-line build of
         # them returns with phase-535 W8's Zephyr nightly reshape. Every entry
         # here must be a directory under examples/zephyr/
-        # (`check-workflow-build-one-paths`).
+        # (`check-workflow-build-one-paths`). Issue 2313 did the same for the
+        # Rust listener, service and action-client programs (Cyclone too now);
+        # `rust/action-server` stays a leaf for its zenoh heartbeat row.
         example:
           - c/talker
           - cpp/talker
           - rust/talker
-          - rust/listener
-          - rust/service-client
-          - rust/service-server
-          - rust/action-client
           - rust/action-server
     env:
       NROS_ZEPHYR_VERSION: ${{ matrix.line }}

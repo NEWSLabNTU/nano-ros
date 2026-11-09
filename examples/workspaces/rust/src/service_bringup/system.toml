@@ -126,6 +126,26 @@ max_subscribers = 0
 max_service_servers = 0
 max_service_clients = 1
 
+# Issue 2313 — the Rust Cyclone DDS images. They came from the
+# `examples/zephyr/rust/<role>` leaves, which stayed leaves until a generated
+# Rust Zephyr entry could run Cyclone (issues 2354/2313). `domain_id` is the
+# cell's `alloc::domain_of` (Rust's port index is 0, so 22/25/28 beside C's
+# 23/26/29 and C++'s 24/27/30); `prj-cyclonedds.conf` is the leaf's own.
+
+[image.zephyr_service_server_cyclonedds]
+board = "zephyr"
+launch = "service_server.launch.xml"
+rmw = "cyclonedds"
+os_config = ["prj-cyclonedds.conf"]
+domain_id = 25
+
+[image.zephyr_service_client_cyclonedds]
+board = "zephyr"
+launch = "service_client.launch.xml"
+rmw = "cyclonedds"
+os_config = ["prj-cyclonedds.conf"]
+domain_id = 25
+
 # ThreadX on QEMU rv-virt (riscv64, NetX Duo, SLIRP). `locator` is the
 # cell's `alloc::port_of`. They came from the `examples/rv-virt-threadx`
 # leaves. Each QEMU has its own SLIRP network, so the board's default address

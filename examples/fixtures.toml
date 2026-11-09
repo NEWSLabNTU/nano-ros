@@ -5698,39 +5698,12 @@ board = "native_sim/native/64"
 conf_files = ["prj.conf"]
 west_image = "zephyr_cyclonedds"
 
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/rust/listener"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/rust/service-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/rust/service-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-# phase-535 W4 — kept: `zephyr_rust_zenoh_action_goal_completion_rate` reads
-# this leaf's `reply-slot: refusals=` heartbeat, which the workspace action
-# server does not print. Retires with the leaf in W6.
+# phase-535 W4 — kept (RFC-0122: a leaf may stay, with its reason):
+# `zephyr_rust_zenoh_action_goal_completion_rate` reads this leaf's
+# `reply-slot: refusals=` heartbeat, which the workspace action server does not
+# print. Issue 2313 moved this leaf's cyclonedds row to the workspace image;
+# the leaf retires once the workspace action server prints the heartbeat
+# (issue 2313's follow-up).
 [[fixture]]
 platform = "zephyr"
 lang = "rust"
@@ -5740,26 +5713,6 @@ dir = "examples/zephyr/rust/action-server"
 board = "native_sim/native/64"
 conf_files = ["prj.conf"]
 west_image = "zephyr_zenoh"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/rust/action-server"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
-
-[[fixture]]
-platform = "zephyr"
-lang = "rust"
-rmw = "cyclonedds"
-builder = "west"
-dir = "examples/zephyr/rust/action-client"
-board = "native_sim/native/64"
-conf_files = ["prj.conf"]
-west_image = "zephyr_cyclonedds"
 
 [[fixture]]
 platform = "zephyr"
@@ -6708,6 +6661,20 @@ west_build_name = "build-ws-rust-talker-xrce"
 west_id = "zephyr/native_sim/native/64/workspace-rust-talker-xrce"
 skip_probe = true
 
+# Issue 2313 — was the `examples/zephyr/rust/talker` leaf's cyclonedds row.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-talker-cyclonedds"
+platform = "zephyr"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_talker_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-talker-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-rust-talker-cyclonedds"
+skip_probe = true
+
 [[workspace_fixture]]
 id = "workspace-rust-zephyr-listener"
 platform = "zephyr"
@@ -6732,6 +6699,20 @@ image = "zephyr_listener_xrce"
 board = "native_sim/native/64"
 west_build_name = "build-ws-rust-listener-xrce"
 west_id = "zephyr/native_sim/native/64/workspace-rust-listener-xrce"
+skip_probe = true
+
+# Issue 2313 — was the `examples/zephyr/rust/listener` leaf's cyclonedds row.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-listener-cyclonedds"
+platform = "zephyr"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "zephyr_listener_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-listener-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-rust-listener-cyclonedds"
 skip_probe = true
 
 [[workspace_fixture]]
@@ -6760,6 +6741,20 @@ west_build_name = "build-ws-rust-service-server-xrce"
 west_id = "zephyr/native_sim/native/64/workspace-rust-service-server-xrce"
 skip_probe = true
 
+# Issue 2313 — was the `examples/zephyr/rust/service-server` leaf's cyclonedds row.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-service-server-cyclonedds"
+platform = "zephyr"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "zephyr_service_server_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-service-server-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-rust-service-server-cyclonedds"
+skip_probe = true
+
 [[workspace_fixture]]
 id = "workspace-rust-zephyr-service-client"
 platform = "zephyr"
@@ -6784,6 +6779,20 @@ image = "zephyr_service_client_xrce"
 board = "native_sim/native/64"
 west_build_name = "build-ws-rust-service-client-xrce"
 west_id = "zephyr/native_sim/native/64/workspace-rust-service-client-xrce"
+skip_probe = true
+
+# Issue 2313 — was the `examples/zephyr/rust/service-client` leaf's cyclonedds row.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-service-client-cyclonedds"
+platform = "zephyr"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "zephyr_service_client_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-service-client-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-rust-service-client-cyclonedds"
 skip_probe = true
 
 [[workspace_fixture]]
@@ -6812,6 +6821,20 @@ west_build_name = "build-ws-rust-action-server-xrce"
 west_id = "zephyr/native_sim/native/64/workspace-rust-action-server-xrce"
 skip_probe = true
 
+# Issue 2313 — was the `examples/zephyr/rust/action-server` leaf's cyclonedds row.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-action-server-cyclonedds"
+platform = "zephyr"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "zephyr_action_server_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-action-server-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-rust-action-server-cyclonedds"
+skip_probe = true
+
 [[workspace_fixture]]
 id = "workspace-rust-zephyr-action-client"
 platform = "zephyr"
@@ -6836,6 +6859,20 @@ image = "zephyr_action_client_xrce"
 board = "native_sim/native/64"
 west_build_name = "build-ws-rust-action-client-xrce"
 west_id = "zephyr/native_sim/native/64/workspace-rust-action-client-xrce"
+skip_probe = true
+
+# Issue 2313 — was the `examples/zephyr/rust/action-client` leaf's cyclonedds row.
+[[workspace_fixture]]
+id = "workspace-rust-zephyr-action-client-cyclonedds"
+platform = "zephyr"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "zephyr_action_client_cyclonedds"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rust-action-client-cyclonedds"
+west_id = "zephyr/native_sim/native/64/workspace-rust-action-client-cyclonedds"
 skip_probe = true
 
 [[workspace_fixture]]
