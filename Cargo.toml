@@ -318,11 +318,6 @@ exclude = [
     # Phase 169.2 — mps2-an385-freertos rust/dds deleted.
     # QEMU ARM NuttX examples (Cortex-M3 + NuttX)
     "examples/qemu-armv7a-nuttx/rust/talker",
-    "examples/qemu-armv7a-nuttx/rust/listener",
-    "examples/qemu-armv7a-nuttx/rust/service-server",
-    "examples/qemu-armv7a-nuttx/rust/service-client",
-    "examples/qemu-armv7a-nuttx/rust/action-server",
-    "examples/qemu-armv7a-nuttx/rust/action-client",
     # Phase 169.2 — qemu-armv7a-nuttx rust/dds deleted.
     "packages/testing/nros-smoke/stm32f4-smoltcp-echo",
     # Zephyr examples

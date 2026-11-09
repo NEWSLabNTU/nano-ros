@@ -2757,10 +2757,15 @@ pub fn build_workspace_rust_cross_entry(
 ) -> TestResult<PathBuf> {
     assert_generated_entry_name(fixture_id, binary_name)?;
     let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
-    let binary_path = target_dir.join(format!(
-        "{triple}/{}/{binary_name}",
-        cargo_target_profile_dir()
-    ));
+    // phase-535 W5 — the row's PLATFORM profile, the same rule leaf rows
+    // resolve by (`row_profile_dir`): NuttX builds at its carve-out
+    // (`nros_cargo_platform_profile nuttx`, the 177.8.c miscompile dodge), so
+    // the ambient profile names a directory nothing writes.
+    let profile = crate::fixtures::lane::attribute_workspace_id(fixture_id)
+        .and_then(|row| nros_cargo_profile::platform_profile(&row.coord.0))
+        .map(nros_cargo_profile::target_dir)
+        .unwrap_or_else(cargo_target_profile_dir);
+    let binary_path = target_dir.join(format!("{triple}/{profile}/{binary_name}"));
     require_prebuilt_workspace_binary(
         fixture_id,
         &binary_path,

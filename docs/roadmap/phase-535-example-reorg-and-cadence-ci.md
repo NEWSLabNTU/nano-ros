@@ -407,6 +407,29 @@ One PR per platform directory, each rebuilding its own lane.
     masked. The C++ pubsub cell still resolves its leaves; adding the
     workspace C++ pubsub images is now unblocked.
 
+- **nuttx arm (in review).** Each behaviour bringup gets `nuttx_<role>`
+  images for all three languages (zenoh, locator = the cell's `alloc::port_of`
+  on QEMU's SLIRP host), at the per-bringup build dir
+  `build/nuttx-zenoh-qemu-armv7a-nuttx-<bringup>/cmake`. 15 leaf rows and 15
+  leaves (the listener, service and action leaves of each language) retire;
+  every one was zenoh, so no RMW loses its last row. The talker leaves stay as
+  the board's witnesses, and `c/typed-carrier` stays until W6. `rtos_e2e`'s
+  NuttX arms and `entry_build`'s NuttX roles resolve through
+  `nuttx::pair_image` over `workspace_image::resolve_coord_cached`. The ratchet
+  tuple `nuttx cpp cmake single generated generated` (a one-image C++ leaf
+  with a generated entry) is no longer produced. It was never in the floor,
+  and C keeps the same shape on the board. Found on the way:
+  - a NuttX configure could hold only one image: every image wrote
+    `nros-nuttx-ffi` to one per-configure path, so the second image's custom
+    command named the first one's output and cmake refused the configure. The
+    artifact dir is now per image (`nros-nuttx.cmake`).
+  - a workspace Rust cross image resolved at the ambient cargo profile, while
+    NuttX builds at its carve-out (`nros-minsizerel`).
+    `build_workspace_rust_cross_entry` now asks the row's platform profile,
+    as leaf rows do.
+- **nuttx riscv.** Nothing to move: `examples/rv-virt-nuttx` holds only the C
+  talker witness.
+
 The coverage ratchet (`check-example-coverage-ratchet`) does not count the
 RMW: a tuple is (platform, lang, driver, shape, launch, entry), so a move
 that drops the last Cyclone or XRCE row of a platform passes it. Each W4/W5

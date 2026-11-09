@@ -2384,9 +2384,10 @@ mod board_crate_tests {
         // moves DOWN when phase-535 retires example leaves into workspace
         // images (generated entries, no leaf `Cargo.toml`) — 98 -> 97 for the
         // FreeRTOS pilot's 5 Rust pair leaves (W3), 97 -> 93 for threadx-linux's
-        // Rust service and action leaves (W4).
+        // Rust service and action leaves (W4), 93 -> 88 for NuttX arm's Rust
+        // listener, service and action leaves (W5).
         assert!(
-            on_selection >= 93,
+            on_selection >= 88,
             "only {on_selection} leaves on the selection package"
         );
     }
