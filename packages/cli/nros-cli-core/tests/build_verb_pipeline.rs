@@ -1476,6 +1476,11 @@ fn the_zephyr_workspace_can_live_in_a_third_tree() {
     // than passing a bare path is the point: the resolver checks, so a test
     // that skipped this would pass on a path that cannot build.
     std::fs::create_dir_all(zephyr_ws.path().join("zephyr")).unwrap();
+    // The image is Rust, so the build preflight also asks for the
+    // zephyr-lang-rust module the west manifest fetches (issue 2358).
+    let lang_rust = zephyr_ws.path().join("modules/lang/rust");
+    std::fs::create_dir_all(&lang_rust).unwrap();
+    std::fs::write(lang_rust.join("Kconfig"), "").unwrap();
 
     let mut a = args(ws.path(), &["zephyr"]);
     a.zephyr_workspace = Some(zephyr_ws.path().to_path_buf());
