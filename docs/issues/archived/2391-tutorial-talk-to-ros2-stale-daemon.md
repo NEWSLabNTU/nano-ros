@@ -37,9 +37,11 @@ says this and passes `--no-daemon`; chapter 10 does not.
 
 ## Fix
 
-Step 1030 runs `ros2 daemon stop` before `ros2 topic echo`, and the prose says
-why. The next `ros2` command starts a fresh daemon in the zenoh shell, so the
-chapter's later `ros2 topic info -v` and `ros2 topic pub` use it too.
+Step 1030's `ros2 topic echo` and step 1040's `ros2 topic info -v` take
+`--no-daemon`, as chapter 9's graph queries do (issue 1333), and the prose
+says why. Not `ros2 daemon stop`: the daemon is keyed on `ROS_DOMAIN_ID`
+alone, so stopping it ends one other sessions on the host may share (issue
+0763). Step 1050's `ros2 topic pub` rejects the flag and needs no graph query.
 
 ## Verified
 
