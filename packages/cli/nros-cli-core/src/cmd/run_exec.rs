@@ -1164,6 +1164,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     let (tx, rx) = ts::channel();
     let mut log = Some(log);
     let mut consoles = Vec::new();
+    let chains = group.chain_log();
     match group.spawn("runner", cmd) {
         Ok(m) => {
             let out = m.child.stdout.take().expect("piped");
@@ -1180,7 +1181,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                     tx.clone(),
                 ));
             }
-            ts::spawn_stderr(err, tx.clone());
+            ts::spawn_stderr(err, tx.clone(), chains);
         }
         Err(e) => {
             return fail(

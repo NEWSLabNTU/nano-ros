@@ -12,6 +12,20 @@
 //!
 //! [`pump`] is the runner side of the stdout rule, [`report_link`] the runner
 //! side of the stderr rule, and [`scan_stderr`] the nros side of both.
+//!
+//! A runner that starts a tool as a process chain (`nros-runner-lifetime`,
+//! issue 2307) names the chain's process group on stderr too:
+//!
+//! ```text
+//! nros-runner: chain <pgid>
+//! ```
+//!
+//! The chain stops through its own guard once the runner is gone, which can
+//! take about a second after the runner has exited. nros waits for that group
+//! before the verb returns, so a verb never returns while the chain still
+//! holds ports or a device. [`report_chain`] is the runner side, and
+//! [`scan_stderr_with`] reports it to nros. A chain line is protocol, not a
+//! diagnostic, so it is not forwarded.
 
 use std::{
     io::{self, BufRead, Read, Write},
@@ -44,6 +58,35 @@ pub fn parse_link_line(line: &str) -> Option<&str> {
         .strip_prefix(LINK_PREFIX)?
         .trim();
     (!endpoint.is_empty()).then_some(endpoint)
+}
+
+/// The prefix of the chain line on a runner's stderr.
+pub const CHAIN_PREFIX: &str = "nros-runner: chain ";
+
+/// The chain line for process group `pgid`, without a newline.
+#[must_use]
+pub fn chain_line(pgid: u32) -> String {
+    format!("{CHAIN_PREFIX}{pgid}")
+}
+
+/// Print the chain line on stderr. Call it once per chain, as soon as its
+/// process group exists.
+pub fn report_chain(pgid: u32) {
+    let mut err = io::stderr().lock();
+    // A closed stderr leaves nothing to report the failure on.
+    let _ = writeln!(err, "{}", chain_line(pgid));
+    let _ = err.flush();
+}
+
+/// The process group a stderr line reports, if it is a chain line.
+#[must_use]
+pub fn parse_chain_line(line: &str) -> Option<u32> {
+    line.trim_end_matches(['\r', '\n'])
+        .strip_prefix(CHAIN_PREFIX)?
+        .trim()
+        .parse()
+        .ok()
+        .filter(|&pgid| pgid > 1)
 }
 
 /// Copy `from` to `to` byte for byte until end of file, flushing after every
@@ -83,21 +126,41 @@ where
 
 /// Forward a runner's stderr to `to` line by line and call `on_link` with the
 /// endpoint of every link line. Every line is forwarded, link lines included:
-/// they are diagnostics too.
+/// they are diagnostics too. Chain lines are dropped; see
+/// [`scan_stderr_with`] for a caller that wants them.
 ///
 /// # Errors
 ///
 /// A read or write failure.
 pub fn scan_stderr<R: BufRead, W: Write>(
+    from: R,
+    to: W,
+    on_link: impl FnMut(&str),
+) -> io::Result<()> {
+    scan_stderr_with(from, to, on_link, |_| {})
+}
+
+/// [`scan_stderr`], also calling `on_chain` with the process group of every
+/// chain line. A chain line is not forwarded to `to`.
+///
+/// # Errors
+///
+/// A read or write failure.
+pub fn scan_stderr_with<R: BufRead, W: Write>(
     mut from: R,
     mut to: W,
     mut on_link: impl FnMut(&str),
+    mut on_chain: impl FnMut(u32),
 ) -> io::Result<()> {
     let mut line = String::new();
     loop {
         line.clear();
         if from.read_line(&mut line)? == 0 {
             return Ok(());
+        }
+        if let Some(pgid) = parse_chain_line(&line) {
+            on_chain(pgid);
+            continue;
         }
         to.write_all(line.as_bytes())?;
         to.flush()?;
@@ -118,6 +181,32 @@ mod tests {
         assert_eq!(parse_link_line(&format!("{l}\n")), Some("/dev/pts/7"));
         assert_eq!(parse_link_line("nros-runner: link   \n"), None);
         assert_eq!(parse_link_line("qemu: link /dev/pts/7"), None);
+    }
+
+    #[test]
+    fn chain_lines_round_trip_and_are_not_forwarded() {
+        let l = chain_line(4242);
+        assert_eq!(l, "nros-runner: chain 4242");
+        assert_eq!(parse_chain_line(&format!("{l}\n")), Some(4242));
+        // Never a group a kill(-pgid) could turn into "everyone" or init.
+        assert_eq!(parse_chain_line("nros-runner: chain 0"), None);
+        assert_eq!(parse_chain_line("nros-runner: chain 1"), None);
+        assert_eq!(parse_chain_line("nros-runner: chain x"), None);
+        let input = format!("west: building\n{l}\nnros-runner: link /dev/pts/3\n");
+        let (mut out, mut links, mut chains) = (Vec::new(), Vec::new(), Vec::new());
+        scan_stderr_with(
+            input.as_bytes(),
+            &mut out,
+            |ep| links.push(ep.to_string()),
+            |g| chains.push(g),
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "west: building\nnros-runner: link /dev/pts/3\n"
+        );
+        assert_eq!(links, ["/dev/pts/3"]);
+        assert_eq!(chains, [4242]);
     }
 
     #[test]

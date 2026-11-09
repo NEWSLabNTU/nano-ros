@@ -26,8 +26,10 @@
 //!   unterminated tail of the stream counts as a line, so a prompt with no
 //!   newline still matches; a match there waits up to [`LINE_FINISH`] for
 //!   the rest of that line, so a line written in pieces is reported whole).
-//! * [`spawn_stderr`]: forwards a runner's stderr and reports its
-//!   `nros-runner: link <endpoint>` line.
+//! * [`spawn_stderr`]: forwards a runner's stderr, reports its
+//!   `nros-runner: link <endpoint>` line, and records every
+//!   `nros-runner: chain <pgid>` line in the group's [`ChainLog`], so the
+//!   teardown also waits for a runner's process chains (issue 2307).
 //! * [`Session::watch`]: the loop that decides the [`Outcome`], and
 //!   [`Outcome::exit_code`], RFC-0118 D2's codes.
 
@@ -36,6 +38,7 @@ use std::{
     io::{self, BufReader, Read, Write},
     process::{Child, Command, ExitStatus},
     sync::{
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
     },
@@ -44,6 +47,12 @@ use std::{
 };
 
 use nros_extension::exit;
+
+/// How long the teardown waits for a runner's process chains to stop through
+/// their own guard (issue 2307). The guard gives its group one second between
+/// SIGTERM and SIGKILL, so a chain that is still there after this is stuck:
+/// the verb SIGKILLs it and says so.
+pub const CHAIN_GRACE: Duration = Duration::from_millis(2500);
 
 /// How long a stopped group gets between SIGTERM and SIGKILL.
 pub const TEARDOWN_GRACE: Duration = Duration::from_secs(2);
@@ -122,6 +131,38 @@ pub struct Member {
 pub struct ProcessGroup {
     pgid: Option<i32>,
     members: Vec<Member>,
+    chains: ChainLog,
+}
+
+/// The process groups a runner's chains lead (`nros-runner: chain <pgid>`).
+/// A chain is a group of its own, outside the session's, so stopping the
+/// session's group does not stop it; the teardown waits for these too.
+#[derive(Debug, Default, Clone)]
+pub struct ChainLog(Arc<Mutex<Vec<i32>>>);
+
+impl ChainLog {
+    /// Record a chain's group.
+    pub fn record(&self, pgid: u32) {
+        let Ok(pgid) = i32::try_from(pgid) else {
+            return;
+        };
+        let mut v = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !v.contains(&pgid) {
+            v.push(pgid);
+        }
+    }
+
+    fn take(&self) -> Vec<i32> {
+        std::mem::take(
+            &mut *self
+                .0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
+    }
 }
 
 impl ProcessGroup {
@@ -182,6 +223,12 @@ impl ProcessGroup {
         Ok(self.members.last_mut().expect("just pushed"))
     }
 
+    /// Where a runner's stderr scan records its chains ([`spawn_stderr`]).
+    #[must_use]
+    pub fn chain_log(&self) -> ChainLog {
+        self.chains.clone()
+    }
+
     /// The member called `name`.
     pub fn member(&mut self, name: &str) -> Option<&mut Member> {
         self.members.iter_mut().find(|m| m.name == name)
@@ -219,6 +266,16 @@ impl ProcessGroup {
                 m.status = m.child.wait().ok();
             }
         }
+        // The runner is gone now, so each chain's guard has seen its pipe
+        // close and is stopping the chain. Wait for that, so the verb does
+        // not return while the chain still holds a port or a device.
+        for pgid in stop_chains(&self.chains.take(), CHAIN_GRACE) {
+            eprintln!(
+                "nros: process chain {pgid} was still running {:.1} s after its runner \
+                 stopped; killed it (SIGKILL)",
+                CHAIN_GRACE.as_secs_f32()
+            );
+        }
     }
 
     fn reap(&mut self) {
@@ -236,6 +293,27 @@ impl Drop for ProcessGroup {
     fn drop(&mut self) {
         self.teardown(TEARDOWN_GRACE);
     }
+}
+
+/// Wait up to `grace` for every group in `chains` to empty, then SIGKILL the
+/// ones that have not, and return those. A chain's guard leads its group, so
+/// an empty group cannot be a reused id: the id stays taken while the guard
+/// lives.
+fn stop_chains(chains: &[i32], grace: Duration) -> Vec<i32> {
+    let deadline = Instant::now() + grace;
+    let mut left: Vec<i32> = chains.to_vec();
+    loop {
+        left.retain(|&g| !group_members(g).is_empty());
+        if left.is_empty() || Instant::now() >= deadline {
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    #[cfg(unix)]
+    for &g in &left {
+        signal_group(g, libc::SIGKILL);
+    }
+    left
 }
 
 #[cfg(unix)]
@@ -463,16 +541,22 @@ fn line_text(line: &[u8]) -> String {
         .to_string()
 }
 
-/// Forward a runner's stderr to the verb's stderr and report its link line
-/// (RFC-0119 D6) as [`Event::Link`].
-pub fn spawn_stderr<R>(from: R, tx: Sender<Event>) -> JoinHandle<()>
+/// Forward a runner's stderr to the verb's stderr, report its link line
+/// (RFC-0119 D6) as [`Event::Link`], and record its chain lines in `chains`
+/// ([`ProcessGroup::chain_log`]).
+pub fn spawn_stderr<R>(from: R, tx: Sender<Event>, chains: ChainLog) -> JoinHandle<()>
 where
     R: Read + Send + 'static,
 {
     thread::spawn(move || {
-        let _ = nros_extension::console::scan_stderr(BufReader::new(from), io::stderr(), |ep| {
-            let _ = tx.send(Event::Link(ep.to_string()));
-        });
+        let _ = nros_extension::console::scan_stderr_with(
+            BufReader::new(from),
+            io::stderr(),
+            |ep| {
+                let _ = tx.send(Event::Link(ep.to_string()));
+            },
+            |pgid| chains.record(pgid),
+        );
     })
 }
 
@@ -708,12 +792,89 @@ pub(crate) mod tests {
         let (tx, rx) = channel();
         let log = File::create(dir.path().join("console.log")).unwrap();
         spawn_console(out, Box::new(io::sink()), Some(log), expect, tx.clone());
-        spawn_stderr(err, tx);
+        let chains = group.chain_log();
+        spawn_stderr(err, tx, chains);
         (
             Session::new(group, "runner", Some(Duration::from_secs(10))),
             rx,
             dir,
         )
+    }
+
+    /// A runner that starts `chain` as a group of its own (`setsid`, as the
+    /// lifetime guard leads its own) and names it with a chain line, then
+    /// waits. Returns the group and the chain's group id.
+    #[cfg(target_os = "linux")]
+    fn runner_with_chain(chain: &str) -> (ProcessGroup, i32) {
+        let mut group = ProcessGroup::new();
+        let script = format!(
+            "setsid {chain} </dev/null >/dev/null 2>&1 & \
+             echo \"{}$!\" >&2; wait",
+            nros_extension::console::CHAIN_PREFIX
+        );
+        let m = group.spawn("runner", sh(&script)).unwrap();
+        let err = m.child.stderr.take().unwrap();
+        let _ = m.child.stdout.take();
+        let (tx, _rx) = channel();
+        let chains = group.chain_log();
+        spawn_stderr(err, tx, chains.clone());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let pgid = loop {
+            if let Some(&g) = chains.0.lock().unwrap().first() {
+                break g;
+            }
+            assert!(Instant::now() < deadline, "no chain line");
+            thread::sleep(Duration::from_millis(10));
+        };
+        // `setsid` makes its pid the group id once it has run.
+        while group_members(pgid).is_empty() {
+            assert!(Instant::now() < deadline, "the chain never started");
+            thread::sleep(Duration::from_millis(10));
+        }
+        (group, pgid)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn teardown_waits_for_a_chain_that_is_stopping() {
+        // The chain outlives its runner by about half a second, as a chain
+        // does while its guard goes from SIGTERM to SIGKILL.
+        // It leaves a mark when it ends on its own, so a chain the teardown
+        // killed early instead of waiting for is told apart.
+        let dir = tempfile::tempdir().unwrap();
+        let mark = dir.path().join("ended");
+        let (mut group, pgid) =
+            runner_with_chain(&format!("sh -c 'sleep 0.5; touch {}'", mark.display()));
+        let t = Instant::now();
+        group.teardown(TEARDOWN_GRACE);
+        assert!(group_members(pgid).is_empty(), "teardown returned first");
+        assert!(
+            mark.exists(),
+            "the teardown killed a chain that was stopping"
+        );
+        assert!(
+            t.elapsed() < CHAIN_GRACE,
+            "a chain that stops by itself is not killed: {:?}",
+            t.elapsed()
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn teardown_kills_a_chain_that_does_not_stop() {
+        let (mut group, pgid) = runner_with_chain("sleep 30");
+        let t = Instant::now();
+        group.teardown(TEARDOWN_GRACE);
+        let waited = t.elapsed();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !group_members(pgid).is_empty() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let left = group_members(pgid);
+        // Never leave the survivor behind a red test.
+        signal_group(pgid, libc::SIGKILL);
+        assert!(left.is_empty(), "chain {pgid} survived: {left:?}");
+        assert!(waited >= CHAIN_GRACE, "killed before the grace: {waited:?}");
     }
 
     #[test]
