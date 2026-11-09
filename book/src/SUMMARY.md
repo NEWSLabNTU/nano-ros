@@ -33,6 +33,7 @@
 - [8. Tell the build what your system creates](./tutorial/tell-the-build.md)
 - [9. Same project, another target](./tutorial/another-target.md)
 - [10. Talk to ROS 2](./tutorial/talk-to-ros2.md)
+- [Lab: QoS is checked twice](./tutorial/qos.md)
 
 # User guide
 

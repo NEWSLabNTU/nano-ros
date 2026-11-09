@@ -262,6 +262,13 @@ note = "Tutorial 10, Talk to ROS 2 (W5): rewritten on the Tutorial project (its 
 
 [[page]]
 book = "user"
+path = "tutorial/qos.md"
+action = "new phase-537"
+batch = "p537-w5"
+note = "Lab: QoS is checked twice (W5, issue 2269): the build's qos-match and the boot's contract-versus-call-site check, broken on purpose, then a transient_local pair in Rust, C and C++"
+
+[[page]]
+book = "user"
 path = "guide/rmw/configure-zenoh.md"
 action = "new phase-537"
 batch = "p537-w6"
