@@ -324,11 +324,7 @@ exclude = [
     # Phase 168.1 collapsed-shape Rust examples (one dir, N RMW
     # backends via Kconfig overlay + Cargo features).
     "examples/zephyr/rust/talker",
-    "examples/zephyr/rust/listener",
-    "examples/zephyr/rust/service-server",
-    "examples/zephyr/rust/service-client",
     "examples/zephyr/rust/action-server",
-    "examples/zephyr/rust/action-client",
     # (phase-350 W3 / issue 0537 — `examples/zephyr/rust/talker-aemv8r` was
     # here. It and its cpp sibling were retired: phase-298 W4 deleted their
     # runners, so both had built an artifact nothing ran ever since.)

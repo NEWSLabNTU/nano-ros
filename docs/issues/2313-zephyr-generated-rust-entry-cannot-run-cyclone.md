@@ -100,3 +100,33 @@ The leaves link Cyclone through the Corrosion/cmake seam
 entry does not. So the five threadx-riscv64 Rust listener, service and action
 leaves keep their Cyclone rows, as the Zephyr ones do, and their retirement
 waits on this issue.
+
+## Zephyr: done (2026-11-09)
+
+The six images exist and the Rust Cyclone pairs run on them:
+`zephyr_{talker,listener,service_server,service_client,action_server,action_client}_cyclonedds`
+in `examples/workspaces/rust/src/{pubsub,service,action}_bringup`, Cyclone
+domains 22/25/28 (`alloc::domain_of`, Rust's port index 0), each with its
+leaf's own `prj-cyclonedds.conf`. These are the leaf's file and not the C
+bringup's: the Rust service leaf's pthread counts (256) differ from the C
+service bringup's (2048/1024). Six `[[workspace_fixture]]` rows,
+`workspace-rust-zephyr-<role>-cyclonedds`. `tests/zephyr.rs`'s
+`resolve_example` lost its Rust-Cyclone leaf special case.
+
+Measured: `cargo nextest run -p nros-tests --test zephyr -E
+'test(/cyclonedds_rust/)'` passes 5/5 on the images (talker and listener boot
+smokes; pubsub, service and action e2e).
+
+Retired (RFC-0122, no lost coverage; each cyclonedds row is an image row now):
+`examples/zephyr/rust/{listener,service-server,service-client,action-client}`,
+with their `Cargo.toml` excludes, `zephyr/module.yml` sample, nightly
+`build-one` matrix entries, `nros_tests::zephyr` aliases and bringup-baseline
+rows. `examples/zephyr/rust/action-server` STAYS a leaf for its zenoh row
+(`zephyr_rust_zenoh_action_goal_completion_rate` reads its `reply-slot:
+refusals=` heartbeat); only its cyclonedds row moved. Recorded in phase-535 W6.
+
+Left open here:
+- Follow-up: give the workspace action server that heartbeat, then retire the
+  action-server leaf.
+- The threadx-riscv64 half above (`riscv_threadx_<role>_cyclonedds` boots to
+  "no RMW backend is registered") is not addressed.

@@ -443,6 +443,13 @@ gaining an `rmw` field is a follow-up.
 - The 13 feature demos become node packages in `features` or the language
   workspace.
 - `talker-xrce` becomes an `rmw` row.
+- Zephyr Rust Cyclone leaves: retired by issue 2313 (nros 133), outside this
+  item and W7. `examples/zephyr/rust/{listener,service-server,service-client,
+  action-client}` are deleted; each cyclonedds row is now a
+  `zephyr_<role>_cyclonedds` image of the Rust behaviour bringups. W6 skips
+  them. `examples/zephyr/rust/action-server` stays a leaf for its zenoh row
+  (the `reply-slot: refusals=` heartbeat the workspace action server does not
+  print); only its cyclonedds row moved.
 
 All per RFC-0122 D2.
 

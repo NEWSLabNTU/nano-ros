@@ -54,4 +54,3 @@ samples:
   - examples/zephyr/c/talker
   - examples/zephyr/cpp/talker
   - examples/zephyr/rust/talker
-  - examples/zephyr/rust/listener

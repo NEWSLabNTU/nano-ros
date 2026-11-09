@@ -1080,9 +1080,14 @@ fn zephyr_leaf_buildrs_uses_shared_bake() {
     // unit test in `cmd::build` (`an_explicit_entry_outranks_the_id_entry_package`),
     // which asks the discriminator directly instead of through a committed leaf.
     // What remains is the six standalone leaves under `examples/zephyr/rust/`.
+    //
+    // 6 -> 2 (issue 2313): the listener, service-server, service-client and
+    // action-client leaves became workspace images. What remains is `talker`
+    // (the board's road witness, RFC-0122 D3) and `action-server` (kept for its
+    // zenoh row's heartbeat).
     assert!(
-        zephyr_leaves >= 6,
-        "expected >=6 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
+        zephyr_leaves >= 2,
+        "expected >=2 zephyr rust leaf build.rs, walked only {zephyr_leaves} — layout moved?"
     );
 }
 

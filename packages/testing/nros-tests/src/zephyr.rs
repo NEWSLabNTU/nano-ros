@@ -899,10 +899,10 @@ fn decode_alias(example_name: &str) -> Option<(&'static str, &'static str, &'sta
     // (lang, case, rmw)
     Some(match example_name {
         // phase-535 W4 — the talker leaves are the board's road witnesses
-        // (RFC-0122 D3), and the Rust Cyclone pairs stay leaves until a
-        // generated Rust Zephyr entry runs Cyclone (issue 2313). Every
-        // other role is an image of a behaviour bringup now, resolved through
-        // `fixtures::workspace_image`.
+        // (RFC-0122 D3). Every other role is an image of a behaviour bringup,
+        // resolved through `fixtures::workspace_image` — the Rust Cyclone pairs
+        // too since issue 2313. `zephyr-rs-action-server` stays: its zenoh
+        // row's heartbeat (see `examples/fixtures.toml`).
         "zephyr-rs-talker" | "rs-talker" => ("rust", "talker", "zenoh"),
         "zephyr-cpp-talker" | "cpp-talker" => ("cpp", "talker", "zenoh"),
         "zephyr-c-talker" | "c-talker" => ("c", "talker", "zenoh"),
@@ -913,11 +913,6 @@ fn decode_alias(example_name: &str) -> Option<(&'static str, &'static str, &'sta
         "zephyr-dds-c-talker" => ("c", "talker", "cyclonedds"),
         "zephyr-dds-rs-talker" | "dds-rs-talker" => ("rust", "talker", "cyclonedds"),
         "zephyr-rs-action-server" => ("rust", "action-server", "zenoh"),
-        "zephyr-dds-rs-listener" => ("rust", "listener", "cyclonedds"),
-        "zephyr-dds-rs-service-server" => ("rust", "service-server", "cyclonedds"),
-        "zephyr-dds-rs-service-client" => ("rust", "service-client", "cyclonedds"),
-        "zephyr-dds-rs-action-server" => ("rust", "action-server", "cyclonedds"),
-        "zephyr-dds-rs-action-client" => ("rust", "action-client", "cyclonedds"),
         // `service-client-async` zephyr/rust example dropped 2026-06-02 per
         // Phase 212.M-F.5 — pending async-`Node` trait decision.
         //

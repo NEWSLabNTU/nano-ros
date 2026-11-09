@@ -178,14 +178,8 @@ fn resolve_example(lang: Lang, case: &str, rmw: Rmw) -> PathBuf {
         "action-client" => PairRole::ActionClient,
         other => unreachable!("no zephyr pair role {other:?}"),
     };
-    // The Rust Cyclone pairs are still leaves (issue 2313): a generated
-    // Rust Zephyr entry does not yet run Cyclone.
-    let resolved = if (lang, rmw) == (Lang::Rust, Rmw::Cyclonedds) {
-        get_prebuilt_zephyr_example(&format!("zephyr-dds-rs-{case}"), ZephyrPlatform::NativeSim)
-    } else {
-        resolve_coord(PlatformId::ZephyrNativeSim, lang, rmw, role)
-    };
-    resolved.unwrap_or_else(|e| {
+    // Issue 2313 — the Rust Cyclone pairs are images too now.
+    resolve_coord(PlatformId::ZephyrNativeSim, lang, rmw, role).unwrap_or_else(|e| {
         nros_tests::unmet!(
             "zephyr {}/{case} {} image not prebuilt or stale \
              (run `just zephyr build-fixtures`): {e:?}",
