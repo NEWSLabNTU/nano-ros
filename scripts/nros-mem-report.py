@@ -93,6 +93,15 @@ import git_grep  # noqa: E402  issue 1816 — a failed search is not "no match"
 RAM_TYPES = set("bBdDgGsS")  # .bss + .data + small-data variants
 ROM_TYPES = set("rR")  # .rodata
 TEXT_TYPES = set("tTwWiI")  # .text, weak, indirect
+# Letters that name a BINDING, not a section (issue 2202). `V`/`v` is a weak
+# OBJECT and `u` a GNU-unique one: a C++ template's static data member (the
+# executor storage `rclcpp::Node::GlobalStorageHolder<0>::storage`), an inline
+# variable, a COMDAT'd `typeinfo`. `nm` cannot say whether such a symbol sits in
+# `.bss`, `.data` or `.rodata`, so its class is read from the SECTION its
+# address falls in. Before this the three letters were in no set at all, and the
+# biggest movable pool on a C++ Zephyr image (83,880 B) was dropped from every
+# owner total and reported as unattributed padding.
+SECTION_RESOLVED_TYPES = set("vVu")
 
 NM_LINE = re.compile(r"^([0-9]+)\s+([0-9]+)\s+(\S)\s+(.*)$")
 
@@ -506,10 +515,39 @@ def demangle_all(raws, tool, elf):
     return names
 
 
-def make_symbol(size, typ, raw, name):
+def symbol_class(typ, section_flags=None):
+    """`ram`, `rom`, `text`, or None: what memory a symbol occupies.
+
+    The letter decides it where the letter names a section. A binding-only
+    letter (`SECTION_RESOLVED_TYPES`) is resolved by the FLAGS of the section
+    the symbol is DEFINED in (its `st_shndx`), like `ram_section_total`:
+    allocated and writable is RAM, executable is text, the rest of the
+    allocated image is read-only data. Not by address: a relocatable ELF (the
+    `zephyr.elf` a native_sim build links into `zephyr.exe`) puts every section
+    at address 0, so an address lookup answers with whichever section is listed
+    first. A symbol whose section is unknown or not allocated stays None --
+    unclassified, never guessed.
+    """
+    if typ in RAM_TYPES:
+        return "ram"
+    if typ in ROM_TYPES:
+        return "rom"
+    if typ in TEXT_TYPES:
+        return "text"
+    if typ in SECTION_RESOLVED_TYPES and section_flags is not None and "A" in section_flags:
+        if "W" in section_flags:
+            return "ram"
+        if "X" in section_flags:
+            return "text"
+        return "rom"
+    return None
+
+
+def make_symbol(size, typ, raw, name, section_flags=None):
     return {
         "size": size,
         "type": typ,
+        "cls": symbol_class(typ, section_flags),
         "raw": raw,
         "name": name,
         "key": symbol_key(name),
@@ -517,12 +555,17 @@ def make_symbol(size, typ, raw, name):
     }
 
 
-def read_symbols(elf):
-    """[{size, type, raw, name, key, lang}] for every sized symbol in the image.
+def read_symbols(elf, section_of=None):
+    """[{size, type, cls, raw, name, key, lang}] for every sized symbol in the image.
+
+    `section_of` is `read_symbol_sections(elf)`: `(mangled name, address)` ->
+    the flags of the section that defines it. Without it a weak or unique
+    object (`SECTION_RESOLVED_TYPES`) cannot be placed and is left unclassified.
 
     Read MANGLED first (issue 1147): the mangling says which language owns a
     symbol, and a demangled C++ name can be a perfectly valid Rust path.
     """
+    section_of = section_of or {}
     tool = pick_nm(elf)
     out = subprocess.run(
         [tool, "-p", "--print-size", "--radix=d", elf],
@@ -536,16 +579,26 @@ def read_symbols(elf):
         m = NM_LINE.match(line)
         if not m:
             continue
-        _addr, size, typ, raw = m.groups()
-        rows.append((int(size), typ, raw.strip()))
-    names = demangle_all([r for _, _, r in rows], tool, elf)
-    return [make_symbol(size, typ, raw, name) for (size, typ, raw), name in zip(rows, names)]
+        addr, size, typ, raw = m.groups()
+        rows.append((int(addr), int(size), typ, raw.strip()))
+    names = demangle_all([r for _, _, _, r in rows], tool, elf)
+    return [
+        make_symbol(size, typ, raw, name, section_of.get((raw, addr)))
+        for (addr, size, typ, raw), name in zip(rows, names)
+    ]
 
 
 # `[Nr] Name Type Address Off Size ES Flg Lk Inf Al` — the flag column may be
 # empty, so a row is anchored on its three trailing integers.
 _SECTION_LINE = re.compile(
     r"^\s*\[\s*\d+\]\s+(\S+)\s+(\S+)\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+([0-9a-fA-F]+)"
+    r"\s+[0-9a-fA-F]+\s+([A-Za-z]*)\s+\d+\s+\d+\s+\d+\s*$"
+)
+
+
+# The same row, keeping its INDEX -- what a symbol's `Ndx` column names.
+_SECTION_INDEX_LINE = re.compile(
+    r"^\s*\[\s*(\d+)\]\s+\S+\s+\S+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+"
     r"\s+[0-9a-fA-F]+\s+([A-Za-z]*)\s+\d+\s+\d+\s+\d+\s*$"
 )
 
@@ -559,6 +612,31 @@ def parse_section_headers(text):
             name, _typ, size, flags = m.groups()
             sections[name] = (int(size, 16), flags)
     return sections
+
+
+def parse_symbol_sections(section_text, symbol_text):
+    """{(mangled name, address): section flags} from `readelf -S -W` and
+    `readelf -s -W` output -- which section DEFINES each symbol, for
+    `symbol_class`. Undefined, absolute and common symbols (a non-numeric
+    `Ndx`) are left out."""
+    flags_by_index = {}
+    for line in section_text.splitlines():
+        m = _SECTION_INDEX_LINE.match(line)
+        if m:
+            flags_by_index[m.group(1)] = m.group(2)
+    out = {}
+    for line in symbol_text.splitlines():
+        f = line.split()
+        if len(f) < 8 or not f[0].endswith(":"):
+            continue
+        value, ndx, name = f[1], f[6], f[7]
+        if not ndx.isdigit() or ndx not in flags_by_index:
+            continue
+        try:
+            out[(name, int(value, 16))] = flags_by_index[ndx]
+        except ValueError:
+            continue
+    return out
 
 
 def ram_section_total(sections):
@@ -585,13 +663,28 @@ def read_sections(elf):
     the point: a campaign that only counts what it can name will keep finding
     the image bigger than its own table.
     """
+    return parse_section_headers(_readelf_sections(elf))
+
+
+def read_symbol_sections(elf):
+    """{(mangled name, address): section flags} (see `symbol_class`)."""
     tool = find_tool("llvm-readelf") or find_tool("readelf")
     if not tool:
         return {}
-    out = subprocess.run([tool, "-S", "-W", elf], capture_output=True, text=True)
+    out = subprocess.run([tool, "-s", "-W", elf], capture_output=True, text=True)
     if out.returncode != 0:
         return {}
-    return parse_section_headers(out.stdout)
+    return parse_symbol_sections(_readelf_sections(elf), out.stdout)
+
+
+def _readelf_sections(elf):
+    tool = find_tool("llvm-readelf") or find_tool("readelf")
+    if not tool:
+        return ""
+    out = subprocess.run([tool, "-S", "-W", elf], capture_output=True, text=True)
+    if out.returncode != 0:
+        return ""
+    return out.stdout
 
 
 def crate_ident_for(rel, inv):
@@ -848,7 +941,7 @@ def aggregate_ram(syms):
     """{key: {bytes, count, names, owner, lang}} over the RAM symbols."""
     agg = {}
     for s in syms:
-        if s["type"] not in RAM_TYPES:
+        if s["cls"] != "ram":
             continue
         a = agg.get(s["key"])
         if a is None:
@@ -917,8 +1010,8 @@ def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, siz
     measured_pools = measured_pools or {}
     sizes_defs, sizes_used, sizes_problem = sizes or ({}, [], None)
     agg = aggregate_ram(syms)
-    rom = [s for s in syms if s["type"] in ROM_TYPES]
-    text = [s for s in syms if s["type"] in TEXT_TYPES]
+    rom = [s for s in syms if s["cls"] == "rom"]
+    text = [s for s in syms if s["cls"] == "text"]
 
     by_owner = {}
     for a in agg.values():
@@ -1029,7 +1122,7 @@ def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, siz
 
 
 def analyse(elf, pools_by_name, measured_pools=None, sizes_header=None):
-    syms = read_symbols(elf)
+    syms = read_symbols(elf, read_symbol_sections(elf))
     sections = read_sections(elf)
     try:
         elf_mtime = os.path.getmtime(elf)
@@ -1453,6 +1546,7 @@ def selftest():
     selftest_runtime_loggers()
     selftest_baseline()
     selftest_sections()
+    selftest_weak_objects()
     selftest_levels()
     check_storage_roles()
     print("selftest: ok — the check passes on agreement and fails on drift")
@@ -1652,6 +1746,73 @@ def selftest_sections():
         "RAM is every ALLOCATED + WRITABLE section; a name filter missed `.noinit` and "
         "reported a NEGATIVE unattributed gap on Zephyr"
     )
+
+
+def selftest_weak_objects():
+    """issue 2202 -- a weak or unique OBJECT is classed by the section that defines it.
+
+    The letters `V`/`v`/`u` name a binding, not a section. The C++ executor
+    storage `rclcpp::Node::GlobalStorageHolder<0>::storage` is a template's
+    static data member, so `nm` prints it `V` (`u` with a GNU-unique host
+    toolchain); it was in no type set, and 83,880 B of a Zephyr talker's RAM
+    came out as unattributed padding.
+
+    The headers are a RELOCATABLE image's (native_sim's `zephyr.elf`): every
+    section at address 0, so only the symbol's section INDEX can place it.
+    """
+    secs = (
+        "  [ 1] .text             PROGBITS        0000000000000000 001000 000100 00  AX  0   0  4\n"
+        "  [ 2] .rodata.x         PROGBITS        0000000000000000 002000 000100 00   A  0   0  4\n"
+        "  [ 3] .data.y           PROGBITS        0000000000000000 003000 000100 00  WA  0   0  4\n"
+        "  [ 4] .bss._ZN6rclcpp4Node19GlobalStorageHolderILi0EE7storageE NOBITS 0000000000000000"
+        " 0d6038 003598 00 WAG  0   0  8\n"
+        "  [ 5] .comment          PROGBITS        0000000000000000 003100 000059 01  MS  0   0  1\n"
+    )
+    holder_raw = "_ZN6rclcpp4Node19GlobalStorageHolderILi0EE7storageE"
+    symtab = (
+        "Symbol table '.symtab' contains 9 entries:\n"
+        "   Num:    Value          Size Type    Bind   Vis      Ndx Name\n"
+        "     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND \n"
+        f"     1: 0000000000000000 13720 OBJECT  UNIQUE HIDDEN     4 {holder_raw}\n"
+        "     2: 0000000000000010    64 OBJECT  UNIQUE DEFAULT    3 _ZN3app6Inline1xE\n"
+        "     3: 0000000000000020    32 OBJECT  WEAK   DEFAULT    3 _ZN3app4Weak1yE\n"
+        "     4: 0000000000000000    24 OBJECT  WEAK   DEFAULT    2 _ZTSN6rclcpp4NodeE\n"
+        "     5: 0000000000000000    16 FUNC    WEAK   DEFAULT    1 weak_thunk\n"
+        "     6: 0000000000000000     8 OBJECT  WEAK   DEFAULT    5 in_comment\n"
+        "     7: 0000000000000000     4 OBJECT  WEAK   DEFAULT  ABS abs_weak\n"
+        "     8: 0000000000000040     4 OBJECT  GLOBAL DEFAULT    3 plain_data\n"
+    )
+    section_of = parse_symbol_sections(secs, symtab)
+    assert section_of[(holder_raw, 0)] == "WAG", section_of
+    holder = "rclcpp::Node::GlobalStorageHolder<0>::storage"
+    rows = [
+        # (typ, addr, bytes, raw, demangled, class)
+        ("u", 0, 13720, holder_raw, holder, "ram"),
+        ("u", 0x10, 64, "_ZN3app6Inline1xE", "app::Inline::x", "ram"),
+        ("v", 0x20, 32, "_ZN3app4Weak1yE", "app::Weak::y", "ram"),
+        ("V", 0, 24, "_ZTSN6rclcpp4NodeE", "typeinfo name for rclcpp::Node", "rom"),
+        ("V", 0, 16, "weak_thunk", "weak_thunk", "text"),
+        # A section that is not ALLOCATED, and no section at all, stay
+        # UNCLASSIFIED -- never guessed into RAM.
+        ("V", 0, 8, "in_comment", "in_comment", None),
+        ("V", 0, 4, "abs_weak", "abs_weak", None),
+        ("D", 0x40, 4, "plain_data", "plain_data", "ram"),
+    ]
+    syms = [make_symbol(b, t, raw, name, section_of.get((raw, addr)))
+            for t, addr, b, raw, name, _c in rows]
+    for sym, (_t, _a, _b, _r, name, want) in zip(syms, rows):
+        assert sym["cls"] == want, f"{name!r} classed {sym['cls']!r}, want {want!r}"
+    assert make_symbol(8, "V", "x", "x")["cls"] is None, (
+        "without its section a weak object cannot be placed, and must say so"
+    )
+    res = analyse_symbols("synthetic", syms, {}, {}, sizes=({}, [], None))
+    assert res["by_owner"].get("[executor storage]") == 13720, (
+        f"the weak executor storage must reach its role: {res['by_owner']}"
+    )
+    assert res["top_ram"][0]["key"] == holder, res["top_ram"][:2]
+    assert res["ram_symbol_total"] == 13720 + 64 + 32 + 4, res["ram_symbol_total"]
+    assert res["rodata_symbol_total"] == 24 and res["text_symbol_total"] == 16, res
+    assert [s["symbol"] for s in res["storage"]] == [holder], res["storage"]
 
 
 def check_storage_roles():

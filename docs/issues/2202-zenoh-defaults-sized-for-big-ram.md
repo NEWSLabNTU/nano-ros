@@ -86,3 +86,81 @@ declaration moves. These are the two 64 KiB heaps, 48 KiB of stacks, and the
 5. Fix `mem-report`'s attribution of the weak `rclcpp::` executor storage.
 6. Declare `entities` in the in-tree Zephyr C/C++ talker examples, so the
    examples show the declared road.
+
+## Measured on in-tree boards (2026-11-10)
+
+`just mem-report --json` (with the item 5 fix below) on Zephyr 3.7 builds of
+`examples/zephyr/c/talker`, and of the C++ one on mps2. Each board has three
+variants:
+
+* **A**: a scratch copy of the leaf with `entities = "defaults"`. This is the
+  undeclared fallback, written down.
+* **census**: the tracked leaf as it is (no `entities`). RFC-0120 D4 sizes a
+  cross C/C++ leaf from its census by default. This is the `--from-leaf` road.
+* **B**: a scratch copy with `entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]`.
+
+The mps2 build is the `build-cortex-m-c-talker-zenoh` fixture: TCP, with the
+board's `prj.conf`. The Nucleo build is `[image.nucleo_serial]`: zenoh over
+USART3, on a 512 KiB SRAM part.
+
+| pool (symbol) | mps2 A | mps2 census | mps2 B | nucleo A | nucleo census | nucleo B | mps2 C++ A | mps2 C++ census |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| executor storage (`GlobalStorageHolder<0>::storage`) | 83,880 | 6,072 | 6,072 | 83,880 | 6,072 | 6,072 | 83,880 | 6,768 |
+| `zephyr_heap::HEAP` | 67,280 | 67,280 | 67,280 | 67,280 | 67,280 | 67,280 | 67,280 | 67,280 |
+| `kheap__system_heap` | 131,072 | 131,072 | 131,072 | 16,384 | 16,384 | 16,384 | 131,072 | 131,072 |
+| `USER_SERVICE_INBOX` | 33,412 | 4,180 | 4,180 | 33,412 | 4,180 | 4,180 | 33,412 | 4,180 |
+| `SMALL_PAYLOADS` | 32,768 | 4,096 | 4,096 | 32,768 | 4,096 | 4,096 | 32,768 | 4,096 |
+| `LARGE_PAYLOADS` | 131,072 | - | - | - | - | - | 131,072 | - |
+| `nros_thread_stacks` | 32,896 | 32,896 | 32,896 | 32,896 | 32,896 | 32,896 | 32,896 | 32,896 |
+| `g_sessions` (includes the graph cache on IP) | 84,784 | 82,752 | 82,752 | 19,208 | 17,176 | 17,176 | 84,784 | 82,752 |
+| `z_main_stack` | 131,136 | 131,136 | 131,136 | 16,448 | 16,448 | 16,448 | 131,136 | 131,136 |
+| `static_subscriber_storage::SLOTS` | 8,192 | - | - | 8,192 | - | - | 8,192 | - |
+| `MESSAGE_INFO_TABLE` | 4,096 | 4,096 | 4,096 | 4,096 | 4,096 | 4,096 | 4,096 | 4,096 |
+| `TL_SLOTS` | 2,688 | 1,344 | 1,344 | 2,688 | 1,344 | 1,344 | 2,688 | 2,688 |
+| RAM (writable allocated sections) | 810,681 | 527,417 | 527,417 | 353,276 | 201,088 | 201,088 | 809,693 | 529,141 |
+
+What this shows:
+
+* **The census road and a hand declaration give the same image.** On both
+  boards they match byte for byte. The tracked C leaf is therefore already
+  declared-sized, so the "Also found" note that it "takes the same
+  undeclared defaults" is out of date since RFC-0120 D4. Direction item 6
+  needs no `entities` line to move a byte. A hand list would only skip the
+  host census build.
+* **On the Nucleo, declaring saves 152,188 B: from 353,276 (67 % of 512 KiB)
+  to 201,088 (38 %).**
+* **What stays big whatever the image declares:**
+  * the nano-ros heap, 67,280 B (`NROS_ZEPHYR_HEAP_SIZE` 64 KiB);
+  * the kernel heap: 128 KiB on mps2 (board `prj.conf`), 16 KiB on the Nucleo;
+  * `nros_thread_stacks`: 2 x 16 KiB;
+  * the main stack: 128 KiB on mps2, 16 KiB on the Nucleo;
+  * the 4 KiB message-info table;
+  * the graph cache, on an IP link. The cache sits inside `g_sessions`
+    (`zpico.c` `graph_cache_t graph_cache`), not in a symbol of its own. That
+    is why `g_sessions` is 82,752 B over TCP on mps2 but 17,176 B on the
+    serial Nucleo, which derives `NROS_ZENOH_GRAPH_DISCOVERY=0`.
+* **C++ leaf, census road:** `TL_SLOTS` stays at two slots (2,688 B), where
+  the C census and the workspace C++ image get one. Not diagnosed.
+
+Model road (direction item 6's other half): the workspace images
+`pubsub_bringup:zephyr_talker{,_xrce,_cyclonedds}` in `examples/workspaces/{c,cpp}`.
+They have native_sim fixture rows only. Each comes out at the declared size
+with no hand declaration, with the same per-pool bytes as the census-sized
+native_sim leaf (zenoh: `USER_SERVICE_INBOX` 4,232, `SMALL_PAYLOADS` 4,096,
+no `LARGE_PAYLOADS`, no subscriber `SLOTS`, `TL_SLOTS` 1,368). The executor
+storage is 13,528 B, against 13,720 for the C leaf and 14,432 for the C++
+leaf. No model-road gap was found.
+
+**Item 5, resolved here.** The executor storage is a template's static data
+member. `nm` prints it `V` (weak object) on the arm builds and `u` (GNU unique)
+on native_sim. Neither letter was in any of `mem-report`'s type sets, so the
+symbol was in no total: not the owner table, not the top-RAM list, and not the
+storage roles. The `[executor storage]` role regex already matched it, but the
+symbol never reached the regex.
+
+`nros-mem-report.py` now resolves `V`/`v`/`u` from the flags of the section
+that defines the symbol (`st_shndx`, from `readelf -s`). It does not use the
+symbol's address: a native_sim `zephyr.elf` is a relocatable ELF, with every
+section at address 0. On the Nucleo A image, the unattributed gap goes from
+84,464 B (23.9 %) to 580 B, and the storage is listed under
+`[executor storage]` at 83,880 B.
