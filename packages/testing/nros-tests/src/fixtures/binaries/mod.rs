@@ -173,12 +173,6 @@ static XRCE_STRESS_TEST_LARGE_BUF_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-large-msg-test binary
 static QEMU_LARGE_MSG_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the xrce-serial-talker binary
-static XRCE_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the xrce-serial-listener binary
-static XRCE_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
 /// Cached path to the px4-stub binary (Phase 233.4 — PX4 XRCE companion).
 static PX4_STUB_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -7523,27 +7517,20 @@ pub fn xrce_action_client_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build the xrce-serial-talker example binary (cached).
+/// The XRCE talker that runs over a serial link (phase-535 W6, RFC-0122 D2).
+///
+/// On linux a serial link is not a build CONFIGURATION: the locator is runtime
+/// env, and the XRCE backend's session routes a `serial://<path>` locator to
+/// its POSIX serial transport. So the serial cases run the plain XRCE talker
+/// with `NROS_LOCATOR=serial://<pty>`, and the `serial-talker` leaf retired.
 pub fn build_xrce_serial_talker() -> TestResult<&'static Path> {
-    XRCE_SERIAL_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example("linux/rust/serial-talker", "xrce-serial-talker", None, None)
-        })
-        .map(|p| p.as_path())
+    build_xrce_talker()
 }
 
-/// Build the xrce-serial-listener example binary (cached).
+/// The XRCE listener that runs over a serial link: the plain workspace XRCE
+/// listener image (see [`build_xrce_serial_talker`]).
 pub fn build_xrce_serial_listener() -> TestResult<&'static Path> {
-    XRCE_SERIAL_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/serial-listener",
-                "xrce-serial-listener",
-                None,
-                None,
-            )
-        })
-        .map(|p| p.as_path())
+    build_xrce_listener()
 }
 
 /// rstest fixture that provides the xrce-serial-talker binary path.

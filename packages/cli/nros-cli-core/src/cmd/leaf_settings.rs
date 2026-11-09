@@ -2385,9 +2385,10 @@ mod board_crate_tests {
         // images (generated entries, no leaf `Cargo.toml`) — 98 -> 97 for the
         // FreeRTOS pilot's 5 Rust pair leaves (W3), 97 -> 93 for threadx-linux's
         // Rust service and action leaves (W4), 93 -> 88 for NuttX arm's Rust
-        // listener, service and action leaves (W5).
+        // listener, service and action leaves (W5), 88 -> 86 for the linux
+        // Rust serial talker and listener (W6: serial is a runtime locator).
         assert!(
-            on_selection >= 88,
+            on_selection >= 86,
             "only {on_selection} leaves on the selection package"
         );
     }

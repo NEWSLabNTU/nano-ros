@@ -478,7 +478,7 @@ image, so there is one parser and one spelling. A variant is not a cell axis:
 its row is modelled by the same coordinate's Example cell as the plain role,
 and a test asks for it by name (`resolve_coord_variant`).
 
-- **linux callback clients (in review).** The C and C++ `service-client-callback`
+- **linux callback clients (merged, #3394).** The C and C++ `service-client-callback`
   leaves and the C++ `action-client-callback` leaf become node packages
   (`service_client_callback_pkg` in `c` and `cpp`, `action_client_callback_pkg`
   in `cpp`) and images `linux_service_client_callback[_cyclonedds]` and
@@ -494,6 +494,12 @@ and a test asks for it by name (`resolve_coord_variant`).
   generated entry cannot express on the host. RFC-0122 D10 keeps such a
   `main`. On mps2-an385 the RTIC pattern is a board (`rtic-mps2-an385`), so
   those leaves become images.
+- **linux serial (in review).** On linux a serial link is not a build
+  configuration: the locator is runtime env, and the XRCE session routes a
+  `serial://<path>` locator to its POSIX serial transport. The
+  `rust/serial-{talker,listener}` leaves retire, with their 2 rows, and
+  `xrce.rs`'s serial cases run the plain XRCE talker witness and the
+  `linux_listener_xrce` image with `NROS_LOCATOR=serial://<pty>`.
 
 ### W7 — Retire the old leaves, add `road_witness_e2e`
 

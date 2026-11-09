@@ -2424,16 +2424,6 @@ dir = "examples/linux/rust/action-client-rtic"
 [[fixture]]
 platform = "linux"
 lang = "rust"
-dir = "examples/linux/rust/serial-talker"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/serial-listener"
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
 dir = "examples/linux/rust/custom-transport-talker"
 
 [[fixture]]
