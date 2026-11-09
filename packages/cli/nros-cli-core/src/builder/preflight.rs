@@ -728,7 +728,7 @@ pub fn check_host_toolchain(project: &Path, nano_ros_root: Option<&Path>) -> Vec
     let on_path = |p: &str| which_on_path(p);
     let host_target = || {
         let host = crate::orchestration::metadata_build::host_triple();
-        installed_rust_targets(project)
+        installed_rust_targets(project, None)
             .as_ref()
             .map(|list| (host.clone(), list.iter().any(|l| l == &host)))
     };
