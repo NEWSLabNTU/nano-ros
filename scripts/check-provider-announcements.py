@@ -236,6 +236,14 @@ REACH_EXEMPT = (
         "that own it; it is a FIXTURE, not a provider this tree ships",
         None,
     ),
+    (
+        "packages/testing/nros-tests/fixtures/out-of-tree-rmw/*",
+        "RFC-0071 D16's out-of-tree `acme` provider: it stands for a THIRD "
+        "PARTY's backend, so no in-tree family reaches it by design; "
+        "`out_of_tree_rmw_build` and `out_of_tree_rmw_e2e` resolve, build and "
+        "run it through the provider scan, which is the check its announcement gets",
+        None,
+    ),
 )
 
 # SELF-TEST ONLY, prepended to [`REACH_EXEMPT`] for the duration of the control
@@ -501,6 +509,13 @@ def self_test(quiet=False):
                 tmp, "packages/cli/nros-cli-core/tests/fixtures/w/nros-board.toml"
             ),
             '[[board]]\nnames = ["x"]\n',
+        )
+        _write(
+            os.path.join(
+                tmp,
+                "packages/testing/nros-tests/fixtures/out-of-tree-rmw/src/x/nros-rmw.toml",
+            ),
+            "[rmw]\n",
         )
 
     def only(problems, needle, why):

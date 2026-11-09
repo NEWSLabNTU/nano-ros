@@ -20,7 +20,7 @@ nros-log = { version = "*", default-features = false }
 [features]
 default = []
 # The board descriptor's `platform_feature` (`linux` → `platform-posix`).
-platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
+platform-posix = ["nros-rmw-zenoh/platform-posix"]
 # The ROS edition (`[rmw.link] edition_feature`); the zenoh key expression
 # depends on it, so it is forwarded.
 ros-humble = ["nros-rmw-zenoh/ros-humble"]
