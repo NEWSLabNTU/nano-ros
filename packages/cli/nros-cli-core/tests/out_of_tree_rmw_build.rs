@@ -81,6 +81,15 @@ fn scratch_copy() -> PathBuf {
             common::unique_stamp()
         ))
         .join("out-of-tree-rmw");
+    // The copy holds an rmw provider (`acme`), and the tests that scan this
+    // whole checkout from disk (`cargo-nano-ros`'s
+    // `every_announced_backend_resolves_through_the_scan`) would find it beside
+    // the tracked fixture and refuse two claims of `acme` in one root. The
+    // provider scan's own ignore marker on the copy's PARENT hides it from a
+    // walk that comes down through `tmp/`, and leaves the copy itself — the
+    // root this test's build scans from — untouched.
+    fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    fs::write(dest.parent().unwrap().join("COLCON_IGNORE"), "").unwrap();
     let files = common::tracked_files(&root, FIXTURE);
     assert!(
         files
