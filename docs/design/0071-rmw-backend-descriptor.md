@@ -584,7 +584,10 @@ Rejected, for owned entries (maintainer decision, 2026-11-05):
 
 ## Amendment 2026-11-07 — `nros build` selects an RMW through the provider scan (issue 2295)
 
-**Status: Accepted (user ruling, 2026-11-07), not yet implemented.** The
+**Status: Accepted (user ruling, 2026-11-07); implemented by phase-545
+W1–W3 (2026-11-09), issue 2295 resolved. D16 step 3 (Zephyr, `west_app`) is
+a follow-up by user ruling (2026-11-09):
+[issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md).** The
 ruling: it enables third-party RMW backends on the `nros build` road. Issue
 2295 is homed here and stays open until D14–D16 are implemented and D16's
 acceptance passes; [phase-545](../roadmap/phase-545-rmw-provider-scan-build-road.md)
@@ -770,6 +773,8 @@ Left to the implementing phase (the 2026-11-07 ruling accepted D14–D16
 without deciding it): whether step 3 (Zephyr) belongs in this RFC's
 acceptance or in a follow-up phase, since it needs the Zephyr SDK on the
 lane that runs it.
+Decided 2026-11-09 (user ruling): a follow-up,
+[issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md).
 
 ## What this does NOT change
 
