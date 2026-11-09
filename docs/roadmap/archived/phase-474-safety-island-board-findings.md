@@ -1313,5 +1313,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1806](../../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | The constrained-link zenoh changes from phase-473 have never run against the full Autoware graph on the island. |
+| [#1806](../../issues/archived/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | The constrained-link zenoh changes from phase-473 have never run against the full Autoware graph on the island. |
 | [#1822](../../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | The zenoh-rs CAN link's priority mapping cannot be switched on because a QoS `Join` exceeds the CAN FD MTU. It waits on upstream. |

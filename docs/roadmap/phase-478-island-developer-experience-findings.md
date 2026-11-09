@@ -427,7 +427,9 @@ It covers three channels, in order:
 3. RTT last, with the island's four-row table and the 16 KiB up-buffer.
 
 The page says why the order matters: issue 0913 measured that attaching the
-probe kills a serial zenoh session. No `nros-rtt` snippet: the SEGGER module
+probe kills a serial zenoh session (resolved 2026-11-09 in phase-512: only a
+halt past the 60 s lease drops it, and the board re-opens on its own; the page
+says so). No `nros-rtt` snippet: the SEGGER module
 is not in the west allowlist, and adding it is a module decision
 (`[zephyr_module.*]`), not a documentation one.
 
@@ -595,7 +597,7 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 0772](../issues/0772-freertos-lwip-wall-clock-epoch.md) — FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove the Zephyr one runs a FreeRTOS board too
-- [issue 0913](../issues/0913-the-debugger-is-not-a-passive-instrument.md) — attaching pyocd RTT kills the zenoh session — the debugger perturbs the system under test, and issue 0879 makes the p …
+- [issue 0913](../issues/archived/0913-the-debugger-is-not-a-passive-instrument.md) -- attaching pyocd RTT kills the zenoh session. Moved to phase-512 and resolved there 2026-11-09: halts under the 60 s lease keep the session, longer ones recover without a router restart.
 - [issue 1957](../issues/1957-s32ds-image-crate-unverified-in-ide.md) — s32ds builds its staticlib through the generated image crate since phase-506 W4a and has not been built in the S32 Design Studio since
 
 ## Issues homed here (2026-11-02)
