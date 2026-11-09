@@ -78,9 +78,55 @@ Sweep: `git grep -nE -- '--retry( |-delay)|curl .*releases/download' -- scripts 
 `scripts/sdk/measure-dist-floor.py` already retries 8 times with
 `--retry-all-errors`. The rest are test fixtures or fetch no release.
 
-Not done: caching the SDK store across merge-group jobs (`actions/cache`).
-That would remove most of these fetches, and it is a workflow change with
-its own 10 GB cache budget to weigh, so it is left for a separate change.
+## Follow-up: cache the store across merge groups (proposed, 2026-11-10)
+
+The retry above covers an outage. A cache would avoid most of the fetches in
+the first place. This section is measured, and the proposal was agreed with
+the phase-489 lead before any workflow is written.
+
+**What each merge group downloads.** Read from merge-group gate run
+42639225486, all four `template-copy-out` shards (the `nros setup` lines in
+each job log). Sizes are the release assets' `Content-Length`:
+
+| shard | fetches | size |
+| --- | --- | --- |
+| `[zephyr]` | zephyr-sdk 0.16.8 (zephyrproject's own release) | 1378 MiB |
+| `[zephyr]` | renode 1.17.0 | 60 MiB |
+| `[zephyr]` | clang-format 17.0.6-nros1 | 1 MiB |
+| `[1/3]`, `[2/3]`, `[3/3]` | arm-none-eabi-gcc 13.2-nros5, once per shard | 192 MiB x 3 |
+| all four | corrosion 0.6.1-nros1, built from source (no prebuilt) | time, not bytes |
+| (this issue's runs) | xrce-agent 2.4.3-nros1, cyclonedds 0.10.5-nros1 | 3 MiB, under 1 MiB |
+
+That is about 2 GiB and four corrosion source builds per merge group.
+
+**The budget.** The repository's Actions cache holds 8.6 of 10 GiB
+(`gh api repos/NEWSLabNTU/nano-ros/actions/cache/usage`, 2026-11-09). It is
+almost all `nros-cli-Linux-*` target dirs (about 3 GiB each) and
+`sccache-Linux-check-*` (about 2 GiB each), and those are re-keyed on most
+pushes.
+
+**Proposal.** One shared entry of about 200 MiB, which every copy-out shard
+restores and only a cache miss saves:
+
+- Contents: the store dirs of the NEWSLabNTU-hosted dists the shards fetch
+  (arm-none-eabi-gcc, xrce-agent, cyclonedds, clang-format) and the built
+  corrosion. These are the rows whose fetch can 504, plus the one that costs a
+  build.
+- Key: `sdk-store-` plus a hash of exactly those `[tool.*]` rows of
+  `nros-sdk-index.toml` (version, and `dist.linux-x86_64` url and sha256), so
+  it moves only when one of those pins moves. Between pin bumps every merge
+  group hits.
+- Not cached: zephyr-sdk (1378 MiB, 14 % of the whole budget, from a
+  different CDN). It stays a download, which this issue's retry now covers.
+
+**Eviction.** GitHub evicts least-recently-used entries once the repository
+passes 10 GiB. A 200 MiB entry read by every merge group stays recent, so it
+outlives the 3 GiB CLI and 2 GiB sccache entries that churn around it. The
+risk runs the other way: one more save of a 3 GiB `nros-cli` entry already
+puts the budget over the limit, and evicts whatever was least recent. So the
+same change should also bound the CLI entries. They should be saved from
+`main` only, or carry a narrower restore prefix, so stale per-PR copies stop
+filling the budget. Measure `cache/usage` before and after.
 
 ## Acceptance
 
