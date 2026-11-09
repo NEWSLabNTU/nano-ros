@@ -74,10 +74,17 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
             // A prebuilt `rust-std` exists, so "is it installed" is the right
             // question and `rustup target add` is the answer.
             Provisioning::Rustup => {
-                if !rust_target_installed(target, root) {
+                // Issue 2370 — on the toolchain the build will run: the pin,
+                // for a project outside the checkout with no override.
+                let channel = board_rust_channel(board, nano_ros_root, Some(root));
+                if !rust_target_installed(target, channel.as_deref(), root) {
+                    let on = channel
+                        .as_deref()
+                        .map(|c| format!(" --toolchain {c}"))
+                        .unwrap_or_default();
                     out.push(Missing {
                         what: format!("Rust target `{target}` (board `{}`)", board.names[0]),
-                        remedy: format!("rustup target add {target}"),
+                        remedy: format!("rustup target add {target}{on}"),
                     });
                 }
             }
@@ -100,7 +107,7 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
             // preflight refused a host whose nightly HAD `rust-src` because the
             // default did not, and would have passed one whose nightly lacked it.
             Provisioning::BuildStd => {
-                let channel = board_rust_channel(board, nano_ros_root);
+                let channel = board_rust_channel(board, nano_ros_root, Some(root));
                 if !rust_component_installed("rust-src", channel.as_deref(), root) {
                     let on = channel
                         .as_deref()
@@ -161,7 +168,7 @@ pub fn check_zephyr_rust(
         return out;
     };
     if let Some(target) = z.rust_target_for_host()
-        && !rust_target_installed(&target, root)
+        && !rust_target_installed(&target, None, root)
     {
         out.push(Missing {
             what: format!(
@@ -328,20 +335,99 @@ pub(crate) fn pinned_nightly(nano_ros_root: Option<&Path>) -> Option<String> {
         .map(str::to_string)
 }
 
-/// The Rust channel cargo must build `board` with: the pinned nightly for a
-/// `toolchain = "nightly"` board (its `cargo_config` carries `[unstable]
-/// build-std`, which a stable cargo ignores — and then fails with `can't find
-/// crate for core`), else `None` (whatever rustup picks). Issue 2149: the
-/// preflight asked this channel for `rust-src` while the build itself ran on
-/// the default, so a NuttX Rust image from `nros build` could not compile.
+/// The pinned build toolchain: the row of `config/rust-toolchains.txt` that
+/// the root `rust-toolchain.toml` declares (`[rust.toolchain.stable]` in the
+/// index). `None` when the listing is unreadable.
+pub(crate) fn pinned_stable(nano_ros_root: Option<&Path>) -> Option<String> {
+    let text = std::fs::read_to_string(nano_ros_root?.join("config/rust-toolchains.txt")).ok()?;
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .find(|l| {
+            l.split_whitespace()
+                .skip(3)
+                .any(|f| f == "rust-toolchain.toml")
+        })
+        .and_then(|l| l.split_whitespace().next())
+        .map(str::to_string)
+}
+
+/// Issue 2370 — the toolchain cargo builds a project at `dir` with when
+/// nothing there chose one: the pinned build toolchain ([`pinned_stable`]),
+/// which is the one `nros setup` provisions board targets and `llvm-tools` on.
+///
+/// A project outside this checkout (a copied-out template, a scaffolded
+/// workspace, a user's own tree) has no `rust-toolchain.toml` above it, so
+/// rustup answers with the host's DEFAULT. That default need not have what the
+/// board links with: measured, a default `stable` 1.98.1 whose manifest lists
+/// `rust-lld` while the file is absent failed a bare-metal link with "linker
+/// `rust-lld` not found", green on the pin. CMake's
+/// `nros_pin_default_rust_toolchain` (issue 1914) made the same decision for
+/// its road; this is the cargo road's spelling of the same rule:
+///
+/// - a set `RUSTUP_TOOLCHAIN` is a decision, and is kept (`None`);
+/// - any rustup override for `dir` (a project's own `rust-toolchain.toml`, a
+///   `rustup override`) is kept: `rustup show active-toolchain` says
+///   `(default)` exactly when none applies;
+/// - a pin that is not installed is not forced: the default may still build
+///   a host image, and preflight names what a cross build lacks.
+///
+/// In this checkout the root `rust-toolchain.toml` is an override, so nothing
+/// changes in-tree.
+pub(crate) fn default_pin_for(dir: &Path, nano_ros_root: Option<&Path>) -> Option<String> {
+    if std::env::var_os("RUSTUP_TOOLCHAIN").is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    let pin = pinned_stable(nano_ros_root)?;
+    let active = rustup_in(dir)
+        .args(["show", "active-toolchain"])
+        .output()
+        .ok()?;
+    let list = rustup_in(dir).args(["toolchain", "list"]).output().ok()?;
+    pin_when_default(
+        &pin,
+        &String::from_utf8_lossy(&active.stdout),
+        &String::from_utf8_lossy(&list.stdout),
+    )
+}
+
+/// [`default_pin_for`]'s decision over rustup's two answers: `active` is
+/// `rustup show active-toolchain`, `list` is `rustup toolchain list`.
+fn pin_when_default(pin: &str, active: &str, list: &str) -> Option<String> {
+    // Empty: rustup named no toolchain at all (no default set), and the pin is
+    // then the only answer there is.
+    if !active.trim().is_empty() && !active.contains("(default)") {
+        return None;
+    }
+    let installed = list.lines().any(|l| {
+        l.split_whitespace()
+            .next()
+            .is_some_and(|t| t == pin || t.starts_with(&format!("{pin}-")))
+    });
+    installed.then(|| pin.to_string())
+}
+
+/// The Rust channel cargo must build `board` with, for a project at
+/// `project` (its workspace or leaf directory):
+/// - the pinned nightly for a `toolchain = "nightly"` board (its
+///   `cargo_config` carries `[unstable] build-std`, which a stable cargo
+///   ignores — and then fails with `can't find crate for core`). Issue 2149:
+///   the preflight asked this channel for `rust-src` while the build itself
+///   ran on the default, so a NuttX Rust image from `nros build` could not
+///   compile.
+/// - else the pinned build toolchain when nothing at `project` chose one
+///   ([`default_pin_for`], issue 2370);
+/// - else `None` (whatever rustup picks there).
 #[must_use]
 pub(crate) fn board_rust_channel(
     board: &BoardDescriptor,
     nano_ros_root: Option<&Path>,
+    project: Option<&Path>,
 ) -> Option<String> {
-    (board.toolchain == crate::orchestration::board_descriptor::Toolchain::Nightly)
-        .then(|| pinned_nightly(nano_ros_root))
-        .flatten()
+    if board.toolchain == crate::orchestration::board_descriptor::Toolchain::Nightly {
+        return pinned_nightly(nano_ros_root);
+    }
+    project.and_then(|d| default_pin_for(d, nano_ros_root))
 }
 
 /// A `rustup` command that answers for the toolchain cargo will BUILD with in
@@ -408,20 +494,22 @@ fn rust_component_installed(component: &str, toolchain: Option<&str>, root: &Pat
 ///
 /// Keyed by the directory asked from (issue 2288): two workspaces in one
 /// process may pin different toolchains, and each answer is about its own.
-fn installed_rust_targets(root: &Path) -> Option<Vec<String>> {
+fn installed_rust_targets(root: &Path, toolchain: Option<&str>) -> Option<Vec<String>> {
+    type Key = (std::path::PathBuf, Option<String>);
     static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Option<Vec<String>>>>,
+        std::sync::Mutex<std::collections::HashMap<Key, Option<Vec<String>>>>,
     > = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
     let mut map = cache
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    map.entry(root.to_path_buf())
+    map.entry((root.to_path_buf(), toolchain.map(str::to_string)))
         .or_insert_with(|| {
-            let out = rustup_in(root)
-                .args(["target", "list", "--installed"])
-                .output()
-                .ok()?;
+            let mut args = vec!["target", "list", "--installed"];
+            if let Some(t) = toolchain {
+                args.extend(["--toolchain", t]);
+            }
+            let out = rustup_in(root).args(&args).output().ok()?;
             if !out.status.success() {
                 return None;
             }
@@ -435,8 +523,10 @@ fn installed_rust_targets(root: &Path) -> Option<Vec<String>> {
         .clone()
 }
 
-fn rust_target_installed(target: &str, root: &Path) -> bool {
-    match installed_rust_targets(root) {
+/// Whether `target` is installed on `toolchain`, or else on the toolchain
+/// `root` resolves to ([`rustup_in`]).
+fn rust_target_installed(target: &str, toolchain: Option<&str>, root: &Path) -> bool {
+    match installed_rust_targets(root, toolchain) {
         // Cannot answer -- see above.
         None => true,
         Some(list) => list.iter().any(|l| l == target),
@@ -919,7 +1009,7 @@ mod tests {
         //
         // Issue 0726's class exactly: a forked process that failed to START
         // under a fan-out, reported as a finding about the source tree.
-        let installed = rust_target_installed("nros-not-a-real-triple", tmp.path());
+        let installed = rust_target_installed("nros-not-a-real-triple", None, tmp.path());
         let m = check(&b, tmp.path(), None);
         if installed {
             // No rustup on this host: the check reports installed by design
@@ -966,7 +1056,7 @@ mod tests {
         // ...and with NO checkout to read the list from, the old conservative
         // behaviour stands rather than a silent pass.
         let blind = check(&b, ws.path(), None);
-        if !rust_target_installed("armv7a-nuttx-eabihf", ws.path()) {
+        if !rust_target_installed("armv7a-nuttx-eabihf", None, ws.path()) {
             assert!(
                 blind
                     .iter()
@@ -1046,12 +1136,69 @@ mod tests {
         let cat = BoardCatalog::load(&root).expect("catalog");
         let nuttx =
             crate::cmd::board_facts::resolve_board(&cat, "qemu-armv7a-nuttx").expect("nuttx board");
-        let channel = board_rust_channel(nuttx, Some(&root)).expect("a nightly channel");
+        let channel = board_rust_channel(nuttx, Some(&root), None).expect("a nightly channel");
         assert!(channel.starts_with("nightly-"), "{channel}");
         assert_eq!(Some(channel), pinned_nightly(Some(&root)));
         let freertos = crate::cmd::board_facts::resolve_board(&cat, "mps2-an385-freertos")
             .expect("freertos board");
-        assert_eq!(board_rust_channel(freertos, Some(&root)), None);
+        assert_eq!(board_rust_channel(freertos, Some(&root), None), None);
+    }
+
+    /// Issue 2370 — the pinned build toolchain is the root `rust-toolchain.toml`'s
+    /// channel, read from the shipped listing.
+    #[test]
+    fn the_pinned_stable_is_the_root_rust_toolchain_channel() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let text = std::fs::read_to_string(root.join("rust-toolchain.toml")).expect("pin");
+        let channel = text
+            .lines()
+            .find_map(|l| {
+                let l = l.trim();
+                l.strip_prefix("channel")
+                    .and_then(|r| r.split('"').nth(1))
+                    .map(str::to_string)
+            })
+            .expect("channel");
+        assert_eq!(pinned_stable(Some(&root)), Some(channel));
+    }
+
+    /// Issue 2370 — a project with no rustup override builds on the pin when
+    /// it is installed; an override, or a pin not installed, is left alone.
+    #[test]
+    fn a_project_with_no_override_builds_on_the_installed_pin() {
+        let list = "stable-x86_64-unknown-linux-gnu (default)\n1.99.0-x86_64-unknown-linux-gnu\n";
+        assert_eq!(
+            pin_when_default(
+                "1.99.0",
+                "nightly-x86_64-unknown-linux-gnu (default)\n",
+                list
+            ),
+            Some("1.99.0".to_string())
+        );
+        // No default at all: the pin is the only answer.
+        assert_eq!(
+            pin_when_default("1.99.0", "", list),
+            Some("1.99.0".to_string())
+        );
+        // A project's own rust-toolchain.toml is its decision.
+        assert_eq!(
+            pin_when_default(
+                "1.99.0",
+                "1.97.1-x86_64-unknown-linux-gnu (overridden by '/p/rust-toolchain.toml')\n",
+                list
+            ),
+            None
+        );
+        // Not installed: keep the default rather than ask for a toolchain
+        // nothing provisioned.
+        assert_eq!(
+            pin_when_default(
+                "1.99.0",
+                "stable (default)\n",
+                "stable-x86_64-unknown-linux-gnu\n"
+            ),
+            None
+        );
     }
 
     /// Issue 2312 — the Nucleo's C/C++ runtime builds on the pinned nightly
