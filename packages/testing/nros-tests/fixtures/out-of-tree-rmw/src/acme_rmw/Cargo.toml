@@ -1,0 +1,28 @@
+[package]
+name = "acme-rmw"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "An out-of-tree nano-ros RMW backend, `acme`, that delegates to zenoh."
+
+[lib]
+name = "acme_rmw"
+path = "src/lib.rs"
+
+# Every nano-ros crate is reached BY VERSION, as a third party's crate would
+# reach it; the image's `[patch]` set points each one at the SDK it builds
+# against (RFC-0071 D15, "Patches").
+[dependencies]
+nros-rmw-cffi = { version = "*", default-features = false, features = ["alloc"] }
+nros-rmw-zenoh = { version = "*", default-features = false }
+nros-log = { version = "*", default-features = false }
+
+[features]
+default = []
+# The board descriptor's `platform_feature` (`linux` → `platform-posix`).
+platform-posix = ["nros-rmw-zenoh/platform-posix", "nros-rmw-zenoh/std"]
+# The ROS edition (`[rmw.link] edition_feature`); the zenoh key expression
+# depends on it, so it is forwarded.
+ros-humble = ["nros-rmw-zenoh/ros-humble"]
+ros-iron = ["nros-rmw-zenoh/ros-iron"]
+ros-jazzy = ["nros-rmw-zenoh/ros-jazzy"]

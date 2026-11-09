@@ -1276,6 +1276,74 @@ def _require_image(entry, system_toml, image):
         )
 
 
+_RMW_PROVIDES = re.compile(r'<nano_ros_provides\s+kind="rmw"\s+name="([^"]+)"\s*/>')
+
+
+def _tracked(prefix):
+    """Tracked files under `prefix` (repo-relative), as repo-relative strings."""
+    repo = Path(__file__).resolve().parents[2]
+    out = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "-z", "--", prefix],
+        check=True,
+        capture_output=True,
+    ).stdout.decode()
+    return repo, [f for f in out.split("\0") if f]
+
+
+def _in_tree_rmw_crates():
+    """`{cargo crate: canonical backend name}` for every in-tree RMW provider.
+
+    Read off the same two files the provider scan reads (`package.xml`'s first
+    `<nano_ros_provides kind="rmw">` and the sibling `nros-rmw.toml`'s
+    `[rmw.provides.cargo] crate`), never listed here.
+    """
+    repo, files = _tracked("packages/rmw")
+    crates = {}
+    for f in files:
+        if not f.endswith("/nros-rmw.toml"):
+            continue
+        d = (repo / f).parent
+        xml = d / "package.xml"
+        if not xml.is_file():
+            continue
+        names = _RMW_PROVIDES.findall(xml.read_text(encoding="utf-8"))
+        with open(repo / f, "rb") as fh:
+            desc = tomllib.load(fh)
+        crate = ((desc.get("rmw") or {}).get("provides") or {}).get("cargo", {}).get("crate")
+        if names and crate:
+            crates[crate] = names[0]
+    return crates
+
+
+def _out_of_tree_backends_linked(entry, name):
+    """The IN-TREE backends a workspace RMW provider `name` links — RFC-0071 D16.
+
+    An out-of-tree backend (`rmw = "acme"`, provided by a package in the row's
+    own workspace) has no coordinate of its own: the coordinate axis names the
+    in-tree backends. What its image LINKS is the provider's crate plus every
+    in-tree backend crate that crate depends on, read off its `Cargo.toml` —
+    the fixture's `acme` delegates to zenoh, so its image links zenoh and a
+    router is its peer. Empty when `name` is no workspace provider's.
+    """
+    in_tree = _in_tree_rmw_crates()
+    if name in in_tree.values():
+        return set()
+    repo, files = _tracked(entry["dir"])
+    linked = set()
+    for f in files:
+        if not f.endswith("/package.xml"):
+            continue
+        xml = repo / f
+        if name not in _RMW_PROVIDES.findall(xml.read_text(encoding="utf-8")):
+            continue
+        manifest = xml.parent / "Cargo.toml"
+        if not manifest.is_file():
+            continue
+        deps = _load_toml(entry, manifest).get("dependencies") or {}
+        linked.update(in_tree[d] for d in deps if d in in_tree)
+    return linked
+
+
 def _require_image_rmw(entry, system_toml, image):
     """The row's `rmw` must be one the image it names actually LINKS — issue 0831.
 
@@ -1316,6 +1384,10 @@ def _require_image_rmw(entry, system_toml, image):
     selected = block.get("rmw") or defaults.get("rmw") or header.get("rmw")
     backends = {selected} if selected else set()
     backends.update(d.get("rmw") for d in system.get("domain", []) if d.get("rmw"))
+    # RFC-0071 D16 — an out-of-tree backend links the in-tree backends its
+    # crate depends on; those are what the coordinate can name.
+    for b in list(backends):
+        backends.update(_out_of_tree_backends_linked(entry, b))
 
     if not backends or entry["rmw"] in backends:
         return

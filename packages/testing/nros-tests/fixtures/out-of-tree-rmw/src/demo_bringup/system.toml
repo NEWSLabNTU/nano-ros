@@ -1,0 +1,20 @@
+# RFC-0071 D16 (phase-545 W3) — the out-of-tree RMW acceptance image. `acme` is
+# provided by `src/acme_rmw` in this workspace and by nothing in the nano-ros
+# tree, so `nros build` can only find it through the provider scan, and the
+# `linux` board (no `rmw-acme` feature) can only link it through D15's entry
+# path dependency.
+
+[system]
+name = "out_of_tree_rmw"
+rmw = "acme"
+domain_id = 0
+default_launch = "system.launch.xml"
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[image.linux]
+board = "linux"
+rmw = "acme"

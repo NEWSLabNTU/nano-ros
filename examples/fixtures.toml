@@ -693,6 +693,24 @@ image = "warn"
 codegen_out = "build-workspace-codegen/probe_bringup"
 build_subdir = "build/posix-zenoh-linux-cfga50aa93c83-probe_bringup/cmake"
 
+# RFC-0071 D16 step 2 (phase-545 W3, issue 2295) — an RMW backend nano-ros does
+# not know about. The image declares `rmw = "acme"`, provided by the fixture's
+# own `src/acme_rmw` (nothing under `packages/` outside the fixture names it),
+# so `nros build` finds it through the provider scan and the generated entry
+# links it itself (D15: the `linux` board has no `rmw-acme`). `acme` delegates
+# to zenoh, so the row's COORDINATE is the wire it speaks, `zenoh` — the
+# backend the artifact links (`rmw_coordinate_truth`) and the router it dials.
+# Consumed by tests/out_of_tree_rmw_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-out-of-tree-rmw"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/out-of-tree-rmw"
+bringup = "src/demo_bringup"
+image = "linux"
+target_dir = "target-fixtures"
+
 [[workspace_fixture]]
 id = "workspace-c-native"
 platform = "linux"

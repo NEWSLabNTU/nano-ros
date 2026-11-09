@@ -2748,6 +2748,31 @@ pub fn build_workspace_rust_entry(
     )
 }
 
+/// [`build_workspace_rust_entry`] for a workspace that is not under
+/// `examples/workspaces/` (a test-only workspace under
+/// `packages/testing/nros-tests/fixtures/`), resolved from its row alone — the
+/// cargo sibling of [`build_workspace_cmake_generated_entry`].
+pub fn build_workspace_rust_generated_entry(
+    fixture_id: &str,
+    binary_name: &str,
+) -> TestResult<PathBuf> {
+    assert_generated_entry_name(fixture_id, binary_name)?;
+    let target_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
+    let binary_path = target_dir.join(format!("{}/{}", cargo_target_profile_dir(), binary_name));
+    require_prebuilt_workspace_binary(
+        fixture_id,
+        &binary_path,
+        &target_dir.join(workspace_fixture_stamp_name(fixture_id)),
+    )
+}
+
+/// RFC-0071 D16 (phase-545 W3) — the `out-of-tree-rmw` fixture's image: a
+/// talker on the workspace-provided RMW backend `acme`, row
+/// `workspace-out-of-tree-rmw`.
+pub fn build_native_out_of_tree_rmw_entry() -> TestResult<PathBuf> {
+    build_workspace_rust_generated_entry("workspace-out-of-tree-rmw", "linux_entry")
+}
+
 /// [`build_workspace_rust_entry`] for a CROSS row: the row's `target` triple
 /// sits between the target dir and the profile, as cargo lays it out.
 pub fn build_workspace_rust_cross_entry(
