@@ -1,7 +1,7 @@
 ---
 id: 2385
 title: "An entry's `_ws` link breaks a workspace generated crate whose path climbs to nano-ros, so `nros configure` in examples/workspaces/features fails on a cold tree"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [build, cli, fixtures, zephyr]
@@ -9,8 +9,8 @@ related: [2322, phase-523]
 found: 2026-11-10
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)**,
-where issue 2322 ([archived](archived/2322-image-not-reproducible-across-paths.md))
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)**,
+where issue 2322 ([open again](../2322-image-not-reproducible-across-paths.md))
 was fixed. Found by phase-531 W6 while it was building Zephyr fixtures.
 
 ## Measured
@@ -80,3 +80,11 @@ No fix. Options for the owner: emit generated-crate paths through the same
 `_ws` spelling, rewrite them to absolute paths at link time, or resolve the
 link before cargo sees it. All three trade against 2322's byte-identity goal,
 so the choice belongs to 2322's owner.
+
+## Resolution (2026-11-10)
+
+Reverted #3352 (69c5bcf04c). Main is back to the pre-`_ws` layout, so a
+workspace generated crate's relative climb to nano-ros resolves from its real
+directory again. Issue 2322 reopens; its redo must keep every relative path a
+routed crate carries inside the workspace, verified by a cold
+`just zephyr build-fixtures`.

@@ -1561,8 +1561,6 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     manifest_arg.clone(),
                     "--config".to_string(),
                     config_arg.clone(),
-                    "--config".to_string(),
-                    remap_workspace_config(&root),
                 ];
                 if let Some(profile) = image.profile.as_deref() {
                     // `--profile` rather than `--release`: a named profile is
@@ -4982,7 +4980,7 @@ fn generate_entry(
                 })
                 .unwrap_or(false)
             {
-                let rel = crate::builder::paths::entry_dep_rel(
+                let rel = crate::builder::paths::relative_or_err(
                     &entry_dir_for_deps,
                     &nros_root.join("packages/rmw/bridge"),
                 )
@@ -5218,7 +5216,7 @@ fn interface_typesupport_specs(
     order
         .into_iter()
         .map(|name| match packages.iter().find(|p| p.name == name) {
-            Some(p) => crate::builder::paths::entry_dep_rel(entry_dir, &p.dir)
+            Some(p) => crate::builder::paths::relative_or_err(entry_dir, &p.dir)
                 .map(|rel| format!("{name}={rel}"))
                 .map_err(|e| eyre::eyre!("{e}")),
             None => Ok(name),
@@ -5442,7 +5440,7 @@ fn bridge_entry_deps(
         else {
             continue;
         };
-        let rel = crate::builder::paths::entry_dep_rel(entry_dir, &path)
+        let rel = crate::builder::paths::relative_or_err(entry_dir, &path)
             .map_err(|e| eyre::eyre!("{e}"))?;
         out.push(format!("{krate} = {{ path = \"{rel}\" }}"));
     }
@@ -5478,7 +5476,7 @@ fn bridge_entry_deps(
                 })
                 .find(|p| p.join("Cargo.toml").is_file())
         {
-            let rel = crate::builder::paths::entry_dep_rel(entry_dir, &path)
+            let rel = crate::builder::paths::relative_or_err(entry_dir, &path)
                 .map_err(|e| eyre::eyre!("{e}"))?;
             out.push(format!("nros-rmw-cyclonedds = {{ path = \"{rel}\" }}"));
         }
@@ -5498,7 +5496,7 @@ fn bridge_entry_deps(
             let Some(path) = path.filter(|p| p.join("Cargo.toml").is_file()) else {
                 continue;
             };
-            let rel = crate::builder::paths::entry_dep_rel(entry_dir, &path)
+            let rel = crate::builder::paths::relative_or_err(entry_dir, &path)
                 .map_err(|e| eyre::eyre!("{e}"))?;
             out.push(format!(
                 "{m} = {{ path = \"{rel}\", default-features = false }}"
@@ -7159,25 +7157,6 @@ fn rmw_user_config_file(bringup_dir: &Path, rmw: Option<&str>) -> Option<PathBuf
 /// the book) and an image id is what a user names. The defect was that
 /// nothing stopped two bringups from both generating `[image.zephyr]` into it:
 /// see [`generated_output_collisions`].
-/// Issue 2322 — the cargo `--config` value that remaps the workspace's
-/// absolute path out of the image (`--remap-path-prefix=<ws>=.`).
-///
-/// With the entry's `_ws` link (`builder::paths::WS_LINK`) the crate hashes no
-/// longer depend on where the workspace sits; what is left is rustc's own
-/// record of it: the debug info's compile directory (the entry root) and any
-/// `include!` of a build script's `$OUT_DIR`, both under `<ws>`. On the command
-/// line, not in `nros-cargo.toml`, because a generated file carries no
-/// absolute path (`builder::paths`). Under `target.'cfg(all())'`, which cargo
-/// JOINS with a board's `target.<triple>.rustflags`; `build.rustflags` would be
-/// ignored beside those.
-pub(crate) fn remap_workspace_config(ws: &Path) -> String {
-    let flag = format!("--remap-path-prefix={}=.", ws.display());
-    format!(
-        "target.'cfg(all())'.rustflags=[{}]",
-        toml::Value::String(flag)
-    )
-}
-
 fn generated_entry_dir(
     root: &Path,
     platform: &str,
@@ -11286,27 +11265,5 @@ mod coordinate_union_tests {
             assert_eq!(dir, Some(PathBuf::from(shared.id())));
         }
         assert_eq!(composed, 2);
-    }
-}
-
-#[cfg(test)]
-mod remap_workspace_tests {
-    use super::remap_workspace_config;
-    use std::path::Path;
-
-    /// Issue 2322 — the remap rides as one cargo `--config` value, a TOML
-    /// array under `target.'cfg(all())'` (joined with a board's
-    /// `target.<triple>.rustflags`), with the path quoted as a TOML string.
-    #[test]
-    fn the_remap_is_a_joined_target_rustflags_value() {
-        let v = remap_workspace_config(Path::new("/w/a b/sensor_ws"));
-        assert_eq!(
-            v,
-            "target.'cfg(all())'.rustflags=[\"--remap-path-prefix=/w/a b/sensor_ws=.\"]"
-        );
-        let (key, value) = v.split_once('=').unwrap();
-        assert_eq!(key, "target.'cfg(all())'.rustflags");
-        let parsed: toml::Value = toml::from_str(&format!("x = {value}")).unwrap();
-        assert_eq!(parsed["x"].as_array().map(Vec::len), Some(1));
     }
 }

@@ -123,11 +123,11 @@ boxes per group; a group missing two or more is not ready.
       backported ([Release support](../../reference/support-status.md#release-support)).
 - [ ] `nros doctor --report` output filed with the build: the release, each
       board's support status and every pinned tool, dated.
-- [ ] The release image built with the release profile, and its digest
-      recorded. The same pin, lock and ROS 2 packages give the same bytes
-      from any project directory, as long as nano-ros itself is installed at
-      the same path (a container gives you both); `nros build` defaults to the
-      debug profile ([Build profiles](../build/build-profiles.md)).
+- [ ] The release image built at a fixed absolute path (a container's
+      `/work`) with the release profile, and its digest recorded. The same
+      pin, lock and ROS 2 packages give the same bytes only at the same path;
+      `nros build` defaults to the debug profile
+      ([Build profiles](../build/build-profiles.md)).
 - [ ] Every QoS policy you use is supported by your backend; an unsupported
       one is reported at entity creation.
 - [ ] A stock ROS 2 node receives what the image publishes, with each custom
