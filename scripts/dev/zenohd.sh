@@ -192,8 +192,11 @@ nros_router_env_exec() {
     local bin="${1:?nros_router_env_exec: a router path is required}" dir prefix
     dir="$(dirname "$bin")"
     prefix="$(dirname "$(dirname "$dir")")"
+    # "Sourced" means the prefix's lib dir is on the loader path, which is
+    # what running needs -- not AMENT_PREFIX_PATH naming the prefix: issue
+    # 2344's runner image sets that as a plain ENV with nothing sourced.
     if [ "$(basename "$dir")" = "rmw_zenoh_cpp" ] && [ -f "$prefix/setup.bash" ] \
-       && [[ ":${AMENT_PREFIX_PATH:-}:" != *":$prefix:"* ]]; then
+       && [[ ":${LD_LIBRARY_PATH:-}:" != *":$prefix/lib:"* ]]; then
         # setup.bash reads unset variables, so it cannot run under `set -u`.
         set +u
         # shellcheck disable=SC1091
