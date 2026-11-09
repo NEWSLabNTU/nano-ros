@@ -266,11 +266,6 @@ pub fn is_cmake_available() -> bool {
 // =============================================================================
 
 static NUTTX_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 // #132 — the role crates (`talker`, `listener`, …) have been LIB-ONLY since
 // Phase 212.L.1 ("Component pkg shape — lib only, no [[bin]]"), so the old
@@ -295,39 +290,41 @@ static NUTTX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// key). Everything else below is asked, not spelled.
 const NUTTX_ARM_TARGET: &str = "armv7a-nuttx-eabihf";
 
+/// One role of a `(NuttxArm, lang, rmw)` pair cell: its workspace image
+/// (phase-535 W5, RFC-0122 D1/D4), resolved by `fixtures::workspace_image`
+/// and cached for the process. The talker LEAVES
+/// (`examples/qemu-armv7a-nuttx/<lang>/talker`) are the board's road
+/// witnesses; the pair cells run the workspace talker.
+pub fn pair_image(
+    lang: crate::matrix::Lang,
+    role: crate::fixtures::workspace_image::PairRole,
+    rmw: crate::matrix::Rmw,
+) -> TestResult<&'static Path> {
+    crate::fixtures::workspace_image::resolve_coord_cached(
+        crate::matrix::PlatformId::NuttxArm,
+        lang,
+        rmw,
+        role,
+    )
+}
+
+/// The Rust roles the pair leaves carried, now workspace images
+/// (phase-535 W5). `require_entry_binary` answers for them from the image.
+fn moved_role(role: &str) -> Option<crate::fixtures::workspace_image::PairRole> {
+    use crate::fixtures::workspace_image::PairRole;
+    Some(match role {
+        "listener" => PairRole::Listener,
+        "service-server" => PairRole::ServiceServer,
+        "service-client" => PairRole::ServiceClient,
+        "action-server" => PairRole::ActionServer,
+        "action-client" => PairRole::ActionClient,
+        _ => return None,
+    })
+}
+
 pub fn build_nuttx_talker() -> TestResult<&'static Path> {
     NUTTX_TALKER_BINARY
         .get_or_try_init(|| require_entry_binary("talker", "talker"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_listener() -> TestResult<&'static Path> {
-    NUTTX_LISTENER_BINARY
-        .get_or_try_init(|| require_entry_binary("listener", "listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_service_server() -> TestResult<&'static Path> {
-    NUTTX_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| require_entry_binary("service-server", "service-server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_service_client() -> TestResult<&'static Path> {
-    NUTTX_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| require_entry_binary("service-client", "service-client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_action_server() -> TestResult<&'static Path> {
-    NUTTX_ACTION_SERVER_BINARY
-        .get_or_try_init(|| require_entry_binary("action-server", "action-server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
-    NUTTX_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| require_entry_binary("action-client", "action-client"))
         .map(|p| p.as_path())
 }
 
@@ -368,6 +365,10 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 /// at the WRONG PROFILE — the ambient one is on disk and the carve-out is not —
 /// rather than "the artifact is not where I looked".
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
+    if let Some(r) = moved_role(role) {
+        return pair_image(crate::matrix::Lang::Rust, r, crate::matrix::Rmw::Zenoh)
+            .map(Path::to_path_buf);
+    }
     let dir_rel = format!("examples/qemu-armv7a-nuttx/rust/{role}");
     let dir = project_root().join(&dir_rel);
     if !dir.exists() {
@@ -434,18 +435,8 @@ pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
 // =============================================================================
 
 static NUTTX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static NUTTX_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static NUTTX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_C_TYPED_CARRIER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
@@ -478,69 +469,9 @@ pub fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-pub fn build_nuttx_cpp_listener() -> TestResult<&'static Path> {
-    NUTTX_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "listener", "cpp_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_cpp_service_server() -> TestResult<&'static Path> {
-    NUTTX_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-server", "cpp_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_cpp_service_client() -> TestResult<&'static Path> {
-    NUTTX_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "service-client", "cpp_service_client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_cpp_action_server() -> TestResult<&'static Path> {
-    NUTTX_CPP_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-server", "cpp_action_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_cpp_action_client() -> TestResult<&'static Path> {
-    NUTTX_CPP_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "action-client", "cpp_action_client"))
-        .map(|p| p.as_path())
-}
-
 pub fn build_nuttx_c_talker() -> TestResult<&'static Path> {
     NUTTX_C_TALKER_BINARY
         .get_or_try_init(|| build_cmake_example("c", "talker", "c_talker"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_c_listener() -> TestResult<&'static Path> {
-    NUTTX_C_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "listener", "c_listener"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_c_service_server() -> TestResult<&'static Path> {
-    NUTTX_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-server", "c_service_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_c_service_client() -> TestResult<&'static Path> {
-    NUTTX_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "service-client", "c_service_client"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_c_action_server() -> TestResult<&'static Path> {
-    NUTTX_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-server", "c_action_server"))
-        .map(|p| p.as_path())
-}
-
-pub fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
-    NUTTX_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "action-client", "c_action_client"))
         .map(|p| p.as_path())
 }
 

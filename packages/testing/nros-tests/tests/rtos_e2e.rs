@@ -459,44 +459,42 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
             second_builder: || freertos::pair_image(MLang::Cpp, PairRole::ActionClient),
         },
 
-        // NuttX — Rust
+        // NuttX (arm) — every language: the workspace images (phase-535 W5)
         (Platform::Nuttx, Lang::Rust, Variant::Pubsub) => BinaryPair {
-            first_builder: nuttx::build_nuttx_talker,
-            second_builder: nuttx::build_nuttx_listener,
+            first_builder: || nuttx::pair_image(MLang::Rust, PairRole::Talker, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::Rust, PairRole::Listener, MRmw::Zenoh),
         },
         (Platform::Nuttx, Lang::Rust, Variant::Service) => BinaryPair {
-            first_builder: nuttx::build_nuttx_service_server,
-            second_builder: nuttx::build_nuttx_service_client,
+            first_builder: || nuttx::pair_image(MLang::Rust, PairRole::ServiceServer, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::Rust, PairRole::ServiceClient, MRmw::Zenoh),
         },
         (Platform::Nuttx, Lang::Rust, Variant::Action) => BinaryPair {
-            first_builder: nuttx::build_nuttx_action_server,
-            second_builder: nuttx::build_nuttx_action_client,
+            first_builder: || nuttx::pair_image(MLang::Rust, PairRole::ActionServer, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::Rust, PairRole::ActionClient, MRmw::Zenoh),
         },
-        // NuttX — C
         (Platform::Nuttx, Lang::C, Variant::Pubsub) => BinaryPair {
-            first_builder: nuttx::build_nuttx_c_talker,
-            second_builder: nuttx::build_nuttx_c_listener,
+            first_builder: || nuttx::pair_image(MLang::C, PairRole::Talker, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::C, PairRole::Listener, MRmw::Zenoh),
         },
         (Platform::Nuttx, Lang::C, Variant::Service) => BinaryPair {
-            first_builder: nuttx::build_nuttx_c_service_server,
-            second_builder: nuttx::build_nuttx_c_service_client,
+            first_builder: || nuttx::pair_image(MLang::C, PairRole::ServiceServer, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::C, PairRole::ServiceClient, MRmw::Zenoh),
         },
         (Platform::Nuttx, Lang::C, Variant::Action) => BinaryPair {
-            first_builder: nuttx::build_nuttx_c_action_server,
-            second_builder: nuttx::build_nuttx_c_action_client,
+            first_builder: || nuttx::pair_image(MLang::C, PairRole::ActionServer, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::C, PairRole::ActionClient, MRmw::Zenoh),
         },
-        // NuttX — C++ (all skipped, but wire up builders for completeness)
         (Platform::Nuttx, Lang::Cpp, Variant::Pubsub) => BinaryPair {
-            first_builder: nuttx::build_nuttx_cpp_talker,
-            second_builder: nuttx::build_nuttx_cpp_listener,
+            first_builder: || nuttx::pair_image(MLang::Cpp, PairRole::Talker, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::Cpp, PairRole::Listener, MRmw::Zenoh),
         },
         (Platform::Nuttx, Lang::Cpp, Variant::Service) => BinaryPair {
-            first_builder: nuttx::build_nuttx_cpp_service_server,
-            second_builder: nuttx::build_nuttx_cpp_service_client,
+            first_builder: || nuttx::pair_image(MLang::Cpp, PairRole::ServiceServer, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::Cpp, PairRole::ServiceClient, MRmw::Zenoh),
         },
         (Platform::Nuttx, Lang::Cpp, Variant::Action) => BinaryPair {
-            first_builder: nuttx::build_nuttx_cpp_action_server,
-            second_builder: nuttx::build_nuttx_cpp_action_client,
+            first_builder: || nuttx::pair_image(MLang::Cpp, PairRole::ActionServer, MRmw::Zenoh),
+            second_builder: || nuttx::pair_image(MLang::Cpp, PairRole::ActionClient, MRmw::Zenoh),
         },
 
         // ThreadX Linux — Rust
@@ -1135,8 +1133,9 @@ fn listener_ready_marker(platform: Platform, lang: Lang) -> &'static str {
         // phase-535 W3 — the FreeRTOS C++ pair cell runs the workspace
         // listener (`examples/workspaces/cpp`), which prints the tutorial's
         // subscription line and no "Waiting for messages" banner. phase-535 W4 —
-        // the threadx-linux C++ cell runs the same workspace listener.
-        (Platform::Freertos | Platform::ThreadxLinux, Lang::Cpp) => {
+        // the threadx-linux C++ cell runs the same workspace listener, and
+        // phase-535 W5 the NuttX (arm) one.
+        (Platform::Freertos | Platform::ThreadxLinux | Platform::Nuttx, Lang::Cpp) => {
             nros_tests::output::LISTENER_READY_MARKER
         }
         _ => "Waiting for messages",

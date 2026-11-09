@@ -25,8 +25,11 @@ backend); zenoh is the only supported backend here (see the
 just nuttx build-examples                # all arm C/C++/Rust examples
 just nuttx zenohd &                      # router
 just nuttx talker                        # build + boot rust/talker in QEMU
-just nuttx listener                      # peer in a second shell
 ```
+
+The peers (listener, service and action roles) are `nuttx_<role>` images of
+the behaviour bringups in `examples/workspaces/{rust,c,cpp}` (phase-535 W5,
+RFC-0122 D1); `just nuttx build-examples` builds them too.
 
 Test lanes: `just nuttx test`, `test-all`.
 
@@ -34,14 +37,10 @@ Test lanes: `just nuttx test`, `test-all`.
 
 | Role | c | cpp | rust |
 | --- | --- | --- | --- |
-| talker / listener | yes | yes | yes (+`_entry`) |
-| service-server / service-client | yes | yes | yes (+`_entry`) |
-| action-server / action-client | yes | yes | yes (+`_entry`) |
+| talker (the board's road witness) | yes | yes | yes |
+| typed-carrier | yes | | |
 
-`<case>_entry` = Entry-pkg siblings (`nros::main!()`); underscore naming is an
-interim exception (RFC-0026, phase-275). `rust/dds/` is build support, not a
-case. The riscv NuttX lane lives at
-[`examples/rv-virt-nuttx/`](../rv-virt-nuttx/), not here.
+Listener, service and action roles: `examples/workspaces/<lang>/src/{pubsub,service,action}_bringup`, images `nuttx_<role>`.
 
 ## Gotchas
 

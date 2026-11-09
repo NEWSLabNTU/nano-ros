@@ -711,23 +711,10 @@ _run-qemu example binary:
     PID=$!
     wait $PID
 
-# Run NuttX talker on QEMU
+# Run NuttX talker on QEMU. phase-535 W5: the talker is the board's road
+# witness leaf; the other roles are images of `examples/workspaces/<lang>`'s
+# behaviour bringups (`nuttx_<role>`), built by `build-fixtures-arm`.
 talker: (_run-qemu "talker" "nuttx-rs-talker")
-
-# Run NuttX listener on QEMU
-listener: (_run-qemu "listener" "nuttx-rs-listener")
-
-# Run NuttX service server on QEMU
-service-server: (_run-qemu "service-server" "nuttx-rs-service-server")
-
-# Run NuttX service client on QEMU
-service-client: (_run-qemu "service-client" "nuttx-rs-service-client")
-
-# Run NuttX action server on QEMU
-action-server: (_run-qemu "action-server" "nuttx-rs-action-server")
-
-# Run NuttX action client on QEMU
-action-client: (_run-qemu "action-client" "nuttx-rs-action-client")
 
 # Start zenohd router for NuttX QEMU examples (allocator rust-pubsub port 8200)
 # Must listen on 0.0.0.0 for virtio-net-device + slirp gateway (10.0.2.2)
@@ -764,7 +751,5 @@ setup-mcast-route:
 clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-nuttx-armv7a-zenoh
-    for example in talker listener service-server service-client action-server action-client; do
-        rm -rf "examples/qemu-armv7a-nuttx/rust/$example/target"
-    done
+    rm -rf "examples/qemu-armv7a-nuttx/rust/talker/target"
     echo "NuttX build artifacts cleaned"

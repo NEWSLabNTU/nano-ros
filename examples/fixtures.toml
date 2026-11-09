@@ -3247,41 +3247,6 @@ rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/talker"
 skip_probe = true
 
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/rust/listener"
-skip_probe = true
-
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/rust/service-server"
-skip_probe = true
-
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/rust/service-client"
-skip_probe = true
-
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/rust/action-server"
-skip_probe = true
-
-[[fixture]]
-platform = "nuttx"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/rust/action-client"
-skip_probe = true
-
 # ===========================================================================
 # threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples.
 # phase-484 W4c: six `--no-default-features --features rmw-zenoh` duplicates of
@@ -3678,80 +3643,231 @@ cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8381" }
 
 [[fixture]]
 platform = "nuttx"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/c/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8300" }
-
-[[fixture]]
-platform = "nuttx"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/c/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8310" }
-
-[[fixture]]
-platform = "nuttx"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/c/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8310" }
-
-[[fixture]]
-platform = "nuttx"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/c/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8320" }
-
-[[fixture]]
-platform = "nuttx"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/c/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8320" }
-
-[[fixture]]
-platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/cpp/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8400" }
 
-[[fixture]]
-platform = "nuttx"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/cpp/listener"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8400" }
+# phase-535 W5 (RFC-0122 D1) — the NuttX (qemu-armv7a) example pairs as
+# images of the behaviour bringups. The cells resolve through
+# nros_tests::fixtures::workspace_image. The talker leaves stay: they are the
+# board's road witnesses (RFC-0122 D3).
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-talker"
 platform = "nuttx"
-lang = "cpp"
+lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/cpp/service-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8410" }
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "nuttx_talker"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/nuttx-talker"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-listener"
 platform = "nuttx"
-lang = "cpp"
+lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/cpp/service-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8410" }
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "nuttx_listener"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/nuttx-listener"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-service-server"
 platform = "nuttx"
-lang = "cpp"
+lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/cpp/action-server"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8420" }
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "nuttx_service_server"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/nuttx-service-server"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
 
-[[fixture]]
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-service-client"
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "nuttx_service_client"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/nuttx-service-client"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
+
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-action-server"
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "nuttx_action_server"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/nuttx-action-server"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
+
+[[workspace_fixture]]
+id = "workspace-rust-nuttx-action-client"
+platform = "nuttx"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "nuttx_action_client"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/nuttx-action-client"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem" }
+
+[[workspace_fixture]]
+id = "workspace-c-nuttx-talker"
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "nuttx_talker"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-pubsub_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-c-nuttx-listener"
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/pubsub_bringup"
+image = "nuttx_listener"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-pubsub_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-c-nuttx-service-server"
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "nuttx_service_server"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-c-nuttx-service-client"
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "nuttx_service_client"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-c-nuttx-action-server"
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "nuttx_action_server"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-c-nuttx-action-client"
+platform = "nuttx"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/action_bringup"
+image = "nuttx_action_client"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-talker"
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-armv7a-nuttx/cpp/action-client"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8420" }
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "nuttx_talker"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-pubsub_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-listener"
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/pubsub_bringup"
+image = "nuttx_listener"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-pubsub_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-service-server"
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "nuttx_service_server"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-service-client"
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "nuttx_service_client"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-service_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-action-server"
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "nuttx_action_server"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
+
+[[workspace_fixture]]
+id = "workspace-cpp-nuttx-action-client"
+platform = "nuttx"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "nuttx_action_client"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-action_bringup/cmake"
+cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
 
 # ===========================================================================
 # rv-virt-nuttx — C (cmake), Phase 194.3c. 2nd-arch NuttX board (rv-virt).

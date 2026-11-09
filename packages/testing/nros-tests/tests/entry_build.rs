@@ -17,7 +17,10 @@
 //! link (RFC-0032's "third leg": dynamic link pieces propagate from the board
 //! dep's build.rs via `nros_board_common::nuttx_image_link`, static args in each
 //! entry's `.cargo/config.toml`) makes each a real, bootable NuttX flat-build
-//! ELF with ZERO entry build.rs.
+//! ELF with ZERO entry build.rs. Since phase-535 W5 only the talker is still a
+//! leaf (the board's road witness); the other five roles resolve to the
+//! `nuttx_<role>` images of `examples/workspaces/rust`'s behaviour bringups,
+//! which are the same generated entries built through the workspace.
 //!
 //! **ThreadX-Linux** — the six `examples/threadx-linux/rust/{role}-entry` demos
 //! bake the same way through `nros-board-threadx-linux`. They shipped with no

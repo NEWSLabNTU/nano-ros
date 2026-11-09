@@ -52,11 +52,6 @@ examples/mps2-an385-baremetal/rust/talker-rtic/Cargo.toml  qemu_rtic_talker_nros
 examples/mps2-an385-baremetal/rust/talker-xrce/Cargo.toml  qemu_talker_xrce_nros_selection
 examples/mps2-an385-baremetal/rust/talker/Cargo.toml  qemu_bsp_talker_nros_selection
 examples/mps2-an385-freertos/rust/talker/Cargo.toml  freertos_rs_talker_nros_selection
-examples/qemu-armv7a-nuttx/rust/action-client/Cargo.toml  nuttx_rs_action_client_nros_selection
-examples/qemu-armv7a-nuttx/rust/action-server/Cargo.toml  nuttx_rs_action_server_nros_selection
-examples/qemu-armv7a-nuttx/rust/listener/Cargo.toml  nuttx_rs_listener_nros_selection
-examples/qemu-armv7a-nuttx/rust/service-client/Cargo.toml  nuttx_rs_service_client_nros_selection
-examples/qemu-armv7a-nuttx/rust/service-server/Cargo.toml  nuttx_rs_service_server_nros_selection
 examples/qemu-armv7a-nuttx/rust/talker/Cargo.toml  nuttx_rs_talker_nros_selection
 examples/rv-virt-threadx/rust/action-client/Cargo.toml  nros-board-threadx-qemu-riscv64
 examples/rv-virt-threadx/rust/action-server/Cargo.toml  nros-board-threadx-qemu-riscv64

@@ -377,13 +377,19 @@ function(nros_nuttx_build_example)
             ${_nnbe_knob_fields}
             ${_nnbe_entity_env})
     endif()
+    # phase-535 W5 — the artifact dir is PER IMAGE either way. A workspace
+    # configure links several images (one per `nano_ros_add_entry`) in one
+    # binary dir, and each cargo run here writes the same `nros-nuttx-ffi`:
+    # with one output path per configure, the second image's custom command
+    # named the first one's output and cmake refused the configure ("already
+    # has a custom rule"). The target dir stays shared per configure, so the
+    # images reuse one Rust build; cargo's own lock serialises them.
+    set(_artifact_dir "${CMAKE_CURRENT_BINARY_DIR}/${_NNBE_NAME}-nros-nuttx-ffi-out")
+    file(MAKE_DIRECTORY "${_artifact_dir}")
     if(_shared_cargo_dir)
         set(_cargo_target_dir "${_shared_cargo_dir}")
-        set(_artifact_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-nuttx-ffi-out")
-        file(MAKE_DIRECTORY "${_artifact_dir}")
     else()
         set(_cargo_target_dir "${CMAKE_CURRENT_BINARY_DIR}/cargo-target")
-        set(_artifact_dir "")
     endif()
     # Where cargo itself writes the artifact and its depfile.
     set(_cargo_out_dir

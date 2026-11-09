@@ -5,7 +5,11 @@
 //! leaves. This one runs it over the two REAL leaves issue 1378 was filed
 //! against — `examples/qemu-armv7a-nuttx/{c,cpp}/action-server`, measured
 //! 2026-09-20 exhausting `ZPICO_MAX_QUERYABLES` at boot — and holds the
-//! descriptor to the numbers that boot needs.
+//! descriptor to the numbers that boot needs. phase-535 W5 retired those
+//! leaves into workspace images, and no standalone cmake action-server leaf
+//! is left in `examples/`, so their `system.toml` + `CMakeLists.txt` are kept
+//! verbatim under `tests/fixtures/issue-1378-leaves/` as this road's input,
+//! named `*.in` so the tree's layout gates do not read them as a live leaf.
 //!
 //! **What this asserts, and why it is the acceptance rather than "a file was
 //! written".** ~~`NROS_DECLARED_TL_PUBLISHERS`~~ was the carrier that fixed 1378,
@@ -33,7 +37,8 @@ fn repo() -> PathBuf {
         .to_path_buf()
 }
 
-/// What `examples/qemu-armv7a-nuttx/<lang>/action-server` creates, stated as
+/// What the retired `examples/qemu-armv7a-nuttx/<lang>/action-server` creates
+/// (kept as `tests/fixtures/issue-1378-leaves/<lang>-action-server`), stated as
 /// a list. Issue 1556: the leaf itself states `entities = "census"` now -- its
 /// entities are its program's, read from a census a BUILD takes -- and a test
 /// takes no census (no compilation inside tests). So the leaf is copied and the
@@ -45,14 +50,16 @@ const ACTION_SERVER: &str = "action_server:example_interfaces/action/Fibonacci:/
 /// A copy of the REAL leaf's `system.toml` + `CMakeLists.txt` under `into`,
 /// with its `entities = "census"` replaced by `entities` (TOML).
 fn leaf_copy(lang: &str, into: &Path, entities: &str) -> PathBuf {
-    let real = repo().join(format!("examples/qemu-armv7a-nuttx/{lang}/action-server"));
+    let real = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!(
+        "tests/fixtures/issue-1378-leaves/{lang}-action-server"
+    ));
     assert!(
-        real.join("system.toml").is_file(),
+        real.join("system.toml.in").is_file(),
         "{}: the leaf issue 1378 was filed against must exist -- if it moved, \
          re-point this test rather than deleting it",
         real.display()
     );
-    let system = std::fs::read_to_string(real.join("system.toml")).expect("reads");
+    let system = std::fs::read_to_string(real.join("system.toml.in")).expect("reads");
     assert!(
         system.contains("entities = \"census\""),
         "{}: expected the census opt-in (issue 1556); update this test with the leaf",
@@ -65,7 +72,7 @@ fn leaf_copy(lang: &str, into: &Path, entities: &str) -> PathBuf {
         system.replace("entities = \"census\"", &format!("entities = {entities}")),
     )
     .expect("write");
-    std::fs::copy(real.join("CMakeLists.txt"), leaf.join("CMakeLists.txt")).expect("copy");
+    std::fs::copy(real.join("CMakeLists.txt.in"), leaf.join("CMakeLists.txt")).expect("copy");
     leaf
 }
 

@@ -168,6 +168,19 @@ board = "rv-virt-threadx"
 launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:9500"
 
+# NuttX on QEMU virt (armv7-a). `locator` is the cell's `alloc::port_of`
+# on QEMU's SLIRP host. They came from the `examples/qemu-armv7a-nuttx` leaves.
+
+[image.nuttx_talker]
+board = "qemu-armv7a-nuttx"
+launch = "talker.launch.xml"
+locator = "tcp/10.0.2.2:8300"
+
+[image.nuttx_listener]
+board = "qemu-armv7a-nuttx"
+launch = "listener.launch.xml"
+locator = "tcp/10.0.2.2:8300"
+
 [board_config."mps2-an385-freertos"]
 netstack = "lwip"
 
@@ -176,3 +189,5 @@ netstack = "netxduo"
 
 [board_config."rv-virt-threadx"]
 netstack = "netxduo"
+
+[board_config."qemu-armv7a-nuttx"]
