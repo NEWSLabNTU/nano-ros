@@ -228,28 +228,9 @@ compile and behave differently, each for a reason:
 micro-ROS is the closest peer: a ROS 2 client stack for microcontrollers. The
 two differ mostly in what they assume about the network and the language.
 
-| | nano-ros | micro-ROS |
-| --- | --- | --- |
-| Application APIs | Rust, C (rclc's names), C++ (rclcpp's names) | C (rclc) |
-| RMW | zenoh, XRCE-DDS, Cyclone DDS, chosen per image | XRCE-DDS |
-| Network model | through a zenoh router, brokerless with Cyclone DDS, or agent-based with XRCE-DDS | agent-based |
-| Process beside the device | a zenoh router, none, or an XRCE-DDS agent, by backend | always the Micro XRCE-DDS Agent |
-| Core | `no_std`, fixed-size pools | C with a static memory configuration |
-| Scheduling | sched tasks and derived levels, EDF and sporadic classes, budgets ([The execution model](execution-model.md)) | the rclc executor |
-| Several backends in one binary | yes, with bridges | no |
-| End-to-end integrity | CRC and sequence check ([Safety](safety.md)) | none built in |
-| Formal checks | Kani harnesses and Verus proofs over serialization, scheduling and protocol logic | none published |
-| Build | `nros build` driving cargo, CMake or west; or nano-ros inside your CMake, Zephyr or NuttX build | colcon and per-RTOS firmware scripts |
-| License | MIT or Apache-2.0 | Apache-2.0 |
-
-The boards nano-ros supports, and at what level, are generated in
-[Supported boards](../reference/supported-boards.md).
-
-Choose nano-ros when you want Rust as a first-class API, a zenoh router or
-brokerless DDS instead of an agent, several backends in one image, or scheduling beyond
-priorities. Choose micro-ROS when you already have rclc code and an agent
-deployment, when your toolchain must stay C-only, or when you need its
-ecosystem's commercial support.
+[nano-ros compared with micro-ROS and mros2](compared-with-other-stacks.md)
+sets the two side by side, with each claim sourced, and says where micro-ROS
+is the better choice.
 
 Moving from micro-ROS is mostly a rename, and in C often not even that: the
 C API keeps rclc's spellings, so `rclc_publisher_init_default`,
