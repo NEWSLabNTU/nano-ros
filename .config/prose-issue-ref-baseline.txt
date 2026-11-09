@@ -53,6 +53,13 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
+#   2376  IN FLIGHT — reserved (`refs/issue-ids/2376`) and filed by the nros 243
+#         session with the user's ruling that C/C++ is refused on bare metal.
+#         Its PR was not open on 2026-11-10 (`gh pr list --search 2376` finds
+#         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
+#         when the PR carrying `docs/issues/2376-*.md` merges.
+#
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
+docs/issues/2377-workspace-road-no-c-image-on-bare-metal.md:2376
