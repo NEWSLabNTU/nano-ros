@@ -101,6 +101,10 @@ tutorial-c: (platform "tutorial-c")
 [group("main")]
 tutorial-cpp: (platform "tutorial-cpp")
 
+# book/src/starters/px4-sitl.md — the PX4 SITL starter (phase-542 W4).
+[group("main")]
+px4-sitl: (platform "px4-sitl")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]

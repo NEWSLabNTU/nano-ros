@@ -20,6 +20,7 @@
 - [Zephyr native_sim](./starters/zephyr-native-sim.md)
 - [ThreadX Linux simulator](./starters/threadx-linux.md)
 - [FreeRTOS POSIX](./starters/freertos-posix.md)
+- [PX4 SITL](./starters/px4-sitl.md)
 
 # Tutorial
 

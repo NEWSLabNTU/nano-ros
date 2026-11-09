@@ -1813,3 +1813,10 @@ path = "background/compared-with-other-stacks.md"
 action = "new docs-comparison"
 batch = "docs-comparison"
 note = "nano-ros compared with micro-ROS and mros2: the comparison table moved out of background/differences-from-ros2, every nano-ros claim linked to a page or file, every other project's claim cited to its own docs with the date read"
+
+[[page]]
+book = "user"
+path = "starters/px4-sitl.md"
+action = "new phase-542"
+batch = "p542-w4"
+note = "The PX4 SITL starter (phase-542 W4, phase-537 W4): the SITL half of guide/platforms/px4.md as a starter, replayed by its own `px4-sitl` track; px4.md keeps Gazebo, ROS 2, px4_msgs and the Pixhawk build"
