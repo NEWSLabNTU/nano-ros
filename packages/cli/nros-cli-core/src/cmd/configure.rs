@@ -647,6 +647,7 @@ mod tests {
 
     fn record_ament(project: &Path, key: &str, ament: Option<&str>, resolver: Option<&Path>) {
         let stamp = configure_stamp::Stamp {
+            format: configure_stamp::STAMP_FORMAT,
             digest: "sha256:0".into(),
             codegen_version: String::new(),
             ament_prefix: ament.map(str::to_string),

@@ -104,9 +104,24 @@ impl OutputFlags {
     }
 }
 
+/// The stamp format this CLI writes. Bump it when a field is added whose
+/// ABSENCE a reader cannot tell from a legitimate empty value: a stamp from
+/// an older configure then reads as stale once ([`currency`]), instead of
+/// current with the field's default standing in for a fact it never
+/// recorded. One rule for the class, so no field needs its own sentinel.
+///
+/// * 1 -- phase-530 W4: `resolved_dir`. `None` means "resolved nothing" in a
+///   new stamp, and also what every stamp from before W4 reads, which left
+///   the first hooked configure unseeded.
+pub(crate) const STAMP_FORMAT: u32 = 1;
+
 /// What a configure recorded about itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Stamp {
+    /// [`STAMP_FORMAT`] when this stamp was written; `0` for one written
+    /// before the field existed.
+    #[serde(default)]
+    pub(crate) format: u32,
     pub(crate) digest: String,
     pub(crate) codegen_version: String,
     pub(crate) ament_prefix: Option<String>,
@@ -650,6 +665,7 @@ pub(crate) fn current_launch_resolver() -> Option<PathBuf> {
 /// inputs as they are NOW (after it wrote), and the environment it ran in.
 pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
     Ok(Stamp {
+        format: STAMP_FORMAT,
         digest: input_digest_with(project, &project_env(project, flags), flags)?,
         codegen_version: codegen_version(),
         ament_prefix: std::env::var(AMENT_VAR).ok(),
@@ -762,6 +778,14 @@ pub(crate) fn currency(
             "launch resolver changed: {} -> {}",
             show(stamp.launch_resolve.as_deref()),
             show(resolver)
+        )));
+    }
+    // A stamp an older configure wrote lacks a field this one relies on
+    // ([`STAMP_FORMAT`]); its defaults are not facts, so configure once more.
+    if stamp.format < STAMP_FORMAT {
+        return Ok(Currency::Stale(format!(
+            "stamp format {} predates this CLI's {STAMP_FORMAT}",
+            stamp.format
         )));
     }
     // Issue 2296 — same resolver path, different `play_launch` pin: every
@@ -887,6 +911,7 @@ mod tests {
 
     fn stamp_for(project: &Path) -> Stamp {
         Stamp {
+            format: STAMP_FORMAT,
             digest: input_digest(project).unwrap(),
             codegen_version: codegen_version(),
             ament_prefix: None,
@@ -1150,6 +1175,7 @@ mod tests {
         let flags = OutputFlags::defaults();
         let resolver = Path::new("/recorded/nros-launch-resolve");
         let stamp = Stamp {
+            format: STAMP_FORMAT,
             digest: input_digest_with(&p, &env(Some("/opt/ros/humble")), &flags).unwrap(),
             codegen_version: codegen_version(),
             ament_prefix: Some("/opt/ros/humble".into()),
@@ -2059,6 +2085,45 @@ mod tests {
     /// every input, and still makes each model the last configure resolved
     /// fail `model_gate`. The stamp must say so, naming the pin; a stamp from
     /// before the field existed (no pin) is stale too.
+    #[test]
+    fn a_stamp_from_an_older_format_is_stale_once() {
+        // A field an older configure never wrote reads as its default, which
+        // is not a fact: a pre-W4 stamp has no `resolved_dir`, and `None` also
+        // means "resolved nothing". So the stamp is stale until this CLI
+        // rewrites it, and a stamp in this CLI's format is current.
+        let p = tmp("stamp-format");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env = real_env();
+        let digest = input_digest_with_env(&p, &env).unwrap();
+        let at = |format: u32| {
+            record(
+                &p,
+                "img",
+                &Stamp {
+                    format,
+                    digest: digest.clone(),
+                    ..stamp_for(&p)
+                },
+            )
+            .unwrap();
+            is_current_with(&p, "img", &env, None).unwrap()
+        };
+        assert_eq!(at(STAMP_FORMAT), Currency::Current);
+        match at(0) {
+            Currency::Stale(why) => assert!(why.starts_with("stamp format 0 predates"), "{why}"),
+            Currency::Current => panic!("an older stamp format left the stamp current"),
+        }
+        // And a stamp file with no `format` key at all is format 0.
+        let text = std::fs::read_to_string(stamp_dir(&p, "img").join("stamp.toml"))
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("format"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let old: Stamp = toml::from_str(&text).unwrap();
+        assert_eq!(old.format, 0);
+    }
+
     #[test]
     fn a_resolver_pin_bump_stales_the_stamp() {
         let p = tmp("resolver-pin");
