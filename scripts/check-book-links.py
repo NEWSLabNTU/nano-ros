@@ -59,8 +59,9 @@ import sys
 LINK_RE = re.compile(r"\]\(([^)#\s]+)(?:#[^)\s]*)?\)")
 # issue 1615 (W6): a REFERENCE definition (`[id]: ./page.md`) is a link too —
 # `[text][id]` resolves through it, and only the inline form was read. Same
-# spelling as `check-markdown-links.py`'s REFDEF.
-REFDEF_RE = re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>#]+)(?:#[^\s>]*)?>?", re.M)
+# spelling as `check-markdown-links.py`'s REFDEF. A `[^id]:` line is a
+# footnote definition, not a link: its text is prose, so it is skipped.
+REFDEF_RE = re.compile(r"^ {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*<?([^\s>#]+)(?:#[^\s>]*)?>?", re.M)
 
 # Not ours to resolve: absolute URLs, protocol-relative, mail, and same-page
 # anchors (which LINK_RE's optional group already strips to an empty target).
@@ -123,6 +124,8 @@ def self_test() -> None:
     assert [m.group(1) for m in LINK_RE.finditer(unfenced(fenced))] == ["./real.md", "./also.md"]
     assert unfenced(fenced).count("\n") == fenced.count("\n")
     assert [m.group(1) for m in REFDEF_RE.finditer("x\n[r]: ./p.md#a\n")] == ["./p.md"]
+    note = "[^n]: micro-ROS, *Features*, <https://micro.ros.org/x/>, read 2026-11-10.\n"
+    assert [m.group(1) for m in REFDEF_RE.finditer(note)] == []
     assert [m.group(1) for m in LINK_RE.finditer("[t](./q.md)")] == ["./q.md"]
     url = "https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/x.md"
     assert OWN_TREE.match(url).group(1) == "docs/x.md"
