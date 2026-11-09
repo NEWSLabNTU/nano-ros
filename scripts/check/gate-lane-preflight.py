@@ -95,8 +95,10 @@ def probe_zephyr() -> str | None:
     r = subprocess.run(["bash", "scripts/lib/zephyr-workspace.sh", "--absolute", "resolve"],
                        cwd=ROOT, capture_output=True, text=True)
     ws = r.stdout.strip()
-    # A west workspace, not a source tree: `.west/` is what `west` resolves
-    # from (issue 2308: a sparse header clone passed a `zephyr/` test).
+    # A west workspace, not a source tree (issue 2308). The resolver answers
+    # that itself now, so a resolved candidate is one; `.west/` is asked here
+    # too only for `$NROS_ZEPHYR_WORKSPACE`, which the resolver returns
+    # untested because it is also the install target.
     if r.returncode == 0 and ws and (Path(ws) / ".west").is_dir():
         return None
     return "no west workspace resolves (`.west/` absent)"

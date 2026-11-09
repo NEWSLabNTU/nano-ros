@@ -471,10 +471,12 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
 - [Issue 2306](../issues/2306-interrupted-submodule-checkout-reads-provisioned.md):
   an interrupted submodule checkout reads as provisioned. The runner's
   preflight (W5) is where its fix belongs.
-- [Issue 2308](../issues/2308-sparse-zephyr-tree-reads-as-west-workspace.md):
+- [Issue 2308](../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md):
   CI's sparse Zephyr header tree (`zephyr-tree`) passes the "west workspace
   provisioned" test (`zephyr`), so outside a scoped lane `template-copy-out`
-  tries a real Zephyr build. Two capabilities share one path.
+  tries a real Zephyr build. Two capabilities share one path. Resolved
+  2026-11-09: the shared resolver itself now requires `.west/`, so every
+  reader takes the answer.
 - `build/corrosion-cargo` and `build/sizes-probe` grew 51 -> 160 G and
   38 -> 93 G over five gate runs in one worktree, and filled a 1.8 T disk
   twice in a day. Nothing prunes them. W4's disk declarations and preflight
@@ -508,5 +510,5 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
 | --- | --- |
 | [#2274](../issues/2274-tier-wake-fanout-load-sensitive.md) | A timing bound that fails under the gate's parallel load and passes solo: the load is what phase-543's nextest resource groups bound. |
 | [#2306](../issues/2306-interrupted-submodule-checkout-reads-provisioned.md) | An interrupted submodule checkout reads as provisioned and the lane fails three gates later: a gate precondition that should refuse up front. |
-| [#2308](../issues/2308-sparse-zephyr-tree-reads-as-west-workspace.md) | A sparse Zephyr source tree reads as a provisioned west workspace: the same gate-precondition class as issue 2306. |
+| [#2308](../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md) | A sparse Zephyr source tree reads as a provisioned west workspace: the same gate-precondition class as issue 2306. |
 | [#2352](../issues/2352-entity-wake-race-hangs-beside-build-gates.md) | entity_wake's race test hangs beside the build gates: found by W3's gate-order check. |

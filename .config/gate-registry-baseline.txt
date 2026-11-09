@@ -347,5 +347,6 @@ zephyr-kconfig-knobs
 zephyr-knob-agreement
 zephyr-module-allowlist
 zephyr-panic-suffix
+zephyr-workspace-resolve
 zephyr-workspace-resolvers
 zpico-config-keys
