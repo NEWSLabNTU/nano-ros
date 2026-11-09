@@ -50,8 +50,9 @@ pub struct ExecArgs {
     #[arg(long, value_name = "SECONDS")]
     pub timeout: Option<f64>,
     /// What serves the image's link on this host: `auto` starts the zenoh
-    /// router or the XRCE agent when the link needs one here, `none` starts
-    /// nothing, a locator names a router that is already running.
+    /// router or the XRCE agent when the link needs one here (reusing a zenoh
+    /// router already listening there), `none` starts nothing, a locator
+    /// names a router that is already running.
     #[arg(long, value_name = "auto|none|LOCATOR", default_value = "auto")]
     pub router: String,
     /// Run a host image under this command (`--prefix 'valgrind -q'`).
@@ -279,7 +280,7 @@ fn local_listen_host(host: &str, emulator: bool) -> Option<String> {
 /// arguments, in its own prefix's environment when the caller has not sourced
 /// it, and with the zenoh library it was built against ahead on the loader
 /// path. The test harness's router fixture does the same.
-fn zenoh_router(endpoint: &str) -> Result<Command, String> {
+fn zenoh_router(listen: &[String], connect: &[String]) -> Result<Command, String> {
     let bin = crate::cmd::setup::resolve_rmw_zenohd().ok_or_else(|| {
         format!(
             "no zenoh router: `rmw_zenoh_cpp/rmw_zenohd` was not found in \
@@ -327,15 +328,20 @@ fn zenoh_router(endpoint: &str) -> Result<Command, String> {
             cmd.env("LD_LIBRARY_PATH", joined);
         }
     }
-    let listen = router_listen_endpoints(endpoint)
-        .iter()
-        .map(|e| format!("\"{e}\""))
-        .collect::<Vec<_>>()
-        .join(",");
-    cmd.env(
-        "ZENOH_CONFIG_OVERRIDE",
-        format!("scouting/multicast/enabled=false;listen/endpoints=[{listen}]"),
+    let quoted = |eps: &[String]| {
+        eps.iter()
+            .map(|e| format!("\"{e}\""))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let mut config = format!(
+        "scouting/multicast/enabled=false;listen/endpoints=[{}]",
+        quoted(listen)
     );
+    if !connect.is_empty() {
+        config.push_str(&format!(";connect/endpoints=[{}]", quoted(connect)));
+    }
+    cmd.env("ZENOH_CONFIG_OVERRIDE", config);
     Ok(cmd)
 }
 
@@ -381,40 +387,158 @@ fn xrce_agent(args: &[String], nano_ros_root: Option<&Path>) -> Result<Command, 
     Ok(cmd)
 }
 
-/// Refuse to start a router on a TCP port something already accepts on.
+/// What a router `nros run` would start for `endpoint` meets on this host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouterStart {
+    /// A zenoh router already listens on the endpoint: use it, start none.
+    Reuse(String),
+    /// Start one listening on `listen`; it also dials each `connect`, a zenoh
+    /// router already on an extra endpoint (a serial link's host endpoint).
+    Start {
+        /// The router's listen endpoints.
+        listen: Vec<String>,
+        /// Routers it connects to.
+        connect: Vec<String>,
+    },
+}
+
+/// What holds a TCP port a router would listen on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PortHolder {
+    /// Nothing accepts there.
+    Free,
+    /// A zenoh router: it answered an InitSyn with an InitAck naming itself
+    /// a router.
+    ZenohRouter,
+    /// Something else accepts there; what it did.
+    Other(String),
+}
+
+/// The zenoh transport protocol version `rmw_zenohd` (zenoh 1.x) and
+/// zenoh-pico 1.x speak. A router of another version closes the link without
+/// an InitAck, so it reads as "not a zenoh router we can use".
+const ZENOH_PROTO_VERSION: u8 = 0x09;
+
+/// Ask what holds `addr`, within about `within`.
 ///
-/// `rmw_zenohd` cannot bind a taken port and exits 1 within 0.1 s ("Address
-/// already in use"), which `nros run` reported only as "the router exited
-/// (code 1)". The usual holder is a router the reader started by hand, so the
-/// refusal names the two ways on: use that router, or start none.
-fn refuse_taken_listen_ports(endpoints: &[String]) -> Result<(), String> {
-    for ep in endpoints {
-        let Some((proto, host, port)) = split_locator(ep) else {
+/// A TCP connect proves only that something listens. This sends the first
+/// message of a zenoh session, an `InitSyn` (zenoh 1.x transport: a 2-byte
+/// little-endian length, then header `0x01`, the protocol version, and the
+/// sender's id byte `zid_len-1 << 4 | whatami` with whatami `0b10`, client)
+/// and reads the reply. A zenoh node answers an `InitAck` (header `0x01`
+/// with the A flag `0x20`) whose id byte carries ITS whatami in the low two
+/// bits; `0b00` is a router. Nothing else is opened: the probe closes before
+/// the `OpenSyn`, so the router never admits a session.
+fn probe_port(addr: SocketAddr, within: Duration) -> PortHolder {
+    use std::io::Read;
+    let deadline = Instant::now() + within;
+    let Ok(mut s) = TcpStream::connect_timeout(&addr, Duration::from_millis(200)) else {
+        return PortHolder::Free;
+    };
+    let left = || {
+        deadline
+            .saturating_duration_since(Instant::now())
+            .max(Duration::from_millis(1))
+    };
+    let _ = s.set_write_timeout(Some(left()));
+    let zid = *b"nrosrun1";
+    let mut msg = vec![
+        0u8,
+        0,
+        0x01,
+        ZENOH_PROTO_VERSION,
+        ((zid.len() as u8 - 1) << 4) | 0b10,
+    ];
+    msg.extend_from_slice(&zid);
+    let body_len = (msg.len() - 2) as u16;
+    msg[..2].copy_from_slice(&body_len.to_le_bytes());
+    if s.write_all(&msg).is_err() {
+        return PortHolder::Other("it closed the connection on a zenoh InitSyn".into());
+    }
+    let mut reply = [0u8; 5];
+    let mut got = 0;
+    while got < reply.len() {
+        let _ = s.set_read_timeout(Some(left()));
+        match s.read(&mut reply[got..]) {
+            Ok(0) => break,
+            Ok(n) => got += n,
+            Err(_) => break,
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+    }
+    if got < reply.len() {
+        return PortHolder::Other(if got == 0 {
+            "it gave no zenoh InitAck within 1 s".into()
+        } else {
+            "its reply is not a zenoh InitAck".into()
+        });
+    }
+    let header = reply[2];
+    if header & 0x1f != 0x01 || header & 0x20 == 0 {
+        return PortHolder::Other("its reply is not a zenoh InitAck".into());
+    }
+    match reply[4] & 0b11 {
+        0b00 => PortHolder::ZenohRouter,
+        0b01 => PortHolder::Other("it is a zenoh peer, not a router".into()),
+        _ => PortHolder::Other("it is a zenoh client, not a router".into()),
+    }
+}
+
+/// Decide what to do about a router for `endpoint` before starting one
+/// (issue 2315).
+///
+/// Each TCP listen endpoint is probed ([`probe_port`]). A zenoh router on the
+/// link's own endpoint is reused, which is what a reader who started
+/// `rmw_zenohd` by hand meant; one on a serial link's extra host endpoint is
+/// connected to, since the pty still needs a router of its own. Anything else
+/// on the port is refused before anything starts: `rmw_zenohd` cannot bind a
+/// taken port and would exit 1 within 0.1 s ("Address already in use").
+///
+/// # Errors
+///
+/// A listen port held by something that is not a zenoh router.
+pub fn plan_router(endpoint: &str) -> Result<RouterStart, String> {
+    plan_router_over(router_listen_endpoints(endpoint), Duration::from_secs(1))
+}
+
+/// [`plan_router`] over the endpoints a router would listen on, the link's
+/// own first.
+fn plan_router_over(endpoints: Vec<String>, within: Duration) -> Result<RouterStart, String> {
+    let mut listen = Vec::new();
+    let mut connect = Vec::new();
+    for (i, ep) in endpoints.into_iter().enumerate() {
+        let tcp = split_locator(&ep).filter(|(proto, _, _)| proto == "tcp");
+        let Some((_, host, port)) = tcp else {
+            listen.push(ep);
             continue;
         };
-        if proto != "tcp" {
-            continue;
-        }
         let probe = if host == "0.0.0.0" {
             "127.0.0.1".to_string()
         } else {
             host
         };
         let Ok(ip) = probe.parse::<IpAddr>() else {
+            listen.push(ep);
             continue;
         };
-        if TcpStream::connect_timeout(&SocketAddr::new(ip, port), Duration::from_millis(200))
-            .is_ok()
-        {
-            return Err(format!(
-                "something already listens on tcp/{probe}:{port} (a router you started, or \
-                 another run's), so the router `nros run` starts there would exit at once. \
-                 Use that one with `--router tcp/{probe}:{port}`, or start none with \
-                 `--router none`"
-            ));
+        let at = format!("tcp/{probe}:{port}");
+        match probe_port(SocketAddr::new(ip, port), within) {
+            PortHolder::Free => listen.push(ep),
+            PortHolder::ZenohRouter if i == 0 => return Ok(RouterStart::Reuse(at)),
+            PortHolder::ZenohRouter => connect.push(at),
+            PortHolder::Other(what) => {
+                return Err(format!(
+                    "something that is not a zenoh router listens on {at} ({what}), so the \
+                     router `nros run` starts there would exit at once. Free the port, name a \
+                     router of your own with `--router tcp/<address>:<port>`, or start none \
+                     with `--router none`"
+                ));
+            }
         }
     }
-    Ok(())
+    Ok(RouterStart::Start { listen, connect })
 }
 
 fn wait_for_tcp(port: u16, within: Duration) -> bool {
@@ -941,11 +1065,20 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
                 eprintln!("nros {}: starting no router ({why})", verb_word(plan.verb));
             }
         }
-        HostSide::ZenohListen(endpoint) => {
-            if let Err(e) = refuse_taken_listen_ports(&router_listen_endpoints(endpoint)) {
-                return fail(exit::RUNNER_FAILED, &e);
-            }
-            let cmd = match zenoh_router(endpoint) {
+        HostSide::ZenohListen(endpoint) => 'router: {
+            let (listen, connect) = match plan_router(endpoint) {
+                Ok(RouterStart::Reuse(at)) => {
+                    eprintln!(
+                        "nros {}: reusing the zenoh router already listening on {at} (it \
+                         answered a zenoh handshake as a router); starting none",
+                        verb_word(plan.verb)
+                    );
+                    break 'router;
+                }
+                Ok(RouterStart::Start { listen, connect }) => (listen, connect),
+                Err(e) => return fail(exit::RUNNER_FAILED, &e),
+            };
+            let cmd = match zenoh_router(&listen, &connect) {
                 Ok(c) => c,
                 Err(e) => return fail(exit::RUNNER_FAILED, &e),
             };
@@ -1092,12 +1225,25 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
             } else {
                 format!("serial/{endpoint}#{options}")
             };
-            eprintln!(
-                "nros {}: starting the zenoh router on {ep}",
-                verb_word(plan.verb)
-            );
-            refuse_taken_listen_ports(&router_listen_endpoints(&ep))?;
-            ("router", zenoh_router(&ep)?)
+            // The pty is the runner's, made for this run, so no router
+            // already holds it; only the extra host endpoint can be taken.
+            let (listen, connect) = match plan_router(&ep)? {
+                RouterStart::Start { listen, connect } => (listen, connect),
+                RouterStart::Reuse(at) => (vec![ep.clone()], vec![at]),
+            };
+            match connect.first() {
+                Some(at) => eprintln!(
+                    "nros {}: starting the zenoh router on {ep}, connected to the zenoh \
+                     router already listening on {at} (it answered a zenoh handshake as a \
+                     router), which host nodes reach",
+                    verb_word(plan.verb)
+                ),
+                None => eprintln!(
+                    "nros {}: starting the zenoh router on {ep}",
+                    verb_word(plan.verb)
+                ),
+            }
+            ("router", zenoh_router(&listen, &connect)?)
         } else {
             let baud = options
                 .split('&')
@@ -1281,24 +1427,136 @@ mod tests {
         );
     }
 
-    /// A router started on a taken port would exit 1 at once; the refusal
-    /// names the port and both ways on before anything starts. A serial
-    /// link's extra `tcp/127.0.0.1:7447` endpoint is asked the same way.
+    /// The InitAck `rmw_zenohd` (ROS humble, zenoh 1.x) sent to the probe's
+    /// InitSyn, captured in the ros2 box on 2026-11-09 (issue 2315): length
+    /// 0x0038, header 0x61 (INIT | A | S), version 0x09, id byte 0xf0
+    /// (16-byte zid, whatami 0b00 = router), then its zid, resolution, batch
+    /// size and cookie.
+    const RMW_ZENOHD_INIT_ACK: &str = "38006109f0799b05528031e77604b28693ac74afcc0a00c02120cab8\
+        7ea7c5ebb3fe6dc9eecfbd1835ca42c4b41e6e0ed13c5d660599cceef2fe";
+
+    fn hex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// A listener that accepts once, reads the probe's 13-byte InitSyn and
+    /// answers `reply`: a fake router, or a fake something-else.
+    fn fake_holder(reply: Vec<u8>) -> (u16, std::thread::JoinHandle<Vec<u8>>) {
+        use std::io::Read;
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let h = std::thread::spawn(move || {
+            let (mut s, _) = l.accept().unwrap();
+            let mut syn = [0u8; 13];
+            s.read_exact(&mut syn).unwrap();
+            let _ = s.write_all(&reply);
+            syn.to_vec()
+        });
+        (port, h)
+    }
+
+    fn free_port() -> u16 {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    }
+
+    /// Issue 2315: a zenoh router already on the link's endpoint is reused,
+    /// decided by its answer to an InitSyn; a free port starts a router.
     #[test]
-    fn a_taken_router_port_is_refused_with_the_remedy() {
-        let held = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = held.local_addr().unwrap().port();
-        let e = refuse_taken_listen_ports(&[format!("tcp/127.0.0.1:{port}")]).unwrap_err();
-        assert!(e.contains(&format!("--router tcp/127.0.0.1:{port}")), "{e}");
-        assert!(e.contains("--router none"), "{e}");
-        let e = refuse_taken_listen_ports(&[
-            "serial//dev/pts/9#baudrate=115200".to_string(),
-            format!("tcp/0.0.0.0:{port}"),
-        ])
+    fn a_zenoh_router_on_the_port_is_reused_and_a_free_port_starts_one() {
+        let (port, h) = fake_holder(hex(RMW_ZENOHD_INIT_ACK));
+        assert_eq!(
+            plan_router(&format!("tcp/127.0.0.1:{port}")).unwrap(),
+            RouterStart::Reuse(format!("tcp/127.0.0.1:{port}"))
+        );
+        // The probe sent a well-formed InitSyn: body length 11, INIT,
+        // version 9, an 8-byte zid as a client.
+        assert_eq!(&h.join().unwrap()[..5], &[11, 0, 0x01, 0x09, 0x72]);
+
+        let port = free_port();
+        assert_eq!(
+            plan_router(&format!("tcp/127.0.0.1:{port}")).unwrap(),
+            RouterStart::Start {
+                listen: vec![format!("tcp/127.0.0.1:{port}")],
+                connect: vec![],
+            }
+        );
+    }
+
+    /// A serial link's router still starts (the pty is this run's), but a
+    /// zenoh router on its extra host endpoint is connected to rather than
+    /// collided with.
+    #[test]
+    fn a_serial_router_connects_to_a_zenoh_router_on_its_host_endpoint() {
+        let serial = "serial//dev/pts/9#baudrate=115200".to_string();
+        let (port, h) = fake_holder(hex(RMW_ZENOHD_INIT_ACK));
+        let start = plan_router_over(
+            vec![serial.clone(), format!("tcp/0.0.0.0:{port}")],
+            Duration::from_secs(1),
+        );
+        h.join().unwrap();
+        assert_eq!(
+            start.unwrap(),
+            RouterStart::Start {
+                listen: vec![serial.clone()],
+                connect: vec![format!("tcp/127.0.0.1:{port}")],
+            }
+        );
+        let port = free_port();
+        assert_eq!(
+            plan_router_over(
+                vec![serial.clone(), format!("tcp/127.0.0.1:{port}")],
+                Duration::from_secs(1)
+            )
+            .unwrap(),
+            RouterStart::Start {
+                listen: vec![serial, format!("tcp/127.0.0.1:{port}")],
+                connect: vec![],
+            }
+        );
+    }
+
+    /// Something that is not a zenoh router is refused before anything
+    /// starts: a listener that never answers, one that answers something
+    /// else, and a zenoh node that is not a router.
+    #[test]
+    fn a_port_held_by_a_non_router_is_refused() {
+        let quiet = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = quiet.local_addr().unwrap().port();
+        let t = Instant::now();
+        let e = plan_router_over(
+            vec![format!("tcp/127.0.0.1:{port}")],
+            Duration::from_millis(300),
+        )
         .unwrap_err();
+        assert!(t.elapsed() < Duration::from_secs(2), "the probe is bounded");
         assert!(e.contains(&format!("tcp/127.0.0.1:{port}")), "{e}");
-        drop(held);
-        assert!(refuse_taken_listen_ports(&[format!("tcp/127.0.0.1:{port}")]).is_ok());
+        assert!(e.contains("no zenoh InitAck"), "{e}");
+        assert!(e.contains("--router none"), "{e}");
+        drop(quiet);
+
+        let (port, h) = fake_holder(b"HTTP/1.0 400 Bad Request\r\n\r\n".to_vec());
+        let e = plan_router(&format!("tcp/127.0.0.1:{port}")).unwrap_err();
+        h.join().unwrap();
+        assert!(e.contains("not a zenoh InitAck"), "{e}");
+
+        // The captured InitAck with whatami 0b01: a zenoh peer.
+        let mut peer = hex(RMW_ZENOHD_INIT_ACK);
+        peer[4] = (peer[4] & !0b11) | 0b01;
+        let (port, h) = fake_holder(peer);
+        let e = plan_router_over(
+            vec![
+                "serial//dev/pts/9".to_string(),
+                format!("tcp/127.0.0.1:{port}"),
+            ],
+            Duration::from_secs(1),
+        )
+        .unwrap_err();
+        h.join().unwrap();
+        assert!(e.contains("zenoh peer, not a router"), "{e}");
     }
 
     #[test]
