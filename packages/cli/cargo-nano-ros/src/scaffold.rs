@@ -1362,13 +1362,14 @@ CONFIG_NROS=y
 # The typed carrier entry is C++17, for a C component too.
 CONFIG_STD_CPP17=y
 
-# zenoh-pico needs POSIX threads and a roomy heap/stack.
+# zenoh-pico needs POSIX threads.
 CONFIG_POSIX_API=y
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
 CONFIG_MAX_PTHREAD_COND_COUNT=16
 CONFIG_POSIX_THREAD_THREADS_MAX=16
 # CONFIG_MAIN_STACK_SIZE: the nano-ros module decides it per image
-CONFIG_HEAP_MEM_POOL_SIZE=65536
+# CONFIG_HEAP_MEM_POOL_SIZE: the nano-ros module states a small kernel heap;
+# nano-ros allocates from CONFIG_NROS_ZEPHYR_HEAP_SIZE (issue 2202)
 CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE=4096
 CONFIG_NET_PKT_RX_COUNT=32
 CONFIG_NET_PKT_TX_COUNT=32

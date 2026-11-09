@@ -5,7 +5,7 @@
       "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/c/talker/prj-zenoh.conf",
       "dead_value": "65536",
-      "live_value": "131072",
+      "live_value": "8192",
       "rows": [
         "build-cortex-m-c-boot-report-zenoh",
         "build-cortex-m-c-talker-zenoh"
@@ -90,7 +90,7 @@
       "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/cpp/talker/prj-zenoh.conf",
       "dead_value": "65536",
-      "live_value": "131072",
+      "live_value": "8192",
       "rows": [
         "build-cortex-m-cpp-talker-zenoh"
       ],
@@ -135,6 +135,17 @@
         "build-cortex-m-cpp-talker-zenoh"
       ],
       "symbol": "CONFIG_NET_PKT_TX_COUNT"
+    },
+    {
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
+      "dead_in": "examples/zephyr/rust/talker/prj-zenoh.conf",
+      "dead_value": "131072",
+      "live_value": "8192",
+      "rows": [
+        "build-cortex-m-rust-talker-serial-zenoh",
+        "build-cortex-m-rust-talker-zenoh"
+      ],
+      "symbol": "CONFIG_HEAP_MEM_POOL_SIZE"
     },
     {
       "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
