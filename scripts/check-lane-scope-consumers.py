@@ -44,6 +44,7 @@ TESTS = os.path.join(ROOT, "packages/testing/nros-tests/tests")
 DATA_ONLY = {
     "matrix_fixture_coverage.rs",  # G1–G4 coverage gates over the table itself
     "no_local_axis_tables.rs",  # asserts no consumer re-declares the axes
+    "lane_build_covers_run.rs",  # lane-contract gates: build set vs run set (issue 2273)
 }
 
 

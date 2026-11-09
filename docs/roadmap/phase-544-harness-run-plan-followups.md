@@ -81,7 +81,17 @@ since its 1-wise cover never covers the workload; its counts stay 12 / 11.
 Found on the way: a generated Zephyr entry linked a component archive after
 `libkernel.a`, so a component calling `k_busy_wait` did not link on a real
 board; `nano_ros_entry` now gives each component archive a `kernel` link
-edge. Detail in the issue.
+edge. Detail in the issue. That edge applies to every generated Zephyr
+entry, so it was also built on the C and mixed rows in fresh build dirs: C
+realtime (native_sim and the qemu_cortex_a53 SMP image) and mixed (native_sim)
+link, and the C native_sim image delivers `/ctrl` to a ROS 2 subscriber. The
+older build dirs of those two rows did not configure; that is
+[issue 2374](../issues/2374-zephyr-cached-conf-file-freezes-board-fragment-discovery.md),
+a cached `CONF_FILE` naming a fragment issue 2157 deleted, unrelated to the
+edge. `ci_lane::tests::tier2_selects_every_pinned_cell` and
+`lane_build_covers_run::the_tier2_build_carries_every_pinned_cell_leaf` hold
+the pin: tier 2 runs the cell and builds its leaf (both fail with the pin
+removed).
 
 ### W3 — A killed verb takes its image down
 
