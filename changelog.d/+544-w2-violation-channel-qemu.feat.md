@@ -1,0 +1,1 @@
+The contract-violation channel now has an end-to-end cell on an emulated Cortex-M. The `violation-cpp` workspace runs on Zephyr `mps2/an385` under QEMU with `-icount shift=auto`, and the cell asserts the one stored `max-latency-runtime` verdict after arming. Tier 2 runs the cell.

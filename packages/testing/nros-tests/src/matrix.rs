@@ -542,6 +542,18 @@ pub enum Workload {
     /// the executor woke while nothing happened, which a pubsub cell cannot
     /// see — a 10 ms slice delivers every sample just as well.
     IdleWake,
+    /// phase-544 W2 (issue 2273) -- the contract-violation channel on an
+    /// emulated core: `examples/workspaces/violation-cpp`, whose handler
+    /// overruns its contracted 50 ms path once before arming (counted, not
+    /// stored) and once after (one stored `max-latency-runtime` verdict, read
+    /// off the console the drain hook writes).
+    ///
+    /// Its own value because nothing is delivered: the subject is the
+    /// monitor's arming and its latency measurement on the target's own
+    /// timer, which a pubsub cell never exercises. The native_sim image of
+    /// the same workspace runs on the host's clock, which is why the cell is
+    /// the QEMU one (the board's verdicts were taken on a Cortex-M).
+    ViolationChannel,
 }
 
 impl Workload {
@@ -600,6 +612,9 @@ impl Workload {
             // PortWorkspace); a router or agent port of its own, because the
             // image opens a session (zenoh router, or XRCE agent).
             Workload::IdleWake => 84,
+            // phase-544 W2. 85 is the last of 81..=89 free in every band; a
+            // router port of its own, because the image opens a session.
+            Workload::ViolationChannel => 85,
         }
     }
 
@@ -905,6 +920,9 @@ pub enum Consumer {
     /// `tests/px4_sitl.rs` — the PX4 SITL uORB cells, [`Tier::Gated`] on the
     /// hosted `px4-sitl` nightly job (phase-521 W8 (e)).
     Px4Sitl,
+    /// `tests/violation_channel_e2e.rs` -- the contract-violation channel on
+    /// the Zephyr Cortex-M QEMU image (phase-544 W2).
+    ViolationChannel,
 }
 
 impl Consumer {
@@ -946,6 +964,7 @@ impl Consumer {
         Consumer::FvpRuntimeWs,
         Consumer::Px4Xrce,
         Consumer::Px4Sitl,
+        Consumer::ViolationChannel,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -987,6 +1006,7 @@ impl Consumer {
             Consumer::FvpRuntimeWs => "fvp_runtime_ws",
             Consumer::Px4Xrce => "px4_xrce",
             Consumer::Px4Sitl => "px4_sitl",
+            Consumer::ViolationChannel => "violation_channel_e2e",
         }
     }
 }
@@ -1317,10 +1337,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         "trigger_conditions",
         NonCell::Probe("in-process guard and trigger conditions, no RMW"),
     ),
-    (
-        "violation_channel_e2e",
-        NonCell::Probe("the violation channel on Zephyr C++"),
-    ),
     ("wake_latency", NonCell::FeatureLane),
     ("weak_symbol_audit", NonCell::Static),
     ("workspace_dirwalk_discovery", NonCell::Static),
@@ -1444,6 +1460,8 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         (P::ZephyrQemuCortexM, _, _, W::Pubsub | W::BootReport | W::IdleWake, K::Example) => {
             Some(ZephyrCortexM)
         }
+        // phase-544 W2 (issue 2273).
+        (_, _, _, W::ViolationChannel, _) => Some(ViolationChannel),
         (P::ZephyrNucleoF767zi, L::C, R::Zenoh, W::Pubsub, K::Example) => Some(ZephyrRenodeTwin),
         (P::ZephyrNativeSim, _, _, W::Pubsub | W::Service | W::Action, K::Example) => Some(Zephyr),
         (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(Zephyr),

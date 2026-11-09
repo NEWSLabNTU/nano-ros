@@ -100,6 +100,9 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // Not delivery: the boot road reached `Executor::open` (phase-511 A6).
         // There is no peer, so the open's own banner is the evidence.
         Workload::BoardEntryBoot => output::EXECUTOR_OPEN_REACHED,
+        // Not delivery: the drain hook's verdict line (phase-544 W2). Which
+        // rule, how many and in what order is the test's.
+        Workload::ViolationChannel => output::CONTRACT_VIOLATION_PREFIX,
     }
 }
 

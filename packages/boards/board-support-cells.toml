@@ -291,6 +291,17 @@ at = ["ZephyrQemuCortexM", "C", "Xrce", "IdleWake", "Example"]
 status = 'Runtime'
 
 [[cell]]
+comment = '''
+// phase-544 W2 (issue 2273) -- the contract-violation channel on an emulated
+// Cortex-M: `violation-cpp`'s handler overruns once before arming and once
+// after, and the one stored `max-latency-runtime` verdict is measured on the
+// guest's own timer. The native_sim image of the same workspace runs on the
+// host's clock; the S32K344 verdicts this mirrors were taken on a Cortex-M.
+'''
+at = ["ZephyrQemuCortexM", "Cpp", "Zenoh", "ViolationChannel", "Workspace"]
+status = 'Runtime'
+
+[[cell]]
 at = ["ZephyrQemuCortexM", "C", "Zenoh", "Service", "Example"]
 status = '''
 BuildOnly("phase-337 W2.f — the runner reproduces W2.b's manual setup \
