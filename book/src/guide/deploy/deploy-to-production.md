@@ -52,6 +52,7 @@ does the last two; on hardware `nros flash --monitor` does.
    kind = "tcp"
    locator = "tcp/127.0.0.1:7447"
    rmw = "zenoh"
+   host_peer = "zenoh-router"
    ```
 
 3. Run a host or emulator image, with a smoke test. `nros run` builds it if

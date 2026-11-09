@@ -334,6 +334,7 @@ mod tests {
             kind: LinkKind::Serial,
             locator: "serial/UART_0#baudrate=115200".into(),
             rmw: None,
+            host_peer: None,
         });
         let (_, argv) = command_line(&p).unwrap();
         let k = argv.iter().position(|a| a == "-kernel").unwrap();

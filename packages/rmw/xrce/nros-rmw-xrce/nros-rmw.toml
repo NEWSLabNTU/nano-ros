@@ -27,6 +27,12 @@
 # are preserved exactly — consumers `#if` on them.
 cpp_define = "NROS_RMW_XRCE_CFFI"
 
+# Issue 2381 -- what this backend needs on the HOST side of a link, which
+# is what `nros run --router auto` starts (one of zenoh-router | xrce-agent
+# | none). Here: the image is a client of a micro-XRCE-DDS agent.
+[rmw.host]
+peer = "xrce-agent"
+
 # The backend's own sources are C (`publisher.c`, `service.c`) built by CMake;
 # the rlib bundled into the umbrella is the cffi shim crate beside it. Both
 # provisions are real, which is why `provides` is a set and not a `driver` enum.

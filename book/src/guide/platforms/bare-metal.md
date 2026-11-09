@@ -115,6 +115,7 @@ kind = "semihosting"
 kind = "serial"
 locator = "serial/UART_0#baudrate=115200"
 rmw = "zenoh"
+host_peer = "zenoh-router"
 ```
 
 `--why` adds where each fact came from. The emulator, the console and the

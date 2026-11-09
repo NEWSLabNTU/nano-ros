@@ -27,6 +27,12 @@
 # are preserved exactly — consumers `#if` on them.
 cpp_define = "NROS_RMW_CYCLONEDDS"
 
+# Issue 2381 -- what this backend needs on the HOST side of a link, which
+# is what `nros run --router auto` starts (one of zenoh-router | xrce-agent
+# | none). Here: DDS discovery finds its peers; nothing runs on the host.
+[rmw.host]
+peer = "none"
+
 # NOT special — just the only backend that fills the cargo-consumer x
 # cmake-provider cell (RFC-0071 D7). Its register symbol is C++, so there is no
 # rlib to bundle; a Rust-rooted consumer reaches it through the `-sys` bridge

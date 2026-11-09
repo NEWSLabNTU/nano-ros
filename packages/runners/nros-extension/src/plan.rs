@@ -164,6 +164,65 @@ pub struct Link {
     /// (RFC-0118 D8). Absent in a plan written before the field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
+    /// What the RMW needs on the host side of the link, as its descriptor
+    /// declares it (`[rmw.host] peer`, RFC-0071; issue 2381). nros reads this,
+    /// never the RMW's name, to decide what `--router auto` starts. Absent:
+    /// nothing stated it (a plan written before the field existed, or an RMW
+    /// whose descriptor does not say), and `--router auto` refuses rather than
+    /// guess. A runner may ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_peer: Option<HostPeer>,
+}
+
+/// What an RMW needs running on the host side of its link (RFC-0071
+/// `[rmw.host] peer`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HostPeer {
+    /// A zenoh router (`rmw_zenohd`) the image dials.
+    ZenohRouter,
+    /// A micro-XRCE-DDS agent.
+    XrceAgent,
+    /// Nothing: the RMW reaches its peers on its own (DDS discovery, a
+    /// target-local bus).
+    None,
+}
+
+impl HostPeer {
+    /// Every spelling, in the order the descriptor documents them.
+    pub const ALL: [HostPeer; 3] = [HostPeer::ZenohRouter, HostPeer::XrceAgent, HostPeer::None];
+
+    /// The descriptor spelling (`zenoh-router`).
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HostPeer::ZenohRouter => "zenoh-router",
+            HostPeer::XrceAgent => "xrce-agent",
+            HostPeer::None => "none",
+        }
+    }
+}
+
+impl std::fmt::Display for HostPeer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for HostPeer {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        HostPeer::ALL
+            .into_iter()
+            .find(|p| p.as_str() == s)
+            .ok_or_else(|| {
+                format!(
+                    "host peer {s:?} is not one of {}",
+                    HostPeer::ALL.map(HostPeer::as_str).join(" | ")
+                )
+            })
+    }
 }
 
 /// A `wait_for` event (RFC-0118 D7), written `<kind>:<value>`.
@@ -680,6 +739,36 @@ mod tests {
         let p = sample();
         let back = RunPlan::from_json(&p.to_json()).unwrap();
         assert_eq!(p, back);
+    }
+
+    /// Issue 2381 -- the host peer is the descriptor's spelling on the wire,
+    /// optional (an older plan has none), and a typo is refused.
+    #[test]
+    fn a_link_carries_the_host_peer_in_the_descriptor_spelling() {
+        for peer in HostPeer::ALL {
+            let link = Link {
+                kind: LinkKind::Tcp,
+                locator: "tcp/127.0.0.1:7447".into(),
+                rmw: Some("acme".into()),
+                host_peer: Some(peer),
+            };
+            let json = serde_json::to_string(&link).unwrap();
+            assert!(
+                json.contains(&format!(r#""host_peer":"{}""#, peer.as_str())),
+                "{json}"
+            );
+            assert_eq!(serde_json::from_str::<Link>(&json).unwrap(), link);
+            assert_eq!(peer.as_str().parse::<HostPeer>(), Ok(peer));
+        }
+        let old: Link =
+            serde_json::from_str(r#"{"kind":"tcp","locator":"tcp/127.0.0.1:7447","rmw":"zenoh"}"#)
+                .unwrap();
+        assert_eq!(old.host_peer, None);
+        assert!("zenoh".parse::<HostPeer>().is_err());
+        assert!(
+            serde_json::from_str::<Link>(r#"{"kind":"tcp","locator":"x","host_peer":"router"}"#)
+                .is_err()
+        );
     }
 
     #[test]

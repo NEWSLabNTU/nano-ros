@@ -855,6 +855,7 @@ fn finish(
                 kind,
                 locator: loc.clone(),
                 rmw: None,
+                host_peer: None,
             });
             prov.set("link", rung);
         }
@@ -1048,7 +1049,15 @@ pub fn run(args: Args) -> eyre::Result<()> {
     ) {
         eprintln!("nros run: {note}");
     }
-    crate::cmd::run_exec::decorate(&mut plan, one.rmw.as_deref(), &args.exec);
+    // Issue 2381 -- what the RMW needs on the host side is its descriptor's
+    // fact, resolved here so `--dry-run --why` shows it and the plan carries it.
+    let ws = args
+        .workspace
+        .clone()
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default();
+    let peer = crate::cmd::run_exec::declared_host_peer(&ws, one.rmw.as_deref());
+    crate::cmd::run_exec::decorate(&mut plan, one.rmw.as_deref(), &peer, &args.exec);
     // `--why` names the target rung too (RFC-0121 D5).
     plan.provenance.insert("image".into(), rung.describe());
     if args.dry_run {
@@ -2041,7 +2050,15 @@ mod tests {
 
         // The router decision: the guest's 10.0.2.2 is this host's loopback
         // through QEMU's user network, so the router listens on 7447 here.
-        crate::cmd::run_exec::decorate(&mut p, Some("zenoh"), &Default::default());
+        crate::cmd::run_exec::decorate(
+            &mut p,
+            Some("zenoh"),
+            &Ok((
+                nros_extension::plan::HostPeer::ZenohRouter,
+                "rmw `zenoh`".into(),
+            )),
+            &Default::default(),
+        );
         let HostSide::ZenohListen(listen) = host_side(&p, &RouterMode::Auto) else {
             panic!("{:?}", host_side(&p, &RouterMode::Auto));
         };
