@@ -82,7 +82,8 @@ If the protocol is zenoh or XRCE-DDS and only the wire is new,
    cannot: `[rmw] cpp_define`, the define C++ code tests for the backend, and
    how the backend reaches the link. A Rust backend names its crate and its
    register function under `[rmw.provides.cargo]`; a CMake one names its
-   `dir` and `target` under `[rmw.provides.cmake]`. Then `[rmw.link]`. Start
+   `dir` and `target` under `[rmw.provides.cmake]`. Then `[rmw.link]`, and
+   `[rmw.host] peer`: what `nros run` starts beside the image. Start
    from the descriptor of the backend nearest yours.
 
 6. Select it. An image names the backend in its bringup's `system.toml`
@@ -139,12 +140,15 @@ EOF
 
 Its descriptor. The image links the crate `acme-rmw` and calls its
 `register()`; the linux board's `platform-posix` feature and the ROS edition
-pass through to it:
+pass through to it. `acme` speaks zenoh, so it needs a zenoh router:
 
 ```bash probe=640 track=installed
 cat > src/acme_rmw/nros-rmw.toml <<'EOF'
 [rmw]
 cpp_define = "NROS_RMW_ACME"
+
+[rmw.host]
+peer = "zenoh-router"
 
 [rmw.provides.cargo]
 crate = "acme-rmw"
@@ -245,26 +249,12 @@ grep -n '^rmw' src/acme_node_bringup/system.toml
 7:rmw = "acme"
 ```
 
-The image still speaks zenoh on the wire, so it needs a router. Start the one
-ROS 2 ships, and leave it running:
-
-```bash probe=670 probe-run=60 probe-keep track=installed
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=670
-Started Zenoh router with id
-```
-
-In a second terminal, in `acme_ws`, build and run the talker. `nros run`
-starts a router only for nano-ros's own zenoh backend, so name the one
-already running with `--router`; the talker dials it:
+Build and run the talker. `nros run` reads the descriptor's `peer`, starts
+the router, then the talker:
 
 ```bash probe=680 probe-run=1200 track=installed
 source /opt/ros/humble/setup.bash
-nros run acme_node --router tcp/127.0.0.1:7447
+nros run acme_node
 ```
 
 ```text probe-expect=680
@@ -360,6 +350,8 @@ a C++ backend with its `package.xml` and `nros-rmw.toml`.
 - **`no package provides rmw `myproto``**, from `nros build`. No
   `package.xml` announces that name. Check the spelling on both sides against
   the names the message lists, and that the package sits under `src/`.
+- **`nros run` says the descriptor does not say what it needs on the host.**
+  Add `[rmw.host] peer`: `"zenoh-router"`, `"xrce-agent"` or `"none"`.
 - **The build refuses a backend with no `[rmw.provides.cargo]`.** A Rust
   image links the backend through its crate, so a backend with only a CMake
   table cannot serve one.
