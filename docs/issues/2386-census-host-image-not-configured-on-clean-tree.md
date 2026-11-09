@@ -44,7 +44,7 @@ clean one does not.
 
 ## Measured
 
-- Reproduced on `main`'s code (2026-11-10, worktree at `201874c2c9`, no local
+- Reproduced on `main`'s code (2026-11-10, worktree at `a877dac37d` (#3369), no local
   changes to the build tooling): in `examples/workspaces/cpp`, delete
   `build/nros/models/action_bringup/*.census.json`,
   `build/nros/configured/action_bringup__linux_action_{server,client}` and
