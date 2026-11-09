@@ -90,6 +90,8 @@ cyclonedds cargo bridge.
   zenoh image (`freertos-posix-zenoh-rust`) now builds, but it exits 1
   within 0.2 s and prints nothing on the console. The C and C++ zenoh tracks
   pass.
+- Zenoh half fixed by #3296: a host-stack board's cargo road dialled the
+  board gateway `tcp/192.0.3.1:7447` instead of loopback.
 
 **Acceptance:** the freertos-posix Rust cell is green on cyclonedds, and on
 zenoh once 2342 lands. An image whose board names no crate is refused with
@@ -397,28 +399,7 @@ std_msgs/msg/String --qos-reliability best_effort` beside it.
   (`sudo apt-get install file`). The build does not use the host tools, so
   no cell flips on it.
 
-### W9 — C and C++ on ThreadX qemu riscv64 find `llvm-ar` in a clean install
-
-**Code area:** `cmake/toolchain/riscv64-threadx.cmake` (around line 430),
-and what `nros setup rv-virt-threadx` provisions.
-
-- Measured (W8 replay, 2026-11-07, the installed release in a clean
-  container): the C talker's configure stops with `llvm-ar not found
-  alongside rust-lld at /root/.rustup/toolchains/1.99.0-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin
-  — needed by riscv64-lld-wrapper.sh to strip soft-float
-  compiler_builtins`.
-- The survey's host cell passed only because that host's default toolchain
-  had `llvm-tools`. The toolchain file looks beside the *default*
-  toolchain's `rust-lld`. The pinned toolchains in `nros-sdk-index.toml`
-  carry `llvm-tools`, and the default stable toolchain does not.
-- Work: resolve `rust-lld` and `llvm-ar` from the toolchain the build pins,
-  or have `nros setup` add `llvm-tools` to the toolchain the C and C++ road
-  uses.
-
-**Acceptance:** the `threadx-riscv64-c` probe track passes in a clean
-container.
-
-### W10 — `nros run --expect` lets the matching line finish
+### W10 — `nros run --expect` lets the matching line finish — DONE
 
 **Code area:** `nros run`'s console matcher in `nros-cli-core`.
 
@@ -433,6 +414,9 @@ container.
 
 **Acceptance:** a test whose fake console writes a line in two pieces sees
 the whole line printed before the run stops.
+
+**Done (2026-11-09).** #3326: after a match, `nros run` reads on to the end
+of that line before it stops the emulator.
 
 ### W8 — The book: three tabs on every starter, each probed
 

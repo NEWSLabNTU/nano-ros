@@ -92,22 +92,13 @@ starter.
 
 ## Run it in QEMU
 
-The image dials the router through QEMU's user-mode network: the guest
-reaches your host as `10.0.2.2`, on port 7447. Start the router first, in its
-own terminal, listening on every interface so the guest's connection arrives:
+The image dials a zenoh router on your host through QEMU's user-mode
+network: the guest reaches your host as `10.0.2.2`, on port 7447. `nros run`
+starts that router itself, listening on every interface so the guest's
+connection arrives, and stops it when the run ends. If a router already runs
+on that port, `nros run --router auto` uses it instead.
 
-<!-- removed when the board descriptor states its default locator -->
-```bash probe=50 probe-run=60 probe-keep
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=50
-Started Zenoh router with id
-```
-
-Then, in a second terminal, source ROS 2 and build and run the talker. This
+In the workspace, source ROS 2 and build and run the talker. This
 first run records the ROS 2 prefix in the workspace, so later runs of it need
 no sourced shell:
 
@@ -126,7 +117,7 @@ FreeRTOS kernel and lwIP, about three minutes for C and five for Rust; later
 builds take seconds), then boots it in QEMU with the board's LAN9118 on the
 user-mode network. What it prints is the board's console. With `--expect` it
 stops the board and exits 0 at the first console line containing that text,
-and exits 1 if the board stops first. The router keeps running.
+and exits 1 if the board stops first. It stops the router it started, too.
 
 Without `--expect` it keeps running until you press Ctrl-C, which stops QEMU:
 
@@ -141,7 +132,8 @@ Publishing: 'Hello World: 2'
 
 ## See it in ROS 2
 
-Leave the router and `nros run` going. In a third terminal:
+Leave `nros run` going; its router stays up while it runs. In a second
+terminal:
 
 ```bash probe=70 probe-run=90
 source /opt/ros/humble/setup.bash
@@ -162,10 +154,12 @@ which receives nothing from it. That is why the command asks for best-effort.
 
 - **No `Publishing:` line within 30 seconds of boot:** the board did not
   reach the router. A cold boot through FreeRTOS, lwIP and the zenoh session
-  takes 10 to 15 seconds. Check that the router is running and listens on
+  takes 10 to 15 seconds. If you run your own
+  router with `--router auto`, check that it listens on
   `0.0.0.0:7447`: one on `127.0.0.1` is out of the guest's reach.
 - **`Failed to open session` on the console:** the talker tried once, found no
-  router, and stopped. Start the router first, then run again.
+  router, and stopped. With `--router auto`, start your router before
+  `nros run`.
 - **`nros run` stops at once and names `AMENT_PREFIX_PATH`:** this shell has
   not sourced ROS 2, and no earlier build of the workspace recorded it.
 - **Everything else:** [Troubleshooting - First 10 Minutes](../reference/troubleshooting-index.md).
