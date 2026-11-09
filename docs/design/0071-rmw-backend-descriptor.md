@@ -587,7 +587,8 @@ Rejected, for owned entries (maintainer decision, 2026-11-05):
 **Status: Accepted (user ruling, 2026-11-07); implemented by phase-545
 W1–W3 (2026-11-09), issue 2295 resolved. D16 step 3 (Zephyr, `west_app`) is
 a follow-up by user ruling (2026-11-09):
-[issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md).** The
+[issue 2372](../issues/archived/2372-out-of-tree-rmw-native-sim-west-app.md),
+resolved 2026-11-10 (D18 below).** The
 ruling: it enables third-party RMW backends on the `nros build` road. Issue
 2295 is homed here and stays open until D14–D16 are implemented and D16's
 acceptance passes; [phase-545](../roadmap/phase-545-rmw-provider-scan-build-road.md)
@@ -774,7 +775,11 @@ without deciding it): whether step 3 (Zephyr) belongs in this RFC's
 acceptance or in a follow-up phase, since it needs the Zephyr SDK on the
 lane that runs it.
 Decided 2026-11-09 (user ruling): a follow-up,
-[issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md).
+[issue 2372](../issues/archived/2372-out-of-tree-rmw-native-sim-west-app.md).
+Landed 2026-11-10 with D18: the `workspace-zephyr-out-of-tree-rmw` row builds
+the image on the Zephyr lane, `out_of_tree_rmw_build.rs` asserts the west
+application and the Kconfig choice in `check-cli-tests`, and
+`out_of_tree_rmw_zephyr_e2e.rs` runs it against a router.
 
 ## Amendment 2026-11-10: the host peer is a declared fact (D17, issue 2381)
 
@@ -837,6 +842,80 @@ run-time one.
 
 **Gate.** The `run_exec` test `the_run_path_names_no_rmw` refuses an RMW name
 as a string literal in the non-test code of `run_exec.rs` and `run_plan.rs`.
+
+## Amendment 2026-11-10: the Zephyr module backend is a declared fact (D18, issue 2372)
+
+**Status: Implemented with issue 2372 (2026-11-10), which also lands D16
+step 3. The rulings below were made in that fix and are open to review.**
+
+D16 step 3 builds the out-of-tree `acme` image on `board = "zephyr"`
+(native_sim) through `west_app`. `west_app` already resolved the backend
+through the scan (D14) and depended on its crate at
+`ResolvedRmwIn::package_dir` (D15 rulings 2 and 3). The configure still
+failed, in two places that knew backends by name:
+
+- the module hook's Kconfig render (`leaf_kconfig::rmw_symbol`) mapped the
+  image's `rmw` onto `choice NROS_RMW_BACKEND` through a closed table, so
+  `acme` was refused ("has no Zephyr backend");
+- `nros_check_image_agreement` compared Kconfig's choice with the image's
+  `rmw` by name, so even a correct choice (`zenoh`) was refused as a
+  disagreement with `acme`.
+
+A Zephyr image always selects exactly one member of the module's choice, and
+the member decides what the module compiles (zenoh-pico's Zephyr port, the
+XRCE client, the Cyclone C++ library) and which knobs exist. A backend built
+over one of those needs that member. `acme` delegates to zenoh, so it needs
+`NROS_RMW_ZENOH`.
+
+**D18. A backend declares the Zephyr module backend it is built over:**
+
+```toml
+[rmw.zephyr]
+module_backend = "zenoh"   # or "xrce", or "cyclonedds"
+```
+
+The vocabulary is CLOSED (`ZEPHYR_MODULE_BACKENDS` in `rmw_descriptor.rs`)
+because the module's choice is: it is the module's members, not a list of
+RMWs. As with D17, a backend never names itself here; it names the member it
+needs.
+
+**Rulings.**
+
+- **The in-tree backends state their own name.** zenoh, xrce and cyclonedds
+  each state `module_backend = "<own name>"`. uorb has no Zephyr build and
+  states nothing. A unit test holds the vocabulary equal to the Kconfig
+  render's choice table and every member present in `zephyr/Kconfig`.
+- **Left out means "no Zephyr build".** A Zephyr image whose backend states no
+  `module_backend` is refused at configure, naming the descriptor's directory
+  and the line to add. There is no default member: the module's own default
+  (zenoh) would compile a stack the backend may not use.
+- **The Kconfig render reads the descriptor through the provider scan.**
+  `nros dev image leaf-system --kconfig-out` resolves the image's `rmw` with
+  `rmw_index::for_dir` (D14), the index `nros build` uses, and maps
+  `module_backend` onto the choice. It also prints the descriptor as a
+  `NROS_LEAF_KCONFIG_INPUT` row, which the hook adds to
+  `CMAKE_CONFIGURE_DEPENDS`, so editing the descriptor reconfigures.
+- **An alias is refused on Zephyr.** `nros::main!`'s Zephyr arm selects the
+  backend by the image's `rmw` word (below), and the registry knows only the
+  canonical name, so `rmw = "rmw-zenoh"` is refused naming `zenoh`. Before
+  this amendment the closed table refused every alias anyway.
+- **The agreement check compares the module backend.** `nros dev image facts
+  --cmake` emits `NROS_IMAGE_ZEPHYR_MODULE_BACKEND` beside `NROS_IMAGE_RMW`.
+  `nros_check_image_agreement` compares Kconfig's choice with it when it is
+  set, and with the name otherwise. For every in-tree backend the two are
+  equal.
+- **The Zephyr arm selects the declared backend.** On a Zephyr image the
+  entry's `(gated)` arm registers the image's backend, and the module's
+  `nros_app_register_backends()` then registers the C entry of the Kconfig
+  member. For an in-tree backend that is the same name again, which
+  overwrites. For `acme` it registered a second backend, `zenoh`. The image
+  booted on `acme` only because `NROS_RMW_MAX_BACKENDS` is derived as 1 and the
+  gated arm runs first, so zenoh's registration failed silently. D15's
+  baked-selector rule (phase-545 W3) did not reach this arm: the arm renders
+  no `(image)` call, and it opens through `Context::baked()`, which never
+  reads `NROS_BOOT_CONFIG`. The arm now applies the image's declared `rmw` to
+  the executor config it opens with (`config.rmw(..)`). An image naming no
+  RMW selects nothing, as before.
 
 ## What this does NOT change
 
