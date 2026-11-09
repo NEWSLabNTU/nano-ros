@@ -2,8 +2,8 @@
 
 **Status (2026-11-09). W1 to W4 DONE.** Issue 2295 is
 resolved and archived; RFC-0071 D16 step 3 (Zephyr) moved out to
-[issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md) by user
-ruling. Design accepted the same day (user
+[issue 2372](../issues/archived/2372-out-of-tree-rmw-native-sim-west-app.md) by
+user ruling, and is resolved there (2026-11-10, RFC-0071 D18). Design accepted the same day (user
 ruling: it enables third-party RMW backends on the `nros build` road). Owned
 by the phase-537 book session ("AUO 139 book", user ruling 2026-11-07), which
 wrote the amendment. Each work item is claimed with `just claim phase-545-wN`
@@ -111,7 +111,10 @@ crate does not name, and an acceptance test with a gate.
 - Step 3: the same image with `board = "native_sim"` builds through
   `west_app`. **User ruling 2026-11-09: a FOLLOW-UP, not part of this
   phase** (it needs the Zephyr SDK on its lane). Filed as
-  [issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md).
+  [issue 2372](../issues/archived/2372-out-of-tree-rmw-native-sim-west-app.md),
+  resolved 2026-11-10: row `workspace-zephyr-out-of-tree-rmw`,
+  `out_of_tree_rmw_zephyr_e2e.rs`, and RFC-0071 D18 for the Zephyr module
+  backend the image's Kconfig selects.
 - Gate `check-rmw-resolve-sites` on the fast lane. It refuses `resolve_rmw(`,
   `RMW_ROWS` and the static capability helpers in
   `packages/cli/nros-cli-core/` and `packages/cli/cargo-nano-ros/src/`, except
@@ -232,5 +235,6 @@ crate does not name, and an acceptance test with a gate.
 | --- | --- |
 | [#2295](../issues/archived/2295-nros-build-rmw-selection-in-tree-only.md) | Resolved by W1–W3 (2026-11-09). This phase closes it: `nros build` finds an RMW provider outside the in-tree table (RFC-0071 Amendment 2026-11-07, D14 to D16). |
 | [#2310](../issues/2310-board-descriptor-platform-is-closed-enum.md) | A board descriptor's `platform` is a closed enum, so no out-of-tree platform: the platform-side twin of the out-of-tree RMW this phase enables. |
-| [#2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md) | RFC-0071 D16 step 3: the `acme` image on `board = "native_sim"` through `west_app`, moved out of W3 by user ruling (2026-11-09). |
+| [#2372](../issues/archived/2372-out-of-tree-rmw-native-sim-west-app.md) | RESOLVED 2026-11-10. RFC-0071 D16 step 3: the `acme` image on the Zephyr board (native_sim) through `west_app`, moved out of W3 by user ruling (2026-11-09). The Kconfig choice is now the descriptor's `[rmw.zephyr] module_backend` (RFC-0071 D18), and the Zephyr arm selects the image's declared backend. |
+| [#2393](../issues/2393-west-app-backend-dep-no-edition-feature.md) | Found by #2372: a generated Zephyr Rust west application's backend dependency carries no ROS edition (or capability) feature, where the cargo road's does. |
 | [#2381](../issues/archived/2381-run-router-need-from-rmw-name-list.md) | RESOLVED 2026-11-10 by PR #3393. `nros run` chose the host router from the RMW's name, so W3's `acme` ran with none. The host peer is now declared in the descriptor, `[rmw.host] peer` (RFC-0071 D17). |

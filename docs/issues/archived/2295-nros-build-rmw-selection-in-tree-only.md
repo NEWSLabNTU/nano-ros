@@ -105,4 +105,4 @@ own build road.
   exceptions are `build.rs` and the resolver's own `#[cfg(test)]` items.
 - **Not here.** D16 step 3 (the same image on `board = "native_sim"` through
   `west_app`) is a follow-up by user ruling:
-  [issue 2372](../2372-out-of-tree-rmw-native-sim-west-app.md).
+  [issue 2372](2372-out-of-tree-rmw-native-sim-west-app.md).
