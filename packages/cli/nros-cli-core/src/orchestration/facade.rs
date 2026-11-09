@@ -451,19 +451,22 @@ pub struct EntrySelection {
 /// `board_dir` is the board crate the entry depends on, `None` for a board
 /// with no crate.
 ///
-/// The adapter over [`entry_selection_in`] for a caller that holds no
-/// [`RmwIndex`]. Its caller (`cmd/build.rs`) passes no workspace yet, so the
-/// interim index is the SDK root's alone: every in-tree backend resolves, and
-/// a workspace provider is refused naming the search rather than looked for
-/// relative to the process's current directory.
+/// The adapter over [`entry_selection_in`] for `cmd/build.rs`, which holds the
+/// workspace: the index is the workspace's ([`rmw_index::for_workspace`],
+/// memoised, so every image of one invocation shares one scan), so a provider
+/// in the workspace (`rmw = "acme"`) resolves exactly as an in-tree one does
+/// (RFC-0071 D14). Until phase-545 W3 this scanned the SDK root alone and
+/// refused every workspace provider on the `nros build` road — issue 2295.
+///
+/// [`rmw_index::for_workspace`]: crate::orchestration::rmw_index::for_workspace
 pub fn entry_selection(
+    workspace: &Path,
     entry_name: &str,
     sys: &SystemToml,
     nano_ros_root: &Path,
     board_dir: Option<&Path>,
 ) -> Result<EntrySelection> {
-    // phase-545 W1: threaded from build/configure after phase-530 W2
-    let rmws = crate::orchestration::rmw_index::for_sdk_root_path(nano_ros_root)?;
+    let rmws = crate::orchestration::rmw_index::for_workspace(workspace)?;
     entry_selection_in(&rmws, entry_name, sys, nano_ros_root, board_dir)
 }
 

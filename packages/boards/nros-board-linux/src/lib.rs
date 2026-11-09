@@ -424,6 +424,11 @@ impl BoardEntry for LinuxBoard {
 ///   for it would disagree the first time anyone patched one. ABSENT, never
 ///   `Some("")`: an unbaked namespace must fall through to the compiled
 ///   default, not shadow the env rung above it.
+/// * `rmw` — from the blob too (RFC-0071 D15, phase-545 W3). `nros::main!`
+///   bakes it ONLY for an image whose entry registers its own backend (the
+///   `(image)` arm); every other blob leaves the bit clear, so this is `None`
+///   and the selection is the unique registered backend, as before. Below
+///   `$NROS_RMW` like the rest (census mode forces the recorder that way).
 /// * `locator` / `domain_id` — deliberately absent. Issue #48: a HOST resolves
 ///   its connect facts from the environment, so leaving them `None` is what
 ///   keeps `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` authoritative. Identity is not a
@@ -441,6 +446,7 @@ fn hosted_baked_rung(deploy: &nros_platform::DeployOverlay) -> ::nros::BootConfi
     ::nros::BootConfig {
         node_name: deploy.node_name,
         namespace: blob.namespace,
+        rmw: blob.rmw,
         ..Default::default()
     }
 }

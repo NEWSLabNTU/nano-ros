@@ -5095,6 +5095,7 @@ fn generate_entry(
         });
         spec.selection = Some(
             crate::orchestration::facade::entry_selection(
+                root,
                 &crate::builder::entry::package_name(image_id),
                 &sys,
                 nros_root,

@@ -1869,9 +1869,24 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // gets a plain `#[unsafe(no_mangle)] #[used]` static that is still referenceable).
     // The static is emitted once, before `body_ts`, so `&NROS_BOOT_CONFIG`
     // resolves in every framework arm's `deploy_overlay_ts` use site.
+    //
+    // RFC-0071 D15 (phase-545 W3) — an image whose ENTRY registers its backend
+    // (the `(image)` arm) also bakes that backend's name as its selector. The
+    // board registers nothing for it, and the backend crate the entry links may
+    // carry another backend's hosted self-registration with it: the
+    // out-of-tree `acme` delegates to zenoh, whose `.init_array` ctor registers
+    // `zenoh` too, and with two backends registered and no selector the open is
+    // `Ambiguous`. The image's `rmw` is the answer it declared; `$NROS_RMW`
+    // still outranks it (census mode forces the recorder that way). Every image
+    // without the arm bakes exactly what it did before.
+    let baked_rmw = deploy_overlay_lit
+        .rmw
+        .as_deref()
+        .filter(|_| !image_registration_ts.is_empty());
     let boot_config_static_ts = boot_config_static_tokens(
         &deploy_overlay_lit,
         baked_namespace(&node_instances, &node_namespaces).as_deref(),
+        baked_rmw,
     );
 
     // Phase 244.D1 — `target_os = "none"` entry shape for the OwnedSpin
@@ -3925,6 +3940,7 @@ fn baked_namespace(
 fn boot_config_static_tokens(
     lit: &DeployOverlayLit,
     namespace: Option<&str>,
+    rmw: Option<&str>,
 ) -> proc_macro2::TokenStream {
     let node_name_opt = match &lit.node_name {
         Some(s) => quote! { ::core::option::Option::Some(#s) },
@@ -3942,17 +3958,32 @@ fn boot_config_static_tokens(
         Some(s) => quote! { ::core::option::Option::Some(#s) },
         None => quote! { ::core::option::Option::None },
     };
-    quote! {
-        #[used]
-        #[cfg_attr(target_os = "none", unsafe(link_section = ".nros_boot_config"))]
-        #[unsafe(no_mangle)]
-        static NROS_BOOT_CONFIG: ::nros::BakedBootConfig =
+    // `new_with_rmw` only when a selector is baked, so every image that bakes
+    // none expands to the same `new(...)` call as before.
+    let ctor = match rmw {
+        Some(r) => quote! {
+            ::nros::BakedBootConfig::new_with_rmw(
+                #node_name_opt,
+                #locator_opt,
+                #domain_opt,
+                #namespace_opt,
+                ::core::option::Option::Some(#r),
+            )
+        },
+        None => quote! {
             ::nros::BakedBootConfig::new(
                 #node_name_opt,
                 #locator_opt,
                 #domain_opt,
                 #namespace_opt,
-            );
+            )
+        },
+    };
+    quote! {
+        #[used]
+        #[cfg_attr(target_os = "none", unsafe(link_section = ".nros_boot_config"))]
+        #[unsafe(no_mangle)]
+        static NROS_BOOT_CONFIG: ::nros::BakedBootConfig = #ctor;
     }
 }
 
@@ -3984,8 +4015,9 @@ mod baked_boot_config_namespace_tests {
         if let [only] = instances.as_slice() {
             lit.node_name = Some(only.clone());
         }
-        let ts = boot_config_static_tokens(&lit, baked_namespace(&instances, &table).as_deref())
-            .to_string();
+        let ts =
+            boot_config_static_tokens(&lit, baked_namespace(&instances, &table).as_deref(), None)
+                .to_string();
 
         let open = ts
             .find("BakedBootConfig :: new (")
@@ -4086,6 +4118,26 @@ mod baked_boot_config_namespace_tests {
             &[("talker", "/island"), ("listener", "/island")],
         );
         assert_eq!(args[3], NONE, "{args:?}");
+    }
+
+    /// RFC-0071 D15 (phase-545 W3) — an image whose entry registers its own
+    /// backend bakes that backend as its selector, through `new_with_rmw`;
+    /// every other image keeps the four-argument `new` (the `None` arm is what
+    /// keeps in-tree expansions unchanged).
+    #[test]
+    fn an_image_registered_backend_is_baked_as_the_selector() {
+        let lit = DeployOverlayLit::default();
+        let with = boot_config_static_tokens(&lit, None, Some("acme")).to_string();
+        assert!(
+            with.contains("BakedBootConfig :: new_with_rmw (")
+                && with.contains(":: core :: option :: Option :: Some (\"acme\")"),
+            "{with}"
+        );
+        let without = boot_config_static_tokens(&lit, None, None).to_string();
+        assert!(
+            without.contains("BakedBootConfig :: new (") && !without.contains("new_with_rmw"),
+            "{without}"
+        );
     }
 }
 
