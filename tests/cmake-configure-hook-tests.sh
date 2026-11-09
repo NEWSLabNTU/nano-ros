@@ -28,7 +28,8 @@
 #   M  re-configure, same dir      `nros configure` runs again (the guard is
 #                                  per configure, never cached)
 #   N  image order                 CONFIGURED_IMAGE > NROS_IMAGE > default
-#   O  R31 walk-up                 only a generated app walks up to <ws>
+#   O  R31 walk-up                 only a generated app walks up to <ws>; one
+#                                  outside `src/` is not configured (issue 2395)
 #   P  R38 input edges             editing a digested launch file re-runs the
 #                                  host configure and `nros configure`
 #   H  REACH                       every hooked entry point calls the helper, and
@@ -333,6 +334,20 @@ if [ "$got_leaf" = "$O_WS/src/leaf" ] && [ "$got_gen" = "$O_WS" ]; then
     log_success "standalone leaf -> itself; generated app -> its workspace"
 else
     fail "case O: leaf '$got_leaf' (want $O_WS/src/leaf), generated '$got_gen' (want $O_WS)"
+fi
+# Issue 2395 -- a generated application whose bringup is NOT under `src/` (a
+# flat workspace) has no project `nros configure` can take: the hook runs no
+# configure for it, rather than configuring the bringup alone.
+O_FLAT="$TEST_TMPDIR/o-flat"
+mkdir -p "$O_FLAT/bringup"
+touch "$O_FLAT/bringup/system.toml"
+check
+got_flat="$(o_project "$O_FLAT/bringup" TRUE)"
+flat_calls="$(grep -c '^configure ' "$CALLS" || true)"
+if [ -z "$got_flat" ] && [ "$flat_calls" -eq 0 ]; then
+    log_success "generated app in a flat workspace -> no configure (issue 2395)"
+else
+    fail "case O (issue 2395): a flat bringup was configured as '$got_flat' ($flat_calls call(s))"
 fi
 
 # ---------------------------------------------------------------------------
