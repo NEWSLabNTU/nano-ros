@@ -1,15 +1,16 @@
 ---
 id: 2308
 title: "A sparse Zephyr source tree reads as a provisioned west workspace"
-status: open
+status: resolved
 type: bug
 area: [ci, zephyr, testing]
 severity: medium
 found: 2026-11-06
+resolved: 2026-11-09
 related: [1387, phase-543]
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md).**
+**Home: [phase-543](../../roadmap/phase-543-nextest-gates.md).**
 
 ## Measured
 
@@ -62,3 +63,31 @@ candidate, or a `.west/config` naming the manifest). `template-copy-out`,
 `zephyr-workspace.sh resolve` take that answer. The sparse header tree moves
 to a path of its own, or the readers that want headers alone ask for the
 header path, never for "the workspace".
+
+## Resolution (2026-11-09)
+
+The one resolver answers it. `nros_zephyr_ws_resolve`
+(`scripts/lib/zephyr-workspace.sh`) takes a ladder candidate only when it holds
+`zephyr/` AND `.west/`. `west init` makes `.west/`, and a clone never does, so
+CI's sparse header tree no longer resolves. `template-copy-out`,
+`check-tier-preconditions` and every other reader of `resolve` take that
+answer with no change of their own: a sparse tree now reads as "Zephyr not
+provisioned".
+
+- The CLI spells the same ladder in Rust (`zephyr_base_with` in
+  `cmd/build.rs`, "rung for rung" with the shell), so its rungs take the same
+  predicate. Otherwise `nros build` would have handed the sparse tree to west
+  as `ZEPHYR_BASE`.
+- `$NROS_ZEPHYR_WORKSPACE` stays as stated in both: it is the user's choice,
+  and in the shell also the install target of `just zephyr setup`. The lane
+  capability probe (`gate-lane-preflight.py`, `zephyr`) keeps its own `.west/`
+  test for exactly that override.
+- The header readers already name the header path, never "the workspace":
+  `check-cxx-compat-shim-facilities.py`, `provision-fast-lane.sh` and the
+  `zephyr-tree` capability probe. So the sparse tree stays where CI puts it.
+
+Tests: `just check zephyr-workspace-resolve` (`tests/zephyr-workspace-resolve-tests.sh`:
+nothing, the sparse tree, the same tree after `west init`, the override). It
+fails with the `.west/` test removed (checked). Also the Rust
+`a_source_tree_without_dot_west_is_not_a_ladder_rung`, with the override and a
+real workspace as controls.

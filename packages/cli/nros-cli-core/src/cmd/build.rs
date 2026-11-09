@@ -7000,7 +7000,9 @@ fn zephyr_base_with(
     }
     // From here on, `nros_zephyr_ws_candidates` rung for rung.
     let mut candidates: Vec<PathBuf> = Vec::new();
-    match workspace.filter(|w| !w.is_empty()) {
+    let workspace = workspace.filter(|w| !w.is_empty());
+    let workspace_set = workspace.is_some();
+    match workspace {
         // The override wins outright and ENDS the ladder — it is also the
         // install target, and a tree it names that is not there yet must not
         // be silently replaced by another one.
@@ -7021,8 +7023,13 @@ fn zephyr_base_with(
             }
         }
     }
+    // Issue 2308 -- a LADDER rung is a west workspace (`.west/` beside
+    // `zephyr/`), as in `nros_zephyr_ws_resolve`: CI's sparse header clone at
+    // `zephyr-workspace/zephyr` is a source tree no build can use. The
+    // override is the user's own choice and is taken on `zephyr/` alone.
     candidates
         .into_iter()
+        .filter(|ws| workspace_set || ws.join(".west").is_dir())
         .map(|ws| ws.join("zephyr"))
         .find(|z| z.is_dir())
 }
@@ -7948,10 +7955,55 @@ mod retired_table_tests {
 mod zephyr_base_tests {
     use super::*;
 
+    /// A west workspace: `zephyr/` and `.west/` (issue 2308).
     fn zdir(base: &std::path::Path, name: &str) -> PathBuf {
         let ws = base.join(name);
         std::fs::create_dir_all(ws.join("zephyr")).expect("mkdir");
+        std::fs::create_dir_all(ws.join(".west")).expect("mkdir");
         ws
+    }
+
+    /// Issue 2308 -- a Zephyr SOURCE tree with no `.west/` beside it (CI's
+    /// sparse header clone) is not a ladder rung, so a build reports "no
+    /// workspace" rather than running west against it. The explicit override
+    /// still takes one: that is the user's choice, as in the shell resolver.
+    #[test]
+    fn a_source_tree_without_dot_west_is_not_a_ladder_rung() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("nano-ros");
+        std::fs::create_dir_all(root.join("zephyr-workspace/zephyr")).unwrap();
+        assert_eq!(
+            zephyr_base_with(None, None, None, None, "3.7", &root),
+            None,
+            "a sparse source tree is not a west workspace"
+        );
+        let store = tmp.path().join("store");
+        std::fs::create_dir_all(store.join("zephyr")).unwrap();
+        assert_eq!(
+            zephyr_base_with(None, None, None, Some(store.clone()), "3.7", &root),
+            None,
+            "nor is a store directory without .west/"
+        );
+        let chosen = tmp.path().join("chosen");
+        std::fs::create_dir_all(chosen.join("zephyr")).unwrap();
+        assert_eq!(
+            zephyr_base_with(
+                None,
+                None,
+                Some(chosen.clone().into_os_string()),
+                None,
+                "3.7",
+                &root
+            ),
+            Some(chosen.join("zephyr")),
+            "the override is taken as stated"
+        );
+        // Positive control: the same in-repo tree once it is a workspace.
+        std::fs::create_dir_all(root.join("zephyr-workspace/.west")).unwrap();
+        assert_eq!(
+            zephyr_base_with(None, None, None, None, "3.7", &root),
+            Some(root.join("zephyr-workspace/zephyr"))
+        );
     }
 
     /// The ladder is `west-fixtures.sh`'s, and what it produces is a
@@ -8077,6 +8129,7 @@ mod zephyr_base_tests {
             "an unpopulated store contributes nothing"
         );
         std::fs::create_dir_all(store_37.join("zephyr")).unwrap();
+        std::fs::create_dir_all(store_37.join(".west")).unwrap();
         assert_eq!(
             zephyr_base_with(None, None, None, Some(store_37.clone()), "3.7", &root),
             Some(store_37.join("zephyr"))

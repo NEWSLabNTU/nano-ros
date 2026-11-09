@@ -25,9 +25,15 @@
 #     INSTALL TARGET of `just zephyr setup`, so it must resolve before the tree
 #     it names exists. An override silently ignored because the tree is not
 #     there yet is the worse failure (west-fixtures had it).
-#   * a candidate is a workspace when it holds `zephyr/`. That is what
-#     `ZEPHYR_BASE` points at, so "the directory exists" (just's old predicate)
-#     accepted a half-finished `zephyr-workspace/` that west cannot use.
+#   * a candidate is a workspace when it holds `zephyr/` AND `.west/`.
+#     `zephyr/` is what `ZEPHYR_BASE` points at, so "the directory exists"
+#     (just's old predicate) accepted a half-finished `zephyr-workspace/` that
+#     west cannot use. `.west/` is issue 2308: CI's fast job sparse-clones
+#     Zephyr's C++ minimal-libc headers into `zephyr-workspace/zephyr` for the
+#     gates that read headers, and that SOURCE TREE passed the `zephyr/` test,
+#     so `template-copy-out` ran a west build against it and failed instead of
+#     reporting "Zephyr not provisioned". `west init` makes `.west/`; a clone
+#     never does. Readers that want headers name the header path itself.
 #   * the ladder is VERSION-AWARE, one line at a time. A 3.7 run never resolves
 #     the 4.4 sibling and a 4.4 run never resolves the 3.7 trees — a workspace
 #     of the wrong line is a west-manifest mismatch, not a fallback.
@@ -174,7 +180,7 @@ nros_zephyr_ws_resolve() {
             /*) abs="$cand" ;;
             *) abs="$root/$cand" ;;
         esac
-        if [ -d "$abs/zephyr" ]; then
+        if [ -d "$abs/zephyr" ] && [ -d "$abs/.west" ]; then
             printf '%s\n' "$cand"
             return 0
         fi
