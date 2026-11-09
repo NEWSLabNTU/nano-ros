@@ -354,8 +354,8 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
 **What landed (W3).**
 
 - **Measured first** (the W1 tip, a fresh build dir each run):
-  - The generated Rust west entry could not configure at all: issue 2232, a
-    panic in `nros dev image board-facts` reached because the module asked the
+  - The generated Rust west entry could not configure at all: a panic in
+    `nros dev image board-facts`, reached because the module asked the
     generated application's own dir (no `system.toml`) since issue 2199
     forwarded `NROS_IMAGE` as the deploy. Fixed on the W3 branch, and
     independently on main as issues 2229 and 2224
