@@ -116,7 +116,10 @@ impl OutputFlags {
 /// * 2 -- phase-530 W5: `inputs`. Empty means "the digest read no file", and
 ///   also what a format-1 stamp reads, which left the hooked host with no
 ///   configure dependencies until the next configure.
-pub(crate) const STAMP_FORMAT: u32 = 2;
+/// * 3 -- phase-530 W6: `censuses`. Empty means "this configure read no
+///   census", and also what a format-2 stamp reads, which let a re-taken
+///   census leave the stamp current over knobs derived from the old one.
+pub(crate) const STAMP_FORMAT: u32 = 3;
 
 /// What a configure recorded about itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
