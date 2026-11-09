@@ -113,7 +113,10 @@ impl OutputFlags {
 /// * 1 -- phase-530 W4: `resolved_dir`. `None` means "resolved nothing" in a
 ///   new stamp, and also what every stamp from before W4 reads, which left
 ///   the first hooked configure unseeded.
-pub(crate) const STAMP_FORMAT: u32 = 1;
+/// * 2 -- phase-530 W5: `inputs`. Empty means "the digest read no file", and
+///   also what a format-1 stamp reads, which left the hooked host with no
+///   configure dependencies until the next configure.
+pub(crate) const STAMP_FORMAT: u32 = 2;
 
 /// What a configure recorded about itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
