@@ -329,6 +329,18 @@ entry-rmw-vocabulary:
 entry-rung-consumers:
     @python3 scripts/check-entry-rung-consumers.py
 
+# RFC-0071 D16 (phase-545 W3, issue 2295) — no CLI site answers an RMW name from
+# the table `cargo-nano-ros/build.rs` bakes from one checkout. `nros build` read
+# it, so a workspace provider (`rmw = "acme"`) was refused as unknown while the
+# provider scan found it. Refuses the free `resolve_rmw(`, `RMW_ROWS` and the
+# static capability helpers in `nros-cli-core/` and `cargo-nano-ros/src/`; the
+# only exceptions are structural (`build.rs`, and the resolver's own
+# `#[cfg(test)]` items) and there is no allowlist. Buildless; self-tests on its
+# normal path.
+[private]
+rmw-resolve-sites:
+    @python3 scripts/check/check-rmw-resolve-sites.py
+
 # Issue 0827 — the infrastructure-queryable counts have ONE definition each,
 # tied to the number of servers actually created. A service server IS a zenoh
 # queryable, so these are a term in every service-buffer pool the RMW sizes;
