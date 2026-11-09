@@ -138,7 +138,11 @@ fn apply_sched_task_deadline(sched_task: &SchedTaskSpec<'_>) {
             let us = us.min(u32::MAX as u64) as u32;
             let applied = unsafe { nros_zephyr_set_current_deadline(us) };
             if applied != 0 {
-                ::log::info!("nros: EDF deadline set sched_task=`{}` {}us", sched_task.name, us);
+                ::log::info!(
+                    "nros: EDF deadline set sched_task=`{}` {}us",
+                    sched_task.name,
+                    us
+                );
             }
         }
     }
@@ -188,7 +192,11 @@ fn apply_boot_sched_task_core_pin(sched_task: &SchedTaskSpec<'_>) {
             // Not reachable on any Zephyr this pins against, but the accept arm
             // stays: if a future kernel permits a running-thread mask, this is
             // the honest marker for it rather than a stale failure note.
-            ::log::info!("nros: core pin sched_task=`{}` cpu={}", sched_task.name, cpu);
+            ::log::info!(
+                "nros: core pin sched_task=`{}` cpu={}",
+                sched_task.name,
+                cpu
+            );
         } else {
             ::log::warn!(
                 "nros: core pin FAILED sched_task=`{}` cpu={} rc={} — this is the BOOT sched task, which \
@@ -493,7 +501,9 @@ impl ZephyrBoard {
             );
             return Err(RuntimeError::Spin);
         }
-        if let Err(short) = ::nros::check_sched_task_executor_backing(sched_tasks.len(), sched_task_backing) {
+        if let Err(short) =
+            ::nros::check_sched_task_executor_backing(sched_tasks.len(), sched_task_backing)
+        {
             ::log::error!("nros: {}", short);
             return Err(RuntimeError::Spin);
         }
@@ -567,7 +577,11 @@ impl ZephyrBoard {
             })
         };
         if let Err(e) = rc {
-            ::log::error!("nros: level `{}` setup failed: {:?}", boot_sched_task.name, e);
+            ::log::error!(
+                "nros: level `{}` setup failed: {:?}",
+                boot_sched_task.name,
+                e
+            );
             fail_boot(boot_sched_task.name, "setup failed");
         }
 
@@ -575,7 +589,9 @@ impl ZephyrBoard {
 
         unsafe {
             nros_zephyr_set_current_priority(
-                boot_sched_task.priority.clamp(i32::MIN as i64, i32::MAX as i64) as i32,
+                boot_sched_task
+                    .priority
+                    .clamp(i32::MIN as i64, i32::MAX as i64) as i32,
             );
         }
         apply_sched_task_deadline(boot_sched_task);
@@ -589,7 +605,8 @@ impl ZephyrBoard {
             "nros: multi-level run — {} level(s) over one executor",
             sched_tasks.len()
         );
-        let period = core::time::Duration::from_millis((boot_sched_task.spin_period_us / 1000).max(1));
+        let period =
+            core::time::Duration::from_millis((boot_sched_task.spin_period_us / 1000).max(1));
         let mut gap = ::nros_platform::SchedTaskSpinGap::new(boot_sched_task.spin_period_us);
         loop {
             let iter = gap.mark();
