@@ -195,7 +195,7 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | [#2319](../issues/archived/2319-first-project-scaffold-before-ros-source.md) | both | **Resolved** 2026-11-07: Tutorial 1 and every starter source ROS 2 before they scaffold |
 | [#2320](../issues/archived/2320-jazzy-echo-qemu-talker-type-hash-invalid.md) | both | **Resolved** 2026-11-07: workspace sync generated Humble messages; it now takes the bringups' edition, and Jazzy echo receives the talker |
 | [#2321](../issues/archived/2321-lock-provenance-incomplete.md) | industrial | **Resolved** 2026-11-07: source builds lock their origin; `[rust]` recorded |
-| [#2322](../issues/2322-image-not-reproducible-across-paths.md) | industrial | Open: a rebuild at another path differs because cargo hashes the absolute path of local crates; the book states the contract (same path ⇒ same bytes) |
+| [#2322](../issues/archived/2322-image-not-reproducible-across-paths.md) | industrial | **Resolved** 2026-11-09: the generated entry reaches its workspace through a relative `_ws` link and remaps the rest, so any project directory gives the same bytes (RFC-0098 amendment) |
 | [#2323](../issues/archived/2323-offline-deb-recipe-omits-ros-base.md) | industrial | **Resolved** 2026-11-07: the recipe downloads in plain Ubuntu with the ROS 2 source; 606 debs, 227 MB |
 | [#2324](../issues/archived/2324-offline-error-no-nros-offline-hint.md) | industrial | **Resolved** 2026-11-07: a name-resolution failure in the metadata probe names `NROS_OFFLINE=1` |
 | [#2325](../issues/archived/2325-board-support-no-last-run-date.md) | industrial | **Resolved** 2026-11-07: the release records each lane's last run; `board show` and doctor print it |

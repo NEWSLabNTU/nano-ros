@@ -53,7 +53,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::paths::relative_or_err;
 use crate::orchestration::board_descriptor::{BoardDescriptor, EntryKind};
 
 /// Everything the emitter needs. Assembled by the caller so this module does
@@ -535,7 +534,7 @@ pub fn image_dependency_lines(
             .crate_path
             .clone()
             .unwrap_or_else(|| format!("packages/boards/{krate}"));
-        let rel = relative_or_err(from_dir, &nano_ros_root.join(&rel_path))?;
+        let rel = super::paths::entry_dep_rel(from_dir, &nano_ros_root.join(&rel_path))?;
         // Issue 1419 — the HOST board's generated entry is a census producer,
         // exactly as the native C/C++ umbrella is (`NanoRosFeatureSet.cmake`
         // turns `metadata-mode` on for cpp + posix + native). Keyed on the
@@ -599,7 +598,7 @@ pub fn image_dependency_lines(
     // hand-written esp32 entry it replaced never named `nros-platform` at all.
     let marker = crate::orchestration::board_descriptor::PlatformKind::BareMetal.platform_feature();
     if board.platform_feature != marker {
-        let plat_rel = relative_or_err(
+        let plat_rel = super::paths::entry_dep_rel(
             from_dir,
             &nano_ros_root.join("packages/platform/nros-platform"),
         )?;
@@ -649,13 +648,22 @@ pub fn render_manifest(
     // which the Zephyr module puts on the Rust lane's env — issue 2314). The
     // walk's `.colcon_workspace` pass outranks this table only where the
     // marker exists, which `nros new` writes but an older workspace may lack.
-    out.push_str("[workspace]\n\n");
+    // Issue 2322 — `_ws` (`paths::WS_LINK`) reaches the workspace's crates from
+    // INSIDE this root, so cargo hashes them relative to it. Excluded twice:
+    // from the workspace, or every node package under the link would become an
+    // implicit member; and from the package, or listing its files would walk
+    // the whole workspace through the link.
+    out.push_str(&format!(
+        "[workspace]\nexclude = [\"{}\"]\n\n",
+        super::paths::WS_LINK
+    ));
     out.push_str("[package]\n");
     out.push_str(&format!("name = \"{pkg}\"\n"));
     // A fixed version, deliberately: this package is never published and never
     // depended on by version, and a version that moved would churn every
     // consumer's lockfile for no information.
     out.push_str("version = \"0.0.0\"\nedition = \"2024\"\npublish = false\n");
+    out.push_str(&format!("exclude = [\"{}\"]\n", super::paths::WS_LINK));
     out.push_str(&format!(
         "description = \"Generated entry for image `{}`.\"\n\n",
         spec.image_id
@@ -727,7 +735,8 @@ pub fn render_manifest(
     // The umbrella names neither the platform nor the RMW — the board crate
     // brings both (phase-248 C6a). It carries the edition, the capabilities
     // and the type-descriptor marker.
-    let nros_rel = relative_or_err(entry_dir, &spec.nano_ros_root.join("packages/api/nros"))?;
+    let nros_rel =
+        super::paths::entry_dep_rel(entry_dir, &spec.nano_ros_root.join("packages/api/nros"))?;
     let mut nros_features: Vec<String> = ["alloc", "rmw-cffi", "macros"]
         .iter()
         .map(ToString::to_string)
@@ -793,7 +802,7 @@ pub fn render_manifest(
     // `register()` calls reach; `default-features = false` keeps a node from
     // dragging a platform choice into an entry that already made one.
     for (name, dir) in &spec.nodes {
-        let rel = relative_or_err(entry_dir, dir)?;
+        let rel = super::paths::entry_dep_rel(entry_dir, dir)?;
         // RFC-0121 D9 — the image's features for this node, on its own line.
         let feats = spec
             .node_features
@@ -894,7 +903,7 @@ fn image_backend_lines(
         }
         let mut seen = std::collections::BTreeSet::new();
         features.retain(|f| seen.insert(f.clone()));
-        let rel = relative_or_err(entry_dir, &b.dir)?;
+        let rel = super::paths::entry_dep_rel(entry_dir, &b.dir)?;
         let line = format!(
             "{} = {{ path = \"{rel}\", default-features = false, features = [{}] }}",
             b.krate,
@@ -1121,6 +1130,10 @@ pub fn render_source(spec: &EntrySpec, board: &BoardFacts) -> String {
 /// failure this phase could ship.
 pub fn write(spec: &EntrySpec, board: &BoardFacts, parent: &Path) -> Result<PathBuf, String> {
     let dir = parent.join(package_name(&spec.image_id));
+    // Issue 2322 — before the materialised early return too: a materialised
+    // manifest written by this builder names its workspace crates through it.
+    super::paths::ensure_ws_link(&dir)
+        .map_err(|e| format!("linking {} to its workspace: {e}", dir.display()))?;
     if super::materialize::is_materialized(&dir) {
         return Ok(dir);
     }
@@ -1427,7 +1440,7 @@ mod tests {
             .find(|l| l.starts_with("acme-rmw = "))
             .unwrap_or_else(|| panic!("no acme-rmw dependency: {m}"));
         assert!(
-            line.contains("path = \"../../../src/acme_rmw\"")
+            line.contains("path = \"_ws/src/acme_rmw\"")
                 && line.contains("default-features = false")
                 && line.contains("\"ros-humble\"")
                 && line.contains("\"acme-safety\"")
@@ -1637,7 +1650,7 @@ mod tests {
     fn node_packages_from_the_launch_file_become_dependencies() {
         let m = render_manifest(&spec(), &hosted(), Path::new(DIR)).expect("renders");
         assert!(
-            m.contains("talker_pkg = { path = \"../../../src/talker_pkg\""),
+            m.contains("talker_pkg = { path = \"_ws/src/talker_pkg\""),
             "{m}"
         );
         assert!(m.contains("listener_pkg = "), "{m}");

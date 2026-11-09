@@ -120,6 +120,11 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
         )
     })?;
     let rel = |to: &Path| relative_or_err(base, to);
+    // Issue 2322 — a `[patch]` row is a crate cargo hashes into `-C metadata`,
+    // so a workspace crate (`generated/<msg>`) is reached through the entry's
+    // link, like the manifest's own path deps. The file sits IN the entry dir.
+    let entry_dir = config_path.parent().unwrap_or(base);
+    let dep = |to: &Path| rel(&super::paths::through_ws_link(entry_dir, to));
 
     let mut doc: DocumentMut = match &spec.cargo_config {
         Some(raw) => raw.parse().map_err(|e| {
@@ -146,12 +151,12 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
                 else {
                     continue;
                 };
-                patches.insert(name.to_string(), rel(&expand(path, &spec.nano_ros_root))?);
+                patches.insert(name.to_string(), dep(&expand(path, &spec.nano_ros_root))?);
             }
         }
     }
     for (name, dir) in &spec.patches {
-        patches.insert(name.clone(), rel(dir)?);
+        patches.insert(name.clone(), dep(dir)?);
     }
 
     // ---- `${workspace}` everywhere else -------------------------------------

@@ -661,3 +661,38 @@ scan in `cmd/ws.rs`):
   (`px4_msgs`, from `nros generate-px4-msgs`), listed with their reason, and
   leaves whose board the registry holds at `tier = "scaffold"` (derived; ESP32
   is dormant, issue 1525).
+
+## Amendment — D9's entry reaches its workspace through a link (2026-11-09, issue 2322)
+
+D9's generated entry is its own cargo root, and every `src/*` and
+`generated/*` crate it reached sat OUTSIDE that root. cargo's `-C metadata`
+hashes a path dependency by its path relative to the root when it can strip
+the root's prefix, and by its absolute path when it cannot
+(`SourceId::stable_hash`). So the same project built in two directories
+differed in every mangled name and in its codegen-unit split (measured:
+20,446 symbol lines), and no path remapping could repair it.
+
+- The entry carries `_ws -> ../../..` (`builder::paths::WS_LINK`), and every
+  dependency path into the workspace — the manifest's node and backend rows,
+  and the settings file's `[patch]` rows for `generated/` crates — is spelled
+  through it (`builder::paths::entry_dep_rel` / `through_ws_link`, the one
+  spelling). cargo normalises a path dependency lexically and never
+  canonicalises it, so `_ws/src/<pkg>` stays under the root and hashes the
+  same wherever the workspace sits. The link is relative, so it is the same
+  bytes too.
+- The entry manifest excludes `_ws` from its workspace (or every node package
+  under it would become an implicit member) and from its package (or listing
+  the package's files would walk the whole workspace).
+- What rustc still records of the workspace (the debug info's compile
+  directory and a build script's `$OUT_DIR`) is remapped with
+  `--remap-path-prefix=<ws>=.`, passed as a command-line `--config` under
+  `target.'cfg(all())'.rustflags`, never written into `nros-cargo.toml`:
+  a generated file carries no absolute path.
+- D9 itself is unchanged: there is still no root build file in the
+  workspace. The link lives in `build/`.
+
+Measured after: a scaffold built at two paths gives a byte-identical ELF
+on `linux` (debug profile) and on `mps2-an385-baremetal` (ELF and
+`objcopy -O binary`, zenoh-pico's C included), with no workspace path left
+in either. The nano-ros install's own path is still compiled in, so the
+promise is "any project directory", not "any host".
