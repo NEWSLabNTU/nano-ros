@@ -322,6 +322,8 @@ endforeach()
 # builds the archive it links (issue 1050), but it can only speak for the
 # DEFAULT paths.
 include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
+# Issue 2398 -- the threads a generated entry runs on hold the executor's stack floor.
+include(${CMAKE_CURRENT_LIST_DIR}/NanoRosPx4ThreadStacks.cmake)
 
 # ONE hint for both calls, and it names BOTH feature sets on purpose. The header
 # and the archive are the same cargo byproduct, so the fix is always "rebuild the
@@ -517,6 +519,18 @@ function(nros_px4_add_module)
             BRINGUP "${NPX_BRINGUP}" LAUNCH "${NPX_LAUNCH}"
             COMPONENTS ${NPX_COMPONENTS})
         list(APPEND _fwd SRCS "${_npx_entry}")
+
+        # Issue 2398 -- the main task opens the executors and each sched task's
+        # work queue runs them; both must hold the executor's stack floor, and
+        # neither is nano-ros's to size, so a shortfall is refused by knob name.
+        nros_px4_read_stack_floor(_npx_floor "${_NROS_PX4_CPP_CONFIG_HEADER}")
+        nros_px4_entry_work_queues(_npx_queues "${_npx_entry}")
+        nros_px4_check_thread_stacks(
+            MODULE "${NPX_MODULE}" PLATFORM "${PX4_PLATFORM}"
+            POINTER_SIZE "${CMAKE_SIZEOF_VOID_P}"
+            FLOOR "${_npx_floor}" FLOOR_SOURCE "${_NROS_PX4_CPP_CONFIG_HEADER}"
+            QUEUES ${_npx_queues}
+            STACK_MAIN "${NPX_STACK_MAIN}")
     elseif(NPX_COMPONENTS OR NPX_LAUNCH)
         message(FATAL_ERROR "nros_px4_add_module(${NPX_MODULE}): COMPONENTS and LAUNCH "
             "describe a generated entry and need BRINGUP")

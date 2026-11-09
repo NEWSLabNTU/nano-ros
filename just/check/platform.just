@@ -886,6 +886,15 @@ rust-one-node-type:
 px4-archive-header-pairing:
     @bash scripts/check-px4-archive-header-pairing.sh
 
+# Issue 2398 -- a generated PX4 entry opens its executors on the module's main
+# task and runs them on PX4 work queues, and on NuttX both stock sizes
+# (STACK_MAIN 2048 B, `wq:rate_ctrl` 3150 B) are below the executor's stack
+# floor. `nros_px4_add_module` refuses that at configure time by knob name; this
+# runs the real cmake functions in both directions, with the stock numbers.
+[private]
+px4-thread-stacks:
+    @bash scripts/check-px4-thread-stacks.sh
+
 # Issue 0555 — `nros_platform_clock_{ms,us}` are `static inline` wrappers in
 # `nros/platform.h` now (RFC-0073), so the header IS the definition. The rename
 # broke four consumers in a row, each visible only after the previous cleared
