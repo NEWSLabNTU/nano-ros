@@ -152,9 +152,16 @@ fn paired_zenoh_library_dir(router: &std::path::Path) -> Option<std::path::PathB
 /// this process's environment: a build that sees `AMENT_PREFIX_PATH` finds ament
 /// MESSAGE packages, which is a different decision from "may run the router".
 /// `scripts/dev/zenohd.sh`'s `nros_router_env_exec` is the shell twin.
+///
+/// "Sourced" is judged by what RUNNING needs -- `<prefix>/lib` on
+/// `LD_LIBRARY_PATH` -- never by `AMENT_PREFIX_PATH` naming the prefix. Issue
+/// 2344 has the runner image set `AMENT_PREFIX_PATH` as a plain ENV, with
+/// nothing sourced, and keyed on it this skipped `setup.bash` and the router
+/// died on `libament_index_cpp.so: cannot open shared object file` (the image
+/// build's own router check, 2026-11-09).
 fn unsourced_prefix_setup(
     router: &std::path::Path,
-    ament_prefix_path: Option<&std::ffi::OsStr>,
+    ld_library_path: Option<&std::ffi::OsStr>,
 ) -> Option<std::path::PathBuf> {
     let dir = router.parent()?;
     if dir.file_name()? != "rmw_zenoh_cpp" {
@@ -166,7 +173,8 @@ fn unsourced_prefix_setup(
     if !setup.is_file() {
         return None;
     }
-    let sourced = ament_prefix_path.is_some_and(|v| std::env::split_paths(v).any(|p| p == prefix));
+    let lib = prefix.join("lib");
+    let sourced = ld_library_path.is_some_and(|v| std::env::split_paths(v).any(|p| p == lib));
     (!sourced).then_some(setup)
 }
 
@@ -206,8 +214,8 @@ fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
         );
     }
 
-    let ament = std::env::var_os("AMENT_PREFIX_PATH");
-    let mut cmd = match unsourced_prefix_setup(&path, ament.as_deref()) {
+    let ld_path = std::env::var_os("LD_LIBRARY_PATH");
+    let mut cmd = match unsourced_prefix_setup(&path, ld_path.as_deref()) {
         // `exec`, so the child IS the router: the pid the fixture waits on and
         // kills is the router's, exactly as with the direct spawn below.
         Some(setup) => {
@@ -836,7 +844,8 @@ mod tests {
             Some(tmp.join("setup.bash").as_path()),
             "unsourced: the router's own prefix is sourced for it"
         );
-        let sourced = std::env::join_paths([std::path::Path::new("/elsewhere"), &tmp]).unwrap();
+        let sourced =
+            std::env::join_paths([std::path::Path::new("/elsewhere"), &tmp.join("lib")]).unwrap();
         assert_eq!(
             unsourced_prefix_setup(&router, Some(&sourced)),
             None,
@@ -846,6 +855,14 @@ mod tests {
         assert!(
             unsourced_prefix_setup(&router, Some(&other)).is_some(),
             "sourcing a DIFFERENT prefix does not source this one"
+        );
+        // Issue 2344's image: the prefix ITSELF on the path (as
+        // AMENT_PREFIX_PATH would name it) is not its lib dir, so the router
+        // still gets its prefix's environment.
+        let prefix_only = std::env::join_paths([&tmp]).unwrap();
+        assert!(
+            unsourced_prefix_setup(&router, Some(&prefix_only)).is_some(),
+            "a prefix named without its lib dir on the loader path is not sourced"
         );
         let foreign = tmp.join("bin/zenohd");
         assert_eq!(
