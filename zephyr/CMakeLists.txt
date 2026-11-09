@@ -261,6 +261,10 @@ if(CONFIG_NROS_CONSOLE_WHOLE_LINES)
     zephyr_library_sources(
         ${NROS_REPO_DIR}/packages/boards/nros-board-zephyr/c/zephyr_console_lines.c)
 endif()
+# Issue 2387 -- eDMA v3 channels a warm reset left running (the file says why).
+if(CONFIG_NROS_EDMA_WARM_RESET_QUIESCE)
+    zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_edma_warm_reset.c)
+endif()
 zephyr_include_directories(${NROS_REPO_DIR}/packages/platform/nros-platform-api/include)
 zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/platform.c

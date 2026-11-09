@@ -589,3 +589,25 @@ pub(crate) const MAX_SERVICE_SETS: usize = if crate::config::MAX_NODES == 0 {
 } else {
     crate::config::MAX_NODES
 };
+
+/// Issue 2387 -- the parameter-service sets the executor's state CARRIES.
+///
+/// [`MAX_SERVICE_SETS`] is the node TABLE's bound, and the table holds one
+/// slot more than the image's nodes when a contract reporter or the
+/// lifecycle family needs the session's own name (`max_nodes` in the CLI's
+/// entity inventory). That slot never gets a set: `reconcile_parameter_services`
+/// serves the nodes in the table. Each set is six backend handles and a name
+/// (4,032 B on the S32K344 safety island over zenoh), carved inline in the
+/// executor backing, so the spare slot cost that much for nothing.
+///
+/// When the contract declares every node's parameters
+/// (`DECLARED_PARAM_SERVICE_SHAPES`, one row per node of the image), the sets
+/// are exactly those nodes -- the same count the transport's builtin inbox
+/// and the derived queryable table are sized from. Otherwise the table's
+/// bound stands. A node the declaration does not cover would also outgrow
+/// the buffer pair the same shapes size, so the two stay one claim.
+#[cfg(feature = "param-services")]
+pub(crate) const PARAM_SERVICE_SETS: usize = match crate::config::DECLARED_PARAM_SERVICE_SHAPES {
+    Some(shapes) if !shapes.is_empty() && shapes.len() < MAX_SERVICE_SETS => shapes.len(),
+    _ => MAX_SERVICE_SETS,
+};
