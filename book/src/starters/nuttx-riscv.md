@@ -99,23 +99,13 @@ Rust standard library for itself.
 
 ## Run it in QEMU
 
-The guest sits on QEMU's user-mode network at `10.0.2.15`, and dials the
-router through the gateway `10.0.2.2`, which is your host, on port 7447.
-Start the router first, in its own terminal, listening on every interface so
-the guest's connection arrives:
+The image dials a zenoh router on your host through QEMU's user-mode
+network: the guest reaches your host as `10.0.2.2`, on port 7447. `nros run`
+starts that router itself, listening on every interface so the guest's
+connection arrives, and stops it when the run ends. If a router already runs
+on that port, `nros run --router auto` uses it instead.
 
-<!-- removed when the board descriptor states its default locator -->
-```bash probe=50 probe-run=60 probe-keep
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=50
-Started Zenoh router with id
-```
-
-Then, back in the workspace terminal, source ROS 2 and build and run the
+In the workspace, source ROS 2 and build and run the
 talker. This first run records the ROS 2 prefix in the workspace, so later
 runs of it need no sourced shell:
 
@@ -135,7 +125,7 @@ builds take seconds), then boots it with the `qemu-system-riscv32` that
 `QEMU_SYSTEM_RISCV32` names. The image starts its application itself, so
 what you see is the talker on the NuttX console. With `--expect` it stops
 QEMU and exits 0 at the first console line containing that text, and exits 1
-if the board stops first. The router keeps running.
+if the board stops first. It stops the router it started, too.
 
 Without `--expect` it keeps running until you press Ctrl-C, which stops QEMU:
 
@@ -150,7 +140,8 @@ Publishing: 'Hello World: 2'
 
 ## See it in ROS 2
 
-Leave the router and `nros run` going. In a third terminal:
+Leave `nros run` going; its router stays up while it runs. In a second
+terminal:
 
 ```bash probe=70 probe-run=120
 source /opt/ros/humble/setup.bash
@@ -171,7 +162,8 @@ which receives nothing from it. That is why the command asks for best-effort.
   emulator:** this shell has no `QEMU_SYSTEM_RISCV32`. Run the `export` line
   again, after installing `qemu-system-misc`.
 - **No `Publishing:` line within a minute of boot:** the talker did not reach
-  the router. Check that the router listens on `0.0.0.0:7447`: one on
+  the router. If you run your own
+  router with `--router auto`, check that it listens on `0.0.0.0:7447`: one on
   `127.0.0.1` is out of the guest's reach.
 - **`nros setup` stops and names `python3-venv` or `unzip`:** you left
   `--sudo` off. Run the command it printed.
