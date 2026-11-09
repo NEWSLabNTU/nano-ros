@@ -1,14 +1,14 @@
 ---
 id: 2371
 title: "The four zephyr-west-app book probes are red on main: the probe image has no ROS 2, and the Rust track's west workspace is never patched"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, book, zephyr, probe]
 related: [2278, 2344, 2185, 2358, phase-548]
 found: 2026-11-09
 ---
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)** (the west-application chapter is how a Zephyr user reaches every board in that phase).
+**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)** (the west-application chapter is how a Zephyr user reaches every board in that phase).
 
 ## What fails
 
@@ -73,3 +73,18 @@ FETCH zephyr-lang-rust; it does not patch it.
 2. The chapter's Rust path includes the workspace-patch step (or `nros setup
    board` applies it when it writes the west entry), and the Rust track replays it.
 3. A weekly `probe-platforms` run with all four `zephyr-west-app*` jobs green.
+
+## Resolution (2026-11-09)
+
+The chapter, not the probe image, was wrong on both counts: the image is
+`ros:humble`, but its entrypoint is disabled for the replay, as a reader's
+fresh terminal is unsourced too.
+
+- Both `west build` blocks (native_sim and the board) now source
+  `/opt/ros/humble/setup.bash` first; before, only the Rust path's
+  `nros configure` step did.
+- The Rust step now runs `nros setup board zephyr --zephyr-workspace "$PWD"`,
+  which the prose already said it did.
+
+`probe-platforms` dispatched on the fix branch (run 42616239077): all four
+`zephyr-west-app*` jobs green.
