@@ -371,17 +371,6 @@ impl QemuProcess {
         Self::start(binary, mps2_an385_networked_boot()?)
     }
 
-    /// [`Self::start_mps2_an385_networked`] for a cell that asserts a bound on
-    /// the guest's own clock: a fixed `-icount` [`MPS2_AN385_CORE_ICOUNT`]
-    /// instead of `shift=auto`, so a guest-measured duration is the guest's
-    /// instruction count at the modelled core's rate (issue 2252).
-    pub fn start_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
-        Self::start(
-            binary,
-            mps2_an385_networked_boot()?.arg("icount", MPS2_AN385_CORE_ICOUNT),
-        )
-    }
-
     /// [`Self::start_mps2_an385_networked`] on the network the IMAGE states
     /// (RFC-0103 D10a, phase-497 W3): `nic` is the `-nic` value of its
     /// interface, from [`image_nic`] — QEMU's own user-mode network, a host
@@ -390,21 +379,34 @@ impl QemuProcess {
         Self::start(binary, MPS2_AN385.boot()?.arg("nic", nic))
     }
 
-    /// [`Self::start_mps2_an385_networked`] plus a QEMU human monitor on a
-    /// unix socket, for a guest whose verdict is in its MEMORY rather than on
-    /// its console (issue 1036: the boot report of an image with no console).
-    /// Talk to it with [`qemu_monitor_command`]; `pmemsave` there is the
-    /// QEMU spelling of the `savemem` a probe performs on a board.
-    pub fn start_mps2_an385_networked_with_monitor(
+    /// Boot a Zephyr image on QEMU's user network, from `board`'s descriptor,
+    /// after holding the descriptor to the image's own west `run_qemu` line
+    /// ([`crate::zephyr::west_qemu_boot`], issue 2379).
+    pub fn start_zephyr_networked(board: DescriptorBoard, binary: &Path) -> TestResult<Self> {
+        Self::start(binary, crate::zephyr::west_qemu_boot(board, binary)?)
+    }
+
+    /// [`Self::start_zephyr_networked`] on the Zephyr MPS2-AN385 board at a
+    /// fixed `-icount` ([`MPS2_AN385_CORE_ICOUNT`]), for a cell that asserts a
+    /// bound on the guest's own clock (issue 2252).
+    pub fn start_zephyr_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
+        Self::start(
+            binary,
+            crate::zephyr::west_qemu_boot(MPS2_AN385_ZEPHYR, binary)?
+                .arg("icount", MPS2_AN385_CORE_ICOUNT),
+        )
+    }
+
+    /// [`Self::start_zephyr_networked`] on the Zephyr MPS2-AN385 board plus a
+    /// QEMU human monitor on a unix socket (issue 1036).
+    pub fn start_zephyr_mps2_an385_networked_with_monitor(
         binary: &Path,
         monitor_socket: &Path,
     ) -> TestResult<Self> {
         Self::start(
             binary,
-            mps2_an385_networked_boot()?.then([
-                "-monitor".to_string(),
-                format!("unix:{},server=on,wait=off", monitor_socket.display()),
-            ]),
+            crate::zephyr::west_qemu_boot(MPS2_AN385_ZEPHYR, binary)?
+                .then(monitor_args(monitor_socket)),
         )
     }
 
@@ -1213,6 +1215,27 @@ pub const MPS3_AN536: DescriptorBoard = DescriptorBoard {
     name: "mps3-an536-freertos",
 };
 
+/// The Zephyr MPS2-AN385 board (`mps2/an385`), issue 2379. Same machine as
+/// [`MPS2_AN385`], its own descriptor: a Zephyr image boots with no
+/// semihosting. Booted through [`crate::zephyr::west_qemu_boot`], which holds
+/// the descriptor to the image's own west `run_qemu` line.
+pub const MPS2_AN385_ZEPHYR: DescriptorBoard = DescriptorBoard {
+    package: "nros-board-mps2-an385-zephyr",
+    name: "mps2-an385-zephyr",
+};
+
+/// The Zephyr `qemu_cortex_a53/qemu_cortex_a53/smp` board (two cores, an
+/// e1000 NIC), issue 2379. Booted through [`crate::zephyr::west_qemu_boot`].
+pub const QEMU_CORTEX_A53: DescriptorBoard = DescriptorBoard {
+    package: "nros-board-qemu-cortex-a53",
+    name: "qemu-cortex-a53",
+};
+
+/// Every board the harness reads a boot from. `boards_on_one_qemu_machine_state_one_boot`
+/// holds every OTHER in-tree `[board.run.qemu]` to one of these.
+pub const DESCRIPTOR_BOARDS: [DescriptorBoard; 4] =
+    [MPS2_AN385, MPS3_AN536, MPS2_AN385_ZEPHYR, QEMU_CORTEX_A53];
+
 impl DescriptorBoard {
     /// The descriptor file.
     #[must_use]
@@ -1264,6 +1287,28 @@ impl DescriptorBoard {
         self.boot_in(&self.read()?)
     }
 
+    /// The board's boot with its NIC on QEMU's user network
+    /// (`nros_board_common::image_net::slirp_nic`): guest `10.0.2.15`, host
+    /// `10.0.2.2`, no privileges.
+    ///
+    /// # Errors
+    ///
+    /// The descriptor cannot be read, or states no `[board.run.qemu]` or no
+    /// NIC model.
+    pub fn networked_boot(&self) -> TestResult<crate::run::QemuBoot> {
+        let nic = nros_board_common::image_net::slirp_nic(&self.nic_model()?);
+        Ok(self.boot()?.arg("nic", &nic))
+    }
+
+    /// The board's `[board.run]`, read from its descriptor.
+    ///
+    /// # Errors
+    ///
+    /// The descriptor cannot be read, or states no `[board.run]`.
+    pub fn run(&self) -> TestResult<nros_orchestration_ir::target_exec::BoardRun> {
+        self.run_in(&self.read()?)
+    }
+
     /// The board's NIC model (`[board.run.qemu] nic_model`).
     ///
     /// # Errors
@@ -1289,8 +1334,15 @@ impl DescriptorBoard {
 /// book-internals/src/testing/qemu-icount.md) with its NIC on QEMU's user
 /// network.
 fn mps2_an385_networked_boot() -> TestResult<crate::run::QemuBoot> {
-    let nic = nros_board_common::image_net::slirp_nic(&MPS2_AN385.nic_model()?);
-    Ok(MPS2_AN385.boot()?.arg("nic", &nic))
+    MPS2_AN385.networked_boot()
+}
+
+/// A QEMU human monitor on a unix socket, as the words after the kernel.
+fn monitor_args(monitor_socket: &Path) -> [String; 2] {
+    [
+        "-monitor".to_string(),
+        format!("unix:{},server=on,wait=off", monitor_socket.display()),
+    ]
 }
 
 /// Run one command on a QEMU human monitor (`-monitor unix:<socket>,…`) and
@@ -1470,18 +1522,21 @@ mod tests {
         );
     }
 
-    /// The harness reads ONE package per QEMU machine ([`MPS2_AN385`] serves
-    /// the bare-metal, FreeRTOS and Zephyr MPS2 images alike), which is only
-    /// right while every board on that machine states the same boot. So: every
-    /// in-tree descriptor that states a `[board.run.qemu]` agrees with every
-    /// other on the same emulator, and each machine the harness boots is one
-    /// of them.
+    /// The harness reads a boot from [`DESCRIPTOR_BOARDS`] only
+    /// ([`MPS2_AN385`] serves the bare-metal and FreeRTOS MPS2 images alike),
+    /// which is only right while every OTHER board states the boot of one the
+    /// harness reads on the same emulator. So: every in-tree descriptor that
+    /// states a `[board.run.qemu]` is one of [`DESCRIPTOR_BOARDS`] or agrees
+    /// with one on its emulator, and each board the harness reads is found.
+    /// (The Zephyr MPS2 board is read on its own: a Zephyr image boots with no
+    /// semihosting, issue 2379.)
     #[test]
     fn boards_on_one_qemu_machine_state_one_boot() {
         use std::collections::BTreeMap;
         let boards = crate::project_root().join("packages/boards");
         let mut by_emulator: BTreeMap<String, Vec<(String, crate::run::QemuBoot)>> =
             BTreeMap::new();
+        let mut read: BTreeMap<String, Vec<(String, crate::run::QemuBoot)>> = BTreeMap::new();
         for entry in std::fs::read_dir(&boards).unwrap().flatten() {
             let path = entry.path().join("nros-board.toml");
             let Ok(text) = std::fs::read_to_string(&path) else {
@@ -1511,30 +1566,32 @@ mod tests {
                         passthrough: Vec::new(),
                     }
                     .arg("nic_model", &nic);
-                    by_emulator
-                        .entry(run.emulator.unwrap_or_default())
-                        .or_default()
-                        .push((format!("{}:{name}", path.display()), boot));
+                    let package = entry.file_name().to_string_lossy().into_owned();
+                    let is_read = DESCRIPTOR_BOARDS
+                        .iter()
+                        .any(|d| d.package == package && d.name == name);
+                    let who = format!("{}:{name}", path.display());
+                    let emulator = run.emulator.unwrap_or_default();
+                    if is_read {
+                        read.entry(emulator).or_default().push((who, boot));
+                    } else {
+                        by_emulator.entry(emulator).or_default().push((who, boot));
+                    }
                 }
             }
         }
         for (emulator, boots) in &by_emulator {
-            for (who, boot) in &boots[1..] {
-                assert_eq!(
-                    boot, &boots[0].1,
-                    "{emulator}: {who} and {} state different `[board.run.qemu]`",
-                    boots[0].0
+            let readers = read.get(emulator).map(Vec::as_slice).unwrap_or_default();
+            for (who, boot) in boots {
+                assert!(
+                    readers.iter().any(|(_, r)| r == boot),
+                    "{emulator}: {who} states a `[board.run.qemu]` no board the harness \
+                     reads states ({readers:?})"
                 );
             }
         }
-        for board in [MPS2_AN385, MPS3_AN536] {
-            let machine = board.boot().unwrap().args["machine"].clone();
-            assert!(
-                by_emulator.contains_key(&format!("qemu:{machine}")),
-                "{}: {machine}",
-                board.package
-            );
-        }
+        let found: usize = read.values().map(Vec::len).sum();
+        assert_eq!(found, DESCRIPTOR_BOARDS.len(), "{read:?}");
     }
 
     #[test]
@@ -1568,7 +1625,7 @@ mod tests {
         let mut cmd = Command::new(format!("/usr/bin/{}", nros_qemu_ladder::system_exe("arm")));
         cmd.args([
             "-nic",
-            "user,model=e1000,net=10.0.2.0/24,host=10.0.2.2",
+            "user,model=virtio-net-pci,net=10.0.2.0/24,host=10.0.2.2",
             "-semihosting-config",
             "enable=on,target=native",
             "-append",
@@ -1578,7 +1635,7 @@ mod tests {
         // Commas, slashes and `=` are safe — quoting them would make the line
         // harder to read for no gain.
         assert!(
-            rendered.contains("-nic user,model=e1000,net=10.0.2.0/24,host=10.0.2.2"),
+            rendered.contains("-nic user,model=virtio-net-pci,net=10.0.2.0/24,host=10.0.2.2"),
             "{rendered}"
         );
         assert!(rendered.contains("'two words'"), "{rendered}");

@@ -55,6 +55,7 @@ use nros_tests::{
         ARRIVAL_LATENCY_PREFIX, IDLE_WAKE_ARMED_MARKER, IDLE_WAKE_RESULT_PREFIX,
         ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER, parse_arrival_latency, parse_idle_wake,
     },
+    qemu::MPS2_AN385_ZEPHYR,
 };
 use std::{
     process::Command,
@@ -146,7 +147,7 @@ fn run_pubsub_cell(lang: &str, matrix_lang: Lang, wait_marker: &str, budget: Dur
     let _router = ZenohRouter::start_slirp(port)
         .unwrap_or_else(|e| panic!("failed to start zenohd on {port} for the SLIRP guest: {e:?}"));
 
-    let mut qemu = QemuProcess::start_mps2_an385_networked(&binary)
+    let mut qemu = QemuProcess::start_zephyr_networked(MPS2_AN385_ZEPHYR, &binary)
         .expect("spawn Zephyr Cortex-M zenoh talker");
 
     // Wait on the DRIVER's line, not the talker's, even though the talker's is
@@ -265,7 +266,7 @@ fn zephyr_cortex_m_talker_keeps_one_session_past_the_lease() {
     let port = port_of(PlatformId::ZephyrQemuCortexM, Lang::C, Workload::Pubsub);
     let router = ZenohRouter::start_slirp_with_log_filter(port, Some(ROUTER_SESSION_LOG_FILTER))
         .unwrap_or_else(|e| panic!("failed to start zenohd on {port} for the SLIRP guest: {e:?}"));
-    let mut qemu = QemuProcess::start_mps2_an385_networked(&binary)
+    let mut qemu = QemuProcess::start_zephyr_networked(MPS2_AN385_ZEPHYR, &binary)
         .expect("spawn Zephyr Cortex-M zenoh talker");
     let output = qemu.collect_until("\u{0}never printed\u{0}", PAST_THE_LEASE);
     qemu.kill();
@@ -341,7 +342,7 @@ fn zephyr_cortex_m_c_boot_report_names_arena_exhaustion() {
     let scratch = tempfile::tempdir().expect("scratch dir for the monitor socket and dump");
     let socket = scratch.path().join("monitor.sock");
     let dump = scratch.path().join("report.bin");
-    let mut qemu = QemuProcess::start_mps2_an385_networked_with_monitor(&binary, &socket)
+    let mut qemu = QemuProcess::start_zephyr_mps2_an385_networked_with_monitor(&binary, &socket)
         .expect("spawn the console-less Zephyr Cortex-M image");
 
     // Poll: dump, decode, until the decoder names the exhaustion. The decoder
@@ -549,7 +550,7 @@ fn run_idle_wake_cell(rmw: Rmw) {
         other => panic!("no idle-wake row for {other:?}"),
     };
 
-    let mut qemu = QemuProcess::start_mps2_an385_networked_measured(&binary)
+    let mut qemu = QemuProcess::start_zephyr_mps2_an385_networked_measured(&binary)
         .expect("spawn the idle-wake witness");
     // Boot, session, the first expiry, then five 1 s periods.
     let output = qemu.collect_until(IDLE_WAKE_RESULT_PREFIX, BOOT_BUDGET);
@@ -633,7 +634,7 @@ fn run_arrival_latency_cell(rmw: Rmw) {
         other => panic!("no arrival-latency row for {other:?}"),
     };
 
-    let mut qemu = QemuProcess::start_mps2_an385_networked_measured(&binary)
+    let mut qemu = QemuProcess::start_zephyr_mps2_an385_networked_measured(&binary)
         .expect("spawn the idle-wake witness");
     let booted = qemu.collect_until(IDLE_WAKE_ARMED_MARKER, BOOT_BUDGET);
     assert!(

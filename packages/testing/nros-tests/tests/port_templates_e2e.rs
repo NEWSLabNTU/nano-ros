@@ -46,6 +46,7 @@ use nros_tests::{
         CPP_PORT_SMOKE_UP_MARKER, DIAG_LEVEL_ERROR, DIAG_LEVEL_OK, INT32_LISTENER_LOG_PREFIX,
         diagsink_status_line,
     },
+    qemu::MPS2_AN385_ZEPHYR,
 };
 use rstest::rstest;
 use std::{
@@ -179,7 +180,8 @@ fn cpp_port_minimal_publisher_publishes_on_zephyr() {
     let port = port_of(PlatformId::ZephyrQemuCortexM, Lang::Cpp, Workload::Port);
     let _router = ZenohRouter::start_slirp(port)
         .unwrap_or_else(|e| panic!("failed to start zenohd on {port}: {e:?}"));
-    let mut qemu = QemuProcess::start_mps2_an385_networked(&bin).expect("spawn the Zephyr port");
+    let mut qemu = QemuProcess::start_zephyr_networked(MPS2_AN385_ZEPHYR, &bin)
+        .expect("spawn the Zephyr port");
     let out = qemu.collect_until(CPP_PORT_PUBLISH_MARKER, RTOS_PUBLISH_BUDGET);
     qemu.kill();
     assert_ported_publish("Zephyr mps2/an385", &out);
@@ -315,7 +317,8 @@ impl PortPlatform {
                 QemuProcess::start_mps2_an385_networked(bin).expect("spawn the FreeRTOS port"),
             ),
             PortPlatform::Zephyr => Guest::Qemu(
-                QemuProcess::start_mps2_an385_networked(bin).expect("spawn the Zephyr port"),
+                QemuProcess::start_zephyr_networked(MPS2_AN385_ZEPHYR, bin)
+                    .expect("spawn the Zephyr port"),
             ),
         }
     }

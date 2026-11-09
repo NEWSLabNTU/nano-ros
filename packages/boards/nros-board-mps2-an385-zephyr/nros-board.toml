@@ -49,6 +49,23 @@ rust_components = ["clippy"]
 [board.run]
 emulator = "qemu:mps2-an385"
 
+# Issue 2379 -- the QEMU facts, stated once. `nros run` does NOT read them on
+# the west road: a west build of a `qemu` board goes to the `west` runner,
+# which boots Zephyr's own line (`boards/arm/mps2/board.cmake`). The test
+# harness reads them (`nros_tests::qemu::MPS2_AN385_ZEPHYR`), and so does
+# `nros run` for an image that names the `qemu` runner itself. Zephyr's file
+# is upstream and is not edited, so they are held to it by comparison: every
+# Zephyr QEMU cell checks `system`, `cpu`, the machine and `nic_model` against
+# the `run_qemu` command its own west build generated before it boots
+# (`nros_tests::zephyr::west_qemu_boot`). `icount` is nano-ros's, not
+# Zephyr's (book-internals/src/testing/qemu-icount.md). No `semihosting`: a
+# Zephyr image prints on its UART, and Zephyr's line has none.
+[board.run.qemu]
+system = "arm"
+cpu = "cortex-m3"
+icount = "shift=auto"
+nic_model = "lan9118"
+
 [board.capabilities]
 heap = true
 atomics = true
