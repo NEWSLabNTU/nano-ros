@@ -66,6 +66,15 @@ pub const CONFIG_FORMATS: &[&str] = &["verbatim-xml", "session-json5"];
 ///   or never leaves the target (uORB).
 pub const HOST_PEERS: &[&str] = &["zenoh-router", "xrce-agent", "none"];
 
+/// `[rmw.zephyr].module_backend` values (issue 2372): which of the nano-ros
+/// Zephyr module's own backend builds a backend is built over. Closed, because
+/// the module's `choice NROS_RMW_BACKEND` is: a Zephyr image always selects
+/// one member, and that member decides what the module compiles (zenoh-pico,
+/// the XRCE client, the Cyclone C++ library) and which Kconfig knobs exist. A
+/// backend names the member it needs, never itself, so an out-of-tree backend
+/// that delegates to zenoh states `zenoh` and gets zenoh-pico's Zephyr port.
+pub const ZEPHYR_MODULE_BACKENDS: &[&str] = &["zenoh", "xrce", "cyclonedds"];
+
 /// What a backend's `nros-rmw.toml` says.
 ///
 /// Split into what convention CANNOT produce (the fields below) and what it
@@ -165,6 +174,11 @@ pub struct RmwDescriptor {
     /// `nros run --router auto` refuses an image whose backend leaves it out
     /// rather than start nothing silently (issue 2381).
     pub host_peer: String,
+    /// `[rmw.zephyr].module_backend` -- one of [`ZEPHYR_MODULE_BACKENDS`], or
+    /// empty when the descriptor does not say. Empty means the backend has no
+    /// Zephyr build: a Zephyr image naming it is refused at configure, naming
+    /// the line to add, rather than built over a module default (issue 2372).
+    pub zephyr_module_backend: String,
 
     // ---- restatements of derivable facts (RFC-0087 D4) --------------------
     /// `[rmw].names`, if the descriptor still restates the announcements.
@@ -282,6 +296,7 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.config", "format") => d.config_format = scalar(),
             ("rmw.config", "retired") => d.config_retired = scalar(),
             ("rmw.host", "peer") => d.host_peer = scalar(),
+            ("rmw.zephyr", "module_backend") => d.zephyr_module_backend = scalar(),
             _ => {}
         }
     }
@@ -299,6 +314,16 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
              needs running on the host side of the link)",
             d.host_peer,
             HOST_PEERS.join(" | ")
+        ));
+    }
+    if !d.zephyr_module_backend.is_empty()
+        && !ZEPHYR_MODULE_BACKENDS.contains(&d.zephyr_module_backend.as_str())
+    {
+        return Err(format!(
+            "{origin}: [rmw.zephyr].module_backend = {:?} -- one of {} (the \
+             nano-ros Zephyr module backend this backend is built over)",
+            d.zephyr_module_backend,
+            ZEPHYR_MODULE_BACKENDS.join(" | ")
         ));
     }
     if !d.link_strategy.is_empty() && !LINK_STRATEGIES.contains(&d.link_strategy.as_str()) {
@@ -476,6 +501,39 @@ mod tests {
         .unwrap_err();
         assert!(
             err.contains("zenohd") && err.contains("zenoh-router"),
+            "{err}"
+        );
+    }
+
+    // Issue 2372 -- the Zephyr module backend is a declared fact, one of a
+    // closed set; left out, the backend has no Zephyr build.
+    #[test]
+    fn the_zephyr_module_backend_is_read_and_checked() {
+        for b in ZEPHYR_MODULE_BACKENDS {
+            let d = parse_rmw_descriptor(
+                &format!(
+                    "[rmw]\ncpp_define = \"X\"\n[rmw.zephyr]\nmodule_backend = \"{b}\"\n\
+                     [rmw.link]\nrlib_dep = \"a\"\n"
+                ),
+                "acme",
+            )
+            .unwrap();
+            assert_eq!(d.zephyr_module_backend, *b);
+        }
+        let d = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n",
+            "acme",
+        )
+        .unwrap();
+        assert_eq!(d.zephyr_module_backend, "");
+        let err = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.zephyr]\nmodule_backend = \"acme\"\n\
+             [rmw.link]\nrlib_dep = \"a\"\n",
+            "acme",
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("\"acme\"") && err.contains("zenoh | xrce"),
             "{err}"
         );
     }

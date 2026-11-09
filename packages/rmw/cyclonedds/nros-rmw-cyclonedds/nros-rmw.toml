@@ -33,6 +33,13 @@ cpp_define = "NROS_RMW_CYCLONEDDS"
 [rmw.host]
 peer = "none"
 
+# Issue 2372 -- the nano-ros Zephyr module backend this one is built over (one
+# of zenoh | xrce | cyclonedds): the `choice NROS_RMW_BACKEND` member a Zephyr
+# image selects. It decides what the module compiles; an out-of-tree backend
+# names the member it builds over, never itself.
+[rmw.zephyr]
+module_backend = "cyclonedds"
+
 # NOT special — just the only backend that fills the cargo-consumer x
 # cmake-provider cell (RFC-0071 D7). Its register symbol is C++, so there is no
 # rlib to bundle; a Rust-rooted consumer reaches it through the `-sys` bridge

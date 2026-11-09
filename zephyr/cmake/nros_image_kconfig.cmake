@@ -603,6 +603,11 @@ function(_nros_image_kconfig_leaf_rows _out _dir _image _west_board)
         elseif(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
             # Issue 2073 -- a parameter file whose text the image env bakes.
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_KCONFIG_INPUT=(.*)$")
+            # Issue 2372 -- a file the Kconfig fragment is rendered from beside
+            # `system.toml`: the image's RMW descriptor, whose
+            # `[rmw.zephyr] module_backend` picks the RMW choice.
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV_ROW=([A-Za-z0-9_]+)=(.*)$")
             list(APPEND _keys "${CMAKE_MATCH_1}")
             set(NROS_IMAGE_ENV_ROW_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}" CACHE INTERNAL

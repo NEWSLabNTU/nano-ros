@@ -679,14 +679,31 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             } else {
                 Default::default()
             };
+            // Issue 2372 -- the RMW choice is the backend descriptor's
+            // `[rmw.zephyr] module_backend`, through the workspace's provider
+            // scan, so an out-of-tree backend resolves here as it does on
+            // `nros build`.
+            let rmws = crate::orchestration::rmw_index::for_dir(&dir)?;
             let r = crate::cmd::leaf_kconfig::render_over(
                 &leaf,
                 language,
                 &syms,
                 &overrides,
                 &board_rung,
+                &rmws,
             )
             .map_err(|e| eyre!(e))?;
+            // The RMW choice above is read from the backend's descriptor, so
+            // the fragment depends on that file as much as on `system.toml`:
+            // one row each, so a configure re-runs when it is edited.
+            if let Some(rmw) = leaf.rmw.as_deref()
+                && let Ok(resolved) = rmws.resolve(rmw)
+            {
+                println!(
+                    "NROS_LEAF_KCONFIG_INPUT={}",
+                    resolved.package_dir.join("nros-rmw.toml").display()
+                );
+            }
             let text = crate::cmd::leaf_kconfig::fragment_text(&leaf, &r);
             let written = crate::cmd::leaf_kconfig::write_fragment(out, text.as_deref())?;
             if let Some(d) = &args.kconfig_defaults_out {

@@ -220,6 +220,15 @@ function(nros_check_image_agreement)
         string(TOLOWER "${NROS_IMAGE_RMW}" _declared)
     endif()
     string(TOLOWER "${_A_KCONFIG_RMW}" _selected)
+    # Issue 2372 -- Kconfig selects a MODULE backend, and an out-of-tree RMW is
+    # built over one of them (`[rmw.zephyr] module_backend`, e.g. `acme` over
+    # zenoh). Compare against that when the image's backend states it; the
+    # name is the module backend for every in-tree RMW, so nothing else moves.
+    set(_expected "${_declared}")
+    if(NOT _declared STREQUAL "" AND DEFINED NROS_IMAGE_ZEPHYR_MODULE_BACKEND
+       AND NOT NROS_IMAGE_ZEPHYR_MODULE_BACKEND STREQUAL "")
+        string(TOLOWER "${NROS_IMAGE_ZEPHYR_MODULE_BACKEND}" _expected)
+    endif()
 
     message(STATUS
         "nano-ros: image ${NROS_IMAGE_QUALIFIED} (rmw=${_declared}) "
@@ -228,18 +237,18 @@ function(nros_check_image_agreement)
     if(_declared STREQUAL "" OR _selected STREQUAL "")
         return()
     endif()
-    if(NOT _declared STREQUAL _selected)
+    if(NOT _expected STREQUAL _selected)
         # ONE string with no blank lines: cmake indents every line of a
         # FATAL_ERROR by two spaces, so an empty one renders as stray
         # whitespace rather than a paragraph break.
         message(FATAL_ERROR
 "nano-ros: this build and its image disagree about the RMW.
-    image ${NROS_IMAGE_QUALIFIED} declares: ${_declared}
+    image ${NROS_IMAGE_QUALIFIED} declares: ${_declared} (Zephyr module backend: ${_expected})
     Kconfig selected:                       ${_selected}
 Kconfig is what the build uses, so the image's `rmw` is not being honoured.
 Either name the matching overlay on the image —
     [image.…]
-    os_config = [\"prj-${_declared}.conf\"]
+    os_config = [\"prj-${_expected}.conf\"]
 — or set `rmw = \"${_selected}\"` if the overlay is the one you want.
 Declared in ${NROS_IMAGE_WORKSPACE}.")
     endif()

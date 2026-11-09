@@ -42,9 +42,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use cargo_nano_ros::rmw_descriptor::ZEPHYR_MODULE_BACKENDS;
 use eyre::{Result, eyre};
 use nros_lang::Language;
 use nros_orchestration_ir::leaf_system::LeafSystem;
+
+use crate::orchestration::rmw_index::RmwIndex;
 
 /// A Kconfig symbol's value type, as `zephyr/Kconfig` declares it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -158,20 +161,58 @@ pub struct Rendered {
 }
 
 /// The RMW choice symbol an image's `rmw` selects.
-pub fn rmw_symbol(rmw: &str) -> Result<&'static str, String> {
+///
+/// Issue 2372 -- read from the backend's descriptor
+/// (`[rmw.zephyr] module_backend`), resolved through `rmws`, never from the
+/// name: an out-of-tree backend built over zenoh selects `NROS_RMW_ZENOH`,
+/// and a backend that states no Zephyr build is refused naming the line to add.
+pub fn rmw_symbol(rmws: &RmwIndex, rmw: &str) -> Result<&'static str, String> {
+    let resolved = rmws.resolve(rmw).map_err(|e| e.to_string())?;
+    // `nros::main!`'s Zephyr arm selects the backend by the image's `rmw`
+    // word, and the registry knows a backend by its canonical name only, so
+    // an alias would open as "not registered". Refused here, naming the
+    // spelling to use.
+    if resolved.declared != rmw {
+        return Err(format!(
+            "`rmw = \"{rmw}\"` is an alias of `{}` -- a Zephyr image names its \
+             backend by the canonical name, which is what it is registered and \
+             selected under",
+            resolved.declared
+        ));
+    }
+    let stated = resolved.descriptor.zephyr_module_backend.as_str();
+    if stated.is_empty() {
+        return Err(format!(
+            "`rmw = \"{rmw}\"` has no Zephyr build -- the `nros-rmw.toml` in {} \
+             states no `[rmw.zephyr] module_backend`. Add `[rmw.zephyr]` with \
+             `module_backend = \"<one of {}>\"`, naming the nano-ros Zephyr module \
+             backend it is built over",
+            resolved.package_dir.display(),
+            ZEPHYR_MODULE_BACKENDS.join(" | ")
+        ));
+    }
+    module_backend_symbol(stated)
+}
+
+/// The `choice NROS_RMW_BACKEND` member for a module backend word (one of
+/// [`ZEPHYR_MODULE_BACKENDS`], which the descriptor parser already enforces).
+fn module_backend_symbol(word: &str) -> Result<&'static str, String> {
     RMW_CHOICE
         .iter()
-        .find(|(word, _)| *word == rmw)
+        .find(|(w, _)| *w == word)
         .map(|(_, sym)| *sym)
         .ok_or_else(|| {
             format!(
-                "`rmw = \"{rmw}\"` has no Zephyr backend — the Zephyr module offers \
-                 zenoh, xrce and cyclonedds"
+                "Zephyr module backend `{word}` has no `choice NROS_RMW_BACKEND` member \
+                 -- the module offers {}",
+                ZEPHYR_MODULE_BACKENDS.join(", ")
             )
         })
 }
 
-/// The image's `rmw` word and the `choice NROS_RMW_BACKEND` member it selects.
+/// A module backend word ([`ZEPHYR_MODULE_BACKENDS`]) and the
+/// `choice NROS_RMW_BACKEND` member it selects. The module's vocabulary, not
+/// a list of RMWs: any backend names one of these.
 const RMW_CHOICE: &[(&str, &str)] = &[
     ("zenoh", "NROS_RMW_ZENOH"),
     ("xrce", "NROS_RMW_XRCE"),
@@ -263,6 +304,7 @@ fn kconfig_value(ty: SymType, value: &str) -> Result<String, String> {
 
 /// Render `leaf`'s image. `language` is the package's (see
 /// [`package_language`]); `None` states no API row.
+#[cfg(test)]
 pub fn render(
     leaf: &LeafSystem,
     language: Option<Language>,
@@ -275,6 +317,7 @@ pub fn render(
         syms,
         overrides,
         &crate::cmd::leaf_settings::BoardRung::new(),
+        &cargo_nano_ros::rmw_resolver::test_support::in_tree_index(),
     )
 }
 
@@ -289,6 +332,7 @@ pub fn render_over(
     syms: &KconfigSymbols,
     overrides: &BTreeMap<String, String>,
     board: &crate::cmd::leaf_settings::BoardRung,
+    rmws: &RmwIndex,
 ) -> Result<Rendered, String> {
     let origin = leaf.origin_path().display().to_string();
     let image = leaf.image.clone().unwrap_or_default();
@@ -313,7 +357,8 @@ pub fn render_over(
     // The RMW choice.
     let rmw_sym = match leaf.rmw.as_deref() {
         Some(rmw) => {
-            let sym = rmw_symbol(rmw).map_err(|e| format!("{origin}: [image.{image}] {e}"))?;
+            let sym =
+                rmw_symbol(rmws, rmw).map_err(|e| format!("{origin}: [image.{image}] {e}"))?;
             push(&mut out, sym, "y".to_string(), format!("rmw = \"{rmw}\""))?;
             // Issue 2189 -- zenoh-pico's Zephyr port includes <pthread.h> and
             // types its tasks and mutexes as pthread objects, so a zenoh image
@@ -855,6 +900,84 @@ endif # NROS
         assert!(!m.contains_key("CONFIG_CPP"), "{m:?}");
     }
 
+    /// Issue 2372 — the RMW choice is the descriptor's
+    /// `[rmw.zephyr] module_backend`, through the provider scan: an
+    /// out-of-tree `acme` built over zenoh selects `NROS_RMW_ZENOH` (and the
+    /// POSIX API zenoh-pico needs); one that states no Zephyr build is
+    /// refused naming the line to add; an alias is refused naming the
+    /// canonical spelling.
+    #[test]
+    fn the_rmw_choice_is_the_descriptors_module_backend() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"acme\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let render_acme = |rmws: &RmwIndex| {
+            render_over(
+                &l,
+                Some(Language::Rust),
+                &syms,
+                &BTreeMap::new(),
+                &crate::cmd::leaf_settings::BoardRung::new(),
+                rmws,
+            )
+        };
+        // No `[rmw.zephyr]`: refused, naming the key and the vocabulary.
+        let ws = tempfile::tempdir().unwrap();
+        let acme = cargo_nano_ros::rmw_resolver::test_support::acme_index(ws.path());
+        let e = render_acme(&acme).unwrap_err();
+        assert!(
+            e.contains("module_backend") && e.contains("zenoh | xrce | cyclonedds"),
+            "{e}"
+        );
+        // Stated: the module backend's choice, and what zenoh-pico needs.
+        let ws = tempfile::tempdir().unwrap();
+        let provider = ws.path().join("src/acme_rmw");
+        cargo_nano_ros::rmw_resolver::test_support::write_acme_provider(&provider);
+        let descriptor = provider.join("nros-rmw.toml");
+        let raw = std::fs::read_to_string(&descriptor).unwrap();
+        std::fs::write(
+            &descriptor,
+            format!("{raw}\n[rmw.zephyr]\nmodule_backend = \"zenoh\"\n"),
+        )
+        .unwrap();
+        let roots = vec![
+            cargo_nano_ros::rmw_resolver::test_support::checkout().join("packages/rmw"),
+            ws.path().to_path_buf(),
+        ];
+        let acme = RmwIndex::new(
+            cargo_nano_ros::provider_scan::scan_roots(&roots).unwrap(),
+            roots,
+        );
+        let m = rows(&render_acme(&acme).unwrap());
+        assert_eq!(m["CONFIG_NROS_RMW_ZENOH"], "y", "{m:?}");
+        assert_eq!(m["CONFIG_POSIX_API"], "y", "{m:?}");
+        // An in-tree alias is refused, naming the canonical name.
+        let (_d, a) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"rmw-zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let e = render(&a, Some(Language::Rust), &syms, &BTreeMap::new()).unwrap_err();
+        assert!(e.contains("alias of `zenoh`"), "{e}");
+    }
+
+    /// Every module-backend word the descriptor vocabulary admits is a member
+    /// of the module's `choice NROS_RMW_BACKEND`, and the reverse.
+    #[test]
+    fn the_module_backend_vocabulary_is_the_kconfig_choice() {
+        let words: Vec<&str> = RMW_CHOICE.iter().map(|(w, _)| *w).collect();
+        assert_eq!(
+            words, ZEPHYR_MODULE_BACKENDS,
+            "RMW_CHOICE vs ZEPHYR_MODULE_BACKENDS"
+        );
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let real = KconfigSymbols::load(&root).expect("zephyr/Kconfig loads");
+        for (_, sym) in RMW_CHOICE {
+            assert!(real.get(sym).is_some(), "zephyr/Kconfig has no `{sym}`");
+        }
+    }
+
     /// Issue 2189 — a Rust entry states RUST beside `NROS_RUST_API`, which
     /// depends on it; a C/C++ entry states no RUST row.
     #[test]
@@ -1094,11 +1217,10 @@ endif # NROS
             "[system]\nname = \"t\"\nrmw = \"fastdds\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
             &[],
         );
-        assert!(
-            render(&l, None, &syms, &BTreeMap::new())
-                .unwrap_err()
-                .contains("no Zephyr backend")
-        );
+        // Issue 2372 — resolved through the provider scan, so an RMW nothing
+        // provides is refused naming the search.
+        let e = render(&l, None, &syms, &BTreeMap::new()).unwrap_err();
+        assert!(e.contains("fastdds") && e.contains("searched"), "{e}");
     }
 
     /// The empty case: an image that states nothing renders nothing, and a
