@@ -46,8 +46,7 @@ pub fn for_workspace(workspace: &Path) -> Result<Arc<RmwIndex>> {
 
 /// The index over the SDK root `root` alone, memoised like [`for_workspace`].
 ///
-/// The interim answer for a site whose caller holds the workspace but does not
-/// pass it yet (`facade::entry_selection`, reached from `cmd/build.rs`): it
+/// The answer for a directory that sits in no workspace ([`for_dir`]): it
 /// resolves every in-tree backend, and an out-of-tree one is refused with the
 /// search named, never guessed from the process's current directory.
 ///
