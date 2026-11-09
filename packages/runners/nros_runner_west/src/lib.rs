@@ -82,6 +82,31 @@ pub fn west_program(plan: &RunPlan) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("west"))
 }
 
+/// The Zephyr tree `west` is pointed at: the plan's `args.zephyr_base`, the
+/// one the image's build was configured against (`nros run` reads it from the
+/// build's CMake cache), so west loads that workspace's `build` and `flash`
+/// commands from any directory (issue 2353). `None`: the plan names none, and
+/// west keeps finding its workspace the way it would for the user (an
+/// exported `ZEPHYR_BASE`, or a working directory inside one).
+#[must_use]
+pub fn zephyr_base(plan: &RunPlan) -> Option<PathBuf> {
+    plan.args
+        .get("zephyr_base")
+        .filter(|b| !b.is_empty())
+        .map(PathBuf::from)
+}
+
+/// `west` ([`west_program`]) with the plan's [`zephyr_base`] in its
+/// environment, above any inherited one.
+#[must_use]
+pub fn west_command(plan: &RunPlan) -> std::process::Command {
+    let mut cmd = std::process::Command::new(west_program(plan));
+    if let Some(base) = zephyr_base(plan) {
+        cmd.env("ZEPHYR_BASE", base);
+    }
+    cmd
+}
+
 /// The `west build -d <dir> -t <target>` argument vector, without `west`.
 #[must_use]
 pub fn run_argv(build_dir: &Path, target: &str) -> Vec<String> {
@@ -330,6 +355,35 @@ args:
         let e = target_for("bochs", Some(&l)).unwrap_err();
         assert!(e.contains("qemu, renode") && e.contains("bochs"), "{e}");
         assert!(target_for("qemu", Some(&[])).is_err());
+    }
+
+    /// Issue 2353 -- west is pointed at the Zephyr tree the plan carries
+    /// (the one the build was configured against), above an inherited
+    /// `ZEPHYR_BASE`, so the run works from a workspace outside any west
+    /// workspace. A plan that carries none leaves west's own lookup alone.
+    #[test]
+    fn west_takes_the_zephyr_tree_from_the_plan() {
+        let mut plan = RunPlan::from_json(
+            r#"{"image":"i","verb":"run","runner":{"package":"nros_runner_west","name":"west"},
+            "target":{"emulator":"qemu:mps2-an385"},"console":{"kind":"stdio"},
+            "args":{"zephyr_base":"/zws/zephyr"}}"#,
+        )
+        .unwrap();
+        assert_eq!(zephyr_base(&plan), Some(PathBuf::from("/zws/zephyr")));
+        let cmd = west_command(&plan);
+        assert_eq!(cmd.get_program(), "west");
+        let env: Vec<_> = cmd.get_envs().collect();
+        assert_eq!(
+            env,
+            [(
+                std::ffi::OsStr::new("ZEPHYR_BASE"),
+                Some(std::ffi::OsStr::new("/zws/zephyr"))
+            )]
+        );
+
+        plan.args.clear();
+        assert_eq!(zephyr_base(&plan), None);
+        assert_eq!(west_command(&plan).get_envs().count(), 0);
     }
 
     #[test]
