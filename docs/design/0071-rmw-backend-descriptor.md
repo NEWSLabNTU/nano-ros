@@ -776,6 +776,68 @@ lane that runs it.
 Decided 2026-11-09 (user ruling): a follow-up,
 [issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md).
 
+## Amendment 2026-11-10: the host peer is a declared fact (D17, issue 2381)
+
+**Status: Implemented with issue 2381 (2026-11-10). The rulings below were made in that fix and are open to review.**
+
+`nros run` decided what to start on the host side of an image's link from a
+list of RMW names in `run_exec::host_side`: `xrce` started an XRCE agent,
+`zenoh` (or no RMW at all) a zenoh router, and any other name nothing. A
+third-party backend that speaks zenoh, such as phase-545 W3's `acme`, got no
+router. The image then ran with nobody to dial, and nros said nothing. This is
+D5's closed-list shape one verb over.
+
+**D17. A backend declares what it needs on the host side of a link:**
+
+```toml
+[rmw.host]
+peer = "zenoh-router"   # or "xrce-agent", or "none"
+```
+
+The vocabulary is CLOSED, unlike `[rmw.capabilities]`, because nros has to
+know how to start each value. A backend never names itself here. It names the
+peer it needs, so any number of zenoh-based backends share `zenoh-router`.
+`[rmw.link]` is not reused, because it holds link-time facts and this is a
+run-time one.
+
+| value | `nros run --router auto` starts |
+| --- | --- |
+| `zenoh-router` | `rmw_zenohd` on the image's locator (or reuses one already there, issue 2315); a host image with no locator gets the zenoh default |
+| `xrce-agent` | a micro-XRCE-DDS agent on the locator's port, or on the serial endpoint |
+| `none` | nothing (DDS discovery, a target-local bus) |
+
+**Rulings.**
+
+- **In-tree descriptors must state it.** `cargo-nano-ros/build.rs` refuses an
+  in-tree descriptor without it, and so does `check-rmw-descriptors` (S3),
+  which reads the vocabulary from the parser's `HOST_PEERS`. The four in-tree
+  descriptors show the vocabulary: zenoh `zenoh-router`, xrce `xrce-agent`,
+  cyclonedds and uorb `none`.
+- **A missing value is unknown, never `none`.** For an out-of-tree descriptor,
+  the parser leaves the field empty. `nros run --router auto` (and
+  `nros flash --monitor`) then refuses before anything starts. The refusal
+  names the descriptor and the line to add, and says that `--router none` or
+  `--router <locator>` still run. Reading the gap as `none` is exactly the
+  silent no-router run this amendment fixes. It is the same rule as
+  `[rmw.facts]`: a fact the descriptor does not state is unknown. A value
+  outside the vocabulary is a parse error.
+- **The plan carries the fact.** The run planner resolves the image's RMW
+  through the workspace's RMW index (D14). It is the same index the build
+  uses, so in-tree and out-of-tree backends take one path. The planner puts
+  the peer on the plan's link as `host_peer`, with `link.host_peer`
+  provenance naming the descriptor, so `--dry-run --why` shows it. The field
+  is optional and additive within run-plan protocol 1. A runner ignores it,
+  and a plan without it is refused under `--router auto` rather than guessed
+  at.
+- **No second default RMW.** `host_side` used to treat an unset RMW as zenoh.
+  That is gone. The plan's RMW is already resolved by the one ladder,
+  `SystemToml::resolved_rmw` (`[image]` > `[image_defaults]` > `[system]` >
+  the toolchain default), at the build's parse boundary (`effective_images`,
+  issue 1304).
+
+**Gate.** The `run_exec` test `the_run_path_names_no_rmw` refuses an RMW name
+as a string literal in the non-test code of `run_exec.rs` and `run_plan.rs`.
+
 ## What this does NOT change
 
 * **The vtable ABI.** RFC-0035 is not the gap. A backend still populates
@@ -947,3 +1009,9 @@ machinery.
   one whose backend nothing links is refused. The first form of the
   registration ruling ("every linked backend on every arm") was revised the
   same day: `::<crate>` paths resolve only for direct dependencies.
+- 2026-11-10: D17 (issue 2381). A backend declares the peer it needs on the
+  host side of a link, `[rmw.host] peer = "zenoh-router" | "xrce-agent" |
+  "none"`. In-tree descriptors must state it, and for an out-of-tree one a
+  missing value is unknown, so `nros run --router auto` refuses it. The run
+  plan's link carries it as `host_peer`, and `host_side` keeps no RMW name
+  list.

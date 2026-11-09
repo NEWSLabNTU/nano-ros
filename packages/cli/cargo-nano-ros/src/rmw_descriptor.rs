@@ -54,6 +54,18 @@ pub const LINK_CMAKE: &str = "cmake";
 ///   (`nros-zenoh-session-config`).
 pub const CONFIG_FORMATS: &[&str] = &["verbatim-xml", "session-json5"];
 
+/// `[rmw.host].peer` values (issue 2381): what the backend needs running on
+/// the HOST side of an image's link, which is what `nros run --router auto`
+/// starts. A closed vocabulary because nros must know how to START each one;
+/// a backend never names itself here, it names the peer it needs, so an
+/// out-of-tree zenoh-based backend states `zenoh-router` and gets one.
+///
+/// - `zenoh-router` -- `rmw_zenohd`, listening on the image's locator;
+/// - `xrce-agent` -- a micro-XRCE-DDS agent on the locator or serial port;
+/// - `none` -- nothing: the backend finds its peers itself (DDS discovery),
+///   or never leaves the target (uORB).
+pub const HOST_PEERS: &[&str] = &["zenoh-router", "xrce-agent", "none"];
+
 /// What a backend's `nros-rmw.toml` says.
 ///
 /// Split into what convention CANNOT produce (the fields below) and what it
@@ -147,6 +159,12 @@ pub struct RmwDescriptor {
     /// `[rmw.config].retired` — an older file a bringup may still ship, which
     /// sync refuses naming `config_file`. Empty: none.
     pub config_retired: String,
+    /// `[rmw.host].peer` -- one of [`HOST_PEERS`], or empty when the
+    /// descriptor does not say. Empty is UNKNOWN, never `none`: an in-tree
+    /// descriptor must state it (`build.rs`, `check-rmw-descriptors`), and
+    /// `nros run --router auto` refuses an image whose backend leaves it out
+    /// rather than start nothing silently (issue 2381).
+    pub host_peer: String,
 
     // ---- restatements of derivable facts (RFC-0087 D4) --------------------
     /// `[rmw].names`, if the descriptor still restates the announcements.
@@ -263,6 +281,7 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.config", "file") => d.config_file = scalar(),
             ("rmw.config", "format") => d.config_format = scalar(),
             ("rmw.config", "retired") => d.config_retired = scalar(),
+            ("rmw.host", "peer") => d.host_peer = scalar(),
             _ => {}
         }
     }
@@ -272,6 +291,14 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             "{origin}: [rmw.config].format = {:?} — one of {CONFIG_FORMATS:?} \
              (`[rmw.config].file` is set, so the toolchain must know how to carry it)",
             d.config_format
+        ));
+    }
+    if !d.host_peer.is_empty() && !HOST_PEERS.contains(&d.host_peer.as_str()) {
+        return Err(format!(
+            "{origin}: [rmw.host].peer = {:?} -- one of {} (what this backend \
+             needs running on the host side of the link)",
+            d.host_peer,
+            HOST_PEERS.join(" | ")
         ));
     }
     if !d.link_strategy.is_empty() && !LINK_STRATEGIES.contains(&d.link_strategy.as_str()) {
@@ -406,6 +433,49 @@ mod tests {
         let err = parse_rmw_descriptor("[rmw]\ncpp_define = \"X\"\n", "acme").unwrap_err();
         assert!(
             err.contains("cannot tell how this backend reaches the link"),
+            "{err}"
+        );
+    }
+
+    // Issue 2381 -- the host peer is a declared fact, one of a closed set.
+    #[test]
+    fn the_host_peer_is_read_from_rmw_host() {
+        for peer in HOST_PEERS {
+            let d = parse_rmw_descriptor(
+                &format!(
+                    "[rmw]\ncpp_define = \"X\"\n[rmw.host]\npeer = \"{peer}\"\n\
+                     [rmw.link]\nrlib_dep = \"a\"\n"
+                ),
+                "acme",
+            )
+            .unwrap();
+            assert_eq!(d.host_peer, *peer);
+        }
+    }
+
+    // Issue 2381 -- left out is UNKNOWN (empty), never defaulted to `none`;
+    // the consumers decide (build.rs refuses in-tree, `nros run` refuses an
+    // auto router).
+    #[test]
+    fn an_unstated_host_peer_is_unknown_not_none() {
+        let d = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.link]\nrlib_dep = \"a\"\n",
+            "acme",
+        )
+        .unwrap();
+        assert_eq!(d.host_peer, "");
+    }
+
+    #[test]
+    fn a_typoed_host_peer_is_refused() {
+        let err = parse_rmw_descriptor(
+            "[rmw]\ncpp_define = \"X\"\n[rmw.host]\npeer = \"zenohd\"\n\
+             [rmw.link]\nrlib_dep = \"a\"\n",
+            "acme",
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("zenohd") && err.contains("zenoh-router"),
             "{err}"
         );
     }

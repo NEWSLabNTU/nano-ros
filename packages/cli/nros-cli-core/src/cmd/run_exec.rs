@@ -30,7 +30,7 @@ use std::{
 use nros_extension::{
     describe::Describe,
     exit,
-    plan::{Link, LinkKind, RunPlan, Verb},
+    plan::{HostPeer, Link, LinkKind, RunPlan, Verb},
     protocol,
 };
 
@@ -138,20 +138,84 @@ impl RouterMode {
 /// the port `rmw_zenoh_cpp` uses.
 pub const ZENOH_DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
 
-/// Fill in what the plan needs before it is printed or executed, so the plan
-/// `--dry-run` shows is the plan that runs: the link's RMW, a host zenoh
-/// image's default link, and `--prefix`.
-pub fn decorate(plan: &mut RunPlan, rmw: Option<&str>, exec: &ExecArgs) {
-    let rmw = rmw.map(str::to_string);
-    match plan.link.as_mut() {
-        Some(l) => {
-            if l.rmw.is_none() {
-                l.rmw = rmw;
-            }
+/// The provenance key of the link's host peer.
+const HOST_PEER_KEY: &str = "link.host_peer";
+
+/// What the image's RMW declares it needs on the host side of a link
+/// (`[rmw.host] peer` in its `nros-rmw.toml`, RFC-0071; issue 2381), and the
+/// descriptor that said so. `Err` is why nothing stated it.
+///
+/// The RMW is resolved through the workspace's RMW index, the one the build
+/// resolves it through, so an out-of-tree backend answers exactly as an
+/// in-tree one does. `rmw` is the plan's: [`crate::cmd::build`] has already
+/// resolved the default (`[image]` > `[system]` > the toolchain default), so
+/// no second default is typed here.
+pub type DeclaredPeer = Result<(HostPeer, String), String>;
+
+/// [`DeclaredPeer`] for `rmw`, over the RMW index of the workspace `ws`.
+pub fn declared_host_peer(ws: &Path, rmw: Option<&str>) -> DeclaredPeer {
+    let Some(rmw) = rmw else {
+        return Err("the image names no RMW".into());
+    };
+    let index = crate::orchestration::rmw_index::for_workspace(ws)
+        .map_err(|e| format!("resolving RMW `{rmw}`: {e:#}"))?;
+    let resolved = index
+        .resolve(rmw)
+        .map_err(|e| format!("resolving RMW `{rmw}`: {e}"))?;
+    peer_of(
+        rmw,
+        &resolved.descriptor.host_peer,
+        &resolved.package_dir.join("nros-rmw.toml"),
+    )
+}
+
+/// The peer a descriptor's `[rmw.host] peer` value names. Empty is unknown,
+/// never `none` (the ruling of issue 2381: a missing fact read as "nothing" is
+/// how an out-of-tree zenoh backend ran with no router and no word).
+fn peer_of(rmw: &str, stated: &str, descriptor: &Path) -> DeclaredPeer {
+    if stated.is_empty() {
+        return Err(format!(
+            "the `{rmw}` RMW's descriptor ({}) does not say what it needs on the host \
+             side of the link: add `[rmw.host] peer = \"zenoh-router\" | \"xrce-agent\" | \
+             \"none\"` to it",
+            descriptor.display()
+        ));
+    }
+    stated
+        .parse::<HostPeer>()
+        .map(|p| (p, format!("rmw `{rmw}` ({})", descriptor.display())))
+        .map_err(|e| format!("{}: [rmw.host] {e}", descriptor.display()))
+}
+
+/// Put the declared host peer on the plan's link (and its provenance), and the
+/// RMW's name where the link has none. A plan with no link is left alone.
+pub fn attach_host_peer(plan: &mut RunPlan, rmw: Option<&str>, peer: &DeclaredPeer) {
+    let Some(l) = plan.link.as_mut() else {
+        return;
+    };
+    if l.rmw.is_none() {
+        l.rmw = rmw.map(str::to_string);
+    }
+    let note = match peer {
+        Ok((p, from)) => {
+            l.host_peer = Some(*p);
+            from.clone()
         }
-        // A host image reads its locator at run time and dials the zenoh
-        // default when none is set.
-        None if plan.target.host && rmw.as_deref() == Some("zenoh") => {
+        Err(why) => format!("unstated: {why}"),
+    };
+    plan.provenance.insert(HOST_PEER_KEY.into(), note);
+}
+
+/// Fill in what the plan needs before it is printed or executed, so the plan
+/// `--dry-run` shows is the plan that runs: the link's RMW and the host peer
+/// it declares, a host image's default link when that peer is a zenoh router,
+/// and `--prefix`.
+pub fn decorate(plan: &mut RunPlan, rmw: Option<&str>, peer: &DeclaredPeer, exec: &ExecArgs) {
+    match plan.link {
+        Some(_) => {}
+        // A host image of an RMW that dials a zenoh router reads its locator
+        // at run time and dials the zenoh default when none is set.
+        None if plan.target.host && matches!(peer, Ok((HostPeer::ZenohRouter, _))) => {
             let locator = std::env::var("NROS_LOCATOR")
                 .ok()
                 .filter(|l| !l.is_empty())
@@ -163,12 +227,14 @@ pub fn decorate(plan: &mut RunPlan, rmw: Option<&str>, exec: &ExecArgs) {
                     LinkKind::Tcp
                 },
                 locator,
-                rmw,
+                rmw: None,
+                host_peer: None,
             });
             plan.provenance.insert("link".into(), "method".into());
         }
         None => {}
     }
+    attach_host_peer(plan, rmw, peer);
     if let Some(p) = &exec.prefix {
         plan.args.insert("prefix".into(), p.clone());
         plan.provenance.insert(
@@ -186,6 +252,9 @@ pub enum HostSide {
     /// Nothing: no link, `--router none`, an external router, or a link this
     /// host does not serve.
     Nothing(String),
+    /// The plan does not state what its RMW needs on the host side, so
+    /// `--router auto` cannot tell what to start: refused, with this reason.
+    Unstated(String),
     /// A zenoh router listening on this locator, started before the target.
     ZenohListen(String),
     /// An XRCE agent with these arguments, started before the target.
@@ -211,11 +280,29 @@ pub fn host_side(plan: &RunPlan, mode: &RouterMode) -> HostSide {
         RouterMode::External(l) => return HostSide::Nothing(format!("the router at {l}")),
         RouterMode::Auto => {}
     }
-    let zenoh = match link.rmw.as_deref() {
-        Some("xrce") => false,
-        Some("zenoh") | None => true,
-        Some(other) => {
-            return HostSide::Nothing(format!("the `{other}` RMW needs no router"));
+    // Issue 2381 -- the RMW's declared host peer decides, never its name.
+    let rmw = link.rmw.as_deref().unwrap_or("the image's");
+    let zenoh = match link.host_peer {
+        Some(HostPeer::ZenohRouter) => true,
+        Some(HostPeer::XrceAgent) => false,
+        Some(HostPeer::None) => {
+            return HostSide::Nothing(format!(
+                "the `{rmw}` RMW needs nothing on the host ([rmw.host] peer = \"none\")"
+            ));
+        }
+        None => {
+            let why = plan
+                .provenance
+                .get(HOST_PEER_KEY)
+                .and_then(|n| n.strip_prefix("unstated: "))
+                .map_or_else(
+                    || "the plan's link states no `host_peer`".to_string(),
+                    str::to_string,
+                );
+            return HostSide::Unstated(format!(
+                "{why}. `--router auto` will not guess what to start; pass `--router none` \
+                 (start nothing) or `--router <locator>` (a router already running)"
+            ));
         }
     };
     if link.kind == LinkKind::Serial {
@@ -1076,6 +1163,7 @@ pub fn execute(plan: &RunPlan, x: &Execution<'_>) -> u8 {
     // ---- the host side of the link, when it can start first -------------
     let side = host_side(plan, &mode);
     match &side {
+        HostSide::Unstated(why) => return fail(exit::PLAN_UNRESOLVED, why),
         HostSide::Nothing(why) => {
             if plan.link.is_some() {
                 eprintln!("nros {}: starting no router ({why})", verb_word(plan.verb));
@@ -1360,12 +1448,19 @@ mod tests {
         }
     }
 
-    fn link(kind: LinkKind, locator: &str, rmw: &str) -> Option<Link> {
+    /// A link whose RMW `rmw` declares `peer` (the name is a label only:
+    /// issue 2381 keys the decision on the peer).
+    fn link(kind: LinkKind, locator: &str, rmw: &str, peer: HostPeer) -> Option<Link> {
         Some(Link {
             kind,
             locator: locator.into(),
             rmw: Some(rmw.into()),
+            host_peer: Some(peer),
         })
+    }
+
+    fn declared(peer: HostPeer) -> DeclaredPeer {
+        Ok((peer, "rmw `test` (test)".into()))
     }
 
     #[test]
@@ -1382,7 +1477,15 @@ mod tests {
 
     #[test]
     fn an_emulator_dialling_the_user_net_host_gets_a_loopback_router() {
-        let p = plan(false, link(LinkKind::Tcp, "tcp/10.0.2.2:10500", "zenoh"));
+        let p = plan(
+            false,
+            link(
+                LinkKind::Tcp,
+                "tcp/10.0.2.2:10500",
+                "zenoh",
+                HostPeer::ZenohRouter,
+            ),
+        );
         assert_eq!(
             host_side(&p, &RouterMode::Auto),
             HostSide::ZenohListen("tcp/127.0.0.1:10500".into())
@@ -1396,7 +1499,15 @@ mod tests {
     #[test]
     fn a_router_on_another_host_is_not_started() {
         // TEST-NET-1: never an address of this machine.
-        let p = plan(false, link(LinkKind::Tcp, "tcp/192.0.2.7:7447", "zenoh"));
+        let p = plan(
+            false,
+            link(
+                LinkKind::Tcp,
+                "tcp/192.0.2.7:7447",
+                "zenoh",
+                HostPeer::ZenohRouter,
+            ),
+        );
         assert!(matches!(
             host_side(&p, &RouterMode::Auto),
             HostSide::Nothing(_)
@@ -1405,7 +1516,15 @@ mod tests {
 
     #[test]
     fn xrce_starts_an_agent_on_the_locators_port() {
-        let p = plan(true, link(LinkKind::Udp, "udp/127.0.0.1:2018", "xrce"));
+        let p = plan(
+            true,
+            link(
+                LinkKind::Udp,
+                "udp/127.0.0.1:2018",
+                "xrce",
+                HostPeer::XrceAgent,
+            ),
+        );
         assert_eq!(
             host_side(&p, &RouterMode::Auto),
             HostSide::XrceAgent(vec!["udp4".into(), "-p".into(), "2018".into()])
@@ -1416,7 +1535,12 @@ mod tests {
     fn a_serial_link_waits_for_the_runners_endpoint() {
         let p = plan(
             false,
-            link(LinkKind::Serial, "serial/UART_0#baudrate=115200", "zenoh"),
+            link(
+                LinkKind::Serial,
+                "serial/UART_0#baudrate=115200",
+                "zenoh",
+                HostPeer::ZenohRouter,
+            ),
         );
         assert_eq!(
             host_side(&p, &RouterMode::Auto),
@@ -1575,7 +1699,12 @@ mod tests {
     fn cyclonedds_needs_no_router() {
         let p = plan(
             true,
-            link(LinkKind::Udp, "udp/127.0.0.1:7400", "cyclonedds"),
+            link(
+                LinkKind::Udp,
+                "udp/127.0.0.1:7400",
+                "cyclonedds",
+                HostPeer::None,
+            ),
         );
         assert!(matches!(
             host_side(&p, &RouterMode::Auto),
@@ -1590,7 +1719,7 @@ mod tests {
             prefix: Some("valgrind -q".into()),
             ..ExecArgs::default()
         };
-        decorate(&mut p, Some("zenoh"), &x);
+        decorate(&mut p, Some("zenoh"), &declared(HostPeer::ZenohRouter), &x);
         let l = p.link.as_ref().unwrap();
         // `NROS_LOCATOR`, when the environment sets it, wins over the default.
         let expected = std::env::var("NROS_LOCATOR")
@@ -1604,8 +1733,171 @@ mod tests {
 
         // An emulator's link comes only from its image.
         let mut q = plan(false, None);
-        decorate(&mut q, Some("zenoh"), &ExecArgs::default());
+        decorate(
+            &mut q,
+            Some("zenoh"),
+            &declared(HostPeer::ZenohRouter),
+            &ExecArgs::default(),
+        );
         assert!(q.link.is_none());
+
+        // A host image whose RMW needs no router gets no default link.
+        for peer in [HostPeer::None, HostPeer::XrceAgent] {
+            let mut r = plan(true, None);
+            decorate(&mut r, Some("x"), &declared(peer), &ExecArgs::default());
+            assert!(r.link.is_none(), "{peer}");
+        }
+    }
+
+    /// Issue 2381 -- an OUT-OF-TREE RMW (`acme`, phase-545 W3's fixture shape)
+    /// whose descriptor declares `zenoh-router` gets the same host link and
+    /// the same router as zenoh: the decision reads the declared peer, so a
+    /// name nros has never heard of starts (or reuses) a router.
+    #[test]
+    fn an_out_of_tree_rmw_declaring_a_zenoh_router_gets_one() {
+        let d = tempfile::tempdir().unwrap();
+        let desc = d.path().join("nros-rmw.toml");
+        let peer = peer_of("acme", "zenoh-router", &desc);
+        let mut p = plan(true, None);
+        decorate(&mut p, Some("acme"), &peer, &ExecArgs::default());
+        let l = p.link.as_ref().expect("a host link");
+        assert_eq!(l.rmw.as_deref(), Some("acme"));
+        assert_eq!(l.host_peer, Some(HostPeer::ZenohRouter));
+        assert!(p.provenance[HOST_PEER_KEY].contains("acme"), "{p:?}");
+        // The locator the host image dials (`NROS_LOCATOR` or the default).
+        let side = host_side(&p, &RouterMode::Auto);
+        let HostSide::ZenohListen(listen) = &side else {
+            panic!("{side:?}");
+        };
+        // Start on a free port, reuse a zenoh router already there (2315).
+        let eps = router_listen_endpoints(listen);
+        assert!(matches!(
+            plan_router_with(eps.clone(), |_| PortHolder::Free).unwrap(),
+            RouterStart::Start { .. }
+        ));
+        assert!(matches!(
+            plan_router_with(eps, |_| PortHolder::ZenohRouter).unwrap(),
+            RouterStart::Reuse(_)
+        ));
+
+        // An emulator's serial link: the router waits for the endpoint.
+        let mut q = plan(
+            false,
+            Some(Link {
+                kind: LinkKind::Serial,
+                locator: "serial/UART_0#baudrate=115200".into(),
+                rmw: None,
+                host_peer: None,
+            }),
+        );
+        decorate(&mut q, Some("acme"), &peer, &ExecArgs::default());
+        assert_eq!(
+            host_side(&q, &RouterMode::Auto),
+            HostSide::AfterLink {
+                zenoh: true,
+                options: "baudrate=115200".into()
+            }
+        );
+    }
+
+    /// Issue 2381 -- each declared peer kind maps to what `--router auto`
+    /// starts, whatever the RMW is called.
+    #[test]
+    fn each_declared_peer_decides_the_host_side() {
+        let side = |peer| {
+            let mut p = plan(true, None);
+            p.link = link(LinkKind::Udp, "udp/127.0.0.1:2018", "whatever", peer);
+            host_side(&p, &RouterMode::Auto)
+        };
+        assert_eq!(
+            side(HostPeer::ZenohRouter),
+            HostSide::ZenohListen("udp/127.0.0.1:2018".into())
+        );
+        assert_eq!(
+            side(HostPeer::XrceAgent),
+            HostSide::XrceAgent(vec!["udp4".into(), "-p".into(), "2018".into()])
+        );
+        assert!(matches!(side(HostPeer::None), HostSide::Nothing(_)));
+    }
+
+    /// Issue 2381 -- a descriptor that leaves `[rmw.host] peer` out is
+    /// UNKNOWN, not `none`: an auto router is refused, naming the descriptor
+    /// and the line to add, and `--router none` / a locator still run.
+    #[test]
+    fn an_unstated_peer_refuses_an_auto_router_and_names_the_fix() {
+        let desc = Path::new("/x/acme_rmw/nros-rmw.toml");
+        let peer = peer_of("acme", "", desc);
+        let mut p = plan(
+            true,
+            Some(Link {
+                kind: LinkKind::Tcp,
+                locator: "tcp/127.0.0.1:7447".into(),
+                rmw: None,
+                host_peer: None,
+            }),
+        );
+        decorate(&mut p, Some("acme"), &peer, &ExecArgs::default());
+        assert_eq!(p.link.as_ref().unwrap().host_peer, None);
+        let HostSide::Unstated(why) = host_side(&p, &RouterMode::Auto) else {
+            panic!("{:?}", host_side(&p, &RouterMode::Auto));
+        };
+        assert!(why.contains("/x/acme_rmw/nros-rmw.toml"), "{why}");
+        assert!(why.contains("[rmw.host] peer"), "{why}");
+        assert!(why.contains("--router none"), "{why}");
+        assert!(matches!(
+            host_side(&p, &RouterMode::None),
+            HostSide::Nothing(_)
+        ));
+        assert!(matches!(
+            host_side(&p, &RouterMode::External("tcp/10.0.0.5:7447".into())),
+            HostSide::Nothing(_)
+        ));
+        // A host image with an unstated peer gets no guessed default link.
+        let mut q = plan(true, None);
+        decorate(&mut q, Some("acme"), &peer, &ExecArgs::default());
+        assert!(q.link.is_none());
+        // A plan file with a link and no `host_peer` (written before it
+        // existed) is refused the same way.
+        let mut old = p.clone();
+        old.provenance.clear();
+        let HostSide::Unstated(why) = host_side(&old, &RouterMode::Auto) else {
+            panic!();
+        };
+        assert!(why.contains("states no `host_peer`"), "{why}");
+        // A typo is an error naming the vocabulary.
+        assert!(
+            peer_of("acme", "zenohd", desc)
+                .unwrap_err()
+                .contains("zenoh-router")
+        );
+    }
+
+    /// Issue 2381 -- the router decision keys on the declared peer, never on
+    /// an RMW name: no RMW name is a string literal in this module's code (or
+    /// in the run planner's), outside the tests. The gate for the class.
+    #[test]
+    fn the_run_path_names_no_rmw() {
+        for (file, src) in [
+            ("run_exec.rs", include_str!("run_exec.rs")),
+            ("run_plan.rs", include_str!("run_plan.rs")),
+        ] {
+            let code = src.split("#[cfg(test)]").next().unwrap();
+            for name in ["zenoh", "xrce", "cyclonedds", "uorb", "dds"] {
+                let lit = format!("\"{name}\"");
+                let hits: Vec<_> = code
+                    .lines()
+                    .enumerate()
+                    .filter(|(_, l)| !l.trim_start().starts_with("//") && l.contains(&lit))
+                    .map(|(i, l)| format!("{file}:{}: {}", i + 1, l.trim()))
+                    .collect();
+                assert!(
+                    hits.is_empty(),
+                    "an RMW name is a literal in the run path; read the RMW's \
+                     declared `[rmw.host] peer` instead (issue 2381):\n{}",
+                    hits.join("\n")
+                );
+            }
+        }
     }
 
     #[test]

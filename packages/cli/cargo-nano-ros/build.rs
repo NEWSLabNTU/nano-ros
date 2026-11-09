@@ -211,6 +211,18 @@ fn derive_fields(path: &Path, pkg_xml: &Path, d: &mut Descriptor) {
     agree(path, "c_define_token", &d.c_define_token, &token);
     d.c_define_token = token;
 
+    if d.stated.host_peer.is_empty() {
+        // Issue 2381 -- an in-tree backend states what it needs on the host
+        // side of a link; `nros run` reads the fact, never the name. An
+        // out-of-tree descriptor may leave it out (nros run then refuses an
+        // auto router); an in-tree one is where the vocabulary is shown.
+        panic!(
+            "{}: [rmw.host].peer is missing -- state what this backend needs on \
+             the host side of a link: one of {}",
+            path.display(),
+            HOST_PEERS.join(" | ")
+        );
+    }
     if d.stated.cpp_define.is_empty() {
         // Not derivable — see the module header. An absent one would lower to
         // an empty `#define`, which compiles and means nothing.

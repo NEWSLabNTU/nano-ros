@@ -227,7 +227,7 @@ fn plans(
         ),
         Err(e) => unresolved(&format!("reading this machine's bench: {e:#}")),
     };
-    let plan = run_plan::resolve(
+    let mut plan = run_plan::resolve(
         Verb::Flash,
         Inputs {
             image: &one.qualified,
@@ -240,6 +240,15 @@ fn plans(
         },
     )
     .unwrap_or_else(|e| unresolved(&e.to_string()));
+    // Issue 2381 -- `--monitor`'s router reads the RMW's declared host peer,
+    // as `nros run`'s does.
+    let ws = args
+        .selection()
+        .workspace
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default();
+    let peer = run_exec::declared_host_peer(&ws, one.rmw.as_deref());
+    run_exec::attach_host_peer(&mut plan, one.rmw.as_deref(), &peer);
     (plan, Some(one), port_note)
 }
 

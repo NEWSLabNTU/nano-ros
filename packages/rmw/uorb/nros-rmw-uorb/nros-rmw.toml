@@ -29,6 +29,12 @@ cpp_define = "NROS_RMW_UORB"
 # The cmake target `nros-cpp` links when present (uorb's PX4 shell path).
 cmake_target = "nros_rmw_uorb"
 
+# Issue 2381 -- what this backend needs on the HOST side of a link, which
+# is what `nros run --router auto` starts (one of zenoh-router | xrce-agent
+# | none). Here: a target-local bus; nothing runs on the host.
+[rmw.host]
+peer = "none"
+
 # uorb is NOT special (phase-347 W3). It populates the vtable and self-registers
 # like every other backend; what is unusual is its CONSUMER — PX4 links it
 # through the `integrations/px4/` shell rather than a nano-ros entry, which is a

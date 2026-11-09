@@ -13,6 +13,11 @@ It now checks what can still go wrong once there is a single source:
 
   S1  every descriptor has the NON-DERIVABLE fields the generators read, and
       no empty ones that would silently lower to nothing;
+  S3  every in-tree descriptor states `[rmw.host] peer` (issue 2381), one of
+      HOST_PEERS: what `nros run --router auto` starts for the backend. An
+      in-tree descriptor is where the vocabulary is shown, so it may not leave
+      the fact out; an out-of-tree one may, and `nros run` then refuses an
+      auto router rather than guess. `build.rs` refuses the same;
   S2  no two backends claim the same name (ambiguous resolution);
   S4  a descriptor exists for every backend directory that looks like one, so
       adding a backend and forgetting the descriptor fails here rather than at
@@ -68,6 +73,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # RESTATEMENT equals its derived value rather than asserting presence.)
 REQUIRED = ["cpp_define"]
 
+# `[rmw.host].peer` values (S3), READ from the parser's `HOST_PEERS` rather
+# than restated, so a peer kind added there cannot be refused here.
+DESCRIPTOR_RS = os.path.join(ROOT, "packages/cli/cargo-nano-ros/src/rmw_descriptor.rs")
+
+
+def host_peers():
+    with open(DESCRIPTOR_RS, encoding="utf-8") as fh:
+        m = re.search(r"pub const HOST_PEERS: &\[&str\] = &\[([^\]]*)\]", fh.read())
+    if not m:
+        sys.exit(f"check-rmw-descriptors: no `HOST_PEERS` in {DESCRIPTOR_RS}")
+    return tuple(re.findall(r'"([^"]+)"', m.group(1)))
+
 PROVIDES_RE = re.compile(r'<nano_ros_provides\s+kind="rmw"\s+name="([^"]+)"\s*/?>')
 # An XML comment body cannot contain `--`, so this matches one exactly. The
 # strip is not optional (issue 0516): every backend package.xml documents the
@@ -100,6 +117,7 @@ def main():
 
     problems = []
     claimed = {}
+    peers = host_peers()
 
     for path in paths:
         rel = os.path.relpath(path, ROOT)
@@ -127,6 +145,15 @@ def main():
         for field in REQUIRED:
             if not rmw.get(field):
                 problems.append(f"{rel}: [rmw].{field} is missing or empty")
+
+        # S3
+        peer = (rmw.get("host") or {}).get("peer")
+        if peer not in peers:
+            problems.append(
+                f"{rel}: [rmw.host].peer is {peer!r} -- an in-tree descriptor "
+                f"states what the backend needs on the host side of a link, one "
+                f"of {' | '.join(peers)} (issue 2381)"
+            )
 
         # S2
         for n in names:

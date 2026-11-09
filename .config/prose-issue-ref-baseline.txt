@@ -53,6 +53,19 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
+#   2381  IN FLIGHT -- the id is reserved (refs/issue-ids/2381); the file
+#         belongs to phase-545 W3 (PR #3376, which adds the acme fixture it is
+#         about) and is not on main yet. The fix landed on its own PR. REMOVE
+#         THESE ROWS when the file reaches main.
+#
+docs/design/0071-rmw-backend-descriptor.md:2381
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
+packages/cli/cargo-nano-ros/build.rs:2381
+packages/cli/cargo-nano-ros/src/rmw_descriptor.rs:2381
+packages/cli/nros-cli-core/src/cmd/flash.rs:2381
+packages/cli/nros-cli-core/src/cmd/run_exec.rs:2381
+packages/cli/nros-cli-core/src/cmd/run_plan.rs:2381
+packages/runners/nros-extension/src/plan.rs:2381
 scripts/build/rustdoc-set.sh:1110
+scripts/check-rmw-descriptors.py:2381

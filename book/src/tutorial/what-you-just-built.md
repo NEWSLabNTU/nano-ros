@@ -242,10 +242,12 @@ kind = "semihosting"
 kind = "serial"
 locator = "serial/UART_0#baudrate=115200"
 rmw = "zenoh"
+host_peer = "zenoh-router"
 
 [provenance]
 image = "rung 3, `<node>`: `sensor_node` is the only component of `sensor_node_bringup`, whose only image this is"
 link = "image"
+"link.host_peer" = "rmw `zenoh` (.../nros-rmw-zenoh/nros-rmw.toml)"
 "target.emulator" = "board"
 ```
 
@@ -261,7 +263,9 @@ Read it from the top:
   MPS2-AN385, booted by the `qemu` runner. Their provenance is `board`: the
   board's own description states how it runs, so the bringup does not.
 - **`[link]`** is the `locator` line of the image, and it is why `nros run`
-  started a zenoh router on a serial device. **`[console]`** says the
+  started a zenoh router on a serial device. Its `host_peer` is what the
+  zenoh backend's own descriptor says it needs on this side of the link;
+  that, not the backend's name, is what decides to start a router. **`[console]`** says the
   program's printed output comes through QEMU's semihosting, apart from the
   serial port the messages use.
 
