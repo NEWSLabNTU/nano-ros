@@ -319,7 +319,7 @@ def load_object(g: Graph, path: str, readobj: str, objdump: str) -> None:
 
 
 def load_su(g: Graph, root: Path) -> None:
-    files = [root] if root.is_file() else sorted(root.rglob("*.su"))
+    files = [root] if root.is_file() else sorted(root.rglob("*.su"))  # walk-ok: .su files are untracked GCC build output in a build dir the caller names
     for f in files:
         for line in f.read_text(errors="replace").splitlines():
             m = SU_RE.match(line)
