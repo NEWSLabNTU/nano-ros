@@ -2358,7 +2358,8 @@ fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>)
     Ok(())
 }
 
-/// How many times a network fetch runs before its failure stands (issue 2129).
+/// How many times a fetch that fails on the NETWORK runs before its failure
+/// stands (issue 2129).
 const FETCH_ATTEMPTS: u32 = 3;
 
 /// The wait before the first retry; it doubles after each. Not measured
@@ -2368,6 +2369,26 @@ const FETCH_BACKOFF: std::time::Duration = if cfg!(test) {
     std::time::Duration::from_millis(10)
 } else {
     std::time::Duration::from_secs(5)
+};
+
+/// How long, in total, a fetch keeps waiting out a SERVER-side failure (HTTP
+/// 429 or 5xx) before its failure stands (issue 2369). A GitHub release 504
+/// lasts minutes, not seconds: on 2026-11-09 the same URLs failed all three
+/// attempts of the 15 s network budget twice and answered 200 minutes later,
+/// and each time a merge-queue batch was ejected. Five minutes covers that
+/// window and is still a bound, so a real outage fails.
+const SERVER_OUTAGE_BUDGET: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(100)
+} else {
+    std::time::Duration::from_secs(300)
+};
+
+/// The longest single wait while a server-side failure lasts: the doubling
+/// stops here, so a long outage is polled once a minute, not at 160 s gaps.
+const SERVER_OUTAGE_MAX_WAIT: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(20)
+} else {
+    std::time::Duration::from_secs(60)
 };
 
 /// Whether `args` reaches the network: a `git fetch`/`clone`/`ls-remote`, a
@@ -2396,12 +2417,29 @@ fn is_network_fetch(args: &[&str]) -> bool {
     }
 }
 
-/// Whether a failed fetch's output says the NETWORK failed rather than the
-/// request. A missing tag or commit (`couldn't find remote ref`, `not our
-/// ref`, an HTTP 404) matches none of these and fails at once: retrying it
-/// only delays the real error.
-fn is_transient_network_failure(output: &str) -> bool {
-    const MARKS: &[&str] = &[
+/// Why a failed fetch is worth retrying, which decides how long to keep
+/// trying. `None` (a missing tag or commit: `couldn't find remote ref`, `not
+/// our ref`, an HTTP 404) fails at once: retrying it only delays the real
+/// error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Transient {
+    /// The network between us and the server failed (DNS, a reset, a
+    /// timeout): a blip, so [`FETCH_ATTEMPTS`] tries over seconds.
+    Network,
+    /// The server answered and said it cannot serve now (HTTP 429 or 5xx):
+    /// an outage window of minutes, so [`SERVER_OUTAGE_BUDGET`] (issue 2369).
+    ServerOutage,
+}
+
+fn transient_failure(output: &str) -> Option<Transient> {
+    const SERVER: &[&str] = &[
+        "returned error: 429",
+        "returned error: 500",
+        "returned error: 502",
+        "returned error: 503",
+        "returned error: 504",
+    ];
+    const NETWORK: &[&str] = &[
         "Could not resolve host",
         "Could not resolve proxy",
         "Temporary failure in name resolution",
@@ -2416,22 +2454,29 @@ fn is_transient_network_failure(output: &str) -> bool {
         "gnutls_handshake() failed",
         "SSL_ERROR_SYSCALL",
         "returned error: 408",
-        "returned error: 429",
-        "returned error: 500",
-        "returned error: 502",
-        "returned error: 503",
-        "returned error: 504",
     ];
-    MARKS.iter().any(|m| output.contains(m))
+    if SERVER.iter().any(|m| output.contains(m)) {
+        Some(Transient::ServerOutage)
+    } else if NETWORK.iter().any(|m| output.contains(m)) {
+        Some(Transient::Network)
+    } else {
+        None
+    }
 }
 
-/// Run a network fetch, retrying it while it fails on the network (issue
-/// 2129). One DNS failure while fetching Corrosion's source stopped a whole
-/// hosted-runner job that had passed on the seven nights before.
+/// Run a network fetch, retrying it while it fails transiently. A network
+/// failure gets [`FETCH_ATTEMPTS`] tries (issue 2129: one DNS failure while
+/// fetching Corrosion's source stopped a hosted-runner job that had passed on
+/// the seven nights before). A server-side failure is retried until
+/// [`SERVER_OUTAGE_BUDGET`] of waiting is spent (issue 2369: a GitHub release
+/// 504 outlasted the network budget and ejected merge-queue batches).
 fn run_fetch(args: &[&str], mut c: std::process::Command) -> Result<()> {
     let line = args.join(" ");
     let mut wait = FETCH_BACKOFF;
-    for attempt in 1..=FETCH_ATTEMPTS {
+    let mut waited = std::time::Duration::ZERO;
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
         if attempt > 1 {
             record_command(args);
         }
@@ -2440,20 +2485,39 @@ fn run_fetch(args: &[&str], mut c: std::process::Command) -> Result<()> {
         if status.success() {
             return Ok(());
         }
-        if attempt == FETCH_ATTEMPTS || !is_transient_network_failure(&output) {
+        let kind = transient_failure(&output);
+        let retry = match kind {
+            None => false,
+            Some(Transient::Network) => attempt < FETCH_ATTEMPTS,
+            Some(Transient::ServerOutage) => {
+                wait = wait.min(SERVER_OUTAGE_MAX_WAIT);
+                waited + wait <= SERVER_OUTAGE_BUDGET
+            }
+        };
+        if !retry {
             if attempt > 1 {
-                bail!("`{line}` failed ({status}) after {attempt} attempts");
+                bail!(
+                    "`{line}` failed ({status}) after {attempt} attempts over {}s",
+                    waited.as_secs()
+                );
             }
             bail!("`{line}` failed ({status})");
         }
+        let why = match kind {
+            Some(Transient::ServerOutage) => format!(
+                "the server is not serving (HTTP 429/5xx; waiting up to {}s in all)",
+                SERVER_OUTAGE_BUDGET.as_secs()
+            ),
+            _ => format!("a network error (attempt {attempt}/{FETCH_ATTEMPTS})"),
+        };
         super::step_log::say(format!(
-            "nros setup: `{line}` failed on a network error (attempt {attempt}/{FETCH_ATTEMPTS}); retrying in {}s",
+            "nros setup: `{line}` failed: {why}; retrying in {}s",
             wait.as_secs_f32()
         ));
         std::thread::sleep(wait);
+        waited += wait;
         wait *= 2;
     }
-    unreachable!("the last attempt returns")
 }
 
 /// Download `url` to `dest` — the ONE spelling of a store fetch (a prebuilt
@@ -2821,6 +2885,71 @@ mod fetch_retry_tests {
         let (r, attempts) = fetch(&script);
         r.unwrap();
         assert_eq!(attempts, 2);
+    }
+
+    /// Issue 2369 -- a GitHub release 504 is a server outage, not a network
+    /// blip: it is retried past the network's three attempts, and still gives
+    /// up once its waiting budget is spent, so a real outage fails.
+    #[test]
+    fn a_server_504_outlasts_the_network_budget_and_then_gives_up() {
+        let (r, attempts) =
+            fetch("echo 'curl: (22) The requested URL returned error: 504' >&2; exit 22");
+        let err = format!("{:#}", r.unwrap_err());
+        assert!(
+            attempts > FETCH_ATTEMPTS as usize,
+            "a 504 got only {attempts} attempts, the network budget"
+        );
+        // 10 + 20 + 20 + 20 + 20 ms of waits fit the 100 ms test budget;
+        // the next 20 would not.
+        assert_eq!(attempts, 6, "{err}");
+        assert!(err.contains("after 6 attempts"), "{err}");
+    }
+
+    /// Issue 2369's runs: a release URL that 504s for longer than the
+    /// network budget and then answers is fetched, not failed.
+    #[test]
+    fn a_504_window_longer_than_the_network_budget_is_waited_out() {
+        let dir = crate::test_support::scratch_path("fetch_retry_504_window");
+        std::fs::create_dir_all(&dir).unwrap();
+        let count = dir.join("count");
+        let _ = std::fs::remove_file(&count);
+        let script = format!(
+            "n=$(cat '{c}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '{c}'; \
+             if [ $n -ge 5 ]; then exit 0; fi; \
+             echo 'curl: (22) The requested URL returned error: 504' >&2; exit 22",
+            c = count.display()
+        );
+        let (r, attempts) = fetch(&script);
+        r.unwrap();
+        assert_eq!(attempts, 5);
+    }
+
+    #[test]
+    fn a_404_fails_at_once() {
+        let (r, attempts) =
+            fetch("echo 'curl: (22) The requested URL returned error: 404' >&2; exit 22");
+        assert!(r.is_err());
+        assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn a_failure_is_classified_by_who_failed() {
+        assert_eq!(
+            transient_failure("curl: (22) The requested URL returned error: 503"),
+            Some(Transient::ServerOutage)
+        );
+        assert_eq!(
+            transient_failure("curl: (6) Could not resolve host: github.com"),
+            Some(Transient::Network)
+        );
+        assert_eq!(
+            transient_failure("curl: (22) The requested URL returned error: 408"),
+            Some(Transient::Network)
+        );
+        assert_eq!(
+            transient_failure("fatal: couldn't find remote ref v9"),
+            None
+        );
     }
 
     #[test]

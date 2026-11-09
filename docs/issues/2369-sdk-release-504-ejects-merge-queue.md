@@ -26,6 +26,11 @@ ejected entries whose changes had nothing to do with it:
   13.2-nros5; `template-copy-out [zephyr]`: `cyclonedds` 0.10.5-nros1. Ejected
   #3321.
 
+- probe.yml run 42584277829 (08:12Z), both tracks, step `Install just (if
+  absent)`: `scripts/ci/install-just.sh` fetches the `just` release asset with
+  a fixed `--retry 5 --retry-delay 5`, and got `curl: (22) ... returned error:
+  504` six times, 5 s apart (25 s), so the lane stopped before its probe ran.
+
 The same URLs returned 200 when probed by hand minutes later, so the outage
 window is longer than the retry budget, not permanent.
 
@@ -40,13 +45,42 @@ each such window ejects every queued entry. The `queue-notify` comment already
 says "almost certainly not your pull request", but the entry is still out and
 someone must re-queue it.
 
-## Directions (not decided)
+## Fix
 
-- Lengthen the retry budget for a 5xx specifically (minutes, not seconds),
-  bounded so a real outage still fails.
-- Cache the SDK store across merge-group jobs (`actions/cache` keyed on the
-  index pins), so a merge group downloads nothing that the last one already had.
-- Both: the cache removes most fetches, the budget covers the rest.
+A server that answers 429 or 5xx is having an outage, which lasts minutes. A
+network that fails (DNS, a reset, a timeout) is a blip, which lasts seconds.
+The two now get different budgets:
+
+- `run_fetch` (`sdk_store.rs`) classifies a failure as `Transient::Network`
+  or `Transient::ServerOutage` (`transient_failure`). A network failure keeps
+  issue 2129's 3 attempts. A server outage is retried until 5 minutes of
+  waiting are spent (`SERVER_OUTAGE_BUDGET`), with doubling waits capped at
+  60 s (`SERVER_OUTAGE_MAX_WAIT`): 5, 10, 20, 40, 60, 60, 60 s, so 255 s over 8
+  attempts. A 404 or a missing ref still fails at once.
+- The shell fetches of a GitHub release asset get the same bound:
+  `scripts/ci/install-just.sh` (the probe run above),
+  `scripts/probe/run-bootstrap-probe.sh` (the installed track's published
+  release, which had no retry), and `docs.yml`'s mdbook-mermaid (no retry and
+  no `-f`, so a 504 body went into `tar`). Each uses `--retry 8
+  --retry-all-errors --retry-max-time 300`, curl's own 1 s doubling: 255 s of
+  waiting. `--retry-max-time` alone does not bound it: against a local
+  server that always answers 504, a 10 s limit stopped at 15 s, because curl
+  starts a backoff that runs past the limit. So the retry count is the real
+  bound.
+
+Tested: `fetch_retry_tests` gains a 504 retried past the network's three
+attempts until the budget is spent, a 504 window longer than the network
+budget waited out, a 404 failing at once, and the classification itself.
+With the old 3-attempt rule restored for a server outage, both 504 tests
+fail.
+
+Sweep: `git grep -nE -- '--retry( |-delay)|curl .*releases/download' -- scripts .github packages/cli`.
+`scripts/sdk/measure-dist-floor.py` already retries 8 times with
+`--retry-all-errors`. The rest are test fixtures or fetch no release.
+
+Not done: caching the SDK store across merge-group jobs (`actions/cache`).
+That would remove most of these fetches, and it is a workflow change with
+its own 10 GB cache budget to weigh, so it is left for a separate change.
 
 ## Acceptance
 
