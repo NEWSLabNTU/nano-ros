@@ -800,12 +800,12 @@ setup-worktree:
     # shellcheck source=scripts/build/cargo.sh
     source scripts/build/cargo.sh
     _cli="$(NROS_CLI= nros_cli_bin --checkout-only)" || _cli=""
+    # Issue 2306 — the checkout's state, not only its HEAD.
+    # shellcheck source=scripts/lib/submodule-provision.sh
+    . scripts/lib/submodule-provision.sh
     want=()
+    broken=0
     for p in "${paths[@]}"; do
-        # `git submodule status --cached` marks an uninitialised submodule with a
-        # leading `-`, one whose checkout is off its pin with `+`, and one in sync
-        # with a space. Empty output means the path names no submodule here.
-        line="$(git submodule status --cached -- "$p" 2>/dev/null || true)"
         # phase-484 W3c (RFC-0103 D5) — a STORE-FIRST source is provisioned
         # into the store, not the checkout, once a CLI can do it; with no CLI
         # yet (a fresh clone) the submodule is still the way to get it.
@@ -823,17 +823,26 @@ setup-worktree:
             "$_cli" setup --source "$row"
             continue
         fi
-        case "$line" in
-            -*)
+        state="$(nros_submodule_provision_state "$p")"
+        case "$state" in
+            missing)
                 want+=("$p")
                 ;;
-            +*)
-                echo "  [KEPT]    $p is checked out at a commit other than its pin."
+            incomplete:* | diverged)
+                # Issue 2306 — NOT repaired here: `--force` discards whatever
+                # the tree holds, and only a person can say it holds nothing.
+                broken=$((broken + 1))
+                echo "  [BROKEN]  $p is ${state%%:*} ($state): an interrupted or redirected checkout."
+                echo "            NOT repaired - that would discard what it holds. When it holds nothing:"
+                echo "                $(nros_submodule_state_remedy "$state" "$p")"
+                ;;
+            behind:* | ahead:* | unknown-pin)
+                echo "  [KEPT]    $p is checked out at a commit other than its pin ($state)."
                 echo "            NOT updated - that would discard work in it (AGENTS.md)."
                 echo "            When you are sure it holds nothing you need:"
                 echo "                git submodule update $p"
                 ;;
-            "")
+            not-submodule)
                 echo "  [UNKNOWN] $p is not a submodule of this checkout."
                 ;;
             *)
@@ -856,6 +865,10 @@ setup-worktree:
         python3 scripts/lib/index_tool.py install cargo-nextest --prefix "$(dirname "$(dirname "$nx")")"
     fi
     echo ""
+    if [ "$broken" -gt 0 ]; then
+        echo "setup-worktree: $broken submodule(s) are BROKEN (listed above); repair them, then re-run." >&2
+        exit 1
+    fi
     # No backticks in these strings: `just` treats a backtick in a recipe line
     # as command substitution, so an earlier draft of this message EXECUTED
     # `just ci gate` while printing itself.
@@ -890,9 +903,14 @@ _require-worktree-provisioning:
     #!/usr/bin/env bash
     set -uo pipefail
     missing=()
+    # Issue 2306 — the CHECKOUT, not only HEAD: an interrupted checkout (files
+    # staged as deleted, HEAD on the pin or on upstream `main`) used to read as
+    # provisioned here and fail three gates later. One answer, shared with
+    # `setup-worktree` and `check-submodule-drift.sh`.
+    # shellcheck source=scripts/lib/submodule-provision.sh
+    . scripts/lib/submodule-provision.sh
     while IFS= read -r p; do
         [ -n "$p" ] || continue
-        line="$(git submodule status --cached -- "$p" 2>/dev/null || true)"
         # phase-484 W3c (RFC-0103 D5) — a store-first source is provisioned
         # when the ladder LOCATES it (store copy or checkout), not only when
         # its submodule is initialised.
@@ -900,9 +918,12 @@ _require-worktree-provisioning:
         if [ -n "$row" ] && python3 scripts/lib/source_locate.py "$row" >/dev/null 2>&1; then
             continue
         fi
-        case "$line" in
-            -*) missing+=("submodule  $p${row:+  (or: nros setup --source $row)}") ;;
-            "") missing+=("NOT A SUBMODULE of this checkout: $p (renamed? fix .config/worktree-provisioning.txt)") ;;
+        state="$(nros_submodule_provision_state "$p")"
+        nros_submodule_state_is_red "$state" || continue
+        case "$state" in
+            missing) missing+=("submodule  $p${row:+  (or: nros setup --source $row)}") ;;
+            not-submodule) missing+=("NOT A SUBMODULE of this checkout: $p (renamed? fix .config/worktree-provisioning.txt)") ;;
+            *) missing+=("submodule  $p is ${state%%:*} (${state}) -> $(nros_submodule_state_remedy "$state" "$p")") ;;
         esac
     done < <(
         # phase-543 W6 — `NROS_PROVISION_TIERS="fast build"` keeps only the

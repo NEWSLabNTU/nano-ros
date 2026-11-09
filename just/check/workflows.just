@@ -483,6 +483,17 @@ zephyr-sync-workspace-manifest:
 pre-push-log:
     @bash tests/pre-push-log-tests.sh
 
+# Issue 2306 -- "is this submodule provisioned" asks the CHECKOUT, not only its
+# HEAD. `scripts/lib/submodule-provision.sh` classifies a submodule as ok,
+# missing, incomplete (tracked files absent or staged as deleted: an
+# interrupted checkout), diverged (HEAD on another line), behind or ahead, and
+# the lane preflight, `setup-worktree` and `check-submodule-drift.sh` all read
+# it. The table runs every state against a synthetic superproject, including
+# the two that used to read as provisioned. Buildless, tmpdir, <2 s.
+[private]
+submodule-provision:
+    @bash tests/submodule-provision-tests.sh
+
 # A build recipe that redirects `cmake --build` to `/dev/null` discards the one
 # stream ninja reports failures on, so the lane keeps a verdict and loses its
 # diagnosis: the 2026-09-22 ThreadX-RV64 nightly said `0/12 ok, 12 failed` over

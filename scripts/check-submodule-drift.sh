@@ -129,6 +129,28 @@ while IFS= read -r line; do
     fi
 done < <(git submodule status 2>/dev/null | grep -E '^[+U]')
 
+# Issue 2306 — a checkout whose HEAD is right and whose WORKING TREE is not:
+# tracked files absent or staged as deleted, as an interrupted
+# `git submodule update` leaves them. The loop above never sees one on its pin
+# (status marks it ` `), and the build then fails on a missing source file
+# that names no submodule. Every initialised submodule is asked, through the
+# one helper the lane preflight and `setup-worktree` use.
+# shellcheck source=scripts/lib/submodule-provision.sh
+. "$repo_root/scripts/lib/submodule-provision.sh"
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    path="$(printf '%s' "${line:1}" | awk '{print $2}')"
+    [ -n "$path" ] || continue
+    state="$(nros_submodule_provision_state "$path")"
+    case "$state" in
+        incomplete:*)
+            echo "  [x] $path is an INCOMPLETE checkout: ${state#incomplete:} tracked file(s) absent or staged as deleted" >&2
+            echo "      remedy: $(nros_submodule_state_remedy "$state" "$path")" >&2
+            fail=$((fail + 1))
+            ;;
+    esac
+done < <(git submodule status 2>/dev/null | grep -E '^[ +]')
+
 if [ "$fail" -ne 0 ]; then
     cat >&2 <<'EOF'
 

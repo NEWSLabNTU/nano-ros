@@ -1,15 +1,16 @@
 ---
 id: 2306
 title: "An interrupted submodule checkout reads as provisioned, and the lane fails three gates later"
-status: open
+status: resolved
 type: bug
 area: [build, ci, testing]
 severity: medium
 found: 2026-11-06
+resolved: 2026-11-09
 related: [1513, phase-543]
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md).**
+**Home: [phase-543](../../roadmap/phase-543-nextest-gates.md).**
 
 ## Measured
 
@@ -57,3 +58,41 @@ The same check belongs wherever "is this submodule here" is asked:
 `setup-worktree`, `_require-worktree-provisioning`, and
 `check-tier-preconditions` (CLAUDE.md: a `doctor` that says OK over something
 `build` then refuses is the same lie).
+
+## Resolution (2026-11-09)
+
+One answer, `scripts/lib/submodule-provision.sh`
+(`nros_submodule_provision_state`), now reads the submodule's working tree as
+well as its HEAD, and every place that asked "is it provisioned" uses it:
+`_require-worktree-provisioning` (the lane preflight), `just setup-worktree`,
+and `check-submodule-drift.sh` (run by `check-tier-preconditions`).
+
+| State | Meaning | Red? |
+| --- | --- | --- |
+| `missing` | not initialised | yes |
+| `incomplete:<n>` | `<n>` tracked files absent from the tree or staged as deleted: the interrupted checkout, both rows of the table above | yes |
+| `diverged` | HEAD shares no line with the pin (e.g. upstream `main`) | yes |
+| `behind:<n>` / `ahead:<n>` | an un-updated checkout, or a fork fix in progress | no |
+| `ok` | on the pin, tree complete | no |
+
+A red names the path and the repair. `setup-worktree` does not repair an
+incomplete or diverged checkout itself, because `--force` would discard what
+the tree holds, but it now fails instead of reporting "done".
+
+Two departures from "What would close it", both deliberate:
+
+- **Cleanliness is not required.** `git status --porcelain` being empty would
+  make every modified file in a fork submodule refuse the lane. What is
+  checked is completeness: tracked files present, nothing staged as deleted.
+- **Behind and ahead are not red here.** `check-submodule-drift.sh` already
+  fails a checkout that is behind, listing the commits, in
+  `check-tier-preconditions`, and ahead is the vendored-fork workflow's normal
+  middle state. A checkout on an unrelated line (`diverged`) is red.
+
+The drift check also gained a completeness pass over every initialised
+submodule, because its existing loop only visits `+`/`U` rows and the
+on-pin, emptied checkout (micro-cdr's row) is a ` ` row.
+
+Test: `just check submodule-provision` (`tests/submodule-provision-tests.sh`)
+builds a superproject and drives every state, including both rows that used to
+read as provisioned.
