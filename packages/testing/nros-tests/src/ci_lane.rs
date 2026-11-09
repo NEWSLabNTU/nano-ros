@@ -1144,6 +1144,49 @@ _tier-build:
         );
     }
 
+    /// phase-544 W2 (issue 2273) -- tier 2 selects every cell
+    /// [`pinned_tier2_reqs`] pins, at a coordinate tier 2 builds: the 1-wise
+    /// cover makes no promise about one cell, so the pin is the only thing that
+    /// does. The BUILD half (the cell's west leaf is in the tier-2 build) is
+    /// `lane_build_covers_run::the_tier2_build_carries_every_pinned_cell_leaf`.
+    /// Negative control (measured): without the `pinned_tier2_reqs` arm in
+    /// `reqs_of` the Cortex-M C++ violation cell is missing.
+    #[test]
+    fn tier2_selects_every_pinned_cell() {
+        let chosen = cells(CiLane::Tier2);
+        let pinned: Vec<&Cell> = all_runtime_cells()
+            .filter(|c| !pinned_tier2_reqs(c).is_empty())
+            .collect();
+        assert!(
+            !pinned.is_empty(),
+            "no runtime cell carries a pinned tier-2 requirement -- the \
+             ViolationChannel consumer lost its cell, so this test checks nothing"
+        );
+        let missing: Vec<String> = pinned
+            .iter()
+            .filter(|c| !chosen.iter().any(|k| std::ptr::eq(*k, **c)))
+            .map(|c| format!("{c:?}"))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "pinned cell(s) tier 2 does not run:\n  {}",
+            missing.join("\n  ")
+        );
+        let tier2 = coords(CiLane::Tier2);
+        for c in &pinned {
+            let lang = format!("{:?}", c.lang).to_lowercase();
+            let rmw = format!("{:?}", c.rmw).to_lowercase();
+            for p in c.platform.fixture_tokens() {
+                let coord = format!("{p},{lang},{rmw}");
+                assert!(
+                    tier2.contains(&coord),
+                    "pinned cell {c:?}: coordinate {coord} is not in tier 2's \
+                     coordinates, so no tier-2 build produces its fixture"
+                );
+            }
+        }
+    }
+
     #[test]
     fn documented_lane_table_is_live() {
         let total_coords = {

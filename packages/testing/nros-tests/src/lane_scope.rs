@@ -111,6 +111,11 @@ pub const EXEMPT: &[(&str, &str)] = &[
          requires `PlatformId::Linux`, and both the test and its tripwire read \
          cells only through that predicate, so no non-host fixture is reachable",
     ),
+    (
+        "lane_build_covers_run.rs",
+        "a lane-contract GATE: it reads the violation-channel cells' platforms \
+         to name their coordinates in the tier-2 build, and boots nothing",
+    ),
 ];
 
 /// The one-line reason a cell was dropped, for the summary a consumer prints.

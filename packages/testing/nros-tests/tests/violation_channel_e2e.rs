@@ -117,7 +117,8 @@ fn assert_one_latency_verdict_after_arming<'a>(
     assert_eq!(
         latency.len(),
         1,
-        "exactly one max-latency-runtime verdict (INIT's overrun suppressed, RUN's stored):\n{}",
+        "exactly one max-latency-runtime verdict (INIT's overrun suppressed, RUN's stored) \
+         before the window end @{window_end} (RUN @{run_at}):\n{}",
         excerpt()
     );
     let (at, line) = latency[0];
@@ -144,9 +145,26 @@ fn assert_one_latency_verdict_after_arming<'a>(
     (run_at, line)
 }
 
-fn tail(console: &str) -> String {
-    let lines: Vec<_> = console.lines().collect();
-    lines[lines.len().saturating_sub(60)..].join("\n")
+/// What a failed assertion prints: every drain-hook line with its offset,
+/// then the WHOLE captured console, labelled. A 60-line tail used to stand
+/// here; it could not show the verdict lines of a boot that printed more than
+/// that after them, so a count miss (1 in 55 runs on mps2/an385) left nothing
+/// to read. The console is bounded by the leg's budget and the handler's
+/// twelve ticks, so all of it fits in a test report.
+fn console_dump(console: &str) -> String {
+    let lines: Vec<String> = console
+        .match_indices(CONTRACT_VIOLATION_PREFIX)
+        .map(|(at, _)| format!("  @{at}: {}", console[at..].lines().next().unwrap_or("")))
+        .collect();
+    format!(
+        "--- every contract-violation line ({n}, @byte offset) ---\n{verdicts}\n\
+         --- full captured console ({lc} lines, {bytes} bytes) ---\n{console}\n\
+         --- end of captured console ---",
+        n = lines.len(),
+        verdicts = lines.join("\n"),
+        lc = console.lines().count(),
+        bytes = console.len(),
+    )
 }
 
 #[test]
@@ -160,7 +178,7 @@ fn zephyr_cpp_violation_channel_reports_one_overrun_after_arming() -> TestResult
     let console = guest.wait_for_pattern(LAST_TICK, Duration::from_secs(60));
     guest.kill();
 
-    let excerpt = || tail(&console);
+    let excerpt = || console_dump(&console);
     let (run_at, _) = assert_one_latency_verdict_after_arming(&console, console.len(), &excerpt);
     let latency = verdicts(&console, RULE_MAX_LATENCY_RUNTIME);
 
@@ -247,7 +265,7 @@ fn zephyr_cortex_m_cpp_violation_channel_reports_one_overrun_after_arming() {
     let console = qemu.collect_until(LAST_TICK, QEMU_BUDGET);
     qemu.kill();
 
-    let excerpt = || tail(&console);
+    let excerpt = || console_dump(&console);
     // The window ends at the route scenario's late tick (phase10-B3): tick 9's
     // take busy-waits 250 ms, so tick 10 is released late, and on the
     // emulated core its timer path read 60 ms against the 50 ms bound in 1 of
