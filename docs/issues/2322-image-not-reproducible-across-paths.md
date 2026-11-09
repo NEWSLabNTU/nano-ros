@@ -1,7 +1,7 @@
 ---
 id: 2322
 title: "An image embeds its absolute workspace path, so the same project built in another directory is not byte-identical, and the book does not say so"
-status: resolved
+status: open
 type: enhancement
 area: build, reproducibility, book
 purpose: [industrial]
@@ -9,7 +9,7 @@ related: [phase-523]
 found: 2026-11-07
 ---
 
-**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round two. Found 2026-11-07 on release `nros-0.6.0-nros7` in a pristine `ubuntu:24.04` with Jazzy, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n (runs: `docs/development/adoption-probes/runs/2026-11-07-round-2-{industrial,education}.md`).
+**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round two. Found 2026-11-07 on release `nros-0.6.0-nros7` in a pristine `ubuntu:24.04` with Jazzy, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n (runs: `docs/development/adoption-probes/runs/2026-11-07-round-2-{industrial,education}.md`).
 
 ## Measured
 
@@ -45,19 +45,3 @@ Measured in `ros:jazzy` on `0.6.0-nros8`, with the same scaffold built at
   container path, records the digest through `nros doctor --report`, and says
   First Project builds the debug profile (Deploy to production › the
   readiness checklist).
-
-## Resolution (2026-11-09)
-
-Fixed by the layout change the progress note named, under the maintainer's
-go-ahead (RFC-0098 amendment, same date). The generated entry carries a
-relative link `_ws -> ../../..`, and every dependency path into the workspace
-is spelled through it, so cargo hashes those crates relative to the entry's
-root instead of by their absolute path. The workspace's remaining absolute
-path (debug info's compile directory, `$OUT_DIR`) is remapped with
-`--remap-path-prefix=<ws>=.` on the cargo command line.
-
-Measured: a scaffold built at two paths gives a byte-identical ELF on `linux`
-(debug profile, `2ffca93c…` both) and on `mps2-an385-baremetal` (ELF and the
-`objcopy -O binary` image, zenoh-pico's C included), with no workspace path
-in either. The book's checklist (Deploy to production) now promises the same
-bytes from any project directory, with nano-ros installed at the same path.

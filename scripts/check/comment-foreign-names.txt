@@ -421,7 +421,6 @@ validate_parameter_setting
 wait_for_server
 
 # Rust: std, cargo, rustc and clippy lints, cc-rs, embassy, smoltcp, Verus
-SourceId::stable_hash
 Box::try_new
 CARGO_INCREMENTAL
 CARGO_PROFILE_NROS_RELWITHDEBINFO_INCREMENTAL
