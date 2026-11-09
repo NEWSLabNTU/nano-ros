@@ -22,7 +22,7 @@ other projects move too.
 | Process beside the device | a zenoh router, an XRCE-DDS agent, or none with Cyclone DDS | always the Micro XRCE-DDS Agent[^ur-feat] | none[^mr] |
 | Topics, services, actions, parameters | all four | all four; actions through rclc, no parameter client[^ur-cmp] | topics only[^mr] |
 | Operating systems | see [Supported boards](../reference/supported-boards.md) | FreeRTOS, Zephyr and NuttX as the main ones, plus modules for ESP-IDF, Mbed, ThreadX, Arduino and more[^ur-setup] | Mbed OS, ESP-IDF; TOPPERS/ASP3 up to v0.3.2; POSIX partly[^mr] |
-| Formal checks | Kani and Verus proofs in the source tree ([Safety](safety.md)) | none found in its docs | none found in its docs |
+| Formal checks | Kani bounded model checking and Verus proofs ([Internals → Formal verification](../internals/testing/verification.html); [Safety](safety.md) for the message-integrity proofs) | none found in its docs | none found in its docs |
 | License | MIT or Apache-2.0 ([`LICENSE-MIT`, `LICENSE-APACHE`](https://github.com/NEWSLabNTU/nano-ros)) | Apache-2.0[^ur-lic] | Apache-2.0[^mr] |
 | Latest release | see [Install](../start/install.md) | `micro_ros_setup` 6.1.0, 2026-08-11[^ur-rel] | v0.5.4, 2023-10-05[^mr-rel] |
 
