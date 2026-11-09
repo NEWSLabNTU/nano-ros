@@ -211,3 +211,143 @@ fn nros_build_links_and_registers_a_workspace_rmw_provider() {
 
     let _ = fs::remove_dir_all(ws.parent().unwrap());
 }
+
+/// The one generated west application for image `zephyr`:
+/// `build/<coord>/zephyr_entry`, found by listing like [`generated_entry`].
+fn generated_west_application(ws: &Path) -> PathBuf {
+    let found: Vec<PathBuf> = fs::read_dir(ws.join("build"))
+        .expect("the build wrote build/")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path().join("zephyr_entry"))
+        .filter(|d| d.join("Cargo.toml").is_file() && d.join("CMakeLists.txt").is_file())
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "exactly one generated `zephyr_entry` west application under {}: {found:?}",
+        ws.join("build").display()
+    );
+    found.into_iter().next().unwrap()
+}
+
+/// RFC-0071 D16 step 3 (issue 2372) — the same `acme` image on
+/// `board = "zephyr"` (native_sim) goes through `builder/west_app.rs`. The
+/// west application's backend dependency IS D15's (amended ruling 2): the
+/// crate the descriptor names, at `ResolvedRmwIn::package_dir` (ruling 3, the
+/// deleted `backend_dir` walk only looked under the SDK), behind the entry's
+/// own `rmw-acme` feature that the `(gated)` arm keys on. And the Zephyr
+/// module's Kconfig fragment selects the module backend `acme` is built over
+/// (`[rmw.zephyr] module_backend = "zenoh"`), never a choice named after it.
+///
+/// No Zephyr SDK is needed: `--dry-run` writes the application and stops
+/// before west, and the Kconfig fragment is the module hook's own CLI verb.
+/// The image is compiled by the `workspace-zephyr-out-of-tree-rmw` row on the
+/// Zephyr lane and run by `nros-tests/tests/out_of_tree_rmw_zephyr_e2e.rs`.
+#[test]
+fn nros_build_generates_a_west_application_over_a_workspace_rmw_provider() {
+    setup();
+    let ws = scratch_copy();
+    let wss = ws.to_str().unwrap();
+
+    nros_cli_core::cmd::configure::ensure_current(&ws, &[], false, false, "build")
+        .unwrap_or_else(|e| panic!("the implicit configure of an `acme` image: {e:?}"));
+    nros(&[
+        "build",
+        "demo_bringup:zephyr",
+        "--dry-run",
+        "--offline",
+        "--workspace",
+        wss,
+    ])
+    .unwrap_or_else(|e| panic!("`nros build` refused the west `acme` image: {e}"));
+
+    let app = generated_west_application(&ws);
+    let manifest_text = fs::read_to_string(app.join("Cargo.toml")).unwrap();
+    let manifest: toml::Table = toml::from_str(&manifest_text).unwrap();
+    let acme = manifest["dependencies"]
+        .get("acme-rmw")
+        .and_then(|d| d.as_table())
+        .unwrap_or_else(|| {
+            panic!("the west application does not depend on `acme-rmw`:\n{manifest_text}")
+        });
+    let path = acme["path"].as_str().expect("a path dependency");
+    assert_eq!(
+        app.join(path).canonicalize().unwrap(),
+        ws.join("src/acme_rmw").canonicalize().unwrap(),
+        "`acme-rmw` must point at the provider's own directory:\n{manifest_text}"
+    );
+    assert_eq!(
+        acme.get("default-features").and_then(|v| v.as_bool()),
+        Some(false),
+        "{manifest_text}"
+    );
+    assert_eq!(
+        acme.get("optional").and_then(|v| v.as_bool()),
+        Some(true),
+        "the dep is enabled by the entry's `rmw-acme` feature:\n{manifest_text}"
+    );
+    let features: Vec<&str> = acme["features"]
+        .as_array()
+        .expect("features")
+        .iter()
+        .filter_map(|f| f.as_str())
+        .collect();
+    assert!(
+        features.contains(&"platform-zephyr"),
+        "the `zephyr` board's `platform_feature`, which acme declares: {features:?}"
+    );
+    let feats = manifest["features"].as_table().expect("[features]");
+    assert_eq!(
+        feats["default"].as_array().unwrap()[0].as_str(),
+        Some("rmw-acme"),
+        "{manifest_text}"
+    );
+    assert_eq!(
+        feats["rmw-acme"].as_array().unwrap()[0].as_str(),
+        Some("dep:acme-rmw"),
+        "{manifest_text}"
+    );
+
+    // The `(gated)` arm `nros::main!`'s Zephyr arm calls registers acme.
+    let lib_rs = fs::read_to_string(app.join("src/lib.rs")).unwrap();
+    let gated = lib_rs
+        .split("(gated) =>")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no `(gated)` arm in the register macro:\n{lib_rs}"));
+    assert!(
+        gated.contains("feature = \"rmw-acme\"") && gated.contains("::acme_rmw::register()"),
+        "the `(gated)` arm must register `acme_rmw` behind `rmw-acme`:\n{lib_rs}"
+    );
+
+    // The module hook's Kconfig fragment: zenoh, the module backend acme is
+    // built over.
+    let frag = ws.join("build/kconfig-zephyr.conf");
+    let defaults = ws.join("build/kconfig-zephyr-defaults.conf");
+    let env = ws.join("build/kconfig-zephyr-env.toml");
+    nros(&[
+        "dev",
+        "image",
+        "leaf-system",
+        ws.join("src/demo_bringup").to_str().unwrap(),
+        "--nano-ros-path",
+        repo_root().to_str().unwrap(),
+        "--image",
+        "zephyr",
+        "--language",
+        "rust",
+        "--kconfig-out",
+        frag.to_str().unwrap(),
+        "--kconfig-defaults-out",
+        defaults.to_str().unwrap(),
+        "--image-env-out",
+        env.to_str().unwrap(),
+    ])
+    .unwrap_or_else(|e| panic!("the module hook's Kconfig render refused `acme`: {e}"));
+    let fragment = fs::read_to_string(&frag).unwrap();
+    assert!(
+        fragment.contains("CONFIG_NROS_RMW_ZENOH=y"),
+        "an `acme` image selects the module backend it is built over:\n{fragment}"
+    );
+
+    let _ = fs::remove_dir_all(ws.parent().unwrap());
+}

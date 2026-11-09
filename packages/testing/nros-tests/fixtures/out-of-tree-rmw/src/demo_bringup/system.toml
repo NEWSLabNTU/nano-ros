@@ -18,3 +18,13 @@ name = "talker"
 [image.linux]
 board = "linux"
 rmw = "acme"
+
+# RFC-0071 D16 step 3 (issue 2372) — the same image on the west road. The
+# board id is `zephyr` (its `[board.zephyr] west_board` is
+# `native_sim/native/64`; issue 1519 refuses an image that spells the Zephyr
+# board). `west_app` path-depends the generated application on `acme-rmw` at
+# the provider's directory, and the module's Kconfig selects the module backend
+# acme states it is built over (`[rmw.zephyr] module_backend`, RFC-0071 D18).
+[image.zephyr]
+board = "zephyr"
+rmw = "acme"

@@ -8,6 +8,12 @@ cpp_define = "NROS_RMW_ACME"
 [rmw.host]
 peer = "zenoh-router"
 
+# Issue 2372 -- on Zephyr, acme is built over the module's zenoh backend: the
+# image selects `CONFIG_NROS_RMW_ZENOH`, so the module compiles zenoh-pico's
+# Zephyr port, which acme's zenoh delegate links against.
+[rmw.zephyr]
+module_backend = "zenoh"
+
 # RFC-0071 D11/D15 — the image links this crate itself (no in-tree board has an
 # `rmw-acme` feature) and registers the backend as `acme_rmw::register()`.
 [rmw.provides.cargo]
@@ -18,6 +24,7 @@ register = "register"
 # declares it.
 [rmw.provides.cargo.platform_features]
 platform-posix = "platform-posix"
+platform-zephyr = "platform-zephyr"
 
 [rmw.link]
 rlib_dep = "acme-rmw"
