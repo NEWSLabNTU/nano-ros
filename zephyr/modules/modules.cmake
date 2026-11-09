@@ -19,5 +19,10 @@
 # real module with its own `zephyr/module.yml`, not glue for an external one).
 # Kept to one include, so the logic lives beside the module's other cmake.
 
+# Issue 2374 -- a CONF_FILE / DTC_OVERLAY_FILE an earlier configure DISCOVERED
+# is dropped from the cache here, so Zephyr's configuration_files.cmake (next)
+# discovers it again; a chosen one is left alone.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/nros_discovered_config.cmake")
+nros_discovered_config_pre()
 include("${CMAKE_CURRENT_LIST_DIR}/../cmake/nros_image_kconfig.cmake")
 nros_image_kconfig_hook()

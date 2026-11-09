@@ -1,15 +1,16 @@
 ---
 id: 2374
 title: "A Zephyr build dir caches the CONF_FILE list it discovered, so deleting a board fragment makes every later configure fail, reconfigure included"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, build, fixtures]
 related: [2157, 1288, 0882, phase-489, phase-544]
 found: 2026-11-09
+resolved_in: "the nano-ros Zephyr module re-runs Zephyr's own CONF_FILE / DTC_OVERLAY_FILE discovery on every configure when the cached value is one discovery wrote (zephyr/cmake/nros_discovered_config.cmake)"
 ---
 
-**Home:** [phase-489](../roadmap/phase-489-ci-build-speedup.md) (W6: warm build
+**Home:** [phase-489](../../roadmap/phase-489-ci-build-speedup.md) (W6: warm build
 trees for the fixture lanes). Found while verifying PR #3349 (phase-544 W2).
 
 ## What
@@ -95,3 +96,71 @@ exists to avoid, and `just reconfigure-stale` would report the dir as wedged.
 
 The two stale dirs above were left in place, unmodified apart from the failed
 `cmake` reconfigure.
+
+## Resolution (2026-11-09)
+
+Ruling: direction 2, Zephyr's own discovery re-run. It is placed in the
+nano-ros Zephyr MODULE, not in `nros build`, so every road gets it: `nros
+build`, a plain `west build`, the fixture lane, and the `cmake <dir>` escape
+hatch.
+
+- `zephyr/cmake/nros_discovered_config.cmake`, from the module's pre-Kconfig
+  hook (`zephyr/modules/modules.cmake`, which runs before Zephyr's
+  `configuration_files.cmake`). It drops a cached `CONF_FILE` /
+  `DTC_OVERLAY_FILE` that DISCOVERY wrote, so discovery runs again on every
+  configure. A chosen value is left alone, so it still suppresses discovery
+  exactly as Zephyr documents. Chosen means: a `-D` on this configure (the
+  entry is `UNINITIALIZED`), a cache edit, the environment, sysbuild, a
+  snippet, or a `set()` in the application.
+- The module's `zephyr/CMakeLists.txt` records what discovery produced (marker
+  `NROS_ZEPHYR_DISCOVERED_<var>`). It also names the config dir and its
+  `boards/` and `socs/` as configure inputs, so adding or deleting a fragment
+  re-runs cmake from a plain `ninja`.
+- A dir configured before the fix has no marker. Its value counts as
+  discovered when every entry is an absolute path inside the cached
+  `APPLICATION_CONFIG_DIR`, which is the shape `zephyr_file(CONF_FILES ...)`
+  writes. That is how the two dirs above recover.
+
+Why the other two lost:
+
+- Direction 1 (an explicit `-DCONF_FILE`) is a second spelling of Zephyr's
+  discovery, which CLAUDE.md's "one helper, not a second spelling" rule rules
+  out. It would also turn the image's list into a CHOSEN value, which stops
+  `boards/<board>.conf` from merging at all (the reason issue 1288 left it
+  unset). And it covers only `nros build`, not `west build` or `cmake <dir>`.
+- Direction 3 (a stale-ref probe) only reports. The dir still needs a wipe,
+  the add direction stays silent, and a probe cannot see a fragment that
+  exists but was never merged.
+
+Measured 2026-11-09, Zephyr 3.7, `native_sim/native/64`, on a scratch copy of
+`examples/zephyr/c/talker` built with `nros build zephyr_zenoh`. The leaf is
+its own `APPLICATION_CONFIG_DIR`.
+
+- Add: `boards/native_sim_native_64.conf` with `CONFIG_ASSERT=y`, then a plain
+  `ninja -C <dir>`. Cmake re-ran, `CONF_FILE` gained the fragment, and
+  `.config` gained `CONFIG_ASSERT=y`.
+- Delete: removing the fragment, then a plain `ninja`, re-ran cmake and
+  dropped it. `CONFIG_ASSERT` left `.config`. A further `cmake <dir>` and the
+  next `nros build` both exit 0.
+- The two evidence dirs, A/B on copies of their `CMakeCache.txt`:
+  - With the old module, `cmake <copy>` still fails at `kconfig.cmake:321 File
+    not found`.
+  - With this module, it rediscovers (`CONF_FILE` is `prj.conf` only) and gets
+    past Kconfig. The copy then stops at issue 1379's two-checkout guard,
+    which is an artifact of the A/B, since the application comes from another
+    checkout. The dirs themselves recover on their next `cmake <dir>` once
+    their checkout carries this change.
+
+Gate `just check zephyr-discovered-config`
+(`tests/cmake-zephyr-discovered-config-tests.sh`, 20 assertions over 11 cases)
+runs the hook around a stand-in for Zephyr's discovery rule, so it needs no
+SDK. It was mutation-tested 8 ways, and each mutation fails at least one case:
+
+- hook a no-op;
+- no `-D` type check;
+- the shape test always true;
+- the shape test always false;
+- no directory watch;
+- no `<pending>` branch;
+- no marker record;
+- a `set()` not treated as a choice.

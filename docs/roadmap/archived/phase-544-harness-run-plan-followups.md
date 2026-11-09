@@ -86,7 +86,7 @@ entry, so it was also built on the C and mixed rows in fresh build dirs: C
 realtime (native_sim and the qemu_cortex_a53 SMP image) and mixed (native_sim)
 link, and the C native_sim image delivers `/ctrl` to a ROS 2 subscriber. The
 older build dirs of those two rows did not configure; that is
-[issue 2374](../../issues/2374-zephyr-cached-conf-file-freezes-board-fragment-discovery.md),
+[issue 2374](../../issues/archived/2374-zephyr-cached-conf-file-freezes-board-fragment-discovery.md),
 a cached `CONF_FILE` naming a fragment issue 2157 deleted, unrelated to the
 edge. `ci_lane::tests::tier2_selects_every_pinned_cell` and
 `lane_build_covers_run::the_tier2_build_carries_every_pinned_cell_leaf` hold
