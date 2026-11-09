@@ -10,10 +10,7 @@
 //! to west as `ARMFVP_BIN_PATH` too, so a model provisioned after the
 //! configure is still found; otherwise the build's cached answer stands.
 
-use std::{
-    path::PathBuf,
-    process::{Command, ExitCode},
-};
+use std::{path::PathBuf, process::ExitCode};
 
 use nros_extension::{
     describe::Describe,
@@ -22,7 +19,7 @@ use nros_extension::{
     runner,
 };
 use nros_runner_west::{
-    build_dir, no_passthrough, run_argv, run_targets, target_for, west_program,
+    build_dir, no_passthrough, run_argv, run_targets, target_for, west_command,
 };
 
 /// Zephyr's emulator name for an Arm FVP, which Zephyr's run target is named after.
@@ -73,7 +70,7 @@ fn run(plan: &RunPlan) -> RunnerExit {
     })();
     match prepared {
         Ok((argv, fvp_dir)) => {
-            let mut cmd = Command::new(west_program(plan));
+            let mut cmd = west_command(plan);
             cmd.args(argv);
             if let Some(d) = fvp_dir {
                 cmd.env("ARMFVP_BIN_PATH", d);

@@ -411,7 +411,7 @@ pub enum RouterStart {
 
 /// What holds a TCP port a router would listen on.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum PortHolder {
+pub(crate) enum PortHolder {
     /// Nothing accepts there.
     Free,
     /// A zenoh router: it answered an InitSyn with an InitAck naming itself
@@ -518,7 +518,7 @@ fn plan_router_over(endpoints: Vec<String>, within: Duration) -> Result<RouterSt
 
 /// [`plan_router_over`] with the probe as a seam, so a test can state "this
 /// port is free" without needing a port no parallel test can take.
-fn plan_router_with(
+pub(crate) fn plan_router_with(
     endpoints: Vec<String>,
     holder_of: impl Fn(SocketAddr) -> PortHolder,
 ) -> Result<RouterStart, String> {

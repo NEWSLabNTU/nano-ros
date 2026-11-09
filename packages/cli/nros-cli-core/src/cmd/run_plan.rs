@@ -60,6 +60,9 @@ pub const BENCH: &str = "bench";
 pub const BOARD: &str = "board";
 /// See [`INVOCATION`].
 pub const METHOD: &str = "method";
+/// See [`INVOCATION`]. What the image's own build recorded (its west build's
+/// CMake cache), not a ladder level the user states.
+pub const BUILD: &str = "build";
 
 /// What an image's `system.toml` says about how it is run, flashed and
 /// observed — `[image.<id>.flash|console]` over `[image_defaults]`'s (merged
@@ -162,13 +165,30 @@ impl ImageTables {
 /// `nros_board_common::board_net::default_locator_over`, the one rule the
 /// board crates and the cmake entry-locator rung read too, over the board's
 /// network with the image's own interface applied (`image_net`, the
-/// `NROS_IMAGE_NET` text). `Ok(None)`: the board has no descriptor file, or its
-/// RTOS's configuration owns the default (Zephyr).
+/// `NROS_IMAGE_NET` text).
+///
+/// Where that rule answers nothing because the RTOS's configuration owns the
+/// network (Zephyr, RFC-0109 D2), the same rung reads what the image was
+/// built with: the merged Kconfig of its west build, `west_build`'s
+/// `zephyr/.config` ([`west_build_locator`], issue 2301). `Ok(None)`: no
+/// descriptor file and no built configuration, or neither states a locator.
 ///
 /// # Errors
 ///
 /// The descriptor's `[board.net]`, or the image network text, is malformed.
 pub fn board_default_locator(
+    descriptor: &BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&Path>,
+    image_net: Option<&str>,
+    west_build: Option<&Path>,
+) -> Result<Option<String>, String> {
+    let by_rule = board_net_locator(descriptor, board, nano_ros_root, image_net)?;
+    Ok(by_rule.or_else(|| west_build.and_then(west_build_locator)))
+}
+
+/// [`board_default_locator`]'s descriptor half.
+fn board_net_locator(
     descriptor: &BoardDescriptor,
     board: &str,
     nano_ros_root: Option<&Path>,
@@ -187,6 +207,50 @@ pub fn board_default_locator(
         net = net.with_interface(&i);
     }
     default_locator_over(&file, Some(board), &net).map_err(|e| format!("{}: {e}", file.display()))
+}
+
+/// The router a west-built image dials, from the merged Kconfig the build
+/// wrote (`<build_dir>/zephyr/.config`): `CONFIG_NROS_ZENOH_LOCATOR`, else
+/// the XRCE agent pair as `udp/<addr>:<port>` (issue 2301). Zephyr merges the
+/// module default, the board's `prj.conf` and the image's fragment last-wins,
+/// so only this file holds what the firmware dials; any other reader would
+/// re-derive the merge. `None`: no such file (no evidence), or it states no
+/// locator.
+#[must_use]
+pub fn west_build_locator(build_dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(build_dir.join("zephyr").join(".config")).ok()?;
+    let value = |key: &str| {
+        text.lines().find_map(|l| {
+            let v = l.strip_prefix(key)?.strip_prefix('=')?;
+            let v = v.trim();
+            let v = v
+                .strip_prefix('"')
+                .and_then(|v| v.strip_suffix('"'))
+                .unwrap_or(v);
+            (!v.is_empty()).then(|| v.to_string())
+        })
+    };
+    if let Some(l) = value("CONFIG_NROS_ZENOH_LOCATOR") {
+        return Some(l);
+    }
+    let addr = value("CONFIG_NROS_XRCE_AGENT_ADDR")?;
+    let port = value("CONFIG_NROS_XRCE_AGENT_PORT")?;
+    Some(format!("udp/{addr}:{port}"))
+}
+
+/// The Zephyr tree a west build was configured against: its CMake cache's
+/// `ZEPHYR_BASE` (issue 2353). The run plan carries it as
+/// `args.zephyr_base`, so the west runner finds the workspace `nros build`
+/// used, whatever the caller's environment or working directory. `None`: no
+/// cache, or it names none.
+#[must_use]
+pub fn west_build_zephyr_base(build_dir: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(build_dir.join("CMakeCache.txt")).ok()?;
+    text.lines().find_map(|l| {
+        let (key, value) = l.split_once('=')?;
+        (key.split(':').next() == Some("ZEPHYR_BASE") && !value.trim().is_empty())
+            .then(|| PathBuf::from(value.trim()))
+    })
 }
 
 /// D5 rung 1: what the command line said.
@@ -816,6 +880,12 @@ fn finish(
             build_dir: Some(dir),
         }) => {
             plan.build_dir = Some(dir.clone());
+            // Issue 2353 -- the Zephyr the build used, for the west runner.
+            if let Some(base) = west_build_zephyr_base(dir) {
+                plan.args
+                    .insert("zephyr_base".into(), base.display().to_string());
+                prov.set("args.zephyr_base", BUILD);
+            }
             // A host image on a west build is native_sim's `zephyr.exe`.
             let z = dir.join("zephyr");
             let elf = if plan.target.host {
@@ -947,11 +1017,16 @@ pub fn run(args: Args) -> eyre::Result<()> {
     );
     let mut tables = one.run_tables.clone();
     if tables.locator.is_none() {
+        let west_build = match one.output.as_ref() {
+            Some(BuildOutput::West { build_dir }) => build_dir.as_deref(),
+            _ => None,
+        };
         tables.board_locator = match board_default_locator(
             descriptor,
             &one.board,
             root.as_deref(),
             tables.net.as_deref(),
+            west_build,
         ) {
             Ok(l) => l,
             Err(e) => unresolved(&e),
@@ -1814,7 +1889,9 @@ mod tests {
     /// default (`board_default_locator`, the BOARD rung), which an emulator
     /// board's `nros run` starts a router for. A host target takes none from
     /// the board (`run_exec::decorate` gives it one at run time), and a Zephyr
-    /// board has none to give (its Kconfig owns it).
+    /// board's descriptor has none to give: its Kconfig owns it, so the rung
+    /// reads the build's `.config` instead
+    /// (`a_zephyr_image_links_to_the_locator_its_build_baked`).
     #[test]
     fn the_link_is_the_images_locator_else_the_boards_default() {
         let root = repo_root();
@@ -1822,7 +1899,7 @@ mod tests {
         let inv = Invocation::default();
         let out = cargo_out(Some("thumbv7m-none-eabi"));
         let fr = board(&cat, "mps2-an385-freertos");
-        let derived = board_default_locator(&fr, "mps2-an385-freertos", Some(&root), None)
+        let derived = board_default_locator(&fr, "mps2-an385-freertos", Some(&root), None, None)
             .unwrap()
             .unwrap();
         assert_eq!(derived, "tcp/10.0.2.2:7447");
@@ -1850,7 +1927,7 @@ mod tests {
 
         let linux = board(&cat, "linux");
         let host = ImageTables {
-            board_locator: board_default_locator(&linux, "linux", Some(&root), None).unwrap(),
+            board_locator: board_default_locator(&linux, "linux", Some(&root), None, None).unwrap(),
             ..ImageTables::default()
         };
         assert_eq!(host.board_locator.as_deref(), Some("tcp/127.0.0.1:7447"));
@@ -1859,9 +1936,114 @@ mod tests {
 
         let z = board(&cat, "zephyr");
         assert_eq!(
-            board_default_locator(&z, "zephyr", Some(&root), None).unwrap(),
+            board_default_locator(&z, "zephyr", Some(&root), None, None).unwrap(),
             None
         );
+    }
+
+    /// Issues 2301 + 2353 -- a Zephyr board's descriptor states no network
+    /// (RFC-0109 D2), so the BOARD rung reads the locator the image was built
+    /// with from its west build's merged `.config`, and the plan carries the
+    /// Zephyr tree from the build's CMake cache for the west runner. On
+    /// mps2-an385-zephyr that link is the guest's `tcp/10.0.2.2:7447`, so
+    /// `--router auto` starts a router on this host's port 7447 (or reuses
+    /// one there). A build with no `.config` is no evidence: no link.
+    #[test]
+    fn a_zephyr_image_links_to_the_locator_its_build_baked() {
+        use crate::cmd::run_exec::{
+            HostSide, PortHolder, RouterMode, RouterStart, host_side, plan_router_with,
+            router_listen_endpoints,
+        };
+        let root = repo_root();
+        let cat = BoardCatalog::load(&root).unwrap();
+        let inv = Invocation::default();
+        let d = board(&cat, "mps2-an385-zephyr");
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("b_west");
+        std::fs::create_dir_all(dir.join("zephyr")).unwrap();
+
+        // No `.config` yet: no evidence, no link.
+        assert_eq!(
+            board_default_locator(&d, "mps2-an385-zephyr", Some(&root), None, Some(&dir)).unwrap(),
+            None
+        );
+
+        std::fs::write(
+            dir.join("zephyr/.config"),
+            "CONFIG_NROS_RMW_ZENOH=y\n# CONFIG_NROS_TRANSPORT_SERIAL is not set\n\
+             CONFIG_NROS_ZENOH_LOCATOR=\"tcp/10.0.2.2:7447\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("CMakeCache.txt"),
+            "WEST_PYTHON:UNINITIALIZED=/usr/bin/python3\n\
+             ZEPHYR_BASE:PATH=/zws/zephyr\n",
+        )
+        .unwrap();
+        let baked =
+            board_default_locator(&d, "mps2-an385-zephyr", Some(&root), None, Some(&dir)).unwrap();
+        assert_eq!(baked.as_deref(), Some("tcp/10.0.2.2:7447"));
+
+        let tables = ImageTables {
+            board_locator: baked,
+            ..ImageTables::default()
+        };
+        let out = BuildOutput::West {
+            build_dir: Some(dir.clone()),
+        };
+        let mut p = go(Verb::Run, &d, &out, &tables, &inv).unwrap();
+        assert_eq!(p.runner.package, "nros_runner_west");
+        assert_eq!(
+            p.link.as_ref().map(|l| l.locator.as_str()),
+            Some("tcp/10.0.2.2:7447")
+        );
+        assert_eq!(p.provenance["link"], BOARD);
+        assert_eq!(p.args["zephyr_base"], "/zws/zephyr");
+        assert_eq!(p.provenance["args.zephyr_base"], BUILD);
+
+        // The router decision: the guest's 10.0.2.2 is this host's loopback
+        // through QEMU's user network, so the router listens on 7447 here.
+        crate::cmd::run_exec::decorate(&mut p, Some("zenoh"), &Default::default());
+        let HostSide::ZenohListen(listen) = host_side(&p, &RouterMode::Auto) else {
+            panic!("{:?}", host_side(&p, &RouterMode::Auto));
+        };
+        assert_eq!(listen, "tcp/127.0.0.1:7447");
+        // A free port (stated through the probe seam) starts one; a zenoh
+        // router already there is reused (issue 2315).
+        assert_eq!(
+            plan_router_with(router_listen_endpoints(&listen), |_| PortHolder::Free).unwrap(),
+            RouterStart::Start {
+                listen: vec!["tcp/127.0.0.1:7447".to_string()],
+                connect: vec![],
+            }
+        );
+        assert_eq!(
+            plan_router_with(router_listen_endpoints(&listen), |_| {
+                PortHolder::ZenohRouter
+            })
+            .unwrap(),
+            RouterStart::Reuse("tcp/127.0.0.1:7447".to_string())
+        );
+
+        // An XRCE image's agent pair is the same rung's other spelling.
+        std::fs::write(
+            dir.join("zephyr/.config"),
+            "CONFIG_NROS_RMW_XRCE=y\nCONFIG_NROS_XRCE_AGENT_ADDR=\"10.0.2.2\"\n\
+             CONFIG_NROS_XRCE_AGENT_PORT=2018\n",
+        )
+        .unwrap();
+        assert_eq!(
+            west_build_locator(&dir).as_deref(),
+            Some("udp/10.0.2.2:2018")
+        );
+        // The image's own `locator` still outranks what the board baked.
+        let by_image = ImageTables {
+            locator: Some("tcp/10.0.2.2:7500".into()),
+            board_locator: west_build_locator(&dir),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Run, &d, &out, &by_image, &inv).unwrap();
+        assert_eq!(p.provenance["link"], IMAGE);
     }
 
     /// The `--dry-run --why` snapshots: mps2-an385 bare metal, linux, and
