@@ -1601,8 +1601,11 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // the registry pin set, so `update --workspace` keeps every
                 // pinned version the manifests accept instead of resolving the
                 // registry fresh.
-                let rust_channel =
-                    crate::builder::preflight::board_rust_channel(descriptor, Some(nros_root));
+                let rust_channel = crate::builder::preflight::board_rust_channel(
+                    descriptor,
+                    Some(nros_root),
+                    Some(&manifest_dir),
+                );
                 let had_lock = manifest_dir.join("Cargo.lock").is_file();
                 crate::orchestration::registry_pins::seed(&manifest_dir, Some(nros_root))?;
                 if lock_is_ours || !had_lock {

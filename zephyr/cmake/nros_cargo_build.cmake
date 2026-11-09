@@ -2346,6 +2346,16 @@ function(nros_cargo_build)
         nros_pinned_nightly(_nros_nightly)
         set(_rustup_override RUSTUP_TOOLCHAIN=${_nros_nightly})
         list(APPEND CARGO_ARGS -Z "build-std=core,alloc,compiler_builtins")
+    else()
+        # Issue 2370 — every other target builds on the PINNED toolchain when
+        # nothing chose one for this app (no `RUSTUP_TOOLCHAIN`, no rustup
+        # override above the app dir): the one `nros setup` provisions targets
+        # on. A west app copied out of this checkout has no
+        # `rust-toolchain.toml` above it, so the command's rustup would
+        # otherwise answer with the host's default. The same rule as the cmake
+        # road (issue 1914) and `nros build`'s cargo road.
+        nros_pin_default_rust_toolchain()
+        nros_rust_toolchain_env(_rustup_override)
     endif()
 
     # phase-400 W5.c — the headers are declared where the CONSUMERS look, which

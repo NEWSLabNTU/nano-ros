@@ -288,6 +288,8 @@ fn leaf_image_from_decl(
     }
     let image_id = decl.image.clone().unwrap_or_else(|| board.clone());
     let leaf = leaf.canonicalize().unwrap_or_else(|_| leaf.to_path_buf());
+    let rust_channel =
+        crate::builder::preflight::board_rust_channel(d, Some(nano_ros_root), Some(&leaf));
     Ok(Some(LeafImage {
         config_path: settings_path(&leaf, &image_id),
         leaf,
@@ -298,7 +300,7 @@ fn leaf_image_from_decl(
         target: d.target.clone(),
         cargo_config: d.cargo_config.clone(),
         runner: d.cargo_runner(),
-        rust_channel: crate::builder::preflight::board_rust_channel(d, Some(nano_ros_root)),
+        rust_channel,
         rx_cost: d.rx,
         decl,
     }))
