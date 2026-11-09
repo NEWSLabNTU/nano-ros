@@ -68,17 +68,16 @@ I heard: reading 2
 ```
 
 In a second terminal, source ROS 2 and the overlay `colcon` built, select
-the zenoh RMW, and read one message. `ros2 daemon stop` first ends a `ros2`
-daemon left over from an earlier chapter: it still holds a session to a
-router that `nros run` has since replaced, and every `ros2` command that asks
-it fails with `!rclpy.ok()`. The next `ros2` command starts a fresh one.
+the zenoh RMW, and read one message. `--no-daemon` asks the router directly,
+as in chapter 9: a `ros2` daemon left over from an earlier chapter still holds
+a session to a router that `nros run` has since replaced, and it answers with
+`!rclpy.ok()`.
 
 ```bash probe=1030 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
 source build/colcon/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 daemon stop
-ros2 topic echo /sensor/reading tutorial_msgs/msg/Reading --once
+ros2 topic echo --no-daemon /sensor/reading tutorial_msgs/msg/Reading --once
 ```
 
 ```text
@@ -98,7 +97,7 @@ The same shell can ask what the board's endpoints look like from the ROS 2
 side:
 
 ```bash probe=1040 track=installed variant=qemu
-ros2 topic info -v /sensor/reading
+ros2 topic info -v --no-daemon /sensor/reading
 ```
 
 ```text
