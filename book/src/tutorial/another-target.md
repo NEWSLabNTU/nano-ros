@@ -24,18 +24,43 @@ with every other line of its console the same as the bare-metal image's. The
 bare-metal image keeps working beside it, and you choose which one runs by
 its name.
 
+A C or C++ project has run on FreeRTOS since chapter 1, because bare metal
+runs Rust only. Its second target is your Linux host: the same six nodes,
+built as an ordinary program on your machine. The C and C++ tabs below take
+that path; every step has the same shape.
+
 Run every step from the root of `sensor_ws`.
 
 ## Provision the second target
+
+<!-- tabs -->
+
+#### Rust
 
 ```bash probe=910 track=installed variant=qemu
 nros setup mps2-an385-freertos --rmw zenoh
 ```
 
+#### C
+
+```bash probe=910 track=installed variant=qemu
+nros setup linux --rmw zenoh
+```
+
+#### C++
+
+```bash probe=910 track=installed variant=qemu
+nros setup linux --rmw zenoh
+```
+
+<!-- /tabs -->
+
 This adds the FreeRTOS kernel and the lwIP network stack to the store under
 `~/.nros`, beside what chapter 1 fetched. The cross-compiler and QEMU are the
 same ones, because the processor and the emulated board are the same: only
-the software under your nodes changes.
+the software under your nodes changes. For the Linux host, `nros setup` checks
+the host toolchain and the zenoh sources it builds against, and usually finds
+everything already present.
 
 FreeRTOS is a small real-time operating system. Where the bare-metal image
 ran every callback in one loop on the processor, the FreeRTOS image runs
@@ -48,6 +73,13 @@ else.
 
 An image is one `[image.<id>]` table in the bringup's `system.toml`. Add a
 second one, named `freertos`, after the `baremetal` table:
+
+In a C or C++ project, add one named `linux`, after the `freertos` table,
+instead:
+
+<!-- tabs -->
+
+#### Rust
 
 ```toml
 [image.freertos]
@@ -62,10 +94,40 @@ printf '\n[image.freertos]\nboard = "mps2-an385-freertos"\nlocator = "tcp/10.0.2
     >> src/sensor_node_bringup/system.toml
 ```
 
+#### C
+
+```toml
+[image.linux]
+board = "linux"
+```
+
+Edit the file by hand, or run:
+
+```bash probe=920 track=installed variant=qemu
+printf '\n[image.linux]\nboard = "linux"\n' >> src/sensor_node_bringup/system.toml
+```
+
+#### C++
+
+```toml
+[image.linux]
+board = "linux"
+```
+
+Edit the file by hand, or run:
+
+```bash probe=920 track=installed variant=qemu
+printf '\n[image.linux]\nboard = "linux"\n' >> src/sensor_node_bringup/system.toml
+```
+
+<!-- /tabs -->
+
 `board` names the target by its nano-ros board name;
 [Supported boards](../reference/supported-boards.md) lists them. `locator`
 is the same as the bare-metal image's: QEMU gives the FreeRTOS board the
-same private network, so the router is at `10.0.2.2` again.
+same private network, so the router is at `10.0.2.2` again. The Linux image
+needs no `locator`: it runs on your host, and the host board's own default
+dials the router on `tcp/127.0.0.1:7447`.
 
 The image's name, `freertos`, is yours to choose. It appears in the full
 name of the image, `sensor_node_bringup:freertos`, in the directory its build
@@ -81,7 +143,8 @@ configuration and the memory the board has.
 ## Name the image you run
 
 With two images, a command that names nothing no longer picks one. Plain
-`nros run` refuses, and lists what would work:
+`nros run` refuses, and lists what would work (in a C or C++ project, the two
+are `:freertos` and `:linux`):
 
 ```text
 nros run: this workspace declares 2 images and no default.
@@ -108,9 +171,29 @@ The third spelling stopped working in chapter 3, and the fourth stops now.
 Anything that does not resolve refuses and lists the full spellings; a
 shortcut never picks one of several. `--why` names the rule that resolved:
 
+<!-- tabs -->
+
+#### Rust
+
 ```bash probe=925 track=installed variant=qemu
 nros run baremetal --dry-run --why | grep '^image'
 ```
+
+#### C
+
+```bash probe=925 track=installed variant=qemu
+nros run freertos --dry-run --why | grep '^image'
+```
+
+#### C++
+
+```bash probe=925 track=installed variant=qemu
+nros run freertos --dry-run --why | grep '^image'
+```
+
+<!-- /tabs -->
+
+In a Rust project, it prints (a C or C++ project's names `:freertos`):
 
 ```text
 image = "sensor_node_bringup:baremetal"
@@ -125,7 +208,7 @@ it means in `[system]`:
 default_images = ["baremetal"]
 ```
 
-## Run it on FreeRTOS
+## Run it on the second target
 
 <!-- tabs -->
 
@@ -147,7 +230,7 @@ Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
 
 ```bash probe=930 probe-run=1500 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run freertos --expect 'result last='
+nros run linux --expect 'result last='
 ```
 
 ```text probe-expect=930 variant=qemu
@@ -159,7 +242,7 @@ I heard: reading 1
 
 ```bash probe=930 probe-run=1500 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run freertos --expect 'result last='
+nros run linux --expect 'result last='
 ```
 
 ```text probe-expect=930 variant=qemu
@@ -169,9 +252,9 @@ I heard: reading 1
 
 <!-- /tabs -->
 
-The first build of the image compiles nano-ros against FreeRTOS and lwIP,
-which takes a few minutes. Then the board boots, a Rust project's console
-trimmed:
+The first build of the image compiles nano-ros against FreeRTOS and lwIP
+(in a C or C++ project, for your host), which takes a few minutes. Then the
+board boots, a Rust project's console trimmed:
 
 ```text
 nros run: starting the zenoh router on tcp/127.0.0.1:7447
@@ -215,11 +298,29 @@ that launch file is sized from it. The numbers it derives differ per board,
 since each board's pools have their own sizes, but the statement is written
 once.
 
-The bare-metal image still runs, unchanged:
+The first image still runs, unchanged:
+
+<!-- tabs -->
+
+#### Rust
 
 ```bash probe=940 probe-run=900 track=installed variant=qemu
 nros run baremetal --expect 'I heard: reading 3'
 ```
+
+#### C
+
+```bash probe=940 probe-run=900 track=installed variant=qemu
+nros run freertos --expect 'I heard: reading 3'
+```
+
+#### C++
+
+```bash probe=940 probe-run=900 track=installed variant=qemu
+nros run freertos --expect 'I heard: reading 3'
+```
+
+<!-- /tabs -->
 
 ```text probe-expect=940 variant=qemu
 I heard: reading 3
@@ -230,7 +331,9 @@ I heard: reading 3
 Make FreeRTOS the image a bare command means. Add
 `default_images = ["freertos"]` to the `[system]` table, and plain
 `nros run` and `nros build` stop refusing: they run and build the FreeRTOS
-image, and `nros run baremetal` still names the other. Remove the line to go
+image, and `nros run baremetal` still names the other. In a C or C++
+project, `default_images = ["freertos"]` keeps the board the default and
+`nros run linux` names the host. Remove the line to go
 back to naming one every time. A list of several images makes a bare
 `nros build` build each of them.
 

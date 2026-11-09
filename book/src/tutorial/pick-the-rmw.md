@@ -22,6 +22,10 @@ where it used to name a serial device, the board prints its own network
 address, and `ros2 topic echo` still receives every message. You also know
 what changing to the other two RMWs takes, and when you would.
 
+A C or C++ project's FreeRTOS board has been on its network since chapter 1,
+so for it the move is already made: read the move, and run the same commands
+to see that nothing changes.
+
 Run every step from the root of `sensor_ws`.
 
 ## Find the project's RMW
@@ -38,7 +42,9 @@ grep -n 'rmw\|locator' src/sensor_node_bringup/system.toml
 Two lines decide how the project reaches ROS 2. `rmw = "zenoh"` in
 `[system]` picks the middleware for every image of the bringup. `locator`,
 in `[image.baremetal]`, says where this image finds its zenoh router: on
-UART 0, at 115,200 baud. The line numbers depend on the comments the scaffold
+UART 0, at 115,200 baud. A C or C++ project prints no `locator` line: its
+`[image.freertos]` uses the FreeRTOS board's own, TCP to `10.0.2.2:7447`. The
+line numbers depend on the comments the scaffold
 wrote; the two lines are what matter.
 
 The RMW is chosen when the image is built, not when it starts. ROS 2 reads
@@ -87,7 +93,7 @@ How to choose:
   connectivity.
 
 On this board the choice is made for you: the board support registry
-verifies the MPS2-AN385 bare-metal image with zenoh, which is why chapter 1
+verifies the MPS2-AN385 images with zenoh, which is why chapter 1
 provisioned `--rmw zenoh`. Chapter 9 runs the same project on the Linux host,
 where Cyclone DDS runs too.
 
@@ -121,6 +127,10 @@ the host, the zenoh router's usual port. Nothing else changes. The node
 packages do not name a link, and the board's own description already says
 which network devices it has and how its network stack is built.
 
+In a C or C++ project the `sed` finds no `locator` line and changes nothing:
+the FreeRTOS board already dials `tcp/10.0.2.2:7447`, the address this step
+writes.
+
 ## Run it over the network
 
 ```bash probe=430 probe-run=900 track=installed variant=qemu
@@ -134,7 +144,9 @@ I heard: [Hello World: 1]
 ```
 
 The image is rebuilt with the board's network stack in place of its serial
-link, then boots. A Rust project's console, trimmed:
+link, then boots. (A C or C++ image has nothing to rebuild and prints
+`Network ready` where this one brings up its Ethernet.) A Rust project's
+console, trimmed:
 
 ```text
 nros run: starting the zenoh router on tcp/127.0.0.1:7447

@@ -41,21 +41,45 @@ is the board this book teaches nano-ros on, because it costs nothing and
 behaves like a real microcontroller. "Bare-metal" means the talker runs with no
 operating system under it, as one loop on the processor.
 
+Bare metal runs Rust only. A C or C++ project runs on the same board with
+FreeRTOS under it, `mps2-an385-freertos`, and reaches its router over the
+board's emulated network instead of its serial port. Every C and C++ tab in
+this Tutorial uses that board; the commands after it are the same.
+
 ## Provision the board
+
+<!-- tabs -->
+
+#### Rust
 
 ```bash probe=30 track=installed variant=qemu
 nros setup mps2-an385-baremetal --rmw zenoh
 ```
 
+#### C
+
+```bash probe=30 track=installed variant=qemu
+nros setup mps2-an385-freertos --rmw zenoh
+```
+
+#### C++
+
+```bash probe=30 track=installed variant=qemu
+nros setup mps2-an385-freertos --rmw zenoh
+```
+
+<!-- /tabs -->
+
 This fetches the Arm cross-compiler, a QEMU that emulates the MPS2-AN385, and
-the Rust target for the Cortex-M3, into a shared store under `~/.nros`.
+the Rust target for the Cortex-M3 (and, for FreeRTOS, its kernel and network
+stack sources), into a shared store under `~/.nros`.
 Nothing is installed system-wide, and a second project for the same board
 reuses what this step fetched. Running it again is quick: it checks what is
 there and fetches only what is missing.
 
 `--rmw zenoh` names the middleware the talker uses to reach ROS 2. nano-ros
-offers three, and zenoh is the one that runs over a serial port on this board,
-so it is the one this Tutorial starts with. `nros setup` fetches only what that
+offers three, and zenoh is the one that runs over a serial port on the
+bare-metal board, so it is the one this Tutorial starts with. `nros setup` fetches only what that
 middleware needs on this board. Chapter 4 compares the three and shows what
 each one needs beside your program.
 
@@ -86,14 +110,14 @@ cd sensor_ws
 #### C
 
 ```bash probe=40 track=installed variant=qemu
-nros new sensor_ws --board mps2-an385-baremetal --template talker --lang c
+nros new sensor_ws --board mps2-an385-freertos --template talker --lang c
 cd sensor_ws
 ```
 
 #### C++
 
 ```bash probe=40 track=installed variant=qemu
-nros new sensor_ws --board mps2-an385-baremetal --template talker --lang cpp
+nros new sensor_ws --board mps2-an385-freertos --template talker --lang cpp
 cd sensor_ws
 ```
 
@@ -140,6 +164,10 @@ later runs rebuild only what changed and take seconds. After the build, the
 end of the output looks like this (a run on a Linux host with the build tree
 under `/home/you`, trimmed):
 
+<!-- tabs -->
+
+#### Rust
+
 ```text
 nros run: starting the zenoh router on serial//dev/pts/42#baudrate=115200
 
@@ -157,8 +185,29 @@ Application setup complete — entering spin loop.
 nros run: matched after 3.6 s: [INFO] sensor_node: [    1.024551] Publishing: 'Hello World: 1'
 ```
 
+#### C
+
+```text
+nros run: starting the zenoh router on tcp/127.0.0.1:7447
+Network ready
+Publishing: 'Hello World: 1'
+nros run: matched after 3.8 s: Publishing: 'Hello World: 1'
+```
+
+#### C++
+
+```text
+nros run: starting the zenoh router on tcp/127.0.0.1:7447
+Network ready
+Publishing: 'Hello World: 1'
+nros run: matched after 3.8 s: Publishing: 'Hello World: 1'
+```
+
+<!-- /tabs -->
+
 Everything after the router line is the board's console: the banner its
-startup code prints, the serial port coming up, then the talker. The number in
+startup code prints, the serial port coming up, then the talker. On FreeRTOS
+the board brings up its network instead, and the router listens on TCP. The number in
 brackets is the board's own clock, in seconds since it booted. A C or C++
 talker prints its `Publishing:` line without the `[INFO]` prefix.
 
@@ -265,7 +314,9 @@ changes one of them:
 2. **The board.** QEMU booted that program as the MPS2-AN385 would. The
    board's first serial port, UART 0, is connected to a terminal device on
    your host (`/dev/pts/42` in the output above). The board has no network in
-   this chapter, so that serial port carries every message. What the program
+   this chapter, so that serial port carries every message. (The FreeRTOS
+   board of the C and C++ tabs has its emulated Ethernet instead, and QEMU's
+   user network carries the messages to the router's TCP port.) What the program
    prints reaches your terminal separately, through QEMU itself, which is why
    the console and the messages do not mix.
 3. **The router.** `nros run` started ROS 2's zenoh router, `rmw_zenohd`, on
