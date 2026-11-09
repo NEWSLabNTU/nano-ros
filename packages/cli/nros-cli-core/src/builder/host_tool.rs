@@ -68,7 +68,23 @@ pub struct Options<'a> {
     /// (phase-527 W7). `None` adds no row, so a package that does not name the
     /// crate never sees an unused patch.
     pub extension_crate: Option<&'a Path>,
+    /// The toolchain the package builds with, by name, resolved AT the
+    /// package ([`crate::builder::preflight::toolchain_at`]). With it, cargo
+    /// runs outside the workspace ([`CONFIG_FREE_DIR`]) under
+    /// `RUSTUP_TOOLCHAIN`, so the workspace's `.cargo/config.toml`, whose
+    /// `[patch.crates-io]` serves the images, never reaches a host tool
+    /// (issue 2299: three "patch … was not used" warnings per cargo call).
+    /// `None` keeps cargo in the package directory: rustup could not name the
+    /// toolchain, so moving the cwd could move it too.
+    pub toolchain: Option<&'a str>,
 }
+
+/// Where a cargo host tool's cargo runs when its toolchain is known: a
+/// directory with no project `.cargo/config.toml` above it. Cargo finds config
+/// files from the CURRENT directory up, never from `--manifest-path`, so this
+/// is what keeps the workspace's image patches out (issue 2299). The user's own
+/// `$CARGO_HOME/config.toml` is still read, as for any cargo.
+pub const CONFIG_FREE_DIR: &str = "/";
 
 /// The crate a runner or command package is written against (RFC-0119 D5).
 /// Not on crates.io yet, so a package names it by registry name and `nros
@@ -132,6 +148,20 @@ pub fn plan(
             a.push("--frozen".to_string());
         }
         a.extend(extension_patch(o.extension_crate));
+        // Issue 2299 -- with its toolchain known, the tool's cargo runs from
+        // outside the workspace, naming its manifest, on that toolchain.
+        let manifest = package_dir.join("Cargo.toml").display().to_string();
+        let place = |mut args: Vec<String>| -> Handoff {
+            match o.toolchain {
+                Some(tc) => {
+                    args.extend(["--manifest-path".to_string(), manifest.clone()]);
+                    Handoff::new("cargo", args)
+                        .in_dir(CONFIG_FREE_DIR)
+                        .with_env("RUSTUP_TOOLCHAIN", tc)
+                }
+                None => Handoff::new("cargo", args).in_dir(package_dir),
+            }
+        };
         // A package with no lock of its own gets one resolved first, as a
         // package-mode cargo package does: the PATH shim's project-wide
         // `--locked` cannot create one.
@@ -141,12 +171,12 @@ pub fn plan(
                 u.push("--offline".to_string());
             }
             u.extend(extension_patch(o.extension_crate));
-            Handoff::new("cargo", u).in_dir(package_dir)
+            place(u)
         });
         return Some(HostBuild {
             driver: Driver::Cargo,
             configure,
-            handoff: Handoff::new("cargo", a).in_dir(package_dir),
+            handoff: place(a),
             build_dir: dir,
         });
     }
@@ -354,7 +384,64 @@ mod tests {
             has_lock,
             cmake_args: &[],
             extension_crate: None,
+            toolchain: None,
         }
+    }
+
+    /// Issue 2299 -- with its toolchain known, a cargo host tool's cargo runs
+    /// outside the workspace (so the workspace's image patches never reach it),
+    /// names its manifest, and keeps the package's toolchain by name.
+    #[test]
+    fn a_host_tool_with_a_known_toolchain_runs_cargo_outside_the_workspace() {
+        let b = plan(
+            Path::new("/ws"),
+            "acme",
+            Path::new("/ws/src/acme"),
+            Routing {
+                cargo_member: true,
+                cmake_subdir: false,
+            },
+            Options {
+                toolchain: Some("1.99.0"),
+                ..opts(false)
+            },
+        )
+        .unwrap();
+        for h in [&b.handoff, b.configure.as_ref().unwrap()] {
+            assert_eq!(
+                h.cwd.as_deref(),
+                Some(Path::new(CONFIG_FREE_DIR)),
+                "{}",
+                h.display()
+            );
+            assert!(
+                h.display()
+                    .contains("--manifest-path /ws/src/acme/Cargo.toml"),
+                "{}",
+                h.display()
+            );
+            assert!(
+                h.env
+                    .iter()
+                    .any(|(k, v)| k == "RUSTUP_TOOLCHAIN" && v == "1.99.0"),
+                "{}",
+                h.display()
+            );
+        }
+        // Unknown toolchain: cargo stays in the package, as before.
+        let b = plan(
+            Path::new("/ws"),
+            "acme",
+            Path::new("/ws/src/acme"),
+            Routing {
+                cargo_member: true,
+                cmake_subdir: false,
+            },
+            opts(true),
+        )
+        .unwrap();
+        assert_eq!(b.handoff.cwd.as_deref(), Some(Path::new("/ws/src/acme")));
+        assert!(!b.handoff.display().contains("--manifest-path"));
     }
 
     #[test]

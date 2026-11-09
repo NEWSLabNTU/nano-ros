@@ -391,6 +391,52 @@ pub(crate) fn default_pin_for(dir: &Path, nano_ros_root: Option<&Path>) -> Optio
     )
 }
 
+/// Issue 2299 — the toolchain, BY NAME, that cargo would build a project at
+/// `dir` with: a set `RUSTUP_TOOLCHAIN`, else the pin [`default_pin_for`]
+/// applies when nothing at `dir` chose one, else what rustup itself resolves
+/// there ([`rustup_in`]: the nearest `rust-toolchain.toml`, a `rustup
+/// override`, or the default). `None` when rustup answers nothing.
+///
+/// For a build that must run cargo somewhere OTHER than `dir` (a host tool,
+/// kept out of its workspace's `.cargo/config.toml`) and still get `dir`'s
+/// toolchain. rustup reads that file from the CURRENT directory too, so
+/// without this, moving the cwd would quietly move the toolchain.
+pub(crate) fn toolchain_at(dir: &Path, nano_ros_root: Option<&Path>) -> Option<String> {
+    let env = std::env::var("RUSTUP_TOOLCHAIN").ok();
+    if env.as_deref().is_some_and(|t| !t.is_empty()) {
+        return env;
+    }
+    toolchain_resolved_at(dir, nano_ros_root)
+}
+
+/// [`toolchain_at`] past the environment: the pin, or rustup's own answer at
+/// `dir`. Its rustup ignores an inherited `RUSTUP_TOOLCHAIN` (rustup's proxy
+/// exports one under `cargo test`), since the caller already decided that one
+/// does not apply.
+fn toolchain_resolved_at(dir: &Path, nano_ros_root: Option<&Path>) -> Option<String> {
+    if std::env::var_os("RUSTUP_TOOLCHAIN").is_none()
+        && let Some(pin) = default_pin_for(dir, nano_ros_root)
+    {
+        return Some(pin);
+    }
+    let active = rustup_in(dir)
+        .env_remove("RUSTUP_TOOLCHAIN")
+        .args(["show", "active-toolchain"])
+        .output()
+        .ok()?;
+    active_toolchain_name(&String::from_utf8_lossy(&active.stdout))
+}
+
+/// The toolchain name in `rustup show active-toolchain`'s answer:
+/// `nightly-2026-04-11-x86_64-unknown-linux-gnu (overridden by '…')`.
+fn active_toolchain_name(active: &str) -> Option<String> {
+    active
+        .split_whitespace()
+        .next()
+        .filter(|t| !t.starts_with('('))
+        .map(str::to_string)
+}
+
 /// [`default_pin_for`]'s decision over rustup's two answers: `active` is
 /// `rustup show active-toolchain`, `list` is `rustup toolchain list`.
 fn pin_when_default(pin: &str, active: &str, list: &str) -> Option<String> {
@@ -850,6 +896,47 @@ pub fn report(missing: &[Missing]) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Issue 2299 -- the toolchain by name, from rustup's answer.
+    #[test]
+    fn the_active_toolchain_is_read_by_name() {
+        assert_eq!(
+            super::active_toolchain_name(
+                "nightly-2026-04-11-x86_64-unknown-linux-gnu (overridden by '/p/rust-toolchain.toml')\n"
+            )
+            .as_deref(),
+            Some("nightly-2026-04-11-x86_64-unknown-linux-gnu")
+        );
+        assert_eq!(
+            super::active_toolchain_name("1.99.0-x86_64-unknown-linux-gnu (default)").as_deref(),
+            Some("1.99.0-x86_64-unknown-linux-gnu")
+        );
+        assert_eq!(super::active_toolchain_name(""), None);
+    }
+
+    /// Issue 2299 -- a package's OWN `rust-toolchain.toml` is the toolchain a
+    /// host tool builds with, even when cargo runs outside it: the resolver
+    /// asks rustup AT the package, so the file is honoured, never dropped.
+    #[test]
+    fn a_package_rust_toolchain_file_names_the_host_tool_toolchain() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let pin = super::pinned_stable(Some(root)).expect("the tree pins a stable toolchain");
+        let pkg = tempfile::tempdir().unwrap();
+        std::fs::write(
+            pkg.path().join("rust-toolchain.toml"),
+            format!("[toolchain]\nchannel = \"{pin}\"\n"),
+        )
+        .unwrap();
+        let got = super::toolchain_resolved_at(pkg.path(), Some(root))
+            .expect("rustup names the package's toolchain");
+        assert!(
+            got == pin || got.starts_with(&format!("{pin}-")),
+            "{got} is not the package's {pin}"
+        );
+    }
+
     use super::*;
     use crate::orchestration::board_descriptor::BoardCatalog;
 

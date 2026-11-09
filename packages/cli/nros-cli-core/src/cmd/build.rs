@@ -4620,6 +4620,12 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
             // nros build resolves is.
             crate::orchestration::registry_pins::seed(&pkg.dir, nano_ros_root.as_deref())?;
         }
+        // Issue 2299 -- the package's own toolchain, by name, so its cargo
+        // can run outside the workspace's `.cargo/config.toml`.
+        let toolchain = routing
+            .cargo_member
+            .then(|| crate::builder::preflight::toolchain_at(&pkg.dir, nano_ros_root.as_deref()))
+            .flatten();
         let Some(b) = crate::builder::host_tool::plan(
             &root,
             &pkg.name,
@@ -4634,6 +4640,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
                     routing.cargo_member
                         && crate::builder::host_tool::depends_on_extension(&pkg.dir)
                 }),
+                toolchain: toolchain.as_deref(),
             },
         ) else {
             eyre::bail!(
