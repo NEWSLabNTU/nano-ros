@@ -95,3 +95,16 @@ spawn site goes through the crate) and
 - `nros-runner-lifetime` unit tests: a tied child dies when its runner is
   SIGKILLed (fails with the tie disabled), and a guard stops a chain on
   close and on drop.
+
+## Open after this fix
+
+- **Renode is not measured.** The `renode` road takes the chain (its
+  launcher may be a script), but no Renode run was SIGKILLed. Measure it
+  with the Nucleo twin before claiming it.
+- **A verb that returns while its chain is still stopping.** On Ctrl-C a
+  chained tool (`west`, `fvp`, `renode`, `command`) stops through its guard,
+  so the verb can return about 1 s before the chain is gone, while it may
+  still hold ports, which is the class issue 2315 hit. Manager ruling
+  (2026-11-09): the verb waits until the guard reports the chain gone,
+  bounded at about 2-3 s, then SIGKILLs the group and says so. Follow-up
+  commit or small PR after this one.
