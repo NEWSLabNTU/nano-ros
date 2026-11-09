@@ -55,6 +55,11 @@ set(_demo_ws "${CMAKE_CURRENT_LIST_DIR}/../..")
 nros_px4_add_module(
 	MODULE     modules__nros_uorb_demo
 	MAIN       nros_uorb_demo
+	# The session open runs in this NuttX main task, and its measured
+	# Cortex-M7 frames total about 15.3 KB before any backend frame (issue
+	# 2398). PX4's default main stack is 2048 B, which nros_px4_add_module
+	# refuses for a BRINGUP module on NuttX. SITL ignores the value.
+	STACK_MAIN 32768
 	BACKENDS   uorb
 	BRINGUP    ${_demo_ws}/uorb_demo_bringup
 	COMPONENTS uorb_demo_pkg:uorb_demo:uorb_demo_pkg::UorbDemo:uorb_demo_pkg/UorbDemo.hpp
