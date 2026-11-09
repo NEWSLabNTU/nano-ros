@@ -8,7 +8,7 @@ related: [issue-2341, issue-1143, phase-546]
 found: 2026-11-07
 ---
 
-**Home:** [phase-546](../../roadmap/phase-546-zenoh-freertos-host-sockets.md)
+**Home:** [phase-546](../../roadmap/archived/phase-546-zenoh-freertos-host-sockets.md)
 (W1 to W4). Found while fixing issue 2341.
 
 ## Symptom
@@ -59,7 +59,7 @@ and the scaffold no longer defaults to it.
 
 ## Resolution
 
-Option 1, by maintainer ruling 2026-11-07 ([phase-546](../../roadmap/phase-546-zenoh-freertos-host-sockets.md),
+Option 1, by maintainer ruling 2026-11-07 ([phase-546](../../roadmap/archived/phase-546-zenoh-freertos-host-sockets.md),
 RFC-0109 D11).
 
 - The board fact is `host_stack`, DERIVED from `[board.net] stack = "host"` on
