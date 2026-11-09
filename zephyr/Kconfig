@@ -2015,8 +2015,17 @@ config NROS_ZEPHYR_HEAP_SIZE
       against a live peer): rust/talker xrce 46,256; rust/listener zenoh
       42,304; rust/action-server zenoh 58,288 -- which leaves 7,760 bytes of
       a 64 KiB arena and is refused by `read-boot-report.py --heap-headroom`.
-      128 KiB keeps the 24,576-byte floor over the worst of them. A C image
-      measured 15,152 (c/talker zenoh), so its default is unchanged.
+      128 KiB keeps the 24,576-byte floor over the worst of them.
+
+      A C or C++ zenoh image keeps 64 KiB (issue 2202). MEASURED peaks (boot
+      record, 20-40 s against a live peer, Zephyr 3.7): talker 13,472 on
+      mps2_an385 (C and C++), 11,664 on nucleo_f767zi (serial, Renode twin),
+      16,544 on native_sim/native/64; and on native_sim, listener 15,984,
+      service server 16,816, service client 20,496, action server 33,648,
+      action client 33,568 (C and C++ alike). The action images set the
+      default: 33,648 + the 24,576-byte floor is 58,224. A C image that
+      declares no action could take 48 KiB; nothing in Kconfig knows what an
+      image declares, so that image states it.
 
       Size of the rlsf arena in nros-platform's zephyr_heap, which backs
       BOTH z_malloc and __rust_alloc since the allocation funnel moved off
@@ -2510,12 +2519,20 @@ config NROS_GRAPH_CACHE_SIZE
       box running one stock talker plus the ROS 2 daemon carrying 222 tokens,
       about 31 KB, at roughly 140 bytes per keyexpr.
 
-      That default is 20% of this board's entire SRAM, and it lands in .bss
-      whether or not the graph is ever queried. An image whose domain holds a
-      handful of entities should turn it down: 8192 still holds ~58 tokens.
-      Overflow is counted and reported by zpico_graph_cache_copy, never
-      silently truncated, so a value that is too small shows up as a drop
-      count rather than as a wrong answer.
+      It lands in .bss (inside `g_sessions`) whether or not the graph is ever
+      queried, on every image with an IP link: issue 2202 measured g_sessions
+      at 82,752 B over TCP on mps2_an385 against 17,176 B on the serial
+      nucleo_f767zi image, which derives NROS_ZENOH_GRAPH_DISCOVERY off and
+      compiles the cache out. On a 256 KiB part it is a quarter of SRAM.
+
+      Nothing about this image can derive it (phase-412): the cache holds the
+      whole DOMAIN's liveliness tokens, remote ones included. What can follow
+      the target is a STATED count: NROS_GRAPH_MAX_ENTITIES (141 bytes an
+      entity), set by the image or by a small board in its descriptor's
+      `[knobs.graph] max_entities` (issue 2194's board rung). 8192 still holds
+      ~58 tokens. Overflow is counted and reported by zpico_graph_cache_copy,
+      never silently truncated, so a value that is too small shows up as a
+      drop count rather than as a wrong answer.
 
 
 # prompt: Keep a graph cache (liveliness subscriber on the whole domain)
