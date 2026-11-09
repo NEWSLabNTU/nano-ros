@@ -407,6 +407,42 @@ config NROS_ZENOH_MULTI_THREAD
       `zpico_lease` were two tasks. Required for non-blocking operation.
       Maps to Z_FEATURE_MULTI_THREAD.
 
+config NROS_CONSOLE_WHOLE_LINES
+    bool "Send each C stdout line to printk whole, so cores never split a line"
+    depends on PRINTK && PICOLIBC && THREAD_LOCAL_STORAGE
+    default y if SMP
+    help
+      Install a stdout hook that collects each thread's C stdout (printf,
+      puts, putchar) into a per-thread line buffer and hands every complete
+      line to printk as one call.
+
+      Without it, an image has two writers on one console: printk (which,
+      under CONFIG_LOG_PRINTK, the logging thread prints) and picolibc's
+      stdout, which writes one character at a time and shares no lock with
+      printk. On two cores the two paths interleave character by character,
+      so a line such as `nros: core pin observed ... running_on=1` arrives
+      cut in two and a test reading it line by line misses it (issue 2384).
+      With the hook there is one writer: under CONFIG_LOG_PRINTK every line
+      is a log message and the logging thread prints each one whole; without
+      it every line is one printk call under CONFIG_PRINTK_SYNC's lock.
+
+      A line longer than the buffer is sent in pieces. Output from an ISR or
+      before the kernel starts bypasses the buffer, one character at a time.
+      Text after the last newline stays buffered until a newline arrives.
+
+      On by default for SMP images, where the split was measured. A
+      uniprocessor image can still split a line when a thread is preempted
+      mid-line, but that was not observed, so it is off there.
+
+config NROS_CONSOLE_WHOLE_LINES_BUFFER
+    int "Per-thread line buffer for NROS_CONSOLE_WHOLE_LINES (bytes)"
+    depends on NROS_CONSOLE_WHOLE_LINES
+    range 16 1024
+    default 160
+    help
+      Thread-local storage, so every thread pays it. A longer line is sent in
+      pieces, each still whole.
+
 config NROS_FAULT_LOG
     bool "Record a post-mortem fault record that survives reset"
     default n
