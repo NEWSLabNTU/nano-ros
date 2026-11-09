@@ -797,6 +797,7 @@ fn monitor_table(
                     starts_at: r.starts_at.into_iter().map(member).collect(),
                 })
                 .collect(),
+            requirement: h.requirement,
         })
         .collect::<Vec<HazardRow>>();
     // phase-462 W4b -- each mode's numbers for the rows kept above, by the

@@ -450,6 +450,10 @@ pub struct HazardRow {
     /// (`nros_cpp_hazard_rung_t`). Empty: no rung route is monitored.
     #[serde(default)]
     pub rungs: Vec<HazardRung>,
+    /// rlm v0.3.13 -- the safety requirement the hazard traces to, as `id` or
+    /// `id (source)`; empty = none. Rendered as a comment beside the row.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub requirement: String,
 }
 
 /// play_launch phase 96 W4.2 -- one rung of a [`HazardRow`]'s ladder.

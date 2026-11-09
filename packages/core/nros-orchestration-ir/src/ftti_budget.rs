@@ -35,8 +35,9 @@
 //! | omission, loss     | `min-rate-runtime`    | two rate windows ([`RATE_DETECTION_MS`](crate::ftti_budget::RATE_DETECTION_MS)) |
 //! | late               | `max-age-runtime`     | the subscriber's `max_age_ms` |
 //!
-//! The fastest applicable row wins for each member. `overrun` and `reported`
-//! have no executor-side detector on a guard topic (a `reported` fault is the
+//! The fastest applicable row wins for each member. `overrun`, `reported`
+//! and rlm v0.3.13's `repetition`, `resequencing` and `insertion` have no
+//! executor-side detector on a guard topic (a `reported` fault is the
 //! application's own diagnostic), so a class with no row is UNOBSERVED here:
 //! it is listed on the hazard's budget and never counted -- the Linux side,
 //! or the application, may observe it, and a check that guessed would refuse
@@ -233,6 +234,12 @@ impl fmt::Display for FttiBudgetError {
 impl std::error::Error for FttiBudgetError {}
 
 /// The classes a hazard reports; an empty `on` means every class.
+///
+/// "Every class" is the five the contract had before rlm v0.3.13: the
+/// communication classes it added (`repetition`, `resequencing`,
+/// `insertion`) are judged only where a hazard's `on:` names them, as
+/// play_launch's observer judges them, so an `on:`-less hazard's
+/// unobserved list does not grow with the vocabulary.
 fn classes(h: &HazardContract) -> Vec<FaultKind> {
     if h.on.is_empty() {
         vec![
@@ -259,7 +266,15 @@ fn detector(model: &SystemModel, topic: &str, kind: FaultKind) -> Option<Detecto
     let age_rule = match kind {
         FaultKind::Omission | FaultKind::Loss => Some("silence-runtime"),
         FaultKind::Late => Some("max-age-runtime"),
-        FaultKind::Reported | FaultKind::Overrun => None,
+        // rlm v0.3.13's communication classes need the previous stamp of
+        // each publisher (repetition, resequencing) or the set of publishers
+        // the contract names (insertion); the executor tracks neither, so
+        // they are UNOBSERVED here, listed and never counted.
+        FaultKind::Reported
+        | FaultKind::Overrun
+        | FaultKind::Repetition
+        | FaultKind::Resequencing
+        | FaultKind::Insertion => None,
     };
     if let Some(rule) = age_rule {
         for sub in &wiring.subscribers {
@@ -617,6 +632,32 @@ pub(crate) mod tests {
             vec![("/scan".to_string(), FaultKind::Reported)]
         );
         assert_eq!(b.total_ms(), Some(120.0));
+    }
+
+    /// rlm v0.3.13's communication classes have no detector on the image:
+    /// named in `on:`, each is listed as unobserved, never counted.
+    #[test]
+    fn the_communication_classes_are_unobserved() {
+        let hazard = HAZARD.replace(
+            "on: omission",
+            "on: [omission, repetition, resequencing, insertion]",
+        );
+        let m = parse(&model_yaml(
+            AGE_100,
+            "",
+            &format!("{hazard}      ftti_ms: 500.0\n"),
+            "",
+        ));
+        let b = &hazard_budgets(&m).expect("resolves")[0];
+        assert_eq!(
+            b.unobserved,
+            vec![
+                ("/scan".to_string(), FaultKind::Repetition),
+                ("/scan".to_string(), FaultKind::Resequencing),
+                ("/scan".to_string(), FaultKind::Insertion),
+            ]
+        );
+        assert_eq!(b.total_ms(), Some(120.0), "omission is still counted");
     }
 
     /// No FTTI, or a reaction with no latency: nothing to add up, so no

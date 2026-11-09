@@ -712,7 +712,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-derive"
 version = "0.7.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.12#d2e2290a327d3d3353f2287a77b1b77a3d416e67"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.13#2d179bb573d97ea4328cf9e231787ef432e0f0ae"
 dependencies = [
  "ros-launch-manifest-model",
  "ros-launch-manifest-sched",
@@ -722,7 +722,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-model"
 version = "0.7.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.12#d2e2290a327d3d3353f2287a77b1b77a3d416e67"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.13#2d179bb573d97ea4328cf9e231787ef432e0f0ae"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -736,7 +736,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-rlx"
 version = "0.7.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.12#d2e2290a327d3d3353f2287a77b1b77a3d416e67"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.13#2d179bb573d97ea4328cf9e231787ef432e0f0ae"
 dependencies = [
  "sha2",
  "unicode-normalization",
@@ -745,7 +745,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-sched"
 version = "0.7.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.12#d2e2290a327d3d3353f2287a77b1b77a3d416e67"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.13#2d179bb573d97ea4328cf9e231787ef432e0f0ae"
 dependencies = [
  "ros-launch-manifest-types",
  "serde",
@@ -756,7 +756,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.7.0"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.12#d2e2290a327d3d3353f2287a77b1b77a3d416e67"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.3.13#2d179bb573d97ea4328cf9e231787ef432e0f0ae"
 dependencies = [
  "ros-launch-manifest-rlx",
  "serde",

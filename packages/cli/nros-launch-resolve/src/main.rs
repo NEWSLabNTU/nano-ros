@@ -181,6 +181,11 @@ fn main() -> Result<()> {
         system: cli.system.as_deref(),
         target: cli.target.as_str(),
         explain: cli.explain,
+        // play_launch phase 102 M2: whether composables in one container
+        // run in processes of their own, which `independence: { not_sharing:
+        // [process] }` is judged against. An image runs every node it holds
+        // in one address space, so `false` (shared) is the honest answer.
+        process_per_composable: false,
     })?;
 
     let yaml = model.to_yaml_string()?;

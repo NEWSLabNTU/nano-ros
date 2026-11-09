@@ -917,6 +917,31 @@ fn typed_emit_bakes_the_hazard_table_after_the_monitors() {
     assert!(!plain.contains("nros_cpp_install_hazards"), "{plain}");
 }
 
+/// rlm v0.3.13 -- a hazard's `requirement` is baked as a comment right above
+/// its row; the row itself is the row it was without one.
+#[test]
+fn typed_emit_carries_a_hazards_requirement_beside_its_row() {
+    let plan = fixture_plan(&[("talker_pkg", "talker"), ("listener_pkg", "listener")]);
+    let (rows, ages) = c_monitor_fixture_rows();
+    let model = super::hazard_fixture_model_with_requirement();
+    let (src, _) = super::emit_typed_monitored_lowered(
+        Lang::C,
+        &plan,
+        &rows,
+        &ages,
+        Some(&model),
+        &[],
+        &super::ModeSchedTask::default(),
+    )
+    .expect("hazard emit ok");
+    assert!(
+        src.contains(
+            "    /* requirement: SR-7 (hara.md) */\n    { \"d.launch.xml/chatter_lost\", 400u, 0u, __nros_hz_monitors_0, 1u, 65535u, 0u, NULL, 0u },"
+        ),
+        "requirement comment above the unchanged row; src:\n{src}"
+    );
+}
+
 /// phase-462 W3c -- a hazard reacting through a path that states a
 /// `safe_state` carries that path's reaction id, and the entry declares the
 /// weak `nros_app_reaction_hook` and installs it so the detection can start
