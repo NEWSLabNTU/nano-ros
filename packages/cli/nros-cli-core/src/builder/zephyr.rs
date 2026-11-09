@@ -1113,3 +1113,153 @@ mod configure_once_tests {
 pub fn lang_rust_module_dir(workspace: &Path) -> PathBuf {
     workspace.join("modules").join("lang").join("rust")
 }
+
+/// Issue 2358 -- the west `projects:` entry that fetches zephyr-lang-rust into a
+/// user's workspace, at the revision nano-ros pins for `zephyr_line`.
+///
+/// Read from the manifest that line's allowlist lives in
+/// ([`ZEPHYR_MANIFEST_LINES`](crate::orchestration::sdk_index::ZEPHYR_MANIFEST_LINES):
+/// `west.yml` for 3.7, `west-4.4.yml` for 4.4), so the revision has one home and
+/// cannot drift from what nano-ros itself builds against. The entry carries a
+/// full `url:` rather than `remote:`, because a user's manifest need not name
+/// the `zephyrproject-rtos` remote, and its `path:` is the one
+/// [`lang_rust_module_dir`] checks.
+///
+/// This replaced a hint naming a per-board `west-downstream.yml` fragment that
+/// existed for one board only, by an absolute `self: import: file:` path west
+/// 1.x refuses as malformed. A `projects:` entry is valid in any manifest.
+///
+/// `Err` names what could not be read: an unknown line, a missing manifest
+/// (an installed SDK that ships none), or a manifest with no such project.
+pub fn lang_rust_project_entry(nano_ros_root: &Path, zephyr_line: &str) -> Result<String, String> {
+    use crate::orchestration::sdk_index::ZEPHYR_MANIFEST_LINES;
+    let Some((_, file)) = ZEPHYR_MANIFEST_LINES
+        .iter()
+        .find(|(l, _)| *l == zephyr_line)
+    else {
+        let known: Vec<&str> = ZEPHYR_MANIFEST_LINES.iter().map(|(l, _)| *l).collect();
+        return Err(format!(
+            "nano-ros carries no Zephyr {zephyr_line} manifest (lines: {})",
+            known.join(", ")
+        ));
+    };
+    let path = nano_ros_root.join(file);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let doc: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let manifest = &doc["manifest"];
+    let project = manifest["projects"]
+        .as_sequence()
+        .into_iter()
+        .flatten()
+        .find(|p| p["name"].as_str() == Some("zephyr-lang-rust"))
+        .ok_or_else(|| format!("{} names no zephyr-lang-rust project", path.display()))?;
+    let revision = project["revision"]
+        .as_str()
+        .ok_or_else(|| format!("{}: zephyr-lang-rust has no revision", path.display()))?;
+    let url = match project["url"].as_str() {
+        Some(u) => u.to_string(),
+        None => {
+            let remote = project["remote"]
+                .as_str()
+                .ok_or_else(|| format!("{}: zephyr-lang-rust has no remote", path.display()))?;
+            let base = manifest["remotes"]
+                .as_sequence()
+                .into_iter()
+                .flatten()
+                .find(|r| r["name"].as_str() == Some(remote))
+                .and_then(|r| r["url-base"].as_str())
+                .ok_or_else(|| format!("{}: no url-base for remote `{remote}`", path.display()))?;
+            format!("{}/zephyr-lang-rust", base.trim_end_matches('/'))
+        }
+    };
+    Ok(format!(
+        "    - name: zephyr-lang-rust\n      url: {url}\n      revision: {revision}\n      \
+         path: modules/lang/rust"
+    ))
+}
+
+/// Issue 2358 -- how to add zephyr-lang-rust to a workspace that lacks it, as
+/// text a user can follow: the [`lang_rust_project_entry`] to paste under the
+/// manifest's `projects:`, and the `west update` that fetches it. When the
+/// entry cannot be read, the reason, and the module's name and path, so the
+/// message still says what is missing.
+#[must_use]
+pub fn lang_rust_module_remedy(nano_ros_root: &Path, zephyr_line: &str) -> String {
+    match lang_rust_project_entry(nano_ros_root, zephyr_line) {
+        Ok(entry) => format!(
+            "add this entry under `projects:` in your west manifest, then run \
+             `west update zephyr-lang-rust`:\n{entry}"
+        ),
+        Err(why) => format!(
+            "add the zephyr-lang-rust project (path `modules/lang/rust`) to your west \
+             manifest and run `west update zephyr-lang-rust` ({why})"
+        ),
+    }
+}
+
+#[cfg(test)]
+mod lang_rust_entry_tests {
+    use super::*;
+
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf()
+    }
+
+    /// Issue 2358 -- the recipe names a revision nano-ros actually pins, and is
+    /// a `projects:` entry: no fragment file, no absolute `self: import:` path.
+    #[test]
+    fn the_entry_is_a_projects_row_at_the_pinned_revision() {
+        let root = repo_root();
+        for (line, file) in crate::orchestration::sdk_index::ZEPHYR_MANIFEST_LINES {
+            let entry = lang_rust_project_entry(&root, line).expect("entry");
+            let manifest = std::fs::read_to_string(root.join(file)).unwrap();
+            let rev = entry
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("revision: "))
+                .expect("a revision line");
+            assert!(manifest.contains(rev), "{line}: {rev} is not {file}'s pin");
+            assert!(entry.contains("path: modules/lang/rust"), "{entry}");
+            assert!(
+                entry.contains("url: https://github.com/zephyrproject-rtos/zephyr-lang-rust"),
+                "{entry}"
+            );
+            assert!(!entry.contains("import"), "no import recipe: {entry}");
+            assert!(!entry.contains("west-downstream"), "no fragment: {entry}");
+            // Parses as the YAML a user pastes under `projects:`.
+            let parsed: serde_yaml_ng::Value =
+                serde_yaml_ng::from_str(&format!("projects:\n{entry}\n")).expect("valid YAML");
+            assert_eq!(
+                parsed["projects"][0]["path"].as_str(),
+                Some("modules/lang/rust")
+            );
+        }
+    }
+
+    /// The two lines pin different revisions, so the line decides the answer.
+    #[test]
+    fn each_line_reads_its_own_manifest() {
+        let root = repo_root();
+        let a = lang_rust_project_entry(&root, "3.7").unwrap();
+        let b = lang_rust_project_entry(&root, "4.4").unwrap();
+        assert_ne!(a, b);
+    }
+
+    /// Negative controls: an unknown line, and an SDK root with no manifest,
+    /// are named rather than answered with a guess.
+    #[test]
+    fn an_unknown_line_or_a_missing_manifest_is_an_error() {
+        let err = lang_rust_project_entry(&repo_root(), "9.9").unwrap_err();
+        assert!(err.contains("9.9"), "{err}");
+        let empty = tempfile::tempdir().unwrap();
+        let err = lang_rust_project_entry(empty.path(), "3.7").unwrap_err();
+        assert!(err.contains("west.yml"), "{err}");
+        let remedy = lang_rust_module_remedy(empty.path(), "3.7");
+        assert!(remedy.contains("zephyr-lang-rust") && remedy.contains("modules/lang/rust"));
+    }
+}

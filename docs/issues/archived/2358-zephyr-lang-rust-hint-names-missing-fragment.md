@@ -1,15 +1,16 @@
 ---
 id: 2358
 title: "`nros setup board <zephyr-board> --zephyr-workspace` tells a Rust user to import a west fragment that does not exist, by an absolute path west refuses"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cli, setup, zephyr, rust]
 related: [phase-548]
 found: 2026-11-07
+resolved: 2026-11-09
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**
+**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**
 (found by W7, the Rust cell on `nucleo-f767zi-zephyr`).
 
 ## What
@@ -84,3 +85,30 @@ the Rust image configured.
   recipe names no missing file and no absolute `self: import:` path.
 - `nros build` of a Rust Zephyr image on such a workspace stops with a
   message naming `zephyr-lang-rust`, not a Kconfig warning.
+
+## Resolution (2026-11-09)
+
+- `nros setup board <b> --zephyr-workspace` prints a `projects:` entry for
+  `zephyr-lang-rust`, with a full `url:`, the revision nano-ros pins for the
+  board's Zephyr line, and `path: modules/lang/rust`, followed by
+  `west update zephyr-lang-rust`. It no longer names a fragment file or an
+  absolute `self: import:` path. The entry comes from
+  `builder::zephyr::lang_rust_project_entry`, which reads the line's own
+  manifest (`west.yml` for 3.7, `west-4.4.yml` for 4.4; the two pin different
+  revisions), so it cannot drift from what nano-ros builds against. When the
+  manifest cannot be read (an SDK that ships none), the message still names
+  the module, its path and the `west update`.
+- `nros build` of a Rust image on a Zephyr workspace without
+  `modules/lang/rust` stops at preflight (`preflight::check_zephyr_lang_rust`)
+  with "the zephyr-lang-rust module at <ws>/modules/lang/rust ... this west
+  workspace does not fetch it", and names the `nros setup board` line that
+  prints the entry. West never runs, so the Kconfig warning no longer appears.
+
+Tests: `the_entry_is_a_projects_row_at_the_pinned_revision` (both lines;
+asserts the revision is the manifest's pin, the entry parses as YAML, and it
+names no fragment and no import), `each_line_reads_its_own_manifest`,
+`an_unknown_line_or_a_missing_manifest_is_an_error`, and
+`a_workspace_without_zephyr_lang_rust_is_refused_by_name` with the module
+present and no workspace as negative controls.
+
+Not done here: the starter's Rust tab showing the line is phase-548 W8.
