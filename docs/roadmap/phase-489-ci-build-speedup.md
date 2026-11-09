@@ -1099,3 +1099,4 @@ this phase will fix it.
 | --- | --- |
 | [#2299](../issues/2299-sync-central-patch-unused-in-host-tools.md) | Three "patch … was not used" warnings per host-tool cargo call: build noise on the CI build path this phase owns. |
 | [#2344](../issues/2344-fixture-builds-refuse-bundled-interfaces-on-runner.md) | Reopened 2026-11-07: tier 2 on the 241 runner stops on the bundled-interfaces refusal, because its image predates `ENV AMENT_PREFIX_PATH`. Closes when every runner image is rebuilt from main. |
+| [#2369](../issues/2369-sdk-release-504-ejects-merge-queue.md) | A GitHub release 504 during `nros setup` fails the merge-group `template-copy-out` jobs and ejects unrelated queue entries: the required gate's reliability, which this phase owns. |
