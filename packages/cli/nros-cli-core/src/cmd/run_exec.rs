@@ -513,6 +513,15 @@ pub fn plan_router(endpoint: &str) -> Result<RouterStart, String> {
 /// [`plan_router`] over the endpoints a router would listen on, the link's
 /// own first.
 fn plan_router_over(endpoints: Vec<String>, within: Duration) -> Result<RouterStart, String> {
+    plan_router_with(endpoints, |addr| probe_port(addr, within))
+}
+
+/// [`plan_router_over`] with the probe as a seam, so a test can state "this
+/// port is free" without needing a port no parallel test can take.
+fn plan_router_with(
+    endpoints: Vec<String>,
+    holder_of: impl Fn(SocketAddr) -> PortHolder,
+) -> Result<RouterStart, String> {
     let mut listen = Vec::new();
     let mut connect = Vec::new();
     for (i, ep) in endpoints.into_iter().enumerate() {
@@ -531,7 +540,7 @@ fn plan_router_over(endpoints: Vec<String>, within: Duration) -> Result<RouterSt
             continue;
         };
         let at = format!("tcp/{probe}:{port}");
-        match probe_port(SocketAddr::new(ip, port), within) {
+        match holder_of(SocketAddr::new(ip, port)) {
             PortHolder::Free => listen.push(ep),
             PortHolder::ZenohRouter if i == 0 => return Ok(RouterStart::Reuse(at)),
             PortHolder::ZenohRouter => connect.push(at),
@@ -1465,11 +1474,6 @@ mod tests {
         (port, h)
     }
 
-    fn free_port() -> u16 {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
-    }
-
     /// Issue 2315: a zenoh router already on the link's endpoint is reused,
     /// decided by its answer to an InitSyn; a free port starts a router.
     #[test]
@@ -1483,11 +1487,12 @@ mod tests {
         // version 9, an 8-byte zid as a client.
         assert_eq!(&h.join().unwrap()[..5], &[11, 0, 0x01, 0x09, 0x72]);
 
-        let port = free_port();
+        // The free case goes through the probe seam: a port bound and
+        // dropped here could be taken by a parallel test before the probe.
         assert_eq!(
-            plan_router(&format!("tcp/127.0.0.1:{port}")).unwrap(),
+            plan_router_with(vec!["tcp/127.0.0.1:7447".to_string()], |_| PortHolder::Free).unwrap(),
             RouterStart::Start {
-                listen: vec![format!("tcp/127.0.0.1:{port}")],
+                listen: vec!["tcp/127.0.0.1:7447".to_string()],
                 connect: vec![],
             }
         );
@@ -1512,15 +1517,14 @@ mod tests {
                 connect: vec![format!("tcp/127.0.0.1:{port}")],
             }
         );
-        let port = free_port();
         assert_eq!(
-            plan_router_over(
-                vec![serial.clone(), format!("tcp/127.0.0.1:{port}")],
-                Duration::from_secs(1)
+            plan_router_with(
+                vec![serial.clone(), "tcp/127.0.0.1:7447".to_string()],
+                |_| PortHolder::Free
             )
             .unwrap(),
             RouterStart::Start {
-                listen: vec![serial, format!("tcp/127.0.0.1:{port}")],
+                listen: vec![serial, "tcp/127.0.0.1:7447".to_string()],
                 connect: vec![],
             }
         );
