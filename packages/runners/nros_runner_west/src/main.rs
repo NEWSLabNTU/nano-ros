@@ -13,7 +13,7 @@
 //! Zephyr owns the emulator's command line and the flash runner's; this
 //! runner restates neither.
 
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 
 use nros_extension::{
     describe::Describe,
@@ -23,7 +23,7 @@ use nros_extension::{
 };
 use nros_runner_west::{
     build_dir, flash_argv, flash_runner, flash_runners, no_passthrough, run_argv, run_targets,
-    target_for, west_program,
+    target_for, west_command,
 };
 
 fn describe() -> Describe {
@@ -58,7 +58,7 @@ fn run(plan: &RunPlan) -> RunnerExit {
         Ok::<_, String>(run_argv(&dir, &target))
     })();
     match prepared {
-        Ok(argv) => runner::exec(Command::new(west_program(plan)).args(argv)),
+        Ok(argv) => runner::exec(west_command(plan).args(argv)),
         Err(e) => runner::fail(e),
     }
 }
@@ -71,7 +71,7 @@ fn flash(plan: &RunPlan) -> RunnerExit {
         Ok::<_, String>(flash_argv(&dir, &r, &plan.passthrough))
     })();
     match prepared {
-        Ok(argv) => runner::exec_tool(Command::new(west_program(plan)).args(argv)),
+        Ok(argv) => runner::exec_tool(west_command(plan).args(argv)),
         Err(e) => runner::fail(e),
     }
 }
