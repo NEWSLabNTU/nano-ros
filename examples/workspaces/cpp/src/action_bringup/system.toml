@@ -20,6 +20,13 @@ pkg = "action_client_pkg"
 class = "action_client_pkg::FibClient"
 name = "fib_client"
 
+# phase-535 W6 (RFC-0122 D2) — the callback VARIANT of the client, on the
+# typed rclcpp_action::Client: image ids `<platform>_action_client_callback[_<rmw>]`.
+[[component]]
+pkg = "action_client_callback_pkg"
+class = "action_client_callback_pkg::FibCallbackClient"
+name = "fib_callback_client"
+
 [image_defaults]
 rmw = "zenoh"
 
@@ -65,6 +72,11 @@ rmw = "xrce"
 board = "linux"
 launch = "action_client.launch.xml"
 rmw = "cyclonedds"
+
+# The callback variant (phase-535 W6). Was `examples/linux/cpp/action-client-callback`.
+[image.linux_action_client_callback]
+board = "linux"
+launch = "action_client_callback.launch.xml"
 
 # ThreadX's Linux simulator (a hosted process, NSOS host sockets): it
 # dials loopback directly. `locator` is the cell's `alloc::port_of`; no

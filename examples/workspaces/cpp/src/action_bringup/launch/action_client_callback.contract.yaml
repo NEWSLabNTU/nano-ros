@@ -1,0 +1,20 @@
+# Node interface contract for action_client_callback.launch.xml (phase-535
+# W6, the callback variant of action_client.contract.yaml). The server is the
+# separate fib_server image.
+
+version: 1
+
+nodes:
+  fib_callback_client:
+    # The 100 ms poll timer: it drains the client's replies into the
+    # SendGoalOptions callbacks (issue 0047) and sends the goal.
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: []
+
+actions:
+  /fibonacci:
+    type: example_interfaces/action/Fibonacci
+    external: server
+    client: [fib_callback_client/fibonacci]

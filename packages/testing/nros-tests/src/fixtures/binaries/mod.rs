@@ -1148,7 +1148,7 @@ fn moved_linux_pair(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
 /// or `None` when `name` is not a pair role.
 fn linux_pair_workspace_image(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
     use crate::{
-        fixtures::workspace_image::{PairRole, resolve_coord},
+        fixtures::workspace_image::{PairRole, Variant, resolve_coord_variant},
         matrix::{Lang, PlatformId, Rmw as MRmw},
     };
     let (lang, case) = name.strip_prefix("linux/")?.split_once('/')?;
@@ -1158,12 +1158,16 @@ fn linux_pair_workspace_image(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf
         "cpp" => Lang::Cpp,
         _ => return None,
     };
-    let role = match case {
-        "listener" => PairRole::Listener,
-        "service-server" => PairRole::ServiceServer,
-        "service-client" => PairRole::ServiceClient,
-        "action-server" => PairRole::ActionServer,
-        "action-client" => PairRole::ActionClient,
+    // phase-535 W6 — a `-callback` leaf was a VARIANT of its role (RFC-0122
+    // D2): its own node package, an image of the same behaviour bringup.
+    let (role, variant) = match case {
+        "listener" => (PairRole::Listener, None),
+        "service-server" => (PairRole::ServiceServer, None),
+        "service-client" => (PairRole::ServiceClient, None),
+        "action-server" => (PairRole::ActionServer, None),
+        "action-client" => (PairRole::ActionClient, None),
+        "service-client-callback" => (PairRole::ServiceClient, Some(Variant::Callback)),
+        "action-client-callback" => (PairRole::ActionClient, Some(Variant::Callback)),
         _ => return None,
     };
     let rmw = match rmw {
@@ -1171,7 +1175,13 @@ fn linux_pair_workspace_image(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf
         Rmw::Xrce => MRmw::Xrce,
         Rmw::Cyclonedds => MRmw::Cyclonedds,
     };
-    Some(resolve_coord(PlatformId::Linux, lang, rmw, role))
+    Some(resolve_coord_variant(
+        PlatformId::Linux,
+        lang,
+        rmw,
+        role,
+        variant,
+    ))
 }
 
 /// `moved_linux_pair` by (language dir, case): the workspace image of one
@@ -7882,13 +7892,7 @@ pub fn build_c_service_client() -> TestResult<&'static Path> {
 /// Build c-service-client-callback example (cached, RFC-0041 / Phase 239)
 pub fn build_c_service_client_callback() -> TestResult<&'static Path> {
     C_SERVICE_CLIENT_CALLBACK_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw(
-                "linux/c/service-client-callback",
-                "c_service_client_callback",
-                Rmw::Zenoh,
-            )
-        })
+        .get_or_try_init(|| linux_pair_image("c", "service-client-callback", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -8120,13 +8124,7 @@ pub fn cpp_listener_binary() -> PathBuf {
 /// Build cpp-service-client-callback example (cached, RFC-0041 / Phase 239)
 pub fn build_cpp_service_client_callback() -> TestResult<&'static Path> {
     CPP_SERVICE_CLIENT_CALLBACK_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw(
-                "linux/cpp/service-client-callback",
-                "cpp_service_client_callback",
-                Rmw::Zenoh,
-            )
-        })
+        .get_or_try_init(|| linux_pair_image("cpp", "service-client-callback", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 
@@ -8165,13 +8163,7 @@ pub fn build_cpp_action_client() -> TestResult<&'static Path> {
 /// Build cpp-action-client-callback example (cached, RFC-0041 / Phase 239)
 pub fn build_cpp_action_client_callback() -> TestResult<&'static Path> {
     CPP_ACTION_CLIENT_CALLBACK_BINARY
-        .get_or_try_init(|| {
-            build_example_cmake_rmw(
-                "linux/cpp/action-client-callback",
-                "cpp_action_client_callback",
-                Rmw::Zenoh,
-            )
-        })
+        .get_or_try_init(|| linux_pair_image("cpp", "action-client-callback", Rmw::Zenoh))
         .map(|p| p.as_path())
 }
 

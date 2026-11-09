@@ -4,4 +4,5 @@
 <launch>
   <node pkg="service_server_pkg" exec="add_server" name="add_server"/>
   <node pkg="service_client_pkg" exec="add_client" name="add_client"/>
+  <node pkg="service_client_callback_pkg" exec="add_callback_client" name="add_callback_client"/>
 </launch>

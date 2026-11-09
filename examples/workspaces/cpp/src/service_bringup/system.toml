@@ -20,6 +20,13 @@ pkg = "service_client_pkg"
 class = "service_client_pkg::AddClient"
 name = "add_client"
 
+# phase-535 W6 (RFC-0122 D2) — the callback VARIANT of the client: its own
+# package, image ids `<platform>_service_client_callback[_<rmw>]`.
+[[component]]
+pkg = "service_client_callback_pkg"
+class = "service_client_callback_pkg::AddCallbackClient"
+name = "add_callback_client"
+
 [image_defaults]
 rmw = "zenoh"
 
@@ -64,6 +71,17 @@ rmw = "xrce"
 [image.linux_service_client_cyclonedds]
 board = "linux"
 launch = "service_client.launch.xml"
+rmw = "cyclonedds"
+
+# The callback variant (phase-535 W6): zenoh, and Cyclone for RFC-0041's
+# backend-parity check (phase 239.8). Was `examples/linux/cpp/service-client-callback`.
+[image.linux_service_client_callback]
+board = "linux"
+launch = "service_client_callback.launch.xml"
+
+[image.linux_service_client_callback_cyclonedds]
+board = "linux"
+launch = "service_client_callback.launch.xml"
 rmw = "cyclonedds"
 
 # ThreadX's Linux simulator (a hosted process, NSOS host sockets): it
