@@ -54,7 +54,7 @@ fn main() {
     let window = Duration::from_millis(env_u64("CLP_WINDOW_MS", 8_000));
     let graph_budget = Duration::from_millis(env_u64("CLP_GRAPH_MS", 10_000));
 
-    let ctx = nros::init().expect("nros init failed");
+    let ctx = nros::init().expect("nros::init failed");
     let cfg = ctx.config("constrained_link_probe");
     let mut executor: Executor = Executor::open(&cfg).expect("open session");
     let nid = executor

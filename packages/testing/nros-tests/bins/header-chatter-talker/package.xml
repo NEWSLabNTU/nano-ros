@@ -9,7 +9,7 @@
 
   <!-- The interface packages this bin's `generated/` is produced FROM.
        `scripts/regenerate-bindings.sh` section 3 finds this file and runs
-       `nros generate-rust` here; without it the leaf was invisible to the
+       `nros dev codegen rust` here; without it the leaf was invisible to the
        regenerator, which is why its `generated/` had to be committed. -->
   <depend>std_msgs</depend>
   <depend>builtin_interfaces</depend>

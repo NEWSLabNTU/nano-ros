@@ -1,7 +1,7 @@
 # Bundled interface packages
 
 Vendored ROS 2 interface **sources** (`package.xml` + `msg/*.msg`) so
-`nros sync` / `cargo nano-ros` codegen works on hosts **without a ROS 2
+`nros configure` / `cargo nano-ros` codegen works on hosts **without a ROS 2
 installation** — the book's first-node flow ("no ROS 2 needed") depends on
 this: without it, `std_msgs = "*"` falls through the patch table to
 crates.io, which only carries a yanked, unrelated `std_msgs` crate.
@@ -9,7 +9,7 @@ crates.io, which only carries a yanked, unrelated `std_msgs` crate.
 - Source: ROS 2 Humble (`/opt/ros/humble/share/`), `std_msgs` 4.9.1 +
   `builtin_interfaces` 1.2.2. License: Apache-2.0 (see each `package.xml`).
 - phase-327 W5 (issue 0368 F4) — the set must cover what the IN-TREE example
-  workspaces depend on, else a ROS-less host cannot `nros sync` the repo's
+  workspaces depend on, else a ROS-less host cannot `nros configure` the repo's
   own examples (and, before the W5 guard, the failed sync silently NARROWED
   the tracked patch table). Added from the ros2 GitHub `humble` branches:
   `example_interfaces` 0.9.3 (`f8deb566`), `action_msgs` 1.2.3
@@ -21,7 +21,7 @@ crates.io, which only carries a yanked, unrelated `std_msgs` crate.
   find-stub gained its bundle rung and the local_msg_pkg compile-check
   fixture (which deliberately consumes AMENT pkgs) first ran ROS-less.
   All Apache-2.0. If an example grows a NEW interface dep, vendor it here in
-  the same change — the acceptance is `nros sync examples/workspaces/<ws>`
+  the same change — the acceptance is `nros configure examples/workspaces/<ws>`
   green with no `AMENT_PREFIX_PATH`.
 - Only the codegen inputs are vendored (`package.xml`, `msg/`) — no cmake,
   no IDL, no prebuilt bindings.

@@ -75,7 +75,7 @@ def known_rmw_backends():
     )
     if result.returncode != 0:
         raise RuntimeError(
-            "`nros ws rmw-dispatch --known` failed, so the RMW backends on this "
+            "`nros dev rmw dispatch --known` failed, so the RMW backends on this "
             f"search path are unknown:\n{result.stderr.strip()}"
         )
     return tuple(result.stdout.split())
@@ -137,7 +137,7 @@ class NrosBuildTask(TaskExtensionPoint):
 
     * `<build_type>` says which build system runs (cargo or CMake);
     * the board the package's `system.toml` names says which platform (the
-      deploy token `nros ws leaf-system` derives, RFC-0098 D3), absent meaning
+      deploy token `nros dev image leaf-system` derives, RFC-0098 D3), absent meaning
       the host — the same reader `find_package(nano_ros)` asks.
 
     Board-specific configuration is handled by the board crate (Rust)
@@ -176,7 +176,7 @@ class NrosBuildTask(TaskExtensionPoint):
         """Generate workspace-level interface bindings (once per workspace).
 
         Checks NrosBindingAugmentation for collected interface dependencies,
-        then runs `nros generate-rust` once for the workspace as needed.
+        then runs `nros dev codegen rust` once for the workspace as needed.
         Output goes to build/nros_bindings/<interface_pkg>/.
         """
         global _bindings_generated

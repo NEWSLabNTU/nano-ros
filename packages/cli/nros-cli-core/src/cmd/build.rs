@@ -2648,7 +2648,7 @@ fn refuse_image_mode_flags(args: &Args, what: &str) -> Result<()> {
     if let Some(b) = &args.build_base {
         eyre::bail!(
             "`--build-base {}`: {what} builds into a fixed place under `build/`, which \
-             `nros image-facts`, the cmake module and the test fixtures read, so one build \
+             `nros dev image facts`, the cmake module and the test fixtures read, so one build \
              cannot move it. `--build-base` applies to a workspace with no bringup, where each \
              package has its own build directory.",
             b.display()

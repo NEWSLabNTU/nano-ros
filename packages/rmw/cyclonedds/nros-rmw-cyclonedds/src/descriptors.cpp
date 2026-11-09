@@ -30,7 +30,7 @@ namespace nros_rmw_cyclonedds {
 
 namespace {
 
-// DERIVED, as of phase-454 W6.c (RFC-0100 D5): `nros codegen-system` counts
+// DERIVED, as of phase-454 W6.c (RFC-0100 D5): `nros dev codegen system` counts
 // the distinct DDS type names the SystemModel registers and writes this knob
 // into the workspace's cargo `[env]`, from which `nros-rmw-cyclonedds-sys`'s
 // build script turns it into a `-D` on this TU. It is the SAME count that

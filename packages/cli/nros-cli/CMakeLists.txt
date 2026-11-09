@@ -1,7 +1,7 @@
 # packages/codegen/packages/nros-cli/CMakeLists.txt
 #
 # Builds the canonical `nros` binary via Corrosion (Cargo integration).
-# `nros codegen …` (Phase 195.A — merged in the former standalone
+# `nros dev codegen …` (Phase 195.A — merged in the former standalone
 # `nros-codegen`) is invoked by NanoRosGenerateInterfaces.cmake to generate
 # C/C++ bindings from .msg/.srv/.action files.
 #

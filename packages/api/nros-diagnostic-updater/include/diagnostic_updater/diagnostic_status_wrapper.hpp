@@ -8,7 +8,7 @@
 //
 // nano-ros expects `diagnostic_msgs` codegen to have run — generate it via
 // `nano_ros_generate_interfaces(diagnostic_msgs DiagnosticStatus DiagnosticArray
-// KeyValue LANGUAGE CPP)` (or `nros generate cpp diagnostic_msgs`) in your
+// KeyValue LANGUAGE CPP)` (or `nros interface generate cpp diagnostic_msgs`) in your
 // CMakeLists.txt before this header is included.
 
 #ifndef NROS_DIAGNOSTIC_UPDATER_DIAGNOSTIC_STATUS_WRAPPER_HPP

@@ -149,7 +149,7 @@ fn a_rejecting_runtime_refuses_generate_rust_with_no_cargo_lock_in_sight() {
 
     assert!(!ok, "expected non-zero exit; got success.\n{out}");
     assert!(out.contains("ABI version mismatch"), "{out}");
-    assert!(out.contains("nros generate-rust"), "{out}");
+    assert!(out.contains("nros dev codegen rust"), "{out}");
     assert!(
         out.contains(&format!("CLI emits codegen version:    {EMITTED_VERSION}")),
         "expected the emitted version {EMITTED_VERSION} in the message.\n{out}",

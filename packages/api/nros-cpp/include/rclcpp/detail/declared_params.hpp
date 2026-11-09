@@ -20,7 +20,7 @@
  * here: a name the contract does not declare, or a type that differs, refuses
  * the boot naming the node, the parameter and the contract.
  *
- * The table is written by `nros ws entity-inventory --output-params-header`
+ * The table is written by `nros dev image entity-inventory --output-params-header`
  * and put on the component library's include path by
  * `nano_ros_node_register()`, beside the declared-QoS table. It is keyed on
  * the node's FULLY-QUALIFIED name, because one component class may run as

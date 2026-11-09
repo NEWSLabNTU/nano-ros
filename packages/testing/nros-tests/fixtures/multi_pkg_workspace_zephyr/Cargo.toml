@@ -6,7 +6,7 @@
 #
 # The bringup dir is `exclude`d so cargo doesn't try to read it; the
 # `default_system` key under `[workspace.metadata.nros]` tells `nros
-# plan` / `nros codegen-system` which bringup pkg to resolve.
+# plan` / `nros dev codegen system` which bringup pkg to resolve.
 
 [workspace]
 resolver = "2"

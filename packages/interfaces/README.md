@@ -1,7 +1,7 @@
 # `packages/interfaces/` — the core pre-generated message set
 
 Committed ROS 2 message bindings that **core crates need before any codegen
-runs**. Everything under `generated/` here is emitted by `nros generate-rust`
+runs**. Everything under `generated/` here is emitted by `nros dev codegen rust`
 from an ament install, and is the one place in the tree where a `generated/`
 tree is tracked (CLAUDE.md's named exception to "never commit `generated/`";
 RFC-0023 is the generator, RFC-0067 the crate identity).
@@ -27,7 +27,7 @@ worktree clean.
 
 ## Why `nros-` prefixes
 
-**The prefix is load-bearing.** A consumer runs `nros sync` on their own
+**The prefix is load-bearing.** A consumer runs `nros configure` on their own
 workspace and gets their own `builtin_interfaces` crate. If nano-ros shipped a
 crate with that same ament name, the two would be a hard cargo error — *"package
 collision in the lockfile: … only one can be written to lockfile

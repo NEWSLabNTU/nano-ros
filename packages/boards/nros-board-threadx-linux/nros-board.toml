@@ -116,7 +116,7 @@ pool.app = [15, 31]
 # That is a true measurement of the wrong population, and every ThreadX-Linux
 # image — Rust, and C/C++ through the size probe — failed to COMPILE on it.
 #
-# `nros sync` narrows each LEAF's executor knobs, so the derived default
+# `nros configure` narrows each LEAF's executor knobs, so the derived default
 # differs per role. But this rung is stated ONCE per BOARD, and not every unit
 # compiled with it gets a leaf's narrowing. Measured in one build of this
 # board: `nros-node` resolves defaults of 2917, 3626, 4494 AND 11069 words.

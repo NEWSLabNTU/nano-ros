@@ -353,7 +353,7 @@ bool service_topic_name(const char* service_name, const char* prefix, const char
 // Build the suffixed type name `<base>_Request_` / `<base>_Response_`
 // the codegen helper (117.X.1) registers. Returns false on overflow.
 //
-// Phase 11W.12: the nros codegen emits SERVICE_NAME with a trailing
+// Phase 11W.12: the nros dev codegen emits SERVICE_NAME with a trailing
 // underscore (`<pkg>::srv::dds_::<Svc>_`, mirroring the message
 // `<Type>_` convention), but the registered DDS request/response types
 // — and stock `rmw_cyclonedds_cpp` — are `<pkg>::srv::dds_::<Svc>_Request_`

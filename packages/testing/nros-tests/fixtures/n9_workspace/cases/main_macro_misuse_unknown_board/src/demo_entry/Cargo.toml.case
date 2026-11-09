@@ -1,7 +1,7 @@
 # Overlay for compile-check row `main_macro_misuse_unknown_board` (issue 1656).
 #
 # The template's manifest depends on its generated selection package (issue
-# 1305), which `nros sync` writes for the image's board. This case's image names
+# 1305), which `nros configure` writes for the image's board. This case's image names
 # a board NO descriptor claims, so no selection package can exist for it — the
 # selection writer refuses the board first. The subject here is the MACRO's own
 # refusal ("unknown board `frobnicator`"), which only a manifest the selection

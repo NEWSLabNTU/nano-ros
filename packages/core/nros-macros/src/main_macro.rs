@@ -3813,7 +3813,7 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
                 "NROS_IMAGE_NET",
                 "this image names a board network file in `os_config`, which the nano-ros CLI \
                  resolves into NROS_IMAGE_NET (RFC-0109 D4) — build it with `nros build` (or run \
-                 `nros sync` first so cargo reads the generated settings)"
+                 `nros configure` first so cargo reads the generated settings)"
             ))
         }
     } else {

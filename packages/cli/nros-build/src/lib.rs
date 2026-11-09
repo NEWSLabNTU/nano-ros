@@ -209,7 +209,7 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         eyre::bail!(
             "nros-build: no SystemModel for `{}` at `{}`.\n\
              The model is BUILD OUTPUT (phase-330), not a file to commit: run \
-             `nros sync` in the workspace, or point `NROS_MODEL_DIR` at the \
+             `nros configure` in the workspace, or point `NROS_MODEL_DIR` at the \
              build dir that holds it. To resolve one by hand:\n  \
              nros-launch-resolve {} [--system {}/system.toml] -o {}",
             opts.launch_file.display(),

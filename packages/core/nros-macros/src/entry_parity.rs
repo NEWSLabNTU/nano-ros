@@ -81,7 +81,7 @@ fn cases() -> Vec<(String, LoweredEntry)> {
             panic!(
                 "read the shared parity corpus at {}: {e}\n\
                  This gate compares this crate's rendering against \
-                 `nros codegen entry`'s; with no corpus it would compare \
+                 `nros dev codegen entry`'s; with no corpus it would compare \
                  nothing and pass.",
                 dir.display()
             )
@@ -250,7 +250,7 @@ fn the_two_rust_entry_producers_render_the_corpus_identically() {
 
     assert!(
         drift.is_empty(),
-        "the proc-macro and `nros codegen entry` render the same entry facts \
+        "the proc-macro and `nros dev codegen entry` render the same entry facts \
          DIFFERENTLY:\n{}\n\nOne of the two producers changed without the \
          other. Fix the one that is wrong; regenerate the CLI goldens only \
          when the CLI is the one that should move.",

@@ -4,7 +4,7 @@
   <version>0.1.0</version>
   <description>
     phase-309 W4 codegen golden — a minimal Rust consumer that depends on
-    geometry_msgs, so `nros generate-rust` (run in an edition container) emits
+    geometry_msgs, so `nros dev codegen rust` (run in an edition container) emits
     the geometry_msgs bindings themselves. The generated MESSAGE SET is compared
     to a per-edition golden manifest, catching edition drift (e.g. jazzy's
     geometry_msgs has 33 messages vs humble's 32).

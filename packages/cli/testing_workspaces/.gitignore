@@ -1,8 +1,8 @@
-# The CLI's testing workspaces are USER-side too: the tests run `nros sync` /
+# The CLI's testing workspaces are USER-side too: the tests run `nros configure` /
 # `nros deploy` inside them. Several workspaces carry their own `.gitignore`
 # with `/build/` and `**/target/`; this covers the kinds none of them named.
 
-# `nros sync` writes a one-line `include = ["…/nros-patch.toml"]` into each
+# `nros configure` writes a one-line `include = ["…/nros-patch.toml"]` into each
 # leaf `.cargo/`, pointing at a gitignored, host-specific central patch file.
 **/.cargo/config.toml
 

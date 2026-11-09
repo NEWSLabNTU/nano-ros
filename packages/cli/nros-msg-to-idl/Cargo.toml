@@ -6,7 +6,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Vendored copy of nano-ros's `nros-msg-to-idl` (Phase 212.K.3) — used by the `nros codegen cyclonedds-descriptors` verb (Phase 212.K.4)."
+description = "Vendored copy of nano-ros's `nros-msg-to-idl` (Phase 212.K.3) — used by the `nros dev codegen cyclonedds-descriptors` verb (Phase 212.K.4)."
 
 [lib]
 name = "nros_msg_to_idl"

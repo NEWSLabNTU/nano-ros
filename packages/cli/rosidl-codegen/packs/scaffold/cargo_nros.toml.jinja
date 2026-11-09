@@ -1,7 +1,7 @@
 # WHICH EMITTER IS THIS? (read before "fixing" a version or a dep here)
 #
 # There are TWO generated-manifest emitters and this is NOT the one production
-# uses. `nros sync` / `nros generate-rust` write the on-disk Cargo.toml through
+# uses. `nros configure` / `nros dev codegen rust` write the on-disk Cargo.toml through
 # `rosidl-bindgen::generate_cargo_toml`, which OVERWRITES whatever this template
 # rendered. This template's output reaches a file only in
 # `rosidl-codegen/tests/integration_test.rs`, which writes it and asserts the
@@ -23,7 +23,7 @@
 name = "{{ package_name }}"
 # Issue 0378 — CONSTANT, deliberately not the ament package version.
 #
-# These crates are generated per host by `nros sync` from whatever the
+# These crates are generated per host by `nros configure` from whatever the
 # consumer's ament environment provides; they are never published. Cargo
 # records every resolved package in `Cargo.lock` INCLUDING path/patched ones,
 # so an ament-derived version here is baked into a committed lockfile — i.e. a
@@ -47,7 +47,7 @@ ament_version = "{{ package_version }}"
 
 [features]
 # phase-361 W3.b — `default = []`, matching `rosidl_bindgen::generator::
-# generate_cargo_toml` (generator.rs:540), which is what `nros generate-rust`
+# generate_cargo_toml` (generator.rs:540), which is what `nros dev codegen rust`
 # ACTUALLY writes. NOTE: the Cargo.toml this template renders is discarded on
 # that path — `rosidl-bindgen` uses only `generated.message_rs` and builds the
 # manifest itself — so this block had drifted to `default = ["std"]` with no

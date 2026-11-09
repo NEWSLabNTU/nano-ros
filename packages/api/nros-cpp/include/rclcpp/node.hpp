@@ -747,7 +747,7 @@ inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint
 /// Reads the domain id, locator and RMW choice from the environment
 /// (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `RMW_IMPLEMENTATION` / `NROS_RMW`), as
 /// the 2-arg `init_in` does. No launch file is read here: a launch tree
-/// reaches an image at BUILD time — `nros sync` resolves it into the
+/// reaches an image at BUILD time — `nros configure` resolves it into the
 /// SystemModel and the generated entry (`nano_ros_entry(... LAUNCH ...)`)
 /// installs its node identities, remaps and parameters.
 ///
@@ -3584,7 +3584,7 @@ inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns 
 
 /// Phase 274.W2 — create a node on an explicit executor handle.
 ///
-/// Used by per-sched-task setup functions (emitted by `nros codegen entry --lang
+/// Used by per-sched-task setup functions (emitted by `nros dev codegen entry --lang
 /// cpp` for multi-sched-task workspaces) where each sched task's setup runs on the
 /// sched task's borrowed executor, not the global one. The executor handle is the
 /// `void*` passed to the sched task's `setup(void* executor)` callback.

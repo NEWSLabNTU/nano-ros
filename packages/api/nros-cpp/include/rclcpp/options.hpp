@@ -187,7 +187,7 @@ struct ClientOptions {
 // publisher is a declared entity the program creates, so `enable_rosout(true)`
 // still has nothing to switch.
 // Their parameters and remaps are resolved from the
-// LAUNCH FILE at BUILD time — `nros sync` projects them into the generated
+// LAUNCH FILE at BUILD time — `nros configure` projects them into the generated
 // entry as `nros_cpp_declare_remap` / `nros_cpp_declare_param` calls, not into
 // the process environment (RFC-0046, RFC-0060). There is nothing behind these
 // knobs to switch. So they refuse, with one message.

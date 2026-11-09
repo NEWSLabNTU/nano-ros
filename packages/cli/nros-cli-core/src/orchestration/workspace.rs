@@ -1297,8 +1297,12 @@ fn discover_cargo_component_metadata(
     }
     let raw = fs::read_to_string(&cargo_toml)
         .wrap_err_with(|| format!("failed to read {}", cargo_toml.display()))?;
-    let envelope: CargoManifestEnvelope = toml::from_str(&raw)
-        .wrap_err_with(|| format!("failed to parse {} for nros metadata", cargo_toml.display()))?;
+    let envelope: CargoManifestEnvelope = toml::from_str(&raw).wrap_err_with(|| {
+        format!(
+            "failed to parse {} for nros dev metadata",
+            cargo_toml.display()
+        )
+    })?;
     let Some(package) = envelope.package else {
         return Ok(Vec::new());
     };

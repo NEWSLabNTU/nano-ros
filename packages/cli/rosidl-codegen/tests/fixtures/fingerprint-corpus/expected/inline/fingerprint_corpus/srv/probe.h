@@ -25,7 +25,7 @@
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
 #elif NROS_EMITTED_CODEGEN_VERSION < NROS_CODEGEN_VERSION_MIN \
    || NROS_EMITTED_CODEGEN_VERSION > NROS_CODEGEN_VERSION
-#error "nros: this generated tree was emitted at a codegen version the runtime does not accept (see NROS_EMITTED_CODEGEN_VERSION above against NROS_CODEGEN_VERSION_MIN..NROS_CODEGEN_VERSION in nros_config_generated.h). Regenerate it against the runtime you are building: `nros sync` in a consumer workspace."
+#error "nros: this generated tree was emitted at a codegen version the runtime does not accept (see NROS_EMITTED_CODEGEN_VERSION above against NROS_CODEGEN_VERSION_MIN..NROS_CODEGEN_VERSION in nros_config_generated.h). Regenerate it against the runtime you are building: `nros configure` in a consumer workspace."
 #endif
 
 #ifdef __cplusplus

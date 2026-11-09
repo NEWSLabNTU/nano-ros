@@ -1032,7 +1032,7 @@ configure_file(
     ${_w2_bringup}/rmw/cyclonedds.xml
     COPYONLY)
 # FILE, not BRINGUP: WHICH file a bringup uses is the CLI's answer
-# (`nros ws rmw-config`, RFC-0109 D6), and this standalone lane has no CLI.
+# (`nros dev rmw config`, RFC-0109 D6), and this standalone lane has no CLI.
 # What is under test here is the bake's output shape.
 nros_bake_rmw_user_config(
     FILE ${_w2_bringup}/rmw/cyclonedds.xml

@@ -548,7 +548,7 @@ fn scaffold_system_toml(
     format!(
         "# What this package deploys to (RFC-0098 D3/D5) — the same schema a workspace\n\
          # bringup uses. Switching board, RMW or ROS edition is editing this file\n\
-         # and re-running `nros sync`.\n\
+         # and re-running `nros configure`.\n\
          \n[system]\nname = \"{name}\"\nrmw = \"{rmw_value}\"\nros_edition = \"{ros_edition}\"\n\
          domain_id = 0\n\
          {component}\n[image.{platform}]\nboard = \"{board}\"\n"
@@ -657,7 +657,7 @@ name = "{module}"
 
 # A reusable component is a library (rlib); the deployed system links it.
 # nano-ros crates are not published to crates.io — `version = "*"` is
-# only the patched left-hand side. Run `nros sync` to write the nros-managed
+# only the patched left-hand side. Run `nros configure` to write the nros-managed
 # [patch.crates-io] block redirecting `nros` to your nano-ros SDK, then
 # `cargo build`. `nros` finds the SDK itself; `--nano-ros-path` names one.
 [dependencies]
@@ -668,7 +668,7 @@ nros = {{ version = "*", default-features = false, features = [
 ] }}
 nros-log = {{ version = "*", default-features = false }}
 # Message crates come from package.xml: each <depend> on a message package
-# becomes a `# nros-managed` path row below when you run `nros sync` (or
+# becomes a `# nros-managed` path row below when you run `nros configure` (or
 # `nros build`). Edit package.xml, not this table.
 "#,
         name = cfg.name,
@@ -722,7 +722,7 @@ source_metadata = "metadata/{module}.json"
     println!("Next steps:");
     println!("  cd {}", cfg.name);
     println!("  # add this package to a workspace's [system].components, then:");
-    println!("  nros metadata --build   # record its source metadata");
+    println!("  nros dev metadata --build   # record its source metadata");
 
     Ok(())
 }
@@ -980,7 +980,7 @@ fn selection_dep(name: &str) -> String {
 // See RFC-0040, Phase 204.15.
 const CARGO_PROFILES: &str = r#"
 # nano-ros crates are not published to crates.io — the `version = "*"`
-# requirements above are patched, not resolved from crates.io. Run `nros sync`
+# requirements above are patched, not resolved from crates.io. Run `nros configure`
 # to write the nros-managed [patch.crates-io] block here (path deps into your
 # nano-ros SDK + any generated msg crates), then build. `nros` finds the SDK
 # itself; `--nano-ros-path` names one explicitly.
@@ -1029,14 +1029,14 @@ crate-type = ["rlib"]
 # The board, RMW, ROS edition and node live in `system.toml` beside this
 # manifest (RFC-0098 D3/D5) — nothing here names a board, an RMW or an edition.
 # They reach the build through the generated selection package below, which
-# `nros sync` writes.
+# `nros configure` writes.
 
 [dependencies]
 nros = {{ version = "*", default-features = false, features = ["alloc", "env", "rmw-cffi", "macros"] }}
 nros-log = {{ version = "*", default-features = false }}
 {selection}
 # Message crates come from package.xml: each <depend> on a message package
-# becomes a `# nros-managed` path row below when you run `nros sync` (or
+# becomes a `# nros-managed` path row below when you run `nros configure` (or
 # `nros build`). Edit package.xml, not this table.
 {CARGO_PROFILES}"#
     );
@@ -1119,11 +1119,11 @@ crate-type = ["rlib"]
 nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }}
 nros-log = {{ version = "*", default-features = false }}
 # Message crates come from package.xml: each <depend> on a message package
-# becomes a `# nros-managed` path row below when you run `nros sync` (or
+# becomes a `# nros-managed` path row below when you run `nros configure` (or
 # `nros build`). Edit package.xml, not this table.
 
 # What the board needs to link + boot, and nothing the node in `lib.rs` uses.
-# TARGET-scoped so that `lib.rs` also builds for the host: `nros sync` probes
+# TARGET-scoped so that `lib.rs` also builds for the host: `nros configure` probes
 # what the node creates by compiling it there, and these crates do not build
 # for the host. `main.rs` is never built for the host.
 [target.'cfg(target_os = "none")'.dependencies]

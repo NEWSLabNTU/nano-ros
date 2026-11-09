@@ -5,7 +5,7 @@
 # toolchain compiles it. That knowledge used to be re-derived in
 # `NanoRosEntry.cmake`, keyed on a DIFFERENT variable than the CLI's dispatch
 # (`NROS_PLATFORM != "posix"` there, `board_family()` here), so the two
-# could disagree about the same entry. Ask `nros codegen entry-pack` instead.
+# could disagree about the same entry. Ask `nros dev codegen entry-pack` instead.
 
 # The `nros_lang::Language` this pack renders for.
 language = "c"

@@ -129,11 +129,11 @@ impl Verb {
         match self {
             Verb::Build => "nros build",
             Verb::Sync => "nros configure",
-            Verb::Codegen => "nros codegen",
-            Verb::GenerateRust => "nros generate-rust",
-            Verb::GenerateC => "nros generate c",
-            Verb::GenerateCpp => "nros generate cpp",
-            Verb::CodegenSystem => "nros codegen-system",
+            Verb::Codegen => "nros dev codegen",
+            Verb::GenerateRust => "nros dev codegen rust",
+            Verb::GenerateC => "nros interface generate c",
+            Verb::GenerateCpp => "nros interface generate cpp",
+            Verb::CodegenSystem => "nros dev codegen system",
         }
     }
 }

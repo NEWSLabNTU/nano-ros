@@ -67,7 +67,7 @@ pub fn run(args: Args) -> Result<()> {
         // released binary's share/nano-ros, an in-tree binary's checkout), and
         // "a nano-ros checkout" could not tell the reader which tree that was.
         eprintln!(
-            "nros sdk-root: {} — via {}",
+            "nros dev sdk root: {} — via {}",
             root.display(),
             rung.describe()
         );

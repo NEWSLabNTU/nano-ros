@@ -258,7 +258,7 @@ impl Stamp {
         let mut doc = toml::Table::new();
         doc.insert("generated".into(), toml::Value::Table(pkgs));
         format!(
-            "# Written by nros codegen (RFC-0104 D5): the ament inputs this package was\n\
+            "# Written by nros dev codegen (RFC-0104 D5): the ament inputs this package was\n\
              # generated FROM. A build regenerates the package when they move.\n{}",
             toml::to_string(&doc).unwrap_or_default()
         )

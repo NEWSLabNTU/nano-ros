@@ -200,10 +200,10 @@ fn system_toml_edit_reconfigures() {
 fn sync_alias_runs_configure() {
     setup();
     let leaf = scratch_leaf("alias");
-    nros(&["sync", leaf.to_str().unwrap()]).expect("`nros sync` runs configure");
+    nros(&["sync", leaf.to_str().unwrap()]).expect("`nros configure` runs configure");
     assert!(
         stamp_file(&leaf, "linux").is_file(),
-        "`nros sync` recorded the configure stamp"
+        "`nros configure` recorded the configure stamp"
     );
     cleanup(&leaf);
 }

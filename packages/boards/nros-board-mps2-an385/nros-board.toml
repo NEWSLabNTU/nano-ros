@@ -3,7 +3,7 @@
 [[board]]
 # phase-341 W3 — the deploy vocabulary had two SSoTs: 18 leaves deploy to
 # `qemu-mps2-an385` / `rtic-mps2-an385`, which `nros_orchestration_ir::
-# board_path_for` maps but no descriptor named, so `nros sync` could not
+# board_path_for` maps but no descriptor named, so `nros configure` could not
 # project their board block. Both are THIS board: the separate
 # `nros-board-rtic-mps2-an385` crate was folded into it (see its Cargo.toml),
 # so RTIC is a feature of this board, not another one.

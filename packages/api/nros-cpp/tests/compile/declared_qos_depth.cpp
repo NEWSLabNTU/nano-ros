@@ -9,7 +9,7 @@
 // compiles clean BEFORE it asserts the probe does not.
 //
 // The declared table comes from `declared-qos-fixture/nros/`, which is what
-// `nros ws entity-inventory --output-header` renders from the model
+// `nros dev image entity-inventory --output-header` renders from the model
 // (`declared_qos.yaml`) and metadata beside it -- the same two inputs a real
 // image's configure passes. In a real build `nano_ros_node_register()` writes that header into
 // the component library's own include dir; here the gate puts the fixture dir

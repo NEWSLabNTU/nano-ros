@@ -106,7 +106,7 @@ impl fmt::Display for ModeError {
                 "mode `{mode}`: override `{target}` has no resolved model key -- the model \
                  predates ros-launch-manifest v0.1.63, or the target names no declared \
                  requirement (the resolver reports that as `override-target-missing`). \
-                 Re-run `nros sync` with a current resolver"
+                 Re-run `nros configure` with a current resolver"
             ),
             ModeError::MissingEntity {
                 mode,

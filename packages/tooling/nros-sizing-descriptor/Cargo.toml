@@ -3,7 +3,7 @@ name = "nros-sizing-descriptor"
 version = "0.5.0"
 edition = "2024"
 license = "Apache-2.0"
-description = "RFC-0100 D4: the one sizing descriptor `nros sync` writes per entry, and the one reader every consumer shares."
+description = "RFC-0100 D4: the one sizing descriptor `nros configure` writes per entry, and the one reader every consumer shares."
 
 [package.metadata.nros]
 host-only = true

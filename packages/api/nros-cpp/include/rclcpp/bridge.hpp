@@ -40,7 +40,7 @@ struct SessionSpec {
     std::string node_name;
     std::string namespace_;
     /// Issue 2123 -- this session's RMW properties (its domain's RMW file,
-    /// lowered on the host: the table `nros ws session-properties` writes).
+    /// lowered on the host: the table `nros dev rmw session-properties` writes).
     /// Borrowed, not copied: the rows must outlive the `MultiExecutor`
     /// construction that reads them.
     const rclc_session_property_t* properties = nullptr;

@@ -232,7 +232,7 @@ fn profile_arm() {
     #[cfg(not(feature = "profile"))]
     {
         std::eprintln!(
-            "nros profile: $NROS_PROFILE_OUT=`{}` but this Rust entry was built without \
+            "nros::profile: $NROS_PROFILE_OUT=`{}` but this Rust entry was built without \
              `nros-board-linux/profile` -- the generated host entry enables it; a hand-written \
              one must name it",
             path.to_string_lossy()

@@ -4,7 +4,7 @@
   <version>0.0.0</version>
   <description>
     The `router` command (RFC-0119 D8): `nros router config` prints the zenoh
-    router `downsampling` rule `nros sync` wrote beside a resolved model, ready
+    router `downsampling` rule `nros configure` wrote beside a resolved model, ready
     for `ZENOH_CONFIG_OVERRIDE`. It replaces the built-in `nros ws
     router-config`, which stays as a hidden alias that executes this package.
 

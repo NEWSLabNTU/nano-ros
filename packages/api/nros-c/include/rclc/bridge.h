@@ -43,7 +43,7 @@ extern "C" {
  */
 /**
  * @brief One RMW session property (issue 2123): a backend property name and
- *        its value, as `nros ws session-properties` writes a domain's RMW file
+ *        its value, as `nros dev rmw session-properties` writes a domain's RMW file
  *        lowered on the host (RFC-0109 D8). Same layout as
  *        `nros_cpp_session_property_t`.
  */

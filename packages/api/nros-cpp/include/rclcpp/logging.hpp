@@ -216,7 +216,7 @@ template <typename T> struct refuse {
     "NOTHING read and return *this, so the idiomatic chained call compiled and configured "        \
     "nothing -- a silent drop of configuration, which the compile-or-conform rule requires to "    \
     "fail to compile instead. nano-ros resolves parameters and remaps from the LAUNCH FILE "       \
-    "at BUILD time -- `nros sync` projects them into the generated entry as "                      \
+    "at BUILD time -- `nros configure` projects them into the generated entry as "                 \
     "nros_cpp_declare_remap / nros_cpp_declare_param calls, not into the process environment "     \
     "(RFC-0046, RFC-0060); it has no runtime ComponentManager, no intra-process transport and "    \
     "no topic statistics collector, and its /rosout bridge is explicit, not automatic "            \
@@ -237,7 +237,7 @@ template <typename T> struct refuse {
 // `REFUSE_INIT_ARGS` in `packages/api/nros/src/init.rs`.
 #define NROS_RCLCPP_REFUSE_INIT_ARGV                                                               \
     "--ros-args carries an argument nano-ros cannot honour (RFC-0089). Honoured: -r/--remap; "     \
-    "-p/--params-file with a parameter store. A nros sync image bakes both."
+    "-p/--params-file with a parameter store. A configured image bakes both."
 
 // phase-428 W5 finding 9. Runtime, like `NROS_RCLCPP_REFUSE_INIT_ARGV` above
 // and for the same reason: only the VALUE carries the defect, so the earliest

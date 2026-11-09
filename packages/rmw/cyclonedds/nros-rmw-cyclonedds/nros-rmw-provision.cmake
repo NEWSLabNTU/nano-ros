@@ -35,7 +35,7 @@ endif()
 # it, the fallback below is a checkout's submodule, and an installed root has
 # no checkout — "CycloneDDS not found and no source to build it from".
 #
-# ASK the toolchain for the pinned prefix (`nros sdk-path`, the same bridge
+# ASK the toolchain for the pinned prefix (`nros dev sdk path`, the same bridge
 # NanoRosCorrosion.cmake uses — never a glob of the store, issue 0625), from
 # the root so it reads the index this root ships.
 #
@@ -56,7 +56,7 @@ if(NOT CMAKE_CROSSCOMPILING
     nros_resolve_cli(_nros_cyclone_cli OPTIONAL CONTEXT "nros-rmw-cyclonedds")
     if(_nros_cyclone_cli AND NOT _nros_cyclone_cli STREQUAL "NOTFOUND")
         execute_process(
-            COMMAND "${_nros_cyclone_cli}" sdk-path cyclonedds --require
+            COMMAND "${_nros_cyclone_cli}" dev sdk path cyclonedds --require
             WORKING_DIRECTORY "${_nros_cyclone_tree}"
             OUTPUT_VARIABLE _nros_cyclone_prefix
             OUTPUT_STRIP_TRAILING_WHITESPACE

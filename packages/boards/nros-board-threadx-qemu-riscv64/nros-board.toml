@@ -9,7 +9,7 @@
 # phase-445 W3b — `rv-virt-threadx` is this board's RFC-0093 name (phase-437
 # W4: the cmake board, the index key and the example directory all use it), and
 # the C/C++ leaves' `system.toml` names it. Without it here no descriptor
-# answered, so `nros ws leaf-system` could not derive the `threadx` platform.
+# answered, so `nros dev image leaf-system` could not derive the `threadx` platform.
 #
 # issue 2101 — `threadx-qemu-riscv64` is no longer a name: it named the
 # emulator (RFC-0093 R3). The canonical name is the `cmake_module` and index
@@ -50,7 +50,7 @@ THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt",
 # measured on the installed track). Not forced: the in-tree lanes resolve
 # xPack-or-Ubuntu themselves (`nros_riscv64_export_cc`) and export these, and a
 # process env var beats a non-forced `[env]` row — on the cargo road by cargo's
-# rule, on the cmake road by `nros ws board-facts` applying the same one
+# rule, on the cmake road by `nros dev image board-facts` applying the same one
 # (`descriptor_env_rows`). The ABI flags must stay
 # identical to that helper's and to cmake/toolchain/riscv64-threadx.cmake's.
 CC_riscv64gc_unknown_none_elf = "riscv-none-elf-gcc"
@@ -63,7 +63,7 @@ CXXFLAGS_riscv64gc_unknown_none_elf = "-march=rv64gc -mabi=lp64d -mcmodel=medany
 # phase-484 W4b (RFC-0103 D1, D10) — the board's network defaults, the ONE
 # home: `Config::default()`, the cargo-road C `NROS_APP_CONFIG`
 # (nros-board-common's riscv64 build helper) and the cmake-road one
-# (`nros board net`) are all generated from it. The board runs under QEMU, so
+# (`nros dev board net`) are all generated from it. The board runs under QEMU, so
 # it sits on QEMU's own SLIRP network (gateway 10.0.2.2); the MAC is QEMU's
 # OUI and the default image address is `.40` (an image states its own).
 [board.net]

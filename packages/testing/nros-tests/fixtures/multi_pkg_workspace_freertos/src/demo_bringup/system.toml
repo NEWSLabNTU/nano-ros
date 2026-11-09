@@ -28,7 +28,7 @@ board = "mps2-an385-baremetal"
 
 # The FreeRTOS firmware `src/firmware` builds. It was that entry's
 # `[package.metadata.nros.entry] deploy = "freertos"` until phase-445 W5
-# retired the key; `nros sync` reads this image (`leaf_system::for_entry`) to
+# retired the key; `nros configure` reads this image (`leaf_system::for_entry`) to
 # project the FreeRTOS board's `cargo_config` into the firmware leaf.
 [image.freertos]
 board = "freertos"

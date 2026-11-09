@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- Issue 0683 — the Entry pkg needs a package.xml, or `nros sync` does not see
+<!-- Issue 0683 — the Entry pkg needs a package.xml, or `nros configure` does not see
      it as a package and never resolves a SystemModel for its `launch/`. Without
      one this fixture cross-built happily and emitted a codegen STUB, so the
      firmware ELF proved it links, not that the launch file planned. -->

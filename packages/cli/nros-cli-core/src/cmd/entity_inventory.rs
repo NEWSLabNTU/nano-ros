@@ -541,7 +541,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
                 &model,
                 args.workspace.as_deref(),
                 rx,
-                "nros ws entity-inventory",
+                "nros dev image entity-inventory",
             )?;
             composed = true;
         } else {
@@ -565,7 +565,7 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         if rx.is_some() {
             inv.set_board_rx_cost(rx);
         }
-        crate::sizing_descriptor::report_rx_arrival(&inv, "nros ws entity-inventory")?;
+        crate::sizing_descriptor::report_rx_arrival(&inv, "nros dev image entity-inventory")?;
     }
 
     let (json_path, cmake_path) = match &args.output_dir {

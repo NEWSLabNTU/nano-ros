@@ -34,7 +34,7 @@
   </node>
 
   <!-- Phase 212.M-F.20: nav2-canonical `$(find-pkg-share <pkg>)` include.
-       `nros sync` (`cmd/ws.rs::synth_ament_prefix`) synthesizes a throwaway
+       `nros configure` (`cmd/ws.rs::synth_ament_prefix`) synthesizes a throwaway
        ament prefix over the workspace's own packages — a `share/<pkg>` link
        AND the `share/ament_index/resource_index/packages/<pkg>` marker that
        registers it (issue 1861) — and prepends it to the resolver's

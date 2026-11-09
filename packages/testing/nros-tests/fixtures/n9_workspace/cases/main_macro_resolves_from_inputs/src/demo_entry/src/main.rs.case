@@ -3,6 +3,6 @@
 //! (`.inputsig` hashes the template dir) rather than text inside the script.
 //!
 //! issue 0414 — the macro resolves the model from `system.toml` + the launch
-//! file ITSELF (this row runs no `nros sync`).
+//! file ITSELF (this row runs no `nros configure`).
 
 nros::main!(model = "demo_bringup");

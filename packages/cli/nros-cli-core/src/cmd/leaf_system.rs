@@ -624,7 +624,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             crate::cmd::leaf_settings::write_shared(
                 &dir,
                 r,
-                "nros ws leaf-system",
+                "nros dev image leaf-system",
                 args.image.as_deref(),
                 &native_args,
             )?
