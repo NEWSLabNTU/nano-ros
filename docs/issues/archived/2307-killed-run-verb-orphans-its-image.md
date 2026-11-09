@@ -106,5 +106,17 @@ spawn site goes through the crate) and
   so the verb can return about 1 s before the chain is gone, while it may
   still hold ports, which is the class issue 2315 hit. Manager ruling
   (2026-11-09): the verb waits until the guard reports the chain gone,
-  bounded at about 2-3 s, then SIGKILLs the group and says so. Follow-up
-  commit or small PR after this one.
+  bounded at about 2-3 s, then SIGKILLs the group and says so.
+  **Done** (the follow-up PR, branch `phase-544-w3-guard-wait`):
+  - Arming a chain prints `nros-runner: chain <pgid>` on the runner's
+    stderr (`nros_extension::console::report_chain`). nros records it and
+    does not forward it.
+  - After stopping its own group, `ProcessGroup::teardown` waits up to
+    `CHAIN_GRACE` (2.5 s) for each recorded chain group to empty. If one is
+    left after that, it SIGKILLs the group and prints
+    `nros: process chain <pgid> was still running ...; killed it (SIGKILL)`.
+  - Measured with the `command` runner and a chain that ignores SIGTERM:
+    the SIGTERMed verb took 1.06 s and left 0 chain processes.
+  - Tests: `target_session::tests::teardown_waits_for_a_chain_that_is_stopping`
+    and `teardown_kills_a_chain_that_does_not_stop`. Each goes red under
+    both a zero-grace mutation and a skip-the-wait mutation.

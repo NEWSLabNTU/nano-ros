@@ -20,7 +20,9 @@
 //!   by any signal, SIGKILL included, the kernel closes that end, the guard
 //!   reads end of file and stops its group: SIGTERM, one second, SIGKILL.
 //!   The guard needs nothing from Linux, so it is also what covers a runner
-//!   on another Unix, where PDEATHSIG does not exist.
+//!   on another Unix, where PDEATHSIG does not exist. Arming a chain prints
+//!   `nros-runner: chain <pgid>` on stderr, so `nros` can wait for the group
+//!   before the verb returns, and stop it itself if the guard is slow.
 //!
 //! # PDEATHSIG and threads
 //!
@@ -131,6 +133,10 @@ impl Chain {
                 .stderr(Stdio::null())
                 .spawn()?;
             let tie = child.stdin.take();
+            // Tell nros which group to wait for: a runner stopped by a
+            // signal leaves the chain stopping for up to a second after the
+            // runner has gone (issue 2307).
+            nros_extension::console::report_chain(child.id());
             Ok(Self {
                 guard: Some(Guard { child, tie }),
             })
