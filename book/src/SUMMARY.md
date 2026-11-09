@@ -95,6 +95,7 @@
 - [The client library](./background/client-library.md)
 - [Safety](./background/safety.md)
 - [How nano-ros differs from ROS 2 and micro-ROS](./background/differences-from-ros2.md)
+- [nano-ros compared with micro-ROS and mros2](./background/compared-with-other-stacks.md)
 
 # Reference
 
