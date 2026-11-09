@@ -261,12 +261,20 @@ pub struct ParsedImage {
     pub config: Vec<Config>,
 }
 
-const CONFIGS: [Config; 4] = [
+const CONFIGS: [Config; 5] = [
     Config::Lending,
     Config::Multisession,
     Config::SignalFdWake,
     Config::CustomTransport,
+    Config::Serial,
 ];
+
+/// Whether an image of this configuration dials a router PORT. A `Serial`
+/// image's locator names a UART, and its router (or Agent) is the far end of
+/// a PTY pair the test creates, so there is no `alloc::port_of` to bake.
+fn dials_router_port(config: &[Config]) -> bool {
+    !config.contains(&Config::Serial)
+}
 
 /// Phase-531 W6 (RFC-0121 D8, RFC-0122 amendment) — whether a workspace at
 /// `dir` is a single-node WITNESS migrated in place: `examples/<plat>/<lang>/<name>`,
@@ -432,7 +440,10 @@ pub fn resolve_variant(
         }
         Lang::Mixed => unreachable!("workspace_image refuses Mixed"),
     };
-    if cell.rmw == Rmw::Zenoh && cell.platform != PlatformId::Linux {
+    if cell.rmw == Rmw::Zenoh
+        && cell.platform != PlatformId::Linux
+        && dials_router_port(cell.config)
+    {
         crate::fixtures::baked_locator::assert_row_dials_port(&id, crate::alloc::port(cell));
     }
     Ok(binary)
@@ -490,7 +501,7 @@ pub fn pair_row_locator_error(
     image: &str,
 ) -> Option<String> {
     let p = parse_image(dir, bringup, image)?;
-    if p.rmw != Rmw::Zenoh || p.platform == PlatformId::Linux {
+    if p.rmw != Rmw::Zenoh || p.platform == PlatformId::Linux || !dials_router_port(&p.config) {
         return None;
     }
     let want = crate::alloc::port_of(p.platform, p.lang, p.role.workload());
@@ -524,6 +535,29 @@ pub fn resolve_coord_variant(
     role: PairRole,
     variant: Option<Variant>,
 ) -> TestResult<PathBuf> {
+    resolve_coord_in(platform, lang, rmw, role, variant, &[])
+}
+
+/// [`resolve`] for the Example cell at this coordinate under exactly the
+/// configuration set `config` (RFC-0051 §7a); `&[]` is [`resolve_coord`].
+pub fn resolve_configured(
+    platform: PlatformId,
+    lang: Lang,
+    rmw: Rmw,
+    role: PairRole,
+    config: &[Config],
+) -> TestResult<PathBuf> {
+    resolve_coord_in(platform, lang, rmw, role, None, config)
+}
+
+fn resolve_coord_in(
+    platform: PlatformId,
+    lang: Lang,
+    rmw: Rmw,
+    role: PairRole,
+    variant: Option<Variant>,
+    config: &[Config],
+) -> TestResult<PathBuf> {
     let cell = crate::matrix::CELLS
         .iter()
         .find(|c| {
@@ -532,11 +566,11 @@ pub fn resolve_coord_variant(
                 && c.lang == lang
                 && c.rmw == rmw
                 && c.workload == role.workload()
-                && c.config.is_empty()
+                && c.config == config
         })
         .ok_or_else(|| {
             TestError::BuildFailed(format!(
-                "no ({platform:?}, {lang:?}, {rmw:?}, {:?}) Example cell in matrix::CELLS",
+                "no ({platform:?}, {lang:?}, {rmw:?}, {:?}) + {config:?} Example cell in matrix::CELLS",
                 role.workload()
             ))
         })?;

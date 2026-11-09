@@ -19,8 +19,8 @@ without newlib headers will not link.
 ## RMW selection
 
 Board-driven, no knob: the board crate (`nros-board-mps2-an385`) selects
-zenoh. XRCE has its own dedicated example (`talker-xrce`) that swaps the board
-transport feature instead.
+zenoh. XRCE over the UART is an image of the Rust workspace's pubsub bringup,
+`baremetal_talker_xrce_serial` (`examples/workspaces/rust/src/pubsub_bringup`).
 
 ## Build & run one example
 
@@ -39,10 +39,9 @@ Test lanes: `just qemu test`, `test-basic`, `test-zenoh`, `test-all`.
 
 | Lang | Role | variants |
 | --- | --- | --- |
-| rust | talker / listener | plain, `-rtic`, `-rtic-mixed`, `serial-*` (UART transport) |
+| rust | talker / listener | plain, `-rtic`, `-rtic-mixed` |
 | rust | service-server / service-client | `-rtic` |
 | rust | action-server / action-client | `-rtic` |
-| rust | talker-xrce | XRCE-DDS transport variant |
 | c | talker / listener | plain (issue 1512) |
 | c | service-server / service-client | plain (issue 1512) |
 | c | action-server / action-client | plain (issue 1512) |
@@ -64,6 +63,11 @@ compiles the leaf's `src/*.c` (or `src/talker.cpp`) into the image.
 Status: build-only. It boots in QEMU and reaches session open, but it dials
 `NROS_ENTRY_LOCATOR`'s empty bottom rung rather than the `[image.*] locator` in
 its `system.toml`, so there is no runtime lane yet — see issue 1512.
+
+The UART configurations (zenoh `serial/UART_0` pair, XRCE `custom://uart`
+talker) are images of `examples/workspaces/rust/src/pubsub_bringup`:
+`baremetal_{talker,listener}_serial` and `baremetal_talker_xrce_serial`
+(phase-535 W6).
 
 `rust/dds/` is build support, not a case. Test-only e2e fixtures
 (`rtic-run-plan-e2e`, `qemu-baremetal-main-e2e`) live under

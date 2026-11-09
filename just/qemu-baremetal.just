@@ -462,8 +462,8 @@ setup:
     # Phase 197.4/196.9 — provision the board's sources (arm-gcc, qemu dist, +
     # zenoh-pico/mbedtls via the default zenoh RMW) via nros before the arm
     # zenoh-pico build needs them. Then the patched-qemu + zenoh-pico-arm builds.
-    # Phase 208 (post-CI dispatch) — `examples/mps2-an385-baremetal/rust/talker-xrce/`
-    # (Phase 207) needs micro-cdr + micro-xrce-dds-client sources too, otherwise
+    # Phase 208 (post-CI dispatch) — the bare-metal XRCE image (Phase 207; the
+    # Rust workspace's `baremetal_talker_xrce_serial` since phase-535 W6) needs micro-cdr + micro-xrce-dds-client sources too, otherwise
     # `nros-rmw-xrce-cffi/build.rs` panics "submodule not initialised". Provision
     # both RMW source sets in the same step so `just qemu build` covers every
     # in-tree bare-metal example without a separate setup invocation.

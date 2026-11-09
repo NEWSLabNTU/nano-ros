@@ -39,8 +39,13 @@
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 20 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 12 | 11 | 20 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 47 | 41 | 75 % |
-//! | tier 3 | everything | 260 | 55 | 100 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 47 | 41 | 73 % |
+//! | tier 3 | everything | 262 | 56 | 100 % |
+//!
+//! Re-measured 2026-11-10 (phase-535 W6): `Config::Serial` joined with two
+//! bare-metal Rust Pubsub cells, zenoh and XRCE over UART0. The XRCE one is a
+//! new coordinate (`baremetal,rust,xrce`). No lane's selection moved; tier 3
+//! went 260 -> 262 cells over 55 -> 56 coordinates, so nightly's 41 is 73 %.
 //!
 //! Re-measured 2026-11-10 (phase-542 W5): the PX4 SITL uORB cell went Gated ->
 //! Runtime on its own coordinate (`px4,cpp,uorb`). It runs only in the hosted
@@ -1301,12 +1306,12 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 260,
-            "the table's tier-3 cell count (260) is stale; recomputed {total_cells}"
+            total_cells, 262,
+            "the table's tier-3 cell count (262) is stale; recomputed {total_cells}"
         );
         assert_eq!(
-            total_coords, 55,
-            "the table's tier-3 denominator (55 coordinates) is stale; recomputed \
+            total_coords, 56,
+            "the table's tier-3 denominator (56 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }

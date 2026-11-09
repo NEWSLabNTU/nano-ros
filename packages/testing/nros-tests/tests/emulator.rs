@@ -12,8 +12,9 @@
 //!     standard), `serial` (serial transport), `xrce` (XRCE rmw), `rtic` (the RTIC
 //!     framework entry shape). These overlap the `baremetal` matrix
 //!     coordinate in intent but there is no cell-bound baremetal consumer to fold
-//!     into; when one exists, the `bsp` case is the fold candidate and the
-//!     serial/xrce/rtic variants stay one-offs.
+//!     into; when one exists, the `bsp` case is the fold candidate. The serial
+//!     and xrce cases are `Config::Serial` cells since phase-535 W6, run on
+//!     images of the Rust workspace's pubsub bringup.
 //!
 //! No deletions: sole platform coverage, and QEMU folds can't be run-proven for a
 //! safe delete on a host without exercising every variant.
@@ -642,7 +643,7 @@ fn test_qemu_serial_pubsub_e2e() {
 // Phase 207 — Bare-metal XRCE E2E (MPS2-AN385 + CMSDK UART + MicroXRCEAgent)
 // =============================================================================
 
-/// Phase 207.4 — boot the bare-metal `talker-xrce` firmware in QEMU, run
+/// Phase 207.4 — boot the bare-metal XRCE talker (`baremetal_talker_xrce_serial`) in QEMU, run
 /// `MicroXRCEAgent serial` on the socat-paired PTY, assert the talker
 /// reaches `Published:` (proves the XRCE session opened against the agent
 /// and the publisher write succeeded — there's no `listener-xrce` shipped
@@ -1055,19 +1056,51 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
 #[test]
 fn cases_bound_to_matrix_cells() {
     use nros_tests::matrix::{
-        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
-        assert_consumer_cases,
+        Config, Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_config_cases,
     };
-    assert_consumer_cases(
+    const SERIAL: &[Config] = &[Config::Serial];
+    assert_consumer_config_cases(
         Consumer::Emulator,
         &[
-            (P::QemuBaremetal, L::C, R::Zenoh, W::Action, K::Example),
-            (P::QemuBaremetal, L::C, R::Zenoh, W::Pubsub, K::Example),
-            (P::QemuBaremetal, L::C, R::Zenoh, W::Service, K::Example),
-            (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Action, K::Example),
-            (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
-            (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Service, K::Example),
-            (P::QemuBaremetal, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+            (
+                (P::QemuBaremetal, L::C, R::Zenoh, W::Action, K::Example),
+                &[],
+            ),
+            (
+                (P::QemuBaremetal, L::C, R::Zenoh, W::Pubsub, K::Example),
+                &[],
+            ),
+            (
+                (P::QemuBaremetal, L::C, R::Zenoh, W::Service, K::Example),
+                &[],
+            ),
+            (
+                (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Action, K::Example),
+                &[],
+            ),
+            (
+                (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
+                &[],
+            ),
+            (
+                (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Service, K::Example),
+                &[],
+            ),
+            (
+                (P::QemuBaremetal, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+                &[],
+            ),
+            // `test_qemu_serial_pubsub_e2e` and `test_qemu_xrce_pubsub_e2e`
+            // (phase-535 W6: images of the Rust workspace's pubsub bringup).
+            (
+                (P::QemuBaremetal, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+                SERIAL,
+            ),
+            (
+                (P::QemuBaremetal, L::Rust, R::Xrce, W::Pubsub, K::Example),
+                SERIAL,
+            ),
         ],
     );
 }

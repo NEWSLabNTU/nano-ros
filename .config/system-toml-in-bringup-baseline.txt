@@ -54,13 +54,10 @@ examples/mps2-an385-baremetal/rust/action-server-rtic/system.toml
 examples/mps2-an385-baremetal/rust/listener-rtic-mixed/system.toml
 examples/mps2-an385-baremetal/rust/listener-rtic/system.toml
 examples/mps2-an385-baremetal/rust/listener/system.toml
-examples/mps2-an385-baremetal/rust/serial-listener/system.toml
-examples/mps2-an385-baremetal/rust/serial-talker/system.toml
 examples/mps2-an385-baremetal/rust/service-client-rtic/system.toml
 examples/mps2-an385-baremetal/rust/service-server-rtic/system.toml
 examples/mps2-an385-baremetal/rust/talker-rtic-mixed/system.toml
 examples/mps2-an385-baremetal/rust/talker-rtic/system.toml
-examples/mps2-an385-baremetal/rust/talker-xrce/system.toml
 examples/mps2-an385-baremetal/rust/talker/system.toml
 examples/mps2-an385-freertos/c/talker/system.toml
 examples/mps2-an385-freertos/cpp/talker/system.toml

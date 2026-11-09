@@ -3780,7 +3780,9 @@ mod link_kind_tests {
     }
 
     /// Issue 1601, the leaf half, without booting QEMU: the overlay the macro
-    /// bakes for `examples/mps2-an385-baremetal/rust/talker-xrce` must carry
+    /// bakes for the bare-metal XRCE-over-UART image (phase-535 W6: the Rust
+    /// workspace's `pubsub_bringup:baremetal_talker_xrce_serial`, which was
+    /// the `examples/mps2-an385-baremetal/rust/talker-xrce` leaf) must carry
     /// exactly the pair `nros-board-mps2-an385` registers XRCE on —
     /// `DeployOverlay::selects("xrce", LinkKind::Custom)`, the link its
     /// `custom://uart` locator names (RFC-0109 D6). Before the fix the
@@ -3788,11 +3790,14 @@ mod link_kind_tests {
     /// and the only witness was a QEMU e2e no merge lane runs.
     #[test]
     fn the_xrce_uart_leaf_bakes_the_pair_its_board_registers_on() {
-        let leaf_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../examples/mps2-an385-baremetal/rust/talker-xrce");
-        let leaf = nros_orchestration_ir::leaf_system::read(&leaf_dir)
-            .expect("talker-xrce system.toml must parse")
-            .expect("talker-xrce must declare a deployment");
+        let bringup = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../examples/workspaces/rust/src/pubsub_bringup");
+        let leaf = nros_orchestration_ir::leaf_system::read_image(
+            &bringup,
+            "baremetal_talker_xrce_serial",
+        )
+        .expect("pubsub_bringup system.toml must parse")
+        .expect("pubsub_bringup must declare baremetal_talker_xrce_serial");
         let lit = super::overlay_from_leaf(&leaf);
         assert_eq!(lit.rmw.as_deref(), Some("xrce"), "the backend is `rmw`");
         assert_eq!(

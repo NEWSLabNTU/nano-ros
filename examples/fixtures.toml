@@ -2971,11 +2971,6 @@ dir = "examples/mps2-an385-baremetal/rust/talker"
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/talker-xrce"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
 dir = "examples/mps2-an385-baremetal/rust/listener"
 
 [[fixture]]
@@ -3018,16 +3013,6 @@ platform = "baremetal"
 lang = "rust"
 dir = "examples/mps2-an385-baremetal/rust/action-client-rtic"
 
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/serial-talker"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/serial-listener"
-
 # phase-535 W5 (RFC-0122 D1) — the bare-metal Rust pubsub pair as images of
 # the Rust workspace's pubsub bringup. `test_qemu_bsp_pubsub_e2e` resolves
 # both roles through `fixtures::workspace_image`. The `rust/talker` leaf stays
@@ -3057,6 +3042,47 @@ bringup = "src/pubsub_bringup"
 image = "baremetal_listener"
 codegen_out = "build-fixtures/pubsub_bringup"
 target_dir = "target-fixtures/baremetal-listener"
+target = "thumbv7m-none-eabi"
+
+# phase-535 W6 (RFC-0122 D2) — the `serial` configuration of the same pair,
+# and the XRCE talker over the same UART: image rows, not leaves. Each is a
+# configured cell (`Config::Serial`) of `test_qemu_serial_pubsub_e2e` /
+# `test_qemu_xrce_pubsub_e2e`, resolved through `fixtures::workspace_image`.
+# They replace the `serial-{talker,listener}` and `talker-xrce` leaves.
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-talker-serial"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "baremetal_talker_serial"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/baremetal-talker-serial"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-listener-serial"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "baremetal_listener_serial"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/baremetal-listener-serial"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-talker-xrce-serial"
+platform = "baremetal"
+lang = "rust"
+rmw = "xrce"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "baremetal_talker_xrce_serial"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/baremetal-talker-xrce-serial"
 target = "thumbv7m-none-eabi"
 
 # issue 0488 residue 1 — the smoltcp/zenoh-pico bridge. It was built by a bare

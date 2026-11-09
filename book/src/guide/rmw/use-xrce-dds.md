@@ -91,8 +91,8 @@ connectivity until it comes back.
    ```
 
    How a bare-metal board carries XRCE-DDS over its UART is the board's: the
-   mps2-an385 example
-   [`examples/mps2-an385-baremetal/rust/talker-xrce`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker-xrce)
+   mps2-an385 image
+   [`baremetal_talker_xrce_serial`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/rust/src/pubsub_bringup/system.toml)
    states `locator = "custom://uart"`, and its build then leaves out the IP
    transports.
 

@@ -298,8 +298,6 @@ exclude = [
     "examples/mps2-an385-baremetal/rust/action-client-rtic",
     "examples/mps2-an385-baremetal/rust/talker-rtic-mixed",
     "examples/mps2-an385-baremetal/rust/listener-rtic-mixed",
-    "examples/mps2-an385-baremetal/rust/serial-talker",
-    "examples/mps2-an385-baremetal/rust/serial-listener",
     # issue 1512 — the C/C++ leaves whose link root is CARGO. They are under
     # `c/`/`cpp/` rather than `rust/` and are still cargo packages, because a
     # board with no RTOS has no C startup to root the image in; see

@@ -7153,11 +7153,32 @@ pub fn qemu_bsp_talker_binary() -> PathBuf {
 // Serial Example Builders (QEMU bare-metal, cross-compiled)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// phase-535 W6 (RFC-0122 D2) — a bare-metal image over UART0: the
+/// `Config::Serial` cell's role, built from the Rust workspace's pubsub
+/// bringup (`baremetal_<role>[_xrce]_serial`).
+fn qemu_baremetal_serial_image(
+    role: crate::fixtures::workspace_image::PairRole,
+    rmw: crate::matrix::Rmw,
+) -> TestResult<PathBuf> {
+    use crate::matrix::{Config, Lang, PlatformId};
+    crate::fixtures::workspace_image::resolve_configured(
+        PlatformId::QemuBaremetal,
+        Lang::Rust,
+        rmw,
+        role,
+        &[Config::Serial],
+    )
+}
+
 /// Build qemu-serial-talker (cached)
 pub fn build_qemu_serial_talker() -> TestResult<&'static Path> {
     QEMU_SERIAL_TALKER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-serial-talker"))
+        .get_or_try_init(|| {
+            qemu_baremetal_serial_image(
+                crate::fixtures::workspace_image::PairRole::Talker,
+                crate::matrix::Rmw::Zenoh,
+            )
+        })
         .map(|p| p.as_path())
 }
 
@@ -7172,8 +7193,12 @@ pub fn qemu_serial_talker_binary() -> PathBuf {
 /// Build qemu-serial-listener (cached)
 pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
     QEMU_SERIAL_LISTENER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-serial-listener"))
+        .get_or_try_init(|| {
+            qemu_baremetal_serial_image(
+                crate::fixtures::workspace_image::PairRole::Listener,
+                crate::matrix::Rmw::Zenoh,
+            )
+        })
         .map(|p| p.as_path())
 }
 
@@ -7185,15 +7210,17 @@ pub fn qemu_serial_listener_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Phase 207 — build the bare-metal XRCE talker (cached). Wraps the same
-/// `build_example` path the serial-talker uses; the prebuilt at
-/// `target/.../<profile>/qemu-talker-xrce` is checked, not rebuilt
-/// (`just qemu build-fixtures` / `cargo build --profile <p>` is the build
-/// step, this is the resolve step).
+/// Phase 207 — the bare-metal XRCE talker over UART0 (cached): the
+/// `(QemuBaremetal, Rust, Xrce, Pubsub) + Serial` cell's talker image. Built by
+/// `just qemu build-fixtures`; this is the resolve step.
 pub fn build_qemu_talker_xrce() -> TestResult<&'static Path> {
     QEMU_TALKER_XRCE_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-talker-xrce"))
+        .get_or_try_init(|| {
+            qemu_baremetal_serial_image(
+                crate::fixtures::workspace_image::PairRole::Talker,
+                crate::matrix::Rmw::Xrce,
+            )
+        })
         .map(|p| p.as_path())
 }
 
