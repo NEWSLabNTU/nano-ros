@@ -26,7 +26,7 @@ repository; W8 re-measures every cell.
 | linux (cyclonedds) | ok | ok | ok |
 | freertos-posix (zenoh) | ok (W1) | ok | 2342 |
 | freertos-posix (cyclonedds) | **W1** | ok | ok |
-| mps2-an385 bare metal (zenoh), Tutorial 1 to 10 | ok | 531 | 531 |
+| mps2-an385 bare metal (zenoh), Tutorial 1 to 10 | ok | Rust only (ruling) | Rust only (ruling) |
 | mps2-an385 FreeRTOS (zenoh) | ok | ok | ok |
 | mps2-an385 Zephyr (zenoh) | 3268 | ok | **W2** |
 | Zephyr native_sim (zenoh) | 3268 | ok | **W2** |
@@ -46,6 +46,12 @@ re-measures their cells once they land:
   `builder/cmake_root.rs:233`. Fixed by phase-531 W6 batch 2: a CMake C
   component, with the board routed to a generated Rust entry that owns reset.
   The C++ cell also needs the GCC floor that W3 adds for NuttX.
+- **Ruling (2026-11-09)**: bare metal stays Rust only. `codegen entry-pack`
+  has no C or C++ entry for `mps2-an385-baremetal`, and a separate change
+  makes `nros new --lang c|cpp` refuse a bare-metal board and name the RTOS
+  board instead. C and C++ readers take the mps2-an385 FreeRTOS starter. W8
+  gives the bare-metal starter no C or C++ tab; that same change moves the
+  Tutorial's C and C++ tabs to mps2-an385 FreeRTOS.
 - **3268**: Rust on Zephyr fails with `nros::main!: pkg '<bringup>' not found
   … Known pkgs: []`, because the west entry got no `NROS_WORKSPACE_ROOT`.
   Fixed by #3268.

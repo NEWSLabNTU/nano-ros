@@ -181,14 +181,6 @@ linux-rust: (platform "linux-rust")
 [group("main")]
 linux-c: (platform "linux-c")
 
-# book/src/starters/mps2-an385-bare-metal.md — the C tab (phase-548 W8).
-[group("main")]
-baremetal-c: (platform "baremetal-c")
-
-# book/src/starters/mps2-an385-bare-metal.md — the C++ tab (phase-548 W8).
-[group("main")]
-baremetal-cpp: (platform "baremetal-cpp")
-
 # book/src/starters/mps2-an385-freertos.md — the C++ tab (phase-548 W8).
 [group("main")]
 freertos-cpp: (platform "freertos-cpp")

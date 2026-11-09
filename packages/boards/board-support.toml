@@ -833,38 +833,14 @@ notes = "phase-548 W8 — the C tab of the same starter."
 track = "baremetal"
 chapter = "starters/mps2-an385-bare-metal.md"
 variant = ""
-lang = "rust"
 weekly = true
 row = "nros-board-mps2-an385@QemuBaremetal"
-qemu_board = "mps2-an385-baremetal"
-
-[[probe]]
-track = "baremetal-c"
-chapter = "starters/mps2-an385-bare-metal.md"
-variant = ""
-lang = "c"
-awaits = ["C and C++ on mps2-an385 bare metal: the image is routed to a generated Rust entry that owns reset (phase-531 W6 batch 2); today configure stops at `tools/setup.sh: unknown platform 'bare_metal'`"]
-weekly = true
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-548 W8 — the C tab of the same starter."
-qemu_board = "mps2-an385-baremetal"
-
-[[probe]]
-track = "baremetal-cpp"
-chapter = "starters/mps2-an385-bare-metal.md"
-variant = ""
-lang = "cpp"
-awaits = ["C and C++ on mps2-an385 bare metal: the image is routed to a generated Rust entry that owns reset (phase-531 W6 batch 2); today configure stops at `tools/setup.sh: unknown platform 'bare_metal'`"]
-weekly = true
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-548 W8 — the C++ tab of the same starter."
 qemu_board = "mps2-an385-baremetal"
 
 [[probe]]
 track = "offline"
 chapter = "starters/mps2-an385-bare-metal.md"
 variant = ""
-lang = "rust"
 weekly = true
 row = "nros-board-mps2-an385@QemuBaremetal"
 offline = true
@@ -1176,7 +1152,6 @@ notes = "phase-537 W9 — the FreeRTOS POSIX platform page, after its starter (s
 track = "platform-baremetal"
 chapter = "guide/platforms/bare-metal.md"
 variant = ""
-lang = "rust"
 after = ["starters/mps2-an385-bare-metal.md"]
 weekly = false
 row = "nros-board-mps2-an385@QemuBaremetal"
