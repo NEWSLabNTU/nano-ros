@@ -12,6 +12,14 @@
 # D6 case 4): written here, AFTER Kconfig, the pass that noticed a change had
 # already used the stale `.config` and cost one more configure. See
 # `_nros_image_kconfig_stamp` in `cmake/nros_image_kconfig.cmake`.
+
+# Issue 2374 -- record what Zephyr's configuration_files.cmake discovered, so
+# the next configure re-runs that discovery (`modules/modules.cmake` drops the
+# cached copy), and make the searched directories configure inputs so adding or
+# deleting a `boards/<board>.conf` re-runs cmake on a plain build.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_discovered_config.cmake)
+nros_discovered_config_post()
+
 # phase-484 W8 — refuse a retired `NANO_ROS_*` name the application set.
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosRetiredNames.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosArtifactLayout.cmake)  # issue 1852

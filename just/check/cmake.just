@@ -542,6 +542,30 @@ reconfigure-on-change:
     fi
     ./tests/cmake-reconfigure-tests.sh
 
+# issue 2374 -- a Zephyr build dir keeps its application config discovery LIVE.
+# Zephyr discovers `boards/<board>.conf` (and overlays) only while CONF_FILE is
+# undefined, then caches the result, so an added fragment was ignored and a
+# deleted one failed every configure, `cmake <dir>` included. The module hook
+# (`zephyr/cmake/nros_discovered_config.cmake`) drops a DISCOVERED cache value
+# before discovery and leaves a CHOSEN one (`-D`, `set()`, a cache edit) alone.
+# Asserted against a stand-in for Zephyr's discovery rule, so it needs no SDK;
+# ninja because "a plain build re-runs discovery" is a ninja edge.
+[group('needs:cmake')]
+zephyr-discovered-config:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-discovered-config "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-zephyr-discovered-config-tests.sh
+
 # phase-439 W2 (RFC-0094 D1) -- the resolve phase's CMake seam, measured.
 #
 # Its subject is the PASS COUNT, which is the thing `NanoRosReconfigure.cmake`
