@@ -5,9 +5,11 @@ status: open
 type: bug
 severity: medium
 area: [cmake, zephyr, cli]
-related: [1662, 2086]
+related: [1662, 2086, phase-530]
 found: 2026-11-07
 ---
+
+**Home:** [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)
 
 ## What
 
