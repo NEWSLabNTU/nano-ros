@@ -2,255 +2,103 @@
 
 [![CI](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/gate.yml/badge.svg)](https://github.com/NEWSLabNTU/nano-ros/actions/workflows/gate.yml)
 [![Book](https://img.shields.io/badge/docs-book-blue)](https://newslabntu.github.io/nano-ros-book/)
-![no_std](https://img.shields.io/badge/no__std-yes-success)
-![Rust](https://img.shields.io/badge/rust-edition%202024-orange)
-![ROS 2](https://img.shields.io/badge/ROS%202-Humble%20%7C%20Iron-22314E)
+![ROS 2](https://img.shields.io/badge/ROS%202-Humble%20%7C%20Jazzy-22314E)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
 
-A `no_std` ROS 2 client library for bare-metal and RTOS targets, written in Rust. Built on [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico) for lightweight pub/sub, services, and actions over TCP, serial, or raw Ethernet.
+**ROS 2 nodes on microcontrollers and real-time operating systems.** You write
+a node in Rust, C or C++, nano-ros builds it into firmware for your board, and
+it joins your ROS 2 graph like any other node: `ros2 topic echo` on your
+computer sees what the board publishes.
 
-nano-ros runs directly on microcontrollers without an OS, on RTOS kernels (Zephyr, FreeRTOS, NuttX, ThreadX), and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 (bare-metal + FreeRTOS MPS2-AN385), NuttX (ARM virt + RISC-V rv-virt), and ThreadX RISC-V64, plus a ThreadX Linux simulator — enabling full integration testing without hardware.
+It runs with no operating system or on Zephyr, FreeRTOS, NuttX and ThreadX,
+talks over Zenoh, Cyclone DDS or XRCE-DDS, and sizes its node, topic and
+message pools when you build. Whether an image needs a heap depends on the
+middleware you pick.
 
-The project integrates formal verification (Kani bounded model checking, CBMC for the C API) and WCET measurement (DWT cycle counters, static stack analysis) into the build pipeline, providing a foundation for schedulability analysis in safety-critical systems.
+## Who it is for
 
-## Features
+- **Teaching**: robotics and embedded courses that need the same result on
+  every seat, with no hardware.
+- **Field work**: engineers who get a board and need its data in ROS 2 the
+  same day.
+- **Products**: teams who need reproducible images, offline builds and every
+  board fact on a page.
 
-- **Bare-metal and RTOS**: runs on Cortex-M3 and STM32F4 bare-metal and on Zephyr, FreeRTOS, NuttX, and ThreadX kernels; no heap allocator required on bare-metal
-- **ROS 2 interoperability**: communicates with ROS 2 Humble nodes via rmw_zenoh
-- **QEMU emulation**: Cortex-M3 (MPS2-AN385, bare-metal + FreeRTOS), NuttX (ARM virt + RISC-V rv-virt), and ThreadX RISC-V64 targets — plus the ThreadX Linux simulator — with TAP networking for CI
-- **Customizable platform/transport**: swap platform crates (clock, heap, RNG) and transport crates (TCP via smoltcp, serial, raw Ethernet) independently
-- **Formal verification ready**: Kani proofs for panic-freedom, CBMC harnesses for C API pointer safety, DWT cycle counting for WCET baselines
-- **Zero-copy CDR serialization**: `no_std` serializer with compile-time buffer bounds
-- **C and C++ APIs**: rclc-style C interface and an rclcpp-style C++ layer for integration with C/C++ projects
-- **Code generation**: `nros sync` produces Rust/C/C++ bindings from the `.msg`/`.srv`/`.action` packages your project depends on
+[Choose your path](https://newslabntu.github.io/nano-ros-book/start/choose-your-path.html) gives each a route
+through the book.
 
-## Status
+## Try it on your machine
 
-| Feature         | Status   |
-|-----------------|----------|
-| Pub/Sub         | Complete |
-| Services        | Complete |
-| Actions         | Complete |
-| Parameters      | Complete |
-| ROS 2 Interop   | Complete |
-| Zenoh backend   | Complete |
-| XRCE-DDS backend | Complete |
-| Cyclone DDS backend | Complete (native + embedded; some embedded action paths in progress) |
-| Zephyr Support  | Complete |
-| QEMU Bare-Metal | Complete |
-| C API           | Complete |
-| C++ API         | Complete |
-| Message Codegen | Complete |
+On Ubuntu 22.04 with [ROS 2 Humble installed](https://newslabntu.github.io/nano-ros-book/start/install.html), a C++
+talker runs as a program on your machine, no board or emulator needed:
 
-## Requirements
+```sh
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+sudo apt-get install -y ros-humble-rmw-cyclonedds-cpp
+nros setup linux --rmw cyclonedds
 
-- Rust nightly (edition 2024)
-- `nros setup linux --rmw <zenoh|xrce|cyclonedds>` provisions the RMW host
-  daemon (zenohd, Micro-XRCE-DDS Agent, or Cyclone DDS) — no manual build step
-- ROS 2 Humble — required for message codegen (`nros sync`/`generate`),
-  CycloneDDS, and every ROS 2 interop path. Only the pre-generated native
-  Rust talker/listener demo runs without it.
-- cmake — required for the C/C++ examples and quick starts
-
-## Quick Start (Rust)
-
-nano-ros is distributed as **source** — nothing is published to crates.io.
-Consumers either build in-tree (below) or add a path dependency (see
-[Rust-only consumers](book/src/guide/build/install-options.md#rust-only-consumers)).
-
-### 1. Get the `nros` CLI
-
-```bash
-git clone https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
-./scripts/bootstrap.sh
-```
-
-The script installs rustup if needed and builds the CLI from source. In a
-checkout that is the point: the tree's own build is the binary this tree
-accepts, because a released `nros` emits its own generated code and this
-runtime is what has to compile it (RFC-0090). To just *use* nano-ros, install
-a release instead — `curl -fsSL
-https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh`.
-Equivalent, if you already have cargo:
-`git submodule update --init packages/cli/third-party/play_launch &&
-cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`.
-
-### 2. Activate the workspace (every new shell)
-
-```bash
-source ./activate.sh          # or: direnv allow / source ./activate.fish
-```
-
-This puts the built `nros` on PATH and exports the SDK env the builds
-rely on (e.g. `FREERTOS_PORT`) — skipping it is the most common cause
-of first-build failures.
-
-### 3. Provision a board + RMW
-
-```bash
-nros setup linux --rmw zenoh
-```
-
-Installs the zenoh router (`zenohd`) into `~/.nros/sdk`. See
-[Supported Boards](book/src/reference/supported-boards.md) for cross
-targets (Zephyr, FreeRTOS, NuttX, ThreadX, bare-metal). ESP32 support is
-dormant for now (issue 1525): its code is kept, nothing builds it.
-
-### 4. Run the demo
-
-```bash
-# Terminal 1: Zenoh router (resolves the install from step 3 automatically)
-ros2 run rmw_zenoh_cpp rmw_zenohd      # contributor shortcut: just linux zenohd
-
-# Terminal 2: Talker
-cd examples/linux/rust/talker
-nros sync && nros build                # generated msg crates, then the image
-RUST_LOG=info ./build/linux/target/debug/talker
-
-# Terminal 3: Listener
-cd examples/linux/rust/listener
-nros sync && nros build
-RUST_LOG=info ./build/linux/target/debug/listener
-```
-
-`nros sync` reads the example's `system.toml` — the one place a board, an RMW
-and a domain are named — and writes everything that choice implies under
-`build/`; `nros build` then builds the image it declares. In a *workspace*, or a
-C/C++ example, switching board is that one `[image.*] board` line. A
-single-package **Rust** example is its own entry, and (on a supported board)
-it names no board crate either: its image-only dependencies come from a `<pkg>_nros_selection` package
-`nros sync` generates for the image's board, so there too the board line is the
-whole edit ([issue 1305](docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
-
-See [Installation](book/src/start/install.md) and
-[First Node — Rust](book/src/tutorial/add-a-second-node.md) for the
-complete walkthrough.
-
-## Quick Start (C API)
-
-The C examples are standalone CMake projects — build them in place, or
-copy the directory out and point it back at a nano-ros checkout:
-
-```bash
-# In-tree:
-cd examples/linux/c/talker
-cmake -B build -S .
-cmake --build build
-./build/c_talker
-
-# Copied out: name the checkout to find_package(nano_ros) (or run `nros build`).
-cmake -B build -S . -Dnano_ros_ROOT=<path-to-nano-ros>
-```
-
-No `nros sync` step here: a single-package C/C++ leaf generates its message
-bindings while CMake configures. `-Dnano_ros_ROOT` says where the checkout is
-and nothing more — the board, the RMW, the domain and the network identity come
-from the example's `system.toml`, which `find_package(nano_ros)` reads
-(RFC-0098 D3/D5). The whole `CMakeLists.txt` is:
-
-```cmake
-cmake_minimum_required(VERSION 3.22)
-project(c_talker LANGUAGES C CXX)
-
-find_package(nano_ros REQUIRED)
-find_package(std_msgs REQUIRED)
-
-nano_ros_add_executable(c_talker src/main.c)
-ament_target_dependencies(c_talker std_msgs)
-```
-
-beside a `system.toml` that names the deployment:
-
-```toml
-[system]
-name      = "native_c_talker"
-rmw       = "zenoh"
-domain_id = 0
-
-[[component]]
-pkg   = "native_c_talker"
-class = "native_c_talker::Talker"
-name  = "talker"
-
-[image.linux]
-board = "linux"
-```
-
-The Tutorial's [Add a second node](book/src/tutorial/add-a-second-node.md) walks through a C node package, in its C tab.
-
-## On Zephyr (west module)
-
-nano-ros is consumable as a Zephyr **module** from your own west workspace,
-on both **Zephyr 3.7 LTS and 4.x**: import via `west.yml`, apply patches
-(`west patch apply` on 4.x), pick an RMW (`-S nros-<rmw>` snippet on 4.x),
-and copy out a worked example. See
-[Zephyr (west module)](book/src/guide/platforms/zephyr.md) for
-the version-spanning consumption guide + compatibility matrix.
-
-## ROS 2 Interoperability
-
-nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
-
-```bash
-# Terminal 1: zenohd (installed by `nros setup linux --rmw zenoh`)
-ros2 run rmw_zenoh_cpp rmw_zenohd
-
-# Terminal 2: nano-ros talker
-cd examples/linux/rust/talker && nros sync && nros build
-RUST_LOG=info ./build/linux/target/debug/talker
-
-# Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+nros new host_ws --board linux --template talker --lang cpp --rmw cyclonedds
+cd host_ws
+nros run host_node --expect "Publishing: 'Hello World: 1'"
 ```
 
-## Project Structure
+Then [put the same talker on a board](https://newslabntu.github.io/nano-ros-book/starters/pick-your-board.html):
+every starter runs in an emulator or on your host first.
 
-```
-packages/
-├── core/                      # The nros library stack
-│   ├── nros/                  # Unified API (re-exports all sub-crates)
-│   ├── nros-core/             # Core types, traits, node abstraction
-│   ├── nros-serdes/           # CDR serialization
-│   ├── nros-macros/           # #[derive(RosMessage)] proc macros
-│   ├── nros-params/           # Parameter server
-│   ├── nros-rmw/              # Transport abstraction (middleware traits)
-│   ├── nros-node/             # High-level node API + parameter services
-│   ├── nros-c/                # C API (rclc-style)
-│   ├── nros-cpp/              # C++ API (rclcpp-style)
-│   └── nros-platform-*/       # Per-RTOS platform glue (posix, zephyr, …)
-├── zpico/                     # Zenoh RMW backend (zenoh-pico)
-├── xrce/                      # XRCE-DDS RMW backend (Micro XRCE-DDS)
-├── dds/                       # Cyclone DDS RMW backend
-├── px4/                       # PX4 uORB RMW backend
-├── bridge/                    # nros-bridge (cross-RMW relay)
-├── boards/                    # Board crates (native, mps2-an385, stm32f4, …)
-├── platforms/                 # Board-specific platform crates
-├── drivers/                   # Hardware drivers (lan9118, openeth)
-├── interfaces/                # Generated ROS 2 types (rcl_interfaces, …)
-├── cli/                       # `nros` CLI: codegen + orchestration (sub-workspace)
-├── testing/                   # Integration test infrastructure
-├── verification/              # Kani / Verus proof harnesses
-└── reference/                 # Low-level platform reference implementations
-```
+## What runs where
 
-## Message Generation
+Each row is a starter in the book, with the languages its tabs cover today:
 
-nano-ros generates its bindings from ROS 2 `.msg`/`.srv`/`.action` packages — never hand-written. `nros sync` is the command a project runs: it writes the `generated/` message crates alongside the build settings the project's `system.toml` implies. See [Message Generation](docs/guides/message-generation.md) for details.
+<!-- BEGIN GENERATED by scripts/gen-board-support.py: language matrix -->
 
-## Documentation
+| Board | Runs | RMW | Rust | C | C++ |
+|---|---|---|---|---|---|
+| [Nucleo-F767ZI](book/src/starters/nucleo-f767zi.md) | Boots, manual | Zenoh | not yet | yes | yes |
+| [mps2-an385 in QEMU (bare-metal)](book/src/starters/mps2-an385-bare-metal.md) | Verified in emulator | Zenoh | yes | — | — |
+| [mps2-an385 in QEMU (FreeRTOS)](book/src/starters/mps2-an385-freertos.md) | Verified in emulator | Zenoh | yes | yes | yes |
+| [mps2-an385 in QEMU (Zephyr)](book/src/starters/mps2-an385-zephyr.md) | Verified in emulator | Zenoh | yes | yes | yes |
+| [NuttX in QEMU (Arm)](book/src/starters/nuttx-arm.md) | Verified in emulator | Zenoh | yes | yes | yes |
+| [NuttX in QEMU (RISC-V)](book/src/starters/nuttx-riscv.md) | Verified in emulator | Zenoh | yes | yes | yes |
+| [ThreadX in QEMU (RISC-V 64)](book/src/starters/threadx-riscv64.md) | Verified in emulator | Zenoh | yes | yes | yes |
+| [Linux host](book/src/starters/linux-host.md) | Verified on host | Cyclone DDS | yes | yes | yes |
+| [Zephyr native_sim](book/src/starters/zephyr-native-sim.md) | Verified on host | Zenoh | not yet | yes | yes |
+| [ThreadX Linux simulator](book/src/starters/threadx-linux.md) | Verified on host | Zenoh | yes | yes | yes |
+| [FreeRTOS POSIX](book/src/starters/freertos-posix.md) | Verified on host | Cyclone DDS, Zenoh | yes | yes | yes |
 
-| Topic                  | Location                                                     |
-|------------------------|--------------------------------------------------------------|
-| Getting started        | [book/src/start/install.md](book/src/start/install.md) |
-| Message generation     | [docs/guides/message-generation.md](docs/guides/message-generation.md)     |
-| ROS 2 interop protocol | [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md)       |
-| Testing                | [tests/README.md](tests/README.md)                           |
-| Zephyr setup           | [book-internals/src/testing/zephyr-dev-setup.md](book-internals/src/testing/zephyr-dev-setup.md)                 |
-| Embedded integration   | [book/src/extending/add-a-board.md](book/src/extending/add-a-board.md#before-you-start) |
-| Troubleshooting        | [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md)           |
+*yes*: the starter's tab for that language is replayed in CI from a clean install and passes. *not yet*: the tab is in the book and its replay waits on a fix. *—*: the starter has no tab for that language; bare metal is Rust only.
+
+<!-- END GENERATED language matrix -->
+
+[Supported Boards](https://newslabntu.github.io/nano-ros-book/reference/supported-boards.html) lists every board
+the release knows, and [Board support levels](https://newslabntu.github.io/nano-ros-book/reference/board-support-levels.html)
+says what each level means. Both are generated from the same registry.
+
+## Measured
+
+One image, measured on 2026-11-09 at commit `a9dc35a5e1`: the
+[mps2-an385 bare-metal starter](book/src/starters/mps2-an385-bare-metal.md)'s
+Rust talker over Zenoh, built with `nros build -- --release` and measured with
+`just mem-report` and `arm-none-eabi-size`.
+
+| | Bytes |
+|---|---|
+| Flash: code and constants (`text`) | 397,852 |
+| RAM: everything but the heap | 40,128 |
+| RAM: the heap Zenoh's session uses, sized by the board | 132,816 |
+
+The book's [static memory and pools](https://newslabntu.github.io/nano-ros-book/background/static-memory-and-pools.html)
+page explains where each pool comes from, and `just mem-report <elf>` prints
+the same breakdown for your own image.
+
+## Learn more
+
+- [The book](https://newslabntu.github.io/nano-ros-book/): install, starters, a ten-chapter Tutorial, guides and
+  reference.
+- [How nano-ros differs from ROS 2 and micro-ROS](https://newslabntu.github.io/nano-ros-book/background/differences-from-ros2.html).
+- [Contributing](CONTRIBUTING.md): building from a checkout, tests and the
+  contributor book.
 
 ## License
 
