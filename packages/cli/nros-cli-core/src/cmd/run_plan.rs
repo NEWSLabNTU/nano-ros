@@ -521,26 +521,12 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
     if plan.runner.name == "qemu" {
         let run = d.run.as_ref();
         if let Some(q) = run.and_then(|r| r.qemu.as_ref()) {
-            let mut put = |k: &str, v: String| {
-                plan.args.insert(k.to_string(), v);
+            // The board's facts, mapped by the one function the test harness
+            // reads them with too (phase-544 W1).
+            let facts = run.and_then(|r| r.qemu_plan_args()).unwrap_or_default();
+            for (k, v) in facts {
                 prov.set(&format!("args.{k}"), BOARD);
-            };
-            put("system", q.system.clone());
-            if let Some(c) = &q.cpu {
-                put("cpu", c.clone());
-            }
-            let machine = q.machine.clone().or_else(|| {
-                run.and_then(|r| r.emulator_parts())
-                    .map(|(_, m)| m.to_string())
-            });
-            if let Some(m) = machine {
-                put("machine", m);
-            }
-            if let Some(v) = &q.icount {
-                put("icount", v.clone());
-            }
-            if q.semihosting {
-                put("semihosting", "enable=on,target=native".into());
+                plan.args.insert(k, v);
             }
             if let Some(model) = &q.nic_model {
                 // The image's network, when it states one, says how the NIC

@@ -1,6 +1,6 @@
 # Phase 544 — The harness on `nros run --plan`: what phase-528 left
 
-**Status (2026-11-06). PLANNED — successor to [phase-528](archived/phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homes one of them.** Implements
+**Status (2026-11-09). IN PROGRESS: W1 done (issue 2172 resolved); W2 and W3 open. Successor to [phase-528](archived/phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homes one of them.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) for the harness's
 remaining QEMU and process-lifetime gaps.
 
@@ -23,7 +23,7 @@ SIGKILL leaves its image running.
 
 ### W1 — The harness reads `[board.run.qemu]`
 
-[Issue 2172](../issues/2172-harness-mps-lines-restate-board-runner.md)'s
+[Issue 2172](../issues/archived/2172-harness-mps-lines-restate-board-runner.md)'s
 residue. `nros_tests::run::QemuBoot` is rendered by the same
 `nros_qemu_ladder::plan_line` that `nros run` uses, but the harness's
 `start_mps2_an385*`, `start_mps3_an536_*` and Zephyr `zephyr_qemu_boot`
@@ -41,6 +41,24 @@ model themselves. A descriptor edit therefore does not reach the harness.
 Acceptance: no `cpu`/`machine` literal is left in `nros_tests::qemu` for a
 board that has a descriptor, and a descriptor edit changes the harness's
 `command_line()` (unit test).
+
+**Status: DONE (2026-11-09).** `[board.run]` moved to
+`nros_orchestration_ir::target_exec` with one mapping onto plan args,
+`BoardRun::qemu_plan_args`, used by `nros run`'s plan, the cargo `runner`
+(now rendered by `nros_qemu_ladder::plan_line` too) and the harness. The
+harness reads a board through `nros_tests::qemu::DescriptorBoard`
+(`MPS2_AN385`, `MPS3_AN536`) with `board_run_named`, and its launchers add
+only their network, chardev, monitor or a measurement's fixed `-icount`. The
+MPS3-AN536 descriptor states `icount = "shift=auto"` and `nic_model =
+"lan9118"`. Guards: `check-harness-qemu-literals` rule 2 refuses a
+descriptor board's machine or NIC model typed in `nros-tests/src`;
+`board_run_reader_agrees_with_the_catalog` (CLI) holds the harness's reader
+equal to the catalog's; `the_mps_boots_are_the_descriptors_and_follow_an_edit`
+and `boards_on_one_qemu_machine_state_one_boot` (harness). Left as they are:
+the NuttX and ThreadX boots, which already come from the one ladder
+(`nros_qemu_ladder::Board`); `start_cortex_m3` (`lm3s6965evb`, no
+descriptor); and the Zephyr boots, whose line is Zephyr's `board.cmake`
+(no board states a `[board.run.qemu]`; the gate fires if one does).
 
 ### W2 — The violation channel's QEMU leg
 

@@ -275,7 +275,9 @@ pub const QEMU_RUNNER: &str = "qemu";
 ///
 /// The keys are the board descriptor's `[board.run.qemu]` facts (`system`,
 /// `cpu`, `machine`, `icount`, `semihosting`, `nic`), or a fixed ladder board
-/// (`board`, with `mac` and `net`). A boot that needs a word those keys do
+/// (`board`, with `mac` and `net`). A board with a descriptor gets them FROM
+/// it (`crate::qemu::DescriptorBoard::boot`, phase-544 W1); [`QemuBoot::table`]
+/// is for a machine no descriptor states. A boot that needs a word those keys do
 /// not state (`-smp`, a `-chardev`, a monitor socket) carries it in
 /// `passthrough`, exactly as `nros run -- <args>` would.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -395,7 +397,7 @@ mod tests {
 
     #[test]
     fn a_qemu_plan_names_the_qemu_runner_and_its_tool() {
-        let boot = QemuBoot::table("arm", "mps2-an385")
+        let boot = QemuBoot::table("arm", "lm3s6965evb")
             .arg("cpu", "cortex-m3")
             .arg("semihosting", "enable=on,target=native")
             .then(["-monitor", "none"]);
@@ -404,7 +406,7 @@ mod tests {
         let p = qemu_plan(Path::new("/b/app"), &boot, &exe, Path::new(&path));
         assert_eq!(p["runner"]["package"], QEMU_RUNNER_PACKAGE);
         assert_eq!(p["runner"]["name"], QEMU_RUNNER);
-        assert_eq!(p["target"]["emulator"], "qemu:mps2-an385");
+        assert_eq!(p["target"]["emulator"], "qemu:lm3s6965evb");
         assert_eq!(p["console"]["kind"], "semihosting");
         assert_eq!(p["tools"][exe.as_str()], path.as_str());
         assert_eq!(p["args"]["cpu"], "cortex-m3");
@@ -421,7 +423,7 @@ mod tests {
         if crate::nros_cli_bin_path().is_none() {
             crate::unmet!("nros CLI not built");
         }
-        let boot = QemuBoot::table("arm", "mps2-an385").then(["-smp", "cpus=1"]);
+        let boot = QemuBoot::table("arm", "lm3s6965evb").then(["-smp", "cpus=1"]);
         let run = qemu_image(Path::new("/b/app"), &boot).unwrap();
         let want = nros_qemu_ladder::plan_line(&boot.args)
             .unwrap()

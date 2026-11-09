@@ -616,176 +616,10 @@ pub struct BoardDescriptor {
     pub flash: Option<FlashTable>,
 }
 
-/// The emulator kinds RFC-0114 D10's vocabulary names, and RFC-0118 D1's
-/// launcher row: `<kind>:<machine>`. A twin is free and open source
-/// (RFC-0115 Amendment 1), so a paid hosted simulator is no kind here and a
-/// descriptor naming one is refused like any unknown kind.
-pub const EMULATOR_KINDS: &[&str] = &["qemu", "fvp", "renode"];
-
-/// `[board.run]` — RFC-0118 D4.
-///
-/// `emulator = "<kind>:<machine>"` names the emulator and the machine in the
-/// RFC-0114 vocabulary (`qemu:mps2-an385`, `fvp:FVP_BaseR_AEMv8R`,
-/// `renode:nucleo_f767zi`), or `host = true` says the image is
-/// a host process. Never both. A runner-specific sub-table (`[board.run.qemu]`)
-/// holds what only that runner reads; it requires the matching emulator kind.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct BoardRun {
-    /// `<kind>:<machine>`, kind one of [`EMULATOR_KINDS`].
-    #[serde(default)]
-    pub emulator: Option<String>,
-    /// The image runs as a host process (no emulator, nothing flashed).
-    #[serde(default)]
-    pub host: bool,
-    /// `[board.run.qemu]` — read only by the QEMU runner.
-    #[serde(default)]
-    pub qemu: Option<BoardRunQemu>,
-    /// `[board.run.renode]` — read only by the Renode runner (phase-524 W4a).
-    #[serde(default)]
-    pub renode: Option<BoardRunRenode>,
-}
-
-/// `[board.run.qemu]` — the QEMU invocation's board facts.
-///
-/// The line is rendered in one fixed order
-/// (`qemu-system-<system> [-cpu] -machine -nographic [-icount]
-/// [-semihosting-config] [-nic] -kernel`), with the kernel appended by the
-/// caller. A board whose QEMU line does not fit this shape (the NuttX and
-/// ThreadX riscv64 boards, whose NIC is a virtio-mmio device the harness
-/// varies per pair) states only `emulator` and keeps its line in
-/// `nros-qemu-ladder` until the runner package takes it (phase-528 W3).
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct BoardRunQemu {
-    /// The `qemu-system-<system>` binary's suffix (`arm`, `riscv64`).
-    pub system: String,
-    /// QEMU's `-machine`, when it differs from the machine word of
-    /// `emulator` (that word is RFC-0114 vocabulary, not always QEMU's).
-    #[serde(default)]
-    pub machine: Option<String>,
-    /// `-cpu`, when the machine's default CPU is not the one.
-    #[serde(default)]
-    pub cpu: Option<String>,
-    /// `-icount <value>` (`shift=auto`: book-internals/src/testing/qemu-icount.md).
-    #[serde(default)]
-    pub icount: Option<String>,
-    /// `-semihosting-config enable=on,target=native`.
-    #[serde(default)]
-    pub semihosting: bool,
-    /// The NIC model on QEMU's user (SLIRP) network: `-nic user,model=<m>`.
-    #[serde(default)]
-    pub nic_model: Option<String>,
-}
-
-/// `[board.run.renode]` — the Renode twin's wiring (phase-524 W4a), read only
-/// by the Renode runner: `nros_runner_renode`, which `nros run` hands it as
-/// the plan's `link` and `console` args (phase-524 W4b), and the test
-/// harness's launcher (`scripts/probe/twin/renode.sh`, through
-/// `nros_tests::renode`).
-/// The platform is the emulator's machine word (`platforms/boards/<m>.repl`).
-#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct BoardRunRenode {
-    /// The `sysbus` peripheral that carries the image's serial link
-    /// (`usart3`), wired to a host pty a router opens as `serial/`.
-    pub link: String,
-    /// The `sysbus` peripheral that carries the console (`usart6`), when it is
-    /// not the link; captured to a file.
-    #[serde(default)]
-    pub console: Option<String>,
-}
-
 pub use nros_orchestration_ir::target_exec::{
-    CommandTemplate, ConsoleKind, ConsoleTable, FlashTable, PrepareStep, UsbId, WaitFor,
+    BoardRun, BoardRunQemu, BoardRunRenode, CommandTemplate, ConsoleKind, ConsoleTable,
+    EMULATOR_KINDS, FlashTable, PrepareStep, UsbId, WaitFor,
 };
-
-impl BoardRun {
-    /// `(kind, machine)` of `emulator`, when it is well formed.
-    #[must_use]
-    pub fn emulator_parts(&self) -> Option<(&str, &str)> {
-        let (kind, machine) = self.emulator.as_deref()?.split_once(':')?;
-        (EMULATOR_KINDS.contains(&kind) && !machine.is_empty()).then_some((kind, machine))
-    }
-
-    /// The emulator platform Zephyr's `west build -t run` names for this
-    /// kind (`armfvp` for an FVP), projected as `NROS_BOARD_RUNNER`.
-    #[must_use]
-    pub fn zephyr_emulator(&self) -> Option<&'static str> {
-        match self.emulator_parts()?.0 {
-            "fvp" => Some("armfvp"),
-            "qemu" => Some("qemu"),
-            "renode" => Some("renode"),
-            _ => None,
-        }
-    }
-
-    /// The QEMU command line up to and including `-kernel` (the caller adds
-    /// the image), when the board states `[board.run.qemu]`.
-    #[must_use]
-    pub fn qemu_argv(&self) -> Option<Vec<String>> {
-        let q = self.qemu.as_ref()?;
-        let machine = q
-            .machine
-            .as_deref()
-            .or_else(|| self.emulator_parts().map(|(_, m)| m))?;
-        let mut v = vec![format!("qemu-system-{}", q.system)];
-        if let Some(cpu) = &q.cpu {
-            v.extend(["-cpu".into(), cpu.clone()]);
-        }
-        v.extend(["-machine".into(), machine.to_string(), "-nographic".into()]);
-        if let Some(i) = &q.icount {
-            v.extend(["-icount".into(), i.clone()]);
-        }
-        if q.semihosting {
-            v.extend([
-                "-semihosting-config".into(),
-                "enable=on,target=native".into(),
-            ]);
-        }
-        if let Some(nic) = &q.nic_model {
-            v.extend(["-nic".into(), format!("user,model={nic}")]);
-        }
-        v.push("-kernel".into());
-        Some(v)
-    }
-
-    /// Why this table is malformed, if it is.
-    fn shape_error(&self) -> Option<String> {
-        if self.host && self.emulator.is_some() {
-            return Some(
-                "`[board.run]` states both `host = true` and `emulator`; a board runs \
-                 as a host process OR under an emulator"
-                    .into(),
-            );
-        }
-        if let Some(e) = &self.emulator
-            && self.emulator_parts().is_none()
-        {
-            return Some(format!(
-                "`[board.run] emulator = \"{e}\"` must read `<kind>:<machine>` with kind \
-                 one of {}",
-                EMULATOR_KINDS.join(", ")
-            ));
-        }
-        if self.qemu.is_some() && self.emulator_parts().map(|(k, _)| k) != Some("qemu") {
-            return Some(
-                "`[board.run.qemu]` is read only by the QEMU runner, so it needs \
-                 `[board.run] emulator = \"qemu:<machine>\"`"
-                    .into(),
-            );
-        }
-        let kind = self.emulator_parts().map(|(k, _)| k);
-        if self.renode.is_some() && kind != Some("renode") {
-            return Some(
-                "`[board.run.renode]` is read only by the Renode runner, so it needs \
-                 `[board.run] emulator = \"renode:<platform>\"`"
-                    .into(),
-            );
-        }
-        None
-    }
-}
 
 /// Refusal for a launch string in the retired places (phase-528 W2).
 const RETIRED_RUNNER: &str = "a board's launch is stated in `[board.run]` (`emulator = \
@@ -1242,10 +1076,22 @@ impl BoardDescriptor {
             .map(|body| body.replace("${workspace}", &ws))
     }
 
-    /// The QEMU line up to `-kernel`, from `[board.run.qemu]` (phase-528 W2).
+    /// The QEMU line up to `-kernel`, from `[board.run.qemu]` (phase-528 W2),
+    /// with the NIC model on QEMU's user network: the board's plan args
+    /// ([`BoardRun::qemu_plan_args`]) rendered by `nros_qemu_ladder::plan_line`,
+    /// the renderer `nros run`'s `qemu` runner and the test harness use too
+    /// (phase-544 W1).
     #[must_use]
     pub fn qemu_argv(&self) -> Option<Vec<String>> {
-        self.run.as_ref()?.qemu_argv()
+        let run = self.run.as_ref()?;
+        let mut args = run.qemu_plan_args()?;
+        if let Some(model) = run.qemu.as_ref().and_then(|q| q.nic_model.as_ref()) {
+            args.insert("nic".into(), format!("user,model={model}"));
+        }
+        let line = nros_qemu_ladder::plan_line(&args).ok()?;
+        let mut v = vec![line.exe];
+        v.extend(line.before_kernel);
+        Some(v)
     }
 
     /// The cargo `runner` the generated settings carry for this board: the
@@ -3599,8 +3445,8 @@ entry_kind = "zephyr-staticlib"
         assert_eq!(line("mps2-an385-freertos"), mps2);
         assert_eq!(
             line("mps3-an536-freertos"),
-            "qemu-system-arm -machine mps3-an536 -nographic -semihosting-config \
-             enable=on,target=native -kernel"
+            "qemu-system-arm -machine mps3-an536 -nographic -icount shift=auto \
+             -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel"
         );
         let fvp = cat
             .descriptors()
@@ -3610,6 +3456,36 @@ entry_kind = "zephyr-staticlib"
         assert_eq!(
             fvp.run.as_ref().and_then(BoardRun::zephyr_emulator),
             Some("armfvp")
+        );
+    }
+
+    /// phase-544 W1: the test harness reads a board's `[board.run]` with
+    /// `nros_orchestration_ir::target_exec::board_run_named`, not through this
+    /// catalog. Both deserialize the same `BoardRun`; this holds the two
+    /// readings equal for every name of every in-tree descriptor, so the
+    /// harness's boot is the one `nros run` plans.
+    #[test]
+    fn board_run_reader_agrees_with_the_catalog() {
+        let root = repo_root_for_tests();
+        let cat = BoardCatalog::load_with_extra(&root, &[]).unwrap();
+        let mut qemu_tables = 0;
+        for d in cat.descriptors() {
+            let src = root.join(
+                d.source
+                    .as_deref()
+                    .expect("a loaded descriptor names its file"),
+            );
+            let text = std::fs::read_to_string(&src).unwrap();
+            for name in &d.names {
+                let run = nros_orchestration_ir::target_exec::board_run_named(&text, name)
+                    .unwrap_or_else(|e| panic!("{}: {name}: {e}", src.display()));
+                assert_eq!(run, d.run, "{}: {name}", src.display());
+            }
+            qemu_tables += usize::from(d.run.as_ref().is_some_and(|r| r.qemu.is_some()));
+        }
+        assert!(
+            qemu_tables >= 3,
+            "only {qemu_tables} `[board.run.qemu]` tables found"
         );
     }
 
