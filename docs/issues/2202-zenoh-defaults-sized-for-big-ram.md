@@ -141,6 +141,12 @@ user measured.
 Still open: item 4's stack half, which issue 2360 / 2365 own. Items 5 and 6
 are PR #3390's. This issue stays open until the stacks are settled there.
 
+Parked follow-up (maintainer ruling 2026-11-10: filed, not done now): a
+48 KiB `NROS_ZEPHYR_HEAP_SIZE` tier for C/C++ images that declare no action,
+through a derived rung over the entity inventory's action count. It would save
+16 KiB an image on pub/sub and service images (worst measured 45,072 B with
+headroom), and action images keep 64 KiB.
+
 ## Direction (for the follow-up PR)
 
 1. The `CONFIG_HEAP_MEM_POOL_SIZE` default on Zephyr boards where nothing
