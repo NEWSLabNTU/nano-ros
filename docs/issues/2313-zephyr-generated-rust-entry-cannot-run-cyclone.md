@@ -43,6 +43,32 @@ Three defects stack, each hidden by the one before it:
 Fixes 1 and 2 were measured on the native_sim images and then backed out of
 the W4 PR, because without fix 3 nothing exercises them.
 
+## Progress (2026-11-09, issue 2354)
+
+- Item 1 is fixed on `main`: the generated entry declares `rmw-cyclonedds`
+  off by default (`builder::west_app`).
+- Item 2 is fixed by issue 2354: `nros::main!`'s Zephyr arm calls
+  `nros_app_register_backends()`, and the module's Rust hook references
+  Cyclone strongly.
+- Item 3 did NOT reproduce on a talker: a generated `--lang rust --rmw
+  cyclonedds` talker on native_sim publishes. The listener, service and
+  action roles were not run, so item 3 is open for them.
+
+  Measured later the same day on the same fix: all six roles boot past
+  declaration, and the three pairs pass on native_sim (talker->listener
+  `I heard: [Hello World: 2]`; service `Result of add_two_ints: 5`; action
+  `Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`). Item 3 does not
+  reproduce.
+
+Left (assigned to nros 133; phase-535 W6 skips these leaves): the six
+`zephyr_<role>_cyclonedds` images (after issue 2365's PR B, #3345, since
+their `prj-cyclonedds.conf` sets stack sizes), and retiring the listener,
+service-server, service-client and action-client leaves. The action-server
+leaf STAYS for its zenoh row (RFC-0122: `zephyr_rust_zenoh_action_goal_completion_rate`
+reads its `reply-slot: refusals=` heartbeat, which the workspace action
+server does not print); only its Cyclone row retires. Follow-up: give the
+workspace action server that heartbeat, then retire the leaf.
+
 ## What W4 did instead
 
 The Rust Cyclone pairs stay leaves: `examples/zephyr/rust/{listener,

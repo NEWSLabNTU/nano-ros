@@ -170,7 +170,7 @@ are C.
   mps2-an385 Zephyr finds no west workspace without `ZEPHYR_BASE` and starts
   no router for the board's `10.0.2.2` locator; resolved 2026-11-09 with
   issue 2301) and issue 2354 (a generated
-  Rust Zephyr image on Cyclone DDS probably needs `CONFIG_CPP`; not measured).
+  Rust Zephyr image on Cyclone DDS was refused at configure; resolved).
 
 ### W3 — The NuttX cross compiler is the pinned one, with a GCC floor
 
