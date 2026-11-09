@@ -59,7 +59,9 @@
 #         none). Issue 2377 cites it so the two cannot drift. REMOVE THIS ROW
 #         when the PR carrying `docs/issues/2376-*.md` merges.
 #
+docs/issues/2377-workspace-road-no-c-image-on-bare-metal.md:2376
+docs/issues/2400-stack-floor-from-measured-frames.md:2398
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/phase-548-three-languages-every-board.md:2398
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
-docs/issues/2377-workspace-road-no-c-image-on-bare-metal.md:2376
