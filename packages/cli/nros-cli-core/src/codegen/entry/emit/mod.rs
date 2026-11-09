@@ -403,6 +403,20 @@ pub(crate) fn hazard_fixture_model_reacting(
     ros_launch_manifest_model::SystemModel::from_yaml_str(&yaml).expect("hazard fixture parses")
 }
 
+/// rlm v0.3.13 -- [`hazard_fixture_model`] with the hazard tracing to a
+/// requirement, so both packs can be asked whether it reaches the bake.
+#[cfg(test)]
+pub(crate) fn hazard_fixture_model_with_requirement() -> ros_launch_manifest_model::SystemModel {
+    let mut m = hazard_fixture_model();
+    for h in m.contracts.hazards.values_mut() {
+        h.requirement = Some(ros_launch_manifest_model::RequirementContract {
+            id: "SR-7".to_string(),
+            source: Some("hara.md".to_string()),
+        });
+    }
+    m
+}
+
 #[cfg(test)]
 mod tests_c;
 #[cfg(test)]

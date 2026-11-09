@@ -550,6 +550,27 @@ pub struct HazardRow {
     /// play_launch phase 96 W4.2 (phase 85 D4) -- the hazard's ladder, top
     /// rung first ([`hazard_rungs`]). Empty: no rung route is monitored.
     pub rungs: Vec<HazardRungRow>,
+    /// rlm v0.3.13 -- the safety requirement the hazard traces to
+    /// (`contracts.hazards.<h>.requirement`), as `id` or `id (source)`; empty
+    /// when the contract states none. Carried into the baked table as a
+    /// comment beside the hazard, so a `hazard-*` report (keyed by
+    /// [`Self::key`]) can be traced to the requirement without the model.
+    /// The executor's report itself is unchanged.
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    pub requirement: String,
+}
+
+/// rlm v0.3.13 -- `requirement`'s text as the bake carries it: `id`, or
+/// `id (source)`; empty for none.
+#[must_use]
+pub fn requirement_text(h: &ros_launch_manifest_model::HazardContract) -> String {
+    match &h.requirement {
+        None => String::new(),
+        Some(r) => match r.source.as_deref() {
+            Some(src) if !src.is_empty() => format!("{} ({src})", r.id),
+            _ => r.id.clone(),
+        },
+    }
 }
 
 /// play_launch phase 96 W4.2 -- one rung of a hazard's ladder, lowered onto an
@@ -773,6 +794,7 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
             sink: emits.and_then(|e| rows.iter().position(|r| r.fqn == e)),
             reaction_id,
             rungs,
+            requirement: requirement_text(h),
         });
     }
     out
@@ -860,6 +882,12 @@ fn render_hazards_rs(hazards: &[HazardRow], paths: RenderPaths) -> String {
                 )
             })
             .collect();
+        if !h.requirement.is_empty() {
+            out.push_str(&format!(
+                "    // requirement: {}\n",
+                h.requirement.replace(['\n', '\r'], " ")
+            ));
+        }
         out.push_str(&format!(
             "    HazardSpec {{ key: {k:?}, ftti_ms: {f}u32, settle_ms: {st}u32, \
              monitors: NROS_HAZARD_MONITORS_{i}, sink: {sink}, reaction_id: {ri}u16, \
@@ -1168,6 +1196,35 @@ mod hazard_row_tests {
         let ages = age_rows(&m).expect("ages");
         let hz = hazard_rows(&m, &rows, &ages);
         (rows, ages, hz)
+    }
+
+    /// rlm v0.3.13 -- a hazard's `requirement` reaches the baked table as a
+    /// comment beside its `HazardSpec`, and a hazard with none bakes exactly
+    /// the text it baked before (the negative control).
+    #[test]
+    fn a_requirement_is_carried_beside_its_hazard() {
+        let base = format!("{HAZARD}      ftti_ms: 500.0\n");
+        let traced =
+            format!("{base}      requirement:\n        id: SR-12\n        source: hara.xlsx\n");
+        let (rows, ages, hz) = lowered(AGE_100, &traced);
+        assert_eq!(hz[0].requirement, "SR-12 (hara.xlsx)");
+        let rs = render_monitor_rs_full(&rows, &ages, &hz, RenderPaths::NROS_NODE);
+        assert!(
+            rs.contains("    // requirement: SR-12 (hara.xlsx)\n    HazardSpec {"),
+            "{rs}"
+        );
+
+        let (rows, ages, plain) = lowered(AGE_100, &base);
+        assert!(plain[0].requirement.is_empty());
+        let before = render_monitor_rs_full(&rows, &ages, &plain, RenderPaths::NROS_NODE);
+        assert!(!before.contains("requirement"), "{before}");
+        let mut stripped = hz.clone();
+        stripped[0].requirement.clear();
+        assert_eq!(
+            render_monitor_rs_full(&rows, &ages, &stripped, RenderPaths::NROS_NODE),
+            before,
+            "the requirement changes nothing but its comment"
+        );
     }
 
     /// phase-534 W3 (acceptance) -- a model saved before rlm v0.3.9 (schema

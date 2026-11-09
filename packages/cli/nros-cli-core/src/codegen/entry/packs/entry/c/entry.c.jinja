@@ -161,6 +161,9 @@ static const nros_cpp_hazard_rung_t __nros_hz_rungs_{{ hi }}[{{ h.rungs | length
 {%- endfor %}
 static const nros_cpp_hazard_row_t __nros_hz_rows[{{ m.hazards | length }}] = {
 {%- for h in m.hazards %}
+{%- if h.requirement %}
+    /* requirement: {{ h.requirement | replace("*/", "* /") }} */
+{%- endif %}
     { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_monitors_{{ loop.index0 }}, {{ h.monitors | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u, {% if h.rungs %}__nros_hz_rungs_{{ loop.index0 }}{% else %}NULL{% endif %}, {{ h.rungs | length }}u },
 {%- endfor %}
 };

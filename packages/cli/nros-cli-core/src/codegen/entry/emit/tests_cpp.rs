@@ -2249,6 +2249,44 @@ fn rust_node_install_on_a_sched_task_receives_the_unwrapped_executor() {
     );
 }
 
+/// rlm v0.3.13 -- a hazard's `requirement` is baked as a comment right above
+/// its row in the C++ pack too.
+#[test]
+fn typed_emit_carries_a_hazards_requirement_beside_its_row() {
+    let plan = fixture_plan_typed(&[
+        (
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        ),
+        (
+            "listener_pkg",
+            "listener",
+            "listener",
+            "listener_pkg::Listener",
+            "listener_pkg/Listener.hpp",
+        ),
+    ]);
+    let (rows, ages) = monitor_fixture_rows();
+    let model = super::hazard_fixture_model_with_requirement();
+    let (src, _) = super::emit_typed_monitored_lowered(
+        Lang::Cpp,
+        &plan,
+        &rows,
+        &ages,
+        Some(&model),
+        &[],
+        &super::ModeSchedTask::default(),
+    )
+    .expect("hazard emit ok");
+    let at = src
+        .find("    /* requirement: SR-7 (hara.md) */\n    { \"d.launch.xml/chatter_lost\"")
+        .unwrap_or_else(|| panic!("requirement comment above the row; src:\n{src}"));
+    assert!(src[..at].contains("__nros_hz_rows["), "{src}");
+}
+
 /// phase-462 W3b -- a hazard whose guard topic both rows watch is baked as
 /// rows, guards and members over THOSE rows (age 0, rate 0), with storage
 /// sized by all three counts, and installed after the monitor tables.
