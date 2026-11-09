@@ -51,32 +51,69 @@ task stack too.
 This is the shape issue 2202 describes (an image's RAM decided by defaults
 nobody stated); here the default is the task stack's.
 
-## Fix
+## Fix, part 1 (#3330)
 
-- The three boards 2359 raised (nucleo-f767zi, rpi-pico-w, fvp-aemv8r-smp)
-  state `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=16384`, their size before the raise.
-  mps2-an385 (128 KiB main) and qemu-cortex-a53 (32 KiB) are left as they
-  were, accepted by name in the gate: a board conf merges after a leaf's (last
-  wins, issue 0876), so a board task-stack line would beat a leaf that states
-  its own, and `sched-task-stacks-dtcm-zephyr-mps2` does (8,192 B;
-  `check-kconfig-overridden-values` caught exactly that in the first draft).
-- `just check zephyr-task-stack-stated` (fast, buildless): a tracked conf that
-  sets `CONFIG_MAIN_STACK_SIZE` above 16384 also sets a nonzero task stack.
-  Confs named for a non-zenoh RMW are exempt (the symbol is inside
-  `if NROS_RMW_ZENOH`), and so are the two accepted boards, each with its
-  reason. Run against the tree before the fix, it names the three boards.
+The three boards 2359 raised (nucleo-f767zi, rpi-pico-w, fvp-aemv8r-smp)
+stated `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=16384`, their size before the
+raise, with a fast gate (`zephyr-task-stack-stated`) and an allowlist for
+mps2-an385 and qemu-cortex-a53. That put the nucleo C talker at 368,320 B of
+393,216: it fit, but 16,384 B above the last green.
 
-Measured after the fix: the nucleo-f767zi C talker uses 368,320 B of 393,216
-(main 32768, task stack 16384), exactly 16,384 B above the last green.
+## Fix, part 2: the class
+
+Part 1 patched three boards. The class is that the task stack inherited the
+main stack at all, and that the main stack was a board fact when it is an
+image fact. Both are fixed in the module, and part 1's lines and gate are gone:
+
+- `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE` is its own symbol, outside
+  `if NROS_RMW_ZENOH`, `default 16384` (`range 1024 1048576`); the
+  `0 = inherit main` value is retired, from `zephyr/CMakeLists.txt` and from the
+  shim's fallback. Cyclone keeps its 512 KiB via a `configdefault` in its block.
+- `CONFIG_MAIN_STACK_SIZE` is a `configdefault` in the module, per image:
+  32768 for a Rust image off `ARCH_POSIX` (issue 2359's measured 28,280 B
+  peak), 16384 otherwise, in both the zenoh and the XRCE blocks. A board conf
+  that states a main stack still wins (mps2-an385 131072, qemu-cortex-a53
+  32768), and so does a leaf.
+- The 52 `CONFIG_MAIN_STACK_SIZE=16384` leaf lines and the two scaffolds that
+  wrote them (`cargo-nano-ros` scaffold, `nros new`) are gone, and so are the
+  three boards' 32768 lines.
+- `just check zephyr-task-stack-decoupled` replaces the allowlist gate: it
+  holds the shim, Kconfig and CMake to "no inherit-main path", with no
+  allowlist. `zephyr-rust-main-stack` now reads the module's Rust default in
+  both RMW blocks.
+
+RAM, before -> after (Zephyr 3.7, same fixture rows):
+
+| image | before | after |
+|---|---|---|
+| nucleo-f767zi C talker | 368,320 B | 351,936 B (the last green) |
+| mps2-an385 C talker | 1,039,656 B | 810,280 B |
+| mps2-an385 C++ talker | 1,038,632 B | 809,256 B |
+| mps2-an385 Rust talker | 823,804 B | 594,428 B |
+| qemu-cortex-a53 SMP C workspace | 1,732,612 B | 1,699,844 B |
+
+## Is 16 KiB enough for the zenoh tasks? Measured
+
+Zephyr's thread analyzer (`CONFIG_THREAD_ANALYZER`, `INIT_STACKS`), on the
+part-2 images with a 16,384 B task stack, each run against the test's own
+router:
+
+| run | zpico_exec peak | zpico_flush peak | main peak |
+|---|---|---|---|
+| mps2-an385 C talker, `zephyr_cortex_m_talker_keeps_one_session_past_the_lease` (75 s, 144 publishes, 11 samples) | 1,304 B | 168 B | 13,472 / 131,072 B |
+| qemu-cortex-a53 SMP C workspace, `sched_dims` CorePinPlacement cell (~30 s) | 2,416 B | not legible | 18,032 / 32,768 B |
+
+The a53 console interleaves the two cores' output, so one `zpico_exec` line of
+five dumps was legible; it is a high-water mark, read about 20 s in. Both
+peaks sit under 15 % of the stack. mps2's main peak (13 KiB of 128 KiB) says
+that board's 131072 is a separate question, not taken here.
 
 ## Still open
 
-- The C and C++ entries fit a 16 KiB main stack; only Rust needs 32 KiB. A
-  per-image main stack (Rust 32 KiB, C/C++ 16 KiB), stated by the module
-  instead of the board, would return the C image's other 16 KiB. That is a
-  follow-up (it has to work on both Zephyr lines, 3.7 and 4.4).
 - Issue 2360 (Rust Zephyr registration frames against 32 KiB) is related and
   unowned; not taken here.
+- The a53 SMP console interleave can split a test's marker line, so the
+  CorePinPlacement cell failed one run in four locally. Not filed yet.
 
 ## What would close it
 

@@ -19,9 +19,14 @@ package that says it builds Rust, without building anything:
     `[board.zephyr]` table with a `rust_target`, and its `west_board` is not
     native_sim (on CONFIG_ARCH_POSIX a Zephyr thread runs on a host pthread's
     stack, so MAIN_STACK_SIZE bounds nothing, and the module skips it too);
-  * its `prj.conf` must assign `CONFIG_MAIN_STACK_SIZE`, and the last
-    assignment must be at least the floor. No assignment is refused: Zephyr's
-    default is 1 KiB.
+  * the main stack its Rust image gets must be at least the floor: the
+    `prj.conf`'s last `CONFIG_MAIN_STACK_SIZE` assignment when it has one,
+    otherwise the module's Rust default. Since issue 2365 the module decides
+    main's stack per image (`zephyr/Kconfig`, `configdefault MAIN_STACK_SIZE`
+    `default <N> if NROS_RUST_API && !ARCH_POSIX` in the zenoh and the XRCE
+    block), and a board states none, because one board number reached every
+    language. Each of those module defaults must itself be at least the floor,
+    and both blocks must have one.
 
 The floor is read from the module's own line, so the gate and the refusal
 cannot disagree.
@@ -48,6 +53,23 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODULE = "zephyr/CMakeLists.txt"
 FLOOR_RE = re.compile(r"^\s*set\(NROS_RUST_MAIN_STACK_FLOOR\s+(\d+)\b", re.M)
 STACK_RE = re.compile(r"^\s*CONFIG_MAIN_STACK_SIZE\s*=\s*(\d+)\s*$", re.M)
+KCONFIG = "zephyr/Kconfig"
+RMW_BLOCKS = ("NROS_RMW_ZENOH", "NROS_RMW_XRCE")
+RUST_DEFAULT_RE = re.compile(
+    r"^configdefault MAIN_STACK_SIZE\n(?:\s+default .*\n)*?"
+    r"\s+default (\d+) if NROS_RUST_API && !ARCH_POSIX\n", re.M)
+
+
+def rust_defaults(kconfig_text: str) -> dict[str, int]:
+    """The module's Rust main-stack default in each RMW block that has one."""
+    found = {}
+    for rmw in RMW_BLOCKS:
+        for block in re.findall(rf"^if {rmw}\n(.*?)^endif # {rmw}\n", kconfig_text,
+                                re.M | re.S):
+            m = RUST_DEFAULT_RE.search(block)
+            if m:
+                found[rmw] = int(m.group(1))
+    return found
 POSIX_BOARDS = ("native_sim", "native_posix")
 
 
@@ -72,14 +94,18 @@ def in_scope(board_toml: str) -> bool:
     return False
 
 
-def offence(conf_path: str, conf_text: str | None, floor: int) -> str | None:
-    """Why a board's `prj.conf` breaks the rule, or None."""
+def offence(conf_path: str, conf_text: str | None, floor: int,
+            module_default: int | None = None) -> str | None:
+    """Why a board's `prj.conf` breaks the rule, or None. With no assignment
+    the module's Rust default applies (`module_default`; None = none found)."""
     if conf_text is None:
-        return f"{conf_path}: missing, so CONFIG_MAIN_STACK_SIZE is Zephyr's 1 KiB default"
+        return f"{conf_path}: missing"
     found = STACK_RE.findall(conf_text)
     if not found:
-        return (f"{conf_path}: assigns no CONFIG_MAIN_STACK_SIZE, so main gets Zephyr's "
-                f"1 KiB default; state {floor} or more")
+        if module_default is None:
+            return (f"{conf_path}: assigns no CONFIG_MAIN_STACK_SIZE and {KCONFIG} has no "
+                    "Rust main-stack default, so main gets Zephyr's 1 KiB default")
+        found = [str(module_default)]
     value = int(found[-1])
     if value < floor:
         return (f"{conf_path}: CONFIG_MAIN_STACK_SIZE={value} is below the {floor}-byte "
@@ -119,12 +145,23 @@ def selftest() -> int:
         ("CONFIG_MAIN_STACK_SIZE=16384\n", True),     # issue 2359's board
         ("CONFIG_MAIN_STACK_SIZE=32768\n", False),
         ("CONFIG_MAIN_STACK_SIZE=65536\nCONFIG_MAIN_STACK_SIZE=16384\n", True),  # last wins
-        ("CONFIG_FOO=y\n", True),                     # unset: 1 KiB default
+        ("CONFIG_FOO=y\n", True),                     # unset, no module default
         (None, True),
     ]
     for text, refused in cases:
         if (offence("prj.conf", text, 32768) is not None) != refused:
             bad.append(f"conf {text!r}: expected refused={refused}")
+    # Issue 2365: unset now means the module's Rust default.
+    if offence("prj.conf", "CONFIG_FOO=y\n", 32768, 32768) is not None:
+        bad.append("an unset board with a module default of 32768 was refused")
+    if offence("prj.conf", "CONFIG_FOO=y\n", 32768, 16384) is None:
+        bad.append("an unset board with a module default under the floor passed")
+    kc = ("if NROS_RMW_ZENOH\n\nconfigdefault MAIN_STACK_SIZE\n"
+          "    default 32768 if NROS_RUST_API && !ARCH_POSIX\n    default 16384\n\n"
+          "endif # NROS_RMW_ZENOH\n\nif NROS_RMW_XRCE\n\nconfigdefault MAIN_STACK_SIZE\n"
+          "    default 16384\n\nendif # NROS_RMW_XRCE\n")
+    if rust_defaults(kc) != {"NROS_RMW_ZENOH": 32768}:
+        bad.append(f"Kconfig parse: {rust_defaults(kc)} (XRCE block has no Rust default)")
     for b in bad:
         print(f"check-zephyr-rust-main-stack selftest: {b}")
     if bad:
@@ -148,13 +185,23 @@ def main() -> int:
               "floor from there")
         return 1
     errors, checked = [], 0
+    defaults = rust_defaults(read(KCONFIG) or "")
+    for rmw in RMW_BLOCKS:
+        if rmw not in defaults:
+            errors.append(f"{KCONFIG}: the `if {rmw}` block has no `configdefault "
+                          "MAIN_STACK_SIZE` Rust default (`default <N> if NROS_RUST_API "
+                          "&& !ARCH_POSIX`), so a Rust image gets the C number")
+        elif defaults[rmw] < floor:
+            errors.append(f"{KCONFIG}: the {rmw} Rust main-stack default {defaults[rmw]} "
+                          f"is below the {floor}-byte floor")
+    module_default = min(defaults.values()) if defaults else None
     for toml_path in board_tomls():
         text = read(toml_path)
         if text is None or not in_scope(text):
             continue
         checked += 1
         conf = os.path.join(os.path.dirname(toml_path), "prj.conf")
-        why = offence(conf, read(conf), floor)
+        why = offence(conf, read(conf), floor, module_default)
         if why:
             errors.append(why)
     if checked == 0:

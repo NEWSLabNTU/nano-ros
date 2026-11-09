@@ -545,8 +545,11 @@ int nros_zephyr_report_sched_task_vs_transport(const char* sched_task, size_t sc
 #error "NROS_ZEPHYR_MAX_THREADS must be >= 1: it sizes a C array (issue 1015)"
 #endif
 
+/* Issue 2365 -- the task stack is its own budget, never main's: the module
+ * forwards CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE (default 16 KiB), and this
+ * fallback only serves a build with no Kconfig (the host shim tests). */
 #ifndef NROS_ZEPHYR_STACK_SIZE
-#define NROS_ZEPHYR_STACK_SIZE CONFIG_MAIN_STACK_SIZE
+#define NROS_ZEPHYR_STACK_SIZE 16384
 #endif
 
 /* Transport/task stacks live in DTCM, not SRAM.
