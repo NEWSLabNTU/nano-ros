@@ -949,6 +949,14 @@ row = "nros-board-linux@Linux"
 notes = "phase-537 W9 — the Linux host platform page, after its starter (starters/linux-host.md, the `linux` track): the run plan and the native build line."
 
 [[probe]]
+track = "custom-rmw"
+chapter = "extending/custom-rmw.md"
+variant = ""
+weekly = false
+row = "nros-board-linux@Linux"
+notes = "phase-545 W4 (RFC-0071 D14-D16) — Write a custom RMW backend: an out-of-tree backend package (`acme_rmw`, announcing `rmw acme`, delegating to zenoh) added to a scaffolded Rust talker workspace for the Linux host, selected with `rmw = \"acme\"`, then the router started by hand (issue 2381: `nros run` starts none for a backend outside nano-ros) and `nros run --router` until the backend's own publish line and `Publishing:`. Standalone, not chained after the linux starter: that one is C++ over Cyclone DDS."
+
+[[probe]]
 track = "platform-zephyr-native-sim"
 chapter = "guide/platforms/zephyr-native-sim.md"
 variant = ""

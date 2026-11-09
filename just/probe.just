@@ -178,6 +178,11 @@ freertos-posix: (platform "freertos-posix")
 [group("main")]
 platform-linux: (platform "platform-linux")
 
+# book/src/extending/custom-rmw.md — an out-of-tree RMW backend in a Linux host
+# workspace, selected by name and run against a router (phase-545 W4).
+[group("main")]
+custom-rmw: (platform "custom-rmw")
+
 # book/src/guide/platforms/zephyr-native-sim.md — the Zephyr native_sim platform page, after its
 # starter: the run plan and the native build line (phase-537 W9).
 [group("main")]
