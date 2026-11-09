@@ -122,3 +122,9 @@ Unit tests (`run_exec::tests`): a fake answering the `InitAck` bytes captured
 from `rmw_zenohd` is reused, a free port starts a router, a serial link
 connects to it, and a silent listener, an HTTP reply and a zenoh peer are
 refused.
+
+The tests hold every port they probe until the probe is done. The free case
+goes through a probe seam (`plan_router_with`), not a port bound and dropped:
+#3306's `a_taken_router_port_is_refused_with_the_remedy` asserted a dropped
+ephemeral port was free, which a parallel test could take in between, and it
+failed once that way in a full parallel run on arm-a100. That test is replaced.
