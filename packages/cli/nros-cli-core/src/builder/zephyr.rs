@@ -26,6 +26,12 @@
 //! Extras are merged AFTER the discovered set, which is also the right
 //! precedence — a later fragment overrides an earlier one.
 //!
+//! Zephyr then CACHES the discovered list, so on its own the first configure's
+//! answer would stick to the build dir (issue 2374). The nano-ros module's
+//! pre-Kconfig hook (`zephyr/cmake/nros_discovered_config.cmake`) drops a
+//! discovered value before discovery runs, so leaving `CONF_FILE` unset keeps
+//! discovery live on every configure, not only the first.
+//!
 //! ## Variants are Zephyr's own mechanism, not ours
 //!
 //! `prj_<buildtype>.conf` sets `CONF_FILE_BUILD_TYPE`, which then selects
