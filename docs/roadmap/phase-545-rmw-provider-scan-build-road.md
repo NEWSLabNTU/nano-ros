@@ -195,9 +195,10 @@ crate does not name, and an acceptance test with a gate.
   linux --template talker --lang rust --rmw zenoh`, then `acme_rmw`
   (`package.xml`, `nros-rmw.toml`, a crate on `nros-rmw-cffi` delegating to
   `nros-rmw-zenoh`) written with heredocs, `rmw = "acme"` in the bringup,
-  `rmw_zenohd` started by hand, and `nros run acme_node --router
-  tcp/127.0.0.1:7447`. The router is by hand because `nros run` starts none
-  for a backend outside nano-ros: [issue 2381](../issues/2381-nros-run-router-from-typed-rmw-names.md).
+  and a plain `nros run acme_node`. The descriptor states `[rmw.host] peer =
+  "zenoh-router"`, from which `nros run` starts the router (RFC-0071 D17,
+  [issue 2381](../issues/archived/2381-run-router-need-from-rmw-name-list.md);
+  until #3393 the page started `rmw_zenohd` by hand).
 - Every shell step is a probe fence. The `custom-rmw` `[[probe]]` track
   (`nros-board-linux@Linux`, standalone, not after the linux starter, which is
   C++ over Cyclone DDS) **passed** on the installed track (`just probe
@@ -232,4 +233,4 @@ crate does not name, and an acceptance test with a gate.
 | [#2295](../issues/archived/2295-nros-build-rmw-selection-in-tree-only.md) | Resolved by W1–W3 (2026-11-09). This phase closes it: `nros build` finds an RMW provider outside the in-tree table (RFC-0071 Amendment 2026-11-07, D14 to D16). |
 | [#2310](../issues/2310-board-descriptor-platform-is-closed-enum.md) | A board descriptor's `platform` is a closed enum, so no out-of-tree platform: the platform-side twin of the out-of-tree RMW this phase enables. |
 | [#2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md) | RFC-0071 D16 step 3: the `acme` image on `board = "native_sim"` through `west_app`, moved out of W3 by user ruling (2026-11-09). |
-| [#2381](../issues/archived/2381-run-router-need-from-rmw-name-list.md) | RESOLVED 2026-11-10 by PR #3382. `nros run` chose the host router from the RMW's name, so W3's `acme` ran with none. The host peer is now declared in the descriptor, `[rmw.host] peer` (RFC-0071 D17). |
+| [#2381](../issues/archived/2381-run-router-need-from-rmw-name-list.md) | RESOLVED 2026-11-10 by PR #3393. `nros run` chose the host router from the RMW's name, so W3's `acme` ran with none. The host peer is now declared in the descriptor, `[rmw.host] peer` (RFC-0071 D17). |
