@@ -73,6 +73,10 @@ therefore resolved AT the package first and passed by name:
   (`rustup_in`). So a package's own `rust-toolchain.toml` is honoured, never
   dropped. Its rustup call ignores an inherited `RUSTUP_TOOLCHAIN`, which
   rustup's proxy exports under `cargo test`.
+  A package file that names a DIFFERENT toolchain from the pin wins: rustup
+  reports it as `(overridden by ...)`, and the pin applies only to the
+  `(default)` answer (`pick_toolchain`, test
+  `a_package_toolchain_that_disagrees_with_the_pin_is_kept`, mutation-checked).
 - `host_tool::plan` with a known toolchain runs both cargo handoffs from
   `CONFIG_FREE_DIR` (`/`), with `--manifest-path` and `RUSTUP_TOOLCHAIN`. With
   no toolchain, it keeps the old directory, which brings back the warnings but

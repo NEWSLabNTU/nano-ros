@@ -409,22 +409,33 @@ pub(crate) fn toolchain_at(dir: &Path, nano_ros_root: Option<&Path>) -> Option<S
     toolchain_resolved_at(dir, nano_ros_root)
 }
 
-/// [`toolchain_at`] past the environment: the pin, or rustup's own answer at
-/// `dir`. Its rustup ignores an inherited `RUSTUP_TOOLCHAIN` (rustup's proxy
-/// exports one under `cargo test`), since the caller already decided that one
-/// does not apply.
+/// [`toolchain_at`] past the environment: rustup's two answers at `dir`, read
+/// with an inherited `RUSTUP_TOOLCHAIN` dropped (rustup's proxy exports one
+/// under `cargo test`; the caller already decided it does not apply), then
+/// [`pick_toolchain`].
 fn toolchain_resolved_at(dir: &Path, nano_ros_root: Option<&Path>) -> Option<String> {
-    if std::env::var_os("RUSTUP_TOOLCHAIN").is_none()
-        && let Some(pin) = default_pin_for(dir, nano_ros_root)
-    {
-        return Some(pin);
-    }
-    let active = rustup_in(dir)
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .args(["show", "active-toolchain"])
-        .output()
-        .ok()?;
-    active_toolchain_name(&String::from_utf8_lossy(&active.stdout))
+    let ask = |args: &[&str]| {
+        rustup_in(dir)
+            .env_remove("RUSTUP_TOOLCHAIN")
+            .args(args)
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+    };
+    let active = ask(&["show", "active-toolchain"])?;
+    let list = ask(&["toolchain", "list"]).unwrap_or_default();
+    pick_toolchain(pinned_stable(nano_ros_root).as_deref(), &active, &list)
+}
+
+/// The toolchain a project builds with, from rustup's answers at it: the pin
+/// ONLY when rustup reports the `(default)` toolchain, i.e. nothing at the
+/// project chose one ([`pin_when_default`], issue 2370's rule), else the
+/// toolchain rustup named. So a package's own `rust-toolchain.toml` that
+/// names a DIFFERENT toolchain from the pin wins: rustup reports it as
+/// `(overridden by …)`, and the pin is never applied over it.
+fn pick_toolchain(pin: Option<&str>, active: &str, list: &str) -> Option<String> {
+    pin.and_then(|p| pin_when_default(p, active, list))
+        .or_else(|| active_toolchain_name(active))
 }
 
 /// The toolchain name in `rustup show active-toolchain`'s answer:
@@ -911,6 +922,40 @@ mod tests {
             Some("1.99.0-x86_64-unknown-linux-gnu")
         );
         assert_eq!(super::active_toolchain_name(""), None);
+    }
+
+    /// Issue 2299 -- a package `rust-toolchain.toml` that DISAGREES with the
+    /// pin wins: rustup reports it as an override, and the pin applies only to
+    /// a project that chose nothing.
+    #[test]
+    fn a_package_toolchain_that_disagrees_with_the_pin_is_kept() {
+        let list = "1.99.0-x86_64-unknown-linux-gnu (default)\nnightly-2026-04-11-x86_64-unknown-linux-gnu\n";
+        let pkg = "nightly-2026-04-11-x86_64-unknown-linux-gnu (overridden by '/ws/src/acme/rust-toolchain.toml')";
+        assert_eq!(
+            super::pick_toolchain(Some("1.99.0"), pkg, list).as_deref(),
+            Some("nightly-2026-04-11-x86_64-unknown-linux-gnu"),
+            "the pin overrode the package's own toolchain"
+        );
+        // Nothing chose one: the pin.
+        assert_eq!(
+            super::pick_toolchain(
+                Some("1.99.0"),
+                "stable-x86_64-unknown-linux-gnu (default)",
+                list
+            )
+            .as_deref(),
+            Some("1.99.0")
+        );
+        // The pin is not installed: rustup's answer stands.
+        assert_eq!(
+            super::pick_toolchain(
+                Some("1.88.0"),
+                "stable-x86_64-unknown-linux-gnu (default)",
+                list
+            )
+            .as_deref(),
+            Some("stable-x86_64-unknown-linux-gnu")
+        );
     }
 
     /// Issue 2299 -- a package's OWN `rust-toolchain.toml` is the toolchain a
