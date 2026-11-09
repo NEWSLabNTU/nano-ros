@@ -278,6 +278,13 @@ pub fn scaffold_into_workspace(
         Some(b) => Some(find_bringup(ws, b)?),
         None => None,
     };
+    // Issue 2376 — the bringup's images must take a C/C++ entry before a C or
+    // C++ node joins them; checked before anything is written.
+    if let Some(dir) = &bringup {
+        for board in image_boards(dir)? {
+            crate::cmd::new::refuse_c_family_without_entry(node.lang, &board)?;
+        }
+    }
     let node_dir = ws.join("src").join(node.name);
     if node_dir.exists() && !node.force {
         bail!(
@@ -291,6 +298,23 @@ pub fn scaffold_into_workspace(
         add_exec_depend(dir, node.name)?;
     }
     Ok(bringup)
+}
+
+/// The `board` of every `[image.<id>]` in a bringup's `system.toml`.
+fn image_boards(bringup: &Path) -> Result<Vec<String>> {
+    let path = bringup.join("system.toml");
+    let text =
+        std::fs::read_to_string(&path).wrap_err_with(|| format!("reading {}", path.display()))?;
+    let doc: toml::Table = text
+        .parse()
+        .wrap_err_with(|| format!("parsing {}", path.display()))?;
+    Ok(doc
+        .get("image")
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flat_map(|t| t.values())
+        .filter_map(|img| img.get("board")?.as_str().map(str::to_string))
+        .collect())
 }
 
 /// `--to <bringup>`: a path to the bringup, or its package name under `src/`.
@@ -634,5 +658,35 @@ mod tests {
             .to_string();
         assert!(e.contains("sensor_node_bringup"), "{e}");
         std::fs::remove_dir_all(&ws).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod c_family_into_workspace_tests {
+    use super::*;
+
+    /// Issue 2376 — `--to` a bringup whose image is bare metal refuses a C node
+    /// before writing its package.
+    #[test]
+    fn a_c_node_into_a_bare_metal_bringup_is_refused_before_anything_is_written() {
+        let ws = tempfile::tempdir().unwrap();
+        let bringup = ws.path().join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"demo\"\n\n[image.baremetal]\nboard = \"mps2-an385-baremetal\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            image_boards(&bringup).unwrap(),
+            vec!["mps2-an385-baremetal"]
+        );
+        let e = crate::cmd::new::refuse_c_family_without_entry(
+            nros_lang::Language::C,
+            "mps2-an385-baremetal",
+        )
+        .unwrap_err();
+        assert!(e.to_string().contains("mps2-an385-freertos"));
+        assert!(!ws.path().join("src/listener").exists());
     }
 }
