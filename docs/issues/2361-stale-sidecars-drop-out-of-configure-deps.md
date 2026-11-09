@@ -66,3 +66,36 @@ sidecar consulted, current or not.
 The island's diag build re-runs its sync recipe after it reverts its patches,
 and its `board-flash` flashes with `west flash --no-rebuild`
 (NEWSLabNTU/simple-autoware-safety-island 9de23c9).
+
+## Fixed (2026-11-09), to be archived after PR #3317
+
+`metadata_refresh::fresh_probe_rows` returns every sidecar it CONSULTED as
+the configure-input list, fresh, stale or unreadable, recorded before the
+freshness test can skip it. It used to record only the fresh ones, so the
+inputs depended on the state they track. Every model-road producer of the
+`input` rows reads that list: `nros dev image sizing-descriptor --from-model
+--workspace` (an entry image, the island's road), the shared-runtime write,
+and `nros build`. So a configure that refuses a stale sidecar now depends on
+it, and the `nros configure` that makes it current re-runs that configure.
+The rows a stale sidecar would have supplied are still unused, so the
+refusal is unchanged; only the dependency is new.
+
+The west-leaf road (`nros dev image west-leaf-sizing`) already listed every
+`*.json` in a leaf's `metadata/` directories regardless of freshness, so it
+needed no change.
+
+Not covered: a sidecar that does not exist yet. A configure input with no
+file is a ninja load error, and its directory is not a safe stand-in, because
+anything the configure writes there would re-date it past `build.ninja` and
+re-run the configure on every build. The first `nros configure` creates the
+sidecars before any image configure reads them, so this is the
+never-configured case, not the one measured here.
+
+Test: `explicit_nano_ros_path_keys_the_stamp_and_the_resolve_alike` now
+asserts that a sidecar refused as stale is still returned as an input. The
+assertion fails on the old code.
+
+Still `status: open` here on purpose: PR #3317 homes this issue in phase-530
+by its current path, so archiving it now would break that link, and an issue
+in `docs/issues/` must be open (`check-issue-index`). A follow-up archives it
+as resolved once #3317 has landed.
