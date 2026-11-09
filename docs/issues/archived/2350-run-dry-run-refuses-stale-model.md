@@ -10,7 +10,7 @@ resolved: 2026-11-07
 resolved_in: "fix-2350-dry-run-model branch: the dry run's implicit configure hands the model door a StaleModel policy"
 ---
 
-**Home: [phase-544](../../roadmap/phase-544-harness-run-plan-followups.md).** Found replaying Tutorial 9 (`tutorial/another-target.md`)
+**Home: [phase-544](../../roadmap/archived/phase-544-harness-run-plan-followups.md).** Found replaying Tutorial 9 (`tutorial/another-target.md`)
 on main e55d53507b with the release asset of an earlier main.
 
 ## Symptom
