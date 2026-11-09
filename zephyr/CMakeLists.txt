@@ -256,6 +256,11 @@ endif()
 if(CONFIG_NROS_FAULT_LOG)
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_fault_log.c)
 endif()
+# Issue 2384 -- one console writer: C stdout lines go to printk whole.
+if(CONFIG_NROS_CONSOLE_WHOLE_LINES)
+    zephyr_library_sources(
+        ${NROS_REPO_DIR}/packages/boards/nros-board-zephyr/c/zephyr_console_lines.c)
+endif()
 zephyr_include_directories(${NROS_REPO_DIR}/packages/platform/nros-platform-api/include)
 zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/platform.c
