@@ -9,12 +9,14 @@
 # Members: `nros-extension`, the SDK crate every runner, every command package
 # and the core CLI depend on, and the first-party runner packages of RFC-0119
 # D8 (phase-528 W3: native, qemu, fvp, west, command; phase-529 W2: serial,
-# and `flash` on west; phase-524 W4b: renode). `just setup-cli` builds
+# and `flash` on west; phase-524 W4b: renode), and `nros-runner-lifetime`,
+# which ties what a runner starts to the runner (phase-544 W3). `just setup-cli` builds
 # whatever is here beside the CLI.
 [workspace]
 resolver = "2"
 members = [
     "nros-extension",
+    "nros-runner-lifetime",
     "nros_runner_command",
     "nros_runner_fvp",
     "nros_runner_native",

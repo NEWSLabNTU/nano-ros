@@ -42,13 +42,21 @@ fn poll_or_sleep(remaining: Duration) {
 #[cfg(unix)]
 pub fn set_new_process_group(command: &mut Command) -> &mut Command {
     use std::os::unix::process::CommandExt;
-    // SAFETY: setpgid and prctl are async-signal-safe and called before exec
+    #[cfg(target_os = "linux")]
+    let parent = std::process::id() as libc::pid_t;
+    // SAFETY: setpgid, prctl and getppid are async-signal-safe and called
+    // before exec
     unsafe {
-        command.pre_exec(|| {
+        command.pre_exec(move || {
             libc::setpgid(0, 0);
             #[cfg(target_os = "linux")]
             {
                 libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+                // A parent that died between fork and prctl sent its signal
+                // to nobody: do not exec an orphan (issue 2307).
+                if libc::getppid() != parent {
+                    return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+                }
             }
             Ok(())
         })
@@ -78,10 +86,13 @@ pub fn set_new_process_group(command: &mut Command) -> &mut Command {
 #[cfg(unix)]
 pub fn set_orphan_group_suicide(command: &mut Command) -> &mut Command {
     use std::os::unix::process::CommandExt;
+    // Read before fork: the pid getppid() must still answer after prctl.
+    #[cfg(target_os = "linux")]
+    let parent = std::process::id() as libc::pid_t;
     // SAFETY: setpgid, prctl, getppid and _exit are async-signal-safe and are
     // called between fork and exec.
     unsafe {
-        command.pre_exec(|| {
+        command.pre_exec(move || {
             libc::setpgid(0, 0);
             #[cfg(target_os = "linux")]
             {
@@ -90,8 +101,10 @@ pub fn set_orphan_group_suicide(command: &mut Command) -> &mut Command {
                 // fork and the prctl above, the signal was already delivered to
                 // nobody and never will be. Reparenting to init is the
                 // observable, so check for it and leave rather than run a peer
-                // nothing will ever reap.
-                if libc::getppid() == 1 {
+                // nothing will ever reap. Compared with the parent's pid, not
+                // with 1: under a subreaper (a container's init, a session
+                // manager) an orphan's new parent is not pid 1 (issue 2307).
+                if libc::getppid() != parent {
                     libc::_exit(0);
                 }
             }

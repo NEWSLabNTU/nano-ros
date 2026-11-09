@@ -1,6 +1,6 @@
 # Phase 544 — The harness on `nros run --plan`: what phase-528 left
 
-**Status (2026-11-06). PLANNED — successor to [phase-528](archived/phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homes one of them.** Implements
+**Status (2026-11-09). IN PROGRESS, W3 done — successor to [phase-528](archived/phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homes one of them.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) for the harness's
 remaining QEMU and process-lifetime gaps.
 
@@ -54,13 +54,19 @@ Acceptance: the cell runs in tier 2 and passes.
 
 ### W3 — A killed verb takes its image down
 
-[Issue 2307](../issues/2307-killed-run-verb-orphans-its-image.md): the runner
+[Issue 2307](../issues/archived/2307-killed-run-verb-orphans-its-image.md): the runner
 dies with the verb (`PR_SET_PDEATHSIG`), but the image is the runner's child
 and carries no such flag, so a SIGKILL to `nros run` orphans it. The harness
 works around this in `run::stop`; a user's terminal does not.
 
 Acceptance: a test that SIGKILLs `nros run` while a native image and a QEMU
 guest run finds no survivor (a `/proc` scan, as phase-528 W4's Ctrl-C test does).
+
+**Done (2026-11-09).** Every first-party runner ties what it starts to itself
+through `nros-runner-lifetime` (one PDEATHSIG hop, or a guarded process group
+for a tool chain such as `west build -t run`, which one hop measurably does
+not cover). `tests/killed_run_verb.rs` passes 4/4 in the ros2 box and fails
+with the tie disabled. Detail in the issue's Resolution.
 
 ## Acceptance
 

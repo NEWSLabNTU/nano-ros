@@ -16,4 +16,5 @@ path = "src/main.rs"
 
 [dependencies]
 nros-extension = { path = "../nros-extension" }
+nros-runner-lifetime = { path = "../nros-runner-lifetime" }
 nros-qemu-ladder = { path = "../../tooling/nros-qemu-ladder" }

@@ -21,6 +21,7 @@ use nros_extension::{
     plan::{RunPlan, Verb},
     runner,
 };
+use nros_runner_lifetime as lifetime;
 use nros_runner_west::{
     build_dir, flash_argv, flash_runner, flash_runners, no_passthrough, run_argv, run_targets,
     target_for, west_program,
@@ -58,7 +59,7 @@ fn run(plan: &RunPlan) -> RunnerExit {
         Ok::<_, String>(run_argv(&dir, &target))
     })();
     match prepared {
-        Ok(argv) => runner::exec(Command::new(west_program(plan)).args(argv)),
+        Ok(argv) => lifetime::exec_chain(Command::new(west_program(plan)).args(argv), runner::exec),
         Err(e) => runner::fail(e),
     }
 }
@@ -71,7 +72,10 @@ fn flash(plan: &RunPlan) -> RunnerExit {
         Ok::<_, String>(flash_argv(&dir, &r, &plan.passthrough))
     })();
     match prepared {
-        Ok(argv) => runner::exec_tool(Command::new(west_program(plan)).args(argv)),
+        Ok(argv) => lifetime::exec_chain(
+            Command::new(west_program(plan)).args(argv),
+            runner::exec_tool,
+        ),
         Err(e) => runner::fail(e),
     }
 }

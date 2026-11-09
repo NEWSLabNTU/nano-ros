@@ -22,6 +22,8 @@
 
 use std::process::{Command, ExitCode};
 
+use nros_runner_lifetime as lifetime;
+
 use nros_extension::{
     describe::Describe,
     exit::RunnerExit,
@@ -68,9 +70,11 @@ fn run(verb: Verb, plan: &RunPlan) -> RunnerExit {
     };
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
+    // A template may name a script that starts the image itself, so the
+    // command is a chain that dies with this runner (issue 2307).
     match verb {
-        Verb::Flash => runner::exec_tool(&mut cmd),
-        _ => runner::exec(&mut cmd),
+        Verb::Flash => lifetime::exec_chain(&mut cmd, runner::exec_tool),
+        _ => lifetime::exec_chain(&mut cmd, runner::exec),
     }
 }
 

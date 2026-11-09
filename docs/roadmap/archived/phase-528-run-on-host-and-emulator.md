@@ -535,7 +535,7 @@ than its sources):
   the run-to-run spread at that size, and the 5 % bound is read on cells
   that launch an image for longer than that.
 
-Known gap ([issue 2307](../../issues/2307-killed-run-verb-orphans-its-image.md), phase-544 W3): **a verb killed outright orphans its image.** The runner dies
+Known gap ([issue 2307](../../issues/archived/2307-killed-run-verb-orphans-its-image.md), phase-544 W3): **a verb killed outright orphans its image.** The runner dies
 with the verb (`PR_SET_PDEATHSIG`), but the image is the runner's child and
 carries no such flag: `nros_extension::runner::exec` cannot set it, because
 the crate is `#![forbid(unsafe_code)]`. The harness avoids the gap itself.

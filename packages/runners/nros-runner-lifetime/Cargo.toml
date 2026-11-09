@@ -1,0 +1,17 @@
+[package]
+name = "nros-runner-lifetime"
+version = "0.0.0"
+description = "Ties what a nano-ros runner starts to the runner's own life, so a verb killed with SIGKILL leaves no image behind (phase-544 W3, issue 2307)."
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nros-extension = { path = "../nros-extension" }
+# prctl(PR_SET_PDEATHSIG) and getppid in a `pre_exec` hook. This crate is the
+# one place a runner's spawn may use `unsafe`: `nros-extension` forbids it.
+libc = "0.2"

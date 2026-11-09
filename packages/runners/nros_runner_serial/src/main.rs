@@ -18,6 +18,7 @@ use nros_extension::{
     plan::{RunPlan, Verb},
     runner,
 };
+use nros_runner_lifetime as lifetime;
 use nros_runner_serial::{command_argv, open, serve, settings};
 
 fn describe() -> Describe {
@@ -33,7 +34,11 @@ fn console(plan: &RunPlan) -> RunnerExit {
         return match command_argv(plan, template) {
             // The tool IS the console: if it cannot run or fails, the console
             // could not be opened.
-            Ok(argv) => runner::exec_tool(Command::new(&argv[0]).args(&argv[1..])),
+            // A chain: the template may start the console tool through a
+            // script, and it dies with this runner either way (issue 2307).
+            Ok(argv) => {
+                lifetime::exec_chain(Command::new(&argv[0]).args(&argv[1..]), runner::exec_tool)
+            }
             Err(e) => runner::fail(e),
         };
     }

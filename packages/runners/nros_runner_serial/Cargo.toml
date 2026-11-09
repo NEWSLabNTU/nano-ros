@@ -19,5 +19,6 @@ path = "src/main.rs"
 
 [dependencies]
 nros-extension = { path = "../nros-extension" }
+nros-runner-lifetime = { path = "../nros-runner-lifetime" }
 # termios (raw mode, baud) on the port; the tests open a pty pair with it.
 libc = "0.2"

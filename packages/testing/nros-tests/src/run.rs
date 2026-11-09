@@ -48,10 +48,13 @@ use crate::{TestError, TestResult};
 /// Stop an `nros run` process the way the harness stops a direct child: at
 /// once, with SIGKILL.
 ///
-/// The verb owns a process group of its own (the runner and the image), and a
-/// SIGKILL to the verb's group alone would leave that group running: the
-/// runner dies with the verb (`PR_SET_PDEATHSIG`), the image it spawned does
-/// not. So the groups under the verb are killed first, then the verb.
+/// The verb owns a process group of its own (the runner and the image), and
+/// the groups under the verb are killed first, then the verb. Since issue
+/// 2307 a first-party runner ties its image to itself
+/// (`nros_runner_lifetime`), so a SIGKILL to the verb alone leaves nothing
+/// either (`tests/killed_run_verb.rs`). This order stays because it does not
+/// depend on the runner: a runner from another package may tie nothing, and
+/// killing the groups directly does not wait on a guard's teardown.
 ///
 /// A verb with nothing under it yet (stopped in the instant before it started
 /// its runner) is asked instead: SIGTERM, which it turns into a teardown, then
