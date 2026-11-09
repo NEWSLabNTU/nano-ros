@@ -72,6 +72,75 @@ declaration moves. These are the two 64 KiB heaps, 48 KiB of stacks, and the
   `entities`, so it takes the same undeclared defaults as A. The XRCE image in
   that file states its caps for the same reason (issue 1033).
 
+## Step (b): the defaults no declaration moves (2026-11-10)
+
+Kernel-heap peaks are `max_allocated_bytes` of `_system_heap`, read out of
+the running image (`CONFIG_SYS_HEAP_RUNTIME_STATS=y`). Platform-heap peaks
+are the boot record's (`CONFIG_NROS_BOOT_REPORT=y`,
+`read-boot-report.py`). Both are measurement-only builds of the fixture
+rows (Zephyr 3.7), each run 20-40 s against a live `rmw_zenohd`, with
+`ros2 topic echo` (best effort) or the image's own peer receiving.
+
+| image | board | kernel heap peak | platform heap peak | delivered |
+|---|---|---:|---:|---|
+| C talker | mps2_an385 (QEMU) | 0 | 13,472 | 55 samples |
+| C++ talker | mps2_an385 (QEMU) | 0 | 13,472 | 55 samples |
+| Rust talker | mps2_an385 (QEMU), kernel heap 8 KiB | 0 | 40,376 | 27 samples |
+| C talker, serial | nucleo_f767zi (Renode twin) | 0 | 11,664 | 85 samples |
+| C / C++ talker | native_sim/native/64 | 232 | 16,544 | 37 samples |
+| C / C++ listener (ws) | native_sim | 232 | 15,984 | heard the talker |
+| C / C++ service server (ws) | native_sim | 232 | 16,816 | answered |
+| C / C++ service client (ws) | native_sim | 232 | 20,496 | `Result of add_two_ints: 5` |
+| C / C++ action server (ws) | native_sim | not read | 33,648 | paired with the client |
+| C / C++ action client (ws) | native_sim | not read | 33,568 | paired with the server |
+
+The 232 bytes are native_sim's NSOS socket driver, the only kernel-heap
+user measured.
+
+1. **Kernel heap: done** (PR #3399). `CONFIG_HEAP_MEM_POOL_SIZE` is 8 KiB on
+   mps2_an385 (was 128 KiB) and nucleo_f767zi (was 16 KiB), and the nano-ros
+   module's `configdefault` for a zenoh image is 8 KiB (was 64 KiB; native_sim
+   stays > 0). `cargo nano-ros`'s Zephyr scaffold no longer writes 64 KiB.
+   `just mem-report --json`, RAM (writable allocated sections): mps2 C
+   talker 527,417 -> 404,537 B, mps2 C++ talker 529,141 -> 406,261 B, Nucleo
+   serial C talker 201,088 -> 192,896 B; `kheap__system_heap` 131,072 ->
+   8,192 B on mps2 (the Rust talker too) and 16,384 -> 8,192 B on the Nucleo.
+   The rebuilt images still deliver: 45 samples from each mps2 talker and 22
+   from the Rust one in 25 s (QEMU), and 80 from the Nucleo twin in 40 s, to
+   `ros2 topic echo` through `rmw_zenohd`. A native_sim C talker built with
+   8 KiB peaks at 232 B and delivers. The example and workspace leaf confs still state 64 KiB (128 KiB
+   in the Rust ones); they belong to issue 2365's rework, and on mps2 the
+   board conf beats them. Not measured: rpi-pico-w (hardware only, and its
+   Wi-Fi driver may allocate) keeps 16 KiB; fvp-aemv8r-smp is a Cyclone board;
+   the XRCE snippet's 64 KiB is another backend.
+2. **`NROS_ZEPHYR_HEAP_SIZE` for C/C++: ruled to stay at 64 KiB.** The 15 KiB
+   in the Kconfig help was a talker. The action images peak at 33,648, and
+   33,648 + the 24,576-byte headroom floor (`read-boot-report.py
+   --heap-headroom`) is 58,224, so 64 KiB is the action images' size, not a
+   big-RAM leftover. A pub/sub or service-only image fits 48 KiB (worst
+   20,496 + 24,576 = 45,072), but nothing in Kconfig knows what an image
+   declares, so a lower default for those needs the declaration to reach the
+   knob (a derived rung over the entity inventory's action count). Issue
+   1808 rules the peak itself operator-stated. The help now lists these
+   peaks.
+3. **`NROS_GRAPH_CACHE_SIZE`: ruled out as a derivation.** phase-412: the
+   cache holds the whole domain's liveliness tokens, remote ones included, so
+   nothing in the image sizes it. What follows the target is a stated count,
+   `NROS_GRAPH_MAX_ENTITIES` (141 bytes an entity), which a small IP board can
+   state in its descriptor's `[knobs.graph] max_entities` (issue 2194's board
+   rung). No in-tree board needs it today: mps2 has 4 MiB, the Nucleo image is
+   serial (cache compiled out), and the Pico W is unmeasured. The help no
+   longer says "20 % of this board's SRAM".
+4. **Task slots: already derived.** `NROS_ZEPHYR_TASK_SLOTS` is 2 on a zenoh
+   image because the tx-flush task (`NROS_ZENOH_TX_BATCH`, on by default on
+   Zephyr) is a real second thread beside the session's executor thread
+   (issue 1808); 1 with batching off. Nothing to lower. The per-slot stack
+   (`NROS_ZEPHYR_TIER_STACK_SIZE`) and the main stack belong to issue 2360 /
+   2365.
+
+Still open: item 4's stack half, which issue 2360 / 2365 own. Items 5 and 6
+are PR #3390's. This issue stays open until the stacks are settled there.
+
 ## Direction (for the follow-up PR)
 
 1. The `CONFIG_HEAP_MEM_POOL_SIZE` default on Zephyr boards where nothing
