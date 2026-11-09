@@ -614,6 +614,7 @@ configure-hook:
 # re-configure and an added endpoint exactly one. A real CMake + Ninja build
 # of a probe project with a stand-in CLI, so seconds; plus the reach (every
 # census reader adds the step). Same skip ledger as its siblings.
+[group('needs:cmake')]
 census-step:
     #!/usr/bin/env bash
     set -euo pipefail
