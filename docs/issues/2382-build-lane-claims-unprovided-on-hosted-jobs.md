@@ -59,6 +59,37 @@ Either way, `check-lane-contracts`' shape applies one level up: a lane's claims
 should be checked against what its jobs provision, so a claim the job never
 satisfies is caught by a gate, not by three nights of no verdict.
 
+## Fix
+
+The jobs now provide what the lane claims. The claims did not narrow:
+`build` includes the fast tier, whose citation gates need history, and its
+build tier reads the `# check::build` rows.
+
+- `scripts/ci/provision-gate-lane.sh <lane>` reads the lane's `tiers` and
+  `claims` from `.config/gate-lanes.toml` and fetches what the job must:
+  - `submodules`: the `.config/worktree-provisioning.txt` rows tagged with the
+    lane's tiers, at depth 1;
+  - `git-history`: the base branch's commits, treeless;
+  - `zephyr-tree`: the sparse header clone;
+  - `sources`: rosidl.
+
+  It replaces `provision-fast-lane.sh` and the fast jobs' two inline copies of
+  the history fetch.
+- gate.yml's `check-build` shards and host-tests' `gates` shards call it with
+  `build`. The two fast jobs, `check-fast` and `warm-cache`, call it with
+  `fast`.
+- `just check gate-lane-provisioned` (fast, buildless) parses every workflow:
+  a job that sets `NROS_GATE_SCOPE` to a lane claiming a fetched capability
+  must run the script for that lane in an earlier step. Its self-test covers
+  four refusals: a missing step, a step after the lane, the wrong lane, and an
+  unknown lane. Against main's workflows it names exactly the four jobs above.
+
+Measured on a fresh `git clone --depth 1` of the repository: before, the
+preflight refused `submodules` and `git-history`. `provision-gate-lane.sh build`
+took 49 s (15,883 commits, plus the depth-1 submodules). Afterwards the
+preflight named only `cli`, which the test clone did not build and which every
+CI job builds in an earlier step.
+
 ## What would close it
 
 A scheduled `gate` whose build-tier shards and a scheduled `host-tests` whose
