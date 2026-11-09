@@ -60,6 +60,13 @@ pub const TALKER_READY_MARKER: &str = TALKER_LOG_PREFIX;
 /// the strict wait is what made the breakage visible.
 pub const LISTENER_READY_MARKER: &str = "Subscriber created for topic:";
 
+/// RFC-0071 D16 (phase-545 W3) — printed once by the out-of-tree `acme` RMW
+/// backend (`fixtures/out-of-tree-rmw/src/acme_rmw`, its `PUBLISH_MARKER`) on
+/// the first sample published THROUGH it, so a test can tell a sample that
+/// went through `acme` from one that went straight to the zenoh backend it
+/// delegates to.
+pub const OUT_OF_TREE_RMW_PUBLISH_MARKER: &str = "acme rmw: publishing through backend acme";
+
 /// Readiness marker for the SAFETY chatter listener
 /// (the `safety-chatter-listener` bin), which prints
 /// `Safety subscriber created for topic: /chatter`.

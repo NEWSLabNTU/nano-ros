@@ -1,0 +1,20 @@
+# The `acme` backend's descriptor (RFC-0071 D1/D7). A third party writes this
+# file; the nano-ros toolchain lowers it. The names come from `package.xml`.
+[rmw]
+cpp_define = "NROS_RMW_ACME"
+
+# RFC-0071 D11/D15 — the image links this crate itself (no in-tree board has an
+# `rmw-acme` feature) and registers the backend as `acme_rmw::register()`.
+[rmw.provides.cargo]
+crate = "acme-rmw"
+register = "register"
+
+# The board descriptor's `platform_feature`, passed through when this crate
+# declares it.
+[rmw.provides.cargo.platform_features]
+platform-posix = "platform-posix"
+
+[rmw.link]
+rlib_dep = "acme-rmw"
+edition_feature = "ros-{edition}"
+needs_cxx_linker = false

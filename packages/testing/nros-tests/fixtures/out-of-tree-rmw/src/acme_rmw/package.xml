@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>acme_rmw</name>
+  <version>0.0.0</version>
+  <description>
+    An out-of-tree RMW provider (RFC-0071 D16, phase-545 W3). It announces
+    `rmw acme` below and declares what it lowers to in the sibling
+    `nros-rmw.toml`. Nothing in the nano-ros tree names it: an image that says
+    `rmw = "acme"` finds it through the provider scan alone.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cargo</build_type>
+    <nano_ros_provides kind="rmw" name="acme"/>
+  </export>
+</package>

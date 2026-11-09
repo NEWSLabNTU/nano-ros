@@ -1253,6 +1253,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
             "FreertosMps2/Rust/Zenoh/RealtimeSchedTasks/Workspace — answered by realtime_sched_tasks_e2e",
         ),
     ),
+    (
+        "out_of_tree_rmw_e2e",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/EntryPubsub/Workspace — answered by deployed_native_system_e2e; this one asserts the image's backend is a workspace provider nano-ros does not know (RFC-0071 D16)",
+        ),
+    ),
     ("output_marker_gate", NonCell::Static),
     ("pkg_index", NonCell::CompileCheck),
     ("platform", NonCell::Static),
