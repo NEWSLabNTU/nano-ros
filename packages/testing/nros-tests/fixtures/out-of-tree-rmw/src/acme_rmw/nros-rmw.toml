@@ -3,6 +3,11 @@
 [rmw]
 cpp_define = "NROS_RMW_ACME"
 
+# RFC-0071 D17 (issue 2381) -- acme speaks zenoh, so `nros run --router auto`
+# starts (or reuses) a zenoh router for it. nros reads this, never the name.
+[rmw.host]
+peer = "zenoh-router"
+
 # RFC-0071 D11/D15 — the image links this crate itself (no in-tree board has an
 # `rmw-acme` feature) and registers the backend as `acme_rmw::register()`.
 [rmw.provides.cargo]
