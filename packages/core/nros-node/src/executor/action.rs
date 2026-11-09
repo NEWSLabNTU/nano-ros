@@ -804,118 +804,129 @@ impl<'s> Executor<'s> {
             // `A::SendGoalRequest::TYPE_NAME`; the raw path has only the bare
             // type, and advertising it here left send_goal / get_result /
             // feedback undiscoverable, so every goal timed out.
-            let send_goal_type: heapless::String<256> =
-                super::action_core::action_channel_type(type_name, "SendGoal");
-            let get_result_type: heapless::String<256> =
-                super::action_core::action_channel_type(type_name, "GetResult");
-            let feedback_type: heapless::String<256> =
-                super::action_core::action_channel_type(type_name, "FeedbackMessage");
-
-            let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-            let mut send_goal_info =
-                ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hashes.send_goal)
+            // Issue 2360 — one scope per endpoint: each name and info dies
+            // once its endpoint exists, so the eight `heapless::String<256>`
+            // and five infos are never all live in this frame at once (they
+            // were, beside the five handles, on a 32 KiB Zephyr main stack).
+            let send_goal_server = {
+                let send_goal_type: heapless::String<256> =
+                    super::action_core::action_channel_type(type_name, "SendGoal");
+                let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+                let mut info =
+                    ServiceInfo::new(&send_goal_keyexpr, &send_goal_type, hashes.send_goal)
+                        .with_namespace(&ns)
+                        .with_domain(domain_id);
+                if !node_name.is_empty() {
+                    info = info.with_node_name(&node_name);
+                }
+                self.session_at_mut(session_idx)
+                    .ok_or(NodeError::BackendMismatch)?
+                    .create_service(&info, qos)
+                    .map_err(NodeError::Transport)?
+            };
+            let cancel_goal_server = {
+                let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+                let mut info = ServiceInfo::new(
+                    &cancel_goal_keyexpr,
+                    "action_msgs::srv::dds_::CancelGoal_",
+                    hashes.cancel_goal,
+                )
+                .with_namespace(&ns)
+                .with_domain(domain_id);
+                if !node_name.is_empty() {
+                    info = info.with_node_name(&node_name);
+                }
+                self.session_at_mut(session_idx)
+                    .ok_or(NodeError::BackendMismatch)?
+                    .create_service(&info, qos)
+                    .map_err(NodeError::Transport)?
+            };
+            let get_result_server = {
+                let get_result_type: heapless::String<256> =
+                    super::action_core::action_channel_type(type_name, "GetResult");
+                let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+                let mut info =
+                    ServiceInfo::new(&get_result_keyexpr, &get_result_type, hashes.get_result)
+                        .with_namespace(&ns)
+                        .with_domain(domain_id);
+                if !node_name.is_empty() {
+                    info = info.with_node_name(&node_name);
+                }
+                self.session_at_mut(session_idx)
+                    .ok_or(NodeError::BackendMismatch)?
+                    .create_service(&info, qos)
+                    .map_err(NodeError::Transport)?
+            };
+            let feedback_publisher = {
+                let feedback_type: heapless::String<256> =
+                    super::action_core::action_channel_type(type_name, "FeedbackMessage");
+                let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+                let mut info = TopicInfo::new(&feedback_keyexpr, &feedback_type, hashes.feedback)
                     .with_namespace(&ns)
                     .with_domain(domain_id);
-            if !node_name.is_empty() {
-                send_goal_info = send_goal_info.with_node_name(&node_name);
-            }
-
-            let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
-            let mut cancel_goal_info = ServiceInfo::new(
-                &cancel_goal_keyexpr,
-                "action_msgs::srv::dds_::CancelGoal_",
-                hashes.cancel_goal,
-            )
-            .with_namespace(&ns)
-            .with_domain(domain_id);
-            if !node_name.is_empty() {
-                cancel_goal_info = cancel_goal_info.with_node_name(&node_name);
-            }
-
-            let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-            let mut get_result_info =
-                ServiceInfo::new(&get_result_keyexpr, &get_result_type, hashes.get_result)
-                    .with_namespace(&ns)
-                    .with_domain(domain_id);
-            if !node_name.is_empty() {
-                get_result_info = get_result_info.with_node_name(&node_name);
-            }
-
-            let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-            let mut feedback_topic =
-                TopicInfo::new(&feedback_keyexpr, &feedback_type, hashes.feedback)
-                    .with_namespace(&ns)
-                    .with_domain(domain_id);
-            if !node_name.is_empty() {
-                feedback_topic = feedback_topic.with_node_name(&node_name);
-            }
-
-            let status_keyexpr: heapless::String<256> = action_info.status_key();
-            let mut status_topic = TopicInfo::new(
-                &status_keyexpr,
-                "action_msgs::msg::dds_::GoalStatusArray_",
-                hashes.status,
-            )
-            .with_namespace(&ns)
-            .with_domain(domain_id);
-            if !node_name.is_empty() {
-                status_topic = status_topic.with_node_name(&node_name);
-            }
-
-            let session = self
-                .session_at_mut(session_idx)
-                .ok_or(NodeError::BackendMismatch)?;
+                if !node_name.is_empty() {
+                    info = info.with_node_name(&node_name);
+                }
+                self.session_at_mut(session_idx)
+                    .ok_or(NodeError::BackendMismatch)?
+                    .create_publisher(&info, QoSProfile::QOS_PROFILE_DEFAULT)
+                    .map_err(NodeError::Transport)?
+            };
+            let status_publisher = {
+                let status_keyexpr: heapless::String<256> = action_info.status_key();
+                let mut info = TopicInfo::new(
+                    &status_keyexpr,
+                    "action_msgs::msg::dds_::GoalStatusArray_",
+                    hashes.status,
+                )
+                .with_namespace(&ns)
+                .with_domain(domain_id);
+                if !node_name.is_empty() {
+                    info = info.with_node_name(&node_name);
+                }
+                self.session_at_mut(session_idx)
+                    .ok_or(NodeError::BackendMismatch)?
+                    .create_publisher(&info, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
+                    .map_err(NodeError::Transport)?
+            };
             (
-                session
-                    .create_service(&send_goal_info, qos)
-                    .map_err(NodeError::Transport)?,
-                session
-                    .create_service(&cancel_goal_info, qos)
-                    .map_err(NodeError::Transport)?,
-                session
-                    .create_service(&get_result_info, qos)
-                    .map_err(NodeError::Transport)?,
-                session
-                    .create_publisher(&feedback_topic, QoSProfile::QOS_PROFILE_DEFAULT)
-                    .map_err(NodeError::Transport)?,
-                session
-                    .create_publisher(&status_topic, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
-                    .map_err(NodeError::Transport)?,
+                send_goal_server,
+                cancel_goal_server,
+                get_result_server,
+                feedback_publisher,
+                status_publisher,
             )
-        };
-
-        let core = ActionServerCore {
-            send_goal_server,
-            cancel_goal_server,
-            get_result_server,
-            feedback_publisher,
-            status_publisher,
-            active_goals: heapless::Vec::new(),
-            completed_results: heapless::Vec::new(),
-            pending_get_results: heapless::Vec::new(),
-            result_slab: [0u8; RESULT_BUF],
-            result_slab_used: 0,
-            goal_buffer: [0u8; GOAL_BUF],
-            feedback_buffer: [0u8; FEEDBACK_BUF],
-            cancel_buffer: [0u8; 256],
         };
 
         let offset = self.arena_alloc::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>>()?;
 
+        // Issue 2360 — written in place: building the entry (and its core's
+        // buffers) as a value and moving it in kept them on this frame.
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
             let entry_ptr =
                 arena_ptr.add(offset) as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>;
-            core::ptr::write(
-                entry_ptr,
-                Entry {
-                    core,
-                    goal_callback,
-                    cancel_callback,
-                    accepted_callback,
-                    context,
-                },
+            ActionServerCore::init_in_place(
+                core::ptr::addr_of_mut!((*entry_ptr).core),
+                send_goal_server,
+                cancel_goal_server,
+                get_result_server,
+                feedback_publisher,
+                status_publisher,
             );
+            core::ptr::addr_of_mut!((*entry_ptr).goal_callback).write(goal_callback);
+            core::ptr::addr_of_mut!((*entry_ptr).cancel_callback).write(cancel_callback);
+            core::ptr::addr_of_mut!((*entry_ptr).accepted_callback).write(accepted_callback);
+            core::ptr::addr_of_mut!((*entry_ptr).context).write(context);
+            // The entry's own fields, named with no `..`: a field added to it
+            // fails here until it is written above.
+            let Entry {
+                core: _,
+                goal_callback: _,
+                cancel_callback: _,
+                accepted_callback: _,
+                context: _,
+            } = &*entry_ptr;
         }
 
         let meta = CallbackMeta {
@@ -1789,29 +1800,37 @@ impl<'s> Executor<'s> {
             )
         };
 
-        let core = ActionClientCore::new(
-            send_goal_client,
-            cancel_goal_client,
-            get_result_client,
-            feedback_sub,
-        );
-
         let offset = self.arena_alloc::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>()?;
 
+        // Issue 2360 — written in place: building the core (and its buffers)
+        // as a value and moving it in kept them on this frame.
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
             let entry_ptr = arena_ptr.add(offset) as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>;
-            core::ptr::write(
-                entry_ptr,
-                Entry {
-                    core,
-                    goal_response_callback,
-                    feedback_callback,
-                    result_callback,
-                    cancel_response_callback,
-                    context,
-                },
+            ActionClientCore::init_in_place(
+                core::ptr::addr_of_mut!((*entry_ptr).core),
+                send_goal_client,
+                cancel_goal_client,
+                get_result_client,
+                feedback_sub,
             );
+            core::ptr::addr_of_mut!((*entry_ptr).goal_response_callback)
+                .write(goal_response_callback);
+            core::ptr::addr_of_mut!((*entry_ptr).feedback_callback).write(feedback_callback);
+            core::ptr::addr_of_mut!((*entry_ptr).result_callback).write(result_callback);
+            core::ptr::addr_of_mut!((*entry_ptr).cancel_response_callback)
+                .write(cancel_response_callback);
+            core::ptr::addr_of_mut!((*entry_ptr).context).write(context);
+            // The entry's own fields, named with no `..`: a field added to it
+            // fails here until it is written above.
+            let Entry {
+                core: _,
+                goal_response_callback: _,
+                feedback_callback: _,
+                result_callback: _,
+                cancel_response_callback: _,
+                context: _,
+            } = &*entry_ptr;
         }
 
         let meta = CallbackMeta {

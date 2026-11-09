@@ -1754,6 +1754,19 @@ impl ExecutorSink<'_> {
     }
 }
 
+/// Issue 2360 — run one `create_entity` arm in its OWN frame.
+///
+/// `create_entity` is one `match` over entity kinds, and LLVM sized its frame
+/// for everything it inlined from every arm: 26,996 B on a Rust Zephyr action
+/// server (5,504 B on a talker), live on the main stack whichever arm ran, with
+/// the registration it calls stacked on top. Each arm is a closure passed
+/// here, and a never-inlined generic is one instance per closure, so only the
+/// arm that runs has its frame live.
+#[inline(never)]
+fn out_of_line<R>(f: impl FnOnce() -> R) -> R {
+    f()
+}
+
 impl crate::node::FrameSink for ExecutorSink<'_> {
     fn create_node(
         &mut self,
@@ -1874,7 +1887,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
         };
         let entity_name = resolved_name.as_ref().map(|r| r.as_str()).unwrap_or("");
         match metadata.kind {
-            EntityKind::Publisher => {
+            EntityKind::Publisher => out_of_line(|| {
                 // Issue 0306 — the node's DECLARED profile
                 // (`create_publisher_for_topic_with_qos`) rides
                 // `metadata.qos`; this used to call the default-QoS
@@ -1899,8 +1912,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     .push_publisher(id_owned, handle)
                     .map_err(|_| cell_full("publishers"))?;
                 Ok(())
-            }
-            EntityKind::Subscription => {
+            }),
+            EntityKind::Subscription => out_of_line(|| {
                 let cb_id = metadata
                     .callback_id
                     .as_ref()
@@ -1976,8 +1989,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     )
                     .map_err(decl_err_from_node)?;
                 Ok(())
-            }
-            EntityKind::Timer => {
+            }),
+            EntityKind::Timer => out_of_line(|| {
                 let cb_id = metadata
                     .callback_id
                     .as_ref()
@@ -2042,7 +2055,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     period.as_millis(),
                 );
                 Ok(())
-            }
+            }),
             // Phase 212.M-F.23 — service / action client + server dispatch on
             // the single-node runtime. The executor-level `register_*_on`
             // calls add an arena dispatch entry, so inbound requests / goals
@@ -2050,7 +2063,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
             // contexts bridge back into the component's `on_callback`. Client
             // handles are stashed in the cell for the tick-side dispatch
             // (`RuntimeClientDispatch` / `RuntimeActions` in `run_ticks`).
-            EntityKind::ServiceServer => {
+            EntityKind::ServiceServer => out_of_line(|| {
                 let cb_id = metadata
                     .callback_id
                     .as_ref()
@@ -2075,8 +2088,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     )
                     .map_err(decl_err_from_node)?;
                 Ok(())
-            }
-            EntityKind::ServiceClient => {
+            }),
+            EntityKind::ServiceClient => out_of_line(|| {
                 let hid = executor
                     .register_service_client_raw_sized_on::<1024>(
                         node,
@@ -2093,8 +2106,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     .push_service_client(id_str(metadata.id.as_str())?, hid)
                     .map_err(|_| cell_full("service clients"))?;
                 Ok(())
-            }
-            EntityKind::ActionServer => {
+            }),
+            EntityKind::ActionServer => out_of_line(|| {
                 let goal_cb = metadata
                     .callback_id
                     .as_ref()
@@ -2139,8 +2152,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     .push_action_server(id_str(metadata.id.as_str())?, handle)
                     .map_err(|_| cell_full("action servers"))?;
                 Ok(())
-            }
-            EntityKind::ActionClient => {
+            }),
+            EntityKind::ActionClient => out_of_line(|| {
                 // A bound `callback_id` (set by
                 // `create_action_client_with_callbacks_for_name`) delivers the
                 // terminal goal result to the component via `on_callback`; the
@@ -2191,8 +2204,8 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     .push_action_client(id_str(metadata.id.as_str())?, handle.entry_index())
                     .map_err(|_| cell_full("action clients"))?;
                 Ok(())
-            }
-            EntityKind::Parameter => {
+            }),
+            EntityKind::Parameter => out_of_line(|| {
                 // Issue 1419 — the declaration as the code made it, BEFORE the
                 // store answers and whether or not `param-services` gives this
                 // image a store at all: the census describes the code.
@@ -2277,7 +2290,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                     }
                 }
                 Ok(())
-            }
+            }),
         }
     }
 
