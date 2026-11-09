@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [ci, cli, setup]
-related: [2129, phase-489]
+related: [2129, phase-489, phase-466]
 found: 2026-11-09
 ---
 
