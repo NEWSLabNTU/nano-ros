@@ -1051,7 +1051,7 @@ variant = ""
 lang = "c"
 weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
-notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process over Cyclone DDS (no router), then `ros2 topic echo` over rmw_cyclonedds_cpp. The board's first track (its row's evidence is the daily lane's two cyclonedds fixtures). The starter scaffolds `--rmw cyclonedds` until zenoh builds on this board (user ruling 2026-11-07); Not weekly yet."
+notes = "phase-537 W4 — the FreeRTOS POSIX starter: a C talker on the FreeRTOS POSIX port as a host process over Cyclone DDS (no router), then `ros2 topic echo` over rmw_cyclonedds_cpp. The board's first track (its row's evidence is the daily lane's two cyclonedds fixtures). The starter scaffolds `--rmw cyclonedds` first; its zenoh section has its own tracks. Not weekly yet."
 
 [[probe]]
 track = "freertos-posix-rust"
@@ -1076,7 +1076,6 @@ track = "freertos-posix-zenoh-rust"
 chapter = "starters/freertos-posix.md"
 variant = "zenoh"
 lang = "rust"
-awaits = ["Rust over zenoh on the FreeRTOS POSIX board: the image builds, then exits 1 within 0.2 s with nothing on the console (phase-548 W1, zenoh half; measured 2026-11-07 after #3289)"]
 weekly = false
 row = "nros-board-freertos-posix@FreertosPosix"
 notes = "phase-548 W8 — the starter's zenoh section in its Rust tab, after the Cyclone DDS steps; zenoh on this board landed with #3284."
