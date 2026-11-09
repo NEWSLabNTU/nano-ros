@@ -82,7 +82,7 @@ reason, tested together (see
 | **XRCE-DDS** | Micro-XRCE-DDS client `3.0.1` + Micro-CDR `2.0.2` | Agent `2.4.3-nros1` (installed by `nros setup … --rmw xrce`) | Client and agent are pinned independently and are NOT the same upstream release; they meet at the DDS-XRCE wire protocol |
 | **Cyclone DDS** | fork `0.10.5-nros1` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/book-internals/src/rmw/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration |
 
-Per-feature coverage across the three backends:
+Per-feature coverage across the backends:
 [Per-RMW Feature Matrix](matrices/rmw-feature-matrix.md).
 
 ## ROS 2 editions
