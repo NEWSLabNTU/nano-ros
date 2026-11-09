@@ -38,6 +38,7 @@ a board needs to find the router.
    kind = "serial"
    locator = "serial/UART_0#baudrate=115200"
    rmw = "zenoh"
+   host_peer = "zenoh-router"
    ```
 
    A host image (`board = "linux"`) that states no locator dials the zenoh
