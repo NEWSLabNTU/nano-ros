@@ -9,12 +9,16 @@
 # Zephyr C/C++ leaf that is counted by its census refused at configure on a
 # fresh tree. Checked against the real manifest:
 #
-#   1. with no filter, a Zephyr west leaf (`examples/zephyr/cpp/talker`) is listed;
+#   1. with no filter, a Zephyr west leaf (`examples/templates/cpp-port-minimal-publisher/zephyr`) is listed;
 #   2. narrowed to a lane coordinate only a west row has
 #      (`zephyr-cortex-m,cpp,zenoh`), that row's leaf is listed;
 #   3. each leaf is listed once, however many rows build it;
 #   4. the plain `list` command still keeps west rows out (the opt-in stands
 #      for the cargo/cmake consumers).
+#
+# The probe leaf was `examples/zephyr/cpp/talker` until phase-531 W6 moved the
+# Zephyr talkers to workspace rows; the cpp-port template is a west leaf that
+# still carries that coordinate.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
@@ -33,17 +37,17 @@ listed() {
 }
 
 all="$(python3 "$manifest_py" census-leaves)"
-if listed 'examples/zephyr/cpp/talker' "$all"; then
-    echo "ok   1: census-leaves lists the Zephyr west leaf examples/zephyr/cpp/talker"
+if listed 'examples/templates/cpp-port-minimal-publisher/zephyr' "$all"; then
+    echo "ok   1: census-leaves lists the Zephyr west leaf examples/templates/cpp-port-minimal-publisher/zephyr"
 else
-    echo "FAIL 1: census-leaves does not list examples/zephyr/cpp/talker (west rows left out):" >&2
+    echo "FAIL 1: census-leaves does not list examples/templates/cpp-port-minimal-publisher/zephyr (west rows left out):" >&2
     sed 's/^/       /' <<< "$all" >&2
     fail=1
 fi
 
 printf 'zephyr-cortex-m,cpp,zenoh\n' > "$WORK/coords.txt"
 narrow="$(python3 "$manifest_py" census-leaves --coords-from "$WORK/coords.txt")"
-if listed 'examples/zephyr/cpp/talker' "$narrow"; then
+if listed 'examples/templates/cpp-port-minimal-publisher/zephyr' "$narrow"; then
     echo "ok   2: narrowed to zephyr-cortex-m,cpp,zenoh, the west row's leaf is listed"
 else
     echo "FAIL 2: narrowed to zephyr-cortex-m,cpp,zenoh, census-leaves listed:" >&2
@@ -61,7 +65,7 @@ else
 fi
 
 rows="$(python3 "$manifest_py" list)"
-if nros_grep_q -F -- 'examples/zephyr/cpp/talker' <<< "$rows"; then
+if nros_grep_q -F -- 'examples/templates/cpp-port-minimal-publisher/zephyr' <<< "$rows"; then
     echo "FAIL 4: \`list\` now hands a west row to the cargo/cmake consumers" >&2
     fail=1
 else
