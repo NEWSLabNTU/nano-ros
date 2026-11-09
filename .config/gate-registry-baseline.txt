@@ -300,6 +300,7 @@ std-census
 string-conventions
 submodule-pinned-locks
 submodule-pins
+submodule-provision
 subtree-guard
 sysdep-remedies
 system-toml-in-bringup
