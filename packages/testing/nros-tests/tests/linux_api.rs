@@ -1349,12 +1349,18 @@ fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter) {
 // =============================================================================
 
 /// Resolve a native Cyclone C/C++ example role binary (prebuilt), or skip.
-/// The pair roles whose linux leaves moved into the workspaces (phase-535 W4);
-/// a variant such as `service-client-callback` is still a leaf.
+/// The pair roles whose linux leaves moved into the workspaces (phase-535 W4),
+/// and their callback variants (W6).
 fn is_moved_pair_role(case: &str) -> bool {
     matches!(
         case,
-        "listener" | "service-server" | "service-client" | "action-server" | "action-client"
+        "listener"
+            | "service-server"
+            | "service-client"
+            | "action-server"
+            | "action-client"
+            | "service-client-callback"
+            | "action-client-callback"
     )
 }
 

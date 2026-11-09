@@ -471,6 +471,30 @@ All per RFC-0122 D2.
 
 **Acceptance:** each row's consumer test is green; the ratchet floor is unchanged.
 
+A variant's image id carries its token after the role:
+`<platform>_<role>[_<variant>][_<rmw>][_<config>…]`. The token is a
+`workspace_image::Variant`, read by the same `parse_image` as every pair
+image, so there is one parser and one spelling. A variant is not a cell axis:
+its row is modelled by the same coordinate's Example cell as the plain role,
+and a test asks for it by name (`resolve_coord_variant`).
+
+- **linux callback clients (in review).** The C and C++ `service-client-callback`
+  leaves and the C++ `action-client-callback` leaf become node packages
+  (`service_client_callback_pkg` in `c` and `cpp`, `action_client_callback_pkg`
+  in `cpp`) and images `linux_service_client_callback[_cyclonedds]` and
+  `linux_action_client_callback`. 5 leaf rows and 3 leaves retire; each row
+  keeps its RMW. `linux_api`'s callback cases resolve the images. The Rust
+  `service-client-callback` leaf stays, with its reason in its row: the Rust
+  declarative `Component` API has no callback-receive service client
+  (`create_client_with_callback` is reachable only from an `Executor` that a
+  hand-written `main` opens).
+- **linux `*-rtic` (stay).** The six Rust leaves are hand-written `main`s, and
+  that is what they demonstrate: the caller owns the loop (a zero-arena
+  executor driven by `spin_once(0)`, publishing outside it), which a
+  generated entry cannot express on the host. RFC-0122 D10 keeps such a
+  `main`. On mps2-an385 the RTIC pattern is a board (`rtic-mps2-an385`), so
+  those leaves become images.
+
 ### W7 — Retire the old leaves, add `road_witness_e2e`
 
 - Delete every pair, variant, configuration and feature leaf moved by W3 to

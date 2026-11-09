@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>service_client_callback_pkg</name>
+  <version>0.1.0</version>
+  <description>AddTwoInts service client whose reply arrives through a spin-dispatched callback (pure-C workspace).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>example_interfaces</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

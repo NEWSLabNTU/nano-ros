@@ -1,0 +1,22 @@
+# Node interface contract for service_client_callback.launch.xml (phase-535
+# W6, the callback variant of service_client.contract.yaml). The server is the
+# separate add_server image, hence `external: server` (see that file).
+
+version: 1
+
+nodes:
+  add_callback_client:
+    # The resend timer; the reply arrives through the client's response
+    # callback, not a path of its own.
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 2 } }
+        output: []
+    cli:
+      add_two_ints: {}
+
+services:
+  /add_two_ints:
+    type: example_interfaces/srv/AddTwoInts
+    external: server
+    client: [add_callback_client/add_two_ints]

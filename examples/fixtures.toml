@@ -885,6 +885,33 @@ image = "linux_service_client_cyclonedds"
 codegen_out = "build-workspace-codegen/service_bringup"
 build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
 
+# phase-535 W6 (RFC-0122 D2) — the callback VARIANTS of the client roles, as
+# images of the behaviour bringups (ids `linux_<role>_callback[_<rmw>]`; the
+# token is a `workspace_image::Variant`). Were the `examples/linux/{c,cpp}/
+# *-client-callback` leaves. Consumed by tests/linux_api.rs.
+
+[[workspace_fixture]]
+id = "workspace-c-native-service-client-callback"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "linux_service_client_callback"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-zenoh-linux-service_bringup/cmake"
+
+[[workspace_fixture]]
+id = "workspace-c-native-service-client-callback-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/workspaces/c"
+bringup = "src/service_bringup"
+image = "linux_service_client_callback_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
+
 [[workspace_fixture]]
 id = "workspace-c-native-action-server-xrce"
 platform = "linux"
@@ -1405,6 +1432,44 @@ bringup = "src/service_bringup"
 image = "linux_service_client_cyclonedds"
 codegen_out = "build-workspace-codegen/service_bringup"
 build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
+
+# phase-535 W6 (RFC-0122 D2) — the callback VARIANTS of the client roles, as
+# images of the behaviour bringups (ids `linux_<role>_callback[_<rmw>]`; the
+# token is a `workspace_image::Variant`). Were the `examples/linux/{c,cpp}/
+# *-client-callback` leaves. Consumed by tests/linux_api.rs.
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-service-client-callback"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "linux_service_client_callback"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-zenoh-linux-service_bringup/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-service-client-callback-cyclonedds"
+platform = "linux"
+lang = "cpp"
+rmw = "cyclonedds"
+dir = "examples/workspaces/cpp"
+bringup = "src/service_bringup"
+image = "linux_service_client_callback_cyclonedds"
+codegen_out = "build-workspace-codegen/service_bringup"
+build_subdir = "build/posix-cyclonedds-linux-service_bringup/cmake"
+
+[[workspace_fixture]]
+id = "workspace-cpp-native-action-client-callback"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/cpp"
+bringup = "src/action_bringup"
+image = "linux_action_client_callback"
+codegen_out = "build-workspace-codegen/action_bringup"
+build_subdir = "build/posix-zenoh-linux-action_bringup/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-server-xrce"
@@ -2254,6 +2319,11 @@ lang = "rust"
 dir = "packages/testing/nros-tests/bins/entry-poc"
 
 # RFC-0041 / Phase 239 — callback-receive variant of the service client.
+# Stays a LEAF (phase-535 W6): the C and C++ callback clients became node
+# packages, but the Rust declarative `Component` API has no callback-receive
+# service client — `create_client_with_callback` is reachable only from an
+# `Executor` a hand-written `main` opens — so there is no component to move
+# this program into.
 [[fixture]]
 platform = "linux"
 lang = "rust"
@@ -2268,6 +2338,12 @@ platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/logging"
 
+# phase-535 W6 — the six linux `*-rtic` leaves STAY leaves: each IS a
+# hand-written `main` (RFC-0122 D10 keeps one where it demonstrates one). The
+# RTIC pattern is the caller owning the loop — a zero-arena executor driven by
+# `spin_once(0)`, publishing outside it — which a generated entry, whose board
+# owns the loop, cannot express on the host. (On mps2-an385 the RTIC pattern
+# is a BOARD, `rtic-mps2-an385`, so those leaves become images.)
 [[fixture]]
 platform = "linux"
 lang = "rust"
@@ -3459,20 +3535,6 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/safety-listener"
 
-# RFC-0041 / Phase 239 — C service-client callback variant (zenoh + cyclonedds
-# for the 239.8 backend-parity check).
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "zenoh"
-dir = "examples/linux/c/service-client-callback"
-
-[[fixture]]
-platform = "linux"
-lang = "c"
-rmw = "cyclonedds"
-dir = "examples/linux/c/service-client-callback"
-
 # Issue 0454 / phase-354 W3 — the raw-goal WIRE proof. Not an example (it is a
 # regression probe, so it lives under packages/testing/ per the examples-are-
 # copy-out-projects rule), but it is a CMake C leaf like any other and builds
@@ -3539,26 +3601,6 @@ platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/linux/cpp/talker"
-
-# RFC-0041 / Phase 239 — C++ callback variants. service-client-callback gets
-# zenoh + cyclonedds (239.8 backend-parity); action-client-callback gets zenoh.
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/linux/cpp/service-client-callback"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "cyclonedds"
-dir = "examples/linux/cpp/service-client-callback"
-
-[[fixture]]
-platform = "linux"
-lang = "cpp"
-rmw = "zenoh"
-dir = "examples/linux/cpp/action-client-callback"
 
 [[fixture]]
 id = "cpp-parameters"

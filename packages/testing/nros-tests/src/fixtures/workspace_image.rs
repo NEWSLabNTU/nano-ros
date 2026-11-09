@@ -12,7 +12,7 @@
 //!
 //! # The image id
 //!
-//! `<platform>_<role>[_<rmw>][_<config>…]`, every part a fixed token:
+//! `<platform>_<role>[_<variant>][_<rmw>][_<config>…]`, every part a fixed token:
 //!
 //! - `<platform>` — [`image_prefix`], the entry vocabulary
 //!   `examples/workspaces/README-layout.md` names (`freertos`, `nuttx`,
@@ -22,6 +22,11 @@
 //!   `demo_bringup`'s.
 //! - `<role>` — [`PairRole::token`]; the two roles of one workload never
 //!   share a token, so the role alone names the workload.
+//! - `<variant>` — a [`Variant`]: different node CODE for the same role
+//!   (RFC-0122 D2's "variant" row, phase-535 W6), e.g. the callback-receive
+//!   service client. A variant is NOT a cell axis: its image is modelled by the
+//!   same coordinate's Example cell as the plain role, so a test asks for it by
+//!   name ([`resolve_coord_variant`]) and the cell lookup ignores it.
 //! - `<rmw>` — omitted for zenoh (README-layout's "zenoh takes no suffix"),
 //!   else `xrce` / `cyclonedds`.
 //! - `<config>` — a configured cell's `Config` set (RFC-0051 §7a), in the
@@ -93,6 +98,27 @@ impl PairRole {
             Workload::Service => Some([PairRole::ServiceServer, PairRole::ServiceClient]),
             Workload::Action => Some([PairRole::ActionServer, PairRole::ActionClient]),
             _ => None,
+        }
+    }
+}
+
+/// Different node code for one role (RFC-0122 D2 "variant", phase-535 W6):
+/// its own node package in the language workspace, and an image of the
+/// role's behaviour bringup whose id carries the token after the role.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Variant {
+    /// The reply (or goal response, feedback and result) arrives through a
+    /// callback dispatched at spin, not a poll (RFC-0041). Client roles only.
+    Callback,
+}
+
+impl Variant {
+    pub const ALL: [Variant; 1] = [Variant::Callback];
+
+    /// The id token.
+    pub const fn token(self) -> &'static str {
+        match self {
+            Variant::Callback => "callback",
         }
     }
 }
@@ -182,6 +208,15 @@ impl WorkspaceImage {
 /// (cell, role) → the workspace image that runs that role. `Err` says which
 /// half of the question had no answer.
 pub fn workspace_image(cell: &Cell, role: PairRole) -> Result<WorkspaceImage, String> {
+    workspace_image_variant(cell, role, None)
+}
+
+/// [`workspace_image`] for one [`Variant`] of the role (`None` = the plain role).
+pub fn workspace_image_variant(
+    cell: &Cell,
+    role: PairRole,
+    variant: Option<Variant>,
+) -> Result<WorkspaceImage, String> {
     if cell.kind != Kind::Example {
         return Err(format!("{cell:?} is not an Example cell"));
     }
@@ -199,7 +234,10 @@ pub fn workspace_image(cell: &Cell, role: PairRole) -> Result<WorkspaceImage, St
     let prefix = image_prefix(cell.platform)
         .ok_or_else(|| format!("{:?} has no image road", cell.platform))?;
     let rmw = rmw_suffix(cell.rmw).ok_or_else(|| format!("{:?} has no image road", cell.rmw))?;
-    let mut image = format!("{prefix}_{}{rmw}", role.token());
+    let variant = variant
+        .map(|v| format!("_{}", v.token()))
+        .unwrap_or_default();
+    let mut image = format!("{prefix}_{}{variant}{rmw}", role.token());
     for c in cell.config {
         image.push('_');
         image.push_str(&c.as_str().replace('-', "_"));
@@ -219,6 +257,7 @@ pub struct ParsedImage {
     pub lang: Lang,
     pub rmw: Rmw,
     pub role: PairRole,
+    pub variant: Option<Variant>,
     pub config: Vec<Config>,
 }
 
@@ -286,21 +325,30 @@ pub fn parse_image(workspace: &str, bringup: &str, image: &str) -> Option<Parsed
             let Some(rest) = rest.strip_prefix(role.token()) else {
                 continue;
             };
-            for rmw in [Rmw::Zenoh, Rmw::Xrce, Rmw::Cyclonedds] {
-                let suffix = rmw_suffix(rmw).unwrap_or_default();
-                let Some(rest) = rest.strip_prefix(suffix) else {
-                    continue;
-                };
-                // A zenoh image's empty suffix leaves `_xrce` in `rest`, which
-                // `parse_configs` refuses, so an xrce id parses only as xrce.
-                if let Some(config) = parse_configs(rest) {
-                    hits.push(ParsedImage {
-                        platform,
-                        lang,
-                        rmw,
-                        role,
-                        config,
-                    });
+            let variants =
+                std::iter::once((None, rest)).chain(Variant::ALL.into_iter().filter_map(|v| {
+                    rest.strip_prefix('_')
+                        .and_then(|r| r.strip_prefix(v.token()))
+                        .map(|r| (Some(v), r))
+                }));
+            for (variant, rest) in variants {
+                for rmw in [Rmw::Zenoh, Rmw::Xrce, Rmw::Cyclonedds] {
+                    let suffix = rmw_suffix(rmw).unwrap_or_default();
+                    let Some(rest) = rest.strip_prefix(suffix) else {
+                        continue;
+                    };
+                    // A zenoh image's empty suffix leaves `_xrce` in `rest`, which
+                    // `parse_configs` refuses, so an xrce id parses only as xrce.
+                    if let Some(config) = parse_configs(rest) {
+                        hits.push(ParsedImage {
+                            platform,
+                            lang,
+                            rmw,
+                            role,
+                            variant,
+                            config,
+                        });
+                    }
                 }
             }
         }
@@ -340,7 +388,16 @@ pub fn row_id(img: &WorkspaceImage) -> TestResult<String> {
 /// their row names (`west_build_name`); see `resolve_zephyr`. The other
 /// west boards have no pair images yet.
 pub fn resolve(cell: &Cell, role: PairRole) -> TestResult<PathBuf> {
-    let img = workspace_image(cell, role).map_err(TestError::BuildFailed)?;
+    resolve_variant(cell, role, None)
+}
+
+/// [`resolve`] for one [`Variant`] of the role.
+pub fn resolve_variant(
+    cell: &Cell,
+    role: PairRole,
+    variant: Option<Variant>,
+) -> TestResult<PathBuf> {
+    let img = workspace_image_variant(cell, role, variant).map_err(TestError::BuildFailed)?;
     if cell.platform == PlatformId::ZephyrNativeSim {
         return resolve_zephyr(cell, &img);
     }
@@ -446,6 +503,19 @@ pub fn resolve_coord(
     rmw: Rmw,
     role: PairRole,
 ) -> TestResult<PathBuf> {
+    resolve_coord_variant(platform, lang, rmw, role, None)
+}
+
+/// [`resolve_coord`] for one [`Variant`] of the role. The variant image is the
+/// same coordinate's Example cell's, so the cell is looked up exactly as for
+/// the plain role.
+pub fn resolve_coord_variant(
+    platform: PlatformId,
+    lang: Lang,
+    rmw: Rmw,
+    role: PairRole,
+    variant: Option<Variant>,
+) -> TestResult<PathBuf> {
     let cell = crate::matrix::CELLS
         .iter()
         .find(|c| {
@@ -462,7 +532,7 @@ pub fn resolve_coord(
                 role.workload()
             ))
         })?;
-    resolve(cell, role)
+    resolve_variant(cell, role, variant)
 }
 
 /// [`resolve_coord`], cached for the process: the `BinaryPair` tables hold
@@ -607,6 +677,7 @@ mod tests {
                     lang: cell.lang,
                     rmw: cell.rmw,
                     role,
+                    variant: None,
                     config: cell.config.to_vec(),
                 };
                 let got = parse_image(img.workspace, img.bringup, &img.image);
@@ -616,6 +687,62 @@ mod tests {
             }
         }
         assert!(bad.is_empty(), "inverse disagrees:\n  {}", bad.join("\n  "));
+    }
+
+    /// A variant id parses back to its role and variant through the SAME
+    /// parser, for every rmw and config spelling, and never collides with a
+    /// plain role (phase-535 W6: one parser, no second spelling).
+    #[test]
+    fn variant_images_parse_back() {
+        let mut bad = Vec::new();
+        let mut n = 0;
+        for cell in pair_cells() {
+            for role in PairRole::of(cell.workload).unwrap() {
+                for v in Variant::ALL {
+                    let Ok(img) = workspace_image_variant(cell, role, Some(v)) else {
+                        continue;
+                    };
+                    n += 1;
+                    let got = parse_image(img.workspace, img.bringup, &img.image);
+                    let ok = got.as_ref().is_some_and(|p| {
+                        p.platform == cell.platform
+                            && p.lang == cell.lang
+                            && p.rmw == cell.rmw
+                            && p.role == role
+                            && p.variant == Some(v)
+                            && p.config == cell.config
+                    });
+                    if !ok {
+                        bad.push(format!("{}: {got:?}", img.image));
+                    }
+                }
+            }
+        }
+        assert!(n > 100, "only {n} variant ids built");
+        assert!(bad.is_empty(), "variant ids:\n  {}", bad.join("\n  "));
+        let p = parse_image(
+            "examples/workspaces/cpp",
+            "src/service_bringup",
+            "linux_service_client_callback_cyclonedds",
+        )
+        .expect("the C++ Cyclone callback client");
+        assert_eq!(
+            (p.role, p.variant, p.rmw),
+            (
+                PairRole::ServiceClient,
+                Some(Variant::Callback),
+                Rmw::Cyclonedds
+            )
+        );
+        // An unknown token after the role is still a misspelt id.
+        assert!(
+            parse_image(
+                "examples/workspaces/c",
+                "src/service_bringup",
+                "linux_service_client_callbak"
+            )
+            .is_none()
+        );
     }
 
     /// RFC-0122 D4's worked example, and a non-pair row that must not parse.
