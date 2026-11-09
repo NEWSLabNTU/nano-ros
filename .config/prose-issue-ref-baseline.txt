@@ -53,10 +53,10 @@
 #         keyed without the entity facts). Issue 1684 cites it as what blocked
 #         the tier-1 fixture build. REMOVE THIS ROW when #1707 merges.
 #
-#   2381  IN FLIGHT -- the id is reserved (refs/issue-ids/2381); the file
-#         belongs to phase-545 W3 (PR #3376, which adds the acme fixture it is
-#         about) and is not on main yet. The fix landed on its own PR. REMOVE
-#         THESE ROWS when the file reaches main.
+#   2381  IN FLIGHT -- the id is reserved (refs/issue-ids/2381); the file was
+#         written by the phase-545 session (the acme fixture it is about came
+#         with PR #3376) and is not on main yet. The fix landed on its own PR.
+#         REMOVE THESE ROWS when the file reaches main.
 #
 docs/design/0071-rmw-backend-descriptor.md:2381
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
