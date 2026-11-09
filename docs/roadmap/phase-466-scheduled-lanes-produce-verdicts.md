@@ -408,6 +408,7 @@ exit 78 before reaching anything else. Nobody has claimed it.
 | [#1905](../issues/archived/1905-gate-self-tests-write-job-env.md) | RESOLVED. `fixture-tree.sh --self-test`, reached by `check fast` inside `just build tier1`, appended a sandbox `NROS_FIXTURE_TREE` to the job's `$GITHUB_ENV`. Every step after the build then read a deleted temp tree, so tier 1 built everything and reached no cell (run 38615001083). The gate runner now unsets the job files, and both self-tests that reached a writer isolate themselves. |
 | [#2277](../issues/archived/2277-identity-budget-selftest-b-flake.md) | RESOLVED 2026-11-07. A self-test flake inside `pristine-checkout`, sibling of issue 2090: a lane verdict without signal. |
 | [#2302](../issues/archived/2302-zephyr-self-pkg-rust-codegen-system-fails-tier2.md) | RESOLVED 2026-11-07 (as issue 2296). Tier 2 stops in the build on the `zephyr_self_pkg_rust` west fixture, so the lane reaches no cell and gives no verdict. |
+| [#2386](../issues/2386-census-host-image-not-configured-on-clean-tree.md) | On a never-built workspace a C/C++ cross image's census step builds its host image before `nros configure` stamped it, so tier 2's fixture build fails and the lane reaches no cell. |
 
 ## W5 -- the RTOS realtime cells (from phase-330, 2026-10-14)
 
