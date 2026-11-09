@@ -6345,6 +6345,30 @@ west_id = "zephyr/native_sim/native/64/workspace-safety-entry"
 west_zenoh_locator = "tcp/127.0.0.1:7490"
 skip_probe = true
 
+# RFC-0071 D16 step 3 (issue 2372) -- the out-of-tree RMW image of
+# `workspace-out-of-tree-rmw` again, on `board = "zephyr"` (native_sim) through
+# `builder/west_app.rs`. The west application path-depends on `acme-rmw` at the
+# provider's own directory (D15 amended rulings 2 and 3), and the module's
+# Kconfig selects the module backend acme is built over (`[rmw.zephyr]
+# module_backend = "zenoh"`). Coordinate `zenoh` for the reason the linux row
+# gives: it is the wire acme speaks. The row is the image of no allocator
+# cell, so it states its own baked router port (7496, unused elsewhere); the
+# test still starts its own router and hands the image `--nros-locator` at run
+# time. Consumed by tests/out_of_tree_rmw_zephyr_e2e.rs.
+[[workspace_fixture]]
+id = "workspace-zephyr-out-of-tree-rmw"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/fixtures/out-of-tree-rmw"
+bringup = "src/demo_bringup"
+image = "zephyr"
+board = "native_sim/native/64"
+west_build_name = "build-ws-rs-out-of-tree-rmw-entry"
+west_id = "zephyr/native_sim/native/64/workspace-out-of-tree-rmw-entry"
+west_zenoh_locator = "tcp/127.0.0.1:7496"
+skip_probe = true
+
 # phase-276 W6 — the MULTIHOST robot1 (talker) Rust workspace Entry
 # (examples/workspaces/rust's [image.zephyr_robot1], generated since
 # phase-477 W1): the

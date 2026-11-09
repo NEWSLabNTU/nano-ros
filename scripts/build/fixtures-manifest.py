@@ -1611,8 +1611,10 @@ def _validate_generated_zephyr_application(entry, bringup_dir):
     application is written under `build/<coord>/` by `nros build`, which is
     build output and is not in a fresh clone. What IS authored, and what the
     build cannot proceed without, is the image's Kconfig: `prj.conf` in
-    `<bringup>/boards/<board>/` (Zephyr REQUIREs it there once that directory
-    is `APPLICATION_CONFIG_DIR`), plus every fragment the image's `conf` names.
+    `<bringup>/boards/<board>/` when that directory exists (Zephyr REQUIREs it
+    there once it is `APPLICATION_CONFIG_DIR`; without it the generated
+    application's own `prj.conf` stands), plus every fragment the image's
+    `conf` names.
 
     The board is the ROW's, sanitized the way `builder::zephyr::sanitize_board`
     sanitizes it: a Zephyr board id carries slashes and cannot be one directory
@@ -1620,14 +1622,14 @@ def _validate_generated_zephyr_application(entry, bringup_dir):
     row's `board` is the west spelling — the same string `-b` receives.
     """
     board_dir = bringup_dir / "boards" / entry["board"].replace("/", "_")
-    _require_dir(
-        entry,
-        board_dir,
-        "generated-application config dir (RFC-0065 D4: the image's Kconfig "
-        "lives beside the bringup, since there is no application package to "
-        "hold it)",
-    )
-    _require_file(entry, board_dir / "prj.conf", "application prj.conf")
+    # Issue 2372 -- the directory is OPTIONAL, as it is to the builder
+    # (`builder::zephyr`: `config_dir.is_dir()` makes it APPLICATION_CONFIG_DIR,
+    # and without it the generated application's own `prj.conf` stands, with
+    # the board package's files and snippets). Measured: the out-of-tree RMW
+    # image has no `boards/` and builds and runs. When it IS there, Zephyr
+    # REQUIREs its `prj.conf`, so that half stays.
+    if board_dir.is_dir():
+        _require_file(entry, board_dir / "prj.conf", "application prj.conf")
     for name in (_image_block(entry, entry["image"]) or {}).get("conf", []):
         # `resolve_in`'s rungs, minus the application one this row has no
         # application for.

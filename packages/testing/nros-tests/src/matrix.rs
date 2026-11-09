@@ -1298,6 +1298,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
             "Linux/Rust/Zenoh/EntryPubsub/Workspace — answered by deployed_native_system_e2e; this one asserts the image's backend is a workspace provider nano-ros does not know (RFC-0071 D16)",
         ),
     ),
+    (
+        "out_of_tree_rmw_zephyr_e2e",
+        NonCell::Secondary(
+            "ZephyrNativeSim/Rust/Zenoh/EntryPubsub/Workspace — answered by zephyr; this one asserts the image's backend is a workspace provider nano-ros does not know, on the west road (RFC-0071 D16 step 3)",
+        ),
+    ),
     ("output_marker_gate", NonCell::Static),
     ("pkg_index", NonCell::CompileCheck),
     ("platform", NonCell::Static),
