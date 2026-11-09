@@ -387,8 +387,16 @@ Applied so far:
   [issue 2289](../issues/archived/2289-px4-release-ships-no-posix-archives.md)
   (the release shipped no PX4 POSIX archives) is over: phase-541 ships them,
   and the track replayed green on the installed track on 2026-11-06; its
-  `awaits` drop rides #3169. Phase-542 W3 still removes the dev-tier verbs a
-  `BRINGUP` module reaches. The page stays in User
+  `awaits` drop rides #3169. Phase-542 W3 (done 2026-11-10) settled the
+  dev-tier question by ruling rather than by removal: a `BRINGUP` module's
+  CMake still CALLS `nros dev image model-path` and `nros dev codegen entry`,
+  because a build tool calling a dev verb is RFC-0117 D3's design. What the
+  user tier never has is a dev verb **typed or told**: no page, README,
+  template, configure message or CLI hint tells a user to run one
+  (RFC-0117 D3; Principle 5). `check-user-text-dev-verbs` refuses it outside
+  the book, as `check-book-audience` does inside it; the few hints with no
+  user-tier verb to name yet are marked against
+  [issue 2394](../issues/2394-user-tier-census-metadata-verb.md). The page stays in User
   guide › Platforms meanwhile, by maintainer ruling (2026-11-05): an exception
   to Principle 3 that ends when the track replays.
 - Arm FVP leaves the user book (no replaying track, RFC-0115 D4).
@@ -604,6 +612,10 @@ task for every language.
 
 ## Changelog
 
+- 2026-11-10 - D8's PX4 note amended (phase-542 W3, manager ruling): the
+  user tier never has a dev verb typed or told (RFC-0117 D3), and a build
+  tool calling one is not that. Gated outside the book by
+  `check-user-text-dev-verbs`.
 - 2026-11-06 — D8's PX4 line corrected: the row and probe track are on open
   PR #3169, not on `main` (#3150 was closed). Phase-542 owns the rest.
 - 2026-11-05 — PX4 SITL placed in User guide › Platforms, waiting on issue

@@ -9,6 +9,6 @@ menuconfig USER_NROS_@COMPONENT_NAME_UPPER@
 	default y
 	help
 	  nano-ros component '@COMPONENT_NAME@' emitted by
-	  `nros codegen-system --ahead-of-vendor --target px4` from the
+	  the ahead-of-vendor system generator for the PX4 target from the
 	  bringup pkg's system.toml. The body is a uORB-backed publisher /
 	  subscriber generated against the component's nros metadata.

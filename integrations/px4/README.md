@@ -4,24 +4,30 @@ PX4 is a **HOOKLESS vendor** in the Phase 212 RTOS-integration taxonomy
 (see `docs/design/0003-rtos-integration-pattern.md` §1 + §3): its CMake +
 Kconfig configure step doesn't have a hook rich enough to read
 `system.toml` from inside the vendor tool. Instead the codegen runs
-**ahead of vendor**: `nros codegen-system --ahead-of-vendor --target px4`
+**ahead of vendor**: the CLI's system generator, run for the PX4 target,
 emits one PX4 module dir per `[[component]]` into
-`$PX4_DIR/src/modules/nros_<name>/`, then the user runs
-`make px4_sitl_default` from the PX4 tree.
+`$PX4_DIR/src/modules/nros_<name>/`, then `make px4_sitl_default` runs
+from the PX4 tree.
+
+**The user path is the module template** (below, and the book's PX4 page):
+copy it out, and its CMake calls the generators it needs at PX4's configure.
+The multi-component emit in the next section is a BUILD-TOOL path: its
+generator is a dev-tier verb (RFC-0117 D3), which a build tool calls and a
+user is never told to type, and it has no user-tier spelling yet.
 
 Same precedent as the PlatformIO adapter at `integrations/platformio/`.
 C++-only per Phase 115.K.4 (the PX4 surface collapsed to a single
 C++ uORB port; there is no Rust uORB on the SITL path).
 
-## User incantation (Phase 212.H.7 + M-F.8)
+## Ahead-of-vendor emit, multi-component (Phase 212.H.7 + M-F.8)
+
+What a build tool does on this path, step by step:
 
 ```bash
-# 1. Bake nano-ros component module dirs into the PX4 source tree.
-nros codegen-system --ahead-of-vendor \
-    --target px4 \
-    --workspace .                       \
-    --bringup demo_bringup              \
-    --out $PX4_AUTOPILOT_DIR/src/modules
+# 1. The system generator bakes the component module dirs into the PX4
+#    source tree (target px4, ahead of vendor, workspace `.`, bringup
+#    demo_bringup, out $PX4_AUTOPILOT_DIR/src/modules). A build tool runs
+#    it; it is a dev-tier verb, so it is not typed here.
 
 # 2. Each `[[component]].name` from `demo_bringup/system.toml` shows up as
 #    $PX4_AUTOPILOT_DIR/src/modules/nros_<component>/
@@ -45,7 +51,7 @@ integrations/px4/sitl-overlay/render-overlay.sh \
 make -C $PX4_AUTOPILOT_DIR px4_sitl_default
 ```
 
-`nros codegen-system --ahead-of-vendor --target px4` operates entirely
+The ahead-of-vendor generator operates entirely
 **outside the nano-ros tree** — it writes into `$PX4_AUTOPILOT_DIR`
 directly, mirroring the PlatformIO `extra_script` path. The
 `render-overlay.sh` helper at `integrations/px4/sitl-overlay/`
@@ -59,7 +65,7 @@ Step 3 (overlay render) lives outside `nros` today because the
 codegen verb for the PX4 target originally landed in the standalone
 `nros-cli` repo (archived; the CLI merged in-tree under
 `packages/cli/` in Phase 218) as the single-purpose module-dir emit.
-A `--board-overlay <path>` flag on `nros codegen-system --target px4`
+A `--board-overlay <path>` flag on the PX4 system generator
 would fold the overlay-render step into the same invocation (one
 tool, one walk). Tracked in Phase 212.M-F.8.
 
@@ -78,9 +84,10 @@ export NANO_ROS_DIR=/path/to/nano-ros
 make -C $PX4_AUTOPILOT_DIR px4_sitl_default
 ```
 
-The 212.H.7 hookless path supersedes this — the legacy template remains
-in tree for back-compat with `tests/integration_px4.rs` (the Phase 139.6
-smoke test).
+This is the shape the book's PX4 page teaches (the `px4` probe track
+replays it), and `tests/integration_px4.rs` (the Phase 139.6 smoke test)
+covers it. The 212.H.7 multi-component emit above is the build-tool path
+beside it.
 
 ## Files
 
@@ -123,10 +130,10 @@ the post-codegen module-dir shape + the legacy
 ## Registry note
 
 PX4 has no central module registry. Downstreams either let
-`nros codegen-system --ahead-of-vendor` emit dirs into
+the ahead-of-vendor system generator emit dirs into
 `$PX4_AUTOPILOT_DIR/src/modules/` per-build, or vendor the legacy
 template via git submodule / `cp -r`. In either path the SITL
 build still needs the `sitl-overlay/render-overlay.sh` step to
-flip the per-module Kconfig switches; see the M-F.8 user-incantation
+flip the per-module Kconfig switches; see the M-F.8 ahead-of-vendor
 block above. `docs/release/registry-publishing.md` carries the
 cross-ecosystem comparison.

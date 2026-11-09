@@ -930,6 +930,7 @@ pub fn check(inputs: Inputs<'_>) -> Report {
                     decl.kind.noun(),
                     decl.node
                 ),
+                // dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
                 remedy: format!(
                     "run `nros dev image entity-census run` on an entry that launches `{}`, or accept \
                      that this row is unchecked",
@@ -1302,6 +1303,7 @@ fn check_params(
                     detail: format!(
                         "the contract declares parameter `{name}`; the census never ran `{node}`"
                     ),
+                    // dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
                     remedy: format!(
                         "run `nros dev image entity-census run` on an entry that launches `{node}`"
                     ),

@@ -159,7 +159,7 @@ pub fn run(args: Args) -> Result<()> {
         }
         msg.push_str(
             "\n  hint: add `nros::component!(YourComponent);` to the package's `lib.rs`/`main.rs`, \
-             then run `nros dev metadata --build` to produce it.",
+             then rerun this verb with `--build` to produce it.",
         );
         bail!(msg);
     }

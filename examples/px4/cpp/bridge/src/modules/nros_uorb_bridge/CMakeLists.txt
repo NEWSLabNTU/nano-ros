@@ -48,7 +48,7 @@ if(NOT NROS_REPO_DIR)
         message(FATAL_ERROR
             "nano-ros: cannot locate the nano-ros SDK root.\n"
             "  Pass -DNROS_REPO_DIR=<path> (or -Dnano_ros_ROOT=<path>), or put\n"
-            "  `nros` on PATH — `nros dev sdk root` answers this.")
+            "  `nros` on PATH; `nros locate nano-ros` prints the root it finds.")
     endif()
 endif()
 include("${NROS_REPO_DIR}/integrations/px4/NanoRosPx4Module.cmake")
@@ -88,6 +88,7 @@ if(NOT EXISTS "${_ffi_a}")
     # table (`nros dev lock central-patch`) supplies the SDK's path, so the command
     # works from wherever the module was copied to.
     get_filename_component(_ffi_dir "${CMAKE_CURRENT_LIST_DIR}/../../../ffi" ABSOLUTE)
+    # dev-verb-advice-ok: issue 2394 (no user-tier verb writes the central patch outside a workspace).
     message(FATAL_ERROR
         "nros_uorb_bridge: the generated-message FFI archive is missing:\n"
         "    ${_ffi_a}\n"

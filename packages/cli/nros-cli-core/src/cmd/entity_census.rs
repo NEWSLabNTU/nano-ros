@@ -1833,6 +1833,7 @@ fn census_remedy(entry: Option<&str>, model: Option<&Path>) -> String {
     let bringup = model
         .and_then(crate::model_gate::infer_bringup_dir)
         .and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()));
+    // dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
     let take = match (bringup, image) {
         (Some(b), Some(i)) => format!("nros dev image entity-census take --image {b}:{i}"),
         _ => "nros dev image entity-census take --image <bringup>:<this image>".to_string(),
