@@ -77,9 +77,19 @@ already resolves from `system.toml`.
 For every publisher, the backend delivers to same-image subscribers directly
 and publishes on the wire only while a remote subscriber is matched:
 
-- **zenoh:** zenoh-pico's publisher matching status / matching listener. W0
-  verifies the pinned zenoh-pico exposes it under the feature set we build;
-  if it does not, Tier 1 on zenoh waits for it and Tier 2 is unaffected.
+- **zenoh:** no matching listener is needed. zenoh-pico's publisher WRITE
+  FILTER already skips the wire while nothing matches (`z_publisher_put`,
+  `api.c` at our 1.10.1 pin), and it needs only `Z_FEATURE_INTEREST`, which is
+  on for every target (`Z_FEATURE_MATCHING` is 1 on the cargo road and 0 on
+  Zephyr, and nothing calls it). The obstacle is that the filter honours the
+  publisher's `allowed_destination`, which defaults to ANY, and with
+  `Z_FEATURE_LOCAL_SUBSCRIBER=1` a same-image subscriber counts as a match.
+  So a Tier-1 publisher is declared with `Z_LOCALITY_REMOTE` and the backend
+  delivers to same-image subscribers itself. The existing put path then gives
+  "wire only while a remote subscriber is matched" on every target, Zephyr
+  included. Caveat for W2: `REMOTE` turns off zenoh-pico's own session-local
+  loopback for that publisher, so the backend's local delivery must cover
+  every same-image subscriber. (W0 findings: #3372, issuecomment-6746458575.)
 - **Cyclone DDS:** same-participant delivery is already local; the wire send
   is skipped when no remote reader is matched (`dds_get_publication_matched_status`).
 - **XRCE:** the agent owns matching; Tier 1 is not available, and the
@@ -144,7 +154,7 @@ change that turns a local topic into a wire topic is a reviewable diff.
 
 ## Work items (phase to be opened)
 
-- **W0.** Verify zenoh-pico matching support at our pin and feature set.
+- **W0.** DONE (2026-11-10): zenoh-pico's write filter is the mechanism; see D2.
 - **W1.** Consume `visibility`/`closed`/`locality()` once the rlm grammar
   ships; carry the class into the entity inventory.
 - **W2.** Tier 1 on zenoh and Cyclone; set `from_intra_process`.
