@@ -1051,9 +1051,47 @@ pub(crate) fn take_model_in_build(
     timeout_secs: u64,
     fail_if_changed: bool,
 ) -> Result<()> {
+    let has_contract = discover_contract(Some(model)).is_some();
+    take_model_in_build_with(model, ws, timeout_secs, fail_if_changed, has_contract)
+}
+
+/// What the census digest says for a model with no contract: a constant, so
+/// it moves only when a contract appears or goes.
+const NO_CONTRACT_DIGEST: &str = "no contract\n";
+
+/// [`take_model_in_build`] with the contract question answered by the caller.
+fn take_model_in_build_with(
+    model: &Path,
+    ws: &Path,
+    timeout_secs: u64,
+    fail_if_changed: bool,
+    has_contract: bool,
+) -> Result<()> {
     let census = census_path_for_model(model);
     let digest = census_digest_path(&census);
     let before = std::fs::read_to_string(&digest).ok();
+    // Issue 2396 -- the first question `take --image` and the configure's
+    // `check` ask, asked first here too: a model that folds in no contract
+    // has nothing for a census to reconcile, fresh or stale. The step is
+    // added before the configure's check can say so; without this a
+    // never-taken census refused every build of a contract-less cross image
+    // ("no host build is recorded"). The digest is still written (write if
+    // changed): `nros_census_step` names it as a configure input and a
+    // byproduct, and an input that never exists is dirty on every build.
+    if !has_contract {
+        if before.as_deref() != Some(NO_CONTRACT_DIGEST) {
+            crate::atomic_file::atomic_write(&digest, NO_CONTRACT_DIGEST)
+                .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", digest.display()))?;
+        }
+        println!(
+            "entity-census take --model {}: no contract -- nothing to take",
+            model.display()
+        );
+        // No knob of this image was read from a census, so a digest that
+        // appears (first build) or changes says nothing about the pool sizes
+        // this build already read: never `--fail-if-changed` here.
+        return Ok(());
+    }
     let why = match census_freshness(&census, ws) {
         Freshness::Fresh => {
             let complete = std::fs::read_to_string(&census)
@@ -3431,7 +3469,7 @@ mod tests {
     fn a_fresh_model_census_in_a_build_runs_nothing_and_writes_its_digest() {
         let ws = tempfile::tempdir().expect("tempdir");
         let model = model_census_fixture(ws.path());
-        take_model_in_build(&model, ws.path(), 5, false).unwrap();
+        take_model_in_build_with(&model, ws.path(), 5, false, true).unwrap();
         assert!(census_digest_path(&census_path_for_model(&model)).is_file());
     }
 
@@ -3448,8 +3486,42 @@ mod tests {
         .unwrap();
         let err = format!(
             "{:#}",
-            take_model_in_build(&model, ws.path(), 5, false).unwrap_err()
+            take_model_in_build_with(&model, ws.path(), 5, false, true).unwrap_err()
         );
         assert!(err.contains("entity-census take --image"), "{err}");
+    }
+
+    /// Issue 2396 -- a model with no contract has nothing to take in a build,
+    /// whether its census was never taken or has gone stale, and its digest
+    /// is written once, to a constant, so the configure input it is exists
+    /// and does not move on the next build.
+    #[test]
+    fn a_model_with_no_contract_has_nothing_to_take_and_a_stable_digest() {
+        let ws = tempfile::tempdir().expect("tempdir");
+        let dir = ws.path().join("build/nros/models/bringup");
+        std::fs::create_dir_all(&dir).unwrap();
+        let model = dir.join("m.yaml");
+        std::fs::write(&model, "").unwrap();
+        let digest = census_digest_path(&census_path_for_model(&model));
+        // Never taken: the public entry asks the model, which folds in none.
+        take_model_in_build(&model, ws.path(), 5, false).unwrap();
+        assert!(!census_path_for_model(&model).exists());
+        assert_eq!(
+            std::fs::read_to_string(&digest).unwrap(),
+            NO_CONTRACT_DIGEST
+        );
+        // A non-Ninja step passes `--fail-if-changed`; the digest appearing
+        // on a first build must not fail it, since no knob came from a census.
+        std::fs::remove_file(&digest).unwrap();
+        take_model_in_build(&model, ws.path(), 5, true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&digest).unwrap(),
+            NO_CONTRACT_DIGEST
+        );
+        // Stale: a census that no longer describes the code.
+        let ws2 = tempfile::tempdir().expect("tempdir");
+        let model2 = model_census_fixture(ws2.path());
+        std::fs::write(ws2.path().join("src/comp/node.cpp"), "// PUB /b\n").unwrap();
+        take_model_in_build_with(&model2, ws2.path(), 5, false, false).unwrap();
     }
 }
