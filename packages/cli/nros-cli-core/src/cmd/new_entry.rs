@@ -558,7 +558,7 @@ rust_cargo_application()
 }
 
 fn render_prj_conf() -> &'static str {
-    // See issue 1324.
+    // See issue 1324. The main-stack note: issue 2365.
     r#"# Base Kconfig for this application. RMW-independent settings only —
 # anything that differs per RMW belongs in prj-<rmw>.conf, which the image's
 # `conf` list selects.
@@ -570,7 +570,8 @@ CONFIG_RUST=y
 # heap zenoh-pico uses, sized by CONFIG_NROS_ZEPHYR_HEAP_SIZE. The
 # nros module refuses CONFIG_RUST_ALLOC=y, which would add a second heap.
 
-CONFIG_MAIN_STACK_SIZE=16384
+# CONFIG_MAIN_STACK_SIZE: the nano-ros module decides it per image (32 KiB for
+# a Rust entry); a value here would beat that.
 CONFIG_LOG=y
 CONFIG_NETWORKING=y
 CONFIG_NET_IPV4=y

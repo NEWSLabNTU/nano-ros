@@ -286,6 +286,49 @@ config NROS_TRACE_TIMER_EVERY
 # Cyclone DDS tuning
 # =============================================================================
 
+config NROS_ZEPHYR_TASK_STACK_SIZE
+    int "nano-ros Zephyr task stack size (bytes)"
+    range 1024 1048576
+    default 16384
+    help
+      NROS_ZEPHYR_STACK_SIZE in zephyr/nros_platform_zephyr_shims.c -- the stack
+      given to every task nano-ros creates on Zephyr through
+      `nros_zephyr_task_create` (every RMW): on a zenoh image the session's
+      executor thread `zpico_exec` (since zenoh-pico 1.10, RFC-0110 D2: the
+      read path, the lease, the keep-alive, a reconnect and every zenoh
+      callback on one stack) and the tx-flush task `zpico_flush`.
+
+      Its own default, never CONFIG_MAIN_STACK_SIZE (issue 2365). It used to
+      inherit main's size when left at 0, which coupled two unrelated budgets:
+      raising main's stack for a reason that is only main's multiplied into
+      NROS_ZEPHYR_TASK_SLOTS stacks of the same size. Issue 2359 raised the
+      nucleo-f767zi main stack 16 -> 32 KiB for a Rust entry, the image grew
+      48 KiB instead of 16, and the C talker overflowed RAM by 7,872 bytes;
+      on mr_canhubk3/s32k344 a MAIN_STACK_SIZE 8192 -> 16384 raise overflowed
+      RAM by 21,588 bytes the same way. The Cyclone image's default stays its
+      historical main-stack size (the configdefault below), so no Cyclone
+      image changes.
+
+      Measured peaks (thread analyzer / INIT_STACKS paint, the image's busiest
+      act):
+
+        mr_canhubk3/s32k344, the safety island (C++, 3 nodes, serial link,
+        7 subscriptions, 2 services, 2 clients; its `b` act and a 300 ms
+        overrun act, simple-autoware-safety-island phase 16, 2026-11-02):
+        zpico_exec 1,964 B, zpico_flush 424 B of a stated 4,096 B
+        mps2_an385, C talker (RFC-0110 results): zpico_exec 992 B
+
+      zenoh-pico prints `nros: zenoh executor stack peak <used> of <size>
+      bytes` once at boot where CONFIG_INIT_STACKS and CONFIG_THREAD_STACK_INFO
+      are on (zpico.c, RFC-0110 D2); an image that lowers this should keep
+      margin over its own measurement.
+
+      OPERATOR-STATED where the default does not fit (issue 1808), as is
+      CONFIG_MAIN_STACK_SIZE: a stack's depth is a property of the deepest
+      call chain, not of what the image declares. Measure instead:
+      CONFIG_THREAD_ANALYZER prints each thread's peak use, and a guard
+      region (CONFIG_HW_STACK_PROTECTION) names the thread that overflows.
+
 if NROS_RMW_CYCLONEDDS
 
 config NROS_CYCLONE_DOMAIN_ID
@@ -363,56 +406,6 @@ config NROS_ZENOH_MULTI_THREAD
       task `zpico_flush` (NROS_ZENOH_TX_BATCH). Before it, `zpico_read` and
       `zpico_lease` were two tasks. Required for non-blocking operation.
       Maps to Z_FEATURE_MULTI_THREAD.
-
-config NROS_ZEPHYR_TASK_STACK_SIZE
-    int "nano-ros Zephyr task stack size (bytes, 0 = inherit MAIN_STACK_SIZE)"
-    default 0
-    help
-      NROS_ZEPHYR_STACK_SIZE in zephyr/nros_platform_zephyr_shims.c — the stack
-      given to every task nano-ros creates on Zephyr, which on a zenoh image
-      is the session's executor thread `zpico_exec` (since zenoh-pico 1.10,
-      RFC-0110 D2: the read path, the lease, the keep-alive, a reconnect and
-      every zenoh callback on one stack) and the tx-flush task `zpico_flush`.
-      Before 1.10 they were the read task, the lease task and the tx-flush
-      task. It defaults to CONFIG_MAIN_STACK_SIZE, which couples two
-      unrelated budgets: raising main's stack because MAIN needs it also
-      multiplies into NROS_ZEPHYR_TASK_SLOTS stacks of the same size.
-
-      On a 320 KiB part that is a link failure rather than a tuning nuisance.
-      Measured on mr_canhubk3/s32k344: MAIN_STACK_SIZE 8192 -> 16384 overflowed
-      RAM by 21588 bytes, entirely because four zenoh stacks grew with it.
-
-      It also makes CONFIG_HW_STACK_PROTECTION unusable on a tight image — the
-      guard region pushes main over at boot, so the one tool that names an
-      overflowing thread cannot be enabled.
-
-      0 keeps upstream behaviour. Set it to size the zenoh tasks for their own
-      deepest call chain, independently of main. Since RFC-0110 D2 that chain
-      is `zpico_exec`'s, which now also holds the expiry teardown and the
-      reconnect the lease task used to run; `zpico_flush` needs a fraction
-      of it. Measured peaks (thread analyzer / INIT_STACKS paint, the image's
-      busiest act):
-
-        mr_canhubk3/s32k344, the safety island (C++, 3 nodes, serial link,
-        7 subscriptions, 2 services, 2 clients; its `b` act and a 300 ms
-        overrun act, simple-autoware-safety-island phase 16, 2026-11-02):
-        zpico_exec 1,964 B, zpico_flush 424 B of a stated 4,096 B
-        mps2_an385, C talker (RFC-0110 results): zpico_exec 992 B
-
-      So 4,096 B carries about twice the busiest measured peak. Every image
-      that states this knob should keep that kind of margin from its own
-      measurement: zenoh-pico prints `nros: zenoh executor stack peak <used>
-      of <size> bytes` once at boot where CONFIG_INIT_STACKS and
-      CONFIG_THREAD_STACK_INFO are on (zpico.c, RFC-0110 D2).
-
-      PERMANENTLY OPERATOR-STATED (issue 1808), as is CONFIG_MAIN_STACK_SIZE,
-      Zephyr's own knob, for the same reason: a stack's depth is a property
-      of the deepest call chain, which needs frame analysis of the built
-      image (phase-409's `objdump` method, summing every `sub sp` on one
-      chain), not an inventory of what the image declares. Measure instead:
-      CONFIG_THREAD_ANALYZER prints each thread's peak use, and a guard
-      region (CONFIG_HW_STACK_PROTECTION) names the thread that overflows.
-      Size each from its measured peak plus headroom.
 
 config NROS_FAULT_LOG
     bool "Record a post-mortem fault record that survives reset"
@@ -2948,6 +2941,11 @@ if NROS_RMW_CYCLONEDDS
 configdefault MAIN_STACK_SIZE
     default 524288
 
+# Issue 2365 -- the task pool used to inherit main's 512 KiB here; stated so a
+# Cyclone image is unchanged by the knob's own 16 KiB default.
+configdefault NROS_ZEPHYR_TASK_STACK_SIZE
+    default 524288
+
 configdefault HEAP_MEM_POOL_SIZE
     default 4194304
 
@@ -3027,7 +3025,14 @@ endif # NROS_RMW_CYCLONEDDS
 
 if NROS_RMW_ZENOH
 
+# Issue 2365 -- main's stack is decided per IMAGE here, by its language: a Rust
+# entry registers its nodes on main and peaked at 28,280 B (issue 2359,
+# thumbv7em; NROS_RUST_MAIN_STACK_FLOOR in zephyr/CMakeLists.txt refuses less
+# off ARCH_POSIX), while the C and C++ entries fit 16 KiB. A board conf can
+# only state one number for every image, which is how 2359's raise reached the
+# C talker; boards and leaves no longer state it.
 configdefault MAIN_STACK_SIZE
+    default 32768 if NROS_RUST_API && !ARCH_POSIX
     default 16384
 
 configdefault HEAP_MEM_POOL_SIZE
@@ -3061,5 +3066,16 @@ configdefault POSIX_THREAD_THREADS_MAX
     default 16
 
 endif # NROS_RMW_ZENOH
+
+if NROS_RMW_XRCE
+
+# Issue 2365 -- the same per-image main stack as the zenoh block above. The
+# XRCE snippet used to assign 16384, and a snippet merges after the board, so
+# it also beat a board that raised main for a Rust entry.
+configdefault MAIN_STACK_SIZE
+    default 32768 if NROS_RUST_API && !ARCH_POSIX
+    default 16384
+
+endif # NROS_RMW_XRCE
 
 endif # NROS
