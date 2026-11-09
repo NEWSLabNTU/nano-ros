@@ -156,6 +156,12 @@ def render_index(table: dict) -> str:
              "| fork | upstream | base |", "| --- | --- | --- |"]
     for row in table.get("fork", []):
         lines.append(f"| [{row['name']}]({row['name']}.md) | `{row['upstream']}` | `{row['base']}` |")
+    owner = table.get("maintainer_account")
+    if owner:
+        lines += ["", f"The forks whose URL names `{owner}` are on the nano-ros maintainer's "
+                  "own GitHub account. Each one's shipped line is the branch its page "
+                  "names, and every patch on it is listed there against the pinned "
+                  "upstream ref."]
     lines += ["", "Authored by nano-ros (no delta page): "
               + ", ".join(f"`{r['path']}`" for r in table.get("ours", [])) + ".", ""]
     return "\n".join(lines)

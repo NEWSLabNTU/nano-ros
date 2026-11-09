@@ -16,4 +16,6 @@ Every submodule that tracks a patch branch, and the page that lists its patches 
 | [qemu](qemu.md) | `qemu/qemu` | `v11.0.0` |
 | [ros2-rust-examples](ros2-rust-examples.md) | `ros2-rust/examples` | `main` |
 
+The forks whose URL names `jerry73204` are on the nano-ros maintainer's own GitHub account. Each one's shipped line is the branch its page names, and every patch on it is listed there against the pinned upstream ref.
+
 Authored by nano-ros (no delta page): `third-party/px4/px4-rs`, `packages/cli/third-party/play_launch`.

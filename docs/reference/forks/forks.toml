@@ -18,6 +18,13 @@
 # rule from phase-523 W4: a fork whose delta cannot be stated as a patch list
 # against a pinned upstream is a fork whose pin is wrong, and is filed as such.
 
+
+# Issue 2327 (maintainer ruling 2026-11-09): the forks live on the nano-ros
+# maintainer's own GitHub account, not under the organisation. Rendered on the
+# index page so a reviewer reading a `.gitmodules` URL on a personal account
+# learns whose it is without asking.
+maintainer_account = "jerry73204"
+
 [[fork]]
 name = "zenoh-pico"
 path = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
