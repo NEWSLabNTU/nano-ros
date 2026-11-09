@@ -262,18 +262,7 @@ fn configure_project(
             offline,
         )) {
             Ok(plans) => {
-                // Only a coordinate whose union stage 3.5 wrote: a stamp
-                // naming one with no union would keep the image stale.
-                let coord = plans.iter().find_map(shared_coordinate).filter(|c| {
-                    build::read_coordinate_members(&build::coordinate_resolve_dir(project, c))
-                        .is_some()
-                });
-                // The configure a shared coordinate runs reads its union, so
-                // that is the answer `nros locate configured` names.
-                let dir = match &coord {
-                    Some(c) => Some(build::coordinate_resolve_dir(project, c)),
-                    None => plans.iter().find_map(|b| resolve_dir_of(project, b)),
-                };
+                let (coord, dir) = planned_facts(project, &plans);
                 if let Some(d) = dir {
                     resolved.insert(t.key.clone(), d);
                 }
@@ -474,6 +463,72 @@ pub(crate) fn build_args(
 /// The shared host configure a plan builds on, as
 /// [`build::SharedConfigure`]: its bringup and the coordinate of its
 /// `build/<coord>/cmake`.
+/// What an image's configure stamp records about its plan: the shared host
+/// configure coordinate it is planned on, and where its answer was resolved.
+/// Only a coordinate whose union stage 3.5 wrote counts: a stamp naming one
+/// with no union would keep the image stale. The configure a shared
+/// coordinate runs reads its union, so that is the answer `nros locate
+/// configured` names; otherwise the image's own resolve.
+fn planned_facts(
+    project: &Path,
+    plans: &[build::ResolvedBuild],
+) -> (Option<build::SharedConfigure>, Option<PathBuf>) {
+    let coord = plans.iter().find_map(shared_coordinate).filter(|c| {
+        build::read_coordinate_members(&build::coordinate_resolve_dir(project, c)).is_some()
+    });
+    let dir = match &coord {
+        Some(c) => Some(build::coordinate_resolve_dir(project, c)),
+        None => plans.iter().find_map(|b| resolve_dir_of(project, b)),
+    };
+    (coord, dir)
+}
+
+/// Issue 2386 — record `key`'s configure stamp from the plan just made for
+/// it, with the same facts a configure records at its end
+/// ([`planned_facts`]), so the image's own host configure, which locates its
+/// answer through the stamp (`nros_configured_locate`), can run NOW.
+///
+/// For a build that runs inside another image's configure: the census take
+/// builds the HOST image a cross image is checked against, and on a
+/// never-built workspace that host image has no stamp yet (stamps are written
+/// after the configure's whole plan loop), so its cmake configure refused
+/// "has not been configured" and the cross image then refused "census
+/// missing". The flags are a default configure's, so a later configure with
+/// other output flags reconfigures it, as it would any image.
+pub(crate) fn record_planned(
+    project: &Path,
+    key: &str,
+    plans: &[build::ResolvedBuild],
+) -> Result<()> {
+    let mut sync = default_sync_args();
+    sync.interface_search_path = interface_search_path_for(project);
+    let flags = configure_stamp::OutputFlags::of(&sync);
+    let stamp = configure_stamp::stamp_now(project, &flags)?;
+    let (coord, resolved_dir) = planned_facts(project, plans);
+    if let Some(c) = &coord {
+        let covers = build::read_coordinate_members(&build::coordinate_resolve_dir(project, c))
+            .map(|m| m.images)
+            .unwrap_or_default();
+        configure_stamp::record(
+            project,
+            &configure_stamp::coordinate_key(&c.id()),
+            &configure_stamp::Stamp {
+                covers,
+                ..stamp.clone()
+            },
+        )?;
+    }
+    configure_stamp::record(
+        project,
+        key,
+        &configure_stamp::Stamp {
+            coordinate: coord.as_ref().map(build::SharedConfigure::id),
+            resolved_dir,
+            ..stamp
+        },
+    )
+}
+
 fn shared_coordinate(plan: &build::ResolvedBuild) -> Option<build::SharedConfigure> {
     let dir = plan.cmake_build_dir.as_deref()?;
     let coord = Path::new(dir).parent()?.file_name()?.to_string_lossy();
@@ -660,6 +715,27 @@ mod tests {
             inputs: Vec::new(),
         };
         configure_stamp::record(project, key, &stamp).unwrap();
+    }
+
+    /// Issue 2386 -- a stamp recorded from a plan, before the configure's own
+    /// end-of-run stamps, is a real one: it exists where the host configure
+    /// looks (`nros_configured_locate`) and reads current to a later default
+    /// configure, so that configure neither fails nor redoes the image.
+    #[test]
+    fn a_stamp_recorded_from_a_plan_is_current_to_a_default_configure() {
+        let p = crate::test_support::scratch_dir("configure-record-planned");
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let key = "action_bringup:linux_action_server";
+        record_planned(&p, key, &[]).unwrap();
+        let mut sync = default_sync_args();
+        sync.interface_search_path = interface_search_path_for(&p);
+        assert_eq!(
+            configure_stamp::is_current(&p, key, false, &configure_stamp::OutputFlags::of(&sync))
+                .unwrap(),
+            Currency::Current
+        );
     }
 
     /// RFC-0120 D2 (Ruling R32): a stale stamp, run with no sourced ROS

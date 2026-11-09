@@ -71,3 +71,35 @@ a clean tree.
 
 `nros configure --image action_bringup:linux_action_server` (and `_client`) in
 the workspace before building the cross images.
+
+## Fix (2026-11-10)
+
+There were two gaps, and the second stays hidden until the first is fixed.
+
+1. **The host image had no configure stamp.** Stamps are written at the end of
+   a configure's plan loop, and the census take builds the host image in the
+   middle of it. `configure::record_planned` now records an image's stamp from
+   the plan just made for it, with the same facts the end-of-loop stamps
+   carry. `planned_facts` is the one helper both use. The census take calls
+   it for the host image before building it.
+2. **A shared cmake configure checks every member's census.** The FreeRTOS
+   server and client images share one coordinate (phase-530 W3), so
+   configuring the server also configures `freertos_action_client_entry`, and
+   that checks the client's census. `nros build` took the census for the asked
+   image only. Stage 3.4 now takes it for every member of the image's cmake
+   coordinate, by the same `coordinate_members` predicate the generated root
+   and the union resolve use, and once per plan.
+
+Measured on the reproduction above, with the censuses, configured stamps and
+host build dir for both linux action images moved aside:
+
+| | `nros build action_bringup:freertos_action_server` |
+| --- | --- |
+| before the fix | exit 1: "has not been configured", then "census missing" |
+| fix 1 only | the server census is taken; the configure then stops on the client's "census missing" |
+| both fixes | exit 0; both censuses taken (server 1 node / 2 pub / 3 srv; client 1 node / 1 sub / 3 cli) and the cross image built |
+
+Test: `a_stamp_recorded_from_a_plan_is_current_to_a_default_configure`.
+
+Not addressed here: ament-workspace-port's different failure (its
+SystemModel does not resolve).
