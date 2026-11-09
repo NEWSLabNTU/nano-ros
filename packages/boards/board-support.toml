@@ -799,6 +799,36 @@ row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: chapters 1-10 on one C++ project, chained, on mps2-an385-freertos (bare metal is Rust only; chapter 9's second target is the Linux host; issue 2376)."
 
 [[probe]]
+track = "lab-qos"
+chapter = "tutorial/qos.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md"]
+weekly = true
+row = "nros-board-mps2-an385@QemuBaremetal"
+notes = "phase-537 W5 / issue 2269 — Lab: QoS is checked twice, in its rust tab: the build refuses a subscription asking more than its publisher offers, the boot refuses a contract row that widens the subscription's call site, then a transient_local pair hears. Chained after Tutorial 1-3."
+
+[[probe]]
+track = "lab-qos-c"
+chapter = "tutorial/qos.md"
+variant = "qemu"
+lang = "c"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 / issue 2269 — Lab: QoS is checked twice, in its c tab: the build refuses a subscription asking more than its publisher offers, the boot refuses a contract row that widens the subscription's call site, then a transient_local pair hears. Chained after Tutorial 1-3."
+
+[[probe]]
+track = "lab-qos-cpp"
+chapter = "tutorial/qos.md"
+variant = "qemu"
+lang = "cpp"
+after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 / issue 2269 — Lab: QoS is checked twice, in its cpp tab: the build refuses a subscription asking more than its publisher offers, the boot refuses a contract row that widens the subscription's call site, then a transient_local pair hears. Chained after Tutorial 1-3."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""

@@ -101,6 +101,21 @@ tutorial-c: (platform "tutorial-c")
 [group("main")]
 tutorial-cpp: (platform "tutorial-cpp")
 
+# book/src/tutorial/qos.md — Lab: QoS is checked twice (Rust), after Tutorial 1-3
+# (phase-537 W5, issue 2269).
+[group("main")]
+lab-qos: (platform "lab-qos")
+
+# book/src/tutorial/qos.md — Lab: QoS is checked twice (C), after Tutorial 1-3
+# (phase-537 W5, issue 2269).
+[group("main")]
+lab-qos-c: (platform "lab-qos-c")
+
+# book/src/tutorial/qos.md — Lab: QoS is checked twice (C++), after Tutorial 1-3
+# (phase-537 W5, issue 2269).
+[group("main")]
+lab-qos-cpp: (platform "lab-qos-cpp")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]
