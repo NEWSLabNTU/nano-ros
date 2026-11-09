@@ -1,7 +1,7 @@
 ---
 id: 2327
 title: "Nothing states which C third-party components a given image compiled in (Mbed TLS?), and the zenoh-pico fork lives on a personal account"
-status: open
+status: resolved
 type: enhancement
 area: book, provenance
 purpose: [industrial]
@@ -9,7 +9,7 @@ related: [phase-523]
 found: 2026-11-07
 ---
 
-**Home: [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round two. Found 2026-11-07 on release `nros-0.6.0-nros7` in a pristine `ubuntu:24.04` with Jazzy, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n (runs: `docs/development/adoption-probes/runs/2026-11-07-round-2-{industrial,education}.md`).
+**Home: [phase-523](../../roadmap/phase-523-education-labs-adoption-probes.md)** — W3 round two. Found 2026-11-07 on release `nros-0.6.0-nros7` in a pristine `ubuntu:24.04` with Jazzy, reading only the book. Probe ids: `I<n>` = industrial stop n, `E<n>` = education stop n (runs: `docs/development/adoption-probes/runs/2026-11-07-round-2-{industrial,education}.md`).
 
 ## Measured
 
@@ -28,3 +28,13 @@ Report per image which C components and features were linked, for example in `nr
   board's provisioning list. Issue 2328's change.
 - Left: the zenoh-pico fork's home, `jerry73204/zenoh-pico` on a personal
   account. Moving the forks under the organisation is a maintainer decision.
+
+## Resolution (2026-11-09)
+
+Maintainer ruling: the forks stay on `jerry73204`, the nano-ros maintainer's
+own GitHub account; nothing moves under the organisation. The book's forks
+index (`book/src/reference/forks/index.md`, generated from
+`docs/reference/forks/forks.toml`'s new `maintainer_account`) now says whose
+account it is, beside the per-fork pages that list every patch against the
+pinned upstream ref. With 2328's per-image `[source.*]` report, both halves of
+the issue are answered.

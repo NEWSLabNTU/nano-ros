@@ -200,7 +200,7 @@ pristine `ubuntu:24.04` containers with Jazzy. Reports:
 | [#2324](../issues/archived/2324-offline-error-no-nros-offline-hint.md) | industrial | **Resolved** 2026-11-07: a name-resolution failure in the metadata probe names `NROS_OFFLINE=1` |
 | [#2325](../issues/archived/2325-board-support-no-last-run-date.md) | industrial | **Resolved** 2026-11-07: the release records each lane's last run; `board show` and doctor print it |
 | [#2326](../issues/archived/2326-mem-report-not-shipped.md) | industrial | **Resolved** 2026-11-07: the report runs from a release; setup installs llvm-tools |
-| [#2327](../issues/2327-per-image-c-components-unlisted.md) | industrial | Open: doctor now lists the sources each build read; the fork's home is the maintainer's |
+| [#2327](../issues/archived/2327-per-image-c-components-unlisted.md) | industrial | **Resolved** 2026-11-09: doctor lists the sources each build read; the forks stay on the maintainer's account, and the forks index says so |
 | [#2328](../issues/archived/2328-doctor-report-missing-release-facts.md) | industrial | **Resolved** 2026-11-07: doctor prints Rust, ROS 2, digests, sources and the image digest |
 | [#2329](../issues/archived/2329-no-lts-security-eol-policy.md) | industrial | **Resolved** 2026-11-07: SECURITY.md, a CycloneDX SBOM per release, the policy in the book |
 | [#2330](../issues/archived/2330-ros-install-leaves-book.md) | education | **Resolved** 2026-11-07: Install adds the ROS 2 apt source inline, at a pinned version |
