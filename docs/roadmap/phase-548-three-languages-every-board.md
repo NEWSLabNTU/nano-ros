@@ -168,7 +168,8 @@ are C.
 
 - Found while measuring W2, outside it: issue 2353 (`nros run` on
   mps2-an385 Zephyr finds no west workspace without `ZEPHYR_BASE` and starts
-  no router for the board's `10.0.2.2` locator) and issue 2354 (a generated
+  no router for the board's `10.0.2.2` locator; resolved 2026-11-09 with
+  issue 2301) and issue 2354 (a generated
   Rust Zephyr image on Cyclone DDS probably needs `CONFIG_CPP`; not measured).
 
 ### W3 — The NuttX cross compiler is the pinned one, with a GCC floor
@@ -458,7 +459,7 @@ std_msgs/msg/String --qos-reliability best_effort` beside it.
 | --- | --- |
 | [#2313](../issues/2313-zephyr-generated-rust-entry-cannot-run-cyclone.md) | A generated Rust Zephyr entry cannot run Cyclone DDS: the Rust cell on every Zephyr board with Cyclone, beside issue 2354. |
 | [#2340](../issues/archived/2340-threadx-riscv64-generated-cpp-talker-hangs-after-first-publish.md) | RESOLVED 2026-11-07 by W4. The generated C++ talker on threadx-riscv64 publishes once then spins: the C++ cell of W4 on that board. |
-| [#2301](../issues/2301-zephyr-run-plan-cannot-see-kconfig-locator.md) | `nros run` on a Zephyr board sees no default locator, so `--router auto` starts no router. This is the Zephyr arm that 9c52ae9e34's one rule leaves to Kconfig, and the same symptom as issue 2353's second half. |
+| [#2301](../issues/archived/2301-zephyr-run-plan-cannot-see-kconfig-locator.md) | RESOLVED 2026-11-09 with issue 2353. `nros run` on a Zephyr board sees no default locator, so `--router auto` starts no router. This is the Zephyr arm that 9c52ae9e34's one rule leaves to Kconfig, and the same symptom as issue 2353's second half. |
 | [#2355](../issues/archived/2355-nros-c-critical-section-drops-restore-token.md) | RESOLVED 2026-11-09: release restores the token its acquire saved. `nros-c`'s `critical_section` release passes a literal 0, which means `TX_INT_DISABLE` on ThreadX riscv64. Found while tracing issue 2340 on W4's board. |
 | [#2360](../issues/2360-zephyr-rust-registration-stack-frames.md) | A Rust Zephyr entry's registration frames may overflow 32 KiB of main stack for an action image. This is the Rust cell on Zephyr, found fixing issue 2359. |
 | [#2365](../issues/2365-nucleo-f767zi-c-talker-ram-overflow.md) | Issue 2359's 16 -> 32 KiB main-stack raise also grew the two zenoh task stacks, which inherit main's size, so the nucleo-f767zi C talker overflowed RAM by 7,872 B and tier 2 stopped in the fixture build. The raising boards now state the task stack; a gate keeps it that way. |
