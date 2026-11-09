@@ -3070,8 +3070,15 @@ configdefault MAIN_STACK_SIZE
     default 32768 if NROS_RUST_API && !ARCH_POSIX
     default 16384
 
+# Issue 2202 -- the KERNEL heap. Nothing nano-ros owns allocates from it
+# (issue 1324: zenoh-pico and Rust use NROS_ZEPHYR_HEAP_SIZE); Zephyr's drivers
+# do. Measured with CONFIG_SYS_HEAP_RUNTIME_STATS after 20 s against a live
+# peer: native_sim's NSOS sockets peak at 232 bytes (C and C++ talker,
+# listener, service server and client); mps2_an385 and nucleo_f767zi at 0. A
+# board with a driver that allocates (a Wi-Fi chip's) states its own. It was
+# 64 KiB.
 configdefault HEAP_MEM_POOL_SIZE
-    default 65536
+    default 8192
 
 configdefault SYSTEM_WORKQUEUE_STACK_SIZE
     default 4096
