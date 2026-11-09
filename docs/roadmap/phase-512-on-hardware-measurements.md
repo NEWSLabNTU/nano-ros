@@ -1,5 +1,12 @@
 # Phase 512 — Work that needs a real board
 
+**Status (2026-11-09). Issues 1806 and 0913 closed on the S32K344.** One
+late-join act (`z1806-lj1`) and one free-form session (`w1`, Autoware's
+planning simulator, the island gateway without its liveliness ACL) on the
+island's `build-board` image (island 04fd11e, nano-ros ac23c0155b). Both
+issues are archived with their numbers; #2366 is filed for the late-joiner
+cases #1806 left out.
+
 **Status (2026-11-01). H5 closed: Orin SPE is not supported for now.** The
 maintainer closed every Orin SPE work item, so H5.1 and H5.2 are closed with no
 work done, and [phase-418](archived/phase-418-orin-safety-island-and-spe.md) is
@@ -272,7 +279,9 @@ islands, and the board's heap use with the services is recorded here.
 | issue | why it belongs here |
 | --- | --- |
 | [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | Re-homed 2026-11-05 from phase-474 (archived). 192 KiB of TCM sits unused while SRAM is exhausted; measured on the island's S32K344. |
-| [#1806](../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | Re-homed 2026-11-05 from phase-474 (archived). The constrained-link zenoh changes have never run against the full Autoware graph on the island's board. |
+| [#1806](../issues/archived/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | Re-homed 2026-11-05 from phase-474 (archived). Resolved 2026-11-09, archived: graph discovery off held against a 137-node Autoware domain with the gateway's liveliness ACL removed (40-node churn added 0 B to the island's link, heap peak 67,720 of 94,720 B), and a late-joining island read `/api/operation_mode/state` from the publisher's cache 1.3 s after boot (run z1806-lj1). |
+| [#0913](../issues/archived/0913-the-debugger-is-not-a-passive-instrument.md) | Moved 2026-11-09 from phase-478. Resolved 2026-11-09, archived: SWD reads in attach mode do not halt; halts up to 55 s keep the serial session, the gateway expires it at the 60 s lease, and the island re-opens on its own 70 s after a 65 s halt (run w1). |
+| [#2366](../issues/2366-transient-local-history-query-is-issued-once.md) | Filed 2026-11-09 from #1806's "also not done": the transient-local history query is issued once, so a latched publisher that appears later, or a session re-open, is not re-read. Not measurable on the island today. |
 | [#1822](../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | Re-homed 2026-11-05 from phase-474 (archived). The CAN link's priority mapping waits on upstream: a QoS `Join` exceeds the CAN FD MTU. |
 | [#1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: resolved 2026-10-26, archived. |
 | [#0902](../issues/archived/0902-action-goal-completion-is-variable.md) | H8: not reproduced 2026-10-26, archived. |

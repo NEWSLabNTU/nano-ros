@@ -50,7 +50,7 @@ A live cell (`interop::CELLS`) on the native board:
 With negative controls: the same image with discovery ON receives the graph
 burst, and a VOLATILE subscription does not receive the value.
 
-This does not close [issue 1806](../1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md),
+This does not close [issue 1806](1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md),
 whose acceptance is the island's real Autoware domain; it makes the mechanism
 a regression gate in this repository.
 

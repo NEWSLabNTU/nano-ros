@@ -224,9 +224,12 @@ see [Logging](../../reference/environment-variables.md#logging).
 
 Some boards have no console you can read, for example one whose only wired
 UART carries the zenoh serial link, where a log line would corrupt the
-transport's framing. Reach for these in order. A debug probe is not a passive
-instrument there: reading memory halts the core, and a serial zenoh session
-misses its keepalives and does not come back until the router restarts.
+transport's framing. Reach for these in order. A debug probe is not always a
+passive instrument there. On a Cortex-M, pyocd reads memory without stopping
+the core when it attaches with `connect_mode="attach"` and is not told to halt. A halt
+stops the image: the router drops the session once a halt outlasts the zenoh
+lease (60 s on the S32K344 measured in issue 0913), and the board re-opens it
+on its own about a minute after it resumes. Keep halted reads short.
 
 1. **Read the boot record.** With `CONFIG_NROS_BOOT_REPORT=y`, the image keeps
    one fixed-size record in RAM, the `NROS_BOOT_REPORT` symbol, as it boots.
