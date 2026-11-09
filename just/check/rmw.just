@@ -445,6 +445,13 @@ zenoh-feature-off-compile:
 zenohd-flag-invocations:
     @python3 scripts/check-zenohd-flag-invocations.py
 
+# issue 2344 — the three router launchers (zenohd.sh, nros-tests'
+# zenohd_router.rs, `nros run`'s run_exec.rs) decide "is this ROS prefix
+# sourced?" in three spellings no shared helper reaches. They must all test
+# `<prefix>/lib` on LD_LIBRARY_PATH, never AMENT_PREFIX_PATH naming the prefix.
+router-sourced-twins:
+    @python3 scripts/check-router-sourced-twins.py
+
 # phase-519 W4 — the XRCE agent's sibling: no doc or example starts
 # `MicroXRCEAgent <transport>` by hand; `just xrce agent <locator>` is the door.
 xrce-agent-invocations:
