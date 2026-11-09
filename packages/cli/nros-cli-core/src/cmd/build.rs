@@ -928,6 +928,9 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
     // phase-530 W3 -- each shared cmake configure's union, by
     // `SharedConfigure`, so it is composed once per plan.
     let mut coordinate_unions = CoordinateUnions::default();
+    // Issue 2386 — the images whose census this plan has taken, so a shared
+    // cmake configure's members are taken once however many were asked for.
+    let mut census_taken: BTreeSet<String> = BTreeSet::new();
     for (bringup, bringup_dir, image_id, image) in resolved {
         let qual = plan::qualified(&bringup, &image_id);
         let want_entry = crate::builder::entry::package_name(&image_id);
@@ -1090,8 +1093,28 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // reason not to build the native image applies to a CONFIGURE; this
         // is the driver one level up, which runs the host build as a
         // separate process before any configure starts.
+        //
+        // Issue 2386 — on the cmake road the image is configured together
+        // with every image on its coordinate (phase-530 W3), and that one
+        // configure checks each member's census. So the take covers every
+        // member, by the same predicate the generated root and the union
+        // resolve use; taking only the asked image left its siblings
+        // `census missing` on a never-built workspace.
         if !args.dry_run && census_take_is_ours(descriptor.platform) {
-            crate::cmd::entity_census::take_for_build(&root, &qual, args.offline);
+            let mut take = vec![qual.clone()];
+            if driver == Driver::CMake {
+                let coord = cmake_coordinate(&platform, &image, &bringup, &bringup_dir);
+                take.extend(
+                    coordinate_members(&bringup, &coord)
+                        .into_iter()
+                        .map(|(b, _, id, _)| plan::qualified(&b, &id)),
+                );
+            }
+            for q in take {
+                if census_taken.insert(q.clone()) {
+                    crate::cmd::entity_census::take_for_build(&root, &q, args.offline);
+                }
+            }
         }
 
         // ---- stage 3.5 — the RESOLVE phase (RFC-0094 D1, phase-439 W2) ---
