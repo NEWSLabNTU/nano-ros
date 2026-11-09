@@ -37,10 +37,19 @@ name = "nros-qemu-ladder"
 version = "0.6.0"
 
 [[package]]
+name = "nros-runner-lifetime"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "nros-extension",
+]
+
+[[package]]
 name = "nros_runner_command"
 version = "0.0.0"
 dependencies = [
  "nros-extension",
+ "nros-runner-lifetime",
 ]
 
 [[package]]
@@ -48,6 +57,7 @@ name = "nros_runner_fvp"
 version = "0.0.0"
 dependencies = [
  "nros-extension",
+ "nros-runner-lifetime",
  "nros_runner_west",
 ]
 
@@ -56,6 +66,7 @@ name = "nros_runner_native"
 version = "0.0.0"
 dependencies = [
  "nros-extension",
+ "nros-runner-lifetime",
 ]
 
 [[package]]
@@ -64,6 +75,7 @@ version = "0.0.0"
 dependencies = [
  "nros-extension",
  "nros-qemu-ladder",
+ "nros-runner-lifetime",
 ]
 
 [[package]]
@@ -71,6 +83,7 @@ name = "nros_runner_renode"
 version = "0.0.0"
 dependencies = [
  "nros-extension",
+ "nros-runner-lifetime",
 ]
 
 [[package]]
@@ -79,6 +92,7 @@ version = "0.0.0"
 dependencies = [
  "libc",
  "nros-extension",
+ "nros-runner-lifetime",
 ]
 
 [[package]]
@@ -86,6 +100,7 @@ name = "nros_runner_west"
 version = "0.0.0"
 dependencies = [
  "nros-extension",
+ "nros-runner-lifetime",
 ]
 
 [[package]]

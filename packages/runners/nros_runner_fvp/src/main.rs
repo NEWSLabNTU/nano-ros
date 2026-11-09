@@ -18,6 +18,7 @@ use nros_extension::{
     plan::{RunPlan, Verb},
     runner,
 };
+use nros_runner_lifetime as lifetime;
 use nros_runner_west::{
     build_dir, no_passthrough, run_argv, run_targets, target_for, west_command,
 };
@@ -75,7 +76,8 @@ fn run(plan: &RunPlan) -> RunnerExit {
             if let Some(d) = fvp_dir {
                 cmd.env("ARMFVP_BIN_PATH", d);
             }
-            runner::exec(&mut cmd)
+            // west, then ninja, then the model: a chain (issue 2307).
+            lifetime::exec_chain(&mut cmd, runner::exec)
         }
         Err(e) => runner::fail(e),
     }

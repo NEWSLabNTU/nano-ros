@@ -19,3 +19,4 @@ path = "src/main.rs"
 
 [dependencies]
 nros-extension = { path = "../nros-extension" }
+nros-runner-lifetime = { path = "../nros-runner-lifetime" }

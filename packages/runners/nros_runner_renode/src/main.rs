@@ -49,6 +49,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use nros_runner_lifetime as lifetime;
+
 use nros_extension::{
     console,
     describe::Describe,
@@ -239,7 +241,14 @@ fn run(plan: &RunPlan) -> RunnerExit {
         Ok(p) => p,
         Err(e) => return runner::fail(format!("duplicating stderr: {e}")),
     };
-    let mut child = match Command::new(&renode)
+    // Renode's launcher may be a script around its runtime, so the whole of
+    // it is a chain that dies with this runner (issue 2307).
+    let chain = match lifetime::Chain::arm() {
+        Ok(c) => c,
+        Err(e) => return runner::fail(format!("starting the process guard: {e}")),
+    };
+    let mut child = match chain
+        .join(&mut Command::new(&renode))
         .args(["--disable-gui", "--plain", "-P", &port.to_string()])
         .arg(&resc)
         .current_dir(&dir)

@@ -26,6 +26,8 @@ use std::{
     process::{Command, ExitCode, Stdio},
 };
 
+use nros_runner_lifetime as lifetime;
+
 use nros_extension::{
     describe::Describe,
     exit::RunnerExit,
@@ -108,7 +110,14 @@ fn run(plan: &RunPlan) -> RunnerExit {
         }
         Err(e) => return runner::fail(format!("duplicating stdout: {e}")),
     }
-    runner::exec(&mut cmd)
+    // A killed verb takes the image down (issue 2307). A prefix may fork the
+    // image rather than exec it (`gdb --args`), which one PDEATHSIG hop does
+    // not reach, so a prefixed run is a chain.
+    if plan.args.contains_key("prefix") {
+        lifetime::exec_chain(&mut cmd, runner::exec)
+    } else {
+        runner::exec(lifetime::die_with_runner(&mut cmd))
+    }
 }
 
 /// This process's stdout, as a child's stdio handle.

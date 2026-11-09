@@ -148,14 +148,26 @@ impl ProcessGroup {
             use std::os::unix::process::CommandExt;
             cmd.process_group(self.pgid.unwrap_or(0));
             #[cfg(target_os = "linux")]
-            // SAFETY: `prctl` is async-signal-safe and touches only the child.
-            unsafe {
-                cmd.pre_exec(|| {
-                    if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
-                        return Err(io::Error::last_os_error());
-                    }
-                    Ok(())
-                });
+            // PDEATHSIG watches the forking THREAD; every member is spawned
+            // from the verb's main thread, which lives as long as the verb.
+            // A verb that died between fork and prctl has already reparented
+            // the child, so getppid() is re-read after prctl (issue 2307; the
+            // runners' twin is `nros_runner_lifetime::die_with_runner`).
+            {
+                let verb = std::process::id() as libc::pid_t;
+                // SAFETY: `prctl` and `getppid` are async-signal-safe and
+                // touch only the child.
+                unsafe {
+                    cmd.pre_exec(move || {
+                        if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                            return Err(io::Error::last_os_error());
+                        }
+                        if libc::getppid() != verb {
+                            return Err(io::Error::from_raw_os_error(libc::ESRCH));
+                        }
+                        Ok(())
+                    });
+                }
             }
         }
         let child = cmd.spawn()?;
