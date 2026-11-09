@@ -19,8 +19,6 @@ use std::{
 pub enum ZephyrPlatform {
     /// Native simulator (x86_64, runs directly on host)
     NativeSim,
-    /// QEMU ARM Cortex-M3 emulation (Stellaris LM3S6965)
-    QemuArm,
     /// QEMU ARM Cortex-A9 emulation (Xilinx Zynq-7000) with the
     /// Xilinx GEM ethernet driver wired into the Zephyr native IP
     /// stack. Phase 92 — the platform real DDS-on-Zephyr deployments
@@ -40,7 +38,6 @@ impl ZephyrPlatform {
     pub fn board_spec(&self) -> &'static str {
         match self {
             ZephyrPlatform::NativeSim => "native_sim/native/64",
-            ZephyrPlatform::QemuArm => "qemu_cortex_m3",
             ZephyrPlatform::QemuCortexA9 => "qemu_cortex_a9",
             ZephyrPlatform::QemuCortexA53Smp => "qemu_cortex_a53/qemu_cortex_a53/smp",
         }
@@ -340,7 +337,7 @@ impl ZephyrProcess {
                 host_run = Some(Box::new(run));
                 cmd.spawn()?
             }
-            ZephyrPlatform::QemuArm | ZephyrPlatform::QemuCortexA53Smp => {
+            ZephyrPlatform::QemuCortexA53Smp => {
                 // phase-295 W5.a — the launch ELF is derived from the board's
                 // `runners.yaml` (`config.elf_file` under a confirmed `qemu`
                 // runner), mirroring the native branch above; falls back to the
@@ -352,8 +349,9 @@ impl ZephyrProcess {
                 // (`QEMU_FLAGS_<ARCH>`), assembled by `cmake/emu/qemu.cmake`
                 // into the CMake `run` target, reachable only through `west
                 // build -t run`, which triggers the build half (an E1
-                // violation). So the plan states that board.cmake line as QEMU
-                // args ([`zephyr_qemu_boot`]).
+                // violation). So the plan states the board descriptor's
+                // `[board.run.qemu]`, held to that `run` target's line
+                // ([`west_qemu_boot`], issue 2379).
                 let launch_bin = binary
                     .parent()
                     .and_then(RunnersYaml::from_zephyr_dir)
@@ -361,7 +359,10 @@ impl ZephyrProcess {
                     .and_then(|r| r.elf_path())
                     .filter(|p| p.exists())
                     .unwrap_or_else(|| binary.to_path_buf());
-                let mut run = crate::run::qemu_image(&launch_bin, &zephyr_qemu_boot(platform))?;
+                let mut run = crate::run::qemu_image(
+                    &launch_bin,
+                    &west_qemu_boot(crate::qemu::QEMU_CORTEX_A53, &launch_bin)?,
+                )?;
                 let mut cmd = run.take_command();
                 cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
                 // `nros run` owns a group of its own: `crate::run::stop` kills
@@ -717,44 +718,112 @@ impl Drop for ZephyrProcess {
 // Zephyr Availability Checks
 // =============================================================================
 
-/// The QEMU boot of a Zephyr emulator board, as plan args: the
-/// `QEMU_FLAGS_<ARCH>` line of its `board.cmake`, which `runners.yaml` does
-/// not carry (phase-528 W5).
+/// The QEMU boot of a Zephyr image on `board`, on QEMU's user network: the
+/// board descriptor's `[board.run.qemu]` (issue 2379), checked first against
+/// the `run_qemu` command the image's own west build generated, which is the
+/// line `west build -t run` (and so `nros run`'s `west` runner) boots.
 ///
-/// Not read from a nano-ros descriptor, unlike the MPS boards
-/// (`crate::qemu::DescriptorBoard`, phase-544 W1): neither board states a
-/// `[board.run.qemu]`. `qemu_cortex_m3` has no nano-ros descriptor at all, and
-/// `nros-board-qemu-cortex-a53` states only `emulator`, because `nros run`
-/// boots a Zephyr image through the `west` runner and Zephyr's `board.cmake`
-/// owns the line. Gate `check-harness-qemu-literals` fails here the day either
-/// board gains a `[board.run.qemu]`.
+/// Zephyr's `board.cmake` is upstream and is not edited, so the descriptor
+/// and it are held together here, on every Zephyr QEMU boot, rather than by a
+/// derivation: a descriptor that names a different `system`, machine, `cpu`,
+/// `smp` or NIC model than the build refuses to boot, naming both
+/// ([`west_run_disagreements`]). What nano-ros adds and Zephyr does not state
+/// (`icount`) and how the NIC attaches are not compared. ONE deliberate
+/// difference from Zephyr's line follows from that: `qemu_cortex_a53` smp
+/// puts its e1000 on a TAP (`ifname=zeth`, which needs `/dev/net/tun` and fails
+/// "Operation not permitted" unprivileged); the user network gives the guest
+/// the same e1000 as `10.0.2.15` with the host at `10.0.2.2`, which is what
+/// the fixtures' baked locators name.
 ///
-/// * `qemu_cortex_m3` — `-cpu cortex-m3 -machine lm3s6965evb`, the console on
-///   QEMU's stdio.
-/// * `qemu_cortex_a53` SMP — `-cpu cortex-a53 -machine virt,gic-version=3` and
-///   `-smp cpus=2`, the whole point of this platform. ONE DELIBERATE DEVIATION
-///   from that board.cmake: it passes `-nic tap,model=e1000,ifname=zeth`,
-///   which needs `/dev/net/tun` and fails with "Operation not permitted" for an
-///   unprivileged runner. User-mode networking gives the guest the same e1000
-///   with no privileges; the guest is 10.0.2.15 and the host 10.0.2.2, which is
-///   what the fixture's baked locator names.
+/// `image` is `<build>/zephyr/zephyr.elf`.
 ///
-/// # Panics
+/// # Errors
 ///
-/// On a platform with no QEMU boot (native_sim, the retired A9).
-fn zephyr_qemu_boot(platform: ZephyrPlatform) -> crate::run::QemuBoot {
-    match platform {
-        ZephyrPlatform::QemuArm => {
-            crate::run::QemuBoot::table("arm", "lm3s6965evb").arg("cpu", "cortex-m3")
-        }
-        ZephyrPlatform::QemuCortexA53Smp => {
-            crate::run::QemuBoot::table("aarch64", "virt,gic-version=3")
-                .arg("cpu", "cortex-a53")
-                .arg("nic", "user,model=e1000")
-                .then(["-smp", "cpus=2"])
-        }
-        other => panic!("{other:?} has no QEMU boot"),
+/// The build has no `run_qemu` command, the descriptor cannot be read, or the
+/// two disagree.
+pub fn west_qemu_boot(
+    board: crate::qemu::DescriptorBoard,
+    image: &Path,
+) -> TestResult<crate::run::QemuBoot> {
+    let build = image
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| TestError::ProcessFailed(format!("{}: no build dir", image.display())))?;
+    let ninja = build.join("build.ninja");
+    let text = std::fs::read_to_string(&ninja)
+        .map_err(|e| TestError::ProcessFailed(format!("{}: {e}", ninja.display())))?;
+    let argv = west_run_qemu_argv(&text).ok_or_else(|| {
+        TestError::ProcessFailed(format!(
+            "{}: no `run_qemu` command, so this is not a west build of a QEMU board",
+            ninja.display()
+        ))
+    })?;
+    let off = west_run_disagreements(&board.run()?, &argv);
+    if !off.is_empty() {
+        return Err(TestError::ProcessFailed(format!(
+            "{} and Zephyr's own run line disagree (issue 2379): {}.\n  west: {}",
+            board.descriptor_path().display(),
+            off.join("; "),
+            argv.join(" ")
+        )));
     }
+    board.networked_boot()
+}
+
+/// The QEMU argv of the `run_qemu` custom command in a west build's
+/// `build.ninja`, from the emulator binary on: the line `west build -t run`
+/// runs. `None` when the build has no such command.
+#[must_use]
+pub fn west_run_qemu_argv(build_ninja: &str) -> Option<Vec<String>> {
+    let mut lines = build_ninja.lines();
+    lines.find(|l| l.starts_with("build zephyr/CMakeFiles/run_qemu "))?;
+    let command = lines
+        .take_while(|l| !l.is_empty())
+        .find_map(|l| l.trim_start().strip_prefix("COMMAND = "))?;
+    let qemu = command.rsplit(" && ").next()?;
+    Some(qemu.split_whitespace().map(str::to_string).collect())
+}
+
+/// How a board's `[board.run.qemu]` differs from a Zephyr run line `argv`
+/// ([`west_run_qemu_argv`]), one entry per fact: the emulator binary
+/// (`system`), `-machine`, `-cpu`, `-smp` and the `-nic` model. Empty when
+/// they agree.
+#[must_use]
+pub fn west_run_disagreements(
+    run: &nros_orchestration_ir::target_exec::BoardRun,
+    argv: &[String],
+) -> Vec<String> {
+    let flag = |f: &str| {
+        argv.iter()
+            .position(|a| a == f)
+            .and_then(|i| argv.get(i + 1))
+            .map(String::as_str)
+    };
+    let Some(args) = run.qemu_plan_args() else {
+        return vec!["the descriptor states no `[board.run.qemu]`".to_string()];
+    };
+    let mut off = Vec::new();
+    let exe = argv
+        .first()
+        .and_then(|p| Path::new(p).file_name())
+        .and_then(|n| n.to_str());
+    let want_exe = nros_qemu_ladder::system_exe(&args["system"]);
+    if exe != Some(want_exe.as_str()) {
+        off.push(format!("system: descriptor `{want_exe}`, west `{exe:?}`"));
+    }
+    for (key, f) in [("machine", "-machine"), ("cpu", "-cpu"), ("smp", "-smp")] {
+        let want = args.get(key).map(String::as_str);
+        let got = flag(f);
+        if want != got {
+            off.push(format!("{key}: descriptor {want:?}, west {got:?}"));
+        }
+    }
+    let want = run.qemu.as_ref().and_then(|q| q.nic_model.as_deref());
+    let got = flag("-nic").and_then(|n| n.split(',').find_map(|kv| kv.strip_prefix("model=")));
+    if want != got {
+        off.push(format!("nic_model: descriptor {want:?}, west {got:?}"));
+    }
+    off
 }
 
 /// The Zephyr workspace, from THE ladder — `scripts/lib/zephyr-workspace.sh
@@ -1015,9 +1084,7 @@ pub fn get_prebuilt_zephyr_example(
     // Determine binary path based on platform
     let binary_path = match platform {
         ZephyrPlatform::NativeSim => build_root.join(format!("{}/zephyr/zephyr.exe", build_dir)),
-        ZephyrPlatform::QemuArm
-        | ZephyrPlatform::QemuCortexA9
-        | ZephyrPlatform::QemuCortexA53Smp => {
+        ZephyrPlatform::QemuCortexA9 | ZephyrPlatform::QemuCortexA53Smp => {
             build_root.join(format!("{}/zephyr/zephyr.elf", build_dir))
         }
     };
@@ -1438,6 +1505,93 @@ mod tests {
             ZephyrPlatform::NativeSim.board_spec(),
             "native_sim/native/64"
         );
-        assert_eq!(ZephyrPlatform::QemuArm.board_spec(), "qemu_cortex_m3");
+    }
+
+    /// Two `run_qemu` commands Zephyr 3.7 generated (`build.ninja` of the
+    /// mps2/an385 talker and of the qemu_cortex_a53 smp realtime entry,
+    /// 2026-11-09), trimmed to the edge. The binary is named through
+    /// `system_exe`, the harness's one spelling of it.
+    fn west_mps2() -> String {
+        let arm = nros_qemu_ladder::system_exe("arm");
+        format!(
+            "# Custom command for zephyr/CMakeFiles/run_qemu\n\n\
+             build zephyr/CMakeFiles/run_qemu | x: CUSTOM_COMMAND zephyr/zephyr.elf\n  \
+             COMMAND = cd /b && /usr/bin/{arm} -cpu cortex-m3 -machine mps2-an385 -nographic \
+             -vga none -nic user,model=lan9118, -pidfile qemu.pid -chardev \
+             stdio,id=con,mux=on -serial chardev:con -mon chardev=con,mode=readline \
+             -kernel /b/zephyr/zephyr.elf\n  pool = console\n\n\
+             build zephyr/CMakeFiles/debugserver_qemu | x: CUSTOM_COMMAND\n  \
+             COMMAND = cd /b && /usr/bin/{arm} -cpu cortex-m0 -machine other -S -gdb \
+             tcp::1234 -kernel k\n"
+        )
+    }
+
+    fn west_a53_smp() -> String {
+        let aarch64 = nros_qemu_ladder::system_exe("aarch64");
+        format!(
+            "build zephyr/CMakeFiles/run_qemu | x: CUSTOM_COMMAND zephyr/zephyr.elf\n  \
+             COMMAND = cd /b && /sdk/usr/bin/{aarch64} -cpu cortex-a53 -nographic -machine \
+             virt,gic-version=3 -nic tap,model=e1000,script=no,downscript=no,ifname=zeth \
+             -pidfile qemu.pid -chardev stdio,id=con,mux=on -serial chardev:con -mon \
+             chardev=con,mode=readline -smp cpus=2 -kernel /b/zephyr/zephyr.elf\n"
+        )
+    }
+
+    /// Issue 2379: the in-tree Zephyr QEMU descriptors agree with Zephyr's
+    /// own run lines, and a descriptor edit to any compared fact is reported.
+    #[test]
+    fn zephyr_qemu_descriptors_agree_with_the_west_run_line() {
+        use crate::qemu::{MPS2_AN385_ZEPHYR, QEMU_CORTEX_A53};
+        for (board, ninja) in [
+            (MPS2_AN385_ZEPHYR, west_mps2()),
+            (QEMU_CORTEX_A53, west_a53_smp()),
+        ] {
+            let argv = west_run_qemu_argv(&ninja).expect("a run_qemu command");
+            // The run edge, not the debugserver edge after it (`-S -gdb`).
+            assert!(!argv.iter().any(|a| a == "-S"), "{argv:?}");
+            let run = board.run().unwrap();
+            assert_eq!(
+                west_run_disagreements(&run, &argv),
+                Vec::<String>::new(),
+                "{}",
+                board.package
+            );
+            let text = std::fs::read_to_string(board.descriptor_path()).unwrap();
+            let q = run.qemu.clone().unwrap();
+            for (old, new) in [
+                (
+                    format!("system = \"{}\"", q.system),
+                    "system = \"riscv64\"".to_string(),
+                ),
+                (
+                    format!("cpu = \"{}\"", q.cpu.unwrap()),
+                    "cpu = \"cortex-x\"".to_string(),
+                ),
+                (
+                    format!("nic_model = \"{}\"", q.nic_model.unwrap()),
+                    "nic_model = \"virtio\"".to_string(),
+                ),
+            ] {
+                let edited = text.replacen(&old, &new, 1);
+                assert_ne!(edited, text, "{}: no `{old}`", board.package);
+                let run = nros_orchestration_ir::target_exec::board_run_named(&edited, board.name)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    west_run_disagreements(&run, &argv).len(),
+                    1,
+                    "{}: `{new}` went unreported",
+                    board.package
+                );
+            }
+        }
+        // `-smp` and the machine options are compared too: the mps2 line has
+        // neither an `-smp` nor the a53's machine.
+        let mps2 = west_run_qemu_argv(&west_mps2()).unwrap();
+        let a53 = QEMU_CORTEX_A53.run().unwrap();
+        let off = west_run_disagreements(&a53, &mps2);
+        assert!(off.iter().any(|o| o.starts_with("smp:")), "{off:?}");
+        assert!(off.iter().any(|o| o.starts_with("machine:")), "{off:?}");
+        assert_eq!(west_run_qemu_argv("build other: phony\n"), None);
     }
 }

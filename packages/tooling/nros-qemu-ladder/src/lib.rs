@@ -308,7 +308,7 @@ impl Line {
 /// * otherwise the board descriptor's `[board.run.qemu]` facts, rendered in
 ///   one fixed order: `qemu-system-<system> [-cpu <cpu>] -machine <machine>
 ///   -nographic [-icount <icount>] [-semihosting-config <semihosting>]
-///   [-nic <nic>] -kernel`. `system` and `machine` are required.
+///   [-nic <nic>] [-smp <smp>] -kernel`. `system` and `machine` are required.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlanLine {
     /// `qemu-system-<arch>`.
@@ -420,6 +420,7 @@ pub fn plan_line(args: &std::collections::BTreeMap<String, String>) -> Result<Pl
         ("icount", "-icount"),
         ("semihosting", "-semihosting-config"),
         ("nic", "-nic"),
+        ("smp", "-smp"),
     ] {
         if let Some(val) = args.get(key) {
             v.extend([flag.to_string(), val.clone()]);
@@ -781,6 +782,17 @@ mod tests {
             l.argv("k").join(" "),
             "-cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto \
              -semihosting-config enable=on,target=native -nic user,model=lan9118 -kernel k"
+        );
+        // Issue 2379 -- a multi-core board's `-smp` (qemu_cortex_a53 smp),
+        // after the NIC, as Zephyr's own run line places it.
+        let mut smp = args.clone();
+        smp.insert("smp".to_string(), "cpus=2".to_string());
+        assert!(
+            plan_line(&smp)
+                .unwrap()
+                .argv("k")
+                .join(" ")
+                .ends_with("-nic user,model=lan9118 -smp cpus=2 -kernel k")
         );
         for b in Board::ALL {
             let mut a = BTreeMap::new();

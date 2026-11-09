@@ -1818,6 +1818,58 @@ mod tests {
         assert_eq!(p.provenance["args.chip"], BOARD);
     }
 
+    /// Issue 2379 ruling: a Zephyr QEMU board's `[board.run.qemu]` does not
+    /// change `nros run` on the west road. A west build of `mps2-an385-zephyr`
+    /// or `qemu-cortex-a53` still goes to the `west` runner (Zephyr's own
+    /// `run_qemu` line) with none of the table's facts as args; an image that
+    /// names the `qemu` runner itself gets the board's facts, `-smp` included.
+    #[test]
+    fn a_zephyr_qemu_table_leaves_the_west_road_alone() {
+        let cat = BoardCatalog::load(&repo_root()).unwrap();
+        let out = BuildOutput::West {
+            build_dir: Some("/b".into()),
+        };
+        for name in ["mps2-an385-zephyr", "qemu-cortex-a53"] {
+            let d = board(&cat, name);
+            assert!(
+                d.run.as_ref().is_some_and(|r| r.qemu.is_some()),
+                "{name}: states [board.run.qemu]"
+            );
+            let p = go(
+                Verb::Run,
+                &d,
+                &out,
+                &ImageTables::default(),
+                &Invocation::default(),
+            )
+            .unwrap();
+            assert_eq!(p.runner.name, "west", "{name}");
+            for k in ["system", "machine", "cpu", "icount", "smp", "nic"] {
+                assert!(!p.args.contains_key(k), "{name}: west plan carries `{k}`");
+            }
+            let tables = ImageTables {
+                run_method: Some("qemu".into()),
+                ..ImageTables::default()
+            };
+            let p = go(Verb::Run, &d, &out, &tables, &Invocation::default()).unwrap();
+            assert_eq!(p.runner.name, "qemu", "{name}");
+            assert_eq!(
+                p.args["system"],
+                d.run.as_ref().unwrap().qemu.as_ref().unwrap().system
+            );
+            assert_eq!(p.provenance["args.machine"], BOARD);
+        }
+        let d = board(&cat, "qemu-cortex-a53");
+        let tables = ImageTables {
+            run_method: Some("qemu".into()),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Run, &d, &out, &tables, &Invocation::default()).unwrap();
+        assert_eq!(p.args["machine"], "virt,gic-version=3");
+        assert_eq!(p.args["smp"], "cpus=2");
+        assert_eq!(p.args["nic"], "user,model=e1000");
+    }
+
     /// The verb picks the target: the Nucleo's `run` is its Renode twin through
     /// the Renode runner (never west, which declares no `run_renode` for it:
     /// phase-524 W4b), carrying the board's `[board.run.renode]` wiring; its

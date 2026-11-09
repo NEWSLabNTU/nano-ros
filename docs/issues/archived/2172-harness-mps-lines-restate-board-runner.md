@@ -5,7 +5,7 @@ status: resolved
 type: tech-debt
 severity: medium
 area: [testing, qemu, cli]
-related: [phase-544, phase-528, 2169, 2170]
+related: [phase-544, phase-528, 2169, 2170, 2379]
 found: 2026-10-31
 resolved: 2026-11-09
 resolved_in: "phase-544 W1: the harness reads [board.run.qemu] through nros_orchestration_ir::target_exec::board_run_named and BoardRun::qemu_plan_args, the mapping nros run and the cargo runner use; the MPS3-AN536 descriptor states -icount and its NIC model"
@@ -115,6 +115,11 @@ one ladder (`nros_qemu_ladder::Board`), shared with the CLI's plan.
 Zephyr boots (`zephyr_qemu_boot`) restate Zephyr's `board.cmake`, because no
 Zephyr board states a `[board.run.qemu]`: `nros run` boots a Zephyr image
 through the `west` runner. The gate fires if one ever does.
+**Superseded 2026-11-09 by [issue 2379](../2379-zephyr-qemu-boards-state-board-run-qemu.md):**
+the Zephyr QEMU boards now state `[board.run.qemu]`, `zephyr_qemu_boot` is
+gone, and the harness reads them through `nros_tests::zephyr::west_qemu_boot`,
+which holds each to its build's own `run_qemu` line. `nros run` keeps the
+`west` road.
 
 ## Verified (2026-11-09)
 

@@ -17,7 +17,11 @@ Two rules over `packages/testing/nros-tests/src/`, outside comments:
    (`"lan9118"`, or `model=lan9118` inside a string) are READ from the
    descriptor (`crate::qemu::DescriptorBoard`), never typed. The set is
    DERIVED from every tracked `packages/boards/**/nros-board.toml`, so a board
-   that gains a `[board.run.qemu]` is covered from that commit on.
+   that gains a `[board.run.qemu]` is covered from that commit on. The Zephyr
+   QEMU boards state one since issue 2379 (`mps2-an385-zephyr`,
+   `qemu-cortex-a53`); the harness reads them through
+   `crate::zephyr::west_qemu_boot`, which also holds them to Zephyr's own run
+   line.
 
 Buildless, ~0.2 s; self-tests its matchers on every run.
 """
@@ -52,7 +56,10 @@ SELF_TESTS = [
     ('qemu_system_has_machine(&nros_qemu_ladder::system_exe("riscv32"), "virt")', False),
 ]
 
-# (text, should_match) against machines {"mps2-an385"} and NIC models {"lan9118"}.
+# (text, should_match) against machines {"mps2-an385", "virt,gic-version=3"} and NIC
+# models {"lan9118", "e1000"}.
+FACT_MACHINES = {"mps2-an385", "virt,gic-version=3"}
+FACT_NICS = {"lan9118", "e1000"}
 FACT_SELF_TESTS = [
     ('QemuBoot::table("arm", "mps2-an385")', True),
     ('.arg("nic", "socket,model=lan9118,mcast=230.0.0.1:1")', True),
@@ -63,6 +70,10 @@ FACT_SELF_TESTS = [
     ('package: "nros-board-mps2-an385",', False),
     ('format!("user,model={model},{hostfwd}")', False),
     ('QemuBoot::table("arm", "lm3s6965evb")', False),
+    # Issue 2379 -- the Zephyr qemu_cortex_a53 smp line as `zephyr_qemu_boot` typed it.
+    ('crate::run::QemuBoot::table("aarch64", "virt,gic-version=3")', True),
+    ('.arg("nic", "user,model=e1000")', True),
+    ('QemuBoot::table("riscv64", "virt")', False),
 ]
 
 
@@ -118,7 +129,7 @@ def self_test() -> int:
             bad += 1
             print(f"  self-test FAILED: {text!r} matched={got}, want {want}")
     for text, want in FACT_SELF_TESTS:
-        got = bool(fact_hits(text, {"mps2-an385"}, {"lan9118"}))
+        got = bool(fact_hits(text, FACT_MACHINES, FACT_NICS))
         if got != want:
             bad += 1
             print(f"  self-test FAILED (board facts): {text!r} matched={got}, want {want}")

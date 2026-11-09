@@ -201,7 +201,7 @@ prints the plan and runs nothing. `--why` adds the provenance of each field.
 | this image's override | `system.toml`: `[image.<id>.run]`, `[image.<id>.flash]`, `[image.<id>.console]` (the `run` table exists today for NIC choice) |
 | the link | the image's transport and RFC-0109's network layers; no new table |
 | whether the board was verified | the registry (RFC-0114), never the descriptor |
-| Zephyr's flash and emulator facts | Zephyr's own `board.cmake` and `runners.yaml`, which the `west` runner reads |
+| Zephyr's flash and emulator facts | Zephyr's own `board.cmake` and `runners.yaml`, which the `west` runner reads. A Zephyr QEMU board may also state `[board.run.qemu]` for the readers that are not the `west` runner (the test harness, and `nros run` when an image names the `qemu` runner); the `west` road never reads it, and the harness holds it to the build's own `run_qemu` line before every boot (issue 2379) |
 
 ```toml
 # nros-board.toml
@@ -359,3 +359,7 @@ hang. Steps are a list, not a state machine. A bench that needs board states
   2026-11-01. Amends RFC-0097 D8 (the verbs exist, as a contract over
   runner packages), RFC-0116 D7 (`run` does not flash) and RFC-0114 D10
   (the registry's `emulator` is read from the descriptor).
+- 2026-11-09 -- issue 2379: a Zephyr QEMU board states `[board.run.qemu]`
+  (new key `smp`) for the readers that are not the `west` runner. `nros run`
+  keeps the `west` road for a west build; Zephyr's `board.cmake` stays the
+  source of that line, and the harness compares the two before each boot.

@@ -564,7 +564,7 @@ pub struct BoardRun {
 /// They become a RunPlan's QEMU `args` through [`BoardRun::qemu_plan_args`],
 /// which `nros_qemu_ladder::plan_line` renders in one fixed order
 /// (`qemu-system-<system> [-cpu] -machine -nographic [-icount]
-/// [-semihosting-config] [-nic] -kernel`), with the kernel appended by the
+/// [-semihosting-config] [-nic] [-smp] -kernel`), with the kernel appended by the
 /// caller. A board whose QEMU line does not fit this shape (the NuttX and
 /// ThreadX riscv64 boards, whose NIC is a virtio-mmio device the harness
 /// varies per pair) states only `emulator` and keeps its line in
@@ -587,6 +587,10 @@ pub struct BoardRunQemu {
     /// `-semihosting-config enable=on,target=native`.
     #[serde(default)]
     pub semihosting: bool,
+    /// `-smp <value>` (`cpus=2`), for a board whose variant is multi-core
+    /// (issue 2379: `qemu_cortex_a53/qemu_cortex_a53/smp`).
+    #[serde(default)]
+    pub smp: Option<String>,
     /// The NIC model (`lan9118`). The board states only the model; how it
     /// attaches (QEMU's user network, a multicast socket, a TAP) is the
     /// image's or the caller's.
@@ -633,7 +637,7 @@ impl BoardRun {
     }
 
     /// The RunPlan QEMU `args` the board states (`system`, `cpu`, `machine`,
-    /// `icount`, `semihosting`), when it states `[board.run.qemu]`: THE
+    /// `icount`, `semihosting`, `smp`), when it states `[board.run.qemu]`: THE
     /// mapping, used by `nros run`'s plan, the cargo `runner` and the test
     /// harness alike. The NIC is not here: the board states its model
     /// ([`BoardRunQemu::nic_model`]) and each caller attaches it to a network.
@@ -658,6 +662,9 @@ impl BoardRun {
                 "semihosting".to_string(),
                 QEMU_SEMIHOSTING_CONFIG.to_string(),
             );
+        }
+        if let Some(n) = &q.smp {
+            args.insert("smp".to_string(), n.clone());
         }
         Some(args)
     }
@@ -760,6 +767,18 @@ mod tests {
                 ("system", "arm"),
             ]
         );
+        // Issue 2379 -- `smp` maps onto its own arg, and only when stated.
+        let smp = text.replacen(
+            "nic_model = \"n\"\n",
+            "nic_model = \"n\"\nsmp = \"cpus=2\"\n",
+            1,
+        );
+        let args = board_run_named(&smp, "a")
+            .unwrap()
+            .unwrap()
+            .qemu_plan_args()
+            .unwrap();
+        assert_eq!(args.get("smp").map(String::as_str), Some("cpus=2"));
         let b = board_run_named(text, "b").unwrap().unwrap();
         assert!(b.host && b.qemu_plan_args().is_none());
         assert!(
