@@ -573,6 +573,7 @@ resolved-seed:
 # configure builds, no-op for a guest and inside the census host build, FATAL on
 # a failed configure; and the reach -- every hooked entry calls it, and nothing
 # else spells the command. A stand-in CLI, so seconds; same skip ledger.
+[group('needs:cmake')]
 configure-hook:
     #!/usr/bin/env bash
     set -euo pipefail
