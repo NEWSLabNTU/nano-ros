@@ -1002,6 +1002,7 @@ pub fn run(args: Args) -> Result<()> {
     };
     let descriptor = crate::orchestration::image::resolve_image_board(&catalog, &board, &image)
         .map_err(|e| eyre::eyre!("nros new: {e}"))?;
+    refuse_c_family_without_entry(lang, descriptor.canonical_name())?;
     // The board's host-side serial port, when it states one: the first
     // image reaches the router over it, as a real board's first program does.
     let locator = crate::cmd::build::descriptor_board_net(descriptor, &board, Some(&root))?
@@ -1150,6 +1151,33 @@ pub(crate) fn package_dir(args: &Args, name: &str) -> PathBuf {
     args.destination_directory
         .as_ref()
         .map_or_else(|| PathBuf::from(name), |d| d.join(name))
+}
+
+/// Issue 2376 — a C or C++ node needs a C/C++ entry, and the entry pipeline
+/// has none for a board with no RTOS (`nros_entry_lower::BOARD_KEYS` leaves
+/// bare-metal `mps2-an385` out: "a C or C++ entry has no runner"). The scaffold
+/// used to accept the pairing and the first `nros build` failed at configure
+/// (`codegen entry-pack: unknown board key`), which is how every C and C++ tab
+/// of the Tutorial broke. Ask the SAME table the build asks, and name the
+/// boards on that chip the pipeline does take.
+pub(crate) fn refuse_c_family_without_entry(lang: nros_lang::Language, board: &str) -> Result<()> {
+    if matches!(lang, nros_lang::Language::Rust) || nros_entry_lower::board_family(board).is_ok() {
+        return Ok(());
+    }
+    let stem = board.rsplit_once('-').map_or(board, |(s, _)| s);
+    let siblings: Vec<&str> = nros_entry_lower::known_board_keys()
+        .filter(|k| *k != board && k.starts_with(stem) && k.len() > stem.len())
+        .collect();
+    let hint = if siblings.is_empty() {
+        "`nros board list` names the boards; pick one with an RTOS.".to_string()
+    } else {
+        format!("The same chip with an RTOS: {}.", siblings.join(", "))
+    };
+    bail!(
+        "nros new: `--lang {}` on `{board}`: a C or C++ node needs a C/C++ entry, and this \
+         board has none (it runs one Rust program on bare metal). {hint}",
+        lang.as_str()
+    )
 }
 
 /// The `board` a C/C++ project scaffold for `--platform <platform>` writes
@@ -1558,5 +1586,27 @@ mod project_board_tests {
             .unwrap_err()
             .to_string();
         assert!(e.contains("ambiguous"), "{e}");
+    }
+}
+
+#[cfg(test)]
+mod c_family_entry_tests {
+    use super::refuse_c_family_without_entry;
+    use nros_lang::Language;
+
+    /// Issue 2376 — the pairing the Tutorial taught is refused at scaffold
+    /// time, naming the boards on the same chip the entry pipeline takes.
+    #[test]
+    fn a_c_or_cpp_node_on_a_bare_metal_board_is_refused_naming_the_rtos_boards() {
+        for lang in [Language::C, Language::Cpp] {
+            let e = refuse_c_family_without_entry(lang, "mps2-an385-baremetal")
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains("mps2-an385-freertos"), "{e}");
+            assert!(e.contains(lang.as_str()), "{e}");
+        }
+        refuse_c_family_without_entry(Language::Rust, "mps2-an385-baremetal").unwrap();
+        refuse_c_family_without_entry(Language::C, "mps2-an385-freertos").unwrap();
+        refuse_c_family_without_entry(Language::Cpp, "linux").unwrap();
     }
 }
