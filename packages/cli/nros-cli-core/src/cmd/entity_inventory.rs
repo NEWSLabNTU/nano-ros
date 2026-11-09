@@ -279,9 +279,19 @@ pub fn inventory_from_metadata_file(path: &std::path::Path) -> Result<EntityInve
 /// composed over (`resolve::EntityInputs`), and the producer reads the resolve
 /// only when its own metadata names the same rows -- a component added since
 /// the last `nros sync` makes it recompose, exactly as before.
+///
+/// Issue 2399 -- `workspace`, when given, adds the RUST registrations of those
+/// packages. The probe serves C and C++ only (a Rust component's facts come from
+/// the cargo harness), so its document has no row for a package's
+/// `nano_ros_node_register(LANGUAGE RUST ...)`, while the image's own configure
+/// registers one. Without it a mixed C/C++/Rust image's seed counted one node
+/// fewer than its configure and the promise check refused the build. The rows
+/// come from the same `nano_ros_node_register` calls, parsed the way workspace
+/// discovery parses them, and a row the probe already has is not added twice.
 pub(crate) fn registered_from_probe(
     path: &std::path::Path,
     packages: &std::collections::BTreeSet<String>,
+    workspace: Option<&std::path::Path>,
 ) -> Result<EntityInventory> {
     let raw = std::fs::read_to_string(path)
         .wrap_err_with(|| format!("read metadata `{}`", path.display()))?;
@@ -289,7 +299,52 @@ pub(crate) fn registered_from_probe(
         .wrap_err_with(|| format!("parse metadata `{}`", path.display()))?;
     doc.components
         .retain(|c| packages.contains(&c.pkg_or_class_prefix()));
+    if let Some(root) = workspace {
+        doc.components
+            .extend(rust_registrations(root, packages, &doc.components)?);
+    }
     inventory_from_metadata(&path.display().to_string(), &doc)
+}
+
+/// Issue 2399 -- the `nano_ros_node_register(LANGUAGE RUST ...)` rows of
+/// `packages` in the workspace at `root`, minus any `(pkg, name)` already in
+/// `have`.
+fn rust_registrations(
+    root: &std::path::Path,
+    packages: &std::collections::BTreeSet<String>,
+    have: &[ComponentMeta],
+) -> Result<Vec<ComponentMeta>> {
+    use crate::orchestration::source_metadata::ComponentLanguage;
+    let ws = crate::orchestration::workspace::Workspace::discover(root)
+        .wrap_err_with(|| format!("discover the workspace at `{}`", root.display()))?;
+    let seen: std::collections::BTreeSet<(String, String)> = have
+        .iter()
+        .map(|c| (c.pkg_or_class_prefix(), c.name.clone()))
+        .collect();
+    let mut out = Vec::new();
+    for pkg in ws.packages.iter().filter(|p| packages.contains(&p.name)) {
+        for s in &pkg.cmake_component_metadata {
+            if s.language != ComponentLanguage::Rust
+                || seen.contains(&(s.package.clone(), s.component.clone()))
+            {
+                continue;
+            }
+            let Some(class) = s.class.clone() else {
+                bail!(
+                    "{}: `nano_ros_node_register(NAME {} LANGUAGE RUST)` names no CLASS",
+                    pkg.root.join("CMakeLists.txt").display(),
+                    s.component
+                );
+            };
+            out.push(ComponentMeta {
+                name: s.component.clone(),
+                pkg: Some(s.package.clone()),
+                class,
+                entities: None,
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// The three refusals every model meets before it may say anything. One list
@@ -931,6 +986,74 @@ pub(crate) fn write_if_changed(path: &std::path::Path, content: &str) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2399 -- a mixed image's Rust registration is in the seed's
+    /// registered population although the cmake probe holds no row for it.
+    #[test]
+    fn a_rust_registration_joins_the_probe_rows() {
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path();
+        for (pkg, lang, class) in [
+            ("c_pkg", "C", "c_pkg::Talker"),
+            ("rust_pkg", "RUST", "rust_pkg::Beat"),
+        ] {
+            let dir = ws.join("src").join(pkg);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("package.xml"),
+                format!(
+                    "<package format=\"3\"><name>{pkg}</name><version>0.1.0</version>\
+                     <description>t</description><maintainer email=\"a@b\">a</maintainer>\
+                     <license>MIT</license><export><build_type>nros_cmake</build_type></export></package>\n"
+                ),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join("CMakeLists.txt"),
+                format!(
+                    "nano_ros_node_register(NAME n_{pkg} CLASS {class} LANGUAGE {lang} SOURCES x)\n"
+                ),
+            )
+            .unwrap();
+        }
+        let probe = ws.join("nros-metadata.json");
+        std::fs::write(
+            &probe,
+            r#"{"components": [{"name": "n_c_pkg", "pkg": "c_pkg", "class": "c_pkg::Talker"}]}"#,
+        )
+        .unwrap();
+        let scope: std::collections::BTreeSet<String> = ["c_pkg", "rust_pkg"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        let keys = |inv: &EntityInventory| -> Vec<String> {
+            let mut k: Vec<String> = inv
+                .components()
+                .iter()
+                .map(|c| format!("{}::{}::{}", c.pkg, c.component, c.class))
+                .collect();
+            k.sort();
+            k
+        };
+        let without = registered_from_probe(&probe, &scope, None).unwrap();
+        assert_eq!(keys(&without), ["c_pkg::n_c_pkg::c_pkg::Talker"]);
+        let with = registered_from_probe(&probe, &scope, Some(ws)).unwrap();
+        assert_eq!(
+            keys(&with),
+            [
+                "c_pkg::n_c_pkg::c_pkg::Talker",
+                "rust_pkg::n_rust_pkg::rust_pkg::Beat"
+            ],
+            "the C row once, plus the Rust registration the probe cannot serve"
+        );
+        let narrow: std::collections::BTreeSet<String> = ["c_pkg".to_string()].into();
+        let only_c = registered_from_probe(&probe, &narrow, Some(ws)).unwrap();
+        assert_eq!(
+            keys(&only_c),
+            ["c_pkg::n_c_pkg::c_pkg::Talker"],
+            "out of scope stays out"
+        );
+    }
 
     fn parse(raw: &str) -> EntityInventory {
         let doc: MetadataDoc = serde_json::from_str(raw).expect("metadata parses");
