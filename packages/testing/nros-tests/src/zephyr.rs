@@ -721,6 +721,14 @@ impl Drop for ZephyrProcess {
 /// `QEMU_FLAGS_<ARCH>` line of its `board.cmake`, which `runners.yaml` does
 /// not carry (phase-528 W5).
 ///
+/// Not read from a nano-ros descriptor, unlike the MPS boards
+/// (`crate::qemu::DescriptorBoard`, phase-544 W1): neither board states a
+/// `[board.run.qemu]`. `qemu_cortex_m3` has no nano-ros descriptor at all, and
+/// `nros-board-qemu-cortex-a53` states only `emulator`, because `nros run`
+/// boots a Zephyr image through the `west` runner and Zephyr's `board.cmake`
+/// owns the line. Gate `check-harness-qemu-literals` fails here the day either
+/// board gains a `[board.run.qemu]`.
+///
 /// * `qemu_cortex_m3` — `-cpu cortex-m3 -machine lm3s6965evb`, the console on
 ///   QEMU's stdio.
 /// * `qemu_cortex_a53` SMP — `-cpu cortex-a53 -machine virt,gic-version=3` and

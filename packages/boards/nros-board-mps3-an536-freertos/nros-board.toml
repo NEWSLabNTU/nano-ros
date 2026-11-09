@@ -72,15 +72,20 @@ stack = "board"
 links = ["tcp", "udp"]
 
 # phase-528 W2 (RFC-0118 D4) — how this board runs, stated ONCE: `nros build`'s
-# next step, the generated cargo `runner` and the registry's `emulator` all
-# read it. No `-icount` and no NIC yet (issue 2172: no probe track measures
-# this board's line, and its harness pairs bring their own network).
+# next step, the generated cargo `runner`, the registry's `emulator` and the
+# test harness's MPS3 launchers (phase-544 W1) all read it. `-icount
+# shift=auto` keeps the virtual clock near wall time for a networked guest
+# (book-internals/src/testing/qemu-icount.md); the harness's MPS3 pairs, which
+# measured it, attach the LAN9118 to a multicast socket or to QEMU's user
+# network with `hostfwd` rules (issue 2172).
 [board.run]
 emulator = "qemu:mps3-an536"
 
 [board.run.qemu]
 system = "arm"
+icount = "shift=auto"
 semihosting = true
+nic_model = "lan9118"
 
 [board.console]
 kind = "semihosting"

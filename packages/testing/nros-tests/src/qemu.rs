@@ -6,13 +6,13 @@
 //! ## Launch convention — `nros run --plan` (phase-528 W5)
 //!
 //! A guest boots the way a user runs it: every `QemuProcess::start_*` builder
-//! states a [`crate::run::QemuBoot`] — the RunPlan's QEMU `args` (the board
-//! descriptor's `[board.run.qemu]` keys, or a fixed ladder board) plus the
-//! words after the kernel — and [`QemuProcess::start`] runs it through
-//! `nros run --plan` and the `qemu` runner, which renders the line with
-//! `nros_qemu_ladder::plan_line`. No builder here spells a QEMU command line,
-//! and gate `check-harness-qemu-literals` keeps it that way (no QEMU binary
-//! name outside comments in `nros-tests/src`).
+//! states a [`crate::run::QemuBoot`] — the RunPlan's QEMU `args` (READ from the
+//! board descriptor's `[board.run.qemu]` through [`DescriptorBoard`] since
+//! phase-544 W1, or a fixed ladder board) plus the words after the kernel — and
+//! [`QemuProcess::start`] runs it through `nros run --plan` and the `qemu`
+//! runner, which renders the line with `nros_qemu_ladder::plan_line`. No
+//! builder here spells a QEMU command line or a descriptor board's fact, and
+//! gate `check-harness-qemu-literals` keeps it that way.
 //!
 //! The emulator binary is still the harness's one ladder
 //! ([`qemu_system_path`]), which the plan's `tools` carry. Consuming PREBUILT
@@ -339,19 +339,18 @@ impl QemuProcess {
             binary,
             crate::run::QemuBoot::table("arm", "lm3s6965evb")
                 .arg("cpu", "cortex-m3")
-                .arg("semihosting", SEMIHOSTING),
+                .arg(
+                    "semihosting",
+                    nros_orchestration_ir::target_exec::QEMU_SEMIHOSTING_CONFIG,
+                ),
         )
     }
 
     /// Start QEMU with MPS2-AN385 machine (Cortex-M3 + LAN9118 Ethernet),
-    /// no NIC configured.
+    /// no NIC configured: the board's boot as its descriptor states it
+    /// ([`MPS2_AN385`]), with the NIC left off.
     pub fn start_mps2_an385(binary: &Path) -> TestResult<Self> {
-        Self::start(
-            binary,
-            crate::run::QemuBoot::table("arm", "mps2-an385")
-                .arg("cpu", "cortex-m3")
-                .arg("semihosting", SEMIHOSTING),
-        )
+        Self::start(binary, MPS2_AN385.boot()?)
     }
 
     /// Start QEMU with MPS2-AN385 machine + LAN9118 slirp networking
@@ -369,7 +368,7 @@ impl QemuProcess {
     /// during WFI, causing zenoh-pico timeouts to expire before network I/O
     /// completes. See `book-internals/src/testing/qemu-icount.md`.
     pub fn start_mps2_an385_networked(binary: &Path) -> TestResult<Self> {
-        Self::start(binary, mps2_an385_networked_boot())
+        Self::start(binary, mps2_an385_networked_boot()?)
     }
 
     /// [`Self::start_mps2_an385_networked`] for a cell that asserts a bound on
@@ -379,10 +378,7 @@ impl QemuProcess {
     pub fn start_mps2_an385_networked_measured(binary: &Path) -> TestResult<Self> {
         Self::start(
             binary,
-            mps2_an385_boot(
-                &nros_board_common::image_net::slirp_nic("lan9118"),
-                MPS2_AN385_CORE_ICOUNT,
-            ),
+            mps2_an385_networked_boot()?.arg("icount", MPS2_AN385_CORE_ICOUNT),
         )
     }
 
@@ -391,7 +387,7 @@ impl QemuProcess {
     /// interface, from [`image_nic`] — QEMU's own user-mode network, a host
     /// bridge, or a TAP.
     pub fn start_mps2_an385_on(binary: &Path, nic: &str) -> TestResult<Self> {
-        Self::start(binary, mps2_an385_boot(nic, "shift=auto"))
+        Self::start(binary, MPS2_AN385.boot()?.arg("nic", nic))
     }
 
     /// [`Self::start_mps2_an385_networked`] plus a QEMU human monitor on a
@@ -405,7 +401,7 @@ impl QemuProcess {
     ) -> TestResult<Self> {
         Self::start(
             binary,
-            mps2_an385_networked_boot().then([
+            mps2_an385_networked_boot()?.then([
                 "-monitor".to_string(),
                 format!("unix:{},server=on,wait=off", monitor_socket.display()),
             ]),
@@ -424,9 +420,13 @@ impl QemuProcess {
     /// sends. A guest alone on the group still delivers to itself, which is
     /// what an in-image talker + listener needs.
     pub fn start_mps3_an536_mcast(binary: &Path, mcast_addr_port: &str) -> TestResult<Self> {
+        let model = MPS3_AN536.nic_model()?;
         Self::start(
             binary,
-            mps3_an536_boot(&format!("socket,model=lan9118,mcast={mcast_addr_port}")),
+            MPS3_AN536.boot()?.arg(
+                "nic",
+                &format!("socket,model={model},mcast={mcast_addr_port}"),
+            ),
         )
     }
 
@@ -440,9 +440,12 @@ impl QemuProcess {
     /// unicast ports. The guest's address is the board's QEMU network plan
     /// (`10.0.2.15`, gateway `10.0.2.2`).
     pub fn start_mps3_an536_slirp(binary: &Path, hostfwd: &str) -> TestResult<Self> {
+        let model = MPS3_AN536.nic_model()?;
         Self::start(
             binary,
-            mps3_an536_boot(&format!("user,model=lan9118,{hostfwd}")),
+            MPS3_AN536
+                .boot()?
+                .arg("nic", &format!("user,model={model},{hostfwd}")),
         )
     }
 
@@ -464,18 +467,14 @@ impl QemuProcess {
     pub fn start_mps2_an385_with_serial(binary: &Path, serial_path: &str) -> TestResult<Self> {
         Self::start(
             binary,
-            crate::run::QemuBoot::table("arm", "mps2-an385")
-                .arg("cpu", "cortex-m3")
-                .arg("icount", "shift=auto")
-                .arg("semihosting", SEMIHOSTING)
-                .then([
-                    "-chardev".to_string(),
-                    format!("serial,id=ser0,path={serial_path}"),
-                    "-serial".to_string(),
-                    "chardev:ser0".to_string(),
-                    "-monitor".to_string(),
-                    "none".to_string(),
-                ]),
+            MPS2_AN385.boot()?.then([
+                "-chardev".to_string(),
+                format!("serial,id=ser0,path={serial_path}"),
+                "-serial".to_string(),
+                "chardev:ser0".to_string(),
+                "-monitor".to_string(),
+                "none".to_string(),
+            ]),
         )
     }
 
@@ -1179,40 +1178,119 @@ pub fn image_nic(net_file: &Path, model: &str) -> TestResult<String> {
 /// count, every run. Measured in issue 2252.
 pub const MPS2_AN385_CORE_ICOUNT: &str = "shift=5";
 
-/// The semihosting the Arm QEMU boards' consoles use.
-const SEMIHOSTING: &str = "enable=on,target=native";
-
-/// The boot [`QemuProcess::start_mps2_an385_networked`] runs: MPS2-AN385,
-/// LAN9118 on slirp, `-icount shift=auto`.
-fn mps2_an385_networked_boot() -> crate::run::QemuBoot {
-    mps2_an385_boot(
-        &nros_board_common::image_net::slirp_nic("lan9118"),
-        "shift=auto",
-    )
-}
-
-/// MPS2-AN385 with `nic` and `icount`.
+/// A board whose QEMU boot the harness reads from its descriptor's
+/// `[board.run.qemu]` (phase-544 W1, issue 2172): the package directory under
+/// `packages/boards/` and one of its `[[board]]` `names`.
 ///
-/// `-icount` synchronizes the virtual clock with wall-clock time. With
-/// sleep=on (default), WFI advances virtual time at wall-clock speed via
-/// QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps hardware
-/// timer-backed clocks (CMSDK Timer0) aligned with slirp network I/O timing.
-/// A measurement cell passes a fixed shift instead (`MPS2_AN385_CORE_ICOUNT`,
-/// issue 2252).
-fn mps2_an385_boot(nic: &str, icount: &str) -> crate::run::QemuBoot {
-    crate::run::QemuBoot::table("arm", "mps2-an385")
-        .arg("cpu", "cortex-m3")
-        .arg("icount", icount)
-        .arg("semihosting", SEMIHOSTING)
-        .arg("nic", nic)
+/// The board's facts (`system`, `cpu`, `machine`, `icount`, `semihosting`,
+/// the NIC model) are the descriptor's, mapped onto plan args by
+/// [`nros_orchestration_ir::target_exec::BoardRun::qemu_plan_args`], the
+/// function `nros run`'s plan and the cargo `runner` use. A launcher adds only
+/// what is its own: the network the NIC attaches to (QEMU's user network, a
+/// multicast socket, `hostfwd` rules), a serial chardev, a monitor, or a
+/// measurement's fixed `-icount`. Gate `check-harness-qemu-literals` refuses a
+/// descriptor board's machine or NIC model spelled here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DescriptorBoard {
+    /// The board package's directory under `packages/boards/`.
+    pub package: &'static str,
+    /// One of its `[[board]]` `names`.
+    pub name: &'static str,
 }
 
-/// MPS3-AN536 (Cortex-R52) with `nic`.
-fn mps3_an536_boot(nic: &str) -> crate::run::QemuBoot {
-    crate::run::QemuBoot::table("arm", "mps3-an536")
-        .arg("icount", "shift=auto")
-        .arg("semihosting", SEMIHOSTING)
-        .arg("nic", nic)
+/// The MPS2-AN385 (Cortex-M3 + LAN9118) QEMU board. The bare-metal and
+/// FreeRTOS packages state the same `[board.run.qemu]` (unit test
+/// `boards_on_one_qemu_machine_state_one_boot`), so the launchers that boot
+/// either read this one.
+pub const MPS2_AN385: DescriptorBoard = DescriptorBoard {
+    package: "nros-board-mps2-an385",
+    name: "mps2-an385-baremetal",
+};
+
+/// The MPS3-AN536 (Cortex-R52 + LAN9118) QEMU board.
+pub const MPS3_AN536: DescriptorBoard = DescriptorBoard {
+    package: "nros-board-mps3-an536-freertos",
+    name: "mps3-an536-freertos",
+};
+
+impl DescriptorBoard {
+    /// The descriptor file.
+    #[must_use]
+    pub fn descriptor_path(&self) -> std::path::PathBuf {
+        crate::project_root()
+            .join("packages/boards")
+            .join(self.package)
+            .join("nros-board.toml")
+    }
+
+    fn read(&self) -> TestResult<String> {
+        let path = self.descriptor_path();
+        std::fs::read_to_string(&path)
+            .map_err(|e| TestError::ProcessFailed(format!("{}: {e}", path.display())))
+    }
+
+    /// The board's `[board.run]` in descriptor `text`, read with the shared
+    /// reader ([`nros_orchestration_ir::target_exec::board_run_named`]).
+    fn run_in(&self, text: &str) -> TestResult<nros_orchestration_ir::target_exec::BoardRun> {
+        let fail = |why: String| {
+            TestError::ProcessFailed(format!("{}: {why}", self.descriptor_path().display()))
+        };
+        nros_orchestration_ir::target_exec::board_run_named(text, self.name)
+            .map_err(fail)?
+            .ok_or_else(|| fail(format!("board `{}` states no `[board.run]`", self.name)))
+    }
+
+    /// The boot descriptor `text` states for this board, with no NIC.
+    fn boot_in(&self, text: &str) -> TestResult<crate::run::QemuBoot> {
+        let args = self.run_in(text)?.qemu_plan_args().ok_or_else(|| {
+            TestError::ProcessFailed(format!(
+                "{}: board `{}` states no `[board.run.qemu]`",
+                self.descriptor_path().display(),
+                self.name
+            ))
+        })?;
+        Ok(crate::run::QemuBoot {
+            args,
+            passthrough: Vec::new(),
+        })
+    }
+
+    /// The board's boot with no NIC: its `[board.run.qemu]` as plan args.
+    ///
+    /// # Errors
+    ///
+    /// The descriptor cannot be read, or states no `[board.run.qemu]`.
+    pub fn boot(&self) -> TestResult<crate::run::QemuBoot> {
+        self.boot_in(&self.read()?)
+    }
+
+    /// The board's NIC model (`[board.run.qemu] nic_model`).
+    ///
+    /// # Errors
+    ///
+    /// The descriptor cannot be read, or states no NIC model.
+    pub fn nic_model(&self) -> TestResult<String> {
+        self.run_in(&self.read()?)?
+            .qemu
+            .and_then(|q| q.nic_model)
+            .ok_or_else(|| {
+                TestError::ProcessFailed(format!(
+                    "{}: board `{}` states no `[board.run.qemu] nic_model`",
+                    self.descriptor_path().display(),
+                    self.name
+                ))
+            })
+    }
+}
+
+/// The boot [`QemuProcess::start_mps2_an385_networked`] runs: the MPS2-AN385
+/// descriptor's boot (its `-icount shift=auto` keeps hardware timer-backed
+/// clocks, CMSDK Timer0, aligned with slirp network I/O timing:
+/// book-internals/src/testing/qemu-icount.md) with its NIC on QEMU's user
+/// network.
+fn mps2_an385_networked_boot() -> TestResult<crate::run::QemuBoot> {
+    let nic = nros_board_common::image_net::slirp_nic(&MPS2_AN385.nic_model()?);
+    Ok(MPS2_AN385.boot()?.arg("nic", &nic))
 }
 
 /// Run one command on a QEMU human monitor (`-monitor unix:<socket>,…`) and
@@ -1350,21 +1428,113 @@ mod tests {
         );
     }
 
-    /// The MPS2-AN385 networked boot renders the line the launcher spelled by
-    /// hand before phase-528 W5, flag for flag (the `-nic` now precedes the
-    /// kernel, which QEMU does not order).
+    /// phase-544 W1 acceptance: the MPS launchers' boots are the board
+    /// descriptors' `[board.run.qemu]`, and an edit to a descriptor reaches the
+    /// rendered line (what [`QemuProcess::command_line`] reports: the runner's
+    /// `plan_line` rendering of these args, issue 0877).
     #[test]
-    fn the_mps2_networked_boot_is_the_old_line() {
-        let line = nros_qemu_ladder::plan_line(&mps2_an385_networked_boot().args).unwrap();
-        assert_eq!(line.exe, nros_qemu_ladder::system_exe("arm"));
+    fn the_mps_boots_are_the_descriptors_and_follow_an_edit() {
+        use nros_qemu_ladder::plan_line;
+        for board in [MPS2_AN385, MPS3_AN536] {
+            let text = board.read().unwrap();
+            let run = board.run_in(&text).unwrap();
+            let q = run.qemu.as_ref().expect("[board.run.qemu]");
+            let line = plan_line(&board.boot().unwrap().args).unwrap();
+            assert_eq!(line.exe, nros_qemu_ladder::system_exe(&q.system));
+            let argv = line.argv("K").join(" ");
+            let (_, machine) = run.emulator_parts().unwrap();
+            assert!(argv.contains(&format!("-machine {machine} ")), "{argv}");
+            if let Some(cpu) = &q.cpu {
+                assert!(argv.contains(&format!("-cpu {cpu} ")), "{argv}");
+            }
+            // The networked launchers keep `-icount shift=auto` (qemu-icount.md).
+            assert_eq!(q.icount.as_deref(), Some("shift=auto"), "{}", board.package);
+            assert!(argv.contains("-icount shift=auto "), "{argv}");
+            assert!(q.nic_model.is_some(), "{}", board.package);
+
+            // An edit to the descriptor changes the boot.
+            let edited = text.replacen("icount = \"shift=auto\"", "icount = \"shift=7\"", 1);
+            assert_ne!(edited, text, "{}: no icount line to edit", board.package);
+            let line = plan_line(&board.boot_in(&edited).unwrap().args).unwrap();
+            assert!(
+                line.argv("K").join(" ").contains("-icount shift=7 "),
+                "{}: the edit did not reach the boot",
+                board.package
+            );
+        }
+        let nic = mps2_an385_networked_boot().unwrap();
+        let model = MPS2_AN385.nic_model().unwrap();
         assert_eq!(
-            line.argv("K").join(" "),
-            format!(
-                "-cpu cortex-m3 -machine mps2-an385 -nographic -icount shift=auto \
-                 -semihosting-config enable=on,target=native -nic {} -kernel K",
-                nros_board_common::image_net::slirp_nic("lan9118")
-            )
+            nic.args.get("nic"),
+            Some(&nros_board_common::image_net::slirp_nic(&model))
         );
+    }
+
+    /// The harness reads ONE package per QEMU machine ([`MPS2_AN385`] serves
+    /// the bare-metal, FreeRTOS and Zephyr MPS2 images alike), which is only
+    /// right while every board on that machine states the same boot. So: every
+    /// in-tree descriptor that states a `[board.run.qemu]` agrees with every
+    /// other on the same emulator, and each machine the harness boots is one
+    /// of them.
+    #[test]
+    fn boards_on_one_qemu_machine_state_one_boot() {
+        use std::collections::BTreeMap;
+        let boards = crate::project_root().join("packages/boards");
+        let mut by_emulator: BTreeMap<String, Vec<(String, crate::run::QemuBoot)>> =
+            BTreeMap::new();
+        for entry in std::fs::read_dir(&boards).unwrap().flatten() {
+            let path = entry.path().join("nros-board.toml");
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let doc: toml::Table = text.parse().unwrap();
+            let Some(toml::Value::Array(list)) = doc.get("board") else {
+                continue;
+            };
+            for b in list {
+                let Some(name) = b
+                    .get("names")
+                    .and_then(|n| n.as_array())
+                    .and_then(|n| n.first())
+                    .and_then(|n| n.as_str())
+                else {
+                    continue;
+                };
+                let run = nros_orchestration_ir::target_exec::board_run_named(&text, name)
+                    .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                if let Some(run) = run
+                    && let Some(args) = run.qemu_plan_args()
+                {
+                    let nic = run.qemu.and_then(|q| q.nic_model).unwrap_or_default();
+                    let boot = crate::run::QemuBoot {
+                        args,
+                        passthrough: Vec::new(),
+                    }
+                    .arg("nic_model", &nic);
+                    by_emulator
+                        .entry(run.emulator.unwrap_or_default())
+                        .or_default()
+                        .push((format!("{}:{name}", path.display()), boot));
+                }
+            }
+        }
+        for (emulator, boots) in &by_emulator {
+            for (who, boot) in &boots[1..] {
+                assert_eq!(
+                    boot, &boots[0].1,
+                    "{emulator}: {who} and {} state different `[board.run.qemu]`",
+                    boots[0].0
+                );
+            }
+        }
+        for board in [MPS2_AN385, MPS3_AN536] {
+            let machine = board.boot().unwrap().args["machine"].clone();
+            assert!(
+                by_emulator.contains_key(&format!("qemu:{machine}")),
+                "{}: {machine}",
+                board.package
+            );
+        }
     }
 
     #[test]
@@ -1380,7 +1550,7 @@ mod tests {
     #[test]
     fn recorded_command_names_the_resolved_program_not_the_bare_name() {
         let mut cmd = qemu_system_arm_cmd();
-        cmd.args(["-machine", "mps2-an385"]);
+        cmd.args(["-machine", "virt"]);
         let rendered = render_command(&cmd);
         let resolved = qemu_system_arm_path();
         let resolved = resolved.to_string_lossy();
@@ -1388,7 +1558,7 @@ mod tests {
             rendered.starts_with(resolved.as_ref()),
             "recorded line must start with the resolved program `{resolved}`, got: {rendered}"
         );
-        assert!(rendered.ends_with("-machine mps2-an385"), "{rendered}");
+        assert!(rendered.ends_with("-machine virt"), "{rendered}");
     }
 
     /// A pasteable line, not merely a readable one: anything a shell would
@@ -1398,7 +1568,7 @@ mod tests {
         let mut cmd = Command::new(format!("/usr/bin/{}", nros_qemu_ladder::system_exe("arm")));
         cmd.args([
             "-nic",
-            "user,model=lan9118,net=10.0.2.0/24,host=10.0.2.2",
+            "user,model=e1000,net=10.0.2.0/24,host=10.0.2.2",
             "-semihosting-config",
             "enable=on,target=native",
             "-append",
@@ -1408,7 +1578,7 @@ mod tests {
         // Commas, slashes and `=` are safe — quoting them would make the line
         // harder to read for no gain.
         assert!(
-            rendered.contains("-nic user,model=lan9118,net=10.0.2.0/24,host=10.0.2.2"),
+            rendered.contains("-nic user,model=e1000,net=10.0.2.0/24,host=10.0.2.2"),
             "{rendered}"
         );
         assert!(rendered.contains("'two words'"), "{rendered}");
