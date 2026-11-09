@@ -24,7 +24,8 @@
 //! * [`spawn_console`]: tees a console stream to the verb's stdout and to
 //!   `console.log`, unmodified, and grades [`Expect`] line by line (the
 //!   unterminated tail of the stream counts as a line, so a prompt with no
-//!   newline still matches).
+//!   newline still matches; a match there waits up to [`LINE_FINISH`] for
+//!   the rest of that line, so a line written in pieces is reported whole).
 //! * [`spawn_stderr`]: forwards a runner's stderr and reports its
 //!   `nros-runner: link <endpoint>` line.
 //! * [`Session::watch`]: the loop that decides the [`Outcome`], and
@@ -46,6 +47,12 @@ use nros_extension::exit;
 
 /// How long a stopped group gets between SIGTERM and SIGKILL.
 pub const TEARDOWN_GRACE: Duration = Duration::from_secs(2);
+
+/// How long a match in an unterminated line waits for the rest of that line
+/// before the session ends on it (phase-548 W10). A target may write one line
+/// in pieces (the NuttX C++ talker does), so a match on the first piece would
+/// otherwise stop the emulator mid-line and report half a line.
+pub const LINE_FINISH: Duration = Duration::from_millis(500);
 
 /// Exit code for a session the user interrupted: the shell's convention for
 /// SIGINT (128 + 2). Not one of RFC-0118 D2's verdicts, because an interrupt
@@ -323,6 +330,11 @@ impl Expect {
 pub enum Event {
     /// The expectation matched this console line.
     Matched(String),
+    /// The expectation matched an unterminated line, which is this so far.
+    /// The capture keeps reading to the end of it and then sends
+    /// [`Event::Matched`] with the whole line; [`Session::watch`] waits for
+    /// that at most [`LINE_FINISH`], and ends on the longest piece it has.
+    Matching(String),
     /// The console stream ended.
     ConsoleClosed,
     /// A runner reported its link endpoint on stderr.
@@ -330,8 +342,13 @@ pub enum Event {
 }
 
 /// Tee `from` (a console stream) to `echo` and `log`, byte for byte, and grade
-/// `expect` over its lines. Sends [`Event::Matched`] once, at the first
+/// `expect` over its lines. Sends [`Event::Matched`] once, with the first
 /// matching line, and [`Event::ConsoleClosed`] at end of stream.
+///
+/// A match in the unterminated tail is not the end of that line: the tail is
+/// reported as [`Event::Matching`] (again each time it grows) and grading
+/// becomes "finish this line", so [`Event::Matched`] carries the whole line
+/// once its newline arrives, or the tail as it stood at end of stream.
 pub fn spawn_console<R>(
     from: R,
     mut echo: Box<dyn Write + Send>,
@@ -346,7 +363,10 @@ where
         let mut from = from;
         let mut buf = [0u8; 8192];
         let mut line: Vec<u8> = Vec::new();
-        let mut pending = expect;
+        let mut grading = match expect {
+            Some(e) => Grading::Looking(e),
+            None => Grading::Done,
+        };
         loop {
             let n = match from.read(&mut buf) {
                 Ok(0) => break,
@@ -361,43 +381,74 @@ where
             if let Some(f) = log.as_mut() {
                 let _ = f.write_all(chunk).and_then(|()| f.flush());
             }
-            let Some(exp) = pending.as_ref() else {
-                continue;
-            };
-            for &b in chunk {
-                if b == b'\n' {
-                    if grade(exp, &line, &tx) {
-                        pending = None;
-                        line.clear();
-                        break;
-                    }
-                    line.clear();
-                } else {
-                    line.push(b);
-                }
-            }
-            // The unterminated tail is a line too (a prompt, a last line
-            // whose newline has not been written yet).
-            if let Some(exp) = pending.as_ref()
-                && !line.is_empty()
-                && grade(exp, &line, &tx)
-            {
-                pending = None;
-                line.clear();
-            }
+            grading.feed(chunk, &mut line, &tx);
+        }
+        if let Grading::Finishing = grading {
+            let _ = tx.send(Event::Matched(line_text(&line)));
         }
         let _ = tx.send(Event::ConsoleClosed);
     })
 }
 
-fn grade(exp: &Expect, line: &[u8], tx: &Sender<Event>) -> bool {
-    let text = String::from_utf8_lossy(line);
-    let text = text.trim_end_matches('\r');
-    if exp.matches(text) {
-        let _ = tx.send(Event::Matched(text.to_string()));
-        return true;
+/// Where [`spawn_console`]'s grading stands.
+enum Grading {
+    /// No line has matched yet.
+    Looking(Expect),
+    /// The unterminated line in the buffer matched; waiting for its newline.
+    Finishing,
+    /// [`Event::Matched`] was sent, or there was nothing to grade.
+    Done,
+}
+
+impl Grading {
+    /// Grade one chunk of console bytes, `line` carrying the unterminated
+    /// line between chunks.
+    fn feed(&mut self, chunk: &[u8], line: &mut Vec<u8>, tx: &Sender<Event>) {
+        if let Grading::Done = self {
+            return;
+        }
+        for &b in chunk {
+            if b != b'\n' {
+                line.push(b);
+                continue;
+            }
+            let ended = match self {
+                Grading::Looking(exp) => exp.matches(&line_text(line)),
+                Grading::Finishing => true,
+                Grading::Done => unreachable!("returned above"),
+            };
+            if ended {
+                let _ = tx.send(Event::Matched(line_text(line)));
+                *self = Grading::Done;
+                line.clear();
+                return;
+            }
+            line.clear();
+        }
+        // The unterminated tail is a line too (a prompt, a last line whose
+        // newline has not been written yet, a line written in pieces).
+        if line.is_empty() {
+            return;
+        }
+        let text = line_text(line);
+        match self {
+            Grading::Looking(exp) if exp.matches(&text) => {
+                let _ = tx.send(Event::Matching(text));
+                *self = Grading::Finishing;
+            }
+            Grading::Finishing => {
+                let _ = tx.send(Event::Matching(text));
+            }
+            _ => {}
+        }
     }
-    false
+}
+
+/// One console line as text, without its line ending.
+fn line_text(line: &[u8]) -> String {
+    String::from_utf8_lossy(line)
+        .trim_end_matches('\r')
+        .to_string()
 }
 
 /// Forward a runner's stderr to the verb's stderr and report its link line
@@ -538,15 +589,32 @@ impl Session {
         let deadline = self.timeout.map(|t| started + t);
         let mut console_closed = false;
         let mut leader_exit: Option<(Option<i32>, Instant)> = None;
+        // A match in a line still being written: the line so far, and when
+        // it matched. Once anything matched the verdict is a match; what is
+        // left to decide is only how much of the line it reports.
+        let mut finishing: Option<(String, Instant)> = None;
         loop {
             if interrupted() {
                 return Outcome::Interrupted;
             }
+            if let Some((line, at)) = &finishing
+                && (at.elapsed() >= LINE_FINISH || console_closed)
+            {
+                return Outcome::Matched(line.clone());
+            }
             if deadline.is_some_and(|d| Instant::now() >= d) {
-                return Outcome::TimedOut;
+                return match finishing {
+                    Some((line, _)) => Outcome::Matched(line),
+                    None => Outcome::TimedOut,
+                };
             }
             match rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(Event::Matched(line)) => return Outcome::Matched(line),
+                Ok(Event::Matching(line)) => {
+                    let at = finishing.map_or_else(Instant::now, |(_, at)| at);
+                    finishing = Some((line, at));
+                    continue;
+                }
                 Ok(Event::ConsoleClosed) => console_closed = true,
                 Ok(Event::Link(ep)) => {
                     if let Err(e) = on_link(&ep, self) {
@@ -558,6 +626,9 @@ impl Session {
             }
             for name in self.required.clone() {
                 if let Some(s) = self.group.poll(&name) {
+                    if let Some((line, _)) = finishing {
+                        return Outcome::Matched(line);
+                    }
                     return Outcome::MemberDied {
                         name,
                         code: s.code(),
@@ -577,9 +648,17 @@ impl Session {
             {
                 // One more look for a match that raced the close.
                 while let Ok(ev) = rx.try_recv() {
-                    if let Event::Matched(line) = ev {
-                        return Outcome::Matched(line);
+                    match ev {
+                        Event::Matched(line) => return Outcome::Matched(line),
+                        Event::Matching(line) => {
+                            let at = finishing.map_or_else(Instant::now, |(_, at)| at);
+                            finishing = Some((line, at));
+                        }
+                        _ => {}
                     }
+                }
+                if let Some((line, _)) = finishing {
+                    return Outcome::Matched(line);
                 }
                 return Outcome::Exited(code);
             }
@@ -655,6 +734,64 @@ pub(crate) mod tests {
         );
         let o = s.watch(&rx, Instant::now(), |_, _| Ok(()));
         assert_eq!(o, Outcome::Matched("count=42".into()));
+    }
+
+    #[test]
+    fn a_line_written_in_two_pieces_is_reported_and_logged_whole() {
+        let _g = FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The NuttX C++ talker's shape: the match is in the first piece.
+        let (mut s, rx, dir) = start(
+            "printf \"Publishing: 'Hello\"; sleep 0.2; printf \" World: 1'\\n\"; sleep 30",
+            Some(Expect::substring("Publishing:")),
+        );
+        let o = s.watch(&rx, Instant::now(), |_, _| Ok(()));
+        assert_eq!(o, Outcome::Matched("Publishing: 'Hello World: 1'".into()));
+        // Logged (and echoed: the tee writes both before grading) while the
+        // target still runs, so stopping it now cuts nothing.
+        let log = std::fs::read_to_string(dir.path().join("console.log")).unwrap();
+        assert_eq!(log, "Publishing: 'Hello World: 1'\n");
+        let pgid = s.group.pgid().unwrap();
+        assert!(!group_members(pgid).is_empty(), "stopped before the match");
+        s.group.teardown(TEARDOWN_GRACE);
+    }
+
+    #[test]
+    fn a_line_that_never_finishes_is_reported_after_the_bound() {
+        let _g = FLAG
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (mut s, rx, _d) = start(
+            "printf 'Publishing: x'; sleep 0.1; printf 'y'; sleep 30",
+            Some(Expect::substring("Publishing:")),
+        );
+        let t = Instant::now();
+        let o = s.watch(&rx, t, |_, _| Ok(()));
+        assert_eq!(o, Outcome::Matched("Publishing: xy".into()));
+        assert!(t.elapsed() >= LINE_FINISH, "{:?}", t.elapsed());
+        assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    }
+
+    #[test]
+    fn grading_finishes_the_matched_line_across_chunks() {
+        let (tx, rx) = channel();
+        let mut g = Grading::Looking(Expect::substring("Pub"));
+        let mut line = Vec::new();
+        g.feed(b"boot\nPub", &mut line, &tx);
+        g.feed(b"lishing: 'Hel", &mut line, &tx);
+        g.feed(b"lo'\r\nnext\n", &mut line, &tx);
+        drop(tx);
+        let got: Vec<Event> = rx.iter().collect();
+        assert_eq!(
+            got,
+            [
+                Event::Matching("Pub".into()),
+                Event::Matching("Publishing: 'Hel".into()),
+                Event::Matched("Publishing: 'Hello'".into()),
+            ]
+        );
+        assert!(matches!(g, Grading::Done));
     }
 
     #[test]
