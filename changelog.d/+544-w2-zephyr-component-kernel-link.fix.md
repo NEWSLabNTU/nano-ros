@@ -1,0 +1,1 @@
+A generated Zephyr C/C++ entry now links each component library before the Zephyr kernel library. Previously, a component that called a kernel service such as `k_busy_wait` linked on `native_sim` but failed on a real board with `undefined reference to z_impl_k_busy_wait`.

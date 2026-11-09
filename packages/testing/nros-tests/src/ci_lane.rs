@@ -38,9 +38,18 @@
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 20 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 12 | 11 | 20 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 12 | 11 | 20 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 47 | 41 | 76 % |
-//! | tier 3 | everything | 258 | 54 | 100 % |
+//! | tier 3 | everything | 259 | 54 | 100 % |
+//!
+//! Re-measured 2026-11-09 (phase-544 W2, issue 2273): the `ViolationChannel`
+//! workload joined with one Zephyr Cortex-M C++ zenoh Workspace cell, at an
+//! existing coordinate, and it is a tier-2 requirement of its own
+//! (`pinned_tier2_reqs`). Tier 2 stays 12 / 11 but the greedy cover moved: it
+//! now takes `zephyr-cortex-m,cpp,zenoh` (the pinned cell) in place of
+//! `zephyr-cortex-m,c,xrce`, whose XRCE value `zephyr,c,xrce` still covers.
+//! Tier 1 (host platforms only) and nightly did not move in either column;
+//! tier 3 went 258 -> 259 cells over the same 54 coordinates.
 //!
 //! Re-measured 2026-11-07 (phase-546, issue 2342): `FreertosPosix` gained a C
 //! zenoh cell on its own coordinate (`freertos-posix,c,zenoh`). Nightly takes it:
@@ -521,6 +530,22 @@ fn realtime_cell_reqs(c: &Cell) -> Vec<Req> {
     }
 }
 
+/// phase-544 W2 (issue 2273) -- the violation-channel cell is its OWN
+/// requirement in tier 2. Tier 2 covers platform, lang, rmw and kind 1-wise and
+/// never the workload, so no cover is obliged to pick it, and the measured
+/// cover did not (its coordinate `zephyr-cortex-m,cpp,zenoh` was outside the
+/// lane). The phase's acceptance is that the cell runs in tier 2: the arming
+/// and the latency measurement on an emulated core's own timer are what the
+/// board's verdicts were taken on, and a 1-wise cover makes no promise about
+/// one cell. Keyed on the consumer, like [`realtime_cell_reqs`].
+fn pinned_tier2_reqs(c: &Cell) -> Vec<Req> {
+    if crate::matrix::consumer_of(c) == Some(crate::matrix::Consumer::ViolationChannel) {
+        vec![format!("3|ViolationChannel={c:?}")]
+    } else {
+        Vec::new()
+    }
+}
+
 fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
     match lane {
         // 1-wise(platform, workload, kind) + pairwise(lang × rmw).
@@ -584,6 +609,9 @@ fn reqs_of(c: &Cell, lane: CiLane) -> BTreeSet<Req> {
     if matches!(lane, CiLane::Tier2Nightly) {
         out.extend(config_platform_pairs(c));
         out.extend(realtime_cell_reqs(c));
+    }
+    if matches!(lane, CiLane::Tier2) {
+        out.extend(pinned_tier2_reqs(c));
     }
     out
 }
@@ -1161,8 +1189,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 258,
-            "the table's tier-3 cell count (258) is stale; recomputed {total_cells}"
+            total_cells, 259,
+            "the table's tier-3 cell count (259) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 54,

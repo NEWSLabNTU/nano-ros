@@ -776,6 +776,53 @@ function(nano_ros_entry)
         include("${_link_libs_cmake}")
     endif()
 
+    # phase-544 W2 (issue 2273) -- a component archive that calls a Zephyr
+    # kernel service (`k_busy_wait`, `k_sleep`, ...) must be followed by
+    # `libkernel.a` on the link line. Zephyr whole-archives `app` and its own
+    # libraries, names `libkernel.a` once, and only THEN the archives `app`
+    # reaches through the placeholder above, so ld's single pass had already
+    # left the kernel behind: `undefined reference to z_impl_k_busy_wait` from
+    # `violation-cpp`'s handler on mps2/an385. native_sim never showed it.
+    # The edge is a property of each component ARCHIVE (it calls the kernel),
+    # so it goes on the archive: CMake places a static library's dependencies
+    # after it. Naming the kernel on the placeholder instead was measured NOT
+    # to work: the components arrive through `<pkg>_<exec>_component`
+    # INTERFACE wrappers, and the closure put `libkernel.a` ahead of them.
+    if(_nra_is_zephyr AND TARGET kernel AND TARGET ${_NRA_NAME})
+        get_target_property(_nra_comp_links ${_NRA_NAME} LINK_LIBRARIES)
+        set(_nra_comp_archives "")
+        foreach(_nra_c IN LISTS _nra_comp_links)
+            if(NOT TARGET ${_nra_c})
+                continue()
+            endif()
+            get_target_property(_nra_c_type ${_nra_c} TYPE)
+            if(_nra_c_type STREQUAL "STATIC_LIBRARY")
+                list(APPEND _nra_comp_archives ${_nra_c})
+            elseif(_nra_c_type STREQUAL "INTERFACE_LIBRARY")
+                get_target_property(_nra_c_inner ${_nra_c} INTERFACE_LINK_LIBRARIES)
+                foreach(_nra_i IN LISTS _nra_c_inner)
+                    if(TARGET ${_nra_i})
+                        get_target_property(_nra_i_type ${_nra_i} TYPE)
+                        if(_nra_i_type STREQUAL "STATIC_LIBRARY")
+                            list(APPEND _nra_comp_archives ${_nra_i})
+                        endif()
+                    endif()
+                endforeach()
+            endif()
+        endforeach()
+        list(REMOVE_DUPLICATES _nra_comp_archives)
+        foreach(_nra_a IN LISTS _nra_comp_archives)
+            get_target_property(_nra_a_imported ${_nra_a} IMPORTED)
+            # The property, not `target_link_libraries(... INTERFACE ...)`:
+            # a stock package that linked its archive with the PLAIN
+            # signature (phase-518's ament ports do) refuses a keyword call.
+            if(NOT _nra_a_imported)
+                set_property(TARGET ${_nra_a} APPEND PROPERTY
+                    INTERFACE_LINK_LIBRARIES kernel)
+            endif()
+        endforeach()
+    endif()
+
     # Issue 1598 put each spawned sched task's RTOS task stack in `.bss`, declared by the
     # generated entry. On FreeRTOS those stacks used to come out of heap_4, so
     # the heap default still budgeted for them and the bytes were reserved

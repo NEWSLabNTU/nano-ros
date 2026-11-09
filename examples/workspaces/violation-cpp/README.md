@@ -32,5 +32,14 @@ take) exceed it: the test asserts exactly those two route verdicts, both on
 The busy-wait is `k_busy_wait` on Zephyr: on native_sim simulated time does not
 advance while a thread spins on a clock, so a `steady_clock` loop never ends.
 
-Build: `NROS_ZEPHYR_FIXTURE_FILTER=violation just zephyr build-fixtures`
-(fixture `workspace-zephyr-cpp-violation`).
+Build: `NROS_ZEPHYR_FIXTURE_FILTER=violation just build zephyr`
+(fixtures `workspace-zephyr-cpp-violation` and
+`workspace-zephyr-cortex-m-cpp-violation`).
+
+phase-544 W2: `[image.zephyr_mps2]` is the same image for the Zephyr Cortex-M
+QEMU board (`mps2-an385-zephyr`), whose own Kconfig lives in
+`boards/mps2_an385/`. The test boots it under the board descriptor's
+`-icount shift=auto`, so the 50 ms bound and the arming are measured on the
+guest's timer, and asserts the same single `max-latency-runtime` verdict
+after RUN. That run is the matrix cell (ZephyrQemuCortexM, Cpp, Zenoh,
+ViolationChannel, Workspace), which tier 2 runs.
