@@ -5,9 +5,11 @@ status: open
 type: tech-debt
 severity: medium
 area: [zephyr, rust, executor]
-related: [2359]
+related: [2359, phase-548]
 found: 2026-11-07
 ---
+
+**Home:** [phase-548](../roadmap/phase-548-three-languages-every-board.md)
 
 Found while fixing issue 2359.
 

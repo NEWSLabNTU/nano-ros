@@ -4,9 +4,11 @@ title: "On a Zephyr board `nros run` cannot see the image's default locator, so 
 status: open
 type: bug
 area: run, zephyr, boards
-related: [phase-531, 1793, 2290]
+related: [phase-531, 1793, 2290, phase-548]
 found: 2026-11-06
 ---
+
+**Home:** [phase-548](../roadmap/phase-548-three-languages-every-board.md)
 
 ## What
 

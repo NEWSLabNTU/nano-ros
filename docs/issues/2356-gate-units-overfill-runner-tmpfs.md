@@ -9,6 +9,8 @@ found: 2026-11-07
 related: [2239, 2318, phase-489, phase-543]
 ---
 
+**Home:** [phase-543](../roadmap/phase-543-nextest-gates.md)
+
 ## Measured
 
 Tier-2 run 42364894798, job 128383215067, on the self-hosted runner

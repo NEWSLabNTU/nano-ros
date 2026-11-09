@@ -510,3 +510,4 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
 | [#2306](../issues/2306-interrupted-submodule-checkout-reads-provisioned.md) | An interrupted submodule checkout reads as provisioned and the lane fails three gates later: a gate precondition that should refuse up front. |
 | [#2308](../issues/2308-sparse-zephyr-tree-reads-as-west-workspace.md) | A sparse Zephyr source tree reads as a provisioned west workspace: the same gate-precondition class as issue 2306. |
 | [#2352](../issues/2352-entity-wake-race-hangs-beside-build-gates.md) | entity_wake's race test hangs beside the build gates: found by W3's gate-order check. |
+| [#2356](../issues/2356-gate-units-overfill-runner-tmpfs.md) | scaffold-builds and template-copy-out units all start at once and overfill the runner's /tmp. This is the nextest resource-group bound this phase owns (#3301 bounds it; it closes on a tier-2 run). |
