@@ -228,7 +228,7 @@ transport's framing. Reach for these in order. A debug probe is not always a
 passive instrument there. On a Cortex-M, pyocd reads memory without stopping
 the core when it attaches with `connect_mode="attach"` and is not told to halt. A halt
 stops the image: the router drops the session once a halt outlasts the zenoh
-lease (60 s on the S32K344 measured in issue 0913), and the board re-opens it
+lease (60 s, measured on an S32K344 over serial), and the board re-opens it
 on its own about a minute after it resumes. Keep halted reads short.
 
 1. **Read the boot record.** With `CONFIG_NROS_BOOT_REPORT=y`, the image keeps
