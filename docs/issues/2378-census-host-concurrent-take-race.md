@@ -104,6 +104,26 @@ per-leaf writers (`leaf_settings.rs`, `sizing_descriptor.rs`) write under
 census JSON (`build/nros/census/leaf.census.json`) is now written under the
 lock. A workspace's census takes the workspace configure's lock already.
 
+## Sighting: tier-2 run 42605683876 (2026-11-09 11:01Z, before the fix)
+
+The rebuilt 241 runner's tier-2 run at `a9dc35a5e1` stopped in the Zephyr
+fixture stage with `collect2: error: ld returned 1 exit status` in three leaves,
+`zephyr/native_sim/native/64/c/talker/xrce` among them. The job log put each
+under `CMakeTestCCompiler.cmake:69` in the census host build, so it read like a
+broken host toolchain. The runner's
+`examples/zephyr/c/talker/build/census-host/CMakeFiles/CMakeError.log`, written
+11-09 11:25, shows the same race as above: the compiler check's object
+vanishing between compile and link.
+
+```
+Fatal error: can't create CMakeFiles/cmTC_d0d93.dir/CMakeCCompilerABI.c.o: No such file or directory
+/usr/bin/ld: cannot find CMakeFiles/cmTC_dac42.dir/testCCompiler.c.o
+```
+
+Two takes for `c/talker`'s zenoh and xrce rows shared one `census-host`. The
+toolchain was fine (gcc 11.4, binutils 2.38). The fix landed at 15:05Z the same
+day, which is why current main does not reproduce it.
+
 ## What would close it
 
 Concurrent takes on one stale leaf all succeed (the three-way repro above,
