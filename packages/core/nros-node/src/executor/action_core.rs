@@ -292,6 +292,69 @@ impl<
     const MAX_GOALS: usize,
 > ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
 {
+    /// Issue 2360 — build a core IN PLACE at `dst`, never on the stack.
+    ///
+    /// The core holds every buffer the server uses (goal, result, feedback,
+    /// cancel: 3 KiB plus 256 B at the default sizes, plus the pending-goal
+    /// vectors), and building it as a value then moving it into the arena kept
+    /// those bytes on the registering thread's stack: 15,916 B of frame on a
+    /// Rust Zephyr action server, whose 32 KiB main stack overflowed. Each
+    /// field is written through its own pointer, the buffers by `write_bytes`.
+    ///
+    /// # Safety
+    ///
+    /// `dst` must be valid for writes of `Self` and properly aligned. Every
+    /// field is initialised on return; [`Self::_every_field_is_written`] makes
+    /// a field added later and not written here a compile error.
+    pub(crate) unsafe fn init_in_place(
+        dst: *mut Self,
+        send_goal_server: session::RmwServiceServer,
+        cancel_goal_server: session::RmwServiceServer,
+        get_result_server: session::RmwServiceServer,
+        feedback_publisher: session::RmwPublisher,
+        status_publisher: session::RmwPublisher,
+    ) {
+        use core::ptr::addr_of_mut;
+        // SAFETY: the caller's contract — `dst` is valid and aligned, so each
+        // field projection is too; every write targets a distinct field.
+        unsafe {
+            addr_of_mut!((*dst).send_goal_server).write(send_goal_server);
+            addr_of_mut!((*dst).cancel_goal_server).write(cancel_goal_server);
+            addr_of_mut!((*dst).get_result_server).write(get_result_server);
+            addr_of_mut!((*dst).feedback_publisher).write(feedback_publisher);
+            addr_of_mut!((*dst).status_publisher).write(status_publisher);
+            addr_of_mut!((*dst).active_goals).write(heapless::Vec::new());
+            addr_of_mut!((*dst).completed_results).write(heapless::Vec::new());
+            addr_of_mut!((*dst).pending_get_results).write(heapless::Vec::new());
+            addr_of_mut!((*dst).result_slab).write_bytes(0, 1);
+            addr_of_mut!((*dst).result_slab_used).write(0);
+            addr_of_mut!((*dst).goal_buffer).write_bytes(0, 1);
+            addr_of_mut!((*dst).feedback_buffer).write_bytes(0, 1);
+            addr_of_mut!((*dst).cancel_buffer).write_bytes(0, 1);
+        }
+    }
+
+    /// Never called: names every field with no `..`, so adding one to the
+    /// struct fails to compile until [`Self::init_in_place`] writes it too.
+    #[allow(dead_code)]
+    fn _every_field_is_written(&self) {
+        let Self {
+            send_goal_server: _,
+            cancel_goal_server: _,
+            get_result_server: _,
+            feedback_publisher: _,
+            status_publisher: _,
+            active_goals: _,
+            completed_results: _,
+            pending_get_results: _,
+            result_slab: _,
+            result_slab_used: _,
+            goal_buffer: _,
+            feedback_buffer: _,
+            cancel_buffer: _,
+        } = self;
+    }
+
     /// Phase 122.3.c.6.b — construct an `ActionServerCore` from the
     /// 5 already-built transport channels. Caller (typically the C
     /// API's `rclc_polling_action_server_init`) owns wiring the
@@ -1468,6 +1531,66 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     pub(crate) fn server_readiness(&self) -> Result<bool, nros_rmw::TransportError> {
         use nros_rmw::ClientTrait;
         self.send_goal_client.service_is_ready()
+    }
+
+    /// Issue 2360 — [`Self::new`] written IN PLACE at `dst`, never on the
+    /// stack: the core's three buffers (3 KiB at the default sizes) made the
+    /// raw client's registration frame 13,972 B when it was built as a value
+    /// and moved into the arena. Same values as `new`, field by field.
+    ///
+    /// # Safety
+    ///
+    /// `dst` must be valid for writes of `Self` and properly aligned. Every
+    /// field is initialised on return; [`Self::_every_field_is_written`] makes
+    /// a field added later and not written here a compile error.
+    pub(crate) unsafe fn init_in_place(
+        dst: *mut Self,
+        send_goal_client: session::RmwServiceClient,
+        cancel_goal_client: session::RmwServiceClient,
+        get_result_client: session::RmwServiceClient,
+        feedback_subscriber: session::RmwSubscriber,
+    ) {
+        use core::ptr::addr_of_mut;
+        // SAFETY: the caller's contract — `dst` is valid and aligned, so each
+        // field projection is too; every write targets a distinct field.
+        unsafe {
+            addr_of_mut!((*dst).send_goal_client).write(send_goal_client);
+            addr_of_mut!((*dst).cancel_goal_client).write(cancel_goal_client);
+            addr_of_mut!((*dst).get_result_client).write(get_result_client);
+            addr_of_mut!((*dst).feedback_subscriber).write(feedback_subscriber);
+            addr_of_mut!((*dst).goal_buffer).write_bytes(0, 1);
+            addr_of_mut!((*dst).result_buffer).write_bytes(0, 1);
+            addr_of_mut!((*dst).feedback_buffer).write_bytes(0, 1);
+            addr_of_mut!((*dst).goal_counter).write(0);
+            addr_of_mut!((*dst).in_flight_send_goal).write(false);
+            addr_of_mut!((*dst).in_flight_cancel).write(false);
+            addr_of_mut!((*dst).in_flight_get_result).write(false);
+            addr_of_mut!((*dst).pending_send_goal).write(ActionRequests::new());
+            addr_of_mut!((*dst).pending_cancel).write(ActionRequests::new());
+            addr_of_mut!((*dst).pending_get_result).write(ActionRequests::new());
+        }
+    }
+
+    /// Never called: names every field with no `..`, so adding one to the
+    /// struct fails to compile until [`Self::init_in_place`] writes it too.
+    #[allow(dead_code)]
+    fn _every_field_is_written(&self) {
+        let Self {
+            send_goal_client: _,
+            cancel_goal_client: _,
+            get_result_client: _,
+            feedback_subscriber: _,
+            goal_buffer: _,
+            result_buffer: _,
+            feedback_buffer: _,
+            goal_counter: _,
+            in_flight_send_goal: _,
+            in_flight_cancel: _,
+            in_flight_get_result: _,
+            pending_send_goal: _,
+            pending_cancel: _,
+            pending_get_result: _,
+        } = self;
     }
 
     /// Create a new action client core from the raw transport handles.

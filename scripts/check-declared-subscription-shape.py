@@ -213,10 +213,13 @@ def analyse(
                 )
 
     # ---- 3: the registrar branches on the classifier -----------------------
-    arm = find_block(runtime_src, "EntityKind::Subscription => {")
+    # Issue 2360 — the arm's body may sit in a closure
+    # (`EntityKind::Subscription => out_of_line(|| {`), which gives the arm its
+    # own frame; `find_block` takes the first `{` after the header either way.
+    arm = find_block(runtime_src, "EntityKind::Subscription =>")
     if arm is None:
         problems.append(
-            f"  - no `EntityKind::Subscription => {{` arm in "
+            f"  - no `EntityKind::Subscription =>` arm in "
             f"{RUNTIME_RS.relative_to(REPO)} — the declarative registrar moved, "
             f"and the classifier is no longer known to be what it branches on."
         )

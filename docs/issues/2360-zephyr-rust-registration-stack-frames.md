@@ -113,3 +113,37 @@ beside `HW_STACK_PROTECTION` ("STACK_SENTINEL was assigned the value 'y' but
 got the value 'n'"). Turning the guard off in the twin to get the sentinel
 would make the twin's image differ from the board's, so this issue does not
 do it. The CI-visible defence is the measured floor, refused at configure.
+
+## Fixed: the action server and client fit 32 KiB (2026-11-09)
+
+Three changes, each measured on the same board (`CONFIG_INIT_STACKS` plus the
+thread analyzer, Renode twin, main-thread peak):
+
+1. `ExecutorSink::create_entity` runs each `match` arm through a
+   never-inlined generic (`node_runtime::out_of_line`), one instance per arm,
+   so only the arm that runs has a live frame. `create_entity` itself went from
+   26,996 B to 780 B.
+2. The raw action server's and client's arena entries are written IN PLACE
+   (`ActionServerCore::init_in_place`, `ActionClientCore::init_in_place`), not
+   built as values and moved. Each core names every field with no `..` in a
+   never-called function, so a field added later and not written there fails
+   to compile.
+3. The action server creates each of its five endpoints in its own scope, so
+   its eight `heapless::String<256>` names and five infos are never all live
+   at once. Moving the whole block into a separate `#[inline(never)]` function
+   was tried first and measured WORSE (41,536 B): that frame stacked on top of
+   the caller's.
+
+| image (Rust, zenoh, nucleo-f767zi) | before | after |
+| --- | ---: | ---: |
+| talker | 28,280 B | 27,248 B |
+| action server | 63,776 B | 29,184 B |
+| action client | 62,232 B | 30,600 B |
+
+"Before" was measured with a 64 KiB main stack, because at 32 KiB the action
+images overflow and go silent. "After" was measured at the board's own
+32 KiB: all three images run, and the analyzer keeps reporting. The floor
+stays at 32 KiB, now with 1.4 to 4.7 KiB of headroom.
+
+Left: an image that queries the graph (`ZenohSession::names_and_types_filtered`,
+a 19,620 B frame) is still not measured on this board.
