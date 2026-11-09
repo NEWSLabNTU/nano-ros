@@ -459,8 +459,9 @@ of that line before it stops the emulator.
     configure.
   - `renode-nucleo-rust`: configure says to add `zephyr-lang-rust` to the
     west manifest; the SDK has no `west.yml` to read.
-  - `tutorial-10`: the run ends in an rclpy `!rclpy.ok()` fault; re-run
-    before treating it as a bug.
+  - `tutorial-10`: the run ended in an rclpy `!rclpy.ok()` fault, twice.
+    Issue 2391: chapter 10's graph queries asked a stale `ros2` daemon. #3403
+    added `--no-daemon`; the track then replayed green and its awaits is gone.
   - `tutorial-c`, `tutorial-cpp`, `baremetal-c`, `baremetal-cpp`: bare metal
     is Rust only by ruling; the Tutorial's C and C++ tabs move to FreeRTOS
     in a separate change.

@@ -770,7 +770,6 @@ notes = "phase-537 W5 (RFC-0124 D3) — Tutorial 9, Same project, another target
 
 [[probe]]
 track = "tutorial-10"
-awaits = ["`nros run --dry-run --why` refuses the stale SystemModel after system.toml gains an image, though the dry run says it would configure (issue 2350, found 2026-11-07)"]
 chapter = "tutorial/talk-to-ros2.md"
 variant = "qemu"
 lang = "rust"
