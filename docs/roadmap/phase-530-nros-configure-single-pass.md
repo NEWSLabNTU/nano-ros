@@ -531,9 +531,10 @@ round-2 commit after `just setup-cli` and `nros configure --force` (issue
 - **Two defects found on the way.** The stamp treated a census take's raw
   `<census>.recorded.json` as a census, so a census-sized leaf was never
   current (every hook configure re-ran configure); fixed. The generated Rust
-  west entry could not configure at all on this base (issue 2232, fixed on
-  W3's branch by 9d79af0cde): cherry-picked so the third road could be
-  measured; it drops by patch-id when W3 lands.
+  west entry could not configure at all on this base (the board-facts panic
+  W3 records, fixed on main as issues 2229 and 2224): the fix was
+  cherry-picked so the third road could be measured; the port to main carries
+  main's fix instead.
 - **The Kconfig stamp (D6 case 4)** moved into the hook
   (`_nros_image_kconfig_stamp`), before Kconfig, and hashes
   `Kconfig.from-system-toml` too. `tests/zephyr-kconfig-stamp-tests.sh`
@@ -556,7 +557,7 @@ build dirs; a configure loop is `west build -t build.ninja`).**
 | plain `west build` cpp/talker `zephyr_xrce` | 4, 3 -- non-convergent | **1, 0** | identical to the base's converged knobs |
 | plain `west build` cpp/talker `zephyr_zenoh` (full build, `zephyr.exe` linked) | -- | **1, 0** | identical to `nros build` |
 | plain `west build` rust/talker | 1, 0 | **1, 0** | identical to the base and to `nros build` |
-| plain `west build` workspaces/rust generated `zephyr_entry` | cannot configure (issue 2232); W3 measured 1 re-run | **1, 0** | identical to `nros build` |
+| plain `west build` workspaces/rust generated `zephyr_entry` | cannot configure (the board-facts panic, issue 2229); W3 measured 1 re-run | **1, 0** | identical to `nros build` |
 | `nros build zephyr_zenoh` cpp/talker | 4, 3 | **1, 0**; the hook's configure "up to date" in **42 ms** | -- |
 | `nros build zephyr_zenoh` rust/talker (full build) | 1, 0 | **1, 0**; "up to date" in 2.1 s on the loaded host | -- |
 | `nros build zephyr` workspaces/rust (full build) | 1 re-run (W3) | **1, 0**; "up to date" in **34 ms** | -- |

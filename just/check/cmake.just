@@ -573,6 +573,7 @@ resolved-seed:
 # written by the pre-Kconfig hook. A real Zephyr configure of a hello-world
 # app, with a control that reproduces the defect without the stamp. Needs a
 # Zephyr workspace: absent is a ledger skip here, never a pass.
+[group('needs:zephyr')]
 [metadata("tier", "exempt", "runs real Zephyr configures (~minutes) and needs a provisioned Zephyr 3.7 workspace; in no lane and no caller found yet -- issue 1071's class (phase-530 W4)")]
 zephyr-kconfig-stamp:
     #!/usr/bin/env bash
