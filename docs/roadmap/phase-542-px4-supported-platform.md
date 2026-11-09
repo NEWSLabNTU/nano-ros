@@ -251,6 +251,11 @@ green; one scheduled run of their lane green.
   builds), a recorded hardware run, and a `runs = "hardware"`, `cadence =
   "manual"` row. **Acceptance when taken:** the row reads **Boots on hardware,
   manual (date)**.
+  - Already in place for it: on NuttX, `nros_px4_add_module` refuses a
+    generated entry whose main task (`STACK_MAIN`) or work queue
+    (`CONFIG_WQ_<Q>_STACKSIZE`) is below the executor's stack floor, which
+    PX4's stock sizes are. The measured Cortex-M7 frames to size them from are
+    in [issue 2398](../issues/archived/2398-px4-thread-stacks-below-executor-floor.md).
 
 ### W9 — The two open design questions (S)
 
