@@ -1,12 +1,12 @@
 # Phase 544 — The harness on `nros run --plan`: what phase-528 left
 
-**Status (2026-11-09). IN PROGRESS: W1, W2 and W3 done (issues 2172, 2273 and 2307 resolved); open: W3's follow-up, the verb waiting for a runner's process chain (issue 2307, "Open after this fix"). Successor to [phase-528](archived/phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homes one of them.** Implements
-[RFC-0118](../design/0118-target-execution-model.md) for the harness's
+**Status (2026-11-09). DONE: W1, W2 and W3 landed (issues 2172, 2273 and 2307 resolved), and so did W3's follow-up, the verb waiting for a runner's process chain. The Renode leg of W3 is unmeasured and is carried as [issue 2375](../../issues/2375-renode-chain-lifetime-unmeasured.md), homed in [phase-548](../phase-548-three-languages-every-board.md) W7 with the Nucleo twin. Successor to [phase-528](phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homed one of them.** Implements
+[RFC-0118](../../design/0118-target-execution-model.md) for the harness's
 remaining QEMU and process-lifetime gaps.
 
 Depends on:
 
-- [phase-528](archived/phase-528-run-on-host-and-emulator.md) W3 to W5, for the
+- [phase-528](phase-528-run-on-host-and-emulator.md) W3 to W5, for the
   runner packages, the verb and the harness on the plan.
 
 ---
@@ -23,7 +23,7 @@ SIGKILL leaves its image running.
 
 ### W1 — The harness reads `[board.run.qemu]`
 
-[Issue 2172](../issues/archived/2172-harness-mps-lines-restate-board-runner.md)'s
+[Issue 2172](../../issues/archived/2172-harness-mps-lines-restate-board-runner.md)'s
 residue. `nros_tests::run::QemuBoot` is rendered by the same
 `nros_qemu_ladder::plan_line` that `nros run` uses, but the harness's
 `start_mps2_an385*`, `start_mps3_an536_*` and Zephyr `zephyr_qemu_boot`
@@ -62,7 +62,7 @@ descriptor); and the Zephyr boots, whose line is Zephyr's `board.cmake`
 
 ### W2 — The violation channel's QEMU leg
 
-[Issue 2273](../issues/archived/2273-violation-channel-qemu-leg.md): the same
+[Issue 2273](../../issues/archived/2273-violation-channel-qemu-leg.md): the same
 `violation-cpp` workspace on a Zephyr QEMU target (mps2/an385, `-icount
 shift=auto`), as a `fixtures.toml` row and a `violation_channel_e2e` cell in a
 scheduled lane, asserting the single post-arming `max-latency-runtime`
@@ -86,7 +86,7 @@ entry, so it was also built on the C and mixed rows in fresh build dirs: C
 realtime (native_sim and the qemu_cortex_a53 SMP image) and mixed (native_sim)
 link, and the C native_sim image delivers `/ctrl` to a ROS 2 subscriber. The
 older build dirs of those two rows did not configure; that is
-[issue 2374](../issues/2374-zephyr-cached-conf-file-freezes-board-fragment-discovery.md),
+[issue 2374](../../issues/2374-zephyr-cached-conf-file-freezes-board-fragment-discovery.md),
 a cached `CONF_FILE` naming a fragment issue 2157 deleted, unrelated to the
 edge. `ci_lane::tests::tier2_selects_every_pinned_cell` and
 `lane_build_covers_run::the_tier2_build_carries_every_pinned_cell_leaf` hold
@@ -95,7 +95,7 @@ removed).
 
 ### W3 — A killed verb takes its image down
 
-[Issue 2307](../issues/archived/2307-killed-run-verb-orphans-its-image.md): the runner
+[Issue 2307](../../issues/archived/2307-killed-run-verb-orphans-its-image.md): the runner
 dies with the verb (`PR_SET_PDEATHSIG`), but the image is the runner's child
 and carries no such flag, so a SIGKILL to `nros run` orphans it. The harness
 works around this in `run::stop`; a user's terminal does not.
@@ -108,6 +108,11 @@ through `nros-runner-lifetime` (one PDEATHSIG hop, or a guarded process group
 for a tool chain such as `west build -t run`, which one hop measurably does
 not cover). `tests/killed_run_verb.rs` passes 4/4 in the ros2 box and fails
 with the tie disabled. Detail in the issue's Resolution.
+
+**Follow-up done (2026-11-09).** On Ctrl-C the verb no longer returns while a
+runner's chain is still stopping: the runner names the chain's process group
+(`nros-runner: chain <pgid>`), and the teardown waits up to 2.5 s for it, then
+SIGKILLs what is left and says so. The Renode leg is not measured: issue 2375.
 
 ## Acceptance
 
@@ -126,4 +131,5 @@ Real boards (phase-529, phase-533) and the Renode and Wokwi twins
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2350](../issues/archived/2350-run-dry-run-refuses-stale-model.md) | RESOLVED 2026-11-07. `nros run --dry-run` says it would configure, then refuses the stale SystemModel: a run-plan follow-up. |
+| [#2375](../../issues/2375-renode-chain-lifetime-unmeasured.md) | OPEN, rehomed to [phase-548](../phase-548-three-languages-every-board.md) W7 when this phase was archived. W3's Renode leg, unmeasured. |
+| [#2350](../../issues/archived/2350-run-dry-run-refuses-stale-model.md) | RESOLVED 2026-11-07. `nros run --dry-run` says it would configure, then refuses the stale SystemModel: a run-plan follow-up. |

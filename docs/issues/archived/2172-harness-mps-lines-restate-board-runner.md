@@ -11,7 +11,7 @@ resolved: 2026-11-09
 resolved_in: "phase-544 W1: the harness reads [board.run.qemu] through nros_orchestration_ir::target_exec::board_run_named and BoardRun::qemu_plan_args, the mapping nros run and the cargo runner use; the MPS3-AN536 descriptor states -icount and its NIC model"
 ---
 
-**Home: [phase-544](../../roadmap/phase-544-harness-run-plan-followups.md) W1** — rehomed 2026-11-06 from phase-528 (archived), whose W5 put the harness on `nros run --plan` and its QEMU lines on the shared renderer; reading `[board.run.qemu]` is what is left.
+**Home: [phase-544](../../roadmap/archived/phase-544-harness-run-plan-followups.md) W1** — rehomed 2026-11-06 from phase-528 (archived), whose W5 put the harness on `nros run --plan` and its QEMU lines on the shared renderer; reading `[board.run.qemu]` is what is left.
 
 ## What
 

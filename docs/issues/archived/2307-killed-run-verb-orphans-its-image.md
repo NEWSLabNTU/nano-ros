@@ -11,7 +11,7 @@ resolved: 2026-11-09
 resolved_in: "phase-544 W3: every first-party runner ties what it starts to itself through the new nros-runner-lifetime crate (one PDEATHSIG hop, or a guarded process group for a tool chain)"
 ---
 
-**Home: [phase-544](../../roadmap/phase-544-harness-run-plan-followups.md) W3.**
+**Home: [phase-544](../../roadmap/archived/phase-544-harness-run-plan-followups.md) W3.**
 
 ## What
 
@@ -100,14 +100,15 @@ spawn site goes through the crate) and
 
 - **Renode is not measured.** The `renode` road takes the chain (its
   launcher may be a script), but no Renode run was SIGKILLed. Measure it
-  with the Nucleo twin before claiming it.
+  with the Nucleo twin before claiming it. Carried as
+  [issue 2375](../2375-renode-chain-lifetime-unmeasured.md), homed in phase-548 W7.
 - **A verb that returns while its chain is still stopping.** On Ctrl-C a
   chained tool (`west`, `fvp`, `renode`, `command`) stops through its guard,
   so the verb can return about 1 s before the chain is gone, while it may
   still hold ports, which is the class issue 2315 hit. Manager ruling
   (2026-11-09): the verb waits until the guard reports the chain gone,
   bounded at about 2-3 s, then SIGKILLs the group and says so.
-  **Done** (the follow-up PR, branch `phase-544-w3-guard-wait`):
+  **Done** (PR #3356):
   - Arming a chain prints `nros-runner: chain <pgid>` on the runner's
     stderr (`nros_extension::console::report_chain`). nros records it and
     does not forward it.

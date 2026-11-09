@@ -11,7 +11,7 @@ resolved_in: "phase-544 W2: workspace-zephyr-cortex-m-cpp-violation builds viola
 related: [phase-544, phase-474, phase-528, 1714, 1715]
 ---
 
-**Home: [phase-544](../../roadmap/phase-544-harness-run-plan-followups.md) W2** — split out of phase-474 T4 when that phase was archived (2026-11-05), homed in phase-528, and rehomed 2026-11-06 when phase-528 was archived: a QEMU cell for an existing workspace, on the road phase-528 put the harness on.
+**Home: [phase-544](../../roadmap/archived/phase-544-harness-run-plan-followups.md) W2** — split out of phase-474 T4 when that phase was archived (2026-11-05), homed in phase-528, and rehomed 2026-11-06 when phase-528 was archived: a QEMU cell for an existing workspace, on the road phase-528 put the harness on.
 
 ## What exists
 
