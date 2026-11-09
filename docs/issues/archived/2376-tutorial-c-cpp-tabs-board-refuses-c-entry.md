@@ -1,7 +1,7 @@
 ---
 id: 2376
 title: "The Tutorial's C and C++ tabs scaffold for mps2-an385-baremetal, which refuses a C or C++ entry, so their first `nros build` fails"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [book, cli, education]
@@ -10,7 +10,7 @@ related: [phase-537, 2269]
 found: 2026-11-09
 ---
 
-**Home: [phase-537](../roadmap/phase-537-book-user-guide-organization.md)** (W5, the Tutorial). Found while writing issue 2269's QoS lab.
+**Home: [phase-537](../../roadmap/phase-537-book-user-guide-organization.md)** (W5, the Tutorial). Found while writing issue 2269's QoS lab.
 
 ## What fails
 
@@ -56,3 +56,17 @@ One of:
    naming the alternative.
 
 Either way, `tutorial-c` and `tutorial-cpp` run on a schedule.
+
+## Resolution (2026-11-10)
+
+Option 2, the user's ruling (bare metal stays Rust only):
+
+- `nros new --lang c|cpp` refuses a board with no C/C++ entry and names the
+  same chip's RTOS boards (`refuse_c_family_without_entry` in `cmd/new.rs`,
+  on both the new-workspace and the into-workspace roads).
+- Every Tutorial C and C++ tab scaffolds for `mps2-an385-freertos`. Chapter 1
+  provisions and scaffolds it; chapters 2, 3 and 4 name its `freertos` image
+  and its board-default TCP locator; chapter 9's second target for C and C++
+  is the Linux host; chapter 10 runs `nros run freertos`.
+- `tutorial-c` and `tutorial-cpp` run on the FreeRTOS row and are weekly in
+  `probe-platforms.yml`, with no `awaits`.

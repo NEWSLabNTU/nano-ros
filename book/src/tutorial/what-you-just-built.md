@@ -191,8 +191,16 @@ board = "mps2-an385-baremetal"
 locator = "serial/UART_0#baudrate=115200"
 ```
 
-A C or C++ project's file differs only in the `class` line's spelling, which
-is the class the package registers. The bringup holds `package.xml` and this
+A C or C++ project's file differs in two places. The `class` line is spelled
+the way the package registers its class, and the image is FreeRTOS's:
+
+```toml
+[image.freertos]
+board = "mps2-an385-freertos"
+```
+
+It has no `locator` line, because the FreeRTOS board states its own: TCP to
+the router at `10.0.2.2:7447`, over the board's emulated Ethernet. The bringup holds `package.xml` and this
 `system.toml`, and no code. Its three tables answer three questions:
 
 - **`[system]`: how the nodes reach ROS 2.** `rmw` is the middleware, the
@@ -204,7 +212,9 @@ is the class the package registers. The bringup holds `package.xml` and this
 - **`[image.baremetal]`: what program is built, for which board.** The
   `board` line chose the MPS2-AN385 with no operating system. The `locator`
   line says how the program reaches its zenoh router: over the board's first
-  serial port, UART 0, at 115,200 baud.
+  serial port, UART 0, at 115,200 baud. In a C or C++ project,
+  `[image.freertos]` chose the same board with FreeRTOS under the program,
+  and the board's own locator applies.
 
 Every configuration choice of the project lives in this file, never in a
 node package. Moving the talker to another board is another `[image.*]`
@@ -222,7 +232,7 @@ nros run sensor_node --dry-run --why
 
 `--dry-run` prints the run plan instead of carrying it out, and `--why` adds
 where each part of the plan came from. The parts that matter here (a real
-run, trimmed):
+run of a Rust project, trimmed):
 
 ```text
 image = "sensor_node_bringup:baremetal"
@@ -269,6 +279,11 @@ Read it from the top:
   program's printed output comes through QEMU's semihosting, apart from the
   serial port the messages use.
 
+In a C or C++ project the plan names `sensor_node_bringup:freertos`, and its
+`[link]` reads `kind = "tcp"` and `locator = "tcp/10.0.2.2:7447"`, with the
+provenance `link = "board"`: the locator came from the board, because the
+image states none.
+
 ## See what the build left behind
 
 Chapter 1's run left more in the workspace than the two packages:
@@ -290,8 +305,9 @@ build  generated  nros-sdk.lock  src
   too.
 - **`build/`** holds the image's build tree, the program's generated
   `main()`, and each run's logs. The board's console from chapter 1 is in
-  `build/nros/run/sensor_node_bringup_baremetal/console.log`, which is the
-  first file to read when a run goes wrong.
+  `build/nros/run/sensor_node_bringup_baremetal/console.log`
+  (`..._freertos/` in a C or C++ project), which is the first file to read
+  when a run goes wrong.
 - **`nros-sdk.lock`** records what the build was made from: the versions of
   the ROS 2 message packages it generated code from, and the source of the
   zenoh client it compiled. The scaffold's `.gitignore` leaves it in, so it
@@ -322,7 +338,7 @@ read it from at run time.
 **An image is one program for one board.** Each `[image.*]` table is one
 image: the bringup's nodes, built with one middleware for one board, into one
 file you can boot or flash. `nros run` built `sensor_node_bringup:baremetal`
-in chapter 1 and booted it in QEMU. Nothing in `src/` contains that program's
+(or `:freertos`) in chapter 1 and booted it in QEMU. Nothing in `src/` contains that program's
 `main()`: `nros` generated it under `build/` from the image table, together
 with the generated message code and the build settings the board needs.
 

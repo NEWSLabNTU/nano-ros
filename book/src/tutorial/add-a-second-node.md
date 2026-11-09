@@ -254,7 +254,8 @@ It also added `<exec_depend>monitor_node</exec_depend>` to the bringup's
 runs, the way a ROS 2 bringup package does. To run a node package you
 copied in from elsewhere, write both lines by hand.
 
-The image table did not change. `[image.baremetal]` still names one board,
+The image table did not change. `[image.baremetal]` (`[image.freertos]` in C
+or C++) still names one board,
 and it now builds both rows into its one program.
 
 `nros graph` shows the same facts as an order: each package after the
@@ -312,12 +313,13 @@ nros run: matched after 3.2 s: [INFO] monitor_node: [    1.026723] I heard: [Hel
 ```
 
 This time the command names nothing to run. With nothing named, `nros run`
-runs the workspace's only image, and `sensor_node_bringup:baremetal` is still
-the only one.
+runs the workspace's only image, and `sensor_node_bringup:baremetal` (or
+`:freertos`) is still the only one.
 
 `nros run sensor_node`, the spelling from chapter 1, no longer works. It
 meant "the bringup whose only node is `sensor_node`", and the bringup now has
-two, so it refuses and prints the full name that would work:
+two, so it refuses and prints the full name that would work (a C or C++
+project's ends in `:freertos`):
 
 ```text
 nros run: `sensor_node` is a component of `sensor_node_bringup`, but never the only one, so it names no one image; name one:

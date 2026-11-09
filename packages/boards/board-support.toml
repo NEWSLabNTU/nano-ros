@@ -783,22 +783,20 @@ track = "tutorial-c"
 chapter = "tutorial/talk-to-ros2.md"
 variant = "qemu"
 lang = "c"
-awaits = ["C and C++ on mps2-an385 bare metal: the image is routed to a generated Rust entry that owns reset (phase-531 W6 batch 2); today configure stops at `tools/setup.sh: unknown platform 'bare_metal'`"]
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
-weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C tab: chapters 1-10 on one C project, chained. The Rust tab has one track per chapter (first-project, tutorial-2 to tutorial-10); each language tab has one chained track."
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C tab: chapters 1-10 on one C project, chained, on mps2-an385-freertos (bare metal is Rust only; chapter 9's second target is the Linux host; issue 2376). The Rust tab has one track per chapter (first-project, tutorial-2 to tutorial-10); each language tab has one chained track."
 
 [[probe]]
 track = "tutorial-cpp"
 chapter = "tutorial/talk-to-ros2.md"
 variant = "qemu"
 lang = "cpp"
-awaits = ["C and C++ on mps2-an385 bare metal: the image is routed to a generated Rust entry that owns reset (phase-531 W6 batch 2); today configure stops at `tools/setup.sh: unknown platform 'bare_metal'`"]
 after = ["tutorial/run-a-talker.md", "tutorial/what-you-just-built.md", "tutorial/add-a-second-node.md", "tutorial/pick-the-rmw.md", "tutorial/your-own-message.md", "tutorial/services-and-actions.md", "tutorial/parameters-and-launch-files.md", "tutorial/tell-the-build.md", "tutorial/another-target.md"]
-weekly = false
-row = "nros-board-mps2-an385@QemuBaremetal"
-notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: chapters 1-10 on one C++ project, chained."
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 (RFC-0124 D3, D9) — the whole Tutorial in its C++ tab: chapters 1-10 on one C++ project, chained, on mps2-an385-freertos (bare metal is Rust only; chapter 9's second target is the Linux host; issue 2376)."
 
 [[probe]]
 track = "linux"
