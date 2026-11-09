@@ -5706,7 +5706,7 @@ fn registered_population(
             probe.display()
         ));
     }
-    crate::cmd::entity_inventory::registered_from_probe(&probe, &packages)
+    crate::cmd::entity_inventory::registered_from_probe(&probe, &packages, Some(root))
         .map_err(|e| format!("{e:#}"))
 }
 
@@ -6790,8 +6790,9 @@ fn resolve_coordinate(
         }
         let names: std::collections::BTreeSet<String> =
             registered_packages.keys().cloned().collect();
-        let registered = crate::cmd::entity_inventory::registered_from_probe(&probe, &names)
-            .map_err(|e| format!("{e:#}"))?;
+        let registered =
+            crate::cmd::entity_inventory::registered_from_probe(&probe, &names, Some(root))
+                .map_err(|e| format!("{e:#}"))?;
         let paths: Vec<PathBuf> = models.iter().map(|(p, _)| p.clone()).collect();
         let inputs = crate::resolve::EntityInputs::union(&registered, &paths, root, rx_cost);
         let inv = match models.as_slice() {
