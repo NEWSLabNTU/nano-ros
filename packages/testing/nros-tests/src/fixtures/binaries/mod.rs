@@ -6142,6 +6142,23 @@ pub fn build_zephyr_workspace_cpp_violation_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// phase-544 W2 (issue 2273) -- the same violation-channel workspace on the
+/// Zephyr Cortex-M QEMU board (`demo_bringup:zephyr_mps2`, board
+/// `mps2-an385-zephyr`): the arming and the latency measurement on an emulated
+/// core's own timer. `zephyr.elf`, not `zephyr.exe`: a real Cortex-M3 image.
+/// Built by the west lane into
+/// `<zephyr-build-root>/build-cortex-m-ws-cpp-violation-entry-zenoh/zephyr/zephyr.elf`
+/// (row `workspace-zephyr-cortex-m-cpp-violation`); consumed by
+/// `tests/violation_channel_e2e.rs`.
+pub fn build_zephyr_cortex_m_workspace_cpp_violation_entry() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-cortex-m-ws-cpp-violation-entry-zenoh/zephyr/zephyr.elf");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/workspaces/violation-cpp", "cpp"),
+    )
+}
+
 /// phase-281 W3c — the Zephyr (native_sim) RT-SCHED-TASKS C workspace Entry
 /// (`realtime-c`'s `demo_bringup:zephyr`, generated since phase-477 W1): the FIRST full west link + runtime proof of the
 /// W3a `ZephyrBoard::run_sched_tasks` seam for a C node (closes the c×zephyr cell).

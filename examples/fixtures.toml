@@ -6318,6 +6318,29 @@ west_id = "zephyr/native_sim/native/64/workspace-violation-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7697"
 skip_probe = true
 
+# phase-544 W2 (issue 2273) -- the same violation-channel workspace on the
+# Zephyr Cortex-M QEMU board, the (ZephyrQemuCortexM, Cpp, Zenoh,
+# ViolationChannel, Workspace) cell: `demo_bringup`'s `[image.zephyr_mps2]`
+# (board `mps2-an385-zephyr`), booted under `-icount shift=auto` from the board
+# descriptor. native_sim measures the overrun on the host's clock; here the
+# arming and the 50 ms bound hold on the guest's own timer. Port 10885 =
+# `alloc::port_of(ZephyrQemuCortexM, Cpp, ViolationChannel)`, on the SLIRP
+# host address; consumed by `tests/violation_channel_e2e.rs`, which holds the
+# row to that port (`assert_row_dials_port`).
+[[workspace_fixture]]
+id = "workspace-zephyr-cortex-m-cpp-violation"
+platform = "zephyr-cortex-m"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/violation-cpp"
+bringup = "src/demo_bringup"
+image = "zephyr_mps2"
+board = "mps2/an385"
+west_build_name = "build-cortex-m-ws-cpp-violation-entry-zenoh"
+west_id = "zephyr/mps2/an385/workspace-violation-entry-cpp"
+west_zenoh_locator = "tcp/10.0.2.2:10885"
+skip_probe = true
+
 # phase-281 W3c — the RT-SCHED-TASKS C workspace Entry (`[image.zephyr]` of
 # examples/workspaces/realtime-c's demo_bringup; its application is GENERATED
 # since phase-477 W1, issue 1288): the FIRST full west

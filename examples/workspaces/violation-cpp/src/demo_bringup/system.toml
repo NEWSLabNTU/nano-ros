@@ -33,3 +33,17 @@ env = { NROS_MONITOR_ARM_ON_CALL = "1", NROS_VIOLATION_DRAIN_REPORT = "1" }
 
 [image.zephyr.knobs.zenoh]
 socket_timeout_ms = 5
+
+# phase-544 W2 (issue 2273) - the same image on the Zephyr Cortex-M QEMU board
+# (mps2/an385). Its own id, stating the board it is built for (the
+# realtime-c `zephyr_smp` shape): the board package supplies the in-kernel IP
+# stack, the SLIRP address and the sizing, merged ahead of `os_config`, whose
+# files live in `boards/mps2_an385/`. The fixture row bakes the router locator.
+[image.zephyr_mps2]
+board = "mps2-an385-zephyr"
+os_config = ["prj-zenoh.conf"]
+panic = "platform"
+env = { NROS_MONITOR_ARM_ON_CALL = "1", NROS_VIOLATION_DRAIN_REPORT = "1" }
+
+[image.zephyr_mps2.knobs.zenoh]
+socket_timeout_ms = 5

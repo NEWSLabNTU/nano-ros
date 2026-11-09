@@ -1096,6 +1096,22 @@ pub const RULE_RATE_HIERARCHY_RUNTIME: &str = "rate-hierarchy-runtime";
 /// Subscriber max-data-age violation rule id (`max_age_ms` assumption).
 pub const RULE_MAX_AGE_RUNTIME: &str = "max-age-runtime";
 
+/// Path max-latency violation rule id (a contracted path's `max_latency`).
+pub const RULE_MAX_LATENCY_RUNTIME: &str = "max-latency-runtime";
+
+/// Input-triggered route latency violation rule id (phase10-B3).
+pub const RULE_ROUTE_LATENCY_RUNTIME: &str = "route-latency-runtime";
+
+/// The drain-and-report hook's line for one stored verdict, printed when the
+/// image is built with `CONFIG_NROS_VIOLATION_DRAIN_REPORT`:
+/// `contract violation #<seq>: <rule> <fqn> measured=.. declared=..`.
+/// MIRRORS the `format!` in `nros-node/src/executor/monitor.rs`.
+pub const CONTRACT_VIOLATION_PREFIX: &str = "contract violation #";
+
+/// The arming line's tail (`contract monitors armed (..); <n> verdict(s)
+/// before arming suppressed`), from `nros-node/src/executor/spin.rs`.
+pub const MONITORS_ARMED_SUPPRESSED_MARKER: &str = "before arming suppressed";
+
 /// Emitted by `nros-board-zephyr`'s `run_sched_tasks` when a real-time sched task's
 /// kernel EDF deadline is applied (phase-296 W5.5). MIRRORS the literal
 /// `::log::info!` prefix in `nros-board-zephyr/src/entry_sched_tasks.rs`

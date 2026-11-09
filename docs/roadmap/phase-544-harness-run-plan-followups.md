@@ -1,6 +1,6 @@
 # Phase 544 — The harness on `nros run --plan`: what phase-528 left
 
-**Status (2026-11-09). IN PROGRESS: W1 done (issue 2172 resolved); W2 and W3 open. Successor to [phase-528](archived/phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homes one of them.** Implements
+**Status (2026-11-09). IN PROGRESS: W1 done (issue 2172 resolved); W2 done (issue 2273 resolved); W3 open. Successor to [phase-528](archived/phase-528-run-on-host-and-emulator.md), which put the test harness on `nros run --plan` (W5) and was archived with three follow-ups open. Each work item here homes one of them.** Implements
 [RFC-0118](../design/0118-target-execution-model.md) for the harness's
 remaining QEMU and process-lifetime gaps.
 
@@ -62,13 +62,26 @@ descriptor); and the Zephyr boots, whose line is Zephyr's `board.cmake`
 
 ### W2 — The violation channel's QEMU leg
 
-[Issue 2273](../issues/2273-violation-channel-qemu-leg.md): the same
+[Issue 2273](../issues/archived/2273-violation-channel-qemu-leg.md): the same
 `violation-cpp` workspace on a Zephyr QEMU target (mps2/an385, `-icount
 shift=auto`), as a `fixtures.toml` row and a `violation_channel_e2e` cell in a
 scheduled lane, asserting the single post-arming `max-latency-runtime`
 verdict.
 
 Acceptance: the cell runs in tier 2 and passes.
+
+**Status: DONE (2026-11-09).** `violation-cpp` gained `[image.zephyr_mps2]`
+(board `mps2-an385-zephyr`); row `workspace-zephyr-cortex-m-cpp-violation`
+builds it, and `Workload::ViolationChannel`'s one cell,
+(ZephyrQemuCortexM, Cpp, Zenoh, ViolationChannel, Workspace), is answered by
+`violation_channel_e2e` under the descriptor's `-icount shift=auto`:
+`contract violation #2: max-latency-runtime /handler/state measured=165
+declared=50`, after RUN. Tier 2 pins the cell (`ci_lane::pinned_tier2_reqs`),
+since its 1-wise cover never covers the workload; its counts stay 12 / 11.
+Found on the way: a generated Zephyr entry linked a component archive after
+`libkernel.a`, so a component calling `k_busy_wait` did not link on a real
+board; `nano_ros_entry` now gives each component archive a `kernel` link
+edge. Detail in the issue.
 
 ### W3 — A killed verb takes its image down
 
