@@ -1,12 +1,11 @@
 # Phase 546 — zenoh on the FreeRTOS POSIX board: a host-socket FreeRTOS arm
 
-**Status (2026-11-07). IN PROGRESS.** W1 to W4 and W6 are implemented and
-measured in the box; they land with the zenoh-pico fork commit W2 needs (the
-fork's `nano-ros-1.10.1` branch, then a pin bump). W5 waits on the book's zenoh
-variant of the FreeRTOS POSIX starter probe track.
-Implements [RFC-0109 Amendment 2026-11-07](../design/0109-network-config-layers.md#amendment-2026-11-07--the-stack-owner-selects-the-zenoh-pico-socket-arm-issue-2342)
+**Status (2026-11-10). DONE.** W1 to W4 and W6 landed in `edbc047932` and
+`cd2f7479bc`, with the zenoh-pico fork commit W2 needs (`cf228437`, the current
+pin). W5 shrank to the starter text, which the book's PR #3293 corrects.
+Implements [RFC-0109 Amendment 2026-11-07](../../design/0109-network-config-layers.md#amendment-2026-11-07--the-stack-owner-selects-the-zenoh-pico-socket-arm-issue-2342)
 (D11). Closes
-[issue 2342](../issues/archived/2342-zenoh-freertos-host-netstack-port.md).
+[issue 2342](../../issues/archived/2342-zenoh-freertos-host-netstack-port.md).
 
 Maintainer ruling 2026-11-07: add a host-socket FreeRTOS arm for zenoh, do
 not refuse zenoh on the board.
@@ -98,12 +97,18 @@ prints `locator tcp/127.0.0.1:7447 (baked)`. **Done.**
 Acceptance: `just freertos build-fixtures-posix` builds the row and the test
 passes. **Done in the box**; lands with the fork pin.
 
-### W5 — The book starter
+### W5 — The book starter says zenoh works
 
-- When the book's zenoh variant of the FreeRTOS POSIX starter probe track
-  carries `awaits` naming issue 2342, drop the `awaits` (registry, then
-  regenerate). NOT STARTED: no probe track on `main` names issue 2342 yet
-  (the starter on `main` already scaffolds zenoh).
+- The plan was to drop a probe track's `awaits` naming issue 2342 once the
+  starter had a zenoh variant. No probe track ever named the issue, so there
+  was nothing to drop.
+- What was really left: `book/src/starters/freertos-posix.md` still said zenoh
+  on this board "is not supported yet" and "does not build", which W2 made
+  false. The book's PR #3293 (phase-548 W8, which rewrites every starter's
+  language tabs) corrects that text. It is not done here, so the two PRs do not
+  conflict.
+
+**Done** (2026-11-10): rescoped to the starter text, carried by #3293.
 
 ### W6 — Close issue 2342
 
