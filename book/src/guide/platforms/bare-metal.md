@@ -53,8 +53,10 @@ host = 10
 The board package owns the network device, so the device's address lives in
 the board's own file, which the image names with `os_config`. `10.0.2.2` is
 QEMU's gateway to the host. With this `locator`, `nros run bm_node` starts
-the router on the host's port 10500 when it boots the image, so do not start
-one of your own on that port: a second router stops the first run. Within
+the router on the host's port 10500 when it boots the image. If a zenoh
+router of your own already listens on that port, `nros run` uses it instead
+and says so; anything else on the port stops the run before it starts, naming
+`--router`. Within
 about 15 seconds of boot the zenoh session opens and the first
 `Publishing:` line appears.
 

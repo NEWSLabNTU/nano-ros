@@ -215,9 +215,11 @@ data: 'Hello World: 3'
   found`.** Source ROS 2 in that terminal, install
   `ros-<distro>-rmw-zenoh-cpp`, or set `NROS_RMW_ZENOHD` to the `rmw_zenohd`
   binary.
-- **`the zenoh router exited on tcp/127.0.0.1:7447 … is the port taken?`**
-  Another router already holds the port. Stop it, or reuse it with
-  `--router tcp/127.0.0.1:7447`.
+- **`nros run: something that is not a zenoh router listens on
+  tcp/127.0.0.1:7447`.** Another program holds the port. Free it, name your
+  own router with `--router tcp/<address>:<port>`, or start none with
+  `--router none`. A zenoh router already on the port needs nothing: `nros
+  run` reuses it and says so.
 - **The board boots but nothing arrives.** Check the locator with
   `--dry-run`. `10.0.2.2` means the host only from inside QEMU's user
   network; a board on a real network needs the router host's real address.
