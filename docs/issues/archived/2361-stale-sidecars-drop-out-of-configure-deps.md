@@ -1,15 +1,17 @@
 ---
 id: 2361
 title: "A configure that finds the metadata-probe sidecars stale stops listing them as inputs, so a later `nros configure` never re-configures and the image stays sized from the closure fallback"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cmake, zephyr, cli]
 related: [1662, 2086, phase-530]
 found: 2026-11-07
+resolved: 2026-11-09
+resolved_in: "metadata_refresh::fresh_probe_rows returns every sidecar it consulted, fresh or stale, as a configure input"
 ---
 
-**Home:** [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)
+**Home:** [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)
 
 ## What
 
@@ -69,7 +71,7 @@ The island's diag build re-runs its sync recipe after it reverts its patches,
 and its `board-flash` flashes with `west flash --no-rebuild`
 (NEWSLabNTU/simple-autoware-safety-island 9de23c9).
 
-## Fixed (2026-11-09), to be archived after PR #3317
+## Fixed (2026-11-09)
 
 `metadata_refresh::fresh_probe_rows` returns every sidecar it CONSULTED as
 the configure-input list, fresh, stale or unreadable, recorded before the
@@ -96,8 +98,3 @@ never-configured case, not the one measured here.
 Test: `explicit_nano_ros_path_keys_the_stamp_and_the_resolve_alike` now
 asserts that a sidecar refused as stale is still returned as an input. The
 assertion fails on the old code.
-
-Still `status: open` here on purpose: PR #3317 homes this issue in phase-530
-by its current path, so archiving it now would break that link, and an issue
-in `docs/issues/` must be open (`check-issue-index`). A follow-up archives it
-as resolved once #3317 has landed.
