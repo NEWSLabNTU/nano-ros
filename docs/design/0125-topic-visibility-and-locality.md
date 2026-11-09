@@ -29,8 +29,8 @@ image layout say where its endpoints run. nano-ros reads both through the one
 shared `locality()` function and, for a topic every endpoint of which is in one
 image, does one of two things:
 
-- **Tier 1, any topic:** deliver locally always, and send on the wire only
-  while a remote subscriber is matched.
+- **Tier 1, any topic in an image that opts in:** deliver locally always, and
+  send on the wire only while a remote subscriber is matched.
 - **Tier 2, a declared non-public, closed, image-local topic:** remove the
   wire side at build time: no zenoh declaration, no liveliness token, no
   publisher or queryable slot, no wire buffer in the sizing descriptor.
@@ -154,9 +154,17 @@ change that turns a local topic into a wire topic is a reviewable diff.
   Tier-2 topic while an exported one still delivers.
 - **W4.** `--expose`, the locality report, the `nros configure` refusals.
 
-## Open questions
+## Decisions (2026-11-10)
 
-1. Does Tier 2 need a C/C++ API change, or can generated entries alone carry
-   it (the endpoint is created by the entry, not by user code)?
-2. Should Tier 1 be on by default for every public topic, or opt-in per image
-   until it is measured on every backend?
+1. **Tier 1 is opt-in per image** (`[image.<id>] matched_only_wire = true`)
+   until it is measured on every backend. Its cost, the discovery delay
+   before the first remote sample, is a behaviour change for an image that
+   is public today; it becomes the default once a pair test on each backend
+   shows that delay and the saving.
+2. **Tier 2 needs no C/C++ API change.** A Tier-2 endpoint is created by the
+   generated entry, never by user code, so codegen alone chooses the
+   local-only form. User code keeps calling the same publish and subscribe
+   API.
+3. **Grammar decisions are rlm's** (no tree-wide `internal` level;
+   `export-unused` is static) and are recorded in its
+   `docs/design/visibility-and-exports.md`.
