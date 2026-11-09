@@ -7,7 +7,7 @@ area: [platform, embedded, params]
 severity: medium
 found: 2026-11-10
 resolved: 2026-11-10
-resolved_in: "PR (this branch, fix/2387-param-services): the parameter service sets are built in place and carved one per declared node; eDMA v3 channels are quiesced at boot. The second failure was the platform heap, sized by the image."
+resolved_in: "PR #3409: the parameter service sets are built in place and carved one per declared node; eDMA v3 channels are quiesced at boot. The second failure was the platform heap, sized by the image."
 related: [phase-512, phase-446, phase-474, 0852]
 ---
 
