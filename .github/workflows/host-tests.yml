@@ -443,6 +443,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Issue 2382: both shards run the `build` lane, which claims
+      # submodules and history; without this step they stopped in its
+      # preflight and no gate ran.
+      - name: Provision what the build lane claims (submodules, history, sources)
+        timeout-minutes: 12
+        run: bash scripts/ci/provision-gate-lane.sh build
+
       - name: just ci tier1 gates
         if: ${{ matrix.shard == 1 && !cancelled() }}
         env:
