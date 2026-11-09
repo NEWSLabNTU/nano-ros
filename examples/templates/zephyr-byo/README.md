@@ -92,8 +92,8 @@ see the book.
   are keyed to nano-ros-tested versions; bump `zephyr` revision in lockstep with a
   nano-ros release. (4.4 line: `v4.4.0`, Python ≥ 3.12, `-S nros-zenoh` snippet.)
 - **Rust apps** name their `[lib]` `rustapp` (a `zephyr-lang-rust` contract) and
-  generate their crate-patch config with
-  `nros dev codegen rust --generate-config --nano-ros-path <ws>/modules/nano-ros/packages/core`.
+  get their crate-patch config from `nros configure`, which generates the
+  message bindings and the cargo patch config.
 - Full reference: the book's *Getting Started → Zephyr (west module)*
   (`book/src/guide/platforms/zephyr.md`) and
   `modules/nano-ros/examples/zephyr/` for the multi-RMW examples.

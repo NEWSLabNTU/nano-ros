@@ -465,7 +465,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             "codegen entry: `--launch` was removed — generate a \
              SystemModel and pass `--model`:\n  nros configure       \
              # writes <ws>/build/nros/models/<bringup>/system_model.yaml\n  \
-             nros dev codegen entry --model \
+             then this verb: codegen entry --model \
              <ws>/build/nros/models/<bringup>/system_model.yaml …"
         );
     } else {
@@ -484,7 +484,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
              SystemModel and pass it via `--model`:\n  nros-launch-resolve \
              <bringup>/launch/<file>.launch.xml --system <bringup>/system.toml \
              host:={host} -o <bringup>/config/<file>_{host}_model.yaml\n  \
-             nros dev codegen entry --model <bringup>/config/<file>_{host}_model.yaml …"
+             then this verb: codegen entry --model <bringup>/config/<file>_{host}_model.yaml …"
         );
     }
 

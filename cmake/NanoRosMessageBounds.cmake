@@ -529,7 +529,7 @@ function(nros_derive_message_bound_knobs)
             message(FATAL_ERROR
                 "nros: ${_frag} sets no NROS_MESSAGE_BOUNDS_SCHEMA_VERSION.\n"
                 "  Either it is not a message-bound fragment, or it predates "
-                "the schema. Regenerate it with `nros dev codegen`.")
+                "the schema. Delete it and configure again; configure regenerates it.")
         endif()
         if(NOT NROS_MESSAGE_BOUNDS_SCHEMA_VERSION EQUAL
            NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED)
@@ -615,8 +615,8 @@ function(nros_derive_message_bound_knobs)
             # non-numeric compared with LESS silently reads as 0.
             message(FATAL_ERROR
                 "nros: ${_t} is `bounded` in the inventory and carries no "
-                "numeric _RX (`${_rx}`). The fragment is malformed; regenerate "
-                "it with `nros dev codegen`.")
+                "numeric _RX (`${_rx}`). The fragment is malformed; delete it "
+                "and configure again; configure regenerates it.")
         endif()
         math(EXPR _bounded "${_bounded} + 1")
         if(_rx GREATER _max_rx)

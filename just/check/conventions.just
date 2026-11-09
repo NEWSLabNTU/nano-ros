@@ -340,6 +340,16 @@ build-wiring-classified:
 retired-cmake-names:
     @python3 scripts/check/check-retired-cmake-names.py
 
+# phase-542 W3 (RFC-0117 D3, RFC-0124 D8) - a build tool may CALL a dev-tier
+# verb; user-facing text never has one typed or told. Refuses advice-shaped
+# cmake message() text and CLI strings, and every dev verb in user-tree
+# READMEs, templates and Kconfig help. A gap with no user-tier verb yet carries
+# `dev-verb-advice-ok: issue NNNN`, which needs a tracked OPEN issue.
+# Buildless; self-tests on each run.
+[private]
+user-text-dev-verbs:
+    @python3 scripts/check-user-text-dev-verbs.py
+
 # phase-526 W4 (RFC-0117 D5) — every old `nros` spelling still works as a
 # hidden alias, but the tree's own cmake, recipes, scripts, examples and docs
 # write the new one. The old -> new table is the CLI's own

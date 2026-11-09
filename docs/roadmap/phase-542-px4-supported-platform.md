@@ -1,6 +1,6 @@
 # Phase 542 — PX4 becomes a supported platform: registry evidence, a user-tier build, and every PX4 cell in a lane
 
-**Status (2026-11-07). OPEN — W0 ruled (user, 2026-11-07); W1 on PR #3169.**
+**Status (2026-11-10). OPEN: W0 ruled (user, 2026-11-07); W1 landed with #3169 (2026-11-07); W3 done 2026-11-10 (PR #PRNUM); W4 is unblocked.**
 W0.1 and W0.2 are applied on #3169: host + manual reads "Boots, manual", and
 the `px4-sitl` row states `flavour = "no_std"`, which `check-flavour-lanes`
 checks. W0.3 (a real Runtime cell, so the DDS domain window narrows) is W5's. Implements the 2026-11-06 revision of
@@ -142,6 +142,31 @@ tier.
 gate added with the change refuses one; a module template with a `BRINGUP`
 configures on the installed track.
 
+**Done 2026-11-10 (PR #PRNUM), by the manager's ruling of option 1.** The ruling
+restates the acceptance: a build tool CALLING a dev verb is RFC-0117 D3's
+design, so `NanoRosPx4Module.cmake` keeps calling `nros dev image model-path`
+and `nros dev codegen entry`, exactly as every other CMake road does. What the
+user tier never has is a dev verb typed or told (RFC-0124 D8, amended).
+Evidence:
+
+- `scripts/check-user-text-dev-verbs.py` (`just check user-text-dev-verbs`,
+  fast line) refuses advice-shaped cmake `message()` text and CLI strings, and
+  every dev verb in user-tree READMEs, templates and Kconfig help. A message
+  naming the dev call that FAILED is a diagnosis and stays. Its self-test is
+  mutation-tested (20 mutants, all killed).
+- Brought to zero: the shared leaf root block's FATAL_ERROR (13 copies, plus
+  the two PX4 example variants) now says `nros locate nano-ros` prints the
+  root; the PX4 and PlatformIO READMEs and the component skeleton's Kconfig
+  help no longer teach `nros codegen-system`; four example READMEs, two
+  message-bound remedies and three CLI refusals are reworded.
+- Advice with no user-tier verb yet (census, source metadata, the bringup
+  move, the central patch outside a workspace) carries
+  `dev-verb-advice-ok: issue 2394`; the gate accepts a marker only while its
+  issue is open. [Issue 2394](../issues/2394-user-tier-census-metadata-verb.md)
+  is homed here.
+- A linux C talker and the PX4 module template configure with the reworded
+  block.
+
 ### W4 — The `px4` probe track replays; the book page earns its place (S)
 
 Depends on W1 and W3. Phase-541 W4 is done: the track replayed green on the
@@ -249,6 +274,11 @@ drops them.
   return UNSUPPORTED (`packages/rmw/uorb/nros-rmw-uorb/src/service.cpp`). A
   PX4 user who needs services uses the XRCE companion. Not in this phase.
 - **Pixhawk hardware (W8.b)**, until the maintainer rules.
+- **No CMake road calls a dev verb (W3 option 2).** `nros configure` would
+  emit the model path and the entry TU, and every CMake road, PX4 included,
+  would read them through `nros_configured_locate`, so no cmake file calls
+  `nros dev` at all. It needs an RFC-0117 / RFC-0120 amendment. Not ruled for
+  and not scheduled: no work item.
 
 ## Order
 

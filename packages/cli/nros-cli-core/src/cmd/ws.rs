@@ -2431,6 +2431,7 @@ fn system_toml_beside_code_warnings(dirs: &[&Path]) -> Vec<String> {
         .map(|d| {
             // `nros dev migrate-bringup` is phase-531 W6; the refusal is
             // RFC-0121 D7 (phase-531 W7 step 9).
+            // dev-verb-advice-ok: issue 2394 (no user-tier verb moves a bringup yet).
             format!(
                 "sync: warning: {} sits beside the package's code; `system.toml` belongs in a \
                  bringup package (`package.xml` + `system.toml`, no build file). Move it with \
@@ -4483,7 +4484,7 @@ fn report_census_freshness(ws_root: &Path) {
         println!("sync: source metadata -- entity census for {label} is {verdict}");
         if verdict.starts_with("STALE") {
             println!(
-                // See issue 0641.
+                // See issue 0641. dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
                 "sync: source metadata -- take a new one with `nros dev image entity-census {how}`; \
                  sync does not build the native image it needs"
             );

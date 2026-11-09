@@ -45,7 +45,7 @@ if(NOT NROS_REPO_DIR)
         message(FATAL_ERROR
             "nano-ros: cannot locate the nano-ros SDK root.\n"
             "  Pass -DNROS_REPO_DIR=<path> (or -Dnano_ros_ROOT=<path>), or put\n"
-            "  `nros` on PATH — `nros dev sdk root` answers this.")
+            "  `nros` on PATH; `nros locate nano-ros` prints the root it finds.")
     endif()
 endif()
 add_subdirectory("${NROS_REPO_DIR}" nano_ros)
