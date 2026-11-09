@@ -28,13 +28,13 @@ repository; W8 re-measures every cell.
 | freertos-posix (cyclonedds) | **W1** | ok | ok |
 | mps2-an385 bare metal (zenoh), Tutorial 1 to 10 | ok | Rust only (ruling) | Rust only (ruling) |
 | mps2-an385 FreeRTOS (zenoh) | ok | ok | ok |
-| mps2-an385 Zephyr (zenoh) | 3268 | ok | **W2** |
-| Zephyr native_sim (zenoh) | 3268 | ok | **W2** |
+| mps2-an385 Zephyr (zenoh) | ok (W8 replay) | ok | ok (W8 replay) |
+| Zephyr native_sim (zenoh) | red in W8 replay: west configure fails | ok | ok (W8 replay) |
 | NuttX qemu-armv7a (zenoh) | ok | ok | **W3** |
 | NuttX rv-virt (zenoh) | ok | ok | ok |
 | ThreadX Linux (zenoh) | ok | ok | ok |
-| ThreadX qemu riscv64 (zenoh) | ok | **W9** | **W4**, **W9** |
-| nucleo-f767zi Zephyr (zenoh), Renode twin, serial | 2358 resolved 2026-11-09; W8 re-measures | ok | ok |
+| ThreadX qemu riscv64 (zenoh) | ok | ok (W8 replay) | ok (W8 replay) |
+| nucleo-f767zi Zephyr (zenoh), Renode twin, serial | red in W8 replay: no zephyr-lang-rust in the west manifest | ok | ok |
 
 Gaps already owned outside this phase. This phase does not repeat them; W8
 re-measures their cells once they land:
@@ -452,6 +452,18 @@ of that line before it stops the emulator.
 - every starter and Tutorial chapter has Rust, C and C++ tabs;
 - every tab has a probe track;
 - `check-book-audience` passes with no new baseline row.
+
+- **Replay (2026-11-10)**, 28 tracks on the committed branch with every
+  awaits lifted: 21 pass. Their awaits are gone. Still red:
+  - `zephyr-rust` (native_sim): the generated west entry fails at CMake
+    configure.
+  - `renode-nucleo-rust`: configure says to add `zephyr-lang-rust` to the
+    west manifest; the SDK has no `west.yml` to read.
+  - `tutorial-10`: the run ends in an rclpy `!rclpy.ok()` fault; re-run
+    before treating it as a bug.
+  - `tutorial-c`, `tutorial-cpp`, `baremetal-c`, `baremetal-cpp`: bare metal
+    is Rust only by ruling; the Tutorial's C and C++ tabs move to FreeRTOS
+    in a separate change.
 
 ### W9 — The RISC-V toolchain file finds rust-lld on the pinned toolchain — DONE
 
