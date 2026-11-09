@@ -505,3 +505,4 @@ and W9 wait.
 | issue | why it belongs here |
 | --- | --- |
 | [#2304](../issues/2304-c-param-server-cyclone-exits-after-store.md) | Found by this phase's W5 book session: a C talker with `rclc_parameter_server` exits 1 on Linux, so the chapter that uses it cannot be probed. |
+| [#2376](../issues/2376-tutorial-c-cpp-tabs-board-refuses-c-entry.md) | The Tutorial's C and C++ tabs scaffold for `mps2-an385-baremetal`, which refuses a C or C++ entry; their `tutorial-c`/`tutorial-cpp` tracks run on no schedule. |

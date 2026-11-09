@@ -1,0 +1,58 @@
+---
+id: 2376
+title: "The Tutorial's C and C++ tabs scaffold for mps2-an385-baremetal, which refuses a C or C++ entry, so their first `nros build` fails"
+status: open
+type: bug
+severity: high
+area: [book, cli, education]
+purpose: [education]
+related: [phase-537, 2269]
+found: 2026-11-09
+---
+
+**Home: [phase-537](../roadmap/phase-537-book-user-guide-organization.md)** (W5, the Tutorial). Found while writing issue 2269's QoS lab.
+
+## What fails
+
+Tutorial chapter 1 (`book/src/tutorial/run-a-talker.md`) tells a C or C++
+reader to run:
+
+```text
+nros new sensor_ws --board mps2-an385-baremetal --template talker --lang c
+```
+
+The scaffold succeeds. The first `nros build` then fails at configure,
+on main (f450f9a3c3, 2026-11-09), for `--lang c` and `--lang cpp` alike:
+
+```text
+CMake Error at …/cmake/NanoRosEntry.cmake:1324 (message):
+  nano_ros_entry: `nros dev codegen entry-pack --lang c --board
+  mps2-an385-baremetal` failed (rc=1).
+  Error: codegen entry-pack: unknown board key `mps2-an385-baremetal` — the
+  entry pipeline knows: linux, zephyr, …, mps2-an385-freertos, …
+```
+
+The refusal is deliberate. `nros-entry-lower`'s board table leaves the
+bare-metal `mps2-an385` out because "a C or C++ entry has no runner for" it.
+So the scaffold accepts a pairing the build refuses, and the Tutorial
+teaches it in every chapter's C and C++ tabs.
+
+## Why nothing caught it
+
+The `tutorial-c` and `tutorial-cpp` probe tracks exist
+(`scripts/probe/probe-tracks.json`, `just probe tutorial-c`), but they are
+`weekly: false` and no workflow runs them. Only the Rust tracks
+(`first-project`, `tutorial-2` to `tutorial-10`) replay.
+
+## What would close it
+
+One of:
+
+1. A C/C++ entry gets a runner on bare-metal `mps2-an385`, so the pairing
+   builds; or
+2. the Tutorial's C and C++ tabs scaffold for a board that takes a C entry
+   (`mps2-an385-freertos` is the same emulated board), and `nros new`
+   refuses `--lang c|cpp` with a board the entry pipeline does not know,
+   naming the alternative.
+
+Either way, `tutorial-c` and `tutorial-cpp` run on a schedule.
