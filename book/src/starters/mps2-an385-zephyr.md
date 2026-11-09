@@ -127,23 +127,13 @@ packages. Without `--sudo` it prints the install command instead.
 
 The board's own configuration puts the image on QEMU's user-mode network, at
 `10.0.2.15`, and points it at the router on `10.0.2.2:7447`, which is your
-host. Start the router first, in its own terminal, listening on every
-interface so the guest's connection arrives:
+host. `nros run` reads that address from the image's build and starts the
+router on your host's port 7447 itself, or reuses a zenoh router already
+listening there.
 
-<!-- removed when the board descriptor states its default locator -->
-```bash probe=50 probe-run=60 probe-keep track=installed
-source /opt/ros/humble/setup.bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd
-```
-
-```text probe-expect=50
-Started Zenoh router with id
-```
-
-Then, in a second terminal, in the workspace, source ROS 2 and build and run
-the talker. This first run records the ROS 2 prefix in the workspace, so
-later runs of it need no sourced shell:
+In the workspace, source ROS 2 and build and run the talker. This first run
+records the ROS 2 prefix in the workspace, so later runs of it need no sourced
+shell:
 
 ```bash probe=60 probe-run=1500 track=installed
 source /opt/ros/humble/setup.bash
@@ -174,7 +164,7 @@ Publishing: 'Hello World: 2'
 
 ## See it in ROS 2
 
-Leave the router and `nros run` going. In a third terminal:
+Leave `nros run` going. In a second terminal:
 
 ```bash probe=70 probe-run=120 track=installed
 source /opt/ros/humble/setup.bash
@@ -196,8 +186,9 @@ which receives nothing from it. That is why the command asks for best-effort.
   command it prints.
 - **No `Publishing:` line within 30 seconds of boot:** the board did not
   reach the router. QEMU's boot and Zephyr's start take about 15 seconds.
-  Check that the router listens on `0.0.0.0:7447`: one on `127.0.0.1` is out
-  of the guest's reach.
+  Check what `nros run` said about the router: it starts one on port 7447,
+  reuses a zenoh router already there, and refuses to run when something
+  else holds the port.
 - **A build that names zephyr-lang-rust:** the west workspace has no
   `modules/lang/rust`. Add the `zephyr-lang-rust` project to `west.yml` and
   run `west update` again.
