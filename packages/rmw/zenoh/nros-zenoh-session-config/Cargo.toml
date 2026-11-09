@@ -10,7 +10,7 @@ authors.workspace = true
 homepage.workspace = true
 documentation.workspace = true
 
-# RFC-0109 D8 — host-only: `nros sync`, `nros::main!` and the C/C++ entry
+# RFC-0109 D8 — host-only: `nros configure`, `nros::main!` and the C/C++ entry
 # codegen lower a bringup's `rmw/zenoh.json5` at build time, and a hosted
 # zenoh image lowers `$ZENOH_SESSION_CONFIG_URI` at run time. No embedded
 # target ever parses json5. `no_std` + `alloc` all the same: the hosted C/C++

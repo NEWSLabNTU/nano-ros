@@ -78,8 +78,8 @@ nros doctor                         # check SDK paths / toolchains / env
 | | |
 |---|---|
 | `nros new` | scaffold a project (talker / listener / service / action) |
-| `nros generate` / `generate-rust` | message bindings from `package.xml` |
-| `nros codegen` | build-tool C/C++ binding generation (cmake/build.rs interface) |
+| `nros interface generate` / `generate-rust` | message bindings from `package.xml` |
+| `nros dev codegen` | build-tool C/C++ binding generation (cmake/build.rs interface) |
 | `nros setup` | provision a board's toolchains + sources (above) |
 | `nros doctor` / `board` | health-check; inspect supported boards |
 | `nros plan` / `check` / `explain` | launch-file → plan resolution¹ |

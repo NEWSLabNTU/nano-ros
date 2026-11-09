@@ -132,7 +132,7 @@ pub fn run(args: Args) -> Result<()> {
             .or_else(|| std::env::var_os("NROS_WORKSPACE").map(PathBuf::from))
             .ok_or_else(|| {
                 eyre!(
-                    "`nros metadata --build` needs the nano-ros workspace — pass \
+                    "`nros dev metadata --build` needs the nano-ros workspace — pass \
                      --nano-ros-workspace <path> or set NROS_WORKSPACE"
                 )
             })?;
@@ -159,7 +159,7 @@ pub fn run(args: Args) -> Result<()> {
         }
         msg.push_str(
             "\n  hint: add `nros::component!(YourComponent);` to the package's `lib.rs`/`main.rs`, \
-             then run `nros metadata --build` to produce it.",
+             then run `nros dev metadata --build` to produce it.",
         );
         bail!(msg);
     }
@@ -184,7 +184,7 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     eprintln!(
-        "nros metadata: preserved {} metadata artifact(s) in {}",
+        "nros dev metadata: preserved {} metadata artifact(s) in {}",
         inputs.len(),
         metadata_dir.display()
     );

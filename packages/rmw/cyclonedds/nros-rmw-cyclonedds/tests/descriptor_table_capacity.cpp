@@ -8,7 +8,7 @@
 // staring at `publisher_create` returning UNSUPPORTED for whichever package
 // happened to be link-order last, and the cause is nowhere in sight.
 //
-// The size is now DERIVED: `nros codegen-system` counts the distinct DDS type
+// The size is now DERIVED: `nros dev codegen system` counts the distinct DDS type
 // names the SystemModel registers (the SAME count that sizes the Rust registry's
 // `NROS_CYCLONEDDS_MAX_TYPES`) and writes the knob into the workspace's cargo
 // `[env]`, from which `nros-rmw-cyclonedds-sys`'s build script turns it into a

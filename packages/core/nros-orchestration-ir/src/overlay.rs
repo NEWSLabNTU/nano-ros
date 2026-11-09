@@ -273,7 +273,7 @@ impl Overlay {
         let mut out = String::new();
         out.push_str(
             "# Written by nros (phase-486). The nano-ros facts that do not belong in\n\
-             # the SystemModel beside it — do not edit; re-run `nros sync`.\n",
+             # the SystemModel beside it — do not edit; re-run `nros configure`.\n",
         );
         out.push_str(&format!("[meta]\nversion = {OVERLAY_VERSION}\n"));
         if !self.features.is_empty() {
@@ -599,7 +599,7 @@ pub fn load_beside(model_path: &Path) -> Result<Overlay, String> {
                 Err(format!(
                     "{}: this model carries capability switches ({}) but no `{OVERLAY_FILE}` \
                      sits beside it. nano-ros reads its switches from that overlay \
-                     (phase-486); re-run `nros sync` to write it.",
+                     (phase-486); re-run `nros configure` to write it.",
                     model_path.display(),
                     legacy.join(", ")
                 ))
@@ -963,7 +963,7 @@ mod tests {
         .unwrap();
         let e = load_beside(&path).unwrap_err();
         assert!(
-            e.contains("nros sync") && e.contains("param_services"),
+            e.contains("nros configure") && e.contains("param_services"),
             "{e}"
         );
         // No switches in the model and no file: nothing stated, no error.

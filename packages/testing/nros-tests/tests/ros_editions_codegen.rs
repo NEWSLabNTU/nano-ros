@@ -52,7 +52,7 @@ fn codegen_edition_std_msgs_in_container() {
     );
     assert!(
         result.status.success(),
-        "in-container `nros generate-rust` failed:\n{log}"
+        "in-container `nros dev codegen rust` failed:\n{log}"
     );
 
     // builtin_interfaces (Time/Duration) is generated against the jazzy defs and

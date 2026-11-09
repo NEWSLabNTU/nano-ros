@@ -48,7 +48,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(3);
 
-    let ctx = nros::init().expect("nros init failed");
+    let ctx = nros::init().expect("nros::init failed");
     let cfg = ctx.config("add_two_ints_info_client");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

@@ -92,7 +92,7 @@
 #include <stddef.h>
 
 // The per-component table, written by
-// `nros ws entity-inventory --output-header` and put on the component library's
+// `nros dev image entity-inventory --output-header` and put on the component library's
 // include path by `nano_ros_node_register()`. It is pure preprocessor -- an
 // X-macro list plus a count -- so it can be included in any order and this
 // header owns the one definition of the table's TYPE.

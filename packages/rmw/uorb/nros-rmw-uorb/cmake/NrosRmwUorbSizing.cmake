@@ -30,7 +30,7 @@
 # raises each to 1 at THIS consumer, and the `#if < 1 / #error` beside each array
 # is the backstop that binds a producer this file never reaches.
 #
-# NO DESCRIPTOR, NO DEFINES. An image nobody ran `nros sync` for gets an empty
+# NO DESCRIPTOR, NO DEFINES. An image nobody ran `nros configure` for gets an empty
 # list back, no `-D` reaches either TU, and the `#ifndef ... 64` in each source
 # stands — byte-identical to every uORB build before this wave.
 #
@@ -41,7 +41,7 @@
 # emits a plain `<MACRO>=<value>` list, which is what both `COMPILE_FLAGS` and
 # `target_compile_definitions` take. None does today, because none of them has a
 # sizing descriptor: a PX4 firmware module is built inside a PX4 tree from
-# sources with no `system.toml`, so there is no contract for `nros sync` to
+# sources with no `system.toml`, so there is no contract for `nros configure` to
 # resolve. The abstention is written here rather than left to be rediscovered.
 
 include_guard(GLOBAL)

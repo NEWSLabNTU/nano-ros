@@ -931,7 +931,7 @@ pub fn check(inputs: Inputs<'_>) -> Report {
                     decl.node
                 ),
                 remedy: format!(
-                    "run `nros ws entity-census run` on an entry that launches `{}`, or accept \
+                    "run `nros dev image entity-census run` on an entry that launches `{}`, or accept \
                      that this row is unchecked",
                     decl.node
                 ),
@@ -1303,7 +1303,7 @@ fn check_params(
                         "the contract declares parameter `{name}`; the census never ran `{node}`"
                     ),
                     remedy: format!(
-                        "run `nros ws entity-census run` on an entry that launches `{node}`"
+                        "run `nros dev image entity-census run` on an entry that launches `{node}`"
                     ),
                     waiver: None,
                 });

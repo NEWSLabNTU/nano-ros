@@ -1361,7 +1361,7 @@ impl XrceDemand {
                     e.topic,
                     e.reply_bound_bytes()
                         .refusal()
-                        .unwrap_or("this descriptor predates the field; run `nros sync`")
+                        .unwrap_or("this descriptor predates the field; run `nros configure`")
                 ));
                 return;
             };

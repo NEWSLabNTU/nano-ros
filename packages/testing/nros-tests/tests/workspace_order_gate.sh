@@ -110,7 +110,7 @@ mkpkg "$WS" aaa_entry talker_pkg listener_pkg
 mkpkg "$WS" talker_pkg std_msgs
 mkpkg "$WS" listener_pkg std_msgs
 
-ORDER="$("$NROS" ws order --workspace "$WS" --lines | cut -f1)" || {
+ORDER="$("$NROS" dev ws order --workspace "$WS" --lines | cut -f1)" || {
     echo "FAIL[T1]: ws order errored" >&2
     exit 1
 }
@@ -126,7 +126,7 @@ pos() { printf '%s\n' "$ORDER" | grep -n "^$1\$" | cut -d: -f1; }
 WS2="$WORK/ws_provider"
 mkprovider "$WS2" my_backend rmw acme
 mkpkg "$WS2" app my_backend
-A2="$("$NROS" ws order --workspace "$WS2" --lines | cut -f1)"
+A2="$("$NROS" dev ws order --workspace "$WS2" --lines | cut -f1)"
 [ "$A2" = "$(printf 'my_backend\napp')" ] ||
     bad T2 "provider not ordered before its consumer, got: $A2"
 # and the provider is still discoverable AS one — ordering did not consume it.
@@ -148,7 +148,7 @@ A2="$("$NROS" ws order --workspace "$WS2" --lines | cut -f1)"
 #
 # Splitting it also separates the two verdicts the pipeline conflated: the CLI
 # failing to run at all is now distinct from the provider genuinely being absent.
-if ! PROVIDERS="$("$NROS" ws providers --workspace "$WS2" --nano-ros-root "$WS2" --kind rmw 2>&1)"; then
+if ! PROVIDERS="$("$NROS" dev ws providers --workspace "$WS2" --nano-ros-root "$WS2" --kind rmw 2>&1)"; then
     bad T2 "ws providers errored: $PROVIDERS"
 elif ! nros_grep_q "acme" <<<"$PROVIDERS"; then
     bad T2 "the provider stopped being discoverable"
@@ -160,7 +160,7 @@ mkpkg "$WS3" a b
 mkpkg "$WS3" b c
 mkpkg "$WS3" c a
 mkpkg "$WS3" unrelated
-if CY="$("$NROS" ws order --workspace "$WS3" 2>&1)"; then
+if CY="$("$NROS" dev ws order --workspace "$WS3" 2>&1)"; then
     bad T4 "a dependency cycle did not fail"
 else
     nros_grep_q -i "cycle" <<<"$CY" || bad T4 "failed without saying 'cycle': $CY"
@@ -170,7 +170,7 @@ else
 fi
 
 # --- T5: a subdir naming no package ------------------------------------------
-if MISS="$("$NROS" ws order --workspace "$WS" --subdir src/talker_pkg \
+if MISS="$("$NROS" dev ws order --workspace "$WS" --subdir src/talker_pkg \
         --subdir src/not_a_pkg 2>&1)"; then
     bad T5 "a subdir with no package.xml was silently dropped"
 else
@@ -184,7 +184,7 @@ WS4="$WORK/ws_between"
 mkpkg "$WS4" early
 mkpkg "$WS4" mid early
 mkpkg "$WS4" late mid
-B="$("$NROS" ws order --workspace "$WS4" --subdir src/late --subdir src/early --lines | cut -f1)"
+B="$("$NROS" dev ws order --workspace "$WS4" --subdir src/late --subdir src/early --lines | cut -f1)"
 [ "$B" = "$(printf 'early\nlate')" ] ||
     bad T6 "requested set not ordered through an unrequested package, got: $B"
 

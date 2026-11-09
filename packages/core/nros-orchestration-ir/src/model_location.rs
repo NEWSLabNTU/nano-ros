@@ -720,8 +720,8 @@ pub fn ensure_model(
     if let Some(marker) = refused_marker_for(bringup_dir, model_rel) {
         let why = std::fs::read_to_string(&marker).unwrap_or_default();
         return Err(format!(
-            "`nros sync` refused the last resolve of `{model_rel}` (marker `{}`):\n  {}\n  \
-             Fix the input it names and run `nros sync`; a consumer does not \
+            "`nros configure` refused the last resolve of `{model_rel}` (marker `{}`):\n  {}\n  \
+             Fix the input it names and run `nros configure`; a consumer does not \
              re-resolve past a refusal (phase-460 W1).",
             marker.display(),
             why.trim().replace('\n', "\n  ")
@@ -926,7 +926,7 @@ mod tests {
             assert!(refused(&with), "{with:?}");
             let msg = with.unwrap_err();
             assert!(
-                msg.contains("contract-check") && msg.contains("nros sync"),
+                msg.contains("contract-check") && msg.contains("nros configure"),
                 "{msg}"
             );
         });

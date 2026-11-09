@@ -135,7 +135,7 @@ fn the_paths_the_scaffold_prints_are_the_paths_the_projection_derives() {
         .arg(&out_file)
         .env("NROS_EXTRA_BOARD_PATH", tmp.path())
         .output()
-        .expect("run nros board cmake-vars");
+        .expect("run nros dev board cmake-vars");
     assert!(
         out.status.success(),
         "{}",

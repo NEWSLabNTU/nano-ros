@@ -2069,7 +2069,7 @@ pub struct NrosCppSessionSpec {
     /// Session-default namespace. NULL = "/".
     pub namespace_: *const c_char,
     /// Issue 2123 — this session's RMW properties: its domain's RMW file,
-    /// lowered on the host (RFC-0109 D8; `nros ws session-properties` writes
+    /// lowered on the host (RFC-0109 D8; `nros dev rmw session-properties` writes
     /// the table). NULL with `properties_len == 0` = none. Read during
     /// `nros_cpp_init_multi` only; the rows and their strings must outlive
     /// that call.
@@ -2234,7 +2234,7 @@ pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
 /// unified compiled default — same as the Rust `nros::main!` resolver compiled
 /// default and the C++ 2-arg `rclcpp::init` default after this phase).
 ///
-/// The generated typed C entry (`nros codegen entry --lang c --typed`) calls this
+/// The generated typed C entry (`nros dev codegen entry --lang c --typed`) calls this
 /// from `main`, passing `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` which
 /// resolves to the launch node name for single-node entries (or NULL for multi-node,
 /// where the "node" default applies).
@@ -7561,7 +7561,7 @@ pub const NROS_CPP_MAX_LEVELS: u8 = nros_node::executor::MAX_LEVELS as u8;
 
 /// phase-509 P7 — the level of sched task `index` of a runner's `n` sched tasks: its
 /// urgency order among their kernel priorities, 0 the most urgent, equal
-/// priorities in array order. The rule `nros codegen entry` uses for
+/// priorities in array order. The rule `nros dev codegen entry` uses for
 /// `NROS_ENTRY_LEVEL_OF_<node>`, so the two agree. The priorities are read
 /// from the runner's own tier array: `first_priority` points at tier 0's
 /// `int64_t` priority and `stride` is the array's element size, so a runner

@@ -39,7 +39,7 @@ supported_netstacks = []
 # Issue 2341 — the board's port and RTOS config dir, stated here as every
 # other FreeRTOS board states them (phase-484 W2b, RFC-0103 D1/D3). The board
 # cmake module sets the port for the CMake half, but these `[env]` rows are
-# the only carrier to the CARGO half (`nros ws board-facts` → Corrosion), and
+# the only carrier to the CARGO half (`nros dev image board-facts` → Corrosion), and
 # `zpico-sys` refuses to build without them: a zenoh image here stopped on
 # "FREERTOS_PORT not set". No `[build] target`: the image is a host process.
 cargo_config = '''

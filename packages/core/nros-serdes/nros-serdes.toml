@@ -16,7 +16,7 @@
 # How this format is produced. Not derivable: it is a property of the
 # implementation, not of the name.
 #
-#   "codegen"  a per-type serializer emitted by `nros generate-rust` — fast,
+#   "codegen"  a per-type serializer emitted by `nros dev codegen rust` — fast,
 #              and what CDR uses (the generated `serialize`/`deserialize`).
 #   "schema"   one implementation walking the `&'static [Field]` schema codegen
 #              already emits for every message. Slower, and costs a provider no

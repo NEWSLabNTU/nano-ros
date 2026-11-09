@@ -185,7 +185,7 @@ fn metadata_build_discovers_missing_sources() {
         build: true,
         nano_ros_workspace: Some(nano_ros_workspace()),
     })
-    .expect("nros metadata --build discovers + produces missing source metadata");
+    .expect("nros dev metadata --build discovers + produces missing source metadata");
 
     // The component's declared source-metadata path was produced...
     assert!(

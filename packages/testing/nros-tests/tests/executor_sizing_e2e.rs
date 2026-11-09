@@ -61,7 +61,7 @@ fn six_timer_node_boots_on_a_metadata_derived_executor(zenohd_unique: ZenohRoute
             panic!(
                 "the six-timer entry never completed its spin ({err}). A registration \
                  failure here means the executor was sized from the SystemModel's \
-                 timer-blind count (issue 0257): check that `nros sync` produced \
+                 timer-blind count (issue 0257): check that `nros configure` produced \
                  src/burst_pkg/metadata/burst_talker.json and that `nros::main!` read it"
             )
         });

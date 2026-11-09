@@ -239,7 +239,7 @@ pub(crate) fn admit_and_lower(
     if manifest.context != Some(PackContext::LoweredEntry) {
         return Err(format!(
             "entry pack `{pack}` does not render a LoweredEntry (its context is {:?}), \
-             so `nros codegen entry` cannot drive it",
+             so `nros dev codegen entry` cannot drive it",
             manifest.context
         ));
     }
@@ -255,7 +255,7 @@ pub(crate) fn admit_and_lower(
         return Err(format!(
             "typed entry emit (`{pack}` pack): board `{}` has no C-ABI `run_components` \
              (`BoardFamily::c_abi_runners`), so the `{pack}` pack has no runner to call. \
-             `nros codegen entry-pack --board {}` reports which pack renders it.",
+             `nros dev codegen entry-pack --board {}` reports which pack renders it.",
             plan.board, plan.board,
         ));
     }

@@ -86,7 +86,7 @@ fn codegen_cyclonedds_emits_std_msgs() {
         .arg(&out)
         .status()
         .expect("spawn nros");
-    assert!(status.success(), "nros codegen failed: {status}");
+    assert!(status.success(), "nros dev codegen failed: {status}");
 
     assert!(
         out.join("std_msgs_Int32.idl").is_file(),
@@ -141,7 +141,7 @@ fn nros_codegen_cyclonedds_descriptors_emits_register_tu() {
         .arg(&out)
         .status()
         .expect("spawn nros");
-    assert!(status.success(), "nros codegen failed: {status}");
+    assert!(status.success(), "nros dev codegen failed: {status}");
 
     let reg_h = fs::read_to_string(out.join("register.h")).expect("read register.h");
     assert!(

@@ -1765,7 +1765,7 @@ impl SizingDescriptor {
         if self.schema_version != crate::SCHEMA_VERSION {
             return Err(format!(
                 "sizing descriptor schema_version {} -- this reader understands {}. \
-                 Re-run `nros sync` to regenerate it.",
+                 Re-run `nros configure` to regenerate it.",
                 self.schema_version,
                 crate::SCHEMA_VERSION
             ));

@@ -10,7 +10,7 @@ Shared codegen library for [nano-ros](https://github.com/NEWSLabNTU/nano-ros) me
 > paths are not interchangeable.
 
 ```bash
-nros generate-rust --force
+nros dev codegen rust --force
 ```
 
 This package no longer builds a `cargo nano-ros` command. Existing codegen

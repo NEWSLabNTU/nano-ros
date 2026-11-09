@@ -19,7 +19,7 @@ path = "src/lib.rs"
 [dependencies]
 # nros-cli-core hosts the planner (orchestration::plan_system + the NrosPlan
 # schema). `nros-build` re-uses it via library API rather than shelling out to
-# `nros codegen-system` so the Entry pkg's `build.rs` does not need the
+# `nros dev codegen system` so the Entry pkg's `build.rs` does not need the
 # binary on PATH at build time.
 nros-cli-core = { path = "../nros-cli-core" }
 

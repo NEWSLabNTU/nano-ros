@@ -134,7 +134,7 @@ cat >"$WS/src/case_board/package.xml" <<'XML'
 XML
 
 IDX="$WORK/providers.json"
-"$NROS" ws providers --workspace "$WS" --nano-ros-root "$WS" --write-index "$IDX" >/dev/null
+"$NROS" dev ws providers --workspace "$WS" --nano-ros-root "$WS" --write-index "$IDX" >/dev/null
 
 # --- T1 / T2 / T3: the cmake loader -----------------------------------------
 cat >"$WORK/CMakeLists.txt" <<EOF
@@ -190,7 +190,7 @@ nros_grep_q "GATE dep=$IDX" <<<"$OUT" ||
     bad T3 "the index itself is not in CMAKE_CONFIGURE_DEPENDS"
 
 # --- T4: a provider appearing after the index was written --------------------
-"$NROS" ws providers --workspace "$WS" --nano-ros-root "$WS" --check-index "$IDX" >/dev/null 2>&1 ||
+"$NROS" dev ws providers --workspace "$WS" --nano-ros-root "$WS" --check-index "$IDX" >/dev/null 2>&1 ||
     bad T4 "a freshly written index reports itself STALE"
 
 mkdir -p "$WS/src/latecomer"
@@ -205,7 +205,7 @@ cat >"$WS/src/latecomer/package.xml" <<'XML'
 </package>
 XML
 
-if CHECK="$("$NROS" ws providers --workspace "$WS" --nano-ros-root "$WS" \
+if CHECK="$("$NROS" dev ws providers --workspace "$WS" --nano-ros-root "$WS" \
         --check-index "$IDX" 2>&1)"; then
     bad T4 "adding a new provider did NOT make --check-index fail"
 else
@@ -218,7 +218,7 @@ fi
 # --- T5: an index for other roots ------------------------------------------
 OTHER="$WORK/other_ws"
 mkdir -p "$OTHER/src"
-if OUT5="$("$NROS" ws providers --workspace "$OTHER" --nano-ros-root "$OTHER" \
+if OUT5="$("$NROS" dev ws providers --workspace "$OTHER" --nano-ros-root "$OTHER" \
         --index "$IDX" 2>&1)"; then
     bad T5 "an index built for different roots was served instead of rejected"
 else
@@ -233,7 +233,7 @@ fi
 # silently-losing overlay is the failure that costs an afternoon.
 OVER="$WORK/overlay_ws"
 mkprovider "$OVER" patched_backend rmw acme        # same rmw name as $WS's acme_rmw
-R6="$("$NROS" ws providers --workspace "$OVER" --nano-ros-root "$WS" \
+R6="$("$NROS" dev ws providers --workspace "$OVER" --nano-ros-root "$WS" \
         --resolve rmw:acme 2>&1)" || {
     bad T6 "resolving a shadowed name failed: $R6"
     R6=""
@@ -272,7 +272,7 @@ fi
 DUP="$WORK/dup_ws"
 mkprovider "$DUP" dup_one rmw twice
 mkprovider "$DUP" dup_two rmw twice
-if R7="$("$NROS" ws providers --workspace "$DUP" --nano-ros-root "$DUP" \
+if R7="$("$NROS" dev ws providers --workspace "$DUP" --nano-ros-root "$DUP" \
         --resolve rmw:twice 2>&1)"; then
     bad T7 "same-root ambiguity resolved instead of erroring: $R7"
 else
@@ -281,7 +281,7 @@ else
 fi
 
 # T8 — an unknown name is usually a typo, so the error carries the list.
-if R8="$("$NROS" ws providers --workspace "$WS" --nano-ros-root "$WS" \
+if R8="$("$NROS" dev ws providers --workspace "$WS" --nano-ros-root "$WS" \
         --resolve rmw:acmee 2>&1)"; then
     bad T8 "an unknown provider name resolved"
 else

@@ -84,7 +84,7 @@ if(NOT COMMAND nros_resolve_carve_out_profile)
 endif()
 
 # issue 1541 — `nros_resolve_board_facts`, the ONE resolver every other lane
-# delivers board facts through (`nros ws board-facts`). File scope for the same
+# delivers board facts through (`nros dev image board-facts`). File scope for the same
 # reason as above; include_guard(GLOBAL) makes it a no-op when already loaded.
 if(NOT COMMAND nros_resolve_board_facts)
     get_filename_component(_nros_c_repo_cmake
@@ -516,7 +516,7 @@ function(nros_nuttx_build_example)
     # nothing to attach to, and without these `nros-node` / `nros-params` saw
     # no `NROS_PLATFORM_NAME` and no `NROS_BOARD_TOML` — the RFC-0049 platform
     # and board rungs were unreachable and every knob took its builtin. The
-    # resolver is the shared one (`nros ws board-facts`), soft on every absence
+    # resolver is the shared one (`nros dev image board-facts`), soft on every absence
     # exactly as on the other lanes.
     set(NROS_BOARD_FACTS_ENV "")
     if(COMMAND nros_resolve_board_facts)
@@ -551,7 +551,7 @@ function(nros_nuttx_build_example)
         # root `.cargo/config.toml` defines it; an installed SDK root ships no
         # such file, so every NuttX image an installed `nros build` made died
         # with "profile `nros-minsizerel` is not defined" (measured on the
-        # installed track). `nros profile env` is what the Corrosion lanes
+        # installed track). `nros dev profile env` is what the Corrosion lanes
         # already get through `nros_cargo_profile_env`.
         COMMAND ${CMAKE_COMMAND} -E env
             ${_NROS_NUTTX_ENV}

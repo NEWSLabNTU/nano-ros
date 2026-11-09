@@ -5,7 +5,7 @@
  *
  * Symmetric to `<rclcpp/detail/main.hpp>`: the cmake fn `nano_ros_entry(LAUNCH
  * "<bringup>:<file>.launch.xml")` drives per-Entry-pkg codegen via
- * `nros codegen entry --lang c`, then appends the generated TU to the
+ * `nros dev codegen entry --lang c`, then appends the generated TU to the
  * executable target's sources.
  *
  * This header provides:
@@ -58,7 +58,7 @@ extern "C" {
 
 /* Phase 257 (W0-A, RFC-0043) — typed C Entry lifecycle. The C-ABI sibling of
  * the C++ `LinuxBoard::run_components`; the generated typed C TU (emitted by
- * `nros codegen entry --lang c --typed`) calls this from `main`. `setup` is
+ * `nros dev codegen entry --lang c --typed`) calls this from `main`. `setup` is
  * invoked once after `init`, with the executor handle, to create each node and
  * `configure` its component on the real executor; then this pumps the executor
  * (init → setup → spin → shutdown). Returns 0 on graceful exit, else the first
@@ -69,7 +69,7 @@ NROS_PUBLIC int32_t nros_board_native_run_components(nros_c_entry_setup_fn setup
 /* Phase 266 (W5b) — named variant: `session_name` sets the primary session /
  * node name visible via `ros2 node list` (the #98 fix for C entries). NULL or
  * empty → falls back to `"node"`. The generated typed C entry (emitted by
- * `nros codegen entry --lang c --typed`) calls this from `main`, passing
+ * `nros dev codegen entry --lang c --typed`) calls this from `main`, passing
  * `nros_boot_config_node_name(&NROS_BOOT_CONFIG)`. Defined in nros-cpp. */
 NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_name,
                                                            nros_c_entry_setup_fn setup);

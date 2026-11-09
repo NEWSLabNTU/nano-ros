@@ -8,7 +8,7 @@
 // (and so checked nothing) fails here, not on a board.
 //
 // The table comes from `declared-params-fixture/nros/`, which is what
-// `nros ws entity-inventory --output-params-header` renders from the
+// `nros dev image entity-inventory --output-params-header` renders from the
 // `declared_params.yaml` beside it. In a real build `nano_ros_node_register()`
 // writes that header into the component library's own include dir; here the
 // gate puts the fixture dir on the include path, which exercises the same

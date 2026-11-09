@@ -969,7 +969,7 @@ endfunction()
 # what it used to read from the caller's scope as arguments.
 #
 # Contract (the same one a cargo-rooted consumer satisfies through
-# `nros codegen cyclonedds-descriptors`): given a target, its interface files,
+# `nros dev codegen cyclonedds-descriptors`): given a target, its interface files,
 # its dependencies and the message library to attach the result to, generate the
 # per-message typesupport and wire it in. A backend that declares no
 # `per_message` hook pays nothing.

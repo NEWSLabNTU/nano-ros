@@ -576,7 +576,7 @@ impl DockerRosEnv {
         std::fs::create_dir_all(out_host)
             .map_err(|e| TestError::ProcessFailed(format!("mkdir {out_host:?}: {e}")))?;
         let inner = format!(
-            "cd {workdir_in_container} && nros generate-rust -o /out {}",
+            "cd {workdir_in_container} && nros dev codegen rust -o /out {}",
             extra_args.join(" ")
         );
         let snippet = self.env_snippet();
@@ -740,7 +740,7 @@ impl DockerRosEnv {
             self.image().as_str(),
             "bash",
             "-lc",
-            &format!("{snippet} && cd /consumer && nros generate-rust --force -o /out"),
+            &format!("{snippet} && cd /consumer && nros dev codegen rust --force -o /out"),
         ]);
         cmd.output().map_err(|e| {
             TestError::ProcessFailed(format!(

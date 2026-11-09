@@ -1949,7 +1949,7 @@ pub fn is_nros_ws_sync_available() -> bool {
 pub fn require_nros_ws_sync() {
     if !is_nros_ws_sync_available() {
         crate::unmet!(
-            "`nros sync` verb unavailable (installed nros lacks Phase 210.D.1; \
+            "`nros configure` verb unavailable (installed nros lacks Phase 210.D.1; \
              rebuild via `just setup-cli` to pick up the in-tree CLI — Phase 218)"
         );
     }

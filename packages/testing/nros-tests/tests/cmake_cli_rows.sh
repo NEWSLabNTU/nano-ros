@@ -5,7 +5,7 @@
 #
 # THE DEFECT
 #
-# `nros ws leaf-system` prints `NROS_LEAF_CONF=<board>/prj.conf;<leaf>/x.conf`
+# `nros dev image leaf-system` prints `NROS_LEAF_CONF=<board>/prj.conf;<leaf>/x.conf`
 # when a board package carries its own `prj.conf` AND the image names an
 # `os_config` fragment. The Zephyr module hook read the output with
 # `string(REPLACE "\n" ";" ...)`, so the `;` inside the value split it: the row

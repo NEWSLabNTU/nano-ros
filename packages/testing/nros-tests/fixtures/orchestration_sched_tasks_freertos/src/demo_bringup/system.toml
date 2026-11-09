@@ -22,7 +22,7 @@ group_tasks = { telem = "low" }
 # The image `src/demo_entry/` (package `demo_entry`) boots. Its deployment was
 # that entry's `[package.metadata.nros.deploy.freertos]` table until phase-445
 # W5 retired it: `nros::main!` reads this image instead (`leaf_system::for_entry`,
-# which matches `entry` against the PACKAGE name). Issue 1305: `nros sync`
+# which matches `entry` against the PACKAGE name). Issue 1305: `nros configure`
 # reads the same claim to write the entry's selection package (its board crate).
 #
 # Issue #48 cause 1 — slirp addressing threaded into the firmware boot Config

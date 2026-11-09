@@ -615,7 +615,7 @@ fn generate_lib_rs(src_dir: &Path, package: &Package) -> Result<()> {
 /// that points at the constant, which is right there.
 fn emit_codegen_version_token() -> String {
     format!(
-        r#"/// The nros codegen version this crate was emitted at (phase-429 W1).
+        r#"/// The nros dev codegen version this crate was emitted at (phase-429 W1).
 ///
 /// The runtime declares the versions it accepts in `nros_core::codegen_version`;
 /// the assertion below is what turns a disagreement into a build failure rather
@@ -631,7 +631,7 @@ const _: () = assert!(
     "this crate's NROS_EMITTED_CODEGEN_VERSION (declared just above) is not \
      accepted by the nros-core it is being compiled against -- compare it with \
      nros_core::codegen_version. Regenerate the generated/ tree with this \
-     checkout's codegen: `nros sync` in a consumer workspace, or \
+     checkout's codegen: `nros configure` in a consumer workspace, or \
      `just generate-bindings` in-tree."
 );
 
@@ -1657,8 +1657,8 @@ mod tests {
         // The error has to tell the reader what to do. If this message is ever
         // reworded, keep it actionable rather than deleting the assertion.
         assert!(
-            lib_rs.contains("nros sync"),
-            "the compile error must name the fix (`nros sync`), got:\n{lib_rs}"
+            lib_rs.contains("nros configure"),
+            "the compile error must name the fix (`nros configure`), got:\n{lib_rs}"
         );
     }
 

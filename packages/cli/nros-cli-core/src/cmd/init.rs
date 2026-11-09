@@ -24,12 +24,12 @@ pub fn run(args: Args) -> Result<()> {
     let (path, n) = cmake_preset::write_project_presets(&args.dir)?;
     if n == 0 {
         eprintln!(
-            "nros init: wrote {} (no board presets yet — run `nros setup <board>` first)",
+            "nros setup presets: wrote {} (no board presets yet — run `nros setup <board>` first)",
             path.display()
         );
     } else {
         eprintln!(
-            "nros init: wrote {} including {n} board preset(s); `cmake --preset <board>` is ready",
+            "nros setup presets: wrote {} including {n} board preset(s); `cmake --preset <board>` is ready",
             path.display()
         );
     }

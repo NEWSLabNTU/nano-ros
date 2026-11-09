@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- Issue 1305 — the Entry pkg is a ROS package so `nros sync` scans it and
+<!-- Issue 1305 — the Entry pkg is a ROS package so `nros configure` scans it and
      writes its generated selection package (the board crate it links). -->
 <package format="3">
   <name>demo_entry</name>

@@ -76,7 +76,7 @@ class TestDeploy:
     """The platform comes from the board the package's system.toml names."""
 
     def test_the_system_toml_board_is_the_platform(self, tmp_path, monkeypatch):
-        # The deploy token is DERIVED by `nros ws leaf-system` (the one reader,
+        # The deploy token is DERIVED by `nros dev image leaf-system` (the one reader,
         # RFC-0098 D3), never parsed here; stub the verb so the rule under test
         # is which file decides, not the CLI's catalog.
         d = write_pkg(tmp_path, "threadx_pkg", "<build_type>nros_cmake</build_type>")

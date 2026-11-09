@@ -2,7 +2,7 @@
 #
 # This pkg ships a sibling `launch/secondary.launch.xml` that the
 # primary launch `<include>`s via `$(find-pkg-share secondary_node)/launch/…`.
-# `nros sync` registers this package in the ament prefix it synthesizes for
+# `nros configure` registers this package in the ament prefix it synthesizes for
 # the launch resolver (issue 1861), so that substitution resolves to this
 # directory with no install step.
 

@@ -1836,7 +1836,7 @@ fn image_facts_writes_nothing() {
         .collect();
     assert!(
         changed.is_empty(),
-        "`nros image-facts` wrote to the workspace it was asked about (issue 1716): {changed:?}"
+        "`nros dev image facts` wrote to the workspace it was asked about (issue 1716): {changed:?}"
     );
 
     // The query still answers what the build plans: same images, same facts.

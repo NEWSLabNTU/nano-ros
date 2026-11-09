@@ -8,7 +8,7 @@
 #
 #   1. `zephyr-fixture-run-one.sh`'s NINJA path never regenerated it, so the
 #      file moved only when something else planned the workspace — and that
-#      something else was the `nros image-facts` query a configure runs.
+#      something else was the `nros dev image facts` query a configure runs.
 #   2. That query runs INSIDE the configure, after cmake has read the file. The
 #      build system is written after the rewrite, newer than its input, so no
 #      later ninja reconfigured. Measured on `features`' `zephyr_rust_qos`

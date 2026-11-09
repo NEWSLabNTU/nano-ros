@@ -4,7 +4,7 @@
 # sidecar; both are RETIRED per §212.L. The shape now is in-cmake:
 # `nano_ros_node_register(NAME ... CLASS ... SOURCES ... DEPLOY)`
 # writes a JSON fragment to the build dir under
-# `nros-metadata.json` (consumed by `nros codegen-system`).
+# `nros-metadata.json` (consumed by `nros dev codegen system`).
 #
 # (`nano_ros_deploy` was retired post-287 — the deploy/rmw tuple lives in
 # package.xml.) The included module (NanoRosNodeRegister) is pulled in by the

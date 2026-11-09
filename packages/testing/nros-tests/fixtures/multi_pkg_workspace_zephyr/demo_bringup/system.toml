@@ -21,8 +21,8 @@ name = "listener"
 
 # Issue 1312 — `entry` is how this image CLAIMS the hand-written west
 # application beside it. `nros_system_generate()` names its entry
-# (`codegen-system --for-entry`, the spelling `nros image-facts` and
-# `nros ws board-facts` already use) and this is the key that answers it;
+# (`codegen-system --for-entry`, the spelling `nros dev image facts` and
+# `nros dev image board-facts` already use) and this is the key that answers it;
 # without it the bake resolves no image and silently takes the HOST defaults,
 # sched task sub-table included. The id is not derivable from the app's name —
 # a generated entry would be `zephyr_native_sim_entry`, and this one is

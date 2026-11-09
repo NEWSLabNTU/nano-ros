@@ -144,7 +144,7 @@ pub fn on_node_create(_name: &str, _namespace: &str, _domain_id: u32) {
         // that under-counts.
         if !crate::metadata_mode::begin_node(_name, _namespace, _domain_id) {
             panic!(
-                "nros metadata mode: recorder rejected node `{_name}` — raise the \
+                "nros metadata-mode: recorder rejected node `{_name}` — raise the \
                  MetadataRecorder capacity"
             );
         }
@@ -220,7 +220,7 @@ pub fn on_param_declare(_name: &str, _value: &crate::ParameterValue) {
         ensure_scope();
         if !crate::metadata_mode::record_parameter(_name, _value) {
             panic!(
-                "nros metadata mode: recorder rejected parameter `{_name}` -- a census \
+                "nros metadata-mode: recorder rejected parameter `{_name}` -- a census \
                  built from this sidecar would say the node declares fewer than it does"
             );
         }
@@ -287,7 +287,7 @@ fn record(
     };
     if !crate::metadata_mode::record(rec) {
         panic!(
-            "nros metadata mode: recorder rejected `{id}` — an executor sized from \
+            "nros metadata-mode: recorder rejected `{id}` — an executor sized from \
              this census would be too small"
         );
     }

@@ -368,7 +368,7 @@ pub fn run(args: Args) -> Result<()> {
         Some(Sub::System(sub_args)) => super::codegen_system::run(sub_args),
         None => {
             let Some(args_file) = args.args_file else {
-                bail!("nros codegen: --args-file is required (or use a subcommand)");
+                bail!("nros dev codegen: --args-file is required (or use a subcommand)");
             };
             // Phase 218.E — ABI version guard. args_file lives inside the
             // consumer's CMake build dir; walking up finds the workspace
@@ -393,7 +393,7 @@ pub fn run(args: Args) -> Result<()> {
             // the dispatch at all. Rust is refused by name: a Rust message
             // crate comes from `nros generate-rust`, not from this verb.
             let language = nros_lang::Language::parse(&args.language)
-                .map_err(|e| eyre!("nros codegen --language: {e}"))?;
+                .map_err(|e| eyre!("nros dev codegen --language: {e}"))?;
             match language {
                 nros_lang::Language::C => {
                     cargo_nano_ros::generate_c_from_args_file(cargo_nano_ros::GenerateCConfig {
@@ -410,7 +410,7 @@ pub fn run(args: Args) -> Result<()> {
                     .map_err(|e| eyre!("{e:#}"))
                 }
                 nros_lang::Language::Rust => bail!(
-                    "nros codegen: `--language rust` is not served by the args-file verb \
+                    "nros dev codegen: `--language rust` is not served by the args-file verb \
                      (it renders C and C++ message packages for CMake); Rust message \
                      crates come from `nros dev codegen rust`"
                 ),
@@ -465,7 +465,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             "codegen entry: `--launch` was removed — generate a \
              SystemModel and pass `--model`:\n  nros configure       \
              # writes <ws>/build/nros/models/<bringup>/system_model.yaml\n  \
-             nros codegen entry --model \
+             nros dev codegen entry --model \
              <ws>/build/nros/models/<bringup>/system_model.yaml …"
         );
     } else {
@@ -484,7 +484,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
              SystemModel and pass it via `--model`:\n  nros-launch-resolve \
              <bringup>/launch/<file>.launch.xml --system <bringup>/system.toml \
              host:={host} -o <bringup>/config/<file>_{host}_model.yaml\n  \
-             nros codegen entry --model <bringup>/config/<file>_{host}_model.yaml …"
+             nros dev codegen entry --model <bringup>/config/<file>_{host}_model.yaml …"
         );
     }
 
@@ -508,7 +508,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 .into_iter()
                 .map(|(v, rows, ages)| {
                     for n in &v.not_lowered {
-                        eprintln!("nros codegen entry: mode `{}`: not lowered: {n}", v.name);
+                        eprintln!(
+                            "nros dev codegen entry: mode `{}`: not lowered: {n}",
+                            v.name
+                        );
                     }
                     (v.name, rows, ages)
                 })
@@ -609,7 +612,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 .map(|d| d.mode_deadlines.not_lowered.as_slice())
                 .unwrap_or_default()
             {
-                eprintln!("nros codegen entry: {n}");
+                eprintln!("nros dev codegen entry: {n}");
             }
             if let Some(sched_tasks) = plan.resolved_sched_tasks.as_ref() {
                 let periods: Vec<(String, u64)> = sched_tasks
@@ -625,7 +628,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 for n in nros_orchestration_ir::mode_variants::check_switch_latency(model, &periods)
                     .map_err(|e| eyre!("codegen entry: {e}"))?
                 {
-                    eprintln!("nros codegen entry: {n}");
+                    eprintln!("nros dev codegen entry: {n}");
                 }
             }
             mode_sched_task = entry_codegen::emit::ModeSchedTask {
@@ -652,10 +655,10 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             .map_err(|e| eyre!("codegen entry: {e}"))?;
         if info.routed {
             eprintln!(
-                "nros codegen entry: board `{}` has no C-ABI `run_components` \
+                "nros dev codegen entry: board `{}` has no C-ABI `run_components` \
                  (`BoardFamily::c_abi_runners`), so this `--lang {lang}` entry is \
                  rendered by the `{}` pack (a `.{}` TU). \
-                 `nros codegen entry-pack --lang {lang} --board {}` reports the routing.",
+                 `nros dev codegen entry-pack --lang {lang} --board {}` reports the routing.",
                 plan.board, info.pack, info.extension, plan.board,
             );
         }
@@ -791,7 +794,7 @@ fn typed_entry_pack(lang: entry_codegen::Lang) -> Result<()> {
         // The prefix is the message this verb printed before the refusal
         // became a function; the rest says why, from the pack's own context.
         Some(PackContext::RustParity) => bail!(
-            "{prefix}: language `{lang}` has no typed entry emitter in `nros codegen \
+            "{prefix}: language `{lang}` has no typed entry emitter in `nros dev codegen \
              entry` — its pack renders the parity view, and a Rust entry is emitted \
              by the `nros::main!()` proc-macro"
         ),
@@ -955,7 +958,7 @@ fn write_link_libs_sidecar(
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "# Generated by `nros codegen entry --emit-link-libs`\n\
+        "# Generated by `nros dev codegen entry --emit-link-libs`\n\
          # Source plan: bringup={bringup}, launch={launch}.\n\
          # The Entry pkg auto-links the Node-pkg static libs the launch XML\n\
          # pulled in.",

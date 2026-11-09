@@ -130,8 +130,11 @@ def compile_rows(rows: list[dict]) -> list[tuple[dict, re.Pattern, re.Pattern]]:
     for r in rows:
         old, new = re.escape(r["old"]), re.escape(r["new"])
         end = r"(?![\w-])"
+        # `(?<!cargo )`: `cargo nros <x>` is cargo-nano-ros's own subcommand
+        # namespace (`cargo nros metadata` in a fixture's `generated_by`), not
+        # the nros CLI, whose aliases this table lists (issue 2347's sweep).
         use = re.compile(
-            rf"\bnros {old}{end}|{VAR}\s+{old}{end}|{SUBST}\s+{old}{end}"
+            rf"(?<!cargo )\bnros {old}{end}|{VAR}\s+{old}{end}|{SUBST}\s+{old}{end}"
             rf"""|\[\s*(?P<py>[A-Za-z_][A-Za-z0-9_.]*)\s*,\s*(?P<q>["']){argv_words(r["old"])}(?P=q)"""
         )
         beside = re.compile(
@@ -324,6 +327,11 @@ def self_test() -> None:
         'run([cargo, "metadata"])': [],
         'run([cli, "dev", "image", "board-facts"])': [],
         'run(["cargo", "metadata"])': [],
+        # issue 2347's sweep: another tool's namespace, and runtime names that
+        # only look like a verb.
+        'generated_by = "cargo nros metadata"': [],
+        'nros::init().expect("nros::init failed")': [],
+        '"nros metadata-mode: recorder rejected node"': [],
     }
     assert rewrite('"$(nros_cli_bin)" ws board-facts "$d"', c) == \
         '"$(nros_cli_bin)" dev image board-facts "$d"'

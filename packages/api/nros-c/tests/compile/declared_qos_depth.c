@@ -11,7 +11,7 @@
  *
  * The declared table is the SAME committed artifact the C++ half compiles
  * against, `packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/`,
- * which is what `nros ws entity-inventory --output-header` renders and what
+ * which is what `nros dev image entity-inventory --output-header` renders and what
  * `the_committed_compile_fixture_is_what_this_emitter_renders` holds to the
  * emitter. One generated descriptor serves both languages -- that is the whole
  * claim of this wave -- so pointing both probes at one fixture is the honest

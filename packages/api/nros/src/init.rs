@@ -765,8 +765,9 @@ name (RFC-0046; rcl's local-before-global), through Context::create_executor / \
 create_executor_in; and, in an image with a parameter store, -p / --param [node:]name:=value and \
 --params-file <path>, applied when a node declares the parameter (RFC-0015 section 9). REFUSED: \
 node-identity remaps (__node, __name, __ns), -e / --enclave, the log flags, any token that is not a \
-ROS flag, and -p / --params-file in an image without a parameter store. A nros sync image does not read argv at all: its launch \
-remaps and parameters are projected into the GENERATED ENTRY at BUILD time.";
+ROS flag, and -p / --params-file in an image without a parameter store. A nros configure \
+image does not read argv at all: its launch remaps and parameters are projected into the \
+GENERATED ENTRY at BUILD time.";
 
 /// Does `args` open a `--ros-args` scope at all?
 ///

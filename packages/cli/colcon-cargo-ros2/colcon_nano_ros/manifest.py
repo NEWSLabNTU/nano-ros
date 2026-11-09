@@ -117,7 +117,7 @@ def nano_ros_export(pkg_path):
 
 
 def leaf_system(pkg_path):
-    """``nros ws leaf-system <pkg_path>`` as a ``{KEY: VALUE}`` dict.
+    """``nros dev image leaf-system <pkg_path>`` as a ``{KEY: VALUE}`` dict.
 
     The CLI is the one reader of a leaf's ``system.toml`` (RFC-0098 D3); a
     second parser here would be the drift RFC-0087 D2 built its shared table to
@@ -135,13 +135,13 @@ def leaf_system(pkg_path):
             "activate.sh) or set NROS_CLI."
         )
     proc = subprocess.run(
-        [nros, "ws", "leaf-system", str(pkg_path)],
+        [nros, "dev", "image", "leaf-system", str(pkg_path)],
         capture_output=True,
         text=True,
         check=False,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"nros ws leaf-system {pkg_path}: {proc.stderr.strip()}")
+        raise RuntimeError(f"nros dev image leaf-system {pkg_path}: {proc.stderr.strip()}")
     rows = {}
     for line in proc.stdout.splitlines():
         key, sep, value = line.partition("=")

@@ -304,7 +304,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         model_path.display().to_string(),
         &model,
         args.workspace.as_deref(),
-        "nros ws sizing-descriptor",
+        "nros dev image sizing-descriptor",
     )
     // phase-457 W0 (issue 1407) — COMPOSE the metadata's component population
     // with the contract's, exactly as `nros ws entity-inventory` does and in
@@ -364,7 +364,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
         if let Some(written) = written {
             eprintln!(
                 // See issue 1706, phase-486 W9.
-                "nros ws sizing-descriptor: `{}` describes no wiring; the descriptor states only \
+                "nros dev image sizing-descriptor: `{}` describes no wiring; the descriptor states only \
                  what the model does -- its node count, the closure's wire bound and the \
                  parameter store",
                 model_path.display(),
@@ -373,7 +373,7 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             return Ok(());
         }
         eprintln!(
-            "nros ws sizing-descriptor: `{}` describes no wiring, so no sizing descriptor is \
+            "nros dev image sizing-descriptor: `{}` describes no wiring, so no sizing descriptor is \
              written and every consumer keeps its own defaults. State what each node creates in \
              the contract sidecar beside the launch file.",
             model_path.display()
@@ -394,13 +394,13 @@ fn write_from_model(args: &SizingDescriptorArgs, model_path: &std::path::Path) -
             ) {
                 Ok((inv, read, notes)) => {
                     for n in notes {
-                        eprintln!("nros ws sizing-descriptor: {n}");
+                        eprintln!("nros dev image sizing-descriptor: {n}");
                     }
                     (inv, read)
                 }
                 Err(e) => {
                     eprintln!(
-                        "nros ws sizing-descriptor: no registration observation joined from `{}` \
+                        "nros dev image sizing-descriptor: no registration observation joined from `{}` \
                          ({e}); every subscription keeps its receive region",
                         ws.display()
                     );
@@ -466,7 +466,7 @@ fn sched_task_rows_for(
         Err(why) => {
             eprintln!(
                 // See issue 1970.
-                "nros ws sizing-descriptor: no per-sched-task executor sizing ({why}); every sched task keeps \
+                "nros dev image sizing-descriptor: no per-sched-task executor sizing ({why}); every sched task keeps \
                  the image's executor size"
             );
             Vec::new()
@@ -593,7 +593,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         )?;
         if let Some(written) = written {
             eprintln!(
-                "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
+                "nros dev image sizing-descriptor: none of the {} model(s) this runtime is shared by \
                  describes wiring; the runtime descriptor states only what the models do -- \
                  their node count, the closure's wire bound and the parameter store",
                 models.len()
@@ -601,7 +601,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
             println!("{}", written.path.display());
         } else {
             eprintln!(
-                "nros ws sizing-descriptor: none of the {} model(s) this runtime is shared by \
+                "nros dev image sizing-descriptor: none of the {} model(s) this runtime is shared by \
                  describes wiring, so no runtime descriptor is written and every consumer keeps \
                  its own defaults",
                 models.len()
@@ -623,7 +623,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         crate::sizing_descriptor::reconcile_runtime_qos(&composed, &wired);
     for c in &conflicts {
         eprintln!(
-            "nros ws sizing-descriptor: {} {} `{}`: {} REFUSED -- {}",
+            "nros dev image sizing-descriptor: {} {} `{}`: {} REFUSED -- {}",
             c.kind.tag(),
             c.topic,
             c.type_name,
@@ -642,7 +642,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
         {
             Ok((probe, read, notes)) => {
                 for n in notes {
-                    eprintln!("nros ws sizing-descriptor: {n}");
+                    eprintln!("nros dev image sizing-descriptor: {n}");
                 }
                 for (_, model) in &models {
                     inventory =
@@ -652,7 +652,7 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
                 observation_inputs = read;
             }
             Err(e) => eprintln!(
-                "nros ws sizing-descriptor: no registration observation joined from `{}` ({e}); \
+                "nros dev image sizing-descriptor: no registration observation joined from `{}` ({e}); \
                  every subscription keeps its receive region",
                 ws.display()
             ),
@@ -713,7 +713,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
     // configure) and cannot distinguish the two producers at all.
     if is_cargo_leaf(&dir) {
         eprintln!(
-            "nros ws sizing-descriptor: `{}` is a cargo leaf, so its sizing descriptor comes \
+            "nros dev image sizing-descriptor: `{}` is a cargo leaf, so its sizing descriptor comes \
              from `nros configure` (which has the message-bound inventory this road does not). \
              Nothing written.",
             dir.display()
@@ -769,7 +769,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         if let Some(written) = written {
             eprintln!(
                 // See issue 1706.
-                "nros ws sizing-descriptor: {origin} declares no entities; the descriptor states \
+                "nros dev image sizing-descriptor: {origin} declares no entities; the descriptor states \
                  only what its `[system]` table does"
             );
             println!("{}", written.path.display());
@@ -777,7 +777,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         }
         eprintln!(
             // See RFC-0098 D8.
-            "nros ws sizing-descriptor: {origin} declares no entities, so no sizing descriptor \
+            "nros dev image sizing-descriptor: {origin} declares no entities, so no sizing descriptor \
              is written and every consumer keeps its own defaults. Add `entities = [...]` to its \
              `[[component]]`; the runtime's own service families are \
              `[system] features`."

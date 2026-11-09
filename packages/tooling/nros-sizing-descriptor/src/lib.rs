@@ -648,7 +648,7 @@ impl std::fmt::Display for DescriptorError {
             DescriptorError::Parse { path, message } => write!(
                 f,
                 "sizing descriptor `{}` does not parse: {message}\n\
-                 It is a generated artifact -- re-run `nros sync` rather than editing it.",
+                 It is a generated artifact -- re-run `nros configure` rather than editing it.",
                 path.display()
             ),
             DescriptorError::Invalid { path, message } => {
@@ -1663,7 +1663,7 @@ basis = \"contract\"
         let err = parse(&text, Path::new("t.toml")).unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("schema_version"), "{msg}");
-        assert!(msg.contains("nros sync"), "{msg}");
+        assert!(msg.contains("nros configure"), "{msg}");
     }
 
     /// RFC-0100 Amendment 1 — the ONE bump D12 and issue 1595 share. A
@@ -1674,7 +1674,7 @@ basis = \"contract\"
         assert_eq!(SCHEMA_VERSION, 2);
         let text = render(&island()).replace("schema_version = 2", "schema_version = 1");
         let err = parse(&text, Path::new("t.toml")).unwrap_err();
-        assert!(err.to_string().contains("nros sync"), "{err}");
+        assert!(err.to_string().contains("nros configure"), "{err}");
     }
 
     /// D12 rule 4 + issue 1595 — both new keys round-trip, and an entry's own

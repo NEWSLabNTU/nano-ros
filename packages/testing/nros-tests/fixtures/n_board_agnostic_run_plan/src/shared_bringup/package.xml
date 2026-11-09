@@ -4,7 +4,7 @@
 
      The sharing is the point of this fixture: posix_entry and freertos_entry
      must plan from the SAME launch.xml under two different Boards. A bare
-     directory expressed that, but it is not a package, so `nros sync` never
+     directory expressed that, but it is not a package, so `nros configure` never
      resolved a SystemModel for it and both entries fell back to a codegen stub.
      A bringup package says the same thing in the vocabulary the toolchain
      reads. -->

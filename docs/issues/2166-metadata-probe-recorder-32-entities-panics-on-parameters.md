@@ -22,7 +22,7 @@ sync: source metadata - no producer for controller_pkg::controller
 ```
 
 The probe panics in `census_hooks.rs` with
-`nros dev metadata mode: recorder rejected parameter ...`. The build and the
+`nros metadata-mode: recorder rejected parameter ...`. The build and the
 image are unaffected, but the image has no source metadata, so nothing that
 reads the sidecar can count the component's entities.
 

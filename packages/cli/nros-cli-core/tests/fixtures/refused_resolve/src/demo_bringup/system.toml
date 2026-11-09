@@ -1,4 +1,4 @@
-# phase-460 W1 (issue 1420) -- the smallest bringup `nros sync` resolves and
+# phase-460 W1 (issue 1420) -- the smallest bringup `nros configure` resolves and
 # every model consumer reads. Two components, one contracted topic.
 
 [system]

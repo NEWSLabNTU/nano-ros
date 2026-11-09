@@ -1,7 +1,7 @@
 // Phase 219.E / 235.A — `<rclcpp/detail/main.hpp>` Entry-pkg header.
 //
 // The cmake fn `nano_ros_entry(LAUNCH "<bringup>:<file>.launch.xml")`
-// drives the per-Entry-pkg codegen via `nros codegen entry --lang cpp`,
+// drives the per-Entry-pkg codegen via `nros dev codegen entry --lang cpp`,
 // then appends the generated TU to the executable target's sources.
 // The generated TU has the canonical body — `int main()` + the
 // `rclcpp::board::LinuxBoard::run(lambda)` boot stub + the per-Node
@@ -262,7 +262,7 @@ class LinuxBoard {
     /// primary session / node name visible via `ros2 node list` (the #98 fix
     /// for C++ entries) and `node_namespace` sets the namespace it appears
     /// under. Either NULL or empty → the compiled default (`"node"`, and the
-    /// root). The generated typed C++ entry (emitted by `nros codegen entry
+    /// root). The generated typed C++ entry (emitted by `nros dev codegen entry
     /// --lang cpp --typed`) calls THIS overload, passing
     /// `nros_boot_config_node_name(&NROS_BOOT_CONFIG)` and
     /// `nros_boot_config_namespace(&NROS_BOOT_CONFIG)`.

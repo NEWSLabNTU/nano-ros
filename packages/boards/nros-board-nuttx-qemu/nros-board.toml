@@ -112,7 +112,7 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 [board.net]
 stack = "os"
 # Issue 2064 — the kernel config that states this board's address; the build
-# script and `nros board net` (the cmake entry locator) both read it.
+# script and `nros dev board net` (the cmake entry locator) both read it.
 kernel_config = "nuttx-config/arm/defconfig"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
@@ -272,7 +272,7 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 [board.net]
 stack = "os"
 # Issue 2064 — the kernel config that states this board's address; the build
-# script and `nros board net` (the cmake entry locator) both read it.
+# script and `nros dev board net` (the cmake entry locator) both read it.
 kernel_config = "nuttx-config/riscv/defconfig"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]

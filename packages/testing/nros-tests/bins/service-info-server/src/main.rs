@@ -45,7 +45,7 @@ fn main() {
 
     env_logger::init();
 
-    let ctx = nros::init().expect("nros init failed");
+    let ctx = nros::init().expect("nros::init failed");
     let cfg = ctx.config("add_two_ints_server");
     let mut executor: Executor = Executor::open(&cfg).expect("Failed to open session");
 

@@ -1,5 +1,5 @@
-# Test fixtures are USER-side workspaces: the tests run `nros sync` /
-# `nros codegen-system` / cmake inside them, so each one accumulates the same
+# Test fixtures are USER-side workspaces: the tests run `nros configure` /
+# `nros dev codegen system` / cmake inside them, so each one accumulates the same
 # three artifact kinds. Several leaves carried their own `/build/` line; the
 # rest did not, which is why a fixture sweep leaves a dozen untracked trees
 # behind. One rule per kind here instead of one file per fixture.
@@ -14,13 +14,13 @@
 # staged by accident in the first place.
 **/generated/
 
-# `nros sync` writes a one-line `include = ["…/nros-patch.toml"]` into each
+# `nros configure` writes a one-line `include = ["…/nros-patch.toml"]` into each
 # leaf `.cargo/`, pointing at a gitignored, host-specific central patch file.
 **/.cargo/config.toml
 
 # …except these two, which are hand-authored SOURCE: they select the
 # cross-compilation target for a FreeRTOS entry (`[build] target =
-# thumbv7m-none-eabi`), not sync output. `nros sync` appends its patch block to
+# thumbv7m-none-eabi`), not sync output. `nros configure` appends its patch block to
 # them, so they show as modified during a run — that is expected, and they stay
 # tracked.
 #

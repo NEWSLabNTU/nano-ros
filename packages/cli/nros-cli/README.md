@@ -26,7 +26,7 @@ git clone https://github.com/NEWSLabNTU/nano-ros && cd nano-ros
 ./scripts/bootstrap.sh && source activate.sh
 
 nros new my-project --platform freertos --rmw zenoh --lang c talker
-nros generate rust
+nros interface generate rust
 nros setup freertos
 nros doctor
 nros board list
