@@ -30,8 +30,6 @@ examples/linux/rust/custom-transport-talker/system.toml
 examples/linux/rust/lifecycle-node/system.toml
 examples/linux/rust/listener-rtic/system.toml
 examples/linux/rust/listener/system.toml
-examples/linux/rust/serial-listener/system.toml
-examples/linux/rust/serial-talker/system.toml
 examples/linux/rust/service-client-callback/system.toml
 examples/linux/rust/service-client-rtic/system.toml
 examples/linux/rust/service-client/system.toml

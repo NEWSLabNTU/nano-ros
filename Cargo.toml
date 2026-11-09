@@ -365,8 +365,6 @@ exclude = [
     # STM32F4 USART driver (embedded-only, Cortex-M)
     "packages/drivers/serial/stm32f4-usart",
     # Native XRCE-DDS serial examples (requires XRCE Agent / serial transport)
-    "examples/linux/rust/serial-talker",
-    "examples/linux/rust/serial-listener",
     "packages/testing/nros-bench/large-msg-xrce",
     "packages/testing/nros-bench/stress-xrce",
     # Board crates (embedded-only, require cross-compilation)

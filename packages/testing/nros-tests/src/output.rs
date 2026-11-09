@@ -436,8 +436,8 @@ pub const HOSTED_SPIN_MESSAGE_CALLBACKS_KEY: &str = "message_callbacks=";
 /// printed by a subscriber AFTER its subscription exists.
 ///
 /// Shared, not workspace-specific: the C workspace listener component, the
-/// native C/C++ listeners, `qos-override-pubsub`'s listener role and
-/// `serial-listener` all print it, so it has exactly one spelling here. (It
+/// native C/C++ listeners and `qos-override-pubsub`'s listener role all print
+/// it, so it has exactly one spelling here. (It
 /// was `LISTENER_WAITING_BANNER` until issue 0480 converted the non-workspace
 /// sites and the workspace-only name stopped being true.) The C++ workspace
 /// listener prints [`LISTENER_READY_MARKER`] since phase-535.

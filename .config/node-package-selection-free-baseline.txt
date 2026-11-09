@@ -17,8 +17,6 @@ examples/linux/rust/custom-transport-talker/Cargo.toml  native_rs_custom_transpo
 examples/linux/rust/lifecycle-node/Cargo.toml  native_rs_lifecycle_node_nros_selection
 examples/linux/rust/listener-rtic/Cargo.toml  native_rtic_listener_nros_selection
 examples/linux/rust/listener/Cargo.toml  native_rs_listener_nros_selection
-examples/linux/rust/serial-listener/Cargo.toml  native_rs_xrce_serial_listener_nros_selection
-examples/linux/rust/serial-talker/Cargo.toml  native_rs_xrce_serial_talker_nros_selection
 examples/linux/rust/service-client-callback/Cargo.toml  native_rs_service_client_callback_nros_selection
 examples/linux/rust/service-client-rtic/Cargo.toml  native_rtic_service_client_nros_selection
 examples/linux/rust/service-client/Cargo.toml  native_rs_service_client_nros_selection

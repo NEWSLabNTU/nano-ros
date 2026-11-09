@@ -157,6 +157,14 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
 // XRCE Serial Transport Tests
 // =============================================================================
 
+/// The `serial://<pty>` locator for one of the Agent's client PTYs. On linux a
+/// serial link is runtime env, not a build configuration (phase-535 W6): the
+/// XRCE session routes `serial://` to its POSIX serial transport, so these
+/// cases run the plain XRCE talker and listener.
+fn serial_locator(agent: &XrceSerialAgent, idx: usize) -> String {
+    format!("serial://{}", agent.client_pty_path(idx))
+}
+
 #[rstest]
 fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
     use std::process::Command;
@@ -169,7 +177,7 @@ fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
     let domain = nros_tests::unique_ros_domain_id().to_string();
 
     let mut cmd = Command::new(&xrce_serial_talker_binary);
-    cmd.env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
+    cmd.env("NROS_LOCATOR", serial_locator(&agent, 0))
         .env("ROS_DOMAIN_ID", &domain);
     let mut talker = ManagedProcess::spawn_image(cmd, "xrce-serial-talker")
         .expect("Failed to start serial talker");
@@ -207,8 +215,7 @@ fn test_xrce_serial_listener_starts(xrce_serial_listener_binary: PathBuf) {
     let domain = nros_tests::unique_ros_domain_id().to_string();
 
     let mut cmd = Command::new(&xrce_serial_listener_binary);
-    cmd.env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
-        .env("XRCE_MSG_COUNT", "1")
+    cmd.env("NROS_LOCATOR", serial_locator(&agent, 0))
         .env("ROS_DOMAIN_ID", &domain);
     let mut listener = ManagedProcess::spawn_image(cmd, "xrce-serial-listener")
         .expect("Failed to start serial listener");
@@ -255,8 +262,7 @@ fn test_xrce_serial_communication(
     // Start listener first (subscribe before publishing)
     let mut listener_cmd = Command::new(&xrce_serial_listener_binary);
     listener_cmd
-        .env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
-        .env("XRCE_MSG_COUNT", "3")
+        .env("NROS_LOCATOR", serial_locator(&agent, 0))
         .env("ROS_DOMAIN_ID", &domain);
     let mut listener = ManagedProcess::spawn_image(listener_cmd, "xrce-serial-listener")
         .expect("Failed to start serial listener");
@@ -273,7 +279,7 @@ fn test_xrce_serial_communication(
     // Start talker on second serial link
     let mut talker_cmd = Command::new(&xrce_serial_talker_binary);
     talker_cmd
-        .env("XRCE_SERIAL_PTY", agent.client_pty_path(1))
+        .env("NROS_LOCATOR", serial_locator(&agent, 1))
         .env("ROS_DOMAIN_ID", &domain);
     let mut talker = ManagedProcess::spawn_image(talker_cmd, "xrce-serial-talker")
         .expect("Failed to start serial talker");
