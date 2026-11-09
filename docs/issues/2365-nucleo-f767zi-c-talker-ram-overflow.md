@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [zephyr, ci, memory]
-related: [2359, 2360, 2202, 2113, 2356, phase-548]
+related: [2359, 2360, 2202, 2113, 2356, phase-548, phase-466]
 found: 2026-11-09
 ---
 
