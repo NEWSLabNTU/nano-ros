@@ -63,8 +63,14 @@ trap 'rm -rf "$tmp"' EXIT
 
 # `--retry-all-errors` is the point: without it curl retries only what it
 # classifies as transient, and a 403/5xx from a CDN edge is not on that list.
+# Issue 2369: a GitHub release 504 lasts minutes, and the old fixed 5 x 5 s
+# (25 s) gave up inside one (probe run 42584277829: six 504s, 5 s apart). With
+# no `--retry-delay`, curl backs off 1 s, 2 s, 4 s, ...; eight retries wait
+# 255 s in all, the same as `nros setup` gives a 5xx. `--retry-max-time` alone
+# does not bound it: curl starts a backoff that runs past the limit (measured
+# against a local 504 server: a 10 s limit stopped at 15 s).
 curl --proto '=https' --tlsv1.2 -fsSL \
-    --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
+    --retry 8 --retry-all-errors --retry-max-time 300 --connect-timeout 30 \
     -o "$tmp/$asset" "$url"
 
 got="$(sha256sum "$tmp/$asset" | cut -d' ' -f1)"

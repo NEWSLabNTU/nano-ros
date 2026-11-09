@@ -513,7 +513,10 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         published="$(nros_published_release_version)"
         base="https://github.com/NEWSLabNTU/nano-ros/releases/download/nros-$published"
         for f in "$ASSET_NAME" "$ASSET_NAME.sha256"; do
-            if ! curl -fsSL -o "$workdir/release/$f" "$base/$f"; then
+            # Issue 2369: a release 5xx lasts minutes; the same bounded
+            # retry as scripts/ci/install-just.sh.
+            if ! curl -fsSL --retry 8 --retry-all-errors --retry-max-time 300 \
+                --connect-timeout 30 -o "$workdir/release/$f" "$base/$f"; then
                 echo "probe: could not fetch $base/$f (the release [tool.nros] pins)" >&2
                 exit 1
             fi
