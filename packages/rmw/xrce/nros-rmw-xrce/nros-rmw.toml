@@ -33,6 +33,13 @@ cpp_define = "NROS_RMW_XRCE_CFFI"
 [rmw.host]
 peer = "xrce-agent"
 
+# Issue 2372 -- the nano-ros Zephyr module backend this one is built over (one
+# of zenoh | xrce | cyclonedds): the `choice NROS_RMW_BACKEND` member a Zephyr
+# image selects. It decides what the module compiles; an out-of-tree backend
+# names the member it builds over, never itself.
+[rmw.zephyr]
+module_backend = "xrce"
+
 # The backend's own sources are C (`publisher.c`, `service.c`) built by CMake;
 # the rlib bundled into the umbrella is the cffi shim crate beside it. Both
 # provisions are real, which is why `provides` is a set and not a `driver` enum.

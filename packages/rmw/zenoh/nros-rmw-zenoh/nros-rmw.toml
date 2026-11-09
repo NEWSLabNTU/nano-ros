@@ -33,6 +33,13 @@ cpp_define = "NROS_RMW_ZENOH_CFFI"
 [rmw.host]
 peer = "zenoh-router"
 
+# Issue 2372 -- the nano-ros Zephyr module backend this one is built over (one
+# of zenoh | xrce | cyclonedds): the `choice NROS_RMW_BACKEND` member a Zephyr
+# image selects. It decides what the module compiles; an out-of-tree backend
+# names the member it builds over, never itself.
+[rmw.zephyr]
+module_backend = "zenoh"
+
 # How this backend reaches a consumer's link. Pure Rust: an rlib bundled into
 # the C/C++ umbrella, nothing extra on the link line.
 [rmw.provides.cargo]
