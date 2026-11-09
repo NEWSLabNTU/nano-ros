@@ -32,6 +32,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use nros_runner_lifetime as lifetime;
+
 use nros_extension::{
     console,
     describe::Describe,
@@ -197,6 +199,8 @@ fn run(plan: &RunPlan) -> RunnerExit {
     if !serial_link(plan) {
         let mut cmd = Command::new(exe);
         cmd.args(argv);
+        // QEMU starts nothing of its own: one PDEATHSIG hop (issue 2307).
+        lifetime::die_with_runner(&mut cmd);
         if merge {
             match stdout_as_stdio() {
                 Ok(s) => {
@@ -212,7 +216,7 @@ fn run(plan: &RunPlan) -> RunnerExit {
     // copied through byte for byte, and the first such line is reported.
     let qmp = std::env::temp_dir().join(format!("nros-runner-qemu-{}.qmp", std::process::id()));
     let _ = std::fs::remove_file(&qmp);
-    let mut child = match Command::new(&exe)
+    let mut child = match lifetime::die_with_runner(&mut Command::new(&exe))
         .args(&argv)
         .arg("-S")
         .arg("-qmp")

@@ -317,6 +317,14 @@ hang. Steps are a list, not a state machine. A bench that needs board states
 - Every verb tees the console to `<build>/nros/run/<image>/console.log`.
 - The target runs in its own process group. Ctrl-C, `--timeout`, a matched
   `--expect` and verb exit all stop the whole group, router included.
+- A verb killed with SIGKILL, which no handler sees, still leaves nothing
+  (phase-544 W3, issue 2307). Every member of the group gets
+  `PR_SET_PDEATHSIG`, and every first-party runner ties what it starts to
+  itself through `nros_runner_lifetime`: one PDEATHSIG hop for an image it
+  starts directly (a host process, QEMU), or, for a tool that starts the
+  image further down (`west build -t run`, a `prefix`, a command template),
+  a process group led by a guard that stops the group when the runner's end
+  of a pipe closes.
 
 ## Alternatives considered
 

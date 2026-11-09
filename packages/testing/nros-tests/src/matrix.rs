@@ -1160,6 +1160,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("integration_nuttx", NonCell::Static),
     ("integration_px4", NonCell::CompileCheck),
     ("interface_subset_linkage", NonCell::CompileCheck),
+    (
+        "killed_run_verb",
+        NonCell::Probe(
+            "the `nros run` process contract: a SIGKILLed verb leaves no host image or QEMU guest (issue 2307)",
+        ),
+    ),
     ("lane_build_covers_run", NonCell::Static),
     ("lane_run_narrowing", NonCell::Static),
     (
