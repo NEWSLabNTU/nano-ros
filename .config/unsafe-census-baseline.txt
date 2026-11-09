@@ -11,6 +11,7 @@
 # records DIRECTION, which is what `forbid(unsafe_code)` cannot do for a
 # crate that legitimately carries unsafe (issue 1221).
 
+acme-rmw                             2   0     0       2      0
 advertised-state-probe              15   0     0       0      0
 cargo-nano-ros                       1   0     0       0      0
 cmsdk-uart                           6   0     0       0      0
