@@ -1855,6 +1855,27 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         })
         .unwrap_or_default();
 
+    // Issue 2372 — the Zephyr arm's backend selector. Every backend a Zephyr
+    // image registers comes from the entry (the `(gated)` arm above) or from
+    // the module's `nros_app_register_backends()`, which registers the C entry
+    // of the Kconfig-chosen MODULE backend. For an in-tree backend that is the
+    // same backend again (same-name overwrite); for an out-of-tree one built
+    // over a module backend (`acme` over zenoh, `[rmw.zephyr] module_backend`)
+    // it is a SECOND backend, and with no selector the open would be
+    // `Ambiguous` — or, as measured, pass only because `MAX_BACKENDS` is
+    // derived as 1 and the gated arm registers first, so zenoh's registration
+    // fails silently. The image's `rmw` is the answer it declared; this arm
+    // never reads `NROS_BOOT_CONFIG` (`Context::baked()` leaves `rmw` empty),
+    // so the selector goes on the executor config itself. The Kconfig render
+    // refuses a Zephyr image whose `rmw` is an alias, so the name here is the
+    // canonical one the backend registers under.
+    let zephyr_rmw_selector_ts = zephyr_rmw_selector_tokens(
+        deploy_for_framework
+            .as_deref()
+            .and(leaf_decl.as_ref())
+            .and_then(|leaf| leaf.rmw.as_deref()),
+    );
+
     // W4b — bake the single-node boot identity into a `NROS_BOOT_CONFIG` static
     // placed in the `.nros_boot_config` linker section (bare-metal only; hosted
     // gets a plain `#[unsafe(no_mangle)] #[used]` static that is still referenceable).
@@ -2567,6 +2588,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     }
                 };
                 let config = ctx.config(::core::env!("CARGO_PKG_NAME"));
+                #zephyr_rmw_selector_ts
                 // issue #128 (half 2) — spin-or-sched-tasks tail: multi-sched-task
                 // systems route through `ZephyrBoard::run_sched_tasks`; single-sched-task
                 // keeps the plain single-executor register+spin body.
@@ -3923,6 +3945,16 @@ fn baked_namespace(
         .cloned()
 }
 
+/// Issue 2372 — the Zephyr arm's executor selector: the image's declared
+/// `rmw`, applied to the config the arm opens with. `None` (an image naming no
+/// RMW) emits nothing, so such an entry still takes the unique backend.
+fn zephyr_rmw_selector_tokens(rmw: Option<&str>) -> proc_macro2::TokenStream {
+    match rmw {
+        Some(r) => quote! { let config = config.rmw(#r); },
+        None => proc_macro2::TokenStream::new(),
+    }
+}
+
 /// Emit the `NROS_BOOT_CONFIG` static (RFC-0045 W4b).
 ///
 /// A function rather than an inline block so the emitted TOKENS are testable:
@@ -4109,6 +4141,16 @@ mod baked_boot_config_namespace_tests {
             &[("talker", "/island"), ("listener", "/island")],
         );
         assert_eq!(args[3], NONE, "{args:?}");
+    }
+
+    /// Issue 2372 — the Zephyr arm selects the image's declared backend on the
+    /// executor config it opens with (that arm never reads `NROS_BOOT_CONFIG`);
+    /// an image naming no RMW selects nothing and takes the unique backend.
+    #[test]
+    fn the_zephyr_arm_selects_the_declared_backend() {
+        let with = super::zephyr_rmw_selector_tokens(Some("acme")).to_string();
+        assert_eq!(with, "let config = config . rmw (\"acme\") ;", "{with}");
+        assert!(super::zephyr_rmw_selector_tokens(None).is_empty());
     }
 
     /// RFC-0071 D15 (phase-545 W3) — an image whose entry registers its own
