@@ -20,5 +20,7 @@ dispatch = "deferred"
 # board's compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
 [image.mps2-an385-baremetal]
 board = "rtic-mps2-an385"
-locator = "tcp/10.0.2.2:10200"
+# `nros_tests::alloc::BAREMETAL_RTIC_PUBSUB_PORT` (phase-535 W5): the
+# `(QemuBaremetal, Rust, Pubsub)` cell's `port_of` is the workspace pair's.
+locator = "tcp/10.0.2.2:10540"
 os_config = ["board-net.toml"]

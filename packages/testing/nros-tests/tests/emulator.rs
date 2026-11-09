@@ -33,16 +33,15 @@ use nros_tests::{
     assert_output_contains, assert_output_excludes, count_pattern,
     fixtures::{
         QemuProcess, RequireFixture, SocatPtyPair, XrceSerialAgent, ZenohRouter,
-        build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
-        build_qemu_rtic_action_client, build_qemu_rtic_action_server, build_qemu_rtic_listener,
-        build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
+        build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
+        build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
         build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
         build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_talker_xrce,
         build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, is_socat_available,
         or_unmet, parse_test_results, qemu_baremetal_capi_binary, require_xrce_agent,
         require_zenoh_pico_arm,
     },
-    matrix::{Lang, PlatformId, Workload},
+    matrix::{Lang, PlatformId, Rmw, Workload},
     platform, wait_for_port,
 };
 use rstest::rstest;
@@ -352,23 +351,28 @@ fn test_qemu_lan9118_driver() {
 ///
 /// Both MPS2-AN385 instances run with `-nic user,model=lan9118` (slirp): each
 /// gets an isolated `10.0.2.0/24`, but both reach the host zenohd via the slirp
-/// gateway → the host, so zenohd is the rendezvous (the BSP example locator
-/// is baked to the allocator's `BAREMETAL_BSP_PORT` aux slot — phase-295 W4:
-/// the BSP pair owns its own router, so this test no longer serializes with
-/// the RTIC / mixed-priority / large-msg lanes; the former
-/// `qemu-baremetal-shared` group is retired). Replaces the former
-/// `test_qemu_bsp_{talker,listener}_starts` blanket-skips with a real run;
-/// gates cleanly (skip with reason) when the ARM toolchain / qemu /
-/// zenoh-pico-arm / fixtures are absent.
+/// gateway → the host, so zenohd is the rendezvous.
+///
+/// phase-535 W5 (RFC-0122 D1) — this is the `(QemuBaremetal, Rust, Zenoh,
+/// Pubsub)` pair cell, so both roles are the Rust workspace's
+/// `baremetal_{talker,listener}` images, resolved through
+/// `fixtures::workspace_image`, and the router is the cell's
+/// `alloc::port_of`, which the resolver holds the images' baked locator to.
+/// The `rust/talker` leaf is the board's witness (RFC-0122 D3).
 #[test]
 fn test_qemu_bsp_pubsub_e2e() {
     require_arm_toolchain();
     require_qemu();
     require_zenoh_pico_arm();
 
-    let port = nros_tests::alloc::BAREMETAL_BSP_PORT; // the baked BSP locator port
-    let talker_bin = build_qemu_bsp_talker().require("qemu-bsp-talker");
-    let listener_bin = build_qemu_bsp_listener().require("qemu-bsp-listener");
+    use nros_tests::fixtures::workspace_image::{PairRole, resolve_coord_cached};
+    let pair = |role: PairRole| {
+        resolve_coord_cached(PlatformId::QemuBaremetal, Lang::Rust, Rmw::Zenoh, role)
+            .require(role.token())
+    };
+    let port = nros_tests::alloc::port_of(PlatformId::QemuBaremetal, Lang::Rust, Workload::Pubsub);
+    let talker_bin = pair(PairRole::Talker);
+    let listener_bin = pair(PairRole::Listener);
 
     // zenohd (host) is the broker both slirp-isolated instances connect out to.
     eprintln!("Starting zenohd (slirp) on {port}...");
@@ -710,16 +714,16 @@ fn test_qemu_rtic_pubsub_e2e() {
     let listener_bin = build_qemu_rtic_listener().require("rtic-listener");
 
     // Start zenohd (firmware connects via slirp gateway to host)
+    // phase-535 W5 — the RTIC pair's own aux slot: the cell's `port_of` is
+    // the workspace pair images' (`test_qemu_bsp_pubsub_e2e`).
     let _zenohd = or_unmet(ZenohRouter::start_slirp(
-        platform::BAREMETAL
-            .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+        nros_tests::alloc::BAREMETAL_RTIC_PUBSUB_PORT,
     ));
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
         wait_for_port(
-            platform::BAREMETAL
-                .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
+            nros_tests::alloc::BAREMETAL_RTIC_PUBSUB_PORT,
             Duration::from_secs(5)
         ),
         "zenohd not reachable on platform port"

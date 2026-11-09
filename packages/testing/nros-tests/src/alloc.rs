@@ -160,8 +160,11 @@ pub const fn aux_port(platform: PlatformId, slot: u16) -> u16 {
     platform_port_base(platform) + 300 + slot * 10
 }
 
-/// mps2-an385 BSP (non-RTIC) pubsub demo pair (`qemu-bsp-talker` /
+/// mps2-an385 BSP (non-RTIC) pubsub leaves (`qemu-bsp-talker` /
 /// `qemu-bsp-listener`, `examples/mps2-an385-baremetal/rust/{talker,listener}`).
+/// Since phase-535 W5 the pair cell runs the Rust workspace's
+/// `baremetal_{talker,listener}` images on [`port_of`]; the talker leaf is the
+/// board's witness and keeps this slot.
 pub const BAREMETAL_BSP_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 0);
 
 /// mps2-an385 RTIC mixed-priority pubsub pair
@@ -179,6 +182,13 @@ pub const BAREMETAL_LARGE_MSG_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 2)
 /// the slot out of every other image's way (`allocator_injective_over_matrix`)
 /// and `baked_locator`'s test holds the two equal.
 pub const BAREMETAL_RTIC_RUN_PLAN_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 3);
+
+/// mps2-an385 RTIC pubsub pair
+/// (`examples/mps2-an385-baremetal/rust/{talker,listener}-rtic`). Phase-535 W5
+/// gave the `(QemuBaremetal, Rust, Pubsub)` cell's [`port_of`] to the workspace
+/// pair images (RFC-0122 D1), so the RTIC variant takes a slot of its own until
+/// it becomes a node package (W6).
+pub const BAREMETAL_RTIC_PUBSUB_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 4);
 
 /// Does this cell's image BAKE its isolation values at build time?
 ///
@@ -326,6 +336,7 @@ mod tests {
             BAREMETAL_MIXED_PRIORITY_PORT,
             BAREMETAL_LARGE_MSG_PORT,
             BAREMETAL_RTIC_RUN_PLAN_PORT,
+            BAREMETAL_RTIC_PUBSUB_PORT,
         ] {
             assert!(
                 !ports.contains_key(&aux),
@@ -394,7 +405,8 @@ mod tests {
         }
         println!(
             "aux: baremetal bsp={BAREMETAL_BSP_PORT} mixed={BAREMETAL_MIXED_PRIORITY_PORT} \
-             large-msg={BAREMETAL_LARGE_MSG_PORT} rtic-run-plan={BAREMETAL_RTIC_RUN_PLAN_PORT}"
+             large-msg={BAREMETAL_LARGE_MSG_PORT} rtic-run-plan={BAREMETAL_RTIC_RUN_PLAN_PORT} \
+             rtic-pubsub={BAREMETAL_RTIC_PUBSUB_PORT}"
         );
     }
 }
