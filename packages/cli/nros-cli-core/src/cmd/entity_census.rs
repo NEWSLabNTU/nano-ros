@@ -617,6 +617,11 @@ fn take_census(args: TakeArgs) -> Result<()> {
         args.offline,
     ))
     .wrap_err_with(|| format!("planning the host image `{native_q}` the census is taken with"))?;
+    // Issue 2386 -- the host image's own configure locates its answer through
+    // its configure stamp, which a never-built workspace does not have yet:
+    // record it from the plan just made, as its configure would.
+    crate::cmd::configure::record_planned(&root, &native_q, &plans)
+        .wrap_err_with(|| format!("recording the configure stamp of `{native_q}`"))?;
     for p in &plans {
         crate::cmd::build::build_host_image(p, &[(LEAF_CENSUS_HOST_ENV, "1")]).wrap_err_with(
             || format!("building the host image `{native_q}`; no census can be taken without it"),
