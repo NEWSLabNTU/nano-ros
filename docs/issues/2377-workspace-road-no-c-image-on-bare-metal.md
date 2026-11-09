@@ -6,10 +6,15 @@ type: limitation
 area: [build, cli, cmake]
 severity: low
 found: 2026-11-09
-related: [phase-535, rfc-0122, 1512]
+related: [phase-535, rfc-0122, 1512, 2376]
 ---
 
 **Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md).**
+
+Issue 2376 states the same fact and records the user's ruling on it:
+C/C++ is refused on bare metal. `nros new --lang c|cpp` refuses there and
+names mps2-an385-freertos, and the Tutorial's C/C++ tabs move to FreeRTOS.
+Follow that ruling here; the fix direction below is the reasoning before it.
 
 ## What happens
 
