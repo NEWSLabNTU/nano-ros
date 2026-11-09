@@ -1,6 +1,6 @@
 # Phase 542 — PX4 becomes a supported platform: registry evidence, a user-tier build, and every PX4 cell in a lane
 
-**Status (2026-11-10). OPEN: W0 ruled (user, 2026-11-07); W1 landed with #3169 (2026-11-07); W3 done 2026-11-10 (PR #PRNUM); W4 is unblocked.**
+**Status (2026-11-10). OPEN: W0 ruled (user, 2026-11-07); W1 landed with #3169 (2026-11-07); W3 done 2026-11-10 (PR #3410); W4 is unblocked.**
 W0.1 and W0.2 are applied on #3169: host + manual reads "Boots, manual", and
 the `px4-sitl` row states `flavour = "no_std"`, which `check-flavour-lanes`
 checks. W0.3 (a real Runtime cell, so the DDS domain window narrows) is W5's. Implements the 2026-11-06 revision of
@@ -142,7 +142,7 @@ tier.
 gate added with the change refuses one; a module template with a `BRINGUP`
 configures on the installed track.
 
-**Done 2026-11-10 (PR #PRNUM), by the manager's ruling of option 1.** The ruling
+**Done 2026-11-10 (PR #3410), by the manager's ruling of option 1.** The ruling
 restates the acceptance: a build tool CALLING a dev verb is RFC-0117 D3's
 design, so `NanoRosPx4Module.cmake` keeps calling `nros dev image model-path`
 and `nros dev codegen entry`, exactly as every other CMake road does. What the
