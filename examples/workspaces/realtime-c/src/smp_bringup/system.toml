@@ -155,3 +155,14 @@ panic = "platform"
 # is the image's (RFC-0098 D10), rendered into Kconfig by the module.
 [image.zephyr_smp.knobs.zenoh]
 socket_timeout_ms = 5
+
+# Issue 2384 -- the test harness boots this image on QEMU's user network
+# (slirp), not the TAP Zephyr's own `west build -t run` uses, and on a loaded
+# host slirp drops frames toward the guest during its first seconds. With the
+# default single connect attempt (issue 2207) a frame lost from the open
+# handshake failed the attempt, `main` returned, and the image sat idle for the
+# rest of the cell (measured: 6 of 12 failures under `taskset -c 0-3`). A
+# bounded budget lets zenoh-pico retry the transport failure (100 ms doubling to
+# 1 s) until the handshake gets through, and still fails if no router is there.
+[image.zephyr_smp.knobs.zenoh.limits]
+connect_timeout_ms = 10000
