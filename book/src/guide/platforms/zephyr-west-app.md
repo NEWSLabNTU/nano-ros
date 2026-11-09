@@ -275,6 +275,7 @@ to the west workspace. From the top of the workspace:
 . "$HOME/.cargo/env"     # the cargo the install set up
 sudo apt-get install -y --no-install-recommends clang libclang-dev
 rustup component add clippy
+nros setup board zephyr --zephyr-workspace "$PWD"
 ```
 
 The crate's library must be named `rustapp` and built as a static library:
@@ -506,9 +507,11 @@ The application then builds and runs as the C one does. Its log line reads
 
 ## Build
 
-From the top of the west workspace, build for `native_sim`:
+From the top of the west workspace, build for `native_sim`. The configure
+generates the message types from your ROS 2 install, so source it first:
 
 ```bash probe=50 track=installed variant=west-app,west-app-cpp,west-app-rust
+source /opt/ros/humble/setup.bash
 west build -b native_sim/native/64 -S nros-nsos apps/my_app -- \
     -DZEPHYR_EXTRA_MODULES="$(nros locate nano-ros)"
 ```
@@ -601,6 +604,7 @@ EOF
 Build into the board's own directory:
 
 ```bash probe=56 track=installed variant=west-app-flash
+source /opt/ros/humble/setup.bash
 west build -p always -b nucleo_f767zi -d build-board apps/my_app -- \
     -DZEPHYR_EXTRA_MODULES="$(nros locate nano-ros)"
 ```
