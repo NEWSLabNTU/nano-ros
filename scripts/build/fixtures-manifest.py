@@ -2443,10 +2443,23 @@ def main():
         # which leaves it reaches is the CLI's one rule, not a word grepped
         # here: `take --leaf` decides, and does nothing for the rest.
         # Deduplicated, in manifest order.
+        #
+        # Issue 2390 -- `west` rows too. `matches_filters` keeps them out of
+        # every list unless the caller asks with `--builder west` (phase-350
+        # W1: a cargo/cmake consumer must never be handed one), but a west
+        # leaf's configure reads its census exactly like a cmake leaf's, and
+        # once the pre-pass has run (`NROS_CENSUS_PREPASS=done`) nothing else
+        # takes it. Leaving them out made every Zephyr C/C++ leaf refuse at
+        # configure on a fresh tree. A leaf's census does not depend on which
+        # builder builds the row, so both kinds are asked for here.
+        west_args = argparse.Namespace(**{**vars(a), "builder": "west"})
         seen = set()
         fixture_rows = load(a.manifest)
         for e in fixture_rows:
-            if not matches_filters(e, a, all_entries=fixture_rows):
+            if not (
+                matches_filters(e, a, all_entries=fixture_rows)
+                or matches_filters(e, west_args, all_entries=fixture_rows)
+            ):
                 continue
             d = e.get("dir", "")
             if not d or d in seen or is_cargo_row(e):
