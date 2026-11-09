@@ -717,7 +717,7 @@ Options:
           Stop the target after SECONDS
 
       --router <auto|none|LOCATOR>
-          What serves the image's link on this host: `auto` starts the zenoh router or the XRCE agent when the link needs one here, `none` starts nothing, a locator names a router that is already running
+          What serves the image's link on this host: `auto` starts the zenoh router or the XRCE agent when the link needs one here (reusing a zenoh router already listening there), `none` starts nothing, a locator names a router that is already running
           
           [default: auto]
 
