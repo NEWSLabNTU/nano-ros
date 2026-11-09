@@ -196,6 +196,38 @@ pub fn check_zephyr_rust(
     out
 }
 
+/// Issue 2358 — a Rust image on Zephyr needs the zephyr-lang-rust module in
+/// the west workspace it builds against. Without it the build ran west anyway
+/// and failed in Zephyr's words (`attempt to assign the value 'y' to the
+/// undefined symbol RUST`, then `Aborting due to Kconfig warnings`), naming
+/// nothing about the module, although `nros setup board` already knew.
+///
+/// `zephyr_base` is the Zephyr tree the build resolved; its parent is the west
+/// workspace. `None` — no workspace resolved — says nothing here: the build
+/// reports that itself. `remedy` is the `nros setup board` line, which prints
+/// the `projects:` entry that fetches the module.
+#[must_use]
+pub fn check_zephyr_lang_rust(
+    board: &BoardDescriptor,
+    zephyr_base: Option<&Path>,
+    remedy: &str,
+) -> Option<Missing> {
+    let ws = zephyr_base?.parent()?;
+    let module = crate::builder::zephyr::lang_rust_module_dir(ws);
+    if module.join("Kconfig").is_file() {
+        return None;
+    }
+    Some(Missing {
+        what: format!(
+            "the zephyr-lang-rust module at {} (a Rust image on board `{}`; this west \
+             workspace does not fetch it)",
+            module.display(),
+            board.names[0]
+        ),
+        remedy: remedy.to_string(),
+    })
+}
+
 /// What rustup must add for `board`'s cross target — the same rule [`check`]
 /// refuses a build by, so `nros setup <board>` installs exactly what that check
 /// would ask for (phase-517 W10): a prebuilt `rust-std` for an ordinary
@@ -1001,6 +1033,36 @@ mod tests {
         z.rust_prereqs.clear();
         z.rust_components.clear();
         assert!(check_zephyr_rust(&board, &root, |keys| keys.to_vec()).is_empty());
+    }
+
+    /// Issue 2358 -- a west workspace without zephyr-lang-rust refuses a Rust
+    /// image by naming the module; one that has it, or no resolved workspace,
+    /// adds nothing.
+    #[test]
+    fn a_workspace_without_zephyr_lang_rust_is_refused_by_name() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let board = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+            .expect("catalog")
+            .descriptors()
+            .iter()
+            .find(|d| d.answers_to("zephyr"))
+            .expect("the native_sim descriptor")
+            .clone();
+        let ws = tempfile::tempdir().unwrap();
+        let zbase = ws.path().join("zephyr");
+        std::fs::create_dir_all(&zbase).unwrap();
+        let got = check_zephyr_lang_rust(&board, Some(&zbase), "nros setup board zephyr")
+            .expect("refused without the module");
+        assert!(got.what.contains("zephyr-lang-rust"), "{}", got.what);
+        assert!(got.what.contains("modules/lang/rust"), "{}", got.what);
+        assert_eq!(got.remedy, "nros setup board zephyr");
+
+        // Negative controls: the module present, and no workspace at all.
+        let module = ws.path().join("modules/lang/rust");
+        std::fs::create_dir_all(&module).unwrap();
+        std::fs::write(module.join("Kconfig"), "").unwrap();
+        assert!(check_zephyr_lang_rust(&board, Some(&zbase), "x").is_none());
+        assert!(check_zephyr_lang_rust(&board, None, "x").is_none());
     }
 
     /// Issue 2288 -- every rustup probe asks from the image's WORKSPACE, where

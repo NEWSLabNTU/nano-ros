@@ -1244,24 +1244,6 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
             )
         })?;
     let meta = board.provisioning.clone().unwrap_or_default();
-    // The board's own directory, from the descriptor the catalog actually read
-    // — not rebuilt from a path convention. Issue 0729 was exactly that guess
-    // (`packages/boards/nros-board-<name>`), which could not see a conf-bundle
-    // board, i.e. any in-tree Zephyr board since phase-337 W9.a.
-    let crate_dir = board
-        .source
-        .as_deref()
-        .map(|rel| {
-            let p = Path::new(rel);
-            if p.is_absolute() {
-                p.to_path_buf()
-            } else {
-                root.join(rel)
-            }
-        })
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-        .ok_or_else(|| eyre::eyre!("board `{}` has no recorded descriptor path", args.name))?;
-
     let Some(zephyr_line) = meta.zephyr_line.as_deref() else {
         bail!(
             "nros setup board: `{}` has no `zephyr_line` in its `[board.provisioning]` \
@@ -1463,11 +1445,10 @@ fn run_board(args: BoardSetupArgs) -> Result<()> {
     }
 
     // (d) Ensure the zephyr-lang-rust module is in the consumer's tree. The
-    //     module fetch itself is west-native (the board ships a
-    //     `west-downstream.yml` `import:false` fragment — Phase 215.J.3); here
-    //     we only verify + instruct, never edit the consumer's manifest.
+    //     fetch is west's: we verify and print the `projects:` entry to add
+    //     (issue 2358), and never edit the consumer's manifest.
     if !meta.rust_targets.is_empty() {
-        ensure_lang_rust_module(&crate_dir, zephyr_ws);
+        ensure_lang_rust_module(&root, zephyr_line, zephyr_ws);
     }
 
     if args.dry_run {
@@ -1528,27 +1509,24 @@ fn board_rust_targets(
 }
 
 /// Phase 215.J.2 step (d) — verify the `zephyr-lang-rust` module is present in
-/// the consumer's tree; warn + point at the board's `west-downstream.yml`
-/// import fragment (Phase 215.J.3) when it is not. Never mutates the consumer's
-/// west manifest — the consumer keeps manifest authority.
-fn ensure_lang_rust_module(crate_dir: &Path, zephyr_ws: &Path) {
+/// the consumer's tree, and print how to add it when it is not. Never mutates
+/// the consumer's west manifest — the consumer keeps manifest authority.
+///
+/// Issue 2358 — the hint used to name the board's `west-downstream.yml` by an
+/// absolute `self: import: file:` path. That file existed for one board, and
+/// west 1.x refuses an absolute import path as malformed, so no Rust user
+/// following it could add the module. It now prints a `projects:` entry at the
+/// revision nano-ros pins for the board's Zephyr line.
+fn ensure_lang_rust_module(nano_ros_root: &Path, zephyr_line: &str, zephyr_ws: &Path) {
     let module = crate::builder::zephyr::lang_rust_module_dir(zephyr_ws);
     if module.join("Kconfig").is_file() {
         eprintln!("  (d) zephyr-lang-rust: present at {}", module.display());
         return;
     }
-    let fragment = crate_dir.join("west-downstream.yml");
+    let remedy = crate::builder::zephyr::lang_rust_module_remedy(nano_ros_root, zephyr_line);
     eprintln!(
-        "  (d) zephyr-lang-rust: MISSING at {}.\n\
-         \x20     Add the board's import fragment to your west manifest, then `west update`:\n\
-         \x20       manifest:\n\
-         \x20         self:\n\
-         \x20           import:\n\
-         \x20             - file: {}\n\
-         \x20     (board-shipped `import:false` fragment — pins zephyr-lang-rust at\n\
-         \x20      nano-ros's supported rev; `name-allowlist` keeps it to that one module.)",
-        module.display(),
-        fragment.display()
+        "  (d) zephyr-lang-rust: MISSING at {}.\n      To build Rust images here, {remedy}",
+        module.display()
     );
 }
 

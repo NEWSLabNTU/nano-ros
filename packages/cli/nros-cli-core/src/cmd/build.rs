@@ -985,6 +985,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         .unwrap_or_default()
                 },
             ));
+            // Issue 2358 — the module a Rust image compiles through, refused
+            // here by name rather than as a Kconfig warning inside west.
+            let zbase = zephyr_base(&root, args.zephyr_workspace.as_deref());
+            missing.extend(crate::builder::preflight::check_zephyr_lang_rust(
+                descriptor,
+                zbase.as_deref(),
+                &zephyr_runtime_remedy(descriptor, zbase.as_deref()),
+            ));
         }
         // Issue 2312 — a C/C++ image on an embedded Zephyr triple builds its
         // runtime on the pinned nightly; refuse before cmake when that is

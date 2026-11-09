@@ -34,7 +34,7 @@ repository; W8 re-measures every cell.
 | NuttX rv-virt (zenoh) | ok | ok | ok |
 | ThreadX Linux (zenoh) | ok | ok | ok |
 | ThreadX qemu riscv64 (zenoh) | ok | ok | **W4** |
-| nucleo-f767zi Zephyr (zenoh), Renode twin, serial | 2358 | ok | ok |
+| nucleo-f767zi Zephyr (zenoh), Renode twin, serial | 2358 resolved 2026-11-09; W8 re-measures | ok | ok |
 
 Gaps already owned outside this phase. This phase does not repeat them; W8
 re-measures their cells once they land:
