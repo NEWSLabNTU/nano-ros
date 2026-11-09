@@ -19,6 +19,9 @@
 //!   not independent cells; the workspace is built as a unit by
 //!   `scripts/build/workspace-fixtures-build.sh` and exercised end-to-end by
 //!   the phase-263 `ws-*_e2e.rs` tests. Gating each member would double-count.
+//!   The same holds for a bringup workspace elsewhere under `examples/` (a
+//!   migrated leaf, phase-531 W6): its `src/<pkg>` members are covered when
+//!   its root is.
 //!
 //! ## Coverage sources (a leaf is "covered" if any fires)
 //!
@@ -233,6 +236,12 @@ fn every_example_has_a_fixture_or_tracked_exception() {
         }
     }
 
+    // The dirs a manifest row BUILDS (sources 1 and 2): a bringup workspace
+    // among them builds its `src/<pkg>` members as one unit. A compile-check
+    // token (source 3) only names a directory, so it never stands in for its
+    // members (the PX4 workspaces below keep their exceptions).
+    let built_roots = covered.clone();
+
     // 3. compile-check-fixtures.sh referenced example dirs.
     let compile_check = fs::read_to_string(root.join("scripts/build/compile-check-fixtures.sh"))
         .unwrap_or_default();
@@ -283,8 +292,19 @@ fn every_example_has_a_fixture_or_tracked_exception() {
     // Allowlisted-but-now-covered → stale exception (fail; tidy the list).
     let mut stale_exceptions = Vec::new();
 
+    // Phase-531 W6 -- a bringup workspace OUTSIDE `examples/workspaces/` (a
+    // migrated leaf such as `zephyr/c/talker`) is covered by its own
+    // `[[workspace_fixture]]` rows, whose `dir` is the workspace root (in
+    // `built_roots`). Its `src/<pkg>` members are built as that unit, the same
+    // carve-out as `workspaces/<ws>/src/<pkg>` above, so they are covered when
+    // the root is.
+    let covered_member = |leaf: &str| {
+        leaf.split_once("/src/").is_some_and(|(ws, _)| {
+            built_roots.contains(ws) && examples_root.join(ws).join(".colcon_workspace").is_file()
+        })
+    };
     for leaf in &leaves {
-        let is_covered = covered.contains(leaf);
+        let is_covered = covered.contains(leaf) || covered_member(leaf);
         let is_allowed = allow.contains(leaf.as_str());
         if !is_covered && !is_allowed {
             silent_gaps.push(leaf.clone());
