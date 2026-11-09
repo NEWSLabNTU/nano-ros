@@ -229,6 +229,48 @@ package they wrote. The runner and command checks sat in the dev tier (D3),
   `nros check <name>`; `nros board new` keeps `just check fast` on its
   in-tree arm only, after `nros check`, as the contributor's acceptance.
 
+## Amendment: user-tier verbs for 2394
+
+> **Decided 2026-11-10 (user ruling).** The table and the four answers
+> below are decisions. Nothing is implemented yet; issue 2394 tracks the
+> work, and the CLI changes with it.
+
+Issue 2394 lists the user-facing sites that still tell a user to run a dev
+verb (D3), because the action they ask for has no user-tier verb. Each
+carries a `dev-verb-advice-ok: issue 2394` marker that
+`check-user-text-dev-verbs` accepts while the issue is open.
+
+**Principle.** Fold an action into a verb the user already runs before
+adding one: a new flag beats a new verb, and a new verb beats a dev verb.
+Advice names a command the book teaches, run from where the user already
+is, usually the workspace root.
+
+| Site (who reads it) | Today | Home | Advice |
+| --- | --- | --- | --- |
+| `nros new` component, "Next steps" | `nros dev metadata --build` | `nros build` records a component's source metadata when it is missing or stale | `nros build   # builds it and records its source metadata` |
+| `nros configure`, stale census | `nros dev image entity-census {how}` | a flag, `nros configure --census`: build the native image, run it, record the census. Plain `configure` keeps today's cost and only reports | "…the entity census for `<image>` is STALE; take a new one with `nros configure --census` (it builds and runs the native image, so it takes longer)" |
+| a cmake configure's census refusal | `nros dev image entity-census take --image B:I` | the same flag, for one image: `nros configure --census B:I` | "…in the workspace, run `nros configure --census B:I`, then build again" |
+| census verdict rows: an unobserved node or parameter | `nros dev image entity-census run` | the same flag | "…the census never ran `<node>`; run `nros configure --census` with an image that launches it, or …" (the row's existing accept wording) |
+| `nros configure`: `system.toml` beside code | `nros dev migrate-bringup` | a flag, `nros configure --migrate`: applies known, reversible migrations and prints every file it moves. `nros doctor` stays read-only and names the flag | "…`system.toml` belongs in a bringup package; `nros configure --migrate` moves it and says what it moved" |
+| the PX4 bridge example: FFI archive missing outside a workspace | `nros dev lock central-patch` | no new verb: inside a workspace `nros configure` writes the patch; outside one, the user path is the PX4 module template | "…build this module from an nros workspace (`nros configure` writes the patch it needs), or start from the module template `nros locate nano-ros` points to" |
+
+**Answers (decided):**
+
+1. *Does recording source metadata need the native build the census needs?*
+   If it does, it goes under `--census`, so plain `nros build` stays cheap,
+   and "Next steps" names `nros configure --census`. If it does not,
+   `nros build` records it.
+2. *`--census` on `configure` or on `build`?* On `configure`, where the
+   census is consumed (it feeds sizing, which `configure` resolves).
+3. *May `doctor` write files?* No. `doctor` stays read-only, and its
+   finding names `nros configure --migrate`, which does the move and prints
+   every file it moves.
+4. *Book wording.* The user pages that mention the census and the
+   bringup move change in the same PR as the CLI change, not before.
+
+Done when each site is reworded to its user-tier home, and `git grep 'dev-verb-advice-ok: issue 2394'` is
+empty.
+
 ## Alternatives considered
 
 - **Delete the dev verbs from the CLI and make them library calls.** Their
@@ -268,3 +310,8 @@ package they wrote. The runner and command checks sat in the dev tier (D3),
 - 2026-11-07 — D2/D3: one user-tier `nros check <package>` dispatches on the
   package kind (runner, command, board); `nros dev runner|command check` stay
   as its aliases, and `board check` is that verb. User ruling, issue 2294.
+- 2026-11-10 — amendment (user ruling): user-tier homes for the dev verbs
+  issue 2394 lists: `nros configure --census [B:I]`, source metadata in
+  `nros build` (under `--census` if it needs the native build), and
+  `nros configure --migrate` for the bringup move; `nros doctor` stays
+  read-only.

@@ -50,6 +50,8 @@ census and record metadata themselves, as they already write the central
 patch for a workspace. Then reword each site, drop its marker, and close this
 issue. Done when `git grep 'dev-verb-advice-ok: issue 2394'` is empty.
 
-Proposed homes, for a user decision: the draft RFC-0117 amendment in #3418
-(`nros configure --census`, metadata recorded by `nros build`,
-`nros doctor --fix` for the bringup move, no new verb for the central patch).
+Homes decided 2026-11-10 (user ruling), recorded as the RFC-0117 amendment
+"user-tier verbs for 2394": `nros configure --census [B:I]`, source metadata
+recorded by `nros build` (under `--census` if it needs the native build),
+`nros configure --migrate` for the bringup move with `nros doctor` staying
+read-only, and no new verb for the central patch.
