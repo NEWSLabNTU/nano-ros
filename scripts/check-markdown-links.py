@@ -68,7 +68,7 @@ LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 # one spelling over. The definition is where the target lives, so it is the
 # one line to check. Up to three spaces of indent, per CommonMark; `<t>` form
 # unwrapped.
-REFDEF = re.compile(r"^ {0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]+)>?", re.M)
+REFDEF = re.compile(r"^ {0,3}\[(?!\^)[^\]\n]+\]:[ \t]*<?([^\s>]+)>?", re.M)
 
 
 def strip_code(text):
