@@ -77,6 +77,11 @@ ROW_PLATFORM_BOARD: dict[str, str | None] = {
     # stays: its job is to make "this platform has no floor" a DECLARED `None`
     # rather than a fall-through, and that is unchanged for the other nine.
     "esp32": "esp32",
+    # phase-535 W5 — mps2-an385 bare metal. Its stack is cortex-m-rt's, from
+    # the end of a 4 MiB RAM downward and not bounded by `.bss`
+    # (`nros-board-mps2-an385/mps2-an385.x`), so there is no linker leftover for
+    # a floor to measure.
+    "baremetal": None,
     # The rest run on an OS that gives a thread its own stack — the floor is
     # the PORT's (`stack_bytes` is a floor the port raises, issue 0667), not a
     # linker leftover, so `_stack_start`/`_stack_end` do not describe them.

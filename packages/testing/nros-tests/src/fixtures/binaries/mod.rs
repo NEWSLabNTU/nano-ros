@@ -125,9 +125,6 @@ static NATIVE_CUSTOM_MSG_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-talker binary
 static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the qemu-bsp-listener binary
-static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
 // Phase 169.4 — bare-metal MPS2-AN385 DDS fixture statics removed
 // (Phase 97.3.mps2-an385 lineage; deleted with the Rust DDS retirement).
 
@@ -7099,14 +7096,6 @@ pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build qemu-bsp-listener (cached)
-pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
-    QEMU_BSP_LISTENER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-listener"))
-        .map(|p| p.as_path())
-}
-
 /// Phase 244.D1 — resolve the prebuilt bare-metal `nros::main!()` BoardEntry
 /// E2E fixture (`qemu-baremetal-main-e2e`, source at
 /// `packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/`) from the
@@ -7131,14 +7120,6 @@ pub fn qemu_baremetal_capi_binary(package: &str) -> TestResult<PathBuf> {
 pub fn qemu_bsp_talker_binary() -> PathBuf {
     build_qemu_bsp_talker()
         .require("qemu-bsp-talker")
-        .to_path_buf()
-}
-
-/// rstest fixture that provides the qemu-bsp-listener binary path
-#[rstest::fixture]
-pub fn qemu_bsp_listener_binary() -> PathBuf {
-    build_qemu_bsp_listener()
-        .require("qemu-bsp-listener")
         .to_path_buf()
 }
 

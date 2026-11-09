@@ -120,7 +120,9 @@ impl PlatformConfig {
     }
 }
 
-/// Bare-metal QEMU ARM (MPS2-AN385, RTIC demo set).
+/// Bare-metal QEMU ARM (MPS2-AN385). Pubsub is the Rust workspace's
+/// `baremetal_{talker,listener}` pair (phase-535 W5); Service and Action are
+/// the RTIC demo set.
 ///
 /// | Variant | Rust  |
 /// |---------|-------|
@@ -128,9 +130,10 @@ impl PlatformConfig {
 /// | Service | 10210 |
 /// | Action  | 10220 |
 ///
-/// The extra bare-metal image pairs that outnumber the workload axis (BSP
-/// pair, RTIC mixed-priority pair, large-msg bench, RTIC run-plan image) take
-/// the named `alloc::BAREMETAL_*_PORT` aux slots (10500/10510/10520/10530) — nothing
+/// The extra bare-metal images that outnumber the workload axis (BSP
+/// leaves, RTIC mixed-priority pair, large-msg bench, RTIC run-plan image,
+/// RTIC pubsub pair) take the named `alloc::BAREMETAL_*_PORT` aux slots
+/// (10500/10510/10520/10530/10540) — nothing
 /// shares a router anymore (the pre-W4 `qemu-baremetal-shared` group is
 /// retired).
 pub const BAREMETAL: PlatformConfig = PlatformConfig {

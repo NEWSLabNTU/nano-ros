@@ -37,6 +37,22 @@ launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:7800"
 os_config = ["board-net-16.toml"]
 
+# Bare-metal MPS2-AN385 (no RTOS; phase-535 W5). `locator` is the cell's
+# `alloc::port_of(QemuBaremetal, Rust, Pubsub)`. The two images share the
+# FreeRTOS pair's network files: each QEMU has its own SLIRP network.
+
+[image.baremetal_talker]
+board = "mps2-an385-baremetal"
+launch = "talker.launch.xml"
+locator = "tcp/10.0.2.2:10200"
+os_config = ["board-net-15.toml"]
+
+[image.baremetal_listener]
+board = "mps2-an385-baremetal"
+launch = "listener.launch.xml"
+locator = "tcp/10.0.2.2:10200"
+os_config = ["board-net-16.toml"]
+
 # Linux: one image per (role, rmw). The router locator is ephemeral
 # (NROS_LOCATOR at run time), so none is baked here.
 

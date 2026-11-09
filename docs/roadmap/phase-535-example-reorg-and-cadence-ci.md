@@ -429,6 +429,22 @@ One PR per platform directory, each rebuilding its own lane.
     as leaf rows do.
 - **nuttx riscv.** Nothing to move: `examples/rv-virt-nuttx` holds only the C
   talker witness.
+- **mps2-an385 bare metal (in review).** The Rust workspace's pubsub bringup
+  gets `baremetal_talker` and `baremetal_listener`, with the locator at the
+  cell's `alloc::port_of` (10200). `test_qemu_bsp_pubsub_e2e` is the
+  `(QemuBaremetal, Rust, Pubsub)` pair cell's test, and it resolves both
+  roles through `fixtures::workspace_image`. The RTIC pubsub pair used that
+  port, so it moves to a new aux slot, `alloc::BAREMETAL_RTIC_PUBSUB_PORT`
+  (10540). There are no plain Rust service or action leaves on this board,
+  only the RTIC variants, and those are W6. No leaf retires:
+  - The Rust `talker` is the witness.
+  - The Rust `listener` keeps its row, because `tests/qemu-baremetal`
+    builds its `docker` image in the leaf. That image is a configuration,
+    so it moves in W6.
+  - The twelve C/C++ leaves stay as they are. A C/C++ workspace image goes
+    to the cmake driver, which knows no bare-metal board, and the link root
+    on this board has to be Rust (issue 2377). These leaves are still the
+    only images for the six C/C++ Runtime cells.
 
 The coverage ratchet (`check-example-coverage-ratchet`) does not count the
 RMW: a tuple is (platform, lang, driver, shape, launch, entry), so a move
@@ -529,3 +545,4 @@ All per RFC-0122 D2.
 | --- | --- |
 | [#2336](../issues/2336-board-net-is-per-configure-not-per-image.md) | An image's `os_config` network file is applied per cmake configure, so images sharing one configure clash: found in this phase's workspace images. |
 | [#2383](../issues/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). |
+| [#2377](../issues/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road has no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stay leaves (W5). |

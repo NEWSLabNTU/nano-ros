@@ -2962,6 +2962,37 @@ platform = "baremetal"
 lang = "rust"
 dir = "examples/mps2-an385-baremetal/rust/serial-listener"
 
+# phase-535 W5 (RFC-0122 D1) — the bare-metal Rust pubsub pair as images of
+# the Rust workspace's pubsub bringup. `test_qemu_bsp_pubsub_e2e` resolves
+# both roles through `fixtures::workspace_image`. The `rust/talker` leaf stays
+# as the board's witness; the `rust/listener` leaf stays for its `docker`
+# image, which `tests/qemu-baremetal` builds in the leaf (a configuration:
+# W6). There are no plain Rust service or action leaves on this board, only
+# the RTIC variants above (W6), so the pubsub pair is the only move.
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-talker"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "baremetal_talker"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/baremetal-talker"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-listener"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "baremetal_listener"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/baremetal-listener"
+target = "thumbv7m-none-eabi"
+
 # issue 0488 residue 1 — the smoltcp/zenoh-pico bridge. It was built by a bare
 # `cargo build` in two `just qemu` recipes, so it had no coordinate, no group and
 # no staleness probe, and it wrote a per-leaf `target/` on a MIGRATED platform.
@@ -3026,8 +3057,13 @@ dir = "packages/testing/nros-bench/large-msg-baremetal"
 # `app_main()`, `build.rs` compiles the C/C++). The builder is the declared
 # fact; `fixtures-build.sh` and `check-fixtures-stale.sh` select each row's lane
 # by it, so these build and probe exactly like their `rust/` siblings above.
-# `matrix::CELLS` carries them as BuildOnly — the runtime lane needs the entry
-# locator baked into the C compile, which issue 1512 still tracks.
+# They run end to end since issue 1512 baked the entry locator into the C
+# compile.
+#
+# phase-535 W5 — these stay leaves. The workspace road sends a C/C++ image to
+# the cmake driver, whose entry pipeline has no bare-metal board, and the link
+# root here has to be Rust (issue 2377). They are the only images of the six
+# `(QemuBaremetal, C|Cpp, Zenoh, *)` Runtime cells (`test_qemu_baremetal_capi_e2e`).
 # ---------------------------------------------------------------------------
 
 [[fixture]]

@@ -210,6 +210,9 @@ build-fixtures:
     # language.
     scripts/build/fixtures-build.sh baremetal c
     scripts/build/fixtures-build.sh baremetal cpp
+    # phase-535 W5 — the Rust pubsub pair as images of the Rust workspace's
+    # pubsub bringup (`baremetal_{talker,listener}`), built by `nros build`.
+    bash scripts/build/workspace-fixtures-build.sh baremetal rust
     # issue 0488 residue 1 — "remains ad-hoc until reference package coverage
     # moves into the fixture manifest" is done: it has a row, so the
     # `fixtures-build.sh` call above builds it with a coordinate and a group.
@@ -608,7 +611,7 @@ rtic-action-server: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-server")
 # Run RTIC action client on QEMU
 rtic-action-client: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-client"))
 
-# Start zenohd router for bare-metal QEMU examples (allocator RTIC pubsub port 10200)
+# Start zenohd router for bare-metal QEMU examples (the pubsub pair cell's allocator port 10200)
 zenohd model="":
     #!/usr/bin/env bash
     set -e
