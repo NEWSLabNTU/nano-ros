@@ -40,9 +40,9 @@
 //! reads `getppid()` after `prctl` and refuses to exec when the parent is no
 //! longer the runner.
 //!
-//! Off Linux, [`die_with_runner`] is a no-op (there is no PDEATHSIG; FreeBSD's
-//! `procctl(PROC_PDEATHSIG_CTL)` is not wired because no runner is supported
-//! there), and [`Chain`] still works on any Unix. Off Unix both are no-ops.
+//! Off Linux, [`die_with_runner`] is a no-op (no other supported host has
+//! PDEATHSIG), and [`Chain`] still works on any Unix. Off Unix both are
+//! no-ops.
 
 #![warn(missing_docs)]
 
