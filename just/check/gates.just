@@ -400,6 +400,14 @@ gate-order tier="fast":
 gate-lane-preflight:
     @python3 scripts/check/gate-lane-preflight.py --check
 
+# issue 2382 — a CI job that runs a gate lane (`NROS_GATE_SCOPE`) whose
+# `.config/gate-lanes.toml` claims include something the job must FETCH
+# (submodules, git-history, zephyr-tree) runs `scripts/ci/provision-gate-lane.sh
+# <lane>` before it. Without it the lane's preflight refuses and no gate runs
+# (the build lane, three nights). Buildless; self-tests on its normal path.
+gate-lane-provisioned:
+    @python3 scripts/check/gate-lane-provisioned.py
+
 # phase-543 W3 — every gate's scope is declared and every capability has a
 # home: a `needs:` names a capability `.config/gate-lanes.toml` lists, a
 # capability no lane claims is listed on every run (its gates run nowhere),
