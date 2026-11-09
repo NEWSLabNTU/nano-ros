@@ -962,8 +962,15 @@ def self_test() -> None:
     assert starter_of({"book_run": "guide/a.md#run"}) is None
     # phase-537 W9 — a platform page's header names every row, and the
     # hardware table lists only the rows that name `hardware`.
+    # A root that is EMPTY by construction. It was `Path("/nonexistent")`,
+    # which is `nobody`'s home on Debian-family hosts: where that directory
+    # exists (mode 0700, owned by nobody), `.exists()` on a path under it
+    # raises PermissionError instead of answering False, and this self-test,
+    # which runs on the fast line, crashed there.
+    empty_root = Path(tempfile.mkdtemp(prefix="board-support-selftest-"))
+
     class Plat(Slot):
-        root = Path("/nonexistent")
+        root = empty_root
         rows = [{"crate": "a", "book_platform": "guide/platforms/a.md"},
                 {"crate": "n", "hardware": "nucleo", "emulator": "renode:n",
                  "book_flash": "starters/n.md#flash-the-board",
@@ -985,6 +992,7 @@ def self_test() -> None:
         raise AssertionError("an unadmitted row's platform page was accepted")
     except SystemExit as e:
         assert "not admitted" in str(e), e
+    empty_root.rmdir()
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         (root / "v.rs").write_text(cells)
