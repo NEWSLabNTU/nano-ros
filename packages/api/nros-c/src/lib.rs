@@ -249,19 +249,40 @@ mod platform_critical_section {
         unsafe { nros_platform_critical_section_acquire() }
     }
 
-    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
-    unsafe fn acquire_key() -> critical_section::RawRestoreState {
-        let _ = unsafe { nros_platform_critical_section_acquire() };
-    }
-
     #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     unsafe fn release_key(token: critical_section::RawRestoreState) {
         unsafe { nros_platform_critical_section_release(token) }
     }
 
+    // issue 2355 — everywhere else `RawRestoreState` is not a `u32` (`()` on
+    // bare metal, `bool` where `critical-section/std` arrives), so the port's
+    // token cannot ride in it. It is kept here instead, one per nesting level,
+    // and handed back to the port on the matching release. The token is the
+    // port's PRIOR posture and only the port knows what a number means: a
+    // literal 0 is `TX_INT_DISABLE` on ThreadX riscv64, so releasing with it
+    // left interrupts masked for good after the first section.
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    static SAVED: super::saved_cs_tokens::TokenStack = super::saved_cs_tokens::TokenStack::new();
+
+    #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
+    unsafe fn acquire_key() -> critical_section::RawRestoreState {
+        let token = unsafe { nros_platform_critical_section_acquire() };
+        // SAFETY: the port's acquire just returned, so this is inside the section.
+        if unsafe { SAVED.push(token) }.is_err() {
+            unsafe { nros_platform_critical_section_release(token) };
+            panic!(
+                "critical sections nested deeper than {}",
+                super::saved_cs_tokens::MAX_NESTING
+            );
+        }
+        Default::default()
+    }
+
     #[cfg(not(any(target_arch = "arm", target_arch = "aarch64")))]
     unsafe fn release_key(_token: critical_section::RawRestoreState) {
-        unsafe { nros_platform_critical_section_release(0) }
+        // SAFETY: still inside the section the matching acquire entered.
+        let token = unsafe { SAVED.pop() };
+        unsafe { nros_platform_critical_section_release(token) }
     }
 
     struct PlatformCs;
@@ -274,6 +295,144 @@ mod platform_critical_section {
 
         unsafe fn release(token: critical_section::RawRestoreState) {
             unsafe { release_key(token) }
+        }
+    }
+}
+
+/// issue 2355 — the port tokens of the open critical sections, innermost last,
+/// for targets whose `critical_section::RawRestoreState` cannot carry a `u32`.
+/// Only ever touched between a port acquire and its release, so the section
+/// itself is the lock: on an interrupt-mask port nothing preempts it, on a
+/// recursive-mutex port (POSIX, NuttX) no other thread holds it.
+#[cfg(any(test, feature = "critical-section"))]
+mod saved_cs_tokens {
+    use core::cell::UnsafeCell;
+
+    /// Deeper than any nesting the crate graph produces; past it, a release
+    /// could not be paired with its acquire, so `push` refuses.
+    pub(crate) const MAX_NESTING: usize = 16;
+
+    pub(crate) struct TokenStack {
+        tokens: UnsafeCell<[u32; MAX_NESTING]>,
+        level: UnsafeCell<usize>,
+    }
+
+    // SAFETY: every access happens inside the critical section (see above).
+    unsafe impl Sync for TokenStack {}
+
+    impl TokenStack {
+        pub(crate) const fn new() -> Self {
+            Self {
+                tokens: UnsafeCell::new([0; MAX_NESTING]),
+                level: UnsafeCell::new(0),
+            }
+        }
+
+        /// Save the token the port's acquire just returned.
+        ///
+        /// # Safety
+        /// Called inside the section that acquire entered.
+        pub(crate) unsafe fn push(&self, token: u32) -> Result<(), u32> {
+            unsafe {
+                let level = &mut *self.level.get();
+                if *level >= MAX_NESTING {
+                    return Err(token);
+                }
+                (*self.tokens.get())[*level] = token;
+                *level += 1;
+            }
+            Ok(())
+        }
+
+        /// The token of the innermost open section, for the port's release.
+        ///
+        /// # Safety
+        /// Called inside a section whose token was pushed, before its release.
+        pub(crate) unsafe fn pop(&self) -> u32 {
+            unsafe {
+                let level = &mut *self.level.get();
+                debug_assert!(*level > 0, "critical-section release without acquire");
+                *level -= 1;
+                (*self.tokens.get())[*level]
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use core::cell::Cell;
+
+        // ThreadX riscv64: `tx_interrupt_control(new)` returns the old posture;
+        // TX_INT_DISABLE is 0, TX_INT_ENABLE is MIE (0x8).
+        const TX_INT_DISABLE: u32 = 0;
+        const TX_INT_ENABLE: u32 = 0x8;
+
+        struct MaskPort {
+            posture: Cell<u32>,
+        }
+        impl MaskPort {
+            fn acquire(&self) -> u32 {
+                self.posture.replace(TX_INT_DISABLE)
+            }
+            fn release(&self, token: u32) {
+                self.posture.set(token);
+            }
+        }
+
+        fn enter(stack: &TokenStack, port: &MaskPort) {
+            let t = port.acquire();
+            unsafe { stack.push(t) }.expect("nesting");
+        }
+        fn exit(stack: &TokenStack, port: &MaskPort) {
+            port.release(unsafe { stack.pop() });
+        }
+
+        #[test]
+        fn nested_sections_on_a_mask_port_end_with_interrupts_as_they_were() {
+            let stack = TokenStack::new();
+            let port = MaskPort {
+                posture: Cell::new(TX_INT_ENABLE),
+            };
+            enter(&stack, &port);
+            enter(&stack, &port);
+            enter(&stack, &port);
+            exit(&stack, &port);
+            assert_eq!(
+                port.posture.get(),
+                TX_INT_DISABLE,
+                "inner release unmasked early"
+            );
+            exit(&stack, &port);
+            assert_eq!(
+                port.posture.get(),
+                TX_INT_DISABLE,
+                "inner release unmasked early"
+            );
+            exit(&stack, &port);
+            assert_eq!(
+                port.posture.get(),
+                TX_INT_ENABLE,
+                "outermost release must unmask"
+            );
+
+            // A section entered with interrupts already masked leaves them masked.
+            port.posture.set(TX_INT_DISABLE);
+            enter(&stack, &port);
+            exit(&stack, &port);
+            assert_eq!(port.posture.get(), TX_INT_DISABLE);
+        }
+
+        #[test]
+        fn each_release_gets_the_token_of_its_own_acquire() {
+            let stack = TokenStack::new();
+            for t in 1..=MAX_NESTING as u32 {
+                unsafe { stack.push(t * 7) }.expect("within MAX_NESTING");
+            }
+            assert_eq!(unsafe { stack.push(99) }, Err(99), "past MAX_NESTING");
+            for t in (1..=MAX_NESTING as u32).rev() {
+                assert_eq!(unsafe { stack.pop() }, t * 7);
+            }
         }
     }
 }
