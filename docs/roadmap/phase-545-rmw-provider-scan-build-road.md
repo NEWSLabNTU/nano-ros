@@ -1,13 +1,16 @@
 # Phase 545 — `nros build` selects an RMW through the provider scan
 
-**Status (2026-11-07). NOT STARTED.** Design accepted the same day (user
+**Status (2026-11-09). W1, W2 and W3 DONE; W4 (book) open.** Issue 2295 is
+resolved and archived; RFC-0071 D16 step 3 (Zephyr) moved out to
+[issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md) by user
+ruling. Design accepted the same day (user
 ruling: it enables third-party RMW backends on the `nros build` road). Owned
 by the phase-537 book session ("AUO 139 book", user ruling 2026-11-07), which
 wrote the amendment. Each work item is claimed with `just claim phase-545-wN`
 before it starts.
 Implements [RFC-0071](../design/0071-rmw-backend-descriptor.md)
 Amendment 2026-11-07, D14 to D16. Closes
-[issue 2295](../issues/2295-nros-build-rmw-selection-in-tree-only.md).
+[issue 2295](../issues/archived/2295-nros-build-rmw-selection-in-tree-only.md).
 
 Depends on:
 
@@ -106,9 +109,9 @@ crate does not name, and an acceptance test with a gate.
   publish through backend `acme`. It runs in the native e2e lane, beside
   1214's cmake fixture.
 - Step 3: the same image with `board = "native_sim"` builds through
-  `west_app`. **Decide here first** whether this step is part of this phase or
-  a follow-up, since it needs the Zephyr SDK on its lane. The 2026-11-07
-  ruling left that open.
+  `west_app`. **User ruling 2026-11-09: a FOLLOW-UP, not part of this
+  phase** (it needs the Zephyr SDK on its lane). Filed as
+  [issue 2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md).
 - Gate `check-rmw-resolve-sites` on the fast lane. It refuses `resolve_rmw(`,
   `RMW_ROWS` and the static capability helpers in
   `packages/cli/nros-cli-core/` and `packages/cli/cargo-nano-ros/src/`, except
@@ -116,9 +119,52 @@ crate does not name, and an acceptance test with a gate.
   lands.
 
 **Acceptance:**
-- steps 1 and 2 are green, and step 3 too unless it is moved out;
+- steps 1 and 2 are green (step 3 moved out, issue 2372);
 - the gate is on the fast lane with an empty allowlist;
 - issue 2295 is archived as resolved.
+
+**Done (2026-11-09).**
+- Fixture: `packages/testing/nros-tests/fixtures/out-of-tree-rmw/`. `acme_rmw`
+  builds its vtable from `RustBackendAdapter::<nros_rmw_zenoh::ZenohRmw>` and
+  registers it as `acme`, with its own identifier and a wrapped `publish` that
+  prints a marker on the first sample sent through it.
+- The last SDK-root-only site was `facade::entry_selection`, which
+  `cmd/build.rs` reaches when it generates a cargo entry; it now takes the
+  workspace (`rmw_index::for_workspace`, memoised per invocation), so
+  `nros build` finds a workspace provider.
+- Running the image found one more gap. `acme` links zenoh, whose hosted
+  `.init_array` ctor registers `zenoh` as well, so the open saw two backends
+  and no selector (`Ambiguous`). `nros::main!` now bakes the image's `rmw`
+  (`BakedBootConfig::new_with_rmw`) for an image whose entry registers its
+  own backend (the `(image)` arm), and `nros-board-linux` reads the baked
+  `rmw`, below `$NROS_RMW`, as the RTOS boards already did. Every image
+  without the arm expands as before.
+- Step 1: `nros-cli-core/tests/out_of_tree_rmw_build.rs` (in
+  `check-cli-tests`) drives the implicit configure and `nros build --dry-run`
+  on a copy of the fixture's tracked files, and asserts the generated entry
+  path-deps `acme-rmw` at the provider (`default-features = false`, the
+  board's `platform_feature`), asks the board for no `rmw-*`, and registers
+  `::acme_rmw::register()` on the `(image)` arm. It compiles nothing: the
+  image is compiled by the build stage. Negative control: with the adapter
+  back on the SDK root alone the test fails with D5's "no package provides
+  rmw `acme`; searched: …".
+- Step 2: row `workspace-out-of-tree-rmw` (`examples/fixtures.toml`, coordinate
+  `linux/rust/zenoh`, the wire `acme` delegates to) is built by `nros build`
+  in the native fixture build. `nros-tests/tests/out_of_tree_rmw_e2e.rs` runs
+  it against a router with no `$NROS_RMW`, sees the publish marker, and sees
+  a separate native listener hear the talker. Issue 1214 left no cmake e2e
+  fixture to sit beside (its acceptance was `provider_index_gate.sh` and unit
+  tests), so this is the native lane's first out-of-tree RMW image.
+  `fixtures-manifest.py`'s 0831 check (a row's `rmw` must be one its image
+  links) now derives what an out-of-tree backend links from the provider's
+  `Cargo.toml`, so the row's `zenoh` is checked, not exempted.
+- Gate: `check-rmw-resolve-sites` (`just/check/rmw.just`, fast lane by
+  derivation), `scripts/check/check-rmw-resolve-sites.py`, with a self-test
+  on its normal path. Its exceptions are structural (`build.rs`, the
+  resolver's `#[cfg(test)]` items); there is no allowlist. A `.resolve_rmw(`
+  METHOD call is not a site: `cmd/config.rs` calls the knob tree's
+  `resolve_rmw`, which resolves the `rmw` knob group and reads no backend
+  table.
 
 ### W4 — Book
 
@@ -142,5 +188,6 @@ crate does not name, and an acceptance test with a gate.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2295](../issues/2295-nros-build-rmw-selection-in-tree-only.md) | This phase closes it: `nros build` finds an RMW provider outside the in-tree table (RFC-0071 Amendment 2026-11-07, D14 to D16). |
+| [#2295](../issues/archived/2295-nros-build-rmw-selection-in-tree-only.md) | Resolved by W1–W3 (2026-11-09). This phase closes it: `nros build` finds an RMW provider outside the in-tree table (RFC-0071 Amendment 2026-11-07, D14 to D16). |
 | [#2310](../issues/2310-board-descriptor-platform-is-closed-enum.md) | A board descriptor's `platform` is a closed enum, so no out-of-tree platform: the platform-side twin of the out-of-tree RMW this phase enables. |
+| [#2372](../issues/2372-out-of-tree-rmw-native-sim-west-app.md) | RFC-0071 D16 step 3: the `acme` image on `board = "native_sim"` through `west_app`, moved out of W3 by user ruling (2026-11-09). |
