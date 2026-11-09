@@ -741,6 +741,13 @@ pub(crate) fn leaf_census_path(leaf: &Path) -> PathBuf {
         .join("leaf.census.json")
 }
 
+/// The lock every `take --leaf` holds while it checks and rebuilds a leaf's
+/// census (issue 2378). Beside `census-host`, never inside it: the host
+/// configure owns that directory.
+pub(crate) fn leaf_census_lock_path(leaf: &Path) -> PathBuf {
+    leaf.join("build").join("census-host.lock")
+}
+
 /// Issue 1556 item 4 -- set on the HOST census configure of a standalone leaf.
 ///
 /// The census producer must not be sized by what it is meant to replace: with
@@ -969,6 +976,15 @@ pub(crate) fn take_leaf_census_with(
     // `CMakeLists.txt`; the host build's program manifest does, after it.
     let named = leaf_executable_name(&leaf);
     let out = leaf_census_path(&leaf);
+    // Issue 2378 -- `census-host` is per LEAF, and a fixture lane configures
+    // several ROWS of one leaf at once (the Zephyr pool runs 24), each taking
+    // the census from its own configure. Two takers rebuilding one stale
+    // census-host delete each other's try_compile files mid-configure. The
+    // lock spans the freshness check AND the rebuild, so a second taker waits
+    // and then finds the census fresh. Its own file, not the configure lock:
+    // a configure that holds that one may be the caller. The host build
+    // cannot re-enter (`NROS_LEAF_CENSUS_HOST` stops every hook).
+    let _census_lock = crate::file_lock::lock_exclusive_path(&leaf_census_lock_path(&leaf))?;
     if let Freshness::Fresh = census_freshness(&out, &leaf) {
         let complete = std::fs::read_to_string(&out)
             .ok()
@@ -2192,6 +2208,65 @@ mod tests {
         assert!(
             !msg.contains("`[[component]]`:"),
             "points at no component it does not have: {msg}"
+        );
+    }
+
+    /// Issue 2378 -- two takers of one stale leaf (two fixture rows of
+    /// `examples/zephyr/c/talker`, configured at once) never run its host
+    /// census build at the same time: they shared `census-host`, and each
+    /// configure deleted the other's try_compile files. The host step here
+    /// counts how many runs overlap; each one fails, so the second taker finds
+    /// no census and must run too, after the first, never during it.
+    #[test]
+    fn two_takers_of_one_leaf_never_build_its_census_at_once() {
+        use std::{
+            os::unix::process::ExitStatusExt,
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+        };
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(
+            td.path(),
+            "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n",
+        );
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let most = Arc::new(AtomicUsize::new(0));
+        let runs = Arc::new(AtomicUsize::new(0));
+        let takers: Vec<_> = (0..2)
+            .map(|_| {
+                let (in_flight, most, runs) = (in_flight.clone(), most.clone(), runs.clone());
+                let leaf = td.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let run = move |_: &mut Command| {
+                        let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+                        most.fetch_max(now, Ordering::SeqCst);
+                        runs.fetch_add(1, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        in_flight.fetch_sub(1, Ordering::SeqCst);
+                        Ok(std::process::ExitStatus::from_raw(1 << 8))
+                    };
+                    let host = HostSteps {
+                        missing: &|_, _| Vec::new(),
+                        run: &run,
+                    };
+                    let _ = take_leaf_census_with(&leaf, None, 5, &host);
+                })
+            })
+            .collect();
+        for t in takers {
+            t.join().unwrap();
+        }
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            2,
+            "both takers ran a host configure"
+        );
+        assert_eq!(
+            most.load(Ordering::SeqCst),
+            1,
+            "two host census configures of one leaf overlapped"
         );
     }
 
