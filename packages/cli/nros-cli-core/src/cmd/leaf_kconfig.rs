@@ -333,6 +333,20 @@ pub fn render_over(
                     format!("rmw = \"{rmw}\" (zenoh-pico's Zephyr port is pthread-based)"),
                 )?;
             }
+            // Issue 2354 -- `NROS_RMW_CYCLONEDDS` `depends on NET_SOCKETS &&
+            // POSIX_API && CPP`: Cyclone is pthread-based and the backend is
+            // C++. Stating the choice alone left it unsatisfiable on an image
+            // that is not C++ itself, so Kconfig kept NROS_RMW_ZENOH with a
+            // warning and `nros_check_image_agreement` refused the configure
+            // (measured: `nros new --board zephyr --lang rust --rmw
+            // cyclonedds`). Keyed on the RMW, not the language: a C entry
+            // needs it too. NET_SOCKETS is the board's networking, as for XRCE.
+            if sym == "NROS_RMW_CYCLONEDDS" {
+                let why =
+                    format!("rmw = \"{rmw}\" (NROS_RMW_CYCLONEDDS depends on POSIX_API and CPP)");
+                push(&mut out, "POSIX_API", "y".to_string(), why.clone())?;
+                push(&mut out, "CPP", "y".to_string(), why)?;
+            }
             Some(sym)
         }
         None => None,
@@ -815,6 +829,30 @@ endif # NROS
             !m.contains_key("CONFIG_NROS_CAPABILITY_PARAM_SERVICES"),
             "an undeclared axis keeps its default: {m:?}"
         );
+    }
+
+    /// Issue 2354 — a Cyclone image states what `NROS_RMW_CYCLONEDDS` depends
+    /// on (`POSIX_API`, `CPP`) whatever the entry's language; a zenoh image
+    /// states no CPP row.
+    #[test]
+    fn a_cyclone_image_states_what_its_rmw_choice_depends_on() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"cyclonedds\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        for lang in [Language::Rust, Language::C, Language::Cpp] {
+            let m = rows(&render(&l, Some(lang), &syms, &BTreeMap::new()).unwrap());
+            assert_eq!(m["CONFIG_NROS_RMW_CYCLONEDDS"], "y", "{lang:?}");
+            assert_eq!(m["CONFIG_POSIX_API"], "y", "{lang:?}: {m:?}");
+            assert_eq!(m["CONFIG_CPP"], "y", "{lang:?}: {m:?}");
+        }
+        let (_d, z) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let m = rows(&render(&z, Some(Language::Rust), &syms, &BTreeMap::new()).unwrap());
+        assert!(!m.contains_key("CONFIG_CPP"), "{m:?}");
     }
 
     /// Issue 2189 — a Rust entry states RUST beside `NROS_RUST_API`, which
