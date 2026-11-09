@@ -539,7 +539,7 @@ matrix_platform = "Px4"
 # it. The module links nros-cpp, whose root is `#![no_std]`, built with no
 # `std` feature (NanoRosPx4Module.cmake).
 flavour = "no_std"
-book_run = "guide/platforms/px4.md#run-on-the-sitl-simulator"
+book_run = "starters/px4-sitl.md#run-it-in-sitl"
 runs = "host"
 cadence = "manual"
 last_run = "2026-11-03"
@@ -1275,6 +1275,14 @@ variant = ""
 weekly = true
 row = "px4-sitl@Px4"
 notes = "RFC-0115 D4 — PX4 SITL is a host executable with no emulator twin, so its chapter stays in the user book through this track. It replays guide/platforms/px4.md on the installed track: the reader's own PX4-Autopilot v1.17.0 clone and its `Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools`, the module template copied out of `nros locate nano-ros`, the plain `make px4_sitl_default EXTERNAL_MODULES_LOCATION=…` build, then the headless SITL daemon (`bin/px4 -d etc/init.d-posix/rcS`, asserted on `Startup script returned successfully`) and `bin/px4-nano_ros_app start` (asserted on `nano-ros uORB backend registered`). One daemon in its own build dir, so issue 2243's two-daemon race does not apply. Not replayed: the Gazebo run, the ROS 2 echo (the template forwards nothing), the `CMAKE_ARGS` form, the Pixhawk build and upload. Weekly. The installed SDK ships the PX4 POSIX archives and headers prebuilt under `share/nano-ros/prebuilt/px4-posix/` (phase-541), so the build needs no cargo step."
+
+[[probe]]
+track = "px4-sitl"
+chapter = "starters/px4-sitl.md"
+variant = ""
+weekly = true
+row = "px4-sitl@Px4"
+notes = "phase-542 W4 / phase-537 W4 — the PX4 SITL starter: the reader's PX4-Autopilot v1.17.0 clone and its `Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools`, the module template copied out of `nros locate nano-ros`, the plain `make px4_sitl_default EXTERNAL_MODULES_LOCATION=…` build, the headless SITL daemon (asserted on `Startup script returned successfully`) and `bin/px4-nano_ros_app start` (asserted on `nano-ros uORB backend registered`). The `px4` track keeps replaying guide/platforms/px4.md. Weekly."
 
 [[probe]]
 track = "workspace"
