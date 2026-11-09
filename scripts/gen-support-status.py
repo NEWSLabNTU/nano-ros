@@ -214,7 +214,7 @@ def render():
         f"| **XRCE-DDS** | Micro-XRCE-DDS client `{v(ver,'micro-xrce-dds-client')}` + Micro-CDR `{v(ver,'micro-cdr')}` | Agent `{v(ver,'xrce-agent')}` (installed by `nros setup … --rmw xrce`) | Client and agent are pinned independently and are NOT the same upstream release; they meet at the DDS-XRCE wire protocol |",
         f"| **Cyclone DDS** | fork `{v(ver,'cyclonedds-src')}` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/book-internals/src/rmw/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration |",
         "",
-        "Per-feature coverage across the three backends:",
+        "Per-feature coverage across the backends:",
         "[Per-RMW Feature Matrix](rmw-feature-matrix.md).",
         "",
         "## ROS 2 editions",

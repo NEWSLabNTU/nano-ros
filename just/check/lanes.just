@@ -4509,6 +4509,14 @@ rmw-cyclonedds:
 rmw-feature-matrix:
     @python3 scripts/gen-rmw-feature-matrix.py --check
 
+# The platform API reference's "Backends in the tree" table is generated from
+# the rmw providers `packages/rmw/` announces (`<nano_ros_provides kind="rmw">`
+# plus `nros-rmw.toml`), the same root the CLI's provider scan reads (RFC-0071
+# D14, phase-545 W4). A typed list named four backends in three places.
+[private]
+rmw-backend-list:
+    @python3 scripts/gen-rmw-backend-list.py --check
+
 [metadata("tier", "build")]
 rmw-uorb:
     #!/usr/bin/env bash
