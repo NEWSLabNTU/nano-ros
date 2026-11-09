@@ -24,7 +24,7 @@ repository; W8 re-measures every cell.
 | Board (RMW) | Rust | C | C++ |
 |---|---|---|---|
 | linux (cyclonedds) | ok | ok | ok |
-| freertos-posix (zenoh) | ok (W1) | ok | 2342 |
+| freertos-posix (zenoh) | ok (W1; probe green 2026-11-10) | ok | 2342 archived; W8 re-measures |
 | freertos-posix (cyclonedds) | **W1** | ok | ok |
 | mps2-an385 bare metal (zenoh), Tutorial 1 to 10 | ok | Rust only (ruling) | Rust only (ruling) |
 | mps2-an385 FreeRTOS (zenoh) | ok | ok | ok |
@@ -40,7 +40,8 @@ Gaps already owned outside this phase. This phase does not repeat them; W8
 re-measures their cells once they land:
 
 - **2342**: zenoh-pico has no FreeRTOS port for a host-owned network stack
-  (`lwipopts.h: No such file or directory`). Fixed by #3273.
+  (`lwipopts.h: No such file or directory`). Fixed by #3273; archived with
+  phase-546.
 - **531**: C and C++ on mps2 bare metal. Today it fails with
   `tools/setup.sh: unknown platform 'bare_metal'`, from
   `builder/cmake_root.rs:233`. Fixed by phase-531 W6 batch 2: a CMake C
