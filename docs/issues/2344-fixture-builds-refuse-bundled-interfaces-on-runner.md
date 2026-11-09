@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: high
 area: [ci, testing, cmake, runner]
-related: [2278, 2302, 2356, phase-528, phase-489]
+related: [2278, 2302, 2356, phase-528, phase-489, phase-466]
 found: 2026-11-07
 ---
 **Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** (the runner image is CI build infrastructure).
