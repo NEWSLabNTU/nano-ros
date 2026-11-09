@@ -1,5 +1,7 @@
 # Phase 512 — Work that needs a real board
 
+**Status (2026-11-10). Issue 0880 closed; H10 measured and still open.** The island's board image uses both TCMs (ITCM 18,108 B, DTCM 117,984 of 131,072 B) with SRAM at 80.25 %, so 0880 is archived with the numbers. H10's image with parameter services on does not boot on the board or the QEMU island: main overflows at 16 KiB while the services register, and on the board a larger main leaves the session unopened. Filed as #2387; the island keeps the services off.
+
 **Status (2026-11-09). Issues 1806 and 0913 closed on the S32K344.** One
 late-join act (`z1806-lj1`) and one free-form session (`w1`, Autoware's
 planning simulator, the island gateway without its liveliness ACL) on the
@@ -274,13 +276,57 @@ entity, and every service is a queryable.
 native, native_sim and the MR-CANHUBK344, the demo reads VERDICT PASS on both
 islands, and the board's heap use with the services is recorded here.
 
+"Both islands" is the demo's two Zephyr islands today: the board
+(`run-board.sh --target board`) and the QEMU island (`--target qemu`). The
+native (Cyclone) island the phase-446 wording named was retired with the
+legacy demo. The switch is one capability in the island's bringup,
+`features = ["params", "param_services"]` in
+`src/safety_island_bringup/system.toml`; all three entries take it from
+there. The island keeps it off.
+
+**Open, measured 2026-11-10 on the S32K344 (island 6b09fa7, nano-ros
+ac23c0155b): the board image with the services does not boot.** Issue
+[#2387](../issues/2387-param-services-do-not-boot-on-the-s32k344-island.md)
+has the detail. In short:
+
+| | without the services | with them |
+| --- | ---: | ---: |
+| queryables / liveliness tokens (derived) | 4 / 25 | 22 / 46 |
+| DTCM | 117,984 B | 137,312 B, does not link (+19,328 B, the executor's parameter home) |
+| RAM (SRAM) | 262,976 B | 291,216 B (+28,240 B; `BUILTIN_INBOX` 19,800 B of it) |
+| POSIX cond / mutex pools | 19 / 39 | 37 / 57 (the configure refuses below 37 conds) |
+| main stack peak | 13,552 of 16,384 B | overflows 16,384 B during registration |
+| heap peak | 68,280 of 94,720 B (act `h10-b24`) | 39,352 B at the overflow (stage 4); never reached FirstSpin |
+
+To link at all the measurement image shrank the trace buffer to 36,864 B.
+At a 16 KiB main the session opens and main overflows while registering
+entities; at a 24 or 32 KiB main the session never opens (stage 2, `LAST
+ERROR Transport`), although the same image without the services and a
+24 KiB main passes the encore act. So the board's heap use with the services
+cannot be recorded yet: no services image reaches FirstSpin.
+
+The QEMU island fails the same way (run `h10-q1`): with the services on, its
+16 KiB main overflows while the parameter services register, this time
+caught by the MPU stack guard in a `__aeabi_memcpy4` (#2387 names the likely
+by-value move). Neither island reads VERDICT PASS with the services. The
+native and native_sim builds were not run in this round.
+
+Runs (the demo's `tools/eval/run-board.sh encore`, planning simulator):
+`h10-b1` (the shipped image, PASS, heap peak 68,272 B), `h10-b24` (no
+services, 24 KiB main, PASS, heap 68,280 B, main 13,552 B), `h10-e1` and
+`h10-e5` (services, 16 KiB main: overflow at stage 4), `h10-e2`, `h10-e3`,
+`h10-e4` and `h10-e6` (services, 24 or 32 KiB main: no session; `h10-e2`
+also hit the eDMA fault in #2387 after `h10-e1`'s halt), and `h10-q1`
+(the QEMU island with the services: main overflow).
+
 ## Issues homed here
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | Re-homed 2026-11-05 from phase-474 (archived). 192 KiB of TCM sits unused while SRAM is exhausted; measured on the island's S32K344. |
+| [#0880](../issues/archived/0880-tcm-unused-while-sram-exhausted.md) | Re-homed 2026-11-05 from phase-474 (archived). Resolved 2026-11-09, archived: the island's board image (island 6b09fa7, nano-ros ac23c0155b) uses both TCMs, ITCM 18,108 of 65,536 B and DTCM 117,984 of 131,072 B, with SRAM at 262,976 of 327,680 B (80.25 %). One heap remains (the libc arena is 0 and the kernel heap 572 B); no residual gap is filed. |
 | [#1806](../issues/archived/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | Re-homed 2026-11-05 from phase-474 (archived). Resolved 2026-11-09, archived: graph discovery off held against a 137-node Autoware domain with the gateway's liveliness ACL removed (40-node churn added 0 B to the island's link, heap peak 67,720 of 94,720 B), and a late-joining island read `/api/operation_mode/state` from the publisher's cache 1.3 s after boot (run z1806-lj1). |
 | [#0913](../issues/archived/0913-the-debugger-is-not-a-passive-instrument.md) | Moved 2026-11-09 from phase-478. Resolved 2026-11-09, archived: SWD reads in attach mode do not halt; halts up to 55 s keep the serial session, the gateway expires it at the 60 s lease, and the island re-opens on its own 70 s after a 65 s halt (run w1). |
+| [#2387](../issues/2387-param-services-do-not-boot-on-the-s32k344-island.md) | Filed 2026-11-10 from H10: the island's board image with parameter services on does not boot (main overflows at 16 KiB; no session with a larger main). |
 | [#2366](../issues/2366-transient-local-history-query-is-issued-once.md) | Filed 2026-11-09 from #1806's "also not done": the transient-local history query is issued once, so a latched publisher that appears later, or a session re-open, is not re-read. Not measurable on the island today. |
 | [#1822](../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | Re-homed 2026-11-05 from phase-474 (archived). The CAN link's priority mapping waits on upstream: a QoS `Join` exceeds the CAN FD MTU. |
 | [#1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: resolved 2026-10-26, archived. |

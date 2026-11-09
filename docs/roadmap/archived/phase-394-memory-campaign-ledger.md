@@ -8,7 +8,7 @@ homes or stand alone:
 to [phase-460](phase-460-formal-checks-on-the-contract-chain.md),
 [issue 1808](../../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) to
 [phase-400](../phase-400-unified-configuration.md),
-[issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) stays with
+[issue 0880](../../issues/archived/0880-tcm-unused-while-sram-exhausted.md) stays with
 [phase-474](phase-474-safety-island-board-findings.md), and
 [issue 1823](../../issues/archived/1823-esp32-qemu-heap-used-bytes-reports-zero.md) is
 parked with no home while ESP32 is dormant (issue 1525). The ledger below is
@@ -33,7 +33,7 @@ in this campaign covered:
 
 | item | where it landed | status |
 | --- | --- | --- |
-| Tightly-coupled memory was never a placement target — 192 KiB idle at 0 % | phase-392 amendment A, [issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) | stacks moved; 80 KiB of DTCM still free |
+| Tightly-coupled memory was never a placement target — 192 KiB idle at 0 % | phase-392 amendment A, [issue 0880](../../issues/archived/0880-tcm-unused-while-sram-exhausted.md) | stacks moved; 80 KiB of DTCM still free |
 | Pools are sized for worst cases that are SUMMED, never overlapped | phase-392 amendment B | new wave, tier-gated |
 | The libc arena regresses because only the symbol is gated, not the config | phase-391 W1b | gate item added |
 | Flash is 4 MiB at 8.3 % and is NOT fungible with RAM | phase-392 amendment D | scoped: post-mortem log, config storage, ITCM |
