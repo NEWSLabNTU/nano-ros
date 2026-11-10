@@ -13,13 +13,11 @@ examples/linux/c/custom-transport-loopback/system.toml
 examples/linux/c/logging/system.toml
 examples/linux/c/parameters/system.toml
 examples/linux/c/safety-listener/system.toml
-examples/linux/c/talker/system.toml
 examples/linux/cpp/action-client/system.toml
 examples/linux/cpp/logging/system.toml
 examples/linux/cpp/parameters/system.toml
 examples/linux/cpp/safety-listener/system.toml
 examples/linux/cpp/service-client/system.toml
-examples/linux/cpp/talker/system.toml
 examples/linux/rust/action-client-rtic/system.toml
 examples/linux/rust/action-client/system.toml
 examples/linux/rust/action-server-rtic/system.toml

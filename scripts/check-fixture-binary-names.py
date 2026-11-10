@@ -222,10 +222,22 @@ TARGET_DECL = re.compile(
 
 
 def targets_of(leaf: Path) -> set[str]:
+    """The executables `leaf` builds.
+
+    A leaf migrated into a workspace (RFC-0121) has no CMakeLists.txt of its
+    own: its program is an OWNED entry package under `src/<pkg>/`, which the
+    workspace's images build (RFC-0071 D19, issue 2406). Its targets are
+    those packages' targets.
+    """
     cml = leaf / "CMakeLists.txt"
-    if not cml.is_file():
+    if cml.is_file():
+        return set(TARGET_DECL.findall(cml.read_text()))
+    if not (leaf / ".colcon_workspace").is_file():
         return set()
-    return set(TARGET_DECL.findall(cml.read_text()))
+    found: set[str] = set()
+    for pkg_cml in sorted((leaf / "src").glob("*/CMakeLists.txt")):
+        found |= set(TARGET_DECL.findall(pkg_cml.read_text()))
+    return found
 
 
 def self_test() -> None:
@@ -247,6 +259,14 @@ def self_test() -> None:
         assert known.get("build_plat_cmake_rmw") == ("examples/plat/{0}/{1}", 2), known
         # ...and one that is neither derivable nor exempted with a reason FAILS.
         assert any("build_mystery" in p_ for p_ in problems), problems
+        # A workspace leaf's targets are its owned entry packages' (issue 2406);
+        # a directory that is no workspace still declares nothing.
+        ws = Path(d) / "ws"
+        (ws / "src" / "talker").mkdir(parents=True)
+        (ws / "src" / "talker" / "CMakeLists.txt").write_text("add_executable(c_talker main.c)\n")
+        assert targets_of(ws) == set(), "no .colcon_workspace marker, no targets"
+        (ws / ".colcon_workspace").write_text("")
+        assert targets_of(ws) == {"c_talker"}, targets_of(ws)
 
 
 def main() -> int:

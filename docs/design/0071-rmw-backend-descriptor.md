@@ -1003,7 +1003,7 @@ so `nano_ros_workspace` skips the plan step it has nothing to plan for. The
 executable is whatever the entry's own `CMakeLists.txt` names. Verified on
 the linux C and C++ talkers, three images each (zenoh, xrce, cyclonedds).
 
-**A generated launch file outlives its rows.** `nros sync` generates a
+**A generated launch file outlives its rows.** `nros configure` generates a
 bringup's launch file from its `[[component]]` rows (RFC-0121 D3) and resolves
 a model from it. A bringup whose rows are all removed (an owned-entry bringup
 needs none) now has both removed by the next sync, rather than keeping a
