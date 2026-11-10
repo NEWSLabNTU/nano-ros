@@ -14,6 +14,8 @@ the archive alone, which is when cargo applies LTO:
   * Zephyr west: `scripts/zephyr/cargo-features-patch.sh` rewrites
     zephyr-lang-rust's build command to `cargo rustc --crate-type staticlib`
     (3.7's `CARGO_ARGS build`, 4.4's literal `cargo build`);
+  * Zephyr C/C++: `nros_cargo_build()` (nros-c, nros-cpp, the runtime crate)
+    runs `cargo rustc --lib --crate-type staticlib`;
   * PX4: the archive builds (the placer command, `just px4`, the release
     staging script) say `cargo rustc -p nros-cpp --lib --crate-type staticlib`.
 
@@ -40,6 +42,10 @@ CORROSION_EXEMPT = {
 WEST_PATCH = "scripts/zephyr/cargo-features-patch.sh"
 WEST_MARKER = "nano-ros: staticlib only (issue 2407)"
 WEST_REWRITES = ("CARGO_ARGS rustc --crate-type staticlib", "cargo rustc --crate-type staticlib")
+# The Zephyr C/C++ lane's own cargo step (nros-c, nros-cpp, the runtime crate).
+ZEPHYR_C_LANE = "zephyr/cmake/nros_cargo_build.cmake"
+ZEPHYR_C_LANE_ARGS = re.compile(
+    r"set\(CARGO_ARGS\s+rustc\s+--lib\s+--crate-type\s+staticlib\b")
 PX4_FILES_GLOBS = ("integrations/px4/*.cmake", "just/px4.just", "scripts/stage-px4-*.sh")
 NROS_ARCHIVE_PKG = re.compile(r"-p\s+nros-c(pp)?\b")
 
@@ -79,6 +85,14 @@ def west_problems(text: str) -> list[str]:
     return [f"{WEST_PATCH}: no staticlib-only hunk ({', '.join(repr(s) for s in missing)} "
             "missing) -- the Zephyr Rust image would build the rlib too and lose LTO "
             "(issue 2407)"] if missing else []
+
+
+def zephyr_c_lane_problems(body: str) -> list[str]:
+    if ZEPHYR_C_LANE_ARGS.search(body):
+        return []
+    return [f"{ZEPHYR_C_LANE}: nros_cargo_build()'s CARGO_ARGS do not start `rustc --lib "
+            "--crate-type staticlib` -- every Zephyr C/C++ image's nros-c / nros-cpp would "
+            "build the rlib too and lose LTO (issue 2407)"]
 
 
 def px4_problems(path: str, text: str) -> list[str]:
@@ -121,6 +135,10 @@ def self_test() -> list[str]:
         bad.append("a complete west hunk was refused")
     if not west_problems("no hunk here"):
         bad.append("a missing west hunk was accepted")
+    if zephyr_c_lane_problems("set(CARGO_ARGS\n    rustc\n    --lib\n    --crate-type staticlib\n    -p x"):
+        bad.append("a staticlib C lane was refused")
+    if not zephyr_c_lane_problems("set(CARGO_ARGS\n    build\n    -p x"):
+        bad.append("a `build` C lane was accepted")
     if not px4_problems("x.just", "    cargo build -p nros-cpp --no-default-features \\\n        --release\n"):
         bad.append("a `cargo build -p nros-cpp` was accepted")
     if not px4_problems("x.sh", "cargo build --manifest-path m \\\n  -p nros-cpp --release\n"):
@@ -146,6 +164,7 @@ def main() -> int:
         imports += len(IMPORT.findall(strip_cmake_comments(text)))
         problems += corrosion_problems(path, text)
     problems += west_problems((REPO / WEST_PATCH).read_text())
+    problems += zephyr_c_lane_problems(strip_cmake_comments((REPO / ZEPHYR_C_LANE).read_text()))
     px4 = tracked(list(PX4_FILES_GLOBS))
     for path in px4:
         problems += px4_problems(path, (REPO / path).read_text(errors="replace"))
@@ -155,7 +174,8 @@ def main() -> int:
     if problems:
         print("check-staticlib-only-roads: FAIL\n  " + "\n  ".join(problems), file=sys.stderr)
         return 1
-    print(f"check-staticlib-only-roads: OK -- {imports} corrosion import(s), the west patch, and "
+    print(f"check-staticlib-only-roads: OK -- {imports} corrosion import(s), the west patch, the "
+          f"Zephyr C/C++ lane, and "
           f"{len(px4)} PX4 file(s) all ask cargo for the staticlib only "
           f"({len(CORROSION_EXEMPT)} exempt: {', '.join(CORROSION_EXEMPT)})")
     return 0
