@@ -2865,6 +2865,11 @@ fn the_jitter_granularity_follows_the_port_not_the_constant() {
 // does the waiting.
 // ===========================================================================
 
+// Issue 2373 -- the bound asserted is exact (10 000 us), so "now" must not
+// move between registering the timer and parking: on the shared wall clock a
+// descheduled thread shortened it.
+private_test_clock!(parks_through_primitive_clock);
+
 /// A registered park primitive must actually be USED, and handed the bound the
 /// sources agreed on. Storing it without calling it would be the "a slot
 /// exists, therefore it works" shape issue 0800 measured.
@@ -2879,7 +2884,9 @@ fn spin_once_parks_through_the_registered_primitive() {
     }
 
     SEEN.store(u64::MAX, Ordering::SeqCst);
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    parks_through_primitive_clock::claim_at_us(0);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), parks_through_primitive_clock::now_us);
     executor.set_park_primitive(recording_park, core::ptr::null_mut(), 1_000);
     executor
         .register_timer(TimerDuration::from_millis(10), || {})
@@ -2979,6 +2986,11 @@ fn a_yielding_park_returns_spin_once_with_the_next_wake_bound() {
     );
 }
 
+// Issue 2373 -- this test's "now" is its own and stands still: on the shared
+// wall clock a descheduled thread spent the 50 ms budget (or let the 10 ms
+// timer fall due) before the first park, so the park was never asked.
+private_test_clock!(yielding_park_pending_wake_clock);
+
 /// A wake already pending when the slot yields keeps the pass running: the
 /// work is here now, and returning would leave it waiting for the framework's
 /// next run of the sched task.
@@ -2996,7 +3008,9 @@ fn a_yielding_park_with_a_pending_wake_keeps_the_pass() {
     }
     unsafe extern "C" fn drop_state(_: *mut core::ffi::c_void) {}
     CALLS.store(0, Ordering::SeqCst);
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    yielding_park_pending_wake_clock::claim_at_us(0);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), yielding_park_pending_wake_clock::now_us);
     executor.set_park_primitive(yielding_park, core::ptr::null_mut(), 1_000);
     executor
         .register_timer(TimerDuration::from_millis(10), || {})
@@ -3242,6 +3256,11 @@ fn a_paused_ros_clock_does_not_bound_the_wall_park() {
     assert_eq!(bound_us, 500_000);
 }
 
+// Issue 2373 -- the monotonic clock stands still too, so the lower bound on
+// each park measures the executor and not how long the host took to run it.
+#[cfg(feature = "sim-time")]
+private_test_clock!(paused_ros_clock_mono_clock);
+
 /// ... and the one thing that costs: the image must not wake once per timer
 /// period while the simulator is paused.
 ///
@@ -3267,7 +3286,9 @@ fn a_paused_ros_clock_does_not_wake_the_image_once_per_timer_period() {
     SHORTEST_US.store(u64::MAX, Ordering::SeqCst);
     PARKS.store(0, Ordering::SeqCst);
 
-    let mut executor: Executor = executor_with_clock(MockSession::new());
+    paused_ros_clock_mono_clock::claim_at_us(0);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), paused_ros_clock_mono_clock::now_us);
     executor.set_park_primitive(recording_park, core::ptr::null_mut(), 1_000);
     Clock::set_ros_time_override(10_000 * 1_000_000);
 
