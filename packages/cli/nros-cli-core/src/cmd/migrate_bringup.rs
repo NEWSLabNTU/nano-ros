@@ -383,11 +383,14 @@ fn rewrite_cargo_toml(
              generated entry depends on a node package by that name"
         ));
     }
-    if lib_name.as_deref().is_some_and(|l| l != ros_name) {
-        doc["lib"]["name"] = toml_edit::value(ros_name);
+    // The crate's RUST identifier: a package name may carry dashes (cargo
+    // accepts `entry-poc`), a path segment and a lib target name may not.
+    let ident = ros_name.replace('-', "_");
+    if lib_name.as_deref().is_some_and(|l| l != ident) {
+        doc["lib"]["name"] = toml_edit::value(ident.as_str());
     }
     if let Some(old) = old_ident
-        && old != ros_name
+        && old != ident
     {
         renamed = Some(old);
     }
@@ -757,10 +760,11 @@ pub fn plan_with(dir: &Path, west_board_of: &WestBoardOf<'_>) -> Result<Plan> {
         )?;
         if let Some(old) = renamed {
             let base = system_edit.clone().unwrap_or_else(|| system_text.clone());
-            let edited = rename_class_paths(&base, &old, &node)?;
+            let ident = node.replace('-', "_");
+            let edited = rename_class_paths(&base, &old, &ident)?;
             if edited != base {
                 plan.report.push(format!(
-                    "restated `[[component]] class` paths from `{old}::` to `{node}::`"
+                    "restated `[[component]] class` paths from `{old}::` to `{ident}::`"
                 ));
                 system_edit = Some(edited);
             }
@@ -1311,6 +1315,46 @@ nros = { version = "*", features = ["macros", "param-services"] }
             None,
             "the typed block declares the family too"
         );
+    }
+
+    /// A package name with dashes (`entry-poc`) is a valid cargo package
+    /// name but not a Rust path segment: the class must name the crate by
+    /// its identifier, `entry_poc::`. Writing the package name made the
+    /// metadata harness fail to parse (`expected one of , or >, found -`).
+    #[test]
+    fn a_dashed_package_name_keeps_a_rust_class_path() {
+        let d = scratch("dashed");
+        write(
+            &d.join("Cargo.toml"),
+            "[package]\nname = \"entry-poc\"\n\n[dependencies]\n\
+             nros = { version = \"*\", features = [\"macros\"] }\n\n[workspace]\n",
+        );
+        write(
+            &d.join("package.xml"),
+            &package_xml("entry-poc", "nros_cargo"),
+        );
+        write(
+            &d.join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[[component]]\n\
+             pkg = \"entry-poc\"\nclass = \"entry_poc::EntryPoc\"\nname = \"e\"\n\n\
+             [image.linux]\nboard = \"linux\"\n",
+        );
+        write(&d.join("src/lib.rs"), "pub struct EntryPoc;\n");
+
+        let p = plan(&d).unwrap();
+        apply(&p).unwrap();
+        let sys = std::fs::read_to_string(d.join("src/entry-poc_bringup/system.toml")).unwrap();
+        assert!(sys.contains("class = \"entry_poc::EntryPoc\""), "{sys}");
+        let _ = std::fs::remove_dir_all(&d);
+
+        // And a crate renamed to a dashed package name is restated by its ident.
+        let edited = rename_class_paths(
+            "[[component]]\nclass = \"old_name::T\"\n",
+            "old_name",
+            &"new-name".replace('-', "_"),
+        )
+        .unwrap();
+        assert!(edited.contains("class = \"new_name::T\""), "{edited}");
     }
 
     /// A copy of the Rust shape (`examples/linux/rust/talker`).
