@@ -10,7 +10,7 @@ found: 2026-11-10
 ---
 
 **Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**.
-Split from [issue 2384](2384-zephyr-a53-smp-slirp-boot-flake.md), whose two
+Split from [issue 2384](archived/2384-zephyr-a53-smp-slirp-boot-flake.md), whose two
 failures are fixed; this is the shape left over.
 
 ## Symptom
