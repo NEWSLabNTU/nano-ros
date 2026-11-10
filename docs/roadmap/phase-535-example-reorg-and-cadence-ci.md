@@ -582,6 +582,16 @@ and a test asks for it by name (`resolve_coord_variant`).
   whose subject is the cargo leaf road ran on a copy of the listener; they
   run on a frozen copy of it now, `nros-cli-core/tests/fixtures/rust-leaf/listener`
   (manifests named `*.in`, as `issue-1378-leaves`).
+- **linux Rust owned-entry demos (in review).**
+  `examples/linux/rust/{lifecycle-node,custom-msg,custom-transport-talker,
+  custom-transport-listener,logging}` are one-package workspaces whose
+  hand-written `main` is each image's OWNED entry (RFC-0071 D19):
+  `src/<entry>` plus `src/<entry>_bringup`, every image naming that entry.
+  The lifecycle node's bringup declares the `lifecycle` service family its
+  old leaf picked. Logging had no `system.toml`, which `migrate-bringup`
+  refuses ([issue 2434](../issues/2434-migrate-bringup-refuses-a-package-with-no-system-toml.md)),
+  so it was moved by hand. Next (a separate PR): `service-client-callback`
+  and the six `*-rtic` leaves.
 - **Feature demos (keep their own directories, to migrate in place to
   one-package workspaces).** Each one below is a hand-written `main`
   demonstrating an API that a generated entry does not express, and its test

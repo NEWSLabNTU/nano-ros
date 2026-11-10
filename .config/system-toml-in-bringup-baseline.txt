@@ -20,10 +20,6 @@ examples/linux/cpp/safety-listener/system.toml
 examples/linux/cpp/service-client/system.toml
 examples/linux/rust/action-client-rtic/system.toml
 examples/linux/rust/action-server-rtic/system.toml
-examples/linux/rust/custom-msg/system.toml
-examples/linux/rust/custom-transport-listener/system.toml
-examples/linux/rust/custom-transport-talker/system.toml
-examples/linux/rust/lifecycle-node/system.toml
 examples/linux/rust/listener-rtic/system.toml
 examples/linux/rust/service-client-callback/system.toml
 examples/linux/rust/service-client-rtic/system.toml

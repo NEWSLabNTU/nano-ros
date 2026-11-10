@@ -307,9 +307,10 @@ build-fixture-rust:
     # Replaces the legacy `nros dev codegen rust --force` + hand-managed
     # `.cargo/config.toml [patch.crates-io]` chunks.
     nros_repo_root="$PWD"
-    # The one-node workspaces (`listener`, `service-*`, `action-*`, phase-535
-    # W6) are configured by the workspace fixture builder with their rows.
-    for ex in talker service-client-callback custom-transport-talker custom-transport-listener; do
+    # The one-package workspaces (`listener`, `service-*`, `action-*`, the
+    # custom-transport pair, phase-535 W6) are configured by the workspace
+    # fixture builder with their rows.
+    for ex in talker service-client-callback; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null
@@ -337,9 +338,10 @@ build-fixture-rust-core:
     nros_cli="$(nros_cli_bin)"
     nros_require_sync "$nros_cli"
     nros_repo_root="$PWD"
-    # The one-node workspaces (`listener`, `service-*`, `action-*`, phase-535
-    # W6) are configured by the workspace fixture builder with their rows.
-    for ex in talker service-client-callback custom-transport-talker custom-transport-listener; do
+    # The one-package workspaces (`listener`, `service-*`, `action-*`, the
+    # custom-transport pair, phase-535 W6) are configured by the workspace
+    # fixture builder with their rows.
+    for ex in talker service-client-callback; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null
@@ -381,7 +383,7 @@ build-fixture-extras:
     # Phase 181.6 — every native *Rust* fixture (the link-tls /
     # unstable-zenoh-api variants; the param / safety / header chatter bins
     # under packages/testing/nros-tests/bins/; the per-RMW target-<rmw>/
-    # collapsed roles; the custom-transport pair; the nros-bench
+    # collapsed roles; the nros-bench
     # binaries; the large-buf stress build) is now a row in
     # examples/fixtures.toml and built by `build-fixture-rust`. This recipe owns
     # only what the manifest can't express: the gated CMake/Corrosion Cyclone
