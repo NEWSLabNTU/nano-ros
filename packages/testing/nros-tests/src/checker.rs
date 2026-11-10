@@ -103,6 +103,9 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // Not delivery: the drain hook's verdict line (phase-544 W2). Which
         // rule, how many and in what order is the test's.
         Workload::ViolationChannel => output::CONTRACT_VIOLATION_PREFIX,
+        // Not delivery: the open's own account of giving up, naming its
+        // budget (issue 2389). How long it took is the test's.
+        Workload::ConnectBudget => output::ZENOH_OPEN_BUDGET_SPENT_PREFIX,
     }
 }
 

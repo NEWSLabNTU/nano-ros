@@ -85,3 +85,17 @@ os_config = [
     "prj-zenoh.conf",
     "../../../../../../cmake/zephyr/mps2-an385-serial.conf",
 ]
+
+# Issue 2389 -- the zenoh image with a connect BUDGET, for the cell that boots
+# it against a router that is not there and against one that accepts the TCP
+# connect and never answers (`tests/zephyr_connect_budget.rs`). Each must end in
+# `ConnectionFailed` within the budget, with a console line naming it. The test
+# passes its own locator (`-testargs --nros-locator=`), so the row's baked one
+# is never dialled.
+[image.zephyr_connect_budget]
+board = "zephyr"
+rmw = "zenoh"
+os_config = ["prj-zenoh.conf", "prj-zenoh-native-sim.conf"]
+
+[image.zephyr_connect_budget.knobs.zenoh.limits]
+connect_timeout_ms = 3000

@@ -6290,6 +6290,28 @@ west_build_name = "build-rust-talker-cyclonedds"
 west_id = "zephyr/native_sim/native/64/rust/talker/cyclonedds"
 skip_probe = true
 
+# Issue 2389 -- the Rust talker's `[image.zephyr_connect_budget]`: zenoh with a
+# 3 s connect budget, for `tests/zephyr_connect_budget.rs`, which boots it with
+# no router and against a listener that never answers. The test passes its own
+# locator at run time (`-testargs --nros-locator=`), so this row's is never
+# dialled; it is stated because a role that is no allocator cell's image must
+# state its isolation values, and it is the cell's formula port
+# (`alloc::port_of(ZephyrNativeSim, Rust, ConnectBudget)`).
+[[workspace_fixture]]
+id = "zephyr-rust-talker-connect-budget-zenoh"
+platform = "zephyr"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/zephyr/rust/talker"
+bringup = "src/zephyr_talker_node_bringup"
+image = "zephyr_connect_budget"
+board = "native_sim/native/64"
+west_role = "connect-budget"
+west_build_name = "build-rust-talker-connect-budget-zenoh"
+west_id = "zephyr/native_sim/native/64/rust/connect-budget/zenoh"
+west_zenoh_locator = "tcp/127.0.0.1:7425"
+skip_probe = true
+
 [[workspace_fixture]]
 id = "zephyr-c-talker-zenoh"
 platform = "zephyr"

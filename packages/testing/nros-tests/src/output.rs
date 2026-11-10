@@ -428,6 +428,16 @@ pub const SESSION_OPEN_MARKER: &str = "nros: session open";
 /// real defect ends with.
 pub const SESSION_OPEN_FAILED_MARKER: &str = "RMW session open failed";
 
+/// Issue 2389 -- what `nros-rmw-zenoh` prints when a session open gives up:
+/// `zenoh open: no session with <locator> within connect_timeout_ms=<N> (...)`
+/// (`zpico.rs::report_open_budget_spent`). The budget follows
+/// [`ZENOH_OPEN_BUDGET_KEY`].
+pub const ZENOH_OPEN_BUDGET_SPENT_PREFIX: &str = "zenoh open: no session with ";
+
+/// Issue 2389 -- the key the budget is named under in
+/// [`ZENOH_OPEN_BUDGET_SPENT_PREFIX`]'s line, the knob's own name.
+pub const ZENOH_OPEN_BUDGET_KEY: &str = "connect_timeout_ms=";
+
 /// Counter key inside the hosted-spin exit line (`"message_callbacks=N"`) —
 /// N is how many subscription callbacks fired during the spin.
 pub const HOSTED_SPIN_MESSAGE_CALLBACKS_KEY: &str = "message_callbacks=";
