@@ -28,8 +28,6 @@ examples/mps2-an385-baremetal/cpp/service-server/Cargo.toml  baremetal_cpp_servi
 examples/mps2-an385-baremetal/cpp/talker/Cargo.toml  baremetal_cpp_talker_nros_selection
 examples/mps2-an385-baremetal/rust/listener/Cargo.toml  qemu_bsp_listener_nros_selection
 examples/mps2-an385-baremetal/rust/talker/Cargo.toml  qemu_bsp_talker_nros_selection
-examples/mps2-an385-freertos/rust/talker/Cargo.toml  freertos_rs_talker_nros_selection
-examples/qemu-armv7a-nuttx/rust/talker/Cargo.toml  nuttx_rs_talker_nros_selection
 examples/rv-virt-threadx/rust/action-client/Cargo.toml  nros-board-threadx-qemu-riscv64
 examples/rv-virt-threadx/rust/action-server/Cargo.toml  nros-board-threadx-qemu-riscv64
 examples/rv-virt-threadx/rust/listener/Cargo.toml  nros-board-threadx-qemu-riscv64

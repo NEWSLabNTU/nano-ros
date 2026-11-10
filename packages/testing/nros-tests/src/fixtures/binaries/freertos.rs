@@ -88,6 +88,15 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // lane looked permanently unbuilt.
     let _ = binary_name;
     let dir_rel = format!("examples/mps2-an385-freertos/rust/{name}");
+    // phase-531 W6 — the talker witness is a one-package workspace
+    // (RFC-0122 D3): its image is a `[[workspace_fixture]]` row.
+    if let Some(r) = super::migrated_leaf_binary(
+        &dir_rel,
+        super::Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    ) {
+        return r;
+    }
     let example_dir = project_root().join(&dir_rel);
 
     if !example_dir.exists() {

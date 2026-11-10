@@ -3451,18 +3451,18 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-bench/loan-copy-count"
 
-[[fixture]]
+# phase-531 W6 — the Rust talker witness is a one-package workspace
+# (RFC-0122 D3); its image boots a generated entry. `target` is the locator's
+# `<triple>/` component (issue #181), as on every freertos workspace row.
+[[workspace_fixture]]
+id = "freertos-rust-zenoh-talker"
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/rust/talker"
-# issue #181 — an explicit target: the row is what the staleness probe and the
-# artifact resolver read, and a triple only cargo can see is a triple they
-# cannot check. phase-445 W4b — it is NO LONGER a cargo argument for these six
-# rows: each leaf states its board in `system.toml`, so the lane builds it
-# through `build/<image>/nros-cargo.toml`, whose `[build] target` comes from the
-# board descriptor (`fixtures-manifest.py` `builds_through_leaf_settings`).
-# The row keeps it only as the locator's `<target_dir>/<triple>/` component.
+bringup = "src/freertos_rs_talker_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target-fixtures"
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
@@ -3552,16 +3552,24 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 # over the board's env-fed default (phase-484 W4e: the rows used to restate
 # them as `env = { NROS_LOCATOR, NROS_DOMAIN_ID }`, a second home that could
 # only drift; `check-image-locator-bake` rule 4 now refuses it).
-# skip_probe (issue 0030 shape): the test-all staleness probe runs the
-# default stable toolchain and cannot replicate the pinned nightly +
-# build-std + NUTTX_DIR recipe env. Build-asserted by
-# tests/nuttx_entry_build.rs.
-[[fixture]]
+# phase-531 W6 — the Rust talker witness is a one-package workspace
+# (RFC-0122 D3); its image boots a generated entry, built at the NuttX
+# carve-out profile like every nuttx workspace row. `skip_probe` and the
+# toolchain pin as on `nuttx-param-store` above: the settings file's
+# `[unstable] build-std` needs the nightly, which the stale probe's default
+# toolchain is not.
+[[workspace_fixture]]
+id = "nuttx-rust-zenoh-talker"
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/rust/talker"
+bringup = "src/nuttx_talker_bringup"
+image = "qemu-armv7a-nuttx"
+target_dir = "target-fixtures"
+target = "armv7a-nuttx-eabihf"
 skip_probe = true
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 
 # ===========================================================================
 # threadx-linux (host x86_64 ThreadX/NetX over NSOS) — Rust role examples.

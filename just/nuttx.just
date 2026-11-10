@@ -676,45 +676,12 @@ doctor:
 # traps INT/TERM to kill it explicitly (Ctrl-C works).
 # =============================================================================
 
-[no-exit-message]
-_run-qemu example binary:
-    #!/usr/bin/env bash
-    set -e
-    # phase-336 — the nuttx-rust carve-out (lto=fat; see NUTTX_RUST_PROFILE),
-    # and the kernel path below derived from the same answer.
-    source "{{justfile_directory()}}/scripts/build/cargo.sh"
-    NX_PROFILE="$(nros_cargo_nuttx_profile)"
-    NX_DIR="$(nros_cargo_target_profile_dir_for "$NX_PROFILE")"
-    # phase-340 P2 — `nuttx` is a migrated platform (B3 wave 2), so this recipe
-    # must not write the leaf's own `target/`: that is the second build path P2
-    # closed, and here it also hand-spelled the `-kernel` path, which is the
-    # shape phase-340 item 7 hit on esp32 (build redirected, post-processing
-    # step left reading a directory nothing writes). Both sides now come from
-    # ONE `nros_fixture_group` call — `nros_fixture_target_dir_flag` for the
-    # build and its inverse `nros_fixture_row_artifact_dir` for the lookup — so
-    # they cannot disagree, on either side of a migration.
-    # shellcheck source=scripts/build/fixtures-target-dir.sh
-    source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
-    NX_LEAF="examples/qemu-armv7a-nuttx/rust/{{example}}"
-    nx_tdir_flag="$(nros_fixture_target_dir_flag nuttx "" "")"
-    NX_ARTIFACTS="$(nros_fixture_row_artifact_dir "$PWD/$NX_LEAF" nuttx "" "")"
-    cd "$NX_LEAF"
-    # Nightly version pinned by examples/qemu-armv7a-nuttx/rust-toolchain.toml.
-    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build $(nros_cargo_profile_args_for "$NX_PROFILE") $nx_tdir_flag
-    trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
-    # -icount shift=auto: sync virtual clock with wall-clock for proper sleep/timeout
-    # -device virtio-net-device: MMIO transport (NuttX virtio-net driver)
-    "{{QEMU_BIN}}" -M virt -cpu cortex-a7 -nographic \
-        -icount shift=auto \
-        -kernel "$NX_ARTIFACTS/armv7a-nuttx-eabihf/$NX_DIR/{{binary}}" \
-        -netdev user,id=net0 -device virtio-net-device,netdev=net0 &
-    PID=$!
-    wait $PID
-
-# Run NuttX talker on QEMU. phase-535 W5: the talker is the board's road
-# witness leaf; the other roles are images of `examples/workspaces/<lang>`'s
+# Run NuttX talker on QEMU. The talker is the board's road witness, a
+# one-package workspace since phase-531 W6; `nros run` builds its image and
+# boots it. The other roles are images of `examples/workspaces/<lang>`'s
 # behaviour bringups (`nuttx_<role>`), built by `build-fixtures-arm`.
-talker: (_run-qemu "talker" "nuttx-rs-talker")
+talker:
+    cd examples/qemu-armv7a-nuttx/rust/talker && nros run qemu-armv7a-nuttx
 
 # Start zenohd router for NuttX QEMU examples (allocator rust-pubsub port 8200)
 # Must listen on 0.0.0.0 for virtio-net-device + slirp gateway (10.0.2.2)
@@ -751,5 +718,6 @@ setup-mcast-route:
 clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-nuttx-armv7a-zenoh
-    rm -rf "examples/qemu-armv7a-nuttx/rust/talker/target"
+    rm -rf "examples/qemu-armv7a-nuttx/rust/talker/build" \
+        "examples/qemu-armv7a-nuttx/rust/talker/target-fixtures"
     echo "NuttX build artifacts cleaned"

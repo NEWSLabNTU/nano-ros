@@ -236,8 +236,8 @@ l3:
     echo "== L3 — interrogating the cross ELFs the link check just built =="
     checked=0
     for elf in \
-        "examples/mps2-an385-freertos/rust/talker/target-link-check/thumbv7m-none-eabi/$(nros_cargo_platform_profile freertos)/talker" \
-        "examples/qemu-armv7a-nuttx/rust/talker/target-link-check/armv7a-nuttx-eabihf/$(nros_cargo_platform_profile nuttx)/talker" \
+        "examples/mps2-an385-freertos/rust/talker/target-link-check/thumbv7m-none-eabi/$(nros_cargo_platform_profile freertos)/mps2_an385_freertos_entry" \
+        "examples/qemu-armv7a-nuttx/rust/talker/target-link-check/armv7a-nuttx-eabihf/$(nros_cargo_platform_profile nuttx)/qemu_armv7a_nuttx_entry" \
         "examples/threadx-linux/rust/talker/target-zenoh/$(nros_cargo_platform_profile threadx-linux)/threadx_linux_entry"
     do
         if [ ! -f "$elf" ]; then
