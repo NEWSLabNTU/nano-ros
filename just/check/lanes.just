@@ -4884,10 +4884,24 @@ workspace-embedded:
 # `lint-example-leaf.sh` renders each leaf with `nros configure` before linting it,
 # decided by the leaf's shape, so no hand sync and no `just generate-bindings`
 # (issue 1892).
+#
+# Issue 2380 -- one nextest unit per leaf (`NROS_GATE_LIST_UNITS` /
+# `NROS_GATE_UNIT`, scripts/build/lint-examples.sh). As ONE test the lane took
+# 62 to 87 % of the harness's 2400 s budget on a loaded host and timed out at
+# load ~90: 32 cargo roots each compile the nros stack, and issue 0616 forbids
+# them sharing a target dir, so the work is real and only its budget was
+# wrong. `cpu:8` weights each unit as a parallel build beside the other gates.
 [private]
+[group('units')]
+[group('cpu:8')]
 [metadata("tier", "build")]
 linux-check:
-    @just linux check
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "${NROS_GATE_UNIT:-}" ] || [ "${NROS_GATE_LIST_UNITS:-}" = 1 ]; then
+        exec bash scripts/build/lint-examples.sh
+    fi
+    just linux check
 
 # Check workspace with various feature combinations
 [private]
