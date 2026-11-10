@@ -488,6 +488,25 @@ and a test asks for it by name (`resolve_coord_variant`).
   declarative `Component` API has no callback-receive service client
   (`create_client_with_callback` is reachable only from an `Executor` that a
   hand-written `main` opens).
+- **threadx-riscv64 C/C++ pubsub (in review).** The C and C++ Cyclone pairs
+  become the `riscv_threadx_{talker,listener}_cyclonedds` images of the C and
+  C++ `pubsub_bringup`s (domain 128 / 129, each image with its own
+  `board-net-4{0,1}.toml` address and MAC). Issue 2336's per-image network
+  config is what lets both roles of the two-QEMU pair share one configure.
+  The C++ zenoh pair joins them as `riscv_threadx_{talker,listener}` (port
+  9600), since issue 2340 is resolved. 3 leaf rows (the C and C++ listeners'
+  Cyclone rows and the C++ listener's zenoh row) and 2 leaves
+  (`rv-virt-threadx/{c,cpp}/listener`) retire. `rtos_e2e`'s C++ pubsub arm
+  and `test_threadx_riscv64_cyclonedds_two_qemu_{pubsub,cpp_pubsub}` resolve
+  through `threadx_riscv64::pair_image`. The talker leaves keep their zenoh
+  and Cyclone rows as phase-531 W6's witnesses.
+- **threadx-riscv64 Rust Cyclone (stay).** The `rv-virt-threadx/rust`
+  listener, `service-*` and `action-*` leaves keep their Cyclone rows: the
+  cargo road refuses Cyclone (RFC-0071 D7), so a workspace image of a Rust
+  package cannot link it. #3484 lays out the options for a ruling (issue
+  2313). Each leaf keeps its own directory and is to be migrated in place to
+  a one-package workspace later (RFC-0122 D3 ruling). The Rust talker is
+  phase-531 W6's witness.
 - **linux `*-rtic` (stay).** The six Rust leaves are hand-written `main`s, and
   that is what they demonstrate: the caller owns the loop (a zero-arena
   executor driven by `spin_once(0)`, publishing outside it), which a
@@ -687,3 +706,4 @@ never the retired leaf shape.
 | [#2336](../issues/archived/2336-board-net-is-per-configure-not-per-image.md) | An image's `os_config` network file is applied per cmake configure, so images sharing one configure clash: found in this phase's workspace images. Resolved 2026-11-10: each ThreadX entry gets its own config TU. |
 | [#2383](../issues/archived/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). Resolved: the derivation now reaches pair images by coordinate and by `linux_pair_image` call. |
 | [#2377](../issues/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road has no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stay leaves (W5). |
+| [#2427](../issues/archived/2427-threadx-riscv64-run-hint-mac-ignores-image-network.md) | The ThreadX riscv64 run plan gave every image peer 0's MAC, so the printed QEMU line for the W6 Cyclone listener image named the talker's MAC. Resolved 2026-11-10: the plan takes the image network's MAC. |

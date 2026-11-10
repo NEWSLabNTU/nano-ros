@@ -59,10 +59,8 @@ examples/qemu-armv7a-nuttx/cpp/talker/system.toml
 examples/qemu-armv7a-nuttx/rust/talker/system.toml
 examples/rv-virt-nuttx/c/talker/system.toml
 examples/rv-virt-threadx/c/errno-isolation/system.toml
-examples/rv-virt-threadx/c/listener/system.toml
 examples/rv-virt-threadx/c/talker/system.toml
 examples/rv-virt-threadx/c/typed-carrier/system.toml
-examples/rv-virt-threadx/cpp/listener/system.toml
 examples/rv-virt-threadx/cpp/talker/system.toml
 examples/rv-virt-threadx/rust/action-client/system.toml
 examples/rv-virt-threadx/rust/action-server/system.toml

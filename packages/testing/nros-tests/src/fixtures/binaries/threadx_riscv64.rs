@@ -145,7 +145,6 @@ static RV64_C_ERRNO_ISOLATION_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static RV64_C_TYPED_CARRIER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 static RV64_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-static RV64_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Resolve a ThreadX-RV64 cmake example's artifact for a NAMED rmw.
 ///
@@ -216,13 +215,5 @@ pub fn build_rv64_c_typed_carrier() -> TestResult<&'static Path> {
 pub fn build_rv64_cpp_talker() -> TestResult<&'static Path> {
     RV64_CPP_TALKER_BINARY
         .get_or_try_init(|| build_cmake_example("cpp", "talker", "cpp_talker"))
-        .map(|p| p.as_path())
-}
-
-/// The C++ pubsub pair stays on its leaves (phase-535 W5): the generated C++
-/// talker hangs after its first publish on this board (issue 2340).
-pub fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
-    RV64_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "listener", "cpp_listener"))
         .map(|p| p.as_path())
 }

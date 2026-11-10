@@ -1,0 +1,7 @@
+# QEMU network for the image that states it in `os_config` (RFC-0109 D4).
+# The Cyclone pair shares one L2 link, so each image has its own address and
+# the MAC the two-QEMU test gives its virtio device.
+[eth0]
+network = "qemu"
+host = 41
+mac = "52:54:00:12:34:57"
