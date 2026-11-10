@@ -536,10 +536,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_named_port_waits_for_its_holder_and_is_handed_over() {
-        let port = Transport::Tcp.suggest().expect("suggest");
-        let lock = lease_dir().join(format!("tcp-{port}.lock"));
+        // Leased, not suggested: a suggested port can already be leased by a
+        // test running beside this one, so a bare claim on it can lose
+        // (issue 2430).
+        let holder = lease_port(Transport::Tcp).expect("lease");
+        let (port, lock) = (holder.port, holder.lock.clone());
         // Another process's claim, as far as the pid check can tell.
-        let holder = claim(&lock).expect("claim").expect("first claim wins");
         std::fs::write(&lock, "1").expect("name a foreign holder");
         let released = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(400));
