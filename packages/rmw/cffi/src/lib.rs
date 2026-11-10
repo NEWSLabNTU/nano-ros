@@ -1915,15 +1915,106 @@ const NAME_BUF_LEN: usize = 256;
 /// zeroes in every session on an MCU.
 const NODE_NAME_BUF_LEN: usize = 64;
 /// Per-string bound for a marshalled session property. 256 so a TLS
-/// certificate PATH fits; a longer KEY is refused rather than truncated, and
-/// a longer VALUE goes to the heap on an `alloc` build (a whole document,
-/// phase-514 W3b) and is refused without one.
+/// certificate PATH fits; a longer KEY is refused rather than truncated. On an
+/// `alloc` build the strings go to one heap block sized by the data (issue
+/// 2401), so a VALUE has no bound there (a whole document, phase-514 W3b);
+/// without `alloc` this is the size of each stack buffer, and a longer value
+/// is refused.
 const SESSION_PROPERTY_BUF_LEN: usize = 256;
 /// `usize` spelling of the header's `RMW_SESSION_MAX_PROPERTIES` (RFC-0054:
 /// the header is the SSoT; bindgen emits it as `i32`).
 const MAX_SESSION_PROPERTIES: usize = generated::RMW_SESSION_MAX_PROPERTIES as usize;
 
 const HASH_BUF_LEN: usize = 128;
+
+/// The refusals every property-carrying open makes, before anything is copied
+/// (issue 2401 moved them out of the copy loop so both marshalling arms share
+/// one spelling). Refused, never truncated, all `InvalidArgument`: more than
+/// `RMW_SESSION_MAX_PROPERTIES` entries, an empty key or value, a key of
+/// `SESSION_PROPERTY_BUF_LEN` bytes or more, and, on a build without `alloc`,
+/// a value that long. `to_c_str` truncates, which for a name is a
+/// wrong-but-visible entity and for a TLS certificate path is a session that
+/// fails somewhere unrelated.
+fn check_session_properties(properties: &[(&str, &str)]) -> Result<(), TransportError> {
+    if properties.len() > MAX_SESSION_PROPERTIES {
+        return Err(TransportError::InvalidArgument);
+    }
+    for (key, value) in properties {
+        if key.is_empty() || value.is_empty() || key.len() >= SESSION_PROPERTY_BUF_LEN {
+            return Err(TransportError::InvalidArgument);
+        }
+        // A value too long for a stack buffer is a whole configuration
+        // document the backend parses itself (RFC-0109 D6, phase-514 W3b); it
+        // fits only where the strings go to the heap.
+        if cfg!(not(feature = "alloc")) && value.len() >= SESSION_PROPERTY_BUF_LEN {
+            return Err(TransportError::InvalidArgument);
+        }
+    }
+    Ok(())
+}
+
+/// Copy `properties` (already checked) into ONE heap block, each string
+/// followed by its NUL, and point `entries` at them. The block is sized by the
+/// data: two short properties cost a few dozen bytes, not 8 KiB. Exhaustion is
+/// `BadAlloc` (issue 1551: a fallible reservation, never the aborting one).
+/// The caller keeps the returned block alive across `create_session`.
+#[cfg(feature = "alloc")]
+fn marshal_on_heap(
+    properties: &[(&str, &str)],
+    entries: &mut [rmw_session_property_t; MAX_SESSION_PROPERTIES],
+) -> Result<alloc::vec::Vec<u8>, TransportError> {
+    let total: usize = properties.iter().map(|(k, v)| k.len() + v.len() + 2).sum();
+    let mut block = alloc::vec::Vec::new();
+    block
+        .try_reserve_exact(total)
+        .map_err(|_| TransportError::BadAlloc)?;
+    for (key, value) in properties {
+        block.extend_from_slice(key.as_bytes());
+        block.push(0);
+        block.extend_from_slice(value.as_bytes());
+        block.push(0);
+    }
+    // Pointers are taken only after the last push, from the finished block,
+    // by walking the same lengths again (no offset table on the stack). It
+    // was reserved exactly, so it never moved anyway.
+    let mut at = 0usize;
+    for ((key, value), entry) in properties.iter().zip(entries.iter_mut()) {
+        let key_ptr = block[at..].as_ptr();
+        at += key.len() + 1;
+        let value_ptr = block[at..].as_ptr();
+        at += value.len() + 1;
+        *entry = rmw_session_property_t {
+            key: key_ptr.cast(),
+            value: value_ptr.cast(),
+        };
+    }
+    Ok(block)
+}
+
+/// Copy `properties` (already checked, so every string fits with its NUL)
+/// into the caller's stack buffers and point `entries` at them. The no-`alloc`
+/// arm: there is no heap to size by the data, so the buffers are the bound.
+#[cfg(not(feature = "alloc"))]
+fn marshal_on_stack(
+    properties: &[(&str, &str)],
+    bufs: &mut [[[u8; SESSION_PROPERTY_BUF_LEN]; 2]; MAX_SESSION_PROPERTIES],
+    entries: &mut [rmw_session_property_t; MAX_SESSION_PROPERTIES],
+) {
+    for (((key, value), [kb, vb]), entry) in properties
+        .iter()
+        .zip(bufs.iter_mut())
+        .zip(entries.iter_mut())
+    {
+        kb[..key.len()].copy_from_slice(key.as_bytes());
+        kb[key.len()] = 0;
+        vb[..value.len()].copy_from_slice(value.as_bytes());
+        vb[value.len()] = 0;
+        *entry = rmw_session_property_t {
+            key: kb.as_ptr().cast(),
+            value: vb.as_ptr().cast(),
+        };
+    }
+}
 
 /// Session backed by a C vtable.
 pub struct CffiSession {
@@ -2352,8 +2443,10 @@ impl CffiSession {
     /// none of it, on any platform.
     ///
     /// Refused, never truncated: more than `RMW_SESSION_MAX_PROPERTIES`
-    /// entries, an empty key or value, or either longer than
-    /// `SESSION_PROPERTY_BUF_LEN`. All are `TransportError::InvalidArgument`.
+    /// entries, an empty key or value, a key longer than
+    /// `SESSION_PROPERTY_BUF_LEN`, or (without `alloc`) a value that long.
+    /// All are `TransportError::InvalidArgument`; an exhausted heap on an
+    /// `alloc` build is `TransportError::BadAlloc`.
     pub fn open_with_properties(
         locator: &str,
         mode: u8,
@@ -2380,10 +2473,26 @@ impl CffiSession {
     }
 
     /// The property-carrying half of [`open_with_properties`], kept in its own
-    /// never-inlined frame so the marshalling buffers (up to
-    /// `RMW_SESSION_MAX_PROPERTIES` × 2 × `SESSION_PROPERTY_BUF_LEN`) are only
-    /// on the stack of a call that actually has properties to carry. An MCU
-    /// image that configures nothing pays nothing.
+    /// never-inlined frame so only a call that has properties to carry pays
+    /// for marshalling them. An MCU image that configures nothing pays nothing.
+    ///
+    /// Issue 2401: `create_session` takes every property at once, as an array
+    /// of NUL-terminated strings borrowed for the call (`rmw_entity.h`), so
+    /// all `2 x n` C strings must exist together; the seam cannot hand them
+    /// over one at a time. Where to put them is therefore the whole question:
+    ///
+    /// - **`alloc` build** ([`marshal_on_heap`]): one allocation, packed and
+    ///   sized by the data actually stated, freed when the open returns. The
+    ///   stack holds only the entry array. This used to be
+    ///   `RMW_SESSION_MAX_PROPERTIES x 2 x SESSION_PROPERTY_BUF_LEN` = 8 KiB
+    ///   of stack whatever the data, which made it the largest frame on every
+    ///   RTOS's open path (8,472 B on Cortex-M7).
+    /// - **no `alloc`** ([`marshal_on_stack`]): the fixed stack buffers, as
+    ///   before. There is no heap to ask, and a shared static would need a
+    ///   lock every concurrent open could contend on, plus 8 KiB of `.bss` in
+    ///   every image whether it opens with properties or not.
+    ///
+    /// The refusals are the same on both: see [`check_session_properties`].
     #[inline(never)]
     fn open_marshalling_properties(
         vtable: &'static NrosRmwVtable,
@@ -2394,50 +2503,17 @@ impl CffiSession {
         namespace: &str,
         properties: &[(&str, &str)],
     ) -> Result<Self, TransportError> {
-        if properties.len() > MAX_SESSION_PROPERTIES {
-            return Err(TransportError::InvalidArgument);
-        }
-        let mut key_bufs = [[0u8; SESSION_PROPERTY_BUF_LEN]; MAX_SESSION_PROPERTIES];
-        let mut val_bufs = [[0u8; SESSION_PROPERTY_BUF_LEN]; MAX_SESSION_PROPERTIES];
+        check_session_properties(properties)?;
         let mut entries = [rmw_session_property_t {
             key: core::ptr::null(),
             value: core::ptr::null(),
         }; MAX_SESSION_PROPERTIES];
-        // A value too long for its stack buffer — a whole configuration
-        // document the backend parses itself (RFC-0109 D6, phase-514 W3b) —
-        // is copied to the heap where there is one. Each inner buffer keeps
-        // its address when the outer `Vec` grows.
         #[cfg(feature = "alloc")]
-        let mut long_values: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
-        for (i, (key, value)) in properties.iter().enumerate() {
-            // Empty or over-long is REFUSED. `to_c_str` truncates, which for a
-            // name is a wrong-but-visible entity and for a TLS certificate
-            // path is a session that fails somewhere unrelated.
-            if key.is_empty() || value.is_empty() || key.len() >= SESSION_PROPERTY_BUF_LEN {
-                return Err(TransportError::InvalidArgument);
-            }
-            key_bufs[i][..key.len()].copy_from_slice(key.as_bytes());
-            let value_ptr = if value.len() < SESSION_PROPERTY_BUF_LEN {
-                val_bufs[i][..value.len()].copy_from_slice(value.as_bytes());
-                val_bufs[i].as_ptr()
-            } else {
-                #[cfg(feature = "alloc")]
-                {
-                    let mut owned = alloc::vec::Vec::with_capacity(value.len() + 1);
-                    owned.extend_from_slice(value.as_bytes());
-                    owned.push(0);
-                    let p = owned.as_ptr();
-                    long_values.push(owned);
-                    p
-                }
-                #[cfg(not(feature = "alloc"))]
-                return Err(TransportError::InvalidArgument);
-            };
-            entries[i] = rmw_session_property_t {
-                key: key_bufs[i].as_ptr().cast(),
-                value: value_ptr.cast(),
-            };
-        }
+        let _strings = marshal_on_heap(properties, &mut entries)?;
+        #[cfg(not(feature = "alloc"))]
+        let mut bufs = [[[0u8; SESSION_PROPERTY_BUF_LEN]; 2]; MAX_SESSION_PROPERTIES];
+        #[cfg(not(feature = "alloc"))]
+        marshal_on_stack(properties, &mut bufs, &mut entries);
         let options = NrosRmwSessionOptions {
             localhost_only: 0,
             _reserved: [0u8; 7],
@@ -2445,6 +2521,8 @@ impl CffiSession {
             properties: entries.as_ptr(),
             property_count: properties.len(),
         };
+        // `_strings` / `bufs` outlive this call, which is all the ABI asks:
+        // the strings are borrowed for the duration of `create_session`.
         Self::open_with_vtable(
             vtable, locator, mode, domain_id, node_name, namespace, &options,
         )

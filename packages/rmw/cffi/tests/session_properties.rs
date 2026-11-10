@@ -340,3 +340,77 @@ fn an_over_long_value_reaches_the_backend_whole_or_is_refused() {
         );
     }
 }
+
+/// Issue 2401: the full bound: `RMW_SESSION_MAX_PROPERTIES` properties whose
+/// key and value are each the longest the seam accepts on every build (255
+/// bytes, one under `SESSION_PROPERTY_BUF_LEN`) all reach the backend whole,
+/// in order. This is the case the old fixed stack buffers were sized for; the
+/// heap arm packs it into one block and must not lose or shift a string.
+#[test]
+fn the_most_properties_of_the_longest_strings_reach_the_backend_whole() {
+    let n = nros_rmw_cffi::RMW_SESSION_MAX_PROPERTIES as usize;
+    let owned: Vec<(String, String)> = (0..n)
+        .map(|i| {
+            let tag = char::from(b'a' + i as u8);
+            (
+                format!("{i:02}{}", tag.to_string().repeat(253)),
+                format!("{}{i:02}", tag.to_ascii_uppercase().to_string().repeat(253)),
+            )
+        })
+        .collect();
+    assert!(owned.iter().all(|(k, v)| k.len() == 255 && v.len() == 255));
+    let props: Vec<(&str, &str)> = owned
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let (session, seen) = open_with(&props);
+    session.expect("the maximum count of maximum-length properties is accepted");
+    assert_eq!(seen, owned, "every string must arrive intact and in order");
+}
+
+/// Issue 2401: the key bound is exact: 255 bytes is carried, 256 is refused,
+/// and a refusal in the LAST row still stops the whole open before anything
+/// reaches the backend.
+#[test]
+fn the_key_bound_is_exact_and_a_late_bad_row_refuses_the_whole_open() {
+    let ok_key = "k".repeat(255);
+    let (session, seen) = open_with(&[(ok_key.as_str(), "v")]);
+    session.expect("a 255-byte key fits with its NUL");
+    assert_eq!(seen, [(ok_key, "v".to_string())]);
+
+    let bad_key = "k".repeat(256);
+    let props = [("listen", "tcp/0.0.0.0:7448"), (bad_key.as_str(), "v")];
+    let (result, seen) = open_with(&props);
+    assert_eq!(result.err(), Some(TransportError::InvalidArgument));
+    assert!(seen.is_empty(), "a refused open must not reach the backend");
+}
+
+/// Issue 2401: over-long VALUES mixed with short ones, at the maximum count.
+/// With a heap every value arrives whole, long or short, and none is clipped
+/// or displaced by its neighbour; without one the open is refused as a whole.
+#[test]
+fn over_long_values_among_many_properties_arrive_whole_or_refuse_the_open() {
+    let n = nros_rmw_cffi::RMW_SESSION_MAX_PROPERTIES as usize;
+    let owned: Vec<(String, String)> = (0..n)
+        .map(|i| {
+            let value = if i % 3 == 0 {
+                format!("<doc{i}>{}</doc{i}>", "x".repeat(1000 + i))
+            } else {
+                format!("v{i}")
+            };
+            (format!("key{i}"), value)
+        })
+        .collect();
+    let props: Vec<(&str, &str)> = owned
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    let (result, seen) = open_with(&props);
+    if cfg!(feature = "alloc") {
+        result.expect("a heap build carries long values");
+        assert_eq!(seen, owned);
+    } else {
+        assert_eq!(result.err(), Some(TransportError::InvalidArgument));
+        assert!(seen.is_empty());
+    }
+}
