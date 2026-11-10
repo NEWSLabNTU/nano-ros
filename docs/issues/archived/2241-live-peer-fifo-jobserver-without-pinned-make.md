@@ -139,7 +139,7 @@ Where live-peer stands: run 42754129258 (2026-11-10) has no
 `invalid --jobserver-auth` line in either job. Its remaining red,
 `build-ws-rs-qos-entry-zenoh`, is issue 2415, not this one.
 
-Known reach not covered: `scripts/build/jobserver-pool.sh`, the `just`
+Known reach not covered, filed as [issue 2421](../2421-pool-fan-out-cached-make-below-fifo.md): `scripts/build/jobserver-pool.sh`, the `just`
 fan-outs' pool, is created by the pinned make 4.4 itself. A child there
 running `cmake --build` on a dir whose cache recorded make 4.3 would hit the
 same stop. No sighting so far. Re-configuring such a dir (`cmake <dir>`)
