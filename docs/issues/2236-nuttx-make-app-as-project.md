@@ -5,7 +5,7 @@ status: open
 type: limitation
 area: [nuttx, build, configure]
 found: 2026-11-04
-related: [phase-530, rfc-0120, issue-1883, issue-0488]
+related: [phase-530, rfc-0120, issue-1883, issue-0488, issue-2426]
 ---
 
 ## Symptom
@@ -178,6 +178,11 @@ the values, so an edited row re-runs the build script.
 **No lane runs it.** `scripts/check-nuttx-integration-makefile.sh` (header)
 records that no shipped defconfig sets `CONFIG_NROS=y` and no CI lane builds
 this road; `just nuttx build-integration-app` is the manual build.
+
+Two of the board facts the make road restates by hand have already drifted
+from the board's `cargo_config` (`-Zbuild-std=std` against `core,alloc`, and
+armv7a-only flags on a tree that also serves rv-virt); that is filed as
+[issue 2426](2426-nuttx-make-road-board-facts-drift.md), held for this ruling.
 
 ### 2. Options
 
