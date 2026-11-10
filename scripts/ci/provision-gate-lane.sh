@@ -31,6 +31,8 @@
 #                pinned west revision (issue 2308 keeps it from reading as a
 #                west workspace).
 #   sources      the pinned rosidl source clone (`python-entry-provenance`).
+#   arm-gcc      the pinned arm-none-eabi-gcc dist (issue 2413), which the
+#                FreeRTOS C++ copy-out units need.
 # Every other claim (cli, cmake, cc, ros2, ...) is the image's or an earlier
 # step's, and the lane preflight checks it.
 #
@@ -102,4 +104,13 @@ if claims_has sources; then
     # shellcheck disable=SC1091
     source ./activate.sh
     nros setup --source rosidl
+fi
+
+if claims_has arm-gcc; then
+    # Issue 2413 — the FreeRTOS C++ copy-out units build with the PINNED
+    # cross compiler; the image's distro arm-none-eabi-gcc 10.3 is below issue
+    # 1936's C++ floor of GCC 11, so without this they fail at configure.
+    # shellcheck disable=SC1091
+    source ./activate.sh
+    nros setup --tool arm-none-eabi-gcc
 fi

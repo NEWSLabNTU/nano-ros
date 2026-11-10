@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [ci, gates, toolchain, templates]
-related: [1936, 1117, 1453, 2382, 2369]
+related: [1936, 1117, 1453, 2382, 2369, phase-543]
 found: 2026-11-10
 ---
 
@@ -78,3 +78,29 @@ closes it:
 
 Acceptance: a scheduled `host-tests` run whose shard 2 reports all four rows
 passing (or skipped with a named remedy, under option 2).
+
+## Fix (2026-11-10)
+
+Option 2 of the three above, provisioned the way option 1 asks, which is
+phase-543's lane-contract shape:
+
+- A capability, `arm-gcc` (`.config/gate-lanes.toml`): the pinned
+  `[tool.arm-none-eabi-gcc]` dist. The lane preflight probes it with the
+  index's own resolver (`index_tool.py resolve`), which accepts the store dist
+  or a PATH copy that passes the row's smoke probe, so the distro 10.3 does not
+  count.
+- The units declare it. `check-template-copy-out.sh` lists a unit as
+  `<unit>\tneeds:arm-gcc` when one of its boards' `[board.<b>] packages` row in
+  the index names `arm-none-eabi-gcc` (`index_tool.py board-packages`). That
+  is the same list `nros setup <board>` provisions, so no unit is named by hand.
+  Today it marks exactly the four rows that failed.
+- The `build` lane claims it, and `scripts/ci/provision-gate-lane.sh build`
+  runs `nros setup --tool arm-none-eabi-gcc`.
+  `check-gate-lane-provisioned` counts `arm-gcc` among the claims a job must
+  fetch, so a job running the lane without the provisioning step is refused.
+- Lanes that do not claim it (`dev`, `queue`, `runner`) list the four units as
+  not run, with "needs arm-gcc, which this lane does not claim", never as a
+  failure and never as a pass. The merge-queue copy-out jobs run with no lane,
+  so every capability is claimed there, and they provision the compiler
+  themselves.
+

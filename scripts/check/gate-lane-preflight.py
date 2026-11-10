@@ -115,6 +115,14 @@ def probe_build_tree() -> str | None:
     return None if stamp.exists() else "no fixture build stamp (just build-test-fixtures)"
 
 
+def probe_arm_gcc() -> str | None:
+    """The PINNED cross compiler (issue 2413): the store's dist, or a PATH copy
+    that passes the row's own smoke probe. The distro 10.3 on PATH does not."""
+    r = subprocess.run(["python3", "scripts/lib/index_tool.py", "resolve", "arm-none-eabi-gcc",
+                        "arm-none-eabi-gcc"], cwd=ROOT, capture_output=True, text=True)
+    return None if r.returncode == 0 else "the pinned arm-none-eabi-gcc is not installed"
+
+
 def probe_nextest() -> str | None:
     """The harness's own runner, at the index's pin. Not a capability a gate
     needs: every lane needs it, so it is asked first, with the same remedy."""
@@ -142,6 +150,7 @@ REMEDY = {
     "fsp": "provision NV_SPE_FSP_DIR (not on any runner)",
     "west": "just zephyr setup",
     "build-tree": "just build-test-fixtures",
+    "arm-gcc": "nros setup --tool arm-none-eabi-gcc",
     "nextest": "just setup-worktree",
 }
 
@@ -162,6 +171,7 @@ PROBES = {
     "fsp": lambda: env_dir("NV_SPE_FSP_DIR"),
     "west": probe_west,
     "build-tree": probe_build_tree,
+    "arm-gcc": probe_arm_gcc,
 }
 
 

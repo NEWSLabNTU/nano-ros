@@ -13,6 +13,8 @@ those use and nothing else:
     index_tool.py extract <tool>...         print those rows as TOML, verbatim
     index_tool.py check-extract <file> <tool>...
                                             fail if <file> is not that output
+    index_tool.py board-packages <board>    the `[board.<board>] packages` list,
+                                            one per line (issue 2413)
 
 `extract` writes `config/ci-base-tools.toml`, the rows the ci-base image bakes.
 The image COPYs that file rather than the whole index, so an index edit to
@@ -169,6 +171,19 @@ def self_test() -> None:
         raise AssertionError("a tool with no dist for this host installed")
 
 
+def board_packages(board: str, index: Path | None = None) -> list[str] | None:
+    """`[board.<board>] packages` from the index, or None for an unknown board.
+
+    Issue 2413: what a template-copy-out unit needs beyond the gate itself is a
+    fact of the board it builds for, and the index already states it here
+    (`nros setup <board>` provisions exactly this list).
+    """
+    with open(index or ROOT / "nros-sdk-index.toml", "rb") as fh:
+        boards = tomllib.load(fh).get("board", {})
+    row = boards.get(board)
+    return None if row is None else list(row.get("packages", []))
+
+
 def main(argv: list[str]) -> int:
     if argv[:1] == ["--self-test"]:
         self_test()
@@ -185,6 +200,14 @@ def main(argv: list[str]) -> int:
     if len(argv) in (4, 6) and argv[0] == "install" and argv[2] == "--prefix":
         index = Path(argv[5]) if len(argv) == 6 and argv[4] == "--index" else None
         install(argv[1], Path(argv[3]), load_tool(argv[1], index))
+        return 0
+    if len(argv) == 2 and argv[0] == "board-packages":
+        pkgs = board_packages(argv[1])
+        if pkgs is None:
+            print(f"index_tool: no [board.{argv[1]}] in nros-sdk-index.toml", file=sys.stderr)
+            return 1
+        for p in pkgs:
+            print(p)
         return 0
     if len(argv) >= 2 and argv[0] == "extract":
         sys.stdout.write(extract(argv[1:]))

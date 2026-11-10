@@ -27,6 +27,7 @@ west = "a Python interpreter that imports west (scripts/build/zephyr-python.sh)"
 nuttx = "the NuttX sources (NUTTX_DIR)"
 fsp = "the NVIDIA Orin SPE FSP tree (NV_SPE_FSP_DIR)"
 build-tree = "artifacts a fixture or image build produced"
+arm-gcc = "the pinned arm-none-eabi-gcc dist ([tool.arm-none-eabi-gcc], nros setup --tool arm-none-eabi-gcc)"
 
 # Shared resources a gate USES, with how many gates may hold one at once
 # (`[group('uses:<res>')]` on the recipe; phase-543 W4). Each becomes a nextest
@@ -57,7 +58,9 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # host-tests' tier-1 gates, which run `just check` and so both tiers. Same
 # image as `fast`, without the sparse Zephyr header clone.
 tiers = ["fast", "build"]
-claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
+# Issue 2413: `arm-gcc` is provisioned by `scripts/ci/provision-gate-lane.sh
+# build` for the FreeRTOS C++ copy-out units, which refuse the distro 10.3.
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "arm-gcc"]
 
 [lane.queue]
 # The self-hosted runner (nros-sdk-zephyr): the image's set plus a Zephyr

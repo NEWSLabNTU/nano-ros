@@ -1286,6 +1286,32 @@ if [ "${NROS_GATE_LIST_UNITS:-}" = 1 ] || [ -n "${NROS_GATE_UNIT:-}" ]; then
             fi
             if [ "$up" = zephyr ]; then
                 printf '%s\tneeds:zephyr\n' "$label"
+                continue
+            fi
+            # Issue 2413 — a unit whose board builds with the pinned
+            # arm-none-eabi-gcc needs it (`needs:arm-gcc`): the C++ templates
+            # refuse the distro 10.3 below GCC 11 (issue 1936). Derived from
+            # the board's own `[board.<b>] packages` row in the index, the
+            # list `nros setup <board>` provisions, so no unit is named here.
+            rc=0
+            ub="$(project_boards "${entry%%$'\t'*}" "${entry#*$'\t'}")" || rc=$?
+            if [ "$rc" -ne 0 ]; then
+                echo "check-template-copy-out: cannot read $label's boards (rc=$rc)" >&2
+                exit 2
+            fi
+            need=""
+            while IFS= read -r b; do
+                [ -n "$b" ] || continue
+                # Captured, then matched from a here-string: a pipe into an
+                # early-exit matcher can read a match as a miss (issue 1077).
+                # An unknown board has no row and provisions nothing.
+                pk="$(python3 "$repo_root/scripts/lib/index_tool.py" board-packages "$b" 2>/dev/null)" || pk=""
+                if nros_grep_q -Fx arm-none-eabi-gcc <<<"$pk"; then
+                    need=arm-gcc
+                fi
+            done <<<"$ub"
+            if [ -n "$need" ]; then
+                printf '%s\tneeds:%s\n' "$label" "$need"
             else
                 printf '%s\n' "$label"
             fi

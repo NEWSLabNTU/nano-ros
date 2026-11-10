@@ -3,8 +3,8 @@
 
 `.config/gate-lanes.toml` declares, per lane, the capabilities its gates may
 assume, and the lane preflight refuses a host that lacks one. Some claims are
-the image's (cmake, a compiler, ROS); three must be FETCHED by the job itself:
-`submodules`, `git-history` and `zephyr-tree`. `scripts/ci/provision-gate-lane.sh
+the image's (cmake, a compiler, ROS); four must be FETCHED by the job itself:
+`submodules`, `git-history`, `zephyr-tree` and `arm-gcc` (issue 2413). `scripts/ci/provision-gate-lane.sh
 <lane>` fetches them, from the lane's own declaration.
 
 Issue 2382 is what happens without this rule: the `build` lane claimed
@@ -33,7 +33,7 @@ except ModuleNotFoundError:
     import tomli as tomllib
 
 REPO = Path(__file__).resolve().parents[2]
-FETCHED = {"submodules", "git-history", "zephyr-tree"}
+FETCHED = {"submodules", "git-history", "zephyr-tree", "arm-gcc"}
 
 
 def fetched_claims(lanes: dict, lane: str) -> set[str] | None:
