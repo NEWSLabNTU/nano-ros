@@ -143,3 +143,56 @@ image above, OPEN: static 26,232 B, measured 29,184 B, margin 10 %, floor
 offline, and `--table --entry` reproduces 26,232 B on the built image. How
 the measure lane runs, and how the floor reaches the sizes header, is still
 open.
+
+## Rulings (2026-11-10)
+
+Decided by the maintainer:
+
+- **Measured in every build, stable.** Frames come from `-C save-temps`
+  bitcode, run through the pinned toolchain's own `llc`, with no unstable
+  flag and no build-std. This is not a committed table of floors and not
+  `RUSTC_BOOTSTRAP`. Measured: OPEN/SPIN identical to `-Z emit-stack-sizes` on
+  nros-cpp (15,828 / 3,692 B), on the nucleo image (26,232 B), and under LTO
+  (22,564 vs 22,560 B).
+- **The floor is a committed addend, not a `max`.** Per build:
+  `floor = ceil8((static_now + allowance) × (100 + margin) / 100)`. The
+  allowance, per (RMW backend, target, role), is the twin peak minus the
+  static walk at the time it was measured, and it names issue 2402. With
+  `max(static, peak)`, a fixed old peak hides direct-frame growth.
+  `config/stack-floors.toml` holds the allowances, the walk policy and the
+  margin, and no floors.
+- **A missing allowance** gives the static floor plus a loud warning naming
+  issue 2402. An opt-in strict mode refuses instead, and CI runs strict
+  wherever an allowance exists.
+- **Zephyr and cargo boards CHECK.** The build fails with
+  "set CONFIG_MAIN_STACK_SIZE >= N" (or the board's knob). Raising the knob
+  automatically, through a two-step configure, is opt-in only.
+- **sccache: bypass it for the measured crates** when measuring. A sccache
+  hit restores the rlib but not the save-temps bitcode: 11 of 27 crates kept
+  their `.bc`. The rlib's own embedded `.llvmbc` is the LTO pre-link module
+  and is not exact: 174 of 1,977 frames differ. Tools and build scripts stay
+  cached. The cost is about 2x on a warm build of those crates (5.4 s to
+  11.2 s, nros-cpp). A bitcode store that would remove that cost is deferred
+  to issue 2414.
+
+### Delivery, per road
+
+Every road builds the library with target-scoped `-C save-temps`, walks it,
+then uses the floor.
+
+| road | when the floor is known | use |
+| --- | --- | --- |
+| PX4 | the placer runs cargo before PX4's configure | the walk runs in the placer, `NROS_STACK_FLOOR_OPEN/_SPIN` go into the placed header, and `nros_px4_read_stack_floor` checks STACK_MAIN and the WQ stacks at configure |
+| cmake / Corrosion (C/C++) | after the archive builds | FEED: a custom command writes `nros_stack_floor_generated.h`, and the stack-defining TUs depend on it |
+| Zephyr west | after `librustapp.a` / `libnros`, before the link | CHECK against `.config`. This replaces the configure-time `NROS_RUST_MAIN_STACK_FLOOR` |
+| cargo leaf (`nros build`) | after cargo | CHECK against the board's stated stack |
+
+Waves:
+
+1. W1: parse batching, a cache under the build dir, the allowance schema,
+   strict mode, the sccache bypass.
+2. W2: cmake.
+3. W3: PX4.
+4. W4: Zephyr.
+5. W5: cargo leaf.
+6. W6: a twin lane that asserts peak ≤ floor.

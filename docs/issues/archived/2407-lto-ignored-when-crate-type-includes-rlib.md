@@ -140,6 +140,20 @@ reports exactly that.
 
 Nothing here changes a crate type. That waits on the choice above.
 
+## Ruling (2026-11-10)
+
+Option 1, decided by the maintainer. Every road asks cargo for the
+staticlib only: `nros build`'s cargo road, Corrosion
+`CRATE_TYPES staticlib`, and west's `CARGO_ARGS`. The manifests keep their
+`lib`/`rlib`. A gate must prove every road passes it, because a road that
+forgets loses LTO silently. A `nros-inspect` profile (`inherits = "release"`,
+`lto = "off"`) gives per-crate size on demand.
+
+Acceptance is as written above: a linked image that RUNS, the `.text` saving
+measured on it, and `mem-report` per-owner RAM unchanged apart from removed
+symbols. After it lands, re-walk every allowance in
+`config/stack-floors.toml`; the static OPEN drops about 3.7 KB (issue 2400).
+
 ## Resolved (2026-11-10)
 
 Four parts:
