@@ -783,18 +783,18 @@ status = 'CarveOut("no standalone rust pubsub example on rv-virt; runtime covera
 [[cell]]
 comment = '''
 
-// Bare-metal RTIC (QEMU MPS2) — pubsub-only demo set by design.
+// Bare-metal Rust (QEMU MPS2) — the plain workspace pubsub pair; service and action run only on RTIC (below).
 '''
 at = ["QemuBaremetal", "Rust", "Zenoh", "Pubsub", "Example"]
 status = 'Runtime'
 
 [[cell]]
 at = ["QemuBaremetal", "Rust", "Zenoh", "Service", "Example"]
-status = 'CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")'
+status = 'CarveOut("no plain bare-metal Rust service image; the RTIC one is the Config::Rtic cell")'
 
 [[cell]]
 at = ["QemuBaremetal", "Rust", "Zenoh", "Action", "Example"]
-status = 'CarveOut("rtic demo set is pubsub-only by design (phase-289 scope)")'
+status = 'CarveOut("no plain bare-metal Rust action image; the RTIC one is the Config::Rtic cell")'
 
 [[cell]]
 comment = '''
@@ -810,6 +810,26 @@ with = '&[Config::Serial]'
 at = ["QemuBaremetal", "Rust", "Xrce", "Pubsub", "Example"]
 status = 'Runtime'
 with = '&[Config::Serial]'
+
+[[cell]]
+comment = '''
+// phase-535 W6 — the RTIC entry framework on the same board (board word
+// `rtic-mps2-an385`): the `baremetal_<role>_rtic` images of the Rust
+// workspace's bringups. `tests/emulator.rs` runs all three workloads.
+'''
+at = ["QemuBaremetal", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::Rtic]'
+
+[[cell]]
+at = ["QemuBaremetal", "Rust", "Zenoh", "Service", "Example"]
+status = 'Runtime'
+with = '&[Config::Rtic]'
+
+[[cell]]
+at = ["QemuBaremetal", "Rust", "Zenoh", "Action", "Example"]
+status = 'Runtime'
+with = '&[Config::Rtic]'
 
 [[cell]]
 comment = '''

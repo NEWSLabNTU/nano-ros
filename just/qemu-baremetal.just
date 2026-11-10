@@ -599,18 +599,6 @@ talker: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-bsp-talker"))
 # Run bare-metal listener on QEMU
 listener: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-bsp-listener"))
 
-# Run RTIC service server on QEMU
-rtic-service-server: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-service-server"))
-
-# Run RTIC service client on QEMU
-rtic-service-client: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-service-client"))
-
-# Run RTIC action server on QEMU
-rtic-action-server: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-server"))
-
-# Run RTIC action client on QEMU
-rtic-action-client: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-client"))
-
 # Start zenohd router for bare-metal QEMU examples (the pubsub pair cell's allocator port 10200)
 zenohd model="":
     #!/usr/bin/env bash

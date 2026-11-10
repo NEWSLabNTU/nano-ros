@@ -290,14 +290,6 @@ exclude = [
     "packages/testing/nros-bench/port-metric",
     "packages/testing/nros-bench/large-msg-baremetal",
     "packages/testing/nros-tests/bins/lan9118-qemu",
-    "examples/mps2-an385-baremetal/rust/talker-rtic",
-    "examples/mps2-an385-baremetal/rust/listener-rtic",
-    "examples/mps2-an385-baremetal/rust/service-server-rtic",
-    "examples/mps2-an385-baremetal/rust/service-client-rtic",
-    "examples/mps2-an385-baremetal/rust/action-server-rtic",
-    "examples/mps2-an385-baremetal/rust/action-client-rtic",
-    "examples/mps2-an385-baremetal/rust/talker-rtic-mixed",
-    "examples/mps2-an385-baremetal/rust/listener-rtic-mixed",
     # issue 1512 — the C/C++ leaves whose link root is CARGO. They are under
     # `c/`/`cpp/` rather than `rust/` and are still cargo packages, because a
     # board with no RTOS has no C startup to root the image in; see

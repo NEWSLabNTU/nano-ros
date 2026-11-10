@@ -91,6 +91,26 @@ max_subscribers = 1
 max_service_servers = 1
 max_service_clients = 1
 
+# phase-535 W6 — the same bare-metal board with the RTIC entry framework
+# (board word `rtic-mps2-an385`: `nros::main!` emits a `#[rtic::app]` whose
+# run task registers the launch's node). They came from the
+# `examples/mps2-an385-baremetal/rust/{talker,listener}-rtic` leaves and the
+# `-rtic-mixed` pair (issue 2417: its `ffi-sync` reached no code). `locator`
+# is `nros_tests::alloc::BAREMETAL_RTIC_PUBSUB_PORT`: the cell's `port_of` is
+# the plain pair's above.
+
+[image.baremetal_talker_rtic]
+board = "rtic-mps2-an385"
+launch = "talker.launch.xml"
+locator = "tcp/10.0.2.2:10540"
+os_config = ["board-net-15.toml"]
+
+[image.baremetal_listener_rtic]
+board = "rtic-mps2-an385"
+launch = "listener.launch.xml"
+locator = "tcp/10.0.2.2:10540"
+os_config = ["board-net-16.toml"]
+
 # Linux: one image per (role, rmw). The router locator is ephemeral
 # (NROS_LOCATOR at run time), so none is baked here.
 

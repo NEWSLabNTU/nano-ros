@@ -8040,6 +8040,22 @@ pub fn c_xrce_listener_binary() -> PathBuf {
 // RTIC QEMU Example Builders (MPS2-AN385, Cortex-M3)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// phase-535 W6 (RFC-0122 D2) — a bare-metal image on the RTIC entry
+/// framework: the `Config::Rtic` cell's role, built from the Rust workspace's
+/// bringup for the role's workload (`baremetal_<role>_rtic`).
+fn qemu_baremetal_rtic_image(
+    role: crate::fixtures::workspace_image::PairRole,
+) -> TestResult<PathBuf> {
+    use crate::matrix::{Config, Lang, PlatformId, Rmw};
+    crate::fixtures::workspace_image::resolve_configured(
+        PlatformId::QemuBaremetal,
+        Lang::Rust,
+        Rmw::Zenoh,
+        role,
+        &[Config::Rtic],
+    )
+}
+
 /// Cached path to the qemu-rtic-talker binary
 static QEMU_RTIC_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -8049,16 +8065,18 @@ static QEMU_RTIC_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-talker (cached)
 pub fn build_qemu_rtic_talker() -> TestResult<&'static Path> {
     QEMU_RTIC_TALKER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-talker"))
+        .get_or_try_init(|| {
+            qemu_baremetal_rtic_image(crate::fixtures::workspace_image::PairRole::Talker)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build qemu-rtic-listener (cached)
 pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
     QEMU_RTIC_LISTENER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-listener"))
+        .get_or_try_init(|| {
+            qemu_baremetal_rtic_image(crate::fixtures::workspace_image::PairRole::Listener)
+        })
         .map(|p| p.as_path())
 }
 
@@ -8071,16 +8089,18 @@ static QEMU_RTIC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-service-server (cached)
 pub fn build_qemu_rtic_service_server() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_SERVER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-service-server"))
+        .get_or_try_init(|| {
+            qemu_baremetal_rtic_image(crate::fixtures::workspace_image::PairRole::ServiceServer)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build qemu-rtic-service-client (cached)
 pub fn build_qemu_rtic_service_client() -> TestResult<&'static Path> {
     QEMU_RTIC_SERVICE_CLIENT_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-service-client"))
+        .get_or_try_init(|| {
+            qemu_baremetal_rtic_image(crate::fixtures::workspace_image::PairRole::ServiceClient)
+        })
         .map(|p| p.as_path())
 }
 
@@ -8262,42 +8282,18 @@ static QEMU_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build qemu-rtic-action-server (cached)
 pub fn build_qemu_rtic_action_server() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_SERVER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-action-server"))
+        .get_or_try_init(|| {
+            qemu_baremetal_rtic_image(crate::fixtures::workspace_image::PairRole::ActionServer)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build qemu-rtic-action-client (cached)
 pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
     QEMU_RTIC_ACTION_CLIENT_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-action-client"))
-        .map(|p| p.as_path())
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// QEMU RTIC Mixed-Priority Example Builders (ffi-sync)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Cached path to the qemu-rtic-mixed-talker binary
-static QEMU_RTIC_MIXED_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the qemu-rtic-mixed-listener binary
-static QEMU_RTIC_MIXED_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Build qemu-rtic-mixed-talker (cached)
-pub fn build_qemu_rtic_mixed_talker() -> TestResult<&'static Path> {
-    QEMU_RTIC_MIXED_TALKER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-mixed-talker"))
-        .map(|p| p.as_path())
-}
-
-/// Build qemu-rtic-mixed-listener (cached)
-pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
-    QEMU_RTIC_MIXED_LISTENER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-rtic-mixed-listener"))
+        .get_or_try_init(|| {
+            qemu_baremetal_rtic_image(crate::fixtures::workspace_image::PairRole::ActionClient)
+        })
         .map(|p| p.as_path())
 }
 
@@ -8313,7 +8309,7 @@ mod tests {
     /// everything" would pass the first arm.
     /// Issue 1874 -- a lane that selects the platform at ONE coordinate (tier 2:
     /// `baremetal,c,zenoh`) skips a shared-dir binary whose own row sits at
-    /// another (`qemu-rtic-talker`, a Rust row), and still sends an in-lane row's
+    /// another (`qemu-bsp-talker`, a Rust row), and still sends an in-lane row's
     /// binary (`baremetal-c-talker`) to the hard presence check. Before, both
     /// fell through and the Rust one failed as "MISSING for an in-lane
     /// coordinate" because the build had, correctly, not built it.
@@ -8328,12 +8324,12 @@ mod tests {
         .into_iter()
         .collect();
         assert_eq!(
-            crate::fixtures::lane::rows_producing_binary("baremetal", "qemu-rtic-talker").len(),
+            crate::fixtures::lane::rows_producing_binary("baremetal", "qemu-bsp-talker").len(),
             1,
             "the binary name attributes to exactly one row"
         );
         let out = std::panic::catch_unwind(|| {
-            shared_group_lane_check("baremetal", "qemu-rtic-talker", Some(&tier2))
+            shared_group_lane_check("baremetal", "qemu-bsp-talker", Some(&tier2))
         });
         let msg = match out {
             Err(p) => p

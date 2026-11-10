@@ -15,7 +15,7 @@ examples/
 
 - **Platform** (10): `linux`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `esp32-c3-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
-- **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-serial`, `-aemv8r`, etc.
+- **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic` (linux only; on mps2-an385 RTIC is a workspace image), `-aemv8r`, etc.
 
 > **`stm32f4/` left this tree in phase-337 W7.a.** Its board crates carried
 > **zero** Runtime cells — no CI lane could boot them (the hardware is not in

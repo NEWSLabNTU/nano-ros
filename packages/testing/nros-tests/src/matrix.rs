@@ -692,6 +692,11 @@ pub enum Config {
     /// (zenoh) or `custom://uart` (XRCE) locator, from which the build derives
     /// `NROS_LINK_IP=0`. Same messages, different link (phase-535 W6).
     Serial,
+    /// The RTIC entry framework on a bare-metal board (board word
+    /// `rtic-mps2-an385`): `nros::main!` emits a `#[rtic::app]` that runs the
+    /// launch's nodes on one RTIC task. Same nodes, different entry
+    /// (phase-535 W6).
+    Rtic,
 }
 
 impl Config {
@@ -702,6 +707,7 @@ impl Config {
             Config::SignalFdWake => "signal-fd-wake",
             Config::CustomTransport => "custom-transport",
             Config::Serial => "serial",
+            Config::Rtic => "rtic",
         }
     }
 }
@@ -1449,7 +1455,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         return match (cell.platform, cell.config) {
             (P::Linux, [Config::Lending, Config::Multisession]) => Some(LoanE2e),
             (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
-            (P::QemuBaremetal, [Config::Serial]) => Some(Emulator),
+            (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
             _ => None,
         };
     }
