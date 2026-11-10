@@ -66,3 +66,26 @@ allowance until this one is measured to pay off.
   target/role is removed, and the floor still holds against the twin.
 - A self-test with a synthetic vtable and load sequence binds the site to its
   slot, and refuses it if the load is not found.
+
+## LTO: the allowance moves the opposite way from the static walk (2026-11-10)
+
+Measured on the nucleo-f767zi Rust zenoh action server, from one tree, built
+with and without LTO (issue 2407). The twin peak is the thread analyzer's
+maximum over 7 rounds on the Renode twin:
+
+| | static OPEN (scoped fold1) | twin peak | allowance (peak − static) |
+| --- | ---: | ---: | ---: |
+| without LTO | 26,232 B | 29,224 B | 2,992 B |
+| with LTO | 22,564 B | 30,256 B | **7,692 B** |
+
+LTO lowers the static walk by 3,668 B and raises the measured peak by
+1,032 B. Inlining merges frames along the open path. Most of that path runs
+behind the RMW vtable, which the static walk charges at the deepest scoped
+target, not at the frame that actually runs. So one code change moved the two
+numbers in opposite directions, and the allowance more than doubled.
+
+This is the strongest evidence so far that the allowance cannot be derived
+from the static number. It has to be measured per (rmw, target, role) and per
+build mode, and it has to be measured again when the build mode changes. Slot
+binding (this issue) is what would make the static walk follow the real
+target and close the gap.
