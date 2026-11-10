@@ -103,6 +103,13 @@ census-prepass-parallel:
 census-leaves-west-rows:
     @./tests/census-leaves-west-rows-tests.sh
 
+# issue 2424 — every `fixtures-manifest.py` subcommand runs clean
+# against the real manifest. Its consumers read it through `< <(...)`, which
+# drops the exit status, so a crashing subcommand reads as an empty listing.
+[private]
+fixtures-manifest-subcommands:
+    @./tests/fixtures-manifest-subcommands-tests.sh
+
 # phase-340 P2 — nothing may write an `examples/**/target/` dir. That is the
 # invariant item 7 / P4 stands on (`examples/**/target-*/` is globally ignored;
 # a plain `target/` survives only through 391 per-leaf .gitignore files), and it
