@@ -162,8 +162,12 @@ if [ -f "$copied/.colcon_workspace" ]; then
     esac
     (
         cd "$workspace"
+        # Name the resolved workspace: `nros build` otherwise walks its own
+        # ladder, whose default line is 3.7. On a host with only 4.4 it finds
+        # nothing, and on a host with both it builds the wrong line.
         PATH="$(realpath "$venvbin"):$PATH" "$codegen_tool" build \
-            "$(basename "${bringups[0]}"):$image" --workspace "$copied" -- -d "$bd"
+            "$(basename "${bringups[0]}"):$image" --workspace "$copied" \
+            --zephyr-workspace "$workspace" -- -d "$bd"
     )
     rc=$?
 else
