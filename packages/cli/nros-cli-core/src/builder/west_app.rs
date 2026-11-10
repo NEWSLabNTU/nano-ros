@@ -65,6 +65,7 @@
 use std::path::{Path, PathBuf};
 
 use super::paths::relative_or_err;
+use crate::orchestration::cargo_metadata_schema::SystemToml;
 
 /// The west-application half of a generated Zephyr entry.
 ///
@@ -86,6 +87,11 @@ pub struct WestApp {
     pub rmw_feature: Option<(String, Option<String>)>,
     /// `[dependencies]` lines this road adds (the backend, the `zephyr` crate).
     pub deps: Vec<String>,
+    /// The features on the backend's line in [`Self::deps`] that the image's
+    /// declarations imply (its ROS edition and capabilities, RFC-0071 D9) as
+    /// opposed to the board's platform feature. The entry writer marks them
+    /// derived, so a materialised entry does not freeze them (RFC-0071 D13).
+    pub backend_derived_features: Vec<String>,
     /// `[build-dependencies]` lines.
     pub build_deps: Vec<String>,
     /// `[patch.crates-io]` rows, `name = { path = "…" }`.
@@ -304,20 +310,6 @@ pub struct CmakeApp {
     pub features: Vec<String>,
 }
 
-/// Does the crate at `dir` declare `feature`?
-///
-/// Named before it is emitted, because a missing feature is a build the user can
-/// fix and a bogus one fails cargo resolution outright.
-///
-/// ONE spelling (phase-470 W5.b2): this was a byte-identical copy of
-/// [`crate::orchestration::facade::crate_declares_feature`], and W5.b2 wanted a
-/// third for the derived board features. Three copies of a four-line predicate
-/// is how a rule ends up true in two places and not the third, so the two that
-/// existed were collapsed onto the original rather than joined by a sibling.
-fn declares_feature(dir: &Path, feature: &str) -> bool {
-    crate::orchestration::facade::crate_declares_feature(dir, feature)
-}
-
 /// A cmake `project()` identifier for this image.
 ///
 /// The hand-written applications this replaced spelled it by hand
@@ -365,13 +357,19 @@ pub fn cmakelists_finds_zephyr(dir: &Path) -> bool {
 /// `rmw` is the image's effective backend (`[image.<id>] rmw`, already folded
 /// with `[image_defaults]` and the system header by the caller).
 ///
+/// `sys` is the bringup's `system.toml`, which the image belongs to: it
+/// states the image's ROS edition and capabilities, which the backend
+/// dependency carries (RFC-0071 D9, issue 2393).
+///
 /// The adapter over [`resolve_in`]: the RMW index is `workspace`'s.
+#[allow(clippy::too_many_arguments)]
 pub fn resolve(
     workspace: &Path,
     entry_dir: &Path,
     nros_root: &Path,
     image_id: &str,
     rmw: Option<&str>,
+    sys: &SystemToml,
     platform_feature: &str,
     patches: &std::collections::BTreeMap<String, PathBuf>,
 ) -> Result<WestApp, String> {
@@ -385,6 +383,7 @@ pub fn resolve(
         nros_root,
         image_id,
         rmw,
+        sys,
         platform_feature,
         patches,
     )
@@ -400,6 +399,7 @@ pub fn resolve_in(
     nros_root: &Path,
     image_id: &str,
     rmw: Option<&str>,
+    sys: &SystemToml,
     platform_feature: &str,
     patches: &std::collections::BTreeMap<String, PathBuf>,
 ) -> Result<WestApp, String> {
@@ -446,10 +446,27 @@ pub fn resolve_in(
         if let Some(dir) = crate_dir {
             let krate = resolved.descriptor.cargo_crate.as_str();
             let rel = relative_or_err(entry_dir, &dir)?;
-            let feats = if declares_feature(&dir, platform_feature) {
-                format!(", features = [\"{platform_feature}\"]")
-            } else {
+            // RFC-0071 D9 — the same feature list the cargo road's direct
+            // backend dependency carries (`backend_link::dependency_features`):
+            // the edition and capabilities, then the board's platform feature.
+            // Before issue 2393 this forwarded the platform feature alone.
+            let edition = sys
+                .image_ros_edition(Some(image_id))
+                .map_err(|e| format!("`{image_id}`: {e:#}"))?;
+            let platform = [platform_feature.to_string()];
+            let features = crate::orchestration::backend_link::dependency_features(
+                &resolved, &dir, sys, edition, &platform,
+            );
+            app.backend_derived_features = features
+                .iter()
+                .filter(|f| f.as_str() != platform_feature)
+                .cloned()
+                .collect();
+            let feats = if features.is_empty() {
                 String::new()
+            } else {
+                let list: Vec<String> = features.iter().map(|f| format!("\"{f}\"")).collect();
+                format!(", features = [{}]", list.join(", "))
             };
             app.deps.push(format!(
                 "{krate} = {{ path = \"{rel}\", default-features = false{feats}, \
@@ -1154,6 +1171,7 @@ mod tests {
             &nros_root,
             "zephyr",
             Some("zenoh"),
+            &humble_sys(),
             "platform-zephyr",
             &std::collections::BTreeMap::new(),
         )
@@ -1192,16 +1210,19 @@ mod tests {
             &nros_root,
             "zephyr",
             Some("acme"),
+            &humble_sys(),
             "platform-zephyr",
             &none,
         )
         .expect("acme resolves through the scan");
         // RFC-0071 D15 — the backend's directory is the scan's, outside the
         // SDK root (the deleted `backend_dir` looked only under it).
+        // RFC-0071 D9 — the edition reaches it too (issue 2393); acme declares
+        // no `platform-zephyr`, so that is left out.
         assert!(
             app.deps.contains(
                 &"acme-rmw = { path = \"../../../src/acme_rmw\", default-features = false, \
-                  optional = true }"
+                  features = [\"ros-humble\"], optional = true }"
                     .to_string()
             ),
             "{:?}",
@@ -1227,6 +1248,7 @@ mod tests {
             &nros_root,
             "zephyr",
             Some("acme"),
+            &humble_sys(),
             "platform-zephyr",
             &none,
         )
@@ -1240,11 +1262,96 @@ mod tests {
             &nros_root,
             "zephyr",
             Some("acme"),
+            &humble_sys(),
             "platform-zephyr",
             &none,
         )
         .unwrap_err();
         assert!(e.contains("`zephyr`") && e.contains("searched:"), "{e}");
+    }
+
+    /// A bringup `system.toml` for a `zephyr` image on `acme`, stating
+    /// `image_extra` under `[image.zephyr]` and `system_extra` under `[system]`.
+    fn sys_with(system_extra: &str, image_extra: &str) -> SystemToml {
+        toml::from_str(&format!(
+            "[system]\nname = \"t\"\nrmw = \"acme\"\ndomain_id = 0\n{system_extra}\n\
+             [image.zephyr]\nboard = \"zephyr\"\n{image_extra}\n"
+        ))
+        .expect("a system.toml")
+    }
+
+    /// No edition stated anywhere: humble.
+    fn humble_sys() -> SystemToml {
+        sys_with("", "")
+    }
+
+    /// Issue 2393 / RFC-0071 D9 — the west road's backend dependency carries
+    /// what the cargo road's does (`backend_link::dependency_features`): the
+    /// image's ROS edition, the capability features it declares, and the
+    /// board's platform feature, each where the crate declares it. Before, it
+    /// carried the platform feature alone, so a jazzy image built `nros` for
+    /// jazzy and its backend for humble.
+    #[test]
+    fn the_west_backend_dependency_carries_the_edition_and_capabilities() {
+        let td = tempfile::tempdir().unwrap();
+        let ws = td.path().join("ws");
+        let acme = cargo_nano_ros::rmw_resolver::test_support::acme_index(&ws);
+        // The scan's acme declares no `platform-zephyr`; a Zephyr-capable
+        // backend would.
+        let manifest = ws.join("src/acme_rmw/Cargo.toml");
+        let raw = std::fs::read_to_string(&manifest).unwrap();
+        std::fs::write(&manifest, format!("{raw}platform-zephyr = []\n")).unwrap();
+        let nros_root = td.path().join("nano-ros");
+        std::fs::create_dir_all(nros_root.join("packages/tooling/nros-zephyr-build")).unwrap();
+        let entry = ws.join("build/zephyr-acme/zephyr_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        let none = std::collections::BTreeMap::new();
+        let dep_for = |sys: &SystemToml| {
+            let app = resolve_in(
+                &acme,
+                &ws,
+                &entry,
+                &nros_root,
+                "zephyr",
+                Some("acme"),
+                sys,
+                "platform-zephyr",
+                &none,
+            )
+            .expect("acme resolves");
+            assert_eq!(app.deps.len(), 1, "{:?}", app.deps);
+            (app.deps[0].clone(), app.backend_derived_features)
+        };
+        let line = |feats: &str| {
+            format!(
+                "acme-rmw = {{ path = \"../../../src/acme_rmw\", default-features = false, \
+                 features = [{feats}], optional = true }}"
+            )
+        };
+
+        let (dep, derived) = dep_for(&sys_with("", "ros_edition = \"jazzy\""));
+        assert_eq!(dep, line("\"ros-jazzy\", \"platform-zephyr\""));
+        assert_eq!(derived, vec!["ros-jazzy".to_string()]);
+
+        let (dep, derived) = dep_for(&humble_sys());
+        assert_eq!(dep, line("\"ros-humble\", \"platform-zephyr\""));
+        assert_eq!(derived, vec!["ros-humble".to_string()]);
+
+        // The edition stated system-wide reaches the image too.
+        let (dep, _) = dep_for(&sys_with("ros_edition = \"jazzy\"", ""));
+        assert_eq!(dep, line("\"ros-jazzy\", \"platform-zephyr\""));
+
+        // A declared capability the backend implements: acme's `safety` is
+        // its own `acme-safety` (`[rmw.capabilities]`), not core's name.
+        let (dep, derived) = dep_for(&sys_with("features = [\"safety\"]", ""));
+        assert_eq!(
+            dep,
+            line("\"acme-safety\", \"ros-humble\", \"platform-zephyr\"")
+        );
+        assert_eq!(
+            derived,
+            vec!["acme-safety".to_string(), "ros-humble".to_string()]
+        );
     }
 
     #[test]
@@ -1264,6 +1371,7 @@ mod tests {
             &nros_root,
             "zephyr",
             Some("cyclonedds"),
+            &humble_sys(),
             "platform-zephyr",
             &std::collections::BTreeMap::new(),
         )
@@ -1296,6 +1404,7 @@ mod tests {
                 &nros_root,
                 "zephyr",
                 Some(rmw),
+                &humble_sys(),
                 "platform-zephyr",
                 &std::collections::BTreeMap::new(),
             )

@@ -5007,6 +5007,16 @@ fn generate_entry(
     // RFC-0121 D9 — the image's node features, resolved here once for every
     // Rust road against what each node package's manifest declares.
     let node_features = image_node_features(image_id, &image.node_features, &nodes)?;
+    // The bringup's `system.toml`, the declaration the image belongs to: its
+    // edition and capabilities reach the west half's backend dependency
+    // (issue 2393) and, below, the entry's selection (RFC-0071 D13).
+    let sys = {
+        let toml_path = bringup_dir.join("system.toml");
+        let raw = std::fs::read_to_string(&toml_path)
+            .map_err(|e| eyre::eyre!("reading {}: {e}", toml_path.display()))?;
+        toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+            .map_err(|e| eyre::eyre!("parsing {}: {e}", toml_path.display()))?
+    };
     let mut spec = EntrySpec {
         image_id: image_id.to_string(),
         launch,
@@ -5060,6 +5070,7 @@ fn generate_entry(
                     nros_root,
                     image_id,
                     image.rmw.as_deref(),
+                    &sys,
                     &descriptor.platform_feature,
                     // Seeded from the NODE packages, because the entry manifest
                     // these rows go into has not been written yet.
@@ -5135,14 +5146,8 @@ fn generate_entry(
         facts.board_features.dedup();
     }
     // RFC-0071 D13 — the entry states its own features and registration; no
-    // selection package is written for it. Read from the bringup's
-    // `system.toml`, the declaration the image belongs to.
+    // selection package is written for it. Derived from `sys` (above).
     {
-        let toml_path = bringup_dir.join("system.toml");
-        let raw = std::fs::read_to_string(&toml_path)
-            .map_err(|e| eyre::eyre!("reading {}: {e}", toml_path.display()))?;
-        let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
-            .map_err(|e| eyre::eyre!("parsing {}: {e}", toml_path.display()))?;
         let board_dir = facts.board_crate.as_ref().map(|k| {
             nros_root.join(
                 facts
