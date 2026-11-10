@@ -48,6 +48,7 @@ user toolchain
 user update
 user version
 user ws
+dev bindings
 dev board
 dev codegen
 dev command
