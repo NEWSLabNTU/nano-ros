@@ -902,7 +902,9 @@ def workspace_record(entry):
             entry["lang"],
             entry["dir"],
             entry["bringup"],
-            entry_name(entry),
+            # RFC-0071 D19 — an image naming an owned entry builds THAT
+            # package, so the record (artifact name, test resolver) does too.
+            image_entry_package(entry),
             entry.get("build_subdir", ""),
             entry.get("target_dir", ""),
             entry.get("codegen_out", ""),
@@ -1827,7 +1829,24 @@ def validate_workspace_fixture(entry):
     generated_launch = not (bringup_dir / "launch").is_dir() and bool(
         _load_toml(entry, system_toml).get("component")
     )
-    if not generated_launch:
+    # RFC-0071 D19 — an image built from an OWNED entry runs that entry's own
+    # `main`, so a bringup with no `launch/` whose row's image names one has
+    # nothing to launch; the entry package is what must exist.
+    owned_entry = None
+    if entry.get("image") and not (bringup_dir / "launch").is_dir():
+        owned_entry = (_image_block(entry, entry["image"]) or {}).get("entry")
+    if owned_entry:
+        root_dir = Path(entry.get("dir") or "")
+        if not any(
+            (d / "Cargo.toml").is_file() or (d / "CMakeLists.txt").is_file()
+            for d in [root_dir / "src" / owned_entry]
+        ):
+            _fail(
+                entry,
+                f"image {entry['image']!r} names the owned entry {owned_entry!r}, and "
+                f"{root_dir / 'src' / owned_entry} has no Cargo.toml or CMakeLists.txt",
+            )
+    elif not generated_launch:
         _require_file(
             entry,
             bringup_dir / "launch" / default_launch,

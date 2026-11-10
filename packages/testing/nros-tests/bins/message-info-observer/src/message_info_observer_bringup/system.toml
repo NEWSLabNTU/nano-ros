@@ -1,0 +1,26 @@
+# What this test program deploys to (RFC-0098 D3/D5). The program is the owned
+# entry `src/message-info-observer`: it keeps its own `main` (no `nros::main!`)
+# and opens its own executor, because `CallbackCtx` exposes no `MessageInfo`.
+# Both images build that one `main` (RFC-0071 D19); they differ only in the
+# entry's `unstable-zenoh-api` feature, which is what makes the pair a
+# zero-copy trampoline check (issue 0441).
+
+[system]
+name = "message_info_observer"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` builds.
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native.
+[image_defaults]
+board = "linux"
+
+# The plain receive path.
+[image.linux]
+entry = "message-info-observer"
+
+# The zero-copy receive path: the entry's own `unstable-zenoh-api` feature.
+[image.linux_zero_copy]
+entry = "message-info-observer"
+node_features = ["unstable-zenoh-api"]

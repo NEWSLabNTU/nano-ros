@@ -711,6 +711,13 @@ from before W6.
     Ruling: one owned entry may serve several images (RFC-0071 D13 and
     `claiming_image` amended, the cargo road honours `[image.<id>] entry`),
     and the census tests keep running the same `main()`s.
+  - **Issue 2406, core support landed (RFC-0071 D19).** The cargo road
+    builds the package `[image.<id>] entry` names; an entry several images
+    name has one adapter with an `image-<id>` feature per image, turned on by
+    `nros build`, so neither the adapter nor the entry's lock moves between
+    images; `node_features` reaches the entry's own features. Proved on
+    `bins/message-info-observer` (images `linux`, `linux_zero_copy`).
+    Remaining: `bins/action-server-concurrent` and the linux C/C++ talkers.
 
 ### W7 — Retirement
 

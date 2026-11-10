@@ -20,6 +20,9 @@
 # blanket one. It used to be a list, because some bins kept tracked locks and a
 # blanket rule would have made those unaddable; none do any more.
 /*/Cargo.lock
+# A migrated bin is a WORKSPACE: its cargo root is the owned entry under
+# `src/` (RFC-0071 D19), so its lock sits one level down.
+/*/src/*/Cargo.lock
 
 # `nros configure` / `nros dev codegen system` write per-leaf build output here:
 # `build/nros/providers.json` and `build/nros/models/<bringup>/…`. SystemModels

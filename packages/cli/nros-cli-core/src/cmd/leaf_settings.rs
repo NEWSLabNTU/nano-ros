@@ -248,7 +248,10 @@ pub fn resolve_claimed_entry(
     let Some(package) = package_name(entry) else {
         return Ok(None);
     };
-    let Some(decl) = leaf_system::for_entry(entry, &package, bringup).map_err(|e| eyre!(e))? else {
+    // RFC-0071 D19 — the board is what this asks, and every image naming
+    // one owned entry deploys it to the same one.
+    let Some(decl) = leaf_system::for_entry_any(entry, &package, bringup).map_err(|e| eyre!(e))?
+    else {
         return Ok(None);
     };
     leaf_image_from_decl(entry, nano_ros_root, Driver::Cargo, package, decl)

@@ -612,7 +612,7 @@ fn lint_dispatch_matrix(
         return Ok(());
     }
     // Only run on Entry pkgs — the packages an image claims.
-    let claimed = nros_orchestration_ir::leaf_system::claiming_image(
+    let claimed = nros_orchestration_ir::leaf_system::claiming_image_any(
         entry_dir,
         entry_pkg_name,
         bringup_dirs.iter().map(std::path::PathBuf::as_path),

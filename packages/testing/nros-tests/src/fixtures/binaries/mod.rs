@@ -7071,17 +7071,16 @@ pub fn listener_safety_binary() -> PathBuf {
 /// at all (`CallbackCtx` has no accessor; the `FnMut(&M, Option<&MessageInfo>)`
 /// shape lives on the executor's `.message_info()` builder).
 pub fn build_message_info_observer() -> TestResult<&'static Path> {
+    // RFC-0071 D19 (issue 2406) — a workspace now: one owned entry, built
+    // for the plain image and for `linux_zero_copy`.
     MESSAGE_INFO_OBSERVER_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_row(
-                "packages/testing/nros-tests/bins/message-info-observer",
-                &crate::fixtures::groups::FixtureVariant::plain(),
-            )?;
-            let rel = PathBuf::from(format!(
-                "{}/message-info-observer",
-                cargo_target_profile_dir()
-            ));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            migrated_leaf_binary(
+                MESSAGE_INFO_OBSERVER_DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(MESSAGE_INFO_OBSERVER_DIR)))
         })
         .map(|p| p.as_path())
 }
@@ -7091,17 +7090,24 @@ pub fn build_message_info_observer() -> TestResult<&'static Path> {
 pub fn build_message_info_observer_zero_copy() -> TestResult<&'static Path> {
     MESSAGE_INFO_OBSERVER_ZERO_COPY_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_row(
-                "packages/testing/nros-tests/bins/message-info-observer",
-                &crate::fixtures::groups::FixtureVariant::features(&["unstable-zenoh-api"]),
-            )?;
-            let rel = PathBuf::from(format!(
-                "{}/message-info-observer",
-                cargo_target_profile_dir()
-            ));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            migrated_leaf_binary(
+                MESSAGE_INFO_OBSERVER_DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Image("linux_zero_copy"),
+            )
+            .unwrap_or_else(|| Err(not_migrated(MESSAGE_INFO_OBSERVER_DIR)))
         })
         .map(|p| p.as_path())
+}
+
+const MESSAGE_INFO_OBSERVER_DIR: &str = "packages/testing/nros-tests/bins/message-info-observer";
+
+/// A resolver that expects a migrated workspace found `[[fixture]]` rows.
+fn not_migrated(dir: &str) -> TestError {
+    TestError::BuildFailed(format!(
+        "{dir} is resolved through its [[workspace_fixture]] rows, and the manifest \
+         has none (or still has a [[fixture]] row for it)"
+    ))
 }
 
 /// rstest fixture that provides the native-rs-action-server binary path

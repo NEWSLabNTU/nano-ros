@@ -1332,7 +1332,15 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // is its own root: there is no workspace to `-p` into
                 // (RFC-0098 D9), so the build names the MANIFEST.
                 let image_dir = generated_entry_dir(&root, &platform, &image, &image_id);
-                let hand_written = root.join("src").join(&want_entry);
+                // RFC-0071 D19 — the owned entry `[image.<id>] entry` names,
+                // or `src/<id>_entry`.
+                let owned_dir = owned_entry_dir(&root, &image_id, &image)?;
+                let hand_written = owned_dir
+                    .clone()
+                    .unwrap_or_else(|| root.join("src").join(&want_entry));
+                // The name the adapter is keyed on: what the image names, else
+                // the derived `<id>_entry` (which a hand-written entry carries).
+                let owned_name = image.entry.clone().unwrap_or_else(|| want_entry.clone());
                 let lock_is_ours = generated.dir.is_some();
                 let manifest_dir = match &generated.dir {
                     Some(d) => d.clone(),
@@ -1356,6 +1364,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // configure`, so a build straight after `nros materialize`
                 // finds it (the heal the generated entry no longer needs).
                 // Write-if-changed, so an up-to-date adapter costs nothing.
+                let mut owned_features: Vec<String> = Vec::new();
                 if generated.dir.is_none() && manifest_dir == hand_written {
                     let toml_path = bringup_dir.join("system.toml");
                     let raw = std::fs::read_to_string(&toml_path)
@@ -1364,16 +1373,45 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         crate::orchestration::cargo_metadata_schema::SystemToml,
                     >(&raw)
                     .map_err(|e| eyre::eyre!("parsing {}: {e}", toml_path.display()))?;
-                    crate::orchestration::facade::write_facade(
-                        &want_entry,
+                    let facade = crate::orchestration::facade::write_facade(
+                        &owned_name,
                         &hand_written,
                         &hand_written.join("Cargo.toml"),
                         &bringup_dir,
                         &sys,
                         &root.join("generated"),
                         nano_ros_root.as_deref(),
+                        Some(&image_id),
                     )
                     .map_err(|e| eyre::eyre!("writing the adapter for `{qual}`: {e}"))?;
+                    // RFC-0071 D19 — an adapter several images share selects
+                    // this one by feature.
+                    if let Some(f) = facade.as_ref().and_then(|f| {
+                        f.image_feature
+                            .as_ref()
+                            .map(|feat| format!("{}/{feat}", f.crate_name))
+                    }) {
+                        owned_features.push(f);
+                    }
+                    // RFC-0071 D19 — `node_features` on an image built from an
+                    // owned entry names the ENTRY's own `[features]`: it is the
+                    // cargo root, so no dependency edge can turn them on, and
+                    // the command line does.
+                    if !image.node_features.is_empty() {
+                        let declared = std::fs::read_to_string(hand_written.join("Cargo.toml"))
+                            .ok()
+                            .and_then(|t| t.parse::<toml::Table>().ok())
+                            .and_then(|t| t.get("features").and_then(|f| f.as_table()).cloned())
+                            .map(|f| f.keys().cloned().collect())
+                            .unwrap_or_default();
+                        let per = crate::orchestration::image::resolve_image_features(
+                            &image_id,
+                            &image.node_features,
+                            &[(owned_name.clone(), declared)],
+                        )
+                        .map_err(|e| eyre::eyre!("{e}"))?;
+                        owned_features.extend(per.into_iter().flatten());
+                    }
                 }
 
                 cargo_roots.push(manifest_dir.clone());
@@ -1597,6 +1635,10 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     "--config".to_string(),
                     config_arg.clone(),
                 ];
+                if !owned_features.is_empty() {
+                    a.push("--features".to_string());
+                    a.push(owned_features.join(","));
+                }
                 if let Some(profile) = image.profile.as_deref() {
                     // `--profile` rather than `--release`: a named profile is
                     // what `[image.<id>].profile` declares, and `release` is
@@ -4884,9 +4926,7 @@ fn generate_entry(
     // so a directory-existence check reads a deleted entry as still present and
     // silently generates nothing. phase-383 W10 tripped over exactly that on
     // the first workspace it tried.
-    let want = crate::builder::entry::package_name(image_id);
-    let hand_written = root.join("src").join(&want);
-    if hand_written.join("Cargo.toml").is_file() || hand_written.join("CMakeLists.txt").is_file() {
+    if owned_entry_dir(root, image_id, image)?.is_some() {
         return Ok(GeneratedEntry { dir: None });
     }
 
@@ -5648,7 +5688,7 @@ fn rust_entry_system(
     // Issue 1289 — an entry is the package an image CLAIMS, never one a
     // manifest table marks. Conservative like before: an unreadable or
     // ambiguous claim answers `None` here (the build reports it elsewhere).
-    nros_orchestration_ir::leaf_system::claiming_image(
+    nros_orchestration_ir::leaf_system::claiming_image_any(
         dir,
         &pkg,
         bringup_dirs.iter().map(PathBuf::as_path),
@@ -7403,6 +7443,90 @@ fn names_west_build_dir(west_extra: &[String]) -> bool {
     })
 }
 
+/// RFC-0071 D19 — the OWNED entry an image builds, if it has one: the package
+/// `[image.<id>] entry` names (by package name or directory, as the west road
+/// has always read it), or else a hand-written `src/<id>_entry`. Either
+/// suppresses generation. ONE resolver, so the roads cannot disagree about
+/// which package an image builds.
+///
+/// A named entry that is no package under `src/` is an error naming the image:
+/// falling back to a generated entry would build a different program than the
+/// one the image names.
+fn owned_entry_dir(
+    root: &Path,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+) -> Result<Option<PathBuf>> {
+    let has_build_file =
+        |d: &Path| d.join("Cargo.toml").is_file() || d.join("CMakeLists.txt").is_file();
+    if let Some(name) = image.entry.as_deref() {
+        let direct = root.join("src").join(name);
+        if has_build_file(&direct) {
+            return Ok(Some(direct));
+        }
+        if let Some(d) = find_package_named(&root.join("src"), name, 4) {
+            return Ok(Some(d));
+        }
+        eyre::bail!(
+            "[image.{image_id}] names entry `{name}`, which is no package under {}              (looked for a directory or a `Cargo.toml` / `package.xml` name of that              spelling)",
+            root.join("src").display()
+        );
+    }
+    let hand_written = root
+        .join("src")
+        .join(crate::builder::entry::package_name(image_id));
+    Ok(has_build_file(&hand_written).then_some(hand_written))
+}
+
+/// A directory under `dir` (at most `depth` levels down, skipping build
+/// output) that is a package named `name`: by its directory name, its
+/// `Cargo.toml` `[package] name` or its `package.xml` `<name>`.
+fn find_package_named(dir: &Path, name: &str, depth: usize) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut subdirs: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .filter(|p| {
+            !matches!(
+                p.file_name().and_then(|n| n.to_str()),
+                Some("build" | "target" | "generated" | "install" | "log") | None
+            ) && !p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with('.'))
+        })
+        .collect();
+    subdirs.sort();
+    for d in &subdirs {
+        let cargo_name = std::fs::read_to_string(d.join("Cargo.toml"))
+            .ok()
+            .and_then(|t| t.parse::<toml::Table>().ok())
+            .and_then(|t| {
+                t.get("package")
+                    .and_then(|p| p.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(str::to_string)
+            });
+        let is_build_pkg = d.join("Cargo.toml").is_file() || d.join("CMakeLists.txt").is_file();
+        let xml_names = std::fs::read_to_string(d.join("package.xml"))
+            .is_ok_and(|x| x.contains(&format!("<name>{name}</name>")));
+        if is_build_pkg
+            && (d.file_name().and_then(|n| n.to_str()) == Some(name)
+                || cargo_name.as_deref() == Some(name)
+                || xml_names)
+        {
+            return Some(d.clone());
+        }
+    }
+    if depth == 0 {
+        return None;
+    }
+    subdirs
+        .iter()
+        .find_map(|d| find_package_named(d, name, depth - 1))
+}
+
 /// Every path an image's build GENERATES that is keyed on its image id,
 /// workspace-relative — or nothing, when a hand-written application suppresses
 /// generation.
@@ -7443,6 +7567,10 @@ fn generated_outputs(
     let rel = |p: PathBuf| p.strip_prefix(root).map(Path::to_path_buf).unwrap_or(p);
     match driver {
         Driver::West if image.entry.is_some() => Vec::new(),
+        // RFC-0071 D19 — on the cargo road a named owned entry suppresses
+        // generation too; one that does not resolve fails the image's own
+        // build, so it claims nothing here.
+        Driver::Cargo if !matches!(owned_entry_dir(root, image_id, image), Ok(None)) => Vec::new(),
         Driver::Cargo | Driver::West => {
             vec![rel(generated_entry_dir(root, platform, image, image_id))]
         }
@@ -10266,6 +10394,66 @@ mod single_package_tests {
             e.contains("native_c_talker:linux") && e.contains("cmake"),
             "names the image and its driver: {e}"
         );
+    }
+}
+
+#[cfg(test)]
+mod owned_entry_tests {
+    //! RFC-0071 D19 — which package an image builds when it does not generate
+    //! one.
+    use super::*;
+    use crate::orchestration::image::ImageBlock;
+
+    #[test]
+    fn a_named_entry_resolves_by_directory_or_package_name_and_suppresses_generation() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path();
+        let pkg = root.join("src/tools/observer");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(
+            pkg.join("Cargo.toml"),
+            "[package]\nname = \"message-info-observer\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let named = |e: &str| ImageBlock {
+            entry: Some(e.to_string()),
+            board: Some("linux".to_string()),
+            ..Default::default()
+        };
+        // By package name, one level down.
+        assert_eq!(
+            owned_entry_dir(root, "linux", &named("message-info-observer")).unwrap(),
+            Some(pkg.clone())
+        );
+        // By directory name.
+        assert_eq!(
+            owned_entry_dir(root, "linux", &named("observer")).unwrap(),
+            Some(pkg.clone())
+        );
+        // Two images, one entry: both resolve it and neither generates.
+        for id in ["linux", "linux_zero_copy"] {
+            assert!(
+                generated_outputs(
+                    root,
+                    id,
+                    &named("message-info-observer"),
+                    "posix",
+                    Driver::Cargo,
+                    "b",
+                    root
+                )
+                .is_empty()
+            );
+        }
+        // A name nothing answers is an error naming the image.
+        let e = owned_entry_dir(root, "linux", &named("absent")).unwrap_err();
+        assert!(e.to_string().contains("[image.linux]"), "{e}");
+        // No name and no `src/<id>_entry`: generated.
+        let bare = ImageBlock {
+            board: Some("linux".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(owned_entry_dir(root, "linux", &bare).unwrap(), None);
     }
 }
 

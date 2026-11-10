@@ -2865,16 +2865,28 @@ dir = "packages/testing/nros-tests/bins/contract-monitor-cpp"
 # changes, and the example's zero-copy build printed output identical to the
 # plain one (nothing for a test to assert). The two rows differ in exactly one
 # feature, which is what makes them a trampoline check.
-[[fixture]]
+# RFC-0071 D19 (issue 2406) — one owned entry, `src/message-info-observer`,
+# built for both images; the zero-copy image turns on the entry's own feature.
+[[workspace_fixture]]
+id = "linux-rust-zenoh-message-info-observer"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/message-info-observer"
+rmw = "zenoh"
+bringup = "src/message_info_observer_bringup"
+image = "linux"
+target_dir = "target-plain"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-message-info-observer-zero-copy"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/message-info-observer"
-features = ["unstable-zenoh-api"]
+rmw = "zenoh"
+bringup = "src/message_info_observer_bringup"
+image = "linux_zero_copy"
+node_features = ["unstable-zenoh-api"]
+target_dir = "target-zero-copy"
 
 # Per-RMW talker/listener/service/action. The six `examples/linux/rust/*`
 # leaves select their RMW by IMAGE (`image = "linux_<rmw>"`, issue 1305 —

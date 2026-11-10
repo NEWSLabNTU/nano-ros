@@ -1471,7 +1471,7 @@ fn mark_claimed_packages_deploy_bound(packages: &mut [Package]) -> Result<()> {
         if pkg.cargo_component_metadata.is_empty() {
             continue;
         }
-        let claimed = nros_orchestration_ir::leaf_system::claiming_image(
+        let claimed = nros_orchestration_ir::leaf_system::claiming_image_any(
             &pkg.root,
             &pkg.name,
             bringups.iter().map(PathBuf::as_path),
