@@ -234,7 +234,7 @@ docker run --rm -v "$PWD/debs:/debs" ubuntu:24.04 bash -c '
     git curl ca-certificates build-essential \
     cmake pkg-config python3 python3-dev zstd \
     python3-catkin-pkg python3-empy python3-lark python3-yaml \
-    ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp
+    ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp ros-jazzy-example-interfaces
   cp /var/cache/apt/archives/*.deb /debs/'
 ```
 

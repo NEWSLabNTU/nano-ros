@@ -1,0 +1,1 @@
+Install now adds `ros-<distro>-example-interfaces` to the ROS 2 packages it installs. `ros-base` does not include it, and the C and C++ tabs of the Tutorial's services chapter build it from the ROS 2 install.
