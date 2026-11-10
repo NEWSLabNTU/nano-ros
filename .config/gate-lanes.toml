@@ -15,7 +15,7 @@
 cli = "the in-tree `nros` CLI (just setup-cli)"
 cmake = "cmake and ninja on PATH"
 cc = "a host C/C++ compiler and binutils (ar, nm, objcopy)"
-arm-gcc = "arm-none-eabi-g++ (the CI image's package, or nros setup --tool arm-none-eabi-gcc)"
+arm-gcc-any = "any arm-none-eabi-g++, pinned or not (the CI image's distro package, or nros setup --tool arm-none-eabi-gcc)"
 bindgen = "bindgen-cli at the pin"
 ros2 = "a sourced ROS 2 (AMENT_PREFIX_PATH)"
 colcon = "colcon on PATH"
@@ -51,14 +51,14 @@ scratch-tree = { scratch-gib = 5, cpus = 8 }
 [lane.fast]
 # `check / fast` on the hosted runner: the ci-base image provides these.
 tiers = ["fast"]
-claims = ["cli", "cmake", "cc", "arm-gcc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
+claims = ["cli", "cmake", "cc", "arm-gcc-any", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
 
 [lane.build]
 # The hosted runner's other jobs: `check / build tier` shards (gate.yml) and
 # host-tests' tier-1 gates, which run `just check` and so both tiers. Same
 # image as `fast`, without the sparse Zephyr header clone.
 tiers = ["fast", "build"]
-claims = ["cli", "cmake", "cc", "arm-gcc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
+claims = ["cli", "cmake", "cc", "arm-gcc-any", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
 
 [lane.queue]
 # The self-hosted runner (nros-sdk-zephyr): the image's set plus a Zephyr
@@ -70,7 +70,7 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # A developer worktree after `just setup-worktree` with ROS 2 sourced: what
 # `just check lane dev` runs before a push. No Zephyr and no fixture build, so
 # the gates that need them run in `fast`/`queue` instead.
-# Nor `arm-gcc` (issue 2419): a cross compiler is not part of a worktree's
+# Nor `arm-gcc-any` (issue 2419): a cross compiler is not part of a worktree's
 # setup, so `px4-uorb-nuttx-compile` runs in `fast` and `build`, and by name
 # (`just check px4-uorb-nuttx-compile`) where one is installed.
 tiers = ["fast", "build"]

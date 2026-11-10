@@ -69,7 +69,8 @@ headers.
 - **Compiler**: `$NROS_ARM_NONE_EABI_PREFIX-g++`, else `arm-none-eabi-g++` on
   PATH (the store's pinned 13.2 after `activate.sh`, else the CI image's apt
   package, which is also what PX4 v1.17's `Tools/setup/ubuntu.sh` installs).
-  The gate prints which one. New lane capability `arm-gcc`, claimed by the
+  The gate prints which one. New lane capability `arm-gcc-any` (any
+  arm-none-eabi-g++, the distro 10.3 included), claimed by the
   `fast` and `build` lanes (the CI image).
 
 ## Measured
@@ -103,6 +104,6 @@ gate takes about 0.3 to 0.4 s wall with 13.2 on a 4-CPU box (TUs in parallel).
   snapshot is regenerated; the failure message says so. The C++ library list is
   complete, so a missing standard header is always the real thing.
 - Not run by `just check fast` in a dev worktree (the `dev` lane does not claim
-  `arm-gcc`); run it by name where a cross compiler is installed.
+  `arm-gcc-any`); run it by name where a cross compiler is installed.
 - Regenerating needs a PX4 tree and PX4's Python deps; it is not a gate, the
   same as `scripts/gen-upstream-edition.py`.

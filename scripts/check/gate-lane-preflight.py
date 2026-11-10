@@ -64,8 +64,9 @@ def probe_submodules(tiers: list[str]) -> str | None:
     return "; ".join(lines) if lines else None
 
 
-def probe_arm_gcc() -> str | None:
-    # The order check-px4-uorb-nuttx-compile resolves it in (issue 2419).
+def probe_arm_gcc_any() -> str | None:
+    # ANY arm-none-eabi-g++, pinned or not, in the order
+    # check-px4-uorb-nuttx-compile resolves it (issue 2419).
     prefix = os.environ.get("NROS_ARM_NONE_EABI_PREFIX")
     if prefix:
         return None if shutil.which(prefix + "-g++") else f"{prefix}-g++ is not executable"
@@ -144,7 +145,7 @@ REMEDY = {
     "bindgen": "just setup linux",
     "cmake": "install cmake and ninja",
     "cc": "install a C/C++ compiler",
-    "arm-gcc": "nros setup --tool arm-none-eabi-gcc, then re-source activate.sh",
+    "arm-gcc-any": "any arm-none-eabi-g++ on PATH works: the distro package (gcc-arm-none-eabi, as in the CI image) or nros setup --tool arm-none-eabi-gcc then re-source activate.sh; or set NROS_ARM_NONE_EABI_PREFIX",
     "zephyr-tree": "the sparse header clone in gate.yml's fast job, or a west workspace",
     "zephyr": "just zephyr setup",
     "nuttx": "nros setup --source nuttx",
@@ -159,7 +160,7 @@ PROBES = {
     "cli": probe_cli,
     "cmake": lambda: all_on_path("cmake", "ninja"),
     "cc": lambda: on_path("cc", "gcc", "clang") or all_on_path("ar", "nm", "objcopy"),
-    "arm-gcc": probe_arm_gcc,
+    "arm-gcc-any": probe_arm_gcc_any,
     "bindgen": lambda: on_path("bindgen"),
     "ros2": lambda: None if os.environ.get("AMENT_PREFIX_PATH") else "AMENT_PREFIX_PATH is unset",
     "colcon": lambda: on_path("colcon"),

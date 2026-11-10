@@ -712,7 +712,7 @@ rmw-agnostic:
 # to its hashes, compiles every TU `nros_px4_add_module(BACKENDS uorb)` does, and
 # runs its negative controls (`<atomic>` missing, the old cast refused) first.
 # ~0.3 s with the cross compiler, which is its one capability.
-[group('needs:arm-gcc')]
+[group('needs:arm-gcc-any')]
 [group('needs:cmake')]
 px4-uorb-nuttx-compile:
     @python3 scripts/check/check-px4-uorb-nuttx-compile.py
