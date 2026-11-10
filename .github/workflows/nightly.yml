@@ -561,9 +561,10 @@ jobs:
 
   # ===== PX4 SITL (phase-521 W8 (e), RFC-0113 D9) ======================
   # PX4 is a Tier 1 framework, and Tier 1 admission needs a DELIVERING CI
-  # cell (RFC-0112 D3). Its cells are `Gated` in `matrix::CELLS`: a SITL build
-  # is not a fixture row, so no tier cover schedules it, and this job is the
-  # lane their status string names (`tests/px4_sitl.rs`).
+  # cell (RFC-0112 D3). Its uORB cell is `Runtime` in `matrix::CELLS` (phase-542
+  # W5) and this job is its one lane: `PlatformId::own_lane` names this job and
+  # keeps PX4 out of every tier cover, because a SITL build is not a fixture row
+  # (`tests/px4_sitl.rs`). `just nightly-triage` reports its red like any cell.
   #
   # HOSTED on purpose (maintainer ruling 2026-11-03): SITL needs PX4's own
   # Python requirements, and those are upstream's — the index's `[python.*]`

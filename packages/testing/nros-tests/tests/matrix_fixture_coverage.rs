@@ -212,7 +212,12 @@ fn every_runtime_cell_has_a_fixture_row() {
             || (matches!(c.platform, PlatformId::ZephyrNativeSim)
                 && (matches!(c.kind, Kind::Example)
                     || (matches!(c.kind, Kind::Workspace) && !matches!(c.lang, Lang::Rust))));
+        // - A platform with its own lane (`PlatformId::own_lane`, phase-542 W5):
+        //   PX4, whose SITL tree is built by `just px4 build-sitl-example` inside
+        //   the hosted `px4-sitl` job. No tier lane selects its coordinate, so
+        //   no manifest build is asked to produce it.
         if matches!(c.platform, PlatformId::Linux)
+            || c.platform.own_lane().is_some()
             || west_lane_zephyr
             || (matches!(c.platform, PlatformId::NuttxRiscv) && matches!(c.kind, Kind::Example))
             || (matches!(c.platform, PlatformId::ThreadxRiscv64)
@@ -521,11 +526,18 @@ fn every_fixture_token_is_producible_by_the_module_that_owns_it() {
         //     so ZephyrNativeSim, ZephyrQemuCortexM and ZephyrNucleoF767zi are
         //     checked, not named. Naming them is what let the new board's token
         //     go unproduced and unnoticed until the merge queue.)
-        //   - Px4: a CarveOut on every cell; no runner builds SITL, so no recipe
-        //     can produce it and demanding one would be the inverse lie.
-        //   - any platform with no built cell (PX4, dormant ESP32 — issue
-        //     1525): `matrix::platform_is_built`, derived from `CELLS`.
-        if matches!(p, PlatformId::Fvp) || !nros_tests::matrix::platform_is_built(p) {
+        //   - a platform with its own lane (`PlatformId::own_lane`, phase-542
+        //     W5): PX4's Runtime cell is built by `just px4 build-sitl-example`
+        //     in the hosted `px4-sitl` job. No tier lane selects its
+        //     coordinate, so no lane schedules `just px4 build-fixtures` for it,
+        //     and demanding that recipe produce SITL would put PX4's upstream
+        //     Python requirements on every runner that builds PX4 fixtures.
+        //   - any platform with no built cell (dormant ESP32, issue 1525):
+        //     `matrix::platform_is_built`, derived from `CELLS`.
+        if matches!(p, PlatformId::Fvp)
+            || p.own_lane().is_some()
+            || !nros_tests::matrix::platform_is_built(p)
+        {
             continue;
         }
         let module = p.just_module();

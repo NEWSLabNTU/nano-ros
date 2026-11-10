@@ -1,6 +1,6 @@
 # Phase 542 — PX4 becomes a supported platform: registry evidence, a user-tier build, and every PX4 cell in a lane
 
-**Status (2026-11-10). OPEN: W0 ruled (user, 2026-11-07); W1 landed with #3169 (2026-11-07); W3 done 2026-11-10 (PR #3410); W4 is unblocked.**
+**Status (2026-11-10). OPEN: W0 ruled (user, 2026-11-07); W1 landed with #3169 (2026-11-07); W3 done 2026-11-10 (PR #3410); W4 is unblocked; W5 code side done 2026-11-10 (the uORB cell is Runtime in its own lane), its seven-run acceptance counts from its merge.**
 W0.1 and W0.2 are applied on #3169: host + manual reads "Boots, manual", and
 the `px4-sitl` row states `flavour = "no_std"`, which `check-flavour-lanes`
 checks. W0.3 (a real Runtime cell, so the DDS domain window narrows) is W5's. Implements the 2026-11-06 revision of
@@ -198,16 +198,52 @@ Depends on issue 2243 being fixed (phase-466) and on W0.3.
     value moves. Measured with the cell flipped to `Runtime`: the old gates
     fail both checks, the new ones pass. The window still narrows when a
     domain-joining PX4 cell (the XRCE companion, W6) bakes.
-  - **Still to do before the flip.** The flip measured two reds in
-    `matrix_fixture_coverage`: `every_runtime_cell_has_a_fixture_row` (the
-    SITL build is `just px4 build-sitl-example`, not a `fixtures.toml` row)
-    and `every_fixture_token_is_producible_by_the_module_that_owns_it` (no
-    fixture module produces `px4`). A Runtime cell also enters tier 2's 1-wise
-    platform cover, so either the tier-2 runner builds SITL or the lane scope
-    states that `px4` runs only in the `px4-sitl` job.
-  - Then flip the cell.
-- The job carries its verdict: a red is reported by
-  `just nightly-triage` like any other nightly cell.
+  - **Done 2026-11-10: the code side, and the flip.** The flip measured
+    three reds: the two in `matrix_fixture_coverage` below, and
+    `ci_lane::documented_lane_table_is_live`, because tier 2's 1-wise cover
+    took the PX4 cell (12 -> 13 cells: PX4 is the only uORB platform, so the
+    cover has to pick it). One declaration answers all three:
+    `PlatformId::own_lane` names the job a platform's Runtime cells run in
+    (`nightly.yml` `px4-sitl`, `just px4 test-sitl-example`).
+    - **Lane scope: the lane, not the runner.** The tier-2 runners cannot
+      build SITL (PX4's upstream Python requirements, ruled hosted-only on
+      2026-11-03), so tiers 2 and nightly leave an own-lane platform out of
+      their pools (`ci_lane::pool`); tier 1's pool never had it. Their
+      `NROS_TEST_COORDS` then never names `px4`, and `tests/px4_sitl.rs`'s
+      `require_platform_in_lane` deselects by coordinate there; the
+      `px4-sitl` job sets no coordinate scope and runs everything. Tiers 1, 2
+      and nightly did not move (25/11, 12/11, 47/41); tier 3 went 259 -> 260
+      cells over 54 -> 55 coordinates.
+      `own_lane_platforms_are_in_no_tier_and_their_job_runs_them` holds it:
+      no tier selects the platform, it has a Runtime cell, and the named job
+      exists and runs the named recipe.
+    - **`every_runtime_cell_has_a_fixture_row`**: the SITL tree is not a
+      `fixtures.toml` row and gets none. It is built by the job's own recipe
+      into PX4's `build/px4_sitl_default` (no cargo group to share, and no
+      tier lane selects its coordinate), the same shape as the other
+      exemptions there (Fvp, the west leaves, NuttX riscv), which each name
+      their build channel. The exemption reads `own_lane`, not a name.
+    - **`every_fixture_token_is_producible_by_the_module_that_owns_it`**: the
+      same reading. No lane schedules `just px4 build-fixtures` for `px4`'s
+      coordinate, so demanding that recipe produce SITL would only put PX4's
+      Python requirements on every runner that builds the XRCE companions.
+    - **Flipped:** the `(Px4, Cpp, Uorb, Pubsub, Example)` cell is `Runtime`
+      in `board-support-cells.toml`; views regenerated. `domains_valid` and
+      `ports_in_band` stay green.
+- **The job carries its verdict: done 2026-11-10.** `just nightly-triage`
+  already classified the job, but its "red across all scanned runs" streak
+  read every run of the workflow, and nightly.yml has two crons while
+  `px4-sitl` runs on the 07:00 one only. So its history read
+  `verdict/skipped/verdict` and three red scheduled runs in a row (to
+  42577453343) were never reported as standing. The streak now drops runs that
+  skipped the job (`standing_reds`), and the latest run's report names each
+  VERDICT-failing job and its step. Measured over the last 4 runs: `px4 sitl`
+  is listed as red on both runs that scheduled it.
+- **Left: the seven-run clock.** The clock starts at the merge of this work
+  (with issue 2243's harness fix, PR #3427, merged first). The registry row
+  stays `cadence = "manual"` until seven consecutive scheduled `px4 sitl`
+  runs are green; flipping it to `daily` (and the status to **Verified on
+  host (daily)**) is a later, hand-made change.
 
 **Acceptance:** seven consecutive scheduled `px4 sitl` runs green; the row
 reads **Verified on host (daily)**; `domains_valid` green.

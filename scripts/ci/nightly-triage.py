@@ -159,8 +159,12 @@ def failed_log(job):
     return out.stdout if out.returncode == 0 else ""
 
 
-def summarise(jobs, logs=None):
-    """Counts + the no-verdict list, for one run."""
+def summarise(jobs, logs=None, verdicts=None):
+    """Counts + the no-verdict list, for one run.
+
+    `verdicts`, when given, collects (job, step) for each VERDICT failure, so
+    the report names the red cells and not only their count.
+    """
     kinds = collections.Counter()
     no_verdict = []
     for j in jobs:
@@ -170,7 +174,28 @@ def summarise(jobs, logs=None):
         kinds[kind] += 1
         if kind == "no-verdict":
             no_verdict.append((j.get("name", "?"), why))
+        if kind == "verdict" and verdicts is not None:
+            verdicts.append((j.get("name", "?"), why))
     return kinds, no_verdict
+
+
+def standing_reds(per_job_history):
+    """Jobs red on every run that SCHEDULED them, with at least two such runs.
+
+    A `skipped` entry is a run that did not schedule the job, which says
+    nothing about it either way, so it is dropped rather than read as green.
+    nightly.yml has two crons (05:00 and 07:00) and some jobs run on one only:
+    the `px4 sitl` job is 07:00-only, so with the skips counted its history
+    read `verdict/skipped/verdict` and three red scheduled runs in a row were
+    never reported (phase-542 W5). `cancelled` stays in and breaks a streak:
+    a cancelled run produced no evidence that the job is still red.
+    """
+    out = {}
+    for name, hist in per_job_history.items():
+        ran = [k for k in hist if k != "skipped"]
+        if len(ran) >= 2 and all(k in ("verdict", "no-verdict") for k in ran):
+            out[name] = ran
+    return out
 
 
 def gh_json(args):
@@ -213,7 +238,8 @@ def main():
         for j in jobs:
             per_job_history[j.get("name", "?")].append(classify(j)[0])
         if i == 0:
-            kinds, no_verdict = summarise(jobs, logs=failed_log)
+            verdicts = []
+            kinds, no_verdict = summarise(jobs, logs=failed_log, verdicts=verdicts)
             print(f"== nightly {run['createdAt'][:16]} — {len(jobs)} job(s) ==\n")
             print(f"  passed        {kinds['pass']}")
             print(f"  VERDICT fail  {kinds['verdict']}     <- real failures; fix the code")
@@ -221,6 +247,10 @@ def main():
             print(f"  skipped       {kinds['skipped']}")
             if kinds["cancelled"]:
                 print(f"  cancelled     {kinds['cancelled']}")
+            if verdicts:
+                print("\n  cells with a VERDICT failure:")
+                for name, step in verdicts:
+                    print(f"    {name[:40]:<40} failed at: {step}")
             if no_verdict:
                 print("\n  cells that produced NO VERDICT:")
                 by_step = collections.Counter(w for _, w in no_verdict)
@@ -236,10 +266,10 @@ def main():
                           "  it stands, none of these cells can report a regression.")
 
     print()
-    standing = {n: h for n, h in per_job_history.items()
-                if len(h) >= 2 and all(k in ("verdict", "no-verdict") for k in h)}
+    standing = standing_reds(per_job_history)
     if standing:
-        print(f"== red across all {len(runs)} scanned run(s): {len(standing)} cell(s) ==\n")
+        print(f"== red on every scanned run that scheduled it ({len(runs)} scanned): "
+              f"{len(standing)} cell(s) ==\n")
         for n, h in sorted(standing.items())[:20]:
             print(f"  {n[:58]:<58} {'/'.join(h)}")
         print("\n  A cell red for every run in the window is not reporting. Whatever\n"
@@ -356,6 +386,21 @@ def selftest(verbose=False):
         "<== ci tier2-nightly [3/5] test-all — FAILED after 9m00s (at 22:09:00Z)\n")
     chk("...and a red `test-all` stays a verdict",
         reclassify_from_log(*classify(nightly), cell_log)[0] == "verdict")
+
+    # phase-542 W5 -- a job one cron does not schedule is `skipped` there; the
+    # streak is over the runs that DID schedule it.
+    chk("a 07:00-only job red on each of its runs is a standing red",
+        "px4 sitl" in standing_reds({"px4 sitl": ["verdict", "skipped", "verdict", "skipped"]}))
+    chk("...and one run alone is not a streak",
+        standing_reds({"px4 sitl": ["verdict", "skipped", "skipped"]}) == {})
+    chk("a green scheduled run breaks the streak",
+        standing_reds({"px4 sitl": ["verdict", "skipped", "pass"]}) == {})
+    chk("a cancelled run breaks the streak",
+        standing_reds({"px4 sitl": ["verdict", "cancelled", "verdict"]}) == {})
+    reds = []
+    summarise([job("failure", ("Build SITL and run the PX4 cells", "failure"))], verdicts=reds)
+    chk("a VERDICT failure is named, with its step",
+        reds == [("cell", "Build SITL and run the PX4 cells")])
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")
