@@ -2203,6 +2203,20 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     )?
                     .unwrap_or_else(|| bringup_dir.clone()),
                 };
+                // Issue 2405 -- a HAND-WRITTEN C/C++ west application (an
+                // `entry =` package, not generated) gets the message-bound seed
+                // a generated one gets in `generate_entry`, over the same
+                // closure plus the entry's own package. Without it the
+                // configure's bound readers ran unseeded and the promise check
+                // refused the derived answer the configure then composed.
+                if generated.dir.is_none()
+                    && leaf_app.is_none()
+                    && !args.dry_run
+                    && image_has_non_rust(&image, &bringup_dir)
+                    && let Some(d) = &resolved_dir
+                {
+                    seed_hand_written_west_bounds(&root, d, &bringup_dir, &app, &image, stale);
+                }
                 // The board id WEST knows, not the one the image authored —
                 // `<bringup>/boards/<board>/` is the directory Zephyr's own
                 // `boards/<board>.conf` discovery runs under, and Zephyr knows
@@ -6417,6 +6431,87 @@ fn write_image_descriptor(
     }
 }
 
+/// The node packages an image's launch names, through its resolved model:
+/// the closure the generated entry adds and the message-bound seed is
+/// composed over. `Err` says why there is none.
+fn image_launch_node_dirs(
+    root: &Path,
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+    stale: StaleModel,
+) -> Result<Vec<PathBuf>, String> {
+    let args: Vec<(String, String)> = image
+        .args
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let rel = crate::orchestration::model_location::launch_to_model_rel(
+        bringup_dir,
+        image.launch.as_deref(),
+        &args,
+    )
+    .map_err(|e| format!("cannot resolve the launch: {e}"))?;
+    let model = open_model(bringup_dir, &rel, stale).map_err(|e| match e {
+        ModelDoor::Refused(r) => r.to_string(),
+        ModelDoor::Unresolved(e) => format!("cannot resolve the SystemModel: {e}"),
+    })?;
+    let plan = crate::codegen::entry::plan_from_model(&model, image.board.clone())
+        .map_err(|e| format!("cannot plan the launch: {e}"))?;
+    Ok(launch_closure(root, &plan)
+        .into_iter()
+        .map(|(_, d)| d)
+        .collect())
+}
+
+/// Issue 2405 -- the message-bound seed for a hand-written C/C++ west
+/// application (`[image.<id>] entry = "<pkg>"`).
+///
+/// A generated C/C++ west application gets its seed in [`generate_entry`],
+/// over the launch closure and the metadata probe's bound tables. A
+/// hand-written one never reached that code, so its configure's bound readers
+/// ran unseeded while its `nros_find_interfaces()` calls composed a derived
+/// answer, and the promise check (`cmake/NanoRosPromise.cmake`) refused every
+/// configure of it. The seed here is the same one, composed over the launch
+/// closure plus the entry package itself, whose `package.xml` names the
+/// interface packages its own `CMakeLists.txt` adds. Never fatal, like the
+/// rest of stage 3.5: what cannot be composed is said once.
+fn seed_hand_written_west_bounds(
+    root: &Path,
+    resolved_dir: &Path,
+    bringup_dir: &Path,
+    app: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+    stale: StaleModel,
+) {
+    let seeded = image_launch_node_dirs(root, bringup_dir, image, stale).and_then(|mut dirs| {
+        if !dirs.iter().any(|d| d == app) {
+            dirs.push(app.to_path_buf());
+        }
+        // The probe generates per language, and a table prices a TYPE, so
+        // either language's table is the same bound. A hand-written entry's
+        // language is its own (`nano_ros_add_executable(... TYPED)` is C++
+        // whatever its nodes are written in), so take the language the probe
+        // generated: C++ when it did, else C.
+        let codegen = metadata_probe_build_dir(root).join("nros-codegen");
+        let probe_codegen = ["cpp", "c"]
+            .iter()
+            .map(|lang| codegen.join(format!("nano_ros_{lang}")))
+            .find(|d| d.is_dir())
+            .unwrap_or_else(|| codegen.join("nano_ros_cpp"));
+        crate::message_bound_knobs::write_west_seed(
+            resolved_dir,
+            &probe_codegen,
+            &dirs,
+            crate::cmd::configure::interface_search_path_for(root).as_deref(),
+            crate::message_bound_knobs::SeedBasis::ClosureAllowed,
+        )
+    });
+    match seeded {
+        Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
+        Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+    }
+}
+
 /// Stage 3.5's second half for a Zephyr west RUST image -- phase-530 W3,
 /// issue 2233, RFC-0120 D6 case 2.
 ///
@@ -6454,29 +6549,7 @@ fn resolve_rust_west_image(
     stale: StaleModel,
 ) {
     // ---- the message-bound seed -------------------------------------------
-    let node_dirs = (|| -> Result<Vec<PathBuf>, String> {
-        let args: Vec<(String, String)> = image
-            .args
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        let rel = crate::orchestration::model_location::launch_to_model_rel(
-            bringup_dir,
-            image.launch.as_deref(),
-            &args,
-        )
-        .map_err(|e| format!("cannot resolve the launch: {e}"))?;
-        let model = open_model(bringup_dir, &rel, stale).map_err(|e| match e {
-            ModelDoor::Refused(r) => r.to_string(),
-            ModelDoor::Unresolved(e) => format!("cannot resolve the SystemModel: {e}"),
-        })?;
-        let plan = crate::codegen::entry::plan_from_model(&model, image.board.clone())
-            .map_err(|e| format!("cannot plan the launch: {e}"))?;
-        Ok(launch_closure(root, &plan)
-            .into_iter()
-            .map(|(_, d)| d)
-            .collect())
-    })();
+    let node_dirs = image_launch_node_dirs(root, bringup_dir, image, stale);
     match node_dirs.and_then(|dirs| {
         crate::message_bound_knobs::write_west_seed(
             resolved_dir,
