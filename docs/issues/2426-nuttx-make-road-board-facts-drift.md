@@ -1,6 +1,6 @@
 ---
 id: 2426
-title: "The NuttX make road restates the board's cargo settings, and two of them have drifted: `-Zbuild-std=std` against the board's `core,alloc`, and armv7a-only flags on a tree that also serves rv-virt"
+title: "The NuttX make road diverges from the board and the other roads: restated cargo settings, an armv7a-only archive path, a fallback that cannot build, and a CMake shell nothing reaches"
 status: open
 type: bug
 area: [nuttx, build]
@@ -43,6 +43,91 @@ board facts by hand, and two of them disagree with the board.
    conditional there chooses between upstream's macro and this one, not
    between boards.
 
+## Further divergences on the same road (2026-11-10)
+
+A second read of the same files, checking seven reported defects against the
+tree. Five hold, in full or in part, and are recorded here; two did not hold
+and are listed after them. Line numbers are as of the day of filing.
+
+3. **The archive path names armv7a whatever the arch.** `Make.defs:65` sets
+   `NROS_NUTTX_TRIPLE := armv7a-nuttx-eabihf`, and `Make.defs:67-68` passes it
+   as `--target` to `nros locate artifact`, so `EXTRA_LIBS` and the `-L` path
+   (`Make.defs:81-86`) always name `<target dir>/armv7a-nuttx-eabihf/release/`.
+   Cargo writes under the triple the Makefile resolved
+   (`Makefile:201-206`, `--target $(NROS_TARGET_TRIPLE)` at `Makefile:262`),
+   and the image root is per `CONFIG_ARCH` (`Make.defs:52`). On rv-virt the
+   two triples differ, so the link names an archive that the rv-virt build
+   never writes. This is item 2's literals one file over: the triple is
+   stated a second time instead of being taken from the build that made it.
+4. **The empty-triple fallback cannot build.** When `NROS_TARGET_TRIPLE` is
+   empty, `context::` calls upstream's `RUST_CARGO_BUILD`
+   (`Makefile:274-276`). At the pinned nuttx-apps commit
+   (e4b84b29d47b98a666df524d6f2d38904c972de5), that macro passes
+   `--target $(call RUST_TARGET_TRIPLE)` (`tools/Rust.mk:90-106`), the same
+   expression that came back empty at `Makefile:201`. So the branch runs
+   `cargo build ... --target` with no value, the error the comment at
+   `Makefile:194-196` quotes. Even with a triple it would build the wrong
+   thing in the wrong place: its manifest is the API crate
+   `packages/api/nros-<flavor>` (which names no backend, `Makefile:85-90`),
+   not the generated image crate; it passes no `--target-dir`, so the output
+   would go to that manifest's workspace target dir inside the nano-ros
+   checkout (the issue 0488 class); and it skips the header placer, while
+   `Make.defs:53` and `:105` look under the image root. The branch exists to
+   cover "an arch upstream does not know", and every such arch reaches it.
+5. **A second copy of the nightly pin, ungated.** `Makefile:144` sets
+   `RUSTUP_TOOLCHAIN ?= nightly-2026-04-11`. It agrees today with
+   `tools/rust-toolchain.toml:18` (and the generated
+   `config/rust-toolchains.txt`), but `check-rust-targets-covered`'s
+   nightly-literal scan reads `*.cmake`, `*.cmake.in`, `CMakeLists.txt` and
+   `examples/fixtures.toml` only (`scripts/check-rust-targets-covered.py:407-410`),
+   so a nightly bump leaves this line behind silently: issue 2312's class,
+   which `cmake/NanoRosRustToolchain.cmake` fixed for the cmake files. Its
+   comment (`Makefile:137-143`) justifies the nightly by
+   `-Zbuild-std=std`, which is item 1. The output directory, by contrast, does
+   NOT diverge on the live branch: `NROS_CARGO_BUILD` passes
+   `--target-dir $(NROS_IMAGE_TARGET_DIR)` (`Makefile:261`), which is
+   `$(APPDIR)/external/.nros-build/<arch>/image/target` (`Make.defs:52-53`),
+   the user's apps tree as issue 0488 wants. Only the dead branch of item 4
+   writes into the checkout.
+6. **The book's workspace steps have no consumer on this road.** The book
+   (`book/src/guide/platforms/nuttx.md:95-100`) says the Kconfig RMW "must
+   name the same RMW as your `system.toml`" and tells the user to run
+   `nros configure` "so the generated message bindings exist before anything
+   compiles against them". Neither the `Makefile` nor `Make.defs` names a
+   workspace, a `system.toml` or anything `nros configure` / `nros sync`
+   writes; the only optional input beyond Kconfig is `extra_libs.mk`
+   (`Make.defs:94`), which nothing in-tree writes. So step 4 changes nothing
+   the shell builds, and the RMW agreement step 3 asks for is checked by
+   nothing. This is issue 2236's guest road seen from the book.
+7. **The CMake shell reads a symbol Kconfig never declares, and nothing
+   stages it.** `integrations/nuttx/CMakeLists.txt:13-17` reads
+   `CONFIG_NROS_RMW` and falls back to `zenoh` when it is undefined. The
+   shell's Kconfig declares only the choice booleans `NROS_RMW_ZENOH`,
+   `NROS_RMW_XRCE`, `NROS_RMW_CYCLONEDDS` (`Kconfig:31-58`) and no string
+   `NROS_RMW`, so on the CMake lane the RMW is always zenoh. That is the
+   defect `Kconfig:75-86` records fixing for the edition (issue 0947), left in
+   place for the RMW. Separately, `scripts/nuttx/stage-external-apps.sh`
+   writes `external/Make.defs` (`:76`), the `external/nano-ros` link (`:79`)
+   and `external/Kconfig` (`:103`), and no `external/CMakeLists.txt`. The
+   pinned nuttx-apps `CMakeLists.txt:76-77` runs
+   `add_subdirectory(external)` whenever `external/` exists, and CMake refuses
+   a directory without a `CMakeLists.txt`, so a CMake NuttX build over a
+   staged apps tree would stop at configure rather than reach the shell. The
+   book offers that build in one sentence (`nuttx.md:103-104`).
+
+Checked and not holding:
+
+- **The CMake toolchain file's triple.** It is named
+  `cmake/toolchain/armv7a-nuttx-eabi.cmake`, and its header comment (`:6`)
+  says `armv7a-nuttx-eabi`, but it sets
+  `Rust_CARGO_TARGET "armv7a-nuttx-eabihf"` (`:52`), the board's
+  `[build] target` (`nros-board.toml:32`). The file name and that comment are
+  stale; the triple agrees.
+- **The retired make-road test in the book.** The book no longer cites
+  `nuttx_make_e2e.rs` or `EXPECTED_PROGNAMES`; only archived roadmap docs
+  (phase-157, phase-177) name it, and `just/nuttx.just:390-395` records its
+  retirement.
+
 ## Why nothing caught it
 
 No CI lane runs the make road (`check-nuttx-integration-makefile.sh` checks
@@ -56,6 +141,12 @@ Read from the tree; nothing was built. Whether `std` builds and links for
 does today, are open. The make road needs the NuttX toolchain and mutates the
 shared `.config` (issue 0525).
 
+Items 3-7 are reads as well. Not measured: that an rv-virt make build fails
+at the link (item 3), the exact cargo error of the fallback branch (item 4),
+and that a CMake NuttX build over a staged apps tree stops at configure
+(item 7). The upstream macro and `CMakeLists.txt` were read at the pinned
+nuttx-apps commit, not at a NuttX release.
+
 ## Fix
 
 Held until issue 2236 is ruled. Its recommended knob channel (B1) passes the
@@ -65,3 +156,5 @@ make road a guest road, the fix is the same carrier without a project: the
 board's `cargo_config` replaces the inline literals and the `-Zbuild-std`
 flag (2236's question 5). Either way the acceptance is a make-road build on
 both boards, in a lane, whose cargo flags match the board's.
+
+Items 3-7 wait on the same ruling; this record proposes no fix for them.
