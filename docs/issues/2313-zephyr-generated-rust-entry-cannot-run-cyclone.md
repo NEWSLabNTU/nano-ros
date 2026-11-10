@@ -162,3 +162,55 @@ exercise:
   measured.
 - **The Zephyr action-server leaf.** It stays until the workspace action
   server prints the `reply-slot: refusals=` heartbeat.
+
+## threadx-riscv64: status (2026-11-10)
+
+Not fixed. Measured on `main` at `8c6a41d7fe`, on a scratch copy of
+`examples/workspaces/rust` with `riscv_threadx_{talker,listener}_cyclonedds`
+added (the tracked bringups have no such images):
+
+- **The boot symptom above no longer happens; the configure refuses.** Since
+  phase-545 W2 (`287321ceab`, four hours after the W5 measurement in
+  `fe1cb8ebc4`), a generated cargo entry whose RMW has no rlib and whose board
+  crate does not link it stops at `nros build` with RFC-0071 D7's refusal:
+  `backend cyclonedds provides only a cmake target; a Rust-rooted build needs
+  a sys_crate bridge ... board crate nros-board-threadx-qemu-riscv64 does not
+  link it through rmw-cyclonedds`. So no image without a registration hook can
+  be built any more; `builder::entry`'s test on that message is the
+  regression check.
+- **Same refusal on every cargo-road RTOS board but one.** `threadx-linux`,
+  `mps2-an385-freertos`, `qemu-armv7a-nuttx` and `mps2-an385-baremetal` refuse
+  the same way. `freertos-posix` builds: its board crate has `rmw-cyclonedds =
+  ["dep:nros-rmw-cyclonedds-sys"]`, whose `vendored` build compiles Cyclone for
+  the HOST. So does `linux`.
+- **Nothing links Cyclone into a Rust image on these boards from cargo.**
+  `nros-rmw-cyclonedds-sys`'s `vendored` build and `cyclonedds-sys` build for
+  the host only. The ThreadX/NetX cross build of Cyclone exists only on the
+  cmake road (`nros_provide_cyclonedds()` with the flags in
+  `cmake/platform/nano-ros-threadx.cmake`), which is what the leaves use.
+
+Fixing it needs one of two roads, and both are new capability, not a missing
+call:
+
+1. **Cargo road** (RFC-0071 D7's cargo-consumer x cmake-provider cell): give
+   the board crate `rmw-cyclonedds` and let a `-sys` crate drive the cmake
+   road's own Cyclone build for the target (toolchain file, ThreadX/NetX dirs,
+   `nros_rmw_cyclonedds` + `ddsc` archives whole-archived, the riscv
+   `libstdc++` the toolchain file already resolves). Keeps the per-image
+   network and the Rust entry's `__nros_register_type!` path.
+2. **CMake road** (RFC-0065 D3: cmake wins when the graph crosses languages):
+   count a cmake-only backend the board does not link as non-Rust in
+   `image_has_non_rust`. Measured by making the scratch node packages
+   `nros_cmake` with a `nano_ros_node_register(LANGUAGE RUST)` CMakeLists (a
+   leaf edit, so only a probe): the image then needs a C++ entry (the `c` pack
+   refuses a `rust` component); with one it builds, boots, registers Cyclone
+   (`nros_rmw_cyclonedds_register` from the board init and from
+   `nros_cpp_init_rmw`), creates the participant and installs the listener
+   component, then creates no `/chatter` topic or reader and prints nothing
+   (gdb breakpoints; no `Subscriber created`). Left: synthesising the
+   registration for a cargo-only node package, the entry language, the Rust
+   node's Cyclone type descriptors on that road, Rust logging under a C++
+   entry, and issue 2336 (one configure, one network).
+
+Either is a design decision for phase-535 W6 / phase-548, not a fix inside
+this issue, so the threadx-riscv64 Rust Cyclone leaves keep their rows.
