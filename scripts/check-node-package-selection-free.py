@@ -27,6 +27,9 @@ board is their job:
   * an ENTRY package (`*_entry`, or `entry` in the name as a word) — the
     platform seam, generated under `build/` in the end state (RFC-0121 D6) and
     still hand-written for `nros new entry` until phase-531 W7 step 8;
+  * an OWNED entry: a package an image of a bringup in the same workspace
+    names with `[image.<id>] entry = "<pkg>"` (RFC-0071 D19), by directory or
+    `[package] name`;
   * a BOARD, RUNNER or COMMAND package (`<nano_ros_provides kind=...>` in its
     `package.xml`, RFC-0087/RFC-0119).
 
@@ -95,9 +98,38 @@ def manifest_names(doc):
     return names
 
 
+def _ws_root(pkg_dir):
+    """The workspace root of a `<root>/src/<pkg>/` directory, else None."""
+    parent = os.path.dirname(pkg_dir.rstrip("/"))
+    return os.path.dirname(parent) if os.path.basename(parent) == "src" else None
+
+
+def owned_entries(files, read):
+    """{(workspace root, name)} every bringup image names as its `entry`."""
+    out = set()
+    for f in files:
+        if not f.endswith("/system.toml"):
+            continue
+        d = f[: -len("system.toml")]
+        if d + "Cargo.toml" in files or d + "CMakeLists.txt" in files:
+            continue  # a leaf, not a bringup
+        root = _ws_root(d)
+        if root is None:
+            continue
+        try:
+            doc = tomllib.loads(read(f) or "")
+        except tomllib.TOMLDecodeError:
+            continue
+        for block in (doc.get("image") or {}).values():
+            if isinstance(block, dict) and isinstance(block.get("entry"), str):
+                out.add((root, block["entry"]))
+    return out
+
+
 def node_packages(files, read):
     """{manifest: package_dir} for every node package in scope."""
     out = {}
+    owned = owned_entries(files, read)
     for f in files:
         if not f.endswith("/Cargo.toml"):
             continue
@@ -106,6 +138,17 @@ def node_packages(files, read):
             continue
         if ENTRY.search(os.path.basename(d.rstrip("/"))):
             continue
+        root = _ws_root(d)
+        if root is not None and owned:
+            names = {os.path.basename(d.rstrip("/"))}
+            try:
+                pkg = tomllib.loads(read(f) or "").get("package") or {}
+                if isinstance(pkg.get("name"), str):
+                    names.add(pkg["name"])
+            except tomllib.TOMLDecodeError:
+                pass
+            if any((root, n) in owned for n in names):
+                continue
         if d + "package.xml" in files and PROVIDER.search(read(d + "package.xml") or ""):
             continue
         out[f] = d
@@ -190,6 +233,22 @@ def self_test():
     expect(judge(violations(files, t.get), base)[0]
            == [("examples/ws/src/talker/Cargo.toml", "talker_nros_selection")],
            "a selection crate in a node package fails")
+    # RFC-0071 D19 — a package a bringup image names as its `entry` is an
+    # owned entry and may name its board and adapter; the same package with
+    # no image naming it is a node package and may not.
+    t = dict(texts)
+    t["examples/ws/src/observer/package.xml"] = "<package/>"
+    t["examples/ws/src/observer/Cargo.toml"] = (
+        '[package]\nname = "observer"\n[dependencies]\nnros-board-linux = {}\n'
+        'observer_nros_derived = { path = "g" }\n')
+    t["examples/ws/src/demo_bringup/package.xml"] = "<package/>"
+    t["examples/ws/src/demo_bringup/system.toml"] = (
+        '[image.a]\nentry = "observer"\n[image.b]\nentry = "observer"\n')
+    expect(judge(violations(set(t), t.get), base) == ([], []),
+           "an owned entry named by images is exempt")
+    t["examples/ws/src/demo_bringup/system.toml"] = '[image.a]\nboard = "linux"\n'
+    expect(len(judge(violations(set(t), t.get), base)[0]) == 2,
+           "the same package named by no image is a node package")
     # Removing an allowlisted site without deleting its row fails as stale.
     t = dict(texts)
     t["examples/leaf/Cargo.toml"] = '[package]\nname = "leaf"\n'
