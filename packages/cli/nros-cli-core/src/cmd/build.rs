@@ -4933,6 +4933,7 @@ fn generate_entry(
                 &resolved_dir,
                 &probe_codegen,
                 &node_dirs,
+                crate::cmd::configure::interface_search_path_for(root).as_deref(),
                 crate::message_bound_knobs::SeedBasis::ClosureAllowed,
             ) {
                 Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
@@ -6481,6 +6482,7 @@ fn resolve_rust_west_image(
             resolved_dir,
             &root.join("generated"),
             &dirs,
+            crate::cmd::configure::interface_search_path_for(root).as_deref(),
             crate::message_bound_knobs::SeedBasis::SubscribedOnly,
         )
     }) {
@@ -6883,6 +6885,7 @@ fn resolve_coordinate(
                 &dir,
                 &probe_codegen,
                 &dirs,
+                crate::cmd::configure::interface_search_path_for(root).as_deref(),
                 crate::message_bound_knobs::SeedBasis::ClosureAllowed,
             ) {
                 Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),

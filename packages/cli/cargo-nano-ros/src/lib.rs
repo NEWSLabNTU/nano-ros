@@ -1988,10 +1988,22 @@ pub fn collect_interface_files(share_dir: &Path) -> Result<Vec<PathBuf>> {
 /// `nros_find_interfaces()` will reach. Same index, same transitive walk, same
 /// filter as [`resolve_deps_from_package_xml`]; only the output differs.
 pub fn resolve_interface_package_names(package_xml: &Path) -> Result<Vec<String>> {
+    let search_path = std::env::var("NROS_INTERFACE_SEARCH_PATH").ok();
+    resolve_interface_package_names_in(package_xml, search_path.as_deref())
+}
+
+/// [`resolve_interface_package_names`] with the interface search path an
+/// ARGUMENT (phase-530 W1, Ruling R45), so a caller configuring a project
+/// sees that project's workspace interface packages without reading them from
+/// the environment (issue 2404). `None` is no workspace layer.
+pub fn resolve_interface_package_names_in(
+    package_xml: &Path,
+    search_path: Option<&str>,
+) -> Result<Vec<String>> {
     use package_xml::PackageXml;
 
     let pkg_xml = PackageXml::parse(package_xml)?;
-    let index = load_index_with_fallback(false)?;
+    let index = load_index_with_search_path(search_path, false)?;
     let all_deps = resolve_transitive_dependencies(&index, pkg_xml.all_dependencies(), false)?;
     let mut names: Vec<String> = filter_interface_packages(&index, &all_deps, false)?
         .into_iter()
@@ -2766,6 +2778,41 @@ mod tests {
         replace_outside_strings, rewrite_package_links,
     };
     use std::fs;
+
+    /// Issue 2404 -- a workspace interface package is in a node's interface
+    /// closure when the caller hands over the project's search path, with no
+    /// `NROS_INTERFACE_SEARCH_PATH` in the environment.
+    #[test]
+    fn the_search_path_argument_finds_a_workspace_interface_package() {
+        let td = tempfile::tempdir().unwrap();
+        let src = td.path().join("src");
+        let msgs = src.join("ws_msgs");
+        fs::create_dir_all(msgs.join("msg")).unwrap();
+        fs::write(msgs.join("msg/Reading.msg"), "int32 value\n").unwrap();
+        fs::write(
+            msgs.join("package.xml"),
+            "<package format=\"3\"><name>ws_msgs</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"a@b\">a</maintainer>\
+             <license>MIT</license><member_of_group>rosidl_interface_packages</member_of_group>\
+             <export><build_type>ament_cmake</build_type></export></package>\n",
+        )
+        .unwrap();
+        let node = src.join("node_pkg");
+        fs::create_dir_all(&node).unwrap();
+        fs::write(
+            node.join("package.xml"),
+            "<package format=\"3\"><name>node_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"a@b\">a</maintainer>\
+             <license>MIT</license><depend>ws_msgs</depend></package>\n",
+        )
+        .unwrap();
+        let xml = node.join("package.xml");
+        let with =
+            super::resolve_interface_package_names_in(&xml, Some(src.to_str().unwrap())).unwrap();
+        assert!(with.contains(&"ws_msgs".to_string()), "{with:?}");
+        let without = super::resolve_interface_package_names_in(&xml, None).unwrap();
+        assert!(!without.contains(&"ws_msgs".to_string()), "{without:?}");
+    }
 
     /// Issue 1909 — the C/C++ emitters' hashes are the ones Jazzy SHIPS
     /// (`/opt/ros/jazzy/share/<pkg>/<kind>/<Name>.json`, `type_hashes[0]`), not
