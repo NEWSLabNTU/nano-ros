@@ -799,13 +799,26 @@ fn declares_a_dependency(package_xml: &std::path::Path) -> bool {
 /// derives, and arms its one pass. So is a closure the probe did not generate.
 /// A seed that turns out different from the configure's answer costs the same
 /// pass and nothing more — the producer always runs and always wins.
+///
+/// `interface_search` is the project's interface search path (Ruling R45,
+/// `cmd::configure::interface_search_path_for`): the layer that finds the
+/// workspace's own interface packages, which the configure's
+/// `nros_find_interfaces()` finds too (issue 2404).
 pub fn write_west_seed(
     resolved_dir: &std::path::Path,
     probe_codegen_dir: &std::path::Path,
     node_dirs: &[std::path::PathBuf],
+    interface_search: Option<&std::ffi::OsStr>,
     seed_basis: SeedBasis,
 ) -> Result<std::path::PathBuf, String> {
-    write_west_seed_over(resolved_dir, probe_codegen_dir, node_dirs, None, seed_basis)
+    write_west_seed_over(
+        resolved_dir,
+        probe_codegen_dir,
+        node_dirs,
+        None,
+        interface_search,
+        seed_basis,
+    )
 }
 
 /// [`write_west_seed`] with the ENTITY fragment the configure's composer will
@@ -820,8 +833,10 @@ pub fn write_west_seed_over(
     probe_codegen_dir: &std::path::Path,
     node_dirs: &[std::path::PathBuf],
     entity: Option<&str>,
+    interface_search: Option<&std::ffi::OsStr>,
     seed_basis: SeedBasis,
 ) -> Result<std::path::PathBuf, String> {
+    let interface_search = interface_search.map(|p| p.to_string_lossy().into_owned());
     let target = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_NAME);
     let record = resolved_dir.join(RESOLVED_MESSAGE_BOUNDS_INPUTS_NAME);
     let outcome = (|| {
@@ -842,8 +857,11 @@ pub fn write_west_seed_over(
             if !declares_a_dependency(&xml) {
                 continue;
             }
-            let names = cargo_nano_ros::resolve_interface_package_names(&xml)
-                .map_err(|e| format!("resolving {}: {e}", xml.display()))?;
+            let names = cargo_nano_ros::resolve_interface_package_names_in(
+                &xml,
+                interface_search.as_deref(),
+            )
+            .map_err(|e| format!("resolving {}: {e}", xml.display()))?;
             closure.extend(names);
         }
         closure.sort();
@@ -998,6 +1016,7 @@ fn leaf_west_seed(
         &codegen,
         &[leaf.to_path_buf()],
         Some(&entity),
+        crate::cmd::configure::interface_search_path_for(leaf).as_deref(),
         SeedBasis::ClosureAllowed,
     )
 }
