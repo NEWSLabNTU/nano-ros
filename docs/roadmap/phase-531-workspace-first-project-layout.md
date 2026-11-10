@@ -707,7 +707,7 @@ from before W6.
     owned entry's own features. The C and C++ `main`s are also the subject of
     issue 1556's census tests, so turning them into components moves what
     those tests cover.
-    [Issue 2406](../issues/2406-owned-entry-cannot-serve-several-images.md).
+    [Issue 2406](../issues/archived/2406-owned-entry-cannot-serve-several-images.md).
     Ruling: one owned entry may serve several images (RFC-0071 D13 and
     `claiming_image` amended, the cargo road honours `[image.<id>] entry`),
     and the census tests keep running the same `main()`s.
@@ -717,7 +717,12 @@ from before W6.
     `nros build`, so neither the adapter nor the entry's lock moves between
     images; `node_features` reaches the entry's own features. Proved on
     `bins/message-info-observer` (images `linux`, `linux_zero_copy`).
-    Remaining: `bins/action-server-concurrent` and the linux C/C++ talkers.
+    Merged as #3496.
+  - **Issue 2406 resolved.** `bins/action-server-concurrent` and the linux C
+    and C++ talkers are migrated as well: owned entries with one image per
+    RMW, the C/C++ ones on the CMake road, which takes the same claim rule
+    (RFC-0071 D19, "The CMake road"). Issue 1556's census tests still run
+    the same `main()`s.
 
 ### W7 — Retirement
 

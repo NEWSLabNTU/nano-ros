@@ -920,8 +920,7 @@ needs.
 ## Amendment 2026-11-11: one owned entry serves several images (D19, issue 2406)
 
 **Status: Accepted (maintainer ruling, 2026-11-11, option 1 of issue 2406).
-Implemented for the cargo road in phase-531 W6; the CMake road is verified
-when the linux C and C++ talkers move.**
+Implemented in phase-531 W6, on the cargo road and the CMake road.**
 
 D13 made an owned entry ONE image's program: `leaf_system::claiming_image`
 refused a second claim, the adapter was written from one image, and the cargo
@@ -991,10 +990,24 @@ configured build) then had no workspace shape. Issue 2406 lists the sites.
 
 What it does not change: a generated entry, which already names nothing per
 image in a tracked file, and an entry claimed by one image, whose adapter is
-byte-identical to before. C and C++ applications take the same claim rule;
-they have no adapter (D13: a CMake configure registers through its generated
-`nros_app_register_backends()`). Phase-531 W6 verifies that road when the
-linux C and C++ talkers move, and amends this paragraph if it does not hold.
+byte-identical to before.
+
+**The CMake road.** C and C++ applications take the same claim rule and have
+no adapter (D13: a CMake configure registers through its generated
+`nros_app_register_backends()`). Each image is its own configure (its RMW is
+in the coordinate), and the generated root already adds the owned entry as a
+subdirectory (`pkg/<name>/`), so an image naming it emits no entry target of
+its own (`owned_entry_dir`, the same resolver). A configure whose images all
+build owned entries and whose bringup has no launch file names no `SYSTEM`,
+so `nano_ros_workspace` skips the plan step it has nothing to plan for. The
+executable is whatever the entry's own `CMakeLists.txt` names. Verified on
+the linux C and C++ talkers, three images each (zenoh, xrce, cyclonedds).
+
+**A generated launch file outlives its rows.** `nros sync` generates a
+bringup's launch file from its `[[component]]` rows (RFC-0121 D3) and resolves
+a model from it. A bringup whose rows are all removed (an owned-entry bringup
+needs none) now has both removed by the next sync, rather than keeping a
+model that sizes the image for components it no longer has.
 
 ## What this does NOT change
 
