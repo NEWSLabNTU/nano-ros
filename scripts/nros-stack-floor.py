@@ -380,7 +380,114 @@ def parse_indirect(s: str | None) -> tuple[str, int | None]:
     raise SystemExit(f"--indirect: `{s}` is not `fold`, `fold1` or `allowance:<bytes>`")
 
 
+# ---------------------------------------------------------------------------
+# The per-target floor table (config/stack-floors.toml)
+# ---------------------------------------------------------------------------
+#
+# One `[[floor]]` per (image shape, target, role). It carries the walk POLICY
+# (which roots, which cuts / externals / stated frames, how indirect calls are
+# charged) and the two measurements the floor is derived from:
+#
+#   floor = ceil8( max(static_bytes + sum(allowances), measured.bytes)
+#                  * (100 + margin_pct) / 100 )
+#
+# `static_bytes` is what this tool printed for the entry's walk; `measured` is
+# a run-time peak on a twin (absent for a role with no twin, e.g. PX4's
+# executor-pass thread, which then leans on its allowances). Every cut,
+# external, stated frame and allowance carries a reason, and every allowance
+# names the tracked issue that would retire it (issue 2402 for the RMW vtable).
+
+ROLES = ("OPEN", "SPIN")
+ISSUE_ID = re.compile(r"^\d{4}$")
+
+
+def floor_formula(static_bytes: int, allowances: int, measured: int | None,
+                  margin_pct: int) -> int:
+    base = max(static_bytes + allowances, measured or 0)
+    raw = -(-base * (100 + margin_pct) // 100)
+    return -(-raw // 8) * 8
+
+
+def load_toml(path: Path) -> dict:
+    try:
+        import tomllib  # Python 3.11+
+    except ModuleNotFoundError:  # pragma: no cover - 3.10 hosts
+        import tomli as tomllib
+    with open(path, "rb") as f:
+        return tomllib.load(f)
+
+
+def validate_table(doc: dict, issue_ids: set[str]) -> list[str]:
+    """Offline checks: needs no build output, so it can run on the fast line."""
+    problems: list[str] = []
+    if doc.get("schema") != 1:
+        problems.append("`schema = 1` is missing or not 1")
+    seen: set[str] = set()
+    for i, e in enumerate(doc.get("floor", [])):
+        where = f"[[floor]] #{i + 1} ({e.get('id', '<no id>')})"
+        for k in ("id", "target", "role", "roots", "static_bytes", "margin_pct", "floor"):
+            if k not in e:
+                problems.append(f"{where}: missing `{k}`")
+        if e.get("id") in seen:
+            problems.append(f"{where}: duplicate id")
+        seen.add(e.get("id"))
+        if e.get("role") not in ROLES:
+            problems.append(f"{where}: role must be one of {ROLES}")
+        walk = e.get("walk", {})
+        for kind in ("cut", "external", "frame"):
+            for item in walk.get(kind, []):
+                if not str(item.get("reason", "")).strip():
+                    problems.append(f"{where}: a walk.{kind} has no reason: {item}")
+        allowances = 0
+        for a in walk.get("allowance", []):
+            allowances += int(a.get("bytes", 0))
+            if not str(a.get("reason", "")).strip():
+                problems.append(f"{where}: an allowance has no reason")
+            iid = str(a.get("issue", ""))
+            if not ISSUE_ID.match(iid):
+                problems.append(f"{where}: an allowance must name the issue that retires it "
+                                f"(`issue = \"NNNN\"`), got `{iid}`")
+            elif issue_ids and iid not in issue_ids:
+                problems.append(f"{where}: allowance names issue {iid}, which has no file")
+        measured = e.get("measured")
+        m_bytes = None
+        if measured is not None:
+            m_bytes = measured.get("bytes")
+            for k in ("bytes", "method", "issue"):
+                if k not in measured:
+                    problems.append(f"{where}: measured.{k} missing")
+        elif not walk.get("allowance"):
+            problems.append(f"{where}: no `measured` peak and no allowance: a role with no twin "
+                            "must state what covers its indirect calls")
+        if all(k in e for k in ("static_bytes", "margin_pct", "floor")):
+            want = floor_formula(int(e["static_bytes"]), allowances, m_bytes, int(e["margin_pct"]))
+            if int(e["floor"]) != want:
+                problems.append(f"{where}: floor = {e['floor']}, but the formula gives {want}")
+    return problems
+
+
+def apply_entry(args: argparse.Namespace, entry: dict) -> None:
+    """Fill the walk's options from a table entry (explicit flags still add)."""
+    walk = entry.get("walk", {})
+    args.role = [f"{entry['role']}={','.join(entry['roots'])}"]
+    args.indirect = args.indirect or walk.get("indirect")
+    args.fold_scope = (args.fold_scope or []) + list(walk.get("fold_scope", []))
+    if args.recursion_allowance is None:
+        args.recursion_allowance = walk.get("recursion_allowance")
+    args.cut = (args.cut or []) + [c["match"] for c in walk.get("cut", [])]
+    args.external = (args.external or []) + [x["name"] for x in walk.get("external", [])]
+    args.frame = (args.frame or []) + [f"{f['name']}={f['bytes']}" for f in walk.get("frame", [])]
+
+
 def run(args: argparse.Namespace) -> int:
+    entry = None
+    if args.table:
+        doc = load_toml(Path(args.table))
+        matches = [e for e in doc.get("floor", []) if e.get("id") == args.entry]
+        if len(matches) != 1:
+            raise SystemExit(f"--entry `{args.entry}`: {len(matches)} entries in {args.table}")
+        entry = matches[0]
+        apply_entry(args, entry)
     readobj = llvm_tool("llvm-readobj", args.llvm_bin)
     objdump = llvm_tool("llvm-objdump", args.llvm_bin)
     g = Graph()
@@ -445,6 +552,16 @@ def run(args: argparse.Namespace) -> int:
     if refusals:
         print("nros-stack-floor: REFUSED\n" + "\n".join(refusals), file=sys.stderr)
         return 1
+    if entry is not None:
+        got = results[entry["role"].upper()]["depth"]
+        want = int(entry["static_bytes"])
+        if got != want:
+            print(f"nros-stack-floor: STALE `{entry['id']}`: the walk gives {got} B, the "
+                  f"table says static_bytes = {want}. Re-measure: write {got} and re-derive "
+                  "`floor` (--validate-table prints the formula's answer).", file=sys.stderr)
+            return 1
+        print(f"{entry['id']}: static_bytes {got} B matches the table")
+        return 0
     if args.json:
         print(json.dumps(results, indent=2))
     elif args.emit_defines:
@@ -562,9 +679,35 @@ def self_test() -> int:
     p = worst_path(gc, "root", indirect_charge=None, recursion_allowance=None, cuts=("panic",))
     check("cut is a leaf", p.depth == 40)
 
+    # the floor formula: max of static (+allowances) and measured, margin, align 8
+    check("floor from measured", floor_formula(26232, 0, 29184, 10) == 32104)
+    check("floor from static + allowance", floor_formula(3592, 1000, None, 0) == 4592)
+    good = {"schema": 1, "floor": [{
+        "id": "x/OPEN", "target": "t", "role": "OPEN", "roots": ["r"],
+        "static_bytes": 26232, "margin_pct": 10, "floor": 32104,
+        "measured": {"bytes": 29184, "method": "twin", "issue": "2360"},
+        "walk": {"cut": [{"match": "panicking", "reason": "diverges"}]}}]}
+    check("a valid table passes", validate_table(good, {"2360"}) == [])
+    bad = json.loads(json.dumps(good))
+    bad["floor"][0]["floor"] = 32768
+    check("a floor off the formula is refused",
+          any("formula gives 32104" in p for p in validate_table(bad, set())))
+    bad = json.loads(json.dumps(good))
+    bad["floor"][0]["walk"]["cut"][0]["reason"] = ""
+    check("a cut with no reason is refused", any("no reason" in p for p in validate_table(bad, set())))
+    bad = json.loads(json.dumps(good))
+    del bad["floor"][0]["measured"]
+    bad["floor"][0]["floor"] = floor_formula(26232, 0, None, 10)
+    check("no twin and no allowance is refused",
+          any("no `measured` peak" in p for p in validate_table(bad, set())))
+    bad["floor"][0]["walk"]["allowance"] = [{"bytes": 100, "reason": "vtable", "issue": "99"}]
+    bad["floor"][0]["floor"] = floor_formula(26232, 100, None, 10)
+    check("an allowance must name an issue",
+          any("must name the issue" in p for p in validate_table(bad, set())))
+
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
-    print(f"nros-stack-floor self-test: {19 - len(fails)} checks, {len(fails)} failed")
+    print(f"nros-stack-floor self-test: {26 - len(fails)} checks, {len(fails)} failed")
     return 1 if fails else 0
 
 
@@ -595,10 +738,30 @@ def main() -> int:
     ap.add_argument("--llvm-bin", help="directory holding llvm-readobj / llvm-objdump")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--emit-defines", action="store_true")
+    ap.add_argument("--table", help="config/stack-floors.toml; with --entry, the walk's "
+                    "policy comes from that entry and the result is checked against it")
+    ap.add_argument("--entry", help="the [[floor]] id to walk")
+    ap.add_argument("--validate-table", metavar="TABLE",
+                    help="offline: every reason, allowance issue and floor formula holds")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
+    if args.validate_table:
+        root = Path(args.validate_table).resolve().parent
+        while root != root.parent and not (root / "docs" / "issues").is_dir():
+            root = root.parent
+        ids = {p.name[:4] for p in (root / "docs" / "issues").glob("[0-9][0-9][0-9][0-9]-*.md")}
+        ids |= {p.name[:4] for p in (root / "docs" / "issues" / "archived").glob("[0-9][0-9][0-9][0-9]-*.md")}
+        problems = validate_table(load_toml(Path(args.validate_table)), ids)
+        for p in problems:
+            print(f"  - {p}", file=sys.stderr)
+        print(f"{args.validate_table}: {len(problems)} problem(s)")
+        return 1 if problems else 0
+    if args.table:
+        if not args.entry or not args.inputs:
+            ap.error("--table needs --entry and the image's INPUT(s)")
+        return run(args)
     if not args.inputs or not args.role:
         ap.error("need INPUT(s) and at least one --role")
     return run(args)

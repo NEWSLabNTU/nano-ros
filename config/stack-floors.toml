@@ -1,0 +1,107 @@
+# Stack floors per (image shape, target, thread role). Issue 2400.
+#
+# A floor here is DERIVED, never chosen:
+#
+#   floor = ceil8( max(static_bytes + sum(walk.allowance), measured.bytes)
+#                  * (100 + margin_pct) / 100 )
+#
+# - `static_bytes` is what `scripts/nros-stack-floor.py --table <this> --entry
+#   <id> <image archives...>` walks from the entry's roots, under the walk
+#   policy written beside it. That command fails STALE when the walk no longer
+#   gives this number.
+# - `measured` is a run-time peak on a twin (CONFIG_INIT_STACKS + the thread
+#   analyzer on Renode). A static walk alone cannot be both sound and tight,
+#   because it cannot bind an indirect call to its target (issue 2402). A role
+#   with no twin states an `allowance` instead, naming the issue that would
+#   retire it.
+# - `python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml`
+#   checks every reason, every allowance's issue, and every floor against the
+#   formula, with no build.
+#
+# Roles: OPEN = init + Executor::open + registration (the main/boot task:
+# Zephyr CONFIG_MAIN_STACK_SIZE, PX4 STACK_MAIN). SPIN = one executor pass
+# (the thread that spins: a tier task, PX4's work queue).
+#
+# Nothing reads this table into a build yet. Delivery to the sizes header
+# (`NROS_STACK_FLOOR_OPEN` / `_SPIN`) waits on how the measure lane runs.
+
+schema = 1
+
+[[floor]]
+id = "zephyr-rust-zenoh-action-server/nucleo-f767zi/OPEN"
+target = "thumbv7em-none-eabi"
+board = "nucleo-f767zi-zephyr"
+image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template action-server"
+role = "OPEN"
+roots = ["rust_main"]
+static_bytes = 26232
+margin_pct = 10
+floor = 32104
+
+[floor.measured]
+bytes = 29184
+method = "Renode twin, CONFIG_INIT_STACKS + thread analyzer, main thread peak, at #3381"
+issue = "2360"
+
+[floor.walk]
+# The RMW vtable's targets are the zenoh shim's trampolines. Folding over EVERY
+# address-taken function charges the graph query (19,656 B) at every site and
+# over-counts by 57 %; folding over these under-counts by 2,952 B (issue 2402).
+indirect = "fold1"
+fold_scope = ["zenoh", "zpico"]
+# Counted once: Zephyr's timer `elapsed` <-> `sys_clock_elapsed`, and
+# `Arc<ComponentCell>` drop reaching a ctx drop that drops an Arc.
+recursion_allowance = 0
+
+[[floor.walk.cut]]
+match = "4core9panicking"
+reason = "the panic path diverges; a panic inside the panic handler is the only cycle through it"
+
+[[floor.walk.cut]]
+match = "4core3str16slice_error_fail"
+reason = "panic path (slice_error_fail <-> slice_error_fail_rt), diverges"
+
+[[floor.walk.cut]]
+match = "4core3fmt"
+reason = "core::fmt recurses through dyn Write / Display for nested values; its own frames count, its callees do not"
+
+[[floor.walk.cut]]
+match = "names_and_types"
+reason = "graph query; this image never calls it. An image that does needs its own entry (issue 2360)"
+
+[[floor.walk.external]]
+name = "__aeabi_uldivmod"
+reason = "hand assembly in compiler_builtins, no .stack_sizes; a leaf"
+
+[[floor.walk.external]]
+name = "__aeabi_ldivmod"
+reason = "hand assembly in compiler_builtins, no .stack_sizes; a leaf"
+
+[[floor.walk.external]]
+name = "__aeabi_read_tp"
+reason = "hand assembly (TLS pointer read), a leaf"
+
+[[floor.walk.frame]]
+name = "z_malloc"
+bytes = 0
+reason = "tail call (b.w) in zpico-sys platform_aliases.c, read off the prologue; the cc build gets no -fstack-usage under Zephyr"
+
+[[floor.walk.frame]]
+name = "z_free"
+bytes = 0
+reason = "tail call (b.w), as z_malloc"
+
+[[floor.walk.frame]]
+name = "z_random_fill"
+bytes = 0
+reason = "tail call (b.w), as z_malloc"
+
+[[floor.walk.frame]]
+name = "z_sleep_us"
+bytes = 8
+reason = "push {r3, lr}, read off the prologue, as z_malloc"
+
+[[floor.walk.frame]]
+name = "z_sleep_ms"
+bytes = 8
+reason = "push {r3, lr}, read off the prologue, as z_malloc"
