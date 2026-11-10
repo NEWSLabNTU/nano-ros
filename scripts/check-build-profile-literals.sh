@@ -104,6 +104,7 @@ scan() {
 # scan meets host-tool builds (`cargo build --release` of a CLI) by the dozen,
 # which is a different rule.
 mapfile -t CMAKE_FILES < <(python3 scripts/lib/file_kinds.py cmake)
+wait $! || { echo "check-build-profile-literals.sh: \`file_kinds.py cmake\` failed (issue 2424)" >&2; exit 1; }
 [ "${#CMAKE_FILES[@]}" -gt 0 ] || { echo "[FAIL] no CMake files found — refusing an empty scan" >&2; exit 1; }
 
 # Negative controls on the normal path (phase-472 W5/W9): the population reaches

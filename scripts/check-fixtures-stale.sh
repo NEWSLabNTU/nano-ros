@@ -178,6 +178,7 @@ else
         out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
         [ -n "$out" ] && rust_stale+=("$out")
     done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --builder cargo "${scope_args[@]}")
+    wait $! || { echo "check-fixtures-stale.sh: \`fixtures-manifest.py list\` failed (issue 2424)" >&2; exit 1; }
 fi
 # issue 0466 — split the probe's two outcomes. "Stale, and cargo rebuilt it" is a
 # WARNING because the artifact now exists; "could not build" is an ERROR, because
@@ -273,6 +274,7 @@ workspace_records=()
 while IFS= read -r line; do
     workspace_records+=("$line")
 done < <(python3 scripts/build/fixtures-manifest.py list-workspaces --for-probe "${scope_args[@]}")
+wait $! || { echo "check-fixtures-stale.sh: \`fixtures-manifest.py list-workspaces\` failed (issue 2424)" >&2; exit 1; }
 
 workspace_stale=()
 if [ ${#workspace_records[@]} -eq 0 ]; then

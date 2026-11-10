@@ -908,6 +908,7 @@ if [ -n "${NROS_FIXTURE_IDS+set}" ]; then
             [ -n "$_id" ] && _cc_known="$_cc_known$_id "
         done < <(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
                      list-compile-checks --builder "$_cc_builder")
+        wait $! || { echo "compile-check-fixtures.sh: \`fixtures-manifest.py list-compile-checks\` failed (issue 2424)" >&2; exit 1; }
     done
     for _id in $ids_filter; do
         case "$_cc_known" in

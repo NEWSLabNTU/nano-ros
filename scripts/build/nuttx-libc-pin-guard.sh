@@ -73,6 +73,7 @@ if [ -n "$previous" ]; then
                  --platform nuttx --lang rust 2>/dev/null
              python3 "$repo_root/scripts/build/fixtures-manifest.py" list-workspaces \
                  --platform nuttx-riscv --lang rust 2>/dev/null)
+    wait $! || { echo "nuttx-libc-pin-guard.sh: \`fixtures-manifest.py list-workspaces\` failed (issue 2424)" >&2; exit 1; }
 
     # Plain `[[fixture]]` cargo rows. Their artifact roots come from
     # `fixture-groups` (phase-340 B2 — field 1 is the leaf artifact root), but
@@ -105,6 +106,7 @@ if [ -n "$previous" ]; then
         echo "    rm -rf $artifact_root"
         rm -rf "$victim"
     done < <(python3 "$repo_root/scripts/build/fixtures-manifest.py" fixture-groups 2>/dev/null)
+    wait $! || { echo "nuttx-libc-pin-guard.sh: \`fixtures-manifest.py fixture-groups\` failed (issue 2424)" >&2; exit 1; }
 else
     echo "nuttx-libc-pin-guard: recording the vendored NuttX libc pin ($pin);"
     echo "  no wipe on a first run — nothing on disk is known to disagree with it."
