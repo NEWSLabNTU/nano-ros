@@ -424,6 +424,11 @@ def closure(dist_root, include_unreached=False, roots=None):
             # (`openbios-ppc`, ESP ROM `.elf`s, ...) with no `DT_NEEDED` and no
             # `PT_INTERP`, so they never reached a verdict; they only left the
             # unreached count.
+            # `.so` is a SUBSTRING test, so `libfoo.so.1`, `ld-linux-x86-64.so.2`
+            # and `foo.cpython-310-x86_64-linux-gnu.so` all pass. What it can
+            # miss is a non-executable ELF a loader opens by a name with no
+            # `.so` in it. On that full store there was none: the 41 were all
+            # firmware. Re-run that comparison before narrowing this further.
             if not (st.st_mode & 0o111 or ".so" in n):
                 continue
             facts = elf_facts(path)
