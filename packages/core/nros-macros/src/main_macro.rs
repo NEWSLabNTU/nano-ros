@@ -2205,6 +2205,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // launch-resolved `register_calls` (the `RuntimeCtx`-based
         // `<pkg>::register` flow); only RTIC lists its node packages here.
         Framework::OwnedSpin | Framework::Zephyr => Vec::new(),
+        // phase-535 W6 — a launch-addressed RTIC entry (a workspace image)
+        // registers the launch's node set, like every other framework; see
+        // `rtic_register_tokens`. The list below is the leaf's.
+        Framework::Rtic if args.model.is_some() => Vec::new(),
         Framework::Rtic => {
             let cargo_toml = manifest_dir.join("Cargo.toml");
             let from_metadata = read_entry_node_pkgs(&cargo_toml).map_err(|e| {
@@ -2258,6 +2262,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             }
         })
         .collect();
+    let rtic_register_ts = rtic_register_tokens(
+        args.model.is_some(),
+        &register_calls,
+        &framework_register_entity_calls,
+    );
 
     // Phase 216.B.3 — framework-dispatched emit body. `OwnedSpin`
     // keeps the long-standing `fn __nros_entry_run + fn main` shape
@@ -2851,7 +2860,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         {
                             let mut __nros_rt =
                                 ::nros::__macro_support::nros_platform::RuntimeCtx::with_runtime(&mut __nros_crt);
-                            #( #framework_register_entity_calls )*
+                            #rtic_register_ts
                         }
                         // The board-side runtime owns the SPSC
                         // producer half. Today's collapse keeps it in
@@ -5469,6 +5478,35 @@ pub(crate) fn sched_task_guarded_register_calls(
         .collect()
 }
 
+/// phase-535 W6 — the node registration inside the RTIC run task, where
+/// `__nros_rt` is the `RuntimeCtx` over the opened executor.
+///
+/// A launch-addressed entry (`launch =` / `model =`: a workspace image)
+/// registers the LAUNCH's node set through the same `render_register_calls`
+/// every other framework runs — params, remaps, QoS overrides and identity
+/// included — inside a closure, because those calls propagate with `?` and
+/// the RTIC task returns `()`. A self-contained leaf keeps its node-package
+/// list (`framework_register_entity_calls`).
+fn rtic_register_tokens(
+    launch_addressed: bool,
+    register_calls: &[proc_macro2::TokenStream],
+    framework_register_entity_calls: &[proc_macro2::TokenStream],
+) -> proc_macro2::TokenStream {
+    if !launch_addressed {
+        return quote! { #( #framework_register_entity_calls )* };
+    }
+    quote! {
+        let __nros_register = |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|
+            -> ::core::result::Result<(), ::nros::__macro_support::nros_platform::RuntimeError>
+        {
+            #( #register_calls )*
+            ::core::result::Result::Ok(())
+        };
+        __nros_register(&mut __nros_rt)
+            .expect("nros::main!: Node register failed on the RTIC entry");
+    }
+}
+
 pub(crate) fn render_register_calls(nodes: &[LoweredNode]) -> Vec<proc_macro2::TokenStream> {
     nodes
         .iter()
@@ -6755,6 +6793,22 @@ mod leaf_axis_tests {
         // Absent ⇒ nothing emitted.
         let out = expand("", "linux", "").unwrap();
         assert!(!out.contains("__nros_before_boot"), "{out}");
+    }
+
+    /// phase-535 W6 — a launch-addressed RTIC entry registers the launch's
+    /// nodes (with their launch facts) and not the leaf's package list; a
+    /// leaf keeps its list.
+    #[test]
+    fn a_launch_addressed_rtic_entry_registers_the_launch_node_set() {
+        let launch = render_register_calls(&[LoweredNode::bare("talker_pkg")]);
+        let leaf = vec![quote! { ::leaf_pkg::register(&mut __nros_rt).expect("x"); }];
+        let ws = rtic_register_tokens(true, &launch, &leaf).to_string();
+        assert!(ws.contains("talker_pkg :: register (runtime)"), "{ws}");
+        assert!(ws.contains("runtime . node_identity"), "{ws}");
+        assert!(!ws.contains("leaf_pkg"), "{ws}");
+        let own = rtic_register_tokens(false, &launch, &leaf).to_string();
+        assert!(own.contains("leaf_pkg :: register"), "{own}");
+        assert!(!own.contains("talker_pkg"), "{own}");
     }
 
     /// RTIC's `#[init]` owns the first statement, so the key is refused there,
