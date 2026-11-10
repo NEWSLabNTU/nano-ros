@@ -179,6 +179,8 @@ def main() -> int:
         base, _, sub = rel.partition("/")
         blobs[rel] = (bases[base] / sub).read_bytes()
     pnc.write_headers_tar(blobs)
+    for name, (base, rel) in pnc.LICENSES.items():
+        (pnc.SNAPSHOT_DIR / name).write_bytes((bases[base] / rel).read_bytes())
 
     version = subprocess.run([args.cxx, "--version"], capture_output=True,
                              text=True).stdout.splitlines()[0]
@@ -188,7 +190,8 @@ def main() -> int:
         "# What PX4 compiles a NuttX module's C++ with, read from a configured PX4 tree",
         "# at the pin, and the PX4 / NuttX headers nano-ros's uORB backend reaches under",
         "# it. The headers in headers.tar.xz are verbatim copies and keep their upstream",
-        "# licences (PX4: BSD-3-Clause, NuttX: Apache-2.0), stated in each file.",
+        "# licences (PX4: BSD-3-Clause, NuttX: Apache-2.0); LICENSE-PX4, LICENSE-NuttX",
+        "# and NOTICE-NuttX beside this file are those trees' own. README.md says how.",
         "# check-px4-uorb-nuttx-compile reads this; regenerate when the pin moves.",
         "",
         "[px4]",
@@ -212,6 +215,10 @@ def main() -> int:
         "",
         "# The archive is hashed whole (it is byte-reproducible); its member names",
         "# are not listed here, where repo-wide scanners would read them as ours.",
+        "# The licences the headers ship under, copied from the same trees.",
+        "[licenses]",
+        *(f"{q(n)} = {q(pnc.sha256(pnc.SNAPSHOT_DIR / n))}" for n in pnc.LICENSES),
+        "",
         "[headers]",
         f"sha256 = {q(pnc.sha256(pnc.HEADERS_TAR))}",
         f"members = {len(blobs)}",

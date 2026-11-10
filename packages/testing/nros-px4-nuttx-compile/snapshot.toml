@@ -2,7 +2,8 @@
 # What PX4 compiles a NuttX module's C++ with, read from a configured PX4 tree
 # at the pin, and the PX4 / NuttX headers nano-ros's uORB backend reaches under
 # it. The headers in headers.tar.xz are verbatim copies and keep their upstream
-# licences (PX4: BSD-3-Clause, NuttX: Apache-2.0), stated in each file.
+# licences (PX4: BSD-3-Clause, NuttX: Apache-2.0); LICENSE-PX4, LICENSE-NuttX
+# and NOTICE-NuttX beside this file are those trees' own. README.md says how.
 # check-px4-uorb-nuttx-compile reads this; regenerate when the pin moves.
 
 [px4]
@@ -107,6 +108,12 @@ include = [
 
 # The archive is hashed whole (it is byte-reproducible); its member names
 # are not listed here, where repo-wide scanners would read them as ours.
+# The licences the headers ship under, copied from the same trees.
+[licenses]
+"LICENSE-PX4" = "4f486239f62804b2190ff52b3005f087cf1033342012152e6383bdad6b891cc4"
+"LICENSE-NuttX" = "9f7c5fa2fceeb49efe189766ad385e412b003c35e496053c3799f542686a9e76"
+"NOTICE-NuttX" = "1f6ac972692c4f94fe4b904590654aeb795ff08efd9799427c2358fb568814bb"
+
 [headers]
 sha256 = "bbfa952325c13a25c47d4854677e8d38fbb13974a8b34c6d061e67991eac42b6"
 members = 173

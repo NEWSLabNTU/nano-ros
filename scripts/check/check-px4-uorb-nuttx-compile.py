@@ -79,6 +79,16 @@ def snapshot_problems(manifest: dict, tar_sha: str, members: int) -> list[str]:
     if manifest["px4"]["ref"] != pin:
         out.append(f"snapshot is PX4 {manifest['px4']['ref']}, the pin is {pin} -- regenerate "
                    "with scripts/gen-px4-nuttx-compile-snapshot.py")
+    recorded = manifest.get("licenses", {})
+    for name in pnc.LICENSES:
+        path = pnc.SNAPSHOT_DIR / name
+        if name not in recorded:
+            out.append(f"{name}: not recorded in snapshot.toml [licenses] -- regenerate")
+        elif not path.is_file():
+            out.append(f"{name}: missing -- the archived headers ship under it; regenerate")
+        elif pnc.sha256(path) != recorded[name]:
+            out.append(f"{name}: differs from snapshot.toml -- copied from the pinned tree, "
+                       "never edited")
     if tar_sha != manifest["headers"]["sha256"] or members != manifest["headers"]["members"]:
         out.append(f"headers.tar.xz ({tar_sha}, {members} members) is not the archive "
                    "snapshot.toml records -- the snapshot is generated, never edited")
@@ -115,6 +125,9 @@ def self_test(cxx: str, manifest: dict, tar_sha: str, members: int, tmp: Path,
         out.append("negative control broken -- a snapshot at another PX4 ref passed")
     if not any("never edited" in p for p in snapshot_problems(manifest, "0" * 64, members)):
         out.append("negative control broken -- an archive with a wrong hash passed")
+    unlicensed = dict(manifest, licenses={})
+    if not any("[licenses]" in p for p in snapshot_problems(unlicensed, tar_sha, members)):
+        out.append("negative control broken -- a snapshot with no licence record passed")
     return out
 
 

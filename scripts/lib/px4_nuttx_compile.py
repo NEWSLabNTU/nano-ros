@@ -43,6 +43,13 @@ MANIFEST = SNAPSHOT_DIR / "snapshot.toml"
 # symbols, condvar waits, array pools, comment names), and clang-format would
 # reflow them. snapshot.toml records the archive's sha256.
 HEADERS_TAR = SNAPSHOT_DIR / "headers.tar.xz"
+# The licences the archived headers ship under, copied beside it from the
+# pinned trees: snapshot name -> (base, path in that tree).
+LICENSES = {
+    "LICENSE-PX4": ("px4", "LICENSE"),
+    "LICENSE-NuttX": ("px4", "platforms/nuttx/NuttX/nuttx/LICENSE"),
+    "NOTICE-NuttX": ("px4", "platforms/nuttx/NuttX/nuttx/NOTICE"),
+}
 SDK_INDEX = REPO / "nros-sdk-index.toml"
 UORB_SOURCES_CMAKE = (REPO / "packages" / "rmw" / "uorb" / "nros-rmw-uorb" / "cmake"
                       / "NrosRmwUorbSources.cmake")
