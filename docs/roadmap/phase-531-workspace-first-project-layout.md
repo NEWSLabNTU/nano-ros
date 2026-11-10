@@ -742,7 +742,7 @@ order, each step with its own PR and gate run:
      `nros-bench` programs are one-package workspaces, migrated in slices, each
      slice ticking its count here. The other two bins,
      `action-server-concurrent` and `message-info-observer`, migrate with
-     issue 2406 (a multi-image owned entry).
+     issue 2406 (a multi-image owned entry). — 1/28 done (#3485)
 
    A leaf that is still one after that is a true leaf. It moves in place onto
    the owned-entry adapter (`<entry>_nros_derived`), as the fixture entries
