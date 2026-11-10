@@ -51,6 +51,7 @@ leaves() {
 unit_of() { local d="${1#examples/}"; printf '%s\n' "${d//\//-}"; }
 
 mapfile -t all < <(leaves)
+wait $! || { echo "lint-examples: listing the example leaves failed (issue 2424)" >&2; exit 1; }
 if [ "${#all[@]}" -eq 0 ]; then
     echo "lint-examples: no example leaf found; the enumeration is broken, which is not a pass" >&2
     exit 1
