@@ -3584,6 +3584,7 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/talker"
 bringup = "src/threadx_linux_rs_talker_bringup"
 image = "threadx-linux"
+target_dir = "target-fixtures"
 
 # Issue 2207 — the same listener with `connect_forever` stated, for the one
 # cell that starts the image BEFORE its router
