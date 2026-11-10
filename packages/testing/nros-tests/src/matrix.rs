@@ -697,6 +697,14 @@ pub enum Config {
     /// launch's nodes on one RTIC task. Same nodes, different entry
     /// (phase-535 W6).
     Rtic,
+    /// zenoh-pico over its TLS link (`link-tls`): the session dials a
+    /// `tls/...` router with a CA certificate. Same messages, different link
+    /// (phase-535 W6).
+    Tls,
+    /// zenoh-pico with the multicast transport and scouting compiled in
+    /// (`ZPICO_MULTICAST_TRANSPORT=1`), so a peer-mode session needs no
+    /// router. Same messages, no router (phase-535 W6, issue 0711).
+    PeerMode,
 }
 
 impl Config {
@@ -708,6 +716,8 @@ impl Config {
             Config::CustomTransport => "custom-transport",
             Config::Serial => "serial",
             Config::Rtic => "rtic",
+            Config::Tls => "tls",
+            Config::PeerMode => "peer-mode",
         }
     }
 }
@@ -973,6 +983,9 @@ pub enum Consumer {
     /// `tests/violation_channel_e2e.rs` -- the contract-violation channel on
     /// the Zephyr Cortex-M QEMU image (phase-544 W2).
     ViolationChannel,
+    /// `tests/nano2nano.rs` -- the linux pair's `tls` and `peer-mode`
+    /// configurations (phase-535 W6).
+    Nano2nano,
 }
 
 impl Consumer {
@@ -1015,6 +1028,7 @@ impl Consumer {
         Consumer::Px4Xrce,
         Consumer::Px4Sitl,
         Consumer::ViolationChannel,
+        Consumer::Nano2nano,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1057,6 +1071,7 @@ impl Consumer {
             Consumer::Px4Xrce => "px4_xrce",
             Consumer::Px4Sitl => "px4_sitl",
             Consumer::ViolationChannel => "violation_channel_e2e",
+            Consumer::Nano2nano => "nano2nano",
         }
     }
 }
@@ -1277,12 +1292,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         ),
     ),
     ("multihost_partition_bake", NonCell::Static),
-    (
-        "nano2nano",
-        NonCell::Secondary(
-            "Linux/Rust/Zenoh/Pubsub+Service+Action/Example — answered by the linux_example_* consumers",
-        ),
-    ),
     ("nav2_compat", NonCell::CompileCheck),
     ("negative_diagnostic_registry", NonCell::Static),
     ("no_local_axis_tables", NonCell::Static),
@@ -1456,6 +1465,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             (P::Linux, [Config::Lending, Config::Multisession]) => Some(LoanE2e),
             (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
             (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
+            (P::Linux, [Config::Tls] | [Config::PeerMode]) => Some(Nano2nano),
             _ => None,
         };
     }

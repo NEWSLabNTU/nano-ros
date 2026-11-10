@@ -528,6 +528,61 @@ and a test asks for it by name (`resolve_coord_variant`).
   and keeps its own. Moving the listener's would split `entrypoint.sh` by
   role, and no CI lane runs the compose test to prove the move.
 
+- **linux Rust `tls` and `peer-mode` (in review).** The four variant rows of
+  `examples/linux/rust/{talker,listener}` (`link-tls`, and
+  `ZPICO_MULTICAST_TRANSPORT=1`) retire. They become the
+  `linux_{talker,listener}_{tls,peer_mode}` images of the Rust workspace's
+  `pubsub_bringup`: `node_features = ["link-tls"]` (RFC-0121 D9, through a new
+  `link-tls` forward in `talker_pkg` and `listener_pkg`), and an image `env`
+  for the multicast transport. Each image has its own target dir, because both
+  knobs rebuild zpico-sys. `matrix::Config::{Tls,PeerMode}` name the
+  configurations (registry rows `[feature.link-tls]`,
+  `[knob.ZPICO_MULTICAST_TRANSPORT]`). Two configured Runtime cells,
+  `(Linux, Rust, Zenoh, Pubsub) + [Tls]` and `+ [PeerMode]`, make `nano2nano`
+  a consumer, and its two cases resolve the images through
+  `workspace_image::resolve_configured`. Each case proves its configuration
+  reached the build. The TLS pair delivers only through a `tls/...` router,
+  so a build without `link-tls` fails to connect. The peer pair asserts that
+  the backend does not print its peer-mode refusal. The talker witness keeps
+  its plain rows.
+- **linux Rust listener, service and action leaves (stay: editions).** The
+  opt-in ROS-edition lane (`just ros_editions build-e2e-fixtures`) builds their
+  `linux[_<rmw>]_<edition>` images. A workspace generates its message crates
+  for ONE edition, shared by every image, and its bringups must agree on that
+  edition (issue 2320). An image that declares another edition builds against
+  the workspace's message hashes with no diagnostic, which is issue 2409. That
+  issue is the exit: once a workspace generates per edition, these images move
+  to the language workspace. Until then each leaf keeps one plain row.
+- **Feature demos (stay, as leaves).** Each one below is a hand-written `main`
+  demonstrating an API that a generated entry does not express, and its test
+  asserts what that program prints:
+  - `linux/rust/lifecycle-node`: the Executor-level `LifecycleCallbacks` trait,
+    driven by `ros2 lifecycle` in `interop_e2e`. `features`'
+    `linux_rust_lifecycle` is the component spelling, which is a different API.
+  - `linux/rust/custom-msg` and `linux/c/custom-msg`: a serialization
+    self-check before the pub/sub. `custom_msg.rs` asserts its
+    `All serialization tests passed` line. `features`'
+    `linux_rust_custom_msg` is a plain pair, with no such check.
+  - `linux/{rust,c,cpp}/logging`: the `nros-log` sink and runtime threshold
+    API, asserted line by line by `logging_smoke`.
+  - `linux/{c,cpp}/parameters` and `linux/{c,cpp}/safety-listener`: the C/C++
+    parameter and E2E-safety APIs that `parameters_roundtrip` and `safety_e2e`
+    assert.
+  - `qemu-armv7a-nuttx/c/typed-carrier` and `rv-virt-threadx/c/typed-carrier`:
+    each is the fixture of the typed-entry carrier road
+    (`nros_components_register_node(... TYPED DEPLOY ...)`, issue 1795). That
+    is a build road of its own, so it is a road witness, not a node package.
+  - `rv-virt-threadx/c/errno-isolation`: a platform-ABI probe (issue 0680)
+    that spawns two threads through `nros_platform_task_init`. It is not a
+    node and has no workload.
+- **linux Rust `custom-transport-{talker,listener}` (stay).** They are the
+  book's "the user supplies a transport" example
+  (`book/src/extending/add-a-transport.md`): the application's own `main`
+  registers a link vtable before it opens the executor. W1's inventory listed
+  them as generated-entry candidates. Moving them would make a generated entry
+  the example of the one thing a user must write, so they stay as
+  manual-entry demos.
+
 ### W7 — Retire the old leaves, add `road_witness_e2e`
 
 - Delete every pair, variant, configuration and feature leaf moved by W3 to

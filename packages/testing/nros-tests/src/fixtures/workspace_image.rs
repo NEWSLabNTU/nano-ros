@@ -261,13 +261,15 @@ pub struct ParsedImage {
     pub config: Vec<Config>,
 }
 
-const CONFIGS: [Config; 6] = [
+const CONFIGS: [Config; 8] = [
     Config::Lending,
     Config::Multisession,
     Config::SignalFdWake,
     Config::CustomTransport,
     Config::Serial,
     Config::Rtic,
+    Config::Tls,
+    Config::PeerMode,
 ];
 
 /// Phase-531 W6 (RFC-0121 D8, RFC-0122 amendment) — whether a workspace at

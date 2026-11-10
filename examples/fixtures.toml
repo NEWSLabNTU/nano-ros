@@ -313,6 +313,59 @@ image = "linux_listener_cyclonedds"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
 target_dir = "target-fixtures-cyclonedds"
 
+# phase-535 W6 (RFC-0122 D2) — the `tls` and `peer-mode` configurations of
+# the linux pair, from the `examples/linux/rust/{talker,listener}` variant
+# rows. Each has its own target dir: `link-tls` and
+# `ZPICO_MULTICAST_TRANSPORT` rebuild zpico-sys, and the env is not part of
+# cargo's unit hash, so sharing `target-fixtures` would rebuild it per image.
+# `matrix::Config::{Tls,PeerMode}` cells; `tests/nano2nano.rs` runs them.
+
+[[workspace_fixture]]
+id = "workspace-rust-native-talker-tls"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_tls"
+node_features = ["link-tls"]
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures/linux-talker-tls"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-talker-peer-mode"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_talker_peer_mode"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures/linux-talker-peer-mode"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-listener-tls"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_tls"
+node_features = ["link-tls"]
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures/linux-listener-tls"
+
+[[workspace_fixture]]
+id = "workspace-rust-native-listener-peer-mode"
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "linux_listener_peer_mode"
+codegen_out = "build-workspace-codegen/pubsub_bringup"
+target_dir = "target-fixtures/linux-listener-peer-mode"
+
 [[workspace_fixture]]
 id = "workspace-rust-native-service-server-xrce"
 platform = "linux"
@@ -2282,11 +2335,17 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/action-client"
 
-# phase-535 W4 — the Rust service and action LEAVES stay, because the opt-in
-# ROS-edition lane (`just ros-editions build-e2e-fixtures`) builds their
-# `linux[_<rmw>]_<edition>` images; the editions move with the W6
-# configurations. Their pair cells run the workspace images. One plain row each
-# keeps the leaf compiling where a user would copy it.
+# phase-535 W4/W6 — the Rust listener, service and action LEAVES stay, because
+# the opt-in ROS-edition lane (`just ros-editions build-e2e-fixtures`) builds
+# their `linux[_<rmw>]_<edition>` images, and a workspace generates its message
+# crates for ONE edition (issue 2320). Their pair cells run the workspace
+# images. One plain row each keeps the leaf compiling where a user would copy
+# it. (The listener's `tls` and peer-mode rows are workspace images now.)
+[[fixture]]
+platform = "linux"
+lang = "rust"
+dir = "examples/linux/rust/listener"
+
 [[fixture]]
 platform = "linux"
 lang = "rust"
@@ -2761,12 +2820,6 @@ rmw = "zenoh"
 bringup = "src/native_talker_bringup"
 target_dir = "target-fixtures-peer"
 image = "linux"
-env = { ZPICO_MULTICAST_TRANSPORT = "1" }
-
-[[fixture]]
-platform = "linux"
-lang = "rust"
-dir = "examples/linux/rust/listener"
 env = { ZPICO_MULTICAST_TRANSPORT = "1" }
 
 # E2E-safety talker (phase-277 W3.a — was the talker `safety-e2e` feature
