@@ -9,7 +9,7 @@ related: [phase-543, 2373, 2274]
 found: 2026-11-09
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md)**. A gate whose verdict depends on how loaded the host is: the class that phase's resource groups bound, next to issue [2373](2373-nros-node-yielding-park-test-flakes-under-load.md).
+**Home: [phase-543](../roadmap/phase-543-nextest-gates.md)**. A gate whose verdict depends on how loaded the host is: the class that phase's resource groups bound, next to issue [2373](archived/2373-nros-node-yielding-park-test-flakes-under-load.md).
 
 ## What
 
