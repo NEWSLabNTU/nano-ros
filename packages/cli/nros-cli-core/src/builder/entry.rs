@@ -826,14 +826,13 @@ pub fn render_manifest(
     // see it, so four facts every other image carries in `nros-cargo.toml`
     // reach cargo through this file instead (`builder::west_app`).
     if let Some(west) = &spec.west {
+        // The backend's line already carries its edition and capabilities
+        // (RFC-0071 D9, `backend_link::dependency_features`): west_app wrote
+        // it, for any backend crate, so they are marked here rather than added
+        // to lines whose key happens to start `nros-rmw-` (issue 2393 — an
+        // out-of-tree crate's got none).
         for dep in &west.deps {
-            out.push_str(&with_backend_features_marked(
-                dep,
-                entry_dir,
-                spec.selection
-                    .as_ref()
-                    .map_or(&[][..], |s| s.backend_features.as_slice()),
-            ));
+            out.push_str(&mark_derived(dep, &west.backend_derived_features));
             out.push('\n');
         }
         if !west.build_deps.is_empty() {
@@ -888,12 +887,11 @@ fn image_backend_lines(
         if named.contains(&b.krate) {
             continue;
         }
-        let mut features = b.features.clone();
-        if crate::orchestration::facade::crate_declares_feature(&b.dir, &board.platform_feature) {
-            features.push(board.platform_feature.clone());
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        features.retain(|f| seen.insert(f.clone()));
+        let features = crate::orchestration::backend_link::with_platform_features(
+            &b.features,
+            &b.dir,
+            std::slice::from_ref(&board.platform_feature),
+        );
         let rel = relative_or_err(entry_dir, &b.dir)?;
         let line = format!(
             "{} = {{ path = \"{rel}\", default-features = false, features = [{}] }}",

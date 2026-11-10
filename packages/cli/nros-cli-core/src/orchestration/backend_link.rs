@@ -269,6 +269,59 @@ fn image_backend(
             ));
         }
     };
+    // The board's platform feature is not known here: the writer of the
+    // dependency line adds it ([`with_platform_features`]).
+    let features = dependency_features(r, &dir, sys, edition, &[]);
+    Ok(ImageBackend {
+        rmw: r.declared.clone(),
+        krate,
+        dir,
+        features,
+        register,
+    })
+}
+
+/// RFC-0071 D9 — the features a direct dependency on backend `r`'s crate (at
+/// `dir`) names, on EVERY road that writes one: the image's ROS edition
+/// (`ros-<edition>`), the capability features the image declares and the
+/// backend implements (`[rmw.capabilities]`, e.g. `safety` → `safety-e2e`),
+/// and then the board's `platform` features. Each is named only where the
+/// crate declares it.
+///
+/// The edition and capabilities come first, sorted; the platform features
+/// follow in the order given ([`with_platform_features`]). Both roads call
+/// this: the cargo road through [`image_backend`] (with no platform, which its
+/// dependency writer adds once it holds the board), the west road through
+/// `builder::west_app::resolve_in` (issue 2393 — it used to forward the
+/// platform feature alone, so a jazzy Zephyr Rust image built its backend for
+/// humble).
+#[must_use]
+pub fn dependency_features(
+    r: &ResolvedRmwIn,
+    dir: &Path,
+    sys: &SystemToml,
+    edition: rosidl_codegen::RosEdition,
+    platform: &[String],
+) -> Vec<String> {
+    let mut features = derived_features(r, sys, edition);
+    features.retain(|f| crate_declares_feature(dir, f));
+    with_platform_features(&features, dir, platform)
+}
+
+/// The image-implied half of [`dependency_features`], before any crate is
+/// asked what it declares: the image's ROS edition and the capability
+/// features it declares that backend `r` implements, by the descriptor's
+/// `[rmw.capabilities]` name. Sorted.
+///
+/// Also the selection's `backend_features`
+/// ([`crate::orchestration::facade::EntrySelection`]), which reaches a
+/// backend line it did not write (a bridge's) and filters per crate there.
+#[must_use]
+pub fn derived_features(
+    r: &ResolvedRmwIn,
+    sys: &SystemToml,
+    edition: rosidl_codegen::RosEdition,
+) -> Vec<String> {
     let mut features = vec![edition.cargo_feature().to_string()];
     for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
         if sys.capability_enabled(cap.declared)
@@ -278,16 +331,27 @@ fn image_backend(
             features.push(f.to_string());
         }
     }
-    features.retain(|f| crate_declares_feature(&dir, f));
     features.sort();
     features.dedup();
-    Ok(ImageBackend {
-        rmw: r.declared.clone(),
-        krate,
-        dir,
-        features,
-        register,
-    })
+    features
+}
+
+/// `derived` (a backend dependency's edition and capability features, as
+/// [`dependency_features`] computes them) followed by each of the board's
+/// `platform` features the crate at `dir` declares, without repeats.
+///
+/// The second half of [`dependency_features`], for a writer that holds an
+/// [`ImageBackend`] (whose features were derived before the board was known)
+/// rather than the backend itself.
+#[must_use]
+pub fn with_platform_features(derived: &[String], dir: &Path, platform: &[String]) -> Vec<String> {
+    let mut features = derived.to_vec();
+    for f in platform {
+        if !features.contains(f) && crate_declares_feature(dir, f) {
+            features.push(f.clone());
+        }
+    }
+    features
 }
 
 /// The `(image)` arm of `__nros_register_backends!`, calling each of
@@ -398,6 +462,71 @@ mod tests {
         assert!(
             e.contains("crate = \"acme-rmw\"") && e.contains("is `other-rmw`"),
             "{e}"
+        );
+    }
+
+    /// RFC-0071 D9 on the cargo road, pinned (issue 2393 moved its derivation
+    /// into [`dependency_features`], which the west road shares): edition and
+    /// capabilities sorted, then the board's platform feature, each only where
+    /// the crate declares it.
+    #[test]
+    fn the_cargo_road_backend_dependency_features_are_pinned() {
+        use rosidl_codegen::RosEdition;
+        let ws = tempfile::tempdir().unwrap();
+        let idx = test_support::acme_index(ws.path());
+        let linux = test_support::checkout().join("packages/boards/nros-board-linux");
+        let sys = |extra: &str| -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname = \"t\"\nrmw = \"acme\"\ndomain_id = 0\n{extra}\n\
+                 [image.linux]\nboard = \"linux\"\n"
+            ))
+            .unwrap()
+        };
+        let features = |sys: &SystemToml, edition| {
+            let rows = image_backends(
+                &idx,
+                "linux",
+                &["acme".to_string()],
+                sys,
+                edition,
+                Some(&linux),
+                &[],
+            )
+            .unwrap();
+            assert_eq!(rows.len(), 1, "{rows:?}");
+            let b = rows[0].clone().unwrap();
+            let platform = ["platform-posix".to_string(), "platform-zephyr".to_string()];
+            (
+                b.features.clone(),
+                with_platform_features(&b.features, &b.dir, &platform),
+            )
+        };
+        let v = |a: &[&str]| a.iter().map(ToString::to_string).collect::<Vec<_>>();
+
+        let (derived, line) = features(&sys(""), RosEdition::Humble);
+        assert_eq!(derived, v(&["ros-humble"]));
+        // `platform-zephyr` is not declared by acme, so it is left out.
+        assert_eq!(line, v(&["ros-humble", "platform-posix"]));
+
+        let (_, line) = features(&sys(""), RosEdition::Jazzy);
+        assert_eq!(line, v(&["ros-jazzy", "platform-posix"]));
+
+        let (derived, line) = features(&sys("features = [\"safety\"]"), RosEdition::Humble);
+        assert_eq!(derived, v(&["acme-safety", "ros-humble"]));
+        assert_eq!(line, v(&["acme-safety", "ros-humble", "platform-posix"]));
+
+        // The shared function gives the same list in one call.
+        let r = idx.resolve("acme").unwrap();
+        let dir = crate_dir(&r).unwrap().unwrap();
+        assert_eq!(
+            dependency_features(
+                &r,
+                &dir,
+                &sys("features = [\"safety\"]"),
+                RosEdition::Humble,
+                &["platform-posix".to_string()],
+            ),
+            line
         );
     }
 

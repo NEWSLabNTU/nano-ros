@@ -352,14 +352,13 @@ pub fn write_facade_in(
         {
             continue;
         }
-        let mut features = b.features.clone();
-        features.extend(
-            entry_platform_features(&manifest)
-                .into_iter()
-                .filter(|f| crate_declares_feature(&b.dir, f)),
+        // Sorted: this adapter's line has always listed them in order.
+        let mut features = backend_link::with_platform_features(
+            &b.features,
+            &b.dir,
+            &entry_platform_features(&manifest),
         );
         features.sort();
-        features.dedup();
         body.push_str(&format!(
             "{} = {{ path = {:?}, default-features = false, features = [{}] }}\n",
             b.krate,
@@ -1053,18 +1052,9 @@ fn derive(
 
     // A direct backend dep gets the edition (and any capability the backend
     // itself implements, e.g. safety-e2e's CRC path), NOT the `rmw-*` selector
-    // — naming the backend crate already selects it.
-    let mut backend_features = vec![edition.cargo_feature().to_string()];
-    for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
-        if !sys.capability_enabled(cap.declared) || !cap.backend_supports(&rmw) {
-            continue;
-        }
-        if let Some(bf) = cap.backend_feature {
-            backend_features.push(bf.to_string());
-        }
-    }
-    backend_features.sort();
-    backend_features.dedup();
+    // — naming the backend crate already selects it. RFC-0071 D9's one
+    // derivation, shared with every road's backend line (issue 2393).
+    let backend_features = backend_link::derived_features(&rmw, sys, edition);
 
     Ok(Derived {
         nros_features,
@@ -1613,12 +1603,15 @@ mod tests {
             "{}",
             sel.registration
         );
-        // `safety` reaches the backend because ACME's descriptor declares it
-        // (the backend feature name is the capability registry's).
-        assert!(
-            sel.backend_features.contains(&"safety-e2e".to_string()),
-            "{:?}",
-            sel.backend_features
+        // `safety` reaches the backend because ACME's descriptor declares it,
+        // under the descriptor's own name (`[rmw.capabilities] safety =
+        // "acme-safety"`): the one derivation every backend line uses
+        // (`backend_link::derived_features`, issue 2393). It used to be the
+        // capability registry's `safety-e2e`, a feature acme does not declare,
+        // while the D15 dependency line named `acme-safety`.
+        assert_eq!(
+            sel.backend_features,
+            vec!["acme-safety".to_string(), "ros-humble".to_string()],
         );
         // The in-tree board has no `rmw-acme`, so it selects no backend.
         assert!(
