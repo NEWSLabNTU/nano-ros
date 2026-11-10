@@ -1248,11 +1248,13 @@ mod tests {
         let dispatch_line = dispatch
             .map(|d| format!("dispatch = \"{d}\"\n"))
             .unwrap_or_default();
+        // The class names the crate by its Rust identifier.
+        let ident = dir.replace('-', "_");
         fs::write(
             p.join("system.toml"),
             format!(
                 "[system]\nname = \"{dir}\"\n\n[[component]]\npkg = \"{dir}\"\n\
-                 class = \"{dir}::Stub\"\nname = \"stub\"\n{dispatch_line}\n\
+                 class = \"{ident}::Stub\"\nname = \"stub\"\n{dispatch_line}\n\
                  [image.linux]\nboard = \"linux\"\n"
             ),
         )
