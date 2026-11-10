@@ -236,6 +236,101 @@ def readobj_json(tool: str, args: list[str], path: str) -> list[dict]:
     return docs
 
 
+# ---------------------------------------------------------------------------
+# Stable frames: bitcode -> llc (no unstable flag, no build-std)
+# ---------------------------------------------------------------------------
+#
+# Stable rustc cannot emit `.stack_sizes` (only `-Z emit-stack-sizes` sets the
+# TargetMachine option). It CAN keep each codegen unit's optimised bitcode
+# (`-C save-temps`), and the toolchain's own `llc` (rustup `llvm-tools`, the
+# same LLVM) re-runs codegen on it with `-stack-size-section`. Measured on
+# nros-cpp thumbv7em: OPEN/SPIN identical to `-Z emit-stack-sizes`, 1,508 of
+# 1,512 frames identical (issue 2400). The prebuilt sysroot rlibs carry their
+# bitcode in `.llvmbc`, so core/alloc/compiler_builtins need no build-std.
+#
+# These flags are FIXED, not caller options: `-function-sections` is
+# load-bearing (without it calls inside one `.text` resolve with no relocation
+# and the walk sees no edges — OPEN read 56 B), and the rest match rustc's
+# defaults for these targets.
+LLC_FLAGS = ("-O3", "-filetype=obj", "-stack-size-section", "-relocation-model=static",
+             "-function-sections", "-data-sections")
+_THIN_STAGE = re.compile(r"\.thin-lto-[a-z-]+\.bc$")
+
+
+def pick_codegen_bitcode(paths: list[Path]) -> list[Path]:
+    """From a `-C save-temps` deps dir, the module each codegen unit was
+    compiled from: `<cgu>.thin-lto-after-pm.bc` when crate-local ThinLTO ran,
+    else `<cgu>.rcgu.bc`. Never `no-opt`, never another ThinLTO stage."""
+    by_cgu: dict[str, Path] = {}
+    for p in sorted(paths):
+        n = p.name
+        if n.endswith(".no-opt.bc"):
+            continue
+        if n.endswith(".thin-lto-after-pm.bc"):
+            by_cgu[n[: -len(".thin-lto-after-pm.bc")]] = p
+        elif _THIN_STAGE.search(n):
+            continue
+        elif n.endswith(".rcgu.bc"):
+            by_cgu.setdefault(n[: -len(".bc")], p)
+    return [by_cgu[k] for k in sorted(by_cgu)]
+
+
+def llc_object(bc: Path, llc: str, cache: Path) -> Path:
+    import hashlib
+    h = hashlib.sha256()
+    h.update(subprocess.run([llc, "--version"], capture_output=True, text=True).stdout.encode())
+    h.update("\0".join(LLC_FLAGS).encode())
+    h.update(bc.read_bytes())
+    out = cache / f"{h.hexdigest()}.o"
+    if not out.exists():
+        cache.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".o.tmp")
+        subprocess.run([llc, *LLC_FLAGS, "-o", str(tmp), str(bc)], check=True)
+        tmp.replace(out)
+    return out
+
+
+def rlib_bitcode(rlib: Path, llvm_bin: str | None, scratch: Path) -> list[Path]:
+    """Each member's embedded `.llvmbc` (the prebuilt sysroot rlibs carry it)."""
+    ar = llvm_tool("llvm-ar", llvm_bin)
+    objcopy = llvm_tool("llvm-objcopy", llvm_bin)
+    d = scratch / rlib.stem
+    d.mkdir(parents=True, exist_ok=True)
+    subprocess.run([ar, "x", str(rlib.resolve())], cwd=d, check=True)
+    out = []
+    for m in sorted(d.glob("*.o")):
+        bc = m.with_suffix(".bc")
+        r = subprocess.run([objcopy, "--dump-section", f".llvmbc={bc}", str(m), os.devnull],
+                           capture_output=True)
+        if r.returncode == 0 and bc.exists() and bc.stat().st_size:
+            out.append(bc)
+    return out
+
+
+def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | None,
+                  cache: Path) -> list[str]:
+    """Objects and archives pass through; `.bc`, `.rlib` and every
+    `--bitcode-dir` become llc objects (cached by bitcode + flags + llc)."""
+    import tempfile
+    llc = llvm_tool("llc", llvm_bin)
+    out: list[str] = []
+    bcs: list[Path] = []
+    scratch = Path(tempfile.mkdtemp(prefix="nros-stack-floor-"))
+    for d in bitcode_dirs:
+        bcs += pick_codegen_bitcode(list(Path(d).glob("*.bc")))  # flat dir, not a walk
+    for i in inputs:
+        p = Path(i)
+        if p.suffix == ".bc":
+            bcs.append(p)
+        elif p.suffix == ".rlib":
+            bcs += rlib_bitcode(p, llvm_bin, scratch)
+        else:
+            out.append(i)
+    out += [str(llc_object(bc, llc, cache)) for bc in bcs]
+    shutil.rmtree(scratch, ignore_errors=True)
+    return out
+
+
 def load_object(g: Graph, path: str, readobj: str, objdump: str) -> None:
     for doc in readobj_json(readobj, ["--stack-sizes"], path):
         for e in doc.get("StackSizes", []):
@@ -491,6 +586,8 @@ def run(args: argparse.Namespace) -> int:
     readobj = llvm_tool("llvm-readobj", args.llvm_bin)
     objdump = llvm_tool("llvm-objdump", args.llvm_bin)
     g = Graph()
+    cache = Path(args.llc_cache or Path.home() / ".cache" / "nros-stack-floor")
+    args.inputs = expand_inputs(args.inputs, args.bitcode_dir or [], args.llvm_bin, cache)
     for inp in args.inputs:
         load_object(g, inp, readobj, objdump)
     for su in args.su or []:
@@ -705,15 +802,27 @@ def self_test() -> int:
     check("an allowance must name an issue",
           any("must name the issue" in p for p in validate_table(bad, set())))
 
+    picked = [p.name for p in pick_codegen_bitcode([Path(n) for n in (
+        "a.cgu.0.rcgu.bc", "a.cgu.0.rcgu.no-opt.bc", "b.cgu.0.rcgu.bc", "b.cgu.0.rcgu.no-opt.bc",
+        "b.cgu.0.rcgu.thin-lto-input.bc", "b.cgu.0.rcgu.thin-lto-after-pm.bc")])]
+    check("codegen bitcode: post-opt, or ThinLTO after-pm when present",
+          picked == ["a.cgu.0.rcgu.bc", "b.cgu.0.rcgu.thin-lto-after-pm.bc"])
+
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
-    print(f"nros-stack-floor self-test: {26 - len(fails)} checks, {len(fails)} failed")
+    print(f"nros-stack-floor self-test: {27 - len(fails)} checks, {len(fails)} failed")
     return 1 if fails else 0
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("inputs", nargs="*", help="archives (.a) or objects (.o)")
+    ap.add_argument("inputs", nargs="*",
+                    help="archives (.a) / objects (.o) carrying .stack_sizes, or bitcode "
+                         "(.bc) / rlibs with .llvmbc, which llc compiles with fixed flags")
+    ap.add_argument("--bitcode-dir", action="append",
+                    help="a `-C save-temps` deps dir; each codegen unit's optimised module")
+    ap.add_argument("--llc-cache", help="llc output cache, keyed by llc + flags + bitcode "
+                    "(default ~/.cache/nros-stack-floor)")
     ap.add_argument("--role", action="append", default=[],
                     help="ROLE=root[,root...]; the floor is the deepest root")
     ap.add_argument("--su", action="append", help="a .su file or a dir searched for *.su")
