@@ -100,7 +100,6 @@ packages/testing/nros-tests/bins/condvar-contract-freertos-mps2/system.toml
 packages/testing/nros-tests/bins/condvar-contract-threadx-linux/system.toml
 packages/testing/nros-tests/bins/constrained-link-probe/system.toml
 packages/testing/nros-tests/bins/contract-monitor-cpp/system.toml
-packages/testing/nros-tests/bins/entry-poc/system.toml
 packages/testing/nros-tests/bins/graph-probe/system.toml
 packages/testing/nros-tests/bins/image-env-probe-c/system.toml
 packages/testing/nros-tests/bins/in-place-subscriptions/system.toml

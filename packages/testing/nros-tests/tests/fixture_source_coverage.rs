@@ -118,8 +118,11 @@ fn every_test_bin_is_a_row_or_a_tracked_exception() {
         let Some(name) = p.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        // A crate, not a stray directory.
-        if !p.join("Cargo.toml").is_file() {
+        // A program, not a stray directory: a crate, or (phase-531 W7) a
+        // one-package workspace root, which has no root build file
+        // (RFC-0098 D9) and is marked by `.colcon_workspace`. Counting only
+        // crates would let a migrated bin with no row drop out of this check.
+        if !p.join("Cargo.toml").is_file() && !p.join(".colcon_workspace").is_file() {
             continue;
         }
         present.insert(name.to_string());

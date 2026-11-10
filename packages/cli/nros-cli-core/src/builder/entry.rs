@@ -72,6 +72,12 @@ pub struct EntrySpec {
     pub panic: Option<String>,
     /// RFC-0065 D5 amendment — `[image.<id>] before_boot`, already validated.
     pub before_boot: Option<String>,
+    /// Issue 1340 — `[image.<id>] producers`: whether the host board crate
+    /// gets its census and profile producers. `true` unless the image states
+    /// `producers = false`. The leaf road honoured it (`facade.rs`); the
+    /// generated workspace entry wrote `true` whatever the image said, so a
+    /// migrated measurement image grew by the producers' state (phase-531 W7).
+    pub host_producers: bool,
     /// Node packages the launch file names, as (crate name, directory).
     pub nodes: Vec<(String, PathBuf)>,
     /// RFC-0121 D9 — `[image.<id>] features`, resolved per node package
@@ -567,8 +573,9 @@ pub fn image_link_features(
 /// go into.
 ///
 /// `host_producers` — whether the host board crate gets its census and
-/// profile producers (issue 1419 / phase-463 W7). `true` on every road except
-/// a leaf image that states `[image.<id>] producers = false` (issue 1340).
+/// profile producers (issue 1419 / phase-463 W7). `true` unless the image
+/// states `[image.<id>] producers = false` (issue 1340), on the leaf road and
+/// on a generated workspace entry alike.
 pub fn image_dependency_lines(
     board: &BoardFacts,
     nano_ros_root: &Path,
@@ -803,7 +810,7 @@ pub fn render_manifest(
         &spec.nano_ros_root,
         entry_dir,
         &selection.board_features,
-        true,
+        spec.host_producers,
     )? {
         let is_board = board
             .board_crate
@@ -1384,6 +1391,7 @@ mod tests {
             args: BTreeMap::new(),
             panic: None,
             before_boot: None,
+            host_producers: true,
             nodes: vec![
                 (
                     "talker_pkg".to_string(),
@@ -1618,6 +1626,21 @@ mod tests {
             // tables (panic = "abort") are not the profiler.
             !m.contains("census") && !m.contains("\"profile\""),
             "an RTOS entry never links the recorder or the profiler (phase-463 W7): {m}"
+        );
+    }
+
+    /// Issue 1340 -- `[image.<id>] producers = false` reaches a GENERATED
+    /// workspace entry too: the host board line drops the recorder and the
+    /// profiler. It used to be honoured on the leaf road only.
+    #[test]
+    fn producers_false_leaves_the_host_entry_without_the_recorder() {
+        let mut off = spec();
+        off.host_producers = false;
+        let m = render_manifest(&off, &hosted(), Path::new(DIR)).expect("renders");
+        assert!(m.contains("nros-board-linux = { path = "), "{m}");
+        assert!(
+            !m.contains("census") && !m.contains("\"profile\""),
+            "`producers = false` must drop `census` and `profile`: {m}"
         );
     }
 

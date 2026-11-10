@@ -5073,6 +5073,7 @@ fn generate_entry(
         args: image.args.clone(),
         panic: image.panic.clone(),
         before_boot: image.before_boot.clone(),
+        host_producers: image.producers.unwrap_or(true),
         nodes,
         node_features,
         nano_ros_root: nros_root.to_path_buf(),
