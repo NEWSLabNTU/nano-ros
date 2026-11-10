@@ -1736,6 +1736,8 @@ fn zpico_recorded_link_cover(
 /// cannot be read, so a caller deciding "nothing moved" fails toward the
 /// normal arm. Bounded; symlinks are not followed.
 fn newest_mtime_under(p: &Path, depth: usize) -> Option<std::time::SystemTime> {
+    // treewalk-exempt: `p` is an input cargo recorded (`rerun-if-changed`), and
+    // everything under an input is that input, wherever it lives.
     const MAX_DEPTH: usize = 12;
     let meta = fs::symlink_metadata(p).ok()?;
     let mut newest = meta.modified().ok()?;
@@ -1830,6 +1832,8 @@ fn find_build_script_outputs(
     scope: &CargoScope,
     depth: usize,
 ) -> Vec<PathBuf> {
+    // treewalk-exempt: searches a cargo target dir for build-script `output`
+    // files, which are build output; bounded by depth and `CargoScope`.
     const MAX_DEPTH: usize = 8;
     let mut found = Vec::new();
     if depth > MAX_DEPTH {
@@ -1997,6 +2001,8 @@ fn cargo_unit_link_cover(
 /// descends into the cargo target dir — the original lives there, and it is
 /// what the copies are compared against.
 fn linked_archive_copies(dir: &Path, name: &std::ffi::OsStr, depth: usize) -> Vec<PathBuf> {
+    // treewalk-exempt: searches a cmake binary dir for archive copies, which
+    // are build output; bounded by depth.
     const MAX_DEPTH: usize = 6;
     let mut found = Vec::new();
     if depth > MAX_DEPTH {
@@ -2152,6 +2158,8 @@ fn ninja_own_cargo_folders(text: &str, build_dir: &Path) -> Vec<std::ffi::OsStri
 /// `read_dir`s rather than a walk of a cmake tree. `scope` keeps it out of
 /// sibling leaves' folders in the shared group dir (issue 1954).
 fn find_cargo_profile_dirs(dir: &Path, scope: &CargoScope, depth: usize) -> Vec<PathBuf> {
+    // treewalk-exempt: searches a build dir for cargo profile dirs, which are
+    // build output; bounded by depth and `CargoScope`.
     const MAX_DEPTH: usize = 8;
     let mut found = Vec::new();
     if depth > MAX_DEPTH {
@@ -2202,6 +2210,8 @@ fn find_cargo_profile_dirs(dir: &Path, scope: &CargoScope, depth: usize) -> Vec<
 /// FILE or a DIRECTORY — `nros-platform-api/include` is the latter — and cargo
 /// treats a directory as "anything under it".
 fn newest_path_after(p: &Path, bin_mtime: std::time::SystemTime) -> Option<PathBuf> {
+    // treewalk-exempt: `p` is an input cargo named, and cargo treats a
+    // directory input as everything under it.
     let meta = fs::metadata(p).ok()?;
     if meta.is_file() {
         if staleness::note_candidate(p) {
@@ -2237,6 +2247,10 @@ fn newest_source_after(dir: &Path, bin_mtime: std::time::SystemTime) -> Option<P
         let path = entry.path();
         let file_type = entry.file_type().ok()?;
         if file_type.is_dir() {
+            // A source walk: build output under it is not an input (issue 2422).
+            if crate::treewalk::is_build_output_dir(&entry.file_name().to_string_lossy()) {
+                continue;
+            }
             if let Some(found) = newest_source_after(&path, bin_mtime) {
                 return Some(found);
             }

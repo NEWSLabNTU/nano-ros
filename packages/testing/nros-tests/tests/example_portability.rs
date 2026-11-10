@@ -264,12 +264,12 @@ fn classify(lang_ext: &str, rel: &str, logic_elsewhere: bool) -> FileKind {
 /// diverge from platforms that need no such module.
 const GLUE_MODULES: &[&str] = &["app_main"];
 
-/// Build output, not authored source: a `build*/` or `target*/` directory at
-/// either level of the walk. One spelling, because the outer level (a program
-/// dir that IS an output tree) and the inner level (an output tree inside a
-/// program) are the same rule and drifted apart once already.
+/// Build output, not authored source, at either level of the walk. One
+/// spelling, because the outer level (a program dir that IS an output tree) and
+/// the inner level (an output tree inside a program) are the same rule and
+/// drifted apart once already; and that spelling is the crate's, issue 2422.
 fn is_build_output(name: &str) -> bool {
-    name.starts_with("build") || name.starts_with("target")
+    nros_tests::treewalk::is_build_output_dir(name)
 }
 
 /// Every source file under `src/`, normalized and tagged, in filename order.

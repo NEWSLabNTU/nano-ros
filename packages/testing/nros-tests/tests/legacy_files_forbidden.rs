@@ -29,20 +29,9 @@ fn skip_dir(name: &str) -> bool {
     // Prefix-match target*/build*: per-RMW example builds use suffixed dirs
     // (`target-zenoh`, `target-cyclonedds`, zephyr `build-rs-*`) that an
     // exact match walks into — millions of artifact files, a 60s+ timeout
-    // on a host with every fixture family built.
-    name == "target"
-        || name.starts_with("target-")
-        || name == "build"
-        || name.starts_with("build-")
-        || matches!(
-            name,
-            ".git"
-                | "node_modules"
-                | "generated"
-                | ".cargo"
-                | "cmake-build-debug"
-                | "cmake-build-release"
-        )
+    // on a host with every fixture family built. The list this spelled out
+    // was exactly the crate's predicate (issue 2422).
+    nros_tests::treewalk::is_skipped_dir(name)
 }
 
 /// Keep only hits that are TRACKED in git. The ban is about COMMITTED

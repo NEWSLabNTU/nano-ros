@@ -253,6 +253,15 @@ required-contexts-reportable:
 skip-marker-matching:
     @python3 scripts/check-skip-marker-matching.py
 
+# issue 2422 — a recursive directory walk in nros-tests names the build-output
+# predicate (`nros_tests::treewalk`) or carries a `treewalk-exempt:` reason.
+# `collect_overlays` walked every built Zephyr tree and timed out a tier-2
+# preflight at 60 s; it was the sixth private spelling of "is this build
+# output". Self-tests against that pre-fix walker on every run.
+[private]
+test-tree-walkers:
+    @python3 scripts/check-test-tree-walkers.py
+
 # issue 0702 — a test that cannot fail is worse than no test. Rejects an `Err`
 # arm that prints a diagnosis and decides nothing, which is the shape eight
 # separate tests had been wearing for months (see the script's docstring for the

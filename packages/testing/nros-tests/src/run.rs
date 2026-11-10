@@ -93,6 +93,7 @@ pub fn descendants(pid: u32) -> Vec<u32> {
     let mut out = Vec::new();
     #[cfg(target_os = "linux")]
     {
+        // treewalk-exempt: a process tree under `/proc`, not a source tree.
         let mut stack = vec![pid];
         while let Some(p) = stack.pop() {
             if p != pid {

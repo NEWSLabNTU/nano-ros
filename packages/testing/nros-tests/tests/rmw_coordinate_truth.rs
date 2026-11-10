@@ -275,6 +275,8 @@ fn row_binary(fixture_id: &str, root: &Path) -> Option<PathBuf> {
         None => fields.get(4).filter(|f| !f.is_empty())?.to_string(),
     };
     // Two layouts: a cargo profile dir, or the top of a cmake binary dir.
+    // treewalk-exempt: the root is the row's build output and the binary is
+    // an artifact in it; the walk is depth-bounded (2) and skips cargo's caches.
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((d, depth)) = stack.pop() {
         let candidate = d.join(&name);
