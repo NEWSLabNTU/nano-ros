@@ -204,13 +204,24 @@ FUNC_LABEL_RE = re.compile(r"^[0-9a-f]+ <(.+)>:$")
 SU_RE = re.compile(r"^(?P<loc>[^\t]*):(?P<fn>[^:\t]+)\t(?P<size>\d+)\t(?P<kind>\S+)")
 
 
+# The checkout this script lives in. rustup picks the toolchain by the CWD's
+# `rust-toolchain.toml`, so asking `rustc` from anywhere else answers with the
+# user's default toolchain — and llc from a different LLVM refuses the pinned
+# compiler's bitcode ("Not an int attribute", measured: 1.98.1 vs 1.99.0).
+CHECKOUT = Path(__file__).resolve().parent.parent
+_TOOLS: dict[str, str] = {}
+
+
 def llvm_tool(name: str, llvm_bin: str | None) -> str:
     if llvm_bin:
         return str(Path(llvm_bin) / name)
+    if name in _TOOLS:
+        return _TOOLS[name]
     try:
-        sysroot = subprocess.run(["rustc", "--print", "sysroot"], check=True,
+        sysroot = subprocess.run(["rustc", "--print", "sysroot"], check=True, cwd=CHECKOUT,
                                  capture_output=True, text=True).stdout.strip()
         for p in Path(sysroot, "lib", "rustlib").glob(f"*/bin/{name}"):
+            _TOOLS[name] = str(p)
             return str(p)
     except (OSError, subprocess.CalledProcessError):
         pass
@@ -261,6 +272,13 @@ def pick_codegen_bitcode(paths: list[Path]) -> list[Path]:
     """From a `-C save-temps` deps dir, the module each codegen unit was
     compiled from: `<cgu>.thin-lto-after-pm.bc` when crate-local ThinLTO ran,
     else `<cgu>.rcgu.bc`. Never `no-opt`, never another ThinLTO stage."""
+    # Fat LTO: every crate was merged into the final crate's module, whose
+    # post-LTO, post-opt module is `<cgu>.rcgu.bc` beside `<cgu>.rcgu.lto.input.bc`.
+    # That module IS the image's Rust code; the per-crate modules beside it
+    # never reached codegen and would add frames and edges the image lacks.
+    fat = [p for p in paths if p.name.endswith(".rcgu.lto.input.bc")]
+    if fat:
+        return sorted(p.with_name(p.name[: -len(".lto.input.bc")] + ".bc") for p in fat)
     by_cgu: dict[str, Path] = {}
     for p in sorted(paths):
         n = p.name
@@ -275,10 +293,16 @@ def pick_codegen_bitcode(paths: list[Path]) -> list[Path]:
     return [by_cgu[k] for k in sorted(by_cgu)]
 
 
+_LLC_VERSION: dict[str, bytes] = {}
+
+
 def llc_object(bc: Path, llc: str, cache: Path) -> Path:
     import hashlib
+    if llc not in _LLC_VERSION:
+        _LLC_VERSION[llc] = subprocess.run([llc, "--version"], capture_output=True,
+                                           text=True).stdout.encode()
     h = hashlib.sha256()
-    h.update(subprocess.run([llc, "--version"], capture_output=True, text=True).stdout.encode())
+    h.update(_LLC_VERSION[llc])
     h.update("\0".join(LLC_FLAGS).encode())
     h.update(bc.read_bytes())
     out = cache / f"{h.hexdigest()}.o"
@@ -290,11 +314,16 @@ def llc_object(bc: Path, llc: str, cache: Path) -> Path:
     return out
 
 
-def rlib_bitcode(rlib: Path, llvm_bin: str | None, scratch: Path) -> list[Path]:
-    """Each member's embedded `.llvmbc` (the prebuilt sysroot rlibs carry it)."""
+def rlib_bitcode(rlib: Path, llvm_bin: str | None, cache: Path) -> list[Path]:
+    """Each member's embedded `.llvmbc` (the prebuilt sysroot rlibs carry it).
+    Extracted once per rlib content: a sysroot rlib is fixed per toolchain."""
+    import hashlib
     ar = llvm_tool("llvm-ar", llvm_bin)
     objcopy = llvm_tool("llvm-objcopy", llvm_bin)
-    d = scratch / rlib.stem
+    d = cache / "rlib" / hashlib.sha256(rlib.read_bytes()).hexdigest()
+    done = d / ".complete"
+    if done.exists():
+        return sorted(d.glob("*.bc"))
     d.mkdir(parents=True, exist_ok=True)
     subprocess.run([ar, "x", str(rlib.resolve())], cwd=d, check=True)
     out = []
@@ -304,6 +333,8 @@ def rlib_bitcode(rlib: Path, llvm_bin: str | None, scratch: Path) -> list[Path]:
                            capture_output=True)
         if r.returncode == 0 and bc.exists() and bc.stat().st_size:
             out.append(bc)
+        m.unlink()
+    done.touch()
     return out
 
 
@@ -311,11 +342,9 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
                   cache: Path) -> list[str]:
     """Objects and archives pass through; `.bc`, `.rlib` and every
     `--bitcode-dir` become llc objects (cached by bitcode + flags + llc)."""
-    import tempfile
     llc = llvm_tool("llc", llvm_bin)
     out: list[str] = []
     bcs: list[Path] = []
-    scratch = Path(tempfile.mkdtemp(prefix="nros-stack-floor-"))
     for d in bitcode_dirs:
         bcs += pick_codegen_bitcode(list(Path(d).glob("*.bc")))  # flat dir, not a walk
     for i in inputs:
@@ -323,11 +352,10 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
         if p.suffix == ".bc":
             bcs.append(p)
         elif p.suffix == ".rlib":
-            bcs += rlib_bitcode(p, llvm_bin, scratch)
+            bcs += rlib_bitcode(p, llvm_bin, cache)
         else:
             out.append(i)
     out += [str(llc_object(bc, llc, cache)) for bc in bcs]
-    shutil.rmtree(scratch, ignore_errors=True)
     return out
 
 
@@ -807,10 +835,14 @@ def self_test() -> int:
         "b.cgu.0.rcgu.thin-lto-input.bc", "b.cgu.0.rcgu.thin-lto-after-pm.bc")])]
     check("codegen bitcode: post-opt, or ThinLTO after-pm when present",
           picked == ["a.cgu.0.rcgu.bc", "b.cgu.0.rcgu.thin-lto-after-pm.bc"])
+    picked = [p.name for p in pick_codegen_bitcode([Path(n) for n in (
+        "dep.x.cgu.0.rcgu.bc", "app.y.cgu.0.rcgu.bc", "app.y.cgu.0.rcgu.no-opt.bc",
+        "app.y.cgu.0.rcgu.lto.input.bc", "app.y.cgu.0.rcgu.lto.after-restriction.bc")])]
+    check("fat LTO: only the merged post-LTO module", picked == ["app.y.cgu.0.rcgu.bc"])
 
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
-    print(f"nros-stack-floor self-test: {27 - len(fails)} checks, {len(fails)} failed")
+    print(f"nros-stack-floor self-test: {28 - len(fails)} checks, {len(fails)} failed")
     return 1 if fails else 0
 
 
