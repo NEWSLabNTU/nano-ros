@@ -98,3 +98,26 @@ image shape and may be negative, and an unmeasured image is never enforced.
 Slot binding is what would let one measurement stand for a target: once the
 walk follows the real vtable target, the static number becomes a bound, and
 per-image rows can retire.
+
+## Measured: the walk's worst path is not the run-time one (2026-11-10)
+
+Issue 2401 (#3481) moved the session-property buffers off the stack:
+`CffiSession::open_marshalling_properties` went from 8,472 B to 240 B. That
+frame was on every nucleo image's static OPEN worst path. Re-measured on the
+nucleo-f767zi twin (main-thread peak over 7 rounds):
+
+| image | walk before | walk after | peak before | peak after |
+| --- | ---: | ---: | ---: | ---: |
+| C talker (no LTO) | 24,312 | 16,112 | 11,696 | 11,696 |
+| Rust talker (LTO) | 23,220 | 22,212 | 28,888 | 28,888 |
+| Rust action server (LTO) | 22,564 | 21,780 | 30,256 | 30,256 |
+
+Not one peak moved, so on these images the main thread does not peak in
+open. The walk only put open on its worst path because of this issue's
+mechanism: it charges each indirect call its deepest address-taken target
+(8,392 B at 51 sites on the C talker). On PX4, by contrast, open IS the
+peak; 2401's Renode `mm_free` fault was STACK_MAIN overflowing in open.
+
+Each allowance rose by its walk's drop (C talker −12,616 → −4,416). A row
+left stale would have given the C talker a 3,848 B floor against its
+11,696 B peak.
