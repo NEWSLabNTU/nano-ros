@@ -917,6 +917,85 @@ needs.
   the executor config it opens with (`config.rmw(..)`). An image naming no
   RMW selects nothing, as before.
 
+## Amendment 2026-11-11: one owned entry serves several images (D19, issue 2406)
+
+**Status: Accepted (maintainer ruling, 2026-11-11, option 1 of issue 2406).
+Implemented for the cargo road in phase-531 W6; the CMake road is verified
+when the linux C and C++ talkers move.**
+
+D13 made an owned entry ONE image's program: `leaf_system::claiming_image`
+refused a second claim, the adapter was written from one image, and the cargo
+road found an owned entry only at `src/<image>_entry`. A program that keeps
+its own `main` and is built for several images (one per RMW, or a plain and a
+configured build) then had no workspace shape. Issue 2406 lists the sites.
+
+### D19 — an owned entry named by several images
+
+* **The claim.** An image names its owned entry with `[image.<id>] entry =
+  "<pkg>"`, and SEVERAL images of one bringup may name the same package.
+  Images in two bringups naming one entry stay an error. Where one image is
+  meant, the reader is told which: `nros build` and `nros materialize` pass
+  the image they are working on (`claiming_image_as`), and `nros::main!`
+  (compiled inside that build) reads it from `NROS_IMAGE`, which the image's
+  settings file sets in `[env]`. A question every claimant answers alike
+  ("is this package an entry", "which board") takes the first claim
+  (`claiming_image_any`), provided the claims agree on the board. Any other
+  multi-claimed lookup with no image named is an error listing the claims. An
+  entry claimed once behaves as before.
+* **Every road finds it by name.** The cargo road builds the package
+  `[image.<id>] entry` names (a directory or a `Cargo.toml` / `package.xml`
+  name under `src/`), as the west road already did, and falls back to
+  `src/<image>_entry` only when the image names none. A named entry that does
+  not resolve is an error naming the image, never a generated entry in its
+  place. One resolver (`cmd::build::owned_entry_dir`) serves entry generation,
+  the generated-output claims and the cargo root.
+* **One adapter, one feature per image.** The adapter stays one crate at
+  `generated/nros-derived/<entry>/`. For an entry several images name it holds
+  every image: each image gets a cargo feature, `image-<id>`, turning on
+  exactly the dependencies and features its own single-image adapter would
+  have stated (every dependency is `optional = true`, featureless), and its
+  registration macros and re-exports sit in a module compiled only under that
+  feature and re-exported at the crate root. `nros build` turns on
+  `--features <entry>_nros_derived/image-<id>`. With none on, the crate is a
+  `compile_error!` naming the remedy.
+* **Why features, not one adapter per image.** The draft of this amendment
+  wrote one adapter per image under the image's `build/<coord>/` and had each
+  image's settings file `[patch]` the entry's registry-style dependency onto
+  its own. That moved the entry's `Cargo.lock` on every image switch, so it
+  needed a `cargo update -p <entry>_nros_derived` before each build and a
+  fixture builder that serialised one entry's rows. One crate whose content
+  does not depend on which image was built last needs neither: the lock
+  covers every image's edges and does not move between them (measured on
+  `bins/message-info-observer`: the same `Cargo.lock` before and after
+  building the second image), and two images can build at once. It is the
+  shape a single-package leaf's shared selection already used for its
+  backend macros (`render_backend_macros_gated`).
+* **An optional backend dependency stays the entry's.** An owned entry's
+  `nros-rmw-*` dependency marked `optional = true` belongs to one of the
+  entry's own features (`zenoh-reply-slots = ["dep:nros-rmw-zenoh"]`), so the
+  adapter does not re-declare it: re-declaring it would link that backend
+  into every image, including one built for another backend.
+* **An owned entry's own features.** `[image.<id>] node_features` (RFC-0121
+  D9) names the cargo features of the image's Rust packages. For an image
+  built from an owned entry it names the ENTRY's own `[features]`, turned on
+  with `--features` on the cargo command line, because the entry is the cargo
+  root and no dependency edge can turn on a root's feature. Same key, same
+  `<package>/<feature>` form, same refusal for a feature the entry does not
+  declare. A node package's feature is reached through an entry feature that
+  forwards to it. A `[[workspace_fixture]]` row restates the list as
+  `node_features`, as for a generated entry.
+* **No launch.** A bringup whose every image names an owned entry runs those
+  entries' own `main`s, so it needs no `launch/` and no `[[component]]` row;
+  `nros configure` does not warn about one and the fixture manifest checks the
+  entry package instead.
+
+What it does not change: a generated entry, which already names nothing per
+image in a tracked file, and an entry claimed by one image, whose adapter is
+byte-identical to before. C and C++ applications take the same claim rule;
+they have no adapter (D13: a CMake configure registers through its generated
+`nros_app_register_backends()`). Phase-531 W6 verifies that road when the
+linux C and C++ talkers move, and amends this paragraph if it does not hold.
+
 ## What this does NOT change
 
 * **The vtable ABI.** RFC-0035 is not the gap. A backend still populates
@@ -1094,3 +1173,9 @@ machinery.
   missing value is unknown, so `nros run --router auto` refuses it. The run
   plan's link carries it as `host_peer`, and `host_side` keeps no RMW name
   list.
+- 2026-11-11: D19 (issue 2406, maintainer ruling option 1). One owned entry
+  may serve several images: the claim rule allows several images of one
+  bringup, the cargo road finds the entry by `[image.<id>] entry`, the
+  entry's one adapter holds every image behind an `image-<id>` feature the
+  build turns on, and `node_features` turns on the entry's own features with
+  `--features`.
