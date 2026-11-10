@@ -3087,6 +3087,8 @@ jobs:
     permissions:
       contents: read
       packages: read
+      # Issue 2412 — the prune step deletes superseded `main` cache entries.
+      actions: write
     container:
       image: ghcr.io/newslabntu/nano-ros-ci:humble
       credentials:
@@ -3352,6 +3354,27 @@ jobs:
         with:
           path: /tmp/sccache
           key: sccache-${{ runner.os }}-check-${{ github.sha }}
+
+      # Issue 2412 — keep ONE entry per family on `main`. Keys are immutable,
+      # so these two families are saved under a new key whenever their input
+      # moves (every commit, for sccache), and the old entries stayed: three
+      # ~2 GB sccache entries and a 3.4 GB CLI target dir held 10.67 GB of the
+      # 10 GB budget on 2026-11-10, leaving LRU eviction to pick what every other
+      # lane lost. Readers restore through the prefix, which takes the newest,
+      # so the older entries were never read. `main` only: PR and merge-queue
+      # scopes are left alone. A failure here must not fail the warm.
+      - name: Prune superseded main cache entries (issue 2412)
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SCCACHE_KEY: sccache-${{ runner.os }}-check-${{ github.sha }}
+          CLI_KEY: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+        run: |
+          scripts/ci/prune-main-caches.py --prefix "sccache-${RUNNER_OS}-check-" \
+            --ref refs/heads/main --keep-key "$SCCACHE_KEY"
+          scripts/ci/prune-main-caches.py --prefix "nros-cli-${RUNNER_OS}-" \
+            --ref refs/heads/main --keep-key "$CLI_KEY"
 
       # Say what was actually warmed. This job was green for its whole life
       # while saving nothing, because the only evidence was a `::warning::` in
