@@ -115,6 +115,15 @@ fn collect_overlays(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {
+            // Build output is not source: a walk that descends into a west
+            // build tree or a cargo target dir reads hundreds of thousands of
+            // entries. That is how this host-only string-parse test outlived
+            // nextest's 60 s on a fixture tree tier 2 had just built (issue
+            // 2422), and how it could count a copied overlay twice. One
+            // predicate for every walker: `nros_tests::treewalk`.
+            if nros_tests::treewalk::is_skipped_dir(&e.file_name().to_string_lossy()) {
+                continue;
+            }
             collect_overlays(&p, out);
         } else if let Some(name) = p.file_name().and_then(|n| n.to_str())
             && name.starts_with("prj-")
