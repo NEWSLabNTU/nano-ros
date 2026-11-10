@@ -98,3 +98,39 @@ gates green.
 The sweep bounds what persists BETWEEN jobs (fixtures budget, plus a per-root
 cap on the host target dirs that also caps `packages/cli/target`), not what one
 job writes. A runner needs room for one job's peak.
+
+## `just generate-bindings` configured every image (2026-11-11)
+
+Since phase-530 W1 (`fb7a00ec7e`) `scripts/regenerate-bindings.sh` has
+called `nros configure` per workspace. That is C1 (codegen, the patch
+config, the metadata probe), which is what the script wants, plus every
+image's stages. For a C/C++ cross image those stages take the entity
+census, which builds and runs a native image, and the W3 shared host
+configure. Measured on cold `examples/workspaces/cpp` with `--no-metadata`:
+173 s, 645 crates compiled, 5.4 GB written, and the log reads
+`entity-census take … taking the census with linux_action_client`. That is
+what made the CI step 31-47 min (issue 2141) and filled a hosted runner's
+disk.
+
+**Fix: `nros dev bindings`** (contributor tier, RFC-0120 D2 note). It runs
+C1 alone under the project lock and records no stamp, so `nros build` still
+configures each image. `regenerate-bindings.sh` calls it. The user verb
+stays `nros configure`.
+
+Measured on one host (newslab-118, 32 cores), each run cold: `build/` deleted
+and the ignored output under `examples/` and `packages/testing/` cleaned
+first, then `just generate-bindings`:
+
+| | wall | `build/` | `examples/` | `build/sizes-probe` |
+| --- | --- | --- | --- | --- |
+| main `96be8a12cf` (`nros configure`) | 1,408 s | 40.1 GB | 15.5 GB | 6.4 GB |
+| `nros dev bindings` | 614 s (−56 %) | 35.6 GB | 3.0 GB | 2.2 GB |
+
+Total output fell from 55.6 GB to 38.6 GB.
+
+**What remains is this issue's own subject.** 30 GB of the 35.6 GB is
+`build/corrosion-cargo/metadata-probe`, the C/C++ metadata probe that C1
+itself runs. Under one key (`5eab8b54fb38`, 23 GB) there is one
+`nros-c-image_*` / `nros-cpp-image_*` directory per C/C++ workspace, about
+1 GB each, all with the same features. The fixes above (host debuginfo, a
+shared host half) are now the next lever for `generate-bindings` too.
