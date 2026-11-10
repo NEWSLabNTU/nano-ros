@@ -600,6 +600,9 @@ configure-hook:
 # driven from two scopes with two networks (the real CLI resolves them) and must
 # write two TUs; plus the reach (the entry writes its own, the link drops the
 # shared one, both board files use the one writer). A configure-time probe.
+# It drives the REAL CLI, so it claims it: the pristine lane (no CLI) lists it
+# as not run instead of failing on "no in-tree nros CLI".
+[group('needs:cli')]
 [group('needs:cmake')]
 threadx-app-config-per-image:
     #!/usr/bin/env bash
