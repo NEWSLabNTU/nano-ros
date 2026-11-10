@@ -39,6 +39,7 @@
 # called got `Transport(Unsupported)` (RCLC_RET_NOT_ALLOWED) on Cyclone.
 
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
 
 # nros_runtime_interface_types(<features> TARGETS <umbrella>...)
 #
@@ -113,7 +114,9 @@ function(nros_runtime_interface_types features)
     endforeach()
     string(REGEX REPLACE ":[^;]*" "" _names "${_pkgs}")
     string(REPLACE ";" ", " _names "${_names}")
-    message(STATUS
-        "nano-ros: runtime interface types on rmw '${NROS_RMW}': ${_names} "
-        "(issue 2304)")
+    message(STATUS "nano-ros: runtime interface types on rmw '${NROS_RMW}': ${_names}")
+    nros_message_detail(
+        "nano-ros: the runtime creates the parameter / lifecycle services and their "
+        "event publishers with these packages' types, which this backend resolves "
+        "through generated descriptors (issue 2304)")
 endfunction()
