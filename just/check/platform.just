@@ -493,6 +493,16 @@ nsos-single-source:
 zephyr-rust-main-stack:
     @python3 scripts/check-zephyr-rust-main-stack.py
 
+# issue 2400 -- a stack floor in config/stack-floors.toml is DERIVED: every
+# cut, external and stated frame carries a reason, every indirect allowance
+# names the issue that retires it, and every floor equals
+# ceil8(max(static + allowances, measured) * (100 + margin) / 100). Offline;
+# the walker's self-test runs first so a broken formula cannot pass the table.
+[group("checks")]
+stack-floor-table:
+    @python3 scripts/nros-stack-floor.py --self-test
+    @python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml
+
 # issue 2365 — nano-ros's Zephyr task stacks have their own default and never
 # follow CONFIG_MAIN_STACK_SIZE: 2359's 16 -> 32 KiB main raise used to double
 # both zenoh stacks too, which overflowed the nucleo C talker's RAM.
