@@ -48,7 +48,7 @@ use std::{
     ffi::OsString,
     fs::File,
     io::{self, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 /// What a child process needs set (`Some`) or removed (`None`) to share the
@@ -501,7 +501,7 @@ pub fn parse_version(text: &str) -> Option<(u32, u32)> {
 
 /// The first line of `<program> --version`, or `None` when it does not run.
 #[must_use]
-pub fn tool_version(program: &str) -> Option<(u32, u32)> {
+pub fn tool_version(program: impl AsRef<std::ffi::OsStr>) -> Option<(u32, u32)> {
     let out = std::process::Command::new(program)
         .arg("--version")
         .output()
@@ -531,6 +531,53 @@ pub fn choose_style(make: Option<(u32, u32)>) -> Style {
         Some(v) if v < MAKE_FIFO => Style::Pipe,
         _ => Style::Fifo,
     }
+}
+
+/// The cache entries through which a configured CMake build dir runs make:
+/// the generator's own program, and a `find_program(MAKE make)` result, which
+/// is what Zephyr's native simulator step runs under Ninja (issue 2241).
+pub const CACHED_MAKE_KEYS: &[&str] = &["CMAKE_MAKE_PROGRAM", "MAKE"];
+
+/// The makes a `CMakeCache.txt` text names under [`CACHED_MAKE_KEYS`]
+/// (`<KEY>:<TYPE>=<path>`).
+///
+/// A value whose file name is not a make (Ninja's `CMAKE_MAKE_PROGRAM`) and
+/// an unresolved one (`MAKE-NOTFOUND`, empty) are skipped.
+#[must_use]
+pub fn makes_in_cache(text: &str) -> Vec<PathBuf> {
+    text.lines()
+        .filter_map(|line| {
+            let (lhs, value) = line.split_once('=')?;
+            let key = lhs.split_once(':').map_or(lhs, |(k, _)| k);
+            if !CACHED_MAKE_KEYS.contains(&key) {
+                return None;
+            }
+            let path = PathBuf::from(value.trim());
+            let name = path.file_name()?.to_str()?;
+            (name.starts_with("make") || name.starts_with("gmake")).then_some(path)
+        })
+        .collect()
+}
+
+/// Every make the CMake caches under `dir` name: `dir/CMakeCache.txt` and
+/// each immediate subdirectory's (a sysbuild's domain builds). A directory
+/// that is not configured yet names none, and its configure then records the
+/// make it finds, which is the one on PATH.
+///
+/// A build dir runs the make its cache RECORDED, not the one on PATH now:
+/// a dir configured before the pinned make 4.4 came first on PATH keeps
+/// running the system make 4.3, which a FIFO pool kills (issue 2241).
+#[must_use]
+pub fn cached_makes(dir: &Path) -> Vec<PathBuf> {
+    let mut caches = vec![dir.join("CMakeCache.txt")];
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        caches.extend(entries.flatten().map(|e| e.path().join("CMakeCache.txt")));
+    }
+    caches
+        .iter()
+        .filter_map(|c| std::fs::read_to_string(c).ok())
+        .flat_map(|t| makes_in_cache(&t))
+        .collect()
 }
 
 #[cfg(all(test, unix))]
@@ -750,5 +797,45 @@ mod tests {
         assert_eq!(choose_style(Some((4, 4))), Style::Fifo);
         assert_eq!(choose_style(Some((4, 5))), Style::Fifo);
         assert_eq!(choose_style(None), Style::Fifo);
+    }
+
+    #[test]
+    fn a_cache_names_the_makes_its_build_runs_and_never_ninja() {
+        let text = "\
+# comment
+CMAKE_MAKE_PROGRAM:FILEPATH=/opt/sdk/ninja/1.13.2/bin/ninja
+MAKE:FILEPATH=/usr/bin/make
+GMAKE:FILEPATH=/usr/bin/gmake
+OTHER_MAKE:FILEPATH=/usr/bin/make
+";
+        assert_eq!(makes_in_cache(text), vec![PathBuf::from("/usr/bin/make")]);
+        assert_eq!(
+            makes_in_cache("CMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/gmake\n"),
+            vec![PathBuf::from("/usr/bin/gmake")]
+        );
+        assert!(makes_in_cache("MAKE:FILEPATH=MAKE-NOTFOUND\n").is_empty());
+        assert!(makes_in_cache("MAKE:FILEPATH=\n").is_empty());
+    }
+
+    #[test]
+    fn a_build_dir_reports_its_own_cache_and_its_domains_caches() {
+        let root = std::env::temp_dir().join(format!("nros-js-cache-{}", std::process::id()));
+        let domain = root.join("app");
+        std::fs::create_dir_all(&domain).unwrap();
+        std::fs::write(
+            root.join("CMakeCache.txt"),
+            "CMAKE_MAKE_PROGRAM:FILEPATH=/x/ninja\n",
+        )
+        .unwrap();
+        std::fs::write(
+            domain.join("CMakeCache.txt"),
+            "MAKE:FILEPATH=/usr/bin/make\n",
+        )
+        .unwrap();
+        let found = cached_makes(&root);
+        let unconfigured = cached_makes(&root.join("absent"));
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(found, vec![PathBuf::from("/usr/bin/make")]);
+        assert!(unconfigured.is_empty());
     }
 }

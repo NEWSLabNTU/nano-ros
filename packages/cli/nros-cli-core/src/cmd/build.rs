@@ -3639,8 +3639,17 @@ fn build_jobserver(
         None => {
             // Every driver, not only CMake: a west/Ninja build runs make
             // too (native_sim's runner), and a FIFO pool is fatal to a make
-            // older than 4.4 (issue 2219).
-            let style = js::choose_style(js::tool_version("make"));
+            // older than 4.4 (issue 2219). And not only the make on PATH: a
+            // configured build dir runs the make its cache recorded (issue
+            // 2241), so the oldest of all of them decides.
+            let (make, which) = oldest_reachable_make(plans);
+            let style = js::choose_style(make);
+            if style == Style::Pipe {
+                eprintln!(
+                    "nros build: {which} is older than 4.4 and cannot read a FIFO jobserver; \
+                     the jobserver is a pipe"
+                );
+            }
             match Jobserver::create(workers, style) {
                 Ok(p) => p,
                 Err(e) => {
@@ -3658,8 +3667,8 @@ fn build_jobserver(
     if ninja_runs {
         let why = match (pool.style(), js::tool_version("ninja")) {
             (Style::Pipe, _) => Some(
-                "the jobserver is a pipe (the make on PATH is older than 4.4), which ninja \
-                 does not read"
+                "the jobserver is a pipe (a make this build runs is older than 4.4), which \
+                 ninja does not read"
                     .to_string(),
             ),
             (Style::Fifo, Some(v)) if v < js::NINJA_CLIENT => Some(format!(
@@ -3676,6 +3685,46 @@ fn build_jobserver(
         }
     }
     Some(pool)
+}
+
+/// The oldest make the plans can run, and a phrase naming it: the make on
+/// PATH, and every make a configured build dir's CMake cache recorded
+/// (issue 2241). `None` when no make answers `--version`.
+fn oldest_reachable_make(plans: &[ResolvedBuild]) -> (Option<(u32, u32)>, String) {
+    use crate::builder::jobserver as js;
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for p in plans {
+        dirs.extend(p.record.build_dirs.iter().cloned());
+        dirs.extend(p.cmake_build_dir.iter().map(|d| p.record.project.join(d)));
+        match &p.output {
+            Some(crate::cmd::build_next::BuildOutput::CMake { build_dir, .. })
+            | Some(crate::cmd::build_next::BuildOutput::West {
+                build_dir: Some(build_dir),
+            }) => dirs.push(build_dir.clone()),
+            _ => {}
+        }
+    }
+    let mut makes: Vec<PathBuf> = dirs.iter().flat_map(|d| js::cached_makes(d)).collect();
+    makes.sort();
+    makes.dedup();
+    let mut oldest = js::tool_version("make").map(|v| (v, "the make on PATH".to_string()));
+    for m in makes {
+        if let Some(v) = js::tool_version(&m) {
+            if oldest.as_ref().is_none_or(|(o, _)| v < *o) {
+                oldest = Some((
+                    v,
+                    format!(
+                        "make {} (named by a build dir's CMakeCache.txt)",
+                        m.display()
+                    ),
+                ));
+            }
+        }
+    }
+    match oldest {
+        Some((v, which)) => (Some(v), which),
+        None => (None, "no make".to_string()),
+    }
 }
 
 /// Give every child a plan runs (kernel step, configure, entry-root clean,
