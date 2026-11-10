@@ -30,12 +30,14 @@ Run every step from the root of `sensor_ws`.
 
 ## Measure the image as it is
 
-`nros build` prints the path of the image it built, after `artifact:`. Read
-the image's sizes with the `size` tool of the Arm toolchain `nros setup`
-installed:
+`nros build` prints the path of the image it built, after `artifact:`. The
+step keeps a copy of the build's output in `build/build.log`, so a failed
+build still shows you why, and reads the path from there. Read the image's
+sizes with the `size` tool of the Arm toolchain `nros setup` installed:
 
 ```bash probe=810 track=installed variant=qemu
-elf="$(nros build 2>&1 | sed -n 's/^  artifact: //p')"
+nros build 2>&1 | tee build/build.log
+elf="$(sed -n 's/^  artifact: //p' build/build.log)"
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" "$elf"
 ```
 
@@ -171,7 +173,8 @@ the contract is yours to keep right until a census checks it.
 ## Measure it again
 
 ```bash probe=830 track=installed variant=qemu
-elf="$(nros build 2>&1 | sed -n 's/^  artifact: //p')"
+nros build 2>&1 | tee build/build.log
+elf="$(sed -n 's/^  artifact: //p' build/build.log)"
 "$(nros locate tool arm-none-eabi-gcc)/bin/arm-none-eabi-size" "$elf"
 ```
 

@@ -1074,7 +1074,20 @@ pub(crate) fn take_model_in_build(
     fail_if_changed: bool,
 ) -> Result<()> {
     let has_contract = discover_contract(Some(model)).is_some();
-    take_model_in_build_with(model, ws, timeout_secs, fail_if_changed, has_contract)
+    // The same `[census]` policy the configure's `check` applies, from the
+    // same file: the bringup's `system.toml`.
+    let system_toml = crate::model_gate::infer_bringup_dir(model).map(|b| b.join("system.toml"));
+    let policy = read_system_toml(system_toml.as_deref())?
+        .and_then(|s| s.census)
+        .unwrap_or_default();
+    take_model_in_build_with(
+        model,
+        ws,
+        timeout_secs,
+        fail_if_changed,
+        has_contract,
+        &policy,
+    )
 }
 
 /// What the census digest says for a model with no contract: a constant, so
@@ -1088,6 +1101,7 @@ fn take_model_in_build_with(
     timeout_secs: u64,
     fail_if_changed: bool,
     has_contract: bool,
+    policy: &crate::orchestration::cargo_metadata_schema::SystemCensus,
 ) -> Result<()> {
     let census = census_path_for_model(model);
     let digest = census_digest_path(&census);
@@ -1125,11 +1139,34 @@ fn take_model_in_build_with(
                 println!("entity-census take --model {}: fresh", model.display());
                 return refuse_if_moved_when(fail_if_changed, &before, &digest);
             }
-            "incomplete".to_string()
+            ("stale", "incomplete".to_string())
         }
-        Freshness::Stale(why) | Freshness::Missing(why) => why,
+        Freshness::Stale(why) => ("stale", why),
+        Freshness::Missing(why) => ("missing", why),
     };
+    let (what, why) = why;
     let Some(rec) = read_host_build_record(&census) else {
+        // Issue 2431 -- the configure's `check` lands a missing or stale
+        // census as a WARNING when `[census] on_missing` / `on_stale` says
+        // `warn`; the build step re-asked the question and refused it. Here
+        // it answers the same way: the same warning, and the build goes on
+        // with the pools the contract alone derived. The digest is a constant
+        // per verdict (write if changed), because `nros_census_step` names it
+        // as a configure input, and it says nothing about a census, so it is
+        // never `--fail-if-changed`.
+        let on = if what == "missing" {
+            policy.on_missing
+        } else {
+            policy.on_stale
+        };
+        if !on.refuses() {
+            let constant = format!("census {what}, [census] on_{what} = \"warn\"\n");
+            if before.as_deref() != Some(constant.as_str()) {
+                crate::atomic_file::atomic_write(&digest, &constant)
+                    .map_err(|e| eyre::eyre!("cannot write `{}`: {e}", digest.display()))?;
+            }
+            return freshness_verdict(on, what, &why, None, Some(model));
+        }
         bail!(
             "the census `{}` is stale ({}), and no host build is recorded beside it to re-take \
              it during a build.\n{}",
@@ -3614,7 +3651,7 @@ mod tests {
     fn a_fresh_model_census_in_a_build_runs_nothing_and_writes_its_digest() {
         let ws = tempfile::tempdir().expect("tempdir");
         let model = model_census_fixture(ws.path());
-        take_model_in_build_with(&model, ws.path(), 5, false, true).unwrap();
+        take_model_in_build_with(&model, ws.path(), 5, false, true, &Default::default()).unwrap();
         assert!(census_digest_path(&census_path_for_model(&model)).is_file());
     }
 
@@ -3631,9 +3668,37 @@ mod tests {
         .unwrap();
         let err = format!(
             "{:#}",
-            take_model_in_build_with(&model, ws.path(), 5, false, true).unwrap_err()
+            take_model_in_build_with(&model, ws.path(), 5, false, true, &Default::default())
+                .unwrap_err()
         );
         assert!(err.contains("nros configure --census"), "{err}");
+    }
+
+    /// Issue 2431 -- `[census] on_stale = "warn"` (or `on_missing`) lands in
+    /// the build step as it does in the configure's check: a warning, a
+    /// constant digest, and the build goes on. `refuse`, the default, still
+    /// refuses (the test above).
+    #[test]
+    fn a_census_the_system_waives_warns_in_the_build_step_too() {
+        use crate::orchestration::cargo_metadata_schema::SystemCensus;
+        let ws = tempfile::tempdir().expect("tempdir");
+        let model = model_census_fixture(ws.path());
+        std::fs::write(
+            ws.path().join("src/comp/node.cpp"),
+            "// PUB /a\n// PUB /b\n",
+        )
+        .unwrap();
+        let warn: SystemCensus =
+            toml::from_str("on_missing = \"warn\"\non_stale = \"warn\"\n").unwrap();
+        assert!(!warn.on_stale.refuses());
+        take_model_in_build_with(&model, ws.path(), 5, false, true, &warn).unwrap();
+        let digest = census_digest_path(&census_path_for_model(&model));
+        let first = std::fs::read_to_string(&digest).unwrap();
+        assert!(first.contains("on_stale"), "{first}");
+        // Write-if-changed, and never `--fail-if-changed`: a second build
+        // with the same verdict leaves the digest alone and passes.
+        take_model_in_build_with(&model, ws.path(), 5, true, true, &warn).unwrap();
+        assert_eq!(std::fs::read_to_string(&digest).unwrap(), first);
     }
 
     /// Issue 2396 -- a model with no contract has nothing to take in a build,
@@ -3667,6 +3732,7 @@ mod tests {
         let ws2 = tempfile::tempdir().expect("tempdir");
         let model2 = model_census_fixture(ws2.path());
         std::fs::write(ws2.path().join("src/comp/node.cpp"), "// PUB /b\n").unwrap();
-        take_model_in_build_with(&model2, ws2.path(), 5, false, false).unwrap();
+        take_model_in_build_with(&model2, ws2.path(), 5, false, false, &Default::default())
+            .unwrap();
     }
 }
