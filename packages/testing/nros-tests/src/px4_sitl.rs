@@ -83,8 +83,8 @@ struct LogBuf {
 
 /// Exclusive hold on PX4 instance [`INSTANCE`] for this host (issue 2243).
 ///
-/// PX4's own lock cannot serve: `main.cpp` checks it (`F_GETLK`) and takes it
-/// (`F_SETLK`) in two steps, so two daemons started together can both pass the
+/// PX4's own lock cannot serve: `main.cpp` checks it and takes it in two
+/// separate `fcntl` calls, with setup between them, so two daemons started together can both pass the
 /// check, and the loser prints nothing a test can wait on. The harness takes
 /// its own lock BEFORE spawning, held until the daemon is dead, so a second
 /// [`Px4Sitl`] (another test, process or nextest slot) waits instead of racing.
@@ -104,7 +104,7 @@ impl InstanceLock {
             .open(&path)
             .unwrap_or_else(|e| panic!("open {}: {e}", path.display()));
         let deadline = Instant::now() + INSTANCE_WAIT;
-        // `flock`, not `File::try_lock`: the crate's MSRV predates it. The
+        // `flock`, not std's file lock: the crate's MSRV predates that. The
         // lock goes with the descriptor, so a test that dies releases it.
         loop {
             // SAFETY: `file` owns the descriptor for the whole call.
