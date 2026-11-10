@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [rmw-xrce, ci, tests]
-related: [2142, 1734, 2108, 2109, 2144]
+related: [2142, 1734, 2108, 2109, 2144, 2420]
 found: 2026-11-10
 ---
 
@@ -54,3 +54,38 @@ First, record the panic: rerun the lane with `--failure-output final`, or
 read the job's uploaded nextest junit if it holds the output. Then fix the
 cause, or name it here. Separately, make the tier-1 cells lane print failure
 output, so the next red carries its own diagnosis.
+
+## Findings (2026-11-10)
+
+**The silence, fixed for every lane.** Every lane that goes through
+`_nextest-tolerant` passes `--failure-output never`, so that the hundreds of
+`lane_skip!` panics a lane deselects stay out of its log. That also discarded
+each real failure's panic text. The junit keeps it
+(`store-failure-output = true`), but one job runs several lanes and each
+resets the junit, so the uploaded `tier1-junit` holds only the last lane's.
+For run 42744194409 that was not the xrce-wake lane, so its four panics are
+gone for good.
+
+`scripts/test/name-real-failures.py`, which both failure paths (`test-all` and
+`_nextest-tolerant`) already call to name the real failures, now prints each
+real failure's recorded output after the names: the `<failure>` message, then
+the tail of stderr and stdout. It prints no output for a skip, so a lane's log
+does not grow by its deselections. `--names-only` keeps the old behaviour. The
+`skip-marker-matching` gate self-tests both directions on a junit holding one
+real failure and one skip.
+
+On run 42767563994's junit the change prints the `rmw_coordinate_truth` panic,
+which its log did not carry. That failure is a separate intermittent defect,
+filed as issue 2420.
+
+**The four xrce-wake reds are not reproduced.**
+
+- They passed in the next tier-2 run on main (42767563994, 0.2 to 2.8 s each)
+  and locally (4/4, under 3 s).
+- All four ended at the same 14.496 s, to the millisecond, in four separate
+  test binaries. That points to one shared external event (the Agent, the
+  host, a port), not four test defects.
+- With the fix above, a recurrence prints its own cause.
+
+**What would close it:** the next red of this lane is read for its printed
+cause, or several more tier-2 runs show the lane green.
