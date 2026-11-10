@@ -22,3 +22,11 @@ This is phase-523 W1's work list; the probe confirms the gap from the reader's s
 ## Next
 
 phase-537 W5's Tutorial, with the labs it absorbed from phase-523 W1.
+
+Progress (2026-11-11):
+- QoS: `book/src/tutorial/qos.md`, "Lab: QoS is checked twice", on three
+  weekly probe tracks (`lab-qos`, `lab-qos-c`, `lab-qos-cpp`).
+- Lifecycle: blocked on issue
+  [2428](2428-workspace-lifecycle-is-one-machine-per-image.md). A workspace
+  image has one lifecycle state machine, named `/nros_app`, and no component
+  can see its state, so a node publishes while `unconfigured`.
