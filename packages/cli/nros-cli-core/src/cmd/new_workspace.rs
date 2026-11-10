@@ -221,6 +221,7 @@ fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
         return None;
     }
     let ros = node.ros_name();
+    let (rows, _) = contract_node_rows(node)?;
     Some(format!(
         "# What this image's node DECLARES, beside system.toml. The build sizes its\n\
          # buffers and its callback table from this, so it must list everything the\n\
@@ -228,16 +229,7 @@ fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
          # parameter in the code, state it here too.\n\
          # `nros build --explain-sizing` lists anything still left to a default.\n\
          \nversion: 1\n\nnodes:\n\
-         \x20 {ros}:\n\
-         \x20   params: {{}}\n\
-         \x20   paths:\n\
-         \x20     on_tick:\n\
-         \x20       trigger: {{ timer: {{ rate_hz: 1 }} }}\n\
-         \x20       output: [chatter]\n\
-         \x20   pub:\n\
-         \x20     chatter:\n\
-         \x20       qos:\n\
-         \x20         durability: volatile\n\
+         {rows}\
          \ntopics:\n\
          \x20 /chatter:\n\
          \x20   type: std_msgs/msg/String\n\
@@ -245,6 +237,128 @@ fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
          \x20   # Read outside this workspace, by `ros2 topic echo` or a ROS 2 node.\n\
          \x20   external: sub\n"
     ))
+}
+
+/// A node's whole entity declaration under a contract's `nodes:`, and which
+/// side of `/chatter` it is on -- or `None` for a role whose surface the
+/// scaffold does not know in full (a partial row under-sizes the image).
+fn contract_node_rows(node: &NodePackage<'_>) -> Option<(String, &'static str)> {
+    let ros = node.ros_name();
+    match node.template {
+        Role::Talker => Some((
+            format!(
+                "\x20 {ros}:\n\
+                 \x20   params: {{}}\n\
+                 \x20   paths:\n\
+                 \x20     on_tick:\n\
+                 \x20       trigger: {{ timer: {{ rate_hz: 1 }} }}\n\
+                 \x20       output: [chatter]\n\
+                 \x20   pub:\n\
+                 \x20     chatter:\n\
+                 \x20       qos:\n\
+                 \x20         durability: volatile\n"
+            ),
+            "pub",
+        )),
+        Role::Listener => Some((
+            format!(
+                "\x20 {ros}:\n\
+                 \x20   params: {{}}\n\
+                 \x20   sub:\n\
+                 \x20     chatter:\n\
+                 \x20       qos:\n\
+                 \x20         durability: volatile\n"
+            ),
+            "sub",
+        )),
+        _ => None,
+    }
+}
+
+/// Issue 2376 -- `--to` a bringup that has a contract: a contract that names
+/// some of an image's nodes and not others is refused on the CMake road (a
+/// parameter store is sized from every node's `params:` or from none). So the
+/// new node's rows join the contract when its whole surface is known, and a
+/// role the scaffold cannot describe is reported, never half-written.
+fn add_to_contract(bringup: &Path, node: &NodePackage<'_>) -> Result<()> {
+    let path = bringup.join(crate::cmd::ws::LEAF_CONTRACT);
+    if !path.is_file() {
+        return Ok(());
+    }
+    let text =
+        std::fs::read_to_string(&path).wrap_err_with(|| format!("reading {}", path.display()))?;
+    let ros = node.ros_name();
+    let doc: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(&text).wrap_err_with(|| format!("parsing {}", path.display()))?;
+    if !doc["nodes"][ros.as_str()].is_null() {
+        return Ok(());
+    }
+    let edited = contract_node_rows(node).and_then(|(rows, side)| {
+        let edited = insert_contract_rows(&text, &rows, side, &ros)?;
+        // Only a result that still parses, and now names the node, is written.
+        let check: serde_yaml_ng::Value = serde_yaml_ng::from_str(&edited).ok()?;
+        (!check["nodes"][ros.as_str()].is_null()).then_some(edited)
+    });
+    match edited {
+        Some(edited) => {
+            std::fs::write(&path, edited).wrap_err_with(|| format!("writing {}", path.display()))
+        }
+        None => {
+            eprintln!(
+                "nros new: {} does not name `{ros}`. State what it creates there \
+                 (its `params:`, timers, publishers and subscriptions), or the build \
+                 sizes the image without it.",
+                path.display()
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Text edit of a scaffold-shaped contract: `rows` go at the end of `nodes:`
+/// (just before `topics:`), and `<ros>/chatter` joins `/chatter`'s `side`
+/// list. `None` when the file does not have that shape.
+fn insert_contract_rows(text: &str, rows: &str, side: &str, ros: &str) -> Option<String> {
+    let topics = text.find("\ntopics:\n")?;
+    let mut out = String::with_capacity(text.len() + rows.len() + 64);
+    out.push_str(&text[..topics]);
+    out.push_str(rows);
+    let tail = &text[topics..];
+    let chatter = tail.find("\n  /chatter:\n")? + "\n  /chatter:\n".len();
+    let (head, body) = tail.split_at(chatter);
+    out.push_str(head);
+    let entry = format!("{ros}/chatter");
+    let key = format!("    {side}: [");
+    // The topic's block ends at the first line indented less than 4 spaces.
+    let end = body
+        .match_indices('\n')
+        .map(|(i, _)| i + 1)
+        .find(|&i| i < body.len() && !body[i..].starts_with("    "))
+        .unwrap_or(body.len());
+    let (block, rest) = body.split_at(end);
+    if let Some(at) = block.find(&key) {
+        let close = at + block[at..].find(']')?;
+        out.push_str(&block[..close]);
+        out.push_str(", ");
+        out.push_str(&entry);
+        out.push_str(&block[close..]);
+    } else {
+        // After the topic's `pub:` line, else after its `type:` line.
+        let type_end = block
+            .find("    pub: [")
+            .or_else(|| block.find("    type:"))
+            .map(|t| t + block[t..].find('\n').map_or(block.len() - t, |n| n + 1))?;
+        out.push_str(&block[..type_end]);
+        if !block[..type_end].ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&key);
+        out.push_str(&entry);
+        out.push_str("]\n");
+        out.push_str(&block[type_end..]);
+    }
+    out.push_str(rest);
+    Some(out)
 }
 
 /// The bringup's `package.xml`: it builds nothing, and runs its node.
@@ -296,6 +410,7 @@ pub fn scaffold_into_workspace(
     if let Some(dir) = &bringup {
         add_component(dir, node)?;
         add_exec_depend(dir, node.name)?;
+        add_to_contract(dir, node)?;
     }
     Ok(bringup)
 }
@@ -648,6 +763,30 @@ mod tests {
             "{pxml}"
         );
         assert_eq!(pxml.matches("<exec_depend>").count(), 2, "{pxml}");
+
+        // Issue 2376 -- the contract names every node, or the CMake road
+        // refuses to size the parameter store: the listener's rows join it.
+        let contract_path = ws.join("src/sensor_node_bringup/system.contract.yaml");
+        let text = std::fs::read_to_string(&contract_path).unwrap();
+        let contract: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).unwrap();
+        let m = &contract["nodes"]["monitor_node"];
+        assert!(m["params"].is_mapping(), "{text}");
+        assert_eq!(
+            m["sub"]["chatter"]["qos"]["durability"].as_str(),
+            Some("volatile"),
+            "{text}"
+        );
+        assert!(contract["nodes"]["sensor_node"]["params"].is_mapping());
+        let t = &contract["topics"]["/chatter"];
+        assert_eq!(t["pub"][0].as_str(), Some("sensor_node/chatter"), "{text}");
+        assert_eq!(t["sub"][0].as_str(), Some("monitor_node/chatter"), "{text}");
+        assert_eq!(t["external"].as_str(), Some("sub"), "{text}");
+        assert!(
+            text.find("    pub: [").unwrap() < text.find("    sub: [").unwrap(),
+            "{text}"
+        );
+        assert!(text.contains("# What this image's node DECLARES"), "{text}");
+        assert!(!text.contains("\n\n\n"), "{text}");
 
         // A second row for the same package, and an unknown bringup, refuse.
         let mut again = talker("monitor_node");
