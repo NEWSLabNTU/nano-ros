@@ -59,10 +59,9 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 - **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`) and carry Rust-toolchain facts only. Which board the leaf deploys to is stated once, in `system.toml` beside the manifest (`[image.<id>] board`, RFC-0098 D3); `nros configure` turns that choice into the generated build settings under `build/<image>/`, and `nros build` reads them. Copy the directory anywhere, put your checkout's `nros` on PATH, and build:
 
   ```bash
-  cp -r examples/linux/rust/talker ~/my-talker && cd ~/my-talker
+  cp -r examples/linux/rust/talker ~/my-talker && cd ~/my-talker   # a one-node workspace
   source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
-  nros configure     # generated/ message crates + build/<image>/nros-cargo.toml
-  nros build    # or: nros build linux
+  nros build linux   # its bringup's system.toml names the image
   ```
 
   Driving cargo yourself is supported — hand it the file `nros configure` wrote. Run it from the directory *above* the package: the leaf's own `.cargo/` still exists and cargo would read it a second time (phase-445 W6 deletes that directory, after which the working directory stops mattering).
@@ -493,8 +492,7 @@ Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run 
 
 ```bash
 # terminal 2
-cd examples/linux/rust/talker && nros configure && nros build
-./build/linux/target/debug/talker
+cd examples/linux/rust/talker && nros run linux   # a one-node workspace
 
 # terminal 3
 cd examples/linux/rust/listener && nros configure && nros build
@@ -528,8 +526,7 @@ nano-ros pubs/subs are rmw_zenoh-compatible. Quickest round-trip:
 ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # terminal 2
-cd examples/linux/rust/talker && nros configure && nros build
-./build/linux/target/debug/talker
+cd examples/linux/rust/talker && nros run linux   # a one-node workspace
 
 # terminal 3
 source /opt/ros/humble/setup.bash

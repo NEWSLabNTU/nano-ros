@@ -89,7 +89,8 @@ build-fixture distro="jazzy":
 # build dirs, for the phase-310/311 rich E2E matrix. `rmw` ∈ {cyclone, zenoh,
 # xrce}.
 #
-# Issue 1305 — each example DECLARES one image per RMW × edition in its
+# The talker is built from a per-edition copy of its workspace (issue 2409,
+# below). Issue 1305 — each other example DECLARES one image per RMW × edition in its
 # `system.toml` (RFC-0031 / RFC-0056: the selection is declared, the cargo
 # feature is only its lowering), so this builds an IMAGE: `linux`, then `_<rmw>`
 # unless zenoh, then `_<edition>` unless humble (`linux_xrce_jazzy`). `nros
@@ -133,7 +134,30 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     mkdir -p "$ED_TARGET_DIR"
     # shellcheck source=scripts/build/cargo.sh
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
-    for ex in talker listener service-server service-client action-server action-client; do
+    # The talker is a one-node workspace (phase-531 W6), and a workspace
+    # generates its messages for ONE edition, refusing an image of another
+    # (issue 2409). So its edition build is a COPY of the witness workspace
+    # whose `[system] ros_edition` is this edition, under the edition's build
+    # root, built through `nros build`. The image ids are the witness's
+    # (`linux`, then `_<rmw>` unless zenoh), and the binary is copied to
+    # `debug/talker`, the name `ros_env::example_bin_rmw` resolves.
+    WS_IMG="linux"
+    if [ "$RMW_ID" != zenoh ]; then WS_IMG="${WS_IMG}_${RMW_ID}"; fi
+    TALKER_WS="$ED_TARGET_DIR/talker-ws"
+    rm -rf "$TALKER_WS/src"
+    mkdir -p "$TALKER_WS"
+    cp -r "{{justfile_directory()}}/examples/linux/rust/talker/src" "$TALKER_WS/src"
+    cp "{{justfile_directory()}}/examples/linux/rust/talker/.colcon_workspace" "$TALKER_WS/"
+    sed -i "s/^\[system\]\$/[system]\nros_edition = \"$ED\"/" \
+        "$TALKER_WS/src/native_talker_bringup/system.toml"
+    grep -q "^ros_edition = \"$ED\"\$" "$TALKER_WS/src/native_talker_bringup/system.toml" \
+        || { echo "error: could not set ros_edition = $ED in the talker copy" >&2; exit 1; }
+    echo "== talker (workspace copy, ros_edition $ED, image $WS_IMG) → $ED_TARGET_DIR =="
+    "$NROS" build "native_talker_bringup:$WS_IMG" --workspace "$TALKER_WS" -- \
+        --target-dir "$ED_TARGET_DIR"
+    # profile-literal-ok: unprofiled: `nros build` of a host image with no `profile`, so debug/ IS the derived dir
+    cp -f "$ED_TARGET_DIR/debug/${WS_IMG}_entry" "$ED_TARGET_DIR/debug/talker"
+    for ex in listener service-server service-client action-server action-client; do
         DIR="{{justfile_directory()}}/examples/linux/rust/$ex"
         echo "== $ex (image $IMG) sync =="
         "$NROS" configure --no-provider-index --image "$IMG" "$DIR" >/dev/null

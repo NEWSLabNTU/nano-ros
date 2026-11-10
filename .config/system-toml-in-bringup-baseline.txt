@@ -36,7 +36,6 @@ examples/linux/rust/service-client/system.toml
 examples/linux/rust/service-server-rtic/system.toml
 examples/linux/rust/service-server/system.toml
 examples/linux/rust/talker-rtic/system.toml
-examples/linux/rust/talker/system.toml
 examples/mps2-an385-baremetal/c/action-client/system.toml
 examples/mps2-an385-baremetal/c/action-server/system.toml
 examples/mps2-an385-baremetal/c/listener/system.toml

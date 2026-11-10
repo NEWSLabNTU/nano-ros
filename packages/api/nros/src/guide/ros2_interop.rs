@@ -11,7 +11,7 @@
 //!
 //! # 2. nros talker
 //! cd examples/linux/rust/talker
-//! RUST_LOG=info cargo run --features zenoh
+//! RUST_LOG=info nros run linux
 //!
 //! # 3. ROS 2 listener
 //! source /opt/ros/humble/setup.bash

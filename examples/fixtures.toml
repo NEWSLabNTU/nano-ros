@@ -2246,11 +2246,15 @@ cmake_defs = { NROS_PLATFORM = "freertos", NROS_BOARD = "mps2-an385-freertos", N
 # interop tests (`test_esp32_to_native` / `test_native_to_esp32`), which the
 # esp32 lane has to stage by id — building every `linux rust` row to get two of
 # them would be 74 rows for 2. Issue 1112.
-[[fixture]]
+[[workspace_fixture]]
 id = "native-rust-talker"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/talker"
+rmw = "zenoh"
+bringup = "src/native_talker_bringup"
+target_dir = "target-fixtures"
+image = "linux"
 # phase-521 W7 (a) — also the host peer of the Zephyr Cortex-M arrival-latency
 # test (`zephyr_cortex_m_qemu`, the zenoh IdleWake cell).
 serves = ["zephyr-cortex-m,c,zenoh"]
@@ -2710,12 +2714,18 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-client-multigoal"
 
-# TLS variant (isolated target dir).
-[[fixture]]
+# TLS variant: the talker's `[image.linux_tls]`, which turns on the node's
+# `link-tls` feature (RFC-0121 D9).
+[[workspace_fixture]]
+id = "linux-rust-zenoh-talker-tls"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/talker"
-features = ["link-tls"]
+rmw = "zenoh"
+bringup = "src/native_talker_bringup"
+target_dir = "target-fixtures"
+image = "linux_tls"
+node_features = ["link-tls"]
 
 [[fixture]]
 platform = "linux"
@@ -2734,10 +2744,15 @@ features = ["link-tls"]
 # root and the default native tree keeps its footprint. Do NOT author a
 # `target_dir` here: phase-340 W2 strips an authored dir, because a dir names a
 # group rather than opting the row out.
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-talker-peer"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/talker"
+rmw = "zenoh"
+bringup = "src/native_talker_bringup"
+target_dir = "target-fixtures-peer"
+image = "linux"
 env = { ZPICO_MULTICAST_TRANSPORT = "1" }
 
 [[fixture]]
@@ -2838,11 +2853,14 @@ features = ["unstable-zenoh-api"]
 # only xrce/cyclonedds need a row here. The image is part of the row's group
 # key, so each image lands in its own artifact dir.
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-xrce-talker"
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "examples/linux/rust/talker"
+bringup = "src/native_talker_bringup"
+target_dir = "target-fixtures"
 image = "linux_xrce"
 # phase-521 W7 (a) — the host peer of the Zephyr Cortex-M arrival-latency test
 # over XRCE (the xrce IdleWake cell).
@@ -2912,11 +2930,14 @@ dir = "packages/testing/nros-tests/bins/service-info-client-cpp"
 # (0148/0164/0196) and it held until a pull refreshed the sources and the
 # artifacts read STALE. A consumed fixture needs a row — that is what puts it in
 # the build fan-out AND in the probe.
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-cyclonedds-talker"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/linux/rust/talker"
+bringup = "src/native_talker_bringup"
+target_dir = "target-fixtures"
 image = "linux_cyclonedds"
 
 # Bench / stress fixtures (default features).

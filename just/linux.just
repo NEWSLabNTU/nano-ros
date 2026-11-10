@@ -79,6 +79,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # workspace-root manifests). Selection filters stay as greps.
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
         | grep -vE '/zephyr/|/workspaces/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/mps2-an385-baremetal/|/px4/' \
+        | python3 scripts/lib/drop_workspace_members.py \
         | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
@@ -385,7 +386,7 @@ build-fixture-extras:
     # cells (no pure-cargo register symbol) and the C/C++ manifest passes.
     ensure_native_rust_generated() {
         case "$1" in
-            linux/rust/talker|linux/rust/listener)
+            linux/rust/listener)
                 # Phase 210.E.3.d.native — same swap as build-fixture-role-
                 # examples: `nros configure` for the patch-table + codegen flow.
                 # Phase 214.J.2 — also wipe `generated/` if trait surface
@@ -402,7 +403,9 @@ build-fixture-extras:
     # `nros_rmw_cyclonedds_register` through `nros-rmw-cyclonedds-sys`. Each
     # example carries an feature turning on `nros/needs-type-descriptors`
     # that routes the typed-creator hook (K.7.6.b) into the C++ backend.
-    for collapsed_case in talker listener; do
+    # phase-531 W6 — the talker is a one-node workspace; the workspace fixture
+    # builder configures it with its `[[workspace_fixture]]` rows.
+    for collapsed_case in listener; do
         echo "  → linux/rust/${collapsed_case} (cargo --features rmw-cyclonedds, target-cyclonedds/)"
         ensure_native_rust_generated "linux/rust/${collapsed_case}"
     done
@@ -518,6 +521,7 @@ check JOBS="75%":
     # untracked build/target trees can never slow this down or leak in).
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
         | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|esp32-c3-baremetal/rust/dds/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
+        | python3 scripts/lib/drop_workspace_members.py \
         | sort > "$toml_list"
 
     # Message bindings are NOT a precondition of this lane (issue 1892). A
@@ -1192,9 +1196,9 @@ bench-fairness:
 # Run examples
 # =============================================================================
 
-# Run native Rust talker
+# Run native Rust talker (a one-node workspace since phase-531 W6)
 talker:
-    cd examples/linux/rust/talker && cargo run
+    cd examples/linux/rust/talker && nros run linux
 
 # Run native Rust listener
 listener:

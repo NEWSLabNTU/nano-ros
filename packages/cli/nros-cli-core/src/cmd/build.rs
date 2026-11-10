@@ -940,6 +940,17 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
         // the available names in the message.
         crate::orchestration::image::validate_image_launch(&image_id, &image, &bringup_dir)
             .map_err(|e| eyre::eyre!("{e}"))?;
+        // Issue 2409 — a workspace's `generated/` holds ONE edition's message
+        // crates, and an image of another edition would build with that
+        // edition's runtime features over them (issue 2260's silent
+        // no-delivery). Refused before anything is generated.
+        if let Some(msg) = workspace_edition_mismatch(
+            &qual,
+            image.ros_edition.as_deref(),
+            crate::cmd::ws::generated_edition(&root.join("generated")),
+        ) {
+            eyre::bail!("{msg}");
+        }
         let descriptor =
             crate::orchestration::image::resolve_image_board(&catalog, &image_id, &image)
                 .map_err(|e| eyre::eyre!("{e}"))?;
@@ -7541,6 +7552,36 @@ fn generated_output_collision_message(collisions: &[(PathBuf, Vec<String>)]) -> 
 /// has a home only in a Rust entry. A C/C++ generated entry is a
 /// `nano_ros_entry(...)` TU with no such hook yet; refusing names the image
 /// rather than dropping the step silently.
+/// Issue 2409 — the refusal for a workspace image whose ROS edition is not
+/// the one the workspace generated its messages for, or `None` when they agree
+/// (or either is unknown: no sync yet, or an edition the build refuses on its
+/// own terms).
+///
+/// A workspace generates its message crates once, for one edition
+/// (`ws::resolve_sync_edition`), and every image path-depends on them. A leaf
+/// regenerated per image; a workspace cannot, so an image of another edition
+/// belongs in a workspace of its own.
+fn workspace_edition_mismatch(
+    qual: &str,
+    image_edition: Option<&str>,
+    generated: Option<rosidl_codegen::RosEdition>,
+) -> Option<String> {
+    let want = image_edition.and_then(rosidl_codegen::RosEdition::parse)?;
+    let have = generated?;
+    (want != have).then(|| {
+        // Issue 2409 (this refusal); issue 2260 (the silent no-delivery it prevents).
+        format!(
+            "`{qual}` builds for ROS {want}, and this workspace's messages were generated for \
+             ROS {have}.\n  A workspace generates its messages for one edition, so an image of \
+             another edition would advertise {want}'s keyexpr over {have}'s type hashes, which \
+             a peer drops without an error. Move the image into a workspace whose \
+             `[system] ros_edition` is {want}.",
+            want = want.as_str(),
+            have = have.as_str(),
+        )
+    })
+}
+
 /// RFC-0121 D9 — a C/C++ entry has no cargo dependency line to carry a
 /// node feature on, so the key is refused by name rather than dropped.
 fn features_not_on_c_road(image_id: &str) -> eyre::Report {
@@ -11597,5 +11638,49 @@ mod coordinate_union_tests {
             assert_eq!(dir, Some(PathBuf::from(shared.id())));
         }
         assert_eq!(composed, 2);
+    }
+}
+
+#[cfg(test)]
+mod workspace_edition_tests {
+    use super::workspace_edition_mismatch;
+    use rosidl_codegen::RosEdition;
+
+    #[test]
+    fn an_image_of_another_edition_is_refused_naming_both() {
+        let msg = workspace_edition_mismatch(
+            "talker_bringup:linux_jazzy",
+            Some("jazzy"),
+            Some(RosEdition::Humble),
+        )
+        .expect("refused");
+        assert!(msg.contains("talker_bringup:linux_jazzy"), "{msg}");
+        assert!(
+            msg.contains("ROS jazzy") && msg.contains("ROS humble"),
+            "{msg}"
+        );
+        assert!(msg.contains("`[system] ros_edition` is jazzy"), "{msg}");
+    }
+
+    #[test]
+    fn the_workspace_edition_and_the_unknown_cases_pass() {
+        assert_eq!(
+            workspace_edition_mismatch("b:linux", Some("humble"), Some(RosEdition::Humble)),
+            None
+        );
+        // No sync yet: nothing to compare against.
+        assert_eq!(
+            workspace_edition_mismatch("b:linux", Some("jazzy"), None),
+            None
+        );
+        // An edition the build refuses on its own terms.
+        assert_eq!(
+            workspace_edition_mismatch("b:linux", Some("rolling"), Some(RosEdition::Humble)),
+            None
+        );
+        assert_eq!(
+            workspace_edition_mismatch("b:linux", None, Some(RosEdition::Jazzy)),
+            None
+        );
     }
 }

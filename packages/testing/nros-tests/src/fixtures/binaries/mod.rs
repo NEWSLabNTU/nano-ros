@@ -6784,6 +6784,18 @@ pub fn lifecycle_node_binary() -> PathBuf {
         .to_path_buf()
 }
 
+/// A configured row of `examples/linux/rust/talker`, a one-node workspace
+/// since phase-531 W6 (its rows are all `[[workspace_fixture]]` rows).
+fn migrated_talker(
+    variant: crate::fixtures::migrated_leaf::LeafVariant<'_>,
+) -> TestResult<PathBuf> {
+    migrated_leaf_binary("examples/linux/rust/talker", Rmw::Zenoh, variant).unwrap_or_else(|| {
+        Err(TestError::BuildFailed(
+            "examples/linux/rust/talker has no [[workspace_fixture]] row".to_string(),
+        ))
+    })
+}
+
 /// The peer-mode talker — issue 0711.
 ///
 /// `ZPICO_MULTICAST_TRANSPORT=1` compiles the multicast transport + scouting
@@ -6800,13 +6812,12 @@ pub fn lifecycle_node_binary() -> PathBuf {
 pub fn build_native_talker_peer() -> TestResult<&'static Path> {
     NATIVE_TALKER_PEER_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_row(
-                "examples/linux/rust/talker",
-                &crate::fixtures::groups::FixtureVariant::plain()
-                    .with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
-            )?;
-            let rel = PathBuf::from(format!("{}/talker", cargo_target_profile_dir()));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            // phase-531 W6 — the talker is a one-node workspace; its peer row
+            // is the `linux` image built with this env.
+            migrated_talker(crate::fixtures::migrated_leaf::LeafVariant::Env(&[(
+                "ZPICO_MULTICAST_TRANSPORT",
+                "1",
+            )]))
         })
         .map(|p| p.as_path())
 }
@@ -6826,21 +6837,17 @@ pub fn build_native_listener_peer() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-talker with link-tls feature (cached)
-///
-/// Uses a separate `target-tls` directory to avoid overwriting the
-/// standard talker binary that other parallel test processes use.
+/// The talker's `linux_tls` image: the node's `link-tls` feature on (cached).
+/// The row has its own artifact root, so the standard talker binary that other
+/// parallel test processes use is untouched.
 pub fn build_native_talker_tls() -> TestResult<&'static Path> {
     NATIVE_TALKER_TLS_BINARY
         .get_or_try_init(|| {
-            // issue 0517 — "the talker row built with `link-tls`", not
-            // "the talker's target-tls dir".
-            let row = crate::fixtures::groups::select_row(
-                "examples/linux/rust/talker",
-                &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
-            )?;
-            let rel = PathBuf::from(format!("{}/talker", cargo_target_profile_dir()));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            // phase-531 W6 — the talker is a one-node workspace; `link-tls` is
+            // its `[image.linux_tls] node_features` (RFC-0121 D9).
+            migrated_talker(crate::fixtures::migrated_leaf::LeafVariant::Image(
+                "linux_tls",
+            ))
         })
         .map(|p| p.as_path())
 }
