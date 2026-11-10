@@ -1,8 +1,17 @@
-# NuttX examples pin a specific nightly because they use `-Z build-std` to
-# compile std from source against a patched libc at third-party/nuttx/libc.
-# Cargo's `[patch]` only applies when the version matches exactly, so the
-# patched libc version in third-party/nuttx/libc/Cargo.toml must track the
-# libc version that the pinned nightly's std depends on.
+# NuttX examples pin a specific nightly because `armv7a-nuttx-eabihf` is a
+# Tier 3 target with no prebuilt standard library: the board's cargo config
+# (`packages/boards/nros-board-nuttx-qemu/nros-board.toml`) compiles
+# `core` / `alloc` / `panic_abort` from source with `-Z build-std`, which is
+# nightly-only.
+#
+# The examples are `no_std` and do not build `std` (phase-359 W7), so they do
+# not use the patched `libc` at third-party/nuttx/libc. The board's
+# `[patch.crates-io]` still names it, and the NuttX make road
+# (`integrations/nuttx/Makefile`) still builds `std` against it until
+# phase-550 W5. Cargo's `[patch]` only applies when the version matches
+# exactly, so while that remains, the fork's version in
+# third-party/nuttx/libc/Cargo.toml tracks the libc version that the pinned
+# nightly's std depends on.
 #
 # To bump:
 #   1. Pick a new nightly:  rustup toolchain install nightly-YYYY-MM-DD

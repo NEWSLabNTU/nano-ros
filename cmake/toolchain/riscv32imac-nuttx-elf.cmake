@@ -3,7 +3,7 @@
 # 194.3c — CMake toolchain file for NuttX on riscv (QEMU rv-virt, rv32imac).
 # Selects the riscv-none-elf cross-compiler and the Rust target triple so
 # Corrosion compiles nros-c / nros-cpp for riscv32imac-unknown-nuttx-elf.
-# Mirror of armv7a-nuttx-eabi.cmake.
+# Mirror of armv7a-nuttx-eabihf.cmake.
 #
 # Usage:
 #   cmake -S . -B build \

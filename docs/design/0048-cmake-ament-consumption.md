@@ -165,7 +165,7 @@ complicates parsing and bakes in an assumption about the nano-ros tree layout):
    names = ["nuttx"]
    platform = "nuttx"
    [board.cmake]
-   toolchain_file = "cmake/toolchain/armv7a-nuttx-eabi.cmake"
+   toolchain_file = "cmake/toolchain/armv7a-nuttx-eabihf.cmake"
    ```
 2. **SDK directory cache-vars stay inside CMake.** The platform modules
    (`cmake/platform/nano-ros-<plat>.cmake`) default `NUTTX_DIR` / `THREADX_DIR` /
@@ -182,7 +182,7 @@ complicates parsing and bakes in an assumption about the nano-ros tree layout):
    { "version": 6,
      "configurePresets": [{
        "name": "qemu-armv7a-nuttx",
-       "toolchainFile": "/abs/nano-ros/cmake/toolchain/armv7a-nuttx-eabi.cmake",
+       "toolchainFile": "/abs/nano-ros/cmake/toolchain/armv7a-nuttx-eabihf.cmake",
        "cacheVariables": { "nano_ros_ROOT": "/abs/nano-ros", "CMAKE_BUILD_TYPE": "Release" },
        "environment": { "PATH": "/home/u/.nros/sdk/arm-gnu-toolchain/14.2/bin:$penv{PATH}" }
      }]}

@@ -119,12 +119,12 @@ and are listed after them. Line numbers are as of the day of filing.
 
 Checked and not holding:
 
-- **The CMake toolchain file's triple.** It is named
-  `cmake/toolchain/armv7a-nuttx-eabi.cmake`, and its header comment (`:6`)
-  says `armv7a-nuttx-eabi`, but it sets
+- **The CMake toolchain file's triple.** It was named for
+  `armv7a-nuttx-eabi`, and its header comment (`:6`) said so, but it sets
   `Rust_CARGO_TARGET "armv7a-nuttx-eabihf"` (`:52`), the board's
-  `[build] target` (`nros-board.toml:32`). The file name and that comment are
-  stale; the triple agrees.
+  `[build] target` (`nros-board.toml:32`). The file name and that comment were
+  stale; the triple agrees. Phase-550 W12 renamed the file
+  `cmake/toolchain/armv7a-nuttx-eabihf.cmake` and fixed the comment.
 - **The retired make-road test in the book.** The book no longer cites
   `nuttx_make_e2e.rs` or `EXPECTED_PROGNAMES`; only archived roadmap docs
   (phase-157, phase-177) name it, and `just/nuttx.just:390-395` records its
@@ -143,6 +143,19 @@ defconfigs and `CONFIG_NROS=y`:
    (`$NUTTX_DIR` unset, checkout `third-party/nuttx/nuttx` not initialised).
    In a checkout where that submodule is initialised it would instead compile
    zenoh-pico against nano-ros's kernel, not `$(TOPDIR)`.
+
+   **Fixed (phase-550 W2).** `NROS_CARGO_BUILD` sets `NUTTX_DIR=$(TOPDIR)`,
+   `NUTTX_APPS_DIR=$(APPDIR)` and `NUTTX_EXPORT_DIR=$(TOPDIR)` on the cargo
+   command: the `env` names of `[source.nuttx-kernel]` / `[source.nuttx-apps]`
+   (the ladder's env rung, the channel `nros build` and the cmake road use),
+   plus the include-root override, so the headers are the live tree's and not
+   a per-arch snapshot. Set on the command, they win over an exported value.
+   Measured in the same scratch setup, `NUTTX_DIR` unset and the checkout's
+   submodule not initialised: armv7a went from this error (16 s) to a linked
+   `nuttx` ELF (`make -j` 66 s on 4 jobs, cargo 36.2 s, `libnros_c.a`
+   2,314,740 bytes, ELF 4,500,260 bytes), zenoh-pico compiled against the
+   scratch kernel's `include/`. rv-virt now gets past the kernel lookup and
+   stops at item 2's host `cc` (5 s).
 
 With `NUTTX_DIR` exported to the scratch kernel:
 

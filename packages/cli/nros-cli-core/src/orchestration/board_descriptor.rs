@@ -780,7 +780,7 @@ pub struct BoardProvisioning {
 #[derive(Debug, Clone, Deserialize)]
 pub struct BoardCmake {
     /// Repo-relative path to the CMake toolchain file, e.g.
-    /// `cmake/toolchain/armv7a-nuttx-eabi.cmake`. `nros setup` resolves it against
+    /// `cmake/toolchain/armv7a-nuttx-eabihf.cmake`. `nros setup` resolves it against
     /// the repo root and emits it as the preset's `toolchainFile`.
     pub toolchain_file: String,
 }

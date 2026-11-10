@@ -74,7 +74,7 @@ allocator story, the same absence of exceptions, the same reasons for every
 constraint in RFC-0018.
 
 Nothing decided this. The entire difference is that
-`cmake/toolchain/armv7a-nuttx-eabi.cmake:47` does not carry `-ffreestanding` and
+`cmake/toolchain/armv7a-nuttx-eabihf.cmake:47` does not carry `-ffreestanding` and
 `cmake/toolchain/arm-freertos-armcm3.cmake:45` does. A flag chosen for the C
 compiler's benefit silently selects which C++ API the user gets.
 
