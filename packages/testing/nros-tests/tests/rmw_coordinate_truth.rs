@@ -271,7 +271,7 @@ fn row_binary(fixture_id: &str, root: &Path) -> Option<PathBuf> {
     // hand-written one names the entry directly. Same derivation as
     // `assert_generated_entry_name`.
     let name = match fields.get(13).filter(|f| !f.is_empty()) {
-        Some(image) => format!("{image}_entry"),
+        Some(image) => nros_orchestration_ir::entry_names::entry_package_name(image),
         None => fields.get(4).filter(|f| !f.is_empty())?.to_string(),
     };
     // Two layouts: a cargo profile dir, or the top of a cmake binary dir.

@@ -2765,7 +2765,9 @@ fn assert_generated_entry_name(fixture_id: &str, binary_name: &str) -> TestResul
     let Some(image) = fields.get(13).filter(|f| !f.is_empty()) else {
         return Ok(());
     };
-    let want = format!("{image}_entry");
+    // The builder's own rule (`-`, `.`, `/` become `_`), never a second
+    // spelling: `rv-virt-threadx` builds `rv_virt_threadx_entry`.
+    let want = nros_orchestration_ir::entry_names::entry_package_name(image);
     if want == binary_name {
         return Ok(());
     }
@@ -6640,15 +6642,17 @@ pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
 static PARAM_STORE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Resolve the prebuilt issue-1706 rv-virt-threadx image that carves its
-/// parameter store from the executor backing (row `threadx-riscv64-param-store`,
-/// built by `just threadx_riscv64 build-fixture-extras`).
+/// parameter store from the executor backing: workspace row
+/// `threadx-riscv64-param-store`, the generated entry of the bringup's
+/// `[image.rv-virt-threadx]` (phase-531 W7), built by
+/// `just threadx_riscv64 build-fixture-extras`.
 pub fn build_param_store_threadx_riscv64() -> TestResult<&'static Path> {
     PARAM_STORE_THREADX_RISCV64_BINARY
         .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/param-store-threadx-riscv64",
-                "param-store-threadx-riscv64",
-                Some("riscv64gc-unknown-none-elf"),
+            build_workspace_rust_cross_entry(
+                "threadx-riscv64-param-store",
+                "riscv64gc-unknown-none-elf",
+                "rv_virt_threadx_entry",
             )
         })
         .map(|p| p.as_path())
@@ -6658,15 +6662,17 @@ pub fn build_param_store_threadx_riscv64() -> TestResult<&'static Path> {
 static PARAM_STORE_NUTTX_QEMU_ARM_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Resolve the prebuilt issue-1706 NuttX QEMU ARM image that carves its
-/// parameter store from the executor backing (row `nuttx-param-store`, built
-/// by `just nuttx build-fixtures-arm`).
+/// parameter store from the executor backing: workspace row
+/// `nuttx-param-store`, the generated entry of the bringup's
+/// `[image.qemu-armv7a-nuttx]` (phase-531 W7), built by
+/// `just nuttx build-fixtures-arm`.
 pub fn build_param_store_nuttx_qemu_arm() -> TestResult<&'static Path> {
     PARAM_STORE_NUTTX_QEMU_ARM_BINARY
         .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/param-store-nuttx-qemu-arm",
-                "param-store-nuttx-qemu-arm",
-                Some("armv7a-nuttx-eabihf"),
+            build_workspace_rust_cross_entry(
+                "nuttx-param-store",
+                "armv7a-nuttx-eabihf",
+                "qemu_armv7a_nuttx_entry",
             )
         })
         .map(|p| p.as_path())

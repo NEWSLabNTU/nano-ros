@@ -2428,9 +2428,10 @@ mod board_crate_tests {
         // talker (phase-531 W6: a one-node workspace migrated in place),
         // 74 -> 73 for the `nros-tests` `entry-poc` bin (W7 step-3 prep,
         // slice 1), 73 -> 72 for `bins/message-info-observer` (W6: an owned
-        // entry two images name, RFC-0071 D19).
+        // entry two images name, RFC-0071 D19), 72 -> 70 for the NuttX and
+        // rv-virt-threadx param-store bins (slice 2).
         assert!(
-            on_selection >= 72,
+            on_selection >= 70,
             "only {on_selection} leaves on the selection package"
         );
     }

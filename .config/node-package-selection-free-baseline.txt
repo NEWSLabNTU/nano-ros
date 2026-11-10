@@ -65,8 +65,6 @@ packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/Cargo.toml  logging
 packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/Cargo.toml  logging_smoke_nuttx_qemu_arm_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml  logging_smoke_threadx_linux_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/Cargo.toml  logging_smoke_threadx_riscv64_nros_selection
-packages/testing/nros-tests/bins/param-store-nuttx-qemu-arm/Cargo.toml  param_store_nuttx_qemu_arm_nros_selection
-packages/testing/nros-tests/bins/param-store-threadx-riscv64/Cargo.toml  param_store_threadx_riscv64_nros_selection
 packages/testing/nros-tests/bins/param-two-node-talker/Cargo.toml  param_two_node_talker_nros_selection
 packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux/Cargo.toml  pool_exhaustion_threadx_linux_nros_selection
 packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/Cargo.toml  qemu_baremetal_main_e2e_nros_selection
