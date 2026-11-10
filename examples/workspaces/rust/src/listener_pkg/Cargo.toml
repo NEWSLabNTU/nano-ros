@@ -20,6 +20,13 @@ path = "src/lib.rs"
 class = "listener_pkg::Listener"
 name = "listener"
 
+[features]
+# A zenoh link option, the `tls` configuration of this listener
+# (`[image.linux_listener_tls] node_features`, RFC-0121 D9). Not a declared
+# capability, so it stays a feature of the package; it names the zenoh backend
+# only to forward to it, and the board crate still links the backend.
+link-tls = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh/link-tls"]
+
 [dependencies]
 # Single platform/RMW-agnostic `nros` dep — `alloc` baseline + the rmw-cffi
 # vtable seam only; the board crate links the concrete RMW backend.
@@ -28,3 +35,5 @@ nros = { version = "*", default-features = false, features = [
     "rmw-cffi", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
 log = { version = "0.4", default-features = false }
+# Only for the link option above.
+nros-rmw-zenoh = { version = "*", default-features = false, optional = true }

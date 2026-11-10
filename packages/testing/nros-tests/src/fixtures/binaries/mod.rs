@@ -6810,6 +6810,22 @@ fn migrated_talker(
     })
 }
 
+/// One role of the linux Rust pubsub pair under one configuration
+/// (phase-535 W6): the `linux_<role>_<config>` image of the Rust workspace's
+/// pubsub bringup, through `workspace_image::resolve_configured`.
+fn linux_rust_pubsub_configured(
+    role: crate::fixtures::workspace_image::PairRole,
+    config: crate::matrix::Config,
+) -> TestResult<PathBuf> {
+    crate::fixtures::workspace_image::resolve_configured(
+        crate::matrix::PlatformId::Linux,
+        crate::matrix::Lang::Rust,
+        crate::matrix::Rmw::Zenoh,
+        role,
+        &[config],
+    )
+}
+
 /// The peer-mode talker — issue 0711.
 ///
 /// `ZPICO_MULTICAST_TRANSPORT=1` compiles the multicast transport + scouting
@@ -6840,13 +6856,10 @@ pub fn build_native_talker_peer() -> TestResult<&'static Path> {
 pub fn build_native_listener_peer() -> TestResult<&'static Path> {
     NATIVE_LISTENER_PEER_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_row(
-                "examples/linux/rust/listener",
-                &crate::fixtures::groups::FixtureVariant::plain()
-                    .with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
-            )?;
-            let rel = PathBuf::from(format!("{}/listener", cargo_target_profile_dir()));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            linux_rust_pubsub_configured(
+                crate::fixtures::workspace_image::PairRole::Listener,
+                crate::matrix::Config::PeerMode,
+            )
         })
         .map(|p| p.as_path())
 }
@@ -6866,19 +6879,14 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-listener with link-tls feature (cached)
-///
-/// Uses a separate `target-tls` directory to avoid overwriting the
-/// standard listener binary that other parallel test processes use.
+/// The TLS listener. See [`build_native_talker_tls`].
 pub fn build_native_listener_tls() -> TestResult<&'static Path> {
     NATIVE_LISTENER_TLS_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_row(
-                "examples/linux/rust/listener",
-                &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
-            )?;
-            let rel = PathBuf::from(format!("{}/listener", cargo_target_profile_dir()));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            linux_rust_pubsub_configured(
+                crate::fixtures::workspace_image::PairRole::Listener,
+                crate::matrix::Config::Tls,
+            )
         })
         .map(|p| p.as_path())
 }

@@ -142,6 +142,35 @@ board = "linux"
 launch = "listener.launch.xml"
 rmw = "cyclonedds"
 
+# phase-535 W6 — two configurations of the linux pair (RFC-0122 D2), from
+# the `examples/linux/rust/{talker,listener}` variant rows.
+#
+# `tls`: zenoh-pico with its TLS link, through each node package's own
+# `link-tls` feature. The router locator (`tls/...`) and the CA certificate
+# stay runtime env, as on every linux image.
+[image.linux_talker_tls]
+board = "linux"
+launch = "talker.launch.xml"
+node_features = ["link-tls"]
+
+[image.linux_listener_tls]
+board = "linux"
+launch = "listener.launch.xml"
+node_features = ["link-tls"]
+
+# `peer-mode`: zenoh-pico with the multicast transport, scouting and multicast
+# declarations compiled in (issue 0711; off by default for size, issue 0682),
+# so a session opened with `NROS_SESSION_MODE=peer` needs no router.
+[image.linux_talker_peer_mode]
+board = "linux"
+launch = "talker.launch.xml"
+env = { ZPICO_MULTICAST_TRANSPORT = "1" }
+
+[image.linux_listener_peer_mode]
+board = "linux"
+launch = "listener.launch.xml"
+env = { ZPICO_MULTICAST_TRANSPORT = "1" }
+
 # ThreadX's Linux simulator (a hosted process, NSOS host sockets): it
 # dials loopback directly. `locator` is the cell's `alloc::port_of`; the
 # Cyclone images bake the leaf's `alloc::domain_of` domain.

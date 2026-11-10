@@ -39,6 +39,22 @@ with = '&[Config::Lending, Config::Multisession]'
 
 [[cell]]
 comment = '''
+// phase-535 W6 — the same pair over zenoh-pico's TLS link against a TLS
+// router, and in peer mode with no router (multicast transport compiled in,
+// issue 0711). The `linux_<role>_{tls,peer_mode}` images of the Rust
+// workspace's pubsub bringup; `tests/nano2nano.rs` runs both.
+'''
+at = ["Linux", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::Tls]'
+
+[[cell]]
+at = ["Linux", "Rust", "Zenoh", "Pubsub", "Example"]
+status = 'Runtime'
+with = '&[Config::PeerMode]'
+
+[[cell]]
+comment = '''
 // phase-510 W5 — lending where the backend cannot lend: its vtable leaves
 // `borrow_loaned_message` NULL, and since issue 0814 (option 2) a loan
 // there is a permanent refusal in every build, so there is nothing to run.

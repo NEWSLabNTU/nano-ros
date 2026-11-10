@@ -24,6 +24,13 @@ path = "src/lib.rs"
 class = "talker_pkg::Talker"
 name = "talker"
 
+[features]
+# A zenoh link option, the `tls` configuration of this talker
+# (`[image.linux_talker_tls] node_features`, RFC-0121 D9). Not a declared
+# capability, so it stays a feature of the package; it names the zenoh backend
+# only to forward to it, and the board crate still links the backend.
+link-tls = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh/link-tls"]
+
 [dependencies]
 # Single platform/RMW-agnostic `nros` dep. `alloc` is the universal baseline
 # (works on the no_std targets; std targets get `std` from the Entry/board via
@@ -38,3 +45,5 @@ std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nr
 # phase-338 W7 — user source logs through the `log` facade; the board
 # bridges it. `nros_log` stays the platform/ABI layer beneath.
 log = { version = "0.4", default-features = false }
+# Only for the link option above.
+nros-rmw-zenoh = { version = "*", default-features = false, optional = true }
