@@ -829,6 +829,36 @@ row = "nros-board-mps2-an385-freertos@FreertosMps2"
 notes = "phase-537 W5 / issue 2269 — Lab: QoS is checked twice, in its cpp tab: the build refuses a subscription asking more than its publisher offers, the boot refuses a contract row that widens the subscription's call site, then a transient_local pair hears. Chained after Tutorial 1-3."
 
 [[probe]]
+track = "lab-tiers"
+chapter = "tutorial/two-tiers.md"
+variant = "qemu"
+lang = "rust"
+after = ["tutorial/run-a-talker.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 / issue 2269 — Lab: two sched tasks keep a promise, in its rust tab: a 100 Hz loop and a 60 ms telemetry job on one sched task print `10 windows, 10 late`, then with the loop on a higher-priority sched task `10 windows, 0 late`. Own workspace beside sensor_ws; chained after Tutorial 1 for the install."
+
+[[probe]]
+track = "lab-tiers-c"
+chapter = "tutorial/two-tiers.md"
+variant = "qemu"
+lang = "c"
+after = ["tutorial/run-a-talker.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 / issue 2269 — Lab: two sched tasks keep a promise, in its c tab: a 100 Hz loop and a 60 ms telemetry job on one sched task print `10 windows, 10 late`, then with the loop on a higher-priority sched task `10 windows, 0 late`. Own workspace beside sensor_ws; chained after Tutorial 1 for the install."
+
+[[probe]]
+track = "lab-tiers-cpp"
+chapter = "tutorial/two-tiers.md"
+variant = "qemu"
+lang = "cpp"
+after = ["tutorial/run-a-talker.md"]
+weekly = true
+row = "nros-board-mps2-an385-freertos@FreertosMps2"
+notes = "phase-537 W5 / issue 2269 — Lab: two sched tasks keep a promise, in its cpp tab: a 100 Hz loop and a 60 ms telemetry job on one sched task print `10 windows, 10 late`, then with the loop on a higher-priority sched task `10 windows, 0 late`. Own workspace beside sensor_ws; chained after Tutorial 1 for the install."
+
+[[probe]]
 track = "linux"
 chapter = "starters/linux-host.md"
 variant = ""

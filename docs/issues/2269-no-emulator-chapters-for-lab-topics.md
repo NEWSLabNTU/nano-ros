@@ -26,6 +26,11 @@ phase-537 W5's Tutorial, with the labs it absorbed from phase-523 W1.
 Progress (2026-11-11):
 - QoS: `book/src/tutorial/qos.md`, "Lab: QoS is checked twice", on three
   weekly probe tracks (`lab-qos`, `lab-qos-c`, `lab-qos-cpp`).
+- Real-time tiers: `book/src/tutorial/two-tiers.md`, "Lab: two sched tasks
+  keep a promise", on three weekly probe tracks (`lab-tiers`, `lab-tiers-c`,
+  `lab-tiers-cpp`), all on `mps2-an385-freertos`. It authors `[tasks]`
+  explicitly, because with none authored the schedule differs by language
+  (issue [2432](2432-derived-sched-tasks-differ-by-language.md)).
 - Lifecycle: blocked on issue
   [2428](2428-workspace-lifecycle-is-one-machine-per-image.md). A workspace
   image has one lifecycle state machine, named `/nros_app`, and no component

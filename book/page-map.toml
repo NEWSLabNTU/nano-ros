@@ -269,6 +269,13 @@ note = "Lab: QoS is checked twice (W5, issue 2269): the build's qos-match and th
 
 [[page]]
 book = "user"
+path = "tutorial/two-tiers.md"
+action = "new phase-537"
+batch = "p537-w5"
+note = "Lab: two sched tasks keep a promise (W5, issue 2269): a 100 Hz loop and a 60 ms telemetry job on one sched task (every window late), then on two with the loop's above (none late), in Rust, C and C++ on mps2-an385-freertos"
+
+[[page]]
+book = "user"
 path = "guide/rmw/configure-zenoh.md"
 action = "new phase-537"
 batch = "p537-w6"

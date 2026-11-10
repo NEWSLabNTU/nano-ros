@@ -116,6 +116,21 @@ lab-qos-c: (platform "lab-qos-c")
 [group("main")]
 lab-qos-cpp: (platform "lab-qos-cpp")
 
+# book/src/tutorial/two-tiers.md — Lab: two sched tasks keep a promise (Rust),
+# after Tutorial 1 (phase-537 W5, issue 2269).
+[group("main")]
+lab-tiers: (platform "lab-tiers")
+
+# book/src/tutorial/two-tiers.md — Lab: two sched tasks keep a promise (C),
+# after Tutorial 1 (phase-537 W5, issue 2269).
+[group("main")]
+lab-tiers-c: (platform "lab-tiers-c")
+
+# book/src/tutorial/two-tiers.md — Lab: two sched tasks keep a promise (C++),
+# after Tutorial 1 (phase-537 W5, issue 2269).
+[group("main")]
+lab-tiers-cpp: (platform "lab-tiers-cpp")
+
 # book/src/starters/linux-host.md — the Linux host starter: a C++ talker over
 # Cyclone DDS, no router (weekly).
 [group("main")]
