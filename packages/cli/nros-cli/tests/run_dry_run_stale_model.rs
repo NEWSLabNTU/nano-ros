@@ -59,7 +59,13 @@ fn scratch_copy(src: &str, tag: &str) -> PathBuf {
     assert!(!files.is_empty(), "{} is tracked", src.display());
     for f in files {
         let rel = Path::new(std::str::from_utf8(f).unwrap());
-        let dest = dest_root.join(rel.strip_prefix(src).unwrap());
+        // A frozen fixture's `Cargo.toml.in` is the copy's `Cargo.toml`.
+        let copied = rel.strip_prefix(src).unwrap();
+        let copied = copied
+            .to_str()
+            .and_then(|s| s.strip_suffix(".in"))
+            .map_or_else(|| copied.to_path_buf(), PathBuf::from);
+        let dest = dest_root.join(copied);
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(root.join(rel), &dest).unwrap();
     }
@@ -98,7 +104,10 @@ fn text(o: &Output) -> String {
 
 #[test]
 fn run_dry_run_why_after_an_edit_reports_would_re_resolve_and_prints_the_plan() {
-    let leaf = scratch_copy("examples/linux/rust/listener", "stale-model");
+    let leaf = scratch_copy(
+        "packages/cli/nros-cli-core/tests/fixtures/rust-leaf/listener",
+        "stale-model",
+    );
     let configured = nros(&leaf, &["configure"]);
     assert!(
         configured.status.success(),

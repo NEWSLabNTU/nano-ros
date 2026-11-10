@@ -495,8 +495,7 @@ Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run 
 cd examples/linux/rust/talker && nros run linux   # a one-node workspace
 
 # terminal 3
-cd examples/linux/rust/listener && nros configure && nros build
-./build/linux/target/debug/listener
+cd examples/linux/rust/listener && nros run linux   # a one-node workspace
 ```
 
 ### QEMU bare-metal Cortex-M3 (MPS2-AN385)

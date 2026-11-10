@@ -1,0 +1,21 @@
+# The cargo leaf's declaration (see Cargo.toml.in): two images, so a test can
+# switch the leaf's one selection package between them.
+
+[system]
+name = "native_listener"
+rmw = "zenoh"
+domain_id = 0
+default_images = ["linux"]
+
+[[component]]
+pkg = "native_listener"
+class = "native_rs_listener::Listener"
+name = "listener"
+
+[image_defaults]
+board = "linux"
+
+[image.linux]
+
+[image.linux_xrce]
+rmw = "xrce"

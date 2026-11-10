@@ -2430,9 +2430,11 @@ mod board_crate_tests {
         // slice 1), 73 -> 72 for `bins/message-info-observer` (W6: an owned
         // entry two images name, RFC-0071 D19), 72 -> 70 for the NuttX and
         // rv-virt-threadx param-store bins (slice 2), 70 -> 69 for
-        // `bins/action-server-concurrent` (the same shape as the observer).
+        // `bins/action-server-concurrent` (the same shape as the observer),
+        // 69 -> 64 for the linux Rust listener, service and action examples
+        // (phase-535 W6: one-node workspaces migrated in place).
         assert!(
-            on_selection >= 69,
+            on_selection >= 64,
             "only {on_selection} leaves on the selection package"
         );
     }

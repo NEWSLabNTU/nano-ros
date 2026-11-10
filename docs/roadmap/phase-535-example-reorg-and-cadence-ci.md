@@ -559,26 +559,29 @@ and a test asks for it by name (`resolve_coord_variant`).
   a consumer, and the listener resolves through
   `workspace_image::resolve_configured`. The case shows the knob reached both
   builds: it asserts the backend does not print its peer-mode refusal.
-- **linux Rust listener `link-tls` (keeps its own directory, issue 2423).** The
-  listener's `link-tls` row stays in `examples/linux/rust/listener`. A
-  language-workspace image can turn on a zenoh link feature only through a
-  node package that forwards to `nros-rmw-zenoh`. W6 tried that: it built,
-  and `test_tls_talker_listener_communication` passed on the images. But
-  `check-node-package-invariance` (issue 1509) refuses a shared node package
-  that names an RMW. Issue 2423 lays out the two enablers: a `link-tls`
-  capability, or image-selected backend features.
-- **linux Rust listener, service and action (keep their own directories, to
-  migrate in place to one-package workspaces: editions).** The opt-in
-  ROS-edition lane (`just ros_editions build-e2e-fixtures`) builds their
-  `linux[_<rmw>]_<edition>` images. A workspace generates its message crates
-  for one edition and refuses an image of another
-  ([issue 2409](../issues/archived/2409-workspace-image-ros-edition-builds-workspace-edition-messages.md),
-  resolved that way), and the talker witness's edition builds now come from a
-  per-edition copy of its one-node workspace. The same approach applied to the
-  Rust language workspace would copy and regenerate every bringup per edition,
-  so these examples move in place, each to its own one-package workspace,
-  where the talker's per-edition copy applies unchanged. Until then each keeps
-  one plain row.
+- **linux Rust listener `link-tls` (in review, issue 2423).** The listener's
+  `link-tls` row is the `linux_tls` image of its one-node workspace
+  (`node_features = ["link-tls"]`, RFC-0121 D9), the talker witness's shape.
+  The node package forwards `link-tls` to `nros-rmw-zenoh`, which
+  `check-node-package-invariance` (issue 1509) allows here: it scopes
+  `examples/workspaces/*` and the templates, not the per-platform examples.
+  A language-workspace TLS cell still needs one of issue 2423's enablers
+  (a `link-tls` capability, or image-selected backend features).
+- **linux Rust listener, service and action (in review: one-node workspaces,
+  editions).** `examples/linux/rust/{listener,service-server,service-client,
+  action-server,action-client}` are one-node workspaces
+  (`src/native_<role>` + `src/native_<role>_bringup`, images `linux`,
+  `linux_xrce`, `linux_cyclonedds`, plus the listener's `linux_tls`), each
+  row a `[[workspace_fixture]]` row with its coordinate. A workspace generates
+  its messages for one edition and refuses an image of another
+  ([issue 2409](../issues/archived/2409-workspace-image-ros-edition-builds-workspace-edition-messages.md)),
+  so their edition images are gone and the opt-in ROS-edition lane
+  (`just ros_editions build-e2e-fixtures <distro> <rmw> [dry_run]`) builds a
+  per-edition copy of each of the six workspaces, the talker witness
+  included, each with its own cargo target dir (issue 0616). The CLI tests
+  whose subject is the cargo leaf road ran on a copy of the listener; they
+  run on a frozen copy of it now, `nros-cli-core/tests/fixtures/rust-leaf/listener`
+  (manifests named `*.in`, as `issue-1378-leaves`).
 - **Feature demos (keep their own directories, to migrate in place to
   one-package workspaces).** Each one below is a hand-written `main`
   demonstrating an API that a generated entry does not express, and its test

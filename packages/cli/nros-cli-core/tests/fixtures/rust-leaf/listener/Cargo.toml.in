@@ -1,0 +1,29 @@
+# The Rust cargo LEAF shape (RFC-0098 D6): one package whose `system.toml`
+# sits beside this manifest, reaching its board and RMW through the generated
+# selection package. Frozen from `examples/linux/rust/listener`, which phase-535
+# W6 made a one-node workspace; named `*.in` so the tree's layout gates do not
+# read it as a live leaf. Tests copy it out, dropping the suffix.
+[package]
+name = "native-rs-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "listener"
+path = "src/main.rs"
+
+[lib]
+name = "native_rs_listener"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["log", "alloc", "env", "rmw-cffi", "macros"] }
+native_rs_listener_nros_selection = { path = "build/nros/selection" }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
+log = "0.4"
+env_logger = "0.11"
+
+[workspace]

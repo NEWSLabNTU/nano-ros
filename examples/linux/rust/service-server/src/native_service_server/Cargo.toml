@@ -1,0 +1,24 @@
+[package]
+name = "native_service_server"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# phase-338 W3 — node logic is a lib so it can be byte-identical to every
+# other platform's copy. There is no `main.rs`: `nros build` generates the
+# entry that boots it (RFC-0121 D6).
+[lib]
+name = "native_service_server"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+# The board, RMW, ROS edition, domain and node declaration live in the
+# bringup's `system.toml` (`../native_service_server_bringup/`, RFC-0121 D1) — nothing here
+# names a board, an RMW or an edition. The generated entry states them.
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["log", "alloc", "env", "rmw-cffi", "macros"] }
+example_interfaces = { path = "../../generated/example_interfaces", default-features = false }  # nros-managed
+log = "0.4"
+env_logger = "0.11"

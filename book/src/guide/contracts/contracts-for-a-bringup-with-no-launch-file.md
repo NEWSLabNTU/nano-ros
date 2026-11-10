@@ -38,7 +38,7 @@ the build carries it to the generated launch file.
 ```toml
 [[component]]
 pkg = "native_listener"
-class = "native_rs_listener::Listener"
+class = "native_listener::Listener"
 name = "listener"
 ```
 
@@ -122,9 +122,10 @@ name = "listener"
 ## Example
 
 [`examples/linux/rust/listener`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/listener)
-is a single-package Rust listener with no `launch/`. Its `system.toml` holds
-the `[[component]]` row from the Rust tab above and an `[image.linux]`, and
-its `system.contract.yaml` is the file from step 2. The code registers the
+is a single-node Rust workspace whose bringup, `src/native_listener_bringup`,
+has no `launch/`. Its `system.toml` holds the `[[component]]` row from the
+Rust tab above and an `[image.linux]`, and its `system.contract.yaml` is the
+file from step 2. The code registers the
 subscription on `/chatter`, the absolute name the contract states:
 
 ```rust

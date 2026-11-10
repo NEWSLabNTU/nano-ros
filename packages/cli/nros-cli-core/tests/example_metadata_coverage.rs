@@ -178,8 +178,10 @@ fn every_node_declaring_example_is_a_metadata_candidate() {
     // workspace images (generated entries), so the floor moved 65 -> 59.
     // phase-531 W6 made the linux Rust talker a one-node workspace, whose node
     // package declares no node itself (its bringup does), 59 -> 58.
+    // phase-535 W6 made the linux Rust listener, service and action examples
+    // one-node workspaces the same way, 58 -> 53.
     assert!(
-        counted >= 58,
+        counted >= 53,
         "only {counted} node-declaring example packages found; the tree has far \
          more, so the classifier stopped recognising a shape"
     );

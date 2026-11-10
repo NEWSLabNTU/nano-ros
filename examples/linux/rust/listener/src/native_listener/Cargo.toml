@@ -1,0 +1,36 @@
+[package]
+name = "native_listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# phase-338 W3 — node logic is a lib so it can be byte-identical to every
+# other platform's copy. There is no `main.rs`: `nros build` generates the
+# entry that boots it (RFC-0121 D6).
+[lib]
+name = "native_listener"
+crate-type = ["rlib"]
+path = "src/lib.rs"
+
+# The board, RMW, ROS edition, domain and node declaration live in the
+# bringup's `system.toml` (`../native_listener_bringup/`, RFC-0121 D1) — nothing here
+# names a board, an RMW or an edition. The generated entry states them.
+
+[features]
+# Zenoh link options. Not declared capabilities — RFC-0031's capability
+# registry (`capability_resolver::CAPABILITIES`) has no entry for them — so they
+# stay features of this package and name the zenoh backend only to forward to
+# it. Meaningful on a zenoh image only; the bringup's `[image.linux_tls]`
+# turns it on (`node_features`, RFC-0121 D9), and the generated entry brings
+# the backend itself.
+link-tls           = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh/link-tls"]
+unstable-zenoh-api = ["dep:nros-rmw-zenoh", "nros-rmw-zenoh/unstable-zenoh-api"]
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["log", "alloc", "env", "rmw-cffi", "macros"] }
+# Only for the link options above; the generated entry links the backend.
+nros-rmw-zenoh = { version = "*", default-features = false, optional = true }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+log = "0.4"
+env_logger = "0.11"

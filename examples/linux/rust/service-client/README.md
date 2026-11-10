@@ -5,29 +5,31 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ## Build
 
+A single-node workspace: the node package is `src/native_service_client`, and
+`src/native_service_client_bringup` holds the `system.toml` that says what to build.
+`nros build` generates the entry that boots the node.
+
 ```bash
 cp -r examples/linux/rust/service-client ~/my-service-client && cd ~/my-service-client
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros configure     # generated/ message crates + build/<image>/nros-cargo.toml
-nros build    # or: nros build linux
+nros build native_service_client_bringup:linux   # or linux_xrce, linux_cyclonedds
 ```
+
+Each `[image.*]` is one build: `linux` is zenoh, and `linux_xrce` and
+`linux_cyclonedds` name their RMW. The ROS edition is the
+workspace's: set `[system] ros_edition` to build for another.
 
 ## Run
 
-Needs a zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`).
-`nros build` leaves the binary at `build/linux/target/debug/service-client`.
+```bash
+nros run linux    # builds it if stale and starts the zenoh router it needs
+```
 
 ## Config
 
-Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
-(`[image.linux]` + `[system]`, RFC-0098 D3/D5). No build command
-carries any of them.
-
-`Cargo.toml` names no board crate. The board crate, its RMW backend and
-its runtime crates come from the `<pkg>_nros_selection` package that
-`nros configure` / `nros build` generate under `build/nros/selection/` from
-`system.toml` (RFC-0098 D6), so switching board is the `[image.*] board`
-line and nothing else
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
+Board, RMW, domain and locator: `src/native_service_client_bringup/system.toml`
+(`[image.*]` + `[system]`, RFC-0098 D3/D5). No build command carries any of
+them, and `src/native_service_client/Cargo.toml` names no board crate: the generated
+entry states the board, its RMW backend and its features (RFC-0121 D6).
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

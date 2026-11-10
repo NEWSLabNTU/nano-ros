@@ -297,16 +297,6 @@ image-locator-bake:
 fixture-binary-names:
     @python3 scripts/check-fixture-binary-names.py
 
-# Issue 1349 — the SECOND occurrence of one mistake, twenty lines from the first.
-# `FixtureVariant::rmw`/`::features` select a row by cargo FEATURES; a crate with
-# no `[features]` table can never have such a row, so the selector matches nothing,
-# every case resolved `[SKIPPED] fixture not built` (an `unmet!` red since
-# issue 1758), and bare nextest rendered that panic FAILED — the cell reads as live failures against a peer it never
-# reached. Two interop cells sat unverified that way. Buildless: two Rust call
-# sites and a TOML table.
-fixture-variant-features:
-    @python3 scripts/check-fixture-variant-features.py
-
 [private]
 fixture-groups:
     @python3 scripts/check-fixture-groups.py

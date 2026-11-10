@@ -10004,15 +10004,17 @@ mod leaf_lock_prune_tests {
             .to_path_buf()
     }
 
-    /// The in-tree listener leaf's declaration files, copied, with a lock
-    /// standing in for the one `seed` just wrote.
+    /// The frozen Rust cargo leaf's declaration files
+    /// (`tests/fixtures/rust-leaf/listener`, manifests named `*.in`), copied,
+    /// with a lock standing in for the one `seed` just wrote.
     fn seeded_leaf(tag: &str) -> crate::cmd::leaf_settings::LeafImage {
-        let src = repo_root().join("examples/linux/rust/listener");
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rust-leaf/listener");
         let leaf = crate::test_support::scratch_dir(tag).join("listener");
         std::fs::create_dir_all(leaf.join("src")).unwrap();
-        for f in ["Cargo.toml", "package.xml", "system.toml", "src/lib.rs"] {
-            std::fs::copy(src.join(f), leaf.join(f)).unwrap();
+        for f in ["Cargo.toml", "package.xml", "system.toml"] {
+            std::fs::copy(src.join(format!("{f}.in")), leaf.join(f)).unwrap();
         }
+        std::fs::copy(src.join("src/lib.rs"), leaf.join("src/lib.rs")).unwrap();
         std::fs::write(leaf.join("Cargo.lock"), "# seeded\n").unwrap();
         crate::cmd::leaf_settings::resolve_image(&leaf, &repo_root(), None)
             .unwrap()

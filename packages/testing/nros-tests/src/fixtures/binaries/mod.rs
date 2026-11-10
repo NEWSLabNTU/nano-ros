@@ -6899,19 +6899,19 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-listener with link-tls feature (cached)
-///
-/// Uses a separate `target-tls` directory to avoid overwriting the
-/// standard listener binary that other parallel test processes use.
+/// The listener's `linux_tls` image: the node's `link-tls` feature on
+/// (cached). The listener is a one-node workspace (phase-535 W6), the same
+/// shape as the talker's, so it resolves through the same shared route.
 pub fn build_native_listener_tls() -> TestResult<&'static Path> {
     NATIVE_LISTENER_TLS_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_row(
-                "examples/linux/rust/listener",
-                &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
-            )?;
-            let rel = PathBuf::from(format!("{}/listener", cargo_target_profile_dir()));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            const DIR: &str = "examples/linux/rust/listener";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Image("linux_tls"),
+            )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }

@@ -303,10 +303,12 @@ pub fn resolved(leaf_path: &Path) -> PathBuf {
 /// a test resolving "the ThreadX talker with zenoh selected by feature" is
 /// naming something real, where `target-zenoh` was naming a side effect.
 ///
-/// The four constructors are the four shapes the manifest actually contains —
+/// The three constructors are the three shapes the manifest actually contains —
 /// see `row_selector` in `fixtures-manifest.py`, which counts them. They are
-/// constructors rather than free-form fields so a caller cannot invent a fifth
-/// shape that matches no row.
+/// constructors rather than free-form fields so a caller cannot invent a fourth
+/// shape that matches no row. (A fourth, a feature variant, went when the last
+/// `[[fixture]]` row authoring `features` became a workspace image, phase-535
+/// W6: a constructor that selects no row fails closed in a lane.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixtureVariant(Selector);
 
@@ -323,17 +325,6 @@ impl FixtureVariant {
     pub fn platform_rmw(rmw: super::Rmw) -> Self {
         Self(Selector {
             rmw: rmw.cmake_value().to_string(),
-            ..Selector::default()
-        })
-    }
-
-    /// A feature variant with no authored RMW — `link-tls`, `zero-copy`,
-    /// `large-buf` (3 rows). Features are sorted here to match the exporter.
-    pub fn features(features: &[&str]) -> Self {
-        let mut f: Vec<&str> = features.to_vec();
-        f.sort_unstable();
-        Self(Selector {
-            features: f.join(","),
             ..Selector::default()
         })
     }
@@ -959,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn the_four_constructors_each_select_real_rows() {
+    fn each_constructor_selects_real_rows() {
         // A constructor that matches NOTHING is worse than no constructor: the
         // call site would fail closed at run time, in a lane, on a machine that
         // has the fixture. Assert each shape the exporter counts is reachable.
@@ -977,18 +968,14 @@ mod tests {
             n(&FixtureVariant::platform_rmw(crate::fixtures::Rmw::Zenoh)) > 0,
             "platform-baked RMW rows exist"
         );
-        assert!(
-            n(&FixtureVariant::features(&["link-tls"])) > 0,
-            "feature-variant rows exist"
-        );
     }
 
     #[test]
     fn an_unnameable_variant_is_an_error_not_a_guess() {
         assert!(
             select_row(
-                "examples/linux/rust/listener",
-                &FixtureVariant::features(&["nope"])
+                "packages/testing/nros-tests/bins/int32-sink",
+                &FixtureVariant::image(crate::fixtures::Rmw::Xrce, "nope")
             )
             .is_err(),
             "a variant no row authors must fail closed"

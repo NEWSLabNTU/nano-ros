@@ -11,7 +11,7 @@
 //! include `linux`, which is exactly the one-line change B3 makes, and assert
 //! the properties that decide whether B3 is safe:
 //!
-//! * a leaf's variant rows (images, features, env) resolve to DIFFERENT group
+//! * a leaf's variant rows (images, env) resolve to DIFFERENT group
 //!   dirs (first measured on `examples/linux/rust/talker`'s four rows). Under the refuted platform-grained key they resolve to one, and
 //!   phase-340 W1 measured what that means: four distinct binaries (8616504 /
 //!   8616504 / 6514392 / 9034536 bytes, four distinct sha256) at one path, the
@@ -67,12 +67,13 @@ fn export_with(shared_platforms: &str) -> Vec<GroupRow> {
 /// the selector the caller now names.
 // phase-531 W6 moved `examples/linux/rust/talker` to a one-node workspace, so
 // its rows are `[[workspace_fixture]]` rows and this table no longer sees them.
-// The same three axes are named on the leaves that still carry them: the image
-// axis on `bins/int32-sink` (one row per RMW image), the feature axis on
-// `examples/linux/rust/listener`, and the env axis on `nros-bench/stress-zenoh`
-// (phase-535 W6 moved the listener's env row to a workspace image).
+// The axes are named on the leaves that still carry them: the image axis on
+// `bins/int32-sink` (one row per RMW image) and the env axis on
+// `nros-bench/stress-zenoh`. The feature axis is gone: its last row
+// (`bins/action-server-concurrent`'s `zenoh-reply-slots`) became a workspace
+// image (issue 2406), and phase-535 W6 made the linux Rust listener, whose
+// `link-tls` row it once named, a one-node workspace.
 const SINK_LEAF: &str = "packages/testing/nros-tests/bins/int32-sink";
-const LISTENER_LEAF: &str = "examples/linux/rust/listener";
 const STRESS_LEAF: &str = "packages/testing/nros-bench/stress-zenoh";
 
 fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
@@ -94,11 +95,6 @@ fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
             "sink image linux_cyclonedds",
             SINK_LEAF,
             FixtureVariant::image(Rmw::Cyclonedds, "linux_cyclonedds"),
-        ),
-        (
-            "listener link-tls",
-            LISTENER_LEAF,
-            FixtureVariant::features(&["link-tls"]),
         ),
         (
             "stress env",

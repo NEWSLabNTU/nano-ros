@@ -1,0 +1,37 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-node
+# workspace (RFC-0121 D8, RFC-0122 D3). Switching board is editing
+# `[image.*] board` and re-running `nros configure`.
+
+[system]
+name = "native_service_server"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` builds.
+default_images = ["linux"]
+
+[[component]]
+pkg = "native_service_server"
+class = "native_service_server::AddTwoIntsServer"
+name = "add_two_ints_server"
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
+#
+# ONE IMAGE PER RMW (issue 1305, RFC-0031). The RMW is declared here and the
+# generated entry under `build/` states it (RFC-0121 D6); `Cargo.toml` never
+# names it as a cargo feature. `nros build` takes the default image; name
+# another with `nros build <id>`.
+#
+# No edition images: a workspace generates its messages for ONE ROS edition,
+# and an image of another is refused (issue 2409). `just ros_editions
+# build-e2e-fixtures` builds a copy of this workspace per edition instead.
+[image_defaults]
+board = "linux"
+
+[image.linux]
+
+[image.linux_xrce]
+rmw = "xrce"
+
+[image.linux_cyclonedds]
+rmw = "cyclonedds"

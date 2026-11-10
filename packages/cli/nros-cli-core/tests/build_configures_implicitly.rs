@@ -86,7 +86,7 @@ fn scratch_copy(src: &str, tag: &str) -> PathBuf {
     assert!(!files.is_empty(), "{} is tracked", src.display());
     for f in files {
         let rel = Path::new(std::str::from_utf8(f).unwrap());
-        let dest = dest_root.join(rel.strip_prefix(src).unwrap());
+        let dest = dest_root.join(common::leaf_copy_name(rel.strip_prefix(src).unwrap()));
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(root.join(rel), &dest).unwrap();
     }
@@ -110,7 +110,7 @@ fn cleanup(project: &Path) {
 #[test]
 fn build_on_a_fresh_copy_needs_no_sync() {
     setup();
-    let leaf = scratch_copy("examples/linux/rust/listener", "fresh");
+    let leaf = scratch_copy(common::RUST_LEAF, "fresh");
     assert!(!leaf.join("build/nros/models").exists(), "a fresh copy");
     nros_cli_core::cmd::configure::ensure_current(&leaf, &[], false, false, "build")
         .unwrap_or_else(|e| panic!("build's implicit configure on a fresh copy: {e:?}"));
@@ -131,7 +131,7 @@ fn build_on_a_fresh_copy_needs_no_sync() {
 #[test]
 fn dry_run_records_no_stamp() {
     setup();
-    let leaf = scratch_copy("examples/linux/rust/listener", "dry-stamp");
+    let leaf = scratch_copy(common::RUST_LEAF, "dry-stamp");
     let e = nros(&["build", "--dry-run", "--workspace", leaf.to_str().unwrap()])
         .expect_err("a never-configured copy has no plan, and a dry run makes none");
     assert!(

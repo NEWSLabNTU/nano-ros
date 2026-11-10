@@ -150,3 +150,18 @@ pub fn tracked_files(repo: &std::path::Path, pathspec: &str) -> Vec<PathBuf> {
 }
 
 pub mod derived_sched_tasks;
+
+/// The frozen Rust cargo leaf (`tests/fixtures/rust-leaf/listener`), for the
+/// tests whose subject is the leaf road. Its manifests are named `*.in` so the
+/// tree's layout gates do not read it as a live leaf; [`leaf_copy_name`] drops
+/// the suffix when a test copies it out.
+pub const RUST_LEAF: &str = "packages/cli/nros-cli-core/tests/fixtures/rust-leaf/listener";
+
+/// `rel` as a copied-out file is named: a frozen fixture's `Cargo.toml.in` is
+/// the copy's `Cargo.toml`. Any other path is unchanged.
+pub fn leaf_copy_name(rel: &std::path::Path) -> PathBuf {
+    match rel.to_str().and_then(|s| s.strip_suffix(".in")) {
+        Some(stem) => PathBuf::from(stem),
+        None => rel.to_path_buf(),
+    }
+}
