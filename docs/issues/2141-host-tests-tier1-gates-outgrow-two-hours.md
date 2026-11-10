@@ -170,7 +170,7 @@ The miss was not an unstable key. The 11-10 03:19Z scheduled run saved
 `nros-bindings-v1-…-45b3185289972682-2b8571d807088b22` (0.7 MB) at 04:04Z
 under the same prefix the 15:58Z dispatch asked for, and by 15:58Z it was
 gone. The Actions cache stood at 7.8 GB in 47 entries, and the biggest
-family was `sdk-store-copy-out` (issue 2369, #3438): **14 entries, 3.9 GB**,
+family was `sdk-store-copy-out` (issue 2369, pull request 3438): **14 entries, 3.9 GB**,
 one 278 MB copy of the same key per merge-group ref
 (`refs/heads/gh-readonly-queue/main/pr-NNNN-…`). A queue ref reads only its
 own entries and main's. Main had none, so every queue run missed and saved
@@ -181,9 +181,13 @@ shard 1 got `Unable to reserve cache`. That loss is harmless, because both
 workflows read the one key.
 
 Fix (this change): the two `template-copy-out` jobs save the SDK store only
-on `refs/heads/main`. `warm-cache` (every push to main) looks up both store
-keys and provisions and saves a kind only when main's entry is missing, so
-main follows every pin move and a queue run restores it. The queue-ref
+on `refs/heads/main`. A new `warm-sdk-store` job (a matrix over the two
+kinds, on every push to main and on dispatch from main) looks up each
+kind's key. Only on a miss does it build the CLI, provision that kind's
+tools and save the entry, so main follows every pin move and a queue run
+restores it. It uses the consumers' own step id and key expressions, and
+`check-gate-cache-keys-agree` now checks that pair too. Its consumer
+direction counts every warmer, because a copy-out job is served by two. The queue-ref
 copies that already exist age out; none were deleted by hand.
 
 ### What the cache cannot buy: configure-time compiles
