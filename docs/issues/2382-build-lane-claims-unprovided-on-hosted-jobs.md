@@ -122,3 +122,27 @@ reading is wrong: rc=1 came from the floor refusing before any gate ran. The
 self-test should read a preflight or floor refusal as NOT VERIFIED, not as a
 gate that passed. (Issue id 2408 was reserved for this sighting and left
 unused once it proved to be this class.)
+
+### Fix for the floor (2026-11-10)
+
+- **Free the disk, measured.** `check-build`'s container now mounts the
+  runner's preinstalled toolchains (Android SDK, .NET, GHC/ghcup, Swift,
+  PowerShell), the same list `host-tests.yml`'s gate shards mount. Its existing
+  `reclaim-disk.sh` step had no mounts, so it reclaimed only the tool cache.
+  On the gate shards of scheduled host-tests run 42747790725, the same reclaim
+  freed 32,744 MB and left 51 GiB free, in 107 s and 153 s. That clears the
+  30 GiB floor from 29 GiB with room to spare.
+- **The floor stays 30 GiB for now.** The backstop, a hosted
+  `NROS_GATE_MIN_FREE_GIB` set from the peak the build lane actually uses, needs
+  that peak. These shards have never reached their gates, so no run has
+  recorded it. The job's `disk-report.sh` after `just check build` records it,
+  and the floor is set from the first scheduled run that gets there, not from
+  a guess.
+- **The self-test reads a refusal as NOT VERIFIED.**
+  `scripts/ci/pristine-checkout-fast.sh` now tells the cases apart. A runner
+  that exits non-zero with no record of the planted probe never ran it. That
+  case prints `pristine-checkout SELFTEST NOT VERIFIED`, with the runner's own
+  refusal lines, and stays red; it no longer claims the probe passed. Measured
+  locally with `NROS_GATE_MIN_FREE_GIB=100000`: the new message, quoting the
+  floor's `below 100000 GiB` line. The normal path is unchanged (513/513 in the
+  clone, and the control still fails as it should).

@@ -2686,6 +2686,20 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # Issue 2382 — the host's preinstalled toolchains, mounted so
+      # `reclaim-disk.sh` can remove them (candidate 3 there). Without them
+      # this job reclaimed only the tool cache and reached the gate runner's
+      # 30 GiB floor with 29 GiB free (scheduled run 42739859713, all three
+      # shards). The same list `host-tests.yml`'s gate shards mount, where the
+      # reclaim measured 32,744 MB freed and 51 GiB free after, in 107-153 s
+      # (scheduled run 42747790725).
+      volumes:
+        - /usr/local/lib/android:/__host-reclaim/android
+        - /usr/share/dotnet:/__host-reclaim/dotnet
+        - /usr/local/.ghcup:/__host-reclaim/ghcup
+        - /opt/ghc:/__host-reclaim/ghc
+        - /usr/share/swift:/__host-reclaim/swift
+        - /usr/local/share/powershell:/__host-reclaim/powershell
     defaults:
       run:
         shell: bash
