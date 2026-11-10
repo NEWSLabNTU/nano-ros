@@ -1,15 +1,17 @@
 ---
 id: 2373
 title: "nros-node's a_yielding_park_with_a_pending_wake_keeps_the_pass fails under the build gates' load and passes solo"
-status: open
+status: resolved
 type: test
 severity: medium
 area: [testing, executor, gates]
 related: [phase-543, 2274, 2352]
 found: 2026-11-09
+resolved: 2026-11-10
+resolved_in: "the park tests that assert a deadline or a park inside a budget run on a private, frozen clock (private_test_clock!)"
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md)**. It is a test whose verdict depends on how loaded the host is, the class that phase's resource groups bound. Issue [2274](2274-tier-wake-fanout-load-sensitive.md) is the same class in a sibling executor test.
+**Home: [phase-543](../../roadmap/phase-543-nextest-gates.md)**. It is a test whose verdict depends on how loaded the host is, the class that phase's resource groups bound. Issue [2274](../2274-tier-wake-fanout-load-sensitive.md) is the same class in a sibling executor test.
 
 ## What
 
@@ -67,3 +69,39 @@ One of these two:
 Acceptance: the test passes in a full `just ci gate` run at a load average
 of the order measured here, or it is in a group that keeps it off loaded
 slots, with the group named in this issue.
+
+## Resolution (2026-11-10)
+
+The first option: a bound that holds under load. The test now runs on its
+own `private_test_clock!`, claimed at 0 and never moved. "Now" therefore
+stands still across `spin_once`, and neither the 50 ms budget nor the 10 ms
+timer can be spent before the first park.
+
+Measured, by injecting a 60 ms `thread::sleep` before the `spin_once` (the
+stall a loaded host imposes):
+
+- on the shared wall clock it fails exactly as the gate did (`left: 0,
+  right: 1`, the park never asked);
+- on the private clock it passes.
+
+The sleep was a probe only and is not in the tree.
+
+**Class sweep.** A test that sets a park primitive and asserts what the park
+was handed, or that it was reached inside a budget, is wall-clock-sensitive
+on the shared clock. In `executor/tests.rs` (`set_park_primitive` with
+`executor_with_clock`):
+
+- `spin_once_parks_through_the_registered_primitive` asserts the park is
+  handed exactly 10 000 us. A thread descheduled between registering the
+  timer and parking shortened that, so it now has a private clock.
+- `a_paused_ros_clock_does_not_wake_the_image_once_per_timer_period` asserts
+  each park reaches the park and lasts more than half the 500 ms budget (a
+  LOWER bound, kept). It now has a private monotonic clock, so that bound
+  measures the executor, not the host.
+- `a_yielding_park_returns_spin_once_with_the_next_wake_bound` was already on one
+  (`yielding_park_clock`).
+- The rest assert configuration (granularity, the singular slot, worker
+  identity) or delivery, not a time window, and are unchanged.
+
+Issue 2352 (entity_wake's 60 s hang) is not this class: a router or
+transport stall, not a wall-clock assertion. It stays open.
