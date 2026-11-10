@@ -1010,9 +1010,11 @@ fn standalone_leaves_use_ament_shape() {
         bad.join("\n  ")
     );
     // Sanity: the migrated trees exist + were walked (guards a silent-empty pass if
-    // the examples layout moves).
+    // the examples layout moves). It moves DOWN when phase-535 retires a
+    // standalone leaf into a workspace image: 27 -> 25 for the
+    // threadx-riscv64 C and C++ listeners (W6).
     assert!(
-        checked >= 27,
+        checked >= 25,
         "expected >=27 migrated standalone leaves, walked only {checked} — layout moved?"
     );
 }
