@@ -225,10 +225,11 @@ impl PlatformId {
             // only bare-metal family.
             PlatformId::QemuBaremetal => &["baremetal"],
             PlatformId::Fvp => &["fvp"],
-            // Every PX4 cell is Gated (its own nightly job builds SITL), so no row
-            // spells this today. The token is still declared: the vocabulary has
-            // to name every platform, or a lane that later gains PX4 fixtures
-            // selects nothing for them and looks fast rather than broken.
+            // No `fixtures.toml` row spells this today: the PX4 Runtime cell is
+            // built by its own job ([`PlatformId::own_lane`]), not the manifest.
+            // The token is still declared: the vocabulary has to name every
+            // platform, or a lane that later gains PX4 fixtures selects nothing
+            // for them and looks fast rather than broken.
             PlatformId::Px4 => &["px4"],
         }
     }
@@ -269,6 +270,33 @@ impl PlatformId {
         }
     }
 
+    /// The dedicated CI job that runs this platform's Runtime cells, for a
+    /// platform no tier cover may select (phase-542 W5).
+    ///
+    /// The lane scope is a property of the LANE (issue 1758): tiers 1, 2 and the
+    /// nightly cover leave such a platform out of their pools
+    /// (`ci_lane::pool`), so `NROS_TEST_COORDS` never names it and its tests
+    /// `lane_skip!` there by coordinate; the named job runs them with no
+    /// coordinate scope at all. Its build is the job's own recipe, not a
+    /// `fixtures.toml` row, which is why the fixture-coverage gates exempt it
+    /// by this declaration and not by a name written in each gate.
+    ///
+    /// `Px4`: the SITL build needs PX4's own upstream Python requirements, which
+    /// the self-hosted tier runners deliberately do not carry (maintainer ruling
+    /// 2026-11-03, `nightly.yml`), so the hosted `px4-sitl` job is the only lane
+    /// that can build and run it. `ci_lane`'s
+    /// `own_lane_platforms_are_in_no_tier_and_their_job_runs_them` holds the job to this.
+    pub const fn own_lane(self) -> Option<OwnLane> {
+        match self {
+            PlatformId::Px4 => Some(OwnLane {
+                workflow: ".github/workflows/nightly.yml",
+                job: "px4-sitl",
+                recipe: "just px4 test-sitl-example",
+            }),
+            _ => None,
+        }
+    }
+
     /// `examples/fixtures.toml` `platform` string → matrix platform. Inverse of
     /// [`PlatformId::fixture_tokens`].
     pub fn from_fixture_token(s: &str) -> Option<PlatformId> {
@@ -293,6 +321,17 @@ impl PlatformId {
         PlatformId::Fvp,
         PlatformId::Px4,
     ];
+}
+
+/// A dedicated CI job, named by [`PlatformId::own_lane`].
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct OwnLane {
+    /// The workflow file, relative to the repository root.
+    pub workflow: &'static str,
+    /// The job's id in that workflow.
+    pub job: &'static str,
+    /// The `just` invocation the job runs, which builds and then tests.
+    pub recipe: &'static str,
 }
 
 /// RMW axis.

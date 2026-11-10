@@ -1,8 +1,10 @@
 //! PX4 SITL runtime cells (phase-521 W8 (e), RFC-0113 D9 — PX4 is Tier 1).
 //!
 //! The `(Px4, Cpp, Uorb, …)` cells: a nano-ros module running inside a real
-//! PX4 SITL build, talking uORB. Gated — run by the hosted `px4-sitl` job in
-//! `nightly.yml`, which builds SITL with `just px4 build-sitl-example` first.
+//! PX4 SITL build, talking uORB. Runtime, in its own lane
+//! (`PlatformId::own_lane`): the hosted `px4-sitl` job in `nightly.yml` builds
+//! SITL with `just px4 build-sitl-example` first. No tier lane selects PX4, so
+//! there `require_platform_in_lane` deselects these tests by coordinate.
 //! No build happens here (CLAUDE.md: no compilation inside tests); a missing or
 //! wrong-root tree fails with the recipe that builds it.
 //!

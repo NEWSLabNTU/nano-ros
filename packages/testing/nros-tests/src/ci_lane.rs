@@ -39,8 +39,14 @@
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 20 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 12 | 11 | 20 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 47 | 41 | 76 % |
-//! | tier 3 | everything | 259 | 54 | 100 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 47 | 41 | 75 % |
+//! | tier 3 | everything | 260 | 55 | 100 % |
+//!
+//! Re-measured 2026-11-10 (phase-542 W5): the PX4 SITL uORB cell went Gated ->
+//! Runtime on its own coordinate (`px4,cpp,uorb`). It runs only in the hosted
+//! `px4-sitl` job ([`crate::matrix::PlatformId::own_lane`]), so it is in no tier
+//! pool: tiers 1, 2 and nightly did not move, and tier 3 went 259 -> 260 cells
+//! over 54 -> 55 coordinates.
 //!
 //! Re-measured 2026-11-09 (phase-544 W2, issue 2273): the `ViolationChannel`
 //! workload joined with one Zephyr Cortex-M C++ zenoh Workspace cell, at an
@@ -599,7 +605,13 @@ fn pool(lane: CiLane) -> Vec<&'static Cell> {
                 )
             })
             .collect(),
-        CiLane::Tier2 | CiLane::Tier2Nightly => all_runtime_cells().collect(),
+        // phase-542 W5 -- a platform with its own lane is in no tier's pool. Its
+        // cells would otherwise enter the 1-wise and pairwise covers (PX4 is the
+        // only uORB platform, so the cover HAS to pick it) and these lanes would
+        // claim a platform their runners cannot build.
+        CiLane::Tier2 | CiLane::Tier2Nightly => all_runtime_cells()
+            .filter(|c| c.platform.own_lane().is_none())
+            .collect(),
     }
 }
 
@@ -750,6 +762,63 @@ mod tests {
             let b: Vec<_> = cells(lane).iter().map(|c| format!("{c:?}")).collect();
             assert_eq!(a, b, "{lane:?} selection must not vary between calls");
         }
+    }
+
+    /// phase-542 W5 -- a platform with its own lane ([`PlatformId::own_lane`])
+    /// is selected by no tier, has a Runtime cell for that job to run (else the
+    /// declaration is stale), and its job exists and runs the declared recipe.
+    /// Negative control: without the `own_lane` filter in [`pool`], tier 2's
+    /// 1-wise cover picks the PX4 cell, the only uORB one.
+    #[test]
+    fn own_lane_platforms_are_in_no_tier_and_their_job_runs_them() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../..");
+        let mut declared = 0;
+        for &p in PlatformId::ALL {
+            let Some(lane) = p.own_lane() else { continue };
+            declared += 1;
+            for tier in ALL {
+                let picked: Vec<String> = cells(tier)
+                    .iter()
+                    .filter(|c| c.platform == p)
+                    .map(|c| format!("{c:?}"))
+                    .collect();
+                assert!(
+                    picked.is_empty(),
+                    "{tier:?} selects {p:?} cells, which run only in `{}`: {picked:?}",
+                    lane.job
+                );
+            }
+            assert!(
+                crate::matrix::runtime_cells().any(|c| c.platform == p),
+                "{p:?} declares its own lane `{}` but has no Runtime cell for it to run",
+                lane.job
+            );
+            let path = format!("{root}/{}", lane.workflow);
+            let text =
+                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+            let head = format!("  {}:", lane.job);
+            let start = text
+                .lines()
+                .position(|l| l == head)
+                .unwrap_or_else(|| panic!("{path} has no job `{}` ({p:?}'s own lane)", lane.job));
+            let body: Vec<&str> = text
+                .lines()
+                .skip(start + 1)
+                .take_while(|l| {
+                    l.is_empty() || l.starts_with("   ") || l.trim_start().starts_with('#')
+                })
+                .collect();
+            assert!(
+                body.iter().any(|l| l.contains(lane.recipe)),
+                "job `{}` in {path} does not run `{}`, the recipe {p:?}'s own lane names",
+                lane.job,
+                lane.recipe
+            );
+        }
+        assert!(
+            declared > 0,
+            "no platform declares its own lane; retire this test with the last one"
+        );
     }
 
     #[test]
@@ -1232,12 +1301,12 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 259,
-            "the table's tier-3 cell count (259) is stale; recomputed {total_cells}"
+            total_cells, 260,
+            "the table's tier-3 cell count (260) is stale; recomputed {total_cells}"
         );
         assert_eq!(
-            total_coords, 54,
-            "the table's tier-3 denominator (54 coordinates) is stale; recomputed \
+            total_coords, 55,
+            "the table's tier-3 denominator (55 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }

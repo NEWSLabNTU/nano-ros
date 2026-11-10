@@ -509,16 +509,17 @@ notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, s
 # Why `manual`, not `daily`, although nightly.yml's `px4-sitl` job runs the
 # cell every 07:00 cron (RFC-0122 D8/D9: a cadence must name a job that keeps
 # it, and a value with no such job is lowered):
-#   - the `(Px4, Cpp, Uorb, Pubsub, Example)` cell is `Gated`, not `Runtime`
-#     (a SITL build is not a fixture row and no tier cover schedules it), so
-#     the D10 predicate "an automated cadence needs a Runtime cell" refuses
-#     any automated cadence here; and `px4` is not a `nightly_token` of the
-#     per-platform sweep: `px4-sitl` is its own job.
-#   - the job has been red on every scheduled run so far: 41790118101
-#     (2026-11-04) and 41985062052 (2026-11-05), each time one of the two
-#     booting tests losing a race to boot a second SITL in the same build dir
-#     (issue 2243, open). Each test passed in one of the two runs; neither run
-#     was green. A job that has not kept a cadence does not earn one.
+#   - the `(Px4, Cpp, Uorb, Pubsub, Example)` cell is `Runtime` since phase-542
+#     W5, so the D10 predicate "an automated cadence needs a Runtime cell" no
+#     longer refuses one. Its one lane is the `px4-sitl` job
+#     (`PlatformId::own_lane`), not the per-platform sweep: `px4` is not a
+#     `nightly_token`, and no tier cover selects it.
+#   - the job has not kept a cadence yet. It was red on every scheduled run to
+#     2026-11-09 (41790118101, 41985062052, 42577453343), each time one of the
+#     two booting tests losing a race to boot a second SITL on PX4 instance 0
+#     (issue 2243, fixed 2026-11-10 by a host-wide instance lock in the
+#     harness). W5's acceptance is seven consecutive green scheduled runs,
+#     counted from the merge of W5; the row moves to `daily` then, by hand.
 # The book's evidence is the `px4` [[probe]] track (RFC-0115 D4: a board with
 # no emulator twin stays in the user book only with a probe track replaying its
 # chapter). It replays guide/platforms/px4.md's SITL build and a headless boot plus
@@ -528,9 +529,8 @@ notes = "Raspberry Pi Pico W (RP2040, Cortex-M0+, 264 KiB SRAM) on Zephyr 3.7, s
 # `last_run` is the hand run phase-521 W8 (e)/(f) recorded on 2026-11-03: a
 # stock PX4 `listener` read a nano-ros publication, and the work-queue tier
 # test measured 30 runs for 10 deadlines and 20 arrivals in each of three
-# runs, arrival->dispatch 14-29 us. The row moves to `daily` (with a gate that
-# accepts the `px4-sitl` job as its lane) once issue 2243 is fixed and the
-# cell's lane is green.
+# runs, arrival->dispatch 14-29 us. The row moves to `daily` once the
+# `px4-sitl` job has seven consecutive green scheduled runs (phase-542 W5).
 [[board]]
 crate = "px4-sitl"
 external = "PX4-Autopilot"
