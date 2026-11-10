@@ -36,8 +36,23 @@ impl XrceAgent {
     ///
     /// # Arguments
     /// * `port` - UDP port to listen on
+    ///
+    /// The port is CALLER-NAMED, usually an image's baked agent port, so every
+    /// test running that image asks for the same one. Issue 2420: this took no
+    /// lease, while a router on a baked port does (issue 2125), so two such
+    /// tests started two agents on one UDP port and their clients could reach
+    /// either one, issue 0470's cross-talk. It now waits for the port's lease,
+    /// as the router does, and holds it for the agent's lifetime.
     pub fn start(port: u16) -> TestResult<Self> {
-        Self::start_inner(port).map_err(StartError::into_test_error)
+        let lease = crate::port_lease::wait_for_port(
+            crate::port_lease::Transport::Udp,
+            port,
+            crate::port_lease::NAMED_PORT_WAIT,
+        )
+        .map_err(|e| TestError::ProcessFailed(format!("XRCE agent port {port}: {e}")))?;
+        let mut agent = Self::start_inner(port).map_err(StartError::into_test_error)?;
+        agent._lease = lease;
+        Ok(agent)
     }
 
     fn start_inner(port: u16) -> Result<Self, StartError> {

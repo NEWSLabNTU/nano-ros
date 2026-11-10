@@ -56,3 +56,48 @@ of its 10 s budget under load. Its own output is not in the panic; a
 recurrence should be read for it before changing the budget. Separately, the
 9100 sharing between `rtos_e2e` and this test is a candidate for its own fix
 (one owner per baked port per lane).
+
+## The shared baked port: what is and is not a gap (2026-11-10)
+
+A baked port is allocated per IMAGE COORDINATE (`alloc::port_of(platform,
+lang, workload)`) and compiled into that image. Every test that runs the image
+must use it, so "one baked port per fixture row" cannot hold. One binary is
+one port. Sharing is by design: a sweep of `port_of(` callers in
+`nros-tests/tests` finds coordinates read by several files. For example,
+FreeRTOS C `EntryPubsub` is read by `entry_e2e` and
+`pubsub_freertos_ros2_interop_e2e`, and `RealtimeSchedTasks` by
+`realtime_sched_tasks_e2e` and `sched_dims_applied_e2e`. The 9100 case here is
+the same thing.
+
+What makes sharing safe is the per-port `flock` lease (`port_lease.rs`, issues
+0470 and 2125). A fixture that starts a daemon on a caller-named port waits for
+that port's lease and holds it for the daemon's lifetime, so two tests on one
+baked port serialise and neither can reach the other's daemon. It works as a
+nextest test-group per port, decided at run time, which a static test-group
+could only approximate. The 9100 overlap in this run was that lease working:
+`port 9100: held by pid …, waiting`.
+
+The real gap is a starter that skipped the lease. Of the fixtures that bind a
+caller-named port, every `ZenohRouter` starter (`start`, `start_on`,
+`start_slirp`, `start_with_serial`, `start_tls`) takes it, but
+`XrceAgent::start(port)` did not (`_lease: None`). Two tests running one
+image's baked XRCE agent port started two agents on one UDP port, and their
+clients could reach either one: issue 0470's cross-talk. It now waits for and
+holds the UDP lease the same way, under one shared `NAMED_PORT_WAIT`.
+Measured across processes: with the lease held by another process, `start`
+printed `held by pid … waiting` and started 18.6 s later, when the holder
+released it.
+
+So the next starter cannot skip the lease, it is checked rather than remembered:
+`port_lease::tests::every_caller_named_port_starter_takes_the_lease` reads the
+fixture sources and fails on any public `start*` / `spawn*` starter taking
+`port: u16` whose body neither takes the lease nor calls a fn that does.
+Delegation counts only toward a callee that leases, so a public starter routed
+through an unleased private helper is still caught. `ros_env::spawn_xrce_agent`
+is exempt by construction: its port is `8000 + domain`, and the domain is
+itself `flock`-leased for the process. Removing the lease from
+`XrceAgent::start` makes the check fail (measured), and a synthetic negative
+control covers the delegation cases.
+
+Still open: part (2) above, the freertos-posix row's refusal on 11130. It is
+read only on a recurrence, when #3456's lane log carries its output.

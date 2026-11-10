@@ -74,6 +74,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Issue 2125 — how long a fixture waits for another test's daemon on the same
+/// BAKED port (an image's compiled-in router or agent port, which every test
+/// running that image shares). Longer than the longest cell holding one (the
+/// quiet-link cell's 75 s window plus a cold QEMU boot), and inside the 360 s
+/// the QEMU groups' slow-timeouts allow. One value for every daemon a baked
+/// port can name (issue 2420): the router's and the XRCE agent's waits are the
+/// same question.
+pub const NAMED_PORT_WAIT: std::time::Duration = std::time::Duration::from_secs(240);
+
 /// How many ports to try before giving up. Each attempt is a fresh kernel
 /// suggestion, so exhausting this means the lease directory is badly wedged
 /// rather than that the machine ran out of ports.
@@ -297,9 +306,173 @@ fn claim(lock: &Path) -> io::Result<Option<std::fs::File>> {
     }
 }
 
+/// Issue 2420 — the PUBLIC fixture daemon starters that bind a CALLER-NAMED
+/// port without taking that port's lease, read from their source. Lease
+/// coverage is authored per starter, and `XrceAgent::start(port)` skipped it
+/// for as long as it existed, so this is checked rather than remembered.
+///
+/// A starter is a `fn start*` / `fn spawn*` whose parameters include
+/// `port: u16`. A fn LEASES when its body takes the lease
+/// (`wait_for_named_port(` / `port_lease::wait_for_port(`), or calls
+/// (`Self::<name>(`) a fn that leases. Delegation counts only toward a callee
+/// that leases, so a public starter routed through an unleased private helper
+/// (`start_inner`, which `start_unique` leases around) is still caught. Private
+/// starters are not reported themselves: they are reached through public ones.
+#[cfg(test)]
+pub(crate) fn unleased_starters(src: &str, exempt: &[&str]) -> Vec<String> {
+    struct F {
+        name: String,
+        public: bool,
+        starter: bool,
+        leases: bool,
+        calls: Vec<String>,
+    }
+    let mut fns = Vec::new();
+    let mut rest = src;
+    while let Some(i) = rest.find("fn ") {
+        let before = &rest[..i];
+        let public = before.trim_end().ends_with("pub");
+        let after = &rest[i + 3..];
+        let name: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        let Some(open) = after.find('{') else { break };
+        let signature = &after[..open];
+        // The body, by brace depth from the signature's `{`.
+        let mut depth = 0usize;
+        let mut end = open;
+        for (j, c) in after[open..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = open + j;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let body = &after[open..=end];
+        let calls = body
+            .split("Self::")
+            .skip(1)
+            .map(|t| {
+                t.chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect::<String>()
+            })
+            .collect();
+        fns.push(F {
+            starter: (name.starts_with("start") || name.starts_with("spawn"))
+                && signature.contains("port: u16"),
+            leases: body.contains("wait_for_named_port(")
+                || body.contains("port_lease::wait_for_port("),
+            name,
+            public,
+            calls,
+        });
+        rest = &after[end..];
+    }
+    // Close `leases` over delegation until nothing changes.
+    loop {
+        let leasing: Vec<String> = fns
+            .iter()
+            .filter(|f| f.leases)
+            .map(|f| f.name.clone())
+            .collect();
+        let mut changed = false;
+        for f in fns.iter_mut().filter(|f| !f.leases) {
+            if f.calls.iter().any(|c| leasing.contains(c)) {
+                f.leases = true;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    fns.into_iter()
+        .filter(|f| f.public && f.starter && !f.leases && !exempt.contains(&f.name.as_str()))
+        .map(|f| f.name)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2420 — every fixture daemon starter on a caller-named port takes
+    /// that port's lease. `spawn_xrce_agent` is exempt by construction: its
+    /// port is `8000 + domain`, and the domain is itself `flock`-leased for
+    /// the process (`unique_ros_domain_id`), so the port is exclusive already.
+    #[test]
+    fn every_caller_named_port_starter_takes_the_lease() {
+        let sources = [
+            (
+                "zenohd_router.rs",
+                include_str!("fixtures/zenohd_router.rs"),
+            ),
+            ("xrce_agent.rs", include_str!("fixtures/xrce_agent.rs")),
+            ("ros_env.rs", include_str!("ros_env.rs")),
+        ];
+        let exempt = ["spawn_xrce_agent"];
+        let bad: Vec<String> = sources
+            .iter()
+            .flat_map(|(file, src)| {
+                unleased_starters(src, &exempt)
+                    .into_iter()
+                    .map(move |n| format!("{file}: fn {n}"))
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "fixture starter(s) bind a caller-named port without its lease \
+             (port_lease::wait_for_port, issue 2420): {bad:?}"
+        );
+        // Reach: the check must actually see the starters it guards.
+        let seen = sources
+            .iter()
+            .map(|(_, s)| s.matches("port: u16").count())
+            .sum::<usize>();
+        assert!(
+            seen >= 8,
+            "the check read too few starters ({seen}); did a file move?"
+        );
+    }
+
+    /// The negative control: an unleased public starter is caught, a leased
+    /// one and one delegating to it pass, a non-starter is ignored, and a
+    /// public starter routed through an UNLEASED private helper is caught.
+    #[test]
+    fn unleased_starters_catches_a_starter_without_the_lease() {
+        let src = r#"
+            pub fn start(port: u16) -> R { spawn(port) }
+            fn start_with(port: u16) -> R { let l = crate::port_lease::wait_for_port(T, port, W)?; go(l) }
+            pub fn start_on(addr: &str, port: u16) -> R { Self::start_with(port) }
+            fn start_inner(port: u16) -> R { spawn(port) }
+            pub fn start_raw(port: u16) -> R { Self::start_inner(port) }
+            fn wait_for_ready(port: u16) -> R { if x { y } else { z } }
+            pub fn spawn_thing(
+                a: &Path,
+                port: u16,
+            ) -> R { run(port) }
+        "#;
+        assert_eq!(
+            unleased_starters(src, &[]),
+            vec![
+                "start".to_string(),
+                "start_raw".to_string(),
+                "spawn_thing".to_string()
+            ]
+        );
+        assert_eq!(
+            unleased_starters(src, &["start", "start_raw", "spawn_thing"]),
+            Vec::<String>::new()
+        );
+    }
 
     /// The property the whole module exists for: two leases never name one port.
     #[test]
