@@ -371,6 +371,46 @@ impl Drop for OpenGuard {
     }
 }
 
+/// Issue 2389 — say on the console that the open gave up, with what it dialled
+/// and the budget it gave up under. `nros_log`, not `eprintln!`: std stdio is
+/// fatal on Zephyr native_sim (issue 0589), and this crate reaches `no_std`.
+///
+/// The line names the budget because the budget is the decision: a board that
+/// boots before its router needs `connect_forever`, one whose router is slow
+/// needs a larger `connect_timeout_ms`, and a log that only said
+/// `ConnectionFailed` named neither.
+fn report_open_budget_spent(locator: Option<&[u8]>, budget_ms: i32) {
+    let locator = locator
+        .map(|l| l.split(|&b| b == 0).next().unwrap_or(&[]))
+        .and_then(|l| core::str::from_utf8(l).ok())
+        .filter(|l| !l.is_empty())
+        .unwrap_or("(no locator: scouting)");
+    let logger = nros_log::get_logger("nros_rmw_zenoh");
+    if budget_ms > 0 {
+        nros_log::log_error!(
+            logger,
+            "zenoh open: no session with {} within connect_timeout_ms={} \
+             (refused, unreachable, or no answer to the handshake)",
+            locator,
+            budget_ms
+        );
+    } else if budget_ms == 0 {
+        nros_log::log_error!(
+            logger,
+            "zenoh open: no session with {} in one attempt (connect_timeout_ms=0) \
+             (refused, unreachable, or no answer to the handshake)",
+            locator
+        );
+    } else {
+        nros_log::log_error!(
+            logger,
+            "zenoh open: no session with {} (connect_forever): a failure that is \
+             not retried",
+            locator
+        );
+    }
+}
+
 impl Context {
     /// Create a new shim context with the given locator
     ///
@@ -393,14 +433,27 @@ impl Context {
     /// The loop this replaces retried every failure ten times with a 300 ms
     /// backoff, sized for router-accept races in parallel test runs; against a
     /// peer that accepts TCP and never answers it cost 103.7 s (measured).
-    fn open_configured(handle: *mut zpico_sys::zpico_session_t) -> Result<()> {
+    ///
+    /// Issue 2389 — the budget bounds the WHOLE open, the handshake included
+    /// (the zenoh-pico fork gives each attempt's handshake the budget's
+    /// deadline), and a spent budget is said on the console with the locator
+    /// and the budget, so a board whose router never answers reports why it
+    /// gave up instead of reading as a hang.
+    fn open_configured(
+        handle: *mut zpico_sys::zpico_session_t,
+        locator: Option<&[u8]>,
+    ) -> Result<()> {
         let ret = unsafe { zpico_set_connect_timeout(handle, crate::config::CONNECT_TIMEOUT_MS) };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
         let ret = unsafe { zpico_open(handle) };
         if ret < 0 {
-            return Err(ZpicoError::from_code(ret));
+            let err = ZpicoError::from_code(ret);
+            if err == ZpicoError::Session {
+                report_open_budget_spent(locator, crate::config::CONNECT_TIMEOUT_MS);
+            }
+            return Err(err);
         }
         Ok(())
     }
@@ -416,7 +469,7 @@ impl Context {
                 if ret < 0 {
                     return Err(ZpicoError::from_code(ret));
                 }
-                Self::open_configured(handle)
+                Self::open_configured(handle, Some(locator))
             })();
             if let Err(e) = connect {
                 unsafe { zpico_session_release(handle) };
@@ -502,7 +555,12 @@ impl Context {
                 if ret < 0 {
                     return Err(ZpicoError::from_code(ret));
                 }
-                Self::open_configured(handle)
+                // The staged copy, for the same reason as `locator_ptr`.
+                // SAFETY: `LOC_BUF`/`LOC_VALID` are written above under the
+                // open lock this call still holds, and read-only from here.
+                let staged: Option<&[u8]> =
+                    unsafe { LOC_VALID.then(|| &*(&raw const LOC_BUF) as &[u8]) };
+                Self::open_configured(handle, staged)
             })();
             if let Err(e) = connect {
                 unsafe { zpico_session_release(handle) };
