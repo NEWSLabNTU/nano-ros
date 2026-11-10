@@ -697,10 +697,6 @@ pub enum Config {
     /// launch's nodes on one RTIC task. Same nodes, different entry
     /// (phase-535 W6).
     Rtic,
-    /// zenoh-pico over its TLS link (`link-tls`): the session dials a
-    /// `tls/...` router with a CA certificate. Same messages, different link
-    /// (phase-535 W6).
-    Tls,
     /// zenoh-pico with the multicast transport and scouting compiled in
     /// (`ZPICO_MULTICAST_TRANSPORT=1`), so a peer-mode session needs no
     /// router. Same messages, no router (phase-535 W6, issue 0711).
@@ -716,7 +712,6 @@ impl Config {
             Config::CustomTransport => "custom-transport",
             Config::Serial => "serial",
             Config::Rtic => "rtic",
-            Config::Tls => "tls",
             Config::PeerMode => "peer-mode",
         }
     }
@@ -983,8 +978,8 @@ pub enum Consumer {
     /// `tests/violation_channel_e2e.rs` -- the contract-violation channel on
     /// the Zephyr Cortex-M QEMU image (phase-544 W2).
     ViolationChannel,
-    /// `tests/nano2nano.rs` -- the linux pair's `tls` and `peer-mode`
-    /// configurations (phase-535 W6).
+    /// `tests/nano2nano.rs` -- the linux pair's `peer-mode` configuration
+    /// (phase-535 W6).
     Nano2nano,
 }
 
@@ -1465,7 +1460,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             (P::Linux, [Config::Lending, Config::Multisession]) => Some(LoanE2e),
             (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
             (P::QemuBaremetal, [Config::Serial] | [Config::Rtic]) => Some(Emulator),
-            (P::Linux, [Config::Tls] | [Config::PeerMode]) => Some(Nano2nano),
+            (P::Linux, [Config::PeerMode]) => Some(Nano2nano),
             _ => None,
         };
     }

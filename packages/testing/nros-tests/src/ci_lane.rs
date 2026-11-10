@@ -37,16 +37,16 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 27 | 11 | 20 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 15 | 12 | 21 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 50 | 42 | 75 % |
-//! | tier 3 | everything | 267 | 56 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 26 | 11 | 20 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 49 | 42 | 75 % |
+//! | tier 3 | everything | 266 | 56 | 100 % |
 //!
-//! Re-measured 2026-11-10 (phase-535 W6, TLS and peer mode): `Config::Tls`
-//! and `Config::PeerMode` joined with two linux Rust zenoh Pubsub cells at an
-//! existing coordinate. Two new config values are two more 1-wise
-//! requirements, so tier 1 went 25 -> 27 cells, tier 2 13 -> 15 and nightly
-//! 48 -> 50, all over the same coordinates; tier 3 went 265 -> 267 cells.
+//! Re-measured 2026-11-10 (phase-535 W6, peer mode): `Config::PeerMode`
+//! joined with a linux Rust zenoh Pubsub cell at an existing coordinate. A
+//! new config value is one more 1-wise requirement, so tier 1 went 25 -> 26
+//! cells, tier 2 13 -> 14 and nightly 48 -> 49, all over the same
+//! coordinates; tier 3 went 265 -> 266 cells.
 //!
 //! Re-measured 2026-11-10 (phase-535 W6, RTIC): `Config::Rtic` joined with
 //! three bare-metal Rust zenoh cells (Pubsub, Service, Action) at an existing
@@ -1294,9 +1294,9 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 27, 11),
-            (CiLane::Tier2, 15, 12),
-            (CiLane::Tier2Nightly, 50, 42),
+            (CiLane::Tier1, 26, 11),
+            (CiLane::Tier2, 14, 12),
+            (CiLane::Tier2Nightly, 49, 42),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -1318,8 +1318,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 267,
-            "the table's tier-3 cell count (267) is stale; recomputed {total_cells}"
+            total_cells, 266,
+            "the table's tier-3 cell count (266) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,

@@ -528,32 +528,40 @@ and a test asks for it by name (`resolve_coord_variant`).
   and keeps its own. Moving the listener's would split `entrypoint.sh` by
   role, and no CI lane runs the compose test to prove the move.
 
-- **linux Rust `tls` and `peer-mode` (in review).** The four variant rows of
-  `examples/linux/rust/{talker,listener}` (`link-tls`, and
-  `ZPICO_MULTICAST_TRANSPORT=1`) retire. They become the
-  `linux_{talker,listener}_{tls,peer_mode}` images of the Rust workspace's
-  `pubsub_bringup`: `node_features = ["link-tls"]` (RFC-0121 D9, through a new
-  `link-tls` forward in `talker_pkg` and `listener_pkg`), and an image `env`
-  for the multicast transport. Each image has its own target dir, because both
-  knobs rebuild zpico-sys. `matrix::Config::{Tls,PeerMode}` name the
-  configurations (registry rows `[feature.link-tls]`,
-  `[knob.ZPICO_MULTICAST_TRANSPORT]`). Two configured Runtime cells,
-  `(Linux, Rust, Zenoh, Pubsub) + [Tls]` and `+ [PeerMode]`, make `nano2nano`
-  a consumer, and its two cases resolve the images through
-  `workspace_image::resolve_configured`. Each case proves its configuration
-  reached the build. The TLS pair delivers only through a `tls/...` router,
-  so a build without `link-tls` fails to connect. The peer pair asserts that
-  the backend does not print its peer-mode refusal. The talker witness keeps
-  its plain rows.
-- **linux Rust listener, service and action leaves (stay: editions).** The
-  opt-in ROS-edition lane (`just ros_editions build-e2e-fixtures`) builds their
+- **linux Rust `peer-mode` (in review).** The listener's
+  `ZPICO_MULTICAST_TRANSPORT=1` row becomes the `linux_listener_peer_mode` image
+  of the Rust workspace's `pubsub_bringup`. The knob is in the image's `env`,
+  and the image has its own target dir because the knob rebuilds zpico-sys.
+  The talker half is the witness's own peer row: phase-531 W6 made
+  `examples/linux/rust/talker` a one-node workspace, so the pair keeps one
+  talker route. `matrix::Config::PeerMode` (registry row
+  `[knob.ZPICO_MULTICAST_TRANSPORT]`) names the configuration. A configured
+  Runtime cell, `(Linux, Rust, Zenoh, Pubsub) + [PeerMode]`, makes `nano2nano`
+  a consumer, and the listener resolves through
+  `workspace_image::resolve_configured`. The case shows the knob reached both
+  builds: it asserts the backend does not print its peer-mode refusal.
+- **linux Rust listener `link-tls` (keeps its own directory, issue 2423).** The
+  listener's `link-tls` row stays in `examples/linux/rust/listener`. A
+  language-workspace image can turn on a zenoh link feature only through a
+  node package that forwards to `nros-rmw-zenoh`. W6 tried that: it built,
+  and `test_tls_talker_listener_communication` passed on the images. But
+  `check-node-package-invariance` (issue 1509) refuses a shared node package
+  that names an RMW. Issue 2423 lays out the two enablers: a `link-tls`
+  capability, or image-selected backend features.
+- **linux Rust listener, service and action (keep their own directories, to
+  migrate in place to one-package workspaces: editions).** The opt-in
+  ROS-edition lane (`just ros_editions build-e2e-fixtures`) builds their
   `linux[_<rmw>]_<edition>` images. A workspace generates its message crates
-  for ONE edition, shared by every image, and its bringups must agree on that
-  edition (issue 2320). An image that declares another edition builds against
-  the workspace's message hashes with no diagnostic, which is issue 2409. That
-  issue is the exit: once a workspace generates per edition, these images move
-  to the language workspace. Until then each leaf keeps one plain row.
-- **Feature demos (stay, as leaves).** Each one below is a hand-written `main`
+  for one edition and refuses an image of another
+  ([issue 2409](../issues/archived/2409-workspace-image-ros-edition-builds-workspace-edition-messages.md),
+  resolved that way), and the talker witness's edition builds now come from a
+  per-edition copy of its one-node workspace. The same approach applied to the
+  Rust language workspace would copy and regenerate every bringup per edition,
+  so these examples move in place, each to its own one-package workspace,
+  where the talker's per-edition copy applies unchanged. Until then each keeps
+  one plain row.
+- **Feature demos (keep their own directories, to migrate in place to
+  one-package workspaces).** Each one below is a hand-written `main`
   demonstrating an API that a generated entry does not express, and its test
   asserts what that program prints:
   - `linux/rust/lifecycle-node`: the Executor-level `LifecycleCallbacks` trait,
@@ -575,13 +583,34 @@ and a test asks for it by name (`resolve_coord_variant`).
   - `rv-virt-threadx/c/errno-isolation`: a platform-ABI probe (issue 0680)
     that spawns two threads through `nros_platform_task_init`. It is not a
     node and has no workload.
-- **linux Rust `custom-transport-{talker,listener}` (stay).** They are the
+- **linux Rust `custom-transport-{talker,listener}` (keep their own
+  directories, to migrate in place to one-package workspaces).** They are the
   book's "the user supplies a transport" example
   (`book/src/extending/add-a-transport.md`): the application's own `main`
   registers a link vtable before it opens the executor. W1's inventory listed
   them as generated-entry candidates. Moving them would make a generated entry
-  the example of the one thing a user must write, so they stay as
-  manual-entry demos.
+  the example of the one thing a user must write, so they stay manual-entry
+  demos.
+
+**Ownership (agreed with
+[phase-531](phase-531-workspace-first-project-layout.md), 2026-11-10; RFC-0122
+D3 ruling).** An example kept in its own directory is a one-package workspace,
+never the retired leaf shape.
+
+- **phase-535 W6** migrates these in place to one-package workspaces:
+  - the linux Rust listener, `service-*` and `action-*` edition examples,
+    including the listener's `link-tls` row (issue 2423), and the bare-metal
+    `rust/listener` with its `docker` image;
+  - the feature demos: Rust `logging`, `lifecycle-node` and `custom-msg`;
+    C/C++ `logging`, `parameters` and `safety-listener`; C `custom-msg`;
+    NuttX and ThreadX `typed-carrier`; ThreadX `errno-isolation`;
+  - the Rust `custom-transport` pair;
+  - the mps2-an385 C/C++ bare-metal examples;
+  - every other non-talker, non-template example directory under
+    `examples/`.
+- **phase-531 W6** owns the 22 `<plat>/<lang>/talker` witnesses (the talker's
+  `link-tls` and peer rows included), `linux/c/custom-platform`, and the
+  templates.
 
 ### W7 — Retire the old leaves, add `road_witness_e2e`
 

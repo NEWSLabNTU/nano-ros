@@ -313,48 +313,12 @@ image = "linux_listener_cyclonedds"
 codegen_out = "build-workspace-codegen/pubsub_bringup"
 target_dir = "target-fixtures-cyclonedds"
 
-# phase-535 W6 (RFC-0122 D2) — the `tls` and `peer-mode` configurations of
-# the linux pair, from the `examples/linux/rust/{talker,listener}` variant
-# rows. Each has its own target dir: `link-tls` and
-# `ZPICO_MULTICAST_TRANSPORT` rebuild zpico-sys, and the env is not part of
-# cargo's unit hash, so sharing `target-fixtures` would rebuild it per image.
-# `matrix::Config::{Tls,PeerMode}` cells; `tests/nano2nano.rs` runs them.
-
-[[workspace_fixture]]
-id = "workspace-rust-native-talker-tls"
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/rust"
-bringup = "src/pubsub_bringup"
-image = "linux_talker_tls"
-node_features = ["link-tls"]
-codegen_out = "build-workspace-codegen/pubsub_bringup"
-target_dir = "target-fixtures/linux-talker-tls"
-
-[[workspace_fixture]]
-id = "workspace-rust-native-talker-peer-mode"
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/rust"
-bringup = "src/pubsub_bringup"
-image = "linux_talker_peer_mode"
-codegen_out = "build-workspace-codegen/pubsub_bringup"
-target_dir = "target-fixtures/linux-talker-peer-mode"
-
-[[workspace_fixture]]
-id = "workspace-rust-native-listener-tls"
-platform = "linux"
-lang = "rust"
-rmw = "zenoh"
-dir = "examples/workspaces/rust"
-bringup = "src/pubsub_bringup"
-image = "linux_listener_tls"
-node_features = ["link-tls"]
-codegen_out = "build-workspace-codegen/pubsub_bringup"
-target_dir = "target-fixtures/linux-listener-tls"
-
+# phase-535 W6 (RFC-0122 D2) — the `peer-mode` configuration of the linux
+# listener, from the `examples/linux/rust/listener` variant row. Its talker is
+# the witness's peer row (`examples/linux/rust/talker`). Own target dir:
+# `ZPICO_MULTICAST_TRANSPORT` rebuilds zpico-sys, and an env is not part of
+# cargo's unit hash. `matrix::Config::PeerMode` cell; `tests/nano2nano.rs`
+# runs it.
 [[workspace_fixture]]
 id = "workspace-rust-native-listener-peer-mode"
 platform = "linux"
@@ -2335,12 +2299,14 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/action-client"
 
-# phase-535 W4/W6 — the Rust listener, service and action LEAVES stay, because
-# the opt-in ROS-edition lane (`just ros-editions build-e2e-fixtures`) builds
-# their `linux[_<rmw>]_<edition>` images, and a workspace generates its message
-# crates for ONE edition (issue 2320). Their pair cells run the workspace
-# images. One plain row each keeps the leaf compiling where a user would copy
-# it. (The listener's `tls` and peer-mode rows are workspace images now.)
+# phase-535 W4/W6 — the Rust listener, service and action examples keep their
+# own directories (to migrate in place to one-package workspaces), because the
+# opt-in ROS-edition lane (`just ros-editions build-e2e-fixtures`) builds their
+# `linux[_<rmw>]_<edition>` images, and a workspace generates its messages for
+# ONE edition (issue 2409). Their pair cells run the workspace images. One
+# plain row each keeps the example compiling where a user would copy it. (The
+# listener's peer-mode row is a workspace image now; its `link-tls` row stays,
+# below, issue 2423.)
 [[fixture]]
 platform = "linux"
 lang = "rust"
@@ -2794,6 +2760,8 @@ target_dir = "target-fixtures"
 image = "linux_tls"
 node_features = ["link-tls"]
 
+# The listener's half keeps its own directory: a workspace image cannot turn
+# on a zenoh link feature without a node package naming zenoh (issue 2423).
 [[fixture]]
 platform = "linux"
 lang = "rust"
@@ -2810,7 +2778,8 @@ features = ["link-tls"]
 # The env is part of the group signature, so this pair lands in its own artifact
 # root and the default native tree keeps its footprint. Do NOT author a
 # `target_dir` here: phase-340 W2 strips an authored dir, because a dir names a
-# group rather than opting the row out.
+# group rather than opting the row out. The listener half is the Rust
+# workspace's `linux_listener_peer_mode` image (phase-535 W6).
 [[workspace_fixture]]
 id = "linux-rust-zenoh-talker-peer"
 platform = "linux"
