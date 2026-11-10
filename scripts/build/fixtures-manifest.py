@@ -775,6 +775,19 @@ KNOB_REGISTRY = SCRIPT_ROOT / "packages/tooling/nros-zephyr-build/knobs.toml"
 ZEPHYR_WEST_PLATFORMS = ("zephyr", "zephyr-cortex-m", "zephyr-nucleo-f767zi")
 
 
+def west_rows(manifest):
+    """Every row the WEST lane builds: `[[fixture]]` rows with
+    `builder = "west"` plus `[[workspace_fixture]]` rows on a
+    `ZEPHYR_WEST_PLATFORMS` platform. ONE reading for every consumer that maps
+    a west build dir back to its row -- a second spelling of the platform set
+    missed the Nucleo when its C talker became a workspace row (tier 2,
+    2026-11-10: `[NO ROW] build-nucleo-f767zi-c-talker-serial`)."""
+    rows = [e for e in load(manifest) if e.get("builder") == "west"]
+    rows += [e for e in load_workspace_fixtures(manifest)
+             if e.get("platform") in ZEPHYR_WEST_PLATFORMS]
+    return rows
+
+
 def west_overrides(entry):
     """`[(ID, value)]` from a west row's `west_overrides` table — phase-484 W5b.
 
@@ -2088,13 +2101,7 @@ def main():
     if a.command == "west-overrides":
         # Both tables: a zephyr workspace row is a west row too (see
         # `west-leaves`), and phase-531 W6's boot-report row carries one.
-        rows = [e for e in load(a.manifest) if e.get("builder") == "west"]
-        rows += [
-            e
-            for e in load_workspace_fixtures(a.manifest)
-            if e.get("platform") in ZEPHYR_WEST_PLATFORMS
-        ]
-        for e in rows:
+        for e in west_rows(a.manifest):
             for knob, value in west_overrides(e):
                 sys.stdout.write(f"{west_id(e)}{SEP}{knob}={value}\n")
         return

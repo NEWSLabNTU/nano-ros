@@ -90,13 +90,9 @@ def image_bringups(manifest=MANIFEST):
     """
     fm = _manifest_module()
     out = {}
-    for e in fm.load(manifest):
-        if e.get("builder") == "west":
-            out[fm.west_build_name(e)] = None
-    for e in fm.load_workspace_fixtures(manifest):
-        if e.get("platform") not in ("zephyr", "zephyr-cortex-m"):
-            continue
-        bringup = e.get("bringup")
+    for e in fm.west_rows(manifest):
+        # A `[[fixture]]` west row builds no bringup; a workspace row names one.
+        bringup = e.get("bringup") if "builder" not in e else None
         out[fm.west_build_name(e)] = (
             Path(e["dir"].rstrip("/")) / bringup / "system.toml" if bringup else None)
     return out
