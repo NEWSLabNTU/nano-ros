@@ -90,7 +90,12 @@ const ACTION_MSGS_SHARED: usize = 3;
 /// wired by the runtime. Before 1268 they registered nothing at all — the six
 /// `create_service` calls went straight to the backend, which refused each — so
 /// they cost no registry slots and the omission could not be observed.
-pub const PARAM_SERVICE_TYPES: usize = 6 * TYPES_PER_SRV;
+///
+/// Issue 2304 — plus ONE message: `rcl_interfaces::msg::dds_::ParameterEvent_`,
+/// the executor's `/parameter_events` publisher (issue 2023), which registers
+/// its type like any other publisher. 2023 added the registration and not the
+/// count, so a table sized to the model's types plus twelve was one short.
+pub const PARAM_SERVICE_TYPES: usize = 6 * TYPES_PER_SRV + TYPES_PER_MSG;
 
 /// Issue 1293 — distinct DDS type names the lifecycle family registers.
 ///
@@ -411,7 +416,8 @@ mod tests {
         assert_eq!(derive_max_types(counted), 512);
     }
 
-    /// Issue 1268 — the six parameter services register twelve types, and the
+    /// Issue 1268 — the six parameter services register twelve types (and,
+    /// issue 2304, the `/parameter_events` publisher one more), and the
     /// sizing has to see them: they are the executor's, so no model wiring
     /// names them, and an image whose own types already fill the table would
     /// meet `RegistryFull` at runtime rather than a sized knob at bake time.
@@ -424,8 +430,8 @@ mod tests {
         );
         assert_eq!(
             infra_types(true, false),
-            12,
-            "six services x (_Request + _Response)"
+            13,
+            "six services x (_Request + _Response), plus /parameter_events' ParameterEvent"
         );
     }
 
@@ -435,6 +441,6 @@ mod tests {
     #[test]
     fn infra_types_counts_the_lifecycle_family_only_when_declared() {
         assert_eq!(infra_types(false, true), 9);
-        assert_eq!(infra_types(true, true), 21);
+        assert_eq!(infra_types(true, true), 22);
     }
 }

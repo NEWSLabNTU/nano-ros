@@ -578,6 +578,14 @@ if(EXISTS "${_nros_codegen_module}"
     include("${_nros_codegen_module}")
 endif()
 
+# Issue 2304 — the types the runtime creates entities for on its own (the
+# parameter services and `/parameter_events`), through the backend's
+# per-message hook, so a descriptor-registry backend (Cyclone) can create them.
+# A backend with no hook pays nothing. After the codegen module, so a package
+# the runtime and the application share has one typesupport library.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosRuntimeInterfaceTypes.cmake")
+nros_runtime_interface_types("${NROS_FEATURES}" TARGETS NanoRos nros-cpp-headers)
+
 # Phase 140 — install-mode branch deleted. nano-ros is consumed
 # exclusively as a source distribution via `add_subdirectory(<repo>)`
 # (or the Phase 139 integration shells under `integrations/`).
