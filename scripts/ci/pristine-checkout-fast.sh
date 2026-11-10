@@ -194,6 +194,22 @@ pristine_selftest() {
         echo "pristine-checkout SELFTEST: could not read $tmp/probe.log" >&2
         exit 2
     fi
+    # Issue 2382 — a runner that exits non-zero with NO record of the probe
+    # never ran it: a lane preflight or the free-disk floor refused first. That
+    # is NOT VERIFIED, not "the gate passed", and saying it passed sent the
+    # reader looking for a submodule leak that did not exist. Still red: a
+    # control that could not run proves nothing, and the lane after it would
+    # not run either.
+    if [ "$src" -ne 0 ] && [ "$rec" -ne 0 ] \
+        && ! nros_grep_q 'fast::check::pristine-selftest-probe' "$tmp/probe.log" \
+        && cmp -s "$tmp/lanes.just.orig" "$clone/$probe_file"; then
+        echo "pristine-checkout SELFTEST NOT VERIFIED: the gate runner exited rc=$src" >&2
+        echo "  without running the planted probe -- a lane preflight or the free-disk" >&2
+        echo "  floor refused before any gate ran, so neither the control nor the lane" >&2
+        echo "  can say anything on this host. The runner's last lines:" >&2
+        tail -15 "$tmp/probe.log" | sed 's/^/    /' >&2
+        exit 1
+    fi
     if [ "$src" -eq 0 ] || [ "$rec" -ne 0 ] \
         || ! cmp -s "$tmp/lanes.just.orig" "$clone/$probe_file"; then
         echo "pristine-checkout SELFTEST FAILED: a gate that reads a file inside an" >&2
