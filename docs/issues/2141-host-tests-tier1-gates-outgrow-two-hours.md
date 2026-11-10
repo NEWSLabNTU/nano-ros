@@ -164,6 +164,30 @@ already there and is a separate decision.
 Close when a scheduled `host-tests` run completes both shards inside their
 caps. Record each shard's wall time and its headroom.
 
+## Third sighting: shard 1 reaches its gates and is cut off at 32 of 47 (2026-11-10)
+
+Dispatched `host-tests` run 42849000957 on main `62f543fe33`, the first run
+past issue 2382's preflight refusal. Shard 2/2 passed. Shard 1/2 (job
+129944169589) was cancelled by its 120-minute cap at 17:53Z. Its gate log
+(artifact `host-tier1-gates-ci-logs-1`) shows no failing gate:
+
+| phase | time |
+| --- | --- |
+| setup through `nros setup` (15:53 to 16:01) | 8 min |
+| `just generate-bindings` (16:01:48 to 16:45:07) | **43 min** |
+| disk reclaim, provision-gate-lane (to 16:49:35) | 4.5 min |
+| fast tier, 545/545 passed | 565 s |
+| build tier when cancelled | 32 of 47 done |
+
+The slowest finished build gates were `cpp` 756 s, `ament-census-sizing`
+632 s, `required-features-tests` 624 s, `borrowed-e2e` 595 s and
+`source-gates` 550 s (4 CPUs, `CARGO_BUILD_JOBS=4`). `generate-bindings`
+alone is over a third of the cap, and it ran cold. The bindings cache
+missed both its key and its restore prefix (`Cache not found for input keys:
+nros-bindings-v1-Linux-x86_64-c25470c0a3f772c4-…`). Whether a scheduled run
+restores it, and what a warm `generate-bindings` costs, is the next thing to
+measure.
+
 ### Why the bindings cache missed: my own store cache evicted it (2026-11-11)
 
 The miss was not an unstable key. The 11-10 03:19Z scheduled run saved

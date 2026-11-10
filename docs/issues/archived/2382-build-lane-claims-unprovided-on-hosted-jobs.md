@@ -1,7 +1,9 @@
 ---
 id: 2382
 title: "The `build` gate lane claims submodules and full history that its hosted jobs never provide, so scheduled `gate` and `host-tests` run no build-tier gate"
-status: open
+status: resolved
+resolved: 2026-11-11
+resolved_in: "#3444 (disk reclaim, NOT VERIFIED self-test) + #3457 (provision-gate-lane.sh, gate-lane-provisioned)"
 type: bug
 severity: high
 area: [ci, gates]
@@ -9,7 +11,7 @@ related: [phase-543, phase-466, 1758]
 found: 2026-11-09
 ---
 
-**Home: [phase-543](../roadmap/phase-543-nextest-gates.md)** -- W5 added the
+**Home: [phase-543](../../roadmap/phase-543-nextest-gates.md)** -- W5 added the
 lane claims and their preflight, and W6 put `check build` through the harness.
 
 ## Measured
@@ -146,3 +148,26 @@ unused once it proved to be this class.)
   locally with `NROS_GATE_MIN_FREE_GIB=100000`: the new message, quoting the
   floor's `below 100000 GiB` line. The normal path is unchanged (513/513 in the
   clone, and the control still fails as it should).
+
+## Acceptance (2026-11-10, dispatched on main `62f543fe33`)
+
+Both fixes merged after the last scheduled runs (#3444 at 06:52Z, #3457 at
+09:32Z; the scheduled `gate` ran at 02:01Z and `host-tests` at 03:11Z), so
+they were dispatched by hand:
+
+- `gate` run 42848962439: all three `check / build tier + no-std [n/3]`
+  shards **green** (jobs 129944198902, 129944199587, 129944198984). These are
+  the first green build-tier shards since 2026-11-05.
+- `host-tests` run 42849000957: `tier-1 gates [2/2]` **green**.
+  `tier-1 gates [1/2]` ran its gates and was then cancelled by the job's
+  120-minute cap. Its gate log (artifact `host-tier1-gates-ci-logs-1`)
+  shows the fast tier at 545/545 passed and the build tier at 32 of 47 with
+  no failure when the cap hit.
+
+So the lane's claims hold, and every job reaches its gates, which is what this
+issue required. The cancelled shard is a time budget, filed as
+[issue 2141](../2141-host-tests-tier1-gates-outgrow-two-hours.md). Its time went
+to `just generate-bindings` (16:01:48 to 16:45:07, 43 min), the fast tier
+(565 s), and the build tier's slowest gates (`cpp` 756 s,
+`ament-census-sizing` 632 s, `required-features-tests` 624 s, `borrowed-e2e`
+595 s, `source-gates` 550 s) on a 4-CPU hosted runner.
