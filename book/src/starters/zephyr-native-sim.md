@@ -86,6 +86,14 @@ pip3 install --user -r zephyr/scripts/requirements-base.txt
 export ZEPHYR_BASE="$PWD/zephyr"
 ```
 
+Last, give the west workspace the patches nano-ros carries for Zephyr 3.7,
+among them the one that passes the board's settings to a Rust app's cargo
+build:
+
+```bash probe=36
+nros setup board native_sim/native/64 --zephyr-workspace "$PWD"
+```
+
 ## Scaffold the project
 
 Source ROS 2 first, in the shell you scaffold from. `nros new` writes

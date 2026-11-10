@@ -54,7 +54,8 @@ no router: the router is ROS's `rmw_zenohd`, from your ROS 2 install.
 
 Zephyr's sources live in a west workspace of your own. This one pins Zephyr
 3.7 and fetches only the modules the board builds with, `hal_stm32` among them
-(`import: true` would fetch every vendor's HAL):
+(`import: true` would fetch every vendor's HAL), plus Zephyr's Rust support,
+which only a Rust talker builds with:
 
 ```bash probe=34 track=installed
 mkdir -p nucleo_ws/manifest && cd nucleo_ws
@@ -69,6 +70,12 @@ manifest:
       revision: v3.7.0
       import:
         name-allowlist: [cmsis, picolibc, mbedtls, tinycrypt, mcuboot, net-tools, hal_stm32]
+    # Rust support: only a Rust app builds with it. Pinned to the revision
+    # nano-ros's own west.yml pins for the 3.7 line (it has no release tags).
+    - name: zephyr-lang-rust
+      remote: zephyrproject-rtos
+      revision: 404fcefdbab0f2711cd342a1fab9d2eda52a1ba9
+      path: modules/lang/rust
   self:
     path: manifest
 WEST_YML

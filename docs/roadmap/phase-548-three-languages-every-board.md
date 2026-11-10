@@ -456,9 +456,15 @@ of that line before it stops the emulator.
 - **Replay (2026-11-10)**, 28 tracks on the committed branch with every
   awaits lifted: 21 pass. Their awaits are gone. Still red:
   - `zephyr-rust` (native_sim): the generated west entry fails at CMake
-    configure.
+    configure (`NanoRosBoardFacts.cmake`: `zephyr-lang-rust` was never
+    patched for nano-ros). The starter lacked a step: it now runs
+    `nros setup board native_sim/native/64 --zephyr-workspace "$PWD"` after
+    the west setup. The track then replayed green and its awaits is gone.
   - `renode-nucleo-rust`: configure says to add `zephyr-lang-rust` to the
-    west manifest; the SDK has no `west.yml` to read.
+    west manifest; the SDK has no `west.yml` to read. The starter's manifest
+    now lists `zephyr-lang-rust`, pinned to the revision nano-ros's own
+    `west.yml` pins. The track then replayed green and both its awaits are
+    gone.
   - `tutorial-10`: the run ended in an rclpy `!rclpy.ok()` fault, twice.
     Issue 2391: chapter 10's graph queries asked a stale `ros2` daemon. #3403
     added `--no-daemon`; the track then replayed green and its awaits is gone.
