@@ -1,7 +1,7 @@
 ---
 id: 2397
 title: "PX4 fmu-v6x's NuttX: the platform-type size mismatch suspected of phase-547's `mm_free` fault is measured and ruled out; every type is smaller than our default config, and nothing nano-ros sizes for it comes from that config"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [nuttx, px4, memory]
@@ -9,7 +9,7 @@ related: [phase-547, 0570, 1907, 0135, 0460, 1354]
 found: 2026-11-10
 ---
 
-**Home: [phase-547](../roadmap/phase-547-px4-pixhawk-emulator-spike.md)**, W3.
+**Home: [phase-547](../../roadmap/phase-547-px4-pixhawk-emulator-spike.md)**, W3.
 The fault is the last row of W3's findings table: the nano-ros uORB module on
 the emulated Pixhawk 6X prints `nros: session open (rmw=uorb)`, then takes a
 MemManage fault in `mm_free` (task `netinit`, freeing `0xffffff90`).
@@ -150,7 +150,22 @@ config:
 **Verdict: no mismatch. This suspect is ruled out.** The fault remains
 unexplained, so the issue stays open.
 
-## Next suspects
+## Resolution (2026-11-10): suspect 5's sibling, the main task's stack
+
+The fault is explained, and none of the suspects below is its cause. phase-547's
+scripted repro reproduced it exactly on the emulated 6X and removed it by
+raising the module's `STACK_MAIN` from PX4's 2048 B default to 16384 B, as
+[issue 2398](2398-px4-thread-stacks-below-executor-floor.md) predicted from
+the open path's measured 15.3 KB of frames: the main task, whose stack is a
+heap block, overflowed into its neighbour, and `netinit`'s next `free` tripped
+on the damaged header. With `STACK_MAIN` raised and `wq:rate_ctrl` left at
+3150 B a different fault (a HardFault in `ekf2`) replaces it, so the queue's
+stack (suspect 5) matters too; with both raised (`CONFIG_WQ_RATE_CTRL_STACKSIZE=8192`)
+the image runs 70 s of virtual time without a fault. Issue 2398's configure
+refusal now makes both stock values impossible to build. The suspects list is
+kept as the record of what was considered; suspects 1 to 4 were not needed.
+
+## Next suspects (superseded by the resolution above)
 
 Each needs the emulator tree or the spike's exact build inputs, which this
 measurement did not have.

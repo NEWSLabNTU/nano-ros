@@ -189,10 +189,20 @@ open path's 15.3 KB plus the backend's open, and the queue from the pass's
 - **`CffiSession::open_marshalling_properties` has an 8.4 KB frame,** the
   largest single frame on either path. It is reached from every backend's
   open. Shrinking it lowers every RTOS's main-task need, not only PX4's.
-- **A lead for issue 2397.** That issue's fault is a MemManage in `mm_free`
-  by `netinit`, just after `nros: session open (rmw=uorb)`, with `wq:rate_ctrl`
-  already raised to 24,000 B. The spike's module passed no `STACK_MAIN`, so
-  its main task had 2048 B against a measured open path of more than 15 KB,
-  and a NuttX task stack is a heap block. An overflow that deep writes over
-  the heap below the task's stack, and the next `free` of a neighbouring
-  block faults. That matches the symptom; it is not yet confirmed by a run.
+- **Issue 2397's fault: confirmed by a run (2026-11-10).** That issue's fault
+  is a MemManage in `mm_free` by `netinit`, just after `nros: session open
+  (rmw=uorb)`. The spike's module passed no `STACK_MAIN`, so its main task had
+  2048 B against a measured open path of more than 15 KB, and a NuttX task
+  stack is a heap block. phase-547's scripted repro ("Reproducing the spike
+  (scripted, 2026-11-10)") measured it on the emulated 6X:
+  - stock `STACK_MAIN` (2048 B), stock queue: the original fault, exactly
+    (`mm_free`, task `netinit`, `MMFAR ffffff94`, `R3 ffffff90`, from
+    `netlib_getmacaddr` closing a socket in `netinit_dhcp`);
+  - `STACK_MAIN 16384`, stock `wq:rate_ctrl` (3150 B): the `mm_free` fault is
+    gone, and a different one replaces it, a HardFault (`INVSTATE`) in task
+    `ekf2` whose stack pointer is outside its own stack, right after the
+    module's first publish: the queue thread's overflow, as measured above;
+  - `STACK_MAIN 16384` and `CONFIG_WQ_RATE_CTRL_STACKSIZE=8192`, the two values
+    this gate accepts: no fault in 70 s of virtual time, and the module's
+    publications reach PX4 (`listener debug_key_value` prints `key: "nros"`).
+  So both refusals are load-bearing: each stock thread, alone, faults the image.
