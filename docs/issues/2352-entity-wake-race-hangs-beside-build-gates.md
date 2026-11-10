@@ -96,3 +96,65 @@ gdb -batch -ex 'set pagination off' -ex 'handle SIGPIPE nostop noprint' \
     --exact --nocapture > run.log 2>&1 &
 # at 30 s: kill -INT <the inferior>, and gdb prints every thread's stack
 ```
+
+## Repro attempts (2026-11-11, 32 cores, `/home` I/O-saturated)
+
+Not reproduced. Conditions were harsher than 2026-11-07: besides this
+session's `just check gate-order build`, other sessions' builds kept the
+`/home` disk saturated — `/proc/pressure/io` `full` avg10 of 85–95 % for
+long stretches, 4–7 GB dirty, and a one-line write to a file beside the
+port leases under `build/` taking over 1 s 95 times and up to 21.4 s
+(sampled once a second through both runs). The gate-order run took 6717 s
+ascending and 3683 s descending.
+
+- solo, 20 runs: 20 passes, about 0.48 s each;
+- beside the ascending build-tier run, 8 copies at a time, each run its own
+  process (the binary run directly, `--exact`): 600 + 3 000 + 30 000 +
+  11 737 + 30 000 = 75 337 runs, **0 failures**, including the 1 147 s
+  the `required-features-tests` gate itself was running (it ran this test
+  too);
+- beside the descending run, the same way: 45 965 runs, **0 failures**.
+
+`just check gate-order build` (one run, both orders):
+`build::check::required-features-tests` PASSED in both orders — the
+verdict this issue is closed on, but one green pair after one red pair is
+not evidence the cause is gone. The run as a whole FAILED on other gates,
+all 2 400 s TIMEOUTs under the same I/O load: `build::check::cli-tests` in
+both orders, `build::check::test-targets` in the descending one only.
+
+A false lead worth recording: an earlier loop that wrote each run's output
+and the router's log (`NROS_TEST_LOGS=1`) to files under `/home` failed 12
+of ~3 400 runs — 6 hung past 70 s, 6 failed `the ROS zenoh router failed to
+start: Timeout`. One of the hung processes was in `balance_dirty_pages`,
+i.e. the test's OWN log writes were being throttled. Moving the run logs to
+`/tmp` (another disk) and dropping `NROS_TEST_LOGS` made those failures
+disappear (120 702 runs, 0 failures), so they measured the loop, not the
+test. Under nextest the test's output is a pipe and the router's is `null`,
+so this does not explain the original TIMEOUT.
+
+What the test writes on the `/home` disk under nextest is only its port
+lease (`build/nros-tests/port-leases/*.lock`, a pid). The router's stderr
+is piped and only read when it exits, but `rmw_zenohd` at its default level
+writes ~300 bytes per run, far below a pipe's 64 KiB, so a router blocked on
+its own stderr is not a candidate either. A lease write stalled for tens
+of seconds on a saturated disk is the one harness stall these measurements
+allow, and it is unconfirmed: none of the 120 702 runs hit it.
+
+**Diagnostics strengthened** (this branch): the watchdog now also covers the
+router start and the domain claim (stages `starting the test's router` and
+`claiming a ROS domain`, so a harness stall is named rather than reported as
+nextest's bare TIMEOUT), and before aborting it prints every thread's stack:
+the process allows any tracer (`PR_SET_PTRACER`) and runs `gdb -p <self>`
+under a 10 s deadline (`nros_tests::process::deadline_command`). Negative
+control: with the limit at 1 ms it printed the stage and five threads'
+stacks (zenoh-pico's read task in `recv`, the test thread, the watchdog in
+`poll` on gdb) and aborted with SIGABRT. So the next occurrence brings its
+own backtraces.
+
+**Side finding explained, not a bug.** Both cases in one process
+(`cargo test`) fail the second `Executor::open` with
+`Transport(InvalidConfig)` only because libtest runs them CONCURRENTLY and
+the zenoh session pool is `ZPICO_MAX_SESSIONS = 1` (`ZpicoError::Full` maps
+to `InvalidConfig`, issue 0465). With `--test-threads=1` both pass in one
+process (1.09 s), so the first session's slot IS returned on drop; it is
+unrelated to this hang.
