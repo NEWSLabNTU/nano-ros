@@ -71,6 +71,9 @@ class Graph:
     address_taken: set[str] = field(default_factory=set)
     # every symbol that is a FUNCTION in some input (defined or frame-known)
     functions: set[str] = field(default_factory=set)
+    # names that share one address in one section (GCC identical-code
+    # folding, `#[export_name]` aliases): one body, one frame
+    alias_groups: list[set[str]] = field(default_factory=list)
 
 
 class WalkRefused(Exception):
@@ -163,28 +166,27 @@ def worst_path(g: Graph, root: str, *, indirect_charge: int | None,
 
 def fold_charge(g: Graph, *, recursion_allowance: int | None,
                 externals: set[str], cuts: tuple[str, ...] = (),
-                scope: tuple[str, ...] = ()) -> int:
+                scope: tuple[str, ...] = (), one_level: bool = False) -> int:
     """Bytes charged at an indirect site under --indirect fold: the deepest
     path among address-taken functions, themselves walked with indirect sites
     charged ZERO-then-iterated to a fixed point (a vtable function that itself
     calls through a vtable)."""
     charge = 0
-    for _ in range(8):
+    for _ in range(1 if one_level else 8):
         best = 0
         for fn in g.address_taken:
             if fn not in g.frames:
                 continue
             if scope and not any(sc in fn for sc in scope):
                 continue
-            try:
-                p = worst_path(g, fn, indirect_charge=charge,
-                               recursion_allowance=recursion_allowance,
-                               externals=externals, cuts=cuts)
-            except WalkRefused:
-                continue
+            # A refused target is a refusal of the fold, never a skip: a skip
+            # charges the site as if that target were not there.
+            p = worst_path(g, fn, indirect_charge=charge,
+                           recursion_allowance=recursion_allowance,
+                           externals=externals, cuts=cuts)
             best = max(best, p.depth)
-        if best == charge:
-            return charge
+        if best == charge or one_level:
+            return best
         charge = best
     raise WalkRefused("--indirect fold did not converge in 8 rounds: an "
                       "address-taken function reaches itself through a register; "
@@ -262,6 +264,11 @@ def load_object(g: Graph, path: str, readobj: str, objdump: str) -> None:
                     by_sec.setdefault(idx, []).append((start, start + max(sym["Size"], 1), name))
             elif typ == "Section" and isinstance(idx, int):
                 pass
+        for fns in by_sec.values():
+            at: dict[int, set[str]] = {}
+            for start, _end, name in fns:
+                at.setdefault(start, set()).add(name)
+            g.alias_groups.extend(grp for grp in at.values() if len(grp) > 1)
         sec_name_funcs: dict[str, list[str]] = {}
         for idx, fns in by_sec.items():
             sec_name_funcs[secs[idx]["Name"]["Name"] if isinstance(secs[idx]["Name"], dict)
@@ -330,6 +337,25 @@ def load_su(g: Graph, root: Path) -> None:
             g.functions.add(fn)
 
 
+GCC_CLONE_NUM = re.compile(r"\.\d+$")
+
+
+def alias_gcc_clones(g: Graph) -> None:
+    """GCC names a clone `foo.isra.0` in the symbol table and `foo.isra` in
+    its `.su` file, and writes ONE `.su` line for a body that identical-code
+    folding gave several names. Give each such name its body's frame."""
+    for fn in list(g.functions):
+        if fn not in g.frames:
+            base = GCC_CLONE_NUM.sub("", fn)
+            if base != fn and base in g.frames:
+                g.frames[fn] = g.frames[base]
+    for grp in g.alias_groups:
+        known = [g.frames[n] for n in grp if n in g.frames]
+        if known:
+            for n in grp:
+                g.frames.setdefault(n, max(known))
+
+
 def prune_data_refs(g: Graph) -> None:
     """A relocation from code to a symbol that is not a function anywhere
     (a static, a string) is data, not a call."""
@@ -346,12 +372,12 @@ def prune_data_refs(g: Graph) -> None:
 def parse_indirect(s: str | None) -> tuple[str, int | None]:
     if s is None:
         return ("refuse", None)
-    if s == "fold":
-        return ("fold", None)
+    if s in ("fold", "fold1"):
+        return (s, None)
     m = re.fullmatch(r"allowance:(\d+)", s)
     if m:
         return ("allowance", int(m.group(1)))
-    raise SystemExit(f"--indirect: `{s}` is neither `fold` nor `allowance:<bytes>`")
+    raise SystemExit(f"--indirect: `{s}` is not `fold`, `fold1` or `allowance:<bytes>`")
 
 
 def run(args: argparse.Namespace) -> int:
@@ -362,16 +388,26 @@ def run(args: argparse.Namespace) -> int:
         load_object(g, inp, readobj, objdump)
     for su in args.su or []:
         load_su(g, Path(su))
+    for spec in args.frame or []:
+        name, _, n = spec.partition("=")
+        if not n.isdigit():
+            raise SystemExit(f"--frame `{spec}`: write NAME=BYTES")
+        if name in g.frames:
+            raise SystemExit(f"--frame `{name}`: an input already states its frame "
+                             f"({g.frames[name]} B); a stated frame never overrides a measured one")
+        g.frames[name] = int(n)
+    alias_gcc_clones(g)
     prune_data_refs(g)
     externals = set(args.external or [])
     cuts = tuple(args.cut or [])
 
     mode, allowance = parse_indirect(args.indirect)
-    if mode == "fold":
+    if mode in ("fold", "fold1"):
         try:
             charge = fold_charge(g, recursion_allowance=args.recursion_allowance,
                                  externals=externals, cuts=cuts,
-                                 scope=tuple(args.fold_scope or []))
+                                 scope=tuple(args.fold_scope or []),
+                                 one_level=(mode == "fold1"))
         except WalkRefused as e:
             print(f"nros-stack-floor: REFUSED\n{e}", file=sys.stderr)
             return 1
@@ -481,6 +517,13 @@ def self_test() -> int:
     check("fold = deepest address-taken path", charge == 950)
     p = worst_path(g4, "open", indirect_charge=charge, recursion_allowance=None)
     check("folded depth", p.depth == 1050)
+    g7 = Graph(frames={"open": 10, "vt": 5}, edges={"vt": {"ghost"}}, indirect_sites={"open": 1},
+               address_taken={"vt"}, functions={"open", "vt", "ghost"})
+    try:
+        fold_charge(g7, recursion_allowance=None, externals=set())
+        check("fold refuses a refused target", False)
+    except WalkRefused as e:
+        check("fold names the target's missing frame", "ghost" in str(e))
     check("fold scope narrows targets",
           fold_charge(g4, recursion_allowance=None, externals=set(), scope=("small",)) == 5)
 
@@ -492,6 +535,8 @@ def self_test() -> int:
         check("non-converging fold refused", False)
     except WalkRefused:
         pass
+    check("fold1 charges one level", fold_charge(g5, recursion_allowance=None,
+                                                 externals=set(), one_level=True) == 100)
 
     # .su parsing
     import tempfile
@@ -501,6 +546,15 @@ def self_test() -> int:
         g6 = Graph()
         load_su(g6, Path(d))
         check(".su frames", g6.frames == {"_z_open": 48, "helper": 16})
+        g6.frames["notify.isra"] = 12
+        g6.functions.add("notify.isra.0")
+        alias_gcc_clones(g6)
+        check("GCC clone takes its .su frame", g6.frames.get("notify.isra.0") == 12)
+        g6.alias_groups.append({"_z_keyexpr_intmap_make", "_z_declared_keyexpr_intmap_make"})
+        g6.frames["_z_keyexpr_intmap_make"] = 8
+        alias_gcc_clones(g6)
+        check("ICF alias takes the body's frame",
+              g6.frames.get("_z_declared_keyexpr_intmap_make") == 8)
 
     # a cut function counts its own frame, not its callees
     gc = Graph(frames={"root": 10, "panic": 30, "deep": 999}, edges={"root": {"panic"}, "panic": {"deep", "panic"}},
@@ -510,7 +564,7 @@ def self_test() -> int:
 
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
-    print(f"nros-stack-floor self-test: {14 - len(fails)} checks, {len(fails)} failed")
+    print(f"nros-stack-floor self-test: {19 - len(fails)} checks, {len(fails)} failed")
     return 1 if fails else 0
 
 
@@ -524,6 +578,10 @@ def main() -> int:
     ap.add_argument("--recursion-allowance", type=int)
     ap.add_argument("--external", action="append",
                     help="a callee with no definition in the inputs accepted as a 0-byte leaf")
+    ap.add_argument("--frame", action="append",
+                    help="NAME=BYTES: a frame no input states (hand assembly, a C wrapper "
+                         "built without -fstack-usage), read off its prologue by the caller. "
+                         "Refused if an input states one")
     ap.add_argument("--fold-scope", action="append",
                     help="a substring; under --indirect fold only address-taken functions "
                          "matching one are charged at an indirect site (a static walk cannot "
