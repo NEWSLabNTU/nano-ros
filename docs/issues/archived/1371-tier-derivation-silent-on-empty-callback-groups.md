@@ -4,15 +4,17 @@ title: "A component with no callback groups derives no tiers, and the only
   signal is a stderr line nothing in the build tree retains: four artifacts had
   to be cross-checked to establish that the Safety Island's 19 callbacks all
   run on Zephyr main"
-status: open
+status: resolved
 type: bug
 area: [cli, orchestration, zephyr]
 severity: medium
 found: 2026-09-18
+resolved: 2026-11-10
+resolved_in: "a groupless node is a persisted callback_groups PlanSchedWarning; codegen-system prints a summary at zero derived sched tasks"
 related: [issue-0259, issue-1283, issue-1286, phase-296, rfc-0047, rfc-0052, phase-459, phase-478]
 ---
 
-**Home: [phase-478](../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-478](../../roadmap/phase-478-island-developer-experience-findings.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## The gate
 
@@ -183,3 +185,26 @@ has to be recorded rather than inferred.
    guard suppresses the notes in the one case they describe.
 
 (3) is a one-line move and should not wait for the others.
+
+## Resolution (2026-11-10)
+
+All three items now hold:
+
+1. **Persisted.** `derive_execution_in_plan` (`model_ingest.rs`) pushes a
+   `PlanSchedWarning` for each groupless node beside its stderr line, with
+   `dim = "callback_groups"` (`model_ingest::GROUPLESS_DIM`) and a reason that
+   names the default sched task. It lands in `Plan::sched_warnings`, which
+   `nros explain` renders under "Derived-schedule verdicts". A plan with no
+   groupless node is unchanged.
+2. **A line at zero.** `codegen-system` prints "derived 0 scheduling sched
+   tasks: N contracted node(s) declare no callback groups, so every callback
+   runs on the default sched task" when it derived none and found groupless
+   nodes.
+3. **The macro path.** Already done before this change: in `main_macro.rs`
+   the note loop runs outside any `tiers.is_empty()` guard, after the
+   derivation, so `nros::main!` prints every groupless note.
+
+Test: `a_groupless_node_is_a_persisted_verdict` (`derived_sched_tasks_bake`),
+on the issue-1426 fixture with no callback-group keyword. It requires
+`derived == 0`, one `callback_groups` verdict per node, and a reason naming
+the default sched task.

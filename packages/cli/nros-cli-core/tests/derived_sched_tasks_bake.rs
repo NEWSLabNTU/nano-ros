@@ -501,3 +501,38 @@ fn a_promise_above_the_timer_rate_is_a_resolver_warning() {
         "{mismatch}"
     );
 }
+
+/// Issue 1371 — the groupless notes reach the PLAN, not only stderr: one
+/// `callback_groups` verdict per node, which `nros explain` renders.
+#[test]
+fn a_groupless_node_is_a_persisted_verdict() {
+    let fixture = Fixture::copy("bake-no-keyword");
+    let model = resolve_model(&fixture.bringup(), false);
+    let mut system = system_toml(&fixture.bringup());
+    let cfg = NrosConfig::from_workspace(&fixture.bake_workspace()).expect("workspace");
+    let groups = collect_callback_groups(&cfg, &system.components);
+    let (derived, warnings) =
+        model_ingest::derive_execution_from_contracts(&mut system, &model, TARGET_RTOS, &groups)
+            .expect("the derived bake succeeds");
+
+    assert_eq!(derived, 0, "a groupless system derives nothing");
+    let mut nodes: Vec<&str> = warnings
+        .iter()
+        .filter(|w| w.dim == model_ingest::GROUPLESS_DIM)
+        .map(|w| w.node.rsplit('/').next().unwrap_or(&w.node))
+        .collect();
+    nodes.sort_unstable();
+    let mut want: Vec<&str> = FAST.iter().chain(SLOW.iter()).copied().collect();
+    want.sort_unstable();
+    assert_eq!(
+        nodes, want,
+        "one persisted `callback_groups` verdict per groupless node: {warnings:?}"
+    );
+    for w in &warnings {
+        assert!(
+            w.reason.contains("default sched task"),
+            "the reason says where the callbacks run: {}",
+            w.reason
+        );
+    }
+}

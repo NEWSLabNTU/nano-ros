@@ -734,6 +734,20 @@ pub fn run(args: Args) -> Result<()> {
                      contracts (every one of them a placement no \
                      `[tasks.*.{target_rtos}]` authored)"
                 );
+            } else {
+                // Issue 1371 — the zero case is the one a reader needs: the
+                // per-node notes above say which, this says what it adds up to.
+                let groupless = sched_warnings
+                    .iter()
+                    .filter(|w| w.dim == crate::orchestration::model_ingest::GROUPLESS_DIM)
+                    .count();
+                if groupless > 0 {
+                    eprintln!(
+                        "codegen-system: derived 0 scheduling sched tasks: {groupless} \
+                         contracted node(s) declare no callback groups, so every callback \
+                         runs on the default sched task"
+                    );
+                }
             }
         }
         bringup_owned = owned;
