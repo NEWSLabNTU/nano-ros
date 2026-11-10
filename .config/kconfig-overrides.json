@@ -2,6 +2,16 @@
   "_comment": "Kconfig assignments a LATER fragment in the same CONF_FILE overrides \u2014 see scripts/check-kconfig-overridden-values.py. Each entry is a line that does NOTHING for the listed rows. Regenerate with --update, and say in the commit why the override is correct.",
   "overrides": [
     {
+      "beaten_by": "examples/workspaces/features/src/demo_bringup/boards/native_sim_native_64/prj-qos.conf",
+      "dead_in": "examples/workspaces/features/src/demo_bringup/boards/native_sim_native_64/prj-zenoh.conf",
+      "dead_value": "16",
+      "live_value": "27",
+      "rows": [
+        "build-ws-rs-qos-entry-zenoh"
+      ],
+      "symbol": "CONFIG_MAX_PTHREAD_COND_COUNT"
+    },
+    {
       "beaten_by": "examples/workspaces/features/src/demo_bringup/boards/native_sim_native_64/prj-cpp.conf",
       "dead_in": "examples/workspaces/features/src/demo_bringup/boards/native_sim_native_64/prj.conf",
       "dead_value": "y",

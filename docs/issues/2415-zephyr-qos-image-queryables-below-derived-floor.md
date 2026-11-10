@@ -68,3 +68,42 @@ three other images merge. There are at least two defensible fixes:
 The `live-peer regression` board job builds `build-ws-rs-qos-entry-zenoh`
 again, with whichever fix is chosen, and the image's `system.toml` comment
 says why that number is right.
+
+## Cause (2026-11-10)
+
+`1f493fd18f` (phase-530 W3, "resolve the Rust west entry"). Before it, the
+generated Rust west entry had no sizing descriptor, so `zpico-sys` saw no
+declaration and `check_queryable_override` returned early. W3 writes the
+image's descriptor on this road. For this image it states `model_nodes = 2`
+and `infra_families = "param+lifecycle"`, so the check ran, and the floor it
+computes is the image's real need: 2 nodes x 6 parameter services + 5 lifecycle
+services + 1 transient-local publisher = 18. That is the same per-node rule
+`nros-rmw-zenoh` sizes from at boot. W3 did not double-count anything; the
+stated 16 had always been under the image's need, and nothing checked it.
+Reproduced locally from a clean build of `build-ws-rs-qos-entry-zenoh` on
+`main`.
+
+## Fix
+
+The issue's first option, with the row deleted rather than restated:
+
+- `[image.zephyr_rust_qos.knobs.zenoh] max_queryables = 16` is gone, so the
+  table is DERIVED (18): a pool the declarations answer is not stated.
+- 18 queryables need a pthread-cond pool of 1 subscriber + 18 + 4 zenoh-pico
+  fixed + 4 headroom = 27 (`nros_cargo_build.cmake`'s floor). The image gets
+  its own fragment, `boards/native_sim_native_64/prj-qos.conf`
+  (`CONFIG_MAX_PTHREAD_COND_COUNT=27`), merged after the shared
+  `prj-zenoh.conf`, which the other three images keep at 16. Mutexes need 47 of
+  the shared 64, so nothing changes there.
+
+Measured: the fixture builds (`CONFIG_MAX_PTHREAD_COND_COUNT=27`,
+`CONFIG_NROS_MAX_QUERYABLES=-1`, i.e. derived), and `entry_e2e`'s
+`zephyr/rust/qos` cell boots it and passes against a live router.
+
+## Sweep
+
+Only four images in the tree state `max_queryables`, all in this bringup:
+`zephyr_rust_qos`, which is fixed here, and the params, lifecycle and C++
+params images, each at 16. Run 42754129258 built the other three past the same
+check, and the qos image was its only refusal, so no other image on this road
+states a number below its floor.

@@ -408,25 +408,23 @@ max_queryables = 16
 
 [image.zephyr_rust_qos]
 board = "zephyr"
-os_config = ["prj-zenoh.conf"]
+# Issue 2415 -- `prj-qos.conf` is this image's own pthread-cond pool (27), merged
+# after the shared `prj-zenoh.conf` (16) so the other images keep theirs.
+os_config = ["prj-zenoh.conf", "prj-qos.conf"]
 launch = "rust_qos.launch.xml"
 locator = "tcp/10.0.2.2:7465"
 
 [image.zephyr_rust_qos.knobs.executor]
 max_cbs = 16
-
-[image.zephyr_rust_qos.knobs.zenoh]
-max_queryables = 16
-# issue 0460 / phase-481 W3 -- every image here registers six parameter + five
-# lifecycle services: 11 executor slots and 11 queryables on top of its own
-# (Kconfig defaults 4 and 8). This one's entity inventory DOES compose
-# (measured: `derived`, MAX_QUERYABLES 18, EXECUTOR_MAX_CBS 2), and both rows
-# stay STATED anyway: the derived 2 executor slots is smaller than the 16 and
-# nothing proves the infra services cost none, and deleting the queryable row
-# (derived 18 >= 16) is not a pure move -- measured, the configure then refuses
-# on Zephyr's static pthread-cond pool (`CONFIG_MAX_PTHREAD_COND_COUNT=16` < the
-# 27 that 1 subscriber + 18 queryables need), so it would also mean raising a
-# Zephyr pool in the shared `prj-zenoh.conf` the other three images merge.
+# Issue 2415 -- no `max_queryables` row: the table is DERIVED, and the derived
+# number is the floor. Every image here registers six parameter services PER
+# NODE and five lifecycle services; this one has 2 nodes and 1 transient-local
+# publisher, so 12 + 5 + 1 = 18 queryables are claimed at boot. It used to state
+# 16, under that floor, which passed only while this road named no sizing
+# descriptor and so never checked it (phase-530 W3 began naming one, 1f493fd18f).
+# 18 needs a pthread-cond pool of 27 (1 subscriber + 18 + 8), which
+# `prj-qos.conf` provides. The executor row stays stated: the derived 2 slots
+# is smaller than 16 and nothing proves the infrastructure services cost none.
 
 # Issue 1681 -- the only Zephyr C++ image that declares `param_services`, and
 # the reason it exists: before the fix, the generated west application never set
