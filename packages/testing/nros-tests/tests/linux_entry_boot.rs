@@ -2,16 +2,17 @@
 //! `<LinuxBoard as BoardEntry>::run`) builds and boots through the
 //! BoardEntry lifecycle.
 //!
-//! `packages/testing/nros-tests/bins/entry-poc/` carries the §11.6 one-line
-//! `main.rs`:
+//! `packages/testing/nros-tests/bins/entry-poc/` is a one-package workspace
+//! (phase-531 W7 step-3 prep): its node package `src/entry-poc` holds the
+//! component, and the image's GENERATED entry (`linux_entry`) writes the
+//! one-line `main` the leaf used to carry:
 //!
 //! ```ignore
-//! nros::main!();   // expands via [package.metadata.nros.entry]
-//!                  // deploy = "native" → `<LinuxBoard as BoardEntry>::run(...)`
+//! nros::main!(...);   // → `<LinuxBoard as BoardEntry>::run(...)`
 //! ```
 //!
-//! The **compile** proof is the build of that crate as a fixture
-//! (`examples/fixtures.toml`), built by `just linux build-fixtures` /
+//! The **compile** proof is the build of that image as a workspace fixture
+//! (`examples/fixtures.toml`, row `linux-rust-zenoh-entry-poc`), built by
 //! `build-test-fixtures`. If the `nros::main!()` proc-macro expansion didn't
 //! compile, the fixture build fails in the build stage. Both tests here consume
 //! the prebuilt artifact rather than running `cargo build` at run time — see
@@ -41,7 +42,13 @@ fn entry_poc_compiles_via_nros_main_macro() -> nros_tests::TestResult<()> {
 fn entry_poc_boots_through_board_entry_run() -> nros_tests::TestResult<()> {
     let bin = nros_tests::fixtures::build_entry_poc()?;
 
-    let output = Command::new(bin).output().expect("spawn entry-poc binary");
+    // A generated hosted entry spins until stopped; bound it (issue 1310's
+    // `NROS_ENTRY_SPIN_MS`) so a reachable router ends the run instead of
+    // holding it open forever. With no router the open fails first, as before.
+    let output = Command::new(bin)
+        .env("NROS_ENTRY_SPIN_MS", "1")
+        .output()
+        .expect("spawn entry-poc binary");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let combined = format!("{stdout}{stderr}");

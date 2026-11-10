@@ -5609,21 +5609,17 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     require_prebuilt_binary_fresh(&fixture_dir.join(rel))
 }
 
-/// Resolve the prebuilt `entry-poc` fixture (cached). The
-/// `packages/testing/nros-tests/bins/entry-poc` Entry pkg (`nros::main!()` →
-/// native `BoardEntry::run`) is built by `just linux build-fixtures` /
-/// `build-test-fixtures` (examples/fixtures.toml). Tests consume the artifact
-/// instead of running `cargo build` at run time (issue 0034).
+/// Resolve the prebuilt `entry-poc` fixture (cached). Since phase-531 W7
+/// (step-3 prep) `packages/testing/nros-tests/bins/entry-poc` is a one-package
+/// workspace (`src/entry-poc` + `src/entry-poc_bringup`), and its image's
+/// GENERATED entry (`nros::main!()` → native `BoardEntry::run`) is built by the
+/// workspace fixture lane, row `linux-rust-zenoh-entry-poc`. Tests consume the
+/// artifact instead of running `cargo build` at run time (issue 0034).
 pub fn build_entry_poc() -> TestResult<&'static Path> {
     static ENTRY_POC_BINARY: OnceCell<PathBuf> = OnceCell::new();
     ENTRY_POC_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_sole_row(
-                "packages/testing/nros-tests/bins/entry-poc",
-            )?;
-            let profile = cargo_target_profile_dir();
-            let rel = PathBuf::from(format!("{profile}/entry-poc"));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            build_workspace_rust_generated_entry("linux-rust-zenoh-entry-poc", "linux_entry")
         })
         .map(|p| p.as_path())
 }

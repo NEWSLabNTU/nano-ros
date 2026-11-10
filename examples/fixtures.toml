@@ -2317,10 +2317,18 @@ dir = "examples/linux/rust/custom-msg"
 # check + the BoardEntry::run boot test consume the prebuilt binary instead of
 # running `cargo build` at test time (issue 0034 / AGENTS.md no-compile-in-tests).
 # phase-277 W7: test-only fixture, moved out of examples/ into nros-tests/bins/.
-[[fixture]]
+# phase-531 W7 (step-3 prep): a one-package workspace now; the boot test runs
+# the image's GENERATED entry (`linux_entry`), which writes the same
+# `nros::main!()` call the leaf's `main.rs` did.
+[[workspace_fixture]]
+id = "linux-rust-zenoh-entry-poc"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/entry-poc"
+rmw = "zenoh"
+bringup = "src/entry-poc_bringup"
+image = "linux"
+target_dir = "target"
 
 # RFC-0041 / Phase 239 — callback-receive variant of the service client.
 # Stays a LEAF (phase-535 W6): the C and C++ callback clients became node
