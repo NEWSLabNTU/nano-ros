@@ -153,15 +153,11 @@ stack-all top="10":
         echo ""
     done
     # Rust examples (native — exclude tracing/regex infrastructure noise).
-    # Not `linux/rust/talker`: a one-node workspace since phase-531 W6, and
-    # stack-analysis.sh builds a cargo package directory.
+    # Not `linux/rust/{talker,listener,service-*,action-*}`: one-node
+    # workspaces since phase-531/phase-535 W6, and stack-analysis.sh builds a
+    # cargo package directory.
     for example in \
-        examples/linux/rust/listener \
         examples/linux/rust/custom-msg \
-        examples/linux/rust/service-server \
-        examples/linux/rust/service-client \
-        examples/linux/rust/action-server \
-        examples/linux/rust/action-client \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis.sh "$example" --top {{top}} --exclude "regex_automata|regex_syntax|aho_corasick|env_filter|env_logger|driftsort" || { echo "[FAIL] $example"; failed=$((failed + 1)); }

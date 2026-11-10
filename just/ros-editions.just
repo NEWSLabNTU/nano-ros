@@ -89,19 +89,17 @@ build-fixture distro="jazzy":
 # build dirs, for the phase-310/311 rich E2E matrix. `rmw` ∈ {cyclone, zenoh,
 # xrce}.
 #
-# The talker is built from a per-edition copy of its workspace (issue 2409,
-# below). Issue 1305 — each other example DECLARES one image per RMW × edition in its
-# `system.toml` (RFC-0031 / RFC-0056: the selection is declared, the cargo
-# feature is only its lowering), so this builds an IMAGE: `linux`, then `_<rmw>`
-# unless zenoh, then `_<edition>` unless humble (`linux_xrce_jazzy`). `nros
-# sync --image` regenerates the example's messages for that image's edition (the
-# baked TYPE_HASH is the edition's real RIHS01 — the placeholder on humble) and
-# writes its selection package and settings file; cargo then builds through that
-# file. Separate target dirs keep the default/host builds (and the other RMW
-# builds) untouched. The examples are built one at a time, so no two images of
-# one example share its `build/nros/selection` at once.
+# Each example is a one-node workspace (phase-531 / phase-535 W6), and a
+# workspace generates its messages for ONE edition, refusing an image of
+# another (issue 2409). So each edition build is a COPY of the example's
+# workspace whose `[system] ros_edition` is this edition, under the edition's
+# build root, built through `nros build`. The image ids are the examples'
+# (`linux`, then `_<rmw>` unless zenoh), and each binary is copied to
+# `debug/<example>`, the name `ros_env::example_bin_rmw` resolves. Each copy
+# has its own cargo target dir: a target dir serves one workspace root (issue
+# 0616).
 [group("test")]
-build-e2e-fixtures distro="jazzy" rmw="cyclone":
+build-e2e-fixtures distro="jazzy" rmw="cyclone" dry_run="":
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{rmw}}" in
@@ -114,16 +112,15 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     # the real RIHS01 type-hash tail in the zenoh keyexpr so a jazzy node
     # matches a stock jazzy `rmw_zenoh_cpp` peer (#0291).
     ED="{{distro}}"
-    IMG="linux"
-    if [ "$RMW_ID" != zenoh ]; then IMG="${IMG}_${RMW_ID}"; fi
-    if [ "$ED" != humble ]; then IMG="${IMG}_${ED}"; fi
+    WS_IMG="linux"
+    if [ "$RMW_ID" != zenoh ]; then WS_IMG="${WS_IMG}_${RMW_ID}"; fi
     # shellcheck source=scripts/build/cargo.sh
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
     NROS="$(nros_cli_bin)" || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
     # issue 0488 residue 2 — ONE build root per (edition, rmw), under
     # `$NROS_BUILD_ROOT`, instead of six per-leaf `target-ros-edition-*/` dirs.
     #
-    # These builds deliberately do NOT join a fixture group: `generated/` is
+    # These builds deliberately do NOT join a fixture group: the messages are
     # regenerated per edition, so the same source dir means different code per
     # edition. Sharing a cargo dir with the normal `linux` lane would thrash both.
     # `<root>/<kind>/<coordinate>` is RFC-0070 R2's shape, and (edition, rmw) is
@@ -131,46 +128,29 @@ build-e2e-fixtures distro="jazzy" rmw="cyclone":
     # shellcheck source=scripts/build/build-root.sh
     source "{{justfile_directory()}}/scripts/build/build-root.sh"
     ED_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ROS_EDITIONS" "{{distro}}-{{rmw}}")"
-    mkdir -p "$ED_TARGET_DIR"
-    # shellcheck source=scripts/build/cargo.sh
-    source "{{justfile_directory()}}/scripts/build/cargo.sh"
-    # The talker is a one-node workspace (phase-531 W6), and a workspace
-    # generates its messages for ONE edition, refusing an image of another
-    # (issue 2409). So its edition build is a COPY of the witness workspace
-    # whose `[system] ros_edition` is this edition, under the edition's build
-    # root, built through `nros build`. The image ids are the witness's
-    # (`linux`, then `_<rmw>` unless zenoh), and the binary is copied to
-    # `debug/talker`, the name `ros_env::example_bin_rmw` resolves.
-    WS_IMG="linux"
-    if [ "$RMW_ID" != zenoh ]; then WS_IMG="${WS_IMG}_${RMW_ID}"; fi
-    TALKER_WS="$ED_TARGET_DIR/talker-ws"
-    rm -rf "$TALKER_WS/src"
-    mkdir -p "$TALKER_WS"
-    cp -r "{{justfile_directory()}}/examples/linux/rust/talker/src" "$TALKER_WS/src"
-    cp "{{justfile_directory()}}/examples/linux/rust/talker/.colcon_workspace" "$TALKER_WS/"
-    sed -i "s/^\[system\]\$/[system]\nros_edition = \"$ED\"/" \
-        "$TALKER_WS/src/native_talker_bringup/system.toml"
-    grep -q "^ros_edition = \"$ED\"\$" "$TALKER_WS/src/native_talker_bringup/system.toml" \
-        || { echo "error: could not set ros_edition = $ED in the talker copy" >&2; exit 1; }
-    echo "== talker (workspace copy, ros_edition $ED, image $WS_IMG) → $ED_TARGET_DIR =="
-    "$NROS" build "native_talker_bringup:$WS_IMG" --workspace "$TALKER_WS" -- \
-        --target-dir "$ED_TARGET_DIR"
     # profile-literal-ok: unprofiled: `nros build` of a host image with no `profile`, so debug/ IS the derived dir
-    cp -f "$ED_TARGET_DIR/debug/${WS_IMG}_entry" "$ED_TARGET_DIR/debug/talker"
-    for ex in listener service-server service-client action-server action-client; do
-        DIR="{{justfile_directory()}}/examples/linux/rust/$ex"
-        echo "== $ex (image $IMG) sync =="
-        "$NROS" configure --no-provider-index --image "$IMG" "$DIR" >/dev/null
-        echo "== $ex (image $IMG) → $ED_TARGET_DIR =="
-        nros_seed_leaf_lock "$DIR"
-        # From the directory ABOVE the leaf, naming the manifest and the
-        # image's settings file — the invocation `nros build` uses
-        # (scripts/build/leaf-settings.sh records why).
-        ( cd "$(dirname "$DIR")" && cargo build --manifest-path "$DIR/Cargo.toml" \
-            --config "$DIR/build/$IMG/nros-cargo.toml" --target-dir "$ED_TARGET_DIR" )
+    mkdir -p "$ED_TARGET_DIR/debug"
+    for ex in talker listener service-server service-client action-server action-client; do
+        SRC="{{justfile_directory()}}/examples/linux/rust/$ex"
+        BRINGUP="$(cd "$SRC/src" && ls -d *_bringup)"
+        [ "$(echo "$BRINGUP" | wc -w)" = 1 ] \
+            || { echo "error: $SRC is not a one-node workspace (bringups: $BRINGUP)" >&2; exit 1; }
+        WS="$ED_TARGET_DIR/$ex-ws"
+        echo "== $ex (workspace copy, ros_edition $ED, image $BRINGUP:$WS_IMG) → $ED_TARGET_DIR/debug/$ex =="
+        if [ -n "{{dry_run}}" ]; then continue; fi
+        rm -rf "$WS/src"
+        mkdir -p "$WS"
+        cp -r "$SRC/src" "$WS/src"
+        cp "$SRC/.colcon_workspace" "$WS/"
+        sed -i "s/^\[system\]\$/[system]\nros_edition = \"$ED\"/" "$WS/src/$BRINGUP/system.toml"
+        grep -q "^ros_edition = \"$ED\"\$" "$WS/src/$BRINGUP/system.toml" \
+            || { echo "error: could not set ros_edition = $ED in the $ex copy" >&2; exit 1; }
+        "$NROS" build "$BRINGUP:$WS_IMG" --workspace "$WS" -- --target-dir "$WS/target"
+        # profile-literal-ok: unprofiled: as above
+        cp -f "$WS/target/debug/${WS_IMG}_entry" "$ED_TARGET_DIR/debug/$ex"
     done
-    # profile-literal-ok: unprofiled: same lane as above — plain `cargo build`, so debug/ IS the derived dir
-    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under $ED_TARGET_DIR/debug/ (image $IMG)"
+    # profile-literal-ok: unprofiled: as above
+    echo "build-e2e-fixtures {{distro}} {{rmw}}: 6 binaries under $ED_TARGET_DIR/debug/ (image $WS_IMG)"
 
 # Composite: build the edition image + run the gated harness lanes (peer smoke,
 # codegen axis, domain_bridge interop). OPT-IN — NOT part of `just ci` (docker +

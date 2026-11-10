@@ -105,7 +105,7 @@ fn scratch_copy(src: &str, tag: &str) -> PathBuf {
     assert!(!files.is_empty(), "{} is tracked", src.display());
     for f in files {
         let rel = Path::new(std::str::from_utf8(f).unwrap());
-        let dest = dest_root.join(rel.strip_prefix(src).unwrap());
+        let dest = dest_root.join(common::leaf_copy_name(rel.strip_prefix(src).unwrap()));
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(root.join(rel), &dest).unwrap();
     }
@@ -113,7 +113,7 @@ fn scratch_copy(src: &str, tag: &str) -> PathBuf {
 }
 
 fn scratch_leaf(tag: &str) -> PathBuf {
-    scratch_copy("examples/linux/rust/listener", tag)
+    scratch_copy(common::RUST_LEAF, tag)
 }
 
 fn stamp_file(project: &Path, key: &str) -> PathBuf {

@@ -307,8 +307,9 @@ build-fixture-rust:
     # Replaces the legacy `nros dev codegen rust --force` + hand-managed
     # `.cargo/config.toml [patch.crates-io]` chunks.
     nros_repo_root="$PWD"
-    for ex in talker listener service-server service-client service-client-callback action-server \
-              action-client custom-transport-talker custom-transport-listener; do
+    # The one-node workspaces (`listener`, `service-*`, `action-*`, phase-535
+    # W6) are configured by the workspace fixture builder with their rows.
+    for ex in talker service-client-callback custom-transport-talker custom-transport-listener; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null
@@ -336,8 +337,9 @@ build-fixture-rust-core:
     nros_cli="$(nros_cli_bin)"
     nros_require_sync "$nros_cli"
     nros_repo_root="$PWD"
-    for ex in talker listener service-server service-client service-client-callback action-server \
-              action-client custom-transport-talker custom-transport-listener; do
+    # The one-node workspaces (`listener`, `service-*`, `action-*`, phase-535
+    # W6) are configured by the workspace fixture builder with their rows.
+    for ex in talker service-client-callback custom-transport-talker custom-transport-listener; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null
@@ -369,9 +371,9 @@ build-fixture-extras:
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
     nros_cli="$(nros_cli_bin)"
-    # Phase 214.I.2 — fail-loud prereq guard: `ensure_native_rust_generated`
-    # below invokes `nros configure`. Probe once; emit `[PREREQ]` + exit 0
-    # if the verb is missing (shipped 0.3.7 predates it).
+    # Phase 214.I.2 — fail-loud prereq guard: the fixture builders below invoke
+    # `nros configure`. Probe once; emit `[PREREQ]` + exit 0 if the verb is
+    # missing (shipped 0.3.7 predates it).
     nros_require_sync "$nros_cli"
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
@@ -384,18 +386,6 @@ build-fixture-extras:
     # examples/fixtures.toml and built by `build-fixture-rust`. This recipe owns
     # only what the manifest can't express: the gated CMake/Corrosion Cyclone
     # cells (no pure-cargo register symbol) and the C/C++ manifest passes.
-    ensure_native_rust_generated() {
-        case "$1" in
-            linux/rust/listener)
-                # Phase 210.E.3.d.native — same swap as build-fixture-role-
-                # examples: `nros configure` for the patch-table + codegen flow.
-                # Phase 214.J.2 — also wipe `generated/` if trait surface
-                # has drifted since the previous sync.
-                NROS_REPO_DIR="$repo_root" nros_codegen_stamp_check_or_wipe "examples/$1"
-                "$nros_cli" configure "examples/$1" >/dev/null
-                NROS_REPO_DIR="$repo_root" nros_codegen_stamp_write "examples/$1" ;;
-        esac
-    }
     # Phase 220.C (Path B) — native talker/listener Cyclone cells now build via
     # pure-cargo, matching K.7.7 (`fcbc498cc`). The Phase 175.A cmake/corrosion
     # bridge was retired by Phase 212.M.1 (deleted the per-example
@@ -403,12 +393,9 @@ build-fixture-extras:
     # `nros_rmw_cyclonedds_register` through `nros-rmw-cyclonedds-sys`. Each
     # example carries an feature turning on `nros/needs-type-descriptors`
     # that routes the typed-creator hook (K.7.6.b) into the C++ backend.
-    # phase-531 W6 — the talker is a one-node workspace; the workspace fixture
-    # builder configures it with its `[[workspace_fixture]]` rows.
-    for collapsed_case in listener; do
-        echo "  → linux/rust/${collapsed_case} (cargo --features rmw-cyclonedds, target-cyclonedds/)"
-        ensure_native_rust_generated "linux/rust/${collapsed_case}"
-    done
+    # phase-531 / phase-535 W6 — the talker and the listener are one-node
+    # workspaces; the workspace fixture builder configures each with its
+    # `[[workspace_fixture]]` rows.
     export NROS_CARGO_PROFILE_ARGS="$cargo_profile_args"
     bash scripts/build/fixture-make-driver.sh linux-cyclonedds-rust
     # Phase 181.5 — collapsed-shape native C / C++ examples from the SSOT
@@ -1082,25 +1069,25 @@ bench-fairness:
 talker:
     cd examples/linux/rust/talker && nros run linux
 
-# Run native Rust listener
+# Run native Rust listener (a one-node workspace since phase-535 W6)
 listener:
-    cd examples/linux/rust/listener && cargo run
+    cd examples/linux/rust/listener && nros run linux
 
 # Run native Rust service server
 service-server:
-    cd examples/linux/rust/service-server && cargo run
+    cd examples/linux/rust/service-server && nros run linux
 
 # Run native Rust service client
 service-client:
-    cd examples/linux/rust/service-client && cargo run
+    cd examples/linux/rust/service-client && nros run linux
 
 # Run native Rust action server
 action-server:
-    cd examples/linux/rust/action-server && cargo run
+    cd examples/linux/rust/action-server && nros run linux
 
 # Run native Rust action client
 action-client:
-    cd examples/linux/rust/action-client && cargo run
+    cd examples/linux/rust/action-client && nros run linux
 
 # Start zenohd router for native examples (override bind via $NROS_LOCATOR).
 # `just zenohd <model>` also runs the downsampling rule `nros configure` wrote

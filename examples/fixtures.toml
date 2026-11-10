@@ -2299,38 +2299,63 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/action-client"
 
-# phase-535 W4/W6 — the Rust listener, service and action examples keep their
-# own directories (to migrate in place to one-package workspaces), because the
-# opt-in ROS-edition lane (`just ros-editions build-e2e-fixtures`) builds their
-# `linux[_<rmw>]_<edition>` images, and a workspace generates its messages for
-# ONE edition (issue 2409). Their pair cells run the workspace images. One
-# plain row each keeps the example compiling where a user would copy it. (The
-# listener's peer-mode row is a workspace image now; its `link-tls` row stays,
-# below, issue 2423.)
-[[fixture]]
+# phase-535 W6 — the Rust listener, service and action examples are one-node
+# workspaces (RFC-0122 D3), each its own directory, because the opt-in
+# ROS-edition lane (`just ros_editions build-e2e-fixtures`) builds a
+# per-edition copy of each: a workspace generates its messages for ONE edition
+# (issue 2409). Their pair cells run the language-workspace images. One plain
+# row each keeps the example compiling where a user would copy it. (The
+# listener's peer-mode row is a language-workspace image; its `link-tls` row is
+# this workspace's `linux_tls` image, below.)
+[[workspace_fixture]]
+id = "linux-rust-zenoh-listener"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/listener"
+rmw = "zenoh"
+bringup = "src/native_listener_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-service-server"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/service-server"
+rmw = "zenoh"
+bringup = "src/native_service_server_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-service-client"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/service-client"
+rmw = "zenoh"
+bringup = "src/native_service_client_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-action-server"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/action-server"
+rmw = "zenoh"
+bringup = "src/native_action_server_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-action-client"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/action-client"
+rmw = "zenoh"
+bringup = "src/native_action_client_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
 [[fixture]]
 platform = "linux"
@@ -2770,13 +2795,18 @@ target_dir = "target-fixtures"
 image = "linux_tls"
 node_features = ["link-tls"]
 
-# The listener's half keeps its own directory: a workspace image cannot turn
-# on a zenoh link feature without a node package naming zenoh (issue 2423).
-[[fixture]]
+# The listener's half, the same shape: its one-node workspace's `linux_tls`
+# image turns on the node package's `link-tls` feature (RFC-0121 D9).
+[[workspace_fixture]]
+id = "linux-rust-zenoh-listener-tls"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/listener"
-features = ["link-tls"]
+rmw = "zenoh"
+bringup = "src/native_listener_bringup"
+target_dir = "target-fixtures"
+image = "linux_tls"
+node_features = ["link-tls"]
 
 # Peer-mode variant (isolated target dir) — issue 0711.
 #

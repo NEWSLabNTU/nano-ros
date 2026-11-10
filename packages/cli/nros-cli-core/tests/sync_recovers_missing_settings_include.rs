@@ -10,8 +10,9 @@
 //! failed before the stage that would have rewritten the file, and every later
 //! sync failed the same way -- naming `nros sync` as the remedy.
 //!
-//! This builds exactly that state on a COPY of `examples/linux/rust/listener`
-//! (its tracked files, under the repo's gitignored `tmp/`): sync once, delete
+//! This builds exactly that state on a COPY of the frozen Rust cargo leaf
+//! `tests/fixtures/rust-leaf/listener` (its tracked files, under the repo's
+//! gitignored `tmp/`): sync once, delete
 //! the settings file, edit a source line so the probe must re-run, sync again.
 //! The second sync must succeed and write the settings file back.
 //!
@@ -52,11 +53,11 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// The TRACKED files of the in-tree listener leaf, copied under `tmp/` -- never
+/// The TRACKED files of the frozen Rust cargo leaf, copied under `tmp/` -- never
 /// its build output, so the copy starts as a fresh clone would.
 fn scratch_leaf() -> PathBuf {
     let root = repo_root();
-    let src = Path::new("examples/linux/rust/listener");
+    let src = Path::new(common::RUST_LEAF);
     let dir = root.join("tmp").join(format!(
         "sync-1920-{}-{}",
         std::process::id(),
@@ -79,7 +80,7 @@ fn scratch_leaf() -> PathBuf {
     assert!(!files.is_empty(), "the listener leaf is tracked");
     for f in files {
         let rel = Path::new(std::str::from_utf8(f).unwrap());
-        let dest = leaf.join(rel.strip_prefix(src).unwrap());
+        let dest = leaf.join(common::leaf_copy_name(rel.strip_prefix(src).unwrap()));
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(root.join(rel), &dest).unwrap();
     }

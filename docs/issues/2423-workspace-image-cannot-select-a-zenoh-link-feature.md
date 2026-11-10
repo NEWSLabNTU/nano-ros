@@ -10,9 +10,15 @@ found: 2026-11-10
 ---
 
 **Home: [phase-535](../roadmap/phase-535-example-reorg-and-cadence-ci.md) W6.**
-It keeps the `link-tls` rows of `examples/linux/rust/{talker,listener}` on
-the leaves, where `nano2nano::test_tls_talker_listener_communication` resolves
-them.
+The `link-tls` rows of `examples/linux/rust/{talker,listener}` are each a
+`linux_tls` image of that example's own one-node workspace
+(`node_features = ["link-tls"]`, RFC-0121 D9), where
+`nano2nano::test_tls_talker_listener_communication` resolves them. That needs
+no enabler: `check-node-package-invariance` scopes `examples/workspaces/*` and
+the templates, and exempts the per-platform examples, which exist to show
+platform integration. What remains is the LANGUAGE workspace: a shared node
+package there may not forward to `nros-rmw-zenoh`, so the pair cannot be a
+`matrix::Config` TLS cell without image-selected backend features.
 
 ## What
 
@@ -65,5 +71,5 @@ and none of them carries a backend link feature:
 
 `examples/workspaces/rust/src/pubsub_bringup` can declare
 `linux_{talker,listener}_tls` images without a node package naming zenoh. At
-that point the two leaf rows retire into a `matrix::Config` TLS cell, the way
-phase-535 W6 moved the peer-mode rows.
+that point the two example `linux_tls` rows can retire into a
+`matrix::Config` TLS cell, the way phase-535 W6 moved the peer-mode rows.
