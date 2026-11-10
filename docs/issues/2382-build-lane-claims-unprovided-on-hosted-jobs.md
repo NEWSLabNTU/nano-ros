@@ -94,3 +94,31 @@ CI job builds in an earlier step.
 
 A scheduled `gate` whose build-tier shards and a scheduled `host-tests` whose
 tier-1 gates run their gates (green, or red about the code).
+
+## Sighting 2026-11-10: past the preflight, refused by the free-disk floor
+
+Scheduled `gate` run 42739859713 (main at 78baf6859c) got past the lane
+preflight this time, then all three `check / build tier + no-std [n/3]` shards
+stopped at the next claim the hosted jobs cannot meet, before any gate ran
+(jobs 129578033991, 129578034025; the same line inside job 129578033970):
+
+```
+nextest-gates: 29 GiB free under /__w/nano-ros/nano-ros, below 30 GiB
+error: recipe `nextest-gates` failed with exit code 1
+```
+
+The floor is phase-543 W4's `"${NROS_GATE_MIN_FREE_GIB:-30}"` in
+`just/check/gates.just` (9e6e3253e5). All three jobs ran on GitHub-hosted
+runners ("GitHub Actions 1000140647/48/50"), whose free space is fixed by the
+image, so `trim-caches.py` cannot meet it. This is the same class as this
+issue: the `build` lane claims a host property its hosted jobs never provide.
+Closing it needs one of three things: a measured `NROS_GATE_MIN_FREE_GIB` for
+the hosted shards, space freed on the image and asserted before the floor, or
+the shards moved to the self-hosted fleet.
+
+Shard 3 reports it as `pristine-checkout SELFTEST FAILED: a gate that reads a
+file inside an uninitialised submodule passed in the clone (rc=1)`. That
+reading is wrong: rc=1 came from the floor refusing before any gate ran. The
+self-test should read a preflight or floor refusal as NOT VERIFIED, not as a
+gate that passed. (Issue id 2408 was reserved for this sighting and left
+unused once it proved to be this class.)
