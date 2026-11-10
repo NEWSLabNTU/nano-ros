@@ -2405,9 +2405,10 @@ mod board_crate_tests {
         // 86 -> 83 for the mps2-an385 Rust serial talker, serial listener and
         // XRCE talker (W6: serial images of the Rust workspace's pubsub bringup),
         // 83 -> 75 for the mps2-an385 Rust `*-rtic` and `*-rtic-mixed` leaves
-        // (W6: `baremetal_<role>_rtic` images).
+        // (W6: `baremetal_<role>_rtic` images), 75 -> 74 for the
+        // `nros-tests` `entry-poc` bin (W7 step-3 prep, slice 1).
         assert!(
-            on_selection >= 75,
+            on_selection >= 74,
             "only {on_selection} leaves on the selection package"
         );
     }
