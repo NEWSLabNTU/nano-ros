@@ -70,3 +70,12 @@ Option 2, the user's ruling (bare metal stays Rust only):
   is the Linux host; chapter 10 runs `nros run freertos`.
 - `tutorial-c` and `tutorial-cpp` run on the FreeRTOS row and are weekly in
   `probe-platforms.yml`, with no `awaits`.
+- `nros new --to <bringup>` gives the new node a row in the bringup's
+  `system.contract.yaml` when the scaffold knows the node's whole surface
+  (talker, listener), and says so when it does not. Probe run 42754577268
+  found the gap: on the CMake road, a contract with `params:` on the talker
+  and no row for the listener has the parameter store refused ("1 of 2 nodes
+  in this image declare no `params:` ... Declare `params:` on every node, or
+  on none"), so chapter 3's C and C++ tabs stopped at step 340. The Rust road
+  sizes the store without that refusal, which is why the Rust tab passed.
+  Test: `a_node_added_to_a_workspace_touches_a_bringup_only_with_to`.

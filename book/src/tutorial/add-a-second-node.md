@@ -254,6 +254,12 @@ It also added `<exec_depend>monitor_node</exec_depend>` to the bringup's
 runs, the way a ROS 2 bringup package does. To run a node package you
 copied in from elsewhere, write both lines by hand.
 
+It also gave `monitor_node` a row in the bringup's contract,
+`system.contract.yaml`, beside the talker's: one subscription to `chatter`
+and no parameters. The contract states what each node creates, so the build
+can size the image from it, and it must name every node the image runs.
+Chapter 8 writes a contract of your own.
+
 The image table did not change. `[image.baremetal]` (`[image.freertos]` in C
 or C++) still names one board,
 and it now builds both rows into its one program.

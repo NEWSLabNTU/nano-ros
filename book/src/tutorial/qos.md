@@ -45,7 +45,8 @@ the contract is what the build sizes from, and the code is what runs.
 ## The contract the scaffold wrote
 
 The bringup holds a contract beside `system.toml`. The scaffold wrote the
-talker's row when it made the workspace:
+talker's row when it made the workspace, and `nros new --to` added the
+listener's in chapter 3:
 
 ```bash probe=2010 track=installed variant=qemu
 cat src/sensor_node_bringup/system.contract.yaml
@@ -65,17 +66,25 @@ nodes:
       chatter:
         qos:
           durability: volatile
+  monitor_node:
+    params: {}
+    sub:
+      chatter:
+        qos:
+          durability: volatile
 ```
 
 A contract row states what a node creates and with which QoS. The build
 sizes the image from it ([chapter 8](tell-the-build.md) shows how much that
-saves), and, which is this lab's subject, checks it. `monitor_node` has no
-row yet, because `nros new --to` added the node to the bringup and left the
-contract to you.
+saves), and, which is this lab's subject, checks it. Both rows say `volatile`, which is what the scaffolded code
+asks for, so the two checks have nothing to say yet. Every node has a
+`params:` line, even an empty one: the build sizes the parameter store from
+every node's declaration or from none, and a contract that states some nodes
+and not others is refused.
 
 ## Check one: the build compares the nodes
 
-Give `monitor_node` a row that asks for more than the talker offers: a
+Change `monitor_node`'s row to ask for more than the talker offers: a
 `transient_local` subscription, against a `volatile` publisher. Replace the
 contract with:
 
