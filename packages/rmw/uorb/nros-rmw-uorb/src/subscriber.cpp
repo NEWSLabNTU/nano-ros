@@ -28,6 +28,18 @@
 //     slow path).
 //   - `destroy_subscription` unregisters callback + unsubscribes +
 //     frees.
+//
+// Issue 2403 — what holds the subscription differs by build:
+//   - **PX4 glue build:** a `uORB::SubscriptionCallback` slot in
+//     `px4_callback_glue.cpp`, reached by POINTER (`nros_orb_sub_*`). No file
+//     descriptor is opened. On NuttX `orb_subscribe_multi` returns a real fd,
+//     and an fd belongs to the task group that opened it: the subscription is
+//     created by the transient `<module> start` task, which exits, while the
+//     executor runs on a work-queue thread in another task group, where
+//     `orb_check(fd)` is EBADF. (PX4's POSIX cdev keeps one process-wide fd
+//     table, which is why SITL never showed it.)
+//   - **Host test double:** the fd API (`orb_subscribe_multi` / `orb_check` /
+//     `orb_copy`) plus `nros_orb_register_callback`, as before.
 
 #include "internal.hpp"
 #include "nros_rmw_uorb.h"
@@ -47,7 +59,12 @@ namespace {
 
 struct SubscriberState {
     const struct orb_metadata* meta;
+#ifdef NROS_RMW_UORB_PX4_GLUE
+    // issue 2403 — the glue's slot; valid from any task.
+    void* sub;
+#else
     int sub_handle;
+#endif
     // `true` whenever the broker signals fresh data and after the
     // initial create (so the first poll triggers an orb_check that
     // surfaces any sample latched between subscribe + first call).
@@ -79,6 +96,24 @@ extern "C" void subscriber_ready_callback(void* arg) {
     }
 }
 
+/* issue 2403 — the two data-plane primitives, over whichever handle this
+ * build holds. Both return 0 on success. */
+int sub_check(SubscriberState* state, bool* updated) {
+#ifdef NROS_RMW_UORB_PX4_GLUE
+    return nros_orb_sub_check(state->sub, updated);
+#else
+    return orb_check(state->sub_handle, updated);
+#endif
+}
+
+int sub_copy(SubscriberState* state, void* buf) {
+#ifdef NROS_RMW_UORB_PX4_GLUE
+    return nros_orb_sub_copy(state->sub, buf);
+#else
+    return orb_copy(state->meta, state->sub_handle, buf);
+#endif
+}
+
 } // namespace
 
 rmw_ret_t
@@ -104,20 +139,38 @@ subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* /*
     if (meta == nullptr) {
         return NROS_RMW_RET_TOPIC_NAME_INVALID;
     }
-    int handle = orb_subscribe_multi(meta, /*instance=*/0);
-    if (handle < 0) {
-        return NROS_RMW_RET_ERROR;
-    }
     auto* state = static_cast<SubscriberState*>(std::malloc(sizeof(SubscriberState)));
     if (state == nullptr) {
-        (void)orb_unsubscribe(handle);
         return NROS_RMW_RET_BAD_ALLOC;
     }
     new (state) SubscriberState();
     state->meta = meta;
-    state->sub_handle = handle;
     state->callback_active = false;
     state->session = session->backend_data;
+#ifdef NROS_RMW_UORB_PX4_GLUE
+    // issue 2403 — one glue slot is both the subscription and its broker
+    // callback, held by pointer, so the executor's task can use it. A NULL
+    // slot (full pool, or the broker refused the callback) is refused rather
+    // than polled (RFC-0113 D5: the session told the runtime it is Notify);
+    // raise NROS_RMW_UORB_PX4_MAX_CALLBACKS.
+    state->sub = nros_orb_sub_open(meta, /*instance=*/0, subscriber_ready_callback, state);
+    if (state->sub == nullptr) {
+        state->~SubscriberState();
+        std::free(state);
+        return NROS_RMW_RET_ERROR;
+    }
+    state->callback_active = true;
+    // Start "ready" so the first poll surfaces a sample latched before the
+    // first pass.
+    state->ready.store(true, std::memory_order_relaxed);
+#else
+    int handle = orb_subscribe_multi(meta, /*instance=*/0);
+    if (handle < 0) {
+        state->~SubscriberState();
+        std::free(state);
+        return NROS_RMW_RET_ERROR;
+    }
+    state->sub_handle = handle;
     // K.4.2-sub-push: try push-wake. Failure leaves callback_active
     // = false; we pin `ready` to true so take_serialized degrades
     // gracefully to the slow polling path.
@@ -126,26 +179,12 @@ subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* /*
                                    /*instance=*/0, handle, subscriber_ready_callback, state);
     if (reg_rc == 0) {
         state->callback_active = true;
-        // Start "ready" so the first poll surfaces any sample the
-        // broker latched between subscribe + callback install.
-        state->ready.store(true, std::memory_order_relaxed);
-    } else {
-#ifdef NROS_RMW_UORB_PX4_GLUE
-        // phase-521 W8 (d) — with the glue linked, the session told the
-        // runtime it is Notify (`session_readiness_source`). A subscription
-        // that could not register would be polled by nothing, so it is
-        // refused rather than served silently (RFC-0113 D5). The cause is a
-        // full callback pool: raise NROS_RMW_UORB_PX4_MAX_CALLBACKS.
-        (void)orb_unsubscribe(handle);
-        state->~SubscriberState();
-        std::free(state);
-        return NROS_RMW_RET_ERROR;
-#else
-        // Slow path (the host test double): pin ready so has_data /
-        // take_serialized never short-circuit on the flag.
-        state->ready.store(true, std::memory_order_relaxed);
-#endif
     }
+    // Callback registered: start "ready" so the first poll surfaces any
+    // sample latched between subscribe and callback install. Not registered
+    // (the slow path): pinned, so has_data / take never short-circuit.
+    state->ready.store(true, std::memory_order_relaxed);
+#endif
     out->backend_data = state;
     out->can_loan_messages = false;
     return NROS_RMW_RET_OK;
@@ -184,12 +223,17 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
     }
     auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
     int rc = 0;
+#ifdef NROS_RMW_UORB_PX4_GLUE
+    // issue 2403 — no fd to close; the slot's destructor leaves the broker.
+    nros_orb_sub_close(state->sub);
+#else
     if (state->callback_active && nros_orb_unregister_callback(state->sub_handle) != 0) {
         rc = -1;
     }
     if (orb_unsubscribe(state->sub_handle) != 0) {
         rc = -1;
     }
+#endif
     state->~SubscriberState();
     std::free(state);
     subscriber->backend_data = nullptr;
@@ -223,7 +267,7 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
         return NROS_RMW_RET_OK;
     }
     bool updated = false;
-    if (orb_check(state->sub_handle, &updated) != 0) {
+    if (sub_check(state, &updated) != 0) {
         return NROS_RMW_RET_ERROR;
     }
     if (!updated) {
@@ -242,7 +286,7 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
         *out_len = static_cast<size_t>(state->meta->o_size);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
-    if (orb_copy(state->meta, state->sub_handle, buf) != 0) {
+    if (sub_copy(state, buf) != 0) {
         return NROS_RMW_RET_ERROR;
     }
     if (state->callback_active) {
@@ -271,7 +315,7 @@ rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_da
         return NROS_RMW_RET_OK;
     }
     bool updated = false;
-    if (orb_check(state->sub_handle, &updated) != 0) {
+    if (sub_check(state, &updated) != 0) {
         return NROS_RMW_RET_ERROR;
     }
     *out_has_data = updated;

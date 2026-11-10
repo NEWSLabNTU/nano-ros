@@ -60,6 +60,10 @@ pub use rust_adapter::{RustBackend, RustBackendAdapter};
 mod entity_wake;
 use entity_wake::{WakerSlot, runtime_entity_wake};
 
+// Issue 2410 — the one spelling of "a status on a path with no error channel".
+mod status_report;
+use status_report::{StatusSite, status_ok};
+
 // Phase 249 P4b.1 — `.init_array` ctor self-registration
 // (`nros_rmw_register_backend!` macro lives here).
 pub mod section;
@@ -3156,7 +3160,8 @@ impl Session for CffiSession {
                     // them is an error, and the status now says which.
                     let mut supports = false;
                     let rc = unsafe { f(&mut v, &mut supports) };
-                    rc == NROS_RMW_RET_OK && supports
+                    static SITE: StatusSite = StatusSite::new("subscription_supports_in_place");
+                    status_ok(rc, &SITE) && supports
                 }
                 None => false,
             };
@@ -3413,7 +3418,8 @@ impl Session for CffiSession {
         let mut out_ms: u32 = 0;
         let mut has_deadline = false;
         let ret = unsafe { f(&view as *const _, &mut out_ms, &mut has_deadline) };
-        if ret != NROS_RMW_RET_OK || !has_deadline {
+        static SITE: StatusSite = StatusSite::new("next_deadline_ms");
+        if !status_ok(ret, &SITE) || !has_deadline {
             return None;
         }
         Some(out_ms)
@@ -3960,7 +3966,8 @@ impl CffiPublisher {
             // and `taken` are stack locals the slot writes through. The slot
             // writes `payload` only when it sets `taken`.
             let rc = unsafe { take(&view, event_kind_to_c(*kind), &mut payload, &mut taken) };
-            if rc != NROS_RMW_RET_OK || !taken {
+            static SITE: StatusSite = StatusSite::new("publisher_take_event");
+            if !status_ok(rc, &SITE) || !taken {
                 continue;
             }
             // SAFETY: `cb` and `user_ctx` were supplied together at
@@ -4840,7 +4847,8 @@ impl CffiSubscription {
             // `payload` and `taken` are stack locals the slot writes through,
             // and the slot writes `payload` only when it sets `taken`.
             let rc = unsafe { take(&view, event_kind_to_c(*kind), &mut payload, &mut taken) };
-            if rc != NROS_RMW_RET_OK || !taken {
+            static SITE: StatusSite = StatusSite::new("subscription_take_event");
+            if !status_ok(rc, &SITE) || !taken {
                 continue;
             }
             // SAFETY: `cb` and `user_ctx` were supplied together at
@@ -5076,11 +5084,13 @@ impl nros_rmw::Subscription for CffiSubscription {
         // broken backend and a quiet one were indistinguishable here. The trait
         // returns `bool` and has no error channel, so an error still maps to
         // false — but now by an explicit decision rather than by the arithmetic
-        // happening to say so.
+        // happening to say so. Issue 2410: and the first one is REPORTED, since
+        // issue 2403's EBADF read as a quiet topic for an entire investigation.
         let mut has = false;
         let rc =
             unsafe { (self.vtable.has_data.expect("rmw vtable: has_data"))(&mut view, &mut has) };
-        rc == NROS_RMW_RET_OK && has
+        static SITE: StatusSite = StatusSite::new("subscription has_data");
+        status_ok(rc, &SITE) && has
     }
 
     fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
@@ -5449,7 +5459,8 @@ impl ServiceTrait for CffiService {
         let rc = unsafe {
             (self.vtable.has_request.expect("rmw vtable: has_request"))(&mut view, &mut has)
         };
-        rc == NROS_RMW_RET_OK && has
+        static SITE: StatusSite = StatusSite::new("service has_request");
+        status_ok(rc, &SITE) && has
     }
 
     fn take_request<'a>(

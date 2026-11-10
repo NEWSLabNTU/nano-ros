@@ -31,7 +31,10 @@ set(NROS_RMW_UORB_SOURCES
     "${_nros_rmw_uorb_src_dir}/topic_registry.cpp"
     "${_nros_rmw_uorb_src_dir}/qos.cpp"
 )
-# EXACTLY ONE of the next two lists joins a build (phase-521 W8 d). Both
+# EXACTLY ONE of the next two lists joins a build (phase-521 W8 d). Since
+# issue 2403 they no longer define the same symbols (the glue's subscription
+# is `nros_orb_sub_*`, keyed by pointer; the default keeps the fd-keyed
+# `nros_orb_register_callback`), but the pairing stands. Both used to
 # define `nros_orb_register_callback`; `callback_default.cpp`'s used to be a
 # WEAK stub beside the glue's strong one, and in a static archive the linker
 # pulls whichever member first resolves the symbol -- the stub, since nothing

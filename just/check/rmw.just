@@ -374,6 +374,13 @@ nros-c-feature-agreement:
 no-silent-sample-drop:
     @python3 scripts/check-no-silent-sample-drop.py
 
+# Issue 2410 (found by issue 2403) — the RMW C shim may not fold a backend
+# status into a data flag by hand (`rc == NROS_RMW_RET_OK && has`): a failing
+# backend then reads as a quiet one. One spelling, `status_report::status_ok`,
+# which reports the first error per site. Buildless; self-test on every run.
+cffi-swallowed-status:
+    @python3 scripts/check-cffi-swallowed-status.py
+
 # issue 0777 — seven ABI deviations were justified by "pools are baked", a claim
 # true of one backend in five. The conclusion held; the reason did not. This is
 # the re-run: every allocation site in a backend, split by whether it is on the

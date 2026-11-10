@@ -2,13 +2,16 @@
 //
 // Compiled only when NROS_RMW_UORB_BUILD_PX4_GLUE=ON (which itself
 // implies NROS_RMW_UORB_LINK_PX4=ON), and always by
-// `nros_px4_add_module`. Provides strong definitions of
-// `nros_orb_register_callback` / `nros_orb_unregister_callback`.
+// `nros_px4_add_module`. Provides `nros_orb_sub_open` / `_check` / `_copy` /
+// `_close` (uorb_abi.hpp).
 //
-// Each registration is one `uORB::SubscriptionCallback` subclass whose
+// Each subscription is one `uORB::SubscriptionCallback` subclass whose
 // `call()` — run by the broker in the publisher's context — invokes the C
 // callback directly (phase-521 W8 d; it used to hop through a work item on
-// `lp_default`, see `CallbackSlotImpl`).
+// `lp_default`, see `CallbackSlotImpl`). Issue 2403: the same object is the
+// subscription's data plane too (`updated()` / `copy()`), held by pointer,
+// because the fd `orb_subscribe_multi` returns on NuttX belongs to the task
+// group that opened it and the executor runs in another one.
 //
 // Capacity is bounded at compile time
 // (`NROS_RMW_UORB_PX4_MAX_CALLBACKS`, default 64), in a fixed pool with
@@ -38,9 +41,10 @@ namespace {
  *
  * Zero looked arguable when this was written: at 0 the range-`for`s over
  * `g_pool` do not execute, `find_free` (once ~~`find_free_or_construct`~~)
- * returns NULL, `nros_orb_register_callback` returns -1, and `subscriber.cpp`
- * then polled. Since phase-521 W8 (d) it REFUSES that subscription instead
- * (RFC-0113 D5: the session told the runtime it is Notify), so at 0 no
+ * returns NULL, `nros_orb_sub_open` (here it replaced `nros_orb_register_callback`)
+ * fails, and `subscriber.cpp` then polled. Since phase-521 W8 (d) it
+ * REFUSES that subscription instead (RFC-0113 D5: the session told the
+ * runtime it is Notify), so at 0 no
  * subscription could be created at all — a second reason, now, beside the
  * one below.
  *
@@ -83,10 +87,9 @@ namespace {
 // owning sched task's `ScheduleNow()`), so there is no queue to wait in.
 class CallbackSlotImpl final : public uORB::SubscriptionCallback {
 public:
-    CallbackSlotImpl(const orb_metadata *meta, uint8_t instance, int handle_in,
-                     nros_orb_callback_t cb, void *arg)
-        : uORB::SubscriptionCallback(meta, 0, instance),
-          sub_handle(handle_in), callback(cb), user_arg(arg) {}
+    CallbackSlotImpl(const orb_metadata *meta, uint8_t instance, nros_orb_callback_t cb,
+                     void *arg)
+        : uORB::SubscriptionCallback(meta, 0, instance), callback(cb), user_arg(arg) {}
 
     void call() override {
         if (callback != nullptr) {
@@ -94,10 +97,7 @@ public:
         }
     }
 
-    int handle() const { return sub_handle; }
-
 private:
-    int                 sub_handle;
     nros_orb_callback_t callback;
     void               *user_arg;
 };
@@ -125,53 +125,55 @@ Slot *find_free() {
     return nullptr;
 }
 
-Slot *find_by_handle(int handle) {
-    for (auto &slot : g_pool) {
-        if (slot.constructed && slot.adapter()->handle() == handle) {
-            return &slot;
-        }
-    }
-    return nullptr;
-}
-
 } // namespace
 
 extern "C" {
 
-int nros_orb_register_callback(const struct orb_metadata *meta,
-                               uint8_t instance,
-                               int handle,
-                               nros_orb_callback_t cb,
-                               void *arg) {
-    if (meta == nullptr || cb == nullptr || handle < 0) {
-        return -1;
+void *nros_orb_sub_open(const struct orb_metadata *meta, uint8_t instance,
+                        nros_orb_callback_t cb, void *arg) {
+    if (meta == nullptr || cb == nullptr) {
+        return nullptr;
     }
     Slot *slot = find_free();
     if (slot == nullptr) {
         PX4_ERR("nros uORB: callback pool full (NROS_RMW_UORB_PX4_MAX_CALLBACKS)");
         // Pool exhausted: the subscription is refused (subscriber.cpp).
-        return -1;
+        return nullptr;
     }
-    CallbackSlotImpl *impl = new (slot->storage) CallbackSlotImpl(meta, instance, handle, cb, arg);
+    CallbackSlotImpl *impl = new (slot->storage) CallbackSlotImpl(meta, instance, cb, arg);
     slot->constructed = true;
     if (!impl->registerCallback()) {
         PX4_ERR("nros uORB: broker callback for `%s` did not register", meta->o_name);
         impl->~CallbackSlotImpl();
         slot->constructed = false;
+        return nullptr;
+    }
+    return slot;
+}
+
+int nros_orb_sub_check(void *sub, bool *updated) {
+    if (sub == nullptr || updated == nullptr) {
         return -1;
     }
+    *updated = static_cast<Slot *>(sub)->adapter()->updated();
     return 0;
 }
 
-int nros_orb_unregister_callback(int handle) {
-    Slot *slot = find_by_handle(handle);
-    if (slot == nullptr) {
-        return 0; // idempotent: not-found counts as success
+int nros_orb_sub_copy(void *sub, void *buffer) {
+    if (sub == nullptr || buffer == nullptr) {
+        return -1;
     }
+    return static_cast<Slot *>(sub)->adapter()->copy(buffer) ? 0 : -1;
+}
+
+void nros_orb_sub_close(void *sub) {
+    if (sub == nullptr) {
+        return;
+    }
+    Slot *slot = static_cast<Slot *>(sub);
     // The destructor unregisters from the broker before the slot is reused.
     slot->adapter()->~CallbackSlotImpl();
     slot->constructed = false;
-    return 0;
 }
 
 } // extern "C"
