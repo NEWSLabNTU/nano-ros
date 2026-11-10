@@ -840,6 +840,19 @@ fn parse_file(path: &Path) -> Result<toml::Table, String> {
 /// Read a leaf `system.toml`. A leaf builds ONE image: exactly one
 /// `[image.<id>]`, or `[system] default_images = ["<id>"]` naming one of
 /// several.
+/// `a::b::C`: two or more `::`-separated Rust identifiers.
+fn is_rust_path(class: &str) -> bool {
+    let segments: Vec<&str> = class.split("::").collect();
+    segments.len() >= 2
+        && segments.iter().all(|seg| {
+            let mut chars = seg.chars();
+            chars
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+}
+
 fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
     let doc = parse_file(path)?;
     crate::retired_tables::refuse_retired_tables(&doc, path)?;
@@ -1019,6 +1032,22 @@ fn image_system(
                         path.display()
                     ));
                 }
+            }
+            // `class` is a Rust path (`<crate ident>::<Type>`): the metadata
+            // harness and `nros::main!` both splice it into code. A package
+            // name with dashes (`entry-poc::EntryPoc`) is not one, and failed
+            // only once the harness compiled it (`expected one of , or >,
+            // found -`), killing every fixture build behind it.
+            if let Some(class) = str_key(Some(t), "class")
+                && !is_rust_path(&class)
+            {
+                return Err(format!(
+                    "{}: `[[component]] class = \"{class}\"` is not a Rust path -- \
+                     name the crate by its identifier (dashes become underscores) and the \
+                     type after `::`, e.g. `{}`",
+                    path.display(),
+                    class.replace('-', "_")
+                ));
             }
             components.push(LeafComponent {
                 pkg: str_key(Some(t), "pkg"),
@@ -1400,6 +1429,28 @@ locator = "tcp/10.0.2.2:9800"
             e.contains("[[component]] name") && e.contains("${NROS_CYCLONE_IDLC}"),
             "{e}"
         );
+    }
+
+    /// A `class` that is not a Rust path (a dashed package name) is refused at
+    /// read time, naming the identifier spelling, instead of failing later
+    /// inside the metadata harness's compile.
+    #[test]
+    fn a_class_that_is_not_a_rust_path_is_refused() {
+        let t = "[system]\nname = \"t\"\n\n[[component]]\npkg = \"entry-poc\"\n\
+                 class = \"entry-poc::EntryPoc\"\nname = \"e\"\n\n\
+                 [image.a]\nboard = \"zephyr\"\n";
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", t)]);
+        let e = read(d.path()).unwrap_err();
+        assert!(
+            e.contains("not a Rust path") && e.contains("entry_poc::EntryPoc"),
+            "{e}"
+        );
+        for ok in ["a::B", "a_b::c::D", "_x::Y1"] {
+            assert!(is_rust_path(ok), "{ok}");
+        }
+        for bad in ["A", "a-b::C", "a::", "::C", "1a::B", "a::b c"] {
+            assert!(!is_rust_path(bad), "{bad}");
+        }
     }
 
     #[test]
