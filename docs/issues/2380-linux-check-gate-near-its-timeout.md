@@ -60,3 +60,40 @@ One of these:
 Acceptance: `build::check::linux-check` passes inside its budget in a
 full `just ci gate` run at a load average of about 90, with the choice
 named here.
+
+## Profile (2026-11-10, newslab-241, x86_64, 32 cores)
+
+Per leaf, all 32 under the lane's own jobserver pool, timed by a wrapper
+around `lint-example-leaf.sh`:
+
+| state | whole lane | slowest leaf | sum of leaf walls |
+| --- | --- | --- | --- |
+| cold (fresh lint dir), load 4 at start | 82 s | 82.5 s (`mps2-an385-baremetal/c/service-server`) | 2,055 s |
+| warm | 2 s | 2.2 s | 51 s |
+| cold, inside a full `just ci gate` (other gates beside it) | 831 s | | |
+
+The 14 `mps2-an385-baremetal` C/C++ leaves are the slowest (75-83 s cold),
+then the `linux/rust` leaves (40-78 s); `logging` is 11 s. No single leaf or
+repeated rebuild dominates. The cost is that each of the 32 leaves is its own
+cargo root and compiles the nros stack cold in its own target dir. Issue 0616
+rules out sharing a target dir across roots, so this work cannot be pooled.
+The lane's wall time is therefore that real work divided by whatever share of
+the host it gets. On a loaded host that share shrinks, and the single
+2400 s test runs out.
+
+## Fix: one nextest unit per leaf
+
+`check::linux-check` is now a `[group('units')]` gate with one unit per leaf
+(`build::check::linux-check#linux-rust-talker`, …). Each unit has its own
+2400 s budget; a leaf's cold time on an idle host is 11-83 s. Each unit is
+weighted `[group('cpu:8')]` (`threads-required = 8`), so nextest schedules the
+units beside the other gates as parallel builds instead of starting all 32
+at once.
+
+The leaf list, the fan-out and the leaf `target/` assertion moved from the
+`just linux check` recipe body into `scripts/build/lint-examples.sh`, which
+both the recipe and the gate call. `just linux check` still lints every leaf
+under one jobserver pool. Each unit also runs the `target/` assertion after
+its leaf (1 s).
+
+Acceptance still needs a full `just ci gate` at a load average of about 90.
