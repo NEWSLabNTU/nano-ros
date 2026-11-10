@@ -1,13 +1,24 @@
 ---
 id: 2241
 title: "live-peer: the fixture build hands out a FIFO jobserver on a runner with no pinned make, so the system make 4.3 children stop"
-status: open
+status: resolved
+resolved: 2026-11-10
+resolved_in: "fix 2: the jobserver form is chosen from every make the build runs, cached ones included"
 type: bug
 area: [build, ci, testing]
 severity: high
 found: 2026-11-04
 related: [phase-466, 2058, 2119]
 ---
+
+> **Resolved (2026-11-10).** Fix 2 landed in two steps. Issue 2219's fix
+> (2026-11-04) chose the form from the make on PATH for every driver, which
+> closes the first two sightings. This fix closes the third: `nros build`
+> also reads the `CMakeCache.txt` of every build dir its plans name (and each
+> immediate subdir, for sysbuild domains), takes the makes recorded under
+> `CMAKE_MAKE_PROGRAM` and `MAKE`, and creates a FIFO pool only if the oldest
+> make among them is 4.4 or newer. Otherwise it creates a pipe pool and says
+> which make forced that.
 
 **Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `live-peer` lane stops in its fixture build, before any cell.
 
@@ -114,3 +125,25 @@ patched:
 
 Acceptance: a `live-peer regression` run gets past "Build the fixtures those
 rows resolve" in both jobs.
+
+## Fix (2026-11-10)
+
+- `builder/jobserver.rs`: `makes_in_cache` parses a cache's
+  `CMAKE_MAKE_PROGRAM` / `MAKE` entries and skips Ninja and `*-NOTFOUND`.
+  `cached_makes(dir)` reads `dir/CMakeCache.txt` and each immediate subdir's.
+- `cmd/build.rs`: `oldest_reachable_make` collects each plan's record build
+  dirs, its cmake build dir and its output build dir (cmake or west). The
+  oldest of those makes and the make on PATH goes to `choose_style`.
+
+Where live-peer stands: run 42754129258 (2026-11-10) has no
+`invalid --jobserver-auth` line in either job. Its remaining red,
+`build-ws-rs-qos-entry-zenoh`, is issue 2415, not this one.
+
+Known reach not covered: `scripts/build/jobserver-pool.sh`, the `just`
+fan-outs' pool, is created by the pinned make 4.4 itself. A child there
+running `cmake --build` on a dir whose cache recorded make 4.3 would hit the
+same stop. No sighting so far. Re-configuring such a dir (`cmake <dir>`)
+does not refresh a cached `MAKE:FILEPATH`; deleting that one cache entry
+does.
+
+Sweep: `git grep -n 'choose_style\|tool_version("make")\|jobserver-auth=fifo' -- packages scripts just`
