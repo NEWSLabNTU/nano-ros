@@ -344,14 +344,22 @@ pub fn build_command(img: &LeafImage) -> (PathBuf, Vec<String>) {
 /// `NROS_BOARD_TOML`, `nros-board-freertos` fell back to the platform network
 /// default (`192.0.3.10`) while QEMU now runs SLIRP (`10.0.2.x`), so the
 /// image booted and never reached its router.
+///
+/// `image` keys the resolution to ONE `[image.<id>]` (the workspace road names
+/// the image it builds). Resolving by board alone answers for every image on
+/// the board, and two board words of one descriptor (`mps2-an385-baremetal`
+/// and `rtic-mps2-an385`) state different `NROS_BOARD` values, so a bringup
+/// holding both was refused (phase-535 W6). `None` keeps the board lookup, for
+/// the single-package road, whose leaf builds one image.
 pub(crate) fn board_fact_layer(
     dir: &Path,
     nano_ros_root: &Path,
     board: &str,
+    image: Option<&str>,
     env: &mut BTreeMap<String, String>,
     path_env: &mut BTreeMap<String, PathBuf>,
 ) -> Result<()> {
-    let facts = crate::cmd::board_facts::resolve(dir, nano_ros_root, None, Some(board), &|k| {
+    let facts = crate::cmd::board_facts::resolve(dir, nano_ros_root, image, Some(board), &|k| {
         std::env::var(k).ok()
     })
     .map_err(|e| eyre!("{}: board facts for `{board}`: {e}", dir.display()))?;
@@ -1302,7 +1310,14 @@ pub fn write_shared(
     let mut path_env: BTreeMap<String, PathBuf> = BTreeMap::new();
 
     // Layer 3 — the board facts, by the one resolver the other lanes use.
-    board_fact_layer(leaf, nano_ros_root, &img.board, &mut env, &mut path_env)?;
+    board_fact_layer(
+        leaf,
+        nano_ros_root,
+        &img.board,
+        None,
+        &mut env,
+        &mut path_env,
+    )?;
 
     // Layer 3.5 — what the image's declared transport implies.
     transport_implications(&img.decl, &mut env)?;
@@ -2994,9 +3009,58 @@ pub(crate) mod board_rung_tests {
         )
         .unwrap();
         let (mut env, mut path_env) = (BTreeMap::new(), BTreeMap::new());
-        board_fact_layer(td.path(), &repo(), BOARD, &mut env, &mut path_env).unwrap();
+        board_fact_layer(td.path(), &repo(), BOARD, None, &mut env, &mut path_env).unwrap();
         for (k, v) in expected(BoardRungCarries::BoardOnly) {
             assert_eq!(env.get(&k), Some(&v), "{k}: the cargo roads' board layer");
+        }
+    }
+
+    /// phase-535 W6 — one bringup, two images on ONE descriptor under two of
+    /// its board words. They differ on `NROS_BOARD`, so a lookup by board
+    /// alone answers for both and is refused; the workspace road names the
+    /// image it builds, and gets that image's facts.
+    #[test]
+    fn the_workspace_road_resolves_the_board_layer_per_image() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(
+            td.path().join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [image.plain]\nboard = \"mps2-an385-baremetal\"\n\n\
+             [image.rtic]\nboard = \"rtic-mps2-an385\"\n",
+        )
+        .unwrap();
+        let (mut env, mut path_env) = (BTreeMap::new(), BTreeMap::new());
+        let by_board = board_fact_layer(
+            td.path(),
+            &repo(),
+            "rtic-mps2-an385",
+            None,
+            &mut env,
+            &mut path_env,
+        );
+        assert!(
+            by_board.is_err(),
+            "both images match the board, and they disagree"
+        );
+        for (image, want) in [
+            ("plain", "mps2-an385-baremetal"),
+            ("rtic", "rtic-mps2-an385"),
+        ] {
+            let (mut env, mut path_env) = (BTreeMap::new(), BTreeMap::new());
+            board_fact_layer(
+                td.path(),
+                &repo(),
+                want,
+                Some(image),
+                &mut env,
+                &mut path_env,
+            )
+            .unwrap();
+            assert_eq!(
+                env.get("NROS_BOARD").map(String::as_str),
+                Some(want),
+                "{image}"
+            );
         }
     }
 }

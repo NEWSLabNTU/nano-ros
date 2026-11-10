@@ -1421,6 +1421,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &bringup_dir,
                     nros_root,
                     &board,
+                    Some(&image_id),
                     &mut env,
                     &mut path_env,
                 )?;
