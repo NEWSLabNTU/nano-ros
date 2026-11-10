@@ -6,13 +6,12 @@
 #
 #   floor = ceil8( (static_now + allowance) * (100 + margin_pct) / 100 )
 #
-# - [[allowance]], per (rmw, target, role): a twin's run-time peak minus the
-#   static walk measured at the same time. It covers calls through the RMW
-#   vtable that a static walk cannot bind, and it names issue 2402, which
-#   would retire it. An ADDEND, not a max: a fixed old peak would hide
-#   direct-frame growth. A (rmw, target, role) with no row gets the static
-#   floor and a loud warning; `--strict` refuses, and CI runs strict wherever
-#   a row exists.
+# - [[allowance]], per (image, target, role): a twin's run-time peak minus
+#   the static walk measured at the same time. It may be negative. It names
+#   issue 2402, which would retire it. An ADDEND, not a max: the static part
+#   still moves with every direct frame. An image with no row is unmeasured:
+#   its floor is reported with a warning and is never enforced; a consumer
+#   (W4's CHECK, strict in CI) refuses only measured images.
 # - [[policy]]: the walk's cuts, externals and stated frames, each filtered
 #   by optional `rmw` / `target`, and each with a reason.
 # - [indirect.<rmw>]: how the static walk charges an indirect call site.
@@ -45,20 +44,66 @@ mode = "allowance:0"
 mode = "fold1"
 scope = ["zenoh", "zpico"]
 
+# Allowances are per IMAGE SHAPE (ruled (A), 2026-11-10): `image` names what
+# was measured, as `<template>/<lang>/<rmw>@<board>`. The static walk's
+# indirect charge is wrong in both directions (3-8 KB low on the Rust images
+# below, 12.6 KB HIGH on the C talker), so one image's measurement says
+# nothing about another's, and an allowance may be negative. An image with no
+# row is unmeasured: reported, never enforced.
+#
+# Measured 2026-11-10 on the nucleo-f767zi Renode twin (CONFIG_INIT_STACKS +
+# thread analyzer, main-thread peak over 6-7 rounds). The Rust images were
+# built with LTO (issue 2407, `cargo rustc --crate-type staticlib`). The C
+# talker's lane builds nros-relwithdebinfo, so it has no LTO. The static walk
+# uses this table's policy.
+
 [[allowance]]
+image = "action-server/rust/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
-bytes = 2952
+bytes = 7692
 issue = "2402"
-reason = "calls through the RMW vtable that the static walk cannot bind to a slot"
+reason = "calls through the RMW vtable the static walk charges at the deepest scoped target, not at the frame that runs; LTO's inlining merges more of them (2,992 B without LTO)"
 
 [allowance.measured]
-peak = 29184
-static = 26232
-method = "Renode nucleo-f767zi twin, CONFIG_INIT_STACKS + thread analyzer, main thread peak, at #3381; static walked from rust_main"
+peak = 30256
+static = 22564
+method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, LTO build; static from rust_main"
 image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template action-server"
-issue = "2360"
+issue = "2407"
+
+[[allowance]]
+image = "talker/rust/zenoh@nucleo-f767zi-zephyr"
+rmw = "zenoh"
+target = "thumbv7em-none-eabi"
+role = "OPEN"
+bytes = 5668
+issue = "2402"
+reason = "calls through the RMW vtable the static walk cannot bind to a slot"
+
+[allowance.measured]
+peak = 28888
+static = 23220
+method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rounds, LTO build; static from rust_main"
+image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template talker"
+issue = "2400"
+
+[[allowance]]
+image = "talker/c/zenoh@nucleo-f767zi-zephyr"
+rmw = "zenoh"
+target = "thumbv7em-none-eabi"
+role = "OPEN"
+bytes = -12616
+issue = "2402"
+reason = "NEGATIVE: the static walk charges each of 21 indirect sites on the C path 8,392 B (the deepest zenoh-scoped target) while the targets that run are shallow"
+
+[allowance.measured]
+peak = 11696
+static = 24312
+method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, nros-relwithdebinfo (no LTO); static from main"
+image = "nros new --board nucleo-f767zi-zephyr --lang c --rmw zenoh --template talker"
+issue = "2400"
 
 [[policy]]
 kind = "cut"
@@ -80,6 +125,21 @@ kind = "cut"
 match = "names_and_types"
 rmw = "zenoh"
 reason = "the graph query; an image that never calls it must not be charged for it at every indirect site. An image that does needs its own allowance (issue 2360)"
+
+[[policy]]
+kind = "external"
+match = "17compiler_builtins3mem6memcpy"
+reason = "compiler_builtins' memcpy as the C lane links it (a per-build crate hash, so by substring); a leaf loop with no bitcode in the inputs"
+
+[[policy]]
+kind = "external"
+match = "17compiler_builtins3mem6memset"
+reason = "compiler_builtins' memset, as memcpy"
+
+[[policy]]
+kind = "external"
+match = "17compiler_builtins3mem7memmove"
+reason = "compiler_builtins' memmove, as memcpy"
 
 [[policy]]
 kind = "external"

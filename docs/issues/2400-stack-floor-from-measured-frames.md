@@ -196,3 +196,37 @@ Waves:
 4. W4: Zephyr.
 5. W5: cargo leaf.
 6. W6: a twin lane that asserts peak ≤ floor.
+
+### Ruling (A): allowances per image, unmeasured never refused (2026-11-10)
+
+Three nucleo-f767zi images measured on the twin showed that the static
+walk's indirect charge is wrong in both directions:
+
+| image | build | static OPEN | twin peak | allowance | main stack | floor |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Rust action server | LTO | 22,564 | 30,256 | +7,692 | 32,768 | 33,288 |
+| Rust talker | LTO | 23,220 | 28,888 | +5,668 | 32,768 | 31,784 |
+| C talker | relwithdebinfo | 24,312 | 11,696 | **−12,616** | 16,384 | 12,872 |
+
+The walk is 3 to 8 KB low on the Rust images. On the C talker it is 12.6 KB
+high, because it charges 21 indirect sites the deepest zenoh-scoped target
+(8,392 B) and the targets that actually run are shallow. Keyed per
+(rmw, target, role), the action server's 7,692 B would have refused the Rust
+talker (34,008 B) and the C talker (35,208 B), and both fit their stacks.
+So the maintainer ruled:
+
+1. Allowances are keyed per IMAGE SHAPE (`image`, target, role), and may be
+   negative (allowance = peak − static). A measured image's floor is then
+   roughly its peak + 10 %, and the static part still tracks direct-frame
+   growth.
+2. An unmeasured image WARNS and is never refused, even under CHECK.
+   `--emit-defines` writes `NROS_STACK_FLOOR_<ROLE>_MEASURED 0` for it.
+   Strict mode (CI) refuses only images that have a row.
+3. There is no in-repo stack change. The generated nucleo action server's
+   floor (33,288 B) is above the module's 32 KiB Rust default, and the image
+   raises its own `CONFIG_MAIN_STACK_SIZE` through its `os_config` when W4's
+   CHECK tells it to.
+
+A follow-up worth measuring later: if allowances for one backend and target
+cluster across shapes, a per-target default could replace per-image rows.
+That is a measured decision, not one to take from three images.

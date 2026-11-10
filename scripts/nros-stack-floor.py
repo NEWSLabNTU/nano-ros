@@ -518,17 +518,23 @@ def parse_indirect(s: str | None) -> tuple[str, int | None]:
 #
 #   floor = ceil8( (static_now + allowance) * (100 + margin_pct) / 100 )
 #
-# - `[[allowance]]`, per (rmw, target, role): a twin's run-time peak minus the
-#   static walk measured at the same time. It covers the calls through the RMW
-#   vtable that a static walk cannot bind, and names issue 2402, which would
-#   retire it. An ADDEND, not a max(): a fixed old peak would hide direct-frame
-#   growth, while the addend moves with every frame on every build.
+# - `[[allowance]]`, per (image, target, role) — ruled (A), 2026-11-10: an
+#   allowance belongs to the IMAGE SHAPE that was measured, not to its target,
+#   because the static walk's indirect charge is wrong in both directions
+#   (3-8 KB low on Rust images, 12.6 KB HIGH on the C talker), so one image's
+#   measurement says nothing about another's. It is the twin's run-time peak
+#   minus the static walk measured at the same time, and may be NEGATIVE: a
+#   measured image's floor is then ~ its peak + margin, while the static part
+#   still moves with every direct frame on every build. Each names issue
+#   2402, which would retire it.
 # - `[[policy]]` rows: the walk's cuts, externals and stated frames, each
 #   filtered by optional `rmw` / `target` and each with a reason.
 # - `[indirect.<rmw>]`: how indirect sites are charged in the static walk.
 #
-# A (rmw, target, role) with no allowance gets the static floor and a loud
-# warning naming issue 2402; `--strict` refuses instead.
+# An image with no row is UNMEASURED: it gets the static floor, a loud
+# warning naming issue 2402, and `measured = false` in the result. A consumer
+# (W4's CHECK) never refuses an unmeasured image — its static floor can be off
+# by more than 12 KB either way — and refuses a measured one only.
 
 ROLES = ("OPEN", "SPIN")
 ISSUE_ID = re.compile(r"^\d{4}$")
@@ -536,7 +542,7 @@ POLICY_KINDS = ("cut", "external", "frame")
 
 
 def floor_formula(static_bytes: int, allowance: int, margin_pct: int) -> int:
-    raw = -(-(static_bytes + allowance) * (100 + margin_pct) // 100)
+    raw = -(-max(0, static_bytes + allowance) * (100 + margin_pct) // 100)
     return -(-raw // 8) * 8
 
 
@@ -553,9 +559,11 @@ def _matches(row: dict, rmw: str | None, target: str | None) -> bool:
     return (row.get("rmw") in (None, rmw)) and (row.get("target") in (None, target))
 
 
-def find_allowance(doc: dict, rmw: str, target: str, role: str) -> dict | None:
+def find_allowance(doc: dict, image: str | None, target: str, role: str) -> dict | None:
+    if not image:
+        return None
     hits = [a for a in doc.get("allowance", [])
-            if (a.get("rmw"), a.get("target"), a.get("role")) == (rmw, target, role)]
+            if (a.get("image"), a.get("target"), a.get("role")) == (image, target, role)]
     return hits[0] if hits else None
 
 
@@ -571,7 +579,7 @@ def validate_table(doc: dict, issue_ids: set[str]) -> list[str]:
         kind = row.get("kind")
         if kind not in POLICY_KINDS:
             problems.append(f"{where}: kind must be one of {POLICY_KINDS}")
-        key = "match" if kind == "cut" else "name"
+        key = "match" if kind == "cut" or (kind == "external" and "match" in row) else "name"
         if not row.get(key):
             problems.append(f"{where}: a {kind} needs `{key}`")
         if kind == "frame" and not isinstance(row.get("bytes"), int):
@@ -580,10 +588,10 @@ def validate_table(doc: dict, issue_ids: set[str]) -> list[str]:
             problems.append(f"{where}: no reason ({row.get(key)})")
     seen: set[tuple] = set()
     for i, a in enumerate(doc.get("allowance", [])):
-        k = (a.get("rmw"), a.get("target"), a.get("role"))
+        k = (a.get("image"), a.get("target"), a.get("role"))
         where = f"[[allowance]] #{i + 1} {k}"
-        if None in k:
-            problems.append(f"{where}: needs `rmw`, `target` and `role`")
+        if None in k or not a.get("rmw"):
+            problems.append(f"{where}: needs `image`, `rmw`, `target` and `role`")
         if k in seen:
             problems.append(f"{where}: duplicate")
         seen.add(k)
@@ -617,7 +625,10 @@ def apply_policy(args: argparse.Namespace, doc: dict) -> None:
         if row["kind"] == "cut":
             args.cut = (args.cut or []) + [row["match"]]
         elif row["kind"] == "external":
-            args.external = (args.external or []) + [row["name"]]
+            if "match" in row:
+                args.external_match = (getattr(args, "external_match", None) or []) + [row["match"]]
+            else:
+                args.external = (args.external or []) + [row["name"]]
         else:
             args.frame = (args.frame or []) + [f"{row['name']}={row['bytes']}"]
     ind = doc.get("indirect", {})
@@ -657,6 +668,9 @@ def run(args: argparse.Namespace) -> int:
     alias_gcc_clones(g)
     prune_data_refs(g)
     externals = set(args.external or [])
+    for sub in getattr(args, "external_match", None) or []:
+        # a substring: a leaf whose mangled name carries a per-build hash
+        externals |= {fn for fn in g.functions if sub in fn and fn not in g.frames}
     cuts = tuple(args.cut or [])
 
     mode, allowance = parse_indirect(args.indirect)
@@ -695,27 +709,22 @@ def run(args: argparse.Namespace) -> int:
         if best is not None:
             allowance, measured_by = 0, None
             if doc is not None:
-                a = find_allowance(doc, args.rmw, args.target, role.upper())
+                a = find_allowance(doc, args.image, args.target, role.upper())
                 if a is not None:
                     allowance, measured_by = int(a["bytes"]), a
-                elif args.strict:
-                    refusals.append(
-                        f"{role}: no measured allowance for (rmw={args.rmw}, "
-                        f"target={args.target}, role={role.upper()}) in {args.table}, and "
-                        "--strict is set. Measure a twin peak and add an [[allowance]] row "
-                        "(issue 2402).")
-                    continue
                 else:
-                    print(f"nros-stack-floor: WARNING: no measured allowance for (rmw={args.rmw}, "
-                          f"target={args.target}, role={role.upper()}). The {role.upper()} floor "
-                          f"covers what the static walk sees ({best.depth} B); calls through the "
-                          "RMW vtable are NOT counted (issue 2402). Measure a twin peak and add "
-                          f"an [[allowance]] row to {args.table}; --strict refuses.",
+                    print(f"nros-stack-floor: WARNING: image `{args.image}` ({args.target}, "
+                          f"{role.upper()}) is UNMEASURED. Its {role.upper()} floor is the static "
+                          f"walk ({best.depth} B) + margin, which can be off by more than 12 KB "
+                          "either way, because calls through the RMW vtable are charged, not "
+                          "followed (issue 2402). It is reported, never enforced. Measure a twin "
+                          f"peak and add an [[allowance]] row to {args.table}.",
                           file=sys.stderr)
             results[role.upper()] = {
                 "floor": floor_formula(best.depth, allowance, args.margin),
                 "depth": best.depth, "allowance": allowance,
                 "allowance_issue": measured_by.get("issue") if measured_by else None,
+                "measured": measured_by is not None,
                 "root": best_root,
                 "margin_pct": args.margin, "indirect_charged": best.indirect,
                 "indirect_mode": mode, "indirect_charge": charge,
@@ -729,6 +738,8 @@ def run(args: argparse.Namespace) -> int:
     elif args.emit_defines:
         for role, r in results.items():
             print(f"#define NROS_STACK_FLOOR_{role} {r['floor']}")
+            # 0 = unmeasured: a consumer reports the floor and never refuses on it
+            print(f"#define NROS_STACK_FLOOR_{role}_MEASURED {int(r['measured'])}")
     else:
         for role, r in results.items():
             print(f"{role}: floor {r['floor']} B (path {r['depth']} B + allowance "
@@ -848,15 +859,23 @@ def self_test() -> int:
     # the floor formula: (static + allowance) * margin, align 8 — an addend, not a max
     check("floor = static + allowance + margin", floor_formula(26232, 2952, 10) == 32104)
     check("no allowance: static + margin", floor_formula(3592, 0, 0) == 3592)
+    check("a negative allowance lowers the floor", floor_formula(24312, -12616, 10) == 12872)
+    check("the floor never goes below zero", floor_formula(100, -500, 10) == 0)
     good = {"schema": 2, "margin_pct": 10,
             "policy": [{"kind": "cut", "match": "panicking", "reason": "diverges"},
                        {"kind": "frame", "name": "z_malloc", "bytes": 0, "target": "t",
-                        "reason": "tail call"}],
-            "allowance": [{"rmw": "zenoh", "target": "t", "role": "OPEN", "bytes": 2952,
-                           "issue": "2402", "reason": "RMW vtable",
+                        "reason": "tail call"},
+                       {"kind": "external", "match": "3mem6memcpy", "reason": "leaf"}],
+            "allowance": [{"image": "img", "rmw": "zenoh", "target": "t", "role": "OPEN",
+                           "bytes": 2952, "issue": "2402", "reason": "RMW vtable",
                            "measured": {"peak": 29184, "static": 26232, "method": "twin",
-                                        "issue": "2360"}}]}
-    check("a valid table passes", validate_table(good, {"2360", "2402"}) == [])
+                                        "issue": "2360"}},
+                          {"image": "c", "rmw": "zenoh", "target": "t", "role": "OPEN",
+                           "bytes": -12616, "issue": "2402", "reason": "over-charged",
+                           "measured": {"peak": 11696, "static": 24312, "method": "twin",
+                                        "issue": "2400"}}]}
+    check("a valid table passes (a negative allowance included)",
+          validate_table(good, {"2360", "2402", "2400"}) == [])
     bad = json.loads(json.dumps(good))
     bad["allowance"][0]["bytes"] = 3000
     check("an allowance off peak - static is refused",
@@ -872,15 +891,21 @@ def self_test() -> int:
     bad = json.loads(json.dumps(good))
     bad["allowance"].append(dict(bad["allowance"][0]))
     check("a duplicate allowance is refused", any("duplicate" in p for p in validate_table(bad, set())))
-    check("allowance lookup is by (rmw, target, role)",
-          find_allowance(good, "zenoh", "t", "OPEN") is not None
-          and find_allowance(good, "zenoh", "t", "SPIN") is None
-          and find_allowance(good, "xrce", "t", "OPEN") is None)
+    bad = json.loads(json.dumps(good))
+    del bad["allowance"][0]["image"]
+    check("an allowance needs its image", any("needs `image`" in p for p in validate_table(bad, set())))
+    check("allowance lookup is by (image, target, role)",
+          find_allowance(good, "img", "t", "OPEN") is not None
+          and find_allowance(good, "img", "t", "SPIN") is None
+          and find_allowance(good, "other", "t", "OPEN") is None
+          and find_allowance(good, None, "t", "OPEN") is None)
     ns = argparse.Namespace(rmw="zenoh", target="other", cut=None, external=None, frame=None,
                             indirect=None, fold_scope=None, recursion_allowance=None, margin=None)
     apply_policy(ns, good)
     check("a target-filtered policy row applies only to its target",
           ns.cut == ["panicking"] and not ns.frame and ns.margin == 10)
+    check("an external by substring is carried as a match",
+          getattr(ns, "external_match", None) == ["3mem6memcpy"])
 
     picked = [p.name for p in pick_codegen_bitcode([Path(n) for n in (
         "a.cgu.0.rcgu.bc", "a.cgu.0.rcgu.no-opt.bc", "b.cgu.0.rcgu.bc", "b.cgu.0.rcgu.no-opt.bc",
@@ -936,8 +961,8 @@ def main() -> int:
                     "--target, the margin, and the measured allowance added to each role")
     ap.add_argument("--rmw", help="the image's RMW backend (selects policy and allowance)")
     ap.add_argument("--target", help="the image's target triple (selects policy and allowance)")
-    ap.add_argument("--strict", action="store_true",
-                    help="refuse a role with no measured allowance instead of warning")
+    ap.add_argument("--image", help="the image's shape id (selects its measured allowance; "
+                    "an image with no row is unmeasured, reported and never enforced)")
     ap.add_argument("--validate-table", metavar="TABLE",
                     help="offline: every reason, allowance issue and floor formula holds")
     ap.add_argument("--self-test", action="store_true")

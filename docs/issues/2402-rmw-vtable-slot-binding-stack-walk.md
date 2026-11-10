@@ -89,3 +89,12 @@ from the static number. It has to be measured per (rmw, target, role) and per
 build mode, and it has to be measured again when the build mode changes. Slot
 binding (this issue) is what would make the static walk follow the real
 target and close the gap.
+
+## Allowances are per image now (issue 2400 ruling (A), 2026-11-10)
+
+Because the indirect charge is wrong in both directions (+2,992 to +7,692 B
+on Rust images, −12,616 B on the C talker), an allowance is measured per
+image shape and may be negative, and an unmeasured image is never enforced.
+Slot binding is what would let one measurement stand for a target: once the
+walk follows the real vtable target, the static number becomes a bound, and
+per-image rows can retire.
