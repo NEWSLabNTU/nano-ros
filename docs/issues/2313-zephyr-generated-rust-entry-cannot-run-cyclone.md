@@ -209,8 +209,9 @@ call:
    component, then creates no `/chatter` topic or reader and prints nothing
    (gdb breakpoints; no `Subscriber created`). Left: synthesising the
    registration for a cargo-only node package, the entry language, the Rust
-   node's Cyclone type descriptors on that road, Rust logging under a C++
-   entry, and issue 2336 (one configure, one network).
+   node's Cyclone type descriptors on that road, and Rust logging under a C++
+   entry. (Issue 2336, one network address per image in a shared configure,
+   was fixed by #3472.)
 
 Either is a design decision for phase-535 W6 / phase-548, not a fix inside
 this issue, so the threadx-riscv64 Rust Cyclone leaves keep their rows.
