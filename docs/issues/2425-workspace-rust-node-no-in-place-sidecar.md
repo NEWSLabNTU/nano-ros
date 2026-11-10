@@ -5,7 +5,7 @@ status: open
 type: bug
 severity: medium
 area: [cli, sizing, orchestration]
-related: [phase-531, 1340, 1305, 1594, 1639]
+related: [1340, 1305, 1594, 1639]
 found: 2026-11-10
 ---
 
