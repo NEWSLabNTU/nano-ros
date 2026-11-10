@@ -81,8 +81,8 @@ junit.store-success-output = true
 #
 # Resource: QEMU host-load throttle (each test boots 1–2 MPS2 guests).
 # Ports are per-image since W4 (workspace pubsub pair 10200, rtic service
-# 10210, action 10220; bsp/mixed/large-msg/run-plan/rtic-pubsub on the
-# 10500/10510/10520/10530/10540 aux slots), so
+# 10210, action 10220; bsp/large-msg/run-plan/rtic-pubsub on the
+# 10500/10520/10530/10540 aux slots), so
 # the old serial `qemu-baremetal-shared` sub-group is retired.
 # issue 0312 — the three native QoS cells each spawn a talker+listener pair on
 # /chatter AND query a stock `ros2 topic info` peer for the ADVERTISED profile of
@@ -389,7 +389,7 @@ max-threads = 1
 # single `qemu-serial` block.
 
 # QEMU bare-metal (MPS2-AN385). Every image owns an allocator port since
-# W4 (pubsub pair 10200, rtic 10210/10220; bsp 10500, mixed 10510,
+# W4 (pubsub pair 10200, rtic 10210/10220; bsp 10500,
 # large-msg 10520, rtic run-plan 10530, rtic pubsub 10540) —
 # the former serial `qemu-baremetal-shared` sub-group is retired and the
 # platform group is purely the QEMU host-load throttle.

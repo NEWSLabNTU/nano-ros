@@ -13,8 +13,9 @@
 //!     framework entry shape). These overlap the `baremetal` matrix
 //!     coordinate in intent but there is no cell-bound baremetal consumer to fold
 //!     into; when one exists, the `bsp` case is the fold candidate. The serial
-//!     and xrce cases are `Config::Serial` cells since phase-535 W6, run on
-//!     images of the Rust workspace's pubsub bringup.
+//!     and xrce cases are `Config::Serial` cells since phase-535 W6, and the
+//!     rtic cases `Config::Rtic` cells, all run on images of the Rust
+//!     workspace's bringups.
 //!
 //! No deletions: sole platform coverage, and QEMU folds can't be run-proven for a
 //! safe delete on a host without exercising every variant.
@@ -35,12 +36,11 @@ use nros_tests::{
     fixtures::{
         QemuProcess, RequireFixture, SocatPtyPair, XrceSerialAgent, ZenohRouter,
         build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
-        build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
-        build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
-        build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_talker_xrce,
-        build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, is_socat_available,
-        or_unmet, parse_test_results, qemu_baremetal_capi_binary, require_xrce_agent,
-        require_zenoh_pico_arm,
+        build_qemu_rtic_listener, build_qemu_rtic_service_client, build_qemu_rtic_service_server,
+        build_qemu_rtic_talker, build_qemu_serial_listener, build_qemu_serial_talker,
+        build_qemu_talker_xrce, build_qemu_wcet_bench, is_arm_toolchain_available,
+        is_qemu_available, is_socat_available, or_unmet, parse_test_results,
+        qemu_baremetal_capi_binary, require_xrce_agent, require_zenoh_pico_arm,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
     platform, wait_for_port,
@@ -703,7 +703,10 @@ fn test_qemu_xrce_pubsub_e2e() {
 //
 // (Phase 182.3) The `test_qemu_rtic_*_builds` presence tests were removed —
 // build-only, covered by `build-all` + the e2e tests below, which build+run
-// the same talker/listener/server/client/mixed binaries.
+// the same talker/listener/server/client binaries. Since phase-535 W6 those
+// are the `baremetal_<role>_rtic` images (`Config::Rtic` cells); the
+// mixed-priority pair retired into them (its `ffi-sync` reached no code,
+// issue 2417, and its two-priority split was gone since phase-244 D1).
 
 #[test]
 fn test_qemu_rtic_pubsub_e2e() {
@@ -715,8 +718,8 @@ fn test_qemu_rtic_pubsub_e2e() {
     let listener_bin = build_qemu_rtic_listener().require("rtic-listener");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    // phase-535 W5 — the RTIC pair's own aux slot: the cell's `port_of` is
-    // the workspace pair images' (`test_qemu_bsp_pubsub_e2e`).
+    // phase-535 W6 — the RTIC images' own aux slot: the cell's `port_of` is
+    // the plain pair images' (`test_qemu_bsp_pubsub_e2e`).
     let _zenohd = or_unmet(ZenohRouter::start_slirp(
         nros_tests::alloc::BAREMETAL_RTIC_PUBSUB_PORT,
     ));
@@ -737,12 +740,14 @@ fn test_qemu_rtic_pubsub_e2e() {
 
     // phase-342 W8b — wait for the listener to SAY it is subscribed, instead of
     // sleeping 8 s for "bare-metal boot + smoltcp init + zenoh connect". The
-    // image prints `Waiting for messages on /chatter...` once the subscription
-    // is live, which is the event this sleep was approximating; the marker comes
-    // from the shared table (issue 0481 — never a literal).
+    // workspace `listener_pkg` prints `Subscriber created for topic: /chatter`
+    // once the subscription exists (phase-535 W6: the image registers it after
+    // the RTIC run task opens the session), which is the event this sleep was
+    // approximating; the marker comes from the shared table (issue 0481 —
+    // never a literal).
     listener
         .wait_for_output_pattern(
-            nros_tests::output::LISTENER_WAITING_BANNER,
+            nros_tests::output::LISTENER_READY_MARKER,
             Duration::from_secs(40),
         )
         .unwrap_or_else(|e| panic!("RTIC listener never subscribed: {e}"));
@@ -958,98 +963,6 @@ fn test_qemu_rtic_action_e2e() {
     );
 }
 
-// =============================================================================
-// RTIC Mixed-Priority QEMU Networked Test (MPS2-AN385 + LAN9118 + zenohd)
-// =============================================================================
-
-/// Mixed-priority pubsub E2E test for RTIC on QEMU.
-///
-/// Same as `test_qemu_rtic_pubsub_e2e` but with `publish`/`listen` at priority 2
-/// and `net_poll` at priority 1. The `ffi-sync` feature prevents FFI state
-/// corruption when the higher-priority task preempts `spin_once(0)`.
-#[test]
-fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
-    require_arm_toolchain();
-    require_zenoh_pico_arm();
-
-    // Build both binaries
-    let talker_bin = build_qemu_rtic_mixed_talker().require("rtic-mixed-talker");
-    let listener_bin = build_qemu_rtic_mixed_listener().require("rtic-mixed-listener");
-
-    // Start zenohd (firmware connects via slirp gateway to host). The mixed
-    // pair bakes its own allocator aux slot (phase-295 W4) — no sharing with
-    // the plain RTIC / BSP / large-msg lanes.
-    let _zenohd = or_unmet(ZenohRouter::start_slirp(
-        nros_tests::alloc::BAREMETAL_MIXED_PRIORITY_PORT,
-    ));
-
-    // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
-    assert!(
-        wait_for_port(
-            nros_tests::alloc::BAREMETAL_MIXED_PRIORITY_PORT,
-            Duration::from_secs(5)
-        ),
-        "zenohd not reachable on platform port"
-    );
-
-    // Start listener QEMU first (subscriber before publisher)
-    eprintln!("Starting RTIC mixed-priority listener QEMU...");
-    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
-        .expect("Failed to start listener QEMU");
-
-    // phase-342 W8b — wait for the listener to SAY it is subscribed, instead of
-    // sleeping 8 s for "bare-metal boot + smoltcp init + zenoh connect". The
-    // image prints `Waiting for messages on /chatter...` once the subscription
-    // is live, which is the event this sleep was approximating; the marker comes
-    // from the shared table (issue 0481 — never a literal).
-    listener
-        .wait_for_output_pattern(
-            nros_tests::output::LISTENER_WAITING_BANNER,
-            Duration::from_secs(40),
-        )
-        .unwrap_or_else(|e| panic!("RTIC listener never subscribed: {e}"));
-
-    // Start talker QEMU
-    eprintln!("Starting RTIC mixed-priority talker QEMU...");
-    let mut talker =
-        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
-
-    // Wait for listener to receive messages
-    let listener_output = listener.collect_until(
-        nros_tests::output::LISTENER_LOG_PREFIX,
-        Duration::from_secs(60),
-    );
-
-    // Wait for talker to publish messages
-    let talker_output = talker.collect_until(
-        nros_tests::output::TALKER_LOG_PREFIX,
-        Duration::from_secs(30),
-    );
-
-    talker.kill();
-    listener.kill();
-
-    eprintln!("Listener output:\n{}", listener_output);
-    eprintln!("Talker output:\n{}", talker_output);
-
-    // Verify communication
-    let received = count_pattern(&listener_output, nros_tests::output::LISTENER_LOG_PREFIX);
-    let published = count_pattern(&talker_output, nros_tests::output::TALKER_LOG_PREFIX);
-    eprintln!(
-        "RTIC mixed-priority QEMU pubsub: published={}, received={}",
-        published, received
-    );
-
-    assert!(
-        received > 0,
-        "RTIC mixed-priority QEMU listener received 0 messages"
-    );
-    assert!(
-        published > 0,
-        "RTIC mixed-priority QEMU talker published 0 messages"
-    );
-}
-
 /// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
 /// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
 /// added, retiered or reassigned without this list moving is a red here.
@@ -1060,6 +973,7 @@ fn cases_bound_to_matrix_cells() {
         assert_consumer_config_cases,
     };
     const SERIAL: &[Config] = &[Config::Serial];
+    const RTIC: &[Config] = &[Config::Rtic];
     assert_consumer_config_cases(
         Consumer::Emulator,
         &[
@@ -1100,6 +1014,20 @@ fn cases_bound_to_matrix_cells() {
             (
                 (P::QemuBaremetal, L::Rust, R::Xrce, W::Pubsub, K::Example),
                 SERIAL,
+            ),
+            // `test_qemu_rtic_{pubsub,service,action}_e2e` (phase-535 W6:
+            // `baremetal_<role>_rtic` images of the Rust workspace).
+            (
+                (P::QemuBaremetal, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+                RTIC,
+            ),
+            (
+                (P::QemuBaremetal, L::Rust, R::Zenoh, W::Service, K::Example),
+                RTIC,
+            ),
+            (
+                (P::QemuBaremetal, L::Rust, R::Zenoh, W::Action, K::Example),
+                RTIC,
             ),
         ],
     );

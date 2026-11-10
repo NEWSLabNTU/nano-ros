@@ -261,20 +261,14 @@ pub struct ParsedImage {
     pub config: Vec<Config>,
 }
 
-const CONFIGS: [Config; 5] = [
+const CONFIGS: [Config; 6] = [
     Config::Lending,
     Config::Multisession,
     Config::SignalFdWake,
     Config::CustomTransport,
     Config::Serial,
+    Config::Rtic,
 ];
-
-/// Whether an image of this configuration dials a router PORT. A `Serial`
-/// image's locator names a UART, and its router (or Agent) is the far end of
-/// a PTY pair the test creates, so there is no `alloc::port_of` to bake.
-fn dials_router_port(config: &[Config]) -> bool {
-    !config.contains(&Config::Serial)
-}
 
 /// Phase-531 W6 (RFC-0121 D8, RFC-0122 amendment) — whether a workspace at
 /// `dir` is a single-node WITNESS migrated in place: `examples/<plat>/<lang>/<name>`,
@@ -442,9 +436,10 @@ pub fn resolve_variant(
     };
     if cell.rmw == Rmw::Zenoh
         && cell.platform != PlatformId::Linux
-        && dials_router_port(cell.config)
+        && let Some(port) =
+            crate::alloc::configured_port_of(cell.platform, cell.lang, cell.workload, cell.config)
     {
-        crate::fixtures::baked_locator::assert_row_dials_port(&id, crate::alloc::port(cell));
+        crate::fixtures::baked_locator::assert_row_dials_port(&id, port);
     }
     Ok(binary)
 }
@@ -501,10 +496,10 @@ pub fn pair_row_locator_error(
     image: &str,
 ) -> Option<String> {
     let p = parse_image(dir, bringup, image)?;
-    if p.rmw != Rmw::Zenoh || p.platform == PlatformId::Linux || !dials_router_port(&p.config) {
+    if p.rmw != Rmw::Zenoh || p.platform == PlatformId::Linux {
         return None;
     }
-    let want = crate::alloc::port_of(p.platform, p.lang, p.role.workload());
+    let want = crate::alloc::configured_port_of(p.platform, p.lang, p.role.workload(), &p.config)?;
     use crate::fixtures::baked_locator::{baked_locator_in, locator_port};
     match baked_locator_in(root, id) {
         Ok(loc) if locator_port(&loc) == Some(want) => None,

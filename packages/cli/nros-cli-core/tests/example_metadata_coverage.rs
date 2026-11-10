@@ -174,8 +174,10 @@ fn every_node_declaring_example_is_a_metadata_candidate() {
     // packages". The floor moves only when packages legitimately leave the tree
     // — phase-337 W7.a took the ten `examples/stm32f4/rust/*` packages (six of
     // them node-declaring `*_pkg` crates) out with their board, 75 -> 69.
+    // phase-535 W6 retired the eight mps2-an385 Rust RTIC leaves into
+    // workspace images (generated entries), so the floor moved 65 -> 59.
     assert!(
-        counted >= 65,
+        counted >= 59,
         "only {counted} node-declaring example packages found; the tree has far \
          more, so the classifier stopped recognising a shape"
     );

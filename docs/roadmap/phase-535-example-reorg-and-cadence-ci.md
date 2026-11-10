@@ -374,7 +374,7 @@ One PR per board.
 ### W5 — The other platforms
 
 nuttx (arm, riscv), threadx-riscv64 (with its cyclonedds rows) and
-mps2-an385 bare metal (with the `-rtic` and `-rtic-mixed` variants per D2).
+mps2-an385 bare metal (its `-rtic` and `-rtic-mixed` variants moved in W6).
 One PR per platform directory, each rebuilding its own lane.
 
 **Acceptance:** `just test <platform>` is green for each; `just ci matrix`
@@ -509,6 +509,24 @@ and a test asks for it by name (`resolve_coord_variant`).
   the configuration, and two configured Runtime cells, Rust zenoh and Rust
   xrce, bind `emulator.rs`'s serial and xrce cases. A serial image dials no
   router port, so the port check skips it.
+- **bare-metal RTIC (in review).** The eight mps2-an385
+  `rust/{talker,listener,service-server,service-client,action-server,action-client}-rtic`
+  and `rust/{talker,listener}-rtic-mixed` leaves retire, with their 8 rows.
+  They become the `baremetal_<role>_rtic` images (board `rtic-mps2-an385`) of
+  the Rust workspace's pubsub, service and action bringups, and three
+  `matrix::Config::Rtic` Runtime cells bind `emulator.rs`'s rtic cases. Three
+  enablers: `nros::main!`'s RTIC arm registers a launch-addressed entry's
+  launch node set; a generated RTIC entry depends on `rtic` and the device
+  crate; the workspace road resolves board facts per image (two board words
+  of one descriptor differ on `NROS_BOARD`). The `-rtic-mixed` pair is the
+  plain pair on another port: its two-priority split went in phase-244 D1,
+  and its `nros/ffi-sync` reaches no code (issue 2417), so it retires into
+  the RTIC pubsub images with no coverage lost.
+- **bare-metal `rust/listener`'s `docker` image (stays).** The compose test
+  (`tests/qemu-baremetal`, `just docker` recipes) builds BOTH roles' `docker`
+  images in their leaves by one rule; the talker leaf is the board's witness
+  and keeps its own. Moving the listener's would split `entrypoint.sh` by
+  role, and no CI lane runs the compose test to prove the move.
 
 ### W7 — Retire the old leaves, add `road_witness_e2e`
 

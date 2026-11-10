@@ -127,6 +127,11 @@ reason = "gives nros-log the platform clock, without which `ToLogParams::throttl
 class = "harness"
 reason = "the cffi RMW the crate's tests drive"
 
+[feature.rtic]
+class = "config"
+config = "Rtic"
+reason = "`nros-board-mps2-an385`'s RTIC entry surface, which an image's board word `rtic-mps2-an385` selects (`builder::entry::entry_surface_features`): the launch's nodes run on one RTIC task instead of the board's own loop — same nodes, different entry"
+
 # ── Configurations that are not cargo features ─────────────────────────────
 # A configuration is a property of the BUILD, which a knob can state as well as
 # a feature. Listed so `matrix::Config` has one source.

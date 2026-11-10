@@ -37,6 +37,25 @@ launch = "service_client.launch.xml"
 locator = "tcp/10.0.2.2:7810"
 os_config = ["board-net-16.toml"]
 
+# phase-535 W6 — the same bare-metal board with the RTIC entry framework
+# (board word `rtic-mps2-an385`: `nros::main!` emits a `#[rtic::app]` whose
+# run task registers the launch's node). They came from the
+# `examples/mps2-an385-baremetal/rust/service-{server,client}-rtic` leaves.
+# `locator` is the cell's `alloc::port_of`; there is no plain bare-metal
+# Rust service image to share it.
+
+[image.baremetal_service_server_rtic]
+board = "rtic-mps2-an385"
+launch = "service_server.launch.xml"
+locator = "tcp/10.0.2.2:10210"
+os_config = ["board-net-15.toml"]
+
+[image.baremetal_service_client_rtic]
+board = "rtic-mps2-an385"
+launch = "service_client.launch.xml"
+locator = "tcp/10.0.2.2:10210"
+os_config = ["board-net-16.toml"]
+
 # Linux: one image per (role, rmw). The router locator is ephemeral
 # (NROS_LOCATOR at run time), so none is baked here.
 

@@ -2973,53 +2973,13 @@ platform = "baremetal"
 lang = "rust"
 dir = "examples/mps2-an385-baremetal/rust/listener"
 
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/talker-rtic"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/listener-rtic"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/talker-rtic-mixed"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/listener-rtic-mixed"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/service-server-rtic"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/service-client-rtic"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/action-server-rtic"
-
-[[fixture]]
-platform = "baremetal"
-lang = "rust"
-dir = "examples/mps2-an385-baremetal/rust/action-client-rtic"
-
 # phase-535 W5 (RFC-0122 D1) — the bare-metal Rust pubsub pair as images of
 # the Rust workspace's pubsub bringup. `test_qemu_bsp_pubsub_e2e` resolves
 # both roles through `fixtures::workspace_image`. The `rust/talker` leaf stays
 # as the board's witness; the `rust/listener` leaf stays for its `docker`
 # image, which `tests/qemu-baremetal` builds in the leaf (a configuration:
 # W6). There are no plain Rust service or action leaves on this board, only
-# the RTIC variants above (W6), so the pubsub pair is the only move.
+# RTIC ones (images below since W6), so the pubsub pair is the only move.
 [[workspace_fixture]]
 id = "workspace-rust-baremetal-talker"
 platform = "baremetal"
@@ -3083,6 +3043,84 @@ bringup = "src/pubsub_bringup"
 image = "baremetal_talker_xrce_serial"
 codegen_out = "build-fixtures/pubsub_bringup"
 target_dir = "target-fixtures/baremetal-talker-xrce-serial"
+target = "thumbv7m-none-eabi"
+
+# phase-535 W6 — the RTIC entry framework on the same board, as images of
+# the Rust workspace's pubsub/service/action bringups (board word
+# `rtic-mps2-an385`). They replace the eight `*-rtic` and `*-rtic-mixed`
+# leaves; the mixed pair's only difference, `nros/ffi-sync`, reached no code
+# (issue 2417). Each is a configured cell (`Config::Rtic`) of
+# `tests/emulator.rs`'s rtic cases, resolved through `fixtures::workspace_image`.
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-talker-rtic"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "baremetal_talker_rtic"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/baremetal-talker-rtic"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-listener-rtic"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/pubsub_bringup"
+image = "baremetal_listener_rtic"
+codegen_out = "build-fixtures/pubsub_bringup"
+target_dir = "target-fixtures/baremetal-listener-rtic"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-service-server-rtic"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "baremetal_service_server_rtic"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/baremetal-service-server-rtic"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-service-client-rtic"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/service_bringup"
+image = "baremetal_service_client_rtic"
+codegen_out = "build-fixtures/service_bringup"
+target_dir = "target-fixtures/baremetal-service-client-rtic"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-action-server-rtic"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "baremetal_action_server_rtic"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/baremetal-action-server-rtic"
+target = "thumbv7m-none-eabi"
+
+[[workspace_fixture]]
+id = "workspace-rust-baremetal-action-client-rtic"
+platform = "baremetal"
+lang = "rust"
+rmw = "zenoh"
+dir = "examples/workspaces/rust"
+bringup = "src/action_bringup"
+image = "baremetal_action_client_rtic"
+codegen_out = "build-fixtures/action_bringup"
+target_dir = "target-fixtures/baremetal-action-client-rtic"
 target = "thumbv7m-none-eabi"
 
 # issue 0488 residue 1 — the smoltcp/zenoh-pico bridge. It was built by a bare

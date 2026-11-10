@@ -33,7 +33,7 @@
 //! `unique_ros_domain_id()` — already parallel-safe, strictly better than
 //! any static assignment.
 
-use crate::matrix::{Cell, Lang, PlatformId, Rmw, Workload};
+use crate::matrix::{Cell, Config, Lang, PlatformId, Rmw, Workload};
 
 /// Base of a platform's 400-wide zenoh/TCP router-port window.
 pub const fn platform_port_base(platform: PlatformId) -> u16 {
@@ -58,6 +58,31 @@ pub const fn port_of(platform: PlatformId, lang: Lang, workload: Workload) -> u1
 /// [`port_of`] over a matrix cell.
 pub const fn port(cell: &Cell) -> u16 {
     port_of(cell.platform, cell.lang, cell.workload)
+}
+
+/// The router port an image of this coordinate under `config` dials: the
+/// formula [`port_of`], except where the configuration takes an aux slot
+/// because its default-build sibling already holds the formula port.
+/// `None` when the configuration dials no router port: a `Serial` image's
+/// locator names a UART, and its router (or Agent) is the far end of a PTY
+/// pair the test creates (phase-535 W6).
+pub fn configured_port_of(
+    platform: PlatformId,
+    lang: Lang,
+    workload: Workload,
+    config: &[Config],
+) -> Option<u16> {
+    if config.contains(&Config::Serial) {
+        return None;
+    }
+    if platform == PlatformId::QemuBaremetal
+        && lang == Lang::Rust
+        && workload == Workload::Pubsub
+        && config == [Config::Rtic]
+    {
+        return Some(BAREMETAL_RTIC_PUBSUB_PORT);
+    }
+    Some(port_of(platform, lang, workload))
 }
 
 /// XRCE agent UDP port for a baked (platform, lang, workload) coordinate.
@@ -149,8 +174,7 @@ pub const fn dds_domain(cell: &Cell) -> u8 {
 
 /// Auxiliary image slots: a few demo sets carry MORE runnable image pairs
 /// than the workload axis has values (the mps2-an385 bare-metal set runs a
-/// BSP pair, an RTIC pair, an RTIC mixed-priority pair, and a large-msg
-/// bench off ONE `Pubsub` cell). Each extra pair gets a named slot in the
+/// BSP pair, an RTIC pair and a large-msg bench off ONE `Pubsub` cell). Each extra pair gets a named slot in the
 /// platform window's 300..=390 region — disjoint from every
 /// workload+lang offset (max 292) — so the images stop sharing a router
 /// and their tests parallelize (the pre-W4 `qemu-baremetal-shared`
@@ -167,9 +191,8 @@ pub const fn aux_port(platform: PlatformId, slot: u16) -> u16 {
 /// board's witness and keeps this slot.
 pub const BAREMETAL_BSP_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 0);
 
-/// mps2-an385 RTIC mixed-priority pubsub pair
-/// (`examples/mps2-an385-baremetal/rust/{talker,listener}-rtic-mixed`).
-pub const BAREMETAL_MIXED_PRIORITY_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 1);
+// Slot 1 held the RTIC mixed-priority pair, retired into the RTIC images by
+// phase-535 W6 (its `ffi-sync` reached no code, issue 2417).
 
 /// mps2-an385 large-message bench firmware
 /// (`packages/testing/nros-bench/large-msg-baremetal`).
@@ -183,11 +206,11 @@ pub const BAREMETAL_LARGE_MSG_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 2)
 /// and `baked_locator`'s test holds the two equal.
 pub const BAREMETAL_RTIC_RUN_PLAN_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 3);
 
-/// mps2-an385 RTIC pubsub pair
-/// (`examples/mps2-an385-baremetal/rust/{talker,listener}-rtic`). Phase-535 W5
-/// gave the `(QemuBaremetal, Rust, Pubsub)` cell's [`port_of`] to the workspace
-/// pair images (RFC-0122 D1), so the RTIC variant takes a slot of its own until
-/// it becomes a node package (W6).
+/// mps2-an385 RTIC pubsub pair, the `baremetal_{talker,listener}_rtic` images
+/// of the Rust workspace's pubsub bringup ([`configured_port_of`], phase-535
+/// W6). The `(QemuBaremetal, Rust, Pubsub)` cell's [`port_of`] is the plain
+/// pair images' (RFC-0122 D1), so the RTIC configuration takes a slot of its
+/// own.
 pub const BAREMETAL_RTIC_PUBSUB_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 4);
 
 /// Does this cell's image BAKE its isolation values at build time?
@@ -333,7 +356,6 @@ mod tests {
         // silently overlap them.
         for aux in [
             BAREMETAL_BSP_PORT,
-            BAREMETAL_MIXED_PRIORITY_PORT,
             BAREMETAL_LARGE_MSG_PORT,
             BAREMETAL_RTIC_RUN_PLAN_PORT,
             BAREMETAL_RTIC_PUBSUB_PORT,
@@ -404,7 +426,7 @@ mod tests {
             );
         }
         println!(
-            "aux: baremetal bsp={BAREMETAL_BSP_PORT} mixed={BAREMETAL_MIXED_PRIORITY_PORT} \
+            "aux: baremetal bsp={BAREMETAL_BSP_PORT} \
              large-msg={BAREMETAL_LARGE_MSG_PORT} rtic-run-plan={BAREMETAL_RTIC_RUN_PLAN_PORT} \
              rtic-pubsub={BAREMETAL_RTIC_PUBSUB_PORT}"
         );

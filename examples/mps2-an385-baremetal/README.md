@@ -31,17 +31,13 @@ just qemu talker              # boot rust/talker in QEMU
 just qemu listener            # peer in a second shell
 ```
 
-RTIC service/action runners: `just qemu rtic-service-server`,
-`rtic-service-client`, `rtic-action-server`, `rtic-action-client`.
 Test lanes: `just qemu test`, `test-basic`, `test-zenoh`, `test-all`.
 
 ## Cases
 
 | Lang | Role | variants |
 | --- | --- | --- |
-| rust | talker / listener | plain, `-rtic`, `-rtic-mixed` |
-| rust | service-server / service-client | `-rtic` |
-| rust | action-server / action-client | `-rtic` |
+| rust | talker / listener | plain |
 | c | talker / listener | plain (issue 1512) |
 | c | service-server / service-client | plain (issue 1512) |
 | c | action-server / action-client | plain (issue 1512) |
@@ -68,6 +64,11 @@ The UART configurations (zenoh `serial/UART_0` pair, XRCE `custom://uart`
 talker) are images of `examples/workspaces/rust/src/pubsub_bringup`:
 `baremetal_{talker,listener}_serial` and `baremetal_talker_xrce_serial`
 (phase-535 W6).
+
+RTIC is the same board with another entry framework (board word
+`rtic-mps2-an385`). Its talker/listener, service and action pairs are the
+`baremetal_<role>_rtic` images of the Rust workspace's pubsub, service and
+action bringups (phase-535 W6); `tests/emulator.rs` runs them.
 
 `rust/dds/` is build support, not a case. Test-only e2e fixtures
 (`rtic-run-plan-e2e`, `qemu-baremetal-main-e2e`) live under
