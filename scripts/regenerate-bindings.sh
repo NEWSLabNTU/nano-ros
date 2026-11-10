@@ -129,7 +129,7 @@ for root in "${ws_roots[@]}"; do
 # no caller points `nano_ros_load_providers(INDEX …)` at the sync-written one.
 # Writing it costs the underlay scan — 28 %% of a warm sync after W1/W2
 # (0.095 s -> 0.068 s), across ~101 syncs a build.
-    "$NROS" configure --no-provider-index "$root" >/dev/null
+    "$NROS" dev bindings --no-provider-index "$root" >/dev/null
 done
 
 # --- 2. standalone examples: per-package `generated/` (skip workspace members) ---
