@@ -246,6 +246,15 @@ pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
         return r;
     }
     let leaf = format!("examples/threadx-linux/rust/{role}");
+    // phase-531 W6 — the talker witness is a one-package workspace
+    // (RFC-0122 D3): its image is a `[[workspace_fixture]]` row.
+    if let Some(r) = super::migrated_leaf_binary(
+        &leaf,
+        super::Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    ) {
+        return r;
+    }
     let dir = project_root().join(&leaf);
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(

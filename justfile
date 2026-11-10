@@ -3043,6 +3043,24 @@ rust-rtos-link-check: _codegen
             exit 1
         fi
     }
+    # phase-531 W6 — a talker witness migrated to a one-package WORKSPACE
+    # (RFC-0122 D3) has no leaf `Cargo.toml` to `cargo build` in. Its program
+    # is the GENERATED entry of the image its bringup builds for the board, and
+    # `nros build --board` is how a user builds it: configure, then cargo with
+    # the image's `nros-cargo.toml` as `--config`. Arguments after `--` reach
+    # cargo verbatim, so the profile and the per-witness `--target-dir` (0616)
+    # stay what the leaf used; the ELF is `<target-dir>[/<triple>]/<profile>/
+    # <image>_entry` under the workspace root.
+    link_check_build() {
+        local dir="$1" board="$2" target_dir="$3"
+        shift 3
+        if [ -f "$dir/.colcon_workspace" ]; then
+            ( cd "$dir" && "$nros_cli" build --board "$board" -- "$@" --target-dir "$target_dir" ) >/dev/null
+        else
+            assert_leaf_settings_included "$dir"
+            ( cd "$dir" && cargo build "$@" --target-dir "$target_dir" ) >/dev/null
+        fi
+    }
     # issue 0551's rule, applied to all three leaves rather than one. This lane
     # LINKS against each RTOS's kernel source, and `just setup linux` — what a
     # host lane runs — provisions only the index's `build_sources` (the RMW
@@ -3065,8 +3083,7 @@ rust-rtos-link-check: _codegen
         # the `rmw-zenoh` parity feature was removed (RMW flows from the board
         # crate). Build with default features, mirroring the nuttx talker below.
         mapfile -t freertos_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile freertos)")
-        assert_leaf_settings_included examples/mps2-an385-freertos/rust/talker
-        ( cd examples/mps2-an385-freertos/rust/talker && cargo build "${freertos_profile[@]}" --target-dir target-link-check ) >/dev/null
+        link_check_build examples/mps2-an385-freertos/rust/talker mps2-an385-freertos target-link-check "${freertos_profile[@]}"
         # issue 0551's error, from the one lane that never provisioned what it
         # consumes. `just/nuttx.just` states the rule this violated:
         #
@@ -3096,8 +3113,7 @@ rust-rtos-link-check: _codegen
         scripts/nuttx/build-nuttx.sh >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
-        assert_leaf_settings_included examples/qemu-armv7a-nuttx/rust/talker
-        ( cd examples/qemu-armv7a-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --target-dir target-link-check ) >/dev/null
+        link_check_build examples/qemu-armv7a-nuttx/rust/talker qemu-armv7a-nuttx target-link-check "${nuttx_profile[@]}"
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi
@@ -3108,9 +3124,7 @@ rust-rtos-link-check: _codegen
     nros_link_check_sources --source threadx --source threadx-netxduo
     echo "  threadx-linux talker ($(nros_cargo_platform_profile threadx-linux)):"
     mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
-    assert_leaf_settings_included examples/threadx-linux/rust/talker
-    ( cd examples/threadx-linux/rust/talker && \
-        cargo build "${threadx_profile[@]}" --target-dir target-zenoh ) >/dev/null
+    link_check_build examples/threadx-linux/rust/talker threadx-linux target-zenoh "${threadx_profile[@]}"
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).

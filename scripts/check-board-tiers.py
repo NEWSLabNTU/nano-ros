@@ -151,7 +151,9 @@ def link_check_examples(text):
     body = re.search(r'^rust-rtos-link-check:.*?(?=\n^\w)', text, re.S | re.M)
     if not body:
         return set()
-    return set(re.findall(r'cd (examples/[\w./-]+)', body.group(0)))
+    # `link_check_build <dir>` is the recipe's one build call (phase-531 W6:
+    # it builds a leaf or a witness workspace); a bare `cd <dir>` still counts.
+    return set(re.findall(r'(?:cd|link_check_build) (examples/[\w./-]+)', body.group(0)))
 
 
 def row_built(row, built_plats, fx_boards):

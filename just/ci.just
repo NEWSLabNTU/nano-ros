@@ -238,7 +238,7 @@ l3:
     for elf in \
         "examples/mps2-an385-freertos/rust/talker/target-link-check/thumbv7m-none-eabi/$(nros_cargo_platform_profile freertos)/talker" \
         "examples/qemu-armv7a-nuttx/rust/talker/target-link-check/armv7a-nuttx-eabihf/$(nros_cargo_platform_profile nuttx)/talker" \
-        "examples/threadx-linux/rust/talker/target-zenoh/$(nros_cargo_platform_profile threadx-linux)/talker"
+        "examples/threadx-linux/rust/talker/target-zenoh/$(nros_cargo_platform_profile threadx-linux)/threadx_linux_entry"
     do
         if [ ! -f "$elf" ]; then
             # Not a skip to paper over: the link check reports its own SKIP when
