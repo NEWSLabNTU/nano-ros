@@ -2201,11 +2201,15 @@ jobs:
           nros setup --source freertos-kernel --source lwip
 
       # Saved right after the two tools are in place, not at the end, so a
-      # template that fails later still leaves the next merge group a hit. Of
-      # three shards missing at once, one save wins and the others' reservation
-      # fails harmlessly.
+      # template that fails later still leaves the next run a hit. Of three
+      # shards missing at once, one save wins and the others' reservation fails
+      # harmlessly. ON `main` ONLY (issue 2141): a merge group runs on its own
+      # `gh-readonly-queue/...` ref, whose entry no other queue ref can read, so
+      # saving there stored 14 copies of one 278 MB key in a day (3.9 GB of the
+      # 10 GB budget) and LRU evicted the message-bindings entry within 12 h.
+      # `warm-cache` keeps main's entry current on every push.
       - name: Save the SDK store (hosted, on a miss)
-        if: ${{ steps.store-key.outputs.key != '' && steps.store-cache.outputs.cache-hit != 'true' && !cancelled() }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.store-key.outputs.key != '' && steps.store-cache.outputs.cache-hit != 'true' && !cancelled() }}
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.store-key.outputs.paths }}
@@ -2469,9 +2473,10 @@ jobs:
       # At the end, not after setup: Corrosion is built by the first template
       # that needs it, inside `just check template-copy-out`. `always()` so a
       # failed template still leaves its finished installs for the next run;
-      # an install that died has no `.nros-provenance` and is redone.
+      # an install that died has no `.nros-provenance` and is redone. On
+      # `main` only, for the reason on the `copy-out` save above (issue 2141).
       - name: Save the SDK store (hosted, on a miss)
-        if: ${{ always() && steps.store-key.outputs.key != '' && steps.store-cache.outputs.cache-hit != 'true' }}
+        if: ${{ always() && github.ref == 'refs/heads/main' && steps.store-key.outputs.key != '' && steps.store-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.store-key.outputs.paths }}
@@ -3370,6 +3375,63 @@ jobs:
         run: |
           source ./activate.sh
           just workspace install-corrosion
+
+      # Issue 2141 — main's SDK-store entries, which the merge-queue
+      # `template-copy-out` jobs restore and no longer save. Looked up first,
+      # so a push whose pins did not move pays one lookup per kind; on a miss
+      # the kind's tools are provisioned and saved under its key.
+      - name: Key the SDK-store caches main holds
+        id: main-store-keys
+        run: |
+          for k in copy-out copy-out-zephyr; do
+            v="${k//-/_}"
+            echo "${v}_key=$(scripts/ci/sdk-store-cache.sh key "$k")"
+            echo "${v}_tools=$(scripts/ci/sdk-store-cache.sh tools "$k")"
+            echo "${v}_paths<<NROS_EOF"
+            scripts/ci/sdk-store-cache.sh paths "$k"
+            echo NROS_EOF
+          done >> "$GITHUB_OUTPUT"
+
+      - name: Look up main's SDK store (copy-out)
+        id: main-store-copy-out
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.main-store-keys.outputs.copy_out_paths }}
+          key: ${{ steps.main-store-keys.outputs.copy_out_key }}
+          lookup-only: true
+
+      - name: Look up main's SDK store (copy-out-zephyr)
+        id: main-store-copy-out-zephyr
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.main-store-keys.outputs.copy_out_zephyr_paths }}
+          key: ${{ steps.main-store-keys.outputs.copy_out_zephyr_key }}
+          lookup-only: true
+
+      - name: Provision the SDK-store tools main is missing
+        if: ${{ steps.main-store-copy-out.outputs.cache-hit != 'true' || steps.main-store-copy-out-zephyr.outputs.cache-hit != 'true' }}
+        env:
+          COPY_OUT_TOOLS: ${{ steps.main-store-copy-out.outputs.cache-hit != 'true' && steps.main-store-keys.outputs.copy_out_tools || '' }}
+          ZEPHYR_TOOLS: ${{ steps.main-store-copy-out-zephyr.outputs.cache-hit != 'true' && steps.main-store-keys.outputs.copy_out_zephyr_tools || '' }}
+        run: |
+          source ./activate.sh
+          for t in $(printf '%s\n' $COPY_OUT_TOOLS $ZEPHYR_TOOLS | sort -u); do
+            nros setup --tool "$t"
+          done
+
+      - name: Save main's SDK store (copy-out, on a miss)
+        if: ${{ steps.main-store-copy-out.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.main-store-keys.outputs.copy_out_paths }}
+          key: ${{ steps.main-store-keys.outputs.copy_out_key }}
+
+      - name: Save main's SDK store (copy-out-zephyr, on a miss)
+        if: ${{ steps.main-store-copy-out-zephyr.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.main-store-keys.outputs.copy_out_zephyr_paths }}
+          key: ${{ steps.main-store-keys.outputs.copy_out_zephyr_key }}
 
       - name: Provision compile-tier sources
         run: |

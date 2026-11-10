@@ -163,3 +163,41 @@ already there and is a separate decision.
 
 Close when a scheduled `host-tests` run completes both shards inside their
 caps. Record each shard's wall time and its headroom.
+
+### Why the bindings cache missed: my own store cache evicted it (2026-11-11)
+
+The miss was not an unstable key. The 11-10 03:19Z scheduled run saved
+`nros-bindings-v1-…-45b3185289972682-2b8571d807088b22` (0.7 MB) at 04:04Z
+under the same prefix the 15:58Z dispatch asked for, and by 15:58Z it was
+gone. The Actions cache stood at 7.8 GB in 47 entries, and the biggest
+family was `sdk-store-copy-out` (issue 2369, #3438): **14 entries, 3.9 GB**,
+one 278 MB copy of the same key per merge-group ref
+(`refs/heads/gh-readonly-queue/main/pr-NNNN-…`). A queue ref reads only its
+own entries and main's. Main had none, so every queue run missed and saved
+its own copy, and the churn pushed LRU eviction onto the small,
+nightly-written bindings entry. The dispatch's own save then lost a race:
+`gate`'s `check-build` shard 3 saved the same key first, and host-tests
+shard 1 got `Unable to reserve cache`. That loss is harmless, because both
+workflows read the one key.
+
+Fix (this change): the two `template-copy-out` jobs save the SDK store only
+on `refs/heads/main`. `warm-cache` (every push to main) looks up both store
+keys and provisions and saves a kind only when main's entry is missing, so
+main follows every pin move and a queue run restores it. The queue-ref
+copies that already exist age out; none were deleted by hand.
+
+### What the cache cannot buy: configure-time compiles
+
+With an exact hit (11-09 run 42555181729, job 128959186867,
+0.8 MB restored), `just generate-bindings` still took **14.6 min**
+(03:21:45 to 03:36:24), against 43-45 min cold. That is far from the
+script's "~10 s warm", which was measured on a host with the build dirs
+present. The time is per C/C++ workspace sync: `workspaces/cpp` 5 min 16 s,
+`levels-cpp` 1 min 37 s, `derived-sched-tasks-cpp` 1 min 23 s,
+`violation-cpp` 1 min 22 s, `features` 1 min 12 s. In that window the
+`cpp` sync compiled 642 crates: its cmake configure builds each package's
+FFI crates (`nano-ros-cpp-ffi-*`), `nros-sizes-build` and the core crates
+into `build/<coord>/cmake`, none of which the cache holds (deliberately: the
+build dirs are ~1.6 GB a workspace). That is the class of issue 2318. The
+cache keeps the cold 43 min down to about 15; the next lever is that
+configure-time build, not the cache.
