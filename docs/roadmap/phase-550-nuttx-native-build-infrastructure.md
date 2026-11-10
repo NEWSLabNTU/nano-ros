@@ -223,7 +223,14 @@ override in `nros-board-nuttx-qemu/src/entry.rs` goes.
   `cmake/toolchain/armv7a-nuttx-eabihf.cmake`, header fixed, every live
   reference updated (`nros-board.toml`, both board cmake files, `just nuttx`,
   the CLI's preset and descriptor docs, RFC-0048, RFC-0096, issues 2236 and
-  2426; the SDK index names no toolchain file). 2236 section 1 now cites the
+  2426; the SDK index names no toolchain file). The old name stays as a
+  deprecated file that includes the new one: CMake records the toolchain path
+  in `<build>/CMakeFiles/<version>/CMakeSystem.cmake` at the first configure
+  and includes it on every later configure, even when
+  `-DCMAKE_TOOLCHAIN_FILE` names a new file (measured, CMake 3.22.1). Deleting
+  it stranded every NuttX build dir configured before the rename, which
+  stopped tier 2 at the NuttX fixture stage on its first run after the merge.
+  2236 section 1 now cites the
   generated `apps/external/Kconfig`. `git grep external-Kconfig.in` outside
   archived docs finds only this item's own text, which archives with the
   phase. `just check fast` green.
