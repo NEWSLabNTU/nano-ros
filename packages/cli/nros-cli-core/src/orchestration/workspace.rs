@@ -250,6 +250,7 @@ impl Workspace {
             }
         }
         packages.sort_by(|a, b| a.name.cmp(&b.name));
+        bringup_declared_node_summaries(&mut packages)?;
         mark_claimed_packages_deploy_bound(&mut packages)?;
         Ok(Self { root, packages })
     }
@@ -1381,6 +1382,39 @@ fn discover_cargo_component_metadata(
     Ok(out)
 }
 
+/// Issue 2425 — a workspace node package whose manifest declares no node table
+/// is declared by a BRINGUP instead: a `[[component]] pkg = "<that pkg>"` row in
+/// the bringup's `system.toml`, which is the shape `nros dev migrate-bringup`
+/// produces. Without this the package is a component nothing enumerates, so the
+/// metadata probe never writes its sidecar and every in-place subscription it
+/// registers is priced as buffered (measured: 20,160 -> 44,736 B of executor
+/// backing for `bins/in-place-subscriptions`).
+///
+/// The same reader as issue 1603's leaf-to-node edge
+/// ([`declared_node_summaries`]); a package that already has manifest-declared
+/// nodes keeps them, and a component two bringups both name is listed once.
+fn bringup_declared_node_summaries(packages: &mut [Package]) -> Result<()> {
+    let bringups: Vec<PathBuf> = packages
+        .iter()
+        .filter(|p| p.system_toml.is_some())
+        .map(|p| p.root.clone())
+        .collect();
+    for pkg in packages.iter_mut() {
+        if !pkg.cargo_component_metadata.is_empty() || pkg.system_toml.is_some() {
+            continue;
+        }
+        let mut seen = BTreeSet::new();
+        for bringup in &bringups {
+            for summary in declared_node_summaries(bringup, &pkg.root, &pkg.name)? {
+                if seen.insert(summary.component.clone()) {
+                    pkg.cargo_component_metadata.push(summary);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Issue 1289 — a package is deploy-bound (not host-probeable) when an image
 /// CLAIMS it: its own `system.toml` (a single-package leaf), or a workspace
 /// bringup's `[image.<id>]` naming it (`entry = "<pkg>"`, or the `<id>_entry`
@@ -1486,9 +1520,7 @@ fn declared_node_summaries(
         .flat_map(|b| b.iter())
         .filter_map(|b| b.name.clone())
         .collect();
-    let Some(decl) =
-        nros_orchestration_ir::leaf_system::read(leaf_root).map_err(|e| eyre::eyre!(e))?
-    else {
+    let Some(decl) = declaring_system(leaf_root)? else {
         return Ok(Vec::new());
     };
     let rows: Vec<_> = decl
@@ -1518,6 +1550,37 @@ fn declared_node_summaries(
             )
         })
         .collect())
+}
+
+/// The `system.toml` at `dir` that declares components: a single-package
+/// leaf's (beside its manifest, [`leaf_system::read`]) or, issue 2425, a
+/// workspace bringup's, which has no manifest and so is not a leaf. A
+/// bringup's `[[component]]` rows are the same for every image, so it is read
+/// through its first `[image.<id>]`; a bringup declaring no image declares no
+/// deployment, and its rows reach no build.
+///
+/// [`leaf_system::read`]: nros_orchestration_ir::leaf_system::read
+fn declaring_system(dir: &Path) -> Result<Option<nros_orchestration_ir::leaf_system::LeafSystem>> {
+    use nros_orchestration_ir::leaf_system;
+    if let Some(decl) = leaf_system::read(dir).map_err(|e| eyre::eyre!(e))? {
+        return Ok(Some(decl));
+    }
+    let path = dir.join("system.toml");
+    if leaf_system::is_package_dir(dir) || !path.is_file() {
+        return Ok(None);
+    }
+    let raw =
+        fs::read_to_string(&path).wrap_err_with(|| format!("failed to read {}", path.display()))?;
+    let doc: toml::Table =
+        toml::from_str(&raw).wrap_err_with(|| format!("failed to parse {}", path.display()))?;
+    let Some(image) = doc
+        .get("image")
+        .and_then(toml::Value::as_table)
+        .and_then(|t| t.keys().next().cloned())
+    else {
+        return Ok(None);
+    };
+    leaf_system::read_image(dir, &image).map_err(|e| eyre::eyre!(e))
 }
 
 /// Build a [`CargoComponentSummary`] for one `[component]` / `[node]`
@@ -2051,6 +2114,66 @@ name = "demo"
         assert!(
             comps.iter().all(|c| c.config.package != "leaf_pkg"),
             "the leaf's own (deploy-bound) package declares no component of its own"
+        );
+    }
+
+    /// Issue 2425 -- the shape `nros dev migrate-bringup` writes: a node
+    /// package whose manifest has no node table, declared by the bringup's
+    /// `[[component]] pkg = "<node pkg>"` row. The node is a probe candidate,
+    /// rooted at its own dir and host-probeable (the image's entry is the
+    /// GENERATED `<image>_entry`, so nothing claims the node). Red before: no
+    /// declaration, so no sidecar and every in-place row priced as buffered.
+    #[test]
+    fn a_bringup_component_row_declares_its_workspace_node_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_root = tmp.path();
+        let node = ws_root.join("src/demo");
+        let bringup = ws_root.join("src/demo_bringup");
+        for d in [node.join("src"), bringup.clone()] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let pkg = |name: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>{name}</name>\
+                 <version>0.1.0</version><description>d</description>\
+                 <maintainer email=\"a@b.c\">m</maintainer><license>MIT</license></package>\n"
+            )
+        };
+        std::fs::write(node.join("package.xml"), pkg("demo")).unwrap();
+        std::fs::write(bringup.join("package.xml"), pkg("demo_bringup")).unwrap();
+        std::fs::write(
+            node.join("Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n\n\
+             [lib]\nname = \"demo\"\npath = \"src/lib.rs\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\n\n[[component]]\n\
+             pkg = \"demo\"\nclass = \"demo::Eight\"\nname = \"eight\"\n\n\
+             [image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+
+        let ws = Workspace::discover(ws_root).unwrap();
+        let comps = ws.component_declarations().unwrap();
+        let decl = comps
+            .iter()
+            .find(|c| c.config.package == "demo")
+            .unwrap_or_else(|| panic!("the node package is a probe candidate: {comps:?}"));
+        assert!(
+            decl.package_root.ends_with("src/demo"),
+            "rooted at its own dir"
+        );
+        assert_eq!(decl.config.component, "eight");
+        assert_eq!(decl.class.as_deref(), Some("demo::Eight"));
+        assert!(
+            !decl.deploy_bound,
+            "a generated entry claims no node package"
+        );
+        assert!(
+            comps.iter().all(|c| c.config.package != "demo_bringup"),
+            "the bringup declares no component of its own"
         );
     }
 
