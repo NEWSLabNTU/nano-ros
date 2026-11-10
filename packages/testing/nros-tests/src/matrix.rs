@@ -1506,6 +1506,8 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         // take them: `(_, Params, Example) => ParamStoreCarve` and the
         // `(QemuBaremetal, _, Example) => Emulator` catch-all.
         (P::Linux, L::C | L::Cpp, R::Zenoh, W::Params, K::Example) => Some(ParametersRoundtrip),
+        // Issue 2304 — the C example's Cyclone twin.
+        (P::Linux, L::C, R::Cyclonedds, W::Params, K::Example) => Some(ParametersRoundtrip),
         (P::Linux, L::Rust, R::Zenoh, W::Qos, K::Example) => Some(QosOverrides),
         (P::Linux, L::Rust, R::Zenoh, W::CustomMsg, K::Example) => Some(CustomMsg),
         (P::Linux, _, R::Zenoh, W::Safety, K::Example) => Some(Safety),

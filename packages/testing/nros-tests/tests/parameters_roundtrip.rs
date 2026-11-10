@@ -30,8 +30,8 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        RequireFixture, ZenohRouter, build_c_parameters, build_cpp_parameters, require_cmake,
-        require_zenohd, zenohd_unique,
+        RequireFixture, ZenohRouter, build_c_parameters, build_c_parameters_cyclonedds,
+        build_cpp_parameters, require_cmake, require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -67,9 +67,31 @@ fn parameters_roundtrip(
 
     let binary = build().require(&format!("{lang}-parameters"));
 
-    let output = Command::new(binary)
-        .env("NROS_LOCATOR", zenohd_unique.locator())
-        .env("NROS_SESSION_MODE", "client")
+    let mut cmd = Command::new(binary);
+    cmd.env("NROS_LOCATOR", zenohd_unique.locator())
+        .env("NROS_SESSION_MODE", "client");
+    run_and_check(lang, cmd, expected);
+}
+
+/// Issue 2304 — the C example on Cyclone DDS. Its zenoh twin above passed while
+/// this build exited 1 straight after `rclc_parameter_server_init_with_option`:
+/// the cmake road generated no `rcl_interfaces` descriptors, so Cyclone refused
+/// the `/parameter_events` publisher (`Transport(PublisherCreationFailed)`) and
+/// then each of the six parameter services. Brokerless, so no router; the
+/// discovery bus is pinned to loopback like every Cyclone cell's (issue 1009).
+#[test]
+fn c_parameters_roundtrip_on_cyclonedds() {
+    require_cmake();
+    let binary = build_c_parameters_cyclonedds().require("c-parameters-cyclonedds");
+    let mut cmd = Command::new(binary);
+    nros_tests::dds_isolation::apply_to_command(&mut cmd);
+    run_and_check("c-cyclonedds", cmd, C_EXPECTED);
+}
+
+/// Spawn a prebuilt parameters example, require exit 0, and grep the lines
+/// that pin the values it read back.
+fn run_and_check(lang: &str, mut cmd: Command, expected: &[&str]) {
+    let output = cmd
         // The roundtrip is synchronous; the spin afterwards only exists so a
         // human can point `ros2 param get` at the node. Skip it here.
         .env("NROS_SPIN_MS", "0")
@@ -111,6 +133,8 @@ fn cases_bound_to_matrix_cells() {
         &[
             (P::Linux, L::C, R::Zenoh, W::Params, K::Example),
             (P::Linux, L::Cpp, R::Zenoh, W::Params, K::Example),
+            // Issue 2304.
+            (P::Linux, L::C, R::Cyclonedds, W::Params, K::Example),
         ],
     );
 }

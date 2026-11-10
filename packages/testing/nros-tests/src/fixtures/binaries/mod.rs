@@ -8353,6 +8353,20 @@ pub fn c_parameters_binary() -> PathBuf {
     build_c_parameters().require("c-parameters").to_path_buf()
 }
 
+/// Issue 2304 — the c-parameters example built on Cyclone (row
+/// `c-parameters-cyclonedds`). Same source as [`build_c_parameters`]; only the
+/// RMW differs, which is the whole point: the zenoh build passed while this one
+/// exited 1, because nothing on the cmake road generated the `rcl_interfaces`
+/// descriptors the parameter services and `/parameter_events` need.
+pub fn build_c_parameters_cyclonedds() -> TestResult<&'static Path> {
+    static C_PARAMETERS_CYCLONEDDS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    C_PARAMETERS_CYCLONEDDS_BINARY
+        .get_or_try_init(|| {
+            build_example_cmake_rmw("linux/c/parameters", "c_parameters", Rmw::Cyclonedds)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Cached path to the qemu-rtic-action-server binary
 static QEMU_RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
