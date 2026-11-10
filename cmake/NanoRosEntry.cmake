@@ -1202,6 +1202,24 @@ function(nano_ros_entry)
             # the TEMPLATE, `templates/freertos_app_config.c.in`, which is one
             # file both paths `configure_file()` — a shared file needs no sync
             # note.
+            # Issue 2336 -- a ThreadX entry whose image states its own network
+            # gets its own `NROS_APP_CONFIG` TU, written here where the image's
+            # `NROS_IMAGE_NET` shadows the configure's. The board file's shared
+            # TU is the configure-wide one, so before this every image of a
+            # shared configure linked the last image's address.
+            if(_nra_platform_norm STREQUAL "threadx"
+               AND NOT "${_NRA_IMAGE_NET}" STREQUAL ""
+               AND COMMAND nros_threadx_app_config_def)
+                set(_nra_tx_board "${NROS_BOARD}")
+                if(_nra_tx_board STREQUAL "")
+                    set(_nra_tx_board "${_NRA_BOARD}")
+                endif()
+                set(_nra_tx_appcfg
+                    "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
+                nros_threadx_app_config_def("${_nra_tx_board}" "${_nra_tx_appcfg}")
+                target_sources(${_NRA_NAME} PRIVATE "${_nra_tx_appcfg}")
+                set_property(TARGET ${_NRA_NAME} PROPERTY NROS_OWN_APP_CONFIG TRUE)
+            endif()
             if(_nra_platform_norm STREQUAL "freertos")
                 # The `@NROS_ENTRY_LOCATOR@` substitution the template reads —
                 # an assignment FROM the resolved value, not a second producer.

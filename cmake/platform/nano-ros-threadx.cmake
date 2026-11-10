@@ -328,7 +328,15 @@ function(nros_platform_link_app target)
     endif()
 
     if(DEFINED THREADX_STARTUP_SOURCE)
-        target_sources(${target} PRIVATE ${THREADX_STARTUP_SOURCE})
+        set(_startup ${THREADX_STARTUP_SOURCE})
+        # Issue 2336 -- an entry that carries its own `NROS_APP_CONFIG` TU (its
+        # image's network, written by `nano_ros_entry`) must not also link the
+        # configure's shared one: two definitions of one symbol.
+        get_target_property(_own ${target} NROS_OWN_APP_CONFIG)
+        if(_own AND DEFINED THREADX_SHARED_APP_CONFIG_DEF)
+            list(REMOVE_ITEM _startup "${THREADX_SHARED_APP_CONFIG_DEF}")
+        endif()
+        target_sources(${target} PRIVATE ${_startup})
     endif()
     if(DEFINED THREADX_APP_DEFINE_SOURCE)
         target_sources(${target} PRIVATE ${THREADX_APP_DEFINE_SOURCE})

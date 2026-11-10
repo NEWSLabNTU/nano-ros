@@ -594,6 +594,24 @@ configure-hook:
     fi
     ./tests/cmake-configure-hook-tests.sh
 
+# issue 2336 -- a ThreadX image's `NROS_APP_CONFIG` carries its own network. The
+# images of one shared configure each state one, and the configure's single
+# config TU gave every executable the last image's address. The writer is
+# driven from two scopes with two networks (the real CLI resolves them) and must
+# write two TUs; plus the reach (the entry writes its own, the link drops the
+# shared one, both board files use the one writer). A configure-time probe.
+[group('needs:cmake')]
+threadx-app-config-per-image:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip threadx-app-config-per-image "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/threadx-app-config-per-image-tests.sh
+
 # phase-530 W6 (RFC-0120 D7) -- the census step: a leaf census's digest is a
 # host-configure dependency refreshed by a build edge, so a body edit costs no
 # re-configure and an added endpoint exactly one. A real CMake + Ninja build
