@@ -41,11 +41,13 @@ pub struct Args {
     pub baud: Option<u32>,
     /// Stop with exit 0 once a console line contains TEXT; exit 1 if
     /// `--timeout` passes first.
-    #[arg(long, value_name = "TEXT", conflicts_with = "expect_regex")]
-    pub expect: Option<String>,
-    /// As `--expect`, with a regular expression over one console line.
+    /// Repeat it to require several lines, in any order.
+    #[arg(long, value_name = "TEXT")]
+    pub expect: Vec<String>,
+    /// As `--expect`, with a regular expression over one console line; may be
+    /// repeated and mixed with `--expect`.
     #[arg(long, value_name = "REGEX")]
-    pub expect_regex: Option<String>,
+    pub expect_regex: Vec<String>,
     /// Stop after SECONDS.
     #[arg(long, value_name = "SECONDS")]
     pub timeout: Option<f64>,
@@ -305,7 +307,7 @@ mod tests {
         let mut plan = bare_plan(&port);
         apply_invocation(&mut plan, Some(115_200), &["status".to_string()]);
         let exec = ExecArgs {
-            expect: Some("state: ready".into()),
+            expect: vec!["state: ready".into()],
             timeout: Some(10.0),
             router: "none".into(),
             ..ExecArgs::default()

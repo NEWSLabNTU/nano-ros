@@ -714,10 +714,10 @@ Options:
           Print the plan as the JSON a runner is handed (`--plan`), not TOML
 
       --expect <TEXT>
-          Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the target ends, or `--timeout` passes, first
+          Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the target ends, or `--timeout` passes, first. Given more than once, every TEXT must appear, each on some line and in any order, and the run stops on the line that completes the set
 
       --expect-regex <REGEX>
-          As `--expect`, with a regular expression over one console line
+          As `--expect`, with a regular expression over one console line. It may be repeated, and mixed with `--expect`: every pattern must match
 
       --timeout <SECONDS>
           Stop the target after SECONDS
@@ -794,10 +794,10 @@ Options:
           After flashing, watch the board's console on the same port
 
       --expect <TEXT>
-          With `--monitor`: stop with exit 0 once a console line contains TEXT
+          With `--monitor`: stop with exit 0 once a console line contains TEXT. Repeat it to require several lines, in any order
 
       --expect-regex <REGEX>
-          As `--expect`, with a regular expression over one console line
+          As `--expect`, with a regular expression over one console line; may be repeated and mixed with `--expect`
 
       --timeout <SECONDS>
           Stop after SECONDS: the console with `--monitor`, and any wait a prepare step makes
@@ -847,10 +847,10 @@ Options:
           The serial baud rate (else the board's)
 
       --expect <TEXT>
-          Stop with exit 0 once a console line contains TEXT; exit 1 if `--timeout` passes first
+          Stop with exit 0 once a console line contains TEXT; exit 1 if `--timeout` passes first. Repeat it to require several lines, in any order
 
       --expect-regex <REGEX>
-          As `--expect`, with a regular expression over one console line
+          As `--expect`, with a regular expression over one console line; may be repeated and mixed with `--expect`
 
       --timeout <SECONDS>
           Stop after SECONDS
