@@ -98,5 +98,5 @@ host image).
   and `nros-tests/tests/out_of_tree_rmw_zephyr_e2e.rs` runs it against a
   router and a native listener. There are also unit tests in `leaf_kconfig`,
   `image_facts`, `rmw_descriptor` and `nros-macros`.
-- **Found on the way:** [issue 2393](../2393-west-app-backend-dep-no-edition-feature.md).
+- **Found on the way:** [issue 2393](2393-west-app-backend-dep-no-edition-feature.md).
   The west application's backend dependency carries no ROS edition feature.
