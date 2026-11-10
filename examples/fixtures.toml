@@ -2276,10 +2276,15 @@ image = "linux"
 # test (`zephyr_cortex_m_qemu`, the zenoh IdleWake cell).
 serves = ["zephyr-cortex-m,c,zenoh"]
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-lifecycle-node"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/lifecycle-node"
+rmw = "zenoh"
+bringup = "src/native_lifecycle_node_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
 # phase-535 W4 — two C++ leaves stay too, for tests that need what the
 # workspace program does not have: `cpp/service-client` is a hand-written
@@ -2357,10 +2362,15 @@ bringup = "src/native_action_client_bringup"
 image = "linux"
 target_dir = "target-fixtures"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-custom-msg"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/custom-msg"
+rmw = "zenoh"
+bringup = "src/native_rs_custom_msg_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
 # entry-poc: the canonical Phase 212.N Entry-pkg shape (`nros::main!()` →
 # `<LinuxBoard as BoardEntry>::run`). Built here so the macro-expansion compile
@@ -2391,14 +2401,19 @@ platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/service-client-callback"
 
-# Phase 275 W2 (#102 H3) — linux/rust variant examples that shipped with zero
-# fixtures. Bare rows (default = ["rmw-zenoh"], same shape as the base examples
-# above) build-assert them. Runtime behavior assertions (async client actually
-# receives; logging sink emits) are a follow-up test under nros-tests/tests/.
-[[fixture]]
+# The `nros-log` demo (`logging_smoke` asserts its output). phase-535 W6: a
+# one-package workspace whose hand-written `main` is the image's owned entry
+# (RFC-0071 D19), like `lifecycle-node`, `custom-msg` and the custom-transport
+# pair.
+[[workspace_fixture]]
+id = "linux-rust-zenoh-logging"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/logging"
+rmw = "zenoh"
+bringup = "src/native_logging_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
 # phase-535 W6 — the six linux `*-rtic` leaves STAY leaves: each IS a
 # hand-written `main` (RFC-0122 D10 keeps one where it demonstrates one). The
@@ -2483,15 +2498,25 @@ platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/action-client-rtic"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-custom-transport-talker"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/custom-transport-talker"
+rmw = "zenoh"
+bringup = "src/native_custom_transport_talker_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-custom-transport-listener"
 platform = "linux"
 lang = "rust"
 dir = "examples/linux/rust/custom-transport-listener"
+rmw = "zenoh"
+bringup = "src/native_custom_transport_listener_bringup"
+image = "linux"
+target_dir = "target-fixtures"
 
 # Parameterised talker (phase-277 W3.a — was the talker `param-services`
 # feature build in the DEFAULT target dir; now a dedicated fixture bin so the

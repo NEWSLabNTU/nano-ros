@@ -9,10 +9,6 @@
 #   python3 scripts/check-node-package-selection-free.py --write-baseline
 examples/linux/rust/action-client-rtic/Cargo.toml  native_rtic_action_client_nros_selection
 examples/linux/rust/action-server-rtic/Cargo.toml  native_rtic_action_server_nros_selection
-examples/linux/rust/custom-msg/Cargo.toml  native_rs_custom_msg_nros_selection
-examples/linux/rust/custom-transport-listener/Cargo.toml  native_rs_custom_transport_listener_nros_selection
-examples/linux/rust/custom-transport-talker/Cargo.toml  native_rs_custom_transport_talker_nros_selection
-examples/linux/rust/lifecycle-node/Cargo.toml  native_rs_lifecycle_node_nros_selection
 examples/linux/rust/listener-rtic/Cargo.toml  native_rtic_listener_nros_selection
 examples/linux/rust/service-client-callback/Cargo.toml  native_rs_service_client_callback_nros_selection
 examples/linux/rust/service-client-rtic/Cargo.toml  native_rtic_service_client_nros_selection

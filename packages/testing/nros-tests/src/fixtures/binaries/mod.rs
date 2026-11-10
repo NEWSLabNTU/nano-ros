@@ -6365,31 +6365,33 @@ pub fn build_native_listener() -> TestResult<&'static Path> {
 
 static NATIVE_RS_LOGGING_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// #102 H3 — build the `linux/rust/logging` example (cached). Distinct from the
+/// #102 H3 — the `linux/rust/logging` example (cached). Distinct from the
 /// `logging-smoke-*` bins: after firing every severity once it RAISES the runtime
 /// threshold to `Warn` and fires them again, so the consuming e2e can assert the
 /// runtime level filter (round-2 trace/debug/info suppressed) that the smoke bins
 /// never exercise.
 pub fn build_native_logging() -> TestResult<&'static Path> {
     NATIVE_RS_LOGGING_BINARY
-        .get_or_try_init(|| build_example("linux/rust/logging", "logging", None, None))
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/logging"))
         .map(|p| p.as_path())
 }
 
-/// Phase 115.F — build the custom-transport talker example (cached).
+/// One of the linux Rust demos whose hand-written `main` is its workspace
+/// image's OWNED entry (RFC-0071 D19, phase-535 W6): its `linux` image, the
+/// binary named after the entry package.
+fn linux_rust_owned_entry(dir: &str) -> TestResult<PathBuf> {
+    migrated_leaf_binary(
+        dir,
+        Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Image("linux"),
+    )
+    .unwrap_or_else(|| Err(not_migrated(dir)))
+}
+
+/// Phase 115.F — the custom-transport talker example (cached).
 pub fn build_native_custom_transport_talker() -> TestResult<&'static Path> {
     NATIVE_CT_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/custom-transport-talker",
-                // phase-340 W2 — was `talker`, which collided with
-                // `native-rs-talker`'s binary inside the `linux` default
-                // fixture group's one flat output namespace.
-                "custom-transport-talker",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/custom-transport-talker"))
         .map(|p| p.as_path())
 }
 
@@ -6528,35 +6530,19 @@ pub fn build_ros2_string_interop() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Phase 115.F — build the custom-transport listener example (cached).
+/// Phase 115.F — the custom-transport listener example (cached).
 pub fn build_native_custom_transport_listener() -> TestResult<&'static Path> {
     NATIVE_CT_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/custom-transport-listener",
-                // phase-340 W2 — was `listener`; see the talker sibling.
-                "custom-transport-listener",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/custom-transport-listener"))
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-lifecycle-node (cached)
-///
-/// Enables `lifecycle-services` so the `ros2 lifecycle *` service surface
-/// is exposed for interop tests.
+/// The linux Rust lifecycle node (cached). Its bringup declares the
+/// `lifecycle` service family, so the `ros2 lifecycle *` service surface is
+/// exposed for interop tests.
 pub fn build_native_lifecycle_node() -> TestResult<&'static Path> {
     NATIVE_LIFECYCLE_NODE_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/lifecycle-node",
-                "lifecycle-node",
-                Some(&["lifecycle-services"]),
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/lifecycle-node"))
         .map(|p| p.as_path())
 }
 
@@ -7194,16 +7180,16 @@ pub fn service_client_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build native-rs-custom-msg (cached)
+/// The linux Rust custom-msg example (cached).
 pub fn build_native_custom_msg() -> TestResult<&'static Path> {
     NATIVE_CUSTOM_MSG_BINARY
-        .get_or_try_init(|| build_example("linux/rust/custom-msg", "custom_msg", None, None))
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/custom-msg"))
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-custom-msg (uncached, for serialization tests)
+/// The linux Rust custom-msg example (uncached, for serialization tests).
 pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
-    build_example("linux/rust/custom-msg", "custom_msg", None, None)
+    linux_rust_owned_entry("examples/linux/rust/custom-msg")
 }
 
 /// rstest fixture that provides the native-rs-custom-msg binary path (with zenoh)

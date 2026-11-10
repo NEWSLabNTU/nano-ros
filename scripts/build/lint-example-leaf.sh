@@ -59,8 +59,7 @@ pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Cargo.t
 # platform. Since phase-445 W6 no example tracks a `.cargo/` (gate
 # `check-example-cargo-dirs`), so a leaf with `[image.<id>]` names its
 # generated `<leaf>_nros_selection` crate, and even a leaf with no `system.toml`
-# resolves `nros-log` only through the `[patch.crates-io]` row sync writes
-# (`examples/linux/rust/logging`).
+# resolves `nros-log` only through the `[patch.crates-io]` row sync writes.
 render=0
 if nros_leaf_sync_renders "$dir"; then render=1; fi
 if [ "$render" = 1 ] && [ -z "$plan" ]; then

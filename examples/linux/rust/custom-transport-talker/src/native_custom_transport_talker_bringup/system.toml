@@ -1,0 +1,19 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry `src/native_custom_transport_talker`: it
+# keeps its own `main` (no `nros::main!`) and opens its own executor, so the
+# bringup declares no component table, and every image names that one entry
+# (RFC-0071 D19).
+
+[system]
+name = "native_rs_custom_transport_talker"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` builds.
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native.
+[image_defaults]
+board = "linux"
+
+[image.linux]
+entry = "native_custom_transport_talker"

@@ -368,6 +368,9 @@ fn native_rust_logging_example_threshold_raise_filters_round_two() {
     let output = proc
         .wait_for_all_output(Duration::from_secs(15))
         .expect("linux/rust/logging timed out waiting for output");
+    // The workspace image's build settings name the platform, which declares
+    // `[capabilities] clock`, so its records carry a timestamp (phase-535 W6).
+    let output = strip_clock(&output);
 
     // Round 1 — every severity fires (level = Trace).
     assert_output_contains(

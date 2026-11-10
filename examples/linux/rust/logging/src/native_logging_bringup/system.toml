@@ -1,0 +1,19 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry `src/native_logging`:
+# it keeps its own `main`, which drives the `nros-log` sink and runtime
+# threshold API and opens no session, so the bringup declares no component
+# table. `rmw` is stated because every image names one; nothing here links it.
+
+[system]
+name = "native_logging"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` builds.
+default_images = ["linux"]
+
+# Host build.
+[image_defaults]
+board = "linux"
+
+[image.linux]
+entry = "native_logging"
