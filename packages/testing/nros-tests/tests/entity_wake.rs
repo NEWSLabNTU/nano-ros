@@ -439,6 +439,8 @@ const STAGE_OPEN: u32 = 1;
 const STAGE_SETUP: u32 = 2;
 const STAGE_JOIN: u32 = 3;
 const STAGE_DROP: u32 = 4;
+const STAGE_ROUTER: u32 = 5;
+const STAGE_DOMAIN: u32 = 6;
 const STAGE_ROUND: u32 = 100;
 /// Below nextest's 60 s timeout for this binary, above every bound the test
 /// asserts (two arrival budgets, 10 s).
@@ -450,6 +452,8 @@ fn stage_name(stage: u32) -> String {
         STAGE_SETUP => "registering the subscription and publisher".into(),
         STAGE_JOIN => "joining the publisher thread (a publish that never returned)".into(),
         STAGE_DROP => "dropping the executor (session close)".into(),
+        STAGE_ROUTER => "starting the test's router (zenohd_unique)".into(),
+        STAGE_DOMAIN => "claiming a ROS domain".into(),
         n if n >= STAGE_ROUND => format!("round {} of the dispatch loop", n - STAGE_ROUND),
         n => format!("unknown stage {n}"),
     }
@@ -479,6 +483,7 @@ impl Watchdog {
                          Aborting so the stage is on record instead of only nextest's TIMEOUT.",
                         stage_name(stage.load(SeqCst))
                     );
+                    dump_all_thread_stacks();
                     std::process::abort();
                 }
                 std::thread::sleep(Duration::from_millis(200));
@@ -491,6 +496,51 @@ impl Watchdog {
 impl Drop for Watchdog {
     fn drop(&mut self) {
         self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Issue 2352 — print every thread's stack to stderr, so a watchdog abort
+/// says not only which stage hung but which call each thread is blocked in.
+///
+/// `ptrace_scope=1` forbids a debugger attaching to a process it did not
+/// start, so the process first names any tracer as allowed
+/// (`PR_SET_PTRACER`), then runs `gdb -p <self>`. Best effort: no gdb, or a
+/// refused attach, prints why and the abort goes ahead.
+///
+/// Measured as a negative control (2026-11-11): with the limit at 1 ms and
+/// the test held in its dispatch loop, it printed every thread's stack
+/// (among them zenoh-pico's read task in `recv` and this watchdog's `poll`
+/// on gdb) and aborted.
+fn dump_all_thread_stacks() {
+    use std::io::Write as _;
+    // SAFETY: prctl with integer arguments only; failure is reported below.
+    let rc = unsafe { libc::prctl(libc::PR_SET_PTRACER, libc::PR_SET_PTRACER_ANY, 0, 0, 0) };
+    if rc != 0 {
+        let _ = writeln!(
+            std::io::stderr(),
+            "issue 2352: PR_SET_PTRACER failed ({}); gdb may not attach",
+            std::io::Error::last_os_error()
+        );
+    }
+    // A deadline: the watchdog fires 15 s before nextest's own timeout, and
+    // a gdb slowed by the same load must not spend all of it (10 s, plus the
+    // helper's kill grace).
+    let out = nros_tests::process::deadline_command(10, "gdb")
+        .args(["-batch", "-nx", "-p", &std::process::id().to_string()])
+        .args(["-ex", "set pagination off", "-ex", "info threads"])
+        .args(["-ex", "thread apply all bt"])
+        .stdin(std::process::Stdio::null())
+        .output();
+    let mut err = std::io::stderr();
+    match out {
+        Ok(o) => {
+            let _ = err.write_all(b"issue 2352: all thread stacks at the watchdog:\n");
+            let _ = err.write_all(&o.stdout);
+            let _ = err.write_all(&o.stderr);
+        }
+        Err(e) => {
+            let _ = writeln!(err, "issue 2352: could not run gdb for the stacks: {e}");
+        }
     }
 }
 
@@ -518,10 +568,7 @@ enum Shape {
 #[rstest]
 #[case::drains_to_empty(Shape::DrainsToEmpty)]
 #[case::one_sample_per_dispatch(Shape::OneSamplePerDispatch)]
-fn an_arrival_racing_a_drain_is_never_left_undispatched(
-    zenohd_unique: ZenohRouter,
-    #[case] shape: Shape,
-) {
+fn an_arrival_racing_a_drain_is_never_left_undispatched(#[case] shape: Shape) {
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::SeqCst};
     /// Long enough for the publisher to see the callback running and publish
     /// inside it.
@@ -532,17 +579,20 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     const PUBLISH_INTERVAL: Duration = Duration::from_millis(5);
     const ROUNDS: u32 = 20;
     const BURST: u32 = 3;
-    require_zenohd();
-    let locator = zenohd_unique.locator();
-    let domain = u32::from(nros_tests::unique_ros_domain_id());
-
     // Issue 2352: this test once ran to nextest's 60 s timeout beside the
     // build gates, and every bound below is 10 s or less, so something
     // blocked with no bound of its own. The watchdog says WHERE: it reports
     // the stage the test is in and aborts before the timeout, so the next
-    // occurrence names its stage instead of only `TIMEOUT`.
-    let stage = std::sync::Arc::new(AtomicU32::new(STAGE_OPEN));
+    // occurrence names its stage instead of only `TIMEOUT`. It starts before
+    // the router and the domain, so a stall in the harness is named too.
+    let stage = std::sync::Arc::new(AtomicU32::new(STAGE_ROUTER));
     let _watchdog = Watchdog::start(stage.clone());
+    require_zenohd();
+    let zenohd_unique = zenohd_unique();
+    let locator = zenohd_unique.locator();
+    stage.store(STAGE_DOMAIN, SeqCst);
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+    stage.store(STAGE_OPEN, SeqCst);
     let mut exec = open(&locator, "entity_wake_race", domain);
     // Declared after `exec`, so it drops first: the stage then reads
     // "dropping the executor" while `exec` closes its session.
