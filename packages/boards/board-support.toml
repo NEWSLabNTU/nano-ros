@@ -1005,7 +1005,6 @@ track = "zephyr-rust"
 chapter = "starters/zephyr-native-sim.md"
 variant = ""
 lang = "rust"
-awaits = ["a Rust Zephyr workspace entry that sees its bringup package: the generated zephyr_entry fails `nros::main!: pkg `<bringup>` not found in workspace … Known pkgs: []` (CLI owner bug 4)"]
 weekly = true
 row = "nros-board-zephyr@ZephyrNativeSim"
 
@@ -1334,7 +1333,6 @@ track = "renode-nucleo-rust"
 chapter = "starters/nucleo-f767zi.md"
 variant = ""
 lang = "rust"
-awaits = ["`nros setup board nucleo-f767zi-zephyr` provisioning the Rust toolchain the Zephyr build pins: rustup auto-installs nightly-2026-04-11 without cargo and the build stops (reported to the CLI owner 2026-11-06)", "the Nucleo-F767ZI Rust and C++ cells measured (phase-548 W7)"]
 weekly = true
 row = "nros-board-nucleo-f767zi-zephyr@ZephyrNucleoF767zi"
 notes = "phase-548 W8 — the Rust tab of the same starter."

@@ -137,7 +137,7 @@ cover today:
 
 | Board | Runs | RMW | Rust | C | C++ |
 |---|---|---|---|---|---|
-| [Nucleo-F767ZI](../starters/nucleo-f767zi.md) | Boots, manual | Zenoh | not yet | yes | yes |
+| [Nucleo-F767ZI](../starters/nucleo-f767zi.md) | Boots, manual | Zenoh | yes | yes | yes |
 | [mps2-an385 in QEMU (bare-metal)](../starters/mps2-an385-bare-metal.md) | Verified in emulator | Zenoh | yes | — | — |
 | [mps2-an385 in QEMU (FreeRTOS)](../starters/mps2-an385-freertos.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [mps2-an385 in QEMU (Zephyr)](../starters/mps2-an385-zephyr.md) | Verified in emulator | Zenoh | yes | yes | yes |
@@ -145,7 +145,7 @@ cover today:
 | [NuttX in QEMU (RISC-V)](../starters/nuttx-riscv.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [ThreadX in QEMU (RISC-V 64)](../starters/threadx-riscv64.md) | Verified in emulator | Zenoh | yes | yes | yes |
 | [Linux host](../starters/linux-host.md) | Verified on host | Cyclone DDS | yes | yes | yes |
-| [Zephyr native_sim](../starters/zephyr-native-sim.md) | Verified on host | Zenoh | not yet | yes | yes |
+| [Zephyr native_sim](../starters/zephyr-native-sim.md) | Verified on host | Zenoh | yes | yes | yes |
 | [ThreadX Linux simulator](../starters/threadx-linux.md) | Verified on host | Zenoh | yes | yes | yes |
 | [FreeRTOS POSIX](../starters/freertos-posix.md) | Verified on host | Cyclone DDS, Zenoh | yes | yes | yes |
 
