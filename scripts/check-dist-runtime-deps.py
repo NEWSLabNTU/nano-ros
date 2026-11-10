@@ -140,6 +140,7 @@ Usage:  check-dist-runtime-deps.py [--store DIR] [--include-unreached]
 import collections
 import os
 import re
+import stat
 import struct
 import subprocess
 import sys
@@ -407,7 +408,23 @@ def closure(dist_root, include_unreached=False, roots=None):
             if ".so" in n:
                 own.add(n)
             path = os.path.join(dirpath, n)
-            if not os.path.isfile(path) or os.path.islink(path):
+            try:
+                st = os.lstat(path)
+            except OSError:
+                continue
+            if not stat.S_ISREG(st.st_mode):
+                continue
+            # Issue 2411 — open only what the HOST can load: a program (an
+            # exec bit) or a shared object (`.so` in its name). The dists are
+            # mostly target headers, archives and objects (zephyr-sdk: 58,610
+            # regular files, 1,646 candidates), and opening every one costs a
+            # random read each; on a cold spinning disk that took this gate
+            # from seconds to 11-13 min. Measured over every pin of a full
+            # store, the skipped ELF files are 41 guest firmware images
+            # (`openbios-ppc`, ESP ROM `.elf`s, ...) with no `DT_NEEDED` and no
+            # `PT_INTERP`, so they never reached a verdict; they only left the
+            # unreached count.
+            if not (st.st_mode & 0o111 or ".so" in n):
                 continue
             facts = elf_facts(path)
             if facts is not None:
