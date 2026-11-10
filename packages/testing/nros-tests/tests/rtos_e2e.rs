@@ -584,11 +584,13 @@ fn binaries(platform: Platform, lang: Lang, variant: Variant) -> BinaryPair {
                 threadx_riscv64::pair_image(MLang::C, PairRole::ActionClient, MRmw::Zenoh)
             },
         },
-        // The C++ pubsub pair stays on its leaves: the generated C++ talker
-        // hangs after its first publish on this board (issue 2340).
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Pubsub) => BinaryPair {
-            first_builder: threadx_riscv64::build_rv64_cpp_talker,
-            second_builder: threadx_riscv64::build_rv64_cpp_listener,
+            first_builder: || {
+                threadx_riscv64::pair_image(MLang::Cpp, PairRole::Talker, MRmw::Zenoh)
+            },
+            second_builder: || {
+                threadx_riscv64::pair_image(MLang::Cpp, PairRole::Listener, MRmw::Zenoh)
+            },
         },
         (Platform::ThreadxRiscv64, Lang::Cpp, Variant::Service) => BinaryPair {
             first_builder: || {
@@ -1134,10 +1136,15 @@ fn listener_ready_marker(platform: Platform, lang: Lang) -> &'static str {
         // listener (`examples/workspaces/cpp`), which prints the tutorial's
         // subscription line and no "Waiting for messages" banner. phase-535 W4 —
         // the threadx-linux C++ cell runs the same workspace listener, and
-        // phase-535 W5 the NuttX (arm) one.
-        (Platform::Freertos | Platform::ThreadxLinux | Platform::Nuttx, Lang::Cpp) => {
-            nros_tests::output::LISTENER_READY_MARKER
-        }
+        // phase-535 W5 the NuttX (arm) one, and phase-535 W6 the ThreadX
+        // riscv64 one.
+        (
+            Platform::Freertos
+            | Platform::ThreadxLinux
+            | Platform::Nuttx
+            | Platform::ThreadxRiscv64,
+            Lang::Cpp,
+        ) => nros_tests::output::LISTENER_READY_MARKER,
         _ => "Waiting for messages",
     }
 }

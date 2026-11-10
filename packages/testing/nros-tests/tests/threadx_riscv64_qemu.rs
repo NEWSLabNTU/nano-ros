@@ -27,12 +27,15 @@
 use nros_tests::fixtures::RequireFixture;
 use std::time::Duration;
 
-use nros_tests::fixtures::{
-    QemuProcess, Rmw, is_qemu_riscv64_available, qemu_riscv64_supports_dgram_unix,
-    threadx_riscv64::{
-        build_rv64_cmake_example_rmw, is_netx_available, is_riscv_gcc_available,
-        is_threadx_available,
+use nros_tests::{
+    fixtures::{
+        QemuProcess, is_qemu_riscv64_available, qemu_riscv64_supports_dgram_unix,
+        threadx_riscv64::{
+            is_netx_available, is_riscv_gcc_available, is_threadx_available, pair_image,
+        },
+        workspace_image::PairRole,
     },
+    matrix::{Lang, Rmw as MRmw},
 };
 
 // =============================================================================
@@ -131,12 +134,15 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     // 1-wise, so it need not rebuild this coordinate: the C++ sibling of this
     // test ran a five-day-old image for exactly that reason and read as a code
     // regression.
-    let talker_bin = build_rv64_cmake_example_rmw("c", "talker", "c_talker", Rmw::Cyclonedds)
+    //
+    // phase-535 W6 — the pair is the C workspace's
+    // `riscv_threadx_{talker,listener}_cyclonedds` images.
+    let talker_bin = pair_image(Lang::C, PairRole::Talker, MRmw::Cyclonedds)
         .require("resolve rv64 C talker (cyclonedds)");
-    let listener_bin = build_rv64_cmake_example_rmw("c", "listener", "c_listener", Rmw::Cyclonedds)
+    let listener_bin = pair_image(Lang::C, PairRole::Listener, MRmw::Cyclonedds)
         .require("resolve rv64 C listener (cyclonedds)");
 
-    // MACs match each node's config.toml (talker 10.0.2.40/:56,
+    // MACs match each image's board network file (talker 10.0.2.40/:56,
     // listener 10.0.2.41/:57) so QEMU's device MAC equals the NetX-assigned
     // address.
     const TALKER_MAC: &str = "52:54:00:12:34:56";
@@ -158,7 +164,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
         let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
 
         let mut listener = QemuProcess::start_riscv64_virt_dgram(
-            &listener_bin,
+            listener_bin,
             sock_listener,
             sock_talker,
             LISTENER_MAC,
@@ -175,7 +181,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
             )
             .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_dgram(
-            &talker_bin,
+            talker_bin,
             sock_talker,
             sock_listener,
             TALKER_MAC,
@@ -188,9 +194,8 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
         // platforms' mcast-socket harnesses (threadx tests run single-threaded
         // in their nextest group).
         const MCAST: &str = "230.0.0.7:11700";
-        let mut listener =
-            QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
-                .expect("start listener QEMU (socket,mcast)");
+        let mut listener = QemuProcess::start_riscv64_virt_mcast(listener_bin, MCAST, LISTENER_MAC)
+            .expect("start listener QEMU (socket,mcast)");
         // phase-342 W8b — wait for the listener to SAY it is subscribed.
         // All three threadx listeners print `LISTENER_READY_MARKER` (W7
         // converged them; `example_output_conformance` gates that they keep
@@ -201,7 +206,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
                 Duration::from_secs(30),
             )
             .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
-        let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
+        let talker = QemuProcess::start_riscv64_virt_mcast(talker_bin, MCAST, TALKER_MAC)
             .expect("start talker QEMU (socket,mcast)");
         (listener, talker)
     };
@@ -374,11 +379,12 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
     let root = nros_tests::project_root();
     // Issue 0786 — RESOLVE, never `root.join`; see the note in the C sibling.
     // This is the test that ran the museum binary.
-    let talker_bin = build_rv64_cmake_example_rmw("cpp", "talker", "cpp_talker", Rmw::Cyclonedds)
+    // phase-535 W6 — the pair is the C++ workspace's
+    // `riscv_threadx_{talker,listener}_cyclonedds` images.
+    let talker_bin = pair_image(Lang::Cpp, PairRole::Talker, MRmw::Cyclonedds)
         .require("resolve rv64 C++ talker (cyclonedds)");
-    let listener_bin =
-        build_rv64_cmake_example_rmw("cpp", "listener", "cpp_listener", Rmw::Cyclonedds)
-            .require("resolve rv64 C++ listener (cyclonedds)");
+    let listener_bin = pair_image(Lang::Cpp, PairRole::Listener, MRmw::Cyclonedds)
+        .require("resolve rv64 C++ listener (cyclonedds)");
 
     // MACs match each C++ node's baked identity (talker 0x56, listener 0x57).
     const TALKER_MAC: &str = "52:54:00:12:34:56";
@@ -395,7 +401,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
         let sock_listener = sock_listener.to_str().expect("utf-8 socket path");
 
         let mut listener = QemuProcess::start_riscv64_virt_dgram(
-            &listener_bin,
+            listener_bin,
             sock_listener,
             sock_talker,
             LISTENER_MAC,
@@ -412,7 +418,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
             )
             .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
         let talker = QemuProcess::start_riscv64_virt_dgram(
-            &talker_bin,
+            talker_bin,
             sock_talker,
             sock_listener,
             TALKER_MAC,
@@ -424,9 +430,8 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
         // never cross-talk; threadx lanes are serialized in their nextest group
         // regardless.
         const MCAST: &str = "230.0.0.8:11701";
-        let mut listener =
-            QemuProcess::start_riscv64_virt_mcast(&listener_bin, MCAST, LISTENER_MAC)
-                .expect("start C++ listener QEMU (socket,mcast)");
+        let mut listener = QemuProcess::start_riscv64_virt_mcast(listener_bin, MCAST, LISTENER_MAC)
+            .expect("start C++ listener QEMU (socket,mcast)");
         // phase-342 W8b — wait for the listener to SAY it is subscribed.
         // All three threadx listeners print `LISTENER_READY_MARKER` (W7
         // converged them; `example_output_conformance` gates that they keep
@@ -437,7 +442,7 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
                 Duration::from_secs(30),
             )
             .unwrap_or_else(|e| panic!("threadx riscv64 listener never subscribed: {e}"));
-        let talker = QemuProcess::start_riscv64_virt_mcast(&talker_bin, MCAST, TALKER_MAC)
+        let talker = QemuProcess::start_riscv64_virt_mcast(talker_bin, MCAST, TALKER_MAC)
             .expect("start C++ talker QEMU (socket,mcast)");
         (listener, talker)
     };

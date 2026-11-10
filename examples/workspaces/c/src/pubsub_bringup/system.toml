@@ -168,6 +168,23 @@ board = "rv-virt-threadx"
 launch = "listener.launch.xml"
 locator = "tcp/10.0.2.2:9500"
 
+# The Cyclone pair shares one L2 link (two QEMUs over an AF_UNIX tunnel), so
+# each image states its own address and the MAC QEMU gives its virtio device.
+# 128 is `alloc::domain_of(ThreadxRiscv64, C, Pubsub)`.
+[image.riscv_threadx_talker_cyclonedds]
+board = "rv-virt-threadx"
+launch = "talker.launch.xml"
+rmw = "cyclonedds"
+domain_id = 128
+os_config = ["board-net-40.toml"]
+
+[image.riscv_threadx_listener_cyclonedds]
+board = "rv-virt-threadx"
+launch = "listener.launch.xml"
+rmw = "cyclonedds"
+domain_id = 128
+os_config = ["board-net-41.toml"]
+
 # NuttX on QEMU virt (armv7-a). `locator` is the cell's `alloc::port_of`
 # on QEMU's SLIRP host. They came from the `examples/qemu-armv7a-nuttx` leaves.
 

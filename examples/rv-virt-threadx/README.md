@@ -28,7 +28,9 @@ just threadx_riscv64 talker              # boot rust/talker in QEMU
 
 The peer listener is a workspace image since phase-535 W5: build and run
 `pubsub_bringup:riscv_threadx_listener` in `examples/workspaces/rust` with
-`nros build` / `nros run`, in a second shell.
+`nros build` / `nros run`, in a second shell. The C and C++ listeners, on
+zenoh and Cyclone, are images of `examples/workspaces/{c,cpp}`'s
+`pubsub_bringup` (`riscv_threadx_listener[_cyclonedds]`).
 
 Test lanes: `just threadx_riscv64 test`, `test-all`.
 

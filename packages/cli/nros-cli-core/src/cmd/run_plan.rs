@@ -611,7 +611,18 @@ fn resolve_run(i: Inputs<'_>) -> Result<RunPlan, ResolveError> {
         } else if let Some((board, mac)) = ladder_board(d) {
             plan.args.insert("board".into(), board.word().into());
             prov.set("args.board", METHOD);
-            if let Some(mac) = mac {
+            // The image's network, when it states one, names the MAC its
+            // firmware answers to; the ladder's default is peer 0's.
+            let stated = match i.tables.net.as_deref() {
+                Some(text) => nros_board_common::image_net::primary(text)
+                    .map_err(|e| ResolveError::Unresolved(format!("image `{}`: {e}", i.image)))?
+                    .map(|n| nros_board_common::image_net::format_mac(n.mac)),
+                None => None,
+            };
+            if let Some(mac) = stated {
+                plan.args.insert("mac".into(), mac);
+                prov.set("args.mac", IMAGE);
+            } else if let Some(mac) = mac {
                 plan.args.insert("mac".into(), mac);
                 prov.set("args.mac", METHOD);
             }
@@ -1643,6 +1654,30 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.to_string().contains("physical-only"), "{e}");
+    }
+
+    /// A fixed-ladder board (ThreadX riscv64) boots an image with the MAC its
+    /// network states, so the second QEMU of a pair is not given peer 0's;
+    /// with no network it keeps the ladder's peer-0 default.
+    #[test]
+    fn a_ladder_board_takes_the_image_networks_mac() {
+        let cat = BoardCatalog::load(&repo_root()).unwrap();
+        let d = board(&cat, "rv-virt-threadx");
+        let out = cargo_out(Some("riscv64gc-unknown-none-elf"));
+        let inv = Invocation::default();
+        let p = go(Verb::Run, &d, &out, &ImageTables::default(), &inv).unwrap();
+        assert_eq!(p.args["mac"], nros_qemu_ladder::threadx_riscv64_mac(0));
+        assert_eq!(p.provenance["args.mac"], METHOD);
+
+        let tables = ImageTables {
+            net: Some("eth0,ethernet,qemu,10.0.2.41,24,10.0.2.2,52:54:00:12:34:57,slirp".into()),
+            ..ImageTables::default()
+        };
+        let p = go(Verb::Run, &d, &out, &tables, &inv).unwrap();
+        assert_eq!(p.args["mac"], "52:54:00:12:34:57");
+        assert_eq!(p.provenance["args.mac"], IMAGE);
+        let line = qemu_line(&p).unwrap().argv("K").join(" ");
+        assert!(line.contains("mac=52:54:00:12:34:57"), "{line}");
     }
 
     /// A console attached through a command template reaches the plan, key by
