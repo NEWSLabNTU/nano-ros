@@ -15,6 +15,14 @@ domain_id = 0
 pkg = "riscv64_threadx_c_errno_isolation"
 class = "riscv64_threadx_c_errno_isolation::ErrnoIsolation"
 name = "errno_isolation"
+# Issue 2418 -- this program creates NO ROS entity: its `main` is the test
+# (two platform tasks and an errno handoff), not a node. So it states that,
+# rather than being counted by a census (RFC-0120 D4's default for a cross
+# C/C++ leaf): a census runs the program on the host to record what it
+# registers, and this one registers nothing and is not a host program -- its
+# observer spawn fails there, and the run writes no census. An empty list is
+# the tight sizing, written down.
+entities = []
 
 # ThreadX on the QEMU RISC-V virt machine.
 [image.rv-virt-threadx]

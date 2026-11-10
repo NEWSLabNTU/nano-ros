@@ -242,6 +242,14 @@ Consequences:
   Zephyr APIs directly, say) is refused. The refusal names two fixes:
   `entities = [...]` (tight), or `entities = "defaults"` (loose, written down).
   Nothing is silently loose.
+- **A leaf whose program registers no ROS entity** (a self-test whose `main`
+  is the test, not a node: `examples/rv-virt-threadx/c/errno-isolation`)
+  states that, `entities = []` on its component, and is sized from the empty
+  declaration with no host run at all. A census of such a program has nothing
+  to record, and its RTOS-shaped setup need not run on the host (issue 2418:
+  the errno witness's observer spawn fails there and the run writes nothing).
+  The rule is a property the leaf STATES, never a path list or a guess from
+  its sources; a census run that fails names this fix beside the two above.
 - **Declared `entities = [...]` still wins** and needs no census.
 - **A host image keeps the hosted defaults.** The default reaches a leaf
   whose SELECTED image is CROSS (its board's platform is not the host's),

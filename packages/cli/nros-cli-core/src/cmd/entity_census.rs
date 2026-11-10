@@ -1544,6 +1544,43 @@ pub(crate) fn take_leaf_census_with(
         out: Some(out),
         timeout_secs,
     })
+    .wrap_err_with(|| census_run_failure(&leaf, explicit))
+}
+
+/// Issue 2418 -- what a leaf census whose RUN failed is told, on top of the
+/// run's own error. The host build succeeded, so the sources are portable
+/// enough to compile; what is left is a program that, run on the host,
+/// registered nothing. The class that reached the tier-2 nightly was a
+/// self-test (`examples/rv-virt-threadx/c/errno-isolation`): its `main` is
+/// the test and creates no ROS entity, so there was never anything to count,
+/// and its RTOS-shaped setup failed on the host besides. Such a program says
+/// so -- `entities = []` -- and is then sized from that statement, with no
+/// host run at all; that is a property the LEAF states, never a path list.
+pub(crate) fn census_run_failure(leaf: &Path, explicit: &str) -> String {
+    format!(
+        "{}: this leaf is counted by its census{explicit}, and the census RUN of its host build \
+         failed (the run's own error is below). A census runs the program on the host and \
+         records the ROS entities it registers. A program that registers NONE -- a self-test \
+         whose `main` is the test, not a node -- has nothing to count and need not run on the \
+         host at all: state that in its system.toml {}. Otherwise: {}",
+        leaf.display(),
+        empty_entities_fix(leaf),
+        census_fixes(leaf)
+    )
+}
+
+/// Where a leaf writes `entities = []`: on its `[[component]]`, or on one it
+/// adds first when it has none (`[system] entities` takes only "defaults").
+fn empty_entities_fix(leaf: &Path) -> &'static str {
+    let component_less = nros_orchestration_ir::leaf_system::read(leaf)
+        .ok()
+        .flatten()
+        .is_some_and(|s| s.components.is_empty());
+    if component_less {
+        "by adding a `[[component]]` with `entities = []`"
+    } else {
+        "with `entities = []` on its `[[component]]`"
+    }
 }
 
 fn check_census(args: CheckArgs) -> Result<()> {
@@ -2636,6 +2673,92 @@ mod tests {
         assert!(
             !msg.contains("`[[component]]`:"),
             "points at no component it does not have: {msg}"
+        );
+    }
+
+    /// Issue 2418 -- a leaf whose program registers no ROS entity (a
+    /// self-test whose `main` is the test, `rv-virt-threadx/c/errno-isolation`)
+    /// states `entities = []`, and is then sized from that: no host build, no
+    /// census run, and every reader answers from the empty declaration rather
+    /// than refusing for a census that could never be taken.
+    #[test]
+    fn a_leaf_that_registers_nothing_states_it_and_runs_no_census() {
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(
+            td.path(),
+            "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\nentities = []\n",
+        );
+        let host = HostSteps {
+            missing: &|_, _| panic!("a declared leaf needs no host toolchain"),
+            run: &|_| panic!("a declared leaf runs no host census build"),
+        };
+        take_leaf_census_with(td.path(), None, 5, false, &host).expect("nothing to take");
+        assert!(!leaf_census_path(td.path()).exists(), "no census written");
+        let read = crate::leaf_entity_env::declared_entities(td.path(), None)
+            .expect("the declaration answers");
+        assert_eq!(
+            read.map(|d| d.len()),
+            Some(0),
+            "an empty declaration, stated"
+        );
+        crate::cmd::sizing_descriptor::leaf_declaration(td.path(), None)
+            .expect("the composer answers from the declaration");
+    }
+
+    /// Issue 2418 -- a census whose host build succeeds but whose RUN fails
+    /// and writes nothing (the self-test's RTOS-shaped setup failed on the
+    /// host) names the fix for a program that registers nothing --
+    /// `entities = []` on the component -- beside the two sizing fixes, and
+    /// keeps the run's own error.
+    #[test]
+    fn a_failed_census_run_names_the_empty_declaration() {
+        use std::os::unix::process::ExitStatusExt;
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(
+            td.path(),
+            "[[component]]\npkg = \"x\"\nclass = \"x::T\"\nname = \"t\"\n",
+        );
+        let bin = td.path().join("build/census-host/c_talker");
+        let host = HostSteps {
+            missing: &|_, _| Vec::new(),
+            run: &|_| {
+                // The "build": leave a program that fails like the
+                // self-test did, writing no census.
+                std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+                crate::test_support::write_executable_stub(
+                    &bin,
+                    "#!/bin/sh\necho 'verdict SETUP failed'\nexit 1\n",
+                );
+                Ok(std::process::ExitStatus::from_raw(0))
+            },
+        };
+        let err = take_leaf_census_with(td.path(), None, 5, false, &host).expect_err("refused");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("`entities = []` on its `[[component]]`"),
+            "names the empty declaration: {msg}"
+        );
+        assert!(
+            msg.contains("entities = \"defaults\"") && msg.contains("entities = [\"publisher"),
+            "names the sizing fixes too: {msg}"
+        );
+        assert!(
+            msg.contains("wrote nothing"),
+            "keeps the run's own error: {msg}"
+        );
+        assert!(msg.contains("the default for a C/C++ leaf"), "{msg}");
+    }
+
+    /// Issue 2418 -- a component-less leaf has no component to write
+    /// `entities = []` on, so it is told to add one.
+    #[test]
+    fn a_failed_census_run_of_a_component_less_leaf_says_to_add_the_component() {
+        let td = tempfile::tempdir().unwrap();
+        default_census_leaf(td.path(), "");
+        let msg = census_run_failure(td.path(), "");
+        assert!(
+            msg.contains("adding a `[[component]]` with `entities = []`"),
+            "{msg}"
         );
     }
 
