@@ -86,3 +86,60 @@ Open choices, left to whoever takes it:
   or above the measured peak, and within a stated margin of it.
 - A frame grown on purpose (a test mutation) moves the derived floor, and a
   board conf below it is refused.
+
+## Measured: a static floor alone cannot be both sound and tight (2026-11-10)
+
+`scripts/nros-stack-floor.py` walks a thread role's deepest path from the
+compiler's frames. The inputs are `.stack_sizes` (rustc `-Z emit-stack-sizes`),
+GCC `.su` (Zephyr `CONFIG_STACK_USAGE`), call edges taken from relocations,
+and indirect-call sites taken from the disassembly.
+
+**It agrees with issue 2398 on direct calls.** On `nros-cpp` for thumbv7em at
+O3, counting direct calls only: OPEN (`nros_cpp_init`) 15,728 B and SPIN
+(`nros_cpp_spin_once`) 3,592 B. Issue 2398 measured 15,788 B and 3,624 B.
+
+**It cannot follow indirect calls.** On the nucleo-f767zi Rust zenoh action
+server, the walk runs from `rust_main` over all 25 archives plus 310 `.su`
+files. Issue 2360's Renode twin measured that same code at 29,184 B:
+
+| walk | OPEN | vs 29,184 B |
+| --- | ---: | --- |
+| direct calls only | 18,112 B | under |
+| fold1, indirect targets scoped to zenoh/zpico | 26,232 B | under by 2,952 B |
+| fold1, every address-taken target | 45,776 B | 57 % over |
+| fold to a fixed point | does not converge | zenoh's callbacks reach their own dispatch |
+
+Every indirect site is charged the same bytes: the deepest address-taken
+target in scope. With no scope, that target is the graph query
+`ZenohSession::names_and_types_filtered` (19,656 B frame), which this image
+never calls. It is charged at the log sink's call site as well as at
+session open. No static input binds a call site to the slot it loads. That
+is issue 2402.
+
+**Ruling.** A floor is `max(scoped static walk, measured twin peak)` plus a
+stated margin. A role with no twin (PX4's executor-pass thread) gets the
+static walk plus a stated per-backend indirect allowance, and that allowance
+names the issue that would retire it (2402). The static half catches a frame
+that grows on a direct path at build time. The twin covers the indirect
+half.
+
+**What real images needed** (all now in the walker):
+
+- `-Zbuild-std`. The prebuilt rustup `core`/`alloc`/`compiler_builtins`
+  carry no `.stack_sizes`, which left about 40 reached functions with no frame.
+- Stated cuts for the panic path and for `core::fmt`, which really is
+  recursive through `dyn Write`.
+- GCC naming. A symbol `foo.isra.0` has its `.su` entry under `foo.isra`, and
+  identical-code folding gives one body several names with a single `.su`
+  line.
+- `--frame` for the C that cargo's `cc` compiles under Zephyr. Zephyr's cmake
+  sets `CFLAGS_<triple>`, so `-fstack-usage` cannot be added there.
+- Fold now refuses a target whose own walk is refused. It used to skip that
+  target, and that is how `zpico_open` dropped out silently.
+
+The per-target table is `config/stack-floors.toml`. Its first entry is the
+image above, OPEN: static 26,232 B, measured 29,184 B, margin 10 %, floor
+32,104 B, which fits inside the board's 32 KiB. `--validate-table` checks it
+offline, and `--table --entry` reproduces 26,232 B on the built image. How
+the measure lane runs, and how the floor reaches the sizes header, is still
+open.
