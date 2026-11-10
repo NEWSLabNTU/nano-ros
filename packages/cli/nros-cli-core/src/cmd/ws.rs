@@ -2527,6 +2527,34 @@ fn synthesise_leaf_launch(leaf: &Path) -> Result<Option<PathBuf>> {
     Ok(Some(dir))
 }
 
+/// The generated launch directory of `bringup` and the default model
+/// resolved from it, removed when the bringup no longer generates a launch
+/// file. Only `nros sync`'s own output under `<ws>/build/` is touched: an
+/// authored `launch/` makes [`synthesise_bringup_launch`] return before this.
+fn retire_generated_launch(bringup: &Path) -> Result<()> {
+    use nros_orchestration_ir::model_location;
+    let Some(generated) = model_location::generated_launch_root(bringup) else {
+        return Ok(());
+    };
+    if generated.is_dir() {
+        std::fs::remove_dir_all(&generated)
+            .wrap_err_with(|| format!("remove {}", generated.display()))?;
+    }
+    let Some(build_root) = generated
+        .ancestors()
+        .find(|a| a.ends_with("build"))
+        .map(Path::to_path_buf)
+    else {
+        return Ok(());
+    };
+    for model in model_location::model_search_paths(bringup, "config/system_model.yaml") {
+        if model.starts_with(&build_root) && model.is_file() {
+            std::fs::remove_file(&model).wrap_err_with(|| format!("remove {}", model.display()))?;
+        }
+    }
+    Ok(())
+}
+
 /// phase-531 W3 (RFC-0121 D3) — the launch file of a bringup with no
 /// `launch/` directory, generated from its `[[component]]` rows into
 /// `<ws>/build/nros/launch/<bringup>/system.launch.xml`
@@ -2563,6 +2591,13 @@ fn synthesise_bringup_launch(bringup: &Path) -> Result<Option<PathBuf>> {
                         .all(|b| b.get("entry").and_then(|e| e.as_str()).is_some())
             })
     });
+    if rows.is_empty() {
+        // Nothing generates a launch file for this bringup any more, so one a
+        // previous sync generated (and the model resolved from it) is a
+        // museum: a planner that finds it sizes the image for components the
+        // bringup no longer has. Both are this sync's own output.
+        retire_generated_launch(bringup)?;
+    }
     if rows.is_empty() && all_owned {
         return Ok(None);
     }
