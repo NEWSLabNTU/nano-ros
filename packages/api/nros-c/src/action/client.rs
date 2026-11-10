@@ -1224,7 +1224,17 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let send_goal_client =
             match session.create_client(&send_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_client_init",
+                        format_args!(
+                            "service client {} ({})",
+                            send_goal_info.name, send_goal_info.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
@@ -1239,7 +1249,17 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let cancel_goal_client =
             match session.create_client(&cancel_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_client_init",
+                        format_args!(
+                            "service client {} ({})",
+                            cancel_goal_info.name, cancel_goal_info.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
@@ -1253,7 +1273,17 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let get_result_client =
             match session.create_client(&get_result_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_client_init",
+                        format_args!(
+                            "service client {} ({})",
+                            get_result_info.name, get_result_info.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
@@ -1266,7 +1296,17 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
         let feedback_subscriber =
             match session.create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_client_init",
+                        format_args!(
+                            "subscription {} ({})",
+                            feedback_topic.name, feedback_topic.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         type Core = nros_node::ActionClientCore<

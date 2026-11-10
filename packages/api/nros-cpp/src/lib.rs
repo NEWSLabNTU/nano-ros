@@ -1888,6 +1888,22 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
     }
 }
 
+/// Issue 2304 — an entity a C++ call was asked to create could not be: name it,
+/// then map and record the error through [`node_error_to_cpp_ret`] (which logs
+/// the variant). Its C sibling is `nros-c`'s `support::report_node_refusal`.
+/// Cold: only a failure reaches it.
+#[cfg(feature = "rmw-cffi")]
+#[cold]
+#[inline(never)]
+pub(crate) fn report_entity_refusal(
+    call: &str,
+    what: core::fmt::Arguments<'_>,
+    err: nros_node::NodeError,
+) -> nros_cpp_ret_t {
+    crate::cpp_diag!("{}: {} could not be created", call, what);
+    node_error_to_cpp_ret(err)
+}
+
 /// Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
 /// into the CALLER'S storage, producing a real [`CppContext`].
 ///
@@ -3323,7 +3339,14 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     }
     let node_id = match builder.build() {
         Ok(id) => id,
-        Err(_) => return NROS_CPP_RET_ERROR,
+        // Issue 2304 -- say which node and why, not a bare ERROR.
+        Err(e) => {
+            return report_entity_refusal(
+                "nros_cpp_node_create",
+                format_args!("node {}", name_str),
+                e,
+            );
+        }
     };
 
     let out = unsafe { &mut *out_node };
@@ -3534,7 +3557,14 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     }
     let node_id = match builder.build() {
         Ok(id) => id,
-        Err(_) => return NROS_CPP_RET_ERROR,
+        // Issue 2304 -- say which node and why, not a bare ERROR.
+        Err(e) => {
+            return report_entity_refusal(
+                "nros_cpp_node_create_ex",
+                format_args!("node {}", name_str),
+                e,
+            );
+        }
     };
 
     let out = unsafe { &mut *out_node };

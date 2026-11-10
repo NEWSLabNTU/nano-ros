@@ -45,7 +45,12 @@ pub unsafe extern "C" fn nros_cpp_register_lifecycle_services(
     };
     match ctx.executor.register_lifecycle_services() {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_ERROR,
+        // Issue 2304 -- say why, not a bare ERROR.
+        Err(e) => crate::report_entity_refusal(
+            "nros_cpp_register_lifecycle_services",
+            format_args!("the lifecycle services"),
+            e,
+        ),
     }
 }
 
@@ -77,7 +82,12 @@ pub unsafe extern "C" fn nros_cpp_register_lifecycle_services_for_node(
     };
     match ctx.executor.register_lifecycle_services_on(id) {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_ERROR,
+        // Issue 2304 -- say why, not a bare ERROR.
+        Err(e) => crate::report_entity_refusal(
+            "nros_cpp_register_lifecycle_services_on",
+            format_args!("the lifecycle services"),
+            e,
+        ),
     }
 }
 

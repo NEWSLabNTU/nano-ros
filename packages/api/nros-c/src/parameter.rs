@@ -555,8 +555,19 @@ mod imp {
         // server registers (`register_parameter_services`) bring the events up
         // for every node that did not opt out, which is rclcpp's default.
         if opts.notify_changed_over_dds {
-            if exec.enable_parameter_events_on(id).is_err() {
-                return RCL_RET_ERROR;
+            // Issue 2304 -- a refusal here was a bare RCL_RET_ERROR, which on
+            // Cyclone ended `examples/linux/c/parameters` with exit 1 and no
+            // word of the `Transport(PublisherCreationFailed)` behind it.
+            if let Err(e) = exec.enable_parameter_events_on(id) {
+                return crate::support::report_node_refusal(
+                    "rclc_parameter_server_init_with_option",
+                    format_args!(
+                        "/parameter_events for node {}/{}",
+                        node.get_namespace_str().trim_end_matches('/'),
+                        node.get_name_str()
+                    ),
+                    e,
+                );
             }
         } else {
             exec.disable_parameter_events_on(id);
@@ -645,8 +656,11 @@ mod imp {
         if executor.is_null() || executor != s.executor {
             return RCL_RET_INVALID_ARGUMENT;
         }
-        if exec.register_parameter_services().is_err() {
-            return RCL_RET_ERROR;
+        // Issue 2304 -- the executor logs the node and the service that
+        // failed (issue 1268's line); this maps the error to the closest code
+        // instead of a bare RCL_RET_ERROR.
+        if let Err(e) = exec.register_parameter_services() {
+            return crate::support::node_error_to_ret(e);
         }
         s.on_modification = on_modification;
         s.context = context;

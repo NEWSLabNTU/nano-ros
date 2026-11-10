@@ -427,9 +427,14 @@ mod service_backed {
             return RCL_RET_INVALID_ARGUMENT;
         }
         let mut exec = unsafe { get_executor(&mut (*executor)) };
+        // Issue 2304 -- say why, not a bare ERROR.
         match exec.register_lifecycle_services() {
             Ok(()) => RCL_RET_OK,
-            Err(_) => RCL_RET_ERROR,
+            Err(e) => crate::support::report_node_refusal(
+                "rclc_executor_register_lifecycle_services",
+                format_args!("the lifecycle services"),
+                e,
+            ),
         }
     }
 

@@ -235,7 +235,12 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
             executor.handle_count += 1;
             RCL_RET_OK
         }
-        Err(_) => RCL_RET_ERROR,
+        // Issue 2304 -- say why, not a bare ERROR (a full table names its knob).
+        Err(e) => crate::support::report_node_refusal(
+            "rclc_node_create_guard_condition",
+            format_args!("guard condition"),
+            e,
+        ),
     }
 }
 
@@ -354,7 +359,12 @@ pub unsafe extern "C" fn rclc_node_get_graph_guard_condition(
         Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
             RCL_RET_UNSUPPORTED
         }
-        Err(_) => RCL_RET_ERROR,
+        // Issue 2304 -- say why, not a bare ERROR.
+        Err(e) => crate::support::report_node_refusal(
+            "rclc_node_get_graph_guard_condition",
+            format_args!("graph guard condition"),
+            e,
+        ),
     }
 }
 

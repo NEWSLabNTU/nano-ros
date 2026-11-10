@@ -640,7 +640,14 @@ pub unsafe extern "C" fn rclc_polling_service_init(
                     RawServer::new(handle),
                 );
             }
-            Err(_) => return RCL_RET_ERROR,
+            // Issue 2304 -- say which service server and why, not a bare ERROR.
+            Err(e) => {
+                return crate::support::report_transport_refusal(
+                    "rclc_polling_service_init",
+                    format_args!("service server {} ({})", info.name, info.type_name),
+                    e,
+                );
+            }
         }
     }
 
@@ -1633,7 +1640,14 @@ pub unsafe extern "C" fn rclc_polling_client_init(
                     RawClient::new(handle),
                 );
             }
-            Err(_) => return RCL_RET_ERROR,
+            // Issue 2304 -- say which service client and why, not a bare ERROR.
+            Err(e) => {
+                return crate::support::report_transport_refusal(
+                    "rclc_polling_client_init",
+                    format_args!("service client {} ({})", info.name, info.type_name),
+                    e,
+                );
+            }
         }
     }
 

@@ -1754,7 +1754,17 @@ pub unsafe extern "C" fn rclc_polling_action_server_init(
         let send_goal_server =
             match session.create_service(&send_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_server_init",
+                        format_args!(
+                            "service server {} ({})",
+                            send_goal_info.name, send_goal_info.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
@@ -1769,7 +1779,17 @@ pub unsafe extern "C" fn rclc_polling_action_server_init(
         let cancel_goal_server =
             match session.create_service(&cancel_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_server_init",
+                        format_args!(
+                            "service server {} ({})",
+                            cancel_goal_info.name, cancel_goal_info.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
@@ -1783,7 +1803,17 @@ pub unsafe extern "C" fn rclc_polling_action_server_init(
         let get_result_server =
             match session.create_service(&get_result_info, QoSProfile::services_default()) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_server_init",
+                        format_args!(
+                            "service server {} ({})",
+                            get_result_info.name, get_result_info.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
@@ -1796,7 +1826,17 @@ pub unsafe extern "C" fn rclc_polling_action_server_init(
         let feedback_publisher =
             match session.create_publisher(&feedback_topic, QoSProfile::BEST_EFFORT) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_server_init",
+                        format_args!(
+                            "publisher {} ({})",
+                            feedback_topic.name, feedback_topic.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         let status_keyexpr: nros_core::heapless::String<256> = action_info.status_key();
@@ -1811,7 +1851,17 @@ pub unsafe extern "C" fn rclc_polling_action_server_init(
         let status_publisher =
             match session.create_publisher(&status_topic, QoSProfile::BEST_EFFORT) {
                 Ok(h) => h,
-                Err(_) => return RCL_RET_ERROR,
+                // Issue 2304 -- say which entity and why, not a bare ERROR.
+                Err(e) => {
+                    return crate::support::report_transport_refusal(
+                        "rclc_polling_action_server_init",
+                        format_args!(
+                            "publisher {} ({})",
+                            status_topic.name, status_topic.type_name
+                        ),
+                        e,
+                    );
+                }
             };
 
         type Core = nros_node::ActionServerCore<

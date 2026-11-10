@@ -420,7 +420,8 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
             _qos_settings,
         ) {
             Ok(q) => q,
-            Err(_) => return RCL_RET_ERROR,
+            // `honour_publisher` has logged the declaration it refused.
+            Err(e) => return crate::support::node_error_to_ret(e),
         };
 
         // Create publisher — write handle directly into inline opaque storage
@@ -431,7 +432,14 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
                     pub_handle,
                 );
             }
-            Err(_) => return RCL_RET_ERROR,
+            // Issue 2304 -- say which publisher and why, not a bare ERROR.
+            Err(e) => {
+                return crate::support::report_transport_refusal(
+                    "rclc_publisher_init_with_qos",
+                    format_args!("publisher {} ({})", topic_info.name, topic_info.type_name),
+                    e,
+                );
+            }
         }
 
         publisher.state = rclc_publisher_state_t::RCLC_PUBLISHER_STATE_INITIALIZED;

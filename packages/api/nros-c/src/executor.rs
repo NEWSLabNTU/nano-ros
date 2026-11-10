@@ -1660,7 +1660,15 @@ pub unsafe extern "C" fn rclc_executor_node_init(
     }
     let node_id = match builder.build() {
         Ok(id) => id,
-        Err(_) => return RCL_RET_ERROR,
+        // Issue 2304 -- say which node and why (a full node table names its
+        // knob in the error's Display), not a bare ERROR.
+        Err(e) => {
+            return crate::support::report_node_refusal(
+                "rclc_executor_node_init",
+                format_args!("node {}", name_str),
+                e,
+            );
+        }
     };
 
     // Persist NodeId so handle-creation paths can hit the `_on()`
@@ -2251,7 +2259,14 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_validated(
                     .add_arena_subscription_c_validated_callback::<MESSAGE_BUFFER_SIZE>(
                         node_id, topic, type_name, type_hash, qos, callback, context, rx_bytes,
                     )
-                    .map_err(|_| RCL_RET_ERROR)
+                    .map_err(|e| {
+                        // Issue 2304 -- say which subscription and why.
+                        crate::support::report_node_refusal(
+                            "rclc_executor_add_subscription_raw_validated",
+                            format_args!("subscription {} ({})", topic, type_name),
+                            e,
+                        )
+                    })
             },
         )
     }
@@ -2364,7 +2379,14 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
                     None,
                     rx_bytes,
                 )
-                .map_err(|_| RCL_RET_ERROR)
+                .map_err(|e| {
+                    // Issue 2304 -- say which subscription and why.
+                    crate::support::report_node_refusal(
+                        "rclc_executor_add_subscription_with_context",
+                        format_args!("subscription {} ({})", topic, type_name),
+                        e,
+                    )
+                })
         },
     )
 }
@@ -2491,7 +2513,14 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
                     // Issue 1376 — the type's bound, as the typed path forwards.
                     rx_bytes,
                 )
-                .map_err(|_| RCL_RET_ERROR)
+                .map_err(|e| {
+                    // Issue 2304 -- say which subscription and why.
+                    crate::support::report_node_refusal(
+                        "rclc_executor_add_subscription_raw",
+                        format_args!("subscription {} ({})", topic, type_name),
+                        e,
+                    )
+                })
         },
     )
 }
@@ -2591,7 +2620,12 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
                 executor.subscription_count += 1;
                 RCL_RET_OK
             }
-            Err(_) => RCL_RET_ERROR,
+            // Issue 2304 -- say which subscription and why, not a bare ERROR.
+            Err(e) => crate::support::report_node_refusal(
+                "rclc_executor_add_subscription_raw_with_info",
+                format_args!("subscription {} ({})", topic_str, type_str),
+                e,
+            ),
         }
     }
 }
@@ -2654,7 +2688,14 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_info(
                     // form, this one HAS a subscription and so a descriptor.
                     rx_bytes,
                 )
-                .map_err(|_| RCL_RET_ERROR)
+                .map_err(|e| {
+                    // Issue 2304 -- say which subscription and why.
+                    crate::support::report_node_refusal(
+                        "rclc_executor_add_subscription_with_info",
+                        format_args!("subscription {} ({})", topic, type_name),
+                        e,
+                    )
+                })
         },
     )
 }
@@ -2944,7 +2985,12 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
                 executor.subscription_count += 1;
                 RCL_RET_OK
             }
-            Err(_) => RCL_RET_ERROR,
+            // Issue 2304 -- say which subscription and why, not a bare ERROR.
+            Err(e) => crate::support::report_node_refusal(
+                "rclc_executor_add_subscription_in_group",
+                format_args!("subscription {} ({})", topic_str, type_str),
+                e,
+            ),
         }
     }
 }
@@ -3679,7 +3725,12 @@ unsafe fn add_service_raw(
                 executor.service_count += 1;
                 RCL_RET_OK
             }
-            Err(_) => RCL_RET_ERROR,
+            // Issue 2304 -- say which service server and why, not a bare ERROR.
+            Err(e) => crate::support::report_node_refusal(
+                "rclc_executor_add_service",
+                format_args!("service server {} ({})", service_name, type_str),
+                e,
+            ),
         }
     }
 }
@@ -3816,7 +3867,12 @@ unsafe fn attach_client_with(
                 executor.handle_count += 1;
                 RCL_RET_OK
             }
-            Err(_) => RCL_RET_ERROR,
+            // Issue 2304 -- say which service client and why, not a bare ERROR.
+            Err(e) => crate::support::report_node_refusal(
+                "rclc_executor_add_client",
+                format_args!("service client {} ({})", service_name, type_str),
+                e,
+            ),
         }
     }
 }
@@ -4108,7 +4164,12 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
                 executor.handle_count += 1;
                 RCL_RET_OK
             }
-            Err(_) => RCL_RET_ERROR,
+            // Issue 2304 -- say which action client and why, not a bare ERROR.
+            Err(e) => crate::support::report_node_refusal(
+                "rclc_executor_attach_action_client",
+                format_args!("action client {} ({})", action_name, type_str),
+                e,
+            ),
         }
     }
 }

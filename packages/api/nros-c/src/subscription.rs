@@ -646,10 +646,11 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
         // `NROS_ASSERT_DECLARED_DEPTH` catches a C call site whose depth is a
         // constant expression at COMPILE time; a `rclc_qos_t` built at run time
         // has no constant to assert on, and this is where it lands instead.
-        if nros_node::declared_qos::check(topic_info.type_name, topic_info.name, &qos_settings)
-            .is_err()
+        // `check` has logged the declaration it refused; map, not bare ERROR.
+        if let Err(e) =
+            nros_node::declared_qos::check(topic_info.type_name, topic_info.name, &qos_settings)
         {
-            return RCL_RET_ERROR;
+            return crate::support::node_error_to_ret(e);
         }
         // phase-519 W3b (RFC-0074) — the declared arrival rate, as the
         // executor's registration hands it on.
@@ -665,7 +666,17 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
                     raw,
                 );
             }
-            Err(_) => return RCL_RET_ERROR,
+            // Issue 2304 -- say which subscription and why, not a bare ERROR.
+            Err(e) => {
+                return crate::support::report_transport_refusal(
+                    "rclc_polling_subscription_init_with_qos",
+                    format_args!(
+                        "subscription {} ({})",
+                        topic_info.name, topic_info.type_name
+                    ),
+                    e,
+                );
+            }
         }
     }
 
