@@ -164,8 +164,10 @@ claim-protocol:
 # is also on `build-serial`, which `gate.yml` runs nightly over the store that
 # job provisions (Corrosion, clang-format). It was held off every lane while
 # both Zephyr SDK dists read red; 1744 ruled that an UPSTREAM dist is held to
-# the programs nano-ros RUNS from it (its `smoke` probes), so it is green, and
-# ~1.5 s warm over a full store.
+# the programs nano-ros RUNS from it (its `smoke` probes), so it is green.
+# Cost (issue 2411): ~2 s warm on NVMe over a full store. It used to open every
+# file of every pinned dist (~75 k), which took 11-13 min on a cold spinning
+# disk; it now opens only programs and shared objects (~2.6 k).
 [private]
 [metadata("tier", "build")]
 dist-runtime-deps:

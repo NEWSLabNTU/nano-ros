@@ -62,3 +62,40 @@ self-hosted nightly, issue 1744.)
 
 Do NOT raise the timeout or add retries (start races and slow paths are fixed,
 not retried).
+
+## Measured (2026-11-10, newslab-118, NVMe store of 14 GB)
+
+Profiled per pinned dist (`closure()` instrumented: files walked, ELF opens,
+`ldd` calls, time). Solo it took 7.0 s cold and 2.0 s warm here, against 11-13
+min on 175's spinning btrfs. The time is not in `ldd` (139 calls, under 1 s in
+all) and not in sibling pins: `audit` already reads only the index's pin of
+each tool (issue 1546). It is the walk. `closure()` stat'ed every file twice
+and opened every one to read 64 bytes:
+
+| pinned dist | files walked | dynamic ELF |
+| --- | --- | --- |
+| zephyr-sdk 0.16.8 | 58,863 | 1,339 |
+| arm-none-eabi-gcc 13.2-nros5 | 7,501 | 52 |
+| riscv-none-elf-gcc 14.2-nros1 | 5,939 | 150 |
+| renode 1.17.0 | 1,899 | 34 |
+| 10 others | 313 | 31 |
+
+That is about 75,000 opens for about 1,600 objects. On a cold spinning disk
+each open of a small file is a random read; at roughly 10 ms each, 75,000 of
+them is about 12.5 min, which matches the solo time measured on 175.
+
+## Fix
+
+`closure()` now `lstat`s each file once and opens it only when the host could
+load it: it has an exec bit, or `.so` in its name. Over every pin of a full
+store (all 20 tools, not only the index pins), that skips exactly 41 ELF files
+the old scan read: guest firmware images (`openbios-ppc`, `hppa-firmware.img`,
+ESP ROM `.elf`s). None has a `DT_NEEDED` or a `PT_INTERP`, so none could reach a
+verdict. The gate's output on this store is unchanged, including the "92
+plug-in object(s) no program reaches" count. Files opened: about 75,000 down to
+2,560; stats: two per file down to one. Warm time here: 2.0 s down to 1.3 s for
+`audit`.
+
+Not measured: the cold time on a spinning disk after the fix, because dropping
+the page cache needs root. The next `ci gate` on 175 is the measurement.
+
