@@ -4361,6 +4361,20 @@ fn refresh_source_metadata(
     no_metadata: bool,
     verbose: bool,
 ) -> Result<()> {
+    // A service family a node package compiles and its bringup does not
+    // declare has no slot in the image; said here, whatever else is skipped.
+    if let Ok(ws) = crate::orchestration::workspace::Workspace::discover(ws_root)
+        && let Ok(missing) = ws.undeclared_service_families()
+    {
+        for (system_toml, pkg, family) in missing {
+            println!(
+                "sync: warning — `{pkg}` turns on the `{family}` servers, but {} does not \
+                 declare `{family}`, so the image sizes no slot for them and fails to \
+                 register the node at boot; add it to `[system] features`",
+                system_toml.display()
+            );
+        }
+    }
     if no_metadata {
         return Ok(());
     }
