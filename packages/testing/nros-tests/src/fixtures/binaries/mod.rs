@@ -1248,7 +1248,20 @@ pub fn migrated_leaf_binary(
     variant: crate::fixtures::migrated_leaf::LeafVariant<'_>,
 ) -> Option<TestResult<PathBuf>> {
     let row = crate::fixtures::migrated_leaf::select(leaf, rmw.coord_token(), variant)?;
-    Some(row.and_then(|row| resolve_workspace_row_entry(&row)))
+    Some(row.and_then(|row| resolve_workspace_row_entry(&row, None)))
+}
+
+/// [`migrated_leaf_binary`] naming the executable, for a CMake leaf whose
+/// image builds an OWNED entry (RFC-0071 D19): its executable is whatever the
+/// package's own `CMakeLists.txt` names, under the package's binary dir.
+pub fn migrated_leaf_binary_named(
+    leaf: &str,
+    rmw: Rmw,
+    variant: crate::fixtures::migrated_leaf::LeafVariant<'_>,
+    binary_name: &str,
+) -> Option<TestResult<PathBuf>> {
+    let row = crate::fixtures::migrated_leaf::select(leaf, rmw.coord_token(), variant)?;
+    Some(row.and_then(|row| resolve_workspace_row_entry(&row, Some(binary_name))))
 }
 
 /// The binary a `[[workspace_fixture]]` row builds, from the row alone: its
@@ -1256,15 +1269,25 @@ pub fn migrated_leaf_binary(
 /// generated (top of the cmake build dir) or owned (`src/<entry>/`).
 fn resolve_workspace_row_entry(
     row: &crate::fixtures::migrated_leaf::LeafRow,
+    binary_name: Option<&str>,
 ) -> TestResult<PathBuf> {
     let dir = crate::fixtures::groups::workspace_artifact_dir(&row.id)?;
     let entry = &row.entry;
+    // RFC-0071 D19 — an image that names an OWNED entry builds that package,
+    // not a generated `<image>_entry`. On the CMake road it is a subdirectory
+    // of the generated root (`NanoRosWorkspace.cmake`: `pkg/<name>`), and its
+    // executable is the one its own `CMakeLists.txt` names.
+    let generated = *entry == format!("{}_entry", row.image.replace(['-', '.', '/'], "_"));
     let binary = match row.lang.as_str() {
         "rust" => match crate::fixtures::baked_locator::row_str(&row.id, "target") {
             Some(triple) => dir.join(format!("{triple}/{}/{entry}", cargo_target_profile_dir())),
             None => dir.join(format!("{}/{entry}", cargo_target_profile_dir())),
         },
         _ if row.image.is_empty() => dir.join(format!("src/{entry}/{entry}")),
+        _ if !generated => dir
+            .join("pkg")
+            .join(entry)
+            .join(binary_name.unwrap_or(entry)),
         _ => dir.join(entry),
     };
     require_prebuilt_workspace_binary(
@@ -1490,10 +1513,11 @@ pub fn build_example_cmake_rmw(name: &str, binary_name: &str, rmw: Rmw) -> TestR
 /// [`build_example_cmake_rmw`] is a thin wrapper over this, deliberately: one
 /// locator, not a second spelling that drifts from it.
 pub fn build_cmake_leaf_rmw(rel_dir: &str, binary_name: &str, rmw: Rmw) -> TestResult<PathBuf> {
-    if let Some(r) = migrated_leaf_binary(
+    if let Some(r) = migrated_leaf_binary_named(
         rel_dir,
         rmw,
         crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        binary_name,
     ) {
         return r;
     }
@@ -5217,22 +5241,12 @@ pub fn build_action_server_concurrent(rmw: Rmw) -> TestResult<&'static Path> {
         }
     };
     cell.get_or_try_init(|| {
-        // Issue 1305 — the RMW is the IMAGE; the zenoh row also enables the
-        // leaf's `zenoh-reply-slots` probe (issue 0902), so it is selected by
-        // that feature and the XRCE one by its image.
-        let row = match rmw {
-            Rmw::Zenoh => crate::fixtures::groups::select_row(
-                "packages/testing/nros-tests/bins/action-server-concurrent",
-                &crate::fixtures::groups::FixtureVariant::features(&["zenoh-reply-slots"]),
-            )?,
-            _ => crate::fixtures::groups::select_rmw_row(
-                "packages/testing/nros-tests/bins/action-server-concurrent",
-                rmw,
-            )?,
-        };
-        let profile = cargo_target_profile_dir();
-        let rel = PathBuf::from(format!("{profile}/action-server-concurrent"));
-        require_prebuilt_row_binary_fresh(row, &rel)
+        // RFC-0071 D19 (issue 2406) — a workspace now: one owned entry,
+        // built per RMW image; the zenoh image also turns on the entry's
+        // `zenoh-reply-slots` probe (issue 0902).
+        const DIR: &str = "packages/testing/nros-tests/bins/action-server-concurrent";
+        migrated_leaf_binary(DIR, rmw, crate::fixtures::migrated_leaf::LeafVariant::Plain)
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
     })
     .map(|p| p.as_path())
 }

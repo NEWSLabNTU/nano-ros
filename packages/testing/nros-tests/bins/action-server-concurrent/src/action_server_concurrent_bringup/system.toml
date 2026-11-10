@@ -1,0 +1,25 @@
+# What this test program deploys to (RFC-0098 D3/D5). The program is the owned
+# entry `src/action-server-concurrent`: it keeps its own `main` (no
+# `nros::main!`), opens its own executor and drains `get_result` every spin.
+# Both images build that one `main` (RFC-0071 D19).
+
+[system]
+name = "action_server_concurrent"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` builds.
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native.
+[image_defaults]
+board = "linux"
+
+# zenoh, with the entry's `zenoh-reply-slots` probe (issue 0902): the program
+# prints `nros_rmw_zenoh::reply_slot_refusals_total`.
+[image.linux]
+entry = "action-server-concurrent"
+node_features = ["zenoh-reply-slots"]
+
+[image.linux_xrce]
+entry = "action-server-concurrent"
+rmw = "xrce"
