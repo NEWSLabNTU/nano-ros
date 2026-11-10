@@ -453,6 +453,15 @@ DEFAULT_REACHED_BY_SELECTION = {
         "names `image-runtime` from the board descriptor; the tracked dep-sites "
         "are the CMake-road FFI crates (`nros-nuttx-ffi`, `nros-nuttx-riscv-ffi`)"
     ),
+    # RFC-0071 D19 — the tracked dep-sites are OWNED entries (`[image.<id>]
+    # entry`), which take the image's `rmw-<x>` through their generated
+    # adapter; a default backend there would link it into every image of the
+    # entry, including one built for another backend.
+    "nros-board-linux": (
+        "the tracked dep-sites are owned entries, which take the image's "
+        "`rmw-<x>` through their generated adapter (RFC-0071 D19); a generated "
+        "entry names it itself"
+    ),
 }
 
 
