@@ -221,7 +221,7 @@ fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
         return None;
     }
     let ros = node.ros_name();
-    let (rows, _) = contract_node_rows(node)?;
+    let (rows, _) = contract_node_rows(node);
     Some(format!(
         "# What this image's node DECLARES, beside system.toml. The build sizes its\n\
          # buffers and its callback table from this, so it must list everything the\n\
@@ -239,47 +239,119 @@ fn bringup_contract(node: &NodePackage<'_>) -> Option<String> {
     ))
 }
 
-/// A node's whole entity declaration under a contract's `nodes:`, and which
-/// side of `/chatter` it is on -- or `None` for a role whose surface the
-/// scaffold does not know in full (a partial row under-sizes the image).
-fn contract_node_rows(node: &NodePackage<'_>) -> Option<(String, &'static str)> {
-    let ros = node.ros_name();
-    match node.template {
-        Role::Talker => Some((
-            format!(
-                "\x20 {ros}:\n\
-                 \x20   params: {{}}\n\
-                 \x20   paths:\n\
-                 \x20     on_tick:\n\
-                 \x20       trigger: {{ timer: {{ rate_hz: 1 }} }}\n\
-                 \x20       output: [chatter]\n\
-                 \x20   pub:\n\
-                 \x20     chatter:\n\
-                 \x20       qos:\n\
-                 \x20         durability: volatile\n"
-            ),
-            "pub",
-        )),
-        Role::Listener => Some((
-            format!(
-                "\x20 {ros}:\n\
-                 \x20   params: {{}}\n\
-                 \x20   sub:\n\
-                 \x20     chatter:\n\
-                 \x20       qos:\n\
-                 \x20         durability: volatile\n"
-            ),
-            "sub",
-        )),
-        _ => None,
-    }
+/// One endpoint a scaffolded node joins: under the contract's top-level
+/// `section` (`topics`, `services` or `actions`), entry `name` of `type_`, on
+/// list `side`, as `<node>/<local>`.
+struct ContractWiring {
+    section: &'static str,
+    name: &'static str,
+    type_: &'static str,
+    side: &'static str,
+    local: &'static str,
 }
 
-/// Issue 2376 -- `--to` a bringup that has a contract: a contract that names
-/// some of an image's nodes and not others is refused on the CMake road (a
-/// parameter store is sized from every node's `params:` or from none). So the
-/// new node's rows join the contract when its whole surface is known, and a
-/// role the scaffold cannot describe is reported, never half-written.
+/// A node's whole entity declaration under a contract's `nodes:`, and the
+/// endpoint it wires. Every role's template is known in full, per language:
+/// the timers differ (a C or C++ client, action client and action server
+/// tick every 500 ms; the Rust client every second, and the Rust action
+/// nodes need no timer), and a contract row that omits a timer under-sizes
+/// the callback table.
+fn contract_node_rows(node: &NodePackage<'_>) -> (String, ContractWiring) {
+    let ros = node.ros_name();
+    let rust = node.lang == nros_lang::Language::Rust;
+    let tick = |name: &str, hz: u32, output: &str| {
+        format!(
+            "\x20   paths:\n\
+             \x20     {name}:\n\
+             \x20       trigger: {{ timer: {{ rate_hz: {hz} }} }}\n\
+             \x20       output: [{output}]\n"
+        )
+    };
+    let (body, wiring) = match node.template {
+        Role::Talker => (
+            format!(
+                "{}\x20   pub:\n\
+                 \x20     chatter:\n\
+                 \x20       qos:\n\
+                 \x20         durability: volatile\n",
+                tick("on_tick", 1, "chatter")
+            ),
+            ContractWiring {
+                section: "topics",
+                name: "/chatter",
+                type_: "std_msgs/msg/String",
+                side: "pub",
+                local: "chatter",
+            },
+        ),
+        Role::Listener => (
+            "\x20   sub:\n\
+             \x20     chatter:\n\
+             \x20       qos:\n\
+             \x20         durability: volatile\n"
+                .to_string(),
+            ContractWiring {
+                section: "topics",
+                name: "/chatter",
+                type_: "std_msgs/msg/String",
+                side: "sub",
+                local: "chatter",
+            },
+        ),
+        Role::Server => (
+            "\x20   srv:\n\x20     add_two_ints: {}\n".to_string(),
+            ContractWiring {
+                section: "services",
+                name: "/add_two_ints",
+                type_: "example_interfaces/srv/AddTwoInts",
+                side: "server",
+                local: "add_two_ints",
+            },
+        ),
+        Role::Client => (
+            format!(
+                "{}\x20   cli:\n\x20     add_two_ints: {{}}\n",
+                if rust {
+                    tick("issue_call", 1, "")
+                } else {
+                    tick("on_tick", 2, "")
+                }
+            ),
+            ContractWiring {
+                section: "services",
+                name: "/add_two_ints",
+                type_: "example_interfaces/srv/AddTwoInts",
+                side: "client",
+                local: "add_two_ints",
+            },
+        ),
+        Role::ActionServer | Role::ActionClient => (
+            if rust {
+                String::new()
+            } else {
+                tick("on_tick", 2, "")
+            },
+            ContractWiring {
+                section: "actions",
+                name: "/fibonacci",
+                type_: "example_interfaces/action/Fibonacci",
+                side: if node.template == Role::ActionServer {
+                    "server"
+                } else {
+                    "client"
+                },
+                local: "fibonacci",
+            },
+        ),
+    };
+    (format!("\x20 {ros}:\n\x20   params: {{}}\n{body}"), wiring)
+}
+
+/// Issue 2376 -- `--to` a bringup that has a contract. A contract that
+/// declares `params:` on some of an image's nodes and not others is refused
+/// on the CMake road (the parameter store is sized from every node or from
+/// none), so the new node's whole declaration joins it. A file whose shape
+/// the edit cannot follow is reported, never half-written.
 fn add_to_contract(bringup: &Path, node: &NodePackage<'_>) -> Result<()> {
     let path = bringup.join(crate::cmd::ws::LEAF_CONTRACT);
     if !path.is_file() {
@@ -293,11 +365,11 @@ fn add_to_contract(bringup: &Path, node: &NodePackage<'_>) -> Result<()> {
     if !doc["nodes"][ros.as_str()].is_null() {
         return Ok(());
     }
-    let edited = contract_node_rows(node).and_then(|(rows, side)| {
-        let edited = insert_contract_rows(&text, &rows, side, &ros)?;
+    let (rows, wiring) = contract_node_rows(node);
+    let edited = insert_contract_rows(&text, &rows, &wiring, &ros).filter(|edited| {
         // Only a result that still parses, and now names the node, is written.
-        let check: serde_yaml_ng::Value = serde_yaml_ng::from_str(&edited).ok()?;
-        (!check["nodes"][ros.as_str()].is_null()).then_some(edited)
+        serde_yaml_ng::from_str::<serde_yaml_ng::Value>(edited)
+            .is_ok_and(|check| !check["nodes"][ros.as_str()].is_null())
     });
     match edited {
         Some(edited) => {
@@ -306,8 +378,8 @@ fn add_to_contract(bringup: &Path, node: &NodePackage<'_>) -> Result<()> {
         None => {
             eprintln!(
                 "nros new: {} does not name `{ros}`. State what it creates there \
-                 (its `params:`, timers, publishers and subscriptions), or the build \
-                 sizes the image without it.",
+                 (its `params:`, timers and endpoints), or the build sizes the image \
+                 without it.",
                 path.display()
             );
             Ok(())
@@ -315,49 +387,90 @@ fn add_to_contract(bringup: &Path, node: &NodePackage<'_>) -> Result<()> {
     }
 }
 
-/// Text edit of a scaffold-shaped contract: `rows` go at the end of `nodes:`
-/// (just before `topics:`), and `<ros>/chatter` joins `/chatter`'s `side`
-/// list. `None` when the file does not have that shape.
-fn insert_contract_rows(text: &str, rows: &str, side: &str, ros: &str) -> Option<String> {
-    let topics = text.find("\ntopics:\n")?;
-    let mut out = String::with_capacity(text.len() + rows.len() + 64);
-    out.push_str(&text[..topics]);
-    out.push_str(rows);
-    let tail = &text[topics..];
-    let chatter = tail.find("\n  /chatter:\n")? + "\n  /chatter:\n".len();
-    let (head, body) = tail.split_at(chatter);
-    out.push_str(head);
-    let entry = format!("{ros}/chatter");
-    let key = format!("    {side}: [");
-    // The topic's block ends at the first line indented less than 4 spaces.
-    let end = body
-        .match_indices('\n')
-        .map(|(i, _)| i + 1)
-        .find(|&i| i < body.len() && !body[i..].starts_with("    "))
-        .unwrap_or(body.len());
-    let (block, rest) = body.split_at(end);
-    if let Some(at) = block.find(&key) {
-        let close = at + block[at..].find(']')?;
-        out.push_str(&block[..close]);
-        out.push_str(", ");
-        out.push_str(&entry);
-        out.push_str(&block[close..]);
+/// The body of top-level `key:` as `(start, end)` byte offsets: from the line
+/// after `key:` to the next column-0 line, less the blank lines before it.
+fn top_level_block(text: &str, key: &str) -> Option<(usize, usize)> {
+    let head = format!("{key}:\n");
+    let at = if text.starts_with(&head) {
+        0
     } else {
-        // After the topic's `pub:` line, else after its `type:` line.
-        let type_end = block
-            .find("    pub: [")
-            .or_else(|| block.find("    type:"))
-            .map(|t| t + block[t..].find('\n').map_or(block.len() - t, |n| n + 1))?;
-        out.push_str(&block[..type_end]);
-        if !block[..type_end].ends_with('\n') {
+        text.find(&format!("\n{head}"))? + 1
+    };
+    let start = at + head.len();
+    let mut end = text.len();
+    let mut pos = start;
+    for line in text[start..].split_inclusive('\n') {
+        if !line.starts_with(' ') && !line.trim().is_empty() {
+            end = pos;
+            break;
+        }
+        pos += line.len();
+    }
+    while end > start && text[..end].ends_with("\n\n") {
+        end -= 1;
+    }
+    Some((start, end))
+}
+
+/// Text edit of a scaffold-shaped contract: `rows` go at the end of `nodes:`,
+/// and `<ros>/<local>` joins `wiring`'s entry, which is created -- and its
+/// section with it -- when missing. `None` when the file has no `nodes:`
+/// block or the entry has no line to anchor on.
+fn insert_contract_rows(
+    text: &str,
+    rows: &str,
+    wiring: &ContractWiring,
+    ros: &str,
+) -> Option<String> {
+    let (_, nodes_end) = top_level_block(text, "nodes")?;
+    let mut out = format!("{}{rows}{}", &text[..nodes_end], &text[nodes_end..]);
+    let entry_ref = format!("{ros}/{}", wiring.local);
+    let key = format!("    {}: [", wiring.side);
+    let new_entry = format!(
+        "\x20 {}:\n\x20   type: {}\n{key}{entry_ref}]\n",
+        wiring.name, wiring.type_
+    );
+    let Some((start, end)) = top_level_block(&out, wiring.section) else {
+        if !out.ends_with('\n') {
             out.push('\n');
         }
-        out.push_str(&key);
-        out.push_str(&entry);
-        out.push_str("]\n");
-        out.push_str(&block[type_end..]);
+        out.push_str(&format!("\n{}:\n{new_entry}", wiring.section));
+        return Some(out);
+    };
+    let block = &out[start..end];
+    let head = format!("  {}:\n", wiring.name);
+    let entry_at = if block.starts_with(&head) {
+        Some(0)
+    } else {
+        block.find(&format!("\n{head}")).map(|i| i + 1)
+    };
+    let Some(entry_at) = entry_at else {
+        out.insert_str(end, &new_entry);
+        return Some(out);
+    };
+    // The entry's lines: indented 4 or more, after its head line.
+    let body_at = start + entry_at + head.len();
+    let mut entry_end = end;
+    let mut pos = body_at;
+    for line in out[body_at..end].split_inclusive('\n') {
+        if !line.starts_with("    ") && !line.trim().is_empty() {
+            entry_end = pos;
+            break;
+        }
+        pos += line.len();
     }
-    out.push_str(rest);
+    let entry = &out[body_at..entry_end];
+    if let Some(at) = entry.find(&key) {
+        let close = body_at + at + entry[at..].find(']')?;
+        out.insert_str(close, &format!(", {entry_ref}"));
+    } else {
+        // After the entry's last list line, else after its `type:` line.
+        let anchor = ["    pub: [", "    server: [", "    type:"]
+            .iter()
+            .find_map(|k| entry.find(k))?;
+        let line_end = body_at + anchor + entry[anchor..].find('\n')? + 1;
+        out.insert_str(line_end, &format!("{key}{entry_ref}]\n"));
+    }
     Some(out)
 }
 
@@ -545,6 +658,97 @@ mod tests {
             meta: PackageMeta::default(),
             lang: nros_lang::Language::Rust,
             force: false,
+        }
+    }
+
+    /// Issue 2376 -- every role added with `--to` joins the bringup's
+    /// contract with `params:` and its whole surface, per language, or the
+    /// CMake road refuses the image's parameter store (the Tutorial's
+    /// services chapter added four nodes and stopped at step 630).
+    #[test]
+    fn every_role_added_with_to_joins_the_contract_whole() {
+        for lang in [nros_lang::Language::Rust, nros_lang::Language::C] {
+            let ws = tmp(&format!("roles-{lang:?}"));
+            let mut sensor = talker("sensor_node");
+            sensor.lang = lang;
+            scaffold_project(&WorkspaceProject {
+                dir: ws.clone(),
+                node: sensor,
+                board: "linux",
+                image_id: "linux",
+                rmw: "zenoh",
+                ros_edition: "humble",
+                locator: None,
+            })
+            .unwrap();
+            for (name, role) in [
+                ("monitor_node", Role::Listener),
+                ("server_node", Role::Server),
+                ("client_node", Role::Client),
+                ("action_server_node", Role::ActionServer),
+                ("action_client_node", Role::ActionClient),
+            ] {
+                let mut n = talker(name);
+                n.template = role;
+                n.lang = lang;
+                scaffold_into_workspace(&ws, &n, Some("sensor_node_bringup")).unwrap();
+            }
+            let text =
+                std::fs::read_to_string(ws.join("src/sensor_node_bringup/system.contract.yaml"))
+                    .unwrap();
+            let c: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).unwrap();
+            let nodes = c["nodes"].as_mapping().unwrap();
+            assert_eq!(nodes.len(), 6, "{text}");
+            for (_, n) in nodes {
+                assert!(n["params"].is_mapping(), "{text}");
+            }
+            let pair = |section: &str, name: &str, a: &str, b: &str| {
+                let e = &c[section][name];
+                (
+                    e[a].as_sequence().map(Vec::len),
+                    e[b].as_sequence().map(Vec::len),
+                )
+            };
+            assert_eq!(pair("topics", "/chatter", "pub", "sub"), (Some(1), Some(1)));
+            assert_eq!(
+                c["services"]["/add_two_ints"]["server"][0].as_str(),
+                Some("server_node/add_two_ints"),
+                "{text}"
+            );
+            assert_eq!(
+                c["services"]["/add_two_ints"]["client"][0].as_str(),
+                Some("client_node/add_two_ints"),
+                "{text}"
+            );
+            assert_eq!(
+                c["actions"]["/fibonacci"]["type"].as_str(),
+                Some("example_interfaces/action/Fibonacci")
+            );
+            assert_eq!(
+                pair("actions", "/fibonacci", "server", "client"),
+                (Some(1), Some(1)),
+                "{text}"
+            );
+            assert!(c["nodes"]["server_node"]["srv"]["add_two_ints"].is_mapping());
+            assert!(c["nodes"]["client_node"]["cli"]["add_two_ints"].is_mapping());
+            // The timers the templates create, per language.
+            let rust = lang == nros_lang::Language::Rust;
+            let client_paths = c["nodes"]["client_node"]["paths"].as_mapping().unwrap();
+            let (_, p) = client_paths.iter().next().unwrap();
+            assert_eq!(
+                p["trigger"]["timer"]["rate_hz"].as_u64(),
+                Some(if rust { 1 } else { 2 }),
+                "{text}"
+            );
+            for a in ["action_server_node", "action_client_node"] {
+                assert_eq!(c["nodes"][a]["paths"].is_mapping(), !rust, "{a}: {text}");
+            }
+            assert!(
+                text.starts_with("# What this image's node DECLARES"),
+                "{text}"
+            );
+            assert!(!text.contains("\n\n\n"), "{text}");
+            std::fs::remove_dir_all(&ws).unwrap();
         }
     }
 
