@@ -97,6 +97,17 @@ max-threads = 1
 [test-groups.qemu-baremetal]
 max-threads = 3
 
+# issue 2243 -- RESOURCE: PX4 SITL instance 0, one per HOST (PX4 keys its server
+# lock and client socket on the instance under a hardcoded /tmp). The guarantee
+# is the harness's: `Px4Sitl::boot_in` holds an instance lock, so a second boot
+# WAITS. This group only keeps that wait out of each test's 60 s budget.
+[test-groups.px4-sitl-instance]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(px4_sitl)"
+test-group = "px4-sitl-instance"
+
 # phase-162 -- RESOURCE: CPU 0. The real-time level tests pin their image to
 # one CPU so its levels compete for it; two of them at once would compete with
 # each other and turn the S1 deadline count into a measure of the test run.
