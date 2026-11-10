@@ -472,7 +472,7 @@ Each `<depend>` also gets a `find_package(<pkg> REQUIRED)` line in
 `CMakeLists.txt`. The definitions come from the first place that has the
 package: the directories in `NROS_INTERFACE_SEARCH_PATH`, then a sourced ROS 2
 install (`AMENT_PREFIX_PATH`). Sourcing ROS 2 is required: if neither names a
-package, the configure stops and says so, as `nros configure` does. nano-ros's
+package, west's host configure stops and says so, as `nros configure` does. nano-ros's
 own copies of a few standard packages are read only if you add the directory
 the refusal names to `NROS_INTERFACE_SEARCH_PATH`, and ROS 2 still comes
 first. For your own messages, put their interface package anywhere on disk
@@ -507,8 +507,8 @@ The application then builds and runs as the C one does. Its log line reads
 
 ## Build
 
-From the top of the west workspace, build for `native_sim`. The configure
-generates the message types from your ROS 2 install, so source it first:
+From the top of the west workspace, build for `native_sim`. West's host
+configure generates the message types from your ROS 2 install, so source it first:
 
 ```bash probe=50 track=installed variant=west-app,west-app-cpp,west-app-rust
 source /opt/ros/humble/setup.bash

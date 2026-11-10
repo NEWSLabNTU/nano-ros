@@ -2,6 +2,8 @@
 
 > **Amended by [RFC-0120](0120-nros-configure-one-resolver.md) (2026-11-03).** The 2026-10-23 amendment of A3 ("a configure `nros build` started takes one pass") is superseded by the original text: the fixed point is gone on every road. RFC-0120 meets it with `nros configure`, which every host configure calls before its first reader; phase-530 does the work and deletes `NanoRosReconfigure.cmake`.
 
+> **Vocabulary ([RFC-0120](0120-nros-configure-one-resolver.md) D9).** This RFC predates `nros configure`. Where its text says "configure" unqualified, it means the **host configure** (CMake's, west's or make's own step); "configure" alone now means `nros configure`. The amendment quotes below keep their original wording.
+
 **Status:** Stable (2026-10-23). D1, D3, D5 and D6 are in the code as written;
 D2, D4 and A3 are amended below to what landed (phase-439 W8/W10). Draft
 2026-09-08.

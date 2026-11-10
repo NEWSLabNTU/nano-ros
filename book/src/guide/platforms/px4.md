@@ -18,7 +18,7 @@ C++ only — PX4's uORB binding is C++-only (Rust + C not in the
 ## Project layout
 
 PX4 external modules live **outside** the PX4 source tree and are
-hooked in at configure time. The template — shipped in the SDK root at
+hooked in at PX4's host configure. The template — shipped in the SDK root at
 `integrations/px4/module-template/` (the SDK root is the installed release's
 `share/nano-ros`, `nros locate nano-ros` prints it) — has
 the PX4-required
@@ -154,7 +154,7 @@ The firmware lands in PX4's own tree, `PX4-Autopilot/build/<target>/`
 (`px4_fmu-v5_default.px4` for the Pixhawk). The first build cross-compiles
 nano-ros's Rust staticlibs alongside PX4's NuttX kernel + apps (~10 min on a
 fresh checkout). Note that the module links prebuilt nano-ros archives
-(`nros_px4_add_module` resolves them at configure time and, when one is
+(`nros_px4_add_module` resolves them in PX4's host configure and, when one is
 missing, stops naming the command that builds it).
 
 **Stack sizes on a Pixhawk.** Opening a nano-ros session runs in the module's
@@ -165,7 +165,7 @@ main task is 2048 B. So once your module opens a session (your own node code in
 bringup (`BRINGUP`) also spins on a PX4 work queue (`rate_ctrl` by default,
 3150 B). Raise it in your board config, e.g.
 `CONFIG_WQ_RATE_CTRL_STACKSIZE=8192`. For a `BRINGUP` module on NuttX, the
-configure step checks both against the executor's floor and refuses with the
+host configure checks both against the executor's floor and refuses with the
 setting to raise. SITL needs neither.
 
 ## Run on the SITL simulator

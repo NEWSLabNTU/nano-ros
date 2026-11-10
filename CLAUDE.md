@@ -67,6 +67,8 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
   facts; `[tasks.*.posix]` keeps its name (external rlm/play_launch vocabulary;
   its `core` key is Linux-only). No macOS/BSD support is claimed. Gates:
   `check-host-platform-vocabulary`, `check-posix-platform-purity`.
+- **configure** — unqualified, means `nros configure`; **host configure** is CMake's, west's
+  or make's own step (RFC-0120 D9).
 - **nano-ros** — project name (prose, docs)
 - **nros** — code shorthand (crates, Rust/C idents, `CONFIG_NROS_*`)
 - **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nros_generate_interfaces()`)
@@ -606,7 +608,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   stamp.) Outside it, if you wiped
   and it worked, you have a lead — not a diagnosis; say so, and go find the edge.
   **When a GENERATED build file is itself the problem, re-configure — do not wipe.**
-  `cmake <build-dir>` re-runs configure from the cached settings and regenerates
+  `cmake <build-dir>` re-runs the host configure from the cached settings and regenerates
   `build.ninja` in place. This is the escape hatch for the one state ninja cannot recover
   from on its own: `multiple rules generate <x>` is raised at LOAD, before any rule runs,
   so ninja can never re-run cmake to fix itself (issue 0882 hit exactly this after a
@@ -1093,11 +1095,11 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   the store is shared between checkouts and "newest" is then a sibling's pin (issue 1546;
   `check-sdk-store-not-enumerated`). Corrosion `< 0.6.0` shares one
   `cargo/build` across workspace roots ⇒ duplicate `#[no_mangle]` ⇒ `mixed` cannot link.
-  **Read the configure's `nano-ros: Corrosion <ver> via <origin>` line — never infer the
+  **Read the host configure's `nano-ros: Corrosion <ver> via <origin>` line — never infer the
   version from having run the installer** — the ordering gate that used to back this
   was retired with the globbed prefix (phase-365 W3a), so the printed line is the only
   evidence. And READ IT: the resolver's PATH fallback could not fire for two phases
-  (`find_program` no-ops on an already-defined var), so every configure that did not
+  (`find_program` no-ops on an already-defined var), so every host configure that did not
   pass `-D_NANO_ROS_CODEGEN_TOOL` — which is the book's documented user flow — cloned
   Corrosion from git and FAILED OFFLINE while the store held it. Gate:
   `check-cmake-find-program-shadowed` (issue 0726).
@@ -1111,7 +1113,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   see this: it reports ONE workspace. Sharing never bought anything — units keyed by that
   spelling can't be reused across roots. Derive the dir from `cargo locate-project
   --workspace`, never a path-prefix test (`packages/cli` is a separate workspace INSIDE the
-  repo); a second root claiming a claimed dir is a configure FATAL_ERROR. Same class as 0500
+  repo); a second root claiming a claimed dir is a host-configure FATAL_ERROR. Same class as 0500
   one lane over (Corrosion sharing `cargo/build` ⇒ duplicate `#[no_mangle]`); `mixed` is the
   entry that catches it both times.
 - **A Kconfig knob reaches the Zephyr C lane and NOT the RUST one** — `nros_cargo_build.cmake`
@@ -1196,7 +1198,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   **phase-457 W0.b gave that road a producer** (`--from-leaf`, over the same `EntityDecl`
   grammar), and the two are MEASURED to agree on both failing leaves
   (`sizing_descriptor_leaf_road.rs`, mutation-tested). The carrier stayed while a multi-entry
-  configure named no descriptor (W0.c); it names its shared runtime's since RFC-0100 D12 (issue
+  host configure named no descriptor (W0.c); it names its shared runtime's since RFC-0100 D12 (issue
   1649), and the Zephyr WEST entry its own since issue 1407. **Retirement is a question about the ROAD, never about the field** —
   a descriptor that states a fact on 3 roads of 5 retires nothing.
 - **The interop DDS bus is pinned to LOOPBACK by a profile FILE the harness writes, not
@@ -1298,7 +1300,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
 - **A CONFIGURE-time emitter has no `DEPENDS` to carry its tool — put the tool in
   `CMAKE_CONFIGURE_DEPENDS` (issue 1018).** `execute_process()` has already run by
   the time ninja decides anything, so the freshness of anything it emits reduces to
-  *does a configure happen*. Four sites emit at configure time and #182 registered
+  *does a host configure happen*. Four sites emit at configure time and #182 registered
   the CLI at exactly one of them, inline; the Zephyr interfaces generator's own
   `IS_NEWER_THAN` predicate on the tool was therefore unreachable on an incremental
   build (measured: `build-rust-talker-zenoh`'s `RERUN_CMAKE` edge, 3592 inputs, none
@@ -1321,7 +1323,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   inputs AND the emitter fingerprint (issue 1825: a pin bump between two
   releases of one codegen version reused the old output); `nros build`
   regenerates a moved cargo-road crate, both cmake generators ask
-  `nros_codegen_ament_stale()` at configure.
+  `nros_codegen_ament_stale()` at host configure.
 - **A lib reached through a raw `-Wl,...` link FLAG gets no rebuild edge (issue 0475)** — CMake cannot
   see a file inside a flag string, and `add_dependencies()` only adds build ORDER, which ninja renders
   `||` (order-only): "must exist before linking", never "relink when it changes". The RMW backends are

@@ -1052,7 +1052,7 @@ build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
 `cmake-entity-inventory`, `cmake-message-bounds`, `configure-hook`,
 `census-step`, `knob-delivery`, `knob-one-pass`.
 
-### W8 — Vocabulary and docs (RFC-0120 D9)
+### W8 — Vocabulary and docs (RFC-0120 D9) (LANDED 2026-11-10)
 
 - Use "configure" for `nros configure` and "host configure" for CMake's,
   west's or make's own step, consistently across RFC-0094, CLAUDE.md, AGENTS.md
@@ -1063,6 +1063,23 @@ build asserting 0 `Re-running CMake`), `cmake-sizing-descriptor`,
 - `how-integration-works.md` states RFC-0072's narrowed scope.
 - **Acceptance:** `just book` builds; the probe tracks for the Zephyr and
   first-project chapters pass.
+- **Landed (2026-11-10).**
+  - `book/src/reference/cli.md` already carried `nros configure` (generated
+    from the CLI's help), so it needed no change.
+  - The integration chapters already led with the `system.toml` path and put
+    "Drive west yourself" / "Drive the native build yourself" second.
+  - `background/how-a-build-becomes-an-image.md` (where
+    `how-integration-works.md` was merged) now names stages 1 to 4 as
+    `nros configure`. It states RFC-0072's narrowed scope: an existing RTOS
+    project keeps its own build, and a project started with `nros new` builds
+    through `nros build`. It says where a host configure calls
+    `nros configure`, and links RFC-0120 and RFC-0072.
+  - Unqualified "configure" that meant CMake's, west's or PX4's step now reads
+    "host configure" in `zephyr-west-app.md`, `px4.md` and CLAUDE.md.
+    CLAUDE.md's Naming list gains the two terms.
+  - RFC-0094 gains a vocabulary note rather than a rewrite: its body predates
+    `nros configure`, and its amendment quotes keep their wording.
+  - AGENTS.md had no ambiguous use.
 
 ### W9 — Retire `nros sync` (RFC-0120 D2)
 

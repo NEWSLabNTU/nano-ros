@@ -66,7 +66,8 @@ binary may link more than one backend and bridge between them
 
 In a nano-ros workspace you write node packages and a bringup, and no build
 file for the image. `nros build` makes one. It is one pipeline for every
-board:
+board. Stages 1 to 4 are `nros configure`, which `nros build` runs first and
+which you can also run on its own; stage 5 is the build:
 
 1. **Discover.** It walks the `package.xml` files of the workspace and puts
    the packages in dependency order.
@@ -78,7 +79,9 @@ board:
 4. **Generate.** It writes the message bindings, the resolved system, the
    image's entry and a root build file under `build/`.
 5. **Hand off.** It runs the native tool on what it generated, and passes the
-   tool's output through untouched.
+   tool's output through untouched. The tool's own configure step (CMake's or
+   west's, the *host configure*) reads what `nros configure` wrote and never
+   runs it again.
 
 The tool is chosen by the board, not by the languages in the image:
 
@@ -126,8 +129,10 @@ path on your disk, it is yours. The keys are in
 
 ## When your build drives the build
 
-An RTOS project you already have keeps its own build: a vendored Zephyr or
-NuttX tree, an STM32Cube or MCUXpresso project, a PX4 firmware. Here nano-ros
+A project started with `nros new` builds through `nros build`, as above. An
+RTOS project you already have, and are adding nano-ros to, keeps its own
+build: a vendored Zephyr or NuttX tree, an STM32Cube or MCUXpresso project, a
+PX4 firmware. Here nano-ros
 is a library your project imports, and your build tool stays in charge. It
 never compiles your kernel, never owns your linker script, and never replaces
 your build system.
@@ -151,10 +156,11 @@ it:
 | PlatformIO | a library with a pre-build codegen script | `library.json`, `integrations/platformio/` |
 
 In every row the split is the same: your build owns compiling and linking,
-and nano-ros owns the shell and the code it generates on your host. PX4 and
-PlatformIO have no configure hook that could run nano-ros's generator from
-inside, so the generator runs before them and leaves a tree they build
-natively. The steps are in
+and nano-ros owns the shell and the code it generates on your host. Where the
+host build has a configure step, its shell calls `nros configure` from that
+host configure, so the generated code is current before anything compiles.
+PX4 and PlatformIO have no host configure that could run it from inside, so
+`nros configure` runs before them and leaves a tree they build natively. The steps are in
 [Build inside an existing CMake or vendor tree](../guide/build/existing-cmake-or-vendor-tree.md),
 [Zephyr](../guide/platforms/zephyr.md), [NuttX](../guide/platforms/nuttx.md)
 and [PX4](../guide/platforms/px4.md).
@@ -217,6 +223,12 @@ covers the API side.
   host-time code generation; the bringup never reaches the device.
 - [RFC-0065](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0065-colcon-like-workspace-builder.md):
   the five stages, and the driver chosen by the board.
+- [RFC-0120](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0120-nros-configure-one-resolver.md):
+  `nros configure`, the one resolver every road calls before its host
+  configure.
+- [RFC-0072](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0072-rtos-integration-nano-ros-is-a-guest.md):
+  an existing RTOS project keeps its own build tool; a project started with
+  `nros new` builds through `nros build`.
 - [RFC-0054](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0054-c-header-abi-ssot.md):
   C headers as the one source of the ABI.
 - [RFC-0121](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0121-workspace-first-project-layout.md):
