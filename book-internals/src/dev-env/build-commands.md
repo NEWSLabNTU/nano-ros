@@ -129,8 +129,7 @@ source ./activate.sh
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: Talker
-cd examples/linux/rust/talker && nros configure && nros build
-RUST_LOG=info ./build/linux/target/debug/talker
+cd examples/linux/rust/talker && RUST_LOG=info nros run linux   # a one-node workspace
 
 # Terminal 3: Listener
 cd examples/linux/rust/listener && nros configure && nros build
@@ -180,12 +179,11 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tls/localhost:7447"];scouting/multicas
   --cfg 'transport/link/tls/listen_private_key:"key.pem"'
 
 # Terminal 2: Talker with TLS
-cd examples/linux/rust/talker && nros configure
-cd .. && cargo build --manifest-path talker/Cargo.toml \
-      --config talker/build/linux/nros-cargo.toml --features link-tls
+cd examples/linux/rust/talker
+nros build linux_tls      # its image turns on node_features = ["link-tls"]
 NROS_LOCATOR=tls/localhost:7447 \
   ZENOH_TLS_ROOT_CA_CERTIFICATE=cert.pem \
-  ./talker/build/linux/target/debug/talker
+  ./build/posix-zenoh/linux_tls_entry/target/debug/linux_tls_entry
 ```
 
 `link-tls` is a transport feature of the leaf's own crate, so it stays a
@@ -214,8 +212,7 @@ The CA certificate must be passed via `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` at 
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: nros talker
-cd examples/linux/rust/talker && nros configure && nros build
-RUST_LOG=info ./build/linux/target/debug/talker
+cd examples/linux/rust/talker && RUST_LOG=info nros run linux   # a one-node workspace
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash

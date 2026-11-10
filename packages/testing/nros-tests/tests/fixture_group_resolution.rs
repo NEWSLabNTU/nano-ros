@@ -11,8 +11,8 @@
 //! include `linux`, which is exactly the one-line change B3 makes, and assert
 //! the properties that decide whether B3 is safe:
 //!
-//! * `examples/linux/rust/talker`'s four rows resolve to FOUR DIFFERENT group
-//!   dirs. Under the refuted platform-grained key they resolve to one, and
+//! * a leaf's variant rows (images, features, env) resolve to DIFFERENT group
+//!   dirs (first measured on `examples/linux/rust/talker`'s four rows). Under the refuted platform-grained key they resolve to one, and
 //!   phase-340 W1 measured what that means: four distinct binaries (8616504 /
 //!   8616504 / 6514392 / 9034536 bytes, four distinct sha256) at one path, the
 //!   last invocation silently winning.
@@ -65,22 +65,43 @@ fn export_with(shared_platforms: &str) -> Vec<GroupRow> {
 /// test exists for is untouched by that: the variants must still land in
 /// DIFFERENT group dirs. Only the vocabulary moves, from the authored path to
 /// the selector the caller now names.
-const TALKER_LEAF: &str = "examples/linux/rust/talker";
+// phase-531 W6 moved `examples/linux/rust/talker` to a one-node workspace, so
+// its rows are `[[workspace_fixture]]` rows and this table no longer sees them.
+// The same three axes are named on the leaves that still carry them: the image
+// axis on `bins/int32-sink` (one row per RMW image) and the feature and env
+// axes on `examples/linux/rust/listener`.
+const SINK_LEAF: &str = "packages/testing/nros-tests/bins/int32-sink";
+const LISTENER_LEAF: &str = "examples/linux/rust/listener";
 
-fn talker_variants() -> Vec<(&'static str, FixtureVariant)> {
+fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
     vec![
-        ("plain", FixtureVariant::plain()),
-        ("link-tls", FixtureVariant::features(&["link-tls"])),
-        // Issue 1305 — the RMW is the leaf's IMAGE now (RFC-0031), and the
-        // zenoh build is the plain row: two images of one leaf must land in two
-        // group dirs exactly as two feature sets did.
         (
-            "image linux_xrce",
+            "sink plain",
+            SINK_LEAF,
+            FixtureVariant::platform_rmw(Rmw::Zenoh),
+        ),
+        // Issue 1305 — the RMW is the leaf's IMAGE now (RFC-0031): two images
+        // of one leaf must land in two group dirs exactly as two feature sets
+        // did.
+        (
+            "sink image linux_xrce",
+            SINK_LEAF,
             FixtureVariant::image(Rmw::Xrce, "linux_xrce"),
         ),
         (
-            "image linux_cyclonedds",
+            "sink image linux_cyclonedds",
+            SINK_LEAF,
             FixtureVariant::image(Rmw::Cyclonedds, "linux_cyclonedds"),
+        ),
+        (
+            "listener link-tls",
+            LISTENER_LEAF,
+            FixtureVariant::features(&["link-tls"]),
+        ),
+        (
+            "listener peer env",
+            LISTENER_LEAF,
+            FixtureVariant::plain().with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
         ),
     ]
 }
@@ -90,8 +111,8 @@ fn migrating_linux_gives_each_talker_variant_its_own_group_dir() {
     let rows = export_with("baremetal linux");
 
     let mut dirs = BTreeSet::new();
-    for (label, variant) in talker_variants() {
-        let row = select_row_in(&rows, TALKER_LEAF, &variant)
+    for (label, leaf, variant) in talker_variants() {
+        let row = select_row_in(&rows, leaf, &variant)
             .unwrap_or_else(|e| panic!("talker variant {label} does not select a row: {e:?}"));
         assert!(
             row.shared,
@@ -175,8 +196,8 @@ fn the_shipped_eligibility_list_redirects_every_linux_row() {
     // for: a widened shipped default must not slip past it).
     let rows = nros_tests::fixtures::groups::manifest_rows();
     let mut dirs = BTreeSet::new();
-    for (label, variant) in talker_variants() {
-        let row = select_row_in(rows, TALKER_LEAF, &variant).unwrap_or_else(|e| {
+    for (label, leaf, variant) in talker_variants() {
+        let row = select_row_in(rows, leaf, &variant).unwrap_or_else(|e| {
             panic!("talker variant {label} does not select a row on the shipped tree: {e:?}")
         });
         assert!(

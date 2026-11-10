@@ -23,7 +23,6 @@ examples/linux/rust/service-client/Cargo.toml  native_rs_service_client_nros_sel
 examples/linux/rust/service-server-rtic/Cargo.toml  native_rtic_service_server_nros_selection
 examples/linux/rust/service-server/Cargo.toml  native_rs_service_server_nros_selection
 examples/linux/rust/talker-rtic/Cargo.toml  native_rtic_talker_nros_selection
-examples/linux/rust/talker/Cargo.toml  native_rs_talker_nros_selection
 examples/mps2-an385-baremetal/c/action-client/Cargo.toml  baremetal_c_action_client_nros_selection
 examples/mps2-an385-baremetal/c/action-server/Cargo.toml  baremetal_c_action_server_nros_selection
 examples/mps2-an385-baremetal/c/listener/Cargo.toml  baremetal_c_listener_nros_selection

@@ -152,9 +152,10 @@ stack-all top="10":
         ./scripts/stack-analysis.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
         echo ""
     done
-    # Rust examples (native — exclude tracing/regex infrastructure noise)
+    # Rust examples (native — exclude tracing/regex infrastructure noise).
+    # Not `linux/rust/talker`: a one-node workspace since phase-531 W6, and
+    # stack-analysis.sh builds a cargo package directory.
     for example in \
-        examples/linux/rust/talker \
         examples/linux/rust/listener \
         examples/linux/rust/custom-msg \
         examples/linux/rust/service-server \

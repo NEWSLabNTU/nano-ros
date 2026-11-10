@@ -671,10 +671,17 @@ from before W6.
     its messages for one edition, so `linux_jazzy` builds with `ros-jazzy` on
     and humble type hashes, and `nros build` rewrites a `nros configure
     --ros-edition jazzy` back before compiling.
-    [Issue 2409](../issues/2409-workspace-image-ros-edition-builds-workspace-edition-messages.md).
+    [Issue 2409](../issues/archived/2409-workspace-image-ros-edition-builds-workspace-edition-messages.md).
     Ruling: refuse an image whose edition differs from the workspace's
     generated messages, and move the edition images into their own
-    per-edition workspace rows.
+    per-edition workspace rows. **Done:** the refusal is in `plan_for`, the
+    talker is a one-node workspace (`src/native_talker`,
+    `src/native_talker_bringup`, images `linux`, `linux_tls`, `linux_xrce`,
+    `linux_cyclonedds`), its five rows are `[[workspace_fixture]]` rows, and
+    `just ros_editions build-e2e-fixtures` builds the talker from a
+    per-edition copy of the workspace. `migrate-bringup` wrote the rows no
+    `target_dir`; the peer row (the `linux` image with an env) needs its own,
+    or it overwrites the plain row's `linux_entry`.
   - The two bins named above, and the linux C and C++ talkers, keep a
     hand-written `main` and are built for several images. An owned entry is
     one image's program, the cargo road finds it only at

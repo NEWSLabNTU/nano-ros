@@ -164,7 +164,8 @@ fn collect_sources() -> SourceMap {
                 if is_build_output(&prog_name) {
                     continue;
                 }
-                let src = program.path().join("src");
+                let src =
+                    witness_node_src(&program.path()).unwrap_or_else(|| program.path().join("src"));
                 if !src.is_dir() {
                     continue;
                 }
@@ -176,6 +177,30 @@ fn collect_sources() -> SourceMap {
         }
     }
     out
+}
+
+/// Phase-531 W6 — a witness migrated in place is a one-node WORKSPACE
+/// (`.colcon_workspace` at its root): its program is the node package's `src/`,
+/// not the workspace's `src/`, which also holds the bringup. `None` for a leaf,
+/// or when the workspace does not hold exactly one node package.
+fn witness_node_src(program: &Path) -> Option<PathBuf> {
+    if !program.join(".colcon_workspace").is_file() {
+        return None;
+    }
+    let nodes: Vec<PathBuf> = fs::read_dir(program.join("src"))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|d| d.join("package.xml").is_file())
+        .filter(|d| {
+            !d.file_name()
+                .is_some_and(|n| n.to_string_lossy().ends_with("_bringup"))
+        })
+        .collect();
+    match nodes.as_slice() {
+        [one] => Some(one.join("src")),
+        _ => None,
+    }
 }
 
 /// The comparable body of one example: every source file under `src/`,

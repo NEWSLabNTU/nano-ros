@@ -31,10 +31,9 @@ through them. RFC-0098 retires that spelling.)
 # terminal 1: the router
 ros2 run rmw_zenoh_cpp rmw_zenohd        # zenohd on tcp/127.0.0.1:7447
 
-# terminal 2: any leaf in this tree, same two commands
+# terminal 2: the talker is a one-node workspace; `nros run` builds and runs
 cd examples/linux/rust/talker
-nros configure && nros build
-./build/linux/target/debug/talker
+nros run linux
 ```
 
 A C or C++ leaf skips `nros configure` — its message bindings are a CMake-time
@@ -44,7 +43,7 @@ Contributor shortcuts inside a checkout (they drive cargo and cmake directly):
 
 ```sh
 just linux zenohd &                     # resolves the installed zenohd
-just linux talker                       # = cd examples/linux/rust/talker && cargo run
+just linux talker                       # = cd examples/linux/rust/talker && nros run linux
 just linux listener                     # peer in a second shell
 just linux build-c                      # builds c/talker + c/custom-msg
 just linux build-cpp

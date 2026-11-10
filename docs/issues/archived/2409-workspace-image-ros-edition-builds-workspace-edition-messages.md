@@ -1,15 +1,16 @@
 ---
 id: 2409
 title: "A workspace image that declares its own `ros_edition` builds with the workspace's edition of the messages, and nothing says so"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [cli, codegen, build, interop]
 related: [phase-531, rfc-0121, rfc-0056, 2260]
 found: 2026-11-10
+resolved_in: "the issue-2409 pull request: `workspace_edition_mismatch` refuses the image in `plan_for`; the linux Rust talker's edition images build from a per-edition copy of its workspace"
 ---
 
-**Home: [phase-531](../roadmap/phase-531-workspace-first-project-layout.md) W6.**
+**Home: [phase-531](../../roadmap/phase-531-workspace-first-project-layout.md) W6.**
 It blocks migrating `examples/linux/rust/talker`, whose six edition images
 (`linux_iron`, `linux_jazzy`, and their `_xrce` / `_cyclonedds` twins) are what
 `just ros_editions build-e2e-fixtures` builds.
@@ -73,3 +74,19 @@ could land first.
   witness for their own per-edition workspace(s) and fixture rows, so
   `just ros_editions build-e2e-fixtures` keeps building them.
 - Per-edition message generation inside one workspace is not taken.
+
+## Resolution (2026-11-10)
+
+- `plan_for` refuses a workspace image whose edition is not the one the
+  workspace's `generated/` was synced for (`workspace_edition_mismatch` in
+  `cmd/build.rs`, unit-tested). `nros build` fails naming both editions and
+  the remedy; `nros configure` reports the image as not configured and
+  configures the rest. Measured on a copy of the migrated talker with an
+  added `[image.linux_jazzy]`.
+- `examples/linux/rust/talker` is a one-node workspace without edition
+  images. `just ros_editions build-e2e-fixtures` builds its talker from a copy
+  of that workspace whose `[system] ros_edition` is the edition, and copies
+  the entry to `debug/talker`. Measured: the jazzy/zenoh run's talker carries
+  `String_RIHS01_df668c74…`, the jazzy hash.
+- The refusal text carries no issue id (the user-surface gates forbid one);
+  the ids sit in a comment beside it.

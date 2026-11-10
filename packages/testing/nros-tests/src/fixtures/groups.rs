@@ -987,7 +987,7 @@ mod tests {
     fn an_unnameable_variant_is_an_error_not_a_guess() {
         assert!(
             select_row(
-                "examples/linux/rust/talker",
+                "examples/linux/rust/listener",
                 &FixtureVariant::features(&["nope"])
             )
             .is_err(),

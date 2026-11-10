@@ -1128,7 +1128,7 @@ mod tests {
         let multi: Vec<_> = per_dir.values().filter(|v| v.len() > 1).collect();
         assert!(
             !multi.is_empty(),
-            "expected leaves with several rows (examples/linux/rust/talker has five)"
+            "expected leaves with several rows (bins/int32-sink has three)"
         );
         for rows in multi {
             let roots: std::collections::BTreeSet<_> =
