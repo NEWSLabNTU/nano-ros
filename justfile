@@ -1581,6 +1581,7 @@ _nextest-tolerant +nextest_args:
     junit="$(nros_nextest_junit_path)"
     # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
     just _rewrite-skipped-junit "$junit" || true
+    nros_nextest_junit_keep_lane "$junit" "${args[@]}"
     [ $rc -eq 0 ] && exit 0
     # Issue #29 — a build/setup failure (nextest exit != 100, or no junit) must
     # NOT be masked by the [SKIPPED] tolerance: a binary that fails to compile

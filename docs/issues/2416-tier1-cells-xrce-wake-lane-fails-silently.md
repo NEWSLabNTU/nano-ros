@@ -78,6 +78,14 @@ On run 42767563994's junit the change prints the `rmw_coordinate_truth` panic,
 which its log did not carry. That failure is a separate intermittent defect,
 filed as issue 2420.
 
+**Each lane's junit is now kept under its own name.** The printout above
+depends on the log; the artifact is the second copy.
+`nros_nextest_junit_keep_lane` (`scripts/test/nextest-profile.sh`), called by
+`_nextest-tolerant` after the skip rewrite, copies the lane's junit to
+`<junit dir>/lanes/junit-<selection>-<hash>.xml`. `fixture-tree.sh reports`
+already uploads every `junit*.xml` under `target/nextest`, so the xrce-wake
+lane's junit would have survived the later lanes.
+
 **The four xrce-wake reds are not reproduced.**
 
 - They passed in the next tier-2 run on main (42767563994, 0.2 to 2.8 s each)

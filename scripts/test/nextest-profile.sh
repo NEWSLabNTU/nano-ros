@@ -72,6 +72,35 @@ nros_nextest_junit_path() {
     printf '%s\n' "$first"
 }
 
+# Issue 2416 -- keep THIS lane's junit under its own name beside the shared one.
+# A CI job runs several lanes and each resets the shared junit, so the uploaded
+# artifact held only the LAST lane's: tier-2 run 42744194409's four xrce-wake
+# reds could never be read back. The copy goes to `<junit dir>/lanes/`, where
+# `fixture-tree.sh reports` already collects every `junit*.xml`, named after the
+# lane's selection (`-p`, `--test`, `--features`, the filter) plus a hash of
+# all its arguments, so two lanes never share a name and a re-run of one lane
+# replaces its own copy. Never fails the caller: this is evidence, not a verdict.
+#   nros_nextest_junit_keep_lane <junit> <nextest args...>
+nros_nextest_junit_keep_lane() {
+    local junit="$1"
+    shift
+    [ -f "$junit" ] || return 0
+    local label="" prev="" a
+    for a in "$@" ${NROS_NEXTEST_FILTER:+-E "$NROS_NEXTEST_FILTER"}; do
+        case "$prev" in
+            -p | --package | --test | --features | -E) label="${label:+${label}_}$a" ;;
+        esac
+        prev="$a"
+    done
+    label="$(printf '%s' "${label:-all}" | tr -c 'A-Za-z0-9_.-' '_' | cut -c1-80)"
+    local hash
+    hash="$(printf '%s\0' "$@" "${NROS_NEXTEST_FILTER:-}" | sha256sum | cut -c1-8)"
+    local dir
+    dir="$(dirname "$junit")/lanes"
+    mkdir -p "$dir" 2>/dev/null || return 0
+    cp -p -- "$junit" "$dir/junit-${label}-${hash}.xml" 2>/dev/null || true
+}
+
 nros_nextest_record_enabled() {
     [ -n "${NROS_NEXTEST_RECORD:-}" ] && [ "${NROS_NEXTEST_RECORD:-}" != "0" ]
 }
