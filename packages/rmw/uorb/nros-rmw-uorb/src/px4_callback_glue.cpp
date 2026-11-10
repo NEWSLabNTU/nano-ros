@@ -110,7 +110,9 @@ struct Slot {
     bool constructed = false;
 
     CallbackSlotImpl *adapter() {
-        return reinterpret_cast<CallbackSlotImpl *>(storage);
+        // issue 2403 - through `void *`: PX4 builds with `-Wcast-align
+        // -Werror`, and `storage` is `alignas(CallbackSlotImpl)`.
+        return static_cast<CallbackSlotImpl *>(static_cast<void *>(storage));
     }
 };
 

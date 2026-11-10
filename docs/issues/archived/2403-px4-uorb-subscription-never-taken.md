@@ -77,13 +77,22 @@ same root: two modules started from different tasks can both get fd 3, so a
 lookup by handle could find the wrong slot. The host test double keeps the
 fd API.
 
-Verified on the emulator, without the resubscribe hack (the change applied to
-the scratch tree, `/mnt/wd/nt/p547/repro/fix2403-scratch.diff`; image
-`build-fix2403`, same `wqstk` config):
+The same change also makes the backend compile for PX4 NuttX as committed,
+which it did not before: PX4 builds NuttX C++ `-nostdinc++`, so `<atomic>`
+does not exist there (`subscriber.cpp` and `session.cpp` now use the
+`__atomic` builtins on plain fields), and its `-Wcast-align -Werror` refused
+the glue's slot cast (now through `void *`). The phase-547 spike had patched
+both in its scratch tree only.
+
+Verified on the emulator with the repository's own files, copied byte for
+byte over the scratch tree (`subscriber.cpp`, `session.cpp`,
+`px4_callback_glue.cpp`, `uorb_abi.hpp`, `NrosRmwUorbSources.cmake`), no
+resubscribe hack; image `build-fix2403-repo`, same `wqstk` config, console
+log `/mnt/wd/nt/p547/repro/run-fix2403-repo/console.log`:
 
 ```
 INFO  [nros_uorb_demo] recv vehicle_status: nav_state=4 arming_state=1 (1 samples)
-INFO  [nros_uorb_demo] sched task default runs=13 wake_max_us=3
+INFO  [nros_uorb_demo] sched task default runs=14 wake_max_us=3
 INFO  [nros_uorb_demo] stats: ticks=10 status=12 jitter_max_us=884764
 INFO  [nros_uorb_demo] stats: ticks=20 status=31 jitter_max_us=494276
 INFO  [nros_uorb_demo] stats: ticks=30 status=51 jitter_max_us=12066
