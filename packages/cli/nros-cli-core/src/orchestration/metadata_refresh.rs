@@ -79,6 +79,17 @@ pub fn refresh_stale_sidecars(
     let mut report = RefreshReport::default();
     let workspace = Workspace::discover(ws_root)?;
     let declarations = workspace.component_declarations()?;
+    // Issue 2425 — a bringup row whose workspace package no declaration
+    // covers is a component this pass cannot probe. Said, never dropped: the
+    // descriptor's answer for it is a refusal, which is safe and therefore
+    // otherwise invisible.
+    for (system_toml, pkg) in workspace.undeclared_component_rows()? {
+        report.unsupported.push(format!(
+            "{pkg} (named by `[[component]] pkg` in {}, but discovery found no \
+             component declaration for it, so it has no sidecar; issue 2425)",
+            system_toml.display()
+        ));
+    }
     if declarations.is_empty() {
         return Ok(report);
     }

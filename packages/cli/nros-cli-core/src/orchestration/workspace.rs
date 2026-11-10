@@ -411,6 +411,44 @@ impl Workspace {
         }
         Ok(out)
     }
+
+    /// Issue 2425 — the class guard. Every bringup `[[component]] pkg = "<p>"`
+    /// row naming a package OF THIS WORKSPACE must reach a component
+    /// declaration, or the metadata probe has no candidate for it: no sidecar,
+    /// no observed registration, and every in-place row priced as buffered —
+    /// silently, since a refused row is a safe answer. Returned as
+    /// `(bringup system.toml, pkg)` pairs; empty when every row is declared.
+    /// A row naming a package outside the workspace (an installed one) is out
+    /// of scope: discovery cannot see its sources either way.
+    pub fn undeclared_component_rows(&self) -> Result<Vec<(PathBuf, String)>> {
+        let declared: BTreeSet<String> = self
+            .component_declarations()?
+            .into_iter()
+            .map(|d| d.config.package)
+            .collect();
+        let mut out = Vec::new();
+        for bringup in self.packages.iter().filter(|p| p.system_toml.is_some()) {
+            let Some(system) = declaring_system(&bringup.root)? else {
+                continue;
+            };
+            for row in &system.components {
+                let Some(pkg) = row.pkg.as_deref() else {
+                    continue;
+                };
+                if pkg == bringup.name
+                    || declared.contains(pkg)
+                    || !self.packages.iter().any(|p| p.name == pkg)
+                {
+                    continue;
+                }
+                let entry = (bringup.root.join("system.toml"), pkg.to_string());
+                if !out.contains(&entry) {
+                    out.push(entry);
+                }
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// Phase 219.L — synthesise a [`ComponentConfig`] from a CMake-derived
@@ -2174,6 +2212,78 @@ name = "demo"
         assert!(
             comps.iter().all(|c| c.config.package != "demo_bringup"),
             "the bringup declares no component of its own"
+        );
+        assert_eq!(ws.undeclared_component_rows().unwrap(), vec![]);
+
+        // The guard: a row naming a workspace package discovery cannot declare
+        // (a CMake package with no `nano_ros_node_register`) is REPORTED.
+        let cmake = ws_root.join("src/plain");
+        std::fs::create_dir_all(&cmake).unwrap();
+        std::fs::write(cmake.join("package.xml"), pkg("plain")).unwrap();
+        std::fs::write(
+            cmake.join("CMakeLists.txt"),
+            "cmake_minimum_required(VERSION 3.22)\nproject(plain C)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\n\n[[component]]\n\
+             pkg = \"demo\"\nclass = \"demo::Eight\"\nname = \"eight\"\n\n\
+             [[component]]\npkg = \"plain\"\nclass = \"plain::P\"\nname = \"p\"\n\n\
+             [image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        let ws = Workspace::discover(ws_root).unwrap();
+        let rows = ws.undeclared_component_rows().unwrap();
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(rows[0].1, "plain");
+    }
+
+    /// Issue 2425 -- the class guard over the tree: no tracked workspace has a
+    /// bringup `[[component]]` row naming one of its own packages that no
+    /// component declaration covers. Before the fix this listed
+    /// `examples/zephyr/rust/talker`'s `zephyr_talker_node`, whose sidecar
+    /// stopped being written when it became a workspace and nothing said so.
+    #[test]
+    fn every_tracked_bringup_component_row_reaches_a_declaration() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap();
+        let out = crate::source_stamp::nros_git_command("git")
+            .args(["ls-files", "-z", "--", "*system.toml"])
+            .current_dir(&repo)
+            .output()
+            .expect("git ls-files");
+        let mut roots = BTreeSet::new();
+        for rel in String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+        {
+            let dir = repo.join(rel).parent().unwrap().to_path_buf();
+            if nros_orchestration_ir::leaf_system::is_package_dir(&dir) {
+                continue;
+            }
+            // A bringup is `<ws>/src/<bringup>`.
+            let Some(src) = dir.parent() else { continue };
+            if src.file_name().is_some_and(|n| n == "src") {
+                roots.insert(src.parent().unwrap().to_path_buf());
+            }
+        }
+        assert!(!roots.is_empty(), "no tracked workspace found");
+        let mut missing = Vec::new();
+        for root in &roots {
+            let ws =
+                Workspace::discover(root).unwrap_or_else(|e| panic!("{}: {e:?}", root.display()));
+            for (system_toml, pkg) in ws.undeclared_component_rows().unwrap() {
+                missing.push(format!("{}: {pkg}", system_toml.display()));
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "bringup rows naming a workspace package no declaration covers \
+             (no metadata sidecar will be written for them, issue 2425):\n  {}",
+            missing.join("\n  ")
         );
     }
 
