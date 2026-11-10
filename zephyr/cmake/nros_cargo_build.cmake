@@ -2333,8 +2333,16 @@ function(nros_cargo_build)
     # Bridge Kconfig → env vars before invoking Cargo
     nros_set_cargo_env_from_kconfig()
 
+    # Issue 2407 -- the STATICLIB ONLY. `nros-c` is ["staticlib", "cdylib",
+    # "lib"] and `nros-cpp` ["staticlib", "lib"], and cargo passes no `-C lto`
+    # to a crate that also emits an rlib -- silently -- so `cargo build` here
+    # dropped the profile's LTO for every Zephyr C/C++ image. `cargo rustc
+    # --lib --crate-type staticlib` emits the archive alone, and LTO applies.
+    # Gate: `check-staticlib-only-roads`.
     set(CARGO_ARGS
-        build
+        rustc
+        --lib
+        --crate-type staticlib
         -p ${ARG_PACKAGE}
         --manifest-path ${_cargo_manifest}
         --target-dir ${CARGO_TARGET_DIR}
