@@ -112,9 +112,26 @@ int nros_orb_unregister_callback(int handle);
 
 extern "C" {
 typedef void (*nros_orb_callback_t)(void* arg);
-int nros_orb_register_callback(const struct orb_metadata* meta, uint8_t instance, int handle,
-                               nros_orb_callback_t cb, void* arg);
-int nros_orb_unregister_callback(int handle);
+
+/* issue 2403 — the PX4 glue's subscription, held by POINTER, never by fd.
+ *
+ * On NuttX `orb_subscribe_multi` returns a real file descriptor, and NuttX
+ * gives every task group its own fd table: a subscription opened by the
+ * transient `<module> start` task is EBADF on the work-queue thread that runs
+ * the executor. One `uORB::SubscriptionCallback` (px4_callback_glue.cpp) is
+ * both the subscription and its broker callback, keyed by the glue's slot,
+ * and usable from any task. Defined only by px4_callback_glue.cpp.
+ *
+ * `nros_orb_sub_open` subscribes and registers `cb` (called in the
+ * publisher's context, so it must not block); NULL when the pool is full or
+ * the broker refused the callback. `check` / `copy` return 0 on success,
+ * -1 on failure; `check` reports a fresh sample in `*updated`, `copy`
+ * copies the latest one and marks it seen. */
+void* nros_orb_sub_open(const struct orb_metadata* meta, uint8_t instance, nros_orb_callback_t cb,
+                        void* arg);
+int nros_orb_sub_check(void* sub, bool* updated);
+int nros_orb_sub_copy(void* sub, void* buffer);
+void nros_orb_sub_close(void* sub);
 }
 
 #endif // NROS_RMW_UORB_USE_PX4_HEADER

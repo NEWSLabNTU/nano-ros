@@ -4,8 +4,9 @@
 of the console and two telemetry ports off (one Renode DMA defect); the whole
 spike is now scripted (see "Reproducing the spike"). W3: the `mm_free` fault is
 confirmed as the module's main-task stack (issue 2398) and gone with both
-thread stacks raised; nano-ros publishes and stock PX4 reads it, but the
-subscription half of the round trip receives nothing (issue 2403).** A time-boxed spike (about
+thread stacks raised; nano-ros publishes and stock PX4 reads it, and since
+issue 2403's fix (a uORB subscription held by pointer, not by a per-task-group
+fd) the subscription half receives `vehicle_status` too.** A time-boxed spike (about
 three working days). It decides the board and emulator for first-class PX4
 support. It writes no RFC and changes no shipped code: the RFC amendment and
 the implementation phase are drafted from its findings, after the maintainer
@@ -173,7 +174,7 @@ a finding against nano-ros, not PX4, unless marked:
 | UsageFault in `arm_dma_initialize`, before the first `[boot]` | **`.nros_boot_config` is an orphan section** to PX4's linker script; `ld` placed it at `_eronly`, so NuttX copied it into `.data` and every initialised global moved by 0x10c (Zephyr has `zephyr/nros_boot_config.ld`; NuttX/PX4 have nothing) | `KEEP(*(.nros_boot_config))` in the scratch `script.ld`. Fix: a section name every stock script absorbs (`.rodata.nros_boot_config`), found by symbol rather than section. Affects every NuttX/PX4 target whose script we do not own |
 | typed `nros_uorb_demo start` not seen | the console's RX DMA (the W2 DMA defect; measured 2026-11-10) | started from `rc.board_sensors`; with `CONFIG_USART3_RXDMA` off, typing works |
 | **MemManage fault in `mm_free`** (task `netinit`, freeing `0xffffff90`) just after `nros: session open (rmw=uorb)` | **the module's main task overflowing its stack** (PX4's default `STACK_MAIN`, 2048 B, against a measured 15.3 KB open path; a NuttX task stack is a heap block); confirmed 2026-11-10 by the scripted repro, [issue 2398](../issues/archived/2398-px4-thread-stacks-below-executor-floor.md) | reproduced exactly with the stock 2048 B, gone with `STACK_MAIN 16384`. With only that raised, `wq:rate_ctrl`'s stock 3150 B overflows next (a HardFault in `ekf2`), so `CONFIG_WQ_RATE_CTRL_STACKSIZE=8192` too: then no fault in 70 s. Fix: 2398's configure-time refusal of both stock values (merged). The size-mismatch suspect was ruled out by measurement, [issue 2397](../issues/archived/2397-px4-nuttx-platform-type-sizes.md) (resolved) |
-| `vehicle_status` never reaches the demo (`status=0`), while PX4's `listener` shows commander publishing it | the uORB broker calls the subscription's callback and the runtime's per-entity wake runs, but the executor never calls `take` (instrumented) | open: [issue 2403](../issues/2403-px4-uorb-subscription-never-taken.md). The publish half works: `listener debug_key_value` prints `key: "nros"` |
+| `vehicle_status` never reaches the demo (`status=0`), while PX4's `listener` shows commander publishing it | the subscription's handle is a NuttX fd, opened by the transient `start` task; on the `wq:rate_ctrl` thread (another task group) `orb_check` is EBADF, and the C shim read that error as "no data" | resolved: [issue 2403](../issues/archived/2403-px4-uorb-subscription-never-taken.md) holds the subscription by pointer on the PX4 build; the demo then counts `status=51` at 30 ticks. The error-as-no-data half is [issue 2410](../issues/archived/2410-cffi-poll-swallows-backend-error.md) |
 
 The scratch edits are saved as `px4-scratch-patches.diff` (PX4) and
 `nros-spike-patches.diff` (nano-ros) in `/mnt/wd/nt/p547/repro/`, outside the
@@ -1059,7 +1060,7 @@ index 4c1c1231e1..2413c440a3 100644
 |---|---|---|---|
 | `build-nros` (label `nros`) | 2048 B (PX4 default) | 3150 B | **the original fault, reproduced exactly**: MemManage in `mm_free` right after `nros: session open (rmw=uorb)`, task `netinit`, `MMFAR ffffff94`, `R3 ffffff90`, from `netlib_getmacaddr` closing a socket in `netinit_dhcp`; then a fault-reboot loop |
 | `build-nros16k` (label `nros`) | 16384 B | 3150 B | `mm_free` fault gone; a HardFault (`INVSTATE`) in task `ekf2`, its stack pointer outside its own stack, just after the module's first publish |
-| `build-wqstk` (label `wqstk`) | 16384 B | 8192 B | **no fault** in 70 s of virtual time; the module publishes every second, and PX4's `listener debug_key_value` prints `key: "nros"`, `value: 7.00000`. The subscription half receives nothing: [issue 2403](../issues/2403-px4-uorb-subscription-never-taken.md) |
+| `build-wqstk` (label `wqstk`) | 16384 B | 8192 B | **no fault** in 70 s of virtual time; the module publishes every second, and PX4's `listener debug_key_value` prints `key: "nros"`, `value: 7.00000`. The subscription half received nothing until [issue 2403](../issues/archived/2403-px4-uorb-subscription-never-taken.md)'s fix (image `build-fix2403`: `recv vehicle_status`, `status=51` at 30 ticks) |
 
 So the `mm_free` fault was the main task's stack, as [issue 2398](../issues/archived/2398-px4-thread-stacks-below-executor-floor.md)
 predicted (now confirmed there), and the queue's stack is a second, separate
@@ -1067,10 +1068,13 @@ overflow. Both are the values 2398's configure-time refusal requires. The
 guarded-heap build (step 4 of the plan) was not needed. [Issue 2397](../issues/archived/2397-px4-nuttx-platform-type-sizes.md)
 is resolved with this.
 
-W3's round trip is half there. nano-ros to PX4 works, read by a stock PX4
-tool. PX4 to nano-ros does not: commander publishes `vehicle_status` (PX4's
-`listener` shows `nav_state: 4`), the uORB broker calls our callback, yet the
-executor never calls the subscription's `take` (instrumented, issue 2403).
+W3's round trip works both ways. nano-ros to PX4 works, read by a stock PX4
+tool. PX4 to nano-ros did not at first: commander publishes `vehicle_status`
+(PX4's `listener` shows `nav_state: 4`) and the uORB broker called our
+callback, but the subscription's NuttX fd belonged to the `start` task's group,
+so every `orb_check` on the work-queue thread was EBADF (issue 2403). With the
+subscription held by pointer the demo prints `recv vehicle_status:
+nav_state=4 arming_state=1` and counts `status=51` at 30 ticks.
 
 ### Where this leaves the board decision
 
