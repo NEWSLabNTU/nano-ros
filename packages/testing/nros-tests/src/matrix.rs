@@ -593,6 +593,15 @@ pub enum Workload {
     /// the same workspace runs on the host's clock, which is why the cell is
     /// the QEMU one (the board's verdicts were taken on a Cortex-M).
     ViolationChannel,
+    /// issue 2389 -- a session open honours its connect budget. The image
+    /// states `connect_timeout_ms` and is booted twice with no router: once
+    /// against a port nothing accepts, once against a listener that accepts
+    /// the TCP connect and never sends a byte. Each must end in
+    /// `ConnectionFailed` within the budget, with a console line naming it.
+    ///
+    /// Its own value because the subject is a FAILURE and how long it takes:
+    /// nothing is delivered, and the peer is not a router at all.
+    ConnectBudget,
 }
 
 impl Workload {
@@ -654,6 +663,12 @@ impl Workload {
             // phase-544 W2. 85 is the last of 81..=89 free in every band; a
             // router port of its own, because the image opens a session.
             Workload::ViolationChannel => 85,
+            // issue 2389. No router dials this image's slot: the test starts
+            // its own listener on an ephemeral port and passes it at run time.
+            // 81..=99 are all taken, so it takes 25, free in every band (the
+            // variant offsets are 0/10/20) and zenoh only, so the domain
+            // window is irrelevant.
+            Workload::ConnectBudget => 25,
         }
     }
 
@@ -981,6 +996,9 @@ pub enum Consumer {
     /// `tests/nano2nano.rs` -- the linux pair's `peer-mode` configuration
     /// (phase-535 W6).
     Nano2nano,
+    /// `tests/zephyr_connect_budget.rs` -- a zenoh open ends at its connect
+    /// budget on native_sim (issue 2389).
+    ZephyrConnectBudget,
 }
 
 impl Consumer {
@@ -1024,6 +1042,7 @@ impl Consumer {
         Consumer::Px4Sitl,
         Consumer::ViolationChannel,
         Consumer::Nano2nano,
+        Consumer::ZephyrConnectBudget,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1067,6 +1086,7 @@ impl Consumer {
             Consumer::Px4Sitl => "px4_sitl",
             Consumer::ViolationChannel => "violation_channel_e2e",
             Consumer::Nano2nano => "nano2nano",
+            Consumer::ZephyrConnectBudget => "zephyr_connect_budget",
         }
     }
 }
@@ -1533,6 +1553,10 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         }
         // phase-544 W2 (issue 2273).
         (_, _, _, W::ViolationChannel, _) => Some(ViolationChannel),
+        // issue 2389.
+        (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::ConnectBudget, K::Example) => {
+            Some(ZephyrConnectBudget)
+        }
         (P::ZephyrNucleoF767zi, L::C, R::Zenoh, W::Pubsub, K::Example) => Some(ZephyrRenodeTwin),
         (P::ZephyrNativeSim, _, _, W::Pubsub | W::Service | W::Action, K::Example) => Some(Zephyr),
         (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(Zephyr),

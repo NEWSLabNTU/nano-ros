@@ -5910,6 +5910,19 @@ pub fn build_zephyr_nucleo_c_serial_talker() -> TestResult<PathBuf> {
     )
 }
 
+/// Issue 2389 -- the `examples/zephyr/rust/talker` native_sim image with a
+/// 3 s connect budget (`[image.zephyr_connect_budget]`), the
+/// (ZephyrNativeSim, Rust, Zenoh, ConnectBudget) cell's fixture. The test
+/// passes its own locator at run time, so the row's baked one is never dialled.
+pub fn build_zephyr_rust_connect_budget() -> TestResult<PathBuf> {
+    let binary_path =
+        zephyr_build_root().join("build-rust-talker-connect-budget-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource::zenoh("examples/zephyr/rust/talker", "rust"),
+    )
+}
+
 /// Issue 2078 -- the files outside the talker workspace that
 /// `[image.mps2_serial]` merges: the board package's Kconfig and the serial
 /// delta after it. Relative to the workspace root; everything inside it is

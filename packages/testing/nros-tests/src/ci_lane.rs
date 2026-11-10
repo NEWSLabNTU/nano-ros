@@ -37,10 +37,16 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 26 | 11 | 20 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 27 | 12 | 21 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config + the violation-channel cell | 14 | 12 | 21 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config + every realtime-tiers cell | 49 | 42 | 75 % |
-//! | tier 3 | everything | 267 | 56 | 100 % |
+//! | tier 3 | everything | 268 | 56 | 100 % |
+//!
+//! Re-measured 2026-11-11 (issue 2389): the `ConnectBudget` workload joined
+//! with one Zephyr native_sim Rust zenoh Example cell. A new workload value is
+//! one more 1-wise requirement on tier 1, which had no `zephyr,rust,zenoh`
+//! coordinate, so tier 1 went 26 -> 27 cells over 11 -> 12 coordinates; tier 3
+//! went 267 -> 268 cells over the same 56 coordinates.
 //!
 //! Re-measured 2026-11-10 (phase-535 W6, peer mode): `Config::PeerMode`
 //! joined with a linux Rust zenoh Pubsub cell at an existing coordinate. A
@@ -1298,7 +1304,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 26, 11),
+            (CiLane::Tier1, 27, 12),
             (CiLane::Tier2, 14, 12),
             (CiLane::Tier2Nightly, 49, 42),
         ];
@@ -1322,8 +1328,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 267,
-            "the table's tier-3 cell count (267) is stale; recomputed {total_cells}"
+            total_cells, 268,
+            "the table's tier-3 cell count (268) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 56,

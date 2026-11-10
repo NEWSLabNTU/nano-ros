@@ -378,6 +378,17 @@ at = ["ZephyrNativeSim", "Rust", "Zenoh", "Action", "Example"]
 status = 'Runtime'
 
 [[cell]]
+comment = '''
+// issue 2389 -- a zenoh open ends at its connect budget, against no router
+// and against a listener that accepts and never answers. native_sim
+// because it is a Zephyr image on the same zenoh-pico open path as the
+// qemu_cortex_a53 one the issue was seen on, and its sockets are the
+// host's, so the test can stand up the silent peer itself.
+'''
+at = ["ZephyrNativeSim", "Rust", "Zenoh", "ConnectBudget", "Example"]
+status = 'Runtime'
+
+[[cell]]
 at = ["ZephyrNativeSim", "C", "Zenoh", "Action", "Example"]
 status = 'Runtime'
 
