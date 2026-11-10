@@ -112,6 +112,18 @@ just-recipe-paths:
 set-e-bare-assignment:
     @python3 scripts/check-set-e-bare-assignment.py
 
+# Issue 2424 -- the sibling one construct over: `done < <(producer)` and
+# `mapfile -t x < <(producer)` drop the producer's exit status, which neither
+# `set -e` nor `pipefail` sees, so a crashing producer reads as an empty
+# stream. `fixtures-manifest.py west-overrides` raised for a day that way and
+# every Zephyr row built with no overrides. The remedy is `wait $!` as the next
+# statement. A RATCHET (`.config/process-substitution-status-baseline.txt`,
+# per-file counts that may only fall), not a rewrite: 174 sites when it landed,
+# the 9 `python3` producers fixed with it. Buildless, ~0.3 s, self-tests first.
+[private]
+process-substitution-status:
+    @python3 scripts/check-process-substitution-status.py
+
 # Issue 1476 — `git merge-base --is-ancestor` answers NO both when it walked
 # the history and found nothing, and when there is no history here to walk. A
 # shallow checkout produces the second, and a SELF-HOSTED runner's persistent

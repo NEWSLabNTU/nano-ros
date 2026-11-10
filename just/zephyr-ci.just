@@ -406,6 +406,7 @@ build-fixtures:
         echo "  → witness workspace prep (nros configure): $ws"
         ( cd "$ws" && "$nros_cli" configure >/dev/null )
     done < <(python3 scripts/build/fixtures-manifest.py west-witness-dirs)
+    wait $! || { echo "zephyr-ci.just: \`fixtures-manifest.py west-witness-dirs\` failed (issue 2424)" >&2; exit 1; }
 
     # Issue 1419 -- the census each contracted workspace image's configure will
     # check, taken here, SERIALLY, before the leaves fan out: two leaves of one
