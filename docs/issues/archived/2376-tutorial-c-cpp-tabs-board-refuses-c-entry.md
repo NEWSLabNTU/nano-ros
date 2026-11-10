@@ -71,8 +71,15 @@ Option 2, the user's ruling (bare metal stays Rust only):
 - `tutorial-c` and `tutorial-cpp` run on the FreeRTOS row and are weekly in
   `probe-platforms.yml`, with no `awaits`.
 - `nros new --to <bringup>` gives the new node a row in the bringup's
-  `system.contract.yaml` when the scaffold knows the node's whole surface
-  (talker, listener), and says so when it does not. Probe run 42754577268
+  `system.contract.yaml` with its whole surface, for every role (talker,
+  listener, server, client, action server, action client), per language: a
+  C or C++ client and action node ticks every 500 ms, a Rust client every
+  second, and the Rust action nodes have no timer. It also writes the node's
+  entry under `topics:`, `services:` or `actions:`, creating the section if
+  it is missing. The first version covered the talker and listener only, and
+  probe run 42780892067 stopped the C/C++ tabs at step 630 (chapter 6) on the
+  same refusal, with four nodes missing. Test:
+  `every_role_added_with_to_joins_the_contract_whole`. Probe run 42754577268
   found the gap: on the CMake road, a contract with `params:` on the talker
   and no row for the listener has the parameter store refused ("1 of 2 nodes
   in this image declare no `params:` ... Declare `params:` on every node, or

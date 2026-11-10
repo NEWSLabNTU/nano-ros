@@ -67,7 +67,9 @@ next build generates it from your ROS 2 install like any message package.
 [Install](../start/install.md), add it now:
 `sudo apt install ros-$ROS_DISTRO-example-interfaces`. A service type is a pair
 of messages, so a `.srv` file in a package of your own, beside chapter 5's
-`.msg`, works the same way.
+`.msg`, works the same way. As in chapter 3, `--to` also gives each node a
+row in the bringup's contract, and the `services:` section names who serves
+`/add_two_ints` and who calls it.
 
 The server answers each request in its callback:
 
