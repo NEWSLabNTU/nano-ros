@@ -77,7 +77,7 @@ Owns [issue 1426](../../issues/archived/1426-cmake-callback-groups-never-reach-c
 and [issue 1427](../../issues/archived/1427-realizer-allocates-rank-zero-above-the-transport-band.md),
 both resolved and archived.
 Closes the reachability half of
-[issue 1371](../../issues/1371-tier-derivation-silent-on-empty-callback-groups.md)
+[issue 1371](../../issues/archived/1371-tier-derivation-silent-on-empty-callback-groups.md)
 (the silence half stays 1371's) and takes item 2 of
 [issue 1372](../../issues/archived/1372-contract-trigger-rate-is-dead-data.md) as a
 dependency, not as its own work. Builds on RFC-0047 (groups in code, bindings in

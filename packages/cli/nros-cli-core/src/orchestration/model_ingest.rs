@@ -268,6 +268,10 @@ pub fn derive_execution_from_contracts(
     derive_execution_in_plan(system, model, target_rtos, callback_groups, None)
 }
 
+/// The `PlanSchedWarning::dim` of a node the derived schedule could not bind
+/// because it declares no callback groups (issue 1371).
+pub const GROUPLESS_DIM: &str = "callback_groups";
+
 /// [`derive_execution_from_contracts`], allocating out of the priority plan the
 /// caller resolved from the image's `.config` (issue 1508); `None` is the sched task
 /// key's projection.
@@ -312,12 +316,23 @@ pub fn derive_execution_in_plan(
             reason: d.reason.clone(),
         });
     }
+    // Issue 1371 — and a groupless note goes into the plan too. It is a
+    // verdict about one node with a reason, the shape `PlanSchedWarning` was
+    // written for; on stderr alone it took four artifacts to establish that an
+    // image's every callback ran on the default sched task.
     for name in &derived.groupless_notes {
         eprintln!(
             "codegen-system: derived-schedule note — node '{}' declares no \
              callback groups; it stays on the default sched task",
             name
         );
+        warnings.push(crate::orchestration::plan::PlanSchedWarning {
+            node: name.clone(),
+            dim: GROUPLESS_DIM.to_string(),
+            reason: "declares no callback groups, so the derived schedule has nothing \
+                     to bind it to: its callbacks stay on the default sched task"
+                .to_string(),
+        });
     }
     // issue 1426 — "authored wins" may not win silently. Same channel as a
     // degradation, and into the plan for the same reason (issue 0259): the
