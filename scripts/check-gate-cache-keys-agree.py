@@ -55,7 +55,12 @@ WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 # name: phase-489 W1 split the one `check` consumer into `check-*` siblings,
 # and a hand list of them would be one more table to forget a sibling in. Every
 # job matching the prefix is a consumer; at least one must exist.
-PAIRS = [("check-", "warm-cache", "the compile-tier CLI + resolver build")]
+PAIRS = [
+    ("check-", "warm-cache", "the compile-tier CLI + resolver build"),
+    # issue 2141 — the merge-queue copy-out jobs restore the SDK store and save
+    # it on `main` only; `warm-sdk-store` keeps `main`'s entry current.
+    ("check-template-copy-out", "warm-sdk-store", "the SDK store"),
+]
 
 
 def jobs(text):
@@ -508,8 +513,12 @@ def main():
         # key neither the warmer nor the consumer itself ever writes restores
         # nothing, forever — and a one-way check (warmer -> consumer) let one
         # be added with the gate green.
+        # Every warmer counts: a consumer of two pairs (a `check-template-copy-out`
+        # job restores both the compile-tier CLI and the SDK store) is served by
+        # whichever warmer writes the key it restores (issue 2141).
+        warmers = {w for _, w, _ in PAIRS if w in js}
         for c in consumers:
-            written = produced_keys(js[warmer]) | produced_keys(js[c])
+            written = set().union(*(produced_keys(js[w]) for w in warmers)) | produced_keys(js[c])
             for key in restore_only_keys(js[c]):
                 checked += 1
                 if key not in written:

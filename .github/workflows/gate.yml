@@ -3159,6 +3159,88 @@ jobs:
   # This job writes those same keys on `push` to main — once per merge, instead
   # of once per queue entry. It deliberately does NOT run the gates: its only
   # product is a populated cache.
+  # Issue 2141 — the SDK-store entries the `template-copy-out` jobs restore.
+  # Those jobs run on merge groups, whose `gh-readonly-queue/...` refs can read
+  # only their own entries and `main`'s, so a save there is unreadable to every
+  # other run: 14 copies of one 278 MB key accumulated in a day (3.9 GB of the
+  # 10 GB budget) and LRU evicted the message-bindings entry. They now save on
+  # `main` only, and this job keeps `main`'s entry current: on every push it
+  # looks the kind's key up, and only on a miss (a moved `[tool.*]` pin)
+  # provisions the kind's tools and saves them. Key, step id and paths are the
+  # consumers' own spellings, which `check-gate-cache-keys-agree` compares.
+  warm-sdk-store:
+    name: warm the SDK-store cache [${{ matrix.kind }}] (main only)
+    if: ${{ github.ref == 'refs/heads/main' && contains(fromJSON('["push","workflow_dispatch"]'), github.event_name) }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [copy-out, copy-out-zephyr]
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Key the SDK-store cache
+        id: store-key
+        run: |
+          echo "key=$(scripts/ci/sdk-store-cache.sh key ${{ matrix.kind }})" >> "$GITHUB_OUTPUT"
+          echo "tools=$(scripts/ci/sdk-store-cache.sh tools ${{ matrix.kind }})" >> "$GITHUB_OUTPUT"
+          { echo 'paths<<NROS_EOF'; scripts/ci/sdk-store-cache.sh paths ${{ matrix.kind }}; echo NROS_EOF; } >> "$GITHUB_OUTPUT"
+
+      - name: Look up main's entry
+        id: store-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
+          lookup-only: true
+
+      - name: Key the CLI binary cache on source_stamp.rs's whole watch set
+        if: ${{ steps.store-cache.outputs.cache-hit != 'true' }}
+        id: cli-key
+        run: |
+          key="$(scripts/ci/cli-bin-cache-key.sh)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the nros + nros-launch-resolve binaries
+        if: ${{ steps.store-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            packages/cli/target/release/nros
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve
+            packages/cli/nros-launch-resolve/target/release/nros-launch-resolve.nros-source-stamp
+            packages/cli/nros-launch-resolve/target/release/libplay_launch_parser_pyexec.so
+          key: nros-cli-bin-${{ runner.os }}-${{ steps.cli-key.outputs.key }}
+
+      - name: Provision the kind's tools (on a miss)
+        if: ${{ steps.store-cache.outputs.cache-hit != 'true' }}
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          source ./activate.sh
+          just setup-cli
+          for t in ${{ steps.store-key.outputs.tools }}; do
+            nros setup --tool "$t"
+          done
+
+      - name: Save the SDK store (on a miss)
+        if: ${{ steps.store-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
+
   warm-cache:
     name: warm the compile-tier cache (main only)
     if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
@@ -3375,63 +3457,6 @@ jobs:
         run: |
           source ./activate.sh
           just workspace install-corrosion
-
-      # Issue 2141 — main's SDK-store entries, which the merge-queue
-      # `template-copy-out` jobs restore and no longer save. Looked up first,
-      # so a push whose pins did not move pays one lookup per kind; on a miss
-      # the kind's tools are provisioned and saved under its key.
-      - name: Key the SDK-store caches main holds
-        id: main-store-keys
-        run: |
-          for k in copy-out copy-out-zephyr; do
-            v="${k//-/_}"
-            echo "${v}_key=$(scripts/ci/sdk-store-cache.sh key "$k")"
-            echo "${v}_tools=$(scripts/ci/sdk-store-cache.sh tools "$k")"
-            echo "${v}_paths<<NROS_EOF"
-            scripts/ci/sdk-store-cache.sh paths "$k"
-            echo NROS_EOF
-          done >> "$GITHUB_OUTPUT"
-
-      - name: Look up main's SDK store (copy-out)
-        id: main-store-copy-out
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.main-store-keys.outputs.copy_out_paths }}
-          key: ${{ steps.main-store-keys.outputs.copy_out_key }}
-          lookup-only: true
-
-      - name: Look up main's SDK store (copy-out-zephyr)
-        id: main-store-copy-out-zephyr
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.main-store-keys.outputs.copy_out_zephyr_paths }}
-          key: ${{ steps.main-store-keys.outputs.copy_out_zephyr_key }}
-          lookup-only: true
-
-      - name: Provision the SDK-store tools main is missing
-        if: ${{ steps.main-store-copy-out.outputs.cache-hit != 'true' || steps.main-store-copy-out-zephyr.outputs.cache-hit != 'true' }}
-        env:
-          COPY_OUT_TOOLS: ${{ steps.main-store-copy-out.outputs.cache-hit != 'true' && steps.main-store-keys.outputs.copy_out_tools || '' }}
-          ZEPHYR_TOOLS: ${{ steps.main-store-copy-out-zephyr.outputs.cache-hit != 'true' && steps.main-store-keys.outputs.copy_out_zephyr_tools || '' }}
-        run: |
-          source ./activate.sh
-          for t in $(printf '%s\n' $COPY_OUT_TOOLS $ZEPHYR_TOOLS | sort -u); do
-            nros setup --tool "$t"
-          done
-
-      - name: Save main's SDK store (copy-out, on a miss)
-        if: ${{ steps.main-store-copy-out.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.main-store-keys.outputs.copy_out_paths }}
-          key: ${{ steps.main-store-keys.outputs.copy_out_key }}
-
-      - name: Save main's SDK store (copy-out-zephyr, on a miss)
-        if: ${{ steps.main-store-copy-out-zephyr.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.main-store-keys.outputs.copy_out_zephyr_paths }}
-          key: ${{ steps.main-store-keys.outputs.copy_out_zephyr_key }}
 
       - name: Provision compile-tier sources
         run: |
