@@ -3452,19 +3452,23 @@ env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc", RUSTUP_TOOLCHAIN = "nightly-
 # baked locator); its port is `alloc::port_of(NuttxArm, Rust, Params)`.
 # Consumed by tests/param_store_carve.rs.
 #
-# `RUSTUP_TOOLCHAIN`: a leaf that states its board in `system.toml` builds with
-# cargo run from the directory ABOVE it (`nros_leaf_settings_cwd`), where
-# rustup finds no `rust-toolchain.toml` — the example leaves inherit theirs
-# from `examples/qemu-armv7a-nuttx/`, a bin under `bins/` has none above it.
-# Without the pin the settings file's `[unstable] build-std` is read by a
-# stable cargo and ignored (`can't find crate for core`). Same pin as the
-# `workspace-rust-qemu-nuttx` row.
-[[fixture]]
+# A one-package workspace since phase-531 W7: the image is the bringup's
+# `[image.qemu-armv7a-nuttx]`, built as the generated
+# `qemu_armv7a_nuttx_entry`.
+#
+# `RUSTUP_TOOLCHAIN`: the same pin as the `workspace-rust-qemu-nuttx` row.
+# Without it the settings file's `[unstable] build-std` is read by a stable
+# cargo and ignored (`can't find crate for core`).
+[[workspace_fixture]]
 id = "nuttx-param-store"
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/param-store-nuttx-qemu-arm"
+bringup = "src/param_store_nuttx_qemu_arm_bringup"
+image = "qemu-armv7a-nuttx"
+target_dir = "target"
+target = "armv7a-nuttx-eabihf"
 skip_probe = true
 env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 
@@ -3589,12 +3593,16 @@ dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64"
 # nothing. Built by id in `just threadx_riscv64 build-fixture-extras`, like the
 # logging smoke above. Port = `alloc::port_of(ThreadxRiscv64, Rust, Params)`.
 # Consumed by tests/param_store_carve.rs.
-[[fixture]]
+[[workspace_fixture]]
 id = "threadx-riscv64-param-store"
 platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/param-store-threadx-riscv64"
+bringup = "src/param_store_threadx_riscv64_bringup"
+image = "rv-virt-threadx"
+target_dir = "target"
+target = "riscv64gc-unknown-none-elf"
 
 # ===========================================================================
 # C/C++ cells (cmake) + esp32 (+nightly) + zephyr (west) + threadx-linux

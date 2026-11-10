@@ -192,7 +192,7 @@ mod tests {
             lang: "rust".into(),
             rmw: rmw.into(),
             bringup: "src/talker_bringup".into(),
-            entry: format!("{image}_entry"),
+            entry: nros_orchestration_ir::entry_names::entry_package_name(image),
             image: image.into(),
             env: env.into(),
         }
