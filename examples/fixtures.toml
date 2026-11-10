@@ -3571,22 +3571,19 @@ skip_probe = true
 # dir no test read.
 # ===========================================================================
 
-# Phase 275 W1 (#102 H2) — the per-role Entry-pkg demos. Each Entry pkg
-# bakes board+rmw through `nros::main!` + the `nros-board-threadx-linux`
-# shim (package.xml `rmw="zenoh"`), so these are bare default-feature rows.
-# `fixtures-build.sh` runs `nros configure` (materialises generated/ + the
-# [patch.crates-io] block) before cargo, same as any package.xml dir. Build
-# builds for the HOST — these rows carry no `target`, so no triple segment is
-# spliced into the artifact path (they used to pin `x86_64-unknown-linux-gnu`,
-# which is a cross compile on any other host — issue 0582). They author no
-# `target_dir` either, so the bytes land in a shared group dir under
-# `build/cargo-fixtures/`, NOT in `<leaf>/target`; tests must resolve them via
-# the group resolver. Asserted by tests/threadx_linux_entry_build.rs.
-[[fixture]]
+# phase-531 W6 — the Rust talker witness is a one-package workspace
+# (RFC-0122 D3): node package `src/threadx_linux_rs_talker`, its image the
+# bringup's `threadx-linux` (zenoh). The generated entry builds for the HOST;
+# no `target` (issue 0582). Resolved by `threadx_linux::require_entry_binary`
+# through `migrated_leaf_binary`.
+[[workspace_fixture]]
+id = "threadx-linux-rust-zenoh-talker"
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/threadx-linux/rust/talker"
+bringup = "src/threadx_linux_rs_talker_bringup"
+image = "threadx-linux"
 
 # Issue 2207 — the same listener with `connect_forever` stated, for the one
 # cell that starts the image BEFORE its router

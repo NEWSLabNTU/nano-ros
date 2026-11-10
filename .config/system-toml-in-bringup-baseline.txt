@@ -71,7 +71,6 @@ examples/templates/zephyr-byo/app/system.toml
 examples/threadx-linux/c/talker/system.toml
 examples/threadx-linux/cpp/talker/system.toml
 examples/threadx-linux/rust/listener/system.toml
-examples/threadx-linux/rust/talker/system.toml
 examples/zephyr/rust/action-server/system.toml
 packages/testing/nros-bench/large-msg-baremetal/system.toml
 packages/testing/nros-bench/loan-copy-count/system.toml
