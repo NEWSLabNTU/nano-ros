@@ -930,9 +930,9 @@ pub fn check(inputs: Inputs<'_>) -> Report {
                     decl.kind.noun(),
                     decl.node
                 ),
-                // dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
+                // Issue 2394: the user-tier home is `nros configure --census`.
                 remedy: format!(
-                    "run `nros dev image entity-census run` on an entry that launches `{}`, or accept \
+                    "run `nros configure --census` with an image that launches `{}`, or accept \
                      that this row is unchecked",
                     decl.node
                 ),
@@ -1303,9 +1303,9 @@ fn check_params(
                     detail: format!(
                         "the contract declares parameter `{name}`; the census never ran `{node}`"
                     ),
-                    // dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
+                    // Issue 2394: the user-tier home is `nros configure --census`.
                     remedy: format!(
-                        "run `nros dev image entity-census run` on an entry that launches `{node}`"
+                        "run `nros configure --census` with an image that launches `{node}`"
                     ),
                     waiver: None,
                 });

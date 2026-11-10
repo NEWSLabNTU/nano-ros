@@ -348,6 +348,7 @@ pub fn run(args: Args) -> Result<()> {
     };
 
     let override_problems = report_overrides();
+    report_bringup_layout();
 
     let problems =
         deploy_problems.unwrap_or(0) + gate_problems + install_problems + override_problems;
@@ -533,6 +534,34 @@ fn package_xml_version(path: &Path) -> Option<String> {
 /// third-party code an image compiled is a recorded fact, not a guess from the
 /// board's provisioning list), and the digest of each image `nros run`
 /// last started.
+/// Issue 2394 -- a `system.toml` beside a package's code, under the current
+/// directory. Read-only: the finding names `nros configure --migrate`, which
+/// does the move and prints every file it moves. A warning, as configure's
+/// own is, so it adds no problem to the count.
+fn report_bringup_layout() {
+    let Ok(cwd) = std::env::current_dir() else {
+        return;
+    };
+    // A project: a standalone package (`system.toml` here) or a workspace
+    // (`src/`). The nano-ros checkout is neither question's subject, and a
+    // discovery from its root would walk every example.
+    let is_project = cwd
+        .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+        .is_file()
+        || cwd.join("src").is_dir();
+    if !is_project || cwd.join("nros-sdk-index.toml").is_file() {
+        return;
+    }
+    for dir in crate::cmd::configure::migratable(&cwd) {
+        eprintln!(
+            "nros doctor: warning: {} sits beside the package's code; `system.toml` belongs in \
+             a bringup package. `nros configure --migrate` moves it and says what it moved.",
+            dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                .display()
+        );
+    }
+}
+
 fn report_project_lock(from: &Path) {
     let path = crate::orchestration::store::lock_path_for(from);
     let lock = match crate::orchestration::sdk_store::SdkLock::load(&path) {

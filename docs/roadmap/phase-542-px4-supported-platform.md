@@ -160,10 +160,11 @@ Evidence:
   help no longer teach `nros codegen-system`; four example READMEs, two
   message-bound remedies and three CLI refusals are reworded.
 - Advice with no user-tier verb yet (census, source metadata, the bringup
-  move, the central patch outside a workspace) carries
-  `dev-verb-advice-ok: issue 2394`; the gate accepts a marker only while its
-  issue is open. [Issue 2394](../issues/2394-user-tier-census-metadata-verb.md)
-  is homed here.
+  move, the central patch outside a workspace) carried a
+  `dev-verb-advice-ok` marker naming issue 2394; the gate accepts a marker
+  only while its issue is open.
+  [Issue 2394](../issues/archived/2394-user-tier-census-metadata-verb.md),
+  homed here, gave each a user-tier home and is resolved (2026-11-10).
 - A linux C talker and the PX4 module template configure with the reworded
   block.
 

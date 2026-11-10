@@ -396,7 +396,7 @@ Applied so far:
   (RFC-0117 D3; Principle 5). `check-user-text-dev-verbs` refuses it outside
   the book, as `check-book-audience` does inside it; the few hints with no
   user-tier verb to name yet are marked against
-  [issue 2394](../issues/2394-user-tier-census-metadata-verb.md). The page stays in User
+  [issue 2394](../issues/archived/2394-user-tier-census-metadata-verb.md). The page stays in User
   guide › Platforms meanwhile, by maintainer ruling (2026-11-05): an exception
   to Principle 3 that ends when the track replays.
 - Arm FVP leaves the user book (no replaying track, RFC-0115 D4).

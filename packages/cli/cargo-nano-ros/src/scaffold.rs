@@ -722,8 +722,10 @@ source_metadata = "metadata/{module}.json"
     println!("Next steps:");
     println!("  cd {}", cfg.name);
     println!("  # add this package to a workspace's [system].components, then:");
-    // dev-verb-advice-ok: issue 2394 (no user-tier verb records source metadata yet).
-    println!("  nros dev metadata --build   # record its source metadata");
+    // Issue 2394: `nros build` runs `nros configure`, whose first phase
+    // refreshes every missing or stale source-metadata sidecar
+    // (`metadata_refresh::refresh_stale_sidecars`); that needs no native image.
+    println!("  nros build   # builds it and records its source metadata");
 
     Ok(())
 }

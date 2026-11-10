@@ -250,8 +250,10 @@ Reach for these in order, smallest first:
 ## If it doesn't work
 
 - **`nros build` refuses a `system.toml`.** It sits beside a `Cargo.toml` or
-  `CMakeLists.txt`. A `system.toml` lives only in a bringup package; the
-  message says where to move it.
+  `CMakeLists.txt`, and a `system.toml` lives only in a bringup package. Run
+  `nros configure --migrate` in the workspace; it moves the file into a
+  bringup package, creating `src/<package>_bringup` when there is none, and
+  prints every file it moves.
 - **`nros run <node>` lists images instead of running.** The bringup has
   more than one node or image. Name `<bringup>:<image>`.
 - **An edit to the image row changes nothing.** A hand-written
