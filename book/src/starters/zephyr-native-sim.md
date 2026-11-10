@@ -91,7 +91,7 @@ among them the one that passes the board's settings to a Rust app's cargo
 build:
 
 ```bash probe=36
-nros setup board native_sim/native/64 --zephyr-workspace "$PWD"
+nros setup board zephyr --zephyr-workspace "$PWD"
 ```
 
 ## Scaffold the project
