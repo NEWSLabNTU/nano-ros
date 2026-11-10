@@ -1618,6 +1618,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 )
                 .map_err(|e| eyre::eyre!("writing the settings for `{image_id}`: {e}"))?;
                 eprintln!("nros build:   settings → {}", config_path.display());
+                // phase-531 W6 — a leaf-era root config that `include`s an
+                // image's settings file is loaded by cargo beside `--config`
+                // and clashes with it; sync drops it too, but a stamped
+                // configure never reaches sync, and this is the run that reads it.
+                if let Some(cfg) = crate::cmd::ws::retire_leaf_settings_include(&root)? {
+                    eprintln!(
+                        "nros build:   dropped a single-package image-settings include from {}",
+                        cfg.display()
+                    );
+                }
 
                 // Relative to the workspace root, which is the handoff's cwd, so
                 // the printed command is the one a user can retype.

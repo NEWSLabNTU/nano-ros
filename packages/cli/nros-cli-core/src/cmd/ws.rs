@@ -3749,6 +3749,47 @@ fn retire_generated_workspace_root(ws_root: &Path) -> Result<Option<PathBuf>> {
     retire(ws_root).map_err(|e| eyre!("sync: {e}"))
 }
 
+/// phase-531 W6 — drop the per-image settings `include` a LEAF-era sync left in
+/// what is now a workspace root's `.cargo/config.toml`.
+///
+/// A single-package leaf's sync wrote `<leaf>/.cargo/config.toml` with an
+/// `include` of `build/<image>/nros-cargo.toml`, that image's settings file.
+/// `nros dev migrate-bringup` turns the leaf into a one-package workspace, but
+/// the file is gitignored, so every checkout that synced the leaf keeps the
+/// include. The workspace road runs cargo from `build/<coord>/<entry>/` with
+/// `--config <entry>/nros-cargo.toml`; cargo also walks up, loads the root
+/// config, follows its include to ANOTHER image's settings, and the two `env`
+/// tables fail to merge (tier 2 on 8b83955cf5, `examples/linux/rust/talker`).
+/// A fresh clone never has the include, which is why only a persistent tree
+/// failed.
+///
+/// In a workspace an image's settings reach cargo only through `--config`, so
+/// an `include` of any `nros-cargo.toml` at the root is always the leaf's
+/// residue. Only those items are removed; everything else in the file (sync's
+/// central-patch include and rows, or a person's keys) stays.
+pub(crate) fn retire_leaf_settings_include(ws_root: &Path) -> Result<Option<PathBuf>> {
+    let cfg = ws_root.join(".cargo").join("config.toml");
+    let Ok(text) = std::fs::read_to_string(&cfg) else {
+        return Ok(None);
+    };
+    let Ok(mut doc) = text.parse::<toml_edit::DocumentMut>() else {
+        return Ok(None);
+    };
+    let Some(includes) = doc.get_mut("include").and_then(|i| i.as_array_mut()) else {
+        return Ok(None);
+    };
+    let before = includes.len();
+    includes.retain(|v| !v.as_str().is_some_and(|p| p.ends_with("nros-cargo.toml")));
+    if includes.len() == before {
+        return Ok(None);
+    }
+    if includes.is_empty() {
+        doc.remove("include");
+    }
+    atomic_write(&cfg, &doc.to_string())?;
+    Ok(Some(cfg))
+}
+
 /// The artifacts `nros sync` writes beside every resolved model, each a
 /// function of the model and its bringup's `system.toml`: the nano-ros overlay
 /// (phase-486 W1) and the router `downsampling` rule a declared arrival curve lowers
@@ -3871,6 +3912,14 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             // See issue 1404; the builder is the pre-RFC-0098 one.
             "sync: removed {} — a workspace root an older nros builder generated",
             gone.display()
+        );
+    }
+    if colcon_layout && let Some(cfg) = retire_leaf_settings_include(&ws_root)? {
+        println!(
+            // See phase-531 W6; the leaf shape this workspace was migrated from.
+            "sync: dropped a single-package image-settings include from {} — in a \
+             workspace each image's settings reach cargo through --config",
+            cfg.display()
         );
     }
     let build_root = if args.build_dir.is_absolute() {
@@ -9411,6 +9460,56 @@ mod retire_generated_root_tests {
         assert_eq!(gone, Some(tmp.path().join("Cargo.toml")));
         assert!(!tmp.path().join("Cargo.toml").exists());
         assert!(!tmp.path().join("Cargo.lock").exists());
+    }
+
+    /// The residue that stopped tier 2: a migrated leaf's sync-written config.
+    #[test]
+    fn a_leaf_era_settings_include_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join(".cargo");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("config.toml");
+        std::fs::write(
+            &cfg,
+            "include = [\"../../../../../nros-patch.toml\", \"../build/linux_cyclonedds/nros-cargo.toml\"]\n\
+             \n[patch.crates-io]\n\
+             nros-rmw-zenoh = { path = \"../x\" }  # nros-managed\n",
+        )
+        .unwrap();
+        assert_eq!(
+            retire_leaf_settings_include(tmp.path()).unwrap(),
+            Some(cfg.clone())
+        );
+        let after = std::fs::read_to_string(&cfg).unwrap();
+        assert!(!after.contains("nros-cargo.toml"), "{after}");
+        assert!(
+            after.contains("nros-patch.toml"),
+            "sync's patch include stays: {after}"
+        );
+        assert!(after.contains("# nros-managed"), "patch rows stay: {after}");
+        // A second run finds nothing to do.
+        assert_eq!(retire_leaf_settings_include(tmp.path()).unwrap(), None);
+    }
+
+    #[test]
+    fn a_config_without_a_settings_include_is_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join(".cargo");
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = dir.join("config.toml");
+        for body in [
+            "include = [\"../nros-patch.toml\"]\n[build]\ntarget = \"x\"\n",
+            "include = [\"../mine.toml\"]\n",
+            "[patch.crates-io]\nlibc = { path = \"../libc\" }\n",
+        ] {
+            std::fs::write(&cfg, body).unwrap();
+            assert_eq!(
+                retire_leaf_settings_include(tmp.path()).unwrap(),
+                None,
+                "{body}"
+            );
+            assert_eq!(std::fs::read_to_string(&cfg).unwrap(), body);
+        }
     }
 
     #[test]
