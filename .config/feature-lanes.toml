@@ -140,11 +140,6 @@ class = "config"
 config = "Multisession"
 reason = "a zenoh-pico session pool larger than 1: two sessions in one process"
 
-[feature.link-tls]
-class = "config"
-config = "Tls"
-reason = "zenoh-pico's TLS link, which a node package's `link-tls` forwards to (`[image.<id>] node_features`): the session dials a `tls/...` router — same messages, different link"
-
 [knob.ZPICO_MULTICAST_TRANSPORT]
 class = "config"
 config = "PeerMode"

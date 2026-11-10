@@ -261,14 +261,13 @@ pub struct ParsedImage {
     pub config: Vec<Config>,
 }
 
-const CONFIGS: [Config; 8] = [
+const CONFIGS: [Config; 7] = [
     Config::Lending,
     Config::Multisession,
     Config::SignalFdWake,
     Config::CustomTransport,
     Config::Serial,
     Config::Rtic,
-    Config::Tls,
     Config::PeerMode,
 ];
 

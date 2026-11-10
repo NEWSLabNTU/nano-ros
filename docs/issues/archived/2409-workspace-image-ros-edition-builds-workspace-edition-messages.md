@@ -5,7 +5,7 @@ status: resolved
 type: bug
 severity: medium
 area: [cli, codegen, build, interop]
-related: [phase-531, rfc-0121, rfc-0056, 2260]
+related: [phase-531, phase-535, rfc-0121, rfc-0056, 2260]
 found: 2026-11-10
 resolved_in: "the issue-2409 pull request: `workspace_edition_mismatch` refuses the image in `plan_for`; the linux Rust talker's edition images build from a per-edition copy of its workspace"
 ---

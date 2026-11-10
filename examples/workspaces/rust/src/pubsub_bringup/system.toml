@@ -142,30 +142,13 @@ board = "linux"
 launch = "listener.launch.xml"
 rmw = "cyclonedds"
 
-# phase-535 W6 — two configurations of the linux pair (RFC-0122 D2), from
-# the `examples/linux/rust/{talker,listener}` variant rows.
-#
-# `tls`: zenoh-pico with its TLS link, through each node package's own
-# `link-tls` feature. The router locator (`tls/...`) and the CA certificate
-# stay runtime env, as on every linux image.
-[image.linux_talker_tls]
-board = "linux"
-launch = "talker.launch.xml"
-node_features = ["link-tls"]
-
-[image.linux_listener_tls]
-board = "linux"
-launch = "listener.launch.xml"
-node_features = ["link-tls"]
-
-# `peer-mode`: zenoh-pico with the multicast transport, scouting and multicast
+# phase-535 W6 — the `peer-mode` configuration of the linux listener
+# (RFC-0122 D2), from the `examples/linux/rust/listener` variant row:
+# zenoh-pico with the multicast transport, scouting and multicast
 # declarations compiled in (issue 0711; off by default for size, issue 0682),
-# so a session opened with `NROS_SESSION_MODE=peer` needs no router.
-[image.linux_talker_peer_mode]
-board = "linux"
-launch = "talker.launch.xml"
-env = { ZPICO_MULTICAST_TRANSPORT = "1" }
-
+# so a session opened with `NROS_SESSION_MODE=peer` needs no router. Its talker
+# is the `examples/linux/rust/talker` witness's peer row. (The listener's
+# `link-tls` row keeps its own directory: issue 2423.)
 [image.linux_listener_peer_mode]
 board = "linux"
 launch = "listener.launch.xml"

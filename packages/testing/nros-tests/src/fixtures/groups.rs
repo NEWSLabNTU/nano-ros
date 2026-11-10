@@ -978,7 +978,7 @@ mod tests {
             "platform-baked RMW rows exist"
         );
         assert!(
-            n(&FixtureVariant::features(&["unstable-zenoh-api"])) > 0,
+            n(&FixtureVariant::features(&["link-tls"])) > 0,
             "feature-variant rows exist"
         );
     }

@@ -6853,6 +6853,10 @@ pub fn build_native_talker_peer() -> TestResult<&'static Path> {
 }
 
 /// The peer-mode listener — issue 0711. See [`build_native_talker_peer`].
+///
+/// The `Config::PeerMode` image of the Rust workspace's pubsub bringup
+/// (`linux_listener_peer_mode`, phase-535 W6), whose `[image] env` carries the
+/// knob into its own build.
 pub fn build_native_listener_peer() -> TestResult<&'static Path> {
     NATIVE_LISTENER_PEER_BINARY
         .get_or_try_init(|| {
@@ -6879,14 +6883,19 @@ pub fn build_native_talker_tls() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// The TLS listener. See [`build_native_talker_tls`].
+/// Build native-rs-listener with link-tls feature (cached)
+///
+/// Uses a separate `target-tls` directory to avoid overwriting the
+/// standard listener binary that other parallel test processes use.
 pub fn build_native_listener_tls() -> TestResult<&'static Path> {
     NATIVE_LISTENER_TLS_BINARY
         .get_or_try_init(|| {
-            linux_rust_pubsub_configured(
-                crate::fixtures::workspace_image::PairRole::Listener,
-                crate::matrix::Config::Tls,
-            )
+            let row = crate::fixtures::groups::select_row(
+                "examples/linux/rust/listener",
+                &crate::fixtures::groups::FixtureVariant::features(&["link-tls"]),
+            )?;
+            let rel = PathBuf::from(format!("{}/listener", cargo_target_profile_dir()));
+            require_prebuilt_row_binary_fresh(row, &rel)
         })
         .map(|p| p.as_path())
 }

@@ -39,16 +39,10 @@ with = '&[Config::Lending, Config::Multisession]'
 
 [[cell]]
 comment = '''
-// phase-535 W6 — the same pair over zenoh-pico's TLS link against a TLS
-// router, and in peer mode with no router (multicast transport compiled in,
-// issue 0711). The `linux_<role>_{tls,peer_mode}` images of the Rust
-// workspace's pubsub bringup; `tests/nano2nano.rs` runs both.
+// phase-535 W6 — the same pair in peer mode with no router (multicast
+// transport compiled in, issue 0711). The `linux_<role>_peer_mode` images of
+// the Rust workspace's pubsub bringup; `tests/nano2nano.rs` runs it.
 '''
-at = ["Linux", "Rust", "Zenoh", "Pubsub", "Example"]
-status = 'Runtime'
-with = '&[Config::Tls]'
-
-[[cell]]
 at = ["Linux", "Rust", "Zenoh", "Pubsub", "Example"]
 status = 'Runtime'
 with = '&[Config::PeerMode]'

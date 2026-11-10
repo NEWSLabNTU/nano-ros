@@ -9,10 +9,11 @@
 //! multicast discovery), MessageInfo sequence-number monotonicity + GID, and the
 //! TLS transport.
 //!
-//! The peer-mode and TLS pairs are the `Config::PeerMode` and `Config::Tls`
-//! cells of `(Linux, Rust, Zenoh, Pubsub)` since phase-535 W6: the
-//! `linux_<role>_{peer_mode,tls}` images of the Rust workspace's pubsub
-//! bringup (`cases_bound_to_matrix_cells`).
+//! The peer-mode pair is the `Config::PeerMode` cell of
+//! `(Linux, Rust, Zenoh, Pubsub)` since phase-535 W6: the talker witness's peer
+//! row and the Rust workspace's `linux_listener_peer_mode` image
+//! (`cases_bound_to_matrix_cells`). The TLS listener keeps its own directory's
+//! `link-tls` row (issue 2423).
 
 use nros_tests::{
     fixtures::{
@@ -688,9 +689,9 @@ fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
 // The probe stays load-bearing as the `unmet!` guard on the real tests, where a
 // `false` stops the run. Forbidden repo-wide by `check-no-vacuous-tests`.
 
-/// RFC-0051 §7a/§7c (phase-535 W6) — this file answers the two configured
-/// cells `(Linux, Rust, Zenoh, Pubsub, Example) + [PeerMode]` and `+ [Tls]`
-/// (`test_peer_mode_communication`, `test_tls_talker_listener_communication`).
+/// RFC-0051 §7a/§7c (phase-535 W6) — this file answers the configured cell
+/// `(Linux, Rust, Zenoh, Pubsub, Example) + [PeerMode]`
+/// (`test_peer_mode_communication`).
 /// Fixture-free.
 #[test]
 fn cases_bound_to_matrix_cells() {
@@ -699,8 +700,5 @@ fn cases_bound_to_matrix_cells() {
         assert_consumer_config_cases,
     };
     const PAIR: (P, L, R, W, K) = (P::Linux, L::Rust, R::Zenoh, W::Pubsub, K::Example);
-    assert_consumer_config_cases(
-        Consumer::Nano2nano,
-        &[(PAIR, &[Config::PeerMode]), (PAIR, &[Config::Tls])],
-    );
+    assert_consumer_config_cases(Consumer::Nano2nano, &[(PAIR, &[Config::PeerMode])]);
 }
