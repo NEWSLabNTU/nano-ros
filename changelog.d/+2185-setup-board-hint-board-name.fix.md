@@ -1,0 +1,1 @@
+A Rust Zephyr image whose west workspace lacks nano-ros's patches now names the board in its `nros setup board` hint as you wrote it in `system.toml` (for example `zephyr`), the name `nros board list` shows, instead of the Zephyr `-b` spelling (`native_sim/native/64`).

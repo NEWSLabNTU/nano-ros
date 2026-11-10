@@ -405,8 +405,20 @@ function(nros_check_zephyr_rust_cargo_patch)
         return()
     endif()
     # The workspace is ZEPHYR_BASE's parent, as `nros_zephyr_ws_candidates`
-    # has it; the board is the one `-b` named, which `nros setup board`
-    # resolves through `[board.zephyr] west_board`.
+    # has it. The board is the image's own board word, the `NROS_BOARD` fact
+    # `nros_resolve_board_facts()` resolved just before this: a descriptor
+    # `names` entry, the spelling the book and `nros board list` use. The
+    # `-b` spelling (`native_sim/native/64`) also resolves in `nros setup
+    # board`, through `[board.zephyr] west_board`, but a reader who copies it
+    # into a doc gets it refused by `check-book-board-names`. It stays the
+    # fallback for a configure with no facts.
+    set(_board "${BOARD}${BOARD_QUALIFIERS}")
+    foreach(_fact IN LISTS NROS_BOARD_FACTS_ENV)
+        if(_fact MATCHES "^NROS_BOARD=(.+)$")
+            set(_board "${CMAKE_MATCH_1}")
+            break()
+        endif()
+    endforeach()
     get_filename_component(_ws "${ZEPHYR_BASE}" DIRECTORY)
     message(FATAL_ERROR
         "nano-ros: this is a Rust image, and zephyr-lang-rust in this west "
@@ -416,5 +428,5 @@ function(nros_check_zephyr_rust_cargo_patch)
         "knobs, the C cross compiler) and every crate would build with its "
         "defaults (issue 2185). Apply nano-ros's Zephyr patch set to the "
         "workspace once, then configure again:\n"
-        "    nros setup board ${BOARD}${BOARD_QUALIFIERS} --zephyr-workspace ${_ws}")
+        "    nros setup board ${_board} --zephyr-workspace ${_ws}")
 endfunction()
