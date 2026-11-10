@@ -1,15 +1,17 @@
 ---
 id: 2406
 title: "A hand-written `main` built for several images has no workspace shape: an owned entry is one image's program"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [cli, build, testing]
 related: [phase-531, rfc-0121, rfc-0122, rfc-0071, rfc-0065, 1556]
 found: 2026-11-10
+resolved: 2026-11-11
+resolved_in: "RFC-0071 D19: a multi-image owned entry (PR #3496), and the four sites migrated on the cargo and CMake roads"
 ---
 
-**Home: [phase-531](../roadmap/phase-531-workspace-first-project-layout.md) W6.**
+**Home: [phase-531](../../roadmap/phase-531-workspace-first-project-layout.md) W6.**
 It blocks the W6 sites whose program keeps its own `main` and is built more than
 once. A decision is needed before they move.
 
@@ -92,6 +94,21 @@ then migrate, and issue 1556's census tests keep running the same `main()`s.
   build through `workspace-fixtures-build.sh`, the zero-copy binary's
   fingerprint carries `unstable-zenoh-api` and the plain one's does not, and
   the entry's `Cargo.lock` is byte-identical after building the second image.
-- Left: `bins/action-server-concurrent` and the linux C and C++ talkers
-  (CMake road), in the next PR. Host 142 migrates eight more bins on this
-  support afterwards.
+- Core support merged as PR #3496. After the merge, `zero_copy` ran 3/3
+  against the migrated `linux_zero_copy` image.
+- **The remaining sites, migrated (PR 2):**
+  - `bins/action-server-concurrent`: images `linux` (zenoh, `node_features =
+    ["zenoh-reply-slots"]`) and `linux_xrce`. The entry's optional
+    `nros-rmw-zenoh` is linked into the zenoh image only.
+  - `examples/linux/{c,cpp}/talker`: one owned entry each and three images
+    each (zenoh, xrce, cyclonedds) on the CMake road. Each image is its own
+    configure; the generated root adds the entry as `pkg/<name>/` and emits
+    no entry of its own. A configure with nothing to plan names no `SYSTEM`.
+    The census tests of issue 1556 keep running the same `main()`s: measured
+    on the migrated C talker, `NROS_CENSUS_OUT` writes a `talker` node with one
+    publisher and one timer, exit 0.
+  - A bringup whose `[[component]]` rows are removed no longer keeps the
+    launch file and model a previous sync generated from them.
+- None of the four sites enabled `param-services` or `lifecycle-services`,
+  so no `[system] features` row was needed (checked against the pre-migration
+  manifests).
