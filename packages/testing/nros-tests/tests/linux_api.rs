@@ -30,8 +30,8 @@ use nros_tests::{
         build_cpp_action_client_callback, build_cpp_action_server, build_cpp_listener,
         build_cpp_service_client_callback, build_cpp_service_server, build_cpp_talker,
         build_native_c_example_rmw, build_native_cpp_example_rmw, build_native_listener_rmw,
-        build_native_service_client_callback, build_native_talker_rmw, linux_pair_image,
-        require_cmake, require_zenohd, zenohd_unique,
+        build_native_service_client_callback, build_native_talker_rmw, is_linux_pair_role,
+        linux_pair_image, require_cmake, require_zenohd, zenohd_unique,
     },
     output::{
         ACTION_EXECUTING_MARKER, ACTION_GOAL_ACCEPTED_PREFIX, ACTION_GOAL_NO_RESPONSE_PREFIX,
@@ -1349,26 +1349,11 @@ fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter) {
 // =============================================================================
 
 /// Resolve a native Cyclone C/C++ example role binary (prebuilt), or skip.
-/// The pair roles whose linux leaves moved into the workspaces (phase-535 W4),
-/// and their callback variants (W6).
-fn is_moved_pair_role(case: &str) -> bool {
-    matches!(
-        case,
-        "listener"
-            | "service-server"
-            | "service-client"
-            | "action-server"
-            | "action-client"
-            | "service-client-callback"
-            | "action-client-callback"
-    )
-}
-
 fn cyclone_role_binary(lang: Language, case: &str) -> PathBuf {
     let snake = case.replace('-', "_");
     match lang {
-        Language::C if is_moved_pair_role(case) => linux_pair_image("c", case, Rmw::Cyclonedds),
-        Language::Cpp if is_moved_pair_role(case) => linux_pair_image("cpp", case, Rmw::Cyclonedds),
+        Language::C if is_linux_pair_role(case) => linux_pair_image("c", case, Rmw::Cyclonedds),
+        Language::Cpp if is_linux_pair_role(case) => linux_pair_image("cpp", case, Rmw::Cyclonedds),
         Language::C => {
             let bin = format!("c_{snake}");
             build_native_c_example_rmw(case, &bin, Rmw::Cyclonedds)

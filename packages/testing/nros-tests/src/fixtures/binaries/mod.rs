@@ -1138,11 +1138,44 @@ fn moved_linux_pair(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
     linux_pair_workspace_image(name, rmw)
 }
 
+/// The pair role (and variant) a linux leaf case moved into (phase-535 W4),
+/// or `None` for a case that is not one — the talker, which stays a witness
+/// leaf (RFC-0122), is the case callers trip on.
+fn linux_pair_role(
+    case: &str,
+) -> Option<(
+    crate::fixtures::workspace_image::PairRole,
+    Option<crate::fixtures::workspace_image::Variant>,
+)> {
+    use crate::fixtures::workspace_image::{PairRole, Variant};
+    // phase-535 W6 — a `-callback` leaf was a VARIANT of its role (RFC-0122
+    // D2): its own node package, an image of the same behaviour bringup.
+    Some(match case {
+        "listener" => (PairRole::Listener, None),
+        "service-server" => (PairRole::ServiceServer, None),
+        "service-client" => (PairRole::ServiceClient, None),
+        "action-server" => (PairRole::ActionServer, None),
+        "action-client" => (PairRole::ActionClient, None),
+        "service-client-callback" => (PairRole::ServiceClient, Some(Variant::Callback)),
+        "action-client-callback" => (PairRole::ActionClient, Some(Variant::Callback)),
+        _ => return None,
+    })
+}
+
+/// Whether a linux leaf case (`"listener"`, `"service-server"`, …) moved into
+/// a workspace pair image, i.e. whether [`linux_pair_image`] resolves it. A
+/// caller whose case is a runtime value asks this first and routes anything
+/// else (the witness talker) to its leaf build — the one predicate, so no
+/// test keeps its own list of moved roles.
+pub fn is_linux_pair_role(case: &str) -> bool {
+    linux_pair_role(case).is_some()
+}
+
 /// The workspace image of the linux pair role `name` (`linux/<lang>/<case>`),
 /// or `None` when `name` is not a pair role.
 fn linux_pair_workspace_image(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
     use crate::{
-        fixtures::workspace_image::{PairRole, Variant, resolve_coord_variant},
+        fixtures::workspace_image::resolve_coord_variant,
         matrix::{Lang, PlatformId, Rmw as MRmw},
     };
     let (lang, case) = name.strip_prefix("linux/")?.split_once('/')?;
@@ -1152,18 +1185,7 @@ fn linux_pair_workspace_image(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf
         "cpp" => Lang::Cpp,
         _ => return None,
     };
-    // phase-535 W6 — a `-callback` leaf was a VARIANT of its role (RFC-0122
-    // D2): its own node package, an image of the same behaviour bringup.
-    let (role, variant) = match case {
-        "listener" => (PairRole::Listener, None),
-        "service-server" => (PairRole::ServiceServer, None),
-        "service-client" => (PairRole::ServiceClient, None),
-        "action-server" => (PairRole::ActionServer, None),
-        "action-client" => (PairRole::ActionClient, None),
-        "service-client-callback" => (PairRole::ServiceClient, Some(Variant::Callback)),
-        "action-client-callback" => (PairRole::ActionClient, Some(Variant::Callback)),
-        _ => return None,
-    };
+    let (role, variant) = linux_pair_role(case)?;
     let rmw = match rmw {
         Rmw::Zenoh => MRmw::Zenoh,
         Rmw::Xrce => MRmw::Xrce,
@@ -1187,6 +1209,24 @@ pub fn linux_pair_image(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf>
             "linux/{lang}/{case} is not a moved pair role (phase-535 W4)"
         )))
     })
+}
+
+#[cfg(test)]
+mod linux_pair_role_tests {
+    use super::*;
+
+    /// The live-peer regression of 2026-11-10: interop's Cyclone helper asked
+    /// `linux_pair_image` for the TALKER, which stays a witness leaf, and every
+    /// `cyclone_pubsub_nano_to_ros2` run failed "not a moved pair role". The
+    /// predicate callers ask first must say no to it and yes to the moved roles.
+    #[test]
+    fn talker_is_not_a_pair_role() {
+        assert!(!is_linux_pair_role("talker"));
+        assert!(linux_pair_image("c", "talker", Rmw::Cyclonedds).is_err());
+        for case in ["listener", "service-server", "action-client-callback"] {
+            assert!(is_linux_pair_role(case), "{case}");
+        }
+    }
 }
 
 /// Phase-531 W6 (RFC-0121 D8) — the prebuilt binary of a leaf migrated to a

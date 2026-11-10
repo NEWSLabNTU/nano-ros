@@ -201,10 +201,21 @@ fn spawn_nano_zenoh(bin: &Path, name: &str, locator: &str) -> ManagedProcess {
     ManagedProcess::spawn_image(cmd, name).unwrap_or_else(|e| panic!("spawn {name}: {e}"))
 }
 
-/// Resolve (building if needed) a native Cyclone C example binary, or skip
-/// when the fixtures aren't set up (`just cyclonedds setup`).
+/// Resolve a native Cyclone C example binary, or fail when the fixtures
+/// aren't built (`just cyclonedds setup`). A role that moved into a workspace
+/// pair image (phase-535 W4) resolves there; the talker stays a witness leaf
+/// (RFC-0122), so it resolves its own `[[fixture]]` row — asking
+/// `linux_pair_image` for it refused with "not a moved pair role".
 fn nano_cyclone_c_binary(case: &str, _binary: &str) -> std::path::PathBuf {
-    nros_tests::fixtures::linux_pair_image("c", case, FixtureRmw::Cyclonedds).unwrap_or_else(|e| {
+    let resolved = if nros_tests::fixtures::is_linux_pair_role(case) {
+        nros_tests::fixtures::linux_pair_image("c", case, FixtureRmw::Cyclonedds)
+    } else if case == "talker" {
+        nros_tests::fixtures::build_native_c_talker_rmw(FixtureRmw::Cyclonedds)
+            .map(std::path::Path::to_path_buf)
+    } else {
+        panic!("linux/c/{case}: neither a moved pair role nor the witness talker")
+    };
+    resolved.unwrap_or_else(|e| {
         panic!("linux/c/{case} cyclonedds fixture not built (run `just cyclonedds setup`): {e:?}")
     })
 }
