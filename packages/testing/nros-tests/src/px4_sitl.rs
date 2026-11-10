@@ -141,7 +141,7 @@ impl InstanceLock {
 /// A live `px4 -d etc/init.d-posix/rcS` daemon. Dropping it kills the
 /// process group ([`ManagedProcess`]), so no orphan keeps PX4's UDP ports.
 ///
-/// At most one exists per host at a time ([`InstanceLock`], issue 2243).
+/// At most one exists per host at a time (`InstanceLock`, issue 2243).
 pub struct Px4Sitl {
     // Field order is drop order: the daemon dies BEFORE the instance is
     // released, so the next holder never meets a dying server.
