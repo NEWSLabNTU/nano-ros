@@ -15,7 +15,7 @@ the dev-tier verbs, which its resolution did not close.
 
 Depends on:
 
-- [issue 2243](../issues/2243-px4-sitl-tests-boot-two-daemons-at-once.md)
+- [issue 2243](../issues/archived/2243-px4-sitl-tests-boot-two-daemons-at-once.md)
   (the nightly `px4 sitl` job boots two PX4 daemons in one build dir). It stays
   homed on [phase-466](phase-466-scheduled-lanes-produce-verdicts.md), because
   the red is the harness's, not PX4's. W5 here cannot start until it is fixed;
