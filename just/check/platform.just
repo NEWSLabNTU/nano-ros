@@ -497,10 +497,10 @@ zephyr-rust-main-stack:
 # cut, external and stated frame carries a reason, every indirect allowance
 # names the issue that retires it, and every floor equals
 # ceil8(max(static + allowances, measured) * (100 + margin) / 100). Offline;
-# the walker's self-test runs first so a broken formula cannot pass the table.
+# `--validate-table` runs the walker's self-test first, so a broken formula
+# cannot pass the table.
 [group("checks")]
 stack-floor-table:
-    @python3 scripts/nros-stack-floor.py --self-test
     @python3 scripts/nros-stack-floor.py --validate-table config/stack-floors.toml
 
 # issue 2365 — nano-ros's Zephyr task stacks have their own default and never

@@ -748,6 +748,10 @@ def main() -> int:
     if args.self_test:
         return self_test()
     if args.validate_table:
+        # The negative control runs on the normal path: a broken formula or
+        # validator must not be able to pass the table.
+        if self_test() != 0:
+            return 1
         root = Path(args.validate_table).resolve().parent
         while root != root.parent and not (root / "docs" / "issues").is_dir():
             root = root.parent
