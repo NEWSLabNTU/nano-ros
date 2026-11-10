@@ -2406,9 +2406,11 @@ mod board_crate_tests {
         // XRCE talker (W6: serial images of the Rust workspace's pubsub bringup),
         // 83 -> 75 for the mps2-an385 Rust `*-rtic` and `*-rtic-mixed` leaves
         // (W6: `baremetal_<role>_rtic` images), 75 -> 74 for the linux Rust
-        // talker (phase-531 W6: a one-node workspace migrated in place).
+        // talker (phase-531 W6: a one-node workspace migrated in place),
+        // 74 -> 73 for the `nros-tests` `entry-poc` bin (W7 step-3 prep,
+        // slice 1).
         assert!(
-            on_selection >= 74,
+            on_selection >= 73,
             "only {on_selection} leaves on the selection package"
         );
     }
