@@ -69,6 +69,18 @@ pub enum Noun {
     // RFC-0121 D8, phase-531 W6. Born under `nros dev`: no old spelling.
     #[command(name = "migrate-bringup")]
     MigrateBringup(cmd::migrate_bringup::Args),
+    /// Generate a project's message bindings, cargo patch config and metadata
+    /// sidecars, without configuring any image (no census, no host configure).
+    // Issue 2318. Born under `nros dev`: no old spelling. The user verb is
+    // `nros configure`, which runs this and then every image's stages.
+    Bindings(BindingsArgs),
+}
+
+/// `nros dev bindings`: the project-wide part of `nros configure` alone.
+#[derive(Debug, ClapArgs)]
+pub struct BindingsArgs {
+    #[command(flatten)]
+    pub sync: ws::SyncArgs,
 }
 
 #[derive(Debug, Subcommand)]
@@ -223,9 +235,10 @@ pub fn lower(args: Args) -> Cmd {
         Noun::Metadata(a) => Cmd::Metadata(a),
         // Born under `nros dev` with no older spelling to lower into: run as
         // they are (`crate::run`'s `Cmd::Dev` arm).
-        noun @ (Noun::Runner(_) | Noun::Command(_) | Noun::MigrateBringup(_)) => {
-            Cmd::Dev(Args { noun })
-        }
+        noun @ (Noun::Runner(_)
+        | Noun::Command(_)
+        | Noun::MigrateBringup(_)
+        | Noun::Bindings(_)) => Cmd::Dev(Args { noun }),
     }
 }
 
@@ -235,6 +248,7 @@ pub const BORN_IN_DEV: &[&str] = &[
     "dev runner check",
     "dev command check",
     "dev migrate-bringup",
+    "dev bindings",
 ];
 
 /// Run a `nros dev` command [`lower`] left as it is.
@@ -251,6 +265,7 @@ pub fn run_unlowered(args: Args) -> eyre::Result<()> {
             cmd::extension_check::command_check(a)
         }
         Noun::MigrateBringup(a) => cmd::migrate_bringup::run(a),
+        Noun::Bindings(a) => cmd::configure::bindings_only(a.sync).map(|_| ()),
         other => unreachable!("`nros dev` lowers {other:?}"),
     }
 }

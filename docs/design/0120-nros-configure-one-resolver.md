@@ -188,6 +188,12 @@ Contract:
   3. **Removal.** The verb is gone.
 
   Phase-530 W9 carries it.
+- **Dev tooling may run C1 alone** (issue 2318, 2026-11-11):
+  `nros dev bindings` runs the project-wide part (codegen, patch config,
+  metadata probe, models, lock seed) and records no stamp. It is contributor
+  tier (RFC-0117), for scripts such as `just generate-bindings` that want
+  generated code and nothing an image's census or host configure would build.
+  The user verb stays `nros configure`.
 
 RFC-0040 rejected an automatic sync at `nros new` time, because the
 environment may not be ready at scaffold time. That reason does not reach a

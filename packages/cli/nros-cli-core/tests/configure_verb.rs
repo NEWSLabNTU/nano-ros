@@ -208,6 +208,34 @@ fn sync_alias_runs_configure() {
     cleanup(&leaf);
 }
 
+/// Issue 2318 — `nros dev bindings` is C1 alone: it writes what the old
+/// `nros sync` wrote (the leaf's metadata sidecar) and records no stamp, so
+/// the next configure still configures the image. (A leaf's C1 also writes
+/// its `nros-cargo.toml`; what the workspace road skips — an image's census
+/// and host configure — is measured in issue 2318, not here.)
+#[test]
+fn dev_bindings_runs_c1_and_configures_no_image() {
+    setup();
+    let leaf = scratch_leaf("bindings");
+    let leaf_s = leaf.to_str().unwrap();
+    nros(&["dev", "bindings", leaf_s]).expect("`nros dev bindings` runs");
+    assert!(
+        leaf.join("metadata/listener.json").is_file(),
+        "C1 ran: the metadata sidecar exists"
+    );
+    assert!(
+        !stamp_file(&leaf, "linux").exists(),
+        "no stamp: it would claim an image this run never planned"
+    );
+    let out = configure_outcome(&[leaf_s]);
+    assert_eq!(
+        out.configured,
+        ["linux"],
+        "the image still configures: {out:?}"
+    );
+    cleanup(&leaf);
+}
+
 /// A copy of `multi-node-workspace` plus an image whose preflight refuses on
 /// every host with rustup: a workspace-local board (the catalog absorbs a
 /// package's `nros-board.toml`) — the host board, pinned to a Rust target that

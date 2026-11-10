@@ -111,6 +111,32 @@ pub fn configure(args: Args) -> Result<Outcome> {
     configure_project(&project, args.sync, &named, args.force, "configure")
 }
 
+/// `nros dev bindings` (issue 2318): C1 alone — message bindings, the cargo
+/// patch config, the metadata probe, models and the leaf lock seed — under
+/// the project lock C1 shares with a full configure. It skips every image's
+/// stages (discover, preflight, census, resolve, generate) and records no
+/// stamp, because a stamp would claim images this run never planned; the
+/// next `nros build` or `nros configure` still configures each one.
+///
+/// For tooling that wants the generated code and nothing it would build
+/// (`just generate-bindings`): an image's census and a shared host
+/// configure each compile a native image.
+///
+/// # Errors
+///
+/// What C1 returns, or a held project lock.
+pub fn bindings_only(mut sync: ws::SyncArgs) -> Result<Outcome> {
+    let project = project_root(sync.workspace.as_deref())?;
+    sync.interface_search_path = interface_search_path_for(&project);
+    let _lock = lock_exclusive_path(&configure_stamp::lock_path(&project))?;
+    let before = ws::sync_runs();
+    ws::run_sync(sync)?;
+    Ok(Outcome {
+        sync_passes: ws::sync_runs() - before,
+        ..Outcome::default()
+    })
+}
+
 /// Configure `project` for `images` (empty: every image the project
 /// declares) unless every one is already current. `nros build` and `nros run`
 /// call this before they plan (RFC-0120 D3); `dry_run` is theirs, handed to
