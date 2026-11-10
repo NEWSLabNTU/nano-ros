@@ -133,9 +133,19 @@ def fixture_rows():
     return rows
 
 
-# The west platforms a `[[workspace_fixture]]` row builds through `nros build`
-# — `scripts/build/fixtures-manifest.py`'s `ZEPHYR_WEST_PLATFORMS`.
-ZEPHYR_WEST_PLATFORMS = ("zephyr", "zephyr-cortex-m", "zephyr-nucleo-f767zi")
+# The west platforms a `[[workspace_fixture]]` row builds through `nros build`,
+# read from `scripts/build/fixtures-manifest.py` -- never a second spelling,
+# which is how a platform added there goes missing here.
+def _west_platforms():
+    import importlib.util
+    path = os.path.join(ROOT, "scripts", "build", "fixtures-manifest.py")
+    spec = importlib.util.spec_from_file_location("_fixtures_manifest", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return tuple(mod.ZEPHYR_WEST_PLATFORMS)
+
+
+ZEPHYR_WEST_PLATFORMS = _west_platforms()
 DTS_EXTENSIONS = (".overlay", ".dts", ".dtsi")
 
 
