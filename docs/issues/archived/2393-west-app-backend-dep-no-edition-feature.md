@@ -9,7 +9,7 @@ found: 2026-11-10
 resolved_in: "4225459111"
 ---
 
-**Found while fixing [issue 2372](../2372-out-of-tree-rmw-native-sim-west-app.md).
+**Found while fixing [issue 2372](2372-out-of-tree-rmw-native-sim-west-app.md).
 Not reproduced on a wire; found by reading the generated manifests side by
 side.**
 
