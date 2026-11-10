@@ -237,13 +237,17 @@ at boot.
 
 ## Run all six nodes
 
+The service reply and the action result come from different nodes, and
+either may print first. Give `--expect` once per line you are waiting for:
+the run stops when it has seen every one, in any order.
+
 <!-- tabs -->
 
 #### Rust
 
 ```bash probe=630 probe-run=900 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run --expect 'Result received'
+nros run --expect 'Result of add_two_ints' --expect 'Result received'
 ```
 
 ```text probe-expect=630 variant=qemu
@@ -255,7 +259,7 @@ Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
 
 ```bash probe=630 probe-run=900 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run --expect 'result last='
+nros run --expect '[client_node] sum:' --expect 'result last='
 ```
 
 ```text probe-expect=630 variant=qemu
@@ -267,7 +271,7 @@ nros run --expect 'result last='
 
 ```bash probe=630 probe-run=900 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run --expect 'result last='
+nros run --expect '[client_node] sum:' --expect 'result last='
 ```
 
 ```text probe-expect=630 variant=qemu

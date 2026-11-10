@@ -40,12 +40,15 @@ use crate::target_session::{self as ts, Expect, Outcome, ProcessGroup, Session};
 #[derive(clap::Args, Debug, Clone, Default)]
 pub struct ExecArgs {
     /// Stop with exit 0 as soon as a console line contains TEXT; exit 1 if the
-    /// target ends, or `--timeout` passes, first.
-    #[arg(long, value_name = "TEXT", conflicts_with = "expect_regex")]
-    pub expect: Option<String>,
-    /// As `--expect`, with a regular expression over one console line.
+    /// target ends, or `--timeout` passes, first. Given more than once, every
+    /// TEXT must appear, each on some line and in any order, and the run stops
+    /// on the line that completes the set.
+    #[arg(long, value_name = "TEXT")]
+    pub expect: Vec<String>,
+    /// As `--expect`, with a regular expression over one console line. It may
+    /// be repeated, and mixed with `--expect`: every pattern must match.
     #[arg(long, value_name = "REGEX")]
-    pub expect_regex: Option<String>,
+    pub expect_regex: Vec<String>,
     /// Stop the target after SECONDS.
     #[arg(long, value_name = "SECONDS")]
     pub timeout: Option<f64>,
@@ -76,15 +79,15 @@ pub struct ExecArgs {
 
 impl ExecArgs {
     fn expectation(&self) -> Result<Option<Expect>, String> {
-        if let Some(e) = &self.expect {
-            return Ok(Some(Expect::substring(e)));
+        let mut parts: Vec<Expect> = self.expect.iter().map(|e| Expect::substring(e)).collect();
+        for r in &self.expect_regex {
+            parts.push(
+                Expect::regex(r).map_err(|e| {
+                    format!("`--expect-regex {r}` is not a regular expression: {e}")
+                })?,
+            );
         }
-        match &self.expect_regex {
-            Some(r) => Expect::regex(r)
-                .map(Some)
-                .map_err(|e| format!("`--expect-regex {r}` is not a regular expression: {e}")),
-            None => Ok(None),
-        }
+        Ok(Expect::all(parts))
     }
 
     fn timeout(&self) -> Result<Option<Duration>, String> {
@@ -1910,7 +1913,7 @@ mod tests {
         let mut p = plan(true, None);
         p.console.command = Some("sh -c 'echo console says hi; sleep 30'".into());
         let x = |e: &str| ExecArgs {
-            expect: Some(e.into()),
+            expect: vec![e.into()],
             timeout: Some(3.0),
             router: "none".into(),
             ..ExecArgs::default()
@@ -1989,7 +1992,7 @@ mod tests {
             d.path(),
             r,
             ExecArgs {
-                expect: Some("Publishing: 0".into()),
+                expect: vec!["Publishing: 0".into()],
                 timeout: Some(10.0),
                 router: "none".into(),
                 ..ExecArgs::default()
@@ -2007,7 +2010,7 @@ mod tests {
     fn executor_exit_codes_follow_the_contract() {
         let d = tempfile::tempdir().unwrap();
         let x = |expect: Option<&str>, timeout: f64| ExecArgs {
-            expect: expect.map(str::to_string),
+            expect: expect.map(str::to_string).into_iter().collect(),
             timeout: Some(timeout),
             router: "none".into(),
             ..ExecArgs::default()
@@ -2070,7 +2073,7 @@ mod tests {
             name: "w4fake".into(),
         };
         let x = ExecArgs {
-            expect: Some("Publishing: 0".into()),
+            expect: vec!["Publishing: 0".into()],
             timeout: Some(10.0),
             router: "none".into(),
             ..ExecArgs::default()

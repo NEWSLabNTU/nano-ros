@@ -65,11 +65,13 @@ pub struct Args {
     #[arg(long)]
     pub monitor: bool,
     /// With `--monitor`: stop with exit 0 once a console line contains TEXT.
-    #[arg(long, value_name = "TEXT", conflicts_with = "expect_regex")]
-    pub expect: Option<String>,
-    /// As `--expect`, with a regular expression over one console line.
+    /// Repeat it to require several lines, in any order.
+    #[arg(long, value_name = "TEXT")]
+    pub expect: Vec<String>,
+    /// As `--expect`, with a regular expression over one console line; may be
+    /// repeated and mixed with `--expect`.
     #[arg(long, value_name = "REGEX")]
-    pub expect_regex: Option<String>,
+    pub expect_regex: Vec<String>,
     /// Stop after SECONDS: the console with `--monitor`, and any wait a
     /// prepare step makes.
     #[arg(long, value_name = "SECONDS")]
@@ -410,8 +412,8 @@ mod tests {
             runner: None,
             no_prompt: true,
             monitor: true,
-            expect: None,
-            expect_regex: None,
+            expect: Vec::new(),
+            expect_regex: Vec::new(),
             timeout: Some(5.0),
             router: "none".into(),
             sources: Default::default(),
@@ -471,7 +473,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let r = fake(d.path(), 0);
         let mut a = args();
-        a.expect = Some("Booted: ready".into());
+        a.expect = vec!["Booted: ready".into()];
         assert_eq!(go(d.path(), &flash_plan("/dev/ttyACM7"), &a, r), 0);
         let read = |f: &str| std::fs::read_to_string(d.path().join(f)).unwrap();
         assert_eq!(read("flashed").trim(), "/dev/ttyACM7");

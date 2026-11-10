@@ -376,6 +376,11 @@ pub enum Expect {
     Substring(String),
     /// A regular expression over one console line.
     Regex(regex::Regex),
+    /// Every part, each on some console line, in any order: `--expect`
+    /// given more than once. Two outputs of one image that race each other
+    /// (a service reply and an action result) cannot be graded by one
+    /// pattern, because whichever lands first would end the run.
+    All(Vec<Expect>),
 }
 
 impl Expect {
@@ -394,21 +399,49 @@ impl Expect {
         regex::Regex::new(re).map(Expect::Regex)
     }
 
-    /// Whether `line` (without its line ending) satisfies it.
+    /// Every pattern in `parts`: the one itself when there is one, `None`
+    /// when there are none.
+    #[must_use]
+    pub fn all(mut parts: Vec<Expect>) -> Option<Self> {
+        match parts.len() {
+            0 => None,
+            1 => parts.pop(),
+            _ => Some(Expect::All(parts)),
+        }
+    }
+
+    /// Whether `line` (without its line ending) satisfies it. For
+    /// [`Expect::All`], whether it satisfies one of the parts: which parts a
+    /// session has seen is the grader's state, not the pattern's.
     #[must_use]
     pub fn matches(&self, line: &str) -> bool {
         match self {
             Expect::Substring(s) => line.contains(s.as_str()),
             Expect::Regex(r) => r.is_match(line),
+            Expect::All(parts) => parts.iter().any(|p| p.matches(line)),
         }
     }
 
-    /// The pattern as the user wrote it.
-    #[must_use]
-    pub fn pattern(&self) -> &str {
+    /// The parts a grader waits for, one each.
+    fn into_parts(self) -> Vec<Expect> {
         match self {
-            Expect::Substring(s) => s,
-            Expect::Regex(r) => r.as_str(),
+            Expect::All(parts) => parts.into_iter().flat_map(Expect::into_parts).collect(),
+            one => vec![one],
+        }
+    }
+
+    /// The pattern as the user wrote it; the parts of [`Expect::All`]
+    /// joined with `` ` and ` ``.
+    #[must_use]
+    pub fn pattern(&self) -> String {
+        match self {
+            Expect::Substring(s) => s.clone(),
+            Expect::Regex(r) => r.as_str().to_string(),
+            Expect::All(parts) => parts
+                .iter()
+                .map(Expect::pattern)
+                .collect::<Vec<_>>()
+                .join("` and `"),
         }
     }
 }
@@ -453,10 +486,7 @@ where
         let mut from = from;
         let mut buf = [0u8; 8192];
         let mut line: Vec<u8> = Vec::new();
-        let mut grading = match expect {
-            Some(e) => Grading::Looking(e),
-            None => Grading::Done,
-        };
+        let mut grading = Grading::new(expect);
         loop {
             let n = match from.read(&mut buf) {
                 Ok(0) => break,
@@ -482,8 +512,8 @@ where
 
 /// Where [`spawn_console`]'s grading stands.
 enum Grading {
-    /// No line has matched yet.
-    Looking(Expect),
+    /// These parts have not matched a line yet (never empty).
+    Looking(Vec<Expect>),
     /// The unterminated line in the buffer matched; waiting for its newline.
     Finishing,
     /// [`Event::Matched`] was sent, or there was nothing to grade.
@@ -491,6 +521,13 @@ enum Grading {
 }
 
 impl Grading {
+    fn new(expect: Option<Expect>) -> Self {
+        match expect.map(Expect::into_parts) {
+            Some(parts) if !parts.is_empty() => Grading::Looking(parts),
+            _ => Grading::Done,
+        }
+    }
+
     /// Grade one chunk of console bytes, `line` carrying the unterminated
     /// line between chunks.
     fn feed(&mut self, chunk: &[u8], line: &mut Vec<u8>, tx: &Sender<Event>) {
@@ -503,7 +540,13 @@ impl Grading {
                 continue;
             }
             let ended = match self {
-                Grading::Looking(exp) => exp.matches(&line_text(line)),
+                Grading::Looking(parts) => {
+                    // Every part this line satisfies is seen; the line that
+                    // sees the last one ends the run.
+                    let text = line_text(line);
+                    parts.retain(|p| !p.matches(&text));
+                    parts.is_empty()
+                }
                 Grading::Finishing => true,
                 Grading::Done => unreachable!("returned above"),
             };
@@ -522,7 +565,9 @@ impl Grading {
         }
         let text = line_text(line);
         match self {
-            Grading::Looking(exp) if exp.matches(&text) => {
+            // Only the LAST part may finish on a partial line: an earlier
+            // part is counted when its line ends, above.
+            Grading::Looking(parts) if parts.len() == 1 && parts[0].matches(&text) => {
                 let _ = tx.send(Event::Matching(text));
                 *self = Grading::Finishing;
             }
@@ -949,7 +994,7 @@ pub(crate) mod tests {
     #[test]
     fn grading_finishes_the_matched_line_across_chunks() {
         let (tx, rx) = channel();
-        let mut g = Grading::Looking(Expect::substring("Pub"));
+        let mut g = Grading::new(Some(Expect::substring("Pub")));
         let mut line = Vec::new();
         g.feed(b"boot\nPub", &mut line, &tx);
         g.feed(b"lishing: 'Hel", &mut line, &tx);
@@ -965,6 +1010,42 @@ pub(crate) mod tests {
             ]
         );
         assert!(matches!(g, Grading::Done));
+    }
+
+    /// `--expect` twice: the run ends on the line that completes the set,
+    /// whichever of the two lands first.
+    #[test]
+    fn every_part_must_match_in_any_order() {
+        for (first, second) in [("sum: 1", "result last=55"), ("result last=55", "sum: 1")] {
+            let (tx, rx) = channel();
+            let mut g = Grading::new(Expect::all(vec![
+                Expect::substring("sum:"),
+                Expect::substring("result last="),
+            ]));
+            let mut line = Vec::new();
+            g.feed(format!("boot\n{first}\nnoise\n").as_bytes(), &mut line, &tx);
+            assert!(matches!(&g, Grading::Looking(p) if p.len() == 1));
+            g.feed(format!("{second}\nafter\n").as_bytes(), &mut line, &tx);
+            drop(tx);
+            let got: Vec<Event> = rx.iter().collect();
+            assert_eq!(got, [Event::Matched(second.into())]);
+            assert!(matches!(g, Grading::Done));
+        }
+        // One line may satisfy both.
+        let (tx, rx) = channel();
+        let mut g = Grading::new(Expect::all(vec![
+            Expect::substring("a"),
+            Expect::substring("b"),
+        ]));
+        g.feed(b"ab\n", &mut Vec::new(), &tx);
+        drop(tx);
+        assert_eq!(rx.iter().collect::<Vec<_>>(), [Event::Matched("ab".into())]);
+        assert_eq!(
+            Expect::all(vec![Expect::substring("x"), Expect::substring("y")])
+                .unwrap()
+                .pattern(),
+            "x` and `y"
+        );
     }
 
     #[test]

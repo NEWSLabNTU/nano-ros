@@ -216,7 +216,7 @@ default_images = ["baremetal"]
 
 ```bash probe=930 probe-run=1500 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run freertos --expect 'Result received'
+nros run freertos --expect 'I heard: reading' --expect 'Result of add_two_ints' --expect 'Result received'
 ```
 
 ```text probe-expect=930 variant=qemu
@@ -230,7 +230,7 @@ Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
 
 ```bash probe=930 probe-run=1500 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run linux --expect 'result last='
+nros run linux --expect 'I heard: reading' --expect 'result last='
 ```
 
 ```text probe-expect=930 variant=qemu
@@ -242,7 +242,7 @@ I heard: reading 1
 
 ```bash probe=930 probe-run=1500 track=installed variant=qemu
 source /opt/ros/humble/setup.bash
-nros run linux --expect 'result last='
+nros run linux --expect 'I heard: reading' --expect 'result last='
 ```
 
 ```text probe-expect=930 variant=qemu

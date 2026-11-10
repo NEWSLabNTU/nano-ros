@@ -1,0 +1,1 @@
+`nros run`, `nros flash --monitor` and `nros monitor` take `--expect` and `--expect-regex` more than once. Every pattern must appear on some console line, in any order, and the run stops on the line that completes the set. The Tutorial's services and second-target chapters wait for the service reply and the action result this way, because either may print first.
