@@ -43,6 +43,10 @@ This breaks the Tutorial's C and C++ tabs once they move to
 `mps2-an385-freertos` (issue 2376) and the `freertos-c` / `freertos-cpp`
 starter tracks.
 
+Second sighting: the tier-2 matrix, run 42721642028 (job 129516803849, at
+24a7f9b94d). Nine sites across the `threadx_linux`, `freertos` and `nuttx`
+stages failed on the same refusal, each a contract-less cross workspace image.
+
 ## Resolution (2026-11-10)
 
 `take_model_in_build` asks the same first question as `take --image` and
