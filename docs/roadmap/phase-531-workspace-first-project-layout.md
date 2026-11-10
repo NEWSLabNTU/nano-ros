@@ -612,7 +612,7 @@ from before W6.
   - It unblocks the three configured rows W6 moves: `link-tls` on the Rust
     talker, `zenoh-reply-slots` on `bins/action-server-concurrent`, and
     `unstable-zenoh-api` on `bins/message-info-observer`.
-- **Batch 8, Zephyr (in progress).** `examples/zephyr/{c,cpp,rust}/talker`
+- **Batch 8, Zephyr (merged, #3406).** `examples/zephyr/{c,cpp,rust}/talker`
   and `packages/testing/nros-tests/bins/idle-wake-zephyr-mps2` are single-node
   workspaces; their 17 `[[fixture]]` rows (c 6, cpp 4, rust 5, idle-wake 2)
   are `[[workspace_fixture]]` rows on a bringup image, each keeping its
@@ -661,6 +661,31 @@ from before W6.
     non-entry `west_role`; `zephyr/module.yml` drops the three talker
     samples; `just zephyr build-one` and `check-copy-out.sh` build a
     workspace witness through `nros build`.
+- Two linux sites waited on a decision (2026-11-10). Neither is a gap in the
+  migration tool; each is a road the workspace does not have yet. The
+  maintainer ruled on both on 2026-11-11; the order is the 2409 PR, then the
+  2406 design and code, then the migrations.
+  - `examples/linux/rust/talker` migrates and builds, `linux_tls` included
+    (the entry's dependency line carries `link-tls` and the binary links
+    `_z_f_link_*_tls`). Its six edition images do not: a workspace generates
+    its messages for one edition, so `linux_jazzy` builds with `ros-jazzy` on
+    and humble type hashes, and `nros build` rewrites a `nros configure
+    --ros-edition jazzy` back before compiling.
+    [Issue 2409](../issues/2409-workspace-image-ros-edition-builds-workspace-edition-messages.md).
+    Ruling: refuse an image whose edition differs from the workspace's
+    generated messages, and move the edition images into their own
+    per-edition workspace rows.
+  - The two bins named above, and the linux C and C++ talkers, keep a
+    hand-written `main` and are built for several images. An owned entry is
+    one image's program, the cargo road finds it only at
+    `src/<image>_entry`, and `node_features` reaches node packages, not an
+    owned entry's own features. The C and C++ `main`s are also the subject of
+    issue 1556's census tests, so turning them into components moves what
+    those tests cover.
+    [Issue 2406](../issues/2406-owned-entry-cannot-serve-several-images.md).
+    Ruling: one owned entry may serve several images (RFC-0071 D13 and
+    `claiming_image` amended, the cargo road honours `[image.<id>] entry`),
+    and the census tests keep running the same `main()`s.
 
 ### W7 — Retirement
 
