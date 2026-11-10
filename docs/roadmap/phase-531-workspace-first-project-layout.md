@@ -511,6 +511,24 @@ W6 / phase-535, and NuttX cannot build on this host.
 > W6 migrates only the single-node witnesses (`<plat>/<lang>/talker`) and
 > `custom-platform` in place. The pairs, variants, configurations and feature
 > demos move into the language workspaces in phase-535 instead.
+>
+> **Who migrates what (agreed with phase-535, 2026-11-11).** Under the
+> maintainer ruling of 2026-11-10 an example kept in its own directory is a
+> one-package workspace (RFC-0122 D3), so every remaining leaf migrates; the
+> split is only about who does it:
+> - **phase-531 W6:** the 22 `<plat>/<lang>/talker` witnesses (the linux Rust
+>   talker's `link-tls` and peer rows included), `linux/c/custom-platform`, the
+>   templates, and the nros-tests bins `action-server-concurrent` and
+>   `message-info-observer` (issue 2406).
+> - **phase-535 W6:** the linux Rust listener, `service-*` and `action-*` leaves
+>   (the per-edition ones per issue 2409, the listener's `link-tls` row and its
+>   docker image), the feature demos (linux Rust logging, lifecycle-node,
+>   custom-msg; C/C++ logging, parameters, safety-listener; C custom-msg; NuttX
+>   and ThreadX typed-carrier; ThreadX errno-isolation), the linux Rust
+>   custom-transport pair, the mps2-an385 C/C++ bare-metal leaves, and any other
+>   non-talker, non-template leaf under `examples/`.
+> - **W7 step-3 prep:** the other 25 nros-tests bins and the 3 nros-bench
+>   programs.
 
 - `nros dev migrate-bringup <dir>`, the one-shot of RFC-0121 D8. It is tested
   on a copy of each shape: Rust, C, C++, Zephyr west, a hand-written `main`, and
@@ -713,6 +731,23 @@ order, each step with its own PR and gate run:
    depend on `<entry>_nros_derived`) and stay as owned-entry coverage. The
    adapter itself (`write_facade`, `adapter_crate_name`) is not the leaf's and
    stays (RFC-0071 D13);
+
+   **Precondition (maintainer ruling 2026-11-10).** Step 3 runs only once no
+   leaf consumes the selection crate, which takes three things first:
+   - [ ] phase-535's moves: the pairs, variants, configurations and feature
+     demos are `[image.*]` rows in the language workspaces;
+   - [ ] W6's witnesses (`<plat>/<lang>/talker`, `custom-platform`) are
+     one-package workspaces;
+   - [ ] step-3 prep: 25 of the `packages/testing/nros-tests/bins` and the 3
+     `nros-bench` programs are one-package workspaces, migrated in slices, each
+     slice ticking its count here. The other two bins,
+     `action-server-concurrent` and `message-info-observer`, migrate with
+     issue 2406 (a multi-image owned entry).
+
+   A leaf that is still one after that is a true leaf. It moves in place onto
+   the owned-entry adapter (`<entry>_nros_derived`), as the fixture entries
+   above do; the selection crate is not kept for it. RFC-0122's "its own
+   directory" means a one-package workspace (RFC-0122 D3, as clarified).
 4. `--from-leaf`, `write_for_leaf` and the leaf rows of
    `NanoRosSizingDescriptor.cmake`; RFC-0100's road table loses its leaf rows;
 5. the leaf-only halves of `leaf_settings`, `leaf_system`, `leaf_kconfig`,
