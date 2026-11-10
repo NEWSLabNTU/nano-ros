@@ -49,7 +49,7 @@
 #
 #   python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c \
 #       --dest build/nros-px4/placed -- \
-#       cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release \
+#       cargo rustc -p nros-cpp --lib --crate-type staticlib --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release \
 #       --message-format=json-render-diagnostics
 #   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
 #   cmake --build build/nros-platform-posix
@@ -170,7 +170,7 @@ nros_locate_artifact(_NROS_PX4_C_CONFIG_HEADER c-config-header PLACED_DIR "${_NR
 # had).
 # profile-literal-ok: prebuilt archive — the instruction that builds it
 set(_NROS_PX4_UORB_ARCHIVE_CMD
-    "python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest ${_NROS_PX4_HEADER_DIR} -- cargo build -p nros-cpp --no-default-features --features ${_NROS_PX4_UORB_FEATURES} --release --message-format=json-render-diagnostics")
+    "python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest ${_NROS_PX4_HEADER_DIR} -- cargo rustc -p nros-cpp --lib --crate-type staticlib --no-default-features --features ${_NROS_PX4_UORB_FEATURES} --release --message-format=json-render-diagnostics")
 set(_NROS_PX4_PLATFORM_ARCHIVE_CMD
     "cmake -S ${NROS_REPO_DIR}/packages/platform/nros-platform-posix -B ${NROS_REPO_DIR}/build/nros-platform-posix && cmake --build ${NROS_REPO_DIR}/build/nros-platform-posix")
 if(_NROS_PX4_USE_PREBUILT)

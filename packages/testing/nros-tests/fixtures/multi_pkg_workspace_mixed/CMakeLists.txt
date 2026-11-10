@@ -33,6 +33,8 @@ if(NOT Corrosion_FOUND)
         "multi_pkg_workspace_mixed fixture requires Corrosion. "
         "Install via system pkg or FetchContent.")
 endif()
-corrosion_import_crate(MANIFEST_PATH src/talker_pkg/Cargo.toml)
+# Issue 2407 -- the staticlib only: cargo drops LTO for a crate that also emits
+# an rlib, and `check-staticlib-only-roads` holds every import to it.
+corrosion_import_crate(MANIFEST_PATH src/talker_pkg/Cargo.toml CRATE_TYPES staticlib)
 
 add_subdirectory(src/listener_pkg)

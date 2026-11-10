@@ -125,7 +125,7 @@ build-sitl-cpp:
 # Each is ~10 min cold, <2 s warm.
 #
 # Prereqs the helper checks for at configure time, with the command to fix each:
-#   the placer-wrapped `cargo build -p nros-cpp …` NanoRosPx4Module.cmake names
+#   the placer-wrapped `cargo rustc -p nros-cpp --lib --crate-type staticlib …` NanoRosPx4Module.cmake names
 #   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
 #   cmake --build build/nros-platform-posix
 [group("examples")]
@@ -169,7 +169,7 @@ build-sitl-example:
     # nothing about nano-ros profiles. (Marker on one line: the gate looks 3 up.)
     # profile-literal-ok: symbol fixture
     python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest "$(pwd)/build/nros-px4/placed" -- \
-    cargo build -p nros-cpp --no-default-features \
+    cargo rustc -p nros-cpp --lib --crate-type staticlib --no-default-features \
         --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release \
         --message-format=json-render-diagnostics
     # nros-cmake-prefix-exempt: the POSIX platform's C archive -- no Rust target

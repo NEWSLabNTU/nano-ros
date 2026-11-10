@@ -72,7 +72,7 @@ nros_assert_archive_pairs_with_header(
     ARCHIVE       "${CASE_ARCHIVE}"
     HEADER        "${CASE_HEADER}"
     SYMBOL_PREFIX "${CASE_PREFIX}"
-    BUILD_HINT    "cargo build -p nros-cpp --release")
+    BUILD_HINT    "cargo rustc -p nros-cpp --lib --crate-type staticlib --release")
 EOF
 }
 

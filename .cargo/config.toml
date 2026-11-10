@@ -77,6 +77,17 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 
+# Issue 2407 — per-crate size inspection. Shipped images link with LTO (every
+# road asks cargo for the staticlib only), which merges every crate into one
+# module, so a per-crate code-size view needs a build without it. Release
+# settings, LTO off: `NROS_CARGO_PROFILE=nros-inspect`, or `--profile`.
+[profile.nros-inspect]
+inherits = "release"
+opt-level = 3
+lto = "off"
+codegen-units = 1
+panic = "abort"
+
 # Phase 212.M.7 — riscv32imc (esp32c3 / esp32c2 under ESP-IDF) has no
 # hardware atomics. `portable-atomic` requires either a critical-section
 # impl or the `portable_atomic_unsafe_assume_single_core` cfg on such

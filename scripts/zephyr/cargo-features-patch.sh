@@ -359,6 +359,48 @@ if [ "$_img_rc" -eq 1 ]; then
     changed=1
 fi
 
+# Issue 2407 — the image's archive is built as the STATICLIB ONLY.
+#
+# A generated entry's manifest says `crate-type = ["staticlib", "rlib"]`, and
+# cargo passes NO `-C lto` to a crate that also emits an rlib — silently, so
+# the profile's `lto = true` did nothing (nucleo action server: 60,772 B of
+# `.text`, 16 %). `cargo rustc --crate-type staticlib` emits only the archive,
+# and cargo then applies the profile's LTO. The manifest keeps its rlib.
+#
+# Keyed on the BUILD command in either layout (see the header): 3.7 passes it
+# as `CARGO_ARGS build` to `add_cargo_target_with_zephyr_env`; 4.4 inlines a
+# literal `cargo build`. Exactly one such site, or the patch refuses — a
+# second one would turn some other cargo call into `rustc`.
+# Gate: `check-staticlib-only-roads` reads this hunk.
+_lto_rc=0
+nros_grep_q "nano-ros: staticlib only (issue 2407)" "$CMAKE_FILE" || _lto_rc=$?
+if [ "$_lto_rc" -eq 1 ]; then
+    TMP="$(mktemp)"
+    awk '
+    /^[[:space:]]+CARGO_ARGS build[[:space:]]*$/ {
+        sub(/CARGO_ARGS build/, "CARGO_ARGS rustc --crate-type staticlib")
+        print "    # nano-ros: staticlib only (issue 2407) -- cargo drops LTO for an rlib crate."
+        print; n++; next
+    }
+    /^[[:space:]]+cargo build[[:space:]]*$/ {
+        sub(/cargo build/, "cargo rustc --crate-type staticlib")
+        print "      # nano-ros: staticlib only (issue 2407) -- cargo drops LTO for an rlib crate."
+        print; n++; next
+    }
+    { print }
+    END { if (n != 1) exit 3 }
+    ' "$CMAKE_FILE" > "$TMP" || _awk_rc=$?
+    if [ "${_awk_rc:-0}" -ne 0 ]; then
+        rm -f "$TMP"
+        echo "[cargo-features-patch] ERROR: expected exactly one cargo BUILD command" >&2
+        echo "       (\`CARGO_ARGS build\` on 3.7, \`cargo build\` on 4.4) in $CMAKE_FILE;" >&2
+        echo "       the Zephyr rust lane would keep building the rlib and lose LTO (issue 2407)." >&2
+        exit 1
+    fi
+    mv "$TMP" "$CMAKE_FILE"
+    changed=1
+fi
+
 if [ "$changed" -eq 0 ]; then
     echo "[cargo-features-patch] already applied to $CMAKE_FILE"
 else

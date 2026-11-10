@@ -144,8 +144,27 @@ pub const MINSIZEREL: Preset = Preset {
     ],
 };
 
+/// Per-crate size inspection (issue 2407): [`release`] with LTO off.
+///
+/// Shipped images link with LTO, which merges every crate into one module, so
+/// `.text` can no longer be attributed per crate. Select this by name when you
+/// want that view; it is never the default. RAM attribution (`mem-report`)
+/// survives LTO and does not need it.
+///
+/// [`release`]: https://doc.rust-lang.org/cargo/reference/profiles.html#release
+pub const INSPECT: Preset = Preset {
+    name: "nros-inspect",
+    settings: &[
+        s("inherits", "release"),
+        s("opt-level", "3"),
+        s("lto", "off"),
+        s("codegen-units", "1"),
+        s("panic", "abort"),
+    ],
+};
+
 /// Every preset nano-ros owns. A name outside this list is the user's.
-pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, ITERATE, MINSIZEREL];
+pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, ITERATE, MINSIZEREL, INSPECT];
 
 /// The profile NuttX Rust images must be built at.
 ///

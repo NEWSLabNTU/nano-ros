@@ -1,15 +1,17 @@
 ---
 id: 2407
 title: "Enable LTO for shipped images without losing size inspection: cargo drops `lto` for a crate whose crate-type includes `lib`/`rlib`, and a nucleo image is 60,772 B (16 %) larger in .text without it"
-status: open
+status: resolved
 type: enhancement
 severity: medium
 area: [build, cargo, memory, zephyr, cli]
 found: 2026-11-10
+resolved: 2026-11-10
+resolved_in: "every road asks cargo for the staticlib only: Corrosion CRATE_TYPES staticlib (already), the zephyr-lang-rust patch rewrites the build to cargo rustc --crate-type staticlib, the PX4 archive builds use cargo rustc; gate check-staticlib-only-roads; nros-inspect profile"
 related: [issue-2400, issue-0815, phase-548]
 ---
 
-**Home: [phase-548](../roadmap/phase-548-three-languages-every-board.md)**. Found
+**Home: [phase-548](../../roadmap/phase-548-three-languages-every-board.md)**. Found
 while measuring the nucleo-f767zi image for issue 2400.
 
 ## What
@@ -137,3 +139,53 @@ in `config/stack-floors.toml` has to be re-walked. The table's STALE check
 reports exactly that.
 
 Nothing here changes a crate type. That waits on the choice above.
+
+## Resolved (2026-11-10)
+
+Four parts:
+
+- **cmake** already complied. Every image `corrosion_import_crate` passes
+  `CRATE_TYPES staticlib`, which Corrosion runs as
+  `cargo rustc --crate-type=staticlib`; LTO then follows the cargo profile
+  (`release` / `nros-minsizerel` fat; the dev profiles have it off on
+  purpose). The `multi_pkg_workspace_mixed` fixture gained it as well. The
+  host `nros` CLI import is exempt, because it is a `[[bin]]`.
+- **Zephyr west.** `scripts/zephyr/cargo-features-patch.sh` gains a hunk that
+  rewrites zephyr-lang-rust's one build command to
+  `cargo rustc --crate-type staticlib`: `CARGO_ARGS build` on 3.7, the
+  literal `cargo build` on 4.4. If it does not find exactly one site, it
+  refuses. Tested on copies of both layouts, and idempotent. A provisioned
+  workspace picks the hunk up the next time it is provisioned.
+- **PX4.** The placer command in `NanoRosPx4Module.cmake`, `just px4`, and
+  `scripts/stage-px4-posix-archives.sh` now say
+  `cargo rustc -p nros-cpp --lib --crate-type staticlib`. Measured: that
+  command gets `-C lto=fat`, where `cargo build` got none.
+- **`nros-inspect`**, a nano-ros-owned preset (`inherits = "release"`,
+  `lto = "off"`, `codegen-units = 1`). It is mirrored in the root
+  `Cargo.toml` and `.cargo/config.toml`, and nros-cargo-profile's mirror
+  tests cover all three copies.
+
+The gate `check-staticlib-only-roads` (fast line, buildless) reads every
+road: the corrosion imports, the west hunk, and the PX4 build commands.
+
+**Acceptance, measured on the nucleo-f767zi Rust zenoh action server.** The
+image's build was switched to `cargo rustc --crate-type staticlib` in its own
+`build.ninja`, rebuilt, and run from a fixed plan, so nothing was rebuilt
+between the measurement and the run:
+
+| | `cargo build` (before) | `cargo rustc --crate-type staticlib` |
+| --- | ---: | ---: |
+| `.text` | 375,596 B | 315,796 B (−59,800 B, −15.9 %) |
+| runs on the Renode twin | yes | **yes** ("Waiting for action goals" at 7.9 s) |
+| main-thread peak (thread analyzer, 7 rounds) | 29,224 B | **30,256 B (+1,032 B)** |
+
+`mem-report` per-owner RAM is unchanged apart from removed symbols (measured
+in (b) above).
+
+**LTO raises the stack peak.** Inlining merges frames along the open path,
+while the static walk falls (26,232 to 22,564 B). Issue 2400's allowance for
+this image becomes 30,256 − 22,564 = 7,692 B, and its floor
+ceil8(30,256 × 1.10) = 33,288 B, above the board's 32,768 B. The real peak
+still fits, with 2.5 KB of headroom. Re-measuring the allowances, and what to
+do about a floor above the board's stack, is issue 2400's to settle once
+both changes land.

@@ -541,6 +541,17 @@ workspace-exclude-list:
 rustc-wrapper-staticlib:
     @python3 scripts/check-rustc-wrapper-staticlib.py
 
+# issue 2407 -- every road asks cargo for the image's STATICLIB ONLY: cargo
+# passes no `-C lto` to a crate that also emits an rlib (nros-cpp's `lib`, every
+# generated entry's `rlib`), silently, and the nucleo image was 16 % larger in
+# .text for it. Reads each road: every `corrosion_import_crate` passes
+# `CRATE_TYPES staticlib`, the zephyr-lang-rust patch rewrites the build command
+# to `cargo rustc --crate-type staticlib`, and no PX4 archive build says
+# `cargo build -p nros-cpp`. Buildless.
+[group("checks")]
+staticlib-only-roads:
+    @python3 scripts/check-staticlib-only-roads.py
+
 # Phase 251 — forbid `--allow-multiple-definition` in the build system (it lets
 # two same-named-but-different functions coexist → wrong-copy hazard). Fails on
 # ANY real use — absolute since issue 1664 removed the last one; no allowlist.
