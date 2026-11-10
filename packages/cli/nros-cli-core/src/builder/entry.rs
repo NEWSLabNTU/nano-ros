@@ -456,6 +456,53 @@ pub fn entry_surface_features(candidates: &[&str], declares: impl Fn(&str) -> bo
     }
 }
 
+/// phase-535 W6 — the RTIC device crate of each in-tree RTIC board key, as a
+/// checkout-relative directory. `nros::main!`'s RTIC arm names it as the
+/// `#[rtic::app(device = …)]` path (`rtic_board_spec_for`, same key).
+const RTIC_DEVICE_CRATES: &[(&str, &str)] =
+    &[("rtic-mps2-an385", "packages/boards/mps2-an385-pac")];
+
+/// The `rtic` crate line an RTIC entry carries — the pin every hand-written
+/// RTIC leaf named.
+const RTIC_CRATE_LINE: &str = "rtic = { version = \"2.1\", features = [\"thumbv7-backend\"] }";
+
+/// The dependency lines the framework of the image's board key needs on the
+/// ENTRY crate itself, for an entry `builder::entry` generates.
+///
+/// The `#[rtic::app]` module `nros::main!` expands names `::rtic` and the
+/// device crate from the crate it expands IN, so the board crate re-exporting
+/// them would not do: each hand-written RTIC leaf listed both by hand. A
+/// generated workspace entry has no hand to list them (phase-535 W6). Same
+/// key lookup as [`entry_surface_features`]; every other framework gets none.
+pub fn framework_entry_deps(
+    candidates: &[&str],
+    nano_ros_root: &Path,
+    entry_dir: &Path,
+) -> Result<Vec<String>, String> {
+    let Some(key) = candidates
+        .iter()
+        .find(|k| nros_orchestration_ir::board_path_for(k).is_some())
+    else {
+        return Ok(Vec::new());
+    };
+    if nros_orchestration_ir::framework_for_board_key(key) != Some("rtic") {
+        return Ok(Vec::new());
+    }
+    let (_, dir) = RTIC_DEVICE_CRATES
+        .iter()
+        .find(|(k, _)| k == key)
+        .ok_or_else(|| format!("board `{key}` is an RTIC board with no device crate"))?;
+    let name = Path::new(dir)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let rel = relative_or_err(entry_dir, &nano_ros_root.join(dir))?;
+    Ok(vec![
+        RTIC_CRATE_LINE.to_string(),
+        format!("{name} = {{ path = \"{rel}\" }}"),
+    ])
+}
+
 /// The board crate's IP link feature — what a board's `default` turns on for
 /// its network link (`ethernet` on the mps2 bare-metal and esp32 crates).
 pub const IP_LINK_FEATURE: &str = "ethernet";
@@ -1209,6 +1256,26 @@ mod tests {
         assert_eq!(
             entry_surface_features(&candidates, |_| true),
             vec!["board-entry".to_string()]
+        );
+    }
+
+    /// phase-535 W6 — an RTIC board key gives the entry `rtic` and its
+    /// device crate; the plain key of the same descriptor gives neither.
+    #[test]
+    fn an_rtic_board_key_gives_the_entry_rtic_and_its_device_crate() {
+        let root = Path::new("/r");
+        let entry = Path::new("/r/ws/build/c/x_entry");
+        let rtic = framework_entry_deps(&["rtic-mps2-an385"], root, entry).unwrap();
+        assert_eq!(rtic.len(), 2, "{rtic:?}");
+        assert!(rtic[0].starts_with("rtic = "), "{rtic:?}");
+        assert_eq!(
+            rtic[1],
+            "mps2-an385-pac = { path = \"../../../../packages/boards/mps2-an385-pac\" }"
+        );
+        assert!(
+            framework_entry_deps(&["mps2-an385-baremetal"], root, entry)
+                .unwrap()
+                .is_empty()
         );
     }
 

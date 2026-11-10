@@ -5146,6 +5146,12 @@ fn generate_entry(
         facts.board_features.sort();
         facts.board_features.dedup();
     }
+    // phase-535 W6 — the crates the board key's framework names from the
+    // entry's own crate root (`rtic` and the device crate, for RTIC).
+    facts.crate_root_deps.extend(
+        crate::builder::entry::framework_entry_deps(&candidates, nros_root, &entry_dir_for_deps)
+            .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?,
+    );
     // RFC-0071 D13 — the entry states its own features and registration; no
     // selection package is written for it. Derived from `sys` (above).
     {
