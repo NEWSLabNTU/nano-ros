@@ -1,6 +1,6 @@
 ---
 id: 2313
-title: "A generated Rust Zephyr entry cannot run Cyclone DDS: undeclared feature, no backend registered, then PublisherCreationFailed"
+title: "A generated Rust entry cannot run Cyclone DDS on threadx-riscv64 (\"no RMW backend is registered\"); the Zephyr half is fixed and measured"
 status: open
 type: bug
 area: [cli, zephyr, rmw-cyclonedds]
@@ -130,3 +130,35 @@ Left open here:
   action-server leaf.
 - The threadx-riscv64 half above (`riscv_threadx_<role>_cyclonedds` boots to
   "no RMW backend is registered") is not addressed.
+
+## Re-measured on main (2026-11-10, nros 139)
+
+On main with #3358 (`0224a4628d`) and #3424 (`55cf76d5af`), the
+six `build-ws-rust-*-cyclonedds` native_sim images were rebuilt fresh with
+`NROS_ZEPHYR_FIXTURE_FILTER='build-ws-rust-.*-cyclonedds' just zephyr build-fixtures`:
+
+- #3358: the facade's `(gated)` arm calls the C hook for a backend with no
+  rlib.
+- #3424: the Zephyr arm selects the rmw the image declares.
+
+`cargo nextest run -p nros-tests --test zephyr -E 'test(/cyclonedds_rust/)'`
+passed 5/5:
+
+- case_17 and case_18: boot smokes;
+- case_10: pubsub;
+- case_13: service;
+- case_16: action e2e.
+
+Items 1 to 3 are closed for Zephyr, including the undeclared-feature part
+(item 1, which is how the images build at all).
+
+**Why this stays open.** The 5/5 is Zephyr native_sim only. It did not
+exercise:
+
+- **threadx-riscv64.** `riscv_threadx_<role>_cyclonedds` booted to "no RMW
+  backend is registered" on the cargo road, and that road links no Cyclone at
+  all. #3358's C-hook call needs a hook that something defines, so it is not
+  evidence for this road. Its leaves keep their Cyclone rows until it is
+  measured.
+- **The Zephyr action-server leaf.** It stays until the workspace action
+  server prints the `reply-slot: refusals=` heartbeat.
