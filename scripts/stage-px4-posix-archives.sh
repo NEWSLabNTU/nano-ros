@@ -103,7 +103,7 @@ echo "nano-ros: building libnros_cpp.a for PX4 POSIX (features $features)"
 # profile-literal-ok: prebuilt archive shipped at a fixed path in the release
 python3 "$repo/scripts/build/cargo-out-dir-headers.py" \
     --package nros-cpp --package nros-c --dest "$out/placed" -- \
-    cargo build --manifest-path "$repo/Cargo.toml" -p nros-cpp \
+    cargo rustc --manifest-path "$repo/Cargo.toml" -p nros-cpp --lib --crate-type staticlib \
     --no-default-features --features "$features" --release \
     --message-format=json-render-diagnostics
 
