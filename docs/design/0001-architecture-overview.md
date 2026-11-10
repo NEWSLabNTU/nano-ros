@@ -249,7 +249,7 @@ which crate each axis lives on.
 **ROS edition — on `nros`:** `ros-humble`, `ros-iron`, `ros-jazzy`.
 
 **Cross-cutting (any combination):** `std`, `alloc`, `safety-e2e`,
-`param-services`, `lifecycle-services`, `ffi-sync`, `bridge`, `stream`,
+`param-services`, `lifecycle-services`, `bridge`, `stream`,
 `metadata-mode`.
 
 Mutual exclusivity within the RMW and edition axes is enforced by
@@ -586,7 +586,7 @@ Verification crates live in `packages/verification/` and are excluded from the m
 | Feature              | Description                                                                                   | Compile Flag                              |
 |----------------------|-----------------------------------------------------------------------------------------------|-------------------------------------------|
 | E2E Safety           | CRC-32/ISO-HDLC integrity + sequence tracking (AUTOSAR E2E / EN 50159)                        | `safety-e2e`                              |
-| FFI Reentrancy Guard | Wraps transport FFI calls in `critical_section::with()`                                       | `ffi-sync`                                |
+| FFI Reentrancy Guard | Wraps zenoh-pico FFI calls in `critical_section::with()` (a backend feature, not `nros`'s)    | `nros-rmw-zenoh/ffi-sync`                 |
 | LET Semantics        | Logical Execution Time — deterministic snapshot dispatch                                      | `ExecutorSemantics::LogicalExecutionTime` |
 | Mutex Backends       | `sync-spin` (default), `sync-critical-section` (RTIC/Embassy), or `RefCell` (single-threaded) | `sync-spin` / `sync-critical-section`     |
 

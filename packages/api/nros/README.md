@@ -10,7 +10,7 @@ Phase 248 — `nros` is RMW- and platform-AGNOSTIC: it carries only FUNCTIONAL f
 
 - `std` / `alloc` / `no-std`
 - `rmw-cffi` (the RMW vtable runtime — the only RMW feature)
-- `lending`, `bridge` / `config`, `param-services`, `lifecycle-services`, `safety-e2e`, `stream`, `ffi-sync`
+- `lending`, `bridge` / `config`, `param-services`, `lifecycle-services`, `safety-e2e`, `stream`
 - ROS edition: `ros-humble` / `ros-iron`
 
 ## License

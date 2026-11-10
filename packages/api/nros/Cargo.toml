@@ -222,8 +222,12 @@ safety-e2e = [
 # reaches through its own optional backend dep. `nros` is agnostic (RFC-0071)
 # and must not name a backend, so it cannot legitimately forward this at all.
 
-# FFI reentrancy guards (critical-section around all RMW FFI calls).
-ffi-sync = ["nros-node/ffi-sync"]
+# Issue 2417 — `ffi-sync` DELETED here, as `unstable-zenoh-api` was above. It
+# forwarded to `nros-node`'s empty feature and reached nothing. The guard is
+# the zenoh backend's own `nros-rmw-zenoh/ffi-sync` (`critical_section::with()`
+# around every zpico FFI call, `src/zpico.rs`), which a consumer enables on its
+# own backend dependency. `nros` is backend-agnostic (RFC-0071) and cannot
+# forward it.
 
 # phase-461 W6 — the parameter STORE: `declare_parameter`, launch seeds,
 # `--ros-args -p`, `ctx.parameter`. No queryable, and none of the service code

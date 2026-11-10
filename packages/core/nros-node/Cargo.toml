@@ -212,8 +212,9 @@ safety-e2e = ["nros-rmw/safety-e2e"]
 # in a CORE package, naming a backend. Its only mention in core source was a
 # doc comment whose actual seam is `rmw-lending`.
 
-# FFI reentrancy guards (critical-section around all RMW FFI calls).
-ffi-sync = []
+# Issue 2417 — `ffi-sync` DELETED. An empty feature no `cfg` read, which the
+# `nros` umbrella forwarded to and which reached no code. The real guard is
+# `nros-rmw-zenoh/ffi-sync`.
 
 # Issue 1897 -- the parameter STORE: declare/get/set, launch seeds, argv
 # overrides, `use_sim_time` seeding. No service, no `rcl_interfaces`.
