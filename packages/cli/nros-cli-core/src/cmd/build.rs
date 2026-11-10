@@ -7567,10 +7567,12 @@ fn generated_outputs(
     let rel = |p: PathBuf| p.strip_prefix(root).map(Path::to_path_buf).unwrap_or(p);
     match driver {
         Driver::West if image.entry.is_some() => Vec::new(),
-        // RFC-0071 D19 — on the cargo road a named owned entry suppresses
-        // generation too; one that does not resolve fails the image's own
-        // build, so it claims nothing here.
-        Driver::Cargo if !matches!(owned_entry_dir(root, image_id, image), Ok(None)) => Vec::new(),
+        // RFC-0071 D19 — on the cargo road a named owned entry that resolves
+        // suppresses generation too; one that does not resolve fails the
+        // image's own build, and claims the generated path meanwhile.
+        Driver::Cargo if matches!(owned_entry_dir(root, image_id, image), Ok(Some(_))) => {
+            Vec::new()
+        }
         Driver::Cargo | Driver::West => {
             vec![rel(generated_entry_dir(root, platform, image, image_id))]
         }
@@ -10655,8 +10657,10 @@ mod generated_output_collision_tests {
     }
 
     /// On the west road `[image.<id>] entry` names the application and
-    /// generation never runs; on the cargo road it is not consulted, so the
-    /// entry is still generated and still claimed.
+    /// generation never runs. On the cargo road a named entry that RESOLVES is
+    /// built in place of a generated one (RFC-0071 D19, see
+    /// `owned_entry_tests`); one that does not resolve fails that image's own
+    /// build, so here it still claims the generated path.
     #[test]
     fn a_named_entry_suppresses_generation_on_the_west_road_only() {
         let t = tempfile::tempdir().unwrap();

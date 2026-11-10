@@ -2345,6 +2345,22 @@ mod board_crate_tests {
             {
                 on_selection += 1;
             }
+            // RFC-0071 D19 — an OWNED entry an image of its workspace names
+            // (`[image.<id>] entry`) names its board crate by design: the
+            // adapter, not a selection package, carries the image's features.
+            let name = doc
+                .get("package")
+                .and_then(|p| p.get("name"))
+                .and_then(|n| n.as_str())
+                .unwrap_or_default();
+            if !boards.is_empty()
+                && crate::cmd::ws::workspace_entry_system(leaf, name)
+                    .ok()
+                    .flatten()
+                    .is_some()
+            {
+                continue;
+            }
             if !boards.is_empty() {
                 stray.push(format!(
                     "{leaf_rel}: names `{}` and has no `system.toml` (no image, so no \
@@ -2411,9 +2427,10 @@ mod board_crate_tests {
         // (W6: `baremetal_<role>_rtic` images), 75 -> 74 for the linux Rust
         // talker (phase-531 W6: a one-node workspace migrated in place),
         // 74 -> 73 for the `nros-tests` `entry-poc` bin (W7 step-3 prep,
-        // slice 1).
+        // slice 1), 73 -> 72 for `bins/message-info-observer` (W6: an owned
+        // entry two images name, RFC-0071 D19).
         assert!(
-            on_selection >= 73,
+            on_selection >= 72,
             "only {on_selection} leaves on the selection package"
         );
     }

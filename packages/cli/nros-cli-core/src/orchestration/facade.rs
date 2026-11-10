@@ -98,6 +98,8 @@ struct RuntimeDeps {
     /// the wire while everything compiles — the precise failure mode this phase
     /// exists to remove, reintroduced one dep to the left.
     rmw_backend: Option<(String, PathBuf)>,
+    /// The entry marks that backend dependency `optional = true`.
+    rmw_backend_optional: bool,
 }
 
 /// The RMW the IMAGE that names `entry_name` declares, if there is one.
@@ -515,6 +517,16 @@ impl AdapterSite<'_> {
             apply_image_link(image_id, sys, &declared_rmw, bd, &mut board_features);
         }
 
+        // RFC-0071 D19 — an OPTIONAL backend dependency of another backend
+        // than this image's belongs to one of the entry's own features
+        // (`zenoh-reply-slots = ["dep:nros-rmw-zenoh"]`). Re-declaring it here
+        // would link that backend into this image too; the image's own
+        // backend is still re-declared, which is what turns it on.
+        let direct_backend = deps.rmw_backend.as_ref().filter(|(krate, _)| {
+            !deps.rmw_backend_optional
+                || krate.starts_with(&format!("nros-rmw-{}", declared_rmw.replace('_', "-")))
+        });
+
         // ---- render --------------------------------------------------------
         let mut body = render_manifest(
             crate_name,
@@ -523,7 +535,7 @@ impl AdapterSite<'_> {
             &nros_features,
             deps.board.as_ref(),
             &board_features,
-            deps.rmw_backend.as_ref(),
+            direct_backend,
             &backend_features,
             entry_name,
             sys,
@@ -552,11 +564,7 @@ impl AdapterSite<'_> {
                 backend_link::reexport_name(&b.krate)
             ));
             // Already re-declared above as the entry's own direct backend.
-            if deps
-                .rmw_backend
-                .as_ref()
-                .is_some_and(|(n, _)| *n == b.krate)
-            {
+            if direct_backend.is_some_and(|(n, _)| *n == b.krate) {
                 continue;
             }
             // Sorted: this adapter's line has always listed them in order.
@@ -598,7 +606,7 @@ impl AdapterSite<'_> {
             items,
             nros_features,
             board_features,
-            backend_features: if deps.rmw_backend.is_some() {
+            backend_features: if direct_backend.is_some() {
                 backend_features
             } else {
                 Vec::new()
@@ -1551,13 +1559,7 @@ fn runtime_deps(manifest: &toml::Value, entry_dir: &Path, sdk_root: Option<&Path
         } else if name.starts_with("nros-board-") {
             out.board = Some((name.clone(), abs));
         } else if name.starts_with("nros-rmw-") {
-            // An OPTIONAL backend dependency is the entry's own feature's
-            // (`zenoh-reply-slots = ["dep:nros-rmw-zenoh"]`): re-declaring it
-            // here would link it into every image, including one built for
-            // another backend (RFC-0071 D19).
-            if spec.get("optional").and_then(|o| o.as_bool()) == Some(true) {
-                continue;
-            }
+            out.rmw_backend_optional = spec.get("optional").and_then(|o| o.as_bool()) == Some(true);
             out.rmw_backend = Some((name.clone(), abs));
         }
     }
@@ -2142,8 +2144,14 @@ mod tests {
         for (_, dep) in doc["dependencies"].as_table().unwrap() {
             assert_eq!(dep.get("optional").and_then(|o| o.as_bool()), Some(true));
         }
-        // The entry's optional backend is its own feature's, not the adapter's.
-        assert!(!cargo.contains("nros-rmw-zenoh"), "{cargo}");
+        // The entry's optional backend is re-declared only for the image whose
+        // backend it is; the xrce image does not link zenoh.
+        assert!(acts("image-linux").contains(&"dep:nros-rmw-zenoh".to_string()));
+        assert!(
+            !acts("image-linux_xrce")
+                .iter()
+                .any(|a| a.contains("nros-rmw-zenoh"))
+        );
         let lib = std::fs::read_to_string(xrce.dir.join("src/lib.rs")).unwrap();
         assert!(lib.contains("#[cfg(feature = \"image-linux_xrce\")]\nmod image_linux_xrce;"));
         assert!(lib.contains("compile_error!"), "{lib}");
