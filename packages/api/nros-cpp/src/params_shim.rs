@@ -52,9 +52,11 @@ pub unsafe extern "C" fn nros_cpp_register_parameter_services(
     let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
+    // Issue 2304 -- the variant, not a bare NROS_CPP_RET_ERROR: the executor
+    // has logged the node and service, and this maps and records the error.
     match ctx.executor.register_parameter_services() {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(_) => NROS_CPP_RET_ERROR,
+        Err(e) => crate::node_error_to_cpp_ret(e),
     }
 }
 

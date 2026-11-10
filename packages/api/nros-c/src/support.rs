@@ -51,6 +51,82 @@ pub(crate) fn transport_error_to_ret(err: nros_rmw::TransportError) -> rcl_ret_t
     }
 }
 
+/// Issue 2304 — map `nros_node::NodeError` to the closest `rcl_ret_t`.
+///
+/// EXHAUSTIVE, no `_` arm: a new variant must be placed by someone, never
+/// filed under `RCL_RET_ERROR` by default (the shape issue 0586's gate states
+/// for the C++ mapper). `Transport` goes through [`transport_error_to_ret`], so
+/// one transport error has one code on every path.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) fn node_error_to_ret(err: nros_node::NodeError) -> rcl_ret_t {
+    use nros_node::NodeError as E;
+    match err {
+        E::Transport(t) => transport_error_to_ret(t),
+        E::NameTooLong => RCL_RET_INVALID_ARGUMENT,
+        E::BufferTooSmall
+        | E::NodeTableFull
+        | E::ExecutorFull
+        | E::ShutdownCallbacksFull
+        | E::NoSchedContextSlot => RCLC_RET_FULL,
+        E::Timeout => RCL_RET_TIMEOUT,
+        E::NotInitialized => RCL_RET_NOT_INIT,
+        E::RequestInFlight => RCLC_RET_TRY_AGAIN,
+        E::ServiceRequestFailed | E::ServiceReplyFailed => RCLC_RET_SERVICE_FAILED,
+        E::InvalidSchedContextBinding | E::BackendMismatch => RCL_RET_INVALID_ARGUMENT,
+        E::DeclaredDepthMismatch | E::DeclaredQosMismatch => RCLC_RET_REJECTED,
+        E::Serialization | E::Deserialization | E::ActionCreationFailed => RCL_RET_ERROR,
+    }
+}
+
+/// Issue 2304 — an entity a C call was asked to create could not be: SAY what
+/// and why, then return the mapped code.
+///
+/// Every entity-creating C entry point used to answer a refusal with a bare
+/// `RCL_RET_ERROR` and nothing else, so `examples/linux/c/parameters` on Cyclone
+/// exited 1 right after its first log line with no word of the
+/// `Transport(PublisherCreationFailed)` behind it. Cold and out of line: it
+/// formats, and only a failure reaches it. `what` names the entity (its topic,
+/// service or node), so a reader can tell which of several creates failed.
+#[cfg(feature = "rmw-cffi")]
+#[cold]
+#[inline(never)]
+pub(crate) fn report_node_refusal(
+    call: &str,
+    what: core::fmt::Arguments<'_>,
+    err: nros_node::NodeError,
+) -> rcl_ret_t {
+    nros_log::log_error!(
+        nros_log::get_logger("nros-c"),
+        "{}: {} could not be created: {:?} ({})",
+        call,
+        what,
+        err,
+        err
+    );
+    node_error_to_ret(err)
+}
+
+/// [`report_node_refusal`] for a call that reaches the session directly and
+/// gets a `TransportError` back (the polling entities).
+#[cfg(feature = "rmw-cffi")]
+#[cold]
+#[inline(never)]
+pub(crate) fn report_transport_refusal(
+    call: &str,
+    what: core::fmt::Arguments<'_>,
+    err: nros_rmw::TransportError,
+) -> rcl_ret_t {
+    nros_log::log_error!(
+        nros_log::get_logger("nros-c"),
+        "{}: {} could not be created: {:?} ({})",
+        call,
+        what,
+        err,
+        err
+    );
+    transport_error_to_ret(err)
+}
+
 /// Issue #227 — pass this as `domain_id` to `rclc_support_init[_named]` to
 /// request an EXPLICIT domain 0. Plain `0` is the UNSET sentinel (defers to
 /// `ROS_DOMAIN_ID` env on hosted, then the baked/default rungs — the #206

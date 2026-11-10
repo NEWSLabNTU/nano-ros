@@ -13760,7 +13760,15 @@ impl<'s> Executor<'s> {
         if self.nodes.is_empty() {
             return Ok(());
         }
-        self.reconcile_parameter_services()
+        // Issue 2304 -- an explicit caller (the C and C++ APIs) gets the error
+        // AND the line naming the node and the service, through the reporter
+        // the spin uses (once; issue 1271). The C API used to turn this into a
+        // bare RCL_RET_ERROR with nothing on the console.
+        let result = self.reconcile_parameter_services();
+        if let Err(e) = &result {
+            self.report_parameter_service_reconcile_failure(e.clone());
+        }
+        result
     }
 
     /// phase-426 W3 — is there a node whose six services are not up yet?
