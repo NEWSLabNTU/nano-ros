@@ -4479,10 +4479,7 @@ fn report_census_freshness(ws_root: &Path) {
                     .and_then(|d| d.file_name())
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "<bringup>".to_string());
-                (
-                    format!("model {shown}"),
-                    format!(" {bringup}:<the cross image that checks it>"),
-                )
+                (format!("model {shown}"), format!(" {bringup}:<image>"))
             }
             // An entry's own census: the flag with no image covers every
             // image the configure does, this entry's among them.
@@ -4496,9 +4493,16 @@ fn report_census_freshness(ws_root: &Path) {
         if verdict.starts_with("STALE") {
             println!(
                 // See issue 0641; the user-tier home is issue 2394's flag.
-                "sync: source metadata -- take a new one with `nros configure --census{how}` \
+                "sync: source metadata -- take a new one with `nros configure --census{how}`{note} \
                  (it builds and runs the native image, so it takes longer); a plain configure \
-                 does not"
+                 does not",
+                // The bringup is known here, the image is not: say what to
+                // put in the placeholder so it does not read as complete.
+                note = if how.is_empty() {
+                    ""
+                } else {
+                    ", `<image>` being the image you build for the board,"
+                }
             );
         }
     }
