@@ -92,5 +92,18 @@ The check this issue asked for: `just check threadx-app-config-per-image`
   link's exclusion, and both board files on the one writer.
 - Mutation-tested: a writer that ignores the scoped network fails it.
 
+**Class sweep** (every cmake-side caller of the board-net resolver:
+`git grep 'nros_board_net_c(\|_nros_freertos_entry_network(\|nros_image_net(' -- cmake zephyr integrations`):
+
+- FreeRTOS already wrote its config TU per entry
+  (`templates/freertos_app_config.c.in`, phase-535 W3). Its two callers,
+  `nano_ros_entry` and the `nano_ros_node_register` carrier, each write it
+  in their own scope.
+- NuttX and the bare-metal mps2 board have no cmake-side network TU. Their
+  network comes from Kconfig or the board crate.
+- `NanoRosEntryLocator` asks the resolver only for the locator.
+
+So ThreadX was the one road with a per-configure network TU.
+
 The threadx-riscv64 Cyclone pairs can now move from the leaves to one
 bringup (phase-535's work, not done here).
