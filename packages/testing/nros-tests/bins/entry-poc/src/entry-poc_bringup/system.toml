@@ -10,7 +10,7 @@ domain_id = 0
 
 [[component]]
 pkg = "entry-poc"
-class = "entry_poc::EntryPoc"
+class = "entry-poc::EntryPoc"
 name = "entry_poc"
 
 # Host build. The locator and domain stay runtime env on native
