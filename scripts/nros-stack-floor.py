@@ -232,8 +232,8 @@ def llvm_tool(name: str, llvm_bin: str | None) -> str:
              "component or pass --llvm-bin")
 
 
-def readobj_json(tool: str, args: list[str], path: str) -> list[dict]:
-    out = subprocess.run([tool, "--elf-output-style=JSON", *args, path],
+def readobj_json(tool: str, args: list[str], paths: list[str]) -> list[dict]:
+    out = subprocess.run([tool, "--elf-output-style=JSON", *args, *paths],
                          check=True, capture_output=True, text=True).stdout
     # an archive yields one JSON document per member, concatenated
     docs, dec, i = [], json.JSONDecoder(), 0
@@ -265,6 +265,7 @@ def readobj_json(tool: str, args: list[str], path: str) -> list[dict]:
 # defaults for these targets.
 LLC_FLAGS = ("-O3", "-filetype=obj", "-stack-size-section", "-relocation-model=static",
              "-function-sections", "-data-sections")
+LOAD_CHUNK = 16  # paths per llvm-readobj / llvm-objdump process: 16 kept the nucleo image at 384 MB peak, 256 took 977 MB
 _THIN_STAGE = re.compile(r"\.thin-lto-[a-z-]+\.bc$")
 
 
@@ -359,15 +360,20 @@ def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | No
     return out
 
 
-def load_object(g: Graph, path: str, readobj: str, objdump: str) -> None:
-    for doc in readobj_json(readobj, ["--stack-sizes"], path):
+def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) -> None:
+    """Read objects/archives. Several paths go to ONE llvm-readobj and ONE
+    llvm-objdump each: per-object processes were 5 s of a 5.3 s warm run
+    (issue 2400), and every build pays that once measuring is per build."""
+    if isinstance(paths, str):
+        paths = [paths]
+    for doc in readobj_json(readobj, ["--stack-sizes"], paths):
         for e in doc.get("StackSizes", []):
             ent = e["Entry"]
             for fn in ent["Functions"]:
                 g.frames[fn] = max(g.frames.get(fn, 0), ent["Size"])
                 g.functions.add(fn)
 
-    docs = readobj_json(readobj, ["-S", "--symbols", "-r"], path)
+    docs = readobj_json(readobj, ["-S", "--symbols", "-r"], paths)
     for doc in docs:
         secs = {s["Section"]["Index"]: s["Section"] for s in doc.get("Sections", [])}
         # function symbols per section: (start, end, name)
@@ -432,7 +438,7 @@ def load_object(g: Graph, path: str, readobj: str, objdump: str) -> None:
                 else:
                     g.address_taken.add(tgt)
 
-    dis = subprocess.run([objdump, "-d", "--no-show-raw-insn", path],
+    dis = subprocess.run([objdump, "-d", "--no-show-raw-insn", *paths],
                          check=True, capture_output=True, text=True).stdout
     cur = None
     for line in dis.splitlines():
@@ -504,30 +510,33 @@ def parse_indirect(s: str | None) -> tuple[str, int | None]:
 
 
 # ---------------------------------------------------------------------------
-# The per-target floor table (config/stack-floors.toml)
+# The allowance table (config/stack-floors.toml), schema 2
 # ---------------------------------------------------------------------------
 #
-# One `[[floor]]` per (image shape, target, role). It carries the walk POLICY
-# (which roots, which cuts / externals / stated frames, how indirect calls are
-# charged) and the two measurements the floor is derived from:
+# Floors are NOT in the table: they are measured every build (issue 2400,
+# ruled 2026-11-10). The table holds what a build cannot measure:
 #
-#   floor = ceil8( max(static_bytes + sum(allowances), measured.bytes)
-#                  * (100 + margin_pct) / 100 )
+#   floor = ceil8( (static_now + allowance) * (100 + margin_pct) / 100 )
 #
-# `static_bytes` is what this tool printed for the entry's walk; `measured` is
-# a run-time peak on a twin (absent for a role with no twin, e.g. PX4's
-# executor-pass thread, which then leans on its allowances). Every cut,
-# external, stated frame and allowance carries a reason, and every allowance
-# names the tracked issue that would retire it (issue 2402 for the RMW vtable).
+# - `[[allowance]]`, per (rmw, target, role): a twin's run-time peak minus the
+#   static walk measured at the same time. It covers the calls through the RMW
+#   vtable that a static walk cannot bind, and names issue 2402, which would
+#   retire it. An ADDEND, not a max(): a fixed old peak would hide direct-frame
+#   growth, while the addend moves with every frame on every build.
+# - `[[policy]]` rows: the walk's cuts, externals and stated frames, each
+#   filtered by optional `rmw` / `target` and each with a reason.
+# - `[indirect.<rmw>]`: how indirect sites are charged in the static walk.
+#
+# A (rmw, target, role) with no allowance gets the static floor and a loud
+# warning naming issue 2402; `--strict` refuses instead.
 
 ROLES = ("OPEN", "SPIN")
 ISSUE_ID = re.compile(r"^\d{4}$")
+POLICY_KINDS = ("cut", "external", "frame")
 
 
-def floor_formula(static_bytes: int, allowances: int, measured: int | None,
-                  margin_pct: int) -> int:
-    base = max(static_bytes + allowances, measured or 0)
-    raw = -(-base * (100 + margin_pct) // 100)
+def floor_formula(static_bytes: int, allowance: int, margin_pct: int) -> int:
+    raw = -(-(static_bytes + allowance) * (100 + margin_pct) // 100)
     return -(-raw // 8) * 8
 
 
@@ -540,84 +549,101 @@ def load_toml(path: Path) -> dict:
         return tomllib.load(f)
 
 
+def _matches(row: dict, rmw: str | None, target: str | None) -> bool:
+    return (row.get("rmw") in (None, rmw)) and (row.get("target") in (None, target))
+
+
+def find_allowance(doc: dict, rmw: str, target: str, role: str) -> dict | None:
+    hits = [a for a in doc.get("allowance", [])
+            if (a.get("rmw"), a.get("target"), a.get("role")) == (rmw, target, role)]
+    return hits[0] if hits else None
+
+
 def validate_table(doc: dict, issue_ids: set[str]) -> list[str]:
     """Offline checks: needs no build output, so it can run on the fast line."""
     problems: list[str] = []
-    if doc.get("schema") != 1:
-        problems.append("`schema = 1` is missing or not 1")
-    seen: set[str] = set()
-    for i, e in enumerate(doc.get("floor", [])):
-        where = f"[[floor]] #{i + 1} ({e.get('id', '<no id>')})"
-        for k in ("id", "target", "role", "roots", "static_bytes", "margin_pct", "floor"):
-            if k not in e:
-                problems.append(f"{where}: missing `{k}`")
-        if e.get("id") in seen:
-            problems.append(f"{where}: duplicate id")
-        seen.add(e.get("id"))
-        if e.get("role") not in ROLES:
+    if doc.get("schema") != 2:
+        problems.append("`schema = 2` is missing or not 2")
+    if not isinstance(doc.get("margin_pct"), int):
+        problems.append("`margin_pct` (an integer percent) is missing")
+    for i, row in enumerate(doc.get("policy", [])):
+        where = f"[[policy]] #{i + 1}"
+        kind = row.get("kind")
+        if kind not in POLICY_KINDS:
+            problems.append(f"{where}: kind must be one of {POLICY_KINDS}")
+        key = "match" if kind == "cut" else "name"
+        if not row.get(key):
+            problems.append(f"{where}: a {kind} needs `{key}`")
+        if kind == "frame" and not isinstance(row.get("bytes"), int):
+            problems.append(f"{where}: a frame needs integer `bytes`")
+        if not str(row.get("reason", "")).strip():
+            problems.append(f"{where}: no reason ({row.get(key)})")
+    seen: set[tuple] = set()
+    for i, a in enumerate(doc.get("allowance", [])):
+        k = (a.get("rmw"), a.get("target"), a.get("role"))
+        where = f"[[allowance]] #{i + 1} {k}"
+        if None in k:
+            problems.append(f"{where}: needs `rmw`, `target` and `role`")
+        if k in seen:
+            problems.append(f"{where}: duplicate")
+        seen.add(k)
+        if a.get("role") not in ROLES:
             problems.append(f"{where}: role must be one of {ROLES}")
-        walk = e.get("walk", {})
-        for kind in ("cut", "external", "frame"):
-            for item in walk.get(kind, []):
-                if not str(item.get("reason", "")).strip():
-                    problems.append(f"{where}: a walk.{kind} has no reason: {item}")
-        allowances = 0
-        for a in walk.get("allowance", []):
-            allowances += int(a.get("bytes", 0))
-            if not str(a.get("reason", "")).strip():
-                problems.append(f"{where}: an allowance has no reason")
-            iid = str(a.get("issue", ""))
-            if not ISSUE_ID.match(iid):
-                problems.append(f"{where}: an allowance must name the issue that retires it "
-                                f"(`issue = \"NNNN\"`), got `{iid}`")
-            elif issue_ids and iid not in issue_ids:
-                problems.append(f"{where}: allowance names issue {iid}, which has no file")
-        measured = e.get("measured")
-        m_bytes = None
-        if measured is not None:
-            m_bytes = measured.get("bytes")
-            for k in ("bytes", "method", "issue"):
-                if k not in measured:
-                    problems.append(f"{where}: measured.{k} missing")
-        elif not walk.get("allowance"):
-            problems.append(f"{where}: no `measured` peak and no allowance: a role with no twin "
-                            "must state what covers its indirect calls")
-        if all(k in e for k in ("static_bytes", "margin_pct", "floor")):
-            want = floor_formula(int(e["static_bytes"]), allowances, m_bytes, int(e["margin_pct"]))
-            if int(e["floor"]) != want:
-                problems.append(f"{where}: floor = {e['floor']}, but the formula gives {want}")
+        if not str(a.get("reason", "")).strip():
+            problems.append(f"{where}: no reason")
+        iid = str(a.get("issue", ""))
+        if not ISSUE_ID.match(iid):
+            problems.append(f"{where}: must name the issue that retires it "
+                            f"(`issue = \"NNNN\"`), got `{iid}`")
+        elif issue_ids and iid not in issue_ids:
+            problems.append(f"{where}: names issue {iid}, which has no file")
+        m = a.get("measured") or {}
+        for f in ("peak", "static", "method", "issue"):
+            if f not in m:
+                problems.append(f"{where}: measured.{f} missing")
+        if isinstance(m.get("peak"), int) and isinstance(m.get("static"), int):
+            if a.get("bytes") != m["peak"] - m["static"]:
+                problems.append(f"{where}: bytes = {a.get('bytes')}, but measured.peak - "
+                                f"measured.static = {m['peak'] - m['static']}")
     return problems
 
 
-def apply_entry(args: argparse.Namespace, entry: dict) -> None:
-    """Fill the walk's options from a table entry (explicit flags still add)."""
-    walk = entry.get("walk", {})
-    args.role = [f"{entry['role']}={','.join(entry['roots'])}"]
-    args.indirect = args.indirect or walk.get("indirect")
-    args.fold_scope = (args.fold_scope or []) + list(walk.get("fold_scope", []))
+def apply_policy(args: argparse.Namespace, doc: dict) -> None:
+    """Fill the walk's options from the table rows that match --rmw/--target
+    (explicit flags still add)."""
+    for row in doc.get("policy", []):
+        if not _matches(row, args.rmw, args.target):
+            continue
+        if row["kind"] == "cut":
+            args.cut = (args.cut or []) + [row["match"]]
+        elif row["kind"] == "external":
+            args.external = (args.external or []) + [row["name"]]
+        else:
+            args.frame = (args.frame or []) + [f"{row['name']}={row['bytes']}"]
+    ind = doc.get("indirect", {})
+    ind = ind.get(args.rmw or "") or ind.get("default", {})
+    args.indirect = args.indirect or ind.get("mode")
+    args.fold_scope = (args.fold_scope or []) + list(ind.get("scope", []))
     if args.recursion_allowance is None:
-        args.recursion_allowance = walk.get("recursion_allowance")
-    args.cut = (args.cut or []) + [c["match"] for c in walk.get("cut", [])]
-    args.external = (args.external or []) + [x["name"] for x in walk.get("external", [])]
-    args.frame = (args.frame or []) + [f"{f['name']}={f['bytes']}" for f in walk.get("frame", [])]
+        args.recursion_allowance = doc.get("recursion_allowance")
+    if args.margin is None:
+        args.margin = doc.get("margin_pct", 0)
 
 
 def run(args: argparse.Namespace) -> int:
-    entry = None
+    doc = None
     if args.table:
         doc = load_toml(Path(args.table))
-        matches = [e for e in doc.get("floor", []) if e.get("id") == args.entry]
-        if len(matches) != 1:
-            raise SystemExit(f"--entry `{args.entry}`: {len(matches)} entries in {args.table}")
-        entry = matches[0]
-        apply_entry(args, entry)
+        apply_policy(args, doc)
+    if args.margin is None:
+        args.margin = 0
     readobj = llvm_tool("llvm-readobj", args.llvm_bin)
     objdump = llvm_tool("llvm-objdump", args.llvm_bin)
     g = Graph()
     cache = Path(args.llc_cache or Path.home() / ".cache" / "nros-stack-floor")
     args.inputs = expand_inputs(args.inputs, args.bitcode_dir or [], args.llvm_bin, cache)
-    for inp in args.inputs:
-        load_object(g, inp, readobj, objdump)
+    for i in range(0, len(args.inputs), LOAD_CHUNK):
+        load_object(g, args.inputs[i:i + LOAD_CHUNK], readobj, objdump)
     for su in args.su or []:
         load_su(g, Path(su))
     for spec in args.frame or []:
@@ -667,9 +693,30 @@ def run(args: argparse.Namespace) -> int:
             if best is None or p.depth > best.depth:
                 best, best_root = p, root
         if best is not None:
-            floor = best.depth + (best.depth * args.margin + 99) // 100
+            allowance, measured_by = 0, None
+            if doc is not None:
+                a = find_allowance(doc, args.rmw, args.target, role.upper())
+                if a is not None:
+                    allowance, measured_by = int(a["bytes"]), a
+                elif args.strict:
+                    refusals.append(
+                        f"{role}: no measured allowance for (rmw={args.rmw}, "
+                        f"target={args.target}, role={role.upper()}) in {args.table}, and "
+                        "--strict is set. Measure a twin peak and add an [[allowance]] row "
+                        "(issue 2402).")
+                    continue
+                else:
+                    print(f"nros-stack-floor: WARNING: no measured allowance for (rmw={args.rmw}, "
+                          f"target={args.target}, role={role.upper()}). The {role.upper()} floor "
+                          f"covers what the static walk sees ({best.depth} B); calls through the "
+                          "RMW vtable are NOT counted (issue 2402). Measure a twin peak and add "
+                          f"an [[allowance]] row to {args.table}; --strict refuses.",
+                          file=sys.stderr)
             results[role.upper()] = {
-                "floor": floor, "depth": best.depth, "root": best_root,
+                "floor": floor_formula(best.depth, allowance, args.margin),
+                "depth": best.depth, "allowance": allowance,
+                "allowance_issue": measured_by.get("issue") if measured_by else None,
+                "root": best_root,
                 "margin_pct": args.margin, "indirect_charged": best.indirect,
                 "indirect_mode": mode, "indirect_charge": charge,
                 "path": best.chain,
@@ -677,16 +724,6 @@ def run(args: argparse.Namespace) -> int:
     if refusals:
         print("nros-stack-floor: REFUSED\n" + "\n".join(refusals), file=sys.stderr)
         return 1
-    if entry is not None:
-        got = results[entry["role"].upper()]["depth"]
-        want = int(entry["static_bytes"])
-        if got != want:
-            print(f"nros-stack-floor: STALE `{entry['id']}`: the walk gives {got} B, the "
-                  f"table says static_bytes = {want}. Re-measure: write {got} and re-derive "
-                  "`floor` (--validate-table prints the formula's answer).", file=sys.stderr)
-            return 1
-        print(f"{entry['id']}: static_bytes {got} B matches the table")
-        return 0
     if args.json:
         print(json.dumps(results, indent=2))
     elif args.emit_defines:
@@ -694,7 +731,8 @@ def run(args: argparse.Namespace) -> int:
             print(f"#define NROS_STACK_FLOOR_{role} {r['floor']}")
     else:
         for role, r in results.items():
-            print(f"{role}: floor {r['floor']} B (path {r['depth']} B + {r['margin_pct']}%)"
+            print(f"{role}: floor {r['floor']} B (path {r['depth']} B + allowance "
+                  f"{r['allowance']} B + {r['margin_pct']}%)"
                   f" from `{r['root']}`, indirect={r['indirect_mode']}"
                   f"({r['indirect_charge']}) charged x{r['indirect_charged']}")
             for fn in r["path"]:
@@ -710,7 +748,10 @@ def run(args: argparse.Namespace) -> int:
 def self_test() -> int:
     fails = []
 
+    ran = []
+
     def check(name, cond):
+        ran.append(name)
         if not cond:
             fails.append(name)
 
@@ -804,31 +845,42 @@ def self_test() -> int:
     p = worst_path(gc, "root", indirect_charge=None, recursion_allowance=None, cuts=("panic",))
     check("cut is a leaf", p.depth == 40)
 
-    # the floor formula: max of static (+allowances) and measured, margin, align 8
-    check("floor from measured", floor_formula(26232, 0, 29184, 10) == 32104)
-    check("floor from static + allowance", floor_formula(3592, 1000, None, 0) == 4592)
-    good = {"schema": 1, "floor": [{
-        "id": "x/OPEN", "target": "t", "role": "OPEN", "roots": ["r"],
-        "static_bytes": 26232, "margin_pct": 10, "floor": 32104,
-        "measured": {"bytes": 29184, "method": "twin", "issue": "2360"},
-        "walk": {"cut": [{"match": "panicking", "reason": "diverges"}]}}]}
-    check("a valid table passes", validate_table(good, {"2360"}) == [])
+    # the floor formula: (static + allowance) * margin, align 8 — an addend, not a max
+    check("floor = static + allowance + margin", floor_formula(26232, 2952, 10) == 32104)
+    check("no allowance: static + margin", floor_formula(3592, 0, 0) == 3592)
+    good = {"schema": 2, "margin_pct": 10,
+            "policy": [{"kind": "cut", "match": "panicking", "reason": "diverges"},
+                       {"kind": "frame", "name": "z_malloc", "bytes": 0, "target": "t",
+                        "reason": "tail call"}],
+            "allowance": [{"rmw": "zenoh", "target": "t", "role": "OPEN", "bytes": 2952,
+                           "issue": "2402", "reason": "RMW vtable",
+                           "measured": {"peak": 29184, "static": 26232, "method": "twin",
+                                        "issue": "2360"}}]}
+    check("a valid table passes", validate_table(good, {"2360", "2402"}) == [])
     bad = json.loads(json.dumps(good))
-    bad["floor"][0]["floor"] = 32768
-    check("a floor off the formula is refused",
-          any("formula gives 32104" in p for p in validate_table(bad, set())))
+    bad["allowance"][0]["bytes"] = 3000
+    check("an allowance off peak - static is refused",
+          any("measured.peak - measured.static = 2952" in p for p in validate_table(bad, set())))
     bad = json.loads(json.dumps(good))
-    bad["floor"][0]["walk"]["cut"][0]["reason"] = ""
-    check("a cut with no reason is refused", any("no reason" in p for p in validate_table(bad, set())))
+    bad["policy"][0]["reason"] = ""
+    check("a policy row with no reason is refused",
+          any("no reason" in p for p in validate_table(bad, set())))
     bad = json.loads(json.dumps(good))
-    del bad["floor"][0]["measured"]
-    bad["floor"][0]["floor"] = floor_formula(26232, 0, None, 10)
-    check("no twin and no allowance is refused",
-          any("no `measured` peak" in p for p in validate_table(bad, set())))
-    bad["floor"][0]["walk"]["allowance"] = [{"bytes": 100, "reason": "vtable", "issue": "99"}]
-    bad["floor"][0]["floor"] = floor_formula(26232, 100, None, 10)
+    bad["allowance"][0]["issue"] = "99"
     check("an allowance must name an issue",
           any("must name the issue" in p for p in validate_table(bad, set())))
+    bad = json.loads(json.dumps(good))
+    bad["allowance"].append(dict(bad["allowance"][0]))
+    check("a duplicate allowance is refused", any("duplicate" in p for p in validate_table(bad, set())))
+    check("allowance lookup is by (rmw, target, role)",
+          find_allowance(good, "zenoh", "t", "OPEN") is not None
+          and find_allowance(good, "zenoh", "t", "SPIN") is None
+          and find_allowance(good, "xrce", "t", "OPEN") is None)
+    ns = argparse.Namespace(rmw="zenoh", target="other", cut=None, external=None, frame=None,
+                            indirect=None, fold_scope=None, recursion_allowance=None, margin=None)
+    apply_policy(ns, good)
+    check("a target-filtered policy row applies only to its target",
+          ns.cut == ["panicking"] and not ns.frame and ns.margin == 10)
 
     picked = [p.name for p in pick_codegen_bitcode([Path(n) for n in (
         "a.cgu.0.rcgu.bc", "a.cgu.0.rcgu.no-opt.bc", "b.cgu.0.rcgu.bc", "b.cgu.0.rcgu.no-opt.bc",
@@ -842,7 +894,7 @@ def self_test() -> int:
 
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
-    print(f"nros-stack-floor self-test: {28 - len(fails)} checks, {len(fails)} failed")
+    print(f"nros-stack-floor self-test: {len(ran)} checks, {len(fails)} failed")
     return 1 if fails else 0
 
 
@@ -875,13 +927,17 @@ def main() -> int:
                     help="a substring; a matching function is a LEAF (its frame counts, its "
                          "callees are not followed). For diverging paths such as the panic "
                          "machinery, stated by the caller, never implied")
-    ap.add_argument("--margin", type=int, default=0, help="percent added to the path")
+    ap.add_argument("--margin", type=int, default=None,
+                    help="percent added to the path (default: the table's margin_pct, else 0)")
     ap.add_argument("--llvm-bin", help="directory holding llvm-readobj / llvm-objdump")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--emit-defines", action="store_true")
-    ap.add_argument("--table", help="config/stack-floors.toml; with --entry, the walk's "
-                    "policy comes from that entry and the result is checked against it")
-    ap.add_argument("--entry", help="the [[floor]] id to walk")
+    ap.add_argument("--table", help="config/stack-floors.toml: the walk policy for --rmw / "
+                    "--target, the margin, and the measured allowance added to each role")
+    ap.add_argument("--rmw", help="the image's RMW backend (selects policy and allowance)")
+    ap.add_argument("--target", help="the image's target triple (selects policy and allowance)")
+    ap.add_argument("--strict", action="store_true",
+                    help="refuse a role with no measured allowance instead of warning")
     ap.add_argument("--validate-table", metavar="TABLE",
                     help="offline: every reason, allowance issue and floor formula holds")
     ap.add_argument("--self-test", action="store_true")
@@ -903,10 +959,8 @@ def main() -> int:
             print(f"  - {p}", file=sys.stderr)
         print(f"{args.validate_table}: {len(problems)} problem(s)")
         return 1 if problems else 0
-    if args.table:
-        if not args.entry or not args.inputs:
-            ap.error("--table needs --entry and the image's INPUT(s)")
-        return run(args)
+    if args.table and not (args.rmw and args.target):
+        ap.error("--table needs --rmw and --target (they select the policy and allowance)")
     if not args.inputs or not args.role:
         ap.error("need INPUT(s) and at least one --role")
     return run(args)
