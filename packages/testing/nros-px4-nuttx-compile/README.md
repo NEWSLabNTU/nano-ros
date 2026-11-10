@@ -26,6 +26,11 @@ Nothing here is authored. Every file is generated or copied from upstream.
 The module flags are the set that 214 of the 543 stock `px4_add_module()` C++
 TUs share in that build's `compile_commands.json`.
 
+The archive derives from the `third-party/px4/PX4-Autopilot` submodule pin
+(`d6f12ad1c4f70ad3230afd7d86e971421e02fef4`, PX4 `v1.17.0`) plus PX4's nested
+NuttX at `fb2fadf6f599c1406f052db013efd00a2518e72c`. A PX4 bump regenerates it
+with the command under "Regenerating".
+
 ## Regenerating
 
 Do this when the PX4 pin moves. You need the pinned `arm-none-eabi-gcc` and
