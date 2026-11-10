@@ -44,11 +44,13 @@ A newer release of `ros2-apt-source` works the same way: replace both
 Then install ROS 2 and its zenoh middleware:
 
 ```sh probe=5 track=installed variant=fresh-host
-sudo apt-get install -y ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp   # humble on 22.04
+sudo apt-get install -y ros-jazzy-ros-base ros-jazzy-rmw-zenoh-cpp ros-jazzy-example-interfaces   # humble on 22.04
 ```
 
 nano-ros generates your project's message bindings from this install, and
-the Tutorial watches your nodes with its `ros2` command. You source it
+the Tutorial watches your nodes with its `ros2` command. `example_interfaces`
+is not part of `ros-base`; the Tutorial's service chapter uses its
+`AddTwoInts`. You source it
 before your first build; the Tutorial shows where.
 
 Install it **first** on Ubuntu: step 1's `python3-catkin-pkg` must then

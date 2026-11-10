@@ -478,12 +478,14 @@ if [[ "$PROBE_SHELL" != "bash" ]]; then
     shell_pkg="$PROBE_SHELL"
 fi
 install_shim="${install_shim/SHELLPKG/$shell_pkg}"
-# A QEMU platform chapter's reader has a ROS 2 install with `rmw_zenoh_cpp` —
-# the router those chapters start is ROS's `rmw_zenohd` (RFC-0075), and the
-# chapters say so as a prerequisite rather than as a step. The ros:humble image
-# is that install minus the one package; adding it is host shape, like tzdata.
+# A QEMU platform chapter's reader has the ROS 2 install Install's step 5
+# names: `ros-base`, `rmw_zenoh_cpp` (the router those chapters start is ROS's
+# `rmw_zenohd`, RFC-0075) and `example_interfaces` (the Tutorial's service
+# chapter; a CMake-road build generates it from the ROS install, issue 2278).
+# The ros:humble image is that install minus those two packages; adding them
+# is host shape, like tzdata.
 if [[ "$PROBE_TRACK" = installed && "${PROBE_PLATFORM:-linux}" != linux ]]; then
-    install_shim="$install_shim && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ros-humble-rmw-zenoh-cpp >/dev/null"
+    install_shim="$install_shim && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ros-humble-rmw-zenoh-cpp ros-humble-example-interfaces >/dev/null"
 fi
 # A twin track's emulator kind may need a host tool the index declares as a
 # `[prereq.*]` (none today; socat was Wokwi's, removed 2026-11-06): host
