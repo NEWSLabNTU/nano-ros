@@ -49,3 +49,7 @@ a verb the user already runs: `nros configure` or `nros build` could take the
 census and record metadata themselves, as they already write the central
 patch for a workspace. Then reword each site, drop its marker, and close this
 issue. Done when `git grep 'dev-verb-advice-ok: issue 2394'` is empty.
+
+Proposed homes, for a user decision: the draft RFC-0117 amendment in #3418
+(`nros configure --census`, metadata recorded by `nros build`,
+`nros doctor --fix` for the bringup move, no new verb for the central patch).
