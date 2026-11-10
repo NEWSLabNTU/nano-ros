@@ -5,11 +5,14 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ## Build
 
+A single-node workspace: the node package is `src/nuttx_talker`, and
+`src/nuttx_talker_bringup` holds the `system.toml` that says what to build.
+`nros build` generates the entry that boots the node.
+
 ```bash
 cp -r examples/qemu-armv7a-nuttx/rust/talker ~/my-talker && cd ~/my-talker
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros configure     # generated/ message crates + build/<image>/nros-cargo.toml
-nros build    # or: nros build qemu-armv7a-nuttx
+nros build qemu-armv7a-nuttx
 ```
 
 ## Run
@@ -17,21 +20,17 @@ nros build    # or: nros build qemu-armv7a-nuttx
 Cross-built. SDK env comes from `source activate.sh` in the checkout;
 QEMU / flashing steps live in the [qemu-armv7a-nuttx README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-armv7a-nuttx/README.md).
 
-`nros build` leaves the image at
-`build/qemu-armv7a-nuttx/target/<triple>/debug/talker`
-— `<triple>` is the board's Rust target, from the generated settings.
+`nros build` prints the image's path: the generated entry,
+`qemu_armv7a_nuttx_entry`, under `build/nuttx-zenoh/qemu_armv7a_nuttx_entry/target/<triple>/`
+— `<triple>` is the board's Rust target.
 
 ## Config
 
-Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
+Board, RMW, domain and locator: `src/nuttx_talker_bringup/system.toml`
 (`[image.qemu-armv7a-nuttx]` + `[system]`, RFC-0098 D3/D5). No build command
-carries any of them.
-
-`Cargo.toml` names no board crate. The board crate, its RMW backend and
-its runtime crates come from the `<pkg>_nros_selection` package that
-`nros configure` / `nros build` generate under `build/nros/selection/` from
-`system.toml` (RFC-0098 D6), so switching board is the `[image.*] board`
-line and nothing else
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
+carries any of them, and `src/nuttx_talker/Cargo.toml` names no board crate:
+the generated entry states the board, its RMW backend and its runtime
+(RFC-0121 D6), so switching board is the `[image.*] board` line and nothing
+else.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

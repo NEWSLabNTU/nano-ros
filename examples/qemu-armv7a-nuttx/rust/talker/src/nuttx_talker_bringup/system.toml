@@ -1,6 +1,5 @@
-# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
-# schema a workspace bringup uses. Switching board is editing `[image.*] board`
-# and re-running `nros configure`.
+# What this example deploys to (RFC-0098 D3/D5). Switching board is editing
+# `[image.*] board`.
 
 [system]
 name = "nuttx_talker"
@@ -9,15 +8,14 @@ domain_id = 0
 
 [[component]]
 pkg = "nuttx_talker"
-class = "nuttx_rs_talker::Talker"
+class = "nuttx_talker::Talker"
 name = "talker"
 
 # NuttX on the QEMU ARM virt machine.
 [image.qemu-armv7a-nuttx]
 board = "nuttx"
-# `main.rs` says `nros::main!(panic = "platform")`; stated here too so
-# the generated selection package does not also link the board's
-# crate-root panic provider (RFC-0077, issue 1305).
+# A panic ends in `nros_platform_panic`, so the generated entry does not
+# also link the board's crate-root panic provider (RFC-0077, issue 1305).
 panic = "platform"
 locator = "tcp/10.0.2.2:8200"
 

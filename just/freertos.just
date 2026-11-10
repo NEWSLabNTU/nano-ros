@@ -131,15 +131,10 @@ _examples-leaves:
     # carries BOTH the node logic and the entry, so one `nros configure` per role
     # covers what used to need two (the `[patch.crates-io]` block and the
     # `generated/` msg crates moved in with the entry).
-    # phase-535 W3 — only the talker WITNESS is still a leaf (RFC-0122 D3); the
-    # other five roles are image rows of `examples/workspaces/rust`, which the
-    # workspace builder configures itself.
-    for example in talker; do
-        dir="examples/mps2-an385-freertos/rust/$example"
-        NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
-        "$nros_cli" configure "$dir" >/dev/null
-        NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
-    done
+    # phase-535 W3 / phase-531 W6 — no Rust example here is a leaf any more:
+    # the five pair roles are image rows of `examples/workspaces/rust`, and the
+    # talker witness is a one-package workspace (RFC-0122 D3). The workspace
+    # builder (`build-workspace-fixtures`) configures both.
     # phase-336 / phase-340 P2 — the profile is the `freertos-qemu` carve-out,
     # not a literal: a lightly-optimized zenoh-pico misses its handshake window
     # on the emulated Cortex-M3, and every FreeRTOS test-side locator reads the

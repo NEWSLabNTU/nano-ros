@@ -370,6 +370,16 @@ pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
             .map(Path::to_path_buf);
     }
     let dir_rel = format!("examples/qemu-armv7a-nuttx/rust/{role}");
+    // phase-531 W6 — the talker witness is a one-package workspace
+    // (RFC-0122 D3): its image is a `[[workspace_fixture]]` row, resolved at
+    // the NuttX carve-out profile.
+    if let Some(r) = super::migrated_leaf_binary(
+        &dir_rel,
+        super::Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    ) {
+        return r;
+    }
     let dir = project_root().join(&dir_rel);
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(

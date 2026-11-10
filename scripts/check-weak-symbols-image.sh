@@ -69,7 +69,9 @@ COVERAGE=(
     # `nros_cargo_platform_profile freertos`) are derived, and spelling either
     # here would be a literal that breaks the next time one moves. `find`
     # recurses to them.
-    "build/cargo-fixtures/freertos|talker|nros_board_register_netif nros_board_poll_netif"
+    # phase-531 W6 — the talker witness is a one-package workspace; its image
+    # is the generated entry under the witness's own fixture target dir.
+    "examples/mps2-an385-freertos/rust/talker/target-fixtures|mps2_an385_freertos_entry|nros_board_register_netif nros_board_poll_netif"
     "build/cargo-fixtures/freertos|listener|nros_board_register_netif nros_board_poll_netif"
     # (phase-249 P4a removed the weak nros_app_register_backends default — it is now
     #  a generated strong def or a link error, never a weak-overridable symbol, so
