@@ -25,6 +25,7 @@
 # Usage:
 #   scripts/ci/sdk-store-cache.sh key   <kind>   one line: the cache key
 #   scripts/ci/sdk-store-cache.sh paths <kind>   one store prefix per line
+#   scripts/ci/sdk-store-cache.sh tools <kind>   the kind's tools, space-separated
 set -euo pipefail
 
 cmd="${1:-}" kind="${2:-}"
@@ -65,6 +66,9 @@ case "$cmd" in
         done | sha256sum | cut -c1-16)"
         echo "sdk-store-${kind}-${sum}"
         ;;
+    tools)
+        echo "${tools[*]}"
+        ;;
     paths)
         store="${NROS_HOME:-$HOME/.nros}/sdk"
         for t in "${tools[@]}"; do
@@ -77,7 +81,7 @@ case "$cmd" in
         done
         ;;
     *)
-        echo "usage: sdk-store-cache.sh key|paths copy-out|copy-out-zephyr" >&2
+        echo "usage: sdk-store-cache.sh key|tools|paths copy-out|copy-out-zephyr" >&2
         exit 2
         ;;
 esac
