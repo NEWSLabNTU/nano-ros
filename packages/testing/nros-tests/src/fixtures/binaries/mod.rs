@@ -1278,13 +1278,14 @@ fn resolve_workspace_row_entry(
     // of the generated root (`NanoRosWorkspace.cmake`: `pkg/<name>`), and its
     // executable is the one its own `CMakeLists.txt` names.
     let generated = *entry == format!("{}_entry", row.image.replace(['-', '.', '/'], "_"));
-    // phase-531 W6 — the row's PLATFORM profile, the rule
-    // `build_workspace_rust_cross_entry` resolves by: FreeRTOS and NuttX build
-    // at their carve-outs, so the ambient profile names a directory nothing
-    // writes for a migrated talker on either.
+    // phase-531 W6 — the profile `workspace-fixtures-build.sh` builds the row
+    // at: NuttX's carve-out (the 177.8.c miscompile dodge), the ambient
+    // profile everywhere else. NOT `platform_profile`, which also names
+    // FreeRTOS's leaf carve-out — the workspace builder does not apply it
+    // (measured: the freertos rows land under `nros-relwithdebinfo`).
     let profile = crate::fixtures::lane::attribute_workspace_id(&row.id)
-        .and_then(|r| nros_cargo_profile::platform_profile(&r.coord.0))
-        .map(nros_cargo_profile::target_dir)
+        .filter(|r| matches!(r.coord.0.as_str(), "nuttx" | "nuttx-riscv"))
+        .map(|_| nros_cargo_profile::target_dir(nros_cargo_profile::NUTTX_RUST_PROFILE))
         .unwrap_or_else(cargo_target_profile_dir);
     let binary = match row.lang.as_str() {
         "rust" => match crate::fixtures::baked_locator::row_str(&row.id, "target") {
