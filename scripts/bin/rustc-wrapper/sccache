@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# sccache, minus the one unit it caches WRONG: a Rust `staticlib` (issue 1646).
+# sccache, minus the one unit it caches WRONG: a Rust `staticlib` (issue 1646),
+# and a rustc call whose save-temps bitcode is being measured (issue 2400).
 #
 # WHAT WENT WRONG
 #
@@ -76,7 +77,25 @@ emits_staticlib() {
     return 1
 }
 
-if [ "$#" -gt 0 ] && emits_staticlib "$@"; then
+# Issue 2400 — a rustc call that keeps its bitcode (`-C save-temps`) is being
+# MEASURED: the stack-floor walk reads the `.rcgu.bc` it leaves. A sccache hit
+# restores the rlib and not those files (measured: 11 of 27 crates kept their
+# `.bc`), so the walk would find no frames. Run it uncached; issue 2414 is the
+# deferred store that would let it be cached.
+keeps_bitcode() {
+    local prev="" a
+    for a in "$@"; do
+        case "$a" in
+            -Csave-temps|-Csave-temps=yes|-Csave-temps=y|-Csave-temps=on) return 0 ;;
+            save-temps|save-temps=yes|save-temps=y|save-temps=on)
+                [ "$prev" = "-C" ] && return 0 ;;
+        esac
+        prev="$a"
+    done
+    return 1
+}
+
+if [ "$#" -gt 0 ] && { emits_staticlib "$@" || keeps_bitcode "$@"; }; then
     exec "$@"
 fi
 if [ -n "$real" ]; then

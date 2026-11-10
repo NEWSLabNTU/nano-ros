@@ -99,6 +99,10 @@ def self_test() -> list[str]:
         (["RUSTC", "--crate-type", "lib"], True, "sccache"),
         (["RUSTC", "--crate-type", "rlib", "--crate-name", "staticlib"], True, "sccache"),
         (["RUSTC", "-vV"], True, "sccache"),
+        # Issue 2400: a measured crate keeps its bitcode only if it compiles.
+        (["RUSTC", "--crate-type", "lib", "-C", "save-temps"], True, "direct"),
+        (["RUSTC", "--crate-type", "lib", "-Csave-temps"], True, "direct"),
+        (["RUSTC", "--crate-type", "lib", "-C", "opt-level=3", "--crate-name", "save-temps"], True, "sccache"),
         # cc-rs: the wrapper prefixed to the C compiler.
         (["cc", "-c", "x.c"], True, "sccache"),
         # No sccache anywhere: uncached, never a failure (issue 0874).
