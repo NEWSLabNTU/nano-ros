@@ -3725,6 +3725,19 @@ rmw = "zenoh"
 dir = "examples/linux/c/parameters"
 target = "c_parameters"
 
+# Issue 2304 — the SAME C example on Cyclone. Every C parameter row was zenoh,
+# so the cmake road's missing `rcl_interfaces` descriptors (the parameter
+# services and `/parameter_events`) never had a verdict: the example exited 1
+# right after `rclc_parameter_server_init_with_option` while its zenoh twin
+# passed. Consumed by tests/parameters_roundtrip.rs (the `c-cyclonedds` case).
+[[fixture]]
+id = "c-parameters-cyclonedds"
+platform = "linux"
+lang = "c"
+rmw = "cyclonedds"
+dir = "examples/linux/c/parameters"
+target = "c_parameters"
+
 # Phase 275 W2 (#102 H3) — linux/cpp variant examples that shipped with zero
 # fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the
 # cmake project/exe NAME (differs from the hyphenated dir), matching the

@@ -893,6 +893,16 @@ status = 'Runtime'
 
 [[cell]]
 comment = '''
+// Issue 2304 — the C parameters example on Cyclone. Its zenoh twin above was
+// the only C parameter verdict, and the cmake road generated no
+// `rcl_interfaces` descriptors, so this build exited 1 while that one passed.
+'''
+at = ["Linux", "C", "Cyclonedds", "Params", "Example"]
+status = 'Runtime'
+
+
+[[cell]]
+comment = '''
 // A2 — `qos_overrides_runtime_delivery` (`qos-override-pubsub`).
 '''
 at = ["Linux", "Rust", "Zenoh", "Qos", "Example"]
