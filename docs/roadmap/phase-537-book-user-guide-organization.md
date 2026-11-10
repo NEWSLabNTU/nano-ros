@@ -236,7 +236,7 @@ internal id was already fixed on main by issue 2270. Filed:
 [2312](../issues/archived/2312-zephyr-c-road-nightly-not-provisioned-by-setup-board.md)
 (`nros setup board` does not provision the nightly the Zephyr C road builds
 `nros-c` with),
-[2304](../issues/2304-c-param-server-cyclone-exits-after-store.md) (a C
+[2304](../issues/archived/2304-c-param-server-cyclone-exits-after-store.md) (a C
 parameter server exits 1 on Cyclone), and
 [2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md) (the
 policy for internal ids in user-tier messages).
@@ -504,5 +504,5 @@ and W9 wait.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2304](../issues/2304-c-param-server-cyclone-exits-after-store.md) | Found by this phase's W5 book session: a C talker with `rclc_parameter_server` exits 1 on Linux, so the chapter that uses it cannot be probed. |
+| [#2304](../issues/archived/2304-c-param-server-cyclone-exits-after-store.md) | Found by this phase's W5 book session: a C talker with `rclc_parameter_server` exits 1 on Linux, so the chapter that uses it cannot be probed. |
 | [#2376](../issues/archived/2376-tutorial-c-cpp-tabs-board-refuses-c-entry.md) | **Resolved** 2026-11-10: the Tutorial's C and C++ tabs run on `mps2-an385-freertos` (chapter 9's second target is the Linux host), `nros new` refuses `--lang c\|cpp` on a board with no C/C++ entry, and `tutorial-c`/`tutorial-cpp` are weekly. |
