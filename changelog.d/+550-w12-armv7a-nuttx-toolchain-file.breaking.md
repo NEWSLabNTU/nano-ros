@@ -1,1 +1,0 @@
-The CMake toolchain file `cmake/toolchain/armv7a-nuttx-eabi.cmake` is renamed `cmake/toolchain/armv7a-nuttx-eabihf.cmake`, after the hard-float triple it has always set. A build that passes the old path in `-DCMAKE_TOOLCHAIN_FILE` must use the new name; boards and `nros build` already do.
