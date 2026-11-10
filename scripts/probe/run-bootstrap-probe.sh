@@ -323,6 +323,9 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     # so the row's `variant` (first-project.md's run) selects nothing here and
     # extract-book-steps.py refuses the run.
     PROBE_VARIANT=""
+    # Same for the row's `lang` (the starter's tab, phase-548 W8): neither
+    # chapter here tabs, so `--lang` would select nothing and be refused.
+    PROBE_LANG=""
 else
     # verify-first-node.sh scaffolds every workspace it runs. The C
     # first-node chapter this list carried merged into the Tutorial's
@@ -337,6 +340,10 @@ else
     # a chapter this track does not replay; passing it here made the extractor
     # refuse every checkout run once the row's `awaits` was dropped.
     PROBE_VARIANT=""
+    # Same for the row's `lang`: since phase-548 W8 the `linux` row names the
+    # starter's C++ tab, and neither chapter here tabs, so `--lang` would
+    # select nothing and the extractor refuses the run (nightly 42773101191).
+    PROBE_LANG=""
 fi
 
 workdir="$(mktemp -d)"
