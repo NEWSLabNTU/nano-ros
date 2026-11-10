@@ -291,6 +291,16 @@ values as `default`s from a generated fragment, and the shell exports
   project) would give today's guest road the knob vocabulary R36 assumed it
   had. That half does not need this issue's ruling.
 
+**Precedent (A1 + B1).** micro-ROS's NuttX app has this shape: in
+`micro-ROS/nuttx_apps` (branch `foxy`, commit
+1f4c6f0b1c5c26268d7a7b01760124a96d75a432), `uros/Makefile` renders
+`rmw_config.meta` from `CONFIG_UROS_MAX_*` with `$(TOPDIR)/.config` as a
+prerequisite, and runs `colcon build --metas ... rmw_config.meta` from
+`context`. So Kconfig is the surface, and a generated file is read in context.
+Upstream's `tools/Rust.mk` (at the pinned nuttx-apps commit
+e4b84b29d47b98a666df524d6f2d38904c972de5) passes no Kconfig to cargo; only
+`CONFIG_DEBUG_FULLOPT` picks release or debug.
+
 #### Where Kconfig and configure could disagree
 
 With a project, two sources can state the same fact:
