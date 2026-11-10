@@ -400,8 +400,24 @@ function(nros_check_zephyr_rust_cargo_patch)
     if(NOT EXISTS "${_f}")
         return()
     endif()
-    file(STRINGS "${_f}" _marker REGEX "# nano-ros: board facts")
-    if(_marker)
+    # Each hunk whose absence a build would NOT notice: no board facts builds
+    # every crate on its defaults (issue 2185); no staticlib-only command
+    # builds the rlib too and cargo silently drops LTO (issue 2407). A
+    # workspace patched before a hunk existed lacks just that one, so each is
+    # asked separately.
+    set(_missing "")
+    foreach(_hunk IN ITEMS
+            "# nano-ros: board facts|board facts, derived knobs and C cross compiler (issue 2185)"
+            "# nano-ros: staticlib only|release LTO, which cargo drops for a crate that also emits an rlib (issue 2407)")
+        string(REPLACE "|" ";" _parts "${_hunk}")
+        list(GET _parts 0 _line)
+        list(GET _parts 1 _why)
+        file(STRINGS "${_f}" _marker REGEX "${_line}")
+        if(NOT _marker)
+            string(APPEND _missing "\n    `${_line}`: without it the image loses its ${_why}")
+        endif()
+    endforeach()
+    if(_missing STREQUAL "")
         return()
     endif()
     # The workspace is ZEPHYR_BASE's parent, as `nros_zephyr_ws_candidates`
@@ -422,11 +438,9 @@ function(nros_check_zephyr_rust_cargo_patch)
     get_filename_component(_ws "${ZEPHYR_BASE}" DIRECTORY)
     message(FATAL_ERROR
         "nano-ros: this is a Rust image, and zephyr-lang-rust in this west "
-        "workspace was never patched for nano-ros: ${_f} has no "
-        "`# nano-ros: board facts` line, so its cargo command would carry none "
-        "of nano-ros's settings for the board (the board facts, the derived "
-        "knobs, the C cross compiler) and every crate would build with its "
-        "defaults (issue 2185). Apply nano-ros's Zephyr patch set to the "
-        "workspace once, then configure again:\n"
+        "workspace is missing nano-ros patch hunks. ${_f} lacks:${_missing}\n"
+        "The image would still link and boot, which is why this refuses. "
+        "Apply nano-ros's Zephyr patch set to the workspace (it is idempotent "
+        "and adds only what is missing), then configure again:\n"
         "    nros setup board ${_board} --zephyr-workspace ${_ws}")
 endfunction()

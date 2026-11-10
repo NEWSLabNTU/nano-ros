@@ -230,3 +230,23 @@ So the maintainer ruled:
 A follow-up worth measuring later: if allowances for one backend and target
 cluster across shapes, a per-target default could replace per-image rows.
 That is a measured decision, not one to take from three images.
+
+### Re-measured after issue 2401 (2026-11-10)
+
+#3481 lowered every nucleo static walk and moved no peak (table in issue
+2402). The three rows now read: action server +8,476, Rust talker +6,676,
+C talker −4,416. Floors are unchanged at 33,288 / 31,784 / 12,872 B.
+
+Two things this run found:
+
+- **An allowance goes stale in the unsafe direction.** When a frame on the
+  walk shrinks and the row stays, the floor falls and the peak does not; the
+  C talker's old row gave 3,848 B against 11,696. Nothing detects this yet.
+  W6's twin lane is the detector: it re-measures peak and static together
+  and fails when `bytes != peak - static`.
+- **A Zephyr workspace patched before #3455 built Rust images without LTO,
+  silently.** The shared 3.7 workspace had every hunk but the staticlib-only
+  one; `.text` was 376,484 B against 316,116 with it. The configure-time
+  refusal (`nros_check_zephyr_rust_cargo_patch`) checked the board-facts
+  hunk only. It now checks each hunk whose absence a build would not
+  notice, the staticlib-only one included, and names the missing ones.
