@@ -612,6 +612,22 @@ threadx-app-config-per-image:
     fi
     ./tests/threadx-app-config-per-image-tests.sh
 
+# issue 2363 -- a `-DNROS_OVERRIDE_<ID>` is transient (RFC-0103 D2), so the
+# Zephyr module consumes it: a re-configure of the same build dir that no
+# longer passes it applies none. CMake caches every `-D`, and before this only
+# a wipe dropped one. A probe project that includes the module file.
+[group('needs:cmake')]
+zephyr-transient-overrides:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zephyr-transient-overrides "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/zephyr-transient-overrides-tests.sh
+
 # phase-530 W6 (RFC-0120 D7) -- the census step: a leaf census's digest is a
 # host-configure dependency refreshed by a build edge, so a body edit costs no
 # re-configure and an added endpoint exactly one. A real CMake + Ninja build

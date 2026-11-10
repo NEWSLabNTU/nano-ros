@@ -404,11 +404,21 @@ fi
 # phase-484 W5b — each row's transient knob values (`west_overrides`), passed
 # as `-DNROS_OVERRIDE_<ID>=<v>`: a knob is prompt-less in a project with a
 # `system.toml`, so a conf line or `-DCONFIG_<knob>` is a configure error there.
+#
+# Issue 2363 -- read into a variable FIRST, so a failing listing stops the
+# emitter. Through a process substitution its status was discarded, and a
+# `west-overrides` that crashed (an `UnboundLocalError` from 2865cc77c5) passed
+# no override at all while every row still built.
 declare -A row_overrides=()
+if ! ov_list="$(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-overrides)"; then
+    echo "zephyr-fixture-leaves: \`fixtures-manifest.py west-overrides\` failed; no row's" >&2
+    echo "                       west_overrides could be read (issue 2363)" >&2
+    exit 2
+fi
 while IFS=$'\x1f' read -r ov_id ov_kv; do
     [ -n "$ov_id" ] || continue
     row_overrides["$ov_id"]="${row_overrides[$ov_id]:-} -DNROS_OVERRIDE_${ov_kv}"
-done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-overrides)
+done <<<"$ov_list"
 
 selected=0
 # `row_coord` (the manifest's `row_coord()`, `platform,lang,rmw`) is the
