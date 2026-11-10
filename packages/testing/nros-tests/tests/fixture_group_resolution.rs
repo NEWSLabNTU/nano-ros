@@ -68,10 +68,12 @@ fn export_with(shared_platforms: &str) -> Vec<GroupRow> {
 // phase-531 W6 moved `examples/linux/rust/talker` to a one-node workspace, so
 // its rows are `[[workspace_fixture]]` rows and this table no longer sees them.
 // The same three axes are named on the leaves that still carry them: the image
-// axis on `bins/int32-sink` (one row per RMW image) and the feature and env
-// axes on `examples/linux/rust/listener`.
+// axis on `bins/int32-sink` (one row per RMW image), the feature axis on
+// `examples/linux/rust/listener`, and the env axis on `nros-bench/stress-zenoh`
+// (phase-535 W6 moved the listener's env row to a workspace image).
 const SINK_LEAF: &str = "packages/testing/nros-tests/bins/int32-sink";
 const LISTENER_LEAF: &str = "examples/linux/rust/listener";
+const STRESS_LEAF: &str = "packages/testing/nros-bench/stress-zenoh";
 
 fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
     vec![
@@ -99,9 +101,9 @@ fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
             FixtureVariant::features(&["link-tls"]),
         ),
         (
-            "listener peer env",
-            LISTENER_LEAF,
-            FixtureVariant::plain().with_env(&[("ZPICO_MULTICAST_TRANSPORT", "1")]),
+            "stress env",
+            STRESS_LEAF,
+            FixtureVariant::plain().with_env(&[("NROS_SUBSCRIBER_BUFFER_SIZE", "8192")]),
         ),
     ]
 }
