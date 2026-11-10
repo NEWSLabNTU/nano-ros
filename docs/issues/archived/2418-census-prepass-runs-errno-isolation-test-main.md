@@ -1,12 +1,13 @@
 ---
 id: 2418
 title: "The census pre-pass runs the ThreadX `errno-isolation` fixture's own test `main` on the host, where its observer thread fails to spawn, and stops the tier-2 nightly before any fixture builds"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [census, ci, threadx, fixtures]
 related: [2390, 2396, 2137, 0680, 2335]
 found: 2026-11-10
+resolved: 2026-11-10
 ---
 
 ## Measured
@@ -80,3 +81,42 @@ where the rule lives:
 
 Whatever the fix, sweep for other application-`main` leaves with a
 `[[component]]` that the pre-pass would also run.
+
+## Resolution
+
+**Rule (by class): a leaf whose program registers no ROS entity STATES it --
+`entities = []` on its `[[component]]` -- and is sized from that empty
+declaration with no host census run.** That is option 2's intent, through the
+key RFC-0120 D4 already gives every leaf, and not option 1: "application-
+written `main`" is no discriminator here, because since phase-499 W5 every
+C/C++ leaf writes its own `main` (`nano_ros_add_executable` renames it to the
+app entry); the talkers and listeners the census exists for do too. Nor is
+"has no `[[component]]`" one: a component-less leaf with a program is still
+census-sized (Ruling R29), so dropping the row would have changed nothing. What
+separates this leaf is what its program DOES -- registers nothing -- and that is
+a fact only the author can state, so the rule is a statement in `system.toml`,
+never a path list or a guess from the sources.
+
+- `examples/rv-virt-threadx/c/errno-isolation/system.toml` states
+  `entities = []`. `nros dev image entity-census source` now answers
+  `declared`, and `take --leaf` answers "nothing to take" without building.
+- Sizing for the leaf comes from that declaration: the cross configure writes
+  its sizing descriptor "from the declaration" (`node_count = 1`, zero
+  endpoints); no consumer falls back to a default. Built for
+  `rv-virt-threadx` and `test_threadx_riscv64_errno_is_per_thread` PASSES on
+  the rebuilt image.
+- A census whose host RUN fails now says so and names the fix for this class
+  (`census_run_failure`: `entities = []`, or for a component-less leaf "add a
+  `[[component]]` with `entities = []`") beside the two sizing fixes, keeping
+  the run's own error -- so the next self-test leaf gets the remedy in the
+  pre-pass log instead of a bare "wrote nothing".
+- RFC-0120 D4 records the rule.
+
+Sweep: every tracked leaf with `system.toml` + `CMakeLists.txt` classified with
+`nros dev image entity-census source` (55 leaves: 23 `census`, 2 `declared`,
+30 `unstated`), then each `census` leaf's reachable sources grepped for an
+entity-creating call. Errno-isolation was the only cross leaf registering
+nothing; the other 23 census leaves (talkers, listeners, typed-carrier, the
+ament/rclcpp port templates, `ament-census-port`) all create entities. The
+host-board self-tests (`linux/c/custom-msg`, `nros-tests/bins/image-env-probe-c`)
+are `unstated` -- a host image is the census producer, never census-sized.
