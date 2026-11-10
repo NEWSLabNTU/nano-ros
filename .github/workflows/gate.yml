@@ -2148,6 +2148,26 @@ jobs:
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
+      # Issue 2369 — the store prefixes this job fetches or builds
+      # (arm-none-eabi-gcc, Corrosion), restored as one entry keyed on exactly
+      # their `[tool.*]` pins, so a merge group fetches them only after a pin
+      # moves. Hosted only: a self-hosted runner keeps its own store. Why these
+      # tools and not the Zephyr SDK: scripts/ci/sdk-store-cache.sh.
+      - name: Key the SDK-store cache (hosted, compiling events)
+        id: store-key
+        if: ${{ runner.environment == 'github-hosted' && contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          echo "key=$(scripts/ci/sdk-store-cache.sh key copy-out)" >> "$GITHUB_OUTPUT"
+          { echo 'paths<<NROS_EOF'; scripts/ci/sdk-store-cache.sh paths copy-out; echo NROS_EOF; } >> "$GITHUB_OUTPUT"
+
+      - name: Restore the SDK store (hosted, compiling events)
+        id: store-cache
+        if: ${{ steps.store-key.outputs.key != '' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
+
       - name: Provision Corrosion (pinned by [tool.corrosion])
         run: |
           source ./activate.sh
@@ -2179,6 +2199,17 @@ jobs:
           # installs X and silently provisions none of the sources (rc 0).
           nros setup --tool arm-none-eabi-gcc
           nros setup --source freertos-kernel --source lwip
+
+      # Saved right after the two tools are in place, not at the end, so a
+      # template that fails later still leaves the next merge group a hit. Of
+      # three shards missing at once, one save wins and the others' reservation
+      # fails harmlessly.
+      - name: Save the SDK store (hosted, on a miss)
+        if: ${{ steps.store-key.outputs.key != '' && steps.store-cache.outputs.cache-hit != 'true' && !cancelled() }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
 
       - name: Fetch the pin baseline (to find submodules whose pin moved)
         run: bash scripts/ci/pin-baseline.sh provide
@@ -2347,6 +2378,24 @@ jobs:
       - name: rustup set profile minimal (avoid clippy-preview conflict)
         run: rustup set profile minimal
 
+      # Issue 2369 — this job's store prefixes (clang-format, Corrosion), keyed
+      # on their `[tool.*]` pins. Its own entry, not the FreeRTOS shards': the
+      # two kinds fetch different tools (scripts/ci/sdk-store-cache.sh).
+      - name: Key the SDK-store cache (hosted)
+        id: store-key
+        if: ${{ runner.environment == 'github-hosted' }}
+        run: |
+          echo "key=$(scripts/ci/sdk-store-cache.sh key copy-out-zephyr)" >> "$GITHUB_OUTPUT"
+          { echo 'paths<<NROS_EOF'; scripts/ci/sdk-store-cache.sh paths copy-out-zephyr; echo NROS_EOF; } >> "$GITHUB_OUTPUT"
+
+      - name: Restore the SDK store (hosted)
+        id: store-cache
+        if: ${{ steps.store-key.outputs.key != '' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
+
       - name: Provision compile-tier sources
         run: |
           source ./activate.sh
@@ -2416,6 +2465,17 @@ jobs:
           path: ${{ env.NROS_TEMPLATE_COPY_OUT_TMP }}/nros-template-copy-out.*/build.log
           if-no-files-found: ignore
           retention-days: 7
+
+      # At the end, not after setup: Corrosion is built by the first template
+      # that needs it, inside `just check template-copy-out`. `always()` so a
+      # failed template still leaves its finished installs for the next run;
+      # an install that died has no `.nros-provenance` and is redone.
+      - name: Save the SDK store (hosted, on a miss)
+        if: ${{ always() && steps.store-key.outputs.key != '' && steps.store-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.store-key.outputs.paths }}
+          key: ${{ steps.store-key.outputs.key }}
 
   check-lane-contracts:
     name: check / test-lane-contracts (merge group + nightly/manual)

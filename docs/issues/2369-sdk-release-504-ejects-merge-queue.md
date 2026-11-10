@@ -128,6 +128,30 @@ same change should also bound the CLI entries. They should be saved from
 `main` only, or carry a narrower restore prefix, so stale per-PR copies stop
 filling the budget. Measure `cache/usage` before and after.
 
+**Implemented (2026-11-10).** `scripts/ci/sdk-store-cache.sh` keys and
+lists the entries; `gate.yml`'s two copy-out jobs restore them and save on a
+miss, on hosted runners only, since a self-hosted runner keeps its own store.
+It differs from the proposal in two places, both from reading the jobs:
+
+- Two entries, not one. The FreeRTOS shards fetch arm-none-eabi-gcc and the
+  Zephyr shard fetches clang-format, so with one shared key the first job to
+  save would have decided the contents for the others. `copy-out` holds
+  arm-none-eabi-gcc and Corrosion; `copy-out-zephyr` holds clang-format and
+  Corrosion.
+- xrce-agent and cyclonedds are left out. The copy-out jobs do not fetch them
+  (they appeared in this issue's other runs), and a cached prefix nothing reads
+  only costs budget.
+
+The arm-none-eabi-gcc prefix is 1.2 GiB unpacked (the release asset is
+192 MiB as xz), so the `copy-out` entry will be larger than the 200 MiB
+estimated above; read its real size from the first save.
+
+The CLI-entry bound is not in this change. Measured on 2026-11-10, the cache
+held 10.67 GB, over the 10 GB limit, and the bulk was not the per-PR CLI
+copies (212 MiB each). It was three `sccache-Linux-check-<sha>` entries on
+`main` (about 2 GB each, one per commit) and one 3.4 GB `nros-cli-Linux-*`.
+Bounding the sccache entries is a different change to a different job.
+
 ## Acceptance
 
 A merge group whose release downloads 504 for a few minutes still passes
