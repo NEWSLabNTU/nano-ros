@@ -167,7 +167,9 @@ claim-protocol:
 # the programs nano-ros RUNS from it (its `smoke` probes), so it is green.
 # Cost (issue 2411): ~2 s warm on NVMe over a full store. It used to open every
 # file of every pinned dist (~75 k), which took 11-13 min on a cold spinning
-# disk; it now opens only programs and shared objects (~2.6 k).
+# disk; it now opens only programs and shared objects (~2.6 k). Measured
+# after that on 175's spinning /home, mostly cold, at load ~9-20: 151 s wall
+# for 2.5 s CPU. The rest is still I/O wait, the one lstat per file.
 [private]
 [metadata("tier", "build")]
 dist-runtime-deps:

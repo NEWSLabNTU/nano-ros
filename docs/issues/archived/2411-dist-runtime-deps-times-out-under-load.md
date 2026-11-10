@@ -1,7 +1,9 @@
 ---
 id: 2411
 title: "`check dist-runtime-deps` hits nextest's 2400 s timeout in `just ci gate` under host load: ~13 min solo where its recipe comment says ~1.5 s warm"
-status: open
+status: resolved
+resolved: 2026-11-10
+resolved_in: "PR #3459: closure() opens only programs and shared objects"
 type: bug
 severity: medium
 area: [ci, testing, sdk]
@@ -99,3 +101,23 @@ plug-in object(s) no program reaches" count. Files opened: about 75,000 down to
 Not measured: the cold time on a spinning disk after the fix, because dropping
 the page cache needs root. The next `ci gate` on 175 is the measurement.
 
+
+## Measured after the fix (2026-11-10)
+
+On 175, main at `90e9b1ebdc` (includes #3459), the first
+`just check dist-runtime-deps` after the pull exited 0. The page cache was not
+dropped (no root), but the store was last scanned about 7 h earlier, so it was
+probably mostly cold. Load average was 9.28/20.02/28.31 before and
+9.47/15.82/25.46 after.
+
+| | wall | CPU |
+| --- | --- | --- |
+| before (#3459) | 684 s; ~13 min solo at load 17-28 | |
+| after | 151 s (2:30.99) | 1.64 s user + 0.89 s sys |
+
+That is about 4.5-5x faster and well inside nextest's 2400 s timeout, so this
+issue is resolved. The wall time is still almost all I/O wait: 2,560 opens at
+about 59 ms each, plus the one `lstat` per file over about 75 k files, on cold
+random reads of a spinning disk. The ~2 s figure in the recipe comment
+(`just/check/workflows.just`) is the warm NVMe number; the comment now gives
+this cold number beside it.
