@@ -17,6 +17,8 @@
 use std::{fs, path::PathBuf};
 
 fn find_run_plan(build_dir: &std::path::Path) -> Option<PathBuf> {
+    // treewalk-exempt: the root is the firmware's cargo `build` dir, and
+    // `run_plan.rs` is build output, so build output is the point.
     let mut stack = vec![build_dir.to_path_buf()];
     while let Some(p) = stack.pop() {
         if p.is_dir() {

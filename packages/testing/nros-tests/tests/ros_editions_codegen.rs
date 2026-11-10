@@ -164,6 +164,14 @@ fn walk_has_rs(dir: &std::path::Path) -> bool {
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
+            // Generated output is the subject here, so only build output is
+            // skipped (issue 2422).
+            if p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(nros_tests::treewalk::is_build_output_dir)
+            {
+                continue;
+            }
             if walk_has_rs(&p) {
                 return true;
             }

@@ -377,7 +377,15 @@ fn corpus_is_exhaustive() {
         for e in fs::read_dir(&dir).expect("read_dir") {
             let p = e.expect("dir entry").path();
             if p.is_dir() {
-                stack.push(p);
+                // The impls live under `packages/interfaces/generated/`, so
+                // only build output is skipped (issue 2422).
+                if !p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(nros_tests::treewalk::is_build_output_dir)
+                {
+                    stack.push(p);
+                }
             } else if p.extension().is_some_and(|x| x == "rs") {
                 let text = fs::read_to_string(&p).expect("read source");
                 for line in text.lines() {

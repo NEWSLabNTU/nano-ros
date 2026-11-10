@@ -56,6 +56,8 @@ fn ffi_archives() -> nros_tests::TestResult<Vec<PathBuf>> {
     // make the walk silently empty on the other, which reads as "no archives
     // were generated" rather than "looked in the wrong place".
     let mut out = Vec::new();
+    // treewalk-exempt: the root is a workspace fixture's build dir and the
+    // archives sought are build output; only cargo's hashed `deps/` is skipped.
     let mut stack = vec![root.clone()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -159,6 +161,8 @@ fn build_file_tokens(bin_dir: &Path) -> BTreeSet<String> {
             .and_then(Path::to_str)
             .is_some_and(|rel| m2.contains(rel))
     };
+    // treewalk-exempt: the root is a cmake binary dir and the files sought
+    // (`build.make`, `build.ninja`) are build output; a cargo `target` is skipped.
     let mut stack = vec![bin_dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {

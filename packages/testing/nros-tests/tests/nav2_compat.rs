@@ -33,6 +33,8 @@ use std::{
 };
 
 fn walk(root: &Path) -> Vec<PathBuf> {
+    // treewalk-exempt: the root is a cargo `target/debug/build` dir, and the
+    // file sought (`run_plan.rs`) is build output, so build output is the point.
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(p) = stack.pop() {

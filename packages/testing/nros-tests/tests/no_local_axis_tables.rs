@@ -78,7 +78,11 @@ fn rs_files(dir: &Path, acc: &mut Vec<PathBuf>) {
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
-            if p.file_name().and_then(|n| n.to_str()) != Some("target") {
+            if !p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(nros_tests::treewalk::is_skipped_dir)
+            {
                 rs_files(&p, acc);
             }
         } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
