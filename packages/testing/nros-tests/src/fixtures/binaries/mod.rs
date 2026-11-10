@@ -1278,10 +1278,18 @@ fn resolve_workspace_row_entry(
     // of the generated root (`NanoRosWorkspace.cmake`: `pkg/<name>`), and its
     // executable is the one its own `CMakeLists.txt` names.
     let generated = *entry == format!("{}_entry", row.image.replace(['-', '.', '/'], "_"));
+    // phase-531 W6 — the row's PLATFORM profile, the rule
+    // `build_workspace_rust_cross_entry` resolves by: FreeRTOS and NuttX build
+    // at their carve-outs, so the ambient profile names a directory nothing
+    // writes for a migrated talker on either.
+    let profile = crate::fixtures::lane::attribute_workspace_id(&row.id)
+        .and_then(|r| nros_cargo_profile::platform_profile(&r.coord.0))
+        .map(nros_cargo_profile::target_dir)
+        .unwrap_or_else(cargo_target_profile_dir);
     let binary = match row.lang.as_str() {
         "rust" => match crate::fixtures::baked_locator::row_str(&row.id, "target") {
-            Some(triple) => dir.join(format!("{triple}/{}/{entry}", cargo_target_profile_dir())),
-            None => dir.join(format!("{}/{entry}", cargo_target_profile_dir())),
+            Some(triple) => dir.join(format!("{triple}/{profile}/{entry}")),
+            None => dir.join(format!("{profile}/{entry}")),
         },
         _ if row.image.is_empty() => dir.join(format!("src/{entry}/{entry}")),
         _ if !generated => dir
