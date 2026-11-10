@@ -20,7 +20,7 @@ related: [phase-466, 2058, 2119]
 > make among them is 4.4 or newer. Otherwise it creates a pipe pool and says
 > which make forced that.
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `live-peer` lane stops in its fixture build, before any cell.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `live-peer` lane stops in its fixture build, before any cell.
 
 ## Measured
 
