@@ -3415,7 +3415,8 @@ jobs:
           path: /tmp/sccache
           key: sccache-${{ runner.os }}-check-${{ github.sha }}
 
-      # Issue 2412 — keep ONE entry per family on `main`. Keys are immutable,
+      # Issue 2412 — keep this run's entry and the newest per family on `main`
+      # (two, when an older run finishes after a newer one). Keys are immutable,
       # so these two families are saved under a new key whenever their input
       # moves (every commit, for sccache), and the old entries stayed: three
       # ~2 GB sccache entries and a 3.4 GB CLI target dir held 10.67 GB of the

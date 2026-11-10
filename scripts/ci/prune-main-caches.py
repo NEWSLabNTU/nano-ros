@@ -10,9 +10,11 @@ choosing what to drop for every other lane.
 
 Every reader restores through the `sccache-Linux-check-` prefix, which takes
 the newest matching entry, so the older ones are never read. This deletes them,
-right after the save, keeping the entry this run wrote (`--keep-key`). When this
-run saved nothing (an exact hit, or a failed save), it keeps the newest entry
-of the family instead, so a prune can never leave the family empty.
+right after the save, keeping the entry this run wrote (`--keep-key`) and the
+newest entry of the family: two warm-cache runs can overlap, and an older run
+finishing last must not delete the newer run's entry. When this run saved
+nothing (an exact hit, or a failed save), only the newest is kept, so a prune
+can never leave the family empty.
 
 Scope is the ref named by `--ref` (`refs/heads/main`); caches scoped to pull
 requests and merge-queue refs are never touched.
@@ -44,9 +46,13 @@ def choose(entries, prefix, keep_key):
     """
     family = [e for e in entries if e["key"].startswith(prefix)]
     family.sort(key=lambda e: e["created_at"], reverse=True)
+    # This run's entry, AND the newest of the family. Two warm-cache runs on
+    # `main` can overlap: when the older one finishes last, keeping only its
+    # own key would delete the newer run's fresh entry, the very one every
+    # reader's prefix restore picks. The union keeps at most two.
     kept = [e for e in family if e["key"] == keep_key]
-    if not kept and family:
-        kept = [family[0]]
+    if family and family[0] not in kept:
+        kept.append(family[0])
     kept_ids = {e["id"] for e in kept}
     return kept, [e for e in family if e["id"] not in kept_ids]
 
@@ -90,9 +96,15 @@ def self_test():
     c = e(3, p + "ccc", "2026-11-10T00:00:00Z")
     other = e(4, "sccache-Linux-other-x", "2026-11-11T00:00:00Z")
 
+    kept, gone = choose([a, b, c, other], p, p + "ccc")
+    assert [k["id"] for k in kept] == [3], kept
+    assert sorted(g["id"] for g in gone) == [1, 2], gone
+
+    # Overlapping runs: this (older) run saved `bbb` and finishes after a newer
+    # run saved `ccc`. Both stay; only the superseded `aaa` goes.
     kept, gone = choose([a, b, c, other], p, p + "bbb")
-    assert [k["id"] for k in kept] == [2], kept
-    assert sorted(g["id"] for g in gone) == [1, 3], gone
+    assert sorted(k["id"] for k in kept) == [2, 3], kept
+    assert [g["id"] for g in gone] == [1], gone
 
     kept, gone = choose([a, b, c], p, p + "zzz")
     assert [k["id"] for k in kept] == [3], "no save: keep the newest"
@@ -103,7 +115,7 @@ def self_test():
 
     kept, gone = choose([], p, p + "zzz")
     assert kept == [] and gone == []
-    print("prune-main-caches --self-test: OK (4 cases)")
+    print("prune-main-caches --self-test: OK (5 cases)")
 
 
 def main():

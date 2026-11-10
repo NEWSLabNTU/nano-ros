@@ -44,19 +44,22 @@ entries were never read.
 ## Fix
 
 `scripts/ci/prune-main-caches.py`, run by `warm-cache` right after its saves,
-deletes every entry of a family on `refs/heads/main` except the one this run
-wrote. If the run saved nothing, it keeps the newest one instead, so the family
-is never emptied. Pull-request and merge-queue scopes are never touched. The
+deletes every entry of a family on `refs/heads/main` except two: the one this
+run wrote, and the family's newest. Two warm-cache runs can overlap, and an
+older run that finishes last must not delete the newer run's entry. If the run
+saved nothing, only the newest is kept, so the family is never emptied. Pull-request and merge-queue scopes are never touched. The
 step is `continue-on-error`, so a failed prune cannot fail the warm, and the job
 gains `actions: write`.
 
 A dry run against the live cache on 2026-11-10 kept
 `sccache-Linux-check-20d55a6…` and would have deleted the other two, freeing
-4045 MiB. `--self-test` covers the selection: keep the saved key; keep the
-newest when nothing was saved; never delete a key outside the family.
+4045 MiB. `--self-test` covers the selection: keep the saved key; keep both entries when
+an older run finishes after a newer one; keep the newest when nothing was saved;
+never delete a key outside the family.
 
 ## Acceptance
 
-- After a push to `main`, `actions/caches?ref=refs/heads/main` holds one
-  `sccache-Linux-check-` entry and one `nros-cli-Linux-` entry.
+- After a push to `main`, `actions/caches?ref=refs/heads/main` holds at most
+  two `sccache-Linux-check-` entries and two `nros-cli-Linux-` entries (one
+  when no warm-cache runs overlapped).
 - Cache usage stays under 10 GB, measured after the first prune.
