@@ -280,7 +280,7 @@ A hooked host calls `nros configure` before its first reader:
 | --- | --- |
 | Zephyr west | `nros_image_kconfig_hook`, which runs from `zephyr_module.cmake` before Kconfig |
 | CMake (`find_package(nano_ros)`, `add_subdirectory`) | the top of the package config, before any knob reader |
-| NuttX `apps/external` | none: a GUEST road. Its make build compiles only the runtime archive, from Kconfig (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`, `CONFIG_NROS_*_API`), and carries no nros project (no `system.toml`, no image; the app is not an input), so layer 0 has nothing to configure and the archive is sized by its Kconfig knobs. A NuttX image built as a nros project uses the CMake leaf road, which is hooked. Making a make app a project needs a project identity and a knob channel ([issue 2236](../issues/2236-nuttx-make-app-as-project.md)) |
+| NuttX `apps/external` | none: a GUEST road. Its make build compiles only the runtime archive, from Kconfig (`CONFIG_NROS_RMW_*`, `CONFIG_NROS_ROS_EDITION`, `CONFIG_NROS_*_API`), and carries no nros project (no `system.toml`, no image; the app is not an input), so layer 0 has nothing to configure and the archive is sized by crate defaults and any exported `NROS_*` variables, since no NuttX Kconfig symbol states a knob (corrected 2026-11-11, issue 2236). A NuttX image built as a nros project uses the CMake leaf road, which is hooked. Making a make app a project needs a project identity and a knob channel ([issue 2236](../issues/2236-nuttx-make-app-as-project.md)) |
 
 The early readers then READ the seeds. The late producers (`nros_find_interfaces`,
 the node-register composer, `nano_ros_entry`, the sizing descriptor) still
@@ -497,3 +497,8 @@ configure, is answered by D2: the stamp records it.)
   FATAL); the
   fifth producer (Cyclone C++ on west) is closed by deferring its read past
   its producer. `NanoRosReconfigure.cmake` is deleted (phase-530 W7).
+- 2026-11-11 -- D5: the NuttX make road's archive is sized by crate defaults
+  and exported `NROS_*` variables, not "by its Kconfig knobs" (the NuttX
+  Kconfig declares no knob symbol; issue 2236 section 1). Whether the road
+  stays a guest road is still open (issue 2236 Q1, Q7); building NuttX
+  images on NuttX's own infrastructure is proposed in [RFC-0126](0126-nuttx-builds-on-nuttx-infrastructure.md).

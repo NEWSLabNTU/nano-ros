@@ -663,7 +663,9 @@ against a stand-in CLI.
   nros project -- no `system.toml`, no image, and the user's application is
   not one of its inputs (the per-example staging was retired, Phase
   212.M-F.12, issue 1883) -- so layer 0 has nothing to configure, and the
-  archive is sized by its Kconfig knobs. A NuttX image built as a nros
+  archive is sized by crate defaults and exported `NROS_*` variables
+  (corrected 2026-11-11: this read "by its Kconfig knobs", but the NuttX
+  Kconfig declares no knob symbol, issue 2236 section 1). A NuttX image built as a nros
   project uses the CMake leaf road, which is hooked (measured below: 1
   configure, 0 re-runs). Making a make app a project needs a project
   identity and a knob channel: [issue 2236](../issues/2236-nuttx-make-app-as-project.md). The

@@ -6,11 +6,13 @@ type: bug
 area: [nuttx, build]
 severity: low
 found: 2026-11-10
-related: [issue-2236, phase-530, rfc-0098]
+related: [issue-2236, phase-530, phase-550, rfc-0098]
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)**, beside
-[issue 2236](2236-nuttx-make-app-as-project.md), whose design write-up found it.
+**Home: [phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md)**
+(W1 to W5, W8, W12), beside [issue 2236](2236-nuttx-make-app-as-project.md), whose
+design write-up found it while working on
+[phase-530](../roadmap/phase-530-nros-configure-single-pass.md).
 
 ## What happens
 
@@ -127,6 +129,30 @@ Checked and not holding:
   `nuttx_make_e2e.rs` or `EXPECTED_PROGNAMES`; only archived roadmap docs
   (phase-157, phase-177) name it, and `just/nuttx.just:390-395` records its
   retirement.
+
+## Measured (2026-11-11)
+
+Issue 2236's study built the make road in a scratch clone of the pinned
+kernel and apps trees (never the shared tree, issue 0525), with the board's
+defconfigs and `CONFIG_NROS=y`:
+
+8. **The kernel tree does not reach cargo.** `NROS_CARGO_BUILD` sets only
+   `NUTTX_INCLUDE_DIR`, so `zpico-sys`'s build script resolves the kernel
+   through the source ladder and stops: `[port.nuttx] include_paths
+   {nuttx_include}: nuttx-kernel: not provisioned anywhere this build looks`
+   (`$NUTTX_DIR` unset, checkout `third-party/nuttx/nuttx` not initialised).
+   In a checkout where that submodule is initialised it would instead compile
+   zenoh-pico against nano-ros's kernel, not `$(TOPDIR)`.
+
+With `NUTTX_DIR` exported to the scratch kernel:
+
+- armv7a builds: `make -j` 69 s on 4 jobs, cargo 39.8 s of it with `std`
+  compiled (item 1); a 2.3 MB `libnros_c.a`; the `nuttx` ELF links, but holds
+  no `nros_*` text symbol, since no app references the archive.
+- rv-virt stops in 19 s: the zenoh-pico C sources are compiled by the host
+  `cc` (`cc: error: unrecognized argument in option '-mabi=ilp32'`), item 2.
+- The empty-`--target` error item 4 quotes was reproduced through upstream's
+  own `examples/rust/hello` on qemu-armv7a (`make context`).
 
 ## Why nothing caught it
 

@@ -5,7 +5,7 @@ status: open
 type: limitation
 area: [nuttx, build, configure]
 found: 2026-11-04
-related: [phase-530, rfc-0120, issue-1883, issue-0488, issue-2426]
+related: [phase-530, phase-550, rfc-0120, rfc-0126, issue-1883, issue-0488, issue-2426]
 ---
 
 ## Symptom
@@ -410,3 +410,394 @@ closing. Proposed: a new phase opened with `just phase-new` once the
 questions above are ruled, implementing the amended RFC-0120 D5 NuttX row.
 If question 7 is answered no, it belongs instead with the later phase
 RFC-0120 D8 names for the hookless adapters.
+
+Update (2026-11-11): the candidate work, including the make-road defects of
+issue 2426, is drafted in [phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md),
+each item gated on the questions here; it starts only once they are ruled.
+
+## NuttX build-system study (2026-11-11)
+
+How NuttX itself configures and builds an application, read at our pins, so
+that the options above can be weighed against what NuttX already provides.
+Every upstream citation below was read in a fresh clone of the pinned commit;
+claims that could not be checked there are marked "reported, not verified".
+
+### Pins
+
+- Kernel: `third-party/nuttx/nuttx` pins our fork (`jerry73204/nuttx`, branch
+  `nano-ros`) at aea00d736d698994a7c0a7339b56b04af30ec21e. That commit is the
+  upstream `nuttx-12.13.0` tag (b9b5d9afbf5a88f3c52830d4ce88ae038be0fd35,
+  "Documentation: add NuttX-12.13.0 release notes") plus six fork commits
+  (signal constants, bulk TLB invalidation, virtio-net CTRL_VQ and its DMA
+  buffers, the armv7a `.bss` program header). It is not a commit of
+  `apache/nuttx` itself.
+- Apps: `third-party/nuttx/nuttx-apps` pins `apache/nuttx-apps` at
+  e4b84b29d47b98a666df524d6f2d38904c972de5, which is exactly the apps
+  `nuttx-12.13.0` tag. The two pins agree: both are 12.13.0.
+- Line numbers below are at those two commits unless a line says otherwise.
+  Upstream `master` was read once for comparison: nuttx-apps
+  ee3d67104d117bb3d932b29b6068f513d04109bf (2026-11-10) and nuttx
+  7e5a770880c01b1a89673616b0410c8da846d3b2.
+
+### How a NuttX build is configured and run
+
+- **Configure.** `tools/configure.sh` does not copy the defconfig: it expands
+  it into `.config` with `tools/process_config.sh` (`configure.sh:243-245`),
+  which understands `#include` lines with search paths
+  (`process_config.sh:29-54`), and then runs `tools/sethost.sh`
+  (`configure.sh:357`), which runs `make olddefconfig`
+  (`sethost.sh:232`, `:234`). `olddefconfig` uses `kconfig-conf` when
+  kconfiglib's `menuconfig` is not on PATH and kconfiglib otherwise
+  (`tools/Unix.mk:684-714`), after `clean_context` and `apps_preconfig`
+  (`Unix.mk:733-736`).
+- **Kconfig discovery.** The apps tree's `Kconfig` is generated at preconfig
+  (`apps/Makefile:191-195`) by `tools/mkkconfig.sh`, which sources every
+  `*/Kconfig` one level down (`mkkconfig.sh:62`, `:76-77`). So
+  `apps/external/` needs its own `Kconfig` (our staging script writes one).
+  The kernel-side `EXTERNALDIR` (`nuttx/Kconfig:2955-2964`,
+  `Unix.mk:80-84`) is a different slot: `nuttx/external/Kconfig`, kernel
+  code, not apps.
+- **The out-of-tree app slot.** `apps/external` is the documented place for a
+  third-party app: link it in, configure, build (`apps/README.md:226-236`),
+  and it is gitignored (`apps/.gitignore:33`). `apps/Make.defs` includes
+  every `*/Make.defs` (`Make.defs:32`, `:48-52`), which is how an app adds
+  itself to `CONFIGURED_APPS`.
+- **config.h.** `include/nuttx/config.h` is made from `.config` by
+  `tools/mkconfig` (`Unix.mk:266-275`).
+- **Context.** The top-level `context` target needs `config.h`, `version.h`,
+  the dirlinks and `<dir>/.context` for every `CONTEXTDIRS` entry
+  (`Unix.mk:457-459`); each runs `make -C <dir> context` (`Unix.mk:466-467`).
+  `$(APPDIR)` is one of them (`tools/Directories.mk:64`). In the apps tree,
+  `context` runs `context_all`, then `register_all`, then `context_wasm`
+  (`apps/Makefile:186-189`), one sub-make per configured app
+  (`apps/Makefile:57-58`, `:179-180`).
+- **An app's hooks.** `Application.mk` leaves `context::` empty for the app
+  to extend (`Application.mk:359`). `register::` writes one
+  `$(BUILTIN_REGISTRY)/<PROGNAME>.bdat` per program (`:120`, rule
+  `:363-369`, `register::` at `:371`) unless the app is built as a module
+  (`DO_REGISTRATION`, `:141-152`). That registration is what makes an app an
+  NSH command.
+- **Starting an app at boot.** `CONFIG_INIT_ENTRYPOINT` names the function
+  the kernel starts (`sched/Kconfig:444`); the default is `nsh_main`.
+- **Exporting a built kernel.** `make export` (`tools/mkexport.sh`) ships the
+  built libraries, the startup objects, the `.config` (`:158-161`) and a
+  `scripts/Make.defs` that records `ARCHCPUFLAGS`, `CROSSDEV`, `CC` and the
+  other tool flags (`:247-269`). Our CMake leaf road links against that
+  export (`scripts/nuttx/build-nuttx.sh`, "Export NuttX").
+
+### The CMake build
+
+- `CMakeLists.txt:95-105` refuses to configure without kconfiglib's
+  `olddefconfig`, and `:406` exports every Kconfig symbol as a CMake variable
+  (`nuttx_export_kconfig`). Apps use `nuttx_add_application` (for example
+  `apps/examples/rust/hello/CMakeLists.txt`). Reported, not verified: that
+  this has held since nuttx-12.3.0, that make is still the default flow, and
+  that openvela is moving to CMake.
+- The apps `CMakeLists.txt` adds `external/` whenever the DIRECTORY exists
+  (`apps/CMakeLists.txt:76-77`), not when `external/CMakeLists.txt` exists.
+  A tree staged for the make road (an `external/` with no `CMakeLists.txt`)
+  therefore stops a CMake configure. This corrects a claim that the
+  subdirectory is optional; it agrees with
+  [issue 2426](2426-nuttx-make-road-board-facts-drift.md) item 7.
+
+### Rust
+
+- **Make.** `apps/tools/Rust.mk` maps `LLVM_ARCHTYPE` / `LLVM_ABITYPE` /
+  `LLVM_CPUTYPE` to a triple (`RUST_TARGET_TRIPLE`, `:47-77`) and runs
+  `cargo build -Zbuild-std=std,panic_abort` with `NUTTX_INCLUDE_DIR` as the
+  only environment (`:90-106`). Its header lists `armv7a` (`:31`), but the
+  macro has no `armv7a` branch: only `thumb%`, `riscv32`, `riscv64`, `x86` and
+  `x86_64`. The `CONFIG_DEBUG_FULLOPT` branch adds
+  `-Zbuild-std-features=panic_immediate_abort` (`:93-94`).
+- **CMake.** `apps/cmake/nuttx_add_rust.cmake` has the same table in
+  `nuttx_rust_target_triple` (`:49-96`) and the same cargo line in
+  `nuttx_add_rust` (`:113-175`, the command at `:150-159`). NuttX's CMake
+  sets `LLVM_ARCHTYPE` to `armv7-a`, with a hyphen
+  (`arch/arm/src/cmake/armv7-a.cmake:42`), where make sets `armv7a`
+  (`arch/arm/src/armv7-a/Toolchain.defs:40`); neither spelling has a branch.
+  A debug build passes `--${RUST_PROFILE}`, which is `--debug` (`:133`,
+  `:155`).
+- **What reaches cargo.** Only the include dirs and, through
+  `CONFIG_DEBUG_FULLOPT`, the profile. No other Kconfig value reaches cargo on
+  either flow.
+- **The NuttX triples are rustc tier 3.** At our pinned nightly both
+  `armv7a-nuttx-eabihf` and `riscv32imac-unknown-nuttx-elf` print
+  `"tier": 3` and `"std": true` (measured, below).
+- **Upstream since our pin.** On nuttx-apps `master` the immediate-abort
+  flag became `RUSTFLAGS="-Zunstable-options -Cpanic=immediate-abort"`, the
+  CMake debug build passes no profile flag, an unknown triple is a
+  `FATAL_ERROR`, and x86 / aarch64 use JSON target specs that upstream
+  ships in `nuttx/tools/` (`x86_64-unknown-nuttx.json` and four more). There is
+  still no `armv7a` branch on `master`.
+- **The upstream example** (`apps/examples/rust/hello`) is a `staticlib` whose
+  `Cargo.toml` sets `panic = "abort"` in both profiles; its `Make.defs` adds
+  the archive with `EXTRA_LIBS += $(call RUST_GET_BINDIR,...)` and its
+  `Makefile` runs `RUST_CARGO_BUILD` from `context::`.
+
+### Measured at the pins (2026-11-11)
+
+All in a scratch clone (`/mnt/wd/nt/nx`, never the checkout's shared tree,
+issue 0525), with the board's defconfigs
+(`packages/boards/nros-board-nuttx-qemu/nuttx-config/{arm,riscv}/defconfig`)
+and the pinned nightly (`nightly-2026-04-11`).
+
+| what | qemu-armv7a (`arm/defconfig`) | rv-virt (`riscv/defconfig`) |
+| --- | --- | --- |
+| `LLVM_ARCHTYPE ABITYPE CPUTYPE` after `olddefconfig` | `armv7a eabihf cortex-a7` | `riscv32 ilp32 sifive-e31` |
+| `RUST_TARGET_TRIPLE` (make) | empty | `riscv32imac-unknown-nuttx-elf` |
+| `nuttx_rust_target_triple` (CMake, `cmake -P`) | empty for `armv7-a` and for `armv7a` | `riscv32imac-unknown-nuttx-elf` |
+| `ARCHCPUFLAGS` | `-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4 -mlittle-endian` | `-march=rv32imac -mabi=ilp32` |
+| `CROSSDEV` | `arm-none-eabi-` | `riscv-none-elf-` |
+| upstream `examples/rust/hello`, `make context` | fails in 3 s: `error: "--target" takes a target architecture as an argument.` | fails in 9 s: building `core` stops at `panic_immediate_abort is now a real panic strategy!` |
+| `cargo build --debug` (what `nuttx_add_rust` runs for a debug build) | `error: unexpected argument '--debug' found` | same |
+
+So upstream's Rust support at our pins builds neither board with our pinned
+nightly: armv7a has no triple, and the release path's
+`panic_immediate_abort` feature was retired by the nightly. The arm
+`ARCHCPUFLAGS` match the four places we restate them (the make road's
+literals, the board's `cargo_config` rustflags and `CFLAGS`, and
+`cmake/toolchain/armv7a-nuttx-eabi.cmake`), plus `-mlittle-endian`; the
+committed arm export snapshot's `scripts/Make.defs` carries the same line.
+The rv-virt flags match the board's `-march=rv32imac -mabi=ilp32`.
+
+### Other projects (how they integrate with NuttX)
+
+- **micro-ROS** (`micro-ROS/nuttx_apps`, branch `foxy`, commit
+  1f4c6f0b1c5c26268d7a7b01760124a96d75a432), verified: `uros/Kconfig`
+  declares `UROS_MAX_NODES` ... `UROS_MAX_HISTORY` as the sizing surface;
+  `uros/Makefile:41-54` renders `rmw_config.meta` from those `CONFIG_`
+  values with `$(TOPDIR)/.config` as a prerequisite; `:33-39` renders a CMake
+  toolchain file from `$(CROSSDEV)` and `$(ARCHCPUFLAGS)`; `:59-70` runs
+  `colcon build` with both; `:75` makes `context:` depend on them. It does not
+  include `Application.mk`; its `context:` is its own rule.
+- **PX4** (our pin of `third-party/px4/PX4-Autopilot`,
+  d6f12ad1c4f70ad3230afd7d86e971421e02fef4), verified: PX4's CMake owns
+  `.config`. `platforms/nuttx/NuttX/CMakeLists.txt:54-67` concatenates the
+  board defconfig into `.config` and runs `olddefconfig`, `:71-84` runs
+  NuttX's `context`, and `:137-155` writes its own builtin registry
+  (`px4.bdat`) before building `libapps.a`. Its own board Kconfig is
+  evaluated with kconfiglib (`cmake/kconfig.cmake:4-14`) and `genconfig`
+  writes `px4_boardconfig.h` (`:68`).
+- **Spresense** (`sonydevworld/spresense`, `master` at
+  7fd61b2c03f06a4ff0302b84c755e58c338788b2, not a pin), verified:
+  `sdk/tools/config.py` collects defconfig fragments (`:82-93`), applies
+  several in order (`:256`) and then runs `olddefconfig` (`:322`).
+- **openvela**: a `build.sh` over defconfigs, with make and CMake. Reported,
+  not verified.
+
+The common shape: the project owns `.config` (or a fragment merged into it),
+derives everything from it, and runs inside NuttX's own `context` step. None
+of them restates CPU flags by hand: micro-ROS reads `ARCHCPUFLAGS`.
+
+### Corrections to this issue's own text
+
+- Section 1 cites `integrations/nuttx/external-Kconfig.in` as how the user's
+  app is discovered. Nothing installs that file: `stage-external-apps.sh`
+  writes its own `external/Kconfig` (`:89-103`) because, its comment says,
+  the bundled `kconfig-conf` lacks `osource`. Only
+  `external-Make.defs.in` is installed (`:76`).
+- The make road needs the kernel's own tree for more than headers. Measured:
+  with only `NUTTX_INCLUDE_DIR` set, as `NROS_CARGO_BUILD` sets it, the
+  archive's build stops in `zpico-sys`'s build script: `[port.nuttx]
+  include_paths {nuttx_include}: nuttx-kernel: not provisioned anywhere this
+  build looks` (env `$NUTTX_DIR` unset, checkout
+  `third-party/nuttx/nuttx` not initialised). So a make build in a user's
+  own NuttX tree either fails or compiles zenoh-pico against the nano-ros
+  checkout's kernel headers, not `$(TOPDIR)`'s. With `NUTTX_DIR` exported to
+  the scratch kernel the armv7a make road builds:
+  `make -j` 69 s from a configured tree, of which cargo
+  (`-Zbuild-std=std,panic_abort`, `std` compiled) is 39.8 s; a 2.3 MB
+  `libnros_c.a`; a 4.5 MB `nuttx` ELF with no `nros_*` text symbol, because
+  no app references the archive.
+  On rv-virt, with `NUTTX_DIR` exported too, it stops in 19 s in the same
+  build script: the zenoh-pico C sources are compiled by the HOST `cc`
+  (`cc: error: unrecognized argument in option '-mabi=ilp32'`), because
+  `NROS_CARGO_BUILD` sets `CC_`/`CXX_`/`AR_` for the armv7a triples only.
+  That is issue 2426 item 2, measured.
+
+## Using NuttX's own infrastructure (exploration, 2026-11-11)
+
+What it would take for nano-ros to build NuttX images with NuttX's own build
+machinery and retire what we invented beside it. This section explores; it
+decides nothing. The decision shape is recorded in
+[RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md) and the
+candidate work in [phase-550](../roadmap/phase-550-nuttx-native-build-infrastructure.md);
+the questions are numbered on from Q8 at the end.
+
+### What we invented, and NuttX's own counterpart
+
+| ours | where | NuttX's counterpart | status of the counterpart at our pins |
+| --- | --- | --- | --- |
+| armv7a triple synthesis, and the empty-triple fallback that calls upstream's macro | `integrations/nuttx/Makefile:201-206`, `:274-276` | `RUST_TARGET_TRIPLE` / `nuttx_rust_target_triple` | no armv7a branch, measured; the fallback cannot build (issue 2426 item 4) |
+| `NROS_NUTTX_TRIPLE := armv7a-nuttx-eabihf` | `integrations/nuttx/Make.defs:65` | the same macro | as above |
+| CPU and C flags as literals | `Makefile:229-231`, `:242-248`; board `cargo_config` rustflags, `CFLAGS_*`, `NUTTX_*_CFLAGS`; `cmake/toolchain/armv7a-nuttx-eabi.cmake` | `$(ARCHCPUFLAGS)` / `$(CROSSDEV)` from `Make.defs`, or the export's `scripts/Make.defs` | arm value equals ours plus `-mlittle-endian`; rv-virt equal; measured |
+| our own cargo command (`NROS_CARGO_BUILD`) | `Makefile:241-263` | `RUST_CARGO_BUILD` / `nuttx_add_rust` | broken at our pins with our nightly on both boards, measured; fixed on upstream `master` except armv7a |
+| parse-time image crate generation, guarded for `olddefconfig`'s parse | `Makefile:105-131`, issue 0551 | `context::` (a recipe, so it runs once per build, after configure) | available |
+| a second nightly pin | `Makefile:144` | none (upstream reads the ambient toolchain) | -- |
+| a CMake shell that reads an undeclared `CONFIG_NROS_RMW` and is never staged | `integrations/nuttx/CMakeLists.txt` | `external/CMakeLists.txt` + `nuttx_add_application` / `nuttx_add_extra_library` | available; the staged tree breaks a CMake configure today (2426 item 7) |
+| an unused `external/Kconfig` template | `integrations/nuttx/external-Kconfig.in` | `mkkconfig.sh` | our staging writes its own |
+| configure by `cp defconfig .config` + `olddefconfig` ("replicates what tools/configure.sh does") | `scripts/nuttx/build-nuttx.sh:161-163`, `:292` | `tools/configure.sh <config-dir>`, with `#include` fragments through `process_config.sh` | available; needs `kconfig-tweak` (build-nuttx.sh's stated reason) |
+| the app runs by overriding the `nsh_main` symbol | `packages/boards/nros-board-nuttx-qemu/src/entry.rs:37`, `CONFIG_INIT_ENTRYPOINT="nsh_main"` in the board defconfig | `CONFIG_INIT_ENTRYPOINT="<prog>_main"` | available |
+| the image link restated as 47 `link-arg`s across the two boards | board `cargo_config` (`-Tdramboot.ld`, the kernel lib group, `-lgcc`) | NuttX's own final link (`LD: nuttx`) | available on the apps road; the leaf road links the export itself |
+
+### E1. One triple table, upstream's
+
+Upstream's table is the natural single owner, but it lacks armv7a in both
+flows, on our pin and on `master`, and the make and CMake flows spell the arch
+differently (`armv7a`, `armv7-a`). Three shapes:
+
+- contribute the branch upstream (both files), and carry it until then as a
+  patch on a nuttx-apps fork (today `third-party/nuttx/nuttx-apps` is an
+  untouched upstream pin, so this changes its shape to "fork with a patch
+  branch", CLAUDE.md's second legitimate shape);
+- keep our own fallback, in one place, with a check that it agrees with
+  upstream's table for every triple upstream knows;
+- read the board's `[build] target` instead and never ask NuttX.
+
+The last is what the leaf road does today, and it is the opposite of this
+exploration's direction: the board would keep stating a fact the kernel
+configuration already implies.
+
+### E2. CPU flags from `ARCHCPUFLAGS`
+
+Measured: NuttX's own value equals our restated literals on both boards
+(arm adds `-mlittle-endian`). micro-ROS takes them from `$(ARCHCPUFLAGS)` and
+`$(CROSSDEV)` in its `context` step. For us the make road has them at parse
+time (the app `Makefile` includes `$(APPDIR)/Make.defs`, which includes the
+kernel's), and the leaf road has them in the export's `scripts/Make.defs`.
+The open part is who turns them into cargo's `CFLAGS_<triple>`,
+`CC_<triple>` and link args: the make recipe itself, or `nros configure`
+reading the export (which would make layer 0 read a host build's product;
+RFC-0120 D1's layer rule has to say whether that is allowed).
+
+### E3. `context::` and `register::`
+
+Our shell already runs cargo from `Application.mk`'s `context::`. What it
+adds beside it: the parse-time `$(shell cmake -P ...)` that generates the
+image crate (and the issue 0551 guard it needs), and the `PREFIX` object dir.
+Moving the image crate into the `context::` recipe removes the parse-time
+guard. The shell has no `PROGNAME`, so it registers nothing; the user's app
+registers itself through its own `PROGNAME`, which is NuttX's mechanism
+already. Nothing to retire there; the open part is whether the runtime archive
+stays a separate library app (micro-ROS's shape) or is built inside the
+user's app's own `context::`.
+
+### E4. `nros configure` in `context::`
+
+This is option B1 above, unchanged by the study, with two additions the
+measurements force: the cargo command must carry `NUTTX_DIR=$(TOPDIR)`
+(otherwise `zpico-sys` resolves the nano-ros checkout's kernel or fails), and
+the per-target `CC_` / `AR_` names come from `$(CROSSDEV)`, not from an
+armv7a list (otherwise rv-virt compiles zenoh-pico with the host `cc`).
+
+### E5. The CMake flow
+
+To make NuttX's CMake build reach us: the staging writes
+`external/CMakeLists.txt` (one `add_subdirectory` per staged app), and the
+shell's `CMakeLists.txt` becomes an app that builds the archive with
+`nuttx_add_rust`-style custom commands and hands it to
+`nuttx_add_extra_library`, reading only the Kconfig symbols that exist
+(`CONFIG_NROS_RMW_<X>`, not `CONFIG_NROS_RMW`). Not measured: whether our pinned
+kernel's CMake build boots `qemu-armv7a` with our defconfig at all. The
+alternative is to delete the CMake shell and the book's one sentence until a
+lane builds it.
+
+### E6. The board's build-std and target spec on both roads
+
+The board's `cargo_config` is the one statement of `build-std`,
+`build-std-features` and the target spec; the make road would take it
+through the image's generated cargo config (E4), so the
+`-Zbuild-std=std,panic_abort` literal goes. The rv-virt JSON target spec:
+
+- Measured (`rustc +nightly-2026-04-11 -Z unstable-options --print
+  target-spec-json`): the built-in `riscv32imac-unknown-nuttx-elf` has no
+  `panic-strategy` (unwind) and no `eh-frame-header` (default true). The
+  board's JSON is the built-in spec plus exactly those two keys, field for
+  field. Both deltas are still needed for the leaf road at the pinned nightly.
+- The built-in `armv7a-nuttx-eabihf` already says `"panic-strategy":
+  "abort"`, and the arm leaf road uses the built-in triple.
+- On the apps road the archive is a `staticlib` that NuttX's own link
+  consumes, so rustc never passes `--eh-frame-hdr` there, and
+  `panic = "abort"` can come from the profile (the upstream example does
+  this). Reasoned from the build shape, not measured.
+- Upstream nuttx `master` already ships JSON target specs in `tools/` for
+  x86 and aarch64, so an upstream home for a riscv spec has precedent.
+
+### E7. One road or two
+
+Today a NuttX image can be built three ways: the CMake leaf road
+(`examples/qemu-armv7a-nuttx`, `examples/rv-virt-nuttx`), the workspace road
+(`nros build` of a workspace image on a NuttX board, cargo for Rust and
+CMake for C/C++), and the make road. The first two link the ELF themselves
+from the `make export` snapshot; only the make road lets NuttX link.
+
+| capability | leaf and workspace roads today | apps road (make or CMake) |
+| --- | --- | --- |
+| sizing by census and configure | yes, hooked; phase-530 W5 measured one configure, census-tight knobs | none today; with a project (A2+B1) configure can run in `context::`, but the census builds a host `CMakeLists.txt`, so a make app must declare its entities (Q6) |
+| fixtures and tests | 35 NuttX fixture rows in `examples/fixtures.toml` (27 workspace, 7 leaf and test bins, 1 compile check); 24 test files under `packages/testing/nros-tests/tests` name NuttX | none; a lane would have to build a kernel tree per configuration |
+| kernel builds | one per arch, exported once and linked by every image (`build-nuttx.sh` short-circuit) | one configured tree per image configuration, because the tree holds one `.config` (issue 0525); measured 69 s for one armv7a make road build from a configured tree on 4 jobs, 39.8 s of it cargo |
+| QEMU runs | the ELF starts the image through the `nsh_main` override | the ELF boots NSH; the harness types the program name, or the defconfig names `<prog>_main` in `CONFIG_INIT_ENTRYPOINT` |
+| the final link | restated by the board (47 `link-arg`s, `dramboot.ld`, vectortab, the lib group) and re-checked per arch | NuttX's |
+| a user's own NuttX tree and app | not the user's tree: the leaf road builds against the nano-ros checkout's kernel export | the user's tree (`$(TOPDIR)`), which is what a NuttX user expects |
+
+Not measured: a leaf-road build time to compare with the 69 s above (the leaf
+road needs the checkout's shared kernel tree, issue 0525), and any apps-road
+build of a real app (no app references the archive yet, so the measured ELF
+has no `nros_*` symbol).
+
+So the leaf and workspace roads carry everything the test system rests on,
+and the apps road is the one a NuttX user would recognise. Collapsing to one
+road either moves 35 fixture rows and the census onto a road that has neither
+today, or drops the road NuttX users know. Keeping both but building each
+through NuttX's own pieces (E1, E2, E6) removes the restated facts without
+choosing.
+
+### Questions for the maintainer (continued)
+
+9. Direction: should NuttX builds move onto NuttX's own infrastructure
+   (upstream's triple table, `ARCHCPUFLAGS` / `CROSSDEV`, `context::`,
+   `nuttx_add_application`, `tools/configure.sh`), retiring the inventions
+   in the table above as the phase lists? yes / no
+10. Roads: (a) keep the leaf and workspace roads and the apps road, each built
+    from NuttX's pieces; (b) make the apps road the only NuttX road, moving
+    examples, fixtures and tests onto it and deleting the leaf road; or
+    (c) keep only the leaf and workspace roads and drop `apps/external` as
+    unsupported. Choose one.
+11. The armv7a triple: (a) contribute the branch upstream and carry it on a
+    nuttx-apps fork patch branch until it lands; (b) keep our own fallback in
+    one place, checked against upstream's table; or (c) take the triple from
+    the board's `[build] target` and never ask NuttX. Choose one.
+12. Upstream's cargo invocation (`RUST_CARGO_BUILD`, `nuttx_add_rust`) does
+    not build at our pins with our nightly (measured). (a) move the
+    nuttx-apps pin to an upstream commit that fixes it and use upstream's
+    invocation; (b) keep our own cargo command and take only the triple table
+    from upstream; or (c) fix it upstream first, then (a). Choose one.
+13. CPU and C flags come from NuttX (`ARCHCPUFLAGS`, `CROSSDEV`: the
+    configured tree on the apps road, the export's `scripts/Make.defs` on the
+    leaf road), and the restated copies are deleted (board `cargo_config`
+    rustflags and `CFLAGS`, the riscv `NUTTX_*_CFLAGS` env rows, the CMake
+    toolchain file's flags, the make-road literals). yes / no
+14. If 13 is yes: may `nros configure` (layer 0) read the kernel export's
+    `scripts/Make.defs` to render them, or must the host build hand them over
+    (RFC-0120 D1's layer rule)? read / hand over
+15. The rv-virt target spec: (a) keep the board's JSON for every road;
+    (b) keep it for the leaf road only and use the built-in triple plus a
+    `panic = "abort"` profile on the apps road; (c) get the two deltas into
+    rustc's built-in target; or (d) propose the spec to upstream NuttX's
+    `tools/`. Choose one or an order.
+16. NuttX's CMake flow: (a) support it now (stage `external/CMakeLists.txt`,
+    rewrite the shell over `nuttx_add_application` /
+    `nuttx_add_extra_library`, add a lane); or (b) delete the CMake shell and
+    the book's sentence until there is a lane. Choose one.
+17. The board's kernel configuration becomes a defconfig fragment over
+    upstream's `qemu-armv7a:nsh` / `rv-virt:netnsh` (`#include`, read by
+    `process_config.sh`), configured with `tools/configure.sh` instead of
+    `build-nuttx.sh`'s copy and `olddefconfig`. yes / no
+18. Boot entry: name the app in `CONFIG_INIT_ENTRYPOINT` (NuttX's mechanism)
+    instead of overriding the `nsh_main` symbol, on every road. yes / no
+19. The make-road lane (both armv7a and rv-virt, each in its own scratch
+    kernel tree, never the checkout's shared tree): which cadence: pull
+    request, merge queue, or daily?
+20. Is retiring the vendored `libc` fork (`third-party/nuttx/libc`) in this
+    phase's scope once no road builds `std` (2236 Q5 and 2426 item 1), or a
+    separate phase? this phase / separate
