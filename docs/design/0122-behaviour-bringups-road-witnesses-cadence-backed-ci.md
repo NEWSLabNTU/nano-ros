@@ -167,6 +167,11 @@ What only these show, and the merged images cannot:
   reader who copied it runs it;
 - the book's first chapter, which points at them (RFC-0116 D6).
 
+"Its own directory" means a one-package workspace (RFC-0121's shape), never the
+retired leaf shape with its `<pkg>_nros_selection` crate: an example kept in
+its own directory is still built through the workspace road. Maintainer ruling
+2026-11-10, recorded with phase-531 W7 step 3's precondition.
+
 Each one runs, not only builds. A new `road_witness_e2e` pairs each witness
 talker with the workspace listener of the same (platform, language, rmw).
 
