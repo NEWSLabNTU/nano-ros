@@ -1,15 +1,17 @@
 ---
 id: 2384
 title: "The Zephyr qemu_cortex_a53 SMP realtime image hangs at its first network send about half the time"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, testing, qemu]
 related: [phase-466, 2389]
 found: 2026-11-10
+resolved: 2026-11-10
+resolved_in: "#3395 (CONFIG_NROS_CONSOLE_WHOLE_LINES) and #3400 (the a53 image's 10 s connect budget); the leftover shape is issue 2389"
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**.
 The cell is tier 2's `CorePinPlacement/zephyr/c` (`sched_dims_applied_e2e`),
 so a hang here is a red with no verdict on the SMP placement it exists to
 measure.
@@ -198,7 +200,7 @@ No run split the marker and none failed with `ConnectionFailed`.
 
 The one failure is a third shape: no output after boot, and the full 90 s cell
 timeout used without the 10 s budget ever ending in `ConnectionFailed`. That is
-[issue 2389](2389-zephyr-a53-open-silent-past-connect-budget.md).
+[issue 2389](../2389-zephyr-a53-open-silent-past-connect-budget.md).
 
 ## Acceptance
 
