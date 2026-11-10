@@ -699,3 +699,20 @@ xrce-one-vendored-compile:
 # Buildless (`git ls-files` + a read), ~0.4 s, self-test on the normal path.
 rmw-agnostic:
     @python3 scripts/check-rmw-agnostic.py
+
+# Issue 2419 — the uORB backend and its PX4 push-wake glue compile the way PX4
+# compiles a NuttX module. Issue 2403's fix reached main with three files that
+# did not: `<atomic>` does not exist under PX4's `-nostdinc++`, and
+# `-Wcast-align -Werror` refused the glue's slot cast. `check rmw-uorb` is a host
+# build of the mock-ABI half and nothing merge-gating compiled the glue at all.
+#
+# PX4's options and headers come from a COMMITTED snapshot generated from the
+# PINNED PX4 (`packages/testing/nros-px4-nuttx-compile/`,
+# `scripts/gen-px4-nuttx-compile-snapshot.py`); the gate holds it to the pin and
+# to its hashes, compiles every TU `nros_px4_add_module(BACKENDS uorb)` does, and
+# runs its negative controls (`<atomic>` missing, the old cast refused) first.
+# ~0.3 s with the cross compiler, which is its one capability.
+[group('needs:arm-gcc-any')]
+[group('needs:cmake')]
+px4-uorb-nuttx-compile:
+    @python3 scripts/check/check-px4-uorb-nuttx-compile.py

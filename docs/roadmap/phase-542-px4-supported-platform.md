@@ -310,6 +310,18 @@ green; one scheduled run of their lane green.
 **Acceptance:** both RFCs carry the ruling; RFC-0039's open questions list
 drops them.
 
+### W10 — The uORB backend compiles for PX4 NuttX on every pull request (S) — DONE 2026-11-10
+
+Issue 2403's fix reached main with three files that did not compile for a PX4
+NuttX target, and only the phase-547 Renode harness noticed. Gate
+`px4-uorb-nuttx-compile` (fast tier, so every event) now compiles every TU
+`nros_px4_add_module(BACKENDS uorb)` compiles, glue included, with PX4 v1.17.0's
+NuttX module flags against a committed header snapshot generated from the pin:
+[issue 2419](../issues/archived/2419-px4-uorb-glue-no-nuttx-compile-gate.md).
+
+**Acceptance:** the gate fails on the pre-fix files and passes on main
+(measured, recorded in the issue).
+
 ## Deferred
 
 - **uORB services.** RFC-0011 §7 defers them; the C++ backend's service slots

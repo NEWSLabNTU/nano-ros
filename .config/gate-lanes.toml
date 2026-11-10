@@ -15,6 +15,7 @@
 cli = "the in-tree `nros` CLI (just setup-cli)"
 cmake = "cmake and ninja on PATH"
 cc = "a host C/C++ compiler and binutils (ar, nm, objcopy)"
+arm-gcc-any = "any arm-none-eabi-g++, pinned or not (the CI image's distro package, or nros setup --tool arm-none-eabi-gcc)"
 bindgen = "bindgen-cli at the pin"
 ros2 = "a sourced ROS 2 (AMENT_PREFIX_PATH)"
 colcon = "colcon on PATH"
@@ -51,7 +52,7 @@ scratch-tree = { scratch-gib = 5, cpus = 8 }
 [lane.fast]
 # `check / fast` on the hosted runner: the ci-base image provides these.
 tiers = ["fast"]
-claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
+claims = ["cli", "cmake", "cc", "arm-gcc-any", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
 
 [lane.build]
 # The hosted runner's other jobs: `check / build tier` shards (gate.yml) and
@@ -60,7 +61,7 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 tiers = ["fast", "build"]
 # Issue 2413: `arm-gcc` is provisioned by `scripts/ci/provision-gate-lane.sh
 # build` for the FreeRTOS C++ copy-out units, which refuse the distro 10.3.
-claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "arm-gcc"]
+claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "arm-gcc", "arm-gcc-any"]
 
 [lane.queue]
 # The self-hosted runner (nros-sdk-zephyr): the image's set plus a Zephyr
@@ -72,6 +73,9 @@ claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodu
 # A developer worktree after `just setup-worktree` with ROS 2 sourced: what
 # `just check lane dev` runs before a push. No Zephyr and no fixture build, so
 # the gates that need them run in `fast`/`queue` instead.
+# Nor `arm-gcc-any` (issue 2419): a cross compiler is not part of a worktree's
+# setup, so `px4-uorb-nuttx-compile` runs in `fast` and `build`, and by name
+# (`just check px4-uorb-nuttx-compile`) where one is installed.
 tiers = ["fast", "build"]
 claims = ["cli", "cmake", "cc", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history"]
 
