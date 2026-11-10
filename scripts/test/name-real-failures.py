@@ -19,9 +19,19 @@ that was never rewritten — the same defence-in-depth ``_count-real-failures``
 keeps, and for the same reason: the two must not disagree about what "real"
 means.
 
+Issue 2416. A name is not a diagnosis. Every lane that runs through
+``_nextest-tolerant`` passes ``--failure-output never`` so the hundreds of
+``lane_skip!`` panics a lane deselects do not flood its log, and that also
+discarded the panic text of the REAL failures. The junit keeps it
+(``store-failure-output = true``), but a job runs several lanes and each one
+resets the junit, so the artifact holds the LAST lane's only. So each named
+failure is followed by its own recorded output: the ``<failure>`` message and
+the tail of the test's stderr and stdout, printed into the log of the lane
+that failed. Skips are never printed, so a lane's log stays its size.
+
 Usage::
 
-    name-real-failures.py [junit.xml] [--limit N]
+    name-real-failures.py [junit.xml] [--limit N] [--output-lines N] [--names-only]
 
 Exit status is 0 whether or not failures were found: this is a reporting aid on
 an error path that has already decided to fail, and it must never turn a
@@ -80,7 +90,36 @@ def has_nested_marker(node: ET.Element, case: ET.Element) -> bool:
     )
 
 
-def real_failures(path: Path) -> list[str]:
+def _tail(text: str | None, lines: int) -> list[str]:
+    body = [line for line in (text or "").rstrip().splitlines()]
+    if len(body) > lines:
+        return [f"… ({len(body) - lines} earlier line(s) not shown)"] + body[-lines:]
+    return body
+
+
+def failure_output(case: ET.Element, node: ET.Element, lines: int) -> list[str]:
+    """The recorded diagnosis of one real failure, indented for the log.
+
+    The ``<failure>`` message first (nextest puts the panic location there),
+    then the tail of stderr, where a panic's text lands, then the tail of
+    stdout. An empty stream is omitted rather than printed as a header.
+    """
+    out: list[str] = []
+    msg = (node.get("message") or "").strip()
+    if msg:
+        out.append(f"failure: {msg}")
+    for tag, share in (("system-err", lines), ("system-out", max(lines // 3, 5))):
+        stream = case.find(tag)
+        body = _tail(stream.text if stream is not None else None, share)
+        if any(line.strip() for line in body):
+            out.append(f"{tag}:")
+            out.extend(f"  {line}" for line in body)
+    if not out:
+        out.append("(the junit recorded no output for this failure)")
+    return out
+
+
+def real_failure_cases(path: Path) -> list[tuple[str, ET.Element, ET.Element]]:
     try:
         root = ET.parse(path).getroot()
     except (OSError, ET.ParseError):
@@ -98,17 +137,25 @@ def real_failures(path: Path) -> list[str]:
                         "should classify it with `nros_tests::skip_marker` "
                         "(issue 0658)"
                     )
-                out.append(name)
+                out.append((name, case, node))
                 break
     return out
+
+
+def real_failures(path: Path) -> list[str]:
+    return [name for name, _case, _node in real_failure_cases(path)]
 
 
 def main(argv: list[str]) -> int:
     args = [a for a in argv[1:] if not a.startswith("--")]
     limit = 40
+    output_lines = 40
+    names_only = "--names-only" in argv[1:]
     for a in argv[1:]:
         if a.startswith("--limit="):
             limit = int(a.split("=", 1)[1])
+        elif a.startswith("--output-lines="):
+            output_lines = int(a.split("=", 1)[1])
 
     # Prefer the snapshot: the live junit is whatever ran most recently.
     candidates = (
@@ -124,7 +171,8 @@ def main(argv: list[str]) -> int:
         print("  (no junit.xml found — cannot name the failures)")
         return 0
 
-    names = real_failures(path)
+    cases = real_failure_cases(path)
+    names = [name for name, _case, _node in cases]
     if not names:
         # Worth saying explicitly rather than printing nothing: "the count said
         # N but the file names none" is itself the 0527 symptom, and silence
@@ -136,6 +184,14 @@ def main(argv: list[str]) -> int:
         print(f"  {n}")
     if len(names) > limit:
         print(f"  … and {len(names) - limit} more (see {path})")
+    if names_only:
+        return 0
+    # Issue 2416: each failure's own recorded output, so the log that shows
+    # the red also shows why.
+    for name, case, node in cases[:limit]:
+        print(f"\n---- {name} ----")
+        for line in failure_output(case, node, output_lines):
+            print(f"  {line}")
     return 0
 
 

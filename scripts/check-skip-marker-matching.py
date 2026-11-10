@@ -337,8 +337,62 @@ def nested_marker_self_test() -> None:
         assert got == want, f"nested-marker self-test: {desc}: got {got}, want {want}"
 
 
+def failure_output_self_test() -> None:
+    """Issue 2416 — a real failure's recorded output reaches the log; a skip's does not.
+
+    The lanes pass `--failure-output never` so hundreds of `lane_skip!` panics
+    stay out of the log, which also discarded every REAL failure's panic text:
+    four xrce-wake reds and an `rmw_coordinate_truth` red each said nothing
+    about why. `name-real-failures.py` prints each real failure's junit-stored
+    output instead. Run against a junit holding one of each.
+    """
+    import contextlib
+    import importlib.util
+    import io
+    import tempfile
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(here, "test"))
+    spec = importlib.util.spec_from_file_location(
+        "name_real_failures", os.path.join(here, "test", "name-real-failures.py")
+    )
+    nrf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(nrf)
+
+    junit = (
+        "<testsuites><testsuite name='s'>"
+        "<testcase classname='c' name='real'>"
+        "<failure message='thread real panicked at r.rs:9:5'/>"
+        "<system-out>running 1 test</system-out>"
+        "<system-err>the backend refused the session REAL-CAUSE</system-err>"
+        "</testcase>"
+        "<testcase classname='c' name='skip'>"
+        "<failure message='thread skip panicked at lane.rs:1:1'/>"
+        "<system-err>thread 'skip' panicked at lane.rs:1:1:\n"
+        "[SKIPPED:lane] out of lane SKIP-TEXT</system-err>"
+        "</testcase>"
+        "</testsuite></testsuites>"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "junit.xml")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(junit)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            nrf.main(["name-real-failures.py", path])
+        out = buf.getvalue()
+        assert "REAL-CAUSE" in out, f"failure-output self-test: real stderr missing:\n{out}"
+        assert "r.rs:9:5" in out, f"failure-output self-test: failure message missing:\n{out}"
+        assert "SKIP-TEXT" not in out, f"failure-output self-test: a skip's output printed:\n{out}"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            nrf.main(["name-real-failures.py", path, "--names-only"])
+        assert "REAL-CAUSE" not in buf.getvalue(), "failure-output self-test: --names-only printed output"
+
+
 def main() -> int:
     self_test()
+    failure_output_self_test()
     with open(MATRIX, encoding="utf-8") as fh:
         unbuilt = unbuilt_platforms(fh.read())
     made = producers(unbuilt)
