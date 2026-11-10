@@ -252,6 +252,47 @@ fn with_image_panic(system_text: &str, policy: &str) -> Result<Option<String>> {
     Ok(Some(doc.to_string()))
 }
 
+/// `system.toml` with the runtime service families `(param_services,
+/// lifecycle)` added to `[system] features` where the file does not already
+/// declare them (a `features` entry, or the typed `[param_services]` /
+/// `[lifecycle]` block); `None` when nothing is missing.
+fn with_manifest_families(
+    system_text: &str,
+    (param, lifecycle): (bool, bool),
+) -> Result<Option<String>> {
+    let mut doc: toml_edit::DocumentMut = system_text.parse().wrap_err("parsing system.toml")?;
+    let listed = |name: &str| {
+        doc.get("system")
+            .and_then(|s| s.get("features"))
+            .and_then(|f| f.as_array())
+            .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(name)))
+    };
+    let missing: Vec<&str> = [(param, "param_services"), (lifecycle, "lifecycle")]
+        .into_iter()
+        .filter(|&(on, name)| on && !listed(name) && doc.get(name).is_none())
+        .map(|(_, name)| name)
+        .collect();
+    if missing.is_empty() {
+        return Ok(None);
+    }
+    if doc.get("system").is_none() {
+        doc["system"] = toml_edit::table();
+    }
+    let system = doc["system"]
+        .as_table_mut()
+        .ok_or_else(|| eyre::eyre!("`[system]` in system.toml is not a table"))?;
+    if !system.contains_key("features") {
+        system.insert("features", toml_edit::value(toml_edit::Array::new()));
+    }
+    let features = system["features"]
+        .as_array_mut()
+        .ok_or_else(|| eyre::eyre!("`[system] features` in system.toml is not an array"))?;
+    for name in missing {
+        features.push(name);
+    }
+    Ok(Some(doc.to_string()))
+}
+
 /// A C or C++ source that defines `main`.
 fn defines_c_main(text: &str) -> bool {
     let re = regex::Regex::new(r"(?m)^\s*(int|void)\s+main\s*\(").expect("static regex");
@@ -353,7 +394,16 @@ fn rewrite_cargo_toml(
     if let Some(bin_path) = deleted_bin_path
         && let Some(bins) = doc.get_mut("bin").and_then(|b| b.as_array_of_tables_mut())
     {
-        bins.retain(|t| t.get("path").and_then(|p| p.as_str()) != Some(bin_path));
+        // A `[[bin]]` with no `path` that is named like the package is cargo's
+        // default target, `src/main.rs`.
+        let default_main = |t: &toml_edit::Table| {
+            t.get("path").is_none()
+                && t.get("name").and_then(|n| n.as_str()) == cargo_name.as_deref()
+                && bin_path == "src/main.rs"
+        };
+        bins.retain(|t| {
+            t.get("path").and_then(|p| p.as_str()) != Some(bin_path) && !default_main(t)
+        });
         if bins.is_empty() {
             doc.remove("bin");
         }
@@ -749,6 +799,23 @@ pub fn plan_with(dir: &Path, west_board_of: &WestBoardOf<'_>) -> Result<Plan> {
         unreachable!("the node is the outer package unless a nested one was found");
     }
 
+    // The leaf road sizes the runtime service families from the model UNIONED
+    // with the leaf manifest's `nros` features (`manifest_infra`); the workspace
+    // road reads the bringup alone. A leaf whose manifest turned on
+    // `param-services` without a `[system] features` row would migrate into an
+    // image that still COMPILES the six parameter servers but sizes no
+    // queryable or publisher for them, and fails at boot. So the families move
+    // with the node: stated in the bringup.
+    let families = crate::leaf_entity_env::manifest_infra(dir);
+    let base = system_edit.clone().unwrap_or_else(|| system_text.clone());
+    if let Some(edited) = with_manifest_families(&base, families)? {
+        plan.report.push(
+            "stated the runtime service families the leaf manifest turned on in the \
+             bringup's `[system] features`: the workspace road reads them from there"
+                .to_string(),
+        );
+        system_edit = Some(edited);
+    }
     if let Some(text) = system_edit {
         plan.ops.push(Op::Write {
             path: bringup_dir.join("system.toml"),
@@ -1146,6 +1213,105 @@ rmw = "xrce"
 [image.linux_iron]
 ros_edition = "iron"
 "#;
+
+    /// A `[[bin]]` with no `path`, named like the package, is cargo's default
+    /// `src/main.rs`; deleting that main must drop the target too, or the node
+    /// manifest names a bin with no source and the metadata probe cannot load
+    /// it (`bins/rtic-run-plan-e2e`'s shape).
+    #[test]
+    fn a_pathless_default_bin_goes_with_its_deleted_main() {
+        let text = r#"[package]
+name = "qemu-rtic-main-e2e"
+
+[[bin]]
+name = "qemu-rtic-main-e2e"
+test = false
+
+[lib]
+crate-type = ["rlib"]
+"#;
+        let mut report = Vec::new();
+        let (out, _) = rewrite_cargo_toml(
+            text,
+            Path::new("/leaf"),
+            Path::new("/leaf/src/qemu_rtic_main_e2e"),
+            Some("src/main.rs"),
+            "qemu_rtic_main_e2e",
+            &mut report,
+        )
+        .unwrap();
+        assert!(!out.contains("[[bin]]"), "{out}");
+
+        // A path-less bin named otherwise is `src/bin/<name>.rs`: kept.
+        let other = text.replace(
+            "name = \"qemu-rtic-main-e2e\"\ntest",
+            "name = \"tool\"\ntest",
+        );
+        let (out, _) = rewrite_cargo_toml(
+            &other,
+            Path::new("/leaf"),
+            Path::new("/leaf/src/qemu_rtic_main_e2e"),
+            Some("src/main.rs"),
+            "qemu_rtic_main_e2e",
+            &mut report,
+        )
+        .unwrap();
+        assert!(out.contains("[[bin]]"), "{out}");
+    }
+
+    /// A leaf whose manifest turns on `nros/param-services` sized the six
+    /// parameter servers through `manifest_infra`; the workspace road reads
+    /// `[system] features` alone, so the migration states the family there.
+    /// Found on `bins/param-store-threadx-riscv64`: migrated without it, the
+    /// image booted with one publisher slot and failed `NodeRegister`.
+    #[test]
+    fn manifest_service_families_move_into_the_bringup() {
+        let d = scratch("families");
+        write(
+            &d.join("Cargo.toml"),
+            r#"[package]
+name = "native_talker"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+nros = { version = "*", features = ["macros", "param-services"] }
+
+[workspace]
+"#,
+        );
+        write(
+            &d.join("package.xml"),
+            &package_xml("native_talker", "nros_cargo"),
+        );
+        write(&d.join("system.toml"), SYSTEM);
+        write(&d.join("src/lib.rs"), "pub struct Talker;\n");
+
+        let p = plan(&d).unwrap();
+        apply(&p).unwrap();
+        let sys = std::fs::read_to_string(d.join("src/native_talker_bringup/system.toml")).unwrap();
+        let doc: toml::Value = sys.parse().unwrap();
+        let features = doc["system"]["features"].as_array().unwrap();
+        assert_eq!(
+            features,
+            &vec![toml::Value::from("param_services")],
+            "{sys}"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+
+        // Already declared: nothing to add, so no edit at all.
+        assert_eq!(
+            with_manifest_families("[system]\nfeatures = [\"param_services\"]\n", (true, false))
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            with_manifest_families("[system]\n\n[lifecycle]\n", (false, true)).unwrap(),
+            None,
+            "the typed block declares the family too"
+        );
+    }
 
     /// A copy of the Rust shape (`examples/linux/rust/talker`).
     #[test]
