@@ -138,6 +138,30 @@ function(_nros_image_knob_spelling _out _image _id _val)
         PARENT_SCOPE)
 endfunction()
 
+# _nros_image_consume_overrides(<ids_var>) -- issue 2363.
+#
+# The `-DNROS_OVERRIDE_<ID>=<v>` cache entries this configure carries: their IDs
+# in <ids_var>, each value in `_override_val_<ID>` (both in the caller's scope),
+# and every entry removed from the cache. Removing them is what makes an
+# override TRANSIENT (RFC-0103 D2): CMake caches every `-D`, so a row that
+# stopped passing one kept it on every incremental re-configure of the same
+# build dir, and only a wipe dropped it. Now the next configure applies exactly
+# the overrides its own command line passes. A function of its own so
+# `tests/zephyr-transient-overrides-tests.sh` can drive it on a probe project.
+function(_nros_image_consume_overrides ids_var)
+    get_cmake_property(_cache_vars CACHE_VARIABLES)
+    set(_ids "")
+    foreach(_v IN LISTS _cache_vars)
+        if(_v MATCHES "^NROS_OVERRIDE_(.+)$")
+            set(_id "${CMAKE_MATCH_1}")
+            list(APPEND _ids "${_id}")
+            set(_override_val_${_id} "$CACHE{${_v}}" PARENT_SCOPE)
+            unset(${_v} CACHE)
+        endif()
+    endforeach()
+    set(${ids_var} "${_ids}" PARENT_SCOPE)
+endfunction()
+
 function(nros_image_kconfig_hook)
     # Issue 2189 -- what this hook rendered, for `nros_system_generate()`: it
     # runs later, knows the bringup and the image its bake resolves, and is the
@@ -162,13 +186,16 @@ function(nros_image_kconfig_hook)
     endif()
     get_filename_component(_kgen "${_kbin}/../nros/Kconfig.from-system-toml" ABSOLUTE)
     # Every `-DNROS_OVERRIDE_<ID>=<v>` on the configure line (cache entries).
-    get_cmake_property(_cache_vars CACHE_VARIABLES)
-    set(_overrides "")
-    foreach(_v IN LISTS _cache_vars)
-        if(_v MATCHES "^NROS_OVERRIDE_(.+)$")
-            list(APPEND _overrides "${CMAKE_MATCH_1}")
-        endif()
-    endforeach()
+    #
+    # Issue 2363 -- TRANSIENT means this configure's, so each is CONSUMED: its
+    # value is kept for this configure (`_override_val_<ID>`) and its cache entry
+    # removed at once. CMake caches every `-D`, so without this a row that
+    # stopped passing an override kept it on every incremental re-configure of
+    # the same build dir, and nothing short of a wipe dropped it. A later
+    # configure therefore applies exactly the overrides its own command line
+    # passes. This hook runs once per configure (modules.cmake), so nothing
+    # later in the same configure reads the cache entry.
+    _nros_image_consume_overrides(_overrides)
 
     # Drop an earlier rendering of ours from the cache value, whatever happens
     # below. A path that no longer exists would otherwise fail Kconfig.
@@ -311,12 +338,12 @@ function(nros_image_kconfig_hook)
     endif()
     set(_override_args "")
     foreach(_id IN LISTS _overrides)
-        list(APPEND _override_args --override "${_id}=$CACHE{NROS_OVERRIDE_${_id}}")
+        list(APPEND _override_args --override "${_id}=${_override_val_${_id}}")
     endforeach()
     if(_overrides)
         string(REPLACE ";" ", " _ov "${_overrides}")
         message(STATUS "nano-ros: image `${_image}` knob override(s) from the command line: "
-            "${_ov} (transient; RFC-0103 D2)")
+            "${_ov} (transient: this configure only; RFC-0103 D2, issue 2363)")
     endif()
 
     # phase-530 W4 (RFC-0120 D5) -- configure the image HERE, before Kconfig:

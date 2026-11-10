@@ -2144,7 +2144,7 @@ def main():
         # `<dir>/src/<entry>`, the same path `validate-workspaces` checks. A
         # zephyr workspace row IS a west row; that table has no `builder` key to
         # say so, so the platform is the discriminator.
-        west_rows = [e for e in load(a.manifest) if e.get("builder") == "west"]
+        west_records = [e for e in load(a.manifest) if e.get("builder") == "west"]
         for e in load_workspace_fixtures(a.manifest):
             if e.get("platform") not in ZEPHYR_WEST_PLATFORMS:
                 continue
@@ -2164,9 +2164,9 @@ def main():
             if not zephyr_application_is_generated(e):
                 e["dir"] = f"{e['dir'].rstrip('/')}/src/{image_entry_package(e)}"
             e.setdefault("west_role", "entry")
-            west_rows.append(e)
+            west_records.append(e)
 
-        for e in west_rows:
+        for e in west_records:
             if a.platform and e.get("platform") != a.platform:
                 continue
             # phase-350 W1.b — lane narrowing, through `row_coord` like every
