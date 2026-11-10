@@ -65,7 +65,7 @@
 //!
 //! `nros` exposes only FUNCTIONAL features — `std`/`alloc`, the `rmw-cffi`
 //! vtable, `lending`, `bridge`/`config`, `param-services`,
-//! `lifecycle-services`, `safety-e2e`, `stream`, `ffi-sync`, and the ROS
+//! `lifecycle-services`, `safety-e2e`, `stream`, and the ROS
 //! edition (`ros-humble`/`ros-iron`). There are NO `platform-*` or concrete
 //! `rmw-*` selector features (Phase 248 C7). Platform + RMW are selected by the
 //! board / staticlib root via dependencies, not `nros` features. The
