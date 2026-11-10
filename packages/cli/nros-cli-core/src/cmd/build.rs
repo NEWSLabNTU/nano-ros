@@ -1836,6 +1836,14 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                         {
                             return None;
                         }
+                        // RFC-0071 D19 — an image naming an owned entry builds
+                        // that package, which the root already adds as a
+                        // subdirectory; it emits no entry of its own.
+                        match owned_entry_dir(&root, &id, &img) {
+                            Ok(Some(_)) => return None,
+                            Ok(None) => {}
+                            Err(e) => return Some(Err(e)),
+                        }
                         if img.before_boot.is_some() {
                             return Some(Err(before_boot_not_on_c_road(&id)));
                         }
@@ -1929,11 +1937,25 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     &image_rows,
                 )?
                 .is_some();
+                // RFC-0071 D19 — a configure whose images all build OWNED
+                // entries emits no entry, and a bringup with no launch file
+                // (none authored, none generated) has no model to plan. Such a
+                // root names no SYSTEM, which `nano_ros_workspace` reads as
+                // "no bringup to plan" and skips the metadata step for: the
+                // owned entries' own `main`s are the whole program.
+                let plans_nothing = cmake_entries.is_empty()
+                    && !bringup_dir.join("launch").is_dir()
+                    && !nros_orchestration_ir::model_location::generated_launch_dir(&bringup_dir)
+                        .is_some_and(|d| d.is_dir());
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
                     entries: cmake_entries,
                     image_env,
                     workspace: root.clone(),
-                    system: bringup.clone(),
+                    system: if plans_nothing {
+                        String::new()
+                    } else {
+                        bringup.clone()
+                    },
                     platform: platform.clone(),
                     // phase-484 W4d — the board's OWN cmake module, not the
                     // alias the image happened to author: `board = "freertos"`
@@ -2078,9 +2100,13 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // A generated entry is a top-level target of the generated
                 // root; a hand-written `src/<entry>` package is a subdirectory
                 // (the fixture locator's two shapes).
+                // RFC-0071 D19 — a NAMED owned entry's executable is whatever
+                // its own CMakeLists.txt calls it, under `pkg/<name>/`.
+                let named_owned = image.entry.is_some()
+                    && matches!(owned_entry_dir(&root, &image_id, &image), Ok(Some(_)));
                 output = Some(crate::cmd::build_next::BuildOutput::CMake {
                     build_dir: manifest_dir.join("cmake"),
-                    executable: Some(
+                    executable: (!named_owned).then(|| {
                         if root
                             .join("src")
                             .join(&want_entry)
@@ -2090,8 +2116,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                             format!("src/{want_entry}/{want_entry}")
                         } else {
                             want_entry.clone()
-                        },
-                    ),
+                        }
+                    }),
                 });
                 Some(
                     Handoff::new(
@@ -7577,10 +7603,13 @@ fn generated_outputs(
     let rel = |p: PathBuf| p.strip_prefix(root).map(Path::to_path_buf).unwrap_or(p);
     match driver {
         Driver::West if image.entry.is_some() => Vec::new(),
-        // RFC-0071 D19 — on the cargo road a named owned entry that resolves
-        // suppresses generation too; one that does not resolve fails the
-        // image's own build, and claims the generated path meanwhile.
-        Driver::Cargo if matches!(owned_entry_dir(root, image_id, image), Ok(Some(_))) => {
+        // RFC-0071 D19 — on the cargo and CMake roads a named owned entry
+        // that resolves suppresses generation too; one that does not resolve
+        // fails the image's own build, and claims the generated path
+        // meanwhile.
+        Driver::Cargo | Driver::CMake
+            if matches!(owned_entry_dir(root, image_id, image), Ok(Some(_))) =>
+        {
             Vec::new()
         }
         Driver::Cargo | Driver::West => {

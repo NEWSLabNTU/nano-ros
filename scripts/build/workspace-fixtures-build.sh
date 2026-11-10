@@ -528,7 +528,14 @@ build_workspace() {
                     echo "  !! $id: nros build failed (rc=$rc); the row's artifact is NOT current (issue 1961)" >&2
                     return "$rc"
                 }
-                if [ -x "$build_subdir/$entry" ]; then
+                # RFC-0071 D19 — an image naming an OWNED entry builds that
+                # package as a subdirectory of the root (`pkg/<name>`), and
+                # its executables are its own CMakeLists.txt's.
+                local generated_entry
+                generated_entry="$(printf '%s' "$image" | tr -- '-./' '___')_entry"
+                if [ "$entry" != "$generated_entry" ] && [ -d "$build_subdir/pkg/$entry" ]; then
+                    echo "     built: $dir/$build_subdir/pkg/$entry (owned entry)"
+                elif [ -x "$build_subdir/$entry" ]; then
                     echo "     built: $dir/$build_subdir/$entry"
                 else
                     # A generated entry lands at the TOP of the cmake binary
