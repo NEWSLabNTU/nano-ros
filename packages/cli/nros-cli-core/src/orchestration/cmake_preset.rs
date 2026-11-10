@@ -144,7 +144,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let presets = tmp.path().join("presets");
         let repo = tmp.path().join("nano-ros");
-        let toolchain = repo.join("cmake/toolchain/armv7a-nuttx-eabi.cmake");
+        let toolchain = repo.join("cmake/toolchain/armv7a-nuttx-eabihf.cmake");
         let bin = tmp.path().join("sdk/gcc/bin");
         std::fs::create_dir_all(&bin).unwrap();
 

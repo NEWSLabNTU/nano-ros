@@ -1,13 +1,13 @@
-# cmake/toolchain/armv7a-nuttx-eabi.cmake
+# cmake/toolchain/armv7a-nuttx-eabihf.cmake
 #
 # CMake toolchain file for NuttX on ARM Cortex-A7 (QEMU virt board).
 #
 # Selects the arm-none-eabi cross-compiler and sets the Rust target triple
-# so that Corrosion compiles nros-c / nros-cpp for armv7a-nuttx-eabi.
+# so that Corrosion compiles nros-c / nros-cpp for armv7a-nuttx-eabihf (hard-float).
 #
 # Usage:
 #   cmake -S . -B build \
-#         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/armv7a-nuttx-eabi.cmake \
+#         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain/armv7a-nuttx-eabihf.cmake \
 #         -DNROS_RMW=zenoh \
 #         -DNROS_PLATFORM=nuttx_armv7a \
 #         -DNROS_BUILD_CODEGEN=OFF

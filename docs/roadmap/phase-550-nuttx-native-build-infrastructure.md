@@ -1,6 +1,7 @@
 # Phase 550 -- NuttX builds on NuttX's own infrastructure
 
-**Status (2026-11-11). NOT STARTED.** Candidate work for
+**Status (2026-11-11). IN PROGRESS: W2 and W12 done; the rest not started.**
+Candidate work for
 [RFC-0126](../design/0126-nuttx-builds-on-nuttx-infrastructure.md), whose
 decisions are not ruled yet. Each item names the question in
 [issue 2236](../issues/2236-nuttx-make-app-as-project.md) that gates it
@@ -66,6 +67,31 @@ looks`).
 - Gate: none.
 - **Acceptance:** W1's armv7a build passes with `third-party/nuttx/nuttx`
   uninitialised and `NUTTX_DIR` unset in the caller's environment.
+- **Status: DONE (2026-11-11).** `NROS_CARGO_BUILD` sets
+  `NUTTX_DIR=$(TOPDIR)`, `NUTTX_APPS_DIR=$(APPDIR)` and
+  `NUTTX_EXPORT_DIR=$(TOPDIR)` on the cargo command. The first two are the
+  `env` names of `[source.nuttx-kernel]` / `[source.nuttx-apps]`, the
+  ladder's env rung (RFC-0103 D3), the channel `nros build` and the cmake
+  road already use; no new spelling. They are set on the command, so they
+  win over an exported value: this road states the tree it builds (the
+  ladder's arg rung), and any other tree is issue 0525's headers-from-one,
+  link-from-another split. `NUTTX_EXPORT_DIR` is the class sweep: it is
+  `nros_build_paths::nuttx_include_root`'s override, read before the per-arch
+  snapshot under the kernel tree, so pinning it keeps the headers on the live
+  `$(TOPDIR)/include` rather than a `build-nuttx.sh` snapshot or an exported
+  tree. `NUTTX_INCLUDE_DIR` stays (upstream `Rust.mk`'s spelling; nothing in
+  nano-ros reads it). The empty-triple fallback still calls upstream's macro
+  without these (W4 deletes it).
+  E2E, W1's lane not yet existing: a scratch clone of the pinned kernel and
+  apps trees (`/mnt/wd/nt/nx`, never the shared tree), board defconfig,
+  shell staged, `CONFIG_NROS=y`, `NUTTX_DIR` unset, the checkout's
+  `third-party/nuttx/nuttx` empty, `make -j` on 4 jobs. qemu-armv7a before:
+  rc 2 in 16 s, `zpico-sys` stops with `nuttx-kernel: not provisioned
+  anywhere this build looks`. After: rc 0 in 66 s (cargo 36.2 s, `std`
+  compiled, item 1), `libnros_c.a` 2,314,740 bytes, `nuttx` ELF 4,500,260
+  bytes linked; zenoh-pico compiled against the scratch kernel's `include/`.
+  rv-virt after: rc 2 in 5 s, past the kernel lookup, at 2426 item 2's host
+  `cc` (`unrecognized argument in option '-mabi=ilp32'`), W3's scope.
 
 ### W3 -- Cross tools and CPU flags from NuttX (2426 item 2)
 
@@ -188,6 +214,19 @@ override in `nros-board-nuttx-qemu/src/entry.rs` goes.
 - **Acceptance:** `git grep external-Kconfig.in` finds only archived docs;
   every renamed path is updated in `nros-board.toml`, the docs and the SDK
   index; `just check fast` green.
+- **Status: DONE (2026-11-11).** The template is deleted and
+  `integrations/nuttx/Kconfig`'s comment names what writes
+  `apps/external/Kconfig` (`stage-external-apps.sh`, one explicit `source`
+  line). The rust-toolchain comment says why the nightly is pinned
+  (`-Z build-std` of `core` / `alloc`) and that only the make road still
+  builds `std` against the `libc` fork. The toolchain file is
+  `cmake/toolchain/armv7a-nuttx-eabihf.cmake`, header fixed, every live
+  reference updated (`nros-board.toml`, both board cmake files, `just nuttx`,
+  the CLI's preset and descriptor docs, RFC-0048, RFC-0096, issues 2236 and
+  2426; the SDK index names no toolchain file). 2236 section 1 now cites the
+  generated `apps/external/Kconfig`. `git grep external-Kconfig.in` outside
+  archived docs finds only this item's own text, which archives with the
+  phase. `just check fast` green.
 
 ### W13 -- The roads (issue 2236 Q10)
 

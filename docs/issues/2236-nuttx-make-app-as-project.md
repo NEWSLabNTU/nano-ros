@@ -133,7 +133,8 @@ drifted from it:
 
 **Where the user's app sits.** NuttX discovers apps through
 `$(APPDIR)/external/*/Make.defs` (`integrations/nuttx/external-Make.defs.in`)
-and `osource "$APPSDIR/external/*/Kconfig"` (`external-Kconfig.in`). The
+and `apps/external/Kconfig`, which `scripts/nuttx/stage-external-apps.sh`
+generates with one explicit `source` line per staged app. The
 nano-ros shell is ONE of those apps (`Make.defs:15`,
 `CONFIGURED_APPS += $(APPDIR)/external/nano-ros`); the user's app is a
 sibling that the shell never names.
@@ -556,7 +557,7 @@ nightly: armv7a has no triple, and the release path's
 `panic_immediate_abort` feature was retired by the nightly. The arm
 `ARCHCPUFLAGS` match the four places we restate them (the make road's
 literals, the board's `cargo_config` rustflags and `CFLAGS`, and
-`cmake/toolchain/armv7a-nuttx-eabi.cmake`), plus `-mlittle-endian`; the
+`cmake/toolchain/armv7a-nuttx-eabihf.cmake`), plus `-mlittle-endian`; the
 committed arm export snapshot's `scripts/Make.defs` carries the same line.
 The rv-virt flags match the board's `-march=rv32imac -mabi=ilp32`.
 
@@ -591,8 +592,9 @@ of them restates CPU flags by hand: micro-ROS reads `ARCHCPUFLAGS`.
 
 ### Corrections to this issue's own text
 
-- Section 1 cites `integrations/nuttx/external-Kconfig.in` as how the user's
-  app is discovered. Nothing installs that file: `stage-external-apps.sh`
+- Section 1 cited an `osource`-glob Kconfig template in `integrations/nuttx/`
+  as how the user's app is discovered (corrected, and the template deleted,
+  in phase-550 W12). Nothing installed that file: `stage-external-apps.sh`
   writes its own `external/Kconfig` (`:89-103`) because, its comment says,
   the bundled `kconfig-conf` lacks `osource`. Only
   `external-Make.defs.in` is installed (`:76`).
@@ -630,12 +632,12 @@ the questions are numbered on from Q8 at the end.
 | --- | --- | --- | --- |
 | armv7a triple synthesis, and the empty-triple fallback that calls upstream's macro | `integrations/nuttx/Makefile:201-206`, `:274-276` | `RUST_TARGET_TRIPLE` / `nuttx_rust_target_triple` | no armv7a branch, measured; the fallback cannot build (issue 2426 item 4) |
 | `NROS_NUTTX_TRIPLE := armv7a-nuttx-eabihf` | `integrations/nuttx/Make.defs:65` | the same macro | as above |
-| CPU and C flags as literals | `Makefile:229-231`, `:242-248`; board `cargo_config` rustflags, `CFLAGS_*`, `NUTTX_*_CFLAGS`; `cmake/toolchain/armv7a-nuttx-eabi.cmake` | `$(ARCHCPUFLAGS)` / `$(CROSSDEV)` from `Make.defs`, or the export's `scripts/Make.defs` | arm value equals ours plus `-mlittle-endian`; rv-virt equal; measured |
+| CPU and C flags as literals | `Makefile:229-231`, `:242-248`; board `cargo_config` rustflags, `CFLAGS_*`, `NUTTX_*_CFLAGS`; `cmake/toolchain/armv7a-nuttx-eabihf.cmake` | `$(ARCHCPUFLAGS)` / `$(CROSSDEV)` from `Make.defs`, or the export's `scripts/Make.defs` | arm value equals ours plus `-mlittle-endian`; rv-virt equal; measured |
 | our own cargo command (`NROS_CARGO_BUILD`) | `Makefile:241-263` | `RUST_CARGO_BUILD` / `nuttx_add_rust` | broken at our pins with our nightly on both boards, measured; fixed on upstream `master` except armv7a |
 | parse-time image crate generation, guarded for `olddefconfig`'s parse | `Makefile:105-131`, issue 0551 | `context::` (a recipe, so it runs once per build, after configure) | available |
 | a second nightly pin | `Makefile:144` | none (upstream reads the ambient toolchain) | -- |
 | a CMake shell that reads an undeclared `CONFIG_NROS_RMW` and is never staged | `integrations/nuttx/CMakeLists.txt` | `external/CMakeLists.txt` + `nuttx_add_application` / `nuttx_add_extra_library` | available; the staged tree breaks a CMake configure today (2426 item 7) |
-| an unused `external/Kconfig` template | `integrations/nuttx/external-Kconfig.in` | `mkkconfig.sh` | our staging writes its own |
+| an unused `external/Kconfig` template | deleted in phase-550 W12 | `mkkconfig.sh` | our staging writes its own |
 | configure by `cp defconfig .config` + `olddefconfig` ("replicates what tools/configure.sh does") | `scripts/nuttx/build-nuttx.sh:161-163`, `:292` | `tools/configure.sh <config-dir>`, with `#include` fragments through `process_config.sh` | available; needs `kconfig-tweak` (build-nuttx.sh's stated reason) |
 | the app runs by overriding the `nsh_main` symbol | `packages/boards/nros-board-nuttx-qemu/src/entry.rs:37`, `CONFIG_INIT_ENTRYPOINT="nsh_main"` in the board defconfig | `CONFIG_INIT_ENTRYPOINT="<prog>_main"` | available |
 | the image link restated as 47 `link-arg`s across the two boards | board `cargo_config` (`-Tdramboot.ld`, the kernel lib group, `-lgcc`) | NuttX's own final link (`LD: nuttx`) | available on the apps road; the leaf road links the export itself |

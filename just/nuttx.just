@@ -263,7 +263,7 @@ build-fixtures-arm:
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
     codegen="$(nros_cargo_codegen_c_bin)"
-    toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabi.cmake"
+    toolchain="$(pwd)/cmake/toolchain/armv7a-nuttx-eabihf.cmake"
     nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu/nros-nuttx-ffi"
     # Phase 181.5.c — collapsed-shape NuttX C / C++ examples from the SSOT
     # manifest (Zenoh only; Cyclone on NuttX is gated on a hosted

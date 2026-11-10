@@ -95,7 +95,7 @@ endif()
 # want CMake itself to cross to ARM, but most of the time cargo
 # drives the cross via build.rs and CMake is host-mode.
 set(NUTTX_BOARD_TOOLCHAIN_FILE
-    "${CMAKE_CURRENT_LIST_DIR}/../toolchain/armv7a-nuttx-eabi.cmake"
+    "${CMAKE_CURRENT_LIST_DIR}/../toolchain/armv7a-nuttx-eabihf.cmake"
     CACHE FILEPATH "Optional CMake toolchain file for arm-none-eabi cross." FORCE)
 
 # ---------------------------------------------------------------------------
@@ -134,7 +134,7 @@ if(NOT DEFINED CACHE{Rust_CARGO_TARGET})
 endif()
 
 # issue #149 — in a WORKSPACE (host-side) configure the standalone NuttX toolchain
-# file (`cmake/toolchain/armv7a-nuttx-eabi.cmake`, which pins Rust_TOOLCHAIN to the
+# file (`cmake/toolchain/armv7a-nuttx-eabihf.cmake`, which pins Rust_TOOLCHAIN to the
 # NuttX nightly) is NOT loaded — cargo drives the cross via build.rs and CMake stays
 # host-mode. So a tier-3 build-std cross-build spawned during the workspace configure
 # (notably the C++ interface FFI glue `nano_ros_cpp_ffi_<msg>`, built with

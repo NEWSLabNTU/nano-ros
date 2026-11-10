@@ -8,13 +8,10 @@
 #
 # 157.B — this file is the integration shell's own Kconfig,
 # discovered by NuttX once symlinked to `apps/external/nano-ros/`
-# AND the Phase 157.C staging script has copied
-# `external-Kconfig.in` to `apps/external/Kconfig` (which
-# osource-globs every `apps/external/*/Kconfig`). Example apps
-# (apps/external/nano-ros-talker-c/Kconfig etc.) are discovered
-# as separate apps/external/ siblings via that same glob. Example
-# Kconfigs depend on NROS_C_API / NROS_CPP_API (declared below)
-# so menuconfig only shows examples whose host API is enabled.
+# AND `scripts/nuttx/stage-external-apps.sh` has generated
+# `apps/external/Kconfig`, which `source`s this file by name (NuttX's
+# bundled kconfig-conf has no `osource` glob, so the script writes
+# one explicit line; phase-550 W12 deleted the unused glob template).
 
 config NROS
     bool "nano-ros ROS 2 client"

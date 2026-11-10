@@ -238,7 +238,35 @@ NROS_CFLAGS_ARMV7A := env.CFLAGS_armv7a_nuttx_eabihf.value="-mcpu=cortex-a7 -mfl
 # JSON stream and copies each package's headers out of ITS `$OUT_DIR` into
 # the image's placed dir (`Make.defs`). One placer for every road (the Zephyr
 # and cmake lanes run the same script).
+#
+# Phase-550 W2 (issue 2426 item 8) -- the kernel tree reaches cargo. On this
+# road the kernel IS $(TOPDIR), the tree make is building, and the apps tree
+# is $(APPDIR). Build scripts find both through the ONE ladder
+# (`nros_build_paths::locate`, RFC-0103 D3), whose env rung is the
+# `[source.nuttx-kernel]` / `[source.nuttx-apps]` `env` names in
+# `nros-sdk-index.toml`: `NUTTX_DIR` / `NUTTX_APPS_DIR`, the channel `nros
+# build` and the cmake road use too. Without them the ladder fell through to
+# the checkout's `third-party/nuttx/nuttx` ("nuttx-kernel: not provisioned
+# anywhere this build looks"), or, where that submodule is initialised,
+# compiled zenoh-pico against nano-ros's kernel instead of this one.
+#
+# Set on the command, so they win over an exported value. This road STATES
+# the tree (the ladder's arg rung) rather than looking for one: the archive
+# links into $(TOPDIR)'s image, so headers from any other tree are issue
+# 0525's split (config.h from one kernel, the link from another).
+#
+# `NUTTX_EXPORT_DIR` is the include-root override that
+# `nros_build_paths::nuttx_include_root` consults BEFORE the per-arch
+# snapshot under the kernel tree. Pinned to $(TOPDIR), the headers are
+# $(TOPDIR)/include, the live tree's: a `nros-nuttx-export-<arch>` snapshot
+# left there by `build-nuttx.sh` describes the configuration that script
+# built, not this one, and an exported value names some other tree. Its
+# `libs/` half (`nuttx_export::snapshot_root`) is read only by board crates,
+# which this image does not build, and falls through when `libs/` is absent.
 define NROS_CARGO_BUILD
+	NUTTX_DIR=$(TOPDIR) \
+	NUTTX_APPS_DIR=$(APPDIR) \
+	NUTTX_EXPORT_DIR=$(TOPDIR) \
 	NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
 	CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc \
 	CC_armv7a_nuttx_eabi=arm-none-eabi-gcc \
