@@ -688,3 +688,39 @@ fn imageless_workspace_second_configure_is_a_no_op() {
     assert_eq!(second.sync_passes, 0, "{second:?}");
     cleanup(&ws);
 }
+
+/// Issue 2394 -- `--census` takes an optional image and `--migrate` is a
+/// switch; neither may ride a `--check` or a `--dry-run`, which write nothing.
+#[test]
+fn census_and_migrate_flags_parse_and_refuse_a_writeless_configure() {
+    let args = |argv: &[&str]| {
+        let mut full = vec!["configure"];
+        full.extend_from_slice(argv);
+        match parse(&full) {
+            Cmd::Configure(a) => a,
+            _ => panic!("`nros configure` did not parse to Cmd::Configure"),
+        }
+    };
+    assert_eq!(args(&[]).census, None);
+    assert_eq!(args(&["--census"]).census.as_deref(), Some(""));
+    assert_eq!(
+        args(&["--census", "demo_bringup:threadx"])
+            .census
+            .as_deref(),
+        Some("demo_bringup:threadx")
+    );
+    assert!(args(&["--migrate"]).migrate);
+    for bad in [
+        &["configure", "--census", "--check"][..],
+        &["configure", "--census", "--dry-run"][..],
+        &["configure", "--migrate", "--check"][..],
+    ] {
+        let mut full = vec!["nros"];
+        full.extend_from_slice(bad);
+        assert!(
+            Cli::try_parse_from(&full).is_err(),
+            "`{}` parsed, but it must be refused",
+            bad.join(" ")
+        );
+    }
+}

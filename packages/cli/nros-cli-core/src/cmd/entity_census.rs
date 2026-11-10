@@ -785,6 +785,28 @@ pub(crate) fn take_for_build(root: &Path, qualified: &str, offline: bool) {
     }
 }
 
+/// Issue 2394 -- `nros configure --census`: take `qualified`'s census the way
+/// `take --image` does, and FAIL when it cannot, because the user asked for it.
+/// Plans the host image from a current tree first ([`take_census_verb`]).
+pub(crate) fn take_for_configure(root: &Path, qualified: &str, offline: bool) -> Result<()> {
+    take_census_verb(TakeArgs {
+        image: Some(qualified.to_string()),
+        leaf: None,
+        workspace: Some(root.to_path_buf()),
+        offline,
+        plan: false,
+        model: None,
+        timeout_secs: 60,
+        build_step: false,
+        fail_if_changed: false,
+    })
+}
+
+/// Issue 2394 -- [`take_for_configure`] for a standalone C/C++ leaf.
+pub(crate) fn take_leaf_for_configure(leaf: &Path, image: Option<&str>) -> Result<()> {
+    take_leaf_census(leaf, image, 60, false)
+}
+
 /// Issue 2137 -- [`take_for_build`] for a STANDALONE C/C++ leaf whose
 /// components take their entities from its census (`take --leaf`). Same
 /// contract: a take that cannot run is reported, and the leaf's configure
@@ -1871,16 +1893,16 @@ fn census_remedy(entry: Option<&str>, model: Option<&Path>) -> String {
     let bringup = model
         .and_then(crate::model_gate::infer_bringup_dir)
         .and_then(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()));
-    // dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
+    // Issue 2394: the user-tier home is `nros configure --census`.
     let take = match (bringup, image) {
-        (Some(b), Some(i)) => format!("nros dev image entity-census take --image {b}:{i}"),
-        _ => "nros dev image entity-census take --image <bringup>:<this image>".to_string(),
+        (Some(b), Some(i)) => format!("nros configure --census {b}:{i}"),
+        _ => "nros configure --census <bringup>:<this image>".to_string(),
     };
     format!(
-        "Take a census of the code as it is now, from the workspace root:\n    {take}\nIt builds \
-         the NATIVE image generated from the same launch file and runs it in census mode. This \
-         configure does not run it for you: it does not build a native image from inside a \
-         cross configure."
+        "Take a census of the code as it is now: in the workspace, run\n    {take}\nthen build \
+         again. It builds the NATIVE image generated from the same launch file and runs it in \
+         census mode. This configure does not run it for you: it does not build a native image \
+         from inside a cross configure."
     )
 }
 
@@ -3179,13 +3201,13 @@ mod tests {
         let model = bringup.join("config/system_model.yaml");
         let remedy = super::census_remedy(Some("threadx_entry"), Some(&model));
         assert!(
-            remedy.contains("nros dev image entity-census take --image demo_bringup:threadx"),
+            remedy.contains("nros configure --census demo_bringup:threadx"),
             "{remedy}"
         );
         // Neither half known: still the verb, with the shape spelled out.
         let bare = super::census_remedy(None, None);
         assert!(
-            bare.contains("entity-census take --image <bringup>:"),
+            bare.contains("nros configure --census <bringup>:"),
             "{bare}"
         );
     }
@@ -3488,7 +3510,7 @@ mod tests {
             "{:#}",
             take_model_in_build_with(&model, ws.path(), 5, false, true).unwrap_err()
         );
-        assert!(err.contains("entity-census take --image"), "{err}");
+        assert!(err.contains("nros configure --census"), "{err}");
     }
 
     /// Issue 2396 -- a model with no contract has nothing to take in a build,

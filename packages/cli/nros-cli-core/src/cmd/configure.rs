@@ -31,6 +31,31 @@ pub struct Args {
     /// Configure even when every image's stamp is current.
     #[arg(long)]
     pub force: bool,
+
+    /// Take the entity census first: build the native image generated from
+    /// the same launch file, run it, and record what it registers. Every
+    /// image this configure covers, or only `BRINGUP:IMAGE`: the image whose
+    /// build checks the census, usually a cross image, as in
+    /// `nros build BRINGUP:IMAGE`. A plain configure only reports a census
+    /// that is missing or stale, because taking one builds and runs a
+    /// program.
+    // Issue 2394, RFC-0117 amendment "user-tier verbs for 2394".
+    #[arg(
+        long,
+        value_name = "BRINGUP:IMAGE",
+        num_args = 0..=1,
+        default_missing_value = "",
+        conflicts_with_all = ["check", "dry_run"]
+    )]
+    pub census: Option<String>,
+
+    /// Apply the known, reversible layout migrations first, printing every
+    /// file moved. Today that is one: a `system.toml` beside a package's
+    /// code moves into a bringup package.
+    // Issue 2394, RFC-0117 amendment "user-tier verbs for 2394"; the move is
+    // RFC-0121 D8.
+    #[arg(long, conflicts_with_all = ["check", "dry_run"])]
+    pub migrate: bool,
 }
 
 /// What one configure did. `run` prints it; tests read it.
@@ -68,6 +93,13 @@ pub fn run(args: Args) -> Result<()> {
 /// [`run`], returning what it did.
 pub fn configure(args: Args) -> Result<Outcome> {
     let project = project_root(args.sync.workspace.as_deref())?;
+    if args.migrate {
+        migrate(&project)?;
+    }
+    if let Some(want) = &args.census {
+        let named: Vec<String> = args.sync.image.iter().cloned().collect();
+        take_censuses(&project, want, &named, args.sync.offline)?;
+    }
     // `--check` and `--dry-run` keep the meaning they had on `nros sync`: a
     // check, and a print of what would be written. Neither writes, so neither
     // plans nor records a stamp.
@@ -169,6 +201,79 @@ pub(crate) fn default_sync_args() -> ws::SyncArgs {
 struct SyncOnly {
     #[command(flatten)]
     sync: ws::SyncArgs,
+}
+
+/// Issue 2394 -- `--migrate`: move every `system.toml` that sits beside a
+/// package's code into a bringup package, through the one migration
+/// (`migrate_bringup`), which prints each file it moves. The candidates are
+/// the project itself and every package its workspace discovers, filtered by
+/// the predicate configure's own warning uses.
+fn migrate(project: &Path) -> Result<()> {
+    let movable = migratable(project);
+    if movable.is_empty() {
+        eprintln!("nros configure --migrate: nothing to migrate");
+        return Ok(());
+    }
+    for dir in movable {
+        eprintln!(
+            "nros configure --migrate: moving {} into a bringup package",
+            dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                .display()
+        );
+        crate::cmd::migrate_bringup::run(crate::cmd::migrate_bringup::Args {
+            dir,
+            dry_run: false,
+            fixtures: None,
+            fixtures_root: None,
+        })?;
+    }
+    Ok(())
+}
+
+/// The directories `--migrate` would move a `system.toml` out of: `project`
+/// and every package its workspace discovers, by the predicate configure's own
+/// warning uses. `nros doctor` asks this too, and writes nothing.
+pub(crate) fn migratable(project: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![project.to_path_buf()];
+    if let Ok(ws) = crate::orchestration::workspace::Workspace::discover(project) {
+        dirs.extend(ws.packages.into_iter().map(|p| p.root));
+    }
+    dirs.sort();
+    dirs.dedup();
+    let refs: Vec<&Path> = dirs.iter().map(PathBuf::as_path).collect();
+    ws::system_toml_beside_code(&refs)
+}
+
+/// Issue 2394 -- `--census [BRINGUP:IMAGE]`: take the census of `want`, or of
+/// every image the configure covers when `want` is empty. A take with nothing
+/// to do (a host image, a model with no contract, a fresh census) does
+/// nothing; one that cannot run fails the configure, naming the image.
+fn take_censuses(project: &Path, want: &str, named: &[String], offline: bool) -> Result<()> {
+    if is_leaf(project) {
+        let image = if want.is_empty() {
+            named.first().map(|n| bare_id(n).to_string())
+        } else {
+            Some(bare_id(want).to_string())
+        };
+        return crate::cmd::entity_census::take_leaf_for_configure(project, image.as_deref())
+            .wrap_err_with(|| format!("nros configure --census: {}", project.display()));
+    }
+    let images: Vec<String> = if want.is_empty() {
+        targets(project, named)?
+            .into_iter()
+            .map(|t| t.select)
+            .collect()
+    } else {
+        targets(project, &[want.to_string()])?
+            .into_iter()
+            .map(|t| t.select)
+            .collect()
+    };
+    for q in images {
+        crate::cmd::entity_census::take_for_configure(project, &q, offline)
+            .wrap_err_with(|| format!("nros configure --census: `{q}`"))?;
+    }
+    Ok(())
 }
 
 /// The shared body of [`configure`] and [`ensure_current`].

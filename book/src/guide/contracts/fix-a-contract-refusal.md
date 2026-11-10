@@ -147,8 +147,12 @@ reason = "..."
 ```
 
 A refusal that begins `census missing:` or `census stale:` means the census is
-absent or older than the code. Run `nros build <image>` for the cross image,
-which takes the census first. If it reports that the bringup `declares no HOST
+absent or older than the code. Run `nros build <image>` for the cross image;
+it takes the census first. To take the census without building the cross
+image, run `nros configure --census <bringup>:<image>` in the workspace, with
+the same cross image. Both build and run the host image, so they take longer
+than a plain `nros configure`, which only reports that the census is stale.
+If either reports that the bringup `declares no HOST
 image resolved from the same launch and arguments`, add one, such as
 `[image.linux] board = "linux"` with the same `launch` and `args`.
 

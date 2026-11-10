@@ -85,15 +85,19 @@ endif()
 
 if(NOT EXISTS "${_ffi_a}")
     # issue 2046 — the crate names `nros-serdes` by name; the central patch
-    # table (`nros dev lock central-patch`) supplies the SDK's path, so the command
-    # works from wherever the module was copied to.
+    # table (`nros-patch.toml`) supplies the SDK's path, so the command works
+    # from wherever the module was copied to. Issue 2394: no user-tier verb
+    # writes that table outside a workspace, so the advice names the two user
+    # routes — a workspace, where `nros configure` writes it, or the module
+    # template — and no dev verb.
     get_filename_component(_ffi_dir "${CMAKE_CURRENT_LIST_DIR}/../../../ffi" ABSOLUTE)
-    # dev-verb-advice-ok: issue 2394 (no user-tier verb writes the central patch outside a workspace).
     message(FATAL_ERROR
         "nros_uorb_bridge: the generated-message FFI archive is missing:\n"
         "    ${_ffi_a}\n"
-        "Build it (its build.rs reads NROS_PX4_BRIDGE_GEN):\n"
-        "    nros dev lock central-patch --nano-ros-path ${NROS_REPO_DIR}\n"
+        "Build this module from an nros workspace (`nros configure` writes the\n"
+        "patch table it needs), or start from the PX4 module template under the\n"
+        "directory `nros locate nano-ros` prints. With the patch table in place,\n"
+        "build the archive (its build.rs reads NROS_PX4_BRIDGE_GEN):\n"
         # profile-literal-ok: prebuilt archive — the instruction that builds it
         "    NROS_PX4_BRIDGE_GEN=${_gen} cargo build --release \\\n"
         "        --manifest-path ${_ffi_dir}/Cargo.toml \\\n"

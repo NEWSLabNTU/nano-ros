@@ -350,8 +350,9 @@ fi
 want "census missing" "move 0"
 # Issue 1419 -- the remedy is ONE pasteable command naming the image asking
 # (`rtos_entry` -> `rtos`, under the model's bringup); `take` finds the native
-# sibling itself.
-want "entity-census take --image census_fixture_bringup:rtos" "move 0 names the remedy"
+# sibling itself. Issue 2394: that command is the user-tier
+# `nros configure --census`, which runs the same take.
+want "nros configure --census census_fixture_bringup:rtos" "move 0 names the remedy"
 echo "check-entity-census: move 0 ok -- no census refuses, and names the producer"
 
 # ---------------------------------------------------------------------------

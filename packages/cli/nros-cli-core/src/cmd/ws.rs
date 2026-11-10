@@ -2426,20 +2426,29 @@ fn synth_ament_prefix(_scan: &[WsPkg]) -> Option<(tempfile::TempDir, std::ffi::O
 /// taken.
 fn system_toml_beside_code_warnings(dirs: &[&Path]) -> Vec<String> {
     use nros_orchestration_ir::leaf_system;
-    dirs.iter()
-        .filter(|d| d.join(leaf_system::SYSTEM_TOML).is_file() && leaf_system::is_package_dir(d))
+    system_toml_beside_code(dirs)
+        .into_iter()
         .map(|d| {
-            // `nros dev migrate-bringup` is phase-531 W6; the refusal is
-            // RFC-0121 D7 (phase-531 W7 step 9).
-            // dev-verb-advice-ok: issue 2394 (no user-tier verb moves a bringup yet).
+            // Issue 2394: the user-tier home is `nros configure --migrate`;
+            // the refusal is RFC-0121 D7 (phase-531 W7 step 9).
             format!(
                 "sync: warning: {} sits beside the package's code; `system.toml` belongs in a \
-                 bringup package (`package.xml` + `system.toml`, no build file). Move it with \
-                 `nros dev migrate-bringup {}`. A later release refuses this layout.",
+                 bringup package (`package.xml` + `system.toml`, no build file). \
+                 `nros configure --migrate` moves it and says what it moved. A later release \
+                 refuses this layout.",
                 d.join(leaf_system::SYSTEM_TOML).display(),
-                d.display()
             )
         })
+        .collect()
+}
+
+/// The directories of `dirs` holding a `system.toml` beside package code: the
+/// warning above and `nros configure --migrate` ask the same predicate.
+pub(crate) fn system_toml_beside_code(dirs: &[&Path]) -> Vec<PathBuf> {
+    use nros_orchestration_ir::leaf_system;
+    dirs.iter()
+        .filter(|d| d.join(leaf_system::SYSTEM_TOML).is_file() && leaf_system::is_package_dir(d))
+        .map(|d| d.to_path_buf())
         .collect()
 }
 
@@ -4472,10 +4481,12 @@ fn report_census_freshness(ws_root: &Path) {
                     .unwrap_or_else(|| "<bringup>".to_string());
                 (
                     format!("model {shown}"),
-                    format!("take --image {bringup}:<the cross image that checks it>"),
+                    format!(" {bringup}:<the cross image that checks it>"),
                 )
             }
-            None => (format!("entry {name}"), format!("run --entry {name}")),
+            // An entry's own census: the flag with no image covers every
+            // image the configure does, this entry's among them.
+            None => (format!("entry {name}"), String::new()),
         };
         rows.push((label, verdict, how));
     }
@@ -4484,9 +4495,10 @@ fn report_census_freshness(ws_root: &Path) {
         println!("sync: source metadata -- entity census for {label} is {verdict}");
         if verdict.starts_with("STALE") {
             println!(
-                // See issue 0641. dev-verb-advice-ok: issue 2394 (no user-tier census verb yet).
-                "sync: source metadata -- take a new one with `nros dev image entity-census {how}`; \
-                 sync does not build the native image it needs"
+                // See issue 0641; the user-tier home is issue 2394's flag.
+                "sync: source metadata -- take a new one with `nros configure --census{how}` \
+                 (it builds and runs the native image, so it takes longer); a plain configure \
+                 does not"
             );
         }
     }
@@ -7631,7 +7643,7 @@ mod system_toml_beside_code_tests {
         assert!(w[1].contains("cmake_leaf/system.toml"), "{}", w[1]);
         for line in &w {
             assert!(line.starts_with("sync: warning: "), "{line}");
-            assert!(line.contains("nros dev migrate-bringup"), "{line}");
+            assert!(line.contains("nros configure --migrate"), "{line}");
             assert!(line.contains("refuses this layout"), "{line}");
         }
     }

@@ -231,14 +231,14 @@ package they wrote. The runner and command checks sat in the dev tier (D3),
 
 ## Amendment: user-tier verbs for 2394
 
-> **Decided 2026-11-10 (user ruling).** The table and the four answers
-> below are decisions. Nothing is implemented yet; issue 2394 tracks the
-> work, and the CLI changes with it.
+> **Decided 2026-11-10 (user ruling); implemented 2026-11-10 (issue 2394,
+> resolved).** The table and the four answers below are decisions, and every
+> site in the table now gives its user-tier advice.
 
 Issue 2394 lists the user-facing sites that still tell a user to run a dev
-verb (D3), because the action they ask for has no user-tier verb. Each
-carries a `dev-verb-advice-ok: issue 2394` marker that
-`check-user-text-dev-verbs` accepts while the issue is open.
+verb (D3), because the action they ask for had no user-tier verb. Each
+carried a `dev-verb-advice-ok` marker naming that issue, which
+`check-user-text-dev-verbs` accepts only while the issue is open.
 
 **Principle.** Fold an action into a verb the user already runs before
 adding one: a new flag beats a new verb, and a new verb beats a dev verb.
@@ -268,8 +268,10 @@ is, usually the workspace root.
 4. *Book wording.* The user pages that mention the census and the
    bringup move change in the same PR as the CLI change, not before.
 
-Done when each site is reworded to its user-tier home, and `git grep 'dev-verb-advice-ok: issue 2394'` is
-empty.
+Done when each site is reworded to its user-tier home and no site carries
+the issue's marker. Answer 1 resolved the second way: the source metadata is
+refreshed by configure's first phase, which `nros build` runs, and that
+needs no native image, so `nros new` names `nros build`.
 
 ## Alternatives considered
 
@@ -315,3 +317,7 @@ empty.
   `nros build` (under `--census` if it needs the native build), and
   `nros configure --migrate` for the bringup move; `nros doctor` stays
   read-only.
+- 2026-11-10 — the amendment is implemented (issue 2394): `nros configure`
+  takes `--census [BRINGUP:IMAGE]` and `--migrate`, `nros new` names
+  `nros build` for source metadata, and `nros doctor` names `--migrate`
+  without moving anything.
