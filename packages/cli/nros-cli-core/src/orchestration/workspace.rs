@@ -451,6 +451,59 @@ impl Workspace {
     }
 }
 
+impl Workspace {
+    /// The runtime service families a bringup's component packages COMPILE but
+    /// the bringup does not declare: `(bringup system.toml, pkg, family)`.
+    ///
+    /// A node package that turns on `nros/param-services` (or
+    /// `lifecycle-services`) puts those servers in every image that links it --
+    /// cargo unifies the feature into the entry's build. The leaf road sizes
+    /// them from the manifest (`leaf_entity_env::manifest_infra`); the
+    /// workspace road reads the bringup's `[system] features` or typed block
+    /// alone, so an undeclared family is compiled with no queryable or publisher
+    /// slot for it, and the image fails `NodeRegister` at boot.
+    pub fn undeclared_service_families(&self) -> Result<Vec<(PathBuf, String, &'static str)>> {
+        let mut out = Vec::new();
+        for bringup in self.packages.iter().filter(|p| p.system_toml.is_some()) {
+            if nros_orchestration_ir::leaf_system::is_package_dir(&bringup.root) {
+                continue;
+            }
+            let path = bringup.root.join("system.toml");
+            let doc: toml::Table = fs::read_to_string(&path)
+                .wrap_err_with(|| format!("failed to read {}", path.display()))?
+                .parse()
+                .wrap_err_with(|| format!("failed to parse {}", path.display()))?;
+            let listed = |name: &str| {
+                doc.get(name).is_some()
+                    || doc
+                        .get("system")
+                        .and_then(|s| s.get("features"))
+                        .and_then(|f| f.as_array())
+                        .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(name)))
+            };
+            let Some(system) = declaring_system(&bringup.root)? else {
+                continue;
+            };
+            let mut seen = BTreeSet::new();
+            for pkg in system.components.iter().filter_map(|c| c.pkg.as_deref()) {
+                let Some(node) = self.packages.iter().find(|p| p.name == pkg) else {
+                    continue;
+                };
+                if !seen.insert(pkg) {
+                    continue;
+                }
+                let (param, lifecycle) = crate::leaf_entity_env::manifest_infra(&node.root);
+                for (on, family) in [(param, "param_services"), (lifecycle, "lifecycle")] {
+                    if on && !listed(family) {
+                        out.push((path.clone(), pkg.to_string(), family));
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// Phase 219.L — synthesise a [`ComponentConfig`] from a CMake-derived
 /// [`CmakeNodeSummary`]. Mirrors the shape `discover_cargo_component_metadata`
 /// produces for the Cargo path: minimum keys to identify the component
@@ -2237,6 +2290,105 @@ name = "demo"
         let rows = ws.undeclared_component_rows().unwrap();
         assert_eq!(rows.len(), 1, "{rows:?}");
         assert_eq!(rows[0].1, "plain");
+    }
+
+    /// The service-family guard: a bringup whose node package turns on
+    /// `nros/param-services` must declare `param_services`, or the image
+    /// compiles the servers with no slot for them (found migrating
+    /// `bins/param-store-threadx-riscv64`).
+    #[test]
+    fn a_node_compiling_param_services_needs_the_bringup_to_declare_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws_root = tmp.path();
+        let node = ws_root.join("src/demo");
+        let bringup = ws_root.join("src/demo_bringup");
+        for d in [node.join("src"), bringup.clone()] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let pkg = |name: &str| {
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\"><name>{name}</name>\
+                 <version>0.1.0</version><description>d</description>\
+                 <maintainer email=\"a@b.c\">m</maintainer><license>MIT</license></package>\n"
+            )
+        };
+        std::fs::write(node.join("package.xml"), pkg("demo")).unwrap();
+        std::fs::write(bringup.join("package.xml"), pkg("demo_bringup")).unwrap();
+        std::fs::write(
+            node.join("Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n\n[dependencies]\n\
+             nros = { version = \"*\", features = [\"param-services\"] }\n",
+        )
+        .unwrap();
+        let system = |features: &str| {
+            format!(
+                "[system]\nname = \"demo\"\nrmw = \"zenoh\"\n{features}\n[[component]]\n\
+                 pkg = \"demo\"\nclass = \"demo::D\"\nname = \"d\"\n\n\
+                 [image.linux]\nboard = \"linux\"\n"
+            )
+        };
+        std::fs::write(bringup.join("system.toml"), system("")).unwrap();
+        let ws = Workspace::discover(ws_root).unwrap();
+        let missing = ws.undeclared_service_families().unwrap();
+        assert_eq!(missing.len(), 1, "{missing:?}");
+        assert_eq!(
+            (missing[0].1.as_str(), missing[0].2),
+            ("demo", "param_services")
+        );
+
+        std::fs::write(
+            bringup.join("system.toml"),
+            system("features = [\"param_services\"]\n"),
+        )
+        .unwrap();
+        let ws = Workspace::discover(ws_root).unwrap();
+        assert_eq!(ws.undeclared_service_families().unwrap(), vec![]);
+    }
+
+    /// The same guard over every tracked workspace.
+    #[test]
+    fn every_tracked_bringup_declares_the_service_families_its_nodes_compile() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap();
+        let out = crate::source_stamp::nros_git_command("git")
+            .args(["ls-files", "-z", "--", "*system.toml"])
+            .current_dir(&repo)
+            .output()
+            .expect("git ls-files");
+        let mut roots = BTreeSet::new();
+        for rel in String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+        {
+            let dir = repo.join(rel).parent().unwrap().to_path_buf();
+            if nros_orchestration_ir::leaf_system::is_package_dir(&dir) {
+                continue;
+            }
+            let Some(src) = dir.parent() else { continue };
+            if src.file_name().is_some_and(|n| n == "src") {
+                roots.insert(src.parent().unwrap().to_path_buf());
+            }
+        }
+        let mut missing = Vec::new();
+        for root in &roots {
+            let ws =
+                Workspace::discover(root).unwrap_or_else(|e| panic!("{}: {e:?}", root.display()));
+            for (system_toml, pkg, family) in ws.undeclared_service_families().unwrap() {
+                missing.push(format!(
+                    "{}: {pkg} compiles {family}",
+                    system_toml.display()
+                ));
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "bringups whose node packages compile a service family the bringup does \
+             not declare (add it to `[system] features`; the image has no slot for \
+             those servers otherwise):\n  {}",
+            missing.join("\n  ")
+        );
     }
 
     /// Issue 2425 -- the class guard over the tree: no tracked workspace has a
