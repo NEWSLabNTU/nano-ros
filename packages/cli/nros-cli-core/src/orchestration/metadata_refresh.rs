@@ -85,8 +85,10 @@ pub fn refresh_stale_sidecars(
     // otherwise invisible.
     for (system_toml, pkg) in workspace.undeclared_component_rows()? {
         report.unsupported.push(format!(
-            "{pkg} (named by `[[component]] pkg` in {}, but discovery found no \
-             component declaration for it, so it has no sidecar; issue 2425)",
+            "{pkg} (named by `[[component]] pkg` in {}, but nothing in the package \
+             declares a node -- its subscriptions are sized as buffered; give it a \
+             `[package.metadata.nros.node]` table, or a `nano_ros_node_register` call \
+             for a CMake package)",
             system_toml.display()
         ));
     }
