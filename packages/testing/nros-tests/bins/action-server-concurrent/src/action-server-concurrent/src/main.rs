@@ -39,7 +39,7 @@ fn reply_slot_refusals() -> Option<u32> {
 fn main() -> ! {
     // Register the RMW backend the build linked (idempotent; must run before
     // the executor opens).
-    action_server_concurrent_nros_selection::nros_board_linux::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
 
     env_logger::init();
 

@@ -53,7 +53,6 @@ packages/testing/nros-bench/large-msg-baremetal/Cargo.toml  qemu_bsp_large_msg_t
 packages/testing/nros-bench/loan-copy-count/Cargo.toml  loan_copy_count_nros_selection
 packages/testing/nros-bench/wake-latency-cortex-m3/Cargo.toml  wake_latency_cortex_m3_nros_selection
 packages/testing/nros-tests/bins/action-client-multigoal/Cargo.toml  action_client_multigoal_nros_selection
-packages/testing/nros-tests/bins/action-server-concurrent/Cargo.toml  action_server_concurrent_nros_selection
 packages/testing/nros-tests/bins/condvar-contract-freertos-mps2/Cargo.toml  condvar_contract_freertos_mps2_nros_selection
 packages/testing/nros-tests/bins/condvar-contract-threadx-linux/Cargo.toml  condvar_contract_threadx_linux_nros_selection
 packages/testing/nros-tests/bins/constrained-link-probe/Cargo.toml  constrained_link_probe_nros_selection

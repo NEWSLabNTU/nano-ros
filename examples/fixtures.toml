@@ -2721,19 +2721,29 @@ image = "linux_cyclonedds"
 # is ~115 GiB of target dirs for a two-binary pair. The id is not part of the
 # artifact-dir key — that is (platform, cargo args, env), issue 1025 — so this
 # adds a handle and moves nothing.
-[[fixture]]
+# RFC-0071 D19 (issue 2406) — one owned entry, `src/action-server-concurrent`,
+# built for both images; the zenoh image turns on the entry's own
+# `zenoh-reply-slots` probe.
+[[workspace_fixture]]
 id = "action-server-concurrent-zenoh"
 platform = "linux"
 lang = "rust"
+rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
-features = ["zenoh-reply-slots"]
+bringup = "src/action_server_concurrent_bringup"
+image = "linux"
+node_features = ["zenoh-reply-slots"]
+target_dir = "target-zenoh"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "action-server-concurrent-xrce"
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/action-server-concurrent"
+bringup = "src/action_server_concurrent_bringup"
 image = "linux_xrce"
+target_dir = "target-xrce"
 
 # issue 0322 — the client half of the MAX_GOALS stress pair. Sends more
 # concurrent goals than the server's `active_goals` table holds so a full table
@@ -3621,23 +3631,37 @@ target = "riscv64gc-unknown-none-elf"
 # per-cell).
 # ===========================================================================
 
-[[fixture]]
+# RFC-0071 D19 (issue 2406) — one owned entry, the application with its own
+# `main` that issue 1556's census test runs, built per RMW image.
+[[workspace_fixture]]
+id = "linux-c-zenoh-talker"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/talker"
+bringup = "src/native_c_talker_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-native_c_talker_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-c-xrce-talker"
 platform = "linux"
 lang = "c"
 rmw = "xrce"
 dir = "examples/linux/c/talker"
+bringup = "src/native_c_talker_bringup"
+image = "linux_xrce"
+build_subdir = "build/posix-xrce-linux-native_c_talker_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-c-cyclonedds-talker"
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/linux/c/talker"
+bringup = "src/native_c_talker_bringup"
+image = "linux_cyclonedds"
+build_subdir = "build/posix-cyclonedds-linux-native_c_talker_bringup/cmake"
 
 # Issue 0073 — C E2E-safety listener (polls rclc_polling_subscription_take_validated).
 # Its CMakeLists forces NROS_SAFETY_E2E=ON, so the harness build (zenoh only —
@@ -3709,23 +3733,37 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/logging"
 
-[[fixture]]
+# RFC-0071 D19 (issue 2406) — one owned entry, the application with its own
+# `main` that issue 1556's census test runs, built per RMW image.
+[[workspace_fixture]]
+id = "linux-cpp-zenoh-talker"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/talker"
+bringup = "src/cpp_talker_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-cpp_talker_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-cpp-xrce-talker"
 platform = "linux"
 lang = "cpp"
 rmw = "xrce"
 dir = "examples/linux/cpp/talker"
+bringup = "src/cpp_talker_bringup"
+image = "linux_xrce"
+build_subdir = "build/posix-xrce-linux-cpp_talker_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-cpp-cyclonedds-talker"
 platform = "linux"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/linux/cpp/talker"
+bringup = "src/cpp_talker_bringup"
+image = "linux_cyclonedds"
+build_subdir = "build/posix-cyclonedds-linux-cpp_talker_bringup/cmake"
 
 [[fixture]]
 id = "cpp-parameters"
