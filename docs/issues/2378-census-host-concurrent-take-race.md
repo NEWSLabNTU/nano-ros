@@ -124,6 +124,16 @@ Two takes for `c/talker`'s zenoh and xrce rows shared one `census-host`. The
 toolchain was fine (gcc 11.4, binutils 2.38). The fix landed at 15:05Z the same
 day, which is why current main does not reproduce it.
 
+## Clean-tree evidence (2026-11-10)
+
+A local `just build-test-fixtures lane=tier2` from a fresh worktree of main
+(`20d55a6101`, no build dirs) built both `examples/zephyr/c/talker` rows in that
+lane, `build-c-talker-xrce` and `build-nucleo-f767zi-c-talker-serial`, in one
+parallel Zephyr stage. The census pre-pass took each (`census-prepass:
+examples/zephyr/c/talker ...:zephyr_xrce` and `...:nucleo_serial`), and the run
+logged no `collect2`, no `CMakeTestCCompiler` failure and no `census missing`.
+Per the closing condition below, a tier-2 run on CI still decides.
+
 ## What would close it
 
 Concurrent takes on one stale leaf all succeed (the three-way repro above,

@@ -1,15 +1,17 @@
 ---
 id: 2386
 title: "On a never-built workspace, a cross image's census step builds its host image before `nros configure` has stamped it, so the cross image cannot build"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [build, census, cmake, cli]
 found: 2026-11-10
+resolved: 2026-11-10
+resolved_in: "#3396 (record_planned before the census build; the take covers every member of the cmake coordinate), verified by a clean-tree `build-test-fixtures lane=tier2`"
 related: [issue-2235, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md).**
 
 ## What
 
@@ -103,3 +105,15 @@ Test: `a_stamp_recorded_from_a_plan_is_current_to_a_default_configure`.
 
 Not addressed here: ament-workspace-port's different failure (its
 SystemModel does not resolve).
+
+## Verified on a clean tree (2026-11-10)
+
+A fresh worktree of main at `20d55a6101`, with no build dirs, ran `just
+setup-cli`, `just setup-launch-resolve` and `just build-test-fixtures
+lane=tier2` on the ros2 box. The `freertos` stage, which builds
+`action_bringup`'s server and client images on one cmake coordinate (this
+issue's reproduction), reported `== freertos == OK`, and the run logged no
+`census missing` and no "has not been configured". Every other stage was OK
+too, except `zephyr`, which built all its images and then failed only the
+sched-task priority check's `[NO ROW]` for `build-nucleo-f767zi-c-talker-serial`.
+That is a separate defect another session is fixing.
