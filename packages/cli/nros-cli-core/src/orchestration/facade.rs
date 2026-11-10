@@ -69,6 +69,10 @@ pub struct Facade {
     pub backend_features: Vec<String>,
     /// True iff the on-disk manifest actually changed.
     pub changed: bool,
+    /// RFC-0071 D19 — for an owned entry several images name, the adapter
+    /// feature (`image-<id>`) the build turns on; `None` for every other
+    /// adapter, whose one image is its whole content.
+    pub image_feature: Option<String>,
 }
 
 /// The runtime deps a facade must re-declare in order to attach features to
@@ -120,10 +124,11 @@ struct RuntimeDeps {
 /// RMW exactly as the builder resolves it. `None` means no image names this
 /// entry — a hand-written entry, or an unmigrated workspace — and the caller
 /// falls back to `[system] rmw`, which is what those have always used.
-fn image_rmw(entry_name: &str, sys: &SystemToml) -> Option<String> {
+fn image_rmw(image_id: Option<&str>, sys: &SystemToml) -> Option<String> {
     let base = sys.image_defaults.clone().unwrap_or_default();
-    let id = claimed_image_id(entry_name, sys)?;
-    sys.image.get(&id).and_then(|img| img.with_base(&base).rmw)
+    sys.image
+        .get(image_id?)
+        .and_then(|img| img.with_base(&base).rmw)
 }
 
 /// The `[image.<id>]` whose generated entry is `entry_name` — the forward
@@ -135,6 +140,31 @@ fn claimed_image_id(entry_name: &str, sys: &SystemToml) -> Option<String> {
         .keys()
         .find(|id| crate::builder::entry::package_name(id) == entry_name)
         .cloned()
+}
+
+/// RFC-0071 D19 — every image of `sys` that names `entry_name` as its OWNED
+/// entry: the images whose `entry = "<pkg>"` names it, or, when none does, the
+/// one whose derived `<id>_entry` name it is. The same rule
+/// `leaf_system::for_entry` applies, so the adapter covers exactly the images
+/// that can build the entry. Sorted (the map's order).
+fn claimant_ids(entry_name: &str, entry_dir: &Path, sys: &SystemToml) -> Vec<String> {
+    let base = sys.image_defaults.clone().unwrap_or_default();
+    let dir_name = entry_dir.file_name().and_then(|n| n.to_str());
+    let explicit: Vec<String> = sys
+        .image
+        .iter()
+        .filter(|(_, img)| {
+            img.with_base(&base)
+                .entry
+                .as_deref()
+                .is_some_and(|e| e == entry_name || Some(e) == dir_name)
+        })
+        .map(|(id, _)| id.clone())
+        .collect();
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    claimed_image_id(entry_name, sys).into_iter().collect()
 }
 
 /// Every RMW an image's binary must LINK, not just the one it defaults to.
@@ -160,9 +190,9 @@ fn claimed_image_id(entry_name: &str, sys: &SystemToml) -> Option<String> {
 /// same crates the two hand-written bridge entries name.
 ///
 /// Ordered and deduped so the emitted manifest is stable across machines.
-fn image_backends(entry_name: &str, sys: &SystemToml) -> Vec<String> {
+fn image_backends(image_id: Option<&str>, sys: &SystemToml) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    if let Some(r) = image_rmw(entry_name, sys) {
+    if let Some(r) = image_rmw(image_id, sys) {
         out.push(r);
     }
     for d in &sys.domains {
@@ -199,6 +229,7 @@ fn image_backends(entry_name: &str, sys: &SystemToml) -> Vec<String> {
 ///
 /// The adapter over [`write_facade_in`] for a caller that holds no
 /// [`RmwIndex`]: the index is the bringup's workspace's (RFC-0071 D14).
+#[allow(clippy::too_many_arguments)]
 pub fn write_facade(
     entry_name: &str,
     entry_dir: &Path,
@@ -207,6 +238,7 @@ pub fn write_facade(
     sys: &SystemToml,
     generated_root: &Path,
     sdk_root: Option<&Path>,
+    image: Option<&str>,
 ) -> Result<Option<Facade>> {
     // phase-545 W1: threaded from build/configure after phase-530 W2
     let rmws = crate::orchestration::rmw_index::for_dir(bringup_dir)?;
@@ -219,10 +251,16 @@ pub fn write_facade(
         sys,
         generated_root,
         sdk_root,
+        image,
     )
 }
 
 /// [`write_facade`] with every RMW name resolved through `rmws`.
+///
+/// `image` is the image being built, when the caller knows it. It matters
+/// only for an entry several images name (RFC-0071 D19): the adapter then
+/// covers all of them, one cargo feature each, and the returned
+/// [`Facade::image_feature`] is the one the caller turns on.
 #[allow(clippy::too_many_arguments)]
 pub fn write_facade_in(
     rmws: &RmwIndex,
@@ -233,6 +271,7 @@ pub fn write_facade_in(
     sys: &SystemToml,
     generated_root: &Path,
     sdk_root: Option<&Path>,
+    image: Option<&str>,
 ) -> Result<Option<Facade>> {
     // Not an entry ⇒ nothing to select for. Node packages stay silent about all
     // three axes (phase-314 W3) and get their selection through unification.
@@ -242,12 +281,22 @@ pub fn write_facade_in(
     // an empty `[package.metadata.nros.entry]` table: that marker restated what
     // the bringup already said, and a package it marked that no image claimed
     // got a facade for an image that does not exist.
-    if nros_orchestration_ir::leaf_system::claiming_image(entry_dir, entry_name, [bringup_dir])
-        .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?
-        .is_none()
-    {
+    //
+    // RFC-0071 D19 — an entry several images name has ONE adapter covering
+    // them all, so a caller building none of them (`nros sync`) still writes
+    // it: the claim is then checked as the first of them.
+    let claimants = claimant_ids(entry_name, entry_dir, sys);
+    let probe = image.or(claimants.first().map(String::as_str));
+    let Some(claim) = nros_orchestration_ir::leaf_system::claiming_image_as(
+        entry_dir,
+        entry_name,
+        [bringup_dir],
+        probe,
+    )
+    .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?
+    else {
         return Ok(None);
-    }
+    };
 
     let raw = std::fs::read_to_string(entry_manifest)
         .wrap_err_with(|| format!("facade: read {}", entry_manifest.display()))?;
@@ -255,32 +304,10 @@ pub fn write_facade_in(
         .wrap_err_with(|| format!("facade: parse {}", entry_manifest.display()))?;
 
     let deps = runtime_deps(&manifest, entry_dir, sdk_root);
-    let Some(nros_path) = deps.nros.clone() else {
+    if deps.nros.is_none() {
         return Ok(None);
-    };
-
-    // ---- the three declared axes ------------------------------------------
-    let declared_rmw = image_rmw(entry_name, sys).unwrap_or_else(|| sys.system.rmw.clone());
-    let edition = sys.image_ros_edition(claimed_image_id(entry_name, sys).as_deref())?;
-    let Derived {
-        nros_features,
-        mut board_features,
-        backend_features,
-    } = derive(
-        rmws,
-        entry_name,
-        sys,
-        edition,
-        &declared_rmw,
-        &image_backends(entry_name, sys),
-        &nros_path,
-        deps.board.as_ref().map(|(_, p)| p.as_path()),
-    )?;
-    if let Some((_, bd)) = &deps.board {
-        apply_image_link(entry_name, sys, &declared_rmw, bd, &mut board_features);
     }
 
-    // ---- render ------------------------------------------------------------
     use nros_orchestration_ir::entry_names as names;
     let legacy = names::legacy_adapter_crate_name(entry_name);
     // Only the facade's own previous home counts: the seven fixture entries
@@ -309,110 +336,383 @@ pub fn write_facade_in(
             generated_root.join(names::ADAPTER_DIR).join(entry_name),
         )
     };
-    let mut body = render_manifest(
-        &crate_name,
-        &dir,
-        &nros_path,
-        &nros_features,
-        deps.board.as_ref(),
-        &board_features,
-        deps.rmw_backend.as_ref(),
-        &backend_features,
-        entry_name,
-        sys,
-        edition,
-    );
-    let mut backends = image_backends(entry_name, sys);
-    backends.push(declared_rmw.clone());
-
-    // ---- RFC-0071 D15: the backends the board does not link ----------------
-    let owned = owned_image_backends(
+    let adapter = AdapterSite {
         rmws,
         entry_name,
         entry_dir,
-        &manifest,
-        &backends,
+        manifest: &manifest,
+        deps: &deps,
         sys,
-        edition,
-        deps.board.as_ref().map(|(_, p)| p.as_path()),
-        &board_features,
-    )?;
-    let mut reexports = String::new();
-    for b in &owned {
-        reexports.push_str(&format!(
-            "#[doc(hidden)]\npub use ::{} as {};\n",
-            b.krate.replace('-', "_"),
-            backend_link::reexport_name(&b.krate)
-        ));
-        // Already re-declared above as the entry's own direct backend.
-        if deps
-            .rmw_backend
-            .as_ref()
-            .is_some_and(|(n, _)| *n == b.krate)
-        {
-            continue;
-        }
-        // Sorted: this adapter's line has always listed them in order.
-        let mut features = backend_link::with_platform_features(
-            &b.features,
-            &b.dir,
-            &entry_platform_features(&manifest),
-        );
-        features.sort();
-        body.push_str(&format!(
-            "{} = {{ path = {:?}, default-features = false, features = [{}] }}\n",
-            b.krate,
-            rel_from(&dir, &b.dir),
-            features
-                .iter()
-                .map(|f| format!("\"{f}\""))
-                .collect::<Vec<_>>()
-                .join(", "),
-        ));
-    }
+        crate_name: &crate_name,
+        dir: &dir,
+    };
 
     std::fs::create_dir_all(dir.join("src"))
         .wrap_err_with(|| format!("facade: create {}", dir.display()))?;
+    if claimants.len() <= 1 {
+        let one = adapter.render(claimants.first().map(String::as_str))?;
+        let changed = write_if_changed(&dir.join("Cargo.toml"), &one.body)?;
+        let mut lib = String::from(ADAPTER_LIB_HEADER);
+        lib.push_str(&one.items);
+        write_if_changed(&dir.join("src/lib.rs"), &lib)?;
+        return Ok(Some(one.into_facade(
+            entry_name,
+            &dir,
+            &crate_name,
+            changed,
+            None,
+        )));
+    }
+
+    // ---- RFC-0071 D19: one adapter for every image naming this entry -------
+    //
+    // One directory, so its content cannot depend on which image was built
+    // last: every image gets a cargo feature, `image-<id>`, holding exactly
+    // what its own single-image adapter would have stated, and the build turns
+    // on the one it is building. The lock then covers every image's edges and
+    // does not move between them.
+    let building = image.and(claim.image.clone());
+    let mut per_image = Vec::new();
+    for id in &claimants {
+        per_image.push((id.clone(), adapter.render(Some(id))?));
+    }
+    let (body, lib) = merge_image_adapters(&crate_name, entry_name, &per_image)?;
     let changed = write_if_changed(&dir.join("Cargo.toml"), &body)?;
-    // The dependency edge is still most of the payload. The one piece of code
-    // is the backend registration `nros::main!` expands (RFC-0071 D11): the
-    // facade is the generated place that knows which backends this image
-    // links, so the macro names none of them.
-    let mut lib = format!(
-        "//! Generated by `nros configure` (phase-315). Do not edit.\n\
-         //!\n\
-         //! Its `Cargo.toml` carries the cargo features derived from the\n\
-         //! bringup's `system.toml`; cargo's feature unification is what\n\
-         //! delivers them. The macros below are the backend registration\n\
-         //! `nros::main!` expands (RFC-0071 D11).\n\
-         #![no_std]\n\n{}",
-        backend_link::with_image_arm(
-            &render_backend_macros(rmws, entry_name, &backends)?,
-            &backend_link::image_arm(&owned, backend_link::Root::Reexported),
-        )
-    );
-    if !reexports.is_empty() {
-        // RFC-0071 D15 — the backends this adapter links for the entry, which
-        // depends on this crate and not on them: the exported macro's `(image)`
-        // arm reaches each as `$crate::<re-export>`.
-        lib.push('\n');
-        lib.push_str(&reexports);
+    for (id, one) in &per_image {
+        write_if_changed(
+            &dir.join("src").join(format!("{}.rs", image_module(id))),
+            &one.items,
+        )?;
     }
     write_if_changed(&dir.join("src/lib.rs"), &lib)?;
-
-    Ok(Some(Facade {
-        entry: entry_name.to_string(),
-        dir,
-        crate_name,
-        nros_features,
-        board_features,
-        backend_features: if deps.rmw_backend.is_some() {
-            backend_features
-        } else {
-            Vec::new()
-        },
+    let Some(building) = building else {
+        // No image being built (a sync): the adapter is written for all of
+        // them, and there is no one feature to turn on.
+        let (_, first) = per_image.into_iter().next().expect("several claimants");
+        return Ok(Some(first.into_facade(
+            entry_name,
+            &dir,
+            &crate_name,
+            changed,
+            None,
+        )));
+    };
+    let (_, one) = per_image
+        .into_iter()
+        .find(|(id, _)| *id == building)
+        .ok_or_else(|| eyre::eyre!("facade: {entry_name}: `{building}` does not name it"))?;
+    let feature = image_feature(&building);
+    Ok(Some(one.into_facade(
+        entry_name,
+        &dir,
+        &crate_name,
         changed,
-    }))
+        Some(feature),
+    )))
+}
+
+/// The head of an adapter's `src/lib.rs`.
+const ADAPTER_LIB_HEADER: &str = "//! Generated by `nros configure` (phase-315). Do not edit.\n\
+     //!\n\
+     //! Its `Cargo.toml` carries the cargo features derived from the\n\
+     //! bringup's `system.toml`; cargo's feature unification is what\n\
+     //! delivers them. The macros below are the backend registration\n\
+     //! `nros::main!` expands (RFC-0071 D11).\n\
+     #![no_std]\n\n";
+
+/// RFC-0071 D19 — the adapter feature that selects image `id`.
+pub fn image_feature(id: &str) -> String {
+    format!("image-{id}")
+}
+
+/// The module holding image `id`'s items in a multi-image adapter.
+fn image_module(id: &str) -> String {
+    format!(
+        "image_{}",
+        id.chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect::<String>()
+    )
+}
+
+/// What one owned entry's adapter is derived from, before the image is chosen.
+struct AdapterSite<'a> {
+    rmws: &'a RmwIndex,
+    entry_name: &'a str,
+    entry_dir: &'a Path,
+    manifest: &'a toml::Value,
+    deps: &'a RuntimeDeps,
+    sys: &'a SystemToml,
+    crate_name: &'a str,
+    dir: &'a Path,
+}
+
+/// One image's adapter: the whole `Cargo.toml`, and the `lib.rs` items after
+/// the header.
+struct ImageAdapter {
+    body: String,
+    items: String,
+    nros_features: Vec<String>,
+    board_features: Vec<String>,
+    backend_features: Vec<String>,
+}
+
+impl ImageAdapter {
+    fn into_facade(
+        self,
+        entry: &str,
+        dir: &Path,
+        crate_name: &str,
+        changed: bool,
+        image_feature: Option<String>,
+    ) -> Facade {
+        Facade {
+            entry: entry.to_string(),
+            dir: dir.to_path_buf(),
+            crate_name: crate_name.to_string(),
+            nros_features: self.nros_features,
+            board_features: self.board_features,
+            backend_features: self.backend_features,
+            changed,
+            image_feature,
+        }
+    }
+}
+
+impl AdapterSite<'_> {
+    /// The adapter image `image_id` needs (`None`: no image claims the entry
+    /// by name, so `[system]` answers, as it always has).
+    fn render(&self, image_id: Option<&str>) -> Result<ImageAdapter> {
+        let Self {
+            rmws,
+            entry_name,
+            entry_dir,
+            manifest,
+            deps,
+            sys,
+            crate_name,
+            dir,
+        } = *self;
+        let nros_path = deps.nros.clone().expect("checked by the caller");
+        // ---- the three declared axes --------------------------------------
+        let declared_rmw = image_rmw(image_id, sys).unwrap_or_else(|| sys.system.rmw.clone());
+        let edition = sys.image_ros_edition(image_id)?;
+        let Derived {
+            nros_features,
+            mut board_features,
+            backend_features,
+        } = derive(
+            rmws,
+            entry_name,
+            sys,
+            edition,
+            &declared_rmw,
+            &image_backends(image_id, sys),
+            &nros_path,
+            deps.board.as_ref().map(|(_, p)| p.as_path()),
+        )?;
+        if let Some((_, bd)) = &deps.board {
+            apply_image_link(image_id, sys, &declared_rmw, bd, &mut board_features);
+        }
+
+        // ---- render --------------------------------------------------------
+        let mut body = render_manifest(
+            crate_name,
+            dir,
+            &nros_path,
+            &nros_features,
+            deps.board.as_ref(),
+            &board_features,
+            deps.rmw_backend.as_ref(),
+            &backend_features,
+            entry_name,
+            sys,
+            edition,
+        );
+        let mut backends = image_backends(image_id, sys);
+        backends.push(declared_rmw.clone());
+
+        // ---- RFC-0071 D15: the backends the board does not link ------------
+        let owned = owned_image_backends(
+            rmws,
+            entry_name,
+            entry_dir,
+            manifest,
+            &backends,
+            sys,
+            edition,
+            deps.board.as_ref().map(|(_, p)| p.as_path()),
+            &board_features,
+        )?;
+        let mut reexports = String::new();
+        for b in &owned {
+            reexports.push_str(&format!(
+                "#[doc(hidden)]\npub use ::{} as {};\n",
+                b.krate.replace('-', "_"),
+                backend_link::reexport_name(&b.krate)
+            ));
+            // Already re-declared above as the entry's own direct backend.
+            if deps
+                .rmw_backend
+                .as_ref()
+                .is_some_and(|(n, _)| *n == b.krate)
+            {
+                continue;
+            }
+            // Sorted: this adapter's line has always listed them in order.
+            let mut features = backend_link::with_platform_features(
+                &b.features,
+                &b.dir,
+                &entry_platform_features(manifest),
+            );
+            features.sort();
+            body.push_str(&format!(
+                "{} = {{ path = {:?}, default-features = false, features = [{}] }}\n",
+                b.krate,
+                rel_from(dir, &b.dir),
+                features
+                    .iter()
+                    .map(|f| format!("\"{f}\""))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ));
+        }
+
+        // The dependency edge is still most of the payload. The one piece of
+        // code is the backend registration `nros::main!` expands (RFC-0071
+        // D11): the facade is the generated place that knows which backends
+        // this image links, so the macro names none of them.
+        let mut items = backend_link::with_image_arm(
+            &render_backend_macros(rmws, entry_name, &backends)?,
+            &backend_link::image_arm(&owned, backend_link::Root::Reexported),
+        );
+        if !reexports.is_empty() {
+            // RFC-0071 D15 — the backends this adapter links for the entry,
+            // which depends on this crate and not on them: the exported
+            // macro's `(image)` arm reaches each as `$crate::<re-export>`.
+            items.push('\n');
+            items.push_str(&reexports);
+        }
+        Ok(ImageAdapter {
+            body,
+            items,
+            nros_features,
+            board_features,
+            backend_features: if deps.rmw_backend.is_some() {
+                backend_features
+            } else {
+                Vec::new()
+            },
+        })
+    }
+}
+
+/// RFC-0071 D19 — fold the single-image adapters of the images that name one
+/// entry into one crate: every dependency optional and featureless, and per
+/// image a feature `image-<id>` turning on its dependencies with its own
+/// feature lists. The `lib.rs` holds one module per image, compiled only under
+/// its feature, re-exported at the root so `$crate::<re-export>` paths hold.
+fn merge_image_adapters(
+    crate_name: &str,
+    entry_name: &str,
+    per_image: &[(String, ImageAdapter)],
+) -> Result<(String, String)> {
+    use std::collections::BTreeMap;
+    // dependency → its path (must agree across images)
+    let mut paths: BTreeMap<String, String> = BTreeMap::new();
+    // image → its activations
+    let mut features: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (id, one) in per_image {
+        let doc: toml::Table = toml::from_str(&one.body)
+            .wrap_err_with(|| format!("facade: {entry_name}: image `{id}`'s adapter"))?;
+        let mut acts = Vec::new();
+        if let Some(d) = doc.get("dependencies").and_then(|d| d.as_table()) {
+            for (k, v) in d {
+                let path = v
+                    .get("path")
+                    .and_then(|p| p.as_str())
+                    .ok_or_else(|| eyre::eyre!("facade: {entry_name}: `{k}` has no path"))?;
+                if v.get("default-features").and_then(|b| b.as_bool()) != Some(false) {
+                    eyre::bail!(
+                        "facade: {entry_name}: image `{id}`'s adapter keeps `{k}`'s default \
+                         features, which one shared adapter cannot vary by image"
+                    );
+                }
+                match paths.get(k) {
+                    Some(p) if p != path => eyre::bail!(
+                        "facade: {entry_name}: the images naming this entry reach `{k}` at two \
+                         paths ({p}, {path}); one adapter cannot hold both"
+                    ),
+                    _ => {
+                        paths.insert(k.clone(), path.to_string());
+                    }
+                }
+                acts.push(format!("dep:{k}"));
+                for f in v
+                    .get("features")
+                    .and_then(|f| f.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|f| f.as_str())
+                {
+                    acts.push(format!("{k}/{f}"));
+                }
+            }
+        }
+        features.insert(image_feature(id), acts);
+    }
+    let ids: Vec<&str> = per_image.iter().map(|(id, _)| id.as_str()).collect();
+    let quoted = |v: &[String]| {
+        v.iter()
+            .map(|s| format!("{s:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut body = format!(
+        "# GENERATED by `nros configure` / `nros build` — do not edit, do not commit.\n\
+         #\n\
+         # Selection adapter for the owned entry `{entry_name}`, which images {images}\n\
+         # all name (RFC-0071 D19). Each image's selection is the feature\n\
+         # `image-<id>`; `nros build` turns on the one it builds. Edit\n\
+         # `system.toml`, not this file.\n\n\
+         [package]\n\
+         name = \"{crate_name}\"\n\
+         version = \"0.0.0\"\n\
+         edition = \"2024\"\n\
+         publish = false\n\n\
+         [lib]\n\
+         path = \"src/lib.rs\"\n\n\
+         [features]\n",
+        images = ids.join(", "),
+    );
+    for (f, acts) in &features {
+        body.push_str(&format!("{f} = [{}]\n", quoted(acts)));
+    }
+    body.push_str("\n[dependencies]\n");
+    for (k, p) in &paths {
+        body.push_str(&format!(
+            "{k} = {{ path = {p:?}, default-features = false, optional = true }}\n"
+        ));
+    }
+    let any = ids
+        .iter()
+        .map(|id| format!("feature = {:?}", image_feature(id)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut lib = String::from(ADAPTER_LIB_HEADER);
+    lib.push_str(&format!(
+        "#[cfg(not(any({any})))]\n\
+         compile_error!(\"`{crate_name}` serves several images and none is selected: build \
+         `{entry_name}` with `nros build <bringup>:<image>` (RFC-0071 D19)\");\n\n"
+    ));
+    for id in &ids {
+        let f = image_feature(id);
+        let m = image_module(id);
+        lib.push_str(&format!(
+            "#[cfg(feature = {f:?})]\nmod {m};\n#[cfg(feature = {f:?})]\n#[allow(unused_imports)]\npub use {m}::*;\n"
+        ));
+    }
+    Ok((body, lib))
 }
 
 /// RFC-0071 D13 — what a GENERATED entry states itself, with no selection
@@ -478,9 +778,10 @@ pub fn entry_selection_in(
     board_dir: Option<&Path>,
 ) -> Result<EntrySelection> {
     let nros_path = nano_ros_root.join("packages/api/nros");
-    let declared_rmw = image_rmw(entry_name, sys).unwrap_or_else(|| sys.system.rmw.clone());
-    let edition = sys.image_ros_edition(claimed_image_id(entry_name, sys).as_deref())?;
-    let backends = image_backends(entry_name, sys);
+    let claimed = claimed_image_id(entry_name, sys);
+    let declared_rmw = image_rmw(claimed.as_deref(), sys).unwrap_or_else(|| sys.system.rmw.clone());
+    let edition = sys.image_ros_edition(claimed.as_deref())?;
+    let backends = image_backends(claimed.as_deref(), sys);
     let Derived {
         nros_features,
         mut board_features,
@@ -496,7 +797,13 @@ pub fn entry_selection_in(
         board_dir,
     )?;
     if let Some(bd) = board_dir {
-        apply_image_link(entry_name, sys, &declared_rmw, bd, &mut board_features);
+        apply_image_link(
+            claimed.as_deref(),
+            sys,
+            &declared_rmw,
+            bd,
+            &mut board_features,
+        );
     }
     let mut linked = backends;
     linked.push(declared_rmw);
@@ -753,6 +1060,7 @@ pub fn write_leaf_selection_in(
         board_features,
         backend_features: Vec::new(),
         changed: changed || lib_changed,
+        image_feature: None,
     })
 }
 
@@ -1098,13 +1406,13 @@ fn crate_default_features(dir: &Path) -> Vec<String> {
 /// generated entry ([`entry_selection`]) and an owned entry's adapter
 /// ([`write_facade`]), so the two cannot disagree about the link.
 fn apply_image_link(
-    entry_name: &str,
+    image_id: Option<&str>,
     sys: &SystemToml,
     declared_rmw: &str,
     board_dir: &Path,
     board_features: &mut Vec<String>,
 ) {
-    let image = claimed_image_id(entry_name, sys).and_then(|id| sys.image.get(&id).cloned());
+    let image = image_id.and_then(|id| sys.image.get(id).cloned());
     let base = sys.image_defaults.clone().unwrap_or_default();
     let locator = image
         .map(|i| i.with_base(&base))
@@ -1243,6 +1551,13 @@ fn runtime_deps(manifest: &toml::Value, entry_dir: &Path, sdk_root: Option<&Path
         } else if name.starts_with("nros-board-") {
             out.board = Some((name.clone(), abs));
         } else if name.starts_with("nros-rmw-") {
+            // An OPTIONAL backend dependency is the entry's own feature's
+            // (`zenoh-reply-slots = ["dep:nros-rmw-zenoh"]`): re-declaring it
+            // here would link it into every image, including one built for
+            // another backend (RFC-0071 D19).
+            if spec.get("optional").and_then(|o| o.as_bool()) == Some(true) {
+                continue;
+            }
             out.rmw_backend = Some((name.clone(), abs));
         }
     }
@@ -1670,6 +1985,7 @@ mod tests {
                 &sys,
                 &generated,
                 None,
+                None,
             )
         };
 
@@ -1745,6 +2061,7 @@ mod tests {
             &sys,
             &root.join("generated"),
             None,
+            None,
         )
         .unwrap()
         .expect("an entry");
@@ -1755,6 +2072,88 @@ mod tests {
         );
         let cargo = std::fs::read_to_string(f.dir.join("Cargo.toml")).unwrap();
         assert!(!cargo.contains("nros-rmw-zenoh"), "{cargo}");
+    }
+
+    /// RFC-0071 D19 — one owned entry named by two images: one adapter whose
+    /// content does not depend on the image being built, one feature per
+    /// image, and the build told which to turn on. An optional backend
+    /// dependency of the entry stays the entry's.
+    #[test]
+    fn an_owned_entry_named_by_two_images_gets_one_adapter_with_a_feature_each() {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path();
+        let sdk = cargo_nano_ros::rmw_resolver::test_support::checkout();
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                      [image_defaults]\nboard = \"linux\"\n\n\
+                      [image.linux]\nentry = \"probe\"\n\n\
+                      [image.linux_xrce]\nentry = \"probe\"\nrmw = \"xrce\"\n";
+        std::fs::write(bringup.join("system.toml"), system).unwrap();
+        let sys: SystemToml = toml::from_str(system).unwrap();
+        let entry = root.join("src/probe");
+        std::fs::create_dir_all(&entry).unwrap();
+        std::fs::write(
+            entry.join("Cargo.toml"),
+            format!(
+                "[package]\nname = \"probe\"\nversion = \"0.1.0\"\n\n\
+                 [features]\nslots = [\"dep:nros-rmw-zenoh\"]\n\n\
+                 [dependencies]\nnros = {{ path = \"{n}\" }}\n\
+                 nros-board-linux = {{ path = \"{b}\" }}\n\
+                 nros-rmw-zenoh = {{ path = \"{z}\", optional = true }}\n",
+                n = sdk.join("packages/api/nros").display(),
+                b = sdk.join("packages/boards/nros-board-linux").display(),
+                z = sdk.join("packages/rmw/zenoh/nros-rmw-zenoh").display(),
+            ),
+        )
+        .unwrap();
+        let write = |image: Option<&str>| {
+            write_facade_in(
+                &in_tree(),
+                "probe",
+                &entry,
+                &entry.join("Cargo.toml"),
+                &bringup,
+                &sys,
+                &root.join("generated"),
+                None,
+                image,
+            )
+            .unwrap()
+            .expect("an entry")
+        };
+        let xrce = write(Some("linux_xrce"));
+        assert_eq!(xrce.image_feature.as_deref(), Some("image-linux_xrce"));
+        assert_eq!(xrce.crate_name, "probe_nros_derived");
+        let cargo = std::fs::read_to_string(xrce.dir.join("Cargo.toml")).unwrap();
+        let doc: toml::Table = toml::from_str(&cargo).unwrap();
+        let features = doc["features"].as_table().unwrap();
+        let acts = |f: &str| -> Vec<String> {
+            features[f]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_string())
+                .collect()
+        };
+        assert!(acts("image-linux").contains(&"nros-board-linux/rmw-zenoh".to_string()));
+        assert!(acts("image-linux_xrce").contains(&"nros-board-linux/rmw-xrce".to_string()));
+        assert!(!acts("image-linux_xrce").contains(&"nros-board-linux/rmw-zenoh".to_string()));
+        for (_, dep) in doc["dependencies"].as_table().unwrap() {
+            assert_eq!(dep.get("optional").and_then(|o| o.as_bool()), Some(true));
+        }
+        // The entry's optional backend is its own feature's, not the adapter's.
+        assert!(!cargo.contains("nros-rmw-zenoh"), "{cargo}");
+        let lib = std::fs::read_to_string(xrce.dir.join("src/lib.rs")).unwrap();
+        assert!(lib.contains("#[cfg(feature = \"image-linux_xrce\")]\nmod image_linux_xrce;"));
+        assert!(lib.contains("compile_error!"), "{lib}");
+        assert!(xrce.dir.join("src/image_linux.rs").is_file());
+        // Building the other image rewrites nothing.
+        let zenoh = write(Some("linux"));
+        assert_eq!(zenoh.image_feature.as_deref(), Some("image-linux"));
+        assert!(!zenoh.changed, "the adapter moved between images");
+        // A sync names no image and still writes it, selecting none.
+        assert_eq!(write(None).image_feature, None);
     }
 
     #[test]
@@ -1870,6 +2269,7 @@ mod tests {
                 &bringup,
                 &sys,
                 &generated,
+                None,
                 None,
             )
             .unwrap()

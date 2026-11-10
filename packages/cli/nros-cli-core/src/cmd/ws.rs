@@ -2551,6 +2551,21 @@ fn synthesise_bringup_launch(bringup: &Path) -> Result<Option<PathBuf>> {
     let text =
         std::fs::read_to_string(&system).wrap_err_with(|| format!("read {}", system.display()))?;
     let rows = component_rows(&text).map_err(|e| eyre::eyre!("{}: {e}", system.display()))?;
+    // RFC-0071 D19 — a bringup whose every image names an OWNED entry runs
+    // that entry's own `main`; there is nothing to launch and nothing to say.
+    let all_owned = text.parse::<toml::Table>().ok().is_some_and(|t| {
+        t.get("image")
+            .and_then(|i| i.as_table())
+            .is_some_and(|imgs| {
+                !imgs.is_empty()
+                    && imgs
+                        .values()
+                        .all(|b| b.get("entry").and_then(|e| e.as_str()).is_some())
+            })
+    });
+    if rows.is_empty() && all_owned {
+        return Ok(None);
+    }
     if rows.is_empty() {
         // RFC-0121 D3 refuses this. Until phase-531 W7 retires the
         // hand-written entry package (step 8), a bringup whose image boots an
@@ -3471,6 +3486,7 @@ fn generate_facade_crates(
             &sys,
             build_root,
             sdk_root,
+            None,
         )
         .wrap_err_with(|| format!("sync: facade for {pkg_name}"))?
         else {
@@ -6790,7 +6806,7 @@ pub(crate) fn workspace_entry_system(
         return Ok(None);
     };
     let bringups: Vec<PathBuf> = index.pkgs().map(|(_, dir)| dir.to_path_buf()).collect();
-    nros_orchestration_ir::leaf_system::claiming_image(
+    nros_orchestration_ir::leaf_system::claiming_image_any(
         entry_dir,
         entry_pkg,
         bringups.iter().map(PathBuf::as_path),

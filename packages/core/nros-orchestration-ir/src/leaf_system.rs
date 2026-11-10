@@ -490,8 +490,12 @@ pub fn read_image(dir: &Path, image: &str) -> Result<Option<LeafSystem>, String>
 /// beside the package name for both, because `entry =` has always accepted
 /// either (`west_application_dir`).
 ///
-/// `Ok(None)` when no image claims it. SEVERAL claiming it is an error, not a
-/// first match: which image's locator an entry bakes is not a coin toss.
+/// `Ok(None)` when no image claims it. SEVERAL images may name one OWNED entry
+/// (RFC-0071 D19): the one being built is then [`IMAGE_ENV`], which `nros
+/// build` sets in the image's settings file so `nros::main!` reads it. Several
+/// claims with no image named, or with one that is not among them, is an
+/// error, not a first match: which image's locator an entry bakes is not a
+/// coin toss.
 ///
 /// A leaf `system.toml` beside the entry answers first ([`read`]) — an entry
 /// that states its own deployment is a single-package leaf, whatever encloses
@@ -500,6 +504,43 @@ pub fn for_entry(
     entry_dir: &Path,
     entry_pkg: &str,
     bringup_dir: &Path,
+) -> Result<Option<LeafSystem>, String> {
+    let image = std::env::var(IMAGE_ENV).ok();
+    for_entry_as(entry_dir, entry_pkg, bringup_dir, image.as_deref())
+}
+
+/// [`for_entry`] with the image being built named by the caller (`None`: not
+/// known, which is enough whenever at most one image claims the entry).
+pub fn for_entry_as(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dir: &Path,
+    image: Option<&str>,
+) -> Result<Option<LeafSystem>, String> {
+    for_entry_choosing(entry_dir, entry_pkg, bringup_dir, image, false)
+}
+
+/// [`for_entry`] for a question every image naming the entry answers alike
+/// (see [`claiming_image_any`]).
+pub fn for_entry_any(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dir: &Path,
+) -> Result<Option<LeafSystem>, String> {
+    let image = std::env::var(IMAGE_ENV).ok();
+    for_entry_choosing(entry_dir, entry_pkg, bringup_dir, image.as_deref(), true)
+}
+
+/// The shared body of [`for_entry_as`]. With `any`, several explicit claims
+/// and no image named answer with the first of them, provided every claim
+/// names the same board: the question ("is this an entry", "which board") has
+/// one answer for all of them (RFC-0071 D19).
+fn for_entry_choosing(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dir: &Path,
+    image: Option<&str>,
+    any: bool,
 ) -> Result<Option<LeafSystem>, String> {
     if let Some(own) = read(entry_dir)? {
         return Ok(Some(own));
@@ -527,14 +568,40 @@ pub fn for_entry(
             None => {}
         }
     }
-    let claims = if explicit.is_empty() {
-        by_name
-    } else {
-        explicit
-    };
+    let explicit_empty = explicit.is_empty();
+    let claims = if explicit_empty { by_name } else { explicit };
     match claims.as_slice() {
         [] => Ok(None),
         [one] => image_system(&doc, &path, one, Origin::Bringup(path.clone())).map(Some),
+        // RFC-0071 D19 — several images may name one owned entry; the image
+        // being built picks. Only EXPLICIT claims qualify: a derived
+        // `<id>_entry` name is one image's by construction.
+        many if !explicit_empty => match image {
+            Some(id) if many.iter().any(|m| m == id) => {
+                image_system(&doc, &path, id, Origin::Bringup(path.clone())).map(Some)
+            }
+            None if any => {
+                let all: Vec<LeafSystem> = many
+                    .iter()
+                    .map(|id| image_system(&doc, &path, id, Origin::Bringup(path.clone())))
+                    .collect::<Result<_, _>>()?;
+                if all.iter().any(|l| l.board != all[0].board) {
+                    return Err(format!(
+                        "{}: the images naming the entry `{entry_pkg}` ({}) deploy to different                          boards, so the entry has no one board; build it as one image:                          `nros build <bringup>:<image>`",
+                        path.display(),
+                        many.join(", ")
+                    ));
+                }
+                Ok(all.into_iter().next())
+            }
+            _ => Err(format!(
+                "{}: {} images name the entry `{entry_pkg}` ({}), and the build names none \
+                 of them; build it as one image: `nros build <bringup>:<image>`",
+                path.display(),
+                many.len(),
+                many.join(", ")
+            )),
+        },
         many => Err(format!(
             "{}: {} images claim the entry `{entry_pkg}` ({}) — an entry is ONE image's \
              program; name it from exactly one with `entry = \"{entry_pkg}\"`",
@@ -569,6 +636,42 @@ pub fn claiming_image<'a>(
     entry_pkg: &str,
     bringup_dirs: impl IntoIterator<Item = &'a Path>,
 ) -> Result<Option<LeafSystem>, String> {
+    let image = std::env::var(IMAGE_ENV).ok();
+    claiming_image_as(entry_dir, entry_pkg, bringup_dirs, image.as_deref())
+}
+
+/// [`claiming_image`] with the image being built named by the caller
+/// ([`for_entry_as`], RFC-0071 D19).
+pub fn claiming_image_as<'a>(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dirs: impl IntoIterator<Item = &'a Path>,
+    image: Option<&str>,
+) -> Result<Option<LeafSystem>, String> {
+    claiming_choosing(entry_dir, entry_pkg, bringup_dirs, image, false)
+}
+
+/// [`claiming_image`] for a question every image naming the entry answers
+/// alike: "is this package an entry", "which board does it deploy to"
+/// (RFC-0071 D19). With [`IMAGE_ENV`] unset and several images of one bringup
+/// naming the entry, the first answers, provided they agree on the board; two
+/// bringups are still an error.
+pub fn claiming_image_any<'a>(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dirs: impl IntoIterator<Item = &'a Path>,
+) -> Result<Option<LeafSystem>, String> {
+    let image = std::env::var(IMAGE_ENV).ok();
+    claiming_choosing(entry_dir, entry_pkg, bringup_dirs, image.as_deref(), true)
+}
+
+fn claiming_choosing<'a>(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dirs: impl IntoIterator<Item = &'a Path>,
+    image: Option<&str>,
+    any: bool,
+) -> Result<Option<LeafSystem>, String> {
     if let Some(own) = read(entry_dir)? {
         return Ok(Some(own));
     }
@@ -577,7 +680,7 @@ pub fn claiming_image<'a>(
         if !dir.join(SYSTEM_TOML).is_file() || is_package_dir(dir) {
             continue; // not a bringup
         }
-        let Some(l) = for_entry(entry_dir, entry_pkg, dir)? else {
+        let Some(l) = for_entry_choosing(entry_dir, entry_pkg, dir, image, any)? else {
             continue;
         };
         if let Some((prev, _)) = &hit {
@@ -1469,6 +1572,43 @@ domain_id = 4
         // `[system]` fills what the image leaves out — the leaf overlay.
         assert_eq!(l.network.domain_id, Some(0));
         assert!(matches!(l.origin, Origin::Bringup(_)));
+    }
+
+    /// RFC-0071 D19 — several images may name one owned entry; the image being
+    /// built picks, and with none named the claim is an error listing them.
+    #[test]
+    fn an_owned_entry_named_by_several_images_resolves_per_image() {
+        let d = tempdir::Dir::new();
+        let bringup = d.path().join("src/demo_bringup");
+        let e = d.path().join("src/probe");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(&e).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"probe\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [image_defaults]\nboard = \"linux\"\n\n\
+             [image.linux]\nentry = \"probe\"\n\n\
+             [image.linux_xrce]\nentry = \"probe\"\nrmw = \"xrce\"\n",
+        )
+        .unwrap();
+        std::fs::write(e.join("Cargo.toml"), CARGO).unwrap();
+        let xrce = for_entry_as(&e, "probe", &bringup, Some("linux_xrce"))
+            .unwrap()
+            .expect("claimed");
+        assert_eq!(xrce.image.as_deref(), Some("linux_xrce"));
+        let plain = claiming_image_as(&e, "probe", [bringup.as_path()], Some("linux"))
+            .unwrap()
+            .expect("claimed");
+        assert_eq!(plain.image.as_deref(), Some("linux"));
+        let none = for_entry_as(&e, "probe", &bringup, None).unwrap_err();
+        assert!(none.contains("linux, linux_xrce"), "{none}");
+        let other = for_entry_as(&e, "probe", &bringup, Some("esp32")).unwrap_err();
+        assert!(other.contains("names none of them"), "{other}");
+        // A question every claimant answers alike takes the first of them.
+        let any = claiming_image_any(&e, "probe", [bringup.as_path()])
+            .unwrap()
+            .expect("claimed");
+        assert_eq!(any.board.as_deref(), Some("linux"));
     }
 
     /// Issue 1289 — an entry is the package an image CLAIMS; a manifest table

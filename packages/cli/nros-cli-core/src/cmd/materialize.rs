@@ -209,6 +209,7 @@ fn write_adapter_now(
                 &sys,
                 &root.join("generated"),
                 sdk_root,
+                qualified.split(':').nth(1),
             )
             .map_err(|e| format!("{e:#}"))
         });

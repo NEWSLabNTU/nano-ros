@@ -70,3 +70,28 @@ owned entry by its declared name (`[image.<id>] entry`), not only at
 `src/<image>_entry`. How an image turns on the owned entry's own `[features]`
 is decided in the RFC amendment. The two bins and the linux C and C++ talkers
 then migrate, and issue 1556's census tests keep running the same `main()`s.
+
+## Progress
+
+- **Core support (PR 1, phase-531 W6).** RFC-0071 D19 records the design.
+  `leaf_system::claiming_image_as` takes the image being built and
+  `claiming_image_any` answers the questions every claimant answers alike
+  (entry or not, which board). The cargo road builds the package
+  `[image.<id>] entry` names (`cmd::build::owned_entry_dir`, also used for
+  entry generation and the generated-output claims). The entry's one adapter
+  holds every image behind an `image-<id>` feature, which `nros build` turns
+  on, so the adapter and the entry's `Cargo.lock` do not move between images
+  and two images may build at once; the draft's per-image adapter, settings
+  patch and `cargo update -p` step were not needed. `node_features` on such
+  an image turns on the entry's own `[features]` with `--features`. The
+  fixture record names the image's entry package. Any number of images may
+  name one entry.
+- **`bins/message-info-observer` migrated** as the proof: one owned entry,
+  images `linux` and `linux_zero_copy` (`node_features =
+  ["unstable-zenoh-api"]`), two `[[workspace_fixture]]` rows. Measured: both
+  build through `workspace-fixtures-build.sh`, the zero-copy binary's
+  fingerprint carries `unstable-zenoh-api` and the plain one's does not, and
+  the entry's `Cargo.lock` is byte-identical after building the second image.
+- Left: `bins/action-server-concurrent` and the linux C and C++ talkers
+  (CMake road), in the next PR. Host 142 migrates eight more bins on this
+  support afterwards.
