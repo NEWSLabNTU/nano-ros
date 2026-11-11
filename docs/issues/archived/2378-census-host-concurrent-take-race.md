@@ -1,7 +1,9 @@
 ---
 id: 2378
 title: "Two fixture rows of one leaf take its census at once and clobber the shared `census-host` build dir, so tier 2 stops at configure"
-status: open
+status: resolved
+resolved: 2026-11-11
+resolved_in: "7fcfe82845: one census taker per leaf (flock on build/census-host.lock)"
 type: bug
 severity: high
 area: [build, zephyr, ci, census]
@@ -9,7 +11,7 @@ related: [2365, 1252, 2221, phase-530]
 found: 2026-11-09
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)** -- W2 made
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)** -- W2 made
 the census the default entity source for a leaf that states no `entities`.
 
 ## Measured
@@ -138,3 +140,23 @@ Per the closing condition below, a tier-2 run on CI still decides.
 
 Concurrent takes on one stale leaf all succeed (the three-way repro above,
 as a test), and a tier-2 run builds both `examples/zephyr/c/talker` rows.
+
+## Acceptance (2026-11-11)
+
+Both halves of "What would close it" hold:
+
+- **The repro as a test.** `two_takers_of_one_leaf_never_build_its_census_at_once`
+  (7fcfe82845) counts overlapping host builds of one leaf's census and
+  fails with the lock removed.
+- **A tier-2 run builds both `examples/zephyr/c/talker` rows.** Tier-2 run
+  42928442297 on `5e01d7ffed` (2026-11-11) builds this leaf's two in-lane
+  rows in its fixture build. They are `build-c-talker-cyclonedds`
+  (native_sim) and `build-nucleo-f767zi-c-talker-serial`: two rows of one
+  leaf, configured by the same Zephyr fixture pool, which is the case that
+  raced. The pool's own log (artifact `post-submit-junit`,
+  `tmp/build-test-fixtures-…/zephyr.log`) reports both, has no
+  `census-host`, `cannot find CMakeFiles` or `loading 'build.ninja'` line,
+  and the stage's job log row ends `0` (rc). The lane then reached
+  `test-all`, which needs every in-lane fixture.
+  (`build-c-talker-xrce`, one of the two rows in the original sighting, is
+  outside today's tier-2 cover; the pair that built is the same shape.)
