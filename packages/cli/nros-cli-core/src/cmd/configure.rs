@@ -839,6 +839,7 @@ mod tests {
             ament_prefix: ament.map(str::to_string),
             launch_resolve: resolver.map(Path::to_path_buf),
             resolver_pin: Some(configure_stamp::resolver_pin()),
+            cli_planning: Some(configure_stamp::cli_planning()),
             skipped: None,
             coordinate: None,
             covers: Vec::new(),

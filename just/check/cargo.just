@@ -315,6 +315,20 @@ cc-build-policy:
 cli-source-dirs:
     @python3 scripts/gen-cli-source-dirs.py --check
 
+# Issue 2441 — `packages/cli/cli-planning-set.txt` must equal cargo's resolve
+# plus the reach walk over `nros-cli-core/src`.
+#
+# That file is the CLI PLANNING set: `nros planning-stamp` hashes it, every
+# workspace fixture signature and every `nros configure` stamp key on the
+# result. A stale list is a wrong key in whichever direction it drifted: a
+# file planning reaches but the list excludes leaves fixtures FRESH over a
+# planning change (the issue), a file it lists but no longer reaches restales
+# every workspace fixture for nothing. The one authored input, the leaf-verb
+# list, is checked by the same walk: a leaf that planning code reaches fails.
+[group("ci")]
+cli-planning-set:
+    @python3 scripts/gen-cli-planning-set.py --check
+
 # Issue 1868 — `config/rust-toolchains.txt` must equal the fold of every tracked
 # `rust-toolchain.toml`. The CI image bakes exactly that list, so a pin it
 # misses is downloaded from static.rust-lang.org at RUN time inside a

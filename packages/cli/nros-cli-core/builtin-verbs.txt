@@ -35,6 +35,7 @@ user monitor
 user new
 user pin
 user plan
+user planning-stamp
 user profile
 user run
 user sdk-front

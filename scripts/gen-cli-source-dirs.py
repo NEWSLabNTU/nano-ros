@@ -132,8 +132,14 @@ def cargo_metadata():
     return json.loads(proc.stdout)
 
 
-def closure_dirs():
-    """Repo-relative dirs of in-repo packages the `nros` bin compiles, sans cli."""
+def closure_package_dirs():
+    """Repo-relative dirs of EVERY in-repo package the `nros` bin compiles.
+
+    `packages/cli` crates included. Issue 2441's planning set
+    (`scripts/gen-cli-planning-set.py`) needs them by name; this file then
+    drops them below, because the source stamp hashes `packages/cli` whole.
+    One resolve for both lists, so they cannot disagree about the closure.
+    """
     md = cargo_metadata()
     pkgs = {p["id"]: p for p in md["packages"]}
     nodes = {n["id"]: n for n in md["resolve"]["nodes"]}
@@ -165,13 +171,17 @@ def closure_dirs():
         except ValueError:
             continue  # registry crate or out-of-tree path
         rel = rel.as_posix()
-        if rel.startswith("packages/cli"):
-            continue  # watched wholesale by the stamp
         # Vendored submodules are tracked but are not nano-ros build inputs;
         # `is_cli_input` drops them anyway, so listing them would be noise.
         if "/third-party/" in rel or "/testing_workspaces/" in rel:
             continue
         dirs.add(rel)
+    return dirs
+
+
+def closure_dirs():
+    """Repo-relative dirs of in-repo packages the `nros` bin compiles, sans cli."""
+    dirs = {d for d in closure_package_dirs() if not d.startswith("packages/cli")}
     dirs |= embedded_input_dirs()
     return sorted(dirs)
 

@@ -1,13 +1,21 @@
 ---
 id: 2441
 title: "Workspace fixtures are keyed on the CLI's codegen fingerprint, so a change to what `nros build` / `nros configure` hand a build does not re-stale them"
-status: open
+status: resolved
 type: tech-debt
 severity: medium
 area: [testing, fixtures, cli]
 found: 2026-11-11
-related: [issue-2439, issue-0196, issue-1018, phase-530]
+resolved: 2026-11-12
+resolved_in: "workspace fixtures and the nros configure stamp key on a generated CLI planning-set fingerprint (option b), gated by check-cli-planning-set"
+related: [issue-2439, issue-0196, issue-1018, issue-0604, phase-530]
 ---
+
+> **Resolved (2026-11-12), option (b).** The ruling, verbatim: "Take (b) plus
+> fixing the configure stamp." Workspace fixtures now key on the CLI's
+> PLANNING fingerprint (`nros planning-stamp`), computed over a generated
+> planning set, and the `nros configure` stamp records the same fingerprint,
+> so a planning change re-runs configure. See "Resolution" below.
 
 ## What
 
@@ -44,9 +52,77 @@ Which cost to pay:
 - **Keep it**: accept that a planning regression can pass this lane on a
   reused build until something else rebuilds it.
 
+## Resolution
+
+The user's ruling (2026-11-12): "Take (b) plus fixing the configure stamp."
+
+**The set is generated, not hand-listed.** `scripts/gen-cli-planning-set.py`
+writes `packages/cli/cli-planning-set.txt`; `check-cli-planning-set` (fast
+line, `[group("ci")]`) fails when the committed file disagrees with it and
+names the direction of each line. It is the `cli-source-dirs.txt`
+arrangement (issue 0604), chosen over deriving at stamp time for that file's
+reason: the stamp lives in `source_stamp.rs`, which `build.rs` `include!`s,
+so it can run neither `cargo metadata` nor a TOML parser, and the reach walk
+below is no work to repeat on every `nros build`. The file has two parts:
+
+- `+` lines: every in-repo crate the `nros` binary compiles, from the SAME
+  cargo resolve `gen-cli-source-dirs.py` makes (`closure_package_dirs`, now
+  shared), plus `packages/cli/Cargo.{toml,lock}` and the set file itself;
+- `-` lines: each crate's `tests/`, `benches/`, `testdata/`, `examples/`, and
+  the `nros-cli-core/src` files a reach walk from `lib.rs` does not reach.
+
+The walk is computed: `crate::`/`self::`/`super::`/bare paths and `use`
+trees (aliases and module imports bound, so `entry_codegen::x` resolves),
+macro uses, `include!`, and impl blocks (an `impl T` in another file is an
+edge INTO it from `T`'s file, since a method call reaches it by type). It
+blanks comments, literals and `#[cfg(test)]` items first. `mod x;` is not an
+edge. The one authored input is `LEAF_VERBS`, method (b)'s 13 leaf verbs
+(`cmd/doctor.rs` and the rest): the walk drops a dispatcher's
+(`lib.rs`, `cmd/mod.rs`, `cmd/dev.rs`) edge into a leaf, follows every other
+edge, and FAILS naming the edge if any other file reaches a leaf. The file
+lists exclusions rather than inclusions inside a crate, so a new source no
+one regenerated for is INSIDE the set (an over-watch) until the gate asks.
+
+At HEAD the walk reaches 163 of 185 `nros-cli-core/src` files (method (b)
+measured 162). It differs from the hand-measured set where the measured walk
+was file-granular or guessed: `cmd/prepare.rs` (used only by `nros flash`)
+and `codegen/entry/emit_rust.rs` (the parity renderer, used only by tests)
+are OUT; `cmd/setup/session.rs`, `orchestration/python_provider.rs` and
+`orchestration/release_manifest.rs` are IN, reached from `cmd/setup.rs` and
+`cmd/pin.rs`, which are not leaves. `cargo-nano-ros`'s `scaffold.rs` and
+`workspace_scaffold.rs` stay IN: crates other than `nros-cli-core` are taken
+whole, and `cmd/new.rs`, which calls them, is reached from `cmd/build.rs`
+through `run_plan`. `examples/templates/**` is out (no crate reaches it).
+
+**The fingerprint.** `source_stamp::planning_stamp` hashes every source under
+a `+` path and no `-` path, with the source stamp's own entry encoding (one
+shared `content_entries`/`fold_entries`, not a second loop): tracked content,
+worktree edits, and untracked files under `packages/cli`. `build.rs` bakes it
+as `NROS_CLI_PLANNING_STAMP`; `nros planning-stamp` (hidden) prints it for
+the sources on disk.
+
+**Fixtures.** `workspace-fixture-signature.sh` (v4) adds
+`tool:nros-planning` through `nros_cli_planning_stamp`
+(`scripts/build/codegen-fingerprint.sh`), beside the codegen fingerprint,
+which stays: it still covers the emitter corpus under `rosidl-codegen/tests/`
+and a toolchain change that moves no source. The ladder falls back to the
+source stamp (wider) for an `nros` without the verb, never to "unchanged".
+The test side (`current_workspace_fixture_signature`) runs the same script.
+
+**Configure.** The stamp gains `cli_planning`; `currency` reports
+`CLI planning changed: <old> -> <new>` when the running binary's baked value
+differs, and a stamp without the field is stale once.
+
+**One class fix on the way.** `is_cli_input` did not watch `pack.toml`
+(entry packs, read by `nros-cli-core/build_entry_packs.rs`; emitter packs,
+read by `rosidl-codegen/build.rs`), which build scripts compile in through
+`concat!(env!("CARGO_MANIFEST_DIR"), ...)`, invisible to
+`every_embedded_file_is_watched`. A pack edit left both stamps unmoved; it
+now moves them.
+
 ## Measurements (2026-11-11)
 
-Measurement only. Nothing below picks an option; the decision above stays open.
+Measurement only, taken before the ruling above.
 
 ### Method
 

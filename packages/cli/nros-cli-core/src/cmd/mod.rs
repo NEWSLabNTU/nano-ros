@@ -184,6 +184,16 @@ pub enum Cmd {
     #[command(name = "source-stamp", hide = true)]
     SourceStamp,
 
+    /// Print the CLI's planning fingerprint for the sources in its checkout.
+    ///
+    /// Hashes the sources the workspace build road runs; a stale binary can
+    /// still run this verb.
+    // Issue 2441. Hidden build-system seam, like `source-stamp`: the workspace
+    // fixture signature keys on it (`scripts/build/codegen-fingerprint.sh`'s
+    // `nros_cli_planning_stamp`), so it must not compute the set a second way.
+    #[command(name = "planning-stamp", hide = true)]
+    PlanningStamp,
+
     /// Sync generated message bindings and the cargo patch config to the declared deps.
     ///
     /// Reads `package.xml` / `Cargo.toml`, for a standalone package or a
