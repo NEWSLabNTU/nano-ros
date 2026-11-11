@@ -65,6 +65,9 @@ corrosion_import_crate(
 nros_cargo_profile_env(nros_rmw_zenoh_staticlib-static)
 # issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
 nros_riscv64_rustflags_env(nros_rmw_zenoh_staticlib-static)
+# issue 2400 W2 -- keep bitcode + .su for the stack-floor CHECK (after the
+# helpers above: it merges into their RUSTFLAGS / CFLAGS).
+nros_stack_floor_cargo_env(nros_rmw_zenoh_staticlib-static)
 
 # issue 1541 — the BOARD facts, which `nros-rmw-zenoh`'s build script resolves
 # the RFC-0049 platform and board rungs from; see nros-c's CMakeLists.txt.

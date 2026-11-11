@@ -232,6 +232,37 @@ def llvm_tool(name: str, llvm_bin: str | None) -> str:
              "component or pass --llvm-bin")
 
 
+def sysroot_rlibs(target: str) -> list[str]:
+    """The pinned toolchain's core / alloc / compiler_builtins rlibs for
+    `target`: their embedded bitcode is what build-std would have compiled."""
+    sysroot = subprocess.run(["rustc", "--print", "sysroot"], check=True, cwd=CHECKOUT,
+                             capture_output=True, text=True).stdout.strip()
+    lib = Path(sysroot, "lib", "rustlib", target, "lib")
+    found = [str(p) for stem in ("core", "alloc", "compiler_builtins")
+             for p in sorted(lib.glob(f"lib{stem}-*.rlib"))]
+    if not found:
+        sys.exit(f"nros-stack-floor: --sysroot: no rlibs under {lib} "
+                 f"(is the `{target}` target installed for the pinned toolchain?)")
+    return found
+
+
+def bitcode_dirs_expanded(dirs: list[str]) -> list[str]:
+    """A --bitcode-dir may be a glob (a cmake build cannot know the keyed
+    cargo directory names at configure time); one that matches nothing is an
+    error, since a walk with no Rust bitcode would miss every Rust frame."""
+    import glob as _glob
+    out: list[str] = []
+    for d in dirs:
+        if any(c in d for c in "*?["):
+            hits = sorted(p for p in _glob.glob(d) if Path(p).is_dir())
+            if not hits:
+                sys.exit(f"nros-stack-floor: --bitcode-dir `{d}` matches no directory")
+            out += hits
+        else:
+            out.append(d)
+    return out
+
+
 def readobj_json(tool: str, args: list[str], paths: list[str]) -> list[dict]:
     out = subprocess.run([tool, "--elf-output-style=JSON", *args, *paths],
                          check=True, capture_output=True, text=True).stdout
@@ -337,6 +368,38 @@ def rlib_bitcode(rlib: Path, llvm_bin: str | None, cache: Path) -> list[Path]:
         m.unlink()
     done.touch()
     return out
+
+
+def link_map_inputs(map_path: Path, link_dirs: list[Path]) -> tuple[list[str], list[str]]:
+    """The objects and archives a GNU ld link actually loaded, read from its
+    `-Wl,-Map` file's `LOAD <path>` lines, so the walk sees exactly the link
+    whatever the cmake generator wrote. Relative paths are the linker's cwd's
+    (the first of `link_dirs` holding the file: Makefiles link in the target's
+    directory, Ninja in the top one). Inputs outside every link dir (the
+    toolchain's libc, libgcc, crt objects) are returned separately and not
+    walked: they carry no frames, so a call into them is an external leaf, as
+    with no map at all."""
+    kept: list[str] = []
+    dropped: list[str] = []
+    seen: set[str] = set()
+    roots = [d.resolve() for d in link_dirs]
+    for line in map_path.read_text(errors="replace").splitlines():
+        if not line.startswith("LOAD "):
+            continue
+        raw = line[5:].strip()
+        if not raw.endswith((".o", ".obj", ".a")):
+            continue
+        if raw.startswith("/"):
+            path = Path(raw).resolve()
+        else:
+            cands = [(d / raw).resolve() for d in roots]
+            path = next((c for c in cands if c.exists()), cands[0])
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        (kept if any(path.is_relative_to(r) for r in roots) else dropped).append(key)
+    return kept, dropped
 
 
 def expand_inputs(inputs: list[str], bitcode_dirs: list[str], llvm_bin: str | None,
@@ -641,6 +704,39 @@ def apply_policy(args: argparse.Namespace, doc: dict) -> None:
         args.margin = doc.get("margin_pct", 0)
 
 
+def knob_text(knob: str, floor: int) -> str:
+    """`--stack-knob` names what raises the stack, with `{bytes}` / `{kb}`
+    standing for the floor in that knob's unit (`{kb}` rounds up)."""
+    if "{" not in knob:
+        return f"{knob} >= {floor}"
+    return knob.format(bytes=floor, kb=-(-floor // 1024))
+
+
+def check_stacks(results: dict, stacks: dict[str, int], knob: str) -> tuple[int, list[str]]:
+    """A build's CHECK (issue 2400): a MEASURED role whose floor exceeds its
+    stated stack fails, naming the knob that raises it; an UNMEASURED one only
+    warns (ruling (A)). A stack is never lowered here."""
+    rc, lines = 0, []
+    for role, stack in stacks.items():
+        r = results.get(role)
+        if r is None:
+            continue
+        if r["floor"] <= stack:
+            lines.append(f"nros-stack-floor: {role} stack {stack} B holds the floor "
+                         f"{r['floor']} B ({'measured' if r['measured'] else 'unmeasured'})")
+        elif r["measured"]:
+            rc = 1
+            lines.append(f"nros-stack-floor: ERROR: the {role} stack is {stack} B, below the "
+                         f"measured floor {r['floor']} B. Raise it: "
+                         f"{knob_text(knob, r['floor'])} (issue 2400)")
+        else:
+            lines.append(f"nros-stack-floor: WARNING: the {role} stack is {stack} B, below the "
+                         f"UNMEASURED floor {r['floor']} B. Not enforced (no [[allowance]] row); "
+                         f"if the image overflows, {knob_text(knob, r['floor'])} is the first "
+                         "thing to try")
+    return rc, lines
+
+
 def run(args: argparse.Namespace) -> int:
     doc = None
     if args.table:
@@ -652,7 +748,22 @@ def run(args: argparse.Namespace) -> int:
     objdump = llvm_tool("llvm-objdump", args.llvm_bin)
     g = Graph()
     cache = Path(args.llc_cache or Path.home() / ".cache" / "nros-stack-floor")
-    args.inputs = expand_inputs(args.inputs, args.bitcode_dir or [], args.llvm_bin, cache)
+    if args.link_map:
+        mp = Path(args.link_map)
+        kept, dropped = link_map_inputs(mp, [Path(d) for d in (args.link_dir or [mp.parent])])
+        if not kept:
+            raise SystemExit(f"nros-stack-floor: {mp} names no input under the link directory: "
+                             "the map is not a GNU ld map, or --link-dir is wrong")
+        args.inputs = kept + list(args.inputs)
+        if dropped:
+            print(f"nros-stack-floor: {len(dropped)} toolchain input(s) outside the link "
+                  "directory not walked (calls into them are external leaves)", file=sys.stderr)
+    if args.sysroot:
+        if not args.target:
+            raise SystemExit("nros-stack-floor: --sysroot needs --target")
+        args.inputs = list(args.inputs) + sysroot_rlibs(args.target)
+    args.inputs = expand_inputs(args.inputs, bitcode_dirs_expanded(args.bitcode_dir or []),
+                                args.llvm_bin, cache)
     for i in range(0, len(args.inputs), LOAD_CHUNK):
         load_object(g, args.inputs[i:i + LOAD_CHUNK], readobj, objdump)
     for su in args.su or []:
@@ -730,9 +841,28 @@ def run(args: argparse.Namespace) -> int:
                 "indirect_mode": mode, "indirect_charge": charge,
                 "path": best.chain,
             }
+    stacks: dict[str, int] = {}
+    for spec in args.check_stack or []:
+        role, _, n = spec.partition("=")
+        if not n.isdigit():
+            raise SystemExit(f"--check-stack `{spec}`: write ROLE=<bytes>")
+        stacks[role.upper()] = int(n)
     if refusals:
         print("nros-stack-floor: REFUSED\n" + "\n".join(refusals), file=sys.stderr)
+        measured_roles = [r for r in stacks
+                          if doc is not None and find_allowance(doc, args.image, args.target, r)]
+        if stacks and not measured_roles:
+            # ruling (A): an unmeasured image is never refused, the walk included
+            print("nros-stack-floor: WARNING: the walk was refused for an UNMEASURED image; "
+                  "not enforced (issue 2400)", file=sys.stderr)
+            return 0
         return 1
+    if stacks:
+        rc, lines = check_stacks(results, stacks, args.stack_knob or "the stack size")
+        for line in lines:
+            print(line, file=sys.stderr)
+        if rc:
+            return rc
     if args.json:
         print(json.dumps(results, indent=2))
     elif args.emit_defines:
@@ -832,6 +962,31 @@ def self_test() -> int:
     check("fold1 charges one level", fold_charge(g5, recursion_allowance=None,
                                                  externals=set(), one_level=True) == 100)
 
+    # the build's CHECK
+    res = {"OPEN": {"floor": 40000, "measured": True}}
+    rc, lines = check_stacks(res, {"OPEN": 32768}, "K")
+    check("check: a measured floor above the stack fails, naming the knob",
+          rc == 1 and "K >= 40000" in lines[0])
+    res = {"OPEN": {"floor": 40000, "measured": False}}
+    rc, lines = check_stacks(res, {"OPEN": 32768}, "K")
+    check("check: an unmeasured floor above the stack only warns",
+          rc == 0 and "WARNING" in lines[0])
+    rc, lines = check_stacks({"OPEN": {"floor": 100, "measured": True}}, {"OPEN": 65536}, "K")
+    check("check: a stack at or above the floor passes", rc == 0 and "holds" in lines[0])
+    check("knob template in the knob's unit",
+          knob_text("NROS_FREERTOS_APP_STACK_KB={kb}", 15216) == "NROS_FREERTOS_APP_STACK_KB=15")
+    # link map
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "a.obj").write_text(""); Path(d, "lib").mkdir(); Path(d, "lib", "b.a").write_text("")
+        Path(d, "m.map").write_text(
+            "Archive member included to satisfy reference by file (symbol)\n\n"
+            "LOAD a.obj\nLOAD lib/b.a\nLOAD /opt/gcc/lib/libc_nano.a\nLOAD lib/b.a\n"
+            "LOAD linker stubs\n")
+        kept, dropped = link_map_inputs(Path(d, "m.map"), [Path(d, "nope"), Path(d)])
+        check("link map: build-dir inputs kept once, in order",
+              [Path(k).name for k in kept] == ["a.obj", "b.a"])
+        check("link map: toolchain inputs dropped", dropped == [str(Path("/opt/gcc/lib/libc_nano.a").resolve())])
     # .su parsing
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -935,6 +1090,19 @@ def main() -> int:
     ap.add_argument("--role", action="append", default=[],
                     help="ROLE=root[,root...]; the floor is the deepest root")
     ap.add_argument("--su", action="append", help="a .su file or a dir searched for *.su")
+    ap.add_argument("--link-map", help="a GNU ld `-Wl,-Map` file: walk the inputs its LOAD "
+                    "lines name (added to any positional inputs)")
+    ap.add_argument("--link-dir", action="append",
+                    help="the linker's working directory, which relative LOAD paths are under; "
+                    "repeat for candidates (default: the map's directory)")
+    ap.add_argument("--check-stack", action="append",
+                    help="ROLE=<bytes>: the stated stack to CHECK (a measured image whose floor "
+                    "exceeds it fails; an unmeasured one warns)")
+    ap.add_argument("--stack-knob", help="what the user sets to raise the stack, for the "
+                    "message; `{bytes}` / `{kb}` stand for the floor in the knob's unit")
+    ap.add_argument("--sysroot", action="store_true",
+                    help="also walk the target's core / alloc / compiler_builtins rlibs "
+                    "from the pinned toolchain's sysroot (needs --target)")
     ap.add_argument("--indirect", help="`fold` or `allowance:<bytes>`; default refuses")
     ap.add_argument("--recursion-allowance", type=int)
     ap.add_argument("--external", action="append",
@@ -986,7 +1154,7 @@ def main() -> int:
         return 1 if problems else 0
     if args.table and not (args.rmw and args.target):
         ap.error("--table needs --rmw and --target (they select the policy and allowance)")
-    if not args.inputs or not args.role:
+    if not (args.inputs or args.link_map) or not args.role:
         ap.error("need INPUT(s) and at least one --role")
     return run(args)
 
