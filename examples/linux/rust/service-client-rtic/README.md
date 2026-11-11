@@ -5,29 +5,33 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ## Build
 
+A one-package workspace: `src/native_rtic_service_client` holds the program, and
+`src/native_rtic_service_client_bringup` holds the `system.toml` that says what to build. The
+program keeps its own `main`, which is what this example demonstrates, so
+every image names it as its owned entry (`entry = "native_rtic_service_client"`) and `nros build`
+builds it rather than generating one.
+
 ```bash
 cp -r examples/linux/rust/service-client-rtic ~/my-service-client-rtic && cd ~/my-service-client-rtic
 source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
-nros configure     # generated/ message crates + build/<image>/nros-cargo.toml
-nros build    # or: nros build linux
+nros build native_rtic_service_client_bringup:linux
 ```
 
 ## Run
 
 Needs a zenoh router (`ros2 run rmw_zenoh_cpp rmw_zenohd`).
-`nros build` leaves the binary at `build/linux/target/debug/rtic-service-client`.
+
+```bash
+nros run linux
+```
 
 ## Config
 
-Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
-(`[image.linux]` + `[system]`, RFC-0098 D3/D5). No build command
-carries any of them.
-
-`Cargo.toml` names no board crate. The board crate, its RMW backend and
-its runtime crates come from the `<pkg>_nros_selection` package that
-`nros configure` / `nros build` generate under `build/nros/selection/` from
-`system.toml` (RFC-0098 D6), so switching board is the `[image.*] board`
-line and nothing else
-([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
+Board, RMW, domain and locator: `src/native_rtic_service_client_bringup/system.toml`
+(`[image.*]` + `[system]`, RFC-0098 D3/D5). No build command carries any of
+them. `src/native_rtic_service_client/Cargo.toml` names the board crate it calls into
+(`nros-board-linux`); its RMW and edition features come from the
+`native_rtic_service_client_nros_derived` adapter crate `nros build` generates from the bringup
+(RFC-0071 D13/D19).
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

@@ -18,13 +18,6 @@ examples/linux/cpp/logging/system.toml
 examples/linux/cpp/parameters/system.toml
 examples/linux/cpp/safety-listener/system.toml
 examples/linux/cpp/service-client/system.toml
-examples/linux/rust/action-client-rtic/system.toml
-examples/linux/rust/action-server-rtic/system.toml
-examples/linux/rust/listener-rtic/system.toml
-examples/linux/rust/service-client-callback/system.toml
-examples/linux/rust/service-client-rtic/system.toml
-examples/linux/rust/service-server-rtic/system.toml
-examples/linux/rust/talker-rtic/system.toml
 examples/mps2-an385-baremetal/c/action-client/system.toml
 examples/mps2-an385-baremetal/c/action-server/system.toml
 examples/mps2-an385-baremetal/c/listener/system.toml

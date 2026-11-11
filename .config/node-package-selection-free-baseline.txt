@@ -7,13 +7,6 @@
 # that no longer violates fails until it is deleted. Phase-531 W6 and phase-535
 # empty it. Regenerate (shrink only):
 #   python3 scripts/check-node-package-selection-free.py --write-baseline
-examples/linux/rust/action-client-rtic/Cargo.toml  native_rtic_action_client_nros_selection
-examples/linux/rust/action-server-rtic/Cargo.toml  native_rtic_action_server_nros_selection
-examples/linux/rust/listener-rtic/Cargo.toml  native_rtic_listener_nros_selection
-examples/linux/rust/service-client-callback/Cargo.toml  native_rs_service_client_callback_nros_selection
-examples/linux/rust/service-client-rtic/Cargo.toml  native_rtic_service_client_nros_selection
-examples/linux/rust/service-server-rtic/Cargo.toml  native_rtic_service_server_nros_selection
-examples/linux/rust/talker-rtic/Cargo.toml  native_rtic_talker_nros_selection
 examples/mps2-an385-baremetal/c/action-client/Cargo.toml  baremetal_c_action_client_nros_selection
 examples/mps2-an385-baremetal/c/action-server/Cargo.toml  baremetal_c_action_server_nros_selection
 examples/mps2-an385-baremetal/c/listener/Cargo.toml  baremetal_c_listener_nros_selection

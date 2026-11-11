@@ -7179,21 +7179,11 @@ pub fn build_native_service_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-service-client-callback (cached, RFC-0041 / Phase 239).
-///
-/// The leaf's zenoh build is its PLAIN row: its RMW is declared per image in
-/// `system.toml` (issue 1305), so the explicit `rmw-zenoh` feature row it had
-/// is gone, as the six per-RMW native leaves' were.
+/// The linux Rust callback-receive service client (cached, RFC-0041 / Phase
+/// 239): the owned entry of its one-package workspace's `linux` image.
 pub fn build_native_service_client_callback() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_CALLBACK_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/service-client-callback",
-                "service-client-callback",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/service-client-callback"))
         .map(|p| p.as_path())
 }
 
@@ -7377,73 +7367,45 @@ static NATIVE_RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native rtic-action-client binary
 static NATIVE_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Build native rtic-talker (cached)
+/// The native rtic-talker (cached)
 pub fn build_native_rtic_talker() -> TestResult<&'static Path> {
     NATIVE_RTIC_TALKER_BINARY
-        .get_or_try_init(|| build_example("linux/rust/talker-rtic", "rtic-talker", None, None))
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/talker-rtic"))
         .map(|p| p.as_path())
 }
 
-/// Build native rtic-listener (cached)
+/// The native rtic-listener (cached)
 pub fn build_native_rtic_listener() -> TestResult<&'static Path> {
     NATIVE_RTIC_LISTENER_BINARY
-        .get_or_try_init(|| build_example("linux/rust/listener-rtic", "rtic-listener", None, None))
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/listener-rtic"))
         .map(|p| p.as_path())
 }
 
-/// Build native rtic-service-server (cached)
+/// The native rtic-service-server (cached)
 pub fn build_native_rtic_service_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/service-server-rtic",
-                "rtic-service-server",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/service-server-rtic"))
         .map(|p| p.as_path())
 }
 
-/// Build native rtic-service-client (cached)
+/// The native rtic-service-client (cached)
 pub fn build_native_rtic_service_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/service-client-rtic",
-                "rtic-service-client",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/service-client-rtic"))
         .map(|p| p.as_path())
 }
 
-/// Build native rtic-action-server (cached)
+/// The native rtic-action-server (cached)
 pub fn build_native_rtic_action_server() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_SERVER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/action-server-rtic",
-                "rtic-action-server",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/action-server-rtic"))
         .map(|p| p.as_path())
 }
 
-/// Build native rtic-action-client (cached)
+/// The native rtic-action-client (cached)
 pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
     NATIVE_RTIC_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "linux/rust/action-client-rtic",
-                "rtic-action-client",
-                None,
-                None,
-            )
-        })
+        .get_or_try_init(|| linux_rust_owned_entry("examples/linux/rust/action-client-rtic"))
         .map(|p| p.as_path())
 }
 

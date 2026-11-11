@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>native_rtic_action_server_bringup</name>
+  <version>0.1.0</version>
+  <description>What native_rtic_action_server runs on: the board, the RMW and the image, in system.toml.</description>
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>native_rtic_action_server</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>
