@@ -1,8 +1,13 @@
 # Phase 551 — The starter image
 
-**Status (2026-11-11). NOT STARTED: a draft; every item waits on a question
-the user has not ruled.** Candidate work for
-[RFC-0127](../design/0127-starter-image.md), whose decisions are all open.
+**Status (2026-11-11). IN PROGRESS: option B is ruled; W1, W2 and W7 are
+unblocked, the rest wait on open questions.** Work for
+[RFC-0127](../design/0127-starter-image.md), whose option B (D1's structure,
+D4, D5's recipe) the user ruled on 2026-11-11; its other decisions are open.
+Where an unblocked item needs an answer to an open question (Q2 the ROS
+edition, Q3 the contents), it takes the RFC's recommendation as a PROVISIONAL
+default, marked in code as changeable. Nothing is published to a registry and
+no tag moves until Q1 and Q5 are ruled.
 Supersedes [phase-523](phase-523-education-labs-adoption-probes.md) W2 (the
 instructor image and the semester pin): the instructor image is now one
 audience of a general starter image. Each item names the RFC-0127 question
@@ -23,25 +28,29 @@ image that deliberately bakes no store, and two hand-written CI images.
 
 ### W0 — Rule RFC-0127
 
-Gate: none. Put Q1 to Q9 to the user; rewrite RFC-0127 from shape to
+Gate: none. Option B ruled 2026-11-11; Q1 to Q6, Q8 and Q9 remain. Put those to the user; rewrite RFC-0127 from shape to
 decisions; mark each item below unblocked or dropped.
 
 Acceptance: RFC-0127 status `Stable`, or a ruling recorded per question.
 
 ### W1 — The generator becomes a shared library
 
-Gate: Q7. Split `scripts/ci/runner-container.sh` into a library that writes
+Gate: none (Q7 ruled by B). Split `scripts/ci/runner-container.sh` into a library that writes
 one multi-stage Dockerfile from `nros-sdk-index.toml` (targets `host`,
 `starter`, `starter-zephyr`) and the runner's own front end, which keeps its
 `--check` / `--build` / `--run` and its no-baked-store rule.
 
-Acceptance: the runner image built from the `host` target is layer-for-layer
-the image `runner-container.sh --build` builds today (compare
-`docker image inspect … RootFS.Layers`), and `runner-doctor.sh` passes in it.
+Acceptance: the runner's build context (its Dockerfile, `entrypoint.sh` and
+every copied file) is byte-identical to what `runner-container.sh` generates
+today, held by a gate that diffs it against a committed golden; the
+`--build/--run/--attach/--sweep` flags, the volume list, the user and
+capabilities and the layer order are unchanged; `runner-doctor.sh` passes in
+the image.
 
 ### W2 — The `starter` target
 
-Gate: Q2, Q3, Q8. `host` plus the release `nros` through `scripts/install.sh`,
+Gate: none for the target (B). Its contents use RFC-0127's recommendations as
+PROVISIONAL defaults until Q2, Q3 and Q8 are ruled. `host` plus the release `nros` through `scripts/install.sh`,
 a baked `nros setup` for the Linux host, `mps2-an385-baremetal` and
 `mps2-an385-freertos` with zenoh, a minimal Rust (host std plus
 `thumbv7m-none-eabi`), and the template crates fetched at build time.
@@ -94,7 +103,8 @@ Acceptance: each recipe is a probe-tagged book block that a probe runs.
 
 ### W7 — The customer `FROM` recipe
 
-Gate: none beyond W2. A documented `FROM <starter>:<ver>` recipe adding a
+Gate: none beyond W2 (the recipe is ruled by B). Until Q1 names a registry the
+recipe and its probe build `FROM` a locally built tag. A documented `FROM <starter>:<ver>` recipe adding a
 board and a package, and the four guarantees of RFC-0127 D5 written where a
 customer reads them.
 
