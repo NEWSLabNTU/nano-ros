@@ -3,7 +3,7 @@
 ///        `std_msgs/String` "Hello World: N" from a 1 Hz timer.
 ///
 /// The application is ordinary nano-ros C++, the same program as
-/// `examples/mps2-an385-freertos/cpp/talker/src/main.cpp`. What differs is a
+/// `examples/linux/cpp/talker/src/cpp_talker/src/main.cpp`. What differs is a
 /// property of having no RTOS, not of the C++ API (issue 1512):
 ///
 ///  1. **No libc, no C++ runtime.** No `<stdio.h>`, no `<signal.h>`, no

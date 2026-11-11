@@ -450,6 +450,16 @@ static NUTTX_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NUTTX_C_TYPED_CARRIER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    // phase-531 W6 — the talker witnesses are one-package workspaces whose
+    // image boots the component on a generated entry (RFC-0122 D10).
+    if let Some(r) = super::migrated_leaf_binary_named(
+        &format!("examples/qemu-armv7a-nuttx/{lang}/{name}"),
+        super::Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        binary_name,
+    ) {
+        return r;
+    }
     let root = project_root();
     let example_dir = root.join(format!("examples/qemu-armv7a-nuttx/{}/{}", lang, name));
 

@@ -171,8 +171,9 @@ build-fixture-extras:
     # `nros_build_dir` verified IN SCOPE here first (a missing helper expands
     # the flag EMPTY and silently keeps per-leaf dirs — defect 3 on native).
     export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" threadx-linux) -DNROS_PLATFORM=threadx_linux -DTHREADX_DIR=$threadx_dir -DNSOS_NETX_DIR=$nsos_netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DTHREADX_APP_DEFINE=$app_define -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$msg_to_idl -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    # phase-531 W6 — only the C talker witness is still a leaf here; the C++
+    # one is a one-package workspace built by `build-examples`.
     bash scripts/build/fixtures-build.sh threadx-linux c zenoh
-    bash scripts/build/fixtures-build.sh threadx-linux cpp zenoh
     if command -v idlc >/dev/null 2>&1 || [ -x build/install/bin/idlc ]; then
         # Each Cyclone lang pass bakes its ALLOCATOR domain
         # (nros_tests::alloc::domain_of(ThreadxLinux, lang, Pubsub): c=107,
@@ -183,7 +184,6 @@ build-fixture-extras:
         # The paired native listener spawns at domain 107 in linux_api.rs's
         # test_threadx_linux_cyclonedds_talker_to_native_listener.
         bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
-        bash scripts/build/fixtures-build.sh threadx-linux cpp cyclonedds
     else
         # Issue 1758 — not "skipped" + carry on: when this run selects the
         # cyclonedds rows, a missing idlc is a missing prerequisite (named or

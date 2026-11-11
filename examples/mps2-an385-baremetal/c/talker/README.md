@@ -27,7 +27,7 @@ package links no second panic handler beside `nros-c`'s.
 
 On FreeRTOS, NuttX, Zephyr and ThreadX a C example is a C program: the RTOS
 supplies `main`, a C startup and a C platform port, and `libnros_c.a` is linked
-*in*. `examples/mps2-an385-freertos/c/talker/` is that shape — a `CMakeLists.txt`
+*in*. `examples/threadx-linux/c/talker/` is that shape — a `CMakeLists.txt`
 calling `nano_ros_add_executable`, nine lines long.
 
 A board with no RTOS has none of those pieces in C:

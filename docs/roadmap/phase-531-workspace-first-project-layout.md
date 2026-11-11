@@ -749,6 +749,23 @@ from before W6.
     RFC-0122 D10 keeps a hand-written `main` only in a manual-entry demo, and
     phase-535 W1 lists none of these, so each becomes a component on a
     generated entry in its own batch.
+- **Batch, the cross C/C++ talkers as components.**
+  `examples/{mps2-an385-freertos,qemu-armv7a-nuttx}/{c,cpp}/talker` and
+  `examples/threadx-linux/cpp/talker` are one-package workspaces whose node
+  package is a typed component (`<pkg>::Talker`, `RCLC_C_COMPONENT` /
+  `nros_components_register_node(... TYPED)`), booted by a generated entry:
+  RFC-0122 D10 keeps a hand-written `main` only in a manual-entry demo, and
+  phase-535 W1 lists none of these. The C component is
+  `examples/workspaces/c`'s talker; the C++ one is the Zephyr witness's shape.
+  Their 6 `[[fixture]]` rows are `[[workspace_fixture]]` rows with the same
+  coordinates, the zenoh rows' `NROS_ENTRY_LOCATOR` now each image's
+  `locator`. The leaf `entities = "census"` keys went with the leaves: a
+  generated entry is sized from its model.
+  - `examples/threadx-linux/c/talker` stays a leaf until
+    [issue 2433](../issues/2433-owned-cross-entry-has-no-census.md) lands: its
+    `main` is what `linux_api`'s SIGTERM and exit-status cases measure, so it
+    becomes an owned entry, sized by a census of that entry (maintainer
+    ruling 2026-11-11).
 
 ### W7 — Retirement
 

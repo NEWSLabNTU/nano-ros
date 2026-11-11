@@ -3,7 +3,7 @@
 ///        `std_msgs/String` "Hello World: N" from a 1 Hz timer.
 ///
 /// The application is ordinary nano-ros C, identical in shape to
-/// `examples/mps2-an385-freertos/c/talker/src/main.c`. Two things differ, and
+/// `examples/linux/c/talker/src/native_c_talker/src/main.c`. Two things differ, and
 /// both are properties of having no RTOS rather than of the C API (issue 1512):
 ///
 ///  1. **No libc.** There is no `stdio.h`, no `getenv`, no `signal`. The
