@@ -63,3 +63,48 @@ nros_codegen_fingerprint() {
     fi
     printf '%s%s' "$prefix" "$bin_hash"
 }
+
+# nros_cli_source_stamp <repo_root>
+#
+# Issue 2439 -- the CLI's source stamp over the sources AS THEY ARE NOW
+# (`nros source-stamp`, the generated closure of issue 0627). It answers a
+# wider question than the fingerprint above: not "would the emitted code
+# move" but "would this CLI's PLANNING move" -- what `nros configure` and
+# `nros build` hand a configure (seeds, the image statement), none of which is
+# codegen output. That is the right key only for a consumer whose build is a
+# function of that planning AND who is cheap to rebuild: the west
+# compile-check rows (six rows, four of them configure-only). It is deliberately NOT the workspace
+# lane's key -- `codegen-stamp.sh` measured why (a doctor.rs edit would wipe
+# every leaf).
+#
+# `nros source-stamp` prints `fresh (<hex>)`, or exits non-zero with
+# `sources are now <hex>` for a stale binary; both carry the number for the
+# sources on disk, which is what a freshness key must hash. The test side
+# reads the same number the same way (`nros_tests::fixtures::cli_source_stamp`).
+#
+# stdout: the hex stamp. exit 1, no output: no in-tree `nros`, or one that
+# predates the verb -- the caller spells its own absent marker.
+nros_cli_source_stamp() {
+    local root="${1:?usage: nros_cli_source_stamp <repo_root>}"
+    local bin out
+    if ! declare -F nros_cli_bin >/dev/null; then
+        # shellcheck source=scripts/build/cargo.sh
+        source "$(dirname "${BASH_SOURCE[0]}")/cargo.sh"
+    fi
+    bin="$(NROS_CLI= nros_cli_bin --checkout-only --root "$root")" || return 1
+    out="$(cd "$root" && "$bin" source-stamp 2>&1)" || true
+    case "$out" in
+        *"sources are now "*)
+            out="${out#*sources are now }"
+            ;;
+        *"fresh ("*)
+            out="${out#*fresh (}"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    out="${out%%[!0-9a-f]*}"
+    [ -n "$out" ] || return 1
+    printf '%s' "$out"
+}
