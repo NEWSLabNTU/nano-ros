@@ -25,7 +25,7 @@ workspace="$repo_root/$dir"
 }
 
 {
-    printf 'nros-workspace-fixture-v3\0%s\0' "$record"
+    printf 'nros-workspace-fixture-v4\0%s\0' "$record"
     # #182 — the fixture is a function of the CODEGEN TOOL, not just the
     # workspace sources: `nros dev codegen entry` emits the entry TU, `nros ws
     # sync`/`generate-*` shape the msg crates. A signature blind to the tool
@@ -54,6 +54,20 @@ workspace="$repo_root/$dir"
         printf 'tool:nros\0%s\0' "$fp"
     else
         printf 'tool:nros-absent\0'
+    fi
+
+    # Issue 2441 — and the CLI's PLANNING, not only what it emits. A workspace
+    # fixture is built by `nros configure` + `nros build`, so it is a function
+    # of the seeds, the image statement and the configure options they hand the
+    # build, none of which is codegen output: a planning change moved nothing
+    # above and the fixture was REUSED over it. Not the source stamp (2439's
+    # west key), which a `doctor.rs` edit moves for every row: the planning
+    # set is the files the fixture road RUNS (`cli-planning-set.txt`, gated by
+    # `check-cli-planning-set`), and the ruling (2026-11-12) keyed on that.
+    if ps="$(nros_cli_planning_stamp "$repo_root")"; then
+        printf 'tool:nros-planning\0%s\0' "$ps"
+    else
+        printf 'tool:nros-planning-absent\0'
     fi
 
     # phase-318 W1.b — the RESOLVER, for records that actually run it.

@@ -44,6 +44,7 @@ fn main() {
 
     let Some(root) = root else {
         println!("cargo:rustc-env=NROS_CLI_SOURCE_STAMP=unknown");
+        println!("cargo:rustc-env=NROS_CLI_PLANNING_STAMP=unknown");
         return;
     };
 
@@ -155,6 +156,13 @@ fn main() {
         })
         .unwrap_or_default();
     println!("cargo:rustc-env=NROS_CLI_SOURCE_STAMP_COMPONENTS={components}");
+
+    // Issue 2441 — the planning fingerprint this binary was built from. The
+    // configure stamp records it, so a planning change re-runs `nros
+    // configure`. Its files are a subset of the source stamp's, which the
+    // watches above already cover (the set file itself is an `is_cli_input`).
+    let planning = planning_stamp(&root).unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=NROS_CLI_PLANNING_STAMP={planning}");
 
     // issue 0409 — the play_launch pin this CLI was built against. `nros sync`
     // shells out to `nros-launch-resolve`, which stamps the SAME value from its

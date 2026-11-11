@@ -312,6 +312,16 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
                  Rebuild: ./scripts/bootstrap.sh   (contributors: just setup-cli)"
             )),
         },
+        cmd::Cmd::PlanningStamp => match stale_guard::planning_stamp_now() {
+            Some(stamp) => {
+                println!("{stamp}");
+                Ok(())
+            }
+            None => Err(eyre::eyre!(
+                "planning-stamp: n/a (not a per-checkout binary, built outside git, \
+                 or no packages/cli/cli-planning-set.txt)"
+            )),
+        },
         // `Sync` lowers to `Configure` above; this arm is for a caller that
         // dispatches without lowering.
         cmd::Cmd::Sync(args) | cmd::Cmd::Configure(args) => cmd::configure::run(args),

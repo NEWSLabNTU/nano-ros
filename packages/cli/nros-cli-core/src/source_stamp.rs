@@ -109,6 +109,18 @@ fn is_cli_input(rel: &str) -> bool {
         // when the watched set changed. Same reasoning as `.jinja`: an input
         // that changes what the build consumes without being a `.rs`.
         || rel == CLI_SOURCE_DIRS_FILE
+        // Issue 2441 — the planning set decides what `NROS_CLI_PLANNING_STAMP`
+        // (baked by `build.rs`) is computed over, so a change to it must
+        // rebuild the binary that bakes it. The `cli-source-dirs.txt`
+        // argument, one file over.
+        || rel == CLI_PLANNING_SET_FILE
+        // Issue 2441 — a pack's `pack.toml` is read by a BUILD SCRIPT
+        // (`nros-cli-core/build_entry_packs.rs` for the entry packs,
+        // `rosidl-codegen/build.rs` for the emitter packs) and compiled in
+        // through `concat!(env!("CARGO_MANIFEST_DIR"), ...)`, which
+        // `every_embedded_file_is_watched` cannot see. It shapes what the CLI
+        // emits, and a pack edit left the stamp unmoved.
+        || rel.ends_with("/pack.toml")
         // phase-363 — `askama.toml` is the `.jinja` argument one file over.
         // It carries `dirs = [...]`, i.e. WHICH templates askama compiles into
         // the binary, so editing it changes what the build consumes while
@@ -436,14 +448,6 @@ pub fn source_stamp_components(root: &Path) -> Option<Vec<(&'static str, String)
     if !cli_source_dirs_file_present(root) {
         return None;
     }
-    let modified: std::collections::HashMap<String, String> = {
-        let files = modified_cli_files(root);
-        hash_objects(root, &files)
-            .into_iter()
-            .zip(files)
-            .map(|(sha, path)| (path, sha))
-            .collect()
-    };
     let mut out: Vec<(&'static str, String)> = Vec::new();
 
     // STAMP INPUT: cli_sources
@@ -463,37 +467,15 @@ pub fn source_stamp_components(root: &Path) -> Option<Vec<(&'static str, String)
     // one the rest of this file uses. Hardcoding `packages/cli` here is what
     // let an edit to `packages/core/nros-orchestration-ir` leave the stamp
     // unchanged.
-    let mut entries: std::collections::BTreeMap<String, String> = Default::default();
-    let idx = git_over_closure(root, &["ls-files", "-s"])?;
-    for line in idx.lines() {
-        // "<mode> <sha> <stage>\t<path>" — skip anything that does not parse
-        // rather than aborting the whole stamp on one odd entry.
-        let Some((meta, path)) = line.split_once('\t') else {
-            continue;
-        };
-        if !is_cli_input(path) {
-            continue;
-        }
-        let mut fields = meta.split_whitespace();
-        let mode = fields.next().unwrap_or("100644");
-        let index_sha = fields.next().unwrap_or("");
-        let sha = modified.get(path).map(String::as_str).unwrap_or(index_sha);
-        entries.insert(path.to_string(), format!("{mode} {sha} 0"));
-    }
-    // Untracked sources, same encoding, mode from the filesystem — which is the
-    // mode git would record for them, so an entry's value is byte-identical
-    // before and after it is committed.
-    let untracked = untracked_cli_files(root);
-    let shas = hash_objects(root, &untracked);
-    for (rel, sha) in untracked.iter().zip(shas) {
-        let mode = file_index_mode(&root.join(rel));
-        entries.insert(rel.clone(), format!("{mode} {sha} 0"));
-    }
-    let mut h = fnv1a(b"cli_sources", FNV_OFFSET);
-    for (path, meta) in &entries {
-        h = fnv1a(path.as_bytes(), h);
-        h = fnv1a(meta.as_bytes(), h);
-    }
+    let dirs = cli_source_dirs(root);
+    let entries = content_entries(
+        root,
+        &dirs,
+        &modified_cli_files(root),
+        &untracked_cli_files(root),
+        is_cli_input,
+    )?;
+    let h = fold_entries(b"cli_sources", &entries);
     out.push(("cli_sources", format!("{h:016x}")));
 
     // STAMP INPUT: play_launch_pin
@@ -520,6 +502,75 @@ pub fn source_stamp_components(root: &Path) -> Option<Vec<(&'static str, String)
         "the component order must match STAMP_INPUTS — every reader joins on it"
     );
     Some(out)
+}
+
+/// Every source under `specs` that `keep` admits, path -> `"<mode> <sha> 0"`:
+/// the index entry, with a worktree edit (`modified`) or an untracked file
+/// (`untracked`) hashed as git would record it, so a value is byte-identical
+/// before and after a commit.
+///
+/// Issue 2441 — ONE spelling of "the content of a set of CLI sources", shared by
+/// the source stamp's `cli_sources` input and [`planning_stamp`]. A second copy
+/// of this loop is how the two would come to disagree about what an edit is.
+///
+/// Tracked and untracked are one stream (see `cli_sources` below): a `git add`
+/// moves a file between them without changing a byte, and the merged, sorted
+/// map makes that invariant structural.
+fn content_entries(
+    root: &Path,
+    specs: &[String],
+    modified: &[String],
+    untracked: &[String],
+    keep: impl Fn(&str) -> bool,
+) -> Option<std::collections::BTreeMap<String, String>> {
+    let modified: std::collections::HashMap<&str, String> = hash_objects(root, modified)
+        .into_iter()
+        .zip(modified)
+        .map(|(sha, path)| (path.as_str(), sha))
+        .collect();
+    let mut entries: std::collections::BTreeMap<String, String> = Default::default();
+    let idx = if specs.is_empty() {
+        String::new()
+    } else {
+        let mut argv: Vec<&str> = vec!["ls-files", "-s", "--"];
+        argv.extend(specs.iter().map(String::as_str));
+        git(root, &argv)?
+    };
+    for line in idx.lines() {
+        // "<mode> <sha> <stage>\t<path>" — skip anything that does not parse
+        // rather than aborting the whole stamp on one odd entry.
+        let Some((meta, path)) = line.split_once('\t') else {
+            continue;
+        };
+        if !keep(path) {
+            continue;
+        }
+        let mut fields = meta.split_whitespace();
+        let mode = fields.next().unwrap_or("100644");
+        let index_sha = fields.next().unwrap_or("");
+        let sha = modified.get(path).map(String::as_str).unwrap_or(index_sha);
+        entries.insert(path.to_string(), format!("{mode} {sha} 0"));
+    }
+    // Untracked sources, same encoding, mode from the filesystem — which is the
+    // mode git would record for them, so an entry's value is byte-identical
+    // before and after it is committed.
+    let untracked: Vec<String> = untracked.iter().filter(|p| keep(p)).cloned().collect();
+    let shas = hash_objects(root, &untracked);
+    for (rel, sha) in untracked.iter().zip(shas) {
+        let mode = file_index_mode(&root.join(rel));
+        entries.insert(rel.clone(), format!("{mode} {sha} 0"));
+    }
+    Some(entries)
+}
+
+/// FNV-1a over `label` then every `(path, entry)` of [`content_entries`].
+fn fold_entries(label: &[u8], entries: &std::collections::BTreeMap<String, String>) -> u64 {
+    let mut h = fnv1a(label, FNV_OFFSET);
+    for (path, meta) in entries {
+        h = fnv1a(path.as_bytes(), h);
+        h = fnv1a(meta.as_bytes(), h);
+    }
+    h
 }
 
 /// A stamp of the CLI sources as they exist right now, or `None` outside a git
@@ -562,6 +613,78 @@ pub fn source_stamp(root: &Path) -> Option<String> {
         h = fnv1a(part.as_bytes(), h);
     }
     Some(format!("{h:016x}"))
+}
+
+/// Repo-relative location of the generated planning set (issue 2441).
+const CLI_PLANNING_SET_FILE: &str = "packages/cli/cli-planning-set.txt";
+
+/// `path` is `prefix` or lies under it (a component boundary, not a string
+/// prefix: `nros-cli` must not cover `nros-cli-core`).
+fn is_under(path: &str, prefix: &str) -> bool {
+    path.strip_prefix(prefix)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
+/// The planning set's `+` (included) and `-` (excluded) paths, or `None` when
+/// the file is missing or names nothing.
+fn planning_set(root: &Path) -> Option<(Vec<String>, Vec<String>)> {
+    let body = std::fs::read_to_string(root.join(CLI_PLANNING_SET_FILE)).ok()?;
+    let (mut plus, mut minus) = (Vec::new(), Vec::new());
+    for line in body.lines() {
+        if let Some(p) = line.strip_prefix("+ ") {
+            plus.push(p.trim().to_string());
+        } else if let Some(m) = line.strip_prefix("- ") {
+            minus.push(m.trim().to_string());
+        }
+    }
+    (!plus.is_empty()).then_some((plus, minus))
+}
+
+/// Issue 2441 — the CLI's PLANNING fingerprint: the content of every source
+/// the workspace fixture road runs, over the sources AS THEY ARE ON DISK.
+///
+/// The set is `packages/cli/cli-planning-set.txt`, generated by
+/// `scripts/gen-cli-planning-set.py` and gated by `check-cli-planning-set`
+/// (the `cli-source-dirs.txt` arrangement, for the reason that file records:
+/// this is `include!`d by `build.rs`, so it can neither parse TOML nor run
+/// `cargo metadata`, and the reach walk is no work for every `nros build`).
+/// It is the source stamp's closure minus what no fixture build runs — leaf
+/// verbs (`nros doctor`), test-only code, scaffolding outside the binary — so
+/// it moves for a change to what `nros configure` / `nros build` hand a build,
+/// and does NOT move for a `doctor.rs` edit, which the source stamp does.
+///
+/// Two readers: `build.rs` bakes it as `NROS_CLI_PLANNING_STAMP` (the
+/// configure stamp records that, so a planning change re-runs configure), and
+/// `nros planning-stamp` prints it for the sources now (the workspace fixture
+/// signature hashes that, through `codegen-fingerprint.sh`).
+///
+/// `None` without the set file — never a stamp over a guessed set.
+pub fn planning_stamp(root: &Path) -> Option<String> {
+    let (plus, minus) = planning_set(root)?;
+    let keep = |p: &str| {
+        is_cli_input(p)
+            && plus.iter().any(|d| is_under(p, d))
+            && !minus.iter().any(|d| is_under(p, d))
+    };
+    let over = |args: &[&str]| -> Vec<String> {
+        let mut argv: Vec<&str> = args.to_vec();
+        argv.push("--");
+        argv.extend(plus.iter().map(String::as_str));
+        git(root, &argv)
+            .map(|o| o.lines().filter(|l| keep(l)).map(str::to_string).collect())
+            .unwrap_or_default()
+    };
+    let modified = over(&["diff", "--name-only"]);
+    // Untracked files only under `packages/cli`, as the source stamp scopes
+    // them (issue 0604): that keeps this a function of what `build.rs`
+    // watches, so the baked and the on-disk value cannot disagree on a file
+    // nothing re-runs the build script for.
+    let untracked: Vec<String> = untracked_cli_files(root)
+        .into_iter()
+        .filter(|p| keep(p))
+        .collect();
+    let entries = content_entries(root, &plus, &modified, &untracked, keep)?;
+    Some(format!("{:016x}", fold_entries(b"cli_planning", &entries)))
 }
 
 /// Blob SHAs for `files` (repo-relative), in order — one `git hash-object`
@@ -682,6 +805,10 @@ mod tests {
             // embedded by `include_str!` (phase-517 W12)
             "packages/cli/cargo-nano-ros/templates/roles/c/client.component.c",
             "examples/templates/multi-node-workspace/README.md",
+            // issue 2441 — read by build scripts, compiled in.
+            CLI_PLANNING_SET_FILE,
+            "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/c/pack.toml",
+            "packages/cli/rosidl-codegen/packs/c/pack.toml",
         ] {
             assert!(is_cli_input(watched), "should be a CLI input: {watched}");
         }

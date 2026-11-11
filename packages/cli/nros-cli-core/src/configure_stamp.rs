@@ -140,6 +140,15 @@ pub(crate) struct Stamp {
     /// field reads `None`, which is stale once.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) resolver_pin: Option<String>,
+    /// Issue 2441 — the CLI PLANNING fingerprint of the binary that
+    /// configured (`NROS_CLI_PLANNING_STAMP`, `source_stamp::planning_stamp`).
+    /// None of the inputs above moves when the CLI changes what it plans —
+    /// the seeds, the image statement, the configure options — so a kept
+    /// build tree reused a configure the current CLI would write differently.
+    /// The codegen version catches emitter changes only. A stamp from before
+    /// this field reads `None`, which is stale once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) cli_planning: Option<String>,
     /// Ruling R15: a SKIP stamp — the image's preflight refused it (this
     /// reason) when nobody named it. Current for a configure that does not
     /// name it either, so a host lacking one image's toolchain does not
@@ -308,6 +317,11 @@ fn codegen_version() -> String {
 /// resolves (issue 2296; `ws::stamp_resolver_pin` writes the same value).
 pub(crate) fn resolver_pin() -> String {
     env!("NROS_PLAY_LAUNCH_SHA").to_string()
+}
+
+/// Issue 2441 — the planning fingerprint this binary was built from.
+pub(crate) fn cli_planning() -> String {
+    env!("NROS_CLI_PLANNING_STAMP").to_string()
 }
 
 /// `sha256:<hex>` over the project's inputs, the digest-input env, the output
@@ -724,6 +738,7 @@ pub(crate) fn stamp_now(project: &Path, flags: &OutputFlags) -> Result<Stamp> {
         ament_prefix: std::env::var(AMENT_VAR).ok(),
         launch_resolve: current_launch_resolver(),
         resolver_pin: Some(resolver_pin()),
+        cli_planning: Some(cli_planning()),
         skipped: None,
         coordinate: None,
         covers: Vec::new(),
@@ -856,6 +871,17 @@ pub(crate) fn currency(
                 .as_deref()
                 .map_or("none".to_string(), short),
             short(&pin)
+        )));
+    }
+    // Issue 2441 — same inputs, same resolver, a CLI that PLANS differently:
+    // what configure wrote is the older CLI's answer, so configure again. The
+    // planning set leaves out leaf verbs and tests, so a `doctor.rs` edit
+    // rebuilds the CLI without re-running any configure.
+    let planning = cli_planning();
+    if stamp.cli_planning.as_deref() != Some(planning.as_str()) {
+        return Ok(Currency::Stale(format!(
+            "CLI planning changed: {} -> {planning}",
+            stamp.cli_planning.as_deref().unwrap_or("none"),
         )));
     }
     // phase-530 W3 (RFC-0120 D2) — an image configured under a shared host
@@ -992,6 +1018,7 @@ mod tests {
             ament_prefix: None,
             launch_resolve: None,
             resolver_pin: Some(resolver_pin()),
+            cli_planning: Some(cli_planning()),
             skipped: None,
             coordinate: None,
             covers: Vec::new(),
@@ -1289,6 +1316,7 @@ mod tests {
             ament_prefix: Some("/opt/ros/humble".into()),
             launch_resolve: Some(resolver.to_path_buf()),
             resolver_pin: Some(resolver_pin()),
+            cli_planning: Some(cli_planning()),
             skipped: None,
             coordinate: None,
             covers: Vec::new(),
@@ -2289,6 +2317,38 @@ mod tests {
                     assert!(why.starts_with("launch resolver pin changed"), "{why}")
                 }
                 Currency::Current => panic!("pin {old:?} left the stamp current"),
+            }
+        }
+    }
+
+    /// Issue 2441 — a CLI whose planning moved re-runs configure, and one
+    /// whose planning did not (the same fingerprint) stays current.
+    #[test]
+    fn a_cli_planning_change_stales_the_stamp() {
+        let p = tmp("cli-planning");
+        std::fs::write(p.join("system.toml"), "[system]\n").unwrap();
+        let env = real_env();
+        let digest = input_digest_with_env(&p, &env).unwrap();
+        let at = |planning: Option<&str>| {
+            record(
+                &p,
+                "img",
+                &Stamp {
+                    digest: digest.clone(),
+                    cli_planning: planning.map(str::to_string),
+                    ..stamp_for(&p)
+                },
+            )
+            .unwrap();
+            is_current_with(&p, "img", &env, None).unwrap()
+        };
+        assert_eq!(at(Some(&cli_planning())), Currency::Current);
+        for old in [Some("0123456789abcdef"), None] {
+            match at(old) {
+                Currency::Stale(why) => {
+                    assert!(why.starts_with("CLI planning changed"), "{why}")
+                }
+                Currency::Current => panic!("planning {old:?} left the stamp current"),
             }
         }
     }

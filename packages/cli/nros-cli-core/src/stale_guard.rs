@@ -429,6 +429,19 @@ pub fn stamp_pair() -> Option<(String, String)> {
     Some((BUILT_STAMP.to_string(), current))
 }
 
+/// Issue 2441 — the planning fingerprint of the sources in this binary's
+/// checkout NOW ([`source_stamp::planning_stamp`]) — backs `nros
+/// planning-stamp`. `None` where [`stamp_pair`] is `None`, or without the
+/// generated planning set.
+pub fn planning_stamp_now() -> Option<String> {
+    if BUILT_STAMP == "unknown" {
+        return None;
+    }
+    let exe = std::env::current_exe().ok()?;
+    let root = checkout_root_of(&exe)?;
+    source_stamp::planning_stamp(&root)
+}
+
 /// Issue 1018 — every stamp input must be nameable by the refusal, measured.
 ///
 /// The gate `check-stale-cli-attribution` asks the same question of the TEXT,
