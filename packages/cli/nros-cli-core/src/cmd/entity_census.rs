@@ -1633,7 +1633,8 @@ pub(crate) fn take_owned_census(
                 "`{q}` builds the owned entry `{pkg_name}`, which is sized by its census, a HOST \
                  build of its sources,"
             ),
-            explicit: " (an owned entry on a cross board, issue 2433)",
+            // issue 2433: owned entries on a cross board are census-sized.
+            explicit: " (an owned entry on a cross board)",
             run_failure: &|| {
                 format!(
                     "`{q}`: the census RUN of the owned entry `{pkg_name}`'s host build failed \
