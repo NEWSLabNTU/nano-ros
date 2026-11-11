@@ -22,7 +22,9 @@
 //! on the CLI (the same reason [`crate::sidecar_slots`] does).
 //!
 //! `codegen entry` and `nros::main!` build their rows with
-//! [`node_callback_groups`]. `codegen-system`'s
+//! [`node_callback_groups`]; each road supplies the DECLARED groups from where
+//! its language states them (the cmake keyword, or the Rust sidecar via
+//! [`groups_of_component`]). `codegen-system`'s
 //! `sched_task_resolver::collect_callback_groups` still has its own merge: an
 //! authored `group_tasks` there HIDES every keyword group it does not name,
 //! where the entry keeps such a group on the default sched task. The two agree
@@ -96,24 +98,63 @@ pub fn node_callback_groups(
 /// [`node_callback_groups`] row per node the image keeps, keyed by the node's
 /// bare name (what `resolve_sched_tasks` matches members on).
 ///
+/// `declared(pkg, exec)` is the group ids the node's CODE states. On the Rust
+/// road that is the source-metadata sidecar `nros sync` writes
+/// ([`groups_of_component`]) - the Rust spelling of what the cmake
+/// `CALLBACK_GROUPS` keyword carries to `codegen entry`. Issue 2432: the macro
+/// read the model's bindings alone, so a Rust node whose code names its groups
+/// and whose `system.toml` binds none reached the derivation groupless, and the
+/// image ran on one task where its C and C++ twins derived a schedule.
+///
 /// The macro calls this and nothing else to build the map it derives from, so
 /// a test that calls it measures the macro's input, not a copy of it.
 pub fn model_node_groups(
     model: &SystemModel,
     keep: impl Fn(&str) -> bool,
+    declared: impl Fn(&str, &str) -> Vec<String>,
 ) -> BTreeMap<String, Vec<CallbackGroupDecl>> {
     let mut out = BTreeMap::new();
-    for fqn in model.structure.nodes.keys() {
+    for (fqn, inst) in &model.structure.nodes {
         if !keep(fqn) {
             continue;
         }
         let bare = fqn.rsplit('/').next().unwrap_or(fqn).to_string();
-        let rows = node_callback_groups(&[], &node_group_bindings(model, fqn));
+        let ids = match (inst.pkg.as_deref(), inst.exec.as_deref()) {
+            (Some(pkg), Some(exec)) => declared(pkg, exec),
+            _ => Vec::new(),
+        };
+        let rows = node_callback_groups(&ids, &node_group_bindings(model, fqn));
         if !rows.is_empty() {
             out.insert(bare, rows);
         }
     }
     out
+}
+
+/// `(package, executable)` + the distinct callback-group ids one source-metadata
+/// sidecar records (`callbacks[].group`, nulls skipped), in first-seen order.
+///
+/// `None` when the document lacks the identity keys, the same rule as
+/// [`crate::sidecar_slots::slots_of_component`]: an unusable sidecar is skipped,
+/// never fatal. `serde_json::Value`-based for the reason that module gives - the
+/// macro must not mirror the CLI's schema struct.
+pub fn groups_of_component(sidecar: &serde_json::Value) -> Option<((String, String), Vec<String>)> {
+    let package = sidecar.get("package")?.as_str()?.to_string();
+    let executable = sidecar.get("executable")?.as_str()?.to_string();
+    let mut ids: Vec<String> = Vec::new();
+    for cb in sidecar
+        .get("callbacks")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(g) = cb.get("group").and_then(serde_json::Value::as_str)
+            && !ids.iter().any(|i| i == g)
+        {
+            ids.push(g.to_string());
+        }
+    }
+    Some(((package, executable), ids))
 }
 
 /// Why a road did NOT run the derivation. Its `Display` is the line the road
@@ -253,6 +294,27 @@ mod tests {
             .map(|d| (d.id.as_str(), d.sched_task.as_str()))
             .collect();
         assert_eq!(got, vec![("ctrl", "high"), ("telem", DEFAULT_SCHED_TASK)]);
+    }
+
+    #[test]
+    fn a_sidecar_names_its_distinct_groups_and_skips_nulls() {
+        let doc = serde_json::json!({
+            "package": "control_node",
+            "executable": "control_node",
+            "callbacks": [
+                {"id": "on_tick", "group": "ctrl"},
+                {"id": "on_msg", "group": null},
+                {"id": "on_other", "group": "ctrl"},
+                {"id": "on_slow", "group": "telem"},
+            ],
+        });
+        let ((pkg, exec), ids) = groups_of_component(&doc).expect("identity keys present");
+        assert_eq!(
+            (pkg.as_str(), exec.as_str()),
+            ("control_node", "control_node")
+        );
+        assert_eq!(ids, vec!["ctrl".to_string(), "telem".to_string()]);
+        assert!(groups_of_component(&serde_json::json!({"callbacks": []})).is_none());
     }
 
     #[test]

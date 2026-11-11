@@ -167,4 +167,9 @@ them. The other case is pinned on purpose by
 `an_authored_binding_still_outranks_the_keyword`, so it needs its own ruling.
 
 **Gate.** `nros-cli-core/tests/derived_sched_tasks_parity.rs` feeds one model
-to all three roads and compares the resolved tables.
+to all three roads and compares the resolved tables. The first commit on branch
+`fix-2432-rust-derived-sched` pins today's divergence. The second commit
+implements "derive everywhere": `nros::main!` reads the sidecar's groups through
+`entry_groups::groups_of_component`, and the gate asserts that the Rust table
+equals the C one. The two commits are separate, so the direction can still be
+ruled the other way by dropping the second.

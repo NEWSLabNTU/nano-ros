@@ -44,6 +44,10 @@ pub type RecordedSlots = BTreeMap<(String, String), usize>;
 #[derive(Debug, Default)]
 pub struct Sidecars {
     pub slots: RecordedSlots,
+    /// issue 2432 — `(package, executable)` → the callback-group ids the
+    /// node's code states, the Rust road's equivalent of the cmake
+    /// `CALLBACK_GROUPS` keyword (`entry_groups::groups_of_component`).
+    pub groups: BTreeMap<(String, String), Vec<String>>,
     pub paths: Vec<PathBuf>,
 }
 
@@ -72,10 +76,26 @@ pub fn collect(entry_manifest_dir: &Path) -> Sidecars {
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
                 continue;
             }
-            if let Some((key, slots)) = read_sidecar(&path) {
+            let Some(value) = read_value(&path) else {
+                continue;
+            };
+            if let Some((key, slots)) =
+                nros_orchestration_ir::sidecar_slots::slots_of_component(&value)
+            {
                 let cell = out.slots.entry(key).or_insert(0);
                 *cell = (*cell).max(slots);
                 out.paths.push(path);
+            }
+            // Union across sidecars for one component, in first-seen order.
+            if let Some((key, ids)) =
+                nros_orchestration_ir::entry_groups::groups_of_component(&value)
+            {
+                let cell = out.groups.entry(key).or_default();
+                for id in ids {
+                    if !cell.contains(&id) {
+                        cell.push(id);
+                    }
+                }
             }
         }
     }
@@ -101,11 +121,10 @@ fn workspace_src_root(entry_manifest_dir: &Path) -> Option<PathBuf> {
     entry_manifest_dir.parent().map(Path::to_path_buf)
 }
 
-/// Read one sidecar and hand it to the shared accounting rule.
-fn read_sidecar(path: &Path) -> Option<((String, String), usize)> {
+/// Read one sidecar as JSON; the shared rules do the rest.
+fn read_value(path: &Path) -> Option<serde_json::Value> {
     let raw = std::fs::read_to_string(path).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-    nros_orchestration_ir::sidecar_slots::slots_of_component(&value)
+    serde_json::from_str(&raw).ok()
 }
 
 #[cfg(test)]
@@ -151,6 +170,23 @@ mod tests {
                 .copied(),
             Some(6),
             "1 sub + 5 timers = 6 slots; the 2 publishers take none"
+        );
+    }
+
+    /// issue 2432 — the groups the node's code states reach the macro.
+    #[test]
+    fn records_the_callback_groups_the_code_states() {
+        let dir = ws("groups");
+        std::fs::write(
+            dir.join("src/talker_pkg/metadata/talker.json"),
+            r#"{"package":"talker_pkg","executable":"talker","nodes":[],
+               "callbacks":[{"id":"on_tick","group":"ctrl"},{"id":"x","group":null}]}"#,
+        )
+        .unwrap();
+        let found = collect(&dir.join("src/linux_entry"));
+        assert_eq!(
+            found.groups.get(&("talker_pkg".into(), "talker".into())),
+            Some(&vec!["ctrl".to_string()])
         );
     }
 
