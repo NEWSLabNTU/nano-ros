@@ -2434,9 +2434,11 @@ mod board_crate_tests {
         // 69 -> 64 for the linux Rust listener, service and action examples
         // (phase-535 W6: one-node workspaces migrated in place), 64 -> 60 for
         // the linux Rust lifecycle-node, custom-msg and custom-transport pair
-        // (W6: owned entries of one-package workspaces, RFC-0071 D19).
+        // (W6: owned entries of one-package workspaces, RFC-0071 D19), 60 -> 57
+        // for the threadx-linux, mps2-an385-freertos and qemu-armv7a-nuttx Rust
+        // talkers (phase-531 W6: one-node workspaces).
         assert!(
-            on_selection >= 60,
+            on_selection >= 57,
             "only {on_selection} leaves on the selection package"
         );
     }
