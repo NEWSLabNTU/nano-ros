@@ -60,9 +60,9 @@ const BINS_ALLOWLIST: &[(&str, &str)] = &[
         "in-place-subscriptions",
         "issue 1340 measurement witness: a TRACKED image whose eight \
          in-place subscriptions clear the executor arena's 8 KiB floor, so \
-         the in-place saving can be re-measured by hand (`nros configure && nros \
-         build native`, then `just mem-report --baseline`; recipe in its \
-         Cargo.toml). NO LANE BUILDS IT — this entry records that rather \
+         the in-place saving can be re-measured by hand (`nros build \
+         in_place_subscriptions_bringup:linux`, then `just mem-report \
+         --baseline`; recipe in its node package's Cargo.toml). NO LANE BUILDS IT — this entry records that rather \
          than hiding it. A `fixtures.toml` row with a `mem-report` consumer \
          is the arm that would retire this entry (issue 0540's rule); until \
          then the measurement is only as current as its last by-hand run.",

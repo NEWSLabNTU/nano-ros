@@ -35,7 +35,6 @@ packages/testing/nros-bench/loan-copy-count/Cargo.toml  loan_copy_count_nros_sel
 packages/testing/nros-bench/wake-latency-cortex-m3/Cargo.toml  wake_latency_cortex_m3_nros_selection
 packages/testing/nros-tests/bins/condvar-contract-freertos-mps2/Cargo.toml  condvar_contract_freertos_mps2_nros_selection
 packages/testing/nros-tests/bins/condvar-contract-threadx-linux/Cargo.toml  condvar_contract_threadx_linux_nros_selection
-packages/testing/nros-tests/bins/in-place-subscriptions/Cargo.toml  in_place_subscriptions_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/Cargo.toml  logging_smoke_freertos_mps2_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/Cargo.toml  logging_smoke_nuttx_qemu_arm_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml  logging_smoke_threadx_linux_nros_selection

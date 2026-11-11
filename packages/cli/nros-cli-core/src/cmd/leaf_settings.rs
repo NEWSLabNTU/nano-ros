@@ -2441,9 +2441,10 @@ mod board_crate_tests {
         // `service-info-client` bins (W7: owned entries, RFC-0071 D19),
         // 54 -> 47 for the linux Rust callback client and the six `*-rtic`
         // examples (phase-535 W6, the same shape), 47 -> 39 for the eight
-        // multi-image `nros-tests` bins (phase-531 W7 step-3 prep, owned entries).
+        // multi-image `nros-tests` bins (phase-531 W7 step-3 prep, owned entries),
+        // 39 -> 38 for the `in-place-subscriptions` bin (W7 step-3 prep).
         assert!(
-            on_selection >= 39,
+            on_selection >= 38,
             "only {on_selection} leaves on the selection package"
         );
     }
