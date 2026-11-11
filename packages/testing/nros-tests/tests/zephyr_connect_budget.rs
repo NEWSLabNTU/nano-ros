@@ -143,8 +143,8 @@ fn zephyr_zenoh_open_against_no_listener_ends_at_its_budget() {
 /// (RFC 5737), routed nowhere, so the SYN leaves through the default route and
 /// is never answered; no root and no firewall rule is needed. The image's
 /// sockets are the host's (NSOS), so before the fix the open waited out the
-/// host's SYN retries: 136.2 s on a Linux host (`tcp_syn_retries` = 6) under a
-/// 3 s budget, measured, against 5.0 s after.
+/// host's SYN retries: 136.2 s on a Linux host (six SYN retries, the kernel
+/// default) under a 3 s budget, measured, against 5.0 s after.
 ///
 /// A host with no route at all answers `ENETUNREACH` at once instead; the open
 /// then retries that until the budget, so this case still holds there, it just
