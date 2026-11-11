@@ -1,0 +1,57 @@
+[
+  {
+    "apt": [
+      "python3-catkin-pkg"
+    ],
+    "apt_refused": null,
+    "key": "catkin-pkg",
+    "module": "catkin_pkg",
+    "pip": "catkin_pkg",
+    "version": null,
+    "why": "OURS: packages/cli/colcon-cargo-ros2/colcon_nano_ros/workspace_bindgen.py imports catkin_pkg.package (measured 2026-09-24: 1 direct importer here). Upstream rosidl_adapter/cli.py imports it too and declares it in no package.xml, so [source.rosidl] needs it as well \u2014 but this entry would exist without that"
+  },
+  {
+    "apt": [
+      "python3-empy"
+    ],
+    "apt_refused": null,
+    "key": "empy",
+    "module": "em",
+    "pip": "empy",
+    "version": "3.3.4",
+    "why": "UPSTREAM rosidl's: rosidl_adapter/package.xml <exec_depend>python3-empy</exec_depend> at humble-5621b26"
+  },
+  {
+    "apt": [
+      "python3-lark"
+    ],
+    "apt_refused": null,
+    "key": "lark",
+    "module": "lark",
+    "pip": "lark",
+    "version": null,
+    "why": "UPSTREAM rosidl's: rosidl_parser/package.xml <exec_depend>python3-lark-parser</exec_depend> at humble-5621b26"
+  },
+  {
+    "apt": [
+      "python3-yaml"
+    ],
+    "apt_refused": null,
+    "key": "pyyaml",
+    "module": "yaml",
+    "pip": "PyYAML",
+    "version": null,
+    "why": "OURS: 11 of our own scripts import yaml (measured 2026-09-24) \u2014 scripts/ci/lane-stage.py, scripts/lib/workflow_commands.py, scripts/probe/extract-workflow-steps.py, gen-rosdep-snapshot.py and six check-* gates on the check-fast line. A host that cannot import yaml cannot run the lane this repo tells everyone to run before every push. The rosidl tree reaches it too and declares it nowhere"
+  },
+  {
+    "apt": [
+      "python3-tomli"
+    ],
+    "apt_refused": null,
+    "key": "tomli",
+    "module": "tomli",
+    "pip": "tomli",
+    "version": null,
+    "why": "check-fixtures-manifest (python3.10 has no stdlib tomllib; found undeclared running check-fast on a clean host)"
+  }
+]
