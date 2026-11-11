@@ -108,9 +108,10 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "PATH", requires = "from_leaf")]
     pub entity_cmake: Option<PathBuf>,
 
+    // RFC-0071 D19 (owned entry); issue 2433 (census sizing).
     /// `--from-leaf <bringup>` with `--leaf-image`: the image builds this
-    /// OWNED entry (RFC-0071 D19), and is sized by the census of it
-    /// (`entity-census take --image`, issue 2433) rather than by a
+    /// OWNED entry, and is sized by the census of it
+    /// (`entity-census take --image`) rather than by a
     /// declaration. The bringup states the image's deployment; the census
     /// states every entity, its nodes standing in for the components the
     /// bringup has none of.
