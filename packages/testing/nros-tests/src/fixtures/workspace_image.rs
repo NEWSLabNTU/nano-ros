@@ -287,7 +287,9 @@ const CONFIGS: [Config; 7] = [
 /// A test-tree bin migrated the same way (`packages/testing/nros-tests/bins/
 /// <name>`, e.g. the mps2 idle-wake witness in batch 8) is one too: its rows
 /// were `[[fixture]]` rows of the `Kind::Example` cell, and moving them to a
-/// bringup image changes the road, not the cell.
+/// bringup image changes the road, not the cell. So is an `nros-bench`
+/// program (`packages/testing/nros-bench/<name>`, phase-531 W7 step-3 prep),
+/// for the same reason.
 pub fn is_witness_workspace(dir: &str) -> bool {
     let parts: Vec<&str> = dir.trim_end_matches('/').split('/').collect();
     matches!(
@@ -297,6 +299,9 @@ pub fn is_witness_workspace(dir: &str) -> bool {
     ) || matches!(
         parts.as_slice(),
         ["packages", "testing", "nros-tests", "bins", name] if !name.is_empty()
+    ) || matches!(
+        parts.as_slice(),
+        ["packages", "testing", "nros-bench", name] if !name.is_empty()
     )
 }
 
@@ -624,6 +629,7 @@ mod tests {
             "examples/linux/c/custom-platform",
             "examples/zephyr-nucleo-f767zi/c/talker",
             "packages/testing/nros-tests/bins/idle-wake-zephyr-mps2",
+            "packages/testing/nros-bench/loan-copy-count",
         ] {
             assert!(is_witness_workspace(dir), "{dir} should be a witness");
             assert!(workspace_row_models_example_cell(
@@ -642,6 +648,7 @@ mod tests {
             "packages/testing/zephyr/c/talker",
             "packages/testing/nros-tests/fixtures/image_config_ws",
             "packages/testing/nros-tests/bins",
+            "packages/testing/nros-bench/loan-copy-count/src/loan_copy_count",
             "examples/workspaces/features",
         ] {
             assert!(!is_witness_workspace(dir), "{dir} should not be a witness");

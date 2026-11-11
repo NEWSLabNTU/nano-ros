@@ -15,8 +15,10 @@ use loan_copy_count::{
     MARK_LOAN, MARK_RAW, PAYLOAD_LEN, PER_PATH, TOPIC, TYPE_HASH, TYPE_NAME, count_payload_copies,
     publisher_config,
 };
-use loan_copy_count_nros_selection::nros_board_mps2_an385_freertos::{Mps2An385, println};
+use nros_board_mps2_an385_freertos::{Mps2An385, println};
 use nros::prelude::*;
+// The board's panic provider, linked by the crate root.
+use panic_semihosting as _;
 use nros_node::executor::EmbeddedRawPublisher;
 
 fn fill(buf: &mut [u8], mark: u8, seq: u32) {

@@ -3311,10 +3311,16 @@ platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-bench/wcet-cycles-qemu"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-rust-zenoh-large-msg-baremetal"
 platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-bench/large-msg-baremetal"
+rmw = "zenoh"
+bringup = "src/qemu_bsp_large_msg_test_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 # ---------------------------------------------------------------------------
 # baremetal — C and C++ (issue 1512). The tree's first `lang = "c"`/`"cpp"`
@@ -3445,20 +3451,30 @@ dir = "examples/mps2-an385-baremetal/cpp/action-client"
 # MIGRATED platform. One crate, two bins (the measured subscriber
 # `wake-latency-cortex-m3` and its publisher `wake-latency-pub`), so one row
 # builds both — and it now lands in the `freertos` group the Entry rows share.
-[[fixture]]
+[[workspace_fixture]]
+id = "freertos-rust-zenoh-wake-latency-cortex-m3"
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-bench/wake-latency-cortex-m3"
+bringup = "src/qemu_wcet_bench_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 # phase-510 W5 — loan publish on FreeRTOS, delivery and payload copies counted
 # on target: the `(FreertosMps2, Rust, Zenoh, Pubsub, Example) + [Lending]` cell
 # (`tests/lending_freertos_e2e.rs`). Two bins, one row, like the bench above.
-[[fixture]]
+[[workspace_fixture]]
+id = "freertos-rust-zenoh-loan-copy-count"
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-bench/loan-copy-count"
+bringup = "src/loan_copy_count_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 # phase-531 W6 — the Rust talker witness is a one-package workspace
 # (RFC-0122 D3); its image boots a generated entry. `target` is the locator's

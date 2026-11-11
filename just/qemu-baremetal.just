@@ -155,8 +155,7 @@ build:
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
         packages/testing/nros-tests/bins/lan9118-qemu \
         packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal \
-        packages/testing/nros-bench/wcet-cycles-qemu \
-        packages/testing/nros-bench/large-msg-baremetal; do
+        packages/testing/nros-bench/wcet-cycles-qemu; do
         echo "  build $dir"
         # Same as the example loop: bins with a package.xml (e.g. cdr-roundtrip-qemu
         # path-deps builtin_interfaces/std_msgs) need codegen before cargo resolves
@@ -565,8 +564,7 @@ clean: clean-zenoh-pico
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
         packages/testing/nros-tests/bins/lan9118-qemu \
         packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal \
-        packages/testing/nros-bench/wcet-cycles-qemu \
-        packages/testing/nros-bench/large-msg-baremetal; do
+        packages/testing/nros-bench/wcet-cycles-qemu; do
         rm -rf "$dir/target"
     done
     rm -rf packages/testing/qemu-smoltcp-bridge/target

@@ -32,13 +32,18 @@ const ROW: &str = "packages/testing/nros-bench/loan-copy-count";
 /// test cannot share a router with a concurrent `rtos_e2e` lane.
 const ROUTER_PORT: u16 = 7850;
 
+/// One of the bench's two bins: the owned entry `loan_copy_count` builds both
+/// (phase-531 W7), so the row is a `[[workspace_fixture]]` row and each image is
+/// one of its `[[bin]]`s.
 fn image(name: &str) -> std::path::PathBuf {
-    let row = nros_tests::fixtures::groups::select_sole_row(ROW)
-        .expect("loan-copy-count bench has a [[fixture]] row");
-    nros_tests::fixtures::groups::row_resolved_dir(row).join(format!(
-        "thumbv7m-none-eabi/{}/{name}",
-        nros_cargo_profile::target_dir(nros_cargo_profile::FREERTOS_QEMU_PROFILE)
-    ))
+    nros_tests::fixtures::migrated_leaf_binary_named(
+        ROW,
+        nros_tests::fixtures::Rmw::Zenoh,
+        nros_tests::fixtures::migrated_leaf::LeafVariant::Plain,
+        name,
+    )
+    .expect("loan-copy-count bench has a [[workspace_fixture]] row")
+    .require(&format!("loan-copy image {name}"))
 }
 
 /// `key=value` from the one line that starts with `prefix`.

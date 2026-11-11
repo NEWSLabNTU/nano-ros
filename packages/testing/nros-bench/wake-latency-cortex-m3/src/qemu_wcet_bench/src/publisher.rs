@@ -1,7 +1,7 @@
 //! Phase 141.D — wake-latency P99 microbench, PUBLISHER image (issue #0317).
 //!
-//! Publishes `std_msgs/Int32` on [`wake_latency_cortex_m3::TOPIC`] at 100 Hz
-//! (the burst scenario emits [`BURST`](wake_latency_cortex_m3::BURST) messages
+//! Publishes `std_msgs/Int32` on [`qemu_wcet_bench::TOPIC`] at 100 Hz
+//! (the burst scenario emits [`BURST`](qemu_wcet_bench::BURST) messages
 //! back-to-back per tick) so the SEPARATE subscriber image
 //! (`src/main.rs`) gets a real transport-arrival wake per message through the
 //! host `zenohd` router. Runs until the test kills its QEMU.
@@ -14,9 +14,11 @@
 #![no_main]
 
 use nros::prelude::*;
+// The board's panic provider, linked by the crate root.
+use panic_semihosting as _;
 use std_msgs::msg::Int32;
-use wake_latency_cortex_m3::{BURST, TOPIC, publisher_config};
-use wake_latency_cortex_m3_nros_selection::nros_board_mps2_an385_freertos::{Mps2An385, println};
+use qemu_wcet_bench::{BURST, TOPIC, publisher_config};
+use nros_board_mps2_an385_freertos::{Mps2An385, println};
 
 // The C startup jumps to the Rust `main` symbol (see #0273).
 #[unsafe(no_mangle)]

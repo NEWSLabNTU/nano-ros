@@ -2438,9 +2438,12 @@ mod board_crate_tests {
         // for the threadx-linux, mps2-an385-freertos and qemu-armv7a-nuttx Rust
         // talkers (phase-531 W6: one-node workspaces), 57 -> 54 for the
         // `nros-tests` `int32-source`, `rosout-talker` and
-        // `service-info-client` bins (W7: owned entries, RFC-0071 D19).
+        // `service-info-client` bins (W7: owned entries, RFC-0071 D19), 54 ->
+        // 51 for the `nros-bench` `large-msg-baremetal`, `loan-copy-count` and
+        // `wake-latency-cortex-m3` programs (W7: owned entries with no
+        // component).
         assert!(
-            on_selection >= 54,
+            on_selection >= 51,
             "only {on_selection} leaves on the selection package"
         );
     }

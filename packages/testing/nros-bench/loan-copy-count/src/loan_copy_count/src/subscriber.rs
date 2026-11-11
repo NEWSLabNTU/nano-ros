@@ -16,8 +16,10 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use loan_copy_count::{
     MARK_LOAN, MARK_RAW, PAYLOAD_LEN, PER_PATH, TOPIC, TYPE_HASH, TYPE_NAME, subscriber_config,
 };
-use loan_copy_count_nros_selection::nros_board_mps2_an385_freertos::{Mps2An385, println};
+use nros_board_mps2_an385_freertos::{Mps2An385, println};
 use nros::prelude::*;
+// The board's panic provider, linked by the crate root.
+use panic_semihosting as _;
 
 static RX_RAW: AtomicU32 = AtomicU32::new(0);
 static RX_LOAN: AtomicU32 = AtomicU32::new(0);

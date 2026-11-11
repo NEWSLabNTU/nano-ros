@@ -305,9 +305,9 @@ build-fixture-extras:
     # so the histogram held 0 samples on every run (measured 2026-10-22) and the
     # test was a red no lane could clear.
     # issue 0488 residue 1 — the bare in-leaf `cargo build` that used to be here
-    # is gone. The pair is a `[[fixture]]` row now, so `build-test-fixtures`
-    # builds it into the shared `freertos` group with a coordinate and a
-    # staleness probe.
+    # is gone. The pair is a `[[workspace_fixture]]` row now (phase-531 W7: the
+    # two bins of the owned entry `qemu_wcet_bench`), so `build-test-fixtures`
+    # builds it with a coordinate and a staleness probe.
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install
