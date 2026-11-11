@@ -166,3 +166,28 @@ host half, is still what would bound this by keys rather than workspaces.
 `NROS_CARGO_PROFILE` changes on an existing build dir: it returned early on any
 cached `NROS_CARGO_PROFILE_DIR`, so every existing probe build dir would have
 kept the old profile's `target/` subdir beside the new name.
+
+### Parked: lever 2, a shared host half (2026-11-11)
+
+Parked by the maintainer's manager session after lever 1. With the probe at
+14 GB per `nros dev bindings` run (was 30 GB) the footprint fits a hosted
+runner, and a shared host half is a 0616-shaped change that needs its own
+duplicate-symbol measurement before it is believed.
+
+What a resumption should start from, unmeasured:
+
+- The host units are byte-identical across workspaces, not merely
+  equivalent: `libnros_macros-b5224629fcfabc5c.so` carries ONE metadata hash
+  in 12 of the per-workspace dirs. So their path spelling agrees (each is an
+  external path dep, spelled absolutely), and 0616's two-units-of-one-crate
+  hazard does not arise for them. What differs per workspace is the root
+  image crate.
+- A shared TARGET dir is still wrong for another reason: every workspace's
+  root is a crate named `nros-{c,cpp}-image`, and cargo uplifts its staticlib
+  to `<profile>/` by crate name, so concurrent probes would overwrite each
+  other's archive.
+- Cargo's `build.build-dir` (stable since 1.91; the pin is 1.99) splits
+  intermediates from uplifted artifacts: a shared, keyed build-dir with a
+  per-workspace target-dir would keep the uplift per workspace and share
+  `deps/`. Open questions: whether the build-dir lock serialises the
+  workspaces' probes, and the 0616 link test under parallel leaves.
