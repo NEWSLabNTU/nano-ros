@@ -115,8 +115,7 @@ build-fixtures: build-examples build-fixture-extras
     nros_lane_skip_flush threadx-linux "ThreadX-Linux test fixtures built."
 
 # Internal Phase 178.B target: only fixture artifacts not already covered by
-# `build-examples`. Mirrors the cmake -D set used by the test fixture builders
-# in `nros_tests::fixtures::binaries::threadx_linux::build_cmake_example`.
+# `build-examples` (the two Rust `--id` images).
 [group("examples")]
 build-fixture-extras:
     #!/usr/bin/env bash
@@ -135,65 +134,13 @@ build-fixture-extras:
     echo "Building ThreadX-Linux test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
-    root="$(pwd)"
-    nsos_netx_dir="${NSOS_NETX_DIR:-$root/packages/drivers/net/nsos-netx}"
-    config_dir="${THREADX_CONFIG_DIR:-$root/packages/boards/nros-board-threadx-linux/config}"
-    app_define="$root/packages/boards/nros-board-threadx-linux/c/app_define.c"
-    # Phase 177.27 — the cyclonedds RMW needs two flags native.just /
-    # cyclonedds.just already pass; threadx-linux omitted both. Harmless for
-    # the zenoh pass (it ignores them):
-    #   1. msg_to_cyclone_idl.py — the .msg→IDL converter for
-    #      nros_rmw_cyclonedds_generate_from_msg (find_program can't locate
-    #      it in the source tree).
-    #   2. CMAKE_PREFIX_PATH=build/install — so find_package(CycloneDDS)
-    #      resolves the host ddsc/ddsrt libs; without it the fixtures fail to
-    #      link (undefined dds_qset_*/ddsrt_*/dds_stream_* references).
-    msg_to_idl="$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
-    cyclone_prefix="$root/build/install"
-    echo "  → host nros-codegen (cargo)"
-    nros_cargo_ensure_codegen_c
-    codegen="$(nros_cargo_codegen_c_bin)"
     bash scripts/build/fixtures-build.sh threadx-linux rust --id threadx-linux-logging-smoke
     # issue 1906 — the condvar contract image.
     bash scripts/build/fixtures-build.sh threadx-linux rust --id threadx-linux-condvar-contract
-    # Phase 181.5.d — collapsed-shape threadx-linux C / C++ from the SSOT
-    # manifest. The Rust zenoh role binaries are produced by `build-examples`.
-    # The full -D set (incl. the cyclone prefix / msg_to_idl, harmless for the
-    # zenoh pass per the note above) is injected via NROS_CMAKE_EXTRA_DEFS and
-    # reused for the gated cyclone pass; per-cell RMW + build-<rmw>/ subdir come
-    # from the manifest.
-    # Phase 186.6.3 — self-provision Cyclone from source (static host ddsc via
-    # nano-ros-threadx.cmake's threadx-linux branch); DISABLE_FIND_PACKAGE forces
-    # the pinned source over any system /opt/ros Cyclone. No build/install /
-    # `just cyclonedds setup` needed; idlc resolves host-side (186.3).
-    # issue 0805 — one Corrosion cargo dir per (platform, resolved feature
-    # inputs) instead of one per leaf. cmake keys the subdirectory itself;
-    # `nros_build_dir` verified IN SCOPE here first (a missing helper expands
-    # the flag EMPTY and silently keeps per-leaf dirs — defect 3 on native).
-    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" threadx-linux) -DNROS_PLATFORM=threadx_linux -DTHREADX_DIR=$threadx_dir -DNSOS_NETX_DIR=$nsos_netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DTHREADX_APP_DEFINE=$app_define -DCMAKE_BUILD_TYPE=Release -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$msg_to_idl -D_NANO_ROS_CODEGEN_TOOL=$codegen"
-    # phase-531 W6 — only the C talker witness is still a leaf here; the C++
-    # one is a one-package workspace built by `build-examples`.
-    bash scripts/build/fixtures-build.sh threadx-linux c zenoh
-    if command -v idlc >/dev/null 2>&1 || [ -x build/install/bin/idlc ]; then
-        # Each Cyclone lang pass bakes its ALLOCATOR domain
-        # (nros_tests::alloc::domain_of(ThreadxLinux, lang, Pubsub): c=107,
-        # cpp=108) so its host RTPS ports stay disjoint from every other baked
-        # Cyclone fixture. The leaf states it, in its `[image.threadx-linux-
-        # cyclonedds]`, which the row selects with `NROS_IMAGE` (issue 1946 —
-        # this lane used to pass `-DNROS_DOMAIN_ID` over a leaf stating 0).
-        # The paired native listener spawns at domain 107 in linux_api.rs's
-        # test_threadx_linux_cyclonedds_talker_to_native_listener.
-        bash scripts/build/fixtures-build.sh threadx-linux c cyclonedds
-    else
-        # Issue 1758 — not "skipped" + carry on: when this run selects the
-        # cyclonedds rows, a missing idlc is a missing prerequisite (named or
-        # coordinate-scoped ⇒ FAILURE; only the unscoped sweep reports SKIPPED).
-        source scripts/build/fixture-lane.sh
-        if nros_lane_wants_rmw threadx-linux cyclonedds; then
-            nros_lane_skip_note threadx-linux "c/cpp cyclonedds fixtures need a host idlc (not on PATH) — install a CycloneDDS/ROS 2 idlc, or set IDLC_EXECUTABLE"
-        fi
-    fi
-    unset NROS_CMAKE_EXTRA_DEFS
+    # phase-531 W6 / issue 2433 — every threadx-linux C and C++ talker witness
+    # is a one-package workspace now (the C one an owned entry sized by its
+    # census, the C++ one a component; RFC-0122 D10), built by `build-examples`
+    # through its `[[workspace_fixture]]` rows, so no C/C++ leaf pass is left.
 
 # Build every ThreadX Linux sched task: core libraries, examples, and test fixtures.
 [group("full-matrix")]

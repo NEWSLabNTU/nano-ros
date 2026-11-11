@@ -1108,7 +1108,7 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
 
     // domain 107 — the allocator's (threadx-linux, c, pubsub) Cyclone domain
     // (`nros_tests::alloc::domain_of`; `just threadx_linux build-fixtures`
-    // bakes the same number into the cyclonedds fixture: the leaf's
+    // bakes the same number into the cyclonedds fixture: the bringup's
     // `[image.threadx-linux-cyclonedds] domain_id`, issue 1946). The native listener reads the domain from the env at runtime
     // (host exception), so set it to 107 to pair with the talker.
     let mut listener = spawn_cyclone_binary(&listener_bin, "native-c-cyclonedds-listener", "107");
@@ -1584,7 +1584,8 @@ fn catches_signal(pid: u32, signal: i32) -> bool {
 #[case::zenoh(Rmw::Zenoh)]
 fn test_threadx_linux_c_image_ends_on_one_sigterm(#[case] rmw: Rmw) {
     require_cmake();
-    let bin = // phase-535 W4 — the C TALKER leaf, the board's road witness: its hand-written
+    let bin = // phase-535 W4 — the C TALKER witness (a one-package workspace since
+    // phase-531 W6, its image building the package's own `main`): its hand-written
     // `main` installs the SIGTERM handler and returns `nros_app_main`'s status,
     // which is what this measures. The pair images run a generated entry.
     nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
@@ -1692,7 +1693,8 @@ fn negative_control_one_sigterm_does_not_end_a_process_that_catches_it() {
 #[test]
 fn test_threadx_linux_c_image_exit_status_is_the_apps() {
     require_cmake();
-    let bin = // phase-535 W4 — the C TALKER leaf, the board's road witness: its hand-written
+    let bin = // phase-535 W4 — the C TALKER witness (a one-package workspace since
+    // phase-531 W6, its image building the package's own `main`): its hand-written
     // `main` installs the SIGTERM handler and returns `nros_app_main`'s status,
     // which is what this measures. The pair images run a generated entry.
     nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(

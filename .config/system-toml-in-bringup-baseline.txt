@@ -29,7 +29,6 @@ examples/templates/rclcpp-compat-smoke/zephyr/system.toml
 examples/templates/topic-state-monitor-port/mps2-an385-freertos/system.toml
 examples/templates/topic-state-monitor-port/zephyr/system.toml
 examples/templates/zephyr-byo/app/system.toml
-examples/threadx-linux/c/talker/system.toml
 examples/threadx-linux/rust/listener/system.toml
 examples/zephyr/rust/action-server/system.toml
 packages/testing/nros-tests/bins/action-raw-goal-probe/system.toml
