@@ -576,11 +576,13 @@ def host_compile_checks_for(cells, ids, known=None, read=None, helpers=None) -> 
 # for a membership that reaches a handful, and filled a 146 G disk with 111 G
 # free after the reclaim (run 37883358718, 2026-10-09).
 def host_workspace_fixtures_for(cells, ids, known=None, read=None, helpers=None,
-                                pairs=None) -> list[str]:
+                                pairs=None, leaves=None) -> list[str]:
     known = _table_ids("workspace_fixture") if known is None else known
     pairs = _linux_pair_rows() if pairs is None else pairs
+    leaves = _linux_migrated_leaf_rows() if leaves is None else leaves
     out = set(host_rows_for(cells, ids, known, read, helpers))
     out |= _pair_rows_for_cells(cells, ids, pairs)
+    out |= _pair_rows_for_cells(cells, ids, leaves)
     out |= _pair_rows_named(cells, ids, pairs, read, helpers)
     return sorted(out)
 
@@ -627,6 +629,28 @@ def _linux_pair_rows(rows=None) -> "list[dict]":
         out.append({"id": r["id"], "lang": r.get("lang"), "rmw": rmw,
                     "role": role.replace("_", "-")})
     return out
+
+
+# phase-531 W6 / phase-535 W6 — the same move one level down: a linux leaf
+# (`examples/linux/<lang>/<role>`, a `packages/testing` bin) that
+# `nros dev migrate-bringup` turned into a one-package workspace becomes
+# `[[workspace_fixture]]` rows, so `fixtures-build.sh linux <lang> <rmw>` stops
+# building it and the live-peer bridge cells came up UNMET for the linux Rust
+# talker (run 42911987237, after #3473). Same rule as the pairs, by COORDINATE:
+# a host cell on (lang, rmw) gets every migrated linux row of that (lang, rmw),
+# which is what the leaf build gave it. A migrated row is any linux workspace
+# row outside `examples/workspaces/` -- those are the language workspaces,
+# reached by the pair and named-id rules above.
+def _linux_migrated_leaf_rows(rows=None) -> "list[dict]":
+    """[{id, lang, rmw}] for every migrated linux leaf row in the manifest."""
+    if rows is None:
+        rows = tomllib.loads(FIXTURES_TOML.read_text()).get("workspace_fixture", [])
+    return [
+        {"id": r["id"], "lang": r.get("lang"), "rmw": r.get("rmw", "zenoh")}
+        for r in rows
+        if r.get("platform") == "linux"
+        and not r.get("dir", "").startswith("examples/workspaces/")
+    ]
 
 
 def _pair_rows_for_cells(cells, ids, pairs) -> set[str]:
@@ -1898,12 +1922,12 @@ def _self_test_runner_split(
          "test": "t_bz"},
     ]
     assert host_workspace_fixtures_for(
-        _pc, ["rz", "bz"], known=set(), pairs=_pairs, helpers={},
+        _pc, ["rz", "bz"], known=set(), pairs=_pairs, leaves=[], helpers={},
         read={"t_rz": 'linux_pair_image("c", "listener", Rmw::Cyclonedds)',
               "t_bz": 'linux_pair_image("c", case, Rmw::Cyclonedds)'}.__getitem__,
     ) == ["c-l-cy", "r-t"], "selftest: pair rows by coordinate + by named call"
     assert host_workspace_fixtures_for(
-        _pc, ["rz"], known=set(), pairs=_pairs, helpers={},
+        _pc, ["rz"], known=set(), pairs=_pairs, leaves=[], helpers={},
         read={"t_rz": 'linux_pair_image("c", case, Rmw::Cyclonedds)'}.__getitem__,
     ) == ["c-l-cy", "c-ss-cy", "r-t"], "selftest: a variable role is a wildcard"
     # And on the real tree: the cell that was UNMET for this reason.
@@ -1912,6 +1936,25 @@ def _self_test_runner_split(
     assert "workspace-c-native-listener-cyclonedds" in host_workspace_fixtures_for(
         _b, [_b[0]["id"]]
     ), "selftest: bridge_zenoh_to_cyclonedds resolves the C Cyclone listener pair image"
+
+    # phase-531 W6 — migrated linux leaves, by coordinate; the language
+    # workspaces and other platforms are not.
+    _leaves = _linux_migrated_leaf_rows([
+        {"id": "rt", "platform": "linux", "lang": "rust", "dir": "examples/linux/rust/talker"},
+        {"id": "rt-x", "platform": "linux", "lang": "rust", "rmw": "xrce",
+         "dir": "examples/linux/rust/talker"},
+        {"id": "ws", "platform": "linux", "lang": "rust", "dir": "examples/workspaces/rust"},
+        {"id": "tx", "platform": "threadx-linux", "lang": "rust", "dir": "examples/threadx-linux/rust/talker"},
+    ])
+    assert [l["id"] for l in _leaves] == ["rt", "rt-x"], _leaves
+    assert host_workspace_fixtures_for(
+        _pc, ["rz"], known=set(), pairs=[], leaves=_leaves, helpers={},
+        read={"t_rz": ""}.__getitem__,
+    ) == ["rt"], "selftest: a migrated leaf row by coordinate"
+    # And on the real tree: the cell that was UNMET for this reason.
+    assert "native-rust-talker" in host_workspace_fixtures_for(
+        _b, [_b[0]["id"]]
+    ), "selftest: bridge_zenoh_to_cyclonedds builds the migrated linux Rust talker"
 
     # And on the real tree: the cell that was red for this reason.
     _real = [c for c in runtime_cells() if c["id"] == "native-multinode-cpp-zenoh"]
