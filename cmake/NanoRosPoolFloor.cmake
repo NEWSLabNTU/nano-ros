@@ -51,9 +51,10 @@ include_guard(GLOBAL)
 function(_nros_c_array_pool_floor out_var value knob)
     set(_v "${value}")
     if(_v MATCHES "^[0-9]+$" AND _v LESS 1)
+        # History: issue 1015.
         message(STATUS
             "nros: ${knob}=${_v} raised to 1 — it sizes a fixed C array, where "
-            "zero is not a smaller pool (issue 1015)")
+            "zero is not a smaller pool")
         set(_v 1)
     endif()
     set(${out_var} "${_v}" PARENT_SCOPE)

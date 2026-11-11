@@ -321,9 +321,10 @@ ${_ib_ANCHOR}")
         endif()
     endif()
 
+    # History: RFC-0071 D9.
     message(STATUS
         "nano-ros: ${_api_pkg} image crate bundles ${_bundles} "
-        "(RFC-0071 D9) -> ${_IC_OUT_DIR}")
+        " -> ${_IC_OUT_DIR}")
     set(${prefix}_MANIFEST "${_IC_OUT_DIR}/Cargo.toml" PARENT_SCOPE)
     set(${prefix}_CRATE "${_api_pkg}-image" PARENT_SCOPE)
     set(${prefix}_FEATURES "${_api_feats}" PARENT_SCOPE)

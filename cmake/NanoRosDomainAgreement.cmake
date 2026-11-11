@@ -126,10 +126,11 @@ function(nros_check_domain_agreement)
         set(_D_CONTEXT "nano-ros")
     endif()
     if(NOT DEFINED CONFIG_NROS_DOMAIN_ID)
+        # History: issue 1550.
         message(WARNING
             "${_D_CONTEXT}: CONFIG_NROS_DOMAIN_ID is not in scope, so the "
             "image's domain was compared against nothing. Call this after "
-            "find_package(Zephyr) (issue 1550).")
+            "find_package(Zephyr).")
         return()
     endif()
     set(_k "${CONFIG_NROS_DOMAIN_ID}")

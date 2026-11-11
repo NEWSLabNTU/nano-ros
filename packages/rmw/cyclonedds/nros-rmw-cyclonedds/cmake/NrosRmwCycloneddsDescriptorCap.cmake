@@ -129,14 +129,15 @@ function(_nros_cyclonedds_apply_descriptor_cap)
         return()
     endif()
     if(_target STREQUAL "")
+        # History: issue 1663.
         message(STATUS
             "nano-ros: ${_count} distinct Cyclone descriptor types generated, but no "
             "target here compiles `descriptors.cpp` (a prebuilt backend sizes its own "
-            "table) -- NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES not applied (issue 1663)")
+            "table) -- NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES not applied")
         return()
     endif()
     target_compile_definitions(${_target} PRIVATE NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES=${_n})
     message(STATUS
         "nano-ros: Cyclone descriptor table sized to ${_n} rows for ${_count} distinct "
-        "generated type(s) -> ${_target} (issue 1663)")
+        "generated type(s) -> ${_target}")
 endfunction()

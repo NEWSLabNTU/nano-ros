@@ -196,9 +196,10 @@ function(nros_riscv64_rustflags_env _target)
             return()
         endif()
     endforeach()
+    # History: issue 0657.
     message(STATUS
         "nano-ros: riscv64 hard-float RUSTFLAGS NOT attached — no target named "
-        "${_target} or ${_target}-static (issue 0657)")
+        "${_target} or ${_target}-static")
 endfunction()
 
 # nros_armv8r_cflags_env(<target>) — phase-372 W1, issue 0657's class on a
@@ -227,7 +228,8 @@ function(nros_armv8r_cflags_env _target)
         message(STATUS "nano-ros: cortex-r52 FPU CFLAGS -> ${_env_target}")
         return()
     endif()
+    # History: phase-372 W1.
     message(STATUS
         "nano-ros: cortex-r52 FPU CFLAGS NOT attached — no target named "
-        "${_env_target} (phase-372 W1)")
+        "${_env_target}")
 endfunction()

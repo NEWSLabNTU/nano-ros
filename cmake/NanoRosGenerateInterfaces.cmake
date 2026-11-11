@@ -131,8 +131,7 @@ function(nros_generate_interfaces target)
   if(_ARG_NO_FFI_CRATE)
     message(STATUS
       "nros_generate_interfaces(${target}): NO_FFI_CRATE is deprecated and "
-      "ignored (per-package FFI crates export only their own symbols since "
-      "phase-306).")
+      "ignored (per-package FFI crates export only their own symbols).")
   endif()
 
   # phase-304 W2b (RFC-0056) — an explicit ROS_EDITION wins; otherwise inherit

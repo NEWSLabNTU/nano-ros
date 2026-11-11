@@ -345,7 +345,7 @@ fn resolve(
             v,
             vec![format!(
                 "{} is deprecated and redundant here: {knob} is stated as {}. Drop the \
-                 feature ({since}; removed after one release).",
+                 feature (it is removed after one release).",
                 names(),
                 show(v)
             )],
@@ -355,7 +355,7 @@ fn resolve(
             *n,
             vec![format!(
                 "{} is deprecated: state {knob}={} instead ({where_}). Honoured for one \
-                 release ({since}).",
+                 release.",
                 names(),
                 show(*n)
             )],

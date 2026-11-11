@@ -327,7 +327,7 @@ function(nros_threadx_setup_picolibc)
         # Injecting another libc's headers here is what issue 0678 is about.
         message(STATUS
             "picolibc not available on ${CMAKE_C_COMPILER} — using the "
-            "toolchain's own C library headers (issue 0678)")
+            "toolchain's own C library headers")
         return()
     endif()
     if(NOT _sysroot OR NOT EXISTS "${_sysroot}/include")
@@ -393,9 +393,10 @@ function(nros_threadx_setup_picolibc)
         set(_lib_dir "${_sysroot}/lib/rv64imafdc/lp64d")
     endif()
     if(_lib_dir STREQUAL "")
+        # History: issue 0657.
         message(STATUS
             "nano-ros: no riscv64 libc archive found for this toolchain — "
-            "the board will pass no -L for it (issue 0657)")
+            "the board will pass no -L for it")
     endif()
     set(NROS_THREADX_PICOLIBC_LIB_DIR "${_lib_dir}" PARENT_SCOPE)
 

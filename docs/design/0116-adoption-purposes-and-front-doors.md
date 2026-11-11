@@ -166,6 +166,16 @@ are.
 > are allowed only in a page's closing `## Design background` section.
 > Landed by phase-532 W3.
 
+> **Reach widened 2026-11-11 ([issue 2305](../issues/2305-user-tier-messages-cite-internal-issue-ids.md)):**
+> the user surface includes what a SUCCESSFUL build prints: a CMake message at
+> the default log level (`check-cmake-user-output-refs`, now a zero baseline)
+> and a build script's `cargo:warning` (`check-user-surface-ids`). A CMake
+> `VERBOSE` line and `nros_message_detail()` stay diagnostic detail for
+> whoever runs `nros build -v` (phase-517 W5). Whether a REFUSAL at build
+> time (a CMake `FATAL_ERROR`, a build-script panic) may name an id is open:
+> phase-517 W5 exempts it, this section's "every refusal" does not (issue
+> 2305's open question).
+
 > **Sequenced by [RFC-0117](0117-cli-command-tiers.md) (2026-11):** the
 > command tree is restructured first (phase-526), and the help text's ids move
 > into `//` comments there, so this gate's sweep runs once over the final verb

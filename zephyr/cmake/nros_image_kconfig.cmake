@@ -342,8 +342,9 @@ function(nros_image_kconfig_hook)
     endforeach()
     if(_overrides)
         string(REPLACE ";" ", " _ov "${_overrides}")
+        # History: RFC-0103 D2, issue 2363.
         message(STATUS "nano-ros: image `${_image}` knob override(s) from the command line: "
-            "${_ov} (transient: this configure only; RFC-0103 D2, issue 2363)")
+            "${_ov} (transient: this configure only)")
     endif()
 
     # phase-530 W4 (RFC-0120 D5) -- configure the image HERE, before Kconfig:
@@ -475,14 +476,15 @@ function(nros_image_kconfig_hook)
     if(NOT _inserted STREQUAL "")
         message(STATUS
             "nano-ros: image `${_image}` conf -> ${_inserted} "
-            "(ahead of the caller's EXTRA_CONF_FILE; phase-481 W3)")
+            "(ahead of the caller's EXTRA_CONF_FILE)")
     endif()
     set(_new ${_inserted} ${_user})
     if(NOT _kconfig STREQUAL "")
         list(APPEND _new "${_kconfig}")
+        # History: RFC-0098 D11.
         message(STATUS
             "nano-ros: image `${_image}` from ${_dir}/system.toml -> ${_kconfig} "
-            "(last of EXTRA_CONF_FILE; RFC-0098 D11)")
+            "(last of EXTRA_CONF_FILE)")
     endif()
     if(_had_ours OR NOT _kconfig STREQUAL "" OR NOT _inserted STREQUAL "")
         _nros_image_kconfig_set_cache("${_new}")
@@ -492,9 +494,10 @@ function(nros_image_kconfig_hook)
         set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "${_envcfg}")
         set(NROS_IMAGE_ENV_CARGO_FLAGS "--config=${_envcfg}" CACHE INTERNAL
             "phase-481 W1: the image env --config flag for the Rust lane's cargo")
+        # History: issue 1712.
         message(STATUS
             "nano-ros: image `${_image}` env rows with no Kconfig symbol (${_keys}) -> "
-            "every cargo command gets --config ${_envcfg} (issue 1712)")
+            "every cargo command gets --config ${_envcfg}")
     endif()
 endfunction()
 

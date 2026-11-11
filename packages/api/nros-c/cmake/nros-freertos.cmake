@@ -116,10 +116,11 @@ endfunction()
 function(nros_freertos_board_port board port)
     cmake_parse_arguments(_NFBP "OVERRIDABLE" "" "" ${ARGN})
     if(DEFINED ENV{FREERTOS_PORT} AND NOT "$ENV{FREERTOS_PORT}" STREQUAL "${port}")
+        # History: RFC-0103 D2.
         message(WARNING
             "${board}: ignoring the environment's FREERTOS_PORT='$ENV{FREERTOS_PORT}'. "
             "The port is a board fact ('${port}'); a value inherited from the shell "
-            "is not a source (RFC-0103 D2). Pass -DFREERTOS_PORT to override where "
+            "is not a source. Pass -DFREERTOS_PORT to override where "
             "the board allows it, or unset the variable.")
     endif()
     set(_port "${port}")
@@ -224,9 +225,10 @@ function(_nros_freertos_resolve_port freertos_dir port out_enum out_path)
             get_property(_said GLOBAL PROPERTY "_NROS_FREERTOS_PORT_ALIAS_SAID_${_enum}")
             if(NOT _said)
                 set_property(GLOBAL PROPERTY "_NROS_FREERTOS_PORT_ALIAS_SAID_${_enum}" TRUE)
+                # History: phase-349 W3.
                 message(DEPRECATION
                     "nano-ros: FREERTOS_PORT '${port}' is the path spelling of upstream's "
-                    "port '${_enum}'. Write '${_enum}' (phase-349 W3); the path spelling "
+                    "port '${_enum}'. Write '${_enum}'; the path spelling "
                     "is retired one release later.")
             endif()
         elseif(EXISTS "${freertos_dir}/portable/${port}/port.c")

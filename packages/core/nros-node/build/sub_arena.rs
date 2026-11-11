@@ -108,12 +108,13 @@ pub(crate) fn descriptor_subscriptions(
             // the executor then claims — `BufferTooSmall` at registration.
             let overridden = !in_place_trusted && ep.claims_no_receive_region();
             if overridden {
+                // History: issue 1577.
                 println!(
                     "cargo::warning=nros-node: subscription `{}`: the sizing descriptor says \
                      `registration_path = \"in_place\"`, but this build's backends do not \
                      claim in-place dispatch (`nros-rmw/in-place-dispatch` must be on and \
                      `nros-rmw/buffered-dispatch` off), so it is priced at a full receive \
-                     region (issue 1577)",
+                     region",
                     ep.topic
                 );
             }
@@ -144,10 +145,11 @@ pub(crate) fn row_slot_bytes(row: &SubEndpoint, rx_buf_size: usize) -> usize {
         .slot
         .or_report("endpoint.registration_path", rx_buf_size);
     if let Some(why) = why {
+        // History: issue 1319.
         println!(
             "cargo::warning=nros-node: subscription `{}`: {why}; its receive slot is priced at \
              the closure buffer ({rx_buf_size} B), which over-states a typed registration rather \
-             than under-sizing a schemaless one (issue 1319)",
+             than under-sizing a schemaless one",
             row.topic
         );
     }

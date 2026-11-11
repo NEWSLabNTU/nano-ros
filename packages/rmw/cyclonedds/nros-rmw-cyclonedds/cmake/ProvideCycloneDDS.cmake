@@ -105,8 +105,9 @@ macro(nros_provide_cyclonedds)
                     message(STATUS
                         "nano-ros: ignoring CycloneDDS at ${CycloneDDS_DIR} — its idlc "
                         "cannot run (${_nros_idlc}): ${_nros_idlc_err}")
+                    # History: issue 0601.
                     message(STATUS
-                        "nano-ros: falling back to a source-provisioned CycloneDDS (issue 0601)")
+                        "nano-ros: falling back to a source-provisioned CycloneDDS")
                     set(CycloneDDS_FOUND FALSE)
                 endif()
             endif()
@@ -257,7 +258,8 @@ macro(nros_provide_cyclonedds)
                         endif()
                     endif()
                 endforeach()
-                message(STATUS "nano-ros: CycloneDDS ddsrt heap -> nros_platform_alloc (issue 0832)")
+                # History: issue 0832.
+                message(STATUS "nano-ros: CycloneDDS ddsrt heap -> nros_platform_alloc")
             else()
                 message(STATUS "nano-ros: CycloneDDS ddsrt heap -> libc (no NanoRos::Platform target to funnel into)")
             endif()

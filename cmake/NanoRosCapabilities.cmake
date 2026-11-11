@@ -102,10 +102,11 @@ function(nros_ament_port_default_features out_var)
         return()
     endif()
     if(_host)
+        # History: phase-488.
         message(STATUS
             "nano-ros: ${_px} is an ament package on a host, so its runtime carries "
             "`${_features}` as upstream rclcpp's does. Set NROS_FEATURES to declare "
-            "the capabilities yourself (phase-488).")
+            "the capabilities yourself.")
     else()
         message(STATUS
             "nano-ros: ${_px} depends on rclcpp_lifecycle, so this ${NROS_PLATFORM} "

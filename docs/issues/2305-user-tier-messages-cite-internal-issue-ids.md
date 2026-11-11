@@ -4,7 +4,7 @@ title: "User-tier messages cite internal issue ids (`(issue 1352)`) where they s
 status: open
 type: tech-debt
 area: cli, ux, logging, build
-related: [phase-537, rfc-0117, 2270, phase-523]
+related: [phase-537, rfc-0117, rfc-0116, 2270, phase-523, issue-2443]
 found: 2026-11-06
 ---
 
@@ -69,3 +69,53 @@ cites no id. That fixes the instance and leaves the rule unwritten. Other
 user-reachable text still cites ids: for example, `build_param_slot.rs`'s
 inbox refusal names issue 1352 mid-text, though it does give a remedy, and
 nothing stops a new bare-id warning. The gate above is what would.
+
+## Progress (2026-11-11)
+
+**The policy exists; what was missing was its gates' reach.** RFC-0116 D2
+(consolidated in RFC-0124 Principle 5) already rules that the user surface
+"names the next action and never a phase, issue or RFC id", and
+`check-user-surface-ids` enforces it, baseline zero, over the CLI's own
+`cmd/` strings, the rendered help, `board list/show`, `doctor --report` and
+the user book. phase-517 W5's `check-cmake-user-output-refs` covers what a
+default CMake configure prints, as a ratchet. Neither read a build script's
+warnings, and the CMake ratchet still recorded 60 sites. So no new tier rule
+was written.
+
+Done:
+
+- **CMake.** Every default-level message (`STATUS`, `NOTICE`, `WARNING`,
+  `AUTHOR_WARNING`, now `DEPRECATION` too) and custom-command `COMMENT` that
+  cited an id was rewritten, and `.config/cmake-user-output-refs.json` is
+  empty: the ratchet is now a zero baseline.
+- **Build-script warnings.** `check-user-surface-ids` reads a build script's
+  `cargo:warning` text (and text handed to a `warn()` / `.note()` helper).
+  The six that cited an id were rewritten. A warning assembled away from its
+  print is not seen; the gate's docstring says so.
+- Each id moved into a `# History:` / `// History:` comment above its
+  message, as D2 says for help text.
+
+Not taken: the trailing `history: issue N` allowance proposed above. It would
+loosen D2, which allows no id on the user surface; history moves to a comment
+instead.
+
+## Open question for the user
+
+**Does a refusal (a CMake `FATAL_ERROR`, a build-script panic) name an id?**
+Two rulings disagree:
+
+- RFC-0116 D2: "every refusal … names the next action and never a phase,
+  issue or RFC id".
+- phase-517 W5 (`check-cmake-user-output-refs`'s docstring): `FATAL_ERROR`
+  and `SEND_ERROR` are not counted, because "a build that stops is being
+  diagnosed, and the issue that explains it is a fair thing to name there".
+
+Measured 2026-11-11: about 100 `FATAL_ERROR` messages in `cmake/`, `zephyr/`
+and the packages' CMake, and about 25 build-script panic texts, cite an id.
+This change follows phase-517 W5 and leaves them, since choosing between the
+two changes what a user sees at a failed build. A sweep of both was done and
+reverted; it is mechanical once ruled (each id moves to a comment, and where
+that leaves no action, the action is written, e.g. "Add TYPED to the call").
+
+The surfaces neither gate reads, runtime logs of a default image and the
+colcon plugin's errors, are [issue 2443](2443-runtime-log-and-colcon-messages-cite-ids.md).

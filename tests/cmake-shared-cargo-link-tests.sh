@@ -31,7 +31,7 @@ fi
 out="$(run "$WORK/1/build/cargo" 2>&1)" || bad "case 1: script failed: $out"
 [ -d "$WORK/1/shared/key" ] || bad "case 1: target not re-created"
 [ -L "$WORK/1/build/cargo" ] || bad "case 1: link no longer a symlink"
-[[ "$out" == *'issue 1990'* ]] || bad "case 1: no message saying what it re-created"
+[[ "$out" == *'re-created the shared cargo dir'* ]] || bad "case 1: no message saying what it re-created"
 mkdir -p "$WORK/1/build/cargo/x" || bad "case 1: mkdir through the link still fails"
 
 # 2 -- live link: untouched.

@@ -225,24 +225,26 @@ function(nros_record_leaf_entity_facts _dir)
             "before every reader -- ${_nros_leaf_entity_frag}")
     endif()
     if(_nros_leaf_descriptor)
+        # History: phase-457 W0.b, issue 1378.
         message(STATUS
             "nano-ros: sizing descriptor written from ${_dir}/system.toml — "
-            "${_nros_leaf_descriptor} (phase-457 W0.b, issue 1378)")
+            "${_nros_leaf_descriptor}")
     elseif(_nros_leaf_census_optin)
         # This IS the host census build (`nros dev image entity-census take --leaf`),
         # which is not sized by the census it produces.
+        # History: issue 1556.
         message(STATUS
-            "nano-ros: ${_dir} -- host census build; pools at the hosted defaults "
-            "(issue 1556)")
+            "nano-ros: ${_dir} -- host census build; pools at the hosted defaults")
     else()
         # The leaf declares no entities. Say what the reader can do about it,
         # and say that the fallback is what decided (issue 0973's rule).
+        # History: issue 1142; RFC-0098 D8.
         message(STATUS
             "nano-ros: ${_dir}/system.toml declares no entities, so the queryable "
-            "table keeps the backend's FALLBACK budget (issue 1142). To size it "
+            "table keeps the backend's FALLBACK budget. To size it "
             "from the declaration, add `entities = [...]` to its `[[component]]` "
-            "— e.g. entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"] "
-            "(RFC-0098 D8); the runtime's own service families are "
+            "— e.g. entities = [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]; "
+            "the runtime's own service families are "
             "`[system] features`.")
     endif()
     # A configure re-runs when the declaration changes. `nano_ros_read_leaf_system`

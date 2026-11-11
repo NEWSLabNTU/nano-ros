@@ -139,11 +139,12 @@ function(nros_canonical_build_type raw package_xml out_var)
             # the buildless gates drive this reader in exactly that mode.
             list(FIND _NROS_BUILD_TYPE_RETIRED "${_raw}" _retired_at)
             if(NOT _retired_at EQUAL -1)
+                # History: RFC-0087 D2; phase-420 W3.
                 message(DEPRECATION
                     "${package_xml}: <build_type>${_raw}</build_type> is retired "
-                    "(RFC-0087 D2) — write <build_type>${CMAKE_MATCH_2}</build_type>. "
+                    " — write <build_type>${CMAKE_MATCH_2}</build_type>. "
                     "It is read as `${CMAKE_MATCH_2}` meanwhile, so nothing breaks "
-                    "today; phase-420 W3 removes the spelling.")
+                    "today; a later release removes the spelling.")
             endif()
             return()
         endif()
@@ -407,15 +408,17 @@ function(nano_ros_read_leaf_system)
             # A package inside a larger configure (a workspace member): the
             # cargo builds this configure drives serve every image it holds,
             # so one member's image cannot claim them.
+            # History: issue 1721.
             message(WARNING
                 "nano-ros: ${_NRL_DIR}/system.toml states `[image.<id>.knobs]` / `env` rows, but this "
                 "package is not the top-level project of its configure, whose cargo "
-                "builds it cannot claim for one image (issue 1721).")
+                "builds it cannot claim for one image.")
         else()
             set_property(GLOBAL PROPERTY NROS_IMAGE_ENV_CONFIG "${_NROS_LEAF_IMAGE_ENV}")
+            # History: issue 1712.
             message(STATUS
                 "nano-ros: image env from ${_NRL_DIR}/system.toml — every cargo "
-                "command gets --config ${_NROS_LEAF_IMAGE_ENV} (issue 1712)")
+                "command gets --config ${_NROS_LEAF_IMAGE_ENV}")
         endif()
     endif()
     if("${_NROS_LEAF_DEPLOY}" STREQUAL "")

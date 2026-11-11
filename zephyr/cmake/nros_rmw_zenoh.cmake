@@ -397,10 +397,11 @@ foreach(_zp MAX_PUBLISHERS MAX_SUBSCRIBERS MAX_QUERYABLES)
     if(NOT DEFINED NROS_RESOLVED_NROS_ZENOH_${_zp} OR
        "${NROS_RESOLVED_NROS_ZENOH_${_zp}}" STREQUAL "")
         set(NROS_RESOLVED_NROS_ZENOH_${_zp} 8)
+        # History: issue 0991.
         message(STATUS
             "nros: NROS_ZENOH_${_zp} left at the zpico literal default 8 -- nothing "
             "stated it and the entity inventory derived nothing (a first "
-            "configure on a clean build dir always lands here, issue 0991)")
+            "configure on a clean build dir always lands here)")
     endif()
 endforeach()
 # phase-412 W2 -- the liveliness pool joined the three above on the DERIVE

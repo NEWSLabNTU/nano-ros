@@ -23,6 +23,15 @@ Subjects, all checked on every run:
 * the RENDERED help: `nros --help`, `nros help --all`, and `--help` of every
   verb and nested verb, hidden ones included (clap turns `///` doc comments
   into help text, so this is the only reading that sees what renders);
+* the WARNINGS a package's build script prints (issue 2305): a string literal
+  in `build.rs` (or its `build_*.rs` / `build/*.rs` modules) that starts with
+  `cargo:warning=` / `cargo::warning=`, or is the text handed to a `warn(…)` /
+  `.note(…)` helper (directly or through `format!`). A warning is what an
+  ordinary, successful `cargo build` of a user's image prints. A build
+  script's PANIC is not read: a build that stops is being diagnosed, the rule
+  `check-cmake-user-output-refs` applies to `FATAL_ERROR` (phase-517 W5).
+  A warning whose text is assembled away from its print (a `Vec` of warnings
+  printed later) is not seen: a known gap, stated rather than claimed;
 * the output of `nros board list`, `nros board show <board>` for every board
   the list names, and `nros doctor --report`, which in addition may hold no
   tier number (`tier 1`, `tier 2`, `tier 3` — phase-522 W5).
@@ -172,6 +181,36 @@ def source_hits() -> list[str]:
         for ln, s in rust_strings((ROOT / rel).read_text()):
             for tok in ids(s):
                 bad.append(f"{rel}:{ln}: {tok!r} in {s.strip()[:90]!r}")
+    return bad
+
+
+# --- build-script warnings --------------------------------------------------
+
+BUILD_SCRIPT_GLOBS = ["packages/**/build.rs", "packages/**/build_*.rs", "packages/**/build/*.rs"]
+SKIP_TREES = re.compile(r"/(third-party|tests?|testing|generated)/")
+WARNING_PREFIX = re.compile(r"^cargo::?warning=")
+# A literal handed to a warning helper: `warn(`, `.note(`, optionally through
+# `&format!(` / `format!(`, with only whitespace between.
+WARNING_CALL = re.compile(r"(?:\bwarn|\.note)\(\s*&?\s*(?:format!\(\s*)?$")
+
+
+def build_script_warning_hits() -> list[str]:
+    files = subprocess.run(
+        ["git", "ls-files", *BUILD_SCRIPT_GLOBS], cwd=ROOT, capture_output=True, text=True,
+        check=True,
+    ).stdout.split()
+    bad = []
+    for rel in sorted(set(files)):
+        if SKIP_TREES.search("/" + rel):
+            continue
+        src = (ROOT / rel).read_text()
+        for ln, start, end in rust_strings(src, spans=True):
+            text = src[start:end]
+            before = src[max(0, start - 80) : start].rstrip('r#"b')
+            if not (WARNING_PREFIX.match(text) or WARNING_CALL.search(before)):
+                continue
+            for tok in ids(text):
+                bad.append(f"{rel}:{ln}: {tok!r} in {' '.join(text.split())[:90]!r}")
     return bad
 
 
@@ -335,6 +374,21 @@ def self_test() -> None:
     bg = "# T\n\n## Design background\n\n- [x](a.md) RFC-0123\n- see issue 1043\n\n## After\n\nRFC-0001\n"
     hits = book_page_hits("b.md", bg)
     assert len(hits) == 2 and "issue 1043" in hits[0] and "b.md:10:" in hits[1], f"self-test: background {hits}"
+    # Issue 2305 -- a build-script warning is read; a panic and written source are not.
+    bs = (
+        'fn a() { println!("cargo::warning=x: drop it (issue 1352)"); }\n'
+        'fn b() { warn(&format!("x: low (phase-474 I1) {}", 1)); }\n'
+        'fn c() { d.note("x: assumed (RFC-0100 D6)"); }\n'
+        'fn d() { panic!("x: refused (issue 1896)"); }\n'
+        'fn e() { w.write_all(b"// Generated (phase-479 W5)"); }\n'
+    )
+    got = []
+    for ln, start, end in rust_strings(bs, spans=True):
+        text = bs[start:end]
+        before = bs[max(0, start - 80) : start].rstrip('r#"b')
+        if WARNING_PREFIX.match(text) or WARNING_CALL.search(before):
+            got += [(ln, t) for t in ids(text)]
+    assert got == [(1, "issue 1352"), (2, "phase-474"), (3, "RFC-0100")], f"self-test: build {got}"
     assert subcommands("Usage: x\n\nCommands:\n  new   make\n  help  h\n\nOptions:\n") == ["new"]
     assert subcommands(
         "Quick start:\n  nros new\n\nUsage: nros\n\nBuild:\n  build  b\n  sync   s\n\n"
@@ -352,7 +406,7 @@ def main() -> int:
         print(f"{NAME}: self-test OK")
         return 0
 
-    bad = source_hits() + book_hits()
+    bad = source_hits() + book_hits() + build_script_warning_hits()
     cli = args.cli
     if cli is None:
         from source_locate import nros_cli_bin
@@ -379,7 +433,7 @@ def main() -> int:
         return check_skip.unverified(
             NAME, f"no in-tree nros CLI (`just setup-cli`); {rendered} not read"
         )
-    print(f"{NAME}: OK (cmd/ strings, {BOOK_SCOPE}, {rendered})")
+    print(f"{NAME}: OK (cmd/ strings, build-script warnings, {BOOK_SCOPE}, {rendered})")
     return 0
 
 

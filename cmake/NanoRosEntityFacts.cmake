@@ -567,7 +567,7 @@ function(nros_entity_facts_env _target)
         list(APPEND _payload_env ${_param_env})
         message(STATUS
             "nano-ros: parameter store sized from the contract -- "
-            "${_param_env} (phase-446 W4)")
+            "${_param_env}")
     endif()
 
     # phase-486 -- what remains to deliver is the descriptor's path and the

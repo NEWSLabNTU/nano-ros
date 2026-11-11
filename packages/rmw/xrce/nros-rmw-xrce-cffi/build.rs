@@ -1089,10 +1089,10 @@ impl XrceDemand {
         // while sizing a QoS-gated buffer from it can UNDER-state, because a
         // closure row carries no endpoint's QoS.
         if !desc.meta.basis.describes_image() {
+            // History: RFC-0100 D6.
             d.note(format!(
                 "the sizing descriptor states `basis = {}`, which describes the link closure \
-                 rather than what this image creates, so no pool is derived from it \
-                 (RFC-0100 D6)",
+                 rather than what this image creates, so no pool is derived from it",
                 desc.meta.basis
             ));
             return d;
@@ -1408,10 +1408,11 @@ impl XrceDemand {
             .iter()
             .all(|e| matches!(e.kind, EndpointKind::Publisher | EndpointKind::Subscription));
         if stated_any && none_reliable && pubsub_only {
+            // History: RFC-0100 D6.
             self.note(format!(
                 "no endpoint declares `reliability = reliable` and some declare nothing, so \
                  both reliable stream buffers keep the full history — an undeclared \
-                 reliability is assumed reliable (RFC-0100 D6). Declaring `best_effort` on \
+                 reliability is assumed reliable. Declaring `best_effort` on \
                  every endpoint is worth {RELIABLE_STREAM_SAVING_BYTES} bytes of session heap"
             ));
         }

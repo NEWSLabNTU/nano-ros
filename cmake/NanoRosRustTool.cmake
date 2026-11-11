@@ -146,9 +146,10 @@ function(nros_pin_default_rust_toolchain)
         OUTPUT_VARIABLE _pin_list ERROR_QUIET)
     string(REPLACE "." "\\." _pin_re "${_pin}")
     if(NOT _pin_list MATCHES "(^|\n)${_pin_re}(-[^ \n]+)?( |\n|$)")
+        # History: issue 1914.
         message(STATUS "nano-ros: Rust toolchain ${_pin} (rust-toolchain.toml) is not "
             "installed; using rustup's default, which may lack board targets "
-            "(nros setup <board> installs ${_pin} with them — issue 1914)")
+            "(nros setup <board> installs ${_pin} with them)")
         return()
     endif()
 
@@ -158,7 +159,7 @@ function(nros_pin_default_rust_toolchain)
         "Rust toolchain (nano-ros pin from rust-toolchain.toml — issue 1914)")
     set(ENV{RUSTUP_TOOLCHAIN} "${_pin}")
     message(STATUS "nano-ros: Rust toolchain ${_pin} (rust-toolchain.toml pin; "
-        "rustup had no override for ${CMAKE_SOURCE_DIR} — issue 1914). "
+        "rustup had no override for ${CMAKE_SOURCE_DIR}). "
         "Pass -DRust_TOOLCHAIN=<tc> to choose another.")
 endfunction()
 

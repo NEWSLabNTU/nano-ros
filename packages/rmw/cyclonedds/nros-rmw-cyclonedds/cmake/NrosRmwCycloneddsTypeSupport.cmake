@@ -117,9 +117,10 @@ function(_nros_idlc_runs _path _out_why _out_env)
             RESULT_VARIABLE _rc2
             OUTPUT_QUIET ERROR_QUIET)
         if(_rc2 EQUAL 0)
+            # History: issue 0601.
             message(STATUS
                 "nano-ros: idlc at ${_path} needs its own prefix libs; "
-                "running it with LD_LIBRARY_PATH=${_ld} (issue 0601)")
+                "running it with LD_LIBRARY_PATH=${_ld}")
             set(${_out_why} "" PARENT_SCOPE)
             set(${_out_env} "LD_LIBRARY_PATH=${_ld}" PARENT_SCOPE)
             return()
@@ -181,9 +182,10 @@ function(_nros_cyclonedds_sdk_bins _out)
                  "${_store}/cyclonedds/[0-9]*")
             if(_others)
                 string(REPLACE ";" ", " _others "${_others}")
+                # History: issue 1546.
                 message(STATUS
                     "nano-ros: the SDK store has cyclonedds ${_others} but NOT the pinned "
-                    "${_pin} — not used for idlc (issue 1546). Provision the pin: "
+                    "${_pin} — not used for idlc. Provision the pin: "
                     "nros setup --tool cyclonedds")
             endif()
         endif()
@@ -223,7 +225,7 @@ if(NOT TARGET CycloneDDS::idlc)
         if(_nros_idlc_why)
             message(STATUS
                 "nano-ros: cached idlc ${IDLC_EXECUTABLE} cannot run "
-                "(${_nros_idlc_why}); dropping it and searching again (issue 0633)")
+                "(${_nros_idlc_why}); dropping it and searching again")
             unset(IDLC_EXECUTABLE CACHE)
             _nros_find_idlc(IDLC_EXECUTABLE)
         endif()
@@ -287,9 +289,10 @@ set(_nros_idlc_reuse OFF)
 if(NROS_RMW_CYCLONEDDS_IDLC AND EXISTS "${NROS_RMW_CYCLONEDDS_IDLC}")
     _nros_idlc_runs("${NROS_RMW_CYCLONEDDS_IDLC}" _nros_cached_why _nros_cached_env)
     if(_nros_cached_why)
+        # History: issue 0633.
         message(STATUS
             "nano-ros: cached idlc ${NROS_RMW_CYCLONEDDS_IDLC} no longer runs "
-            "(${_nros_cached_why}); re-resolving (issue 0633)")
+            "(${_nros_cached_why}); re-resolving")
     else()
         set(_nros_idlc_reuse ON)
         set(NROS_RMW_CYCLONEDDS_IDLC_ENV "${_nros_cached_env}"

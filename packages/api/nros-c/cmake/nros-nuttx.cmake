@@ -522,9 +522,10 @@ function(nros_nuttx_build_example)
     if(COMMAND nros_resolve_board_facts)
         nros_resolve_board_facts()
     else()
+        # History: issue 1541.
         message(STATUS
             "nano-ros: board facts NOT delivered to ${_NNBE_NAME} — "
-            "NanoRosBoardFacts.cmake is not beside this module (issue 1541)")
+            "NanoRosBoardFacts.cmake is not beside this module")
     endif()
 
     # Issue 1712 — and the image's OWN `[image.<id>] env` (RFC-0049's APP

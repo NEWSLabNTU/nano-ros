@@ -332,9 +332,10 @@ function(nros_report_corrosion origin version location)
         # is the same incomplete instruction 0622 was filed about, so it gets
         # the same measured list rather than a second, shorter spelling of the
         # advice. Fix the CLASS, not the reported site.
+        # History: issues 0493, 0616.
         message(WARNING
             "nano-ros: Corrosion ${version} shares ONE cargo target-dir across workspace "
-            "roots (issues 0493, 0616). Harmless for a single-root configure; a link "
+            "roots. Harmless for a single-root configure; a link "
             "with two roots duplicates every nros crate.\n"
             "Provision the pin: `nros setup --tool corrosion`\n"
             "${_stale_report}"
@@ -549,10 +550,11 @@ function(nros_share_corrosion_cargo_dir)
         #
         # Deleting it is not on the table either: it holds build output this
         # function did not create.
+        # History: issue 0805.
         message(STATUS
             "nano-ros: NOT sharing the Corrosion cargo dir — ${_link} is a real "
             "directory from an earlier build. Remove this build directory to "
-            "enable sharing (issue 0805).")
+            "enable sharing.")
         return()
     endif()
 
@@ -619,7 +621,8 @@ function(nros_assert_shared_cargo_dir_used shared_dir target)
             --label "${target}"
         COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
         DEPENDS "$<TARGET_FILE:${target}>"
-        COMMENT "nano-ros: checking cargo wrote ${target} into the shared dir (issue 0945)"
+        # History: issue 0945.
+        COMMENT "nano-ros: checking cargo wrote ${target} into the shared dir"
         VERBATIM)
     add_custom_target(nros_shared_cargo_dir_check_${target} ALL DEPENDS "${_stamp}")
 endfunction()

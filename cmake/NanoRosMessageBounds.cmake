@@ -751,11 +751,12 @@ function(nros_derive_message_bound_knobs)
         if(_payload_status STREQUAL "derived" AND _basis STREQUAL "subscribed")
             _nros_bounds_publish_payload_classes()
             if(NOT _B_QUIET)
+                # History: issue 0963.
                 message(STATUS
                     "nros: payload classes DERIVED over ${_sub_count} subscribed "
                     "type(s) despite the closure refusal above -- every type this "
                     "image RECEIVES is bounded. The take buffer keeps its "
-                    "configured value (issue 0963).")
+                    "configured value.")
             endif()
         elseif(_basis STREQUAL "closure" AND NOT _B_QUIET)
             # Issue 2201 -- the remedy for THIS refusal is not the one the

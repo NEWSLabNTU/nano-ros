@@ -125,8 +125,9 @@ if(NOT _nros_add_library_wrapped)
         if((_nal_kind STREQUAL "SHARED" OR _nal_kind STREQUAL "MODULE")
            AND NOT "IMPORTED" IN_LIST _nal_args)
             list(REMOVE_AT _nal_args 0)
+            # History: phase-488.
             message(STATUS "nano-ros: add_library(${name} ${_nal_kind}) builds STATIC: "
-                           "the image is one binary with one runtime (phase-488)")
+                           "the image is one binary with one runtime")
             _add_library(${name} STATIC ${_nal_args})
         else()
             _add_library(${name} ${ARGN})
