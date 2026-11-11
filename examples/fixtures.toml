@@ -7905,14 +7905,31 @@ output = "build.ninja"
 # tests/west_hand_written_entry.rs, which asserts each configured fragment is
 # byte-equal to its seed. Issue 2435 rides on the same row: the entry spells
 # its bringup relative to itself, and a clean build dir has no probe build
-# until the probe re-runs.
+# until the probe re-runs. The entry states no image, so this raw road passes
+# the image statement `nros build` would (issue 2436); the next row is the
+# `nros build` road itself.
 [[compile_check_fixture]]
 id = "west_hand_written_c_entry"
 builder = "west-configure"
 dir = "packages/testing/nros-tests/fixtures/west_hand_written_c_entry"
 west_subdir = "src/zephyr_entry"
 west_board = "native_sim/native/64"
-west_extra = "-DCONF_FILE=prj.conf"
+west_extra = "-DCONF_FILE=prj.conf -DNROS_IMAGE_SYSTEM_DIR=../demo_bringup -DNROS_IMAGE=zephyr -DNROS_IMAGE_LANGUAGE=cpp"
+output = "build.ninja"
+
+# Issue 2436 -- the same hand-written entry built by `nros build
+# demo_bringup:zephyr` (`west_nros_image`). The entry's CMakeLists names no
+# image, so the hook renders this image only if `nros build` states it; a
+# guest configure reads no seed and states no API row, and a TYPED C entry
+# then fails on the C++ runtime headers. tests/west_hand_written_entry.rs
+# asserts this configure holds to its seeds too.
+[[compile_check_fixture]]
+id = "west_hand_written_c_entry_nros_build"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/west_hand_written_c_entry"
+west_subdir = "src/zephyr_entry"
+west_board = "native_sim/native/64"
+west_nros_image = "demo_bringup:zephyr"
 output = "build.ninja"
 
 [[compile_check_fixture]]

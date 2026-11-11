@@ -1,11 +1,10 @@
 # Issue 2405 -- a HAND-WRITTEN C west application (`[image.zephyr] entry =
-# "zephyr_entry"`), the road `nros build` never generates. It names its image
-# itself, as a hand-written application does, and spells its bringup relative to
-# itself (issue 2435: that spelling must find the workspace too).
+# "zephyr_entry"`), the road `nros build` never generates. It does NOT name
+# its image: `nros build` passes the image statement (issue 2436), and a raw
+# `west build` passes it with -D, so both roads are the same configure. It
+# spells its bringup through `..` (issue 2435: that spelling must find the
+# workspace too).
 cmake_minimum_required(VERSION 3.20.0)
-get_filename_component(NROS_IMAGE_SYSTEM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup" ABSOLUTE)
-set(NROS_IMAGE zephyr)
-set(NROS_IMAGE_LANGUAGE cpp)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(zephyr_entry)
 

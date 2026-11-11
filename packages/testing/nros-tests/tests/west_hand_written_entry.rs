@@ -1,9 +1,10 @@
 //! Issue 2405 (and 2435) -- a HAND-WRITTEN C west application gets the seeds
 //! `nros configure` writes, and its configure holds to them.
 //!
-//! The `west_hand_written_c_entry` west fixture (`scripts/build/west-fixtures.sh`)
-//! configures `src/zephyr_entry`, an `[image.zephyr] entry = "zephyr_entry"`
-//! application, with raw `west build` from a clean build dir. The module hook
+//! Two west fixtures (`scripts/build/west-fixtures.sh`) configure
+//! `src/zephyr_entry`, an `[image.zephyr] entry = "zephyr_entry"` application,
+//! from a clean build dir: `west_hand_written_c_entry` by raw `west build`, and
+//! `west_hand_written_c_entry_nros_build` by `nros build` (issue 2436). The module hook
 //! runs `nros configure`, which writes the image's two seeds under the
 //! workspace's `build/demo_bringup__zephyr/`; the configure copies each seed
 //! VERBATIM into the fragment its readers read, and its producers must land
@@ -35,10 +36,8 @@ fn assert_held(build_dir: &Path, seed: &Path, fragment: &str, what: &str) {
     );
 }
 
-#[test]
-fn a_hand_written_west_entry_configures_from_its_seeds() -> nros_tests::TestResult<()> {
-    let cache =
-        nros_tests::fixtures::require_west_fixture("west_hand_written_c_entry", "CMakeCache.txt")?;
+fn assert_configures_from_seeds(row: &str) -> nros_tests::TestResult<()> {
+    let cache = nros_tests::fixtures::require_west_fixture(row, "CMakeCache.txt")?;
     let build_dir = cache.parent().expect("west fixture build dir");
     let resolved = nros_tests::project_root()
         .join("packages/testing/nros-tests/fixtures/west_hand_written_c_entry")
@@ -56,4 +55,18 @@ fn a_hand_written_west_entry_configures_from_its_seeds() -> nros_tests::TestResu
         "entity inventory (issue 2435)",
     );
     Ok(())
+}
+
+/// The raw `west build` road, which states the image with `-D` itself.
+#[test]
+fn a_hand_written_west_entry_configures_from_its_seeds() -> nros_tests::TestResult<()> {
+    assert_configures_from_seeds("west_hand_written_c_entry")
+}
+
+/// Issue 2436 -- the `nros build demo_bringup:zephyr` road. The entry's
+/// CMakeLists names no image, so this configure reads the seeds only if
+/// `nros build` stated the image; a guest reads none.
+#[test]
+fn nros_build_states_a_hand_written_west_entry_as_its_image() -> nros_tests::TestResult<()> {
+    assert_configures_from_seeds("west_hand_written_c_entry_nros_build")
 }
