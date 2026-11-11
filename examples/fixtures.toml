@@ -3356,11 +3356,16 @@ dir = "packages/testing/qemu-smoltcp-bridge"
 # issue 1865 — `just qemu test-rtic-main-e2e` runs this image against a router it
 # starts on the port the image's `system.toml` states, so the recipe builds THIS
 # row by id and reads its artifact dir from the row, never from a second spelling.
-[[fixture]]
+[[workspace_fixture]]
 id = "baremetal-rtic-run-plan-e2e"
 platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"
+rmw = "zenoh"
+bringup = "src/qemu_rtic_main_e2e_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 # Phase 244.D1 bare-metal `nros::main!()` BoardEntry E2E fixture (deploy =
 # mps2-an385-baremetal). Consumed by `baremetal_run_plan_runtime` (boots MPS2-AN385,
@@ -3368,10 +3373,16 @@ dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"
 # but never staged by any lane (no manifest entry) → the test skipped→FAILed;
 # wired here so `just qemu build-fixtures` stages it. Exercises the canonical
 # bare-metal registration path (`__register_linked_rmw` on target_os="none").
-[[fixture]]
+[[workspace_fixture]]
+id = "baremetal-rust-zenoh-qemu-baremetal-main-e2e"
 platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e"
+rmw = "zenoh"
+bringup = "src/qemu_baremetal_main_e2e_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 [[fixture]]
 platform = "baremetal"
