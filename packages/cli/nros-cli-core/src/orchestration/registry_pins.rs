@@ -113,7 +113,12 @@ pub fn write_seed(manifest_dir: &Path, pins: &Path) -> Result<()> {
     let lock = manifest_dir.join("Cargo.lock");
     let overrides = project_overrides(manifest_dir)?;
     if overrides.is_empty() {
-        std::fs::copy(pins, &lock)
+        // Read and write, never `fs::copy`: a copy keeps the source's mode, and
+        // the pin set of a read-only install is read-only, so cargo could not
+        // update the seeded lock (issue 2445).
+        let text = std::fs::read_to_string(pins)
+            .wrap_err_with(|| format!("read pin set {}", pins.display()))?;
+        std::fs::write(&lock, text)
             .wrap_err_with(|| format!("seed {} from {}", lock.display(), pins.display()))?;
     } else {
         let base = parse_registry(&std::fs::read_to_string(pins)?)?;
@@ -522,6 +527,23 @@ mod tests {
             std::fs::read_to_string(leaf.path().join("Cargo.lock")).unwrap(),
             PINS
         );
+    }
+
+    /// Issue 2445: the pin set of a read-only install is read-only, and the
+    /// seeded lock is the PROJECT's, which cargo must be able to update.
+    #[test]
+    fn a_lock_seeded_from_a_read_only_pin_set_is_writable() {
+        let root = tempfile::tempdir().unwrap();
+        root_with_pins(root.path());
+        let pins = root.path().join("locks/cargo-registry.lock");
+        let mut perm = std::fs::metadata(&pins).unwrap().permissions();
+        perm.set_readonly(true);
+        std::fs::set_permissions(&pins, perm).unwrap();
+        let leaf = tempfile::tempdir().unwrap();
+        seed(leaf.path(), Some(root.path())).unwrap();
+        let lock = leaf.path().join("Cargo.lock");
+        assert!(!std::fs::metadata(&lock).unwrap().permissions().readonly());
+        assert_eq!(std::fs::read_to_string(&lock).unwrap(), PINS);
     }
 
     #[test]

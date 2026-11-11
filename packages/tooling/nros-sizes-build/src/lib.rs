@@ -345,7 +345,9 @@ fn find_dep_rlib_isolated(
         // reuse: consumers that would produce the SAME artifact still share.
         let key = probe_key(&target, &forwarded);
         PathBuf::from(dir).join(&rustc_slug).join(key)
-    } else if let Some(root) = nros_build_paths::try_repo_root() {
+    } else if let Some(build_root) =
+        nros_build_paths::try_repo_root().and_then(|r| nros_build_paths::shared_build_root(&r))
+    {
         // phase-343 I1 — the SHARED dir is now the DEFAULT, not an opt-in.
         //
         // It used to be reachable only by exporting NROS_SIZES_PROBE_TARGET_DIR,
@@ -362,14 +364,15 @@ fn find_dep_rlib_isolated(
         // the mtime-newest fallback returned another consumer's build (nros-c
         // and nros-cpp resolved EXECUTOR_SIZE 88680 vs 89392). Sharing without
         // this key is worse than not sharing.
+        //
+        // Issue 2445: the root is `shared_build_root`, the rule the metadata
+        // and Corrosion probes ask, so `NROS_BUILD_ROOT` moves this one too and
+        // an installed SDK root is never written into (the branch below runs).
         let key = probe_key(&target, &forwarded);
-        root.join("build")
-            .join("sizes-probe")
-            .join(&rustc_slug)
-            .join(key)
+        build_root.join("sizes-probe").join(&rustc_slug).join(key)
     } else {
-        // Out-of-tree consumer with no nano-ros checkout to find: keep the
-        // private dir. Correctness first — there is no shared root to share.
+        // Out-of-tree consumer with no nano-ros checkout to find, or an
+        // installed SDK root (issue 2445): keep the private dir. Correctness first — there is no shared root to share.
         let out_dir = env::var("OUT_DIR").map_err(|_| Error::MalformedMetadata("OUT_DIR"))?;
         PathBuf::from(out_dir).join(format!("sizes-probe-target-{rustc_slug}"))
     };

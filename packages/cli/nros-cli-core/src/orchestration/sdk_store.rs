@@ -720,10 +720,36 @@ pub fn execute(
     // and a fourth spelling of "and then finish it" is how one of them ends up
     // reporting success over a prefix nothing can build with.
     run_post_install(action, name, tool, prefix, &mut provenance)?;
+    if name == "nros" {
+        finish_installed_sdk_root(&prefix.join(nros_launcher::checkout::SHIPPED_SUBDIR));
+    }
     for link in front_newest(&store_root(), name, &tool.front, tool.subdir.as_deref())? {
         super::step_log::say(format!("    → {} (newest installed)", link.display()));
     }
     Ok(provenance)
+}
+
+/// Issue 2445 — write what an installed SDK root needs before anyone builds
+/// against it, so no build has to write into it.
+///
+/// The central `nros-patch.toml` holds ABSOLUTE paths into the root, so a
+/// release cannot ship it: it is written where the root lands. Before this the
+/// first `nros configure` wrote it, which fails on a read-only install. Both install
+/// funnels reach here: `execute` (`nros setup --tool nros`) and `sdk-front nros`
+/// (`install.sh`, which runs the freshly unpacked binary). A failure is a
+/// warning, not a failed install: a writable root still gets the file from its
+/// first sync, exactly as before.
+pub fn finish_installed_sdk_root(sdk_root: &Path) {
+    if !nros_launcher::checkout::is_monorepo_root(sdk_root) {
+        return;
+    }
+    if let Err(e) = crate::cmd::ws::write_central_patch_file(sdk_root) {
+        eprintln!(
+            "nros: could not write the central patch file into {} ({e:#}); \
+             a read-only install of it will refuse `nros configure`",
+            sdk_root.display()
+        );
+    }
 }
 
 /// The `[tool.*.post_install]` half of an install — issue 1259.
@@ -3148,6 +3174,27 @@ mod tests {
 
     /// Issue 0625's shape, in the one place that is ALLOWED to enumerate: a
     /// directory where a version belongs must not be able to win by sorting.
+    /// Issue 2445: installing an `nros` writes its SDK root's central patch, so
+    /// a read-only install never needs `nros configure` to write it; a directory
+    /// that is not an SDK root is left alone.
+    #[test]
+    fn finishing_an_installed_sdk_root_writes_its_central_patch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("share/nano-ros");
+        let marker = root.join(nros_launcher::checkout::MONOREPO_MARKER);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "[package]\nname = \"nros-core\"\n").unwrap();
+        finish_installed_sdk_root(&root);
+        let patch = std::fs::read_to_string(root.join("nros-patch.toml")).unwrap();
+        assert!(patch.contains("[patch.crates-io]"), "{patch}");
+        assert!(patch.contains("nros-core = { path = "), "{patch}");
+
+        let not_a_root = tmp.path().join("elsewhere");
+        std::fs::create_dir_all(&not_a_root).unwrap();
+        finish_installed_sdk_root(&not_a_root);
+        assert!(!not_a_root.join("nros-patch.toml").exists());
+    }
+
     #[test]
     fn installed_versions_ignores_what_is_not_an_install() {
         let root = tmp("versions");
