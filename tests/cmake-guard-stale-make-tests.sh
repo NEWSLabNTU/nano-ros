@@ -24,6 +24,8 @@ trap 'rm -rf "$WORK"' EXIT
 fail=0
 ok() { echo "  ok    $1"; }
 bad() { echo "  FAIL  $1" >&2; fail=1; }
+# shellcheck source=scripts/lib/grep-q.sh
+source "$ROOT/scripts/lib/grep-q.sh"
 
 mkdir -p "$WORK/bin" "$WORK/build"
 : > "$WORK/build/CMakeCache.txt"
@@ -53,7 +55,9 @@ else bad "2: expected one repair-makes call, got: $(cat "$calls")"; fi
 
 : > "$calls"
 rc=0; guard "-j8 --jobserver-auth=fifo:/tmp/x" 2 || rc=$?
-if [ "$rc" -eq 0 ] && [ -s "$calls" ] && grep -q "issue 2421" "$WORK/stderr"; then
+# nros_grep_q exits 2 on a tool error, which `set -e` turns into a failure.
+said=0; nros_grep_q "issue 2421" "$WORK/stderr" || said=$?
+if [ "$rc" -eq 0 ] && [ -s "$calls" ] && [ "$said" -eq 0 ]; then
     ok "3: a CLI that cannot answer is reported, and the guard returns 0"
 else bad "3: rc=$rc, calls: $(cat "$calls"), stderr: $(cat "$WORK/stderr")"; fi
 

@@ -319,7 +319,7 @@ fn repair_makes(a: &RepairMakesArgs) -> eyre::Result<()> {
                 .was_version
                 .map_or("gone".to_string(), |(a, b)| format!("make {a}.{b}"));
             println!(
-                "repaired {} {}: {} ({was}) -> {} (issue 2421)",
+                "repaired {} {}: {} ({was}) -> {}, which can join a FIFO jobserver",
                 r.cache.display(),
                 r.key,
                 r.was.display(),
