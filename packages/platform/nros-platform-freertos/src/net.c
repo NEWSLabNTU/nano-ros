@@ -183,7 +183,22 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
     }
 }
 
+static int8_t tcp_open_impl(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                            int32_t connect_timeout_ms);
+
 int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t timeout_ms) {
+    return tcp_open_impl(sock_raw, endpoint, timeout_ms, -1);
+}
+
+/* Issue 2438 — the connect here is already non-blocking + select; a stated
+ * budget replaces `timeout_ms` as its bound. */
+int8_t nros_platform_tcp_open_within(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                                     int32_t connect_timeout_ms) {
+    return tcp_open_impl(sock_raw, endpoint, timeout_ms, connect_timeout_ms);
+}
+
+static int8_t tcp_open_impl(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                            int32_t connect_timeout_ms) {
     ensure_lwip_thread();
 
     if (sock_raw == NULL || endpoint == NULL) return -1;
@@ -198,7 +213,8 @@ int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t tim
     apply_tcp_common_options(fd, timeout_ms);
 
     for (struct addrinfo *it = ep->iptcp; it != NULL; it = it->ai_next) {
-        if (connect_with_timeout(fd, it->ai_addr, it->ai_addrlen, timeout_ms) == 0) {
+        uint32_t bound = (connect_timeout_ms < 0) ? timeout_ms : (uint32_t) connect_timeout_ms;
+        if (connect_with_timeout(fd, it->ai_addr, it->ai_addrlen, bound) == 0) {
             return 0;
         }
     }

@@ -9,6 +9,12 @@
 #ifndef ZENOH_GENERIC_PLATFORM_H
 #define ZENOH_GENERIC_PLATFORM_H
 
+/* Issue 2438 — every ZENOH_GENERIC build (bare-metal, ThreadX) reaches TCP
+ * through `zpico/platform_aliases.c`, which defines `_z_tcp_open_within` over
+ * `nros_platform_tcp_open_within`. Saying so here stops zenoh-pico's
+ * `link/unicast/tcp.c` from supplying its fallback that ignores the bound. */
+#define Z_TCP_OPEN_WITHIN 1
+
 #if defined(NROS_PLATFORM_ALIASES)
 /* Phase 129.A.3 — types backed entirely by the canonical
  * `nros_platform_*` ABI. Selected when `zpico-sys`'s

@@ -455,6 +455,14 @@ impl nros_platform_api::PlatformTcp for CffiPlatform {
     fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
         unsafe { nros_platform_tcp_open(sock, endpoint, timeout_ms) }
     }
+    fn open_within(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        connect_timeout_ms: i32,
+    ) -> i8 {
+        unsafe { nros_platform_tcp_open_within(sock, endpoint, timeout_ms, connect_timeout_ms) }
+    }
     fn listen(sock: *mut c_void, endpoint: *const c_void) -> i8 {
         unsafe { nros_platform_tcp_listen(sock, endpoint) }
     }
@@ -1253,6 +1261,20 @@ macro_rules! nros_platform_export_net {
             timeout_ms: u32,
         ) -> i8 {
             <$ty as ::nros_platform_api::PlatformTcp>::open(sock, endpoint, timeout_ms)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_tcp_open_within(
+            sock: *mut ::core::ffi::c_void,
+            endpoint: *const ::core::ffi::c_void,
+            timeout_ms: u32,
+            connect_timeout_ms: i32,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformTcp>::open_within(
+                sock,
+                endpoint,
+                timeout_ms,
+                connect_timeout_ms,
+            )
         }
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_tcp_listen(

@@ -29,6 +29,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sched.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -151,7 +152,45 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
     }
 }
 
+/* Issue 2438 — a connect that gives up after `timeout_ms`: non-blocking for the
+ * connect only, `poll` for writability, the outcome from SO_ERROR, the flags
+ * restored. A blocking connect to a peer that drops the SYN waits for the
+ * kernel's SYN retries (Linux: about 130 s). */
+static int connect_within(int fd, const struct sockaddr *addr, socklen_t len, int32_t timeout_ms) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        return connect(fd, addr, len);
+    }
+    int rc = connect(fd, addr, len);
+    if (rc < 0 && (errno == EINPROGRESS || errno == EAGAIN || errno == EALREADY)) {
+        struct pollfd pfd = { .fd = fd, .events = POLLOUT, .revents = 0 };
+        int pr = poll(&pfd, 1, (int) timeout_ms);
+        if (pr == 1) {
+            int err = 0;
+            socklen_t err_len = (socklen_t) sizeof(err);
+            rc = (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &err_len) == 0 && err == 0) ? 0 : -1;
+        } else {
+            rc = -1;
+        }
+    }
+    (void) fcntl(fd, F_SETFL, flags);
+    return rc;
+}
+
+static int8_t tcp_open_impl(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                            int32_t connect_timeout_ms);
+
 int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t timeout_ms) {
+    return tcp_open_impl(sock_raw, endpoint, timeout_ms, -1);
+}
+
+int8_t nros_platform_tcp_open_within(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                                     int32_t connect_timeout_ms) {
+    return tcp_open_impl(sock_raw, endpoint, timeout_ms, connect_timeout_ms);
+}
+
+static int8_t tcp_open_impl(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                            int32_t connect_timeout_ms) {
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_posix_socket_t *sock = (nros_posix_socket_t *) sock_raw;
     const nros_posix_endpoint_t *ep = (const nros_posix_endpoint_t *) endpoint;
@@ -182,7 +221,10 @@ int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t tim
      * compatibility. */
     uint32_t effective_tout = (timeout_ms == 0) ? 5000u : timeout_ms;
     for (struct addrinfo *it = ep->iptcp; it != NULL; it = it->ai_next) {
-        if (connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+        int rc = (connect_timeout_ms < 0)
+            ? connect(fd, it->ai_addr, it->ai_addrlen)
+            : connect_within(fd, it->ai_addr, it->ai_addrlen, connect_timeout_ms);
+        if (rc == 0) {
             apply_tcp_common_options(fd, effective_tout);
             return 0;
         }
