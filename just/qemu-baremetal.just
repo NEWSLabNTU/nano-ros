@@ -127,7 +127,10 @@ build:
     qemu_tdir_flag="$(nros_fixture_target_dir_flag baremetal "" "")"
     # phase-300 W1.1 — enumerate tracked crates via the git index (the
     # F1 `-not -path` find still DESCENDED every target*/build* tree).
-    _qemu_tomls="$(git ls-files 'examples/mps2-an385-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort)"
+    # phase-531 W6 — leaf ROOTS only (`<board>/<lang>/<role>/Cargo.toml`): the
+    # Rust talker witness is a one-package workspace, whose node package
+    # `src/qemu_bsp_talker/Cargo.toml` is a library, not something to build.
+    _qemu_tomls="$(git ls-files 'examples/mps2-an385-baremetal/**/Cargo.toml' | awk -F/ 'NF==5' | sort)"
     # Issue 0100 — single sync-then-build pass. The former two-pass split existed
     # only because the Entry+Node-pkg shape had an Entry whose `[patch]` pointed
     # at a SIBLING `../<pkg>/generated/*`, so every entry had to wait for its
@@ -148,6 +151,10 @@ build:
         nros_seed_leaf_lock "$dir"
         (cd "$dir" && cargo build $cargo_profile_args $qemu_tdir_flag)
     done
+    # phase-531 W6 — the Rust talker witness is a one-package workspace
+    # (RFC-0122 D3): `nros build` generates its entry and builds the image.
+    echo "  build examples/mps2-an385-baremetal/rust/talker (workspace)"
+    (cd examples/mps2-an385-baremetal/rust/talker && "$nros_cli" build mps2-an385-baremetal -- $cargo_profile_args)
     # Phase 131.B — bench/test-fixture binaries that used to live under
     # examples/mps2-an385-baremetal/rust/{core,standalone,zenoh/large-msg-test}
     # now sit under packages/testing/.
@@ -273,6 +280,11 @@ test verbose="": build-fixtures
 # kernel paths below resolve here. Mirrors fixture_shared_target_dir() in
 # packages/testing/nros-tests/src/fixtures/binaries/mod.rs.
 FIXTURE_TARGET := absolute_path("build/cargo-fixtures/baremetal") / "thumbv7m-none-eabi" / PROFILE_DIR
+
+# phase-531 W6 — the Rust talker witness is a one-package workspace: its
+# fixture row (`baremetal-rust-zenoh-talker`) builds the generated entry into
+# the witness's own `target-fixtures/`, not the shared group above.
+TALKER_FIXTURE := absolute_path("examples/mps2-an385-baremetal/rust/talker/target-fixtures") / "thumbv7m-none-eabi" / PROFILE_DIR / "mps2_an385_baremetal_entry"
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
 [group("debug")]
@@ -433,11 +445,11 @@ test-zenoh: build
     echo ""
     echo "To run manually:"
     echo "  Terminal 1: ZENOH_CONFIG_OVERRIDE='listen/endpoints=[\"tcp/0.0.0.0:7447\"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd"
-    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary {{FIXTURE_TARGET}}/qemu-bsp-talker"
+    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary {{TALKER_FIXTURE}}"
     echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary {{FIXTURE_TARGET}}/qemu-bsp-listener"
     echo ""
     echo "Binaries built at (Phase 226.D shared fixture target dir):"
-    echo "  {{FIXTURE_TARGET}}/qemu-bsp-talker"
+    echo "  {{TALKER_FIXTURE}}"
     echo "  {{FIXTURE_TARGET}}/qemu-bsp-listener"
     echo ""
     echo "Note: Automated test not yet implemented (requires QEMU 7.0+)"
@@ -562,9 +574,13 @@ help:
 clean: clean-zenoh-pico
     #!/usr/bin/env bash
     # phase-300 W1.1 — tracked-crate enumeration (see build recipe).
-    for toml in $(git ls-files 'examples/mps2-an385-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort); do
+    for toml in $(git ls-files 'examples/mps2-an385-baremetal/**/Cargo.toml' | awk -F/ 'NF==5' | sort); do
         rm -rf "$(dirname "$toml")/target"
     done
+    # phase-531 W6 — the Rust talker witness (a one-package workspace).
+    rm -rf examples/mps2-an385-baremetal/rust/talker/build \
+        examples/mps2-an385-baremetal/rust/talker/target-fixtures \
+        examples/mps2-an385-baremetal/rust/talker/target-docker
     # Phase 131.B — relocated bare-metal bench/fixture crates.
     for dir in \
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
@@ -597,8 +613,11 @@ _run-qemu-mps2 binary: _require-profile-dir build-fixtures
     PID=$!
     wait $PID
 
-# Run bare-metal talker on QEMU
-talker: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-bsp-talker"))
+# Run bare-metal talker on QEMU. The talker is the board's road witness, a
+# one-package workspace since phase-531 W6; `nros run` builds its image and
+# boots it.
+talker:
+    cd examples/mps2-an385-baremetal/rust/talker && nros run mps2-an385-baremetal
 
 # Run bare-metal listener on QEMU
 listener: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-bsp-listener"))

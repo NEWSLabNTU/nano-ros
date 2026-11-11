@@ -145,7 +145,6 @@ stack-all top="10":
     for example in \
         packages/testing/nros-bench/wcet-cycles-qemu \
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
-        examples/mps2-an385-baremetal/rust/talker \
         examples/mps2-an385-baremetal/rust/listener \
     ; do
         echo "================================================================"
@@ -154,7 +153,8 @@ stack-all top="10":
     done
     # No native Rust example: `linux/rust/*` are one-package workspaces since
     # phase-531/phase-535 W6, and stack-analysis.sh builds a cargo package
-    # directory.
+    # directory. The bare-metal Rust talker witness left the list above for the
+    # same reason (phase-531 W6).
     # C examples (native). `c/custom-msg` and `c/custom-transport-loopback`
     # left with phase-535 W6: one-package workspaces, and stack-analysis-c.sh
     # configures a CMake project directory.

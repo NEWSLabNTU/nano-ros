@@ -3182,10 +3182,21 @@ env = { NROS_XRCE_BUFFER_SIZE = "8192" }
 # features; no feature variants.
 # ===========================================================================
 
-[[fixture]]
+# phase-531 W6 — the Rust talker witness is a one-package workspace
+# (RFC-0122 D3); its image boots a generated entry. `target` is the locator's
+# `<triple>/` component (issue #181), as on every baremetal workspace row. The
+# bringup's `docker` image is the compose test's (`tests/qemu-baremetal`),
+# built there, not a fixture.
+[[workspace_fixture]]
+id = "baremetal-rust-zenoh-talker"
 platform = "baremetal"
 lang = "rust"
+rmw = "zenoh"
 dir = "examples/mps2-an385-baremetal/rust/talker"
+bringup = "src/qemu_bsp_talker_bringup"
+image = "mps2-an385-baremetal"
+target_dir = "target-fixtures"
+target = "thumbv7m-none-eabi"
 
 [[fixture]]
 platform = "baremetal"
@@ -3194,8 +3205,8 @@ dir = "examples/mps2-an385-baremetal/rust/listener"
 
 # phase-535 W5 (RFC-0122 D1) — the bare-metal Rust pubsub pair as images of
 # the Rust workspace's pubsub bringup. `test_qemu_bsp_pubsub_e2e` resolves
-# both roles through `fixtures::workspace_image`. The `rust/talker` leaf stays
-# as the board's witness; the `rust/listener` leaf stays for its `docker`
+# both roles through `fixtures::workspace_image`. The `rust/talker` witness
+# stays (a one-package workspace since phase-531 W6); the `rust/listener` leaf stays for its `docker`
 # image, which `tests/qemu-baremetal` builds in the leaf (a configuration:
 # W6). There are no plain Rust service or action leaves on this board, only
 # RTIC ones (images below since W6), so the pubsub pair is the only move.

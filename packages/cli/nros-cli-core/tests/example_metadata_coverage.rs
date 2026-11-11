@@ -183,9 +183,10 @@ fn every_node_declaring_example_is_a_metadata_candidate() {
     // to the threadx-linux, mps2-an385-freertos and qemu-armv7a-nuttx Rust
     // talkers, 53 -> 50. phase-535 W6 made the ten mps2-an385 bare-metal C/C++
     // non-talker examples one-package workspaces whose cargo package is the
-    // image's owned entry (no component table), 50 -> 40.
+    // image's owned entry (no component table), 50 -> 40. phase-531 W6 made
+    // the mps2-an385 bare-metal Rust talker a one-package workspace, 40 -> 39.
     assert!(
-        counted >= 40,
+        counted >= 39,
         "only {counted} node-declaring example packages found; the tree has far \
          more, so the classifier stopped recognising a shape"
     );

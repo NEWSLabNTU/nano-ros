@@ -19,7 +19,8 @@
 //! either.
 //!
 //! Compiles nothing: the images are fixture rows (`linux/rust/talker`, the
-//! mps2-an385 `qemu-bsp-talker`). A missing fixture is an unmet precondition.
+//! mps2-an385 bare-metal Rust talker witness). A missing fixture is an unmet
+//! precondition.
 
 #![cfg(target_os = "linux")]
 
@@ -210,7 +211,7 @@ fn sigkilled_verb_leaves_no_native_image(
 #[test]
 fn sigkilled_verb_leaves_no_qemu_guest() {
     require_qemu_baremetal_lane();
-    let elf = build_qemu_bsp_talker().require("qemu-bsp-talker");
+    let elf = build_qemu_bsp_talker().require("baremetal-rust-zenoh-talker");
     let boot = run::QemuBoot::table("arm", "mps2-an385").arg("cpu", "cortex-m3");
     let mut plan = run::qemu_image(elf, &boot).expect("writing the plan");
     let mut verb = spawn_verb(&mut plan);
@@ -224,7 +225,7 @@ fn sigkilled_verb_leaves_no_qemu_guest() {
 #[test]
 fn harness_stop_leaves_no_qemu_guest() {
     require_qemu_baremetal_lane();
-    let elf = build_qemu_bsp_talker().require("qemu-bsp-talker");
+    let elf = build_qemu_bsp_talker().require("baremetal-rust-zenoh-talker");
     let boot = run::QemuBoot::table("arm", "mps2-an385").arg("cpu", "cortex-m3");
     let mut plan = run::qemu_image(elf, &boot).expect("writing the plan");
     let mut verb = spawn_verb(&mut plan);

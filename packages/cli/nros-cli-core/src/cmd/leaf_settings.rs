@@ -2461,9 +2461,11 @@ mod board_crate_tests {
         // owned entries of one-package workspaces), 26 -> 23 for the
         // `nros-bench` `large-msg-baremetal`, `loan-copy-count` and
         // `wake-latency-cortex-m3` programs and 23 -> 22 for
-        // `bins/ros-edition-pose-pub` (W7: owned entries with no component).
+        // `bins/ros-edition-pose-pub` (W7: owned entries with no component),
+        // 22 -> 21 for the mps2-an385 bare-metal Rust talker (phase-531 W6: a
+        // one-package workspace).
         assert!(
-            on_selection >= 22,
+            on_selection >= 21,
             "only {on_selection} leaves on the selection package"
         );
     }
@@ -2579,9 +2581,11 @@ mod board_crate_tests {
         // a bringup package with no `Cargo.toml` beside it: 40 -> 30 for the
         // ten mps2-an385 bare-metal C/C++ non-talker leaves (phase-535 W6),
         // 30 -> 26 for the three `nros-bench` programs and
-        // `bins/ros-edition-pose-pub` (phase-531 W7). Each count measured.
+        // `bins/ros-edition-pose-pub` (phase-531 W7), 26 -> 25 for the
+        // mps2-an385 bare-metal Rust talker (phase-531 W6). Each count
+        // measured.
         assert!(
-            checked >= 26,
+            checked >= 25,
             "the walk reached only {checked} cargo leaves"
         );
     }

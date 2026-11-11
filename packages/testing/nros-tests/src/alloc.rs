@@ -184,11 +184,11 @@ pub const fn aux_port(platform: PlatformId, slot: u16) -> u16 {
     platform_port_base(platform) + 300 + slot * 10
 }
 
-/// mps2-an385 BSP (non-RTIC) pubsub leaves (`qemu-bsp-talker` /
-/// `qemu-bsp-listener`, `examples/mps2-an385-baremetal/rust/{talker,listener}`).
+/// mps2-an385 BSP (non-RTIC) pubsub examples
+/// (`examples/mps2-an385-baremetal/rust/{talker,listener}`).
 /// Since phase-535 W5 the pair cell runs the Rust workspace's
-/// `baremetal_{talker,listener}` images on [`port_of`]; the talker leaf is the
-/// board's witness and keeps this slot.
+/// `baremetal_{talker,listener}` images on [`port_of`]; the talker witness (a
+/// one-package workspace since phase-531 W6) keeps this slot.
 pub const BAREMETAL_BSP_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 0);
 
 // Slot 1 held the RTIC mixed-priority pair, retired into the RTIC images by

@@ -1,10 +1,9 @@
 //! Declarative talker node — RMW/platform-agnostic application logic.
 //!
-//! Self-contained standalone example (issue 0100): the node logic lives in this
-//! crate's `lib.rs` (was a sibling `talker_pkg`), `main.rs` is the
-//! `nros::main!()` Form-1 self-bringup Entry that dispatches to this crate's
-//! `register`. The boot scaffold (reset → `BoardEntry::run` → executor → spin)
-//! is owned by `nros::main!()` + `nros-board-mps2-an385`; none of it appears
+//! The node package of a one-package workspace (phase-531 W6): the node logic
+//! lives here, and `nros build` generates the entry that dispatches to this
+//! crate's `register`. The boot scaffold (reset → `BoardEntry::run` → executor
+//! → spin) is owned by that entry + `nros-board-mps2-an385`; none of it appears
 //! here.
 //!
 //! Publishes the `std_msgs/String` demo payload (`Hello World: N`) on `/chatter` once per second,
