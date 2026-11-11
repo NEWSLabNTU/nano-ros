@@ -1569,7 +1569,7 @@ fn test_rtos_service_e2e(
     // QEMU-cold-boot platform. `start_server_then_client` makes the ordering
     // real instead of approximating it with a sleep: the client is not spawned
     // until the server's banner has actually been seen (issue 0867).
-    let (mut server, _server_boot, mut client) = start_server_then_client(
+    let (mut server, server_boot, mut client) = start_server_then_client(
         platform,
         lang,
         server_bin,
@@ -1596,6 +1596,14 @@ fn test_rtos_service_e2e(
     let client_out =
         client.collect_until(nros_tests::output::SERVICE_RESULT_PREFIX, client_timeout);
 
+    // Issue 2446 — the server's side, as the action cell already prints it.
+    // A client whose session dies at its first declare (zenoh-pico -100/-103)
+    // says nothing about whether the SERVER still had a session, and that is
+    // the next question the verdict has to answer.
+    let server_post = server
+        .wait_for_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
     // issue 0877 — capture the launch lines while the processes are alive.
     let server_cmd = server.command_line();
     let client_cmd = client.command_line();
@@ -1614,6 +1622,8 @@ fn test_rtos_service_e2e(
     server.kill();
     client.kill();
 
+    eprintln!("Server boot:\n{}", server_boot);
+    eprintln!("Server post-boot:\n{}", server_post);
     eprintln!("Client output:\n{}", client_out);
     if let Some(status) = client_exit {
         assert!(
