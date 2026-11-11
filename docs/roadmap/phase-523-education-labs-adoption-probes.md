@@ -110,6 +110,47 @@ Decision step: if the image exceeds the size a lab network can pull in the
 budget (measured on the probe runner with a throttled link), the Zephyr
 workspace moves out of the image into a mirrored fetch the lab host serves.
 
+**Open questions for the user (2026-11-11), before any image is built.** W2
+was written when the labs were planned on Zephyr. They have since landed on
+`mps2-an385-freertos` and `mps2-an385-baremetal`: the Tutorial's C and C++
+tabs (issue 2376), the QoS lab, and the two-tier lab. So what the image must
+carry has changed. Sizes measured on a provisioned host, uncompressed:
+
+| Piece | Size | Needed by |
+|---|---|---|
+| `ros:humble-ros-base` (22.04) / `ros:jazzy-ros-base` (24.04) base | 758 MB / 888 MB | the router (`rmw_zenohd`), `ros2` in chapter 10; plus `rmw-zenoh-cpp` and `example-interfaces` |
+| arm-none-eabi-gcc 13.2 (store) | 1.2 GB | every MPS2 image, all languages |
+| QEMU 11.0 (store) | 486 MB | every lab run |
+| FreeRTOS kernel, lwIP, zenoh-pico, mbedTLS (store sources) | 77 MB | FreeRTOS images; zenoh-pico and mbedTLS for bare metal too |
+| Rust (rustup, not the store, ruled 2026-11-06): host std 370 MB, `thumbv7m-none-eabi` std 65 MB, plus rustc/cargo and `rust-src` | ~1 GB in a minimal profile (not measured; the host's own install is 3.1 GB with every target) | the Rust tabs |
+| Zephyr SDK 0.16.8 (all arches) / Zephyr workspace (allowlisted modules) | 7.8 GB / 1.7 GB | no current lab; the Zephyr chapters of the book |
+
+The decisions that only the user can make:
+
+1. **Hosting.** Which registry, and who may pull: `ghcr.io/newslabntu/…`
+   public, or a private or university mirror. Also the image name and its tag
+   scheme (one tag per release, `nros-<version>`, or per semester).
+2. **What ships.**
+   - **Boards.** FreeRTOS and bare metal only, about 4 GB uncompressed with
+     ROS and Rust, or Zephyr too, about +9.5 GB. That is the W2 text's
+     "Zephyr workspace", which no current lab uses.
+   - **ROS 2 edition.** Humble on 22.04, which every probe track uses today,
+     or Jazzy on 24.04.
+   - **Rust.** Include it, or offer a C/C++-only variant without it.
+3. **"Lab sources pre-fetched".** The labs now scaffold with `nros new`, so
+   there are no lab sources to fetch. Should the image instead pre-fetch the
+   crates the Rust tabs pull from crates.io, so a seat behind a NAT never
+   reaches it? Or is the course repository of the semester pin a separate
+   repository the image should clone? If so, which one, and who owns it?
+4. **Build cadence.** On every release in `release-nros.yml` (the W2 text),
+   which adds the image build to each release, or on dispatch once per
+   semester.
+5. **The pull budget's link.** The decision step measures "a throttled
+   link". What bandwidth stands for a lab network: 100 Mbit/s shared by 30
+   seats, or 1 Gbit/s? At 4 GB, 15 minutes needs ~36 Mbit/s per seat.
+
+Until these are answered, W2 builds nothing.
+
 ### W3 — Adoption probes, two rounds
 
 - A one-page brief per purpose: the purpose, its budget, the host it starts
