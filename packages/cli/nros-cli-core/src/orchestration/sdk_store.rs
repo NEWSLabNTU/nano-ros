@@ -1583,6 +1583,37 @@ fn nested_submodules_clean(dest: &Path) -> bool {
 /// idempotence the RFC-0099 D6 fast path gives a checkout: a clone already AT
 /// the recorded commit, with its nested submodules at theirs, runs one
 /// `rev-parse` and nothing that touches the network.
+/// The disposition a dry run reports: present is a skip, absent is a plan.
+fn planned_unless(present: bool) -> SourceDisposition {
+    if present {
+        SourceDisposition::AlreadyPresent
+    } else {
+        SourceDisposition::Planned
+    }
+}
+
+/// Is a store source already materialised at `pin`? Its provenance file
+/// names the commit. The one predicate both [`materialise_into`] and a dry
+/// run ask (issue 2447).
+fn store_source_present(store: &Path, name: &str, src: &SourcePackage, pin: &RecordedPin) -> bool {
+    let dest = nros_build_paths::locate::store_path(&locate_row(name, src), store);
+    read_provenance_ref(&dest).as_deref() == Some(pin.commit.as_str())
+}
+
+/// Is an installed root's source a clone at its recorded commit (and, when
+/// recursive, with clean nested submodules)? The one predicate both
+/// [`provision_at_recorded_pin`] and a dry run ask (issue 2447).
+fn recorded_pin_present(dest: &Path, pin: &RecordedPin, recursive: bool) -> bool {
+    if !dest.join(".git").exists() {
+        return false;
+    }
+    let dest_s = dest.to_string_lossy().into_owned();
+    let at_pin = sh_capture(&["git", "-C", &dest_s, "rev-parse", "HEAD"], None)
+        .map(|head| head == pin.commit)
+        .unwrap_or(false);
+    at_pin && (!recursive || nested_submodules_clean(dest))
+}
+
 fn provision_at_recorded_pin(
     name: &str,
     path: &str,
@@ -1594,10 +1625,7 @@ fn provision_at_recorded_pin(
     let dest = workspace.join(path);
     let dest_s = dest.to_string_lossy().into_owned();
     if dest.join(".git").exists() {
-        let at_pin = sh_capture(&["git", "-C", &dest_s, "rev-parse", "HEAD"], None)
-            .map(|head| head == pin.commit)
-            .unwrap_or(false);
-        if at_pin && (!recursive || nested_submodules_clean(&dest)) {
+        if recorded_pin_present(&dest, pin, recursive) {
             return Ok(SourceDisposition::AlreadyPresent);
         }
     } else {
@@ -1703,7 +1731,7 @@ fn materialise_into(
     shallow: bool,
 ) -> Result<SourceDisposition> {
     let dest = nros_build_paths::locate::store_path(&locate_row(name, src), store);
-    if read_provenance_ref(&dest).as_deref() == Some(pin.commit.as_str()) {
+    if store_source_present(store, name, src, pin) {
         return Ok(SourceDisposition::AlreadyPresent);
     }
     if dest.exists() {
@@ -2082,9 +2110,12 @@ fn provision_source_unlocked(
         SourceProvision::None => Ok(SourceDisposition::NoFetch),
         SourceProvision::Submodule => {
             let path = src.submodule.as_deref().expect("submodule mode has a path");
-            if dry_run {
-                return Ok(SourceDisposition::Planned);
-            }
+            // Issue 2447 — a dry run answers "would provision" only for what a
+            // real run WOULD provision. It used to return before any presence
+            // check, so a fully provisioned store read as four sources to
+            // fetch. Each arm below asks the same predicate its real run asks,
+            // and stops before the first side effect.
+            //
             // RFC-0103 D5 — a store-first source is materialised into the
             // store, in a checkout and an installed root alike; only WHERE the
             // pin is read differs (the root's own index when it has no `.git`).
@@ -2100,6 +2131,14 @@ fn provision_source_unlocked(
                         })?,
                     },
                 };
+                if dry_run {
+                    return Ok(planned_unless(store_source_present(
+                        &super::store::root(),
+                        name,
+                        src,
+                        &pin,
+                    )));
+                }
                 return materialise_store_source(name, src, workspace, &pin, shallow);
             }
             // Issue 1304 — an INSTALLED SDK root has no gitlinks to read: the
@@ -2107,6 +2146,13 @@ fn provision_source_unlocked(
             // recorded each one as data instead. Everything below this branch
             // is a checkout's arm, and a checkout never carries the file.
             if let Some(pin) = recorded_pin(workspace, name)? {
+                if dry_run {
+                    return Ok(planned_unless(recorded_pin_present(
+                        &workspace.join(path),
+                        &pin,
+                        src.recursive,
+                    )));
+                }
                 return provision_at_recorded_pin(
                     name,
                     path,
@@ -2120,6 +2166,13 @@ fn provision_source_unlocked(
             // to fetch and nothing to check out, so do neither. This is the
             // same answer the clone arm has always given for a populated
             // `dest`, arriving late to the arm that needed it most.
+            if dry_run {
+                return Ok(planned_unless(submodule_is_present(
+                    workspace,
+                    path,
+                    src.recursive,
+                )));
+            }
             if submodule_is_present(workspace, path, src.recursive) {
                 // The 0833 refspec repair still runs. It is not part of
                 // provisioning the CHECKOUT — it widens a `--depth 1` clone's
@@ -4277,6 +4330,50 @@ mod tests {
         );
     }
 
+    /// Issue 2447 — a dry run reports what a real run WOULD do, on each
+    /// submodule arm: absent is "would provision", present is a skip. It
+    /// used to answer "would provision" for every submodule source, so a
+    /// fully provisioned store (a starter image) read as four to fetch.
+    #[test]
+    fn a_dry_run_reports_a_present_submodule_source_as_present() {
+        // Installed root, recorded pin: absent, then present after a real run.
+        let (sdk, path, _) = installed_root_with_pin("dry-run-installed");
+        let src = submodule_source(path, true);
+        assert_eq!(
+            provision_source("sub", &src, &sdk, true, None).unwrap(),
+            SourceDisposition::Planned
+        );
+        provision_source("sub", &src, &sdk, false, None).unwrap();
+        let _ = take_command_log();
+        assert_eq!(
+            provision_source("sub", &src, &sdk, true, None).unwrap(),
+            SourceDisposition::AlreadyPresent
+        );
+        for verb in ["fetch", "clone", "checkout", "init", "update"] {
+            assert!(
+                !take_command_log().iter().any(|c| c.contains(verb)),
+                "a dry run ran `{verb}`"
+            );
+        }
+
+        // Checkout: present at its pin, then drifted off it.
+        let (ws, path) = superproject_with_submodule("dry-run-checkout");
+        let src = submodule_source(path, false);
+        assert_eq!(
+            provision_source("sub", &src, &ws, true, None).unwrap(),
+            SourceDisposition::AlreadyPresent
+        );
+        git_sh(
+            &ws.join(path),
+            "echo drift > f.txt && git add f.txt && git commit -qm two",
+        );
+        assert_eq!(
+            provision_source("sub", &src, &ws, true, None).unwrap(),
+            SourceDisposition::Planned,
+            "a drifted checkout is something a real run would move"
+        );
+    }
+
     /// RFC-0099 D6's promise, kept on the installed arm: a second `nros setup`
     /// over a source already at its pin touches nothing on the network.
     #[test]
@@ -4384,6 +4481,20 @@ mod tests {
         );
         assert_eq!(read_provenance_ref(&d1).as_deref(), Some(one.as_str()));
 
+        // Present at its pin: the predicate a dry run asks says so
+        // (issue 2447), and a second pin is not present yet.
+        assert!(store_source_present(
+            &store,
+            "sub",
+            &src_at(&one),
+            &pin_at(&one)
+        ));
+        assert!(!store_source_present(
+            &store,
+            "sub",
+            &src_at(&two),
+            &pin_at(&two)
+        ));
         // Present at its pin: nothing runs.
         let _ = take_command_log();
         assert_eq!(
