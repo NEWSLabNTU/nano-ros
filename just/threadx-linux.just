@@ -134,9 +134,9 @@ build-fixture-extras:
     echo "Building ThreadX-Linux test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
-    bash scripts/build/fixtures-build.sh threadx-linux rust --id threadx-linux-logging-smoke
-    # issue 1906 — the condvar contract image.
-    bash scripts/build/fixtures-build.sh threadx-linux rust --id threadx-linux-condvar-contract
+    # The logging smoke, pool-exhaustion and condvar-contract (issue 1906)
+    # images are owned-entry workspace rows since phase-531 W7, built by the
+    # `workspace-fixtures-build.sh threadx-linux rust` call in `build-examples`.
     # phase-531 W6 / issue 2433 — every threadx-linux C and C++ talker witness
     # is a one-package workspace now (the C one an owned entry sized by its
     # census, the C++ one a component; RFC-0122 D10), built by `build-examples`

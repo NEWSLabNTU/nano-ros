@@ -19,10 +19,3 @@ examples/rv-virt-threadx/rust/talker/Cargo.toml  nros-board-threadx-qemu-riscv64
 examples/templates/local-msg-package/src/rust_consumer/Cargo.toml  rust_consumer_nros_selection
 examples/templates/multi-package-workspace/src/pkg_rust_publisher/Cargo.toml  pkg_rust_publisher_nros_selection
 examples/threadx-linux/rust/listener/Cargo.toml  threadx_linux_rs_listener_nros_selection
-packages/testing/nros-tests/bins/condvar-contract-freertos-mps2/Cargo.toml  condvar_contract_freertos_mps2_nros_selection
-packages/testing/nros-tests/bins/condvar-contract-threadx-linux/Cargo.toml  condvar_contract_threadx_linux_nros_selection
-packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/Cargo.toml  logging_smoke_freertos_mps2_nros_selection
-packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/Cargo.toml  logging_smoke_nuttx_qemu_arm_nros_selection
-packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml  logging_smoke_threadx_linux_nros_selection
-packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/Cargo.toml  logging_smoke_threadx_riscv64_nros_selection
-packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux/Cargo.toml  pool_exhaustion_threadx_linux_nros_selection

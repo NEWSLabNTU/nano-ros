@@ -473,8 +473,8 @@ DEFAULT_REACHED_BY_SELECTION = {
         "D19); every other image takes it through its generated selection "
         "package"
     ),
-    # The two owned-entry FreeRTOS benches (`loan-copy-count`,
-    # `wake-latency-cortex-m3`), the same shape.
+    # The owned-entry FreeRTOS test programs and benches (phase-531 W7), the
+    # same shape.
     "nros-board-mps2-an385-freertos": (
         "the tracked dep-sites are owned entries, which take the image's "
         "`rmw-<x>` through their generated adapter (RFC-0071 D19); every "
