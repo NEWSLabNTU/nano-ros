@@ -7,7 +7,7 @@ built by [phase-510](phase-510-test-config-axis.md) W5. Two issues outlived the
 phase and moved: [issue 0917](../../issues/0917-an536-fragmented-sample-never-syncs.md)
 (narrowed by W6 to a tap-fed, free-running QEMU path this tree does not have) to
 [phase-512](../phase-512-on-hardware-measurements.md) H3, and
-[issue 1981](../../issues/1981-live-peer-narrowing-alternation-is-one-workspace-id.md)
+[issue 1981](../../issues/archived/1981-live-peer-narrowing-alternation-is-one-workspace-id.md)
 (the board lane reads a `|`-joined narrowing as one id) to
 [phase-466](../phase-466-scheduled-lanes-produce-verdicts.md).
 
