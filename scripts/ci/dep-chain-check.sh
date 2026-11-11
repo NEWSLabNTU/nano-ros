@@ -90,13 +90,30 @@ for cell in "${CELLS[@]}"; do
     # features (`linux` / `linux_xrce`, not `linux_tls`).
     ws_image=""
     if [ ! -f "$ex/Cargo.toml" ] && [ -f "$ex/.colcon_workspace" ]; then
-        if ! ws_image="$(python3 - "$ex" "$board" "$rmw" <<'PY'
-import glob, sys
+        if ! ws_image="$(python3 - "$ex" "$board" "$rmw" "$NROS" <<'PY'
+import glob, json, subprocess, sys
 try:
     import tomllib
 except ModuleNotFoundError:
     import tomli as tomllib
-ex, board, rmw = sys.argv[1:]
+ex, board, rmw, nros = sys.argv[1:]
+
+# A bringup names its board by any name the catalog resolves (`freertos`
+# for mps2-an385-freertos, `nuttx` for qemu-armv7a-nuttx), so the cell's
+# board and an image's are the same board when they resolve to the same
+# board package. The CLI is the one resolver; never compare spellings.
+_dirs = {}
+def board_dir(name):
+    if name not in _dirs:
+        out = subprocess.run([nros, "board", "info", name],
+                             capture_output=True, text=True)
+        _dirs[name] = (json.loads(out.stdout)["board_dir"]
+                       if out.returncode == 0 else None)
+    return _dirs[name]
+
+want = board_dir(board)
+if want is None:
+    sys.exit(f"`nros board info {board}` does not resolve")
 hits = []
 for path in sorted(glob.glob(f"{ex}/src/*/system.toml")):
     doc = tomllib.load(open(path, "rb"))
@@ -105,7 +122,8 @@ for path in sorted(glob.glob(f"{ex}/src/*/system.toml")):
     for img, row in (doc.get("image") or {}).items():
         if row.get("node_features"):
             continue
-        if row.get("board", dflt.get("board")) != board:
+        img_board = row.get("board", dflt.get("board"))
+        if img_board is None or board_dir(img_board) != want:
             continue
         if row.get("rmw", dflt.get("rmw", sys_rmw)) == rmw:
             hits.append(img)
@@ -175,13 +193,15 @@ PY
         if [ -n "$ws_image" ]; then
             ws_out=""
             if ws_out="$( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" configure 2>&1 )"; then
-                entry_dirs=("$ex"/build/*/"${ws_image}_entry")
+                # The entry is a cargo package, so the image id's `-` is `_`
+                # in its name (`threadx-linux` -> `threadx_linux_entry`).
+                entry_dirs=("$ex"/build/*/"${ws_image//-/_}_entry")
                 if [ "${#entry_dirs[@]}" -eq 1 ] && [ -f "${entry_dirs[0]}/nros-cargo.toml" ]; then
                     tree_dir="${entry_dirs[0]}"
                     tree_cfg=(--config nros-cargo.toml)
                     echo "  [ok] nros configure (workspace; entry ${tree_dir#"$ex"/})"
                 else
-                    echo "  [FAIL] nros configure wrote no single ${ws_image}_entry with nros-cargo.toml under $ex/build"
+                    echo "  [FAIL] nros configure wrote no single ${ws_image//-/_}_entry with nros-cargo.toml under $ex/build"
                     cell_ok=0
                 fi
             else
