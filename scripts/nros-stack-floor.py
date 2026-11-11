@@ -217,6 +217,12 @@ CHECKOUT = Path(__file__).resolve().parent.parent
 _TOOLS: dict[str, str] = {}
 
 
+class ToolMissing(SystemExit):
+    """An analysis tool is absent. A SystemExit so a bare walk still ends
+    with its message; `main` degrades it to a warning for an unmeasured
+    image under --check-stack (ruling (A): such an image never refuses)."""
+
+
 def llvm_tool(name: str, llvm_bin: str | None) -> str:
     if llvm_bin:
         return str(Path(llvm_bin) / name)
@@ -233,8 +239,26 @@ def llvm_tool(name: str, llvm_bin: str | None) -> str:
     found = shutil.which(name)
     if found:
         return found
-    sys.exit(f"nros-stack-floor: no `{name}`: install the toolchain's llvm-tools "
-             "component or pass --llvm-bin")
+    raise ToolMissing(f"nros-stack-floor: no `{name}`: install the toolchain's llvm-tools "
+                      "component or pass --llvm-bin")
+
+
+def cxx_demangler(stated: str | None, llvm_bin: str | None) -> str:
+    """An Itanium demangler. The rustup llvm-tools component ships no
+    `llvm-cxxfilt` (measured, 1.99.0), so a host without a system LLVM has
+    none; binutils' `c++filt`, or the cross toolchain's `<prefix>c++filt`
+    the build names with --cxxfilt, demangles the same ABI."""
+    if stated:
+        return stated
+    try:
+        return llvm_tool("llvm-cxxfilt", llvm_bin)
+    except ToolMissing:
+        pass
+    found = shutil.which("c++filt")
+    if found:
+        return found
+    raise ToolMissing("nros-stack-floor: no C++ demangler: none of --cxxfilt, `llvm-cxxfilt` "
+                      "or `c++filt` is present")
 
 
 def sysroot_rlibs(target: str) -> list[str]:
@@ -856,7 +880,7 @@ def run(args: argparse.Namespace) -> int:
                              f"({g.frames[name]} B); a stated frame never overrides a measured one")
         g.frames[name] = int(n)
     resolve_cxx_su_frames(g, lambda names: subprocess.run(
-        [llvm_tool("llvm-cxxfilt", args.llvm_bin)], input="\n".join(names), check=True,
+        [cxx_demangler(args.cxxfilt, args.llvm_bin)], input="\n".join(names), check=True,
         capture_output=True, text=True).stdout.splitlines())
     alias_gcc_clones(g)
     prune_data_refs(g)
@@ -1181,6 +1205,56 @@ def self_test() -> int:
         "app.y.cgu.0.rcgu.lto.input.bc", "app.y.cgu.0.rcgu.lto.after-restriction.bc")])]
     check("fat LTO: only the merged post-LTO module", picked == ["app.y.cgu.0.rcgu.bc"])
 
+    # The rustup llvm-tools ship no llvm-cxxfilt: c++filt stands in, and with
+    # neither the demangler is a ToolMissing, never a bare exit.
+    g_ = globals()
+    saved = (g_["llvm_tool"], shutil.which)
+    try:
+        def no_llvm(name, llvm_bin):
+            raise ToolMissing(f"no `{name}`")
+        g_["llvm_tool"] = no_llvm
+        shutil.which = lambda n: "/bin/c++filt" if n == "c++filt" else None
+        check("demangler: c++filt when no llvm-cxxfilt", cxx_demangler(None, None) == "/bin/c++filt")
+        check("demangler: --cxxfilt wins", cxx_demangler("/x/arm-none-eabi-c++filt", None)
+              == "/x/arm-none-eabi-c++filt")
+        shutil.which = lambda n: None
+        try:
+            cxx_demangler(None, None)
+            check("demangler: none present is ToolMissing", False)
+        except ToolMissing:
+            check("demangler: none present is ToolMissing", True)
+    finally:
+        g_["llvm_tool"], shutil.which = saved
+
+    # ruling (A): a CHECK whose walk cannot run degrades to a warning for an
+    # unmeasured image, and still fails for a measured one.
+    import tempfile, io, contextlib
+    with tempfile.TemporaryDirectory() as td:
+        table = Path(td, "t.toml")
+        table.write_text('[[allowance]]\nimage = "m@b"\ntarget = "t"\nrole = "OPEN"\n'
+                         'bytes = 0\nissue = "0000"\n')
+        saved_run, saved_argv = g_["run"], sys.argv
+        try:
+            def tool_gone(args):
+                raise ToolMissing("nros-stack-floor: no `llvm-cxxfilt`")
+            g_["run"] = tool_gone
+
+            def gate(image):
+                sys.argv = ["x", "--table", str(table), "--rmw", "zenoh", "--target", "t",
+                            "--image", image, "--role", "OPEN=r", "--check-stack",
+                            "OPEN=4096", "--link-map", "m.map"]
+                with contextlib.redirect_stderr(io.StringIO()):
+                    try:
+                        return main()
+                    except SystemExit:
+                        return "exit"
+            measured_row = find_allowance(load_toml(table), "m@b", "t", "OPEN") is not None
+            check("missing tool: unmeasured image warns, rc 0", gate("u@b") == 0)
+            check("missing tool: the test table's row is found", measured_row)
+            check("missing tool: measured image still fails", gate("m@b") == "exit")
+        finally:
+            g_["run"], sys.argv = saved_run, saved_argv
+
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
     print(f"nros-stack-floor self-test: {len(ran)} checks, {len(fails)} failed")
@@ -1232,6 +1306,8 @@ def main() -> int:
     ap.add_argument("--margin", type=int, default=None,
                     help="percent added to the path (default: the table's margin_pct, else 0)")
     ap.add_argument("--llvm-bin", help="directory holding llvm-readobj / llvm-objdump")
+    ap.add_argument("--cxxfilt", help="an Itanium demangler (default: llvm-cxxfilt, "
+                    "then c++filt)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--emit-defines", action="store_true")
     ap.add_argument("--table", help="config/stack-floors.toml: the walk policy for --rmw / "
@@ -1265,7 +1341,29 @@ def main() -> int:
         ap.error("--table needs --rmw and --target (they select the policy and allowance)")
     if not (args.inputs or args.link_map) or not args.role:
         ap.error("need INPUT(s) and at least one --role")
-    return run(args)
+    if not args.check_stack:
+        return run(args)
+    try:
+        return run(args)
+    except SystemExit as e:
+        # ruling (A): a CHECK of an UNMEASURED image never refuses, whether
+        # the walk refused or could not run at all (a missing tool, an input
+        # the build did not produce). A measured image keeps the failure.
+        if not isinstance(e.code, str) or checked_image_measured(args):
+            raise
+        print(e.code, file=sys.stderr)
+        print("nros-stack-floor: WARNING: the floor of an UNMEASURED image could not be "
+              "computed; not enforced (issue 2400)", file=sys.stderr)
+        return 0
+
+
+def checked_image_measured(args: argparse.Namespace) -> bool:
+    """Does any --check-stack role of this image have an allowance row?"""
+    if not args.table:
+        return False
+    doc = load_toml(Path(args.table))
+    return any(find_allowance(doc, args.image, args.target, spec.partition("=")[0].upper())
+               for spec in args.check_stack)
 
 
 if __name__ == "__main__":

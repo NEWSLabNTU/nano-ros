@@ -218,6 +218,17 @@ function(nros_stack_floor_check _exe)
     file(MAKE_DIRECTORY "${_dir}")
     target_link_options(${_exe} PRIVATE "-Wl,-Map=${_map}")
 
+    # The rustup llvm-tools ship no llvm-cxxfilt, so name the cross
+    # toolchain's own demangler (`arm-none-eabi-g++` -> `arm-none-eabi-c++filt`)
+    # when it sits beside the compiler; the walker falls back to the host's.
+    set(_cxxfilt_arg "")
+    if(CMAKE_CXX_COMPILER MATCHES "g\\+\\+(\\.exe)?$")
+        string(REGEX REPLACE "g\\+\\+((\\.exe)?)$" "c++filt\\1" _cxxfilt "${CMAKE_CXX_COMPILER}")
+        if(EXISTS "${_cxxfilt}")
+            set(_cxxfilt_arg --cxxfilt "${_cxxfilt}")
+        endif()
+    endif()
+
     _nros_stack_floor_image_key(_key "${_exe}" "${_SF_BRINGUP}" "${_SF_BOARD}")
     get_target_property(_bindir ${_exe} BINARY_DIR)
     add_custom_command(TARGET ${_exe} POST_BUILD
@@ -232,6 +243,7 @@ function(nros_stack_floor_check _exe)
             --bitcode-dir "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps"
             --sysroot
             --llc-cache "${_dir}/llc"
+            ${_cxxfilt_arg}
         COMMENT "nano-ros: stack floor of ${_key}"
         VERBATIM)
     message(STATUS "nano-ros: stack floor of ${_exe} checked at build as ${_key} "
