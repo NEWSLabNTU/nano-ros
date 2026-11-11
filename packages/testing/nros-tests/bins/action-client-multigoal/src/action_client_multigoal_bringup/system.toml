@@ -1,0 +1,23 @@
+# What this test image deploys to (RFC-0098 D3/D5) — see Cargo.toml for what
+# the program is for. It keeps its own `main` (no `nros::main!`) and opens its
+# own executor, so it declares no component table; the file names its board
+# and RMW, which reach the build through the adapter `nros build`
+# generates for this owned entry (RFC-0071 D19).
+
+[system]
+name = "action_client_multigoal"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` / `cargo build` builds.
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native.
+[image_defaults]
+board = "linux"
+
+# One image per RMW (RFC-0031): `nros configure --image <id> && nros build <id>`.
+[image.linux]
+entry = "action-client-multigoal"
+[image.linux_xrce]
+entry = "action-client-multigoal"
+rmw = "xrce"

@@ -1,0 +1,29 @@
+# What this test image deploys to (RFC-0098 D3/D5) — see Cargo.toml for what
+# the program is for. It keeps its own `main` (no `nros::main!`) and opens its
+# own executor, so it declares no component table; the file names its board
+# and RMW, which reach the build through the adapter `nros build`
+# generates for this owned entry (RFC-0071 D19).
+
+# issue 1268 / phase-444 W6 — a zenoh-only parameter fixture cannot answer
+# whether CYCLONE serves the six `rcl_interfaces` services, which is the
+# question 1268 is about: Cyclone had no descriptor for those types, so every
+# parameter service failed to create while the zenoh cell stayed green.
+
+[system]
+name = "param_two_node_talker"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` / `cargo build` builds.
+default_images = ["linux"]
+features = ["param_services"]
+
+# Host build. The locator and domain stay runtime env on native.
+[image_defaults]
+board = "linux"
+
+# One image per RMW (RFC-0031): `nros configure --image <id> && nros build <id>`.
+[image.linux]
+entry = "param-two-node-talker"
+[image.linux_cyclonedds]
+entry = "param-two-node-talker"
+rmw = "cyclonedds"

@@ -1,0 +1,32 @@
+# What this test image deploys to (RFC-0098 D3/D5) — see Cargo.toml for what
+# the probe is for. It keeps its own `main` (no `nros::main!`) and opens its
+# own executor, so it declares no component table; the file names its board and
+# RMW, which reach the build through the adapter `nros build`
+# generates for this owned entry (RFC-0071 D19).
+
+[system]
+name = "graph_probe"
+rmw = "zenoh"
+domain_id = 0
+# The image a bare `nros configure` / `nros build` / `cargo build` builds.
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native.
+[image_defaults]
+board = "linux"
+
+[image.linux]
+entry = "graph-probe"
+
+# One image per RMW (RFC-0031): `nros configure --image <id> && nros build <id>`.
+[image.linux_cyclonedds]
+entry = "graph-probe"
+rmw = "cyclonedds"
+
+# Issue 2110 / 2106 — XRCE answers one graph read slot, `get_node_names` (from
+# `ros_discovery_info` through the Agent), plus the change edge, and its
+# publishers have a GID (the one `ros_discovery_info` lists): the sweep, the
+# change-edge and the `GRAPH_PROBE_GID` modes all run against it.
+[image.linux_xrce]
+entry = "graph-probe"
+rmw = "xrce"

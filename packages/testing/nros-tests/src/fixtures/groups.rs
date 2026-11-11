@@ -329,18 +329,6 @@ impl FixtureVariant {
         })
     }
 
-    /// One image of a single-package leaf — `rmw = "<x>"`, `image = "<id>"`
-    /// and nothing else (issue 1305): how `examples/linux/rust/*` select a
-    /// non-default RMW now that the RMW is declared in `system.toml`
-    /// (RFC-0031). [`select_rmw_row`] reaches these from an RMW alone.
-    pub fn image(rmw: super::Rmw, id: &str) -> Self {
-        Self(Selector {
-            rmw: rmw.cmake_value().to_string(),
-            image: id.to_string(),
-            ..Selector::default()
-        })
-    }
-
     /// Add the row's authored `env`, as `("KEY", "value")` pairs. The one row
     /// that needs it is `stress-zenoh`'s large-buffer variant, which is
     /// otherwise identical to its plain sibling — the single collision in the
@@ -958,13 +946,6 @@ mod tests {
         let n = |v: &FixtureVariant| rows.iter().filter(|r| r.selector == v.0).count();
         assert!(n(&FixtureVariant::plain()) > 0, "plain rows exist");
         assert!(
-            n(&FixtureVariant::image(
-                crate::fixtures::Rmw::Xrce,
-                "linux_xrce"
-            )) > 0,
-            "image-selected RMW rows exist"
-        );
-        assert!(
             n(&FixtureVariant::platform_rmw(crate::fixtures::Rmw::Zenoh)) > 0,
             "platform-baked RMW rows exist"
         );
@@ -974,8 +955,8 @@ mod tests {
     fn an_unnameable_variant_is_an_error_not_a_guess() {
         assert!(
             select_row(
-                "packages/testing/nros-tests/bins/int32-sink",
-                &FixtureVariant::image(crate::fixtures::Rmw::Xrce, "nope")
+                "packages/testing/nros-bench/stress-zenoh",
+                &FixtureVariant::plain().with_env(&[("NROS_NO_SUCH_KNOB", "1")])
             )
             .is_err(),
             "a variant no row authors must fail closed"

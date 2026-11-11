@@ -4966,13 +4966,15 @@ pub fn build_native_param_two_node_talker() -> TestResult<&'static Path> {
             // issue 1620 — the two builders select by the same rule. Issue 1305:
             // that rule is the IMAGE now (`linux` / `linux_cyclonedds` in the
             // leaf's `system.toml`), which `select_rmw_row` reaches from an RMW.
-            let row = crate::fixtures::groups::select_rmw_row(
-                "packages/testing/nros-tests/bins/param-two-node-talker",
+            // phase-531 W7 — a one-package workspace whose images build the
+            // OWNED entry (RFC-0071 D19).
+            let dir = "packages/testing/nros-tests/bins/param-two-node-talker";
+            migrated_leaf_binary(
+                dir,
                 crate::fixtures::Rmw::Zenoh,
-            )?;
-            let profile = cargo_target_profile_dir();
-            let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));
-            require_prebuilt_row_binary_fresh(row, &rel)
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(dir)))
         })
         .map(|p| p.as_path())
 }
@@ -4992,13 +4994,15 @@ pub fn build_native_param_two_node_talker_cyclonedds() -> TestResult<&'static Pa
     static NATIVE_PARAM_TWO_NODE_CYCLONE_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NATIVE_PARAM_TWO_NODE_CYCLONE_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_rmw_row(
-                "packages/testing/nros-tests/bins/param-two-node-talker",
+            // phase-531 W7 — a one-package workspace whose images build the
+            // OWNED entry (RFC-0071 D19).
+            let dir = "packages/testing/nros-tests/bins/param-two-node-talker";
+            migrated_leaf_binary(
+                dir,
                 crate::fixtures::Rmw::Cyclonedds,
-            )?;
-            let profile = cargo_target_profile_dir();
-            let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));
-            require_prebuilt_row_binary_fresh(row, &rel)
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(dir)))
         })
         .map(|p| p.as_path())
 }
@@ -5049,13 +5053,11 @@ pub fn build_graph_probe_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Xrce => &XRCE_BIN,
     };
     cell.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_rmw_row(
-            "packages/testing/nros-tests/bins/graph-probe",
-            rmw,
-        )?;
-        let profile = cargo_target_profile_dir();
-        let rel = PathBuf::from(format!("{profile}/graph-probe"));
-        require_prebuilt_row_binary_fresh(row, &rel)
+        // phase-531 W7 — a one-package workspace whose images build the
+        // OWNED entry (RFC-0071 D19).
+        let dir = "packages/testing/nros-tests/bins/graph-probe";
+        migrated_leaf_binary(dir, rmw, crate::fixtures::migrated_leaf::LeafVariant::Plain)
+            .unwrap_or_else(|| Err(not_migrated(dir)))
     })
     .map(|p| p.as_path())
 }
@@ -5160,13 +5162,11 @@ pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
         Rmw::Cyclonedds => &CYCLONE_BIN,
     };
     cell.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_rmw_row(
-            "packages/testing/nros-tests/bins/int32-sink",
-            rmw,
-        )?;
-        let profile = cargo_target_profile_dir();
-        let rel = PathBuf::from(format!("{profile}/int32-sink"));
-        require_prebuilt_row_binary_fresh(row, &rel)
+        // phase-531 W7 — a one-package workspace whose images build the
+        // OWNED entry (RFC-0071 D19).
+        let dir = "packages/testing/nros-tests/bins/int32-sink";
+        migrated_leaf_binary(dir, rmw, crate::fixtures::migrated_leaf::LeafVariant::Plain)
+            .unwrap_or_else(|| Err(not_migrated(dir)))
     })
     .map(|p| p.as_path())
 }
@@ -5176,14 +5176,16 @@ pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
 /// fixture exists to DEMONSTRATE simulated time on a host that may have none.
 pub fn build_sim_clock_publisher() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
+    // phase-531 W7 — a one-package workspace whose images build the OWNED
+    // entry `src/sim-clock-publisher` (RFC-0071 D19).
     BIN.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_rmw_row(
-            "packages/testing/nros-tests/bins/sim-clock-publisher",
+        const DIR: &str = "packages/testing/nros-tests/bins/sim-clock-publisher";
+        migrated_leaf_binary(
+            DIR,
             Rmw::Cyclonedds,
-        )?;
-        let profile = cargo_target_profile_dir();
-        let rel = PathBuf::from(format!("{profile}/sim-clock-publisher"));
-        require_prebuilt_row_binary_fresh(row, &rel)
+            crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        )
+        .unwrap_or_else(|| Err(not_migrated(DIR)))
     })
     .map(|p| p.as_path())
 }
@@ -5192,14 +5194,16 @@ pub fn build_sim_clock_publisher() -> TestResult<&'static Path> {
 /// one wall timer of the same period.
 pub fn build_sim_clock_listener() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
+    // phase-531 W7 — a one-package workspace whose images build the OWNED
+    // entry `src/sim-clock-listener` (RFC-0071 D19).
     BIN.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_rmw_row(
-            "packages/testing/nros-tests/bins/sim-clock-listener",
+        const DIR: &str = "packages/testing/nros-tests/bins/sim-clock-listener";
+        migrated_leaf_binary(
+            DIR,
             Rmw::Cyclonedds,
-        )?;
-        let profile = cargo_target_profile_dir();
-        let rel = PathBuf::from(format!("{profile}/sim-clock-listener"));
-        require_prebuilt_row_binary_fresh(row, &rel)
+            crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        )
+        .unwrap_or_else(|| Err(not_migrated(DIR)))
     })
     .map(|p| p.as_path())
 }
@@ -5281,13 +5285,11 @@ pub fn build_action_client_multigoal(rmw: Rmw) -> TestResult<&'static Path> {
         }
     };
     cell.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
-            "packages/testing/nros-tests/bins/action-client-multigoal",
-            &crate::fixtures::groups::FixtureVariant::platform_rmw(rmw),
-        )?;
-        let profile = cargo_target_profile_dir();
-        let rel = PathBuf::from(format!("{profile}/action-client-multigoal"));
-        require_prebuilt_row_binary_fresh(row, &rel)
+        // phase-531 W7 — a one-package workspace whose images build the
+        // OWNED entry (RFC-0071 D19).
+        let dir = "packages/testing/nros-tests/bins/action-client-multigoal";
+        migrated_leaf_binary(dir, rmw, crate::fixtures::migrated_leaf::LeafVariant::Plain)
+            .unwrap_or_else(|| Err(not_migrated(dir)))
     })
     .map(|p| p.as_path())
 }
@@ -7556,15 +7558,15 @@ pub fn build_xrce_service_info_server() -> TestResult<&'static Path> {
     static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();
     XRCE_BIN
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_rmw_row(
-                "packages/testing/nros-tests/bins/service-info-server",
+            // phase-531 W7 — a one-package workspace whose images build the
+            // OWNED entry (RFC-0071 D19).
+            let dir = "packages/testing/nros-tests/bins/service-info-server";
+            migrated_leaf_binary(
+                dir,
                 Rmw::Xrce,
-            )?;
-            let rel = PathBuf::from(format!(
-                "{}/service-info-server",
-                cargo_target_profile_dir()
-            ));
-            require_prebuilt_row_binary_fresh(row, &rel)
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(dir)))
         })
         .map(|p| p.as_path())
 }
@@ -7604,15 +7606,15 @@ pub fn build_zenoh_constrained_link_probe(graph_discovery: bool) -> TestResult<&
         (&NO_GRAPH, "linux_no_graph")
     };
     cell.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
-            "packages/testing/nros-tests/bins/constrained-link-probe",
-            &crate::fixtures::groups::FixtureVariant::image(Rmw::Zenoh, image),
-        )?;
-        let rel = PathBuf::from(format!(
-            "{}/constrained-link-probe",
-            cargo_target_profile_dir()
-        ));
-        require_prebuilt_row_binary_fresh(row, &rel)
+        // phase-531 W7 — a one-package workspace whose images build the
+        // OWNED entry (RFC-0071 D19).
+        let dir = "packages/testing/nros-tests/bins/constrained-link-probe";
+        migrated_leaf_binary(
+            dir,
+            Rmw::Zenoh,
+            crate::fixtures::migrated_leaf::LeafVariant::Image(image),
+        )
+        .unwrap_or_else(|| Err(not_migrated(dir)))
     })
     .map(|p| p.as_path())
 }

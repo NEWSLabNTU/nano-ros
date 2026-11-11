@@ -259,6 +259,26 @@ fn the_row_pool_runs_rows_concurrently_and_keeps_their_order() {
     assert!(par_map(&[] as &[usize], |i| *i).is_empty());
 }
 
+/// Does this row build a GENERATED entry (`<image>_entry`), rather than the
+/// OWNED package its image names with `entry =`? A row with no image names
+/// its entry by hand, which is the generated shape's predecessor and boots
+/// the same way.
+fn row_entry_is_generated(fixture_id: &str) -> bool {
+    let Ok(record) = nros_tests::fixtures::current_workspace_fixture_record(fixture_id) else {
+        return true;
+    };
+    let fields: Vec<&str> = record.split('\x1f').collect();
+    match (
+        fields.get(4).filter(|f| !f.is_empty()),
+        fields.get(13).filter(|f| !f.is_empty()),
+    ) {
+        (Some(entry), Some(image)) => {
+            *entry == nros_orchestration_ir::entry_names::entry_package_name(image)
+        }
+        _ => true,
+    }
+}
+
 /// The binary this row declares, if it is built.
 ///
 /// Named from the manifest rather than found by walking: a walk cannot tell a
@@ -267,12 +287,15 @@ fn the_row_pool_runs_rows_concurrently_and_keeps_their_order() {
 fn row_binary(fixture_id: &str, root: &Path) -> Option<PathBuf> {
     let record = nros_tests::fixtures::current_workspace_fixture_record(fixture_id).ok()?;
     let fields: Vec<&str> = record.split('\x1f').collect();
-    // A GENERATED row names an image, whose target is `<image>_entry`; a
-    // hand-written one names the entry directly. Same derivation as
-    // `assert_generated_entry_name`.
-    let name = match fields.get(13).filter(|f| !f.is_empty()) {
-        Some(image) => nros_orchestration_ir::entry_names::entry_package_name(image),
-        None => fields.get(4).filter(|f| !f.is_empty())?.to_string(),
+    // The manifest resolves the row's entry (field 4): the GENERATED
+    // `<image>_entry`, or the OWNED package an image names with `entry =`
+    // (RFC-0071 D19). Deriving `<image>_entry` here instead missed every
+    // owned-entry row, so the audit located none of them and said nothing.
+    let name = match fields.get(4).filter(|f| !f.is_empty()) {
+        Some(entry) => entry.to_string(),
+        None => nros_orchestration_ir::entry_names::entry_package_name(
+            fields.get(13).filter(|f| !f.is_empty())?,
+        ),
     };
     // Two layouts: a cargo profile dir, or the top of a cmake binary dir.
     // treewalk-exempt: the root is the row's build output and the binary is
@@ -783,6 +806,13 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
     let mut cross = 0usize;
     for row in nros_tests::fixtures::lane::manifest_rows() {
         if row.kind != "workspace_fixture" {
+            continue;
+        }
+        // The boot marker this test reads is the GENERATED entry's. An image
+        // that names an OWNED entry (RFC-0071 D19) runs a hand-written `main`
+        // whose behaviour its own e2e test owns -- a probe that spins until
+        // killed, say -- so it is not a row this test can judge.
+        if !row_entry_is_generated(&row.id) {
             continue;
         }
         if let Some(bin) = built_row_binary(row, &mut promised) {

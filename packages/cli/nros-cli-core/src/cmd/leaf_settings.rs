@@ -2440,9 +2440,10 @@ mod board_crate_tests {
         // `nros-tests` `int32-source`, `rosout-talker` and
         // `service-info-client` bins (W7: owned entries, RFC-0071 D19),
         // 54 -> 47 for the linux Rust callback client and the six `*-rtic`
-        // examples (phase-535 W6, the same shape).
+        // examples (phase-535 W6, the same shape), 47 -> 39 for the eight
+        // multi-image `nros-tests` bins (phase-531 W7 step-3 prep, owned entries).
         assert!(
-            on_selection >= 47,
+            on_selection >= 39,
             "only {on_selection} leaves on the selection package"
         );
     }
