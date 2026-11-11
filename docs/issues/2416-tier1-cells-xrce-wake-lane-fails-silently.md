@@ -97,3 +97,50 @@ lane's junit would have survived the later lanes.
 
 **What would close it:** the next red of this lane is read for its printed
 cause, or several more tier-2 runs show the lane green.
+
+## Recurrence: tier-2 run 42928442297 (2026-11-11), with its panics
+
+The lane failed again in the `tier 1 (cells)` job, all four tests at
+**15.2 s**, again the run's only real tier-1 failures. This time the
+per-lane junit kept their text (artifact `tier1-junit`,
+`target/nextest/default/lanes/junit-nros-tests_xrce_guard_wake_…xml`). All
+four say the same thing, each for its own domain:
+
+```
+[ERROR] nros_rmw_xrce: XRCE session open: participant create on domain 96 got status 255 within 1000 ms (no answer; issue 1932)
+Executor::open over XRCE: Transport(Backend("rmw_ret error"))         (three tests)
+assertion `left == right` failed: xrce_session_create  left: 1 right: 0   (xrce_concurrent_entities)
+```
+
+So this is the **participant** step, not the session (1932's two steps): each
+client's CREATE_CLIENT was answered, and its participant create got **no
+answer** in its single `XRCE_ENTITY_CREATION_TIMEOUT_MS` (1000 ms) wait. Four
+agents, one per test, each started by `XrceAgent::start_unique()` at the same
+moment, and none answered a participant create in a second. 1932's
+`wait_until_listening` fix rules out a stranger socket on the port: the
+session answer came from an agent.
+
+**Not known, and not readable from this run.** Whether those agents were
+alive. Their output went to `/dev/null`, and the SDK agent is built without
+its logger (even `-v6` prints nothing, measured), so there was nothing to read
+anyway. A Fast-DDS participant create inside an agent is the step whose cost
+grows with what else is starting on the host.
+
+**Change (branch `fix-2416-agent-log-on-failure`):** `XrceAgent` now always
+captures the agent's stdout and stderr. A test that panics while holding
+one prints whether the agent was **still running or had exited** (read
+before the fixture kills it), plus its last 40 output lines. That catches
+the startup errors the agent writes without a logger, such as 1932's
+`Error while starting IPvX agent!`. After a clean run the temp log is
+removed, unless `NROS_XRCE_AGENT_VERBOSE` or `NROS_TEST_LOGS` asked to keep
+it. Measured with a throwaway test that panics while holding an agent:
+
+```
+xrce agent on udp port 56770: still running when the test failed; its last output (/tmp/nros-xrce-agent-2865529-56770.log):
+  [xrce-agent] (no output)
+```
+
+The next recurrence then separates "the agent was alive and slow to create a
+participant" (a 1000 ms wait meeting a loaded Fast-DDS start, which would be
+fixed by the readiness of what the agent depends on, never by a bigger number)
+from "the agent was gone".
