@@ -1449,6 +1449,12 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("xrce_deadline", NonCell::FeatureLane),
     ("zenoh_archive_symbols", NonCell::CompileCheck),
     ("zenoh_header_parity", NonCell::CompileCheck),
+    (
+        "zenoh_send_stall",
+        NonCell::Probe(
+            "the zenoh link-write stall bound: a router that stops reading ends the session with a visible close (issue 2389), through a proxy over the stress-zenoh bench image",
+        ),
+    ),
     ("zephyr_leaf_staleness", NonCell::Static),
     ("zephyr_link_layout", NonCell::CompileCheck),
     ("zephyr_prjconf_requirements", NonCell::Static),
