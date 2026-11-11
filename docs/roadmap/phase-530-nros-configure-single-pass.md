@@ -415,7 +415,7 @@ census for `entities = "census"` (issue 2086), and that spelling keeps working.
   Before, all four fell to their crate defaults. The entity fragment is
   byte-identical.
 - **A no-op rebuild of either build dir re-configures nothing.**
-- **Found on the way:** issue 2234 (open). The configure stamp compares only
+- **Found on the way:** issue 2234 (since fixed by 17d689378b). The configure stamp compares only
   the package part of a probe sidecar's key, so after a CLI rebuild
   `nros configure` reports "up to date" while the resolve refuses every
   sidecar as stale. The Rust measurement ran `nros configure --force` first
@@ -572,7 +572,7 @@ is of that generated application, with the `APPLICATION_CONFIG_DIR` and
 `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS=0`, …). A configure loop was measured with
 `west build -t build.ninja`, and the talker also with a full build.
 
-Measured with issue 2234 (open) in the way: after a CLI rebuild the stamp
+Measured with issue 2234 (since fixed by 17d689378b) in the way: after a CLI rebuild the stamp
 says "up to date" while the resolve refuses every probe sidecar as stale, and
 the workspace entry then configures with REFUSED counts (crate defaults) --
 one pass, but loose. `nros configure --force` before the measurement, as W3
