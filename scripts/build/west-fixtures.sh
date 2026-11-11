@@ -24,6 +24,8 @@ source "$repo_root/scripts/build/zephyr-toolchain.sh"
 # issue 1379 — the ONE spelling of `-DZEPHYR_EXTRA_MODULES`.
 # shellcheck source=scripts/lib/zephyr-module.sh
 source "$repo_root/scripts/lib/zephyr-module.sh"
+# shellcheck source=scripts/build/codegen-fingerprint.sh
+source "$repo_root/scripts/build/codegen-fingerprint.sh"   # nros_cli_source_stamp (issue 2439)
 
 out_root="$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 mkdir -p "$out_root"
@@ -86,6 +88,15 @@ west_fixture_stamp() {
             printf 'tool:nros=%s\n' "$(sha256sum "$nros_bin" | awk '{print $1}')"
         else
             printf 'tool:nros=absent\n'
+        fi
+        # Issue 2439 -- the key `require_west_fixture` compares (issue 0196:
+        # the same input as this lane's `.inputsig`). The binary hash above
+        # cannot be that key: the reuse branch re-stamps it, so it vouched for
+        # whatever the signature let through.
+        if _wfs_ss="$(nros_cli_source_stamp "$repo_root")"; then
+            printf 'tool:nros-source-stamp=%s\n' "$_wfs_ss"
+        else
+            printf 'tool:nros-source-stamp=absent\n'
         fi
         [ -z "$builder" ] || printf 'builder=%s\n' "$builder"
     } > "$bld/.compile-ok"

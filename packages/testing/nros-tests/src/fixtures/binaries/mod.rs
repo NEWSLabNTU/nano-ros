@@ -5316,6 +5316,33 @@ fn stamped_tool(stamp_text: &str, key: &str) -> Option<String> {
         .map(|v| v.trim().to_string())
 }
 
+/// Issue 2439 -- the in-tree CLI's source stamp over the sources on disk NOW,
+/// through the ONE helper the west lane stamps with
+/// (`scripts/build/codegen-fingerprint.sh`'s `nros_cli_source_stamp`), so the
+/// value a build STAMPED and the value a test COMPARES cannot be computed two
+/// ways (issue 1454's rule). Memoised: one spawn per test process.
+fn cli_source_stamp_now() -> Option<&'static str> {
+    static STAMP: OnceCell<Option<String>> = OnceCell::new();
+    STAMP
+        .get_or_init(|| {
+            let root = project_root();
+            let out = Command::new("bash")
+                .arg("-c")
+                .arg(r#"source "$1" && nros_cli_source_stamp "$2""#)
+                .arg("nros-cli-source-stamp")
+                .arg(root.join("scripts/build/codegen-fingerprint.sh"))
+                .arg(&root)
+                .output()
+                .ok()?;
+            if !out.status.success() {
+                return None; // no in-tree CLI -- nothing to compare
+            }
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (!s.is_empty()).then_some(s)
+        })
+        .as_deref()
+}
+
 /// The launch-resolution toolchain on disk NOW, through the ONE ladder —
 /// issue 1454.
 ///
@@ -5563,12 +5590,12 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     let fixture_dir = build_dir(crate::kind::WEST_FIXTURES, &[&line, id]);
 
     // #185 (the #182 guard, west edition) — the bake is a function of the
-    // `nros` CLI (nros_system_generate / nros_generate_interfaces run it at
-    // configure time), so a fixture built with a different CLI is a museum
-    // bake even when every source file looks current. The build script stamps
-    // `tool:nros=<sha256>` into `.compile-ok`; compare against the current
-    // binary and fail loud instead of soft-passing. A date-only legacy stamp
-    // reads as stale (one rebuild refreshes it).
+    // `nros` CLI (the module hook runs `nros configure`; codegen runs it too),
+    // so a fixture built with a different CLI is a museum bake even when every
+    // source file looks current. The build script stamps the CLI's key into
+    // `.compile-ok` and this compares it against the current one, failing loud
+    // instead of soft-passing. A stamp without the key reads as stale (one
+    // rebuild refreshes it). Which key: issue 2439, below.
     let stamp = fixture_dir.join(".compile-ok");
     // Issue 1627 — the STAMP is the build's verdict, not the file the test
     // reads. `west-fixtures.sh` wipes the dir, builds, and writes `.compile-ok`
@@ -5579,43 +5606,35 @@ pub fn require_west_fixture(id: &str, rel: &str) -> TestResult<PathBuf> {
     // passed a test over a build the lane had counted FAILED. Absent stamp =
     // absent fixture, through the same tier-aware funnel as the artifact.
     require_prebuilt_binary(&stamp)?;
+    // Issue 2439 -- the CLI key is its SOURCE STAMP, the same term the
+    // lane's `.inputsig` hashes for these rows (issue 0196: build side and
+    // test side watch one input), read through the same shell helper the lane
+    // stamped with. It used to be the BINARY's sha256, which the lane's reuse
+    // branch re-stamps whenever the signature matches -- and the signature
+    // keyed only on the codegen fingerprint, so a CLI change to `nros
+    // configure` / `nros build` was re-stamped as fresh and this check
+    // vouched for a configure the current CLI could no longer produce.
     if let Ok(stamp_text) = fs::read_to_string(&stamp) {
-        let stamped = stamped_tool(&stamp_text, "tool:nros=");
-        let stamped_tool = stamped.as_deref();
-        // Strictly THIS checkout's build — the shell stamps it with
-        // `NROS_CLI= nros_cli_bin --checkout-only --root` (issue 1850).
-        let cli = nros_build_paths::nros_cli_in_checkout(&project_root());
-        // Same hasher the stamping script uses (sha256sum) — no new dep, and
-        // byte-identical output by construction.
-        let current = Command::new("sha256sum")
-            .arg(&cli)
-            .output()
-            .ok()
-            .and_then(|o| {
-                o.status.success().then(|| {
-                    String::from_utf8_lossy(&o.stdout)
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or_default()
-                        .to_string()
-                })
-            });
-        let fresh = match (stamped_tool, current.as_deref()) {
+        let stamped = stamped_tool(&stamp_text, "tool:nros-source-stamp=");
+        let current = cli_source_stamp_now();
+        let fresh = match (stamped.as_deref(), current) {
             (Some(stamped), Some(current)) => stamped == current,
-            // CLI missing on disk: can't judge — let the artifact check decide.
+            // No in-tree CLI to ask: can't judge -- let the artifact decide.
             (Some(_), None) => true,
-            // Legacy date-only stamp: pre-guard build → stale.
+            // A stamp written before this key existed: stale, one rebuild
+            // gives it the line.
             (None, _) => false,
         };
         if !fresh {
             return Err(staleness::stale_error_custom(
                 &fixture_dir.join(rel),
                 format!(
-                    "West fixture {id} is STALE — built with a different `nros` CLI \
-                     than the current {}.\n  stamp: {}\n\
+                    "West fixture {id} is STALE -- built from other `nros` CLI sources \
+                     (source stamp {} in the stamp, {} now).\n  stamp: {}\n\
                      Run `bash scripts/build/west-fixtures.sh` (or `just zephyr \
                      build-fixtures`) to rebuild.",
-                    cli.display(),
+                    stamped.as_deref().unwrap_or("absent"),
+                    current.unwrap_or("unknown"),
                     stamp.display()
                 ),
             ));
