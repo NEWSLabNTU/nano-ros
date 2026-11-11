@@ -505,6 +505,14 @@ fn rewrite_cargo_toml(
             }
         }
     }
+    // `[patch.<registry>]` rows are path specs too, and move with the manifest.
+    if let Some(patch) = doc.get_mut("patch").and_then(|t| t.as_table_mut()) {
+        for (_, t) in patch.iter_mut() {
+            if let Some(d) = t.as_table_mut() {
+                edit(d);
+            }
+        }
+    }
     Ok((doc.to_string(), renamed))
 }
 
@@ -1442,7 +1450,8 @@ nros = { version = "*", features = ["macros", "param-services"] }
         write(
             &d.join("Cargo.toml"),
             "[package]\nname = \"entry-poc\"\n\n[dependencies]\n\
-             nros = { version = \"*\", features = [\"macros\"] }\n\n[workspace]\n",
+             nros = { version = \"*\", features = [\"macros\"] }\n\n[workspace]\n\n\
+             [patch.crates-io]\nnros-core = { path = \"../core/nros-core\" }\n",
         );
         write(
             &d.join("package.xml"),
@@ -1458,8 +1467,15 @@ nros = { version = "*", features = ["macros", "param-services"] }
 
         let p = plan(&d).unwrap();
         apply(&p).unwrap();
-        let sys = std::fs::read_to_string(d.join("src/entry-poc_bringup/system.toml")).unwrap();
+        let sys = std::fs::read_to_string(d.join("src/entry_poc_bringup/system.toml")).unwrap();
         assert!(sys.contains("class = \"entry_poc::EntryPoc\""), "{sys}");
+        // The bringup is a ROS package name (no dashes), and the manifest's
+        // `[patch]` paths move with it like its dependencies.
+        let manifest = std::fs::read_to_string(d.join("src/entry-poc/Cargo.toml")).unwrap();
+        assert!(
+            manifest.contains("path = \"../../../core/nros-core\""),
+            "the patch row is re-rooted: {manifest}"
+        );
         let _ = std::fs::remove_dir_all(&d);
 
         // And a crate renamed to a dashed package name is restated by its ident.
