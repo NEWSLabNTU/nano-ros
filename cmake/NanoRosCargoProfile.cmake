@@ -35,8 +35,15 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 
 function(nros_resolve_cargo_profile)
-    if(NROS_CARGO_PROFILE AND DEFINED NROS_CARGO_PROFILE_DIR)
-        return()  # resolved earlier in this configure
+    # Resolved earlier — in this configure, or in an earlier one of the same
+    # build dir FOR THE SAME PROFILE. Issue 2318: this asked only whether a
+    # DIR was cached, so re-configuring an existing build dir with another
+    # `-DNROS_CARGO_PROFILE` kept the old profile's DIR and ENV beside the new
+    # name, and the build looked for its artifacts under the wrong `target/`
+    # subdir.
+    if(NROS_CARGO_PROFILE AND DEFINED NROS_CARGO_PROFILE_DIR
+       AND NROS_CARGO_PROFILE STREQUAL "${_NROS_CARGO_PROFILE_RESOLVED}")
+        return()
     endif()
 
     _nros_resolve_codegen_tool(_NANO_ROS_CODEGEN_TOOL)
@@ -82,6 +89,8 @@ function(nros_resolve_cargo_profile)
         "target/ subdirectory for NROS_CARGO_PROFILE")
     set(NROS_CARGO_PROFILE_ENV "${_env}" CACHE INTERNAL
         "CARGO_PROFILE_* definition of NROS_CARGO_PROFILE, empty for user-owned profiles")
+    set(_NROS_CARGO_PROFILE_RESOLVED "${_profile}" CACHE INTERNAL
+        "The NROS_CARGO_PROFILE that NROS_CARGO_PROFILE_DIR/_ENV were resolved for")
 
     message(STATUS
         "nano-ros: cargo profile `${_profile}` (CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}) "

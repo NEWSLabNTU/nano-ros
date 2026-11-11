@@ -163,8 +163,29 @@ pub const INSPECT: Preset = Preset {
     ],
 };
 
+/// The C/C++ metadata probe's profile (issue 2318): [`RELWITHDEBINFO`] with no
+/// debuginfo.
+///
+/// The probe is a host binary that runs a component's constructor to record
+/// what it registers, then exits; nothing reads its DWARF. Under
+/// `nros-relwithdebinfo` each C/C++ workspace's probe target dir held ~1 GB,
+/// most of it debuginfo in HOST units (build scripts, proc-macros), and one
+/// `nros dev bindings` wrote ~30 GB of them. Same optimisation as the default,
+/// so the probe's run time is unchanged.
+pub const PROBE: Preset = Preset {
+    name: "nros-probe",
+    settings: &[
+        s("inherits", "release"),
+        s("opt-level", "2"),
+        s("debug", "0"),
+        s("lto", "off"),
+        s("codegen-units", "16"),
+        s("panic", "abort"),
+    ],
+};
+
 /// Every preset nano-ros owns. A name outside this list is the user's.
-pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, ITERATE, MINSIZEREL, INSPECT];
+pub const PRESETS: &[Preset] = &[RELWITHDEBINFO, ITERATE, MINSIZEREL, INSPECT, PROBE];
 
 /// The profile NuttX Rust images must be built at.
 ///
