@@ -484,7 +484,8 @@ and a test asks for it by name (`resolve_coord_variant`).
   in `cpp`) and images `linux_service_client_callback[_cyclonedds]` and
   `linux_action_client_callback`. 5 leaf rows and 3 leaves retire; each row
   keeps its RMW. `linux_api`'s callback cases resolve the images. The Rust
-  `service-client-callback` leaf stays, with its reason in its row: the Rust
+  `service-client-callback` keeps its own directory and `main`, with its
+  reason in its row: the Rust
   declarative `Component` API has no callback-receive service client
   (`create_client_with_callback` is reachable only from an `Executor` that a
   hand-written `main` opens).
@@ -507,7 +508,7 @@ and a test asks for it by name (`resolve_coord_variant`).
   2313). Each leaf keeps its own directory and is to be migrated in place to
   a one-package workspace later (RFC-0122 D3 ruling). The Rust talker is
   phase-531 W6's witness.
-- **linux `*-rtic` (stay).** The six Rust leaves are hand-written `main`s, and
+- **linux `*-rtic` (keep their `main`s).** The six Rust examples are hand-written `main`s, and
   that is what they demonstrate: the caller owns the loop (a zero-arena
   executor driven by `spin_once(0)`, publishing outside it), which a
   generated entry cannot express on the host. RFC-0122 D10 keeps such a
@@ -590,8 +591,16 @@ and a test asks for it by name (`resolve_coord_variant`).
   The lifecycle node's bringup declares the `lifecycle` service family its
   old leaf picked. Logging had no `system.toml`, which `migrate-bringup`
   refuses ([issue 2434](../issues/2434-migrate-bringup-refuses-a-package-with-no-system-toml.md)),
-  so it was moved by hand. Next (a separate PR): `service-client-callback`
-  and the six `*-rtic` leaves.
+  so it was moved by hand.
+- **linux Rust callback client and `*-rtic` (in review).**
+  `examples/linux/rust/service-client-callback` and the six
+  `examples/linux/rust/{talker,listener,service-server,service-client,
+  action-server,action-client}-rtic` move the same way: one-package
+  workspaces whose `main` is each image's owned entry, each `[[fixture]]` row a
+  `[[workspace_fixture]]` row (`linux` image, zenoh). None picked a service
+  family, and none registers an in-place subscription. They are not
+  duplicates of the mps2-an385 `baremetal_<role>_rtic` images: those run the
+  RTIC board, these the host's caller-owned loop.
 - **Feature demos (keep their own directories, to migrate in place to
   one-package workspaces).** Each one below is a hand-written `main`
   demonstrating an API that a generated entry does not express, and its test

@@ -308,9 +308,9 @@ build-fixture-rust:
     # `.cargo/config.toml [patch.crates-io]` chunks.
     nros_repo_root="$PWD"
     # The one-package workspaces (`listener`, `service-*`, `action-*`, the
-    # custom-transport pair, phase-535 W6) are configured by the workspace
-    # fixture builder with their rows.
-    for ex in talker service-client-callback; do
+    # custom-transport pair, the callback client, phase-535 W6) are configured
+    # by the workspace fixture builder with their rows.
+    for ex in talker; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null
@@ -339,9 +339,9 @@ build-fixture-rust-core:
     nros_require_sync "$nros_cli"
     nros_repo_root="$PWD"
     # The one-package workspaces (`listener`, `service-*`, `action-*`, the
-    # custom-transport pair, phase-535 W6) are configured by the workspace
-    # fixture builder with their rows.
-    for ex in talker service-client-callback; do
+    # custom-transport pair, the callback client, phase-535 W6) are configured
+    # by the workspace fixture builder with their rows.
+    for ex in talker; do
         dir="examples/linux/rust/$ex"
         NROS_REPO_DIR="$nros_repo_root" nros_codegen_stamp_check_or_wipe "$dir"
         "$nros_cli" configure "$dir" >/dev/null

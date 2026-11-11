@@ -2438,9 +2438,11 @@ mod board_crate_tests {
         // for the threadx-linux, mps2-an385-freertos and qemu-armv7a-nuttx Rust
         // talkers (phase-531 W6: one-node workspaces), 57 -> 54 for the
         // `nros-tests` `int32-source`, `rosout-talker` and
-        // `service-info-client` bins (W7: owned entries, RFC-0071 D19).
+        // `service-info-client` bins (W7: owned entries, RFC-0071 D19),
+        // 54 -> 47 for the linux Rust callback client and the six `*-rtic`
+        // examples (phase-535 W6, the same shape).
         assert!(
-            on_selection >= 54,
+            on_selection >= 47,
             "only {on_selection} leaves on the selection package"
         );
     }
