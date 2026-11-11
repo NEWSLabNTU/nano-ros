@@ -461,9 +461,10 @@ pub fn leaf_has_rows(dir: &str) -> bool {
 /// not be attributable by path at all. So a funnel keyed on `leaf_has_rows`
 /// would also divert every sole-row leaf onto [`select_row`] — which demands an
 /// exactly-`plain` row and therefore FAILS on the sole-row leaves whose one row
-/// carries an `env` or `features` (`bins/logging-smoke-nuttx-qemu-arm` is the
-/// live case: one row, `CC_armv7a_nuttx_eabi` in its env). Those resolvers work
-/// today precisely because the path route still answers for them.
+/// carries an `env` or `features` (`bins/logging-smoke-nuttx-qemu-arm` was
+/// the case, with `CC_armv7a_nuttx_eabi` in its env, until phase-531 W7 made it
+/// a workspace row). Those resolvers work precisely because the path route
+/// still answers for them.
 pub fn leaf_is_multi_row(dir: &str) -> bool {
     let dir = dir.trim_end_matches('/');
     manifest_rows().iter().filter(|r| r.dir == dir).count() > 1

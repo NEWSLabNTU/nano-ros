@@ -78,8 +78,6 @@ packages/testing/nros-tests/bins/action-raw-goal-probe/system.toml
 packages/testing/nros-tests/bins/ament-census-port/system.toml
 packages/testing/nros-tests/bins/component-node-poc/system.toml
 packages/testing/nros-tests/bins/component-poc/system.toml
-packages/testing/nros-tests/bins/condvar-contract-freertos-mps2/system.toml
-packages/testing/nros-tests/bins/condvar-contract-threadx-linux/system.toml
 packages/testing/nros-tests/bins/constrained-link-probe/system.toml
 packages/testing/nros-tests/bins/contract-monitor-cpp/system.toml
 packages/testing/nros-tests/bins/graph-probe/system.toml
@@ -87,13 +85,8 @@ packages/testing/nros-tests/bins/image-env-probe-c/system.toml
 packages/testing/nros-tests/bins/in-place-subscriptions/system.toml
 packages/testing/nros-tests/bins/int32-sink/system.toml
 packages/testing/nros-tests/bins/log-arena-probe/system.toml
-packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/system.toml
-packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/system.toml
-packages/testing/nros-tests/bins/logging-smoke-threadx-linux/system.toml
-packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/system.toml
 packages/testing/nros-tests/bins/matched-events-probe-c/system.toml
 packages/testing/nros-tests/bins/param-two-node-talker/system.toml
-packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux/system.toml
 packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/system.toml
 packages/testing/nros-tests/bins/ros-edition-pose-pub/system.toml
 packages/testing/nros-tests/bins/rosout-talker-c/system.toml

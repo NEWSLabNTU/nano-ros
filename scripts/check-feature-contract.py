@@ -462,6 +462,13 @@ DEFAULT_REACHED_BY_SELECTION = {
         "`rmw-<x>` through their generated adapter (RFC-0071 D19); a generated "
         "entry names it itself"
     ),
+    # The owned-entry FreeRTOS test programs and benches (phase-531 W7), the
+    # same shape.
+    "nros-board-mps2-an385-freertos": (
+        "the tracked dep-sites are owned entries, which take the image's "
+        "`rmw-<x>` through their generated adapter (RFC-0071 D19); every "
+        "other image takes it through its generated selection package"
+    ),
 }
 
 

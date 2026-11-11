@@ -3474,20 +3474,30 @@ image = "mps2-an385-freertos"
 target_dir = "target-fixtures"
 target = "thumbv7m-none-eabi"
 
-[[fixture]]
+[[workspace_fixture]]
 id = "freertos-logging-smoke-mps2"
 platform = "freertos"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2"
+rmw = "zenoh"
+bringup = "src/logging_smoke_freertos_mps2_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 # issue 1906 — the platform condvar contract (`nros-condvar-contract`) run on
 # FreeRTOS: a timed wait returns 1 and not early, and a broadcast wakes every
 # waiter. Opens no session.
-[[fixture]]
+[[workspace_fixture]]
 id = "freertos-condvar-contract-mps2"
 platform = "freertos"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/condvar-contract-freertos-mps2"
+rmw = "zenoh"
+bringup = "src/condvar_contract_freertos_mps2_bringup"
+image = "mps2-an385-freertos"
+target_dir = "target"
+target = "thumbv7m-none-eabi"
 
 # ===========================================================================
 # nuttx (qemu ARM virt) — Rust role examples. Plain cargo (nightly pinned by
@@ -3509,16 +3519,21 @@ dir = "packages/testing/nros-tests/bins/condvar-contract-freertos-mps2"
 
 
 
-[[fixture]]
+[[workspace_fixture]]
 id = "nuttx-logging-smoke"
 platform = "nuttx"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm"
-# Issue 1305 — the row builds through the image's settings file from the
-# directory ABOVE the leaf, where no rust-toolchain.toml pins the nightly the
-# leaf's own file names (build-std); the toolchain is stated here, as for the
-# param-store row below.
-env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc", RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
+rmw = "zenoh"
+bringup = "src/logging_smoke_nuttx_qemu_arm_bringup"
+image = "qemu-armv7a-nuttx"
+target_dir = "target"
+target = "armv7a-nuttx-eabihf"
+skip_probe = true
+# Issue 1305 — the toolchain the settings file's `[unstable] build-std` needs,
+# stated here as for the param-store row below. An owned-entry workspace row
+# since phase-531 W7 (issue 2448).
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11" }
 
 # Issue 1706 — a talker with one declared parameter whose contract makes the
 # store visible to the build, so the store is CARVED from the executor backing
@@ -3616,29 +3631,40 @@ rmw = "zenoh"
 dir = "examples/threadx-linux/rust/listener"
 env = { NROS_ZENOH_CONNECT_FOREVER = "1" }
 
-[[fixture]]
+[[workspace_fixture]]
 id = "threadx-linux-logging-smoke"
 platform = "threadx-linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-linux"
+rmw = "zenoh"
+bringup = "src/logging_smoke_threadx_linux_bringup"
+image = "threadx-linux"
+target_dir = "target"
 
 # issue 1906 — the platform condvar contract on ThreadX Linux, plus issue
 # 1907's refusal of a wait under a mutex held twice. Opens no session.
-[[fixture]]
+[[workspace_fixture]]
 id = "threadx-linux-condvar-contract"
 platform = "threadx-linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/condvar-contract-threadx-linux"
+rmw = "zenoh"
+bringup = "src/condvar_contract_threadx_linux_bringup"
+image = "threadx-linux"
+target_dir = "target"
 
 # issue 0697 — the zenoh session-pool exhaustion arm, executed on a `no_std`
 # target. Needs no router: the pool is exhausted by a raw slot acquire, so the
 # arm is reached deterministically and the cell cannot fail for network reasons.
-[[fixture]]
+[[workspace_fixture]]
 id = "threadx-linux-pool-exhaustion"
 platform = "threadx-linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux"
+bringup = "src/pool_exhaustion_threadx_linux_bringup"
+image = "threadx-linux"
+target_dir = "target"
 
 # ===========================================================================
 # threadx-riscv64 (qemu RISC-V64 ThreadX/NetX) — Rust role examples, zenoh RMW
@@ -3658,11 +3684,16 @@ rmw = "zenoh"
 builder = "cmake"
 dir = "examples/rv-virt-threadx/rust/talker"
 
-[[fixture]]
+[[workspace_fixture]]
 id = "threadx-riscv64-logging-smoke"
 platform = "threadx-riscv64"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64"
+rmw = "zenoh"
+bringup = "src/logging_smoke_threadx_riscv64_bringup"
+image = "rv-virt-threadx"
+target_dir = "target"
+target = "riscv64gc-unknown-none-elf"
 
 # Issue 1706 — a talker with one declared parameter whose contract makes the
 # store visible to the build, so the store is CARVED from the executor backing

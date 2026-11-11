@@ -153,9 +153,9 @@ build-fixture-extras:
     echo "  → host nros-codegen (cargo)"
     nros_cargo_ensure_codegen_c
     codegen="$(nros_cargo_codegen_c_bin)"
-    bash scripts/build/fixtures-build.sh threadx-linux rust --id threadx-linux-logging-smoke
-    # issue 1906 — the condvar contract image.
-    bash scripts/build/fixtures-build.sh threadx-linux rust --id threadx-linux-condvar-contract
+    # The logging smoke, pool-exhaustion and condvar-contract images (issue
+    # 1906) are owned-entry workspace rows since phase-531 W7, built by the
+    # `workspace-fixtures-build.sh threadx-linux rust` call in `build-examples`.
     # Phase 181.5.d — collapsed-shape threadx-linux C / C++ from the SSOT
     # manifest. The Rust zenoh role binaries are produced by `build-examples`.
     # The full -D set (incl. the cyclone prefix / msg_to_idl, harmless for the

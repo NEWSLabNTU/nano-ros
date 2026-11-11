@@ -6606,15 +6606,14 @@ static LOGGING_SMOKE_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new();
 pub fn build_logging_smoke_freertos_mps2() -> TestResult<&'static Path> {
     LOGGING_SMOKE_FREERTOS_MPS2_BINARY
         .get_or_try_init(|| {
-            // phase-340 P2 — the whole `freertos rust` fixture lane is built at
-            // the `freertos-qemu` carve-out (`just freertos build-fixtures`
-            // exports it as `NROS_CARGO_PROFILE`), so this row lands there too.
-            build_test_fixture_at_profile(
-                "nros-tests/bins/logging-smoke-freertos-mps2",
-                "logging-smoke-freertos-mps2",
-                Some("thumbv7m-none-eabi"),
-                Some(nros_cargo_profile::FREERTOS_QEMU_PROFILE),
+            // phase-531 W7 — an owned-entry workspace row (issue 2448).
+            const DIR: &str = "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
             )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }
@@ -6628,12 +6627,14 @@ static CONDVAR_CONTRACT_FREERTOS_MPS2_BINARY: OnceCell<PathBuf> = OnceCell::new(
 pub fn build_condvar_contract_freertos_mps2() -> TestResult<&'static Path> {
     CONDVAR_CONTRACT_FREERTOS_MPS2_BINARY
         .get_or_try_init(|| {
-            build_test_fixture_at_profile(
-                "nros-tests/bins/condvar-contract-freertos-mps2",
-                "condvar-contract-freertos-mps2",
-                Some("thumbv7m-none-eabi"),
-                Some(nros_cargo_profile::FREERTOS_QEMU_PROFILE),
+            // phase-531 W7 — an owned-entry workspace row (issue 2448).
+            const DIR: &str = "packages/testing/nros-tests/bins/condvar-contract-freertos-mps2";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
             )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }
@@ -6644,12 +6645,15 @@ static CONDVAR_CONTRACT_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new(
 /// Resolve the prebuilt `condvar-contract-threadx-linux` image.
 pub fn build_condvar_contract_threadx_linux() -> TestResult<&'static Path> {
     CONDVAR_CONTRACT_THREADX_LINUX_BINARY
+        // phase-531 W7 — an owned-entry workspace row (issue 2448).
         .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/condvar-contract-threadx-linux",
-                "condvar-contract-threadx-linux",
-                None,
+            const DIR: &str = "packages/testing/nros-tests/bins/condvar-contract-threadx-linux";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
             )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }
@@ -6662,11 +6666,14 @@ static LOGGING_SMOKE_THREADX_RISCV64_BINARY: OnceCell<PathBuf> = OnceCell::new()
 pub fn build_logging_smoke_threadx_riscv64() -> TestResult<&'static Path> {
     LOGGING_SMOKE_THREADX_RISCV64_BINARY
         .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/logging-smoke-threadx-riscv64",
-                "logging-smoke-threadx-riscv64",
-                Some("riscv64gc-unknown-none-elf"),
+            // phase-531 W7 — an owned-entry workspace row (issue 2448).
+            const DIR: &str = "packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
             )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }
@@ -6721,11 +6728,14 @@ static POOL_EXHAUSTION_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new()
 pub fn build_pool_exhaustion_threadx_linux() -> TestResult<&'static Path> {
     POOL_EXHAUSTION_THREADX_LINUX_BINARY
         .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/pool-exhaustion-threadx-linux",
-                "pool-exhaustion-threadx-linux",
-                None,
+            // phase-531 W7 — an owned-entry workspace row (issue 2448).
+            const DIR: &str = "packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
             )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }
@@ -6737,11 +6747,14 @@ static LOGGING_SMOKE_THREADX_LINUX_BINARY: OnceCell<PathBuf> = OnceCell::new();
 pub fn build_logging_smoke_threadx_linux() -> TestResult<&'static Path> {
     LOGGING_SMOKE_THREADX_LINUX_BINARY
         .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/logging-smoke-threadx-linux",
-                "logging-smoke-threadx-linux",
-                None,
+            // phase-531 W7 — an owned-entry workspace row (issue 2448).
+            const DIR: &str = "packages/testing/nros-tests/bins/logging-smoke-threadx-linux";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
             )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }
@@ -6756,11 +6769,14 @@ static LOGGING_SMOKE_NUTTX_QEMU_ARM_BINARY: OnceCell<PathBuf> = OnceCell::new();
 pub fn build_logging_smoke_nuttx_qemu_arm() -> TestResult<&'static Path> {
     LOGGING_SMOKE_NUTTX_QEMU_ARM_BINARY
         .get_or_try_init(|| {
-            build_test_fixture(
-                "nros-tests/bins/logging-smoke-nuttx-qemu-arm",
-                "logging-smoke-nuttx-qemu-arm",
-                Some("armv7a-nuttx-eabihf"),
+            // phase-531 W7 — an owned-entry workspace row (issue 2448).
+            const DIR: &str = "packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm";
+            migrated_leaf_binary(
+                DIR,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
             )
+            .unwrap_or_else(|| Err(not_migrated(DIR)))
         })
         .map(|p| p.as_path())
 }

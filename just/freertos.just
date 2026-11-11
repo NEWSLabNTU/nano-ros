@@ -284,17 +284,10 @@ build-fixture-extras:
     echo "Building FreeRTOS test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
     if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
-    # The normal Rust role examples are produced by `build-examples`.
-    # Phase 88.15.b — nros-log severity-coverage smoke fixture, selected by
-    # stable manifest id so `build-examples` stays limited to role examples.
-    #
-    # phase-340 P2 — the SAME `NROS_CARGO_PROFILE` carve-out `build-examples`
-    # passes. This row's `rmw` defaults to zenoh (`row_coord()`), so it also
-    # matches `build-examples`'s `freertos rust zenoh` query; without the same
-    # profile on both sides the two calls would build it twice, at two profiles,
-    # and the resolver could only read one of them.
-    NROS_CARGO_PROFILE="$(nros_cargo_platform_profile freertos)" \
-        bash scripts/build/fixtures-build.sh freertos rust --id freertos-logging-smoke-mps2
+    # The normal Rust role examples are produced by `build-examples`. The
+    # nros-log smoke and condvar-contract images (Phase 88.15.b, issue 1906) are
+    # owned-entry workspace rows since phase-531 W7, built with every other
+    # freertos workspace row by `workspace-fixtures-build.sh freertos`.
 
     # Issue #0317 — the wake-latency-cortex-m3 microbench (Phase 141.D), a
     # TWO-IMAGE bench (subscriber `wake-latency-cortex-m3` + publisher
