@@ -558,8 +558,11 @@ impl Context {
                 // The staged copy, for the same reason as `locator_ptr`.
                 // SAFETY: `LOC_BUF`/`LOC_VALID` are written above under the
                 // open lock this call still holds, and read-only from here.
-                let staged: Option<&[u8]> =
-                    unsafe { LOC_VALID.then(|| &*(&raw const LOC_BUF) as &[u8]) };
+                let staged: Option<&[u8]> = unsafe {
+                    LOC_VALID.then(|| {
+                        core::slice::from_raw_parts((&raw const LOC_BUF).cast::<u8>(), LOC_CAP)
+                    })
+                };
                 Self::open_configured(handle, staged)
             })();
             if let Err(e) = connect {
