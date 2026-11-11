@@ -29,6 +29,38 @@ pub struct XrceAgent {
     /// handed this port. `None` when the caller named the port itself
     /// (`start(port)`), which is a deliberate choice the caller owns.
     _lease: Option<crate::port_lease::PortLease>,
+    /// Issue 2416 — where the agent's stdout and stderr go, and whether the
+    /// file outlives the fixture. Printed on a panicking drop.
+    log: Option<AgentLog>,
+}
+
+/// The agent's own output. Issue 2416: a session or participant create that
+/// the agent never answered failed with the CLIENT's side only, because the
+/// agent wrote to `/dev/null`. It is always captured now, printed when the
+/// test that owns the agent panics, and removed after a clean run unless the
+/// caller asked for fixture logs.
+struct AgentLog {
+    path: std::path::PathBuf,
+    keep: bool,
+}
+
+/// How many of the agent's last lines a failing test prints.
+const AGENT_LOG_TAIL_LINES: usize = 40;
+
+impl AgentLog {
+    /// The last [`AGENT_LOG_TAIL_LINES`] lines of `text`, each prefixed so they
+    /// read as the agent's and not the test's.
+    fn tail(text: &str) -> String {
+        let lines: Vec<&str> = text.lines().collect();
+        if lines.is_empty() {
+            return "  [xrce-agent] (no output)".to_string();
+        }
+        lines[lines.len().saturating_sub(AGENT_LOG_TAIL_LINES)..]
+            .iter()
+            .map(|l| format!("  [xrce-agent] {l}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 impl XrceAgent {
@@ -106,15 +138,25 @@ impl XrceAgent {
         // by NROS_XRCE_AGENT_VERBOSE or NROS_TEST_LOGS. Default: null sink, so a
         // normal run leaves no xrce-agent-*.log behind (was: always written to
         // the repo root).
-        if verbose || crate::fixtures::fixture_logs_enabled() {
-            let log_path = crate::fixtures::fixture_log_path(&format!("xrce-agent-{port}"));
-            let log_file = std::fs::File::create(&log_path).expect("failed to create log file");
-            cmd.stdout(log_file.try_clone().expect("failed to clone log file"))
-                .stderr(log_file);
+        // Issue 2416 — always captured: into the unified dir (kept) when
+        // NROS_XRCE_AGENT_VERBOSE or NROS_TEST_LOGS asks for it, else into a
+        // temp file that the drop prints on a panic and then removes.
+        let keep = verbose || crate::fixtures::fixture_logs_enabled();
+        let log_path = if keep {
+            crate::fixtures::fixture_log_path(&format!("xrce-agent-{port}"))
         } else {
-            cmd.stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null());
-        }
+            std::env::temp_dir().join(format!("nros-xrce-agent-{}-{port}.log", std::process::id()))
+        };
+        let log_file = std::fs::File::create(&log_path).map_err(|e| {
+            StartError::Other(TestError::ProcessFailed(format!(
+                "XRCE agent log {}: {e}",
+                log_path.display()
+            )))
+        })?;
+        cmd.stdout(log_file.try_clone().map_err(|e| {
+            StartError::Other(TestError::ProcessFailed(format!("XRCE agent log: {e}")))
+        })?)
+        .stderr(log_file);
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn().map_err(|e| {
@@ -129,6 +171,10 @@ impl XrceAgent {
             handle,
             port,
             _lease: None,
+            log: Some(AgentLog {
+                path: log_path,
+                keep,
+            }),
         };
         agent.wait_until_listening(Duration::from_secs(15))?;
         Ok(agent)
@@ -383,6 +429,7 @@ mod readiness_tests {
             handle,
             port: lease.port(),
             _lease: Some(lease),
+            log: None,
         };
 
         let err = agent
@@ -417,6 +464,7 @@ mod readiness_tests {
             handle,
             port,
             _lease: None,
+            log: None,
         };
         let err = agent
             .wait_until_listening(Duration::from_secs(2))
@@ -443,6 +491,7 @@ mod readiness_tests {
             handle,
             port: lease.port(),
             _lease: Some(lease),
+            log: None,
         };
         // Let it actually exit, so this tests the exited branch and not the
         // still-running one.
@@ -461,7 +510,31 @@ mod readiness_tests {
 
 impl Drop for XrceAgent {
     fn drop(&mut self) {
+        // Issue 2416 — whether the agent was still there when the test failed,
+        // read BEFORE the kill. The SDK agent is built without its logger, so
+        // its output is usually empty; alive-or-exited is the fact that tells
+        // an agent that never answered from one that was gone.
+        let state = std::thread::panicking().then(|| match self.handle.try_wait() {
+            Ok(None) => "still running when the test failed".to_string(),
+            Ok(Some(status)) => format!("had EXITED before the test failed ({status})"),
+            Err(e) => format!("state unknown ({e})"),
+        });
         kill_process_group(&mut self.handle);
+        if let Some(log) = &self.log {
+            // The agent's side of a failure, beside the test's.
+            if let Some(state) = &state {
+                let text = std::fs::read_to_string(&log.path).unwrap_or_default();
+                eprintln!(
+                    "xrce agent on udp port {}: {state}; its last output ({}):\n{}",
+                    self.port,
+                    log.path.display(),
+                    AgentLog::tail(&text)
+                );
+            }
+            if !log.keep {
+                let _ = std::fs::remove_file(&log.path);
+            }
+        }
     }
 }
 
@@ -810,6 +883,19 @@ pub fn xrce_serial_agent() -> XrceSerialAgent {
 
 #[cfg(test)]
 mod tests {
+    /// Issue 2416 — a failing test prints the agent's last lines, marked as
+    /// the agent's, and says so when the agent wrote nothing.
+    #[test]
+    fn a_failing_tests_agent_log_tail_is_marked_and_bounded() {
+        use super::{AGENT_LOG_TAIL_LINES, AgentLog};
+        let text: String = (1..=50).map(|i| format!("l{i}\n")).collect();
+        let tail = AgentLog::tail(&text);
+        assert_eq!(tail.lines().count(), AGENT_LOG_TAIL_LINES);
+        assert!(tail.starts_with("  [xrce-agent] l11"), "{tail}");
+        assert!(tail.ends_with("  [xrce-agent] l50"), "{tail}");
+        assert_eq!(AgentLog::tail(""), "  [xrce-agent] (no output)");
+    }
+
     #[test]
     fn test_xrce_agent_addr() {
         let port = 2019;
