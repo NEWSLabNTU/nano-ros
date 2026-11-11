@@ -14,11 +14,9 @@ baremetal rust cargo single generated generated
 baremetal rust cargo single generated manual
 freertos c cmake multi authored generated
 freertos c cmake multi generated generated
-freertos c cmake single generated manual
 freertos cpp cmake multi authored generated
 freertos cpp cmake multi generated generated
 freertos cpp cmake single generated generated
-freertos cpp cmake single generated manual
 freertos mixed cmake multi authored generated
 freertos rust cargo multi authored generated
 freertos rust cargo multi generated generated
@@ -42,9 +40,7 @@ linux rust cargo single generated manual
 nuttx c cmake multi authored generated
 nuttx c cmake multi generated generated
 nuttx c cmake single generated generated
-nuttx c cmake single generated manual
 nuttx cpp cmake multi generated generated
-nuttx cpp cmake single generated manual
 nuttx rust cargo multi authored generated
 nuttx rust cargo multi generated generated
 nuttx rust cargo single generated generated
@@ -55,7 +51,6 @@ nuttx-riscv rust cargo multi generated generated
 threadx-linux c cmake multi authored generated
 threadx-linux c cmake single generated manual
 threadx-linux cpp cmake multi authored generated
-threadx-linux cpp cmake single generated manual
 threadx-linux mixed cmake multi authored generated
 threadx-linux rust cargo multi authored generated
 threadx-linux rust cargo multi generated generated

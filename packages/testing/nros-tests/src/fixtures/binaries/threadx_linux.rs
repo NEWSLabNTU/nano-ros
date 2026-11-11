@@ -199,6 +199,28 @@ pub fn build_threadx_cmake_example_rmw(
     super::require_prebuilt_binary_fresh_cmake(&binary_path)
 }
 
+/// A threadx-linux witness whose image boots a GENERATED entry (phase-531 W6,
+/// RFC-0122 D10): the binary is `<image>_entry`, so it takes no program name a
+/// caller could get wrong. Resolved through the witness's `[[workspace_fixture]]`
+/// rows only; a witness with none is a `BuildFailed`, never a leaf fallback.
+pub fn threadx_generated_witness_rmw(
+    lang: &str,
+    name: &str,
+    rmw: super::Rmw,
+) -> TestResult<PathBuf> {
+    let dir = format!("examples/threadx-linux/{lang}/{name}");
+    super::migrated_leaf_binary(
+        &dir,
+        rmw,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    )
+    .unwrap_or_else(|| {
+        Err(TestError::BuildFailed(format!(
+            "{dir}: no [[workspace_fixture]] row for {rmw:?}"
+        )))
+    })
+}
+
 pub fn build_threadx_talker() -> TestResult<&'static Path> {
     THREADX_TALKER_BINARY
         .get_or_try_init(|| build_rust_example("talker", "threadx-linux-talker"))

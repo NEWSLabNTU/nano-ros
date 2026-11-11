@@ -1152,10 +1152,12 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
 #[test]
 fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
     require_cmake();
-    let talker_bin = nros_tests::fixtures::threadx_linux::build_threadx_cmake_example_rmw(
+    // phase-531 W6 — the C++ talker witness is a component on a generated
+    // entry (RFC-0122 D10), so its binary is the image's entry, not a program
+    // name.
+    let talker_bin = nros_tests::fixtures::threadx_linux::threadx_generated_witness_rmw(
         "cpp",
         "talker",
-        "cpp_talker",
         nros_tests::fixtures::Rmw::Cyclonedds,
     )
     .require("resolve threadx-linux cpp talker (cyclonedds)");
