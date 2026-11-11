@@ -2479,6 +2479,16 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     .is_file()
                 {
                     resolved_opt.push(format!("-DNROS_IMAGE={image_id}"));
+                } else if image.entry.is_some() && generated.dir.is_none() {
+                    // Issue 2436 -- a HAND-WRITTEN entry is the image the
+                    // bringup's `entry =` names, so it gets the statement a
+                    // generated application writes into its own CMakeLists
+                    // (`west_app::image_statement_cmake`). Without it the
+                    // module hook saw an application with no `system.toml`
+                    // and treated it as a guest: no `nros configure`, no
+                    // seeds read, and no API row, so a TYPED entry missed
+                    // the C++ runtime headers.
+                    resolved_opt.extend(hand_written_image_args(&app, &bringup_dir, &image_id));
                 }
                 // Issue 1867 -- the image's `nros` module is THIS checkout. The
                 // store workspace's manifest project carries none (issue 1258),
@@ -6661,6 +6671,24 @@ fn seed_hand_written_west_bounds(
     }
 }
 
+/// Issue 2436 -- the image statement for a hand-written west entry: the three
+/// facts a generated application states before `find_package(Zephyr)`
+/// (`west_app::image_statement_cmake`), as configure options. The language is
+/// the entry package's own, by the one rule the API row uses
+/// (`leaf_kconfig::package_language`: a `Cargo.toml` entry is Rust, a
+/// `CMakeLists.txt` one is the TYPED carrier, C++); a package with neither
+/// states no language, and the hook then states no API row.
+fn hand_written_image_args(app: &Path, bringup_dir: &Path, image_id: &str) -> Vec<String> {
+    let mut args = vec![
+        format!("-DNROS_IMAGE_SYSTEM_DIR={}", bringup_dir.display()),
+        format!("-DNROS_IMAGE={image_id}"),
+    ];
+    if let Some(lang) = crate::cmd::leaf_kconfig::package_language(app) {
+        args.push(format!("-DNROS_IMAGE_LANGUAGE={}", lang.as_str()));
+    }
+    args
+}
+
 /// Stage 3.5's second half for a Zephyr west RUST image -- phase-530 W3,
 /// issue 2233, RFC-0120 D6 case 2.
 ///
@@ -10596,6 +10624,39 @@ mod generated_output_collision_tests {
             t.path().join(&outs[0]),
             generated_entry_dir(t.path(), "zephyr", &z, "zephyr")
         );
+    }
+
+    /// Issue 2436 -- a hand-written west entry is named as the image, with the
+    /// language its own package states: a `CMakeLists.txt` entry is the TYPED
+    /// carrier (C++), a `Cargo.toml` one Rust, and neither states none.
+    #[test]
+    fn a_hand_written_west_entry_is_stated_as_its_image() {
+        let t = tempfile::tempdir().unwrap();
+        let bringup = t.path().join("src/demo_bringup");
+        let app = t.path().join("src/zephyr_entry");
+        std::fs::create_dir_all(&app).unwrap();
+        let stated = |app: &Path| hand_written_image_args(app, &bringup, "zephyr");
+        let base = [
+            format!("-DNROS_IMAGE_SYSTEM_DIR={}", bringup.display()),
+            "-DNROS_IMAGE=zephyr".to_string(),
+        ];
+        assert_eq!(
+            stated(&app),
+            base.to_vec(),
+            "no build file states no language"
+        );
+        std::fs::write(app.join("CMakeLists.txt"), "").unwrap();
+        let mut cpp = base.to_vec();
+        cpp.push("-DNROS_IMAGE_LANGUAGE=cpp".to_string());
+        assert_eq!(
+            stated(&app),
+            cpp,
+            "a C entry is still the TYPED C++ carrier"
+        );
+        std::fs::write(app.join("Cargo.toml"), "").unwrap();
+        let mut rust = base.to_vec();
+        rust.push("-DNROS_IMAGE_LANGUAGE=rust".to_string());
+        assert_eq!(stated(&app), rust);
     }
 
     /// `realtime-c`'s shape, which is legal: ONE hand-written application

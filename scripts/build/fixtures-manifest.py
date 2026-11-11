@@ -321,6 +321,24 @@ def validate_compile_check_fixture(entry):
                 f"(issue 1627). The test still reads its own file through "
                 f"`require_west_fixture`; this field is only the gate.",
             )
+        # Issue 2436 -- `west_nros_image` builds the row through `nros build
+        # <bringup>:<image>` instead of a raw `west build`, so the configure
+        # gets exactly the options `nros build` hands west. It names an image,
+        # so it is qualified: an image id may be declared by several bringups.
+        nros_image = entry.get("west_nros_image", "")
+        if nros_image:
+            bringup, _, image = nros_image.partition(":")
+            if not bringup or not image or ":" in image:
+                _fail(
+                    entry,
+                    f"`west_nros_image = {nros_image!r}` must be `<bringup>:<image>`, "
+                    "the qualified spelling `nros build` takes (issue 2436)",
+                )
+            _require_dir(
+                entry,
+                Path(entry["dir"]) / "src" / bringup,
+                "west_nros_image bringup (dir/src/<bringup>)",
+            )
 
 
 # Where a `cxx-syntax` row's stamp is asserted. One directory, because these
@@ -475,11 +493,12 @@ def west_compile_check_rmw(entry):
 
 def compile_check_record(entry):
     """One \x1f-separated record: id, builder, dir, pkg, manifest_dir, target,
-    profiles, output, west_subdir, west_board, west_extra.
+    profiles, output, west_subdir, west_board, west_extra, west_nros_image.
 
     Empty field = absent; the script defaults them. The three `west_*` tail
-    fields are phase-350 W2's; every existing reader takes the first eight
-    positionally and is unaffected by a longer record."""
+    fields after `output` are phase-350 W2's, `west_nros_image` issue 2436's;
+    every other reader takes the first eight positionally and is unaffected
+    by a longer record."""
     return SEP.join(
         (
             entry.get("id", ""),
@@ -493,6 +512,7 @@ def compile_check_record(entry):
             entry.get("west_subdir", ""),
             entry.get("west_board", ""),
             entry.get("west_extra", ""),
+            entry.get("west_nros_image", ""),
         )
     )
 

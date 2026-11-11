@@ -214,7 +214,7 @@ reused=0
 while IFS= read -r record; do
     [ -n "$record" ] || continue
     IFS=$'\x1f' read -r id builder src _pkg _manifest_dir _target _profiles output subdir board extra \
-        <<< "$record"
+        nros_image <<< "$record"
     [ -n "$id" ] || continue
     if [ -n "$fixture_filter" ] &&
         ! nros_fixture_filter_selects "$fixture_filter" "$repo_root" \
@@ -430,7 +430,25 @@ while IFS= read -r record; do
     # validate-compile-checks` refuses any other output for that builder. The
     # fix is to the premise, not a second rule: west's status stays unread.
     nros_cmake_guard_retired_names "$bld"
-    env "${tc_env[@]}" west "${args[@]}" || true
+    if [ -n "$nros_image" ]; then
+        # Issue 2436 -- the row's road is `nros build <bringup>:<image>`, so
+        # the configure gets exactly what `nros build` hands west: the board,
+        # the module, the image statement. The row adds only its build dir and
+        # `--cmake-only`, and its `west_extra`; `nros build` routes each
+        # native arg to west's zone or cmake's by its own spelling
+        # (`split_native_args`), so no second `--`. `--offline`, like every
+        # fixture lane's `nros build`.
+        nargs=(build "$nros_image" --workspace "$repo_root/$src" --offline -- -d "$bld")
+        [ "$builder" = "west-configure" ] && nargs+=(--cmake-only)
+        if [ -n "$extra" ]; then
+            read -r -a _wf_extra <<< "$extra"
+            nargs+=("${_wf_extra[@]}")
+        fi
+        echo "   nros ${nargs[*]}"
+        env "${tc_env[@]}" "$_wf_cli" "${nargs[@]}" || true
+    else
+        env "${tc_env[@]}" west "${args[@]}" || true
+    fi
     if [ -e "$bld/$output" ]; then
         west_fixture_stamp "$bld" "$builder"
         write_compile_check_inputsig "$record" "$id" "$builder"
