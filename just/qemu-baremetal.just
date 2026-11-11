@@ -325,7 +325,9 @@ build-rtic-main-e2e:
     # depends on a selection package only `nros configure` writes, so the recipe
     # failed on a missing `build/nros/selection/Cargo.toml` before compiling
     # anything (issue 0488 residue 1 was the same second build path, one level up).
-    bash scripts/build/fixtures-build.sh baremetal rust --id baremetal-rtic-run-plan-e2e
+    # phase-531 W7: a one-package workspace now (the bringup's image names the
+    # package as its OWNED entry), so it is a workspace row.
+    bash scripts/build/workspace-fixtures-build.sh baremetal rust --id baremetal-rtic-run-plan-e2e
 
 # Run the Phase 216.B generated-entry RTIC E2E fixture on QEMU MPS2-AN385.
 [group("debug")]
@@ -338,15 +340,19 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     if ! zenohd_bin="$(nros_zenohd_bin)"; then
         nros_lane_skip "the ROS zenoh router is absent — install \`ros-<distro>-rmw-zenoh-cpp\` or set NROS_RMW_ZENOHD (phase-362)"
     fi
-    # issue 1025 — the artifact dir from the ROW, args and env read from the
-    # manifest, never re-supplied here.
-    source scripts/build/fixtures-target-dir.sh
-    rtic_artifacts="$(nros_fixture_row_artifact_dir_by_id baremetal-rtic-run-plan-e2e baremetal)"
+    # issue 1025 — the artifact dir and binary from the ROW (its `dir`,
+    # `target_dir` and resolved entry), never re-supplied here.
+    if ! rtic_row="$(python3 scripts/build/fixtures-manifest.py --id baremetal-rtic-run-plan-e2e list-workspaces)"; then
+        echo "test-rtic-main-e2e: no workspace row baremetal-rtic-run-plan-e2e" >&2
+        exit 1
+    fi
+    IFS=$'\x1f' read -r _id _lang rtic_dir rtic_bringup rtic_entry _ rtic_target_dir _rest <<< "$rtic_row"
+    rtic_artifacts="$rtic_dir/$rtic_target_dir"
     # issue 1865 — the router listens where the IMAGE dials: the port its
     # `system.toml` states, read by the one helper the locator gate uses too.
     # This was a literal 10200 while the image baked the board default 7450,
     # so the image never reached the router this recipe started.
-    if ! rtic_port="$(python3 scripts/lib/image_locator.py packages/testing/nros-tests/bins/rtic-run-plan-e2e --port)"; then
+    if ! rtic_port="$(python3 scripts/lib/image_locator.py "$rtic_dir/$rtic_bringup" --port)"; then
         echo "test-rtic-main-e2e: the image states no router port (see above)" >&2
         exit 1
     fi
@@ -368,7 +374,7 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
         "{{QEMU_BIN}}" -cpu cortex-m3 -machine mps2-an385 -nographic \
             -icount shift=auto \
             -semihosting-config enable=on,target=native \
-            -kernel "$rtic_artifacts/thumbv7m-none-eabi/{{PROFILE_DIR}}/qemu-rtic-main-e2e" \
+            -kernel "$rtic_artifacts/thumbv7m-none-eabi/{{PROFILE_DIR}}/$rtic_entry" \
             -nic user,model=lan9118
 
 # Run all QEMU tests including networked E2E and RTIC

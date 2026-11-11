@@ -19,4 +19,8 @@ dispatch = "deferred"
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
 [image.mps2-an385-baremetal]
+entry = "qemu_baremetal_main_e2e"
 board = "mps2-an385-baremetal"
+
+[image_defaults]
+panic = "own"

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>qemu_baremetal_main_e2e_bringup</name>
+  <version>0.1.0</version>
+  <description>What qemu_baremetal_main_e2e runs on: the board, the RMW and the image, in system.toml.</description>
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+  <exec_depend>qemu_baremetal_main_e2e</exec_depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

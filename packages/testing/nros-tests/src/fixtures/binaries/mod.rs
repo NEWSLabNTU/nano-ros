@@ -7250,12 +7250,19 @@ pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
 }
 
 /// Phase 244.D1 — resolve the prebuilt bare-metal `nros::main!()` BoardEntry
-/// E2E fixture (`qemu-baremetal-main-e2e`, source at
-/// `packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/`) from the
-/// shared `baremetal` fixture target dir. No caching needed — it only stats a path. Absent →
-/// `BuildFailed` (the test skips, prompting `just qemu-baremetal build-fixtures`).
+/// E2E fixture (`packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/`).
+/// A one-package workspace since phase-531 W7: the bringup's
+/// `[image.mps2-an385-baremetal]` names the package as its OWNED entry
+/// (RFC-0071 D19), so it is resolved through its workspace row. No caching
+/// needed — it only stats a path.
 pub fn qemu_baremetal_main_e2e_binary() -> TestResult<PathBuf> {
-    require_qemu_baremetal_fixture("qemu-baremetal-main-e2e")
+    const DIR: &str = "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e";
+    migrated_leaf_binary(
+        DIR,
+        Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+    )
+    .unwrap_or_else(|| Err(not_migrated(DIR)))
 }
 
 /// Issue 1512 — a cargo-rooted C or C++ bare-metal leaf

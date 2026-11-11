@@ -2442,9 +2442,11 @@ mod board_crate_tests {
         // 54 -> 47 for the linux Rust callback client and the six `*-rtic`
         // examples (phase-535 W6, the same shape), 47 -> 39 for the eight
         // multi-image `nros-tests` bins (phase-531 W7 step-3 prep, owned entries),
-        // 39 -> 38 for the `in-place-subscriptions` bin (W7 step-3 prep).
+        // 39 -> 38 for the `in-place-subscriptions` bin (W7 step-3 prep),
+        // 38 -> 36 for the mps2-an385 `qemu-baremetal-main-e2e` and
+        // `rtic-run-plan-e2e` bins (W7: owned entries).
         assert!(
-            on_selection >= 38,
+            on_selection >= 36,
             "only {on_selection} leaves on the selection package"
         );
     }

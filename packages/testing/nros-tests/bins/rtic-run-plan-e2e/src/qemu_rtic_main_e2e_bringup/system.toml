@@ -27,5 +27,9 @@ dispatch = "deferred"
 # it the image baked the board default `tcp/10.0.2.2:7450`, which nothing
 # listened on.
 [image.mps2-an385-baremetal]
+entry = "qemu_rtic_main_e2e"
 board = "rtic-mps2-an385"
 locator = "tcp/10.0.2.2:10530"
+
+[image_defaults]
+panic = "own"

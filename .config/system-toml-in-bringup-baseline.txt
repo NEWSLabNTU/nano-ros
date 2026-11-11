@@ -63,11 +63,9 @@ packages/testing/nros-tests/bins/logging-smoke-threadx-linux/system.toml
 packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/system.toml
 packages/testing/nros-tests/bins/matched-events-probe-c/system.toml
 packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux/system.toml
-packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/system.toml
 packages/testing/nros-tests/bins/ros-edition-pose-pub/system.toml
 packages/testing/nros-tests/bins/rosout-talker-c/system.toml
 packages/testing/nros-tests/bins/rosout-talker-cpp/system.toml
-packages/testing/nros-tests/bins/rtic-run-plan-e2e/system.toml
 packages/testing/nros-tests/bins/service-info-client-cpp/system.toml
 packages/testing/nros-tests/bins/transform-poc/system.toml
 packages/testing/nros-tests/fixtures/n9_workspace/src/demo_entry/system.toml
