@@ -123,6 +123,16 @@ pub fn default_images(dir: &str, row: &LeafRow) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Does a row's (normalised) `env` leave the image unconfigured? Only a
+/// toolchain pin does: `RUSTUP_TOOLCHAIN` picks the compiler that builds the
+/// image (a NuttX row's nightly for `build-std`), not a variant of it, so a row
+/// whose env is only that is still the plain build.
+fn configures_nothing(env: &str) -> bool {
+    env.split(',')
+        .filter(|kv| !kv.is_empty())
+        .all(|kv| kv.starts_with("RUSTUP_TOOLCHAIN="))
+}
+
 /// The one row of `rows` (all at `dir`) that builds `rmw` as `variant`.
 /// `defaults` answers `[system] default_images` for a row's bringup.
 pub fn select_in<'r>(
@@ -139,7 +149,7 @@ pub fn select_in<'r>(
             let want = normalise_env(pairs.iter().map(|(k, v)| format!("{k}={v}")));
             of_rmw.filter(|r| r.env == want).collect()
         }
-        LeafVariant::Plain => of_rmw.filter(|r| r.env.is_empty()).collect(),
+        LeafVariant::Plain => of_rmw.filter(|r| configures_nothing(&r.env)).collect(),
     };
     if variant == LeafVariant::Plain && hits.len() > 1 {
         let narrowed: Vec<&LeafRow> = hits
@@ -185,6 +195,25 @@ pub fn select(dir: &str, rmw: &str, variant: LeafVariant<'_>) -> Option<TestResu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_toolchain_pin_alone_is_still_the_plain_build() {
+        let rows = [row(
+            "pinned",
+            "zenoh",
+            "nuttx",
+            "RUSTUP_TOOLCHAIN=nightly-2026-04-11",
+        )];
+        let hit = select_in(&rows, "d", "zenoh", LeafVariant::Plain, &|_| Vec::new()).unwrap();
+        assert_eq!(hit.id, "pinned");
+        let rows = [row(
+            "configured",
+            "zenoh",
+            "nuttx",
+            "NROS_ZENOH_CONNECT_FOREVER=1,RUSTUP_TOOLCHAIN=nightly-2026-04-11",
+        )];
+        assert!(select_in(&rows, "d", "zenoh", LeafVariant::Plain, &|_| Vec::new()).is_err());
+    }
 
     fn row(id: &str, rmw: &str, image: &str, env: &str) -> LeafRow {
         LeafRow {
