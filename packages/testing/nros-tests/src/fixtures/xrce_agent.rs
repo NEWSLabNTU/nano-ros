@@ -61,6 +61,51 @@ impl AgentLog {
             .collect::<Vec<_>>()
             .join("\n")
     }
+
+    /// Open the agent's log: `kept_name` in the unified fixture-log dir when
+    /// `keep`, else a per-process temp file that [`AgentLog::finish`] removes.
+    /// Returns the log and the stdout/stderr handles for the agent's command.
+    fn open(keep: bool, kept_name: &str, temp_name: &str) -> std::io::Result<(Self, Stdio, Stdio)> {
+        let path = if keep {
+            crate::fixtures::fixture_log_path(kept_name)
+        } else {
+            std::env::temp_dir().join(format!("nros-{temp_name}-{}.log", std::process::id()))
+        };
+        let file = std::fs::File::create(&path)
+            .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))?;
+        let out = file.try_clone()?;
+        Ok((Self { path, keep }, Stdio::from(out), Stdio::from(file)))
+    }
+
+    /// Called from a fixture's drop, BEFORE the kill. When the test is
+    /// panicking, prints whether the agent was still running and its last
+    /// lines; then removes the temp log. `what` names the agent in the report.
+    fn finish(&self, handle: &mut Child, what: &str) {
+        // Issue 2416 — whether the agent was still there when the test failed,
+        // read BEFORE the kill. The SDK agent is built without its logger, so
+        // its output is usually empty; alive-or-exited is the fact that tells
+        // an agent that never answered from one that was gone.
+        if std::thread::panicking() {
+            let state = match handle.try_wait() {
+                Ok(None) => "still running when the test failed".to_string(),
+                Ok(Some(status)) => format!("had EXITED before the test failed ({status})"),
+                Err(e) => format!("state unknown ({e})"),
+            };
+            let text = std::fs::read_to_string(&self.path).unwrap_or_default();
+            eprintln!(
+                "{what}: {state}; its last output ({}):\n{}",
+                self.path.display(),
+                AgentLog::tail(&text)
+            );
+        }
+    }
+
+    /// Remove the log unless it was asked to be kept. After the kill.
+    fn cleanup(&self) {
+        if !self.keep {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
 }
 
 impl XrceAgent {
@@ -142,21 +187,13 @@ impl XrceAgent {
         // NROS_XRCE_AGENT_VERBOSE or NROS_TEST_LOGS asks for it, else into a
         // temp file that the drop prints on a panic and then removes.
         let keep = verbose || crate::fixtures::fixture_logs_enabled();
-        let log_path = if keep {
-            crate::fixtures::fixture_log_path(&format!("xrce-agent-{port}"))
-        } else {
-            std::env::temp_dir().join(format!("nros-xrce-agent-{}-{port}.log", std::process::id()))
-        };
-        let log_file = std::fs::File::create(&log_path).map_err(|e| {
-            StartError::Other(TestError::ProcessFailed(format!(
-                "XRCE agent log {}: {e}",
-                log_path.display()
-            )))
-        })?;
-        cmd.stdout(log_file.try_clone().map_err(|e| {
-            StartError::Other(TestError::ProcessFailed(format!("XRCE agent log: {e}")))
-        })?)
-        .stderr(log_file);
+        let (log, out, err) = AgentLog::open(
+            keep,
+            &format!("xrce-agent-{port}"),
+            &format!("xrce-agent-{port}"),
+        )
+        .map_err(|e| StartError::Other(TestError::ProcessFailed(format!("XRCE agent log {e}"))))?;
+        cmd.stdout(out).stderr(err);
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn().map_err(|e| {
@@ -171,10 +208,7 @@ impl XrceAgent {
             handle,
             port,
             _lease: None,
-            log: Some(AgentLog {
-                path: log_path,
-                keep,
-            }),
+            log: Some(log),
         };
         agent.wait_until_listening(Duration::from_secs(15))?;
         Ok(agent)
@@ -510,30 +544,16 @@ mod readiness_tests {
 
 impl Drop for XrceAgent {
     fn drop(&mut self) {
-        // Issue 2416 — whether the agent was still there when the test failed,
-        // read BEFORE the kill. The SDK agent is built without its logger, so
-        // its output is usually empty; alive-or-exited is the fact that tells
-        // an agent that never answered from one that was gone.
-        let state = std::thread::panicking().then(|| match self.handle.try_wait() {
-            Ok(None) => "still running when the test failed".to_string(),
-            Ok(Some(status)) => format!("had EXITED before the test failed ({status})"),
-            Err(e) => format!("state unknown ({e})"),
-        });
+        // The agent's side of a failure, beside the test's (issue 2416).
+        if let Some(log) = &self.log {
+            log.finish(
+                &mut self.handle,
+                &format!("xrce agent on udp port {}", self.port),
+            );
+        }
         kill_process_group(&mut self.handle);
         if let Some(log) = &self.log {
-            // The agent's side of a failure, beside the test's.
-            if let Some(state) = &state {
-                let text = std::fs::read_to_string(&log.path).unwrap_or_default();
-                eprintln!(
-                    "xrce agent on udp port {}: {state}; its last output ({}):\n{}",
-                    self.port,
-                    log.path.display(),
-                    AgentLog::tail(&text)
-                );
-            }
-            if !log.keep {
-                let _ = std::fs::remove_file(&log.path);
-            }
+            log.cleanup();
         }
     }
 }
@@ -704,6 +724,7 @@ pub fn xrce_agent_unique() -> XrceAgent {
 pub struct XrceSerialAgent {
     socat_handles: Vec<Child>,
     agent_handle: Child,
+    log: AgentLog,
     client_ptys: Vec<String>,
     _tmp_dir: tempfile::TempDir,
 }
@@ -791,24 +812,15 @@ impl XrceSerialAgent {
         if verbose {
             agent_cmd.arg("-v6");
         }
-        if verbose || crate::fixtures::fixture_logs_enabled() {
-            let log_path = crate::fixtures::fixture_log_path("xrce-agent-serial");
-            let log_file = std::fs::File::create(&log_path).map_err(|e| {
-                TestError::ProcessFailed(format!(
-                    "Failed to open xrce-agent serial log {}: {e}",
-                    log_path.display()
-                ))
-            })?;
-            agent_cmd
-                .stdout(
-                    log_file
-                        .try_clone()
-                        .map_err(|e| TestError::ProcessFailed(format!("clone log fd: {e}")))?,
-                )
-                .stderr(log_file);
-        } else {
-            agent_cmd.stdout(Stdio::null()).stderr(Stdio::null());
-        }
+        // Issue 2416 — always captured, as for the UDP agent: kept when
+        // asked, else a temp file the drop prints on a panic and removes.
+        let (log, out, err) = AgentLog::open(
+            verbose || crate::fixtures::fixture_logs_enabled(),
+            "xrce-agent-serial",
+            "xrce-agent-serial",
+        )
+        .map_err(|e| TestError::ProcessFailed(format!("xrce-agent serial log {e}")))?;
+        agent_cmd.stdout(out).stderr(err);
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut agent_cmd);
         let agent_handle = agent_cmd.spawn().map_err(|e| {
@@ -829,6 +841,7 @@ impl XrceSerialAgent {
         Ok(Self {
             socat_handles,
             agent_handle,
+            log,
             client_ptys: client_pty_strings,
             _tmp_dir: tmp_dir,
         })
@@ -847,7 +860,9 @@ impl XrceSerialAgent {
 
 impl Drop for XrceSerialAgent {
     fn drop(&mut self) {
+        self.log.finish(&mut self.agent_handle, "xrce serial agent");
         kill_process_group(&mut self.agent_handle);
+        self.log.cleanup();
         for handle in &mut self.socat_handles {
             kill_process_group(handle);
         }
