@@ -186,7 +186,8 @@ What a resumption should start from, unmeasured:
   root is a crate named `nros-{c,cpp}-image`, and cargo uplifts its staticlib
   to `<profile>/` by crate name, so concurrent probes would overwrite each
   other's archive.
-- Cargo's `build.build-dir` (stable since 1.91; the pin is 1.99) splits
+- Cargo's `build.build-dir` (accepted on the pinned 1.99 without `-Z`,
+  checked with `CARGO_BUILD_BUILD_DIR` on a scratch crate) splits
   intermediates from uplifted artifacts: a shared, keyed build-dir with a
   per-workspace target-dir would keep the uplift per workspace and share
   `deps/`. Open questions: whether the build-dir lock serialises the
