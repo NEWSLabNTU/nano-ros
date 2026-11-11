@@ -475,6 +475,24 @@ fn census_producer_for<'a>(
 
 /// The model an image is resolved into, relative to its bringup -- the same
 /// call `nros build` makes for the same image.
+/// RFC-0071 D19 — the image boots an OWNED entry from a bringup that declares
+/// no `[[component]]` row and authors no launch, so configure generates no
+/// launch for it (`ws::synthesise_bringup_launch`) and it has no SystemModel:
+/// no contract, and nothing for a census to take or check. Both census sites
+/// ask this before resolving the model.
+fn owned_entry_without_model(
+    bringup_dir: &Path,
+    image: &crate::orchestration::image::ImageBlock,
+) -> bool {
+    image.entry.is_some()
+        && image.launch.is_none()
+        && !bringup_dir.join("launch").is_dir()
+        && std::fs::read_to_string(bringup_dir.join("system.toml"))
+            .ok()
+            .and_then(|t| crate::cmd::ws::component_rows(&t).ok())
+            .is_some_and(|rows| rows.is_empty())
+}
+
 fn image_model_rel(
     bringup_dir: &Path,
     image: &crate::orchestration::image::ImageBlock,
@@ -588,6 +606,21 @@ fn take_census(args: TakeArgs) -> Result<()> {
         crate::build_notes::detail_out(format!(
             "entity-census take {asked_q}: a host image is the census PRODUCER, and its own \
              configure checks nothing -- nothing to take"
+        ));
+        return Ok(());
+    }
+
+    // RFC-0071 D19 — an image that boots an OWNED entry from a bringup with no
+    // `[[component]]` row and no launch of its own runs that entry's `main`:
+    // configure generates no launch for it (`synthesise_bringup_launch`), so it
+    // has no SystemModel, hence no contract and nothing for a census to
+    // reconcile. Asking for the model anyway refused the pre-pass for every
+    // such cross image.
+    if owned_entry_without_model(&bringup_dir, &image) {
+        crate::build_notes::detail_out(format!(
+            "entity-census take {asked_q}: the image boots its owned entry `{}` and the \
+             bringup declares no component, so there is no system model -- nothing to take",
+            image.entry.as_deref().unwrap_or_default()
         ));
         return Ok(());
     }
@@ -841,6 +874,13 @@ pub(crate) fn check_cargo_image(
     image_id: &str,
     image: &crate::orchestration::image::ImageBlock,
 ) -> Result<()> {
+    if owned_entry_without_model(bringup_dir, image) {
+        crate::build_notes::detail_out(format!(
+            "nros build:   {image_id}: boots its owned entry and declares no component -- \
+             no system model, so no census to check"
+        ));
+        return Ok(());
+    }
     let model_rel = image_model_rel(bringup_dir, image)
         .map_err(|e| eyre::eyre!("cannot resolve the launch of `{image_id}`: {e}"))?;
     let (model, _) =
@@ -2569,6 +2609,42 @@ fn summarise(recorded: &serde_json::Value) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// RFC-0071 D19 -- an owned-entry image whose bringup declares no
+    /// component and no launch has no SystemModel, so the census sites skip
+    /// it instead of failing to resolve one; any component row, an authored
+    /// `launch/`, or a generated entry keeps the question.
+    #[test]
+    fn an_owned_entry_with_no_component_has_no_model_to_census() {
+        let t = tempfile::tempdir().unwrap();
+        let b = t.path();
+        let owned = crate::orchestration::image::ImageBlock {
+            entry: Some("probe".into()),
+            ..Default::default()
+        };
+        std::fs::write(b.join("system.toml"), "[system]\nname = \"p\"\n").unwrap();
+        assert!(owned_entry_without_model(b, &owned));
+        assert!(
+            !owned_entry_without_model(b, &crate::orchestration::image::ImageBlock::default()),
+            "a generated entry resolves its model"
+        );
+        std::fs::write(
+            b.join("system.toml"),
+            "[system]\nname = \"p\"\n\n[[component]]\npkg = \"probe\"\n\
+             class = \"probe::P\"\nname = \"p\"\n",
+        )
+        .unwrap();
+        assert!(
+            !owned_entry_without_model(b, &owned),
+            "a component row makes a model"
+        );
+        std::fs::write(b.join("system.toml"), "[system]\nname = \"p\"\n").unwrap();
+        std::fs::create_dir_all(b.join("launch")).unwrap();
+        assert!(
+            !owned_entry_without_model(b, &owned),
+            "an authored launch makes a model"
+        );
+    }
+
     use super::*;
 
     /// RFC-0120 D1 (phase-530 W2) -- layer 0 never runs `nros build`. The
