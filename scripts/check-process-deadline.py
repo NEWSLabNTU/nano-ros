@@ -121,7 +121,8 @@ ALLOWLIST = {
     ("scripts/check-hook-repo-side-effects.sh", "bash"):
         "runs OUR pre-push hook script, a plain bash script with no SIGTERM "
         "trap, inside the gate's own probe wrapper",
-    ("scripts/ci/runner-container.sh", "bash"):
+    # phase-551 W1: the Dockerfile text moved into the shared image generator.
+    ("scripts/ci/lib/image-context.sh", "bash"):
         "a Dockerfile `RUN` that smoke-starts the router at image BUILD time: "
         "no checkout exists in the build context to source the helper from, and "
         "`docker build` itself is the outer bound",

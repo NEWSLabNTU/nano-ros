@@ -1,0 +1,7 @@
+644 Dockerfile generated
+755 entrypoint.sh generated
+644 index_packages.py copy scripts/lib/index_packages.py
+644 nros-python-layer.json generated
+755 python-packages.py copy scripts/sdk/python-packages.py
+755 ros2-apt-source.sh copy scripts/sdk/ros2-apt-source.sh
+644 zenohd.sh copy scripts/dev/zenohd.sh

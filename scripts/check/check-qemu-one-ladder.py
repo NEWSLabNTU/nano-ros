@@ -53,7 +53,8 @@ JUST_FALLBACK = re.compile(r'\{\s*"qemu-system-[a-z0-9_]+"\s*\}')
 # path -> why it may name a QEMU binary as a bare token.
 ALLOWED = {
     "scripts/check/check-qemu-one-ladder.py": "this gate's own patterns and self-tests",
-    "scripts/ci/runner-container.sh": (
+    # phase-551 W1: the install list moved into the shared image generator.
+    "scripts/ci/lib/image-context.sh": (
         "`qemu-system-misc` is an apt PACKAGE name in the image's install list, "
         "not a binary anything runs"
     ),

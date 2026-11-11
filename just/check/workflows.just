@@ -426,6 +426,18 @@ process-deadline:
 # Same shape as the gate above, for the same reason: the self-test lives in the
 # script so the rule and its cases cannot drift apart, and it stages temp dirs
 # only (no SDK, no cmake, no network), so it belongs on the fast line.
+# phase-551 W1 (RFC-0127 D1) — the CI runner's build context is BYTE-IDENTICAL to
+# the committed golden (`ci/docker/runner-context.golden/`): its generated
+# Dockerfile, entrypoint and python-layer JSON, its file list and modes, and
+# each copied script equal to its tracked source. The generator moved into the
+# shared `scripts/ci/lib/image-context.sh` so a starter image can be generated
+# from the same index; this is the runner/CI owner's guard that the move, and
+# every change after it, leaves the runner what it was unless the golden is
+# regenerated in the same change. No engine, no network; ~2 s.
+[private]
+runner-context-golden:
+    @bash scripts/check/check-runner-context-golden.sh
+
 [private]
 runner-doctor-sdk-resolution:
     @bash scripts/ci/runner-doctor.sh --self-test
