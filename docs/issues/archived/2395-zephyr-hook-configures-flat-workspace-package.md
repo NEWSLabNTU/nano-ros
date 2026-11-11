@@ -1,15 +1,16 @@
 ---
 id: 2395
 title: "The Zephyr hook runs `nros configure` on a flat workspace's bringup package, which cannot see its siblings, so three west fixtures refuse at configure"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [zephyr, cmake, cli, ci]
 related: [phase-530, 2390, 2189]
 found: 2026-11-10
+resolved: 2026-11-11
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)**. W4 made the Zephyr module hook call `nros configure` before Kconfig, and its project choice (Ruling R31) is what misses this layout.
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)**. W4 made the Zephyr module hook call `nros configure` before Kconfig, and its project choice (Ruling R31) is what misses this layout.
 
 ## What
 
@@ -72,3 +73,22 @@ These two fixtures are the only flat generated applications in the tree, and
 
 Acceptance: a tier-2 run on main builds all 5 `[[compile_check_fixture]]` west
 rows.
+
+## Verified
+
+Tier-2 workflow run 42928442297 on main at `5e01d7ffed` (after #3396, #3397
+and this fix), its `tier 1 (cells)` job (130290459182). `just build tier1`
+passed, and inside it the Zephyr module printed `== zephyr == OK`. That
+module runs `scripts/build/west-fixtures.sh` over every west
+`[[compile_check_fixture]]` row (they carry no coordinate, so no lane narrows
+them away), and since issue 0700 a row that fails to configure fails the
+module. The consumers of the three rows that refused passed in the same job:
+`cli_bringup_zephyr_adapter_shim_boots_native_sim` (`west_bringup_zephyr`)
+and `zephyr_self_pkg_resolve_bringup_handles_relative_path`
+(`zephyr_self_pkg_sibling`). `west_bringup_zephyr_cyclone_user_config` has no
+consumer test, so the module's verdict is its only evidence.
+
+The acceptance named a tier-2 run. This run's own tier-2 job does not reach
+the west rows: its 1-wise lane selected no Zephyr coordinate, so
+`west-fixtures.sh` did not run there. The tier-1 job of the same run is where
+the Zephyr module runs.

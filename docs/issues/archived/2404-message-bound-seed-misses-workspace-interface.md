@@ -1,15 +1,16 @@
 ---
 id: 2404
 title: "The message-bound seed resolves a node's interface closure without the project's search path, so it misses the workspace's own message package and the promise check refuses the build"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [cli, cmake, build, codegen]
 related: [phase-530, 2399, 1252]
 found: 2026-11-10
+resolved: 2026-11-11
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)**. W1 (Ruling R45) made `nros configure` pass the interface search path as an argument, and W5 made the CMake roads' seeds binding; the message-bound seed's closure resolver kept reading the environment.
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)**. W1 (Ruling R45) made `nros configure` pass the interface search path as an argument, and W5 made the CMake roads' seeds binding; the message-bound seed's closure resolver kept reading the environment.
 
 ## What
 
@@ -63,3 +64,11 @@ Test: `the_search_path_argument_finds_a_workspace_interface_package`
 with the search path and does not without it.
 
 Acceptance: tier 1 on main builds the `examples/workspaces/features` rows.
+
+## Verified
+
+Tier-2 workflow run 42928442297 on main at `5e01d7ffed`, its `tier 1 (cells)`
+job (130290459182): every `examples/workspaces/features` row of tier 1's lane
+(the `workspace-features-{c,cpp,mixed}-*` rows) is selected, and
+`just build tier1` passed. Only the later cells step failed, on unrelated
+cells.

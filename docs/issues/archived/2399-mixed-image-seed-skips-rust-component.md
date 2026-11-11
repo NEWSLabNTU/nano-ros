@@ -1,15 +1,16 @@
 ---
 id: 2399
 title: "A mixed C/C++/Rust cmake image's configure seed leaves out its Rust component, so the promise check refuses the build"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [cli, cmake, build, census]
 related: [phase-530, 1228, 2395]
 found: 2026-11-10
+resolved: 2026-11-11
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)**. W5 made the CMake roads' configure seeds binding (the promise checks), and the seed's registered population is what misses the Rust component.
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)**. W5 made the CMake roads' configure seeds binding (the promise checks), and the seed's registered population is what misses the Rust component.
 
 ## What
 
@@ -70,3 +71,10 @@ with before W5 made the seed binding. If it is an over-count, it is the
 composer's, on both roads at once.
 
 Acceptance: tier 1 on main builds `workspace-mixed-native`.
+
+## Verified
+
+Tier-2 workflow run 42928442297 on main at `5e01d7ffed`, its `tier 1 (cells)`
+job (130290459182): `workspace-mixed-native` is in tier 1's lane
+(`linux,mixed,zenoh`), and `just build tier1` passed. Only the later cells
+step failed, on unrelated cells.
