@@ -74,6 +74,10 @@ class Graph:
     # names that share one address in one section (GCC identical-code
     # folding, `#[export_name]` aliases): one body, one frame
     alias_groups: list[set[str]] = field(default_factory=list)
+    # g++ writes a C++ TU's `.su` line as a SIGNATURE (`void app_main()`,
+    # `int ns::f(int)`), not a symbol: name(args) -> bytes, matched to the
+    # symbol table by `resolve_cxx_su_frames`.
+    su_signatures: dict[str, int] = field(default_factory=dict)
 
 
 class WalkRefused(Exception):
@@ -201,7 +205,8 @@ INDIRECT_RE = re.compile(
     r"\t(blx\s+r\d+|blx\s+(ip|lr|sp)|bl?x?\s+\{|blr\s+x\d+|jalr\s|"
     r"c\.jalr\s|callq?\s+\*|call\s+\*)")
 FUNC_LABEL_RE = re.compile(r"^[0-9a-f]+ <(.+)>:$")
-SU_RE = re.compile(r"^(?P<loc>[^\t]*):(?P<fn>[^:\t]+)\t(?P<size>\d+)\t(?P<kind>\S+)")
+# `file:line:col:name`, where a C++ name is a signature holding `::` and spaces
+SU_RE = re.compile(r"^(?P<loc>[^\t]*?:\d+:\d+):(?P<fn>[^\t]+)\t(?P<size>\d+)\t(?P<kind>\S+)")
 
 
 # The checkout this script lives in. rustup picks the toolchain by the CWD's
@@ -247,19 +252,21 @@ def sysroot_rlibs(target: str) -> list[str]:
 
 
 def bitcode_dirs_expanded(dirs: list[str]) -> list[str]:
-    """A --bitcode-dir may be a glob (a cmake build cannot know the keyed
-    cargo directory names at configure time); one that matches nothing is an
-    error, since a walk with no Rust bitcode would miss every Rust frame."""
+    """A --bitcode-dir may be a glob (`**` recurses; a cmake build cannot know
+    the keyed cargo directory names at configure time). A glob may match
+    nothing (an image with no message FFI crate), but if every one does, that
+    is an error: a walk with no Rust bitcode would miss every Rust frame."""
     import glob as _glob
     out: list[str] = []
+    globs: list[str] = []
     for d in dirs:
         if any(c in d for c in "*?["):
-            hits = sorted(p for p in _glob.glob(d) if Path(p).is_dir())
-            if not hits:
-                sys.exit(f"nros-stack-floor: --bitcode-dir `{d}` matches no directory")
-            out += hits
+            globs.append(d)
+            out += sorted(p for p in _glob.glob(d, recursive=True) if Path(p).is_dir())
         else:
             out.append(d)
+    if globs and not out:
+        sys.exit(f"nros-stack-floor: no --bitcode-dir matches ({', '.join(globs)})")
     return out
 
 
@@ -517,16 +524,88 @@ def load_object(g: Graph, paths: str | list[str], readobj: str, objdump: str) ->
     # time as "NO FRAME" unless named external.
 
 
+# GCC `-fcallgraph-info=su`: one node per function, titled by its ASSEMBLER
+# name (mangled for C++, `<file>:` prefixed when local) and labelled with its
+# frame. Exact where a `.su` line is only a signature.
+CI_NODE_RE = re.compile(r'node: \{ title: "(?P<title>[^"]+)" label: "[^"]*?\\n(?P<size>\d+) bytes')
+
+
+def load_ci(g: Graph, f: Path) -> None:
+    for m in CI_NODE_RE.finditer(f.read_text(errors="replace")):
+        fn = m.group("title").rsplit(":", 1)[-1]
+        g.frames[fn] = max(g.frames.get(fn, 0), int(m.group("size")))
+        g.functions.add(fn)
+
+
 def load_su(g: Graph, root: Path) -> None:
-    files = [root] if root.is_file() else sorted(root.rglob("*.su"))  # walk-ok: .su files are untracked GCC build output in a build dir the caller names
+    if root.is_file():
+        files = [root]
+    else:
+        files = sorted(root.rglob("*.su")) + sorted(root.rglob("*.ci"))  # walk-ok: .su/.ci files are untracked GCC build output in a build dir the caller names
     for f in files:
+        if f.suffix == ".ci":
+            load_ci(g, f)
+            continue
         for line in f.read_text(errors="replace").splitlines():
             m = SU_RE.match(line)
             if not m:
                 continue
             fn = m.group("fn")
+            if "(" in fn:
+                sig = cxx_su_signature(fn)
+                g.su_signatures[sig] = max(g.su_signatures.get(sig, 0), int(m.group("size")))
+                continue
             g.frames[fn] = max(g.frames.get(fn, 0), int(m.group("size")))
             g.functions.add(fn)
+
+
+def cxx_su_signature(text: str) -> str:
+    """`void ns::f(int) const` -> `ns::f(int) const`: drop the return type,
+    which is everything before the last top-level space ahead of the first
+    top-level `(`."""
+    depth, cut = 0, None
+    for i, ch in enumerate(text):
+        if ch in "<[":
+            depth += 1
+        elif ch in ">]":
+            depth -= 1
+        elif ch == "(" and depth == 0:
+            cut = i
+            break
+    if cut is None:
+        return text
+    head = text[:cut]
+    depth, space = 0, -1
+    for i, ch in enumerate(head):
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        elif ch == " " and depth == 0:
+            space = i
+    return text[space + 1:]
+
+
+def resolve_cxx_su_frames(g: Graph, demangle) -> None:
+    """Give a frame to each frameless symbol whose C++ `.su` signature
+    matches: an `extern "C"` function is its own name plus `()`-args, a
+    mangled one is matched by its demangled text."""
+    if not g.su_signatures:
+        return
+    bare = {}
+    for sig, n in g.su_signatures.items():
+        name = sig.split("(", 1)[0]
+        if "::" not in name and "<" not in name:
+            bare[name] = max(bare.get(name, 0), n)
+    missing = [fn for fn in g.functions if fn not in g.frames]
+    mangled = [fn for fn in missing if fn.startswith("_Z")]
+    for fn in missing:
+        if not fn.startswith(("_Z", "_R")) and fn in bare:
+            g.frames[fn] = bare[fn]
+    if mangled:
+        for fn, text in zip(mangled, demangle(mangled)):
+            if text in g.su_signatures:
+                g.frames[fn] = g.su_signatures[text]
 
 
 GCC_CLONE_NUM = re.compile(r"\.\d+$")
@@ -776,6 +855,9 @@ def run(args: argparse.Namespace) -> int:
             raise SystemExit(f"--frame `{name}`: an input already states its frame "
                              f"({g.frames[name]} B); a stated frame never overrides a measured one")
         g.frames[name] = int(n)
+    resolve_cxx_su_frames(g, lambda names: subprocess.run(
+        [llvm_tool("llvm-cxxfilt", args.llvm_bin)], input="\n".join(names), check=True,
+        capture_output=True, text=True).stdout.splitlines())
     alias_gcc_clones(g)
     prune_data_refs(g)
     externals = set(args.external or [])
@@ -962,6 +1044,33 @@ def self_test() -> int:
     check("fold1 charges one level", fold_charge(g5, recursion_allowance=None,
                                                  externals=set(), one_level=True) == 100)
 
+    # GCC callgraph-info
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as d:
+        Path(d, "t.ci").write_text(
+            'graph: { title: "t.cpp"\n'
+            'node: { title: "t.cpp:_ZZ3appENKUliE_clEi" label: "app(int)::<lambda(int)>\\nt.cpp:2:35\\n40 bytes (static)" }\n'
+            'node: { title: "app" label: "int app(int)\\nt.cpp:2:16\\n16 bytes (static)" }\n'
+            'node: { title: "memcpy" label: "memcpy\\n<built-in>" shape : ellipse }\n}\n')
+        g8 = Graph()
+        load_su(g8, Path(d))
+        check(".ci frames by assembler name, local prefix dropped, externals skipped",
+              g8.frames == {"_ZZ3appENKUliE_clEi": 40, "app": 16})
+    # C++ .su signatures
+    m = SU_RE.match("/a/b.cpp:74:18:rclcpp::Result fx::S::configure(rclcpp::Node&)\t80\tstatic")
+    check("c++ .su line keeps its qualified signature",
+          m is not None and m.group("fn") == "rclcpp::Result fx::S::configure(rclcpp::Node&)")
+    check("c++ .su: return type dropped",
+          cxx_su_signature("void app_main()") == "app_main()"
+          and cxx_su_signature("std::pair<int, int> ns::f(int) const") == "ns::f(int) const"
+          and cxx_su_signature("int nros_app_main(int, char**)") == "nros_app_main(int, char**)")
+    g7 = Graph()
+    g7.functions |= {"app_main", "_ZN2ns1fEi", "_Z4gonev"}
+    g7.su_signatures = {"app_main()": 32, "ns::f(int)": 24}
+    demangled = {"_ZN2ns1fEi": "ns::f(int)", "_Z4gonev": "gone()"}
+    resolve_cxx_su_frames(g7, lambda ns: [demangled[n] for n in ns])
+    check("c++ .su: extern C by name, mangled by demangled text",
+          g7.frames == {"app_main": 32, "_ZN2ns1fEi": 24})
     # the build's CHECK
     res = {"OPEN": {"floor": 40000, "measured": True}}
     rc, lines = check_stacks(res, {"OPEN": 32768}, "K")

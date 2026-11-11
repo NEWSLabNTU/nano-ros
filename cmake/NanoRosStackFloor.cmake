@@ -2,8 +2,10 @@
 #
 # Every build measures the thread stack floor of the image it links
 # (`scripts/nros-stack-floor.py`: the image's own frames, from stable
-# `-C save-temps` bitcode through the pinned llc for Rust and `-fstack-usage`
-# `.su` files for C). On this road the only stack the image states is the
+# `-C save-temps` bitcode through the pinned llc for Rust and GCC's
+# `-fcallgraph-info=su` `.ci` files (frames by assembler name, so C++ matches
+# its mangled symbols; `-fstack-usage` `.su` beside them as the fallback).
+# On this road the only stack the image states is the
 # FreeRTOS carrier's `.app_stack_bytes`, so the check is
 #
 #     app_stack_bytes >= floor(OPEN from app_task_entry)
@@ -105,11 +107,34 @@ function(nros_stack_floor_cargo_env _target)
     nros_corrosion_env_target("${_target}" _env_target)
     if(NOT TARGET ${_env_target})
         message(FATAL_ERROR "nros_stack_floor_cargo_env(${_target}): no Corrosion env target "
-            "`${_env_target}` -- call it after corrosion_import_crate()")
+            "`${_env_target}` -- call it after the crate is imported")
     endif()
     _nros_stack_floor_merge_env(${_env_target} RUSTFLAGS "-Csave-temps")
-    _nros_stack_floor_merge_env(${_env_target} CFLAGS "-fstack-usage")
-    _nros_stack_floor_merge_env(${_env_target} CXXFLAGS "-fstack-usage")
+    _nros_stack_floor_merge_env(${_env_target} CFLAGS "-fstack-usage -fcallgraph-info=su")
+    _nros_stack_floor_merge_env(${_env_target} CXXFLAGS "-fstack-usage -fcallgraph-info=su")
+endfunction()
+
+# The same flags as `cmake -E env` rows, for a cargo command Corrosion does not
+# run (the generated message FFI crates, NanoRosGenerateInterfaces.cmake).
+# Empty when off or not FreeRTOS. Such a command sets no RUSTFLAGS of its own.
+#
+# RUSTFLAGS in the environment REPLACES the config files' rustflags. For the
+# FreeRTOS triples the only one is the root `[build] rustflags =
+# symbol-mangling-version=v0`, which is the toolchain default since 1.99
+# (measured: a plain rustc names `_RNv...`), so nothing is lost; a FreeRTOS
+# triple that gains a `[target.<t>] rustflags` row needs this revisited.
+function(nros_stack_floor_cargo_env_list _out)
+    set(${_out} "" PARENT_SCOPE)
+    _nros_stack_floor_enabled(_on)
+    nros_platform_family(_fam "${NROS_PLATFORM}")
+    if(NOT _on OR NOT _fam STREQUAL "freertos")
+        return()
+    endif()
+    set(${_out}
+        "RUSTFLAGS=-Csave-temps"
+        "CFLAGS=-fstack-usage -fcallgraph-info=su"
+        "CXXFLAGS=-fstack-usage -fcallgraph-info=su"
+        PARENT_SCOPE)
 endfunction()
 
 # Every non-imported library the target links, transitively.
@@ -182,7 +207,8 @@ function(nros_stack_floor_check _exe)
         get_target_property(_type "${_t}" TYPE)
         if(NOT _imp AND _type MATCHES "^(EXECUTABLE|STATIC_LIBRARY|OBJECT_LIBRARY)$")
             target_compile_options("${_t}" PRIVATE
-                "$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-usage>")
+                "$<$<COMPILE_LANGUAGE:C,CXX>:-fstack-usage>"
+                "$<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:GNU>>:-fcallgraph-info=su>")
         endif()
     endforeach()
 
@@ -203,9 +229,10 @@ function(nros_stack_floor_check _exe)
             --link-map "${_map}" --link-dir "${_bindir}" --link-dir "${CMAKE_BINARY_DIR}"
             --su "${CMAKE_BINARY_DIR}"
             --bitcode-dir "${CMAKE_BINARY_DIR}/cargo/*/${_SF_TARGET}/${_SF_PROFILE}/deps"
+            --bitcode-dir "${CMAKE_BINARY_DIR}/**/nano_ros_*_ffi_*/target/${_SF_TARGET}/*/deps"
             --sysroot
             --llc-cache "${_dir}/llc"
-        COMMENT "nano-ros: stack floor of ${_key} (issue 2400)"
+        COMMENT "nano-ros: stack floor of ${_key}"
         VERBATIM)
     message(STATUS "nano-ros: stack floor of ${_exe} checked at build as ${_key} "
         "(OPEN from ${_SF_ROOT} against ${_SF_STACK} B; NROS_STACK_FLOOR=OFF skips)")

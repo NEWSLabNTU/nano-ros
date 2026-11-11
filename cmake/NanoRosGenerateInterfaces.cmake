@@ -65,6 +65,7 @@ set(_NANO_ROS_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 # used by both this generator and the Zephyr-module sibling. include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardFacts.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStackFloor.cmake")  # issue 2400 W2
 # `nros_read_package_xml_body()` — regex reads of a package.xml must not see
 # commented-out elements (phase-348 W1).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
@@ -703,10 +704,14 @@ function(nros_generate_interfaces target)
       # without it rustup answers with the host default, which has no board
       # targets. Empty when nothing was pinned (in-tree, or the user chose).
       nros_rust_toolchain_env(_ffi_toolchain_env)
+      # issue 2400 W2 -- bitcode + C frames for the stack-floor CHECK, as the
+      # Corrosion imports get through nros_stack_floor_cargo_env().
+      nros_stack_floor_cargo_env_list(_ffi_stack_floor_env)
       set(_ffi_env "")
-      if(NOT _NROS_FFI_ENV STREQUAL "" OR NOT _ffi_toolchain_env STREQUAL "")
+      if(NOT _NROS_FFI_ENV STREQUAL "" OR NOT _ffi_toolchain_env STREQUAL ""
+         OR NOT _ffi_stack_floor_env STREQUAL "")
         set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV}
-            ${_ffi_toolchain_env})
+            ${_ffi_toolchain_env} ${_ffi_stack_floor_env})
       endif()
       # Issue 1712 — the image's own `[image.<id>] env`, as a `--config` flag
       # (below an exported variable, unlike a `cmake -E env` row) plus a
