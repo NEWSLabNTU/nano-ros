@@ -81,7 +81,6 @@ build::check::linux-check#linux-rust-custom-msg                          35430
 build::check::linux-check#linux-rust-custom-transport-talker             35357
 build::check::linux-check#mps2-an385-baremetal-rust-listener             34941
 build::check::linux-check#linux-rust-listener-rtic                       31675
-build::check::linux-check#mps2-an385-baremetal-rust-talker               30351
 build::check::linux-check#linux-rust-service-client-callback             29162
 build::check::linux-check#linux-rust-action-server-rtic                  28994
 build::check::linux-check#linux-rust-talker-rtic                         28077

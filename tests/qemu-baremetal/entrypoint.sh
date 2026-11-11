@@ -48,11 +48,22 @@ fi
 # D10) is the image this container runs: its address and MAC on
 # `[network.docker]` — the bridge below — and its router, 172.20.0.2. It
 # replaced the board crate's `docker` feature.
-BINARY_NAME="qemu-bsp-${QEMU_ROLE}"
 EXAMPLE_DIR="examples/mps2-an385-baremetal/rust/${QEMU_ROLE}"
 IMAGE="docker"
 
-BINARY="/work/${EXAMPLE_DIR}/build/${IMAGE}/target/thumbv7m-none-eabi/release/${BINARY_NAME}"
+# phase-531 W6 — the talker is a one-package workspace (RFC-0122 D3): its
+# `docker` image is in the bringup, and `nros build` generates the entry
+# `docker_entry`, here into a target dir of its own. The listener is still a
+# leaf, which `nros build` builds in `build/<image>/`.
+if [ -f "/work/${EXAMPLE_DIR}/.colcon_workspace" ]; then
+    SYSTEM_DIR="${EXAMPLE_DIR}/src/qemu_bsp_${QEMU_ROLE}_bringup"
+    BUILD_ARGS="${IMAGE} -- --release --target-dir target-docker"
+    BINARY="/work/${EXAMPLE_DIR}/target-docker/thumbv7m-none-eabi/release/${IMAGE}_entry"
+else
+    SYSTEM_DIR="${EXAMPLE_DIR}"
+    BUILD_ARGS="${IMAGE} -- --release"
+    BINARY="/work/${EXAMPLE_DIR}/build/${IMAGE}/target/thumbv7m-none-eabi/release/qemu-bsp-${QEMU_ROLE}"
+fi
 
 echo "============================================"
 echo "  QEMU Container: ${QEMU_ROLE} (${QEMU_EXAMPLE})"
@@ -72,7 +83,7 @@ if [ ! -f "$BINARY" ]; then
 
     # Build the `docker` image (as host user to avoid root-owned artifacts).
     cd "/work/${EXAMPLE_DIR}"
-    $RUNAS bash -c "source /work/activate.sh && nros build ${IMAGE} -- --release"
+    $RUNAS bash -c "source /work/activate.sh && nros build ${BUILD_ARGS}"
 
     if [ ! -f "$BINARY" ]; then
         echo "Error: Build failed"
@@ -160,7 +171,7 @@ echo ""
 
 # The NIC comes from the image's network (`attach = { tap = "tap0" }`), with the
 # image's MAC: one answer, `nros ws qemu-nic`, the test harness's too.
-NIC="$($RUNAS bash -c "source /work/activate.sh && nros ws qemu-nic /work/${EXAMPLE_DIR} --image ${IMAGE} --model lan9118")"
+NIC="$($RUNAS bash -c "source /work/activate.sh && nros ws qemu-nic /work/${SYSTEM_DIR} --image ${IMAGE} --model lan9118")"
 echo "  -nic ${NIC}"
 
 # Run QEMU (as host user if non-root)

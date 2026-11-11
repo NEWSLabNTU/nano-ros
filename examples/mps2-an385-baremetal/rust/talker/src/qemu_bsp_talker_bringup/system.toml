@@ -1,10 +1,10 @@
-# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
-# schema a workspace bringup uses. Switching board is editing `[image.*] board`
-# and re-running `nros configure`.
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a
+# one-package workspace (phase-531 W6, RFC-0122 D3). Switching board is
+# editing `[image.*] board`.
 
 [system]
 # The image a plain build (and every fixture row) takes; `docker` below is
-# the compose test's (`tests/qemu-baremetal`), built with `--image docker`.
+# the compose test's (`tests/qemu-baremetal`), built with `nros build docker`.
 default_images = ["mps2-an385-baremetal"]
 name = "qemu_bsp_talker"
 rmw = "zenoh"
@@ -17,6 +17,11 @@ pkg = "qemu_bsp_talker"
 class = "qemu_bsp_talker::Talker"
 name = "talker"
 dispatch = "deferred"
+
+# A panic ends in the board's crate-root provider (`panic-semihosting`),
+# which the generated entry links (RFC-0077, issue 1305).
+[image_defaults]
+panic = "own"
 
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.

@@ -11,7 +11,6 @@ examples/linux/c/custom-platform/system.toml
 examples/mps2-an385-baremetal/c/talker/system.toml
 examples/mps2-an385-baremetal/cpp/talker/system.toml
 examples/mps2-an385-baremetal/rust/listener/system.toml
-examples/mps2-an385-baremetal/rust/talker/system.toml
 examples/rv-virt-threadx/rust/action-client/system.toml
 examples/rv-virt-threadx/rust/action-server/system.toml
 examples/rv-virt-threadx/rust/listener/system.toml

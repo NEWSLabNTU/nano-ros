@@ -196,10 +196,10 @@ Build with `--features link-tls`:
 
 ```bash
 # Build TLS-enabled examples
-cd examples/mps2-an385-baremetal/rust/talker && nros configure
+cd examples/mps2-an385-baremetal/rust/listener && nros configure
 cd .. && cargo build --release --features link-tls \
-      --manifest-path talker/Cargo.toml \
-      --config talker/build/mps2-an385-baremetal/nros-cargo.toml
+      --manifest-path listener/Cargo.toml \
+      --config listener/build/mps2-an385-baremetal/nros-cargo.toml
 ```
 
 The CA certificate must be passed via `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` at runtime
@@ -299,11 +299,13 @@ just docker test-qemu         # Runs zenohd, talker, listener in separate contai
 just qemu setup-network                    # Requires sudo
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
-# Terminal 2: Talker (192.0.2.10)
-bin=build/cargo-fixtures/baremetal/thumbv7m-none-eabi/nros-relwithdebinfo
-./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary "$bin/qemu-bsp-talker"
+# Terminal 2: Talker (192.0.2.10) — a one-package workspace, so its image is
+# the generated entry under the witness's own fixture target dir
+talker=examples/mps2-an385-baremetal/rust/talker/target-fixtures/thumbv7m-none-eabi/nros-relwithdebinfo
+./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary "$talker/mps2_an385_baremetal_entry"
 
 # Terminal 3: Listener (192.0.2.11)
+bin=build/cargo-fixtures/baremetal/thumbv7m-none-eabi/nros-relwithdebinfo
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary "$bin/qemu-bsp-listener"
 ```
 

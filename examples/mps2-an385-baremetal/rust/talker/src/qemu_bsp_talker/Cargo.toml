@@ -1,0 +1,28 @@
+[package]
+name = "qemu_bsp_talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Simple QEMU talker example (bare-metal MPS2-AN385)"
+
+# The node package: `lib.rs` IS the node (`nros::node!(Talker)` emits
+# `register`). `nros build` generates the entry that boots it.
+[lib]
+crate-type = ["rlib"]
+
+# The board, network identity and node declaration live in the bringup's
+# `system.toml` (`../qemu_bsp_talker_bringup`, RFC-0098 D3/D5). Nothing here
+# names a board: every image-only dependency (board crate, RMW backend,
+# runtime, panic handler) is the generated entry's (RFC-0121 D6), so switching
+# `[image.*] board` is the only edit a board switch needs.
+
+[dependencies]
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+# User diagnostics route through `nros-log`; the dispatcher is installed by the
+# board BoardEntry boot scaffold — this crate only registers its Logger handle.
+# phase-338 W7 — the node body logs through the `log` facade like every
+# other platform's copy; the board bridges it to semihosting.
+log = { version = "0.4", default-features = false }
+# Generated message types (from package.xml via `nros dev codegen rust`).
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed

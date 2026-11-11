@@ -122,7 +122,7 @@ static NATIVE_SERVICE_CLIENT_CALLBACK_BINARY: OnceCell<PathBuf> = OnceCell::new(
 /// Cached path to the native-rs-custom-msg binary
 static NATIVE_CUSTOM_MSG_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the qemu-bsp-talker binary
+/// Cached path to the bare-metal Rust talker witness's image
 static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 // Phase 169.4 — bare-metal MPS2-AN385 DDS fixture statics removed
@@ -7251,11 +7251,28 @@ pub fn custom_msg_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build qemu-bsp-talker (cached)
+/// The bare-metal Rust talker witness (cached).
+///
+/// phase-531 W6 — `examples/mps2-an385-baremetal/rust/talker` is a
+/// one-package workspace (RFC-0122 D3): its image is a `[[workspace_fixture]]`
+/// row, and the binary is the generated `mps2_an385_baremetal_entry` under the
+/// witness's own `target-fixtures/`, no longer `qemu-bsp-talker` in the shared
+/// `build/cargo-fixtures/baremetal` group.
 pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
+    const LEAF: &str = "examples/mps2-an385-baremetal/rust/talker";
     QEMU_BSP_TALKER_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-talker"))
+        .get_or_try_init(|| {
+            migrated_leaf_binary(
+                LEAF,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| {
+                Err(TestError::BuildFailed(format!(
+                    "{LEAF}: no [[workspace_fixture]] row in examples/fixtures.toml"
+                )))
+            })
+        })
         .map(|p| p.as_path())
 }
 
@@ -7298,11 +7315,11 @@ pub fn qemu_baremetal_capi_binary(case: &str) -> TestResult<PathBuf> {
 
 // Phase 169.4 — bare-metal DDS fixture builders deleted with the
 // Rust DDS examples (Phase 169.2).
-/// rstest fixture that provides the qemu-bsp-talker binary path
+/// rstest fixture that provides the bare-metal Rust talker witness's image
 #[rstest::fixture]
 pub fn qemu_bsp_talker_binary() -> PathBuf {
     build_qemu_bsp_talker()
-        .require("qemu-bsp-talker")
+        .require("baremetal-rust-zenoh-talker")
         .to_path_buf()
 }
 
@@ -8464,7 +8481,7 @@ mod tests {
     /// everything" would pass the first arm.
     /// Issue 1874 -- a lane that selects the platform at ONE coordinate (tier 2:
     /// `baremetal,c,zenoh`) skips a shared-dir binary whose own row sits at
-    /// another (`qemu-bsp-talker`, a Rust row), and still sends an in-lane row's
+    /// another (`qemu-bsp-listener`, a Rust row), and still sends an in-lane row's
     /// binary (`baremetal-c-talker`) to the hard presence check. Before, both
     /// fell through and the Rust one failed as "MISSING for an in-lane
     /// coordinate" because the build had, correctly, not built it.
@@ -8479,12 +8496,12 @@ mod tests {
         .into_iter()
         .collect();
         assert_eq!(
-            crate::fixtures::lane::rows_producing_binary("baremetal", "qemu-bsp-talker").len(),
+            crate::fixtures::lane::rows_producing_binary("baremetal", "qemu-bsp-listener").len(),
             1,
             "the binary name attributes to exactly one row"
         );
         let out = std::panic::catch_unwind(|| {
-            shared_group_lane_check("baremetal", "qemu-bsp-talker", Some(&tier2))
+            shared_group_lane_check("baremetal", "qemu-bsp-listener", Some(&tier2))
         });
         let msg = match out {
             Err(p) => p
