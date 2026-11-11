@@ -825,11 +825,12 @@ function(nros_px4_add_module)
             "nros_px4_add_module: the prebuilt archive is uORB-only, checked at "
             "release (${_NROS_PX4_PREBUILT_STAMP})")
     else()
+        # History: issue 1050.
         message(STATUS
             "nros_px4_add_module: llvm-nm not found via rustc sysroot; "
             "skipping the backend-symbol precheck (the link will still catch "
             "a mismatched archive, ~10 min later; an UNDECLARED backend in the "
-            "archive links fine and fails at runtime — issue 1050).")
+            "archive links fine and fails at runtime).")
     endif()
 
     # PUBLIC so the archives propagate to the final px4 link. px4_add_module
@@ -864,10 +865,11 @@ function(nros_px4_add_module)
     if("zenoh" IN_LIST _networked_backends)
         foreach(_stale IN ITEMS "${NROS_ZENOH_ARCHIVE}" "$ENV{NROS_ZENOH_ARCHIVE}")
             if(NOT "${_stale}" STREQUAL "")
+                # History: issue 0436.
                 message(WARNING
                     "nros_px4_add_module: NROS_ZENOH_ARCHIVE is set (${_stale}) but is "
-                    "no longer linked — zenoh-pico now comes solely from libnros_cpp.a "
-                    "(issue 0436). Linking both put two copies of zenoh-pico in one "
+                    "no longer linked — zenoh-pico now comes solely from libnros_cpp.a. "
+                    "Linking both put two copies of zenoh-pico in one "
                     "image. Build the umbrella with a platform feature instead.")
             endif()
         endforeach()

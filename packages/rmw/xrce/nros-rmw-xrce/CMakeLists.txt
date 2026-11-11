@@ -150,9 +150,10 @@ foreach(_pair "NROS_XRCE_VENDOR_ARCHIVE;archive" "NROS_XRCE_CFFI_INCLUDE;include
             "`cargo build -p nros-rmw-xrce-cffi`.")
     endif()
 endforeach()
+# History: phase-420 W9.
 message(STATUS
     "nano-ros: nros-rmw-xrce links the cargo lane's vendored archive "
-    "${NROS_XRCE_VENDOR_ARCHIVE} (phase-420 W9 step 4 — one compile)")
+    "${NROS_XRCE_VENDOR_ARCHIVE} (one compile)")
 
 # ---- The IP link knob ------------------------------------------------------
 # Issue 1068 / phase-204.7. `NROS_LINK_IP=0` sheds the IP (UDP/TCP) transport on
@@ -247,9 +248,10 @@ _nros_xrce_project_version("${MICROXRCEDDS_CLIENT_DIR}/CMakeLists.txt"
     microxrcedds_client _uxr)
 _nros_xrce_project_version("${MICROCDR_DIR}/CMakeLists.txt"
     microcdr _ucdr)
+# History: issue 1069.
 message(STATUS
     "nano-ros: nros-rmw-xrce vendored micro-XRCE-DDS-Client ${_uxr_VERSION} "
-    "+ micro-CDR ${_ucdr_VERSION} (derived from their CMakeLists, issue 1069)")
+    "+ micro-CDR ${_ucdr_VERSION} (derived from their CMakeLists)")
 # The client also states which micro-CDR it expects — `set(_microcdr_version …)`.
 # Cross-checking it against `_ucdr_VERSION` catches bumping one submodule and not
 # the other; it lives in the GATE rather than here so there is one implementation
@@ -681,7 +683,8 @@ if(TARGET nros_platform_posix)
     target_link_libraries(nros_rmw_xrce INTERFACE
         nros_rmw_xrce_vendored
         nros_platform_posix)
-    message(STATUS "nano-ros: nros-rmw-xrce allocates via nros_platform_alloc (issue 0832)")
+    # History: issue 0832.
+    message(STATUS "nano-ros: nros-rmw-xrce allocates via nros_platform_alloc")
 else()
     message(FATAL_ERROR
         "nros-rmw-xrce needs a platform ABI implementation (nros_platform_alloc/dealloc). "

@@ -434,10 +434,11 @@ function(_nros_west_leaf_sizing)
     endif()
     nros_resolve_cli(_nros OPTIONAL CONTEXT "_nros_west_leaf_sizing")
     if(NOT _nros OR NOT EXISTS "${_nros}")
+        # History: issues 1662, 2086.
         message(STATUS
             "nros: standalone leaf sizes NOT derived -- no nros CLI "
             "(build it with `./scripts/bootstrap.sh`; contributors: `just setup-cli`); "
-            "pools stay at Kconfig / crate defaults (issues 1662, 2086)")
+            "pools stay at Kconfig / crate defaults")
         return()
     endif()
     # Issue 2086 -- a leaf that sizes from its census had it taken by the
@@ -488,9 +489,9 @@ function(_nros_west_leaf_sizing)
     # The verb names what it read: a Rust leaf's probe sidecars, or a C/C++
     # leaf's `[[component]] entities` / census (issue 2086).
     if(_basis)
+        # History: issues 1662, 2086.
         message(STATUS
-            "nros: standalone leaf -- entity inventory from its ${_basis} "
-            "(issues 1662, 2086)")
+            "nros: standalone leaf -- entity inventory from its ${_basis}")
         # phase-530 W4 (RFC-0120 D5) -- this IS the leaf's answer, written
         # before every reader from configure's own inputs. The readers read it
         # as a seed, and the standalone composer (`NanoRosNodeRegister.cmake`),
@@ -593,9 +594,10 @@ function(_nros_load_west_sizing_descriptor)
            AND EXISTS "${NROS_WEST_LEAF_DESCRIPTOR}")
         # Issue 1662 -- no entry named one, and this is a standalone leaf
         # whose descriptor `_nros_west_leaf_sizing()` just wrote.
+        # History: issues 1662, 2086.
         message(STATUS
             "nros: sizing descriptor named to cargo -- ${NROS_WEST_LEAF_DESCRIPTOR} "
-            "(standalone leaf, issues 1662, 2086)")
+            "(standalone leaf)")
         _nros_resolve_knob(NROS_SIZING_DESCRIPTOR "${NROS_WEST_LEAF_DESCRIPTOR}" derived)
     endif()
 endfunction()
@@ -637,12 +639,12 @@ function(_nros_compare_stated_to_derived env_name stated rung derived_var source
     endif()
     _nros_derived_composition(${derived_var} _comp)
     if(stated LESS _derived)
+        # History: phase-478 D2.
         message(WARNING
             "nros: ${env_name}=${stated}, stated by ${rung}, is BELOW the "
             "${_derived} this image's ${source} derives${_comp}. The stated value wins, "
             "so the image is sized short of what its own inventory says it "
-            "needs. Delete the stated line to take the derivation, or raise it "
-            "(phase-478 D2).")
+            "needs. Delete the stated line to take the derivation, or raise it.")
     elseif(stated GREATER _derived)
         message(STATUS
             "nros: ${env_name}=${stated}, stated by ${rung}, is above the "
@@ -1732,9 +1734,10 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
             "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
     else()
+        # History: phase-446 F3.
         message(STATUS
             "nros: NROS_PARAM_SERVICE_BUFFER_SIZE not stated -- nros-node derives "
-            "it from the contract's params, or keeps its default (phase-446 F3)")
+            "it from the contract's params, or keeps its default")
     endif()
     # phase-446 W4 -- the PARAMETER STORE, on the derivable ladder. The entity
     # inventory reads the contract's `params:`: the slot count and the name
@@ -2134,10 +2137,11 @@ function(_nros_cargo_workspace_root manifest out_var)
         ERROR_VARIABLE _err)
 
     if(NOT _rc EQUAL 0 OR _root STREQUAL "")
+        # History: issue 0616.
         message(STATUS
             "nano-ros: cargo locate-project could not resolve a workspace root for "
             "${_manifest_real} (${_err}); treating it as its own root, which gives it "
-            "a private cargo target-dir (issue 0616).")
+            "a private cargo target-dir.")
         set(${out_var} "${_manifest_real}" PARENT_SCOPE)
         return()
     endif()

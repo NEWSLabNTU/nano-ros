@@ -354,9 +354,10 @@ function(nros_sizing_descriptor_from_model _out_var)
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT _rc EQUAL 0)
         string(REGEX REPLACE "\n+" " " _why "${_err}")
+        # History: RFC-0100 D6.
         message(STATUS
             "nano-ros: no sizing descriptor written for `${_nsw_ENTRY}` -- ${_why}. "
-            "Every consumer keeps its own default sizes (RFC-0100 D6).")
+            "Every consumer keeps its own default sizes.")
         return()
     endif()
     if(_out STREQUAL "")
@@ -473,9 +474,10 @@ function(nros_sizing_descriptor_from_leaf _out_var)
         endif()
         string(REGEX REPLACE "\n+" " " _why "${_err}")
         string(SUBSTRING "${_why}" 0 200 _why)
+        # History: RFC-0100 D6.
         message(STATUS
             "nano-ros: no sizing descriptor written for leaf `${_nsl_LEAF}` -- ${_why}. "
-            "Every consumer keeps its own default sizes (RFC-0100 D6).")
+            "Every consumer keeps its own default sizes.")
         return()
     endif()
     if(_out MATCHES "\nentity-fragment ([^\n]+)$")
@@ -543,9 +545,10 @@ function(_nros_sizing_descriptor_runtime _out_var)
         endif()
     endforeach()
     if(NOT _model_args)
+        # History: RFC-0100 D12.
         message(STATUS
             "nano-ros: ${_n} entries share this configure's runtime and none resolved a "
-            "model, so no runtime sizing descriptor is written (RFC-0100 D12)")
+            "model, so no runtime sizing descriptor is written")
         return()
     endif()
     list(LENGTH _rmws _nrmw)
@@ -555,7 +558,7 @@ function(_nros_sizing_descriptor_runtime _out_var)
         # runtime have no single `registration_path`, so refuse the file.
         message(STATUS
             "nano-ros: the entries sharing this runtime name different backends "
-            "(${_rmws}), so no runtime sizing descriptor is written (RFC-0100 D12)")
+            "(${_rmws}), so no runtime sizing descriptor is written")
         return()
     endif()
     set(_entry_args "")
@@ -599,9 +602,10 @@ function(_nros_sizing_descriptor_runtime _out_var)
     set(_path "")
     if(NOT _rc EQUAL 0)
         string(REGEX REPLACE "\n+" " " _why "${_err}")
+        # History: RFC-0100 D6.
         message(STATUS
             "nano-ros: no runtime sizing descriptor written -- ${_why}. Every consumer "
-            "keeps its own default sizes (RFC-0100 D6).")
+            "keeps its own default sizes.")
     elseif(NOT _out STREQUAL "")
         nros_cli_rows(_row "${_out}")  # issue 2200
         set(_path "${_row_0}")
@@ -611,9 +615,9 @@ function(_nros_sizing_descriptor_runtime _out_var)
                 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
             endif()
         endforeach()
+        # History: RFC-0100 D12.
         message(STATUS
-            "nano-ros: runtime sizing descriptor for ${_n} entries (${_entries}) -- ${_path} "
-            "(RFC-0100 D12)")
+            "nano-ros: runtime sizing descriptor for ${_n} entries (${_entries}) -- ${_path}")
     endif()
     set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_KEY "${_key}")
     set_property(GLOBAL PROPERTY NROS_SIZING_RUNTIME_MEMO_PATH "${_path}")
@@ -672,10 +676,11 @@ function(nros_sizing_descriptor_cargo_env _out_var)
         # Only reachable with several descriptors and at most one recorded
         # ENTRY -- i.e. a hand-written caller of the producer. Kept as the
         # refusal it always was rather than guessing which file is the image.
+        # History: RFC-0100 D6.
         message(STATUS
             "nano-ros: ${_n} sizing descriptors in this configure and one shared cargo "
             "archive, so none is named to cargo -- the Rust half keeps its own defaults "
-            "rather than sizing every image from one of them (RFC-0100 D6).")
+            "rather than sizing every image from one of them.")
         return()
     endif()
     list(GET _paths 0 _one)
@@ -1018,9 +1023,10 @@ function(nros_sizing_descriptor_apply_cyclonedds)
         string(REGEX REPLACE "^NROS_SIZING_DESCRIPTOR=" "" _path "${_row}")
     endif()
     if(_path STREQUAL "" OR NOT EXISTS "${_path}")
+        # History: RFC-0100 D6.
         message(STATUS
             "nano-ros: no sizing descriptor names this runtime, so ${_nac_TARGET}'s Cyclone "
-            "TUs keep their header defaults (RFC-0100 D6)")
+            "TUs keep their header defaults")
         return()
     endif()
     nros_sizing_descriptor_read("${_path}" QUIET)
@@ -1045,9 +1051,10 @@ function(nros_sizing_descriptor_apply_cyclonedds)
         return()
     endif()
     target_compile_definitions(${_nac_TARGET} PRIVATE ${_defs})
+    # History: RFC-0100 D5/D11, issues 1653/1661.
     message(STATUS
         "nano-ros: Cyclone sized from the runtime's sizing descriptor -- ${_defs} "
-        "-> ${_nac_TARGET} (RFC-0100 D5/D11, issues 1653/1661)")
+        "-> ${_nac_TARGET}")
 endfunction()
 
 # nros_sizing_descriptor_west_apply_cyclonedds_deferred(<target>) — issue 1653,
@@ -1120,9 +1127,10 @@ function(nros_sizing_descriptor_read _descriptor)
 
     if(NOT EXISTS "${_descriptor}")
         if(NOT _nsd_QUIET)
+            # History: RFC-0100 D6.
             message(STATUS
                 "nano-ros: no sizing descriptor at ${_descriptor}, so every consumer keeps "
-                "its own default sizes (RFC-0100 D6). Run `nros configure` in the entry's "
+                "its own default sizes. Run `nros configure` in the entry's "
                 "workspace to generate one.")
         endif()
         return()

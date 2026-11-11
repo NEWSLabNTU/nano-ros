@@ -24,7 +24,7 @@ endif()
 if(NOT EXISTS "${NROS_PLATFORM_CFFI_INCLUDE}/nros/platform.h")
     message(WARNING
         "NROS_PLATFORM_CFFI_INCLUDE='${NROS_PLATFORM_CFFI_INCLUDE}' has no nros/platform.h "
-        "(stale pre-phase-243 cache?); healing to '${_nros_platform_api_include}'.")
+        "(a stale cache from an older layout?); healing to '${_nros_platform_api_include}'.")
     set(NROS_PLATFORM_CFFI_INCLUDE "${_nros_platform_api_include}"
         CACHE PATH "Path to the nros platform C ABI headers (contains nros/platform.h)" FORCE)
 endif()

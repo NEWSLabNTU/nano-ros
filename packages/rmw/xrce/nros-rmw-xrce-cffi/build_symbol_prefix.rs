@@ -89,7 +89,7 @@ pub fn generate(
             println!(
                 "cargo:warning=nros-rmw-xrce-cffi: {} is not an ELF object, so the vendored \
                  Micro-XRCE-DDS-Client is built WITHOUT its private symbol prefix — it will \
-                 collide with any other copy of the client in the same image (issue 1896)",
+                 collide with any other copy of the client in the same image",
                 obj.display()
             );
             elf = false;

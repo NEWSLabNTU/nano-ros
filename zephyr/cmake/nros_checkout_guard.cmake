@@ -72,9 +72,10 @@ endfunction()
 # (`APPLICATION_SOURCE_DIR`).
 function(nros_assert_single_checkout module_root app_dir)
     if(NROS_ALLOW_FOREIGN_MODULE)
+        # History: issue 1379.
         message(WARNING
             "nano-ros: NROS_ALLOW_FOREIGN_MODULE is set — not checking whether "
-            "this image mixes two nano-ros checkouts (issue 1379).")
+            "this image mixes two nano-ros checkouts.")
         return()
     endif()
 
@@ -155,9 +156,10 @@ function(nros_assert_sdk_not_foreign module_root sdk_dir)
         return() # no Zephyr SDK toolchain (a host or GNU Arm build)
     endif()
     if(NROS_ALLOW_FOREIGN_SDK)
+        # History: phase-478 I2.
         message(WARNING
             "nano-ros: NROS_ALLOW_FOREIGN_SDK is set — not checking whether the "
-            "Zephyr SDK belongs to another nano-ros checkout (phase-478 I2).")
+            "Zephyr SDK belongs to another nano-ros checkout.")
         return()
     endif()
     get_filename_component(_sdk_real "${sdk_dir}" REALPATH)

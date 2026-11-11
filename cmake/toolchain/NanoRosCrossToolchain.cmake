@@ -292,11 +292,12 @@ function(nros_cross_toolchain_report)
     get_property(_stranded GLOBAL PROPERTY "_NROS_CT_STRANDED_${_A_TOOL}")
     if(NOT "${_stranded}" STREQUAL "")
         string(REPLACE ";" ", " _stranded_text "${_stranded}")
+        # History: issue 1546.
         message(NOTICE
             "nano-ros: the SDK store has ${_A_TOOL} ${_stranded_text} but NOT the pinned "
             "${_pin_ver} — those are not used.\n"
             "          The store is shared between checkouts and the pin is per-checkout, so\n"
-            "          only <store>/${_A_TOOL}/<pin> counts (issue 1546). Provision the pin:\n"
+            "          only <store>/${_A_TOOL}/<pin> counts. Provision the pin:\n"
             "              nros setup --tool ${_A_TOOL}")
     endif()
 
@@ -433,6 +434,7 @@ function(nros_cross_toolchain_report)
             # The text quotes the error the user is ABOUT to get, because the
             # whole cost of issue 1117 was that the error, when it arrived, did
             # not name its cause and looked like a nano-ros bug.
+            # History: issues 1117, 1113.
             message(WARNING
                 "nano-ros: ${_A_TOOL} ${_ver} (via ${_A_ORIGIN}) is below the floor of "
                 "GCC ${NROS_CROSS_GCC_FLOOR_MAJOR}.\n"
@@ -440,8 +442,7 @@ function(nros_cross_toolchain_report)
                 "  C++ entry, the build will fail later with\n"
                 "      error: C99 designator '<member>' outside aggregate initializer\n"
                 "  in *_entry_nros_main_generated.cpp. THAT ERROR IS THIS — a GCC ${_major} C++\n"
-                "  frontend limitation, not a codegen bug (issue 1117; the wrong diagnosis it\n"
-                "  caused is issue 1113). Raising -std= does NOT help: GCC 10 rejects it at\n"
+                "  frontend limitation, not a codegen bug. Raising -std= does NOT help: GCC 10 rejects it at\n"
                 "  c++14, c++17 and c++20 alike, and GCC 11+ accepts it at all three.\n"
                 "  Fix:  nros setup --tool ${_A_TOOL}      (installs ${_pin_text})\n"
                 "  Or:   -D${_A_OVERRIDE_VAR}=/path/to/bin/<prefix>   (also honoured as an env var)")

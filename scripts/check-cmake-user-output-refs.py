@@ -12,7 +12,7 @@ nothing to do. The explanation still exists: `nros_message_detail()`
 WHAT IS COUNTED
 
 Text a default-level configure or build shows: the string arguments of
-`message(STATUS|NOTICE|WARNING|AUTHOR_WARNING ...)` and a custom command's or
+`message(STATUS|NOTICE|WARNING|AUTHOR_WARNING|DEPRECATION ...)` and a custom command's or
 target's `COMMENT "..."`, in every tracked `.cmake` file outside tests and
 examples plus the root `CMakeLists.txt`, that cite an issue (`issue 1234`,
 `#1234`), an RFC (`RFC-0100`) or a phase (`phase-517`). `FATAL_ERROR` and
@@ -41,7 +41,9 @@ from ratchet import fell_instructions, judge  # noqa: E402  phase-472 W9
 
 BASELINE = os.path.join(ROOT, ".config", "cmake-user-output-refs.json")
 REF = re.compile(r"\b(issues? \d{4}|RFC-\d{4}|phase-\d{3})|#\d{4}\b")
-SHOWN = ("STATUS", "NOTICE", "WARNING", "AUTHOR_WARNING")
+# Issue 2305 -- `DEPRECATION` prints at the default level too (a warning,
+# unless CMAKE_WARN_DEPRECATED is turned off).
+SHOWN = ("STATUS", "NOTICE", "WARNING", "AUTHOR_WARNING", "DEPRECATION")
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
 

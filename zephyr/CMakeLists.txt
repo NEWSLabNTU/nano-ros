@@ -218,9 +218,9 @@ foreach(_nros_conf IN LISTS _nros_conf_files)
             string(REGEX REPLACE "^[ \t]*CONFIG_(NROS_ZEPHYR_[A-Z_]+)=.*" "\\1" _nros_old "${_nros_line}")
             string(REPLACE "MAX_TIERS" "MAX_SCHED_TASKS" _nros_new "${_nros_old}")
             string(REPLACE "TIER_STACK" "SCHED_TASK_STACK" _nros_new "${_nros_new}")
+            # History: phase 536.
             message(WARNING "nano-ros: CONFIG_${_nros_old} (set in ${_nros_conf}) is "
-                "deprecated and will be removed; set CONFIG_${_nros_new} instead "
-                "(phase 536).")
+                "deprecated and will be removed; set CONFIG_${_nros_new} instead.")
         endforeach()
     endif()
 endforeach()
@@ -893,9 +893,10 @@ if(CONFIG_NROS_CPP_API)
     if(TARGET app)
         target_compile_options(app PRIVATE "${_nros_libc_shim}")
     else()
+        # History: issue 0918.
         message(WARNING
-            "nano-ros: no `app` target when the libc-compat shim was applied "
-            "(issue 0918). Example sources calling setvbuf() will fail to build "
+            "nano-ros: no `app` target when the libc-compat shim was applied. "
+            "Example sources calling setvbuf() will fail to build "
             "on a minimal-libc Zephyr.")
     endif()
     zephyr_library_compile_options("${_nros_libc_shim}")

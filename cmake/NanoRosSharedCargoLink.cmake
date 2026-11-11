@@ -53,7 +53,8 @@ if(EXISTS "${_target}")
         "not created by nano-ros, so it is not removed here.")
 endif()
 file(MAKE_DIRECTORY "${_target}")
+# History: issue 1990.
 message(STATUS
     "nano-ros: re-created the shared cargo dir ${_target} — it was removed "
     "(runner sweep?) after this build dir was configured, so cargo rebuilds "
-    "into it (issue 1990).")
+    "into it.")

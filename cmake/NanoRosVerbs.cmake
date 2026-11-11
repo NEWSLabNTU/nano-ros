@@ -437,7 +437,7 @@ function(nano_ros_add_node name)
     # nros_components_register_node. Opt-in nudge only — no default noise.
     if(NROS_WARN_LEGACY_VERBS)
         message(DEPRECATION
-            "nano_ros_add_node(${name}): consider the RFC-0057 split shape "
+            "nano_ros_add_node(${name}): consider the split shape "
             "(nano_ros_auto_add_library + nros_components_register_node).")
     endif()
     cmake_parse_arguments(_NRN "TYPED" "CLASS;HEADER;SHAPE;LANGUAGE;PANIC" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
