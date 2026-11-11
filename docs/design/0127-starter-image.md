@@ -12,9 +12,12 @@ superseded-by: null
 
 # RFC-0127 — One starter image, derived per audience
 
-**Status:** Draft (2026-11-11). Records the decision SHAPE only. Nothing here
-is ruled: every decision below is OPEN, with the recommendation stated, and
-the open questions (Q1 to Q9) are the user's. The work is
+**Status:** Draft (2026-11-11). **Option B is RULED** (user ruling
+2026-11-11): D1's structure (one generator, one multi-stage Dockerfile with
+`host`, `starter` and `starter-zephyr`), D4 (audiences are recipes, not
+images) and D5's customer `FROM` recipe. Everything else stays OPEN with its
+recommendation stated, and the open questions (Q1 to Q9) are the user's,
+except Q7, which B answers. The work is
 [phase-551](../roadmap/phase-551-starter-image.md), which supersedes
 [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md) W2 (the
 instructor image).
@@ -73,24 +76,26 @@ zenoh-pico/mbedTLS sources 77 MB, a minimal Rust about 1 GB (not measured),
 the Zephyr SDK 7.8 GB and its allowlisted workspace 1.7 GB. The current labs
 run on `mps2-an385-freertos` and `mps2-an385-baremetal`; none needs Zephyr.
 
-## Design (proposed shape, not ruled)
+## Design (B ruled; the rest proposed)
 
-### D1 — One generator, one multi-stage Dockerfile (OPEN, Q7)
+### D1 — One generator, one multi-stage Dockerfile (RULED, option B)
 
-**Recommended (option B):** refactor `scripts/ci/runner-container.sh` into a
+**Ruled 2026-11-11 (option B):** refactor `scripts/ci/runner-container.sh` into a
 shared library that writes ONE multi-stage Dockerfile from
 `nros-sdk-index.toml`, with targets:
 
 - `host`: `ubuntu:22.04` plus ROS 2 Humble and the host packages the index
   names. Shared with the CI runner, so the image a user starts from and the
   one CI tests in are the same layers.
-- `starter`: `host` plus the release `nros` (installed by `scripts/install.sh`,
+- `starter`: derived from `host`; it bakes `nros setup`. What it carries is
+  D2 (open): as proposed, the release `nros` (installed by `scripts/install.sh`,
   the user's own road), a baked `nros setup` for the Linux host and the
   `mps2-an385-baremetal` / `mps2-an385-freertos` boards with zenoh, a minimal
   Rust, and the template crates pre-warmed (D2).
-- `starter-zephyr`: `starter` plus the Zephyr SDK and workspace (D3).
+- `starter-zephyr`: derived from `starter`, plus the Zephyr SDK and
+  workspace. When it is built is D3 (open).
 
-Alternatives: (A) a fourth hand-written Dockerfile for the starter, which
+Not taken: (A) a fourth hand-written Dockerfile for the starter, which
 repeats the index in a file nothing checks, the drift the generator was
 written to end; (C) build the starter `FROM` the CI `ci-base` image, which
 bakes the arm cross-compiler and rustup directly rather than through the
@@ -118,10 +123,11 @@ repository is Q8.
 every release, until a lab needs it. It adds about 9.5 GB uncompressed, which
 is most of a lab network's pull budget (Q9).
 
-### D4 — Audiences are recipes, not images (OPEN, Q3)
+### D4 — Audiences are recipes, not images (RULED, option B)
 
-**Recommended:** one or two images; each audience gets a documented way of
-using them:
+**Ruled 2026-11-11:** audiences and customers are recipes on the starter, not
+separate images. Each gets a documented way of using it (the recipes'
+details below are proposed):
 
 - **Newcomer:** `docker run … starter`, then `nros new`. The book's first
   project, offline.
@@ -134,9 +140,10 @@ using them:
   a support request names what it ran (new: doctor has no container line
   today).
 
-### D5 — A customer derives `FROM` ours, under written guarantees (OPEN)
+### D5 — A customer derives `FROM` ours, under written guarantees (recipe RULED, option B)
 
-**Recommended:** a documented, probe-tested recipe
+**Ruled 2026-11-11:** a customer's image is a recipe on the starter. Proposed
+for it: a documented, probe-tested recipe
 (`FROM ghcr.io/…/nano-ros-starter:<ver>` plus the customer's own boards and
 packages), and four guarantees it may rely on:
 
@@ -198,23 +205,32 @@ names the recommendation above.
   build first. Recommended: Humble.
 - **Q3. Starter contents.** D2's list; Rust in, or a C/C++-only variant.
   Recommended: D2, Rust in, no variant.
-- **Q4. Zephyr.** In a separate `starter-zephyr`, on dispatch (D3), or in
-  `starter`, or not at all. Recommended: separate, on dispatch.
+- **Q4. Zephyr.** B rules that `starter-zephyr` is a target derived from
+  `starter`. Still open: when it is built (every release, or on dispatch).
+  Recommended: on dispatch (D3).
 - **Q5. Cadence.** Every release (D6), or on dispatch once per semester.
   Recommended: every release, `latest` gated by D7.
 - **Q6. arm64.** Wait for the runner decision, or prioritise it now.
   Recommended: amd64 first, arm64 next (D8).
-- **Q7. Generator.** Option B (D1), or a hand-written starter Dockerfile (A),
-  or `FROM` the CI image (C). Recommended: B.
+- **Q7. Generator.** Ruled by B (2026-11-11): one generator, the shared
+  library D1 names.
 - **Q8. Lab sources.** Pre-fetch template crates only (D2), or also clone a
   course repository; if so, which and who owns it. Recommended: crates only.
 - **Q9. Pull budget.** The link a lab network stands for (100 Mbit/s shared
   by 30 seats, or 1 Gbit/s), which sets D7's timed pull. Recommended: decide
   the link, then let D7's budget follow from it.
 
-This RFC is rewritten from shape to decisions when they are ruled.
+Where an implementation needs a concrete answer to an open question before it
+is ruled (Q2, Q3), it uses the recommendation as a PROVISIONAL default,
+marked as such in the code and changeable without touching the structure B
+rules. Nothing is published to a registry and no tag moves until Q1 and Q5
+are ruled.
+
+This RFC is rewritten from shape to decisions as they are ruled.
 
 ## Changelog
 
 - 2026-11 — created as a decision shape, from phase-523 W2's open questions
   and the starter-image exploration.
+- 2026-11-11 — user ruling: option B. D1's structure, D4 and D5's recipe are
+  ruled; Q7 is answered by B; Q4 keeps only its cadence half open.
