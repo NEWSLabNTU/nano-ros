@@ -12,12 +12,15 @@ superseded-by: null
 
 # RFC-0127 — One starter image, derived per audience
 
-**Status:** Draft (2026-11-11). **Option B is RULED** (user ruling
-2026-11-11): D1's structure (one generator, one multi-stage Dockerfile with
-`host`, `starter` and `starter-zephyr`), D4 (audiences are recipes, not
-images) and D5's customer `FROM` recipe. Everything else stays OPEN with its
-recommendation stated, and the open questions (Q1 to Q9) are the user's,
-except Q7, which B answers. The work is
+**Status:** Draft (2026-11-12), every decision ruled. **Option B** (user
+ruling 2026-11-11): D1's structure (one generator, one multi-stage Dockerfile
+with `host`, `starter` and `starter-zephyr`), D4 (audiences are recipes, not
+images) and D5's customer `FROM` recipe. **Every remaining question** (user
+ruling 2026-11-12, "Take your advice on RFC-0127"): each recommendation below
+is taken as written, Q1 to Q9; the rulings are recorded per question under
+"Rulings". The RFC stays Draft until the release image job and the `image`
+probe track have run once, because D7's budgets are derived, not yet measured
+over a real pull. The work is
 [phase-551](../roadmap/phase-551-starter-image.md), which supersedes
 [phase-523](../roadmap/phase-523-education-labs-adoption-probes.md) W2 (the
 instructor image).
@@ -76,7 +79,7 @@ zenoh-pico/mbedTLS sources 77 MB, a minimal Rust about 1 GB (not measured),
 the Zephyr SDK 7.8 GB and its allowlisted workspace 1.7 GB. The current labs
 run on `mps2-an385-freertos` and `mps2-an385-baremetal`; none needs Zephyr.
 
-## Design (B ruled; the rest proposed)
+## Design (ruled)
 
 ### D1 — One generator, one multi-stage Dockerfile (RULED, option B)
 
@@ -88,12 +91,12 @@ shared library that writes ONE multi-stage Dockerfile from
   names. Shared with the CI runner, so the image a user starts from and the
   one CI tests in are the same layers.
 - `starter`: derived from `host`; it bakes `nros setup`. What it carries is
-  D2 (open): as proposed, the release `nros` (installed by `scripts/install.sh`,
+  D2 (ruled): the release `nros` (installed by `scripts/install.sh`,
   the user's own road), a baked `nros setup` for the Linux host and the
   `mps2-an385-baremetal` / `mps2-an385-freertos` boards with zenoh, a minimal
   Rust, and the template crates pre-warmed (D2).
 - `starter-zephyr`: derived from `starter`, plus the Zephyr SDK and
-  workspace. When it is built is D3 (open).
+  workspace. It is built on dispatch (D3).
 
 Not taken: (A) a fourth hand-written Dockerfile for the starter, which
 repeats the index in a file nothing checks, the drift the generator was
@@ -101,9 +104,9 @@ written to end; (C) build the starter `FROM` the CI `ci-base` image, which
 bakes the arm cross-compiler and rustup directly rather than through the
 index, so the starter would not match what `nros setup` gives a user.
 
-### D2 — What `starter` carries (OPEN, Q3, Q8)
+### D2 — What `starter` carries (RULED, Q3, Q8)
 
-**Recommended:** what the current labs and the book's first chapters need, and
+**Ruled 2026-11-12 (Q3, Q8):** what the current labs and the book's first chapters need, and
 nothing more: the Linux host, `mps2-an385-baremetal` and
 `mps2-an385-freertos`, the zenoh backend and its router, C, C++ and a minimal
 Rust (host std plus `thumbv7m-none-eabi`), and the crates `nros new`'s
@@ -111,23 +114,25 @@ templates pull from crates.io, fetched at build time so a seat behind a NAT
 never reaches crates.io. A host C/C++ compiler is required whatever else is
 cut: the census sizes every undeclared leaf (RFC-0120 D4). Estimated 4 GB
 uncompressed (phase-523 W2's table), under the 2 GB compressed budget (D7) if
-the compression ratio holds; not yet measured.
+the compression ratio holds. Measured (phase-551 W2, against `0.6.0-nros8`):
+4.3 GB raw, 1.22 GB compressed. Rust is in, and there is no C/C++-only
+variant (Q3).
 
 "Lab sources pre-fetched" (phase-523 W2) has no object any more: the labs
-scaffold with `nros new`. Whether the image should instead clone a course
-repository is Q8.
+scaffold with `nros new`. The image pre-fetches the template crates only and
+clones no course repository (Q8).
 
-### D3 — Zephyr as its own target (OPEN, Q4)
+### D3 — Zephyr as its own target (RULED, Q4)
 
-**Recommended:** `starter-zephyr` exists but is built on dispatch, not on
-every release, until a lab needs it. It adds about 9.5 GB uncompressed, which
+**Ruled 2026-11-12 (Q4):** `starter-zephyr` exists but is built on dispatch,
+not on every release, until a lab needs it. It adds about 9.5 GB uncompressed, which
 is most of a lab network's pull budget (Q9).
 
 ### D4 — Audiences are recipes, not images (RULED, option B)
 
 **Ruled 2026-11-11:** audiences and customers are recipes on the starter, not
 separate images. Each gets a documented way of using it (the recipes'
-details below are proposed):
+details below are ruled with them; W6 of phase-551 writes them into the book):
 
 - **Newcomer:** `docker run … starter`, then `nros new`. The book's first
   project, offline.
@@ -140,11 +145,11 @@ details below are proposed):
   a support request names what it ran (new: doctor has no container line
   today).
 
-### D5 — A customer derives `FROM` ours, under written guarantees (recipe RULED, option B)
+### D5 — A customer derives `FROM` ours, under written guarantees (RULED, option B)
 
-**Ruled 2026-11-11:** a customer's image is a recipe on the starter. Proposed
-for it: a documented, probe-tested recipe
-(`FROM ghcr.io/…/nano-ros-starter:<ver>` plus the customer's own boards and
+**Ruled 2026-11-11:** a customer's image is a recipe on the starter: a
+documented, probe-tested recipe
+(`FROM ghcr.io/newslabntu/nano-ros-starter:<ver>` plus the customer's own boards and
 packages), and four guarantees it may rely on:
 
 1. **Immutable version tags.** `<ver>` and `<ver>-zephyr` are never re-pushed.
@@ -158,24 +163,43 @@ packages), and four guarantees it may rely on:
 4. **The recipe is probed.** A probe track builds the documented `FROM` recipe
    against each release.
 
-### D6 — Released with `nros`, tagged three ways (OPEN, Q1, Q5)
+### D6 — Released with `nros`, tagged three ways (RULED, Q1, Q5)
 
-**Recommended:** an image job in `release-nros.yml`, after the asset is built.
-Tags: immutable `<ver>` and `<ver>-zephyr`; a moving `latest`; and a semester
-or LTS retag (e.g. `2027-spring`) that points at one `<ver>` and moves only by
-a deliberate retag.
+**Ruled 2026-11-12 (Q1, Q5):** the image is
+`ghcr.io/newslabntu/nano-ros-starter`, public. An image job in
+`release-nros.yml` builds and pushes `starter` on every release, after the
+asset is built. Tags: immutable `<ver>` and `<ver>-zephyr` (the latter only
+when a dispatch builds it, D3); a moving `latest`; and a semester or LTS
+retag (e.g. `2027-spring`) that points at one `<ver>` and moves only by a
+deliberate retag. The first push goes through the release flow, never by
+hand.
 
-### D7 — An `image` probe track gates `latest` (OPEN, Q9)
+### D7 — An `image` probe track gates `latest` (RULED, Q5, Q9)
 
-**Recommended:** `latest` moves only when a new probe track, `image`, passes:
-a TIMED pull of the released tag, then the book's first project built and run
-OFFLINE in it. Size budgets, compressed: 2 GB for `starter`, 5 GB for
-`starter-zephyr`; over budget fails the track. The pull budget's link speed is
-Q9.
+**Ruled 2026-11-12 (Q5, Q9):** `latest` moves only when a new probe track,
+`image`, passes: a TIMED pull of the released tag, then the book's first
+project built and run OFFLINE in it. Size budgets, compressed: 2 GB for
+`starter`, 5 GB for `starter-zephyr`; over budget fails the track.
 
-### D8 — amd64 first, arm64 next (OPEN, Q6)
+The budget follows from the lab link Q9 names: **100 Mbit/s shared by 30
+seats**, i.e. 12.5 MB/s for the room and about 0.42 MB/s a seat when every
+seat pulls at once. On a fixed link the time is a function of the size alone,
+so the SIZE is the gate and the track prints the time it implies:
 
-**Recommended:** amd64 at first release; arm64 a priority, made possible by
+| target | budget (compressed) | one room pulls it in | measured |
+| --- | --- | --- | --- |
+| `starter` | 2 GB | 2 GB x 30 / 12.5 MB/s = 80 min | 1.22 GB, about 49 min |
+| `starter-zephyr` | 5 GB | 5 GB x 30 / 12.5 MB/s = 200 min | not built yet |
+
+Neither fits inside a lab session started cold, so the course recipe (D4)
+pulls the pinned digest BEFORE the session, or from a local mirror; the book
+says so rather than promising a pull in class. The timed pull on the probe
+runner is printed for the record (it measures the registry and the runner's
+link, not the lab's) and fails only over the size budget.
+
+### D8 — amd64 first, arm64 next (RULED, Q6)
+
+**Ruled 2026-11-12 (Q6):** amd64 at first release; arm64 a priority, made possible by
 the same runner decision `release-nros.yml:98-100` waits on, since the index
 already has the host key.
 
@@ -192,44 +216,29 @@ already has the host key.
   (`runner-container.sh:544-551`); a shared `host` target (D1) gets the
   benefit without changing that rule.
 
-## Open questions
+## Rulings
 
-The user's, from phase-523 W2's list, widened for the starter audience. Each
-names the recommendation above.
+Phase-523 W2's open questions, widened for the starter audience. The user
+ruled Q7 by option B on 2026-11-11 and every other question on 2026-11-12
+("Take your advice on RFC-0127"), taking each recommendation as written.
 
-- **Q1. Registry.** `ghcr.io/newslabntu/…` public (where `images.yml` already
-  publishes the CI images), or a private or university mirror; the image name.
-  Recommended: `ghcr.io/newslabntu/nano-ros-starter`, public.
-- **Q2. ROS 2 edition.** Humble on 22.04 (the asset's `libpython3.10` floor
-  and every probe track today), or Jazzy on 24.04, which needs a 24.04 asset
-  build first. Recommended: Humble.
-- **Q3. Starter contents.** D2's list; Rust in, or a C/C++-only variant.
-  Recommended: D2, Rust in, no variant.
-- **Q4. Zephyr.** B rules that `starter-zephyr` is a target derived from
-  `starter`. Still open: when it is built (every release, or on dispatch).
-  Recommended: on dispatch (D3).
-- **Q5. Cadence.** Every release (D6), or on dispatch once per semester.
-  Recommended: every release, `latest` gated by D7.
-- **Q6. arm64.** Wait for the runner decision, or prioritise it now.
-  Recommended: amd64 first, arm64 next (D8).
-- **Q7. Generator.** Ruled by B (2026-11-11): one generator, the shared
-  library D1 names.
-- **Q8. Lab sources.** Pre-fetch template crates only (D2), or also clone a
-  course repository; if so, which and who owns it. Recommended: crates only.
-- **Q9. Pull budget.** The link a lab network stands for (100 Mbit/s shared
-  by 30 seats, or 1 Gbit/s), which sets D7's timed pull. Recommended: decide
-  the link, then let D7's budget follow from it.
+- **Q1. Registry.** `ghcr.io/newslabntu/nano-ros-starter`, public (D6).
+- **Q2. ROS 2 edition.** Humble on 22.04, the release asset's `libpython3.10`
+  floor and every probe track today. Jazzy on 24.04 needs a 24.04 asset build
+  first.
+- **Q3. Starter contents.** D2's list, Rust in, no C/C++-only variant.
+- **Q4. Zephyr.** `starter-zephyr` is a target derived from `starter` (B),
+  built on dispatch, not every release (D3).
+- **Q5. Cadence.** Every release; `latest` gated by D7's probe; tags as in D6.
+- **Q6. arm64.** amd64 first, arm64 next (D8).
+- **Q7. Generator.** One generator, the shared library D1 names (B).
+- **Q8. Lab sources.** Template crates only; no course repository.
+- **Q9. Pull budget.** The lab link is 100 Mbit/s shared by 30 seats; D7's
+  budget follows from it.
 
-Where an implementation needs a concrete answer to an open question before it
-is ruled (Q2, Q3, Q8), it uses the recommendation as a PROVISIONAL default,
-marked as such in the code and changeable without touching the structure B
-rules. The `starter` stage in `scripts/ci/lib/image-context.sh` carries
-them as build ARGs (`NROS_STARTER_BOARDS`, `NROS_STARTER_RMW`,
-`NROS_STARTER_PROJECTS`) under one PROVISIONAL comment, so a ruling changes
-an ARG default and nothing else. Nothing is published to a registry and no tag moves until Q1 and Q5
-are ruled.
-
-This RFC is rewritten from shape to decisions as they are ruled.
+The `starter` stage in `scripts/ci/lib/image-context.sh` carries Q3's and
+Q8's answers as build ARGs (`NROS_STARTER_BOARDS`, `NROS_STARTER_RMW`,
+`NROS_STARTER_PROJECTS`), so a derived image can still override them.
 
 ## Changelog
 
@@ -239,3 +248,6 @@ This RFC is rewritten from shape to decisions as they are ruled.
   ruled; Q7 is answered by B; Q4 keeps only its cadence half open.
 - 2026-11-11 — phase-551 W2: the provisional defaults for Q2, Q3 and Q8 named
   where the code carries them.
+- 2026-11-12 — user ruling on every remaining question (Q1-Q6, Q8, Q9): each
+  recommendation taken. The RFC is rewritten from shape to decisions; D7's
+  budget derived from Q9's link; the PROVISIONAL marks dropped.

@@ -1,13 +1,12 @@
 # Phase 551 — The starter image
 
-**Status (2026-11-11). IN PROGRESS: option B is ruled; W1, W2 and W7 are
-unblocked, the rest wait on open questions.** Work for
-[RFC-0127](../design/0127-starter-image.md), whose option B (D1's structure,
-D4, D5's recipe) the user ruled on 2026-11-11; its other decisions are open.
-Where an unblocked item needs an answer to an open question (Q2 the ROS
-edition, Q3 the contents), it takes the RFC's recommendation as a PROVISIONAL
-default, marked in code as changeable. Nothing is published to a registry and
-no tag moves until Q1 and Q5 are ruled.
+**Status (2026-11-12). IN PROGRESS: every RFC-0127 question is ruled, so
+every item is unblocked.** Work for
+[RFC-0127](../design/0127-starter-image.md): option B (D1's structure, D4,
+D5's recipe) ruled 2026-11-11, and every remaining question on 2026-11-12
+("Take your advice on RFC-0127"), each recommendation taken. W0, W1, W2 and W7
+are done. The first push to `ghcr.io/newslabntu/nano-ros-starter` and the
+first tag go through the release flow (W4), never by hand from a session.
 Supersedes [phase-523](phase-523-education-labs-adoption-probes.md) W2 (the
 instructor image and the semester pin): the instructor image is now one
 audience of a general starter image. Each item names the RFC-0127 question
@@ -28,12 +27,19 @@ image that deliberately bakes no store, and two hand-written CI images.
 
 ### W0 — Rule RFC-0127
 
-Gate: none. Option B ruled 2026-11-11; Q1 to Q6, Q8 and Q9 remain. Put those to the user; rewrite RFC-0127 from shape to
-decisions; mark each item below unblocked or dropped.
+Status: DONE (2026-11-12). Option B ruled 2026-11-11, the rest 2026-11-12;
+RFC-0127 rewritten from shape to decisions with a ruling recorded per
+question, D7's budget derived from Q9's link, and the PROVISIONAL marks
+dropped from the generator.
+
+Gate: none.
 
 Acceptance: RFC-0127 status `Stable`, or a ruling recorded per question.
 
 ### W1 — The generator becomes a shared library
+
+Status: DONE (349dd028da). `scripts/ci/lib/image-context.sh`; the runner's
+context is held by `check-runner-context-golden`.
 
 Gate: none (Q7 ruled by B). Split `scripts/ci/runner-container.sh` into a library that writes
 one multi-stage Dockerfile from `nros-sdk-index.toml` (targets `host`,
@@ -58,8 +64,7 @@ router started by hand. On that release `nros run`'s automatic router starts
 nothing for it; on main the run plan carries the link, so this waits only on
 the next release.
 
-Gate: none for the target (B). Its contents use RFC-0127's recommendations as
-PROVISIONAL defaults until Q2, Q3 and Q8 are ruled. `host` plus the release `nros` through `scripts/install.sh`,
+Gate: none (B; contents Q2, Q3 and Q8, ruled 2026-11-12). `host` plus the release `nros` through `scripts/install.sh`,
 a baked `nros setup` for the Linux host, `mps2-an385-baremetal` and
 `mps2-an385-freertos` with zenoh, a minimal Rust (host std plus
 `thumbv7m-none-eabi`), and the template crates fetched at build time.
@@ -80,14 +85,15 @@ still removes the caches by hand until it is built from a release with the fix.
 
 ### W3 — The `starter-zephyr` target
 
-Gate: Q4. `starter` plus the Zephyr SDK and the allowlisted workspace.
+Gate: Q4, ruled 2026-11-12: on dispatch. `starter` plus the Zephyr SDK and the allowlisted workspace.
 
 Acceptance: built on dispatch; a Zephyr native_sim talker builds offline in
 it; compressed size printed and under 5 GB.
 
 ### W4 — Release job and tags
 
-Gate: Q1, Q5. An image job in `release-nros.yml` after the asset; immutable
+Gate: Q1, Q5, ruled 2026-11-12 (`ghcr.io/newslabntu/nano-ros-starter`,
+public, every release). An image job in `release-nros.yml` after the asset; immutable
 `<ver>` and `<ver>-zephyr`, a moving `latest`, and a retag recipe for a
 semester or LTS tag.
 
@@ -97,7 +103,8 @@ does not move until W5 passes.
 
 ### W5 — The `image` probe track gates `latest`
 
-Gate: Q9. A new probe track: a timed pull of the released tag on the probe
+Gate: Q9, ruled 2026-11-12 (100 Mbit/s shared by 30 seats; the size is the
+gate and the room's pull time is printed, RFC-0127 D7). A new probe track: a timed pull of the released tag on the probe
 runner (with a throttled link once Q9 sets its speed), then the first project
 built and run offline. Over the time or size budget is red.
 
@@ -106,7 +113,7 @@ pull time and the compressed size, and `latest` moves only on its green.
 
 ### W6 — Audience recipes
 
-Gate: Q3. Documented in the book:
+Gate: Q3, ruled 2026-11-12. Documented in the book:
 
 - newcomer: `docker run` then `nros new`;
 - course: a `devcontainer.json` that names the image by digest (the tree has
@@ -130,11 +137,12 @@ starter. Guarantee 2 is checked with a REAL offline `nros setup` per board, not
 with `--dry-run`: a dry run on releases up to `0.6.0-nros8` calls present
 sources absent ([issue 2447](../issues/archived/2447-setup-dry-run-reports-present-sources-as-planned.md)).
 The boards come from the image's own labels. The four guarantees are written
-in the recipe's header. Their book page waits on Q1, because a page naming an
-image nobody can pull is not one a customer can follow.
+in the recipe's header. Their book page is W6's, and names the image Q1 ruled
+(`ghcr.io/newslabntu/nano-ros-starter`); its one-command run needs the first
+release that publishes it.
 
-Gate: none beyond W2 (the recipe is ruled by B). Until Q1 names a registry the
-recipe and its probe build `FROM` a locally built tag. A documented `FROM <starter>:<ver>` recipe adding a
+Gate: none beyond W2 (the recipe is ruled by B). Until the first release
+publishes the image, the recipe and its probe build `FROM` a locally built tag. A documented `FROM <starter>:<ver>` recipe adding a
 board and a package, and the four guarantees of RFC-0127 D5 written where a
 customer reads them.
 
@@ -144,7 +152,7 @@ of the same release.
 
 ### W8 — arm64
 
-Gate: Q6, and the runner decision `release-nros.yml` already waits on. One
+Gate: Q6, ruled 2026-11-12 (amd64 first, arm64 next), and the runner decision `release-nros.yml` already waits on. One
 matrix row for the asset and one platform for the image.
 
 Acceptance: `starter` published for `linux/arm64`; W5 runs on an arm64

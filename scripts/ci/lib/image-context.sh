@@ -465,23 +465,24 @@ nros_runner_context() {
 # Its context is its OWN directory, never the runner's (the runner's context
 # gains no file; `check-runner-context-golden`).
 #
-# PROVISIONAL defaults, each an ARG a build can override, and each the RFC's
-# recommendation for a question the user has not ruled:
+# The ruled contents (user ruling 2026-11-12, RFC-0127 Rulings), each an ARG
+# a derived build can still override:
 #   Q2 ROS edition   -- Humble on 22.04, which `host` already is (the release
 #                       asset's libpython3.10 floor);
 #   Q3 contents      -- NROS_STARTER_BOARDS: linux, mps2-an385-baremetal,
 #                       mps2-an385-freertos; NROS_STARTER_RMW: zenoh;
-#                       Rust in (minimal profile);
+#                       Rust in (minimal profile), no C/C++-only variant;
 #   Q8 lab sources   -- the crates of the book's first projects only
-#                       (NROS_STARTER_PROJECTS).
-# Nothing here publishes or tags an image (Q1, Q5).
+#                       (NROS_STARTER_PROJECTS), no course repository.
+# Nothing here publishes or tags an image: the release job does (RFC-0127
+# D6), never a local build.
 
 _nros_image_starter_stages() {
     cat <<'DOCKEREOF'
 
 # ---------------------------------------------------------------------------
-# starter -- RFC-0127 D2. PROVISIONAL defaults (RFC-0127 Q2/Q3/Q8, open): the
-# ARGs below are the RFC's recommendations, changeable with --build-arg.
+# starter -- RFC-0127 D2. The ARGs below are the ruled contents (Q2/Q3/Q8,
+# 2026-11-12), changeable with --build-arg.
 FROM host AS starter
 ARG NROS_VERSION=latest
 ARG NROS_STARTER_BOARDS="linux mps2-an385-baremetal mps2-an385-freertos"
@@ -560,7 +561,7 @@ RUN --network=none export NROS_BUILD_ROOT=/tmp/nros-build; for p in ${NROS_START
 
 # ---------------------------------------------------------------------------
 # starter-zephyr -- RFC-0127 D3. Built only when asked (`--target
-# starter-zephyr`); WHEN it is built is Q4, open.
+# starter-zephyr`): on dispatch, never every release (Q4, ruled 2026-11-12).
 FROM starter AS starter-zephyr
 ARG NROS_STARTER_ZEPHYR_BOARD=zephyr
 RUN nros setup "${NROS_STARTER_ZEPHYR_BOARD}" --rmw "${NROS_STARTER_RMW:-zenoh}"

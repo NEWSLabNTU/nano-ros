@@ -16,8 +16,9 @@
 #   the recipe  -- its package is installed, and the book's first project
 #                  still builds offline on top of it.
 #
-# Until RFC-0127 Q1 names a registry, <tag> is a locally built starter
-# (scripts/ci/starter-image.sh). Nothing is pushed.
+# <tag> defaults to a locally built starter (scripts/ci/starter-image.sh);
+# once a release has published ghcr.io/newslabntu/nano-ros-starter:<ver>
+# (RFC-0127 D6), pass that. Nothing is pushed.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 STARTER="nano-ros-starter:local"
