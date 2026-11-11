@@ -108,6 +108,20 @@ pub struct SizingDescriptorArgs {
     #[arg(long, value_name = "PATH", requires = "from_leaf")]
     pub entity_cmake: Option<PathBuf>,
 
+    /// `--from-leaf <bringup>` with `--leaf-image`: the image builds this
+    /// OWNED entry (RFC-0071 D19), and is sized by the census of it
+    /// (`entity-census take --image`, issue 2433) rather than by a
+    /// declaration. The bringup states the image's deployment; the census
+    /// states every entity, its nodes standing in for the components the
+    /// bringup has none of.
+    #[arg(
+        long,
+        value_name = "DIR",
+        requires = "from_leaf",
+        requires = "leaf_image"
+    )]
+    pub owned_entry: Option<PathBuf>,
+
     /// `--from-model` / `--from-leaf`: the image's build dir. The descriptor
     /// lands at `<build-dir>/nros/sizing/<entry>.toml`.
     #[arg(long, value_name = "DIR")]
@@ -721,7 +735,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
     // from whether a descriptor happens to be on disk: a file-state test is not
     // idempotent (our own output looks like somebody else's on the next
     // configure) and cannot distinguish the two producers at all.
-    if is_cargo_leaf(&dir) {
+    if args.owned_entry.is_none() && is_cargo_leaf(&dir) {
         eprintln!(
             "nros dev image sizing-descriptor: `{}` is a cargo leaf, so its sizing descriptor comes \
              from `nros configure` (which has the message-bound inventory this road does not). \
@@ -735,7 +749,10 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         system,
         inventory,
         census_backed,
-    } = leaf_declaration(&dir, args.leaf_image.as_deref())?;
+    } = match (&args.owned_entry, &args.leaf_image) {
+        (Some(pkg), Some(image)) => owned_declaration(&dir, image, pkg, args.workspace.as_deref())?,
+        _ => leaf_declaration(&dir, args.leaf_image.as_deref())?,
+    };
     let origin = system.origin_path().display().to_string();
     let image = |wiring| crate::sizing_descriptor::ModelImage {
         build_dir,
@@ -976,6 +993,81 @@ pub(crate) fn leaf_declaration(
     })
 }
 
+/// Issue 2433 -- [`LeafDeclaration`] for image `image` of the bringup at
+/// `bringup`, whose program is the OWNED entry at `pkg`: the deployment from
+/// the bringup, every entity from the census of that entry
+/// (`entity_census::owned_census_path`). The census's nodes are the
+/// components, as for a component-less census leaf (Ruling R29). A missing or
+/// stale census refuses: the image has no other statement to fall back on.
+pub(crate) fn owned_declaration(
+    bringup: &std::path::Path,
+    image: &str,
+    pkg: &std::path::Path,
+    workspace: Option<&std::path::Path>,
+) -> Result<LeafDeclaration> {
+    use crate::entity_inventory::{ComponentEntities, Declaration, EntityInventory};
+
+    let system = nros_orchestration_ir::leaf_system::read_image(bringup, image)
+        .map_err(|e| eyre::eyre!(e))?
+        .ok_or_else(|| {
+            eyre::eyre!(
+                "{}: declares no deployment",
+                bringup
+                    .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                    .display()
+            )
+        })?;
+    let bringup_name = bringup
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let ws = match workspace {
+        Some(w) => w.to_path_buf(),
+        // `<ws>/src/<bringup>` -- where every bringup sits.
+        None => bringup
+            .parent()
+            .and_then(std::path::Path::parent)
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| eyre::eyre!("{}: no workspace above it", bringup.display()))?,
+    };
+    let census = crate::cmd::entity_census::owned_census_path(&ws, &bringup_name, image);
+    let pkg_name = pkg
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let nodes = crate::leaf_entity_env::census_node_entities_at(&census, pkg)?.map_err(|why| {
+        eyre::eyre!(
+            "`{bringup_name}:{image}` builds the owned entry `{pkg_name}`, which is sized by its \
+             census, and {why}. Take it: nros dev image entity-census take --image \
+             {bringup_name}:{image}"
+        )
+    })?;
+    let origin = census.display().to_string();
+    let mut inventory = EntityInventory::new(origin);
+    let node_count = nodes.len();
+    for (node, decls) in nodes {
+        inventory.insert(ComponentEntities {
+            pkg: pkg_name.clone(),
+            component: node.clone(),
+            class: node,
+            declaration: if decls.is_empty() {
+                Declaration::None
+            } else {
+                Declaration::Stated(decls)
+            },
+        });
+    }
+    inventory.set_infra(crate::entity_inventory::InfraServices::from_features(
+        &system.features,
+        node_count,
+    ));
+    Ok(LeafDeclaration {
+        system,
+        inventory: Some(inventory),
+        census_backed: true,
+    })
+}
+
 /// Does this leaf have a `[package]` cargo manifest?
 ///
 /// The discriminator for "`nros sync` writes this leaf's descriptor". A
@@ -1111,6 +1203,37 @@ fn summary(desc: &nros_sizing_descriptor::SizingDescriptor) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2433 -- an image whose owned entry has no census refuses, naming
+    /// the take that makes one, rather than sizing the image from nothing; the
+    /// census it looks for is keyed by bringup and image under the workspace.
+    #[test]
+    fn an_owned_entry_without_its_census_refuses_naming_the_take() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path();
+        let bringup = ws.join("src/tx_bringup");
+        let pkg = ws.join("src/c_talker");
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(
+            bringup.join("system.toml"),
+            "[system]\nname = \"tx\"\nrmw = \"zenoh\"\n\n\
+             [image.threadx-linux]\nboard = \"threadx-linux\"\nentry = \"c_talker\"\n",
+        )
+        .unwrap();
+        let err = owned_declaration(&bringup, "threadx-linux", &pkg, Some(ws))
+            .err()
+            .expect("no census, no declaration");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("entity-census take --image tx_bringup:threadx-linux"),
+            "{msg}"
+        );
+        assert_eq!(
+            crate::cmd::entity_census::owned_census_path(ws, "tx_bringup", "threadx-linux"),
+            ws.join("build/nros/census/owned/tx_bringup/threadx-linux.census.json")
+        );
+    }
     use nros_sizing_descriptor::{
         Basis, Endpoint, EndpointKind, History, RegistrationPath, SizingDescriptor, Status, Target,
     };
@@ -1212,6 +1335,7 @@ mod tests {
             from_leaf: None,
             leaf_image: None,
             entity_cmake: None,
+            owned_entry: None,
             // phase-457-payload W2 -- no tables: the payload class refuses,
             // naming the missing registration (issue 1393 closed the road).
             bound_inventory: Vec::new(),

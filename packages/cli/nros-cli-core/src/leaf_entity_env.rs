@@ -375,7 +375,17 @@ pub type CensusNodes = Vec<(String, Vec<EntityDecl>)>;
 /// freshness rule and the same parser as [`census_entities`]; the flattened
 /// rows are identical.
 pub fn census_node_entities(leaf: &Path) -> Result<std::result::Result<CensusNodes, String>> {
-    let recorded = match census_document(leaf)? {
+    census_node_entities_at(&crate::cmd::entity_census::leaf_census_path(leaf), leaf)
+}
+
+/// [`census_node_entities`] for the census at `path`, whose recorded inputs
+/// resolve against `ws`: a standalone leaf's, or an owned entry's (issue 2433,
+/// `entity_census::owned_census_path`, against the owned package).
+pub fn census_node_entities_at(
+    path: &Path,
+    ws: &Path,
+) -> Result<std::result::Result<CensusNodes, String>> {
+    let recorded = match census_document_at(path, ws)? {
         Ok(doc) => doc,
         Err(why) => return Ok(Err(why)),
     };
@@ -410,16 +420,20 @@ pub fn census_parameter_count(leaf: &Path) -> Option<usize> {
 /// The `census` document of a leaf's current, complete census, or why there is
 /// none. ONE reader for every fact read off it.
 fn census_document(leaf: &Path) -> Result<std::result::Result<serde_json::Value, String>> {
-    use crate::cmd::entity_census::{
-        Freshness, census_freshness, incomplete_reason, leaf_census_path,
-    };
-    let path = leaf_census_path(leaf);
-    match census_freshness(&path, leaf) {
+    census_document_at(&crate::cmd::entity_census::leaf_census_path(leaf), leaf)
+}
+
+fn census_document_at(
+    path: &Path,
+    ws: &Path,
+) -> Result<std::result::Result<serde_json::Value, String>> {
+    use crate::cmd::entity_census::{Freshness, census_freshness, incomplete_reason};
+    match census_freshness(path, ws) {
         Freshness::Fresh => {}
         Freshness::Missing(why) => return Ok(Err(format!("its census is missing ({why})"))),
         Freshness::Stale(why) => return Ok(Err(format!("its census is stale ({why})"))),
     }
-    let raw = std::fs::read_to_string(&path)
+    let raw = std::fs::read_to_string(path)
         .map_err(|e| eyre::eyre!("cannot read `{}`: {e}", path.display()))?;
     let doc: serde_json::Value = serde_json::from_str(&raw)
         .map_err(|e| eyre::eyre!("`{}` is not JSON: {e}", path.display()))?;

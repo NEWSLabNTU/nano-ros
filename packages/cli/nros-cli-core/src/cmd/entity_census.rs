@@ -612,6 +612,29 @@ fn take_census(args: TakeArgs) -> Result<()> {
         return Ok(());
     }
 
+    // Issue 2433 -- an image whose program is an OWNED C/C++ entry (RFC-0071
+    // D19) has no launch and no model: the census is of THAT entry, a host
+    // build of its package run once, the way a standalone leaf's is
+    // (maintainer ruling 2026-11-11).
+    if let Some(pkg) = crate::cmd::build::owned_entry_dir(&root, &image_id, &image)?
+        .filter(|d| d.join("CMakeLists.txt").is_file())
+    {
+        if args.plan {
+            // Not a `producer` line: no host IMAGE is built, the package is.
+            println!("owned-entry {}", pkg.display());
+            return Ok(());
+        }
+        return take_owned_census(
+            &root,
+            &pkg,
+            &bringup,
+            &image_id,
+            args.timeout_secs,
+            args.build_step,
+            &HostSteps::real(),
+        );
+    }
+
     // RFC-0071 D19 — an image that boots an OWNED entry from a bringup with no
     // `[[component]]` row and no launch of its own runs that entry's `main`:
     // configure generates no launch for it (`synthesise_bringup_launch`), so it
@@ -1517,53 +1540,179 @@ pub(crate) fn take_leaf_census_with(
         }
     }
 
-    let root = crate::orchestration::nano_ros_root::resolve(None, &leaf)
-        .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
-    // RFC-0120 C3 -- the host toolchain, before anything is configured, so a
-    // missing compiler is named rather than surfacing as a CMake error.
-    let missing = (host.missing)(&leaf, &root);
-    if !missing.is_empty() {
-        bail!(
-            "{}: its entities are counted by its census, a HOST build of its sources, and this \
-             host cannot build one.\n{}",
-            leaf.display(),
-            crate::builder::preflight::report(&missing)
-        );
-    }
-    let build = leaf.join("build").join("census-host");
-    let zephyr_stub = write_zephyr_census_stub(&build)?;
-    // RFC-0120 D4 -- ONE pass. The host census build is sizing-insensitive:
-    // `NROS_LEAF_CENSUS_HOST` makes it read no declaration, no census and no
-    // seed, so its pools sit at the hosted defaults and a reconfigure cannot
-    // move what it registers. The census records the digest of the binary it
-    // ran, and nothing but this verb builds `census-host`, so the census stays
-    // fresh until the leaf's own sources move (issue 1252's convergence loop
-    // was about a binary another build could change).
     let explicit = match source {
         crate::leaf_census::EntitySource::Census { explicit: false } => {
             " (the default for a C/C++ leaf that states no `entities`)"
         }
         _ => "",
     };
+    census_host_program(
+        &HostProgram {
+            src: &leaf,
+            build: leaf.join("build").join("census-host"),
+            out,
+            named,
+            what: format!(
+                "{}: its entities are counted by its census, a HOST build of its sources,",
+                leaf.display()
+            ),
+            explicit,
+            run_failure: &|| census_run_failure(&leaf, explicit),
+        },
+        timeout_secs,
+        build_step,
+        host,
+    )
+}
+
+/// Issue 2433 -- where the census of an OWNED entry's image lives: under the
+/// workspace's build directory, keyed by bringup and image, since the owned
+/// package is a source directory and several images may build it.
+pub(crate) fn owned_census_path(root: &Path, bringup: &str, image: &str) -> PathBuf {
+    root.join("build")
+        .join(CENSUS_DIR)
+        .join("owned")
+        .join(bringup)
+        .join(format!("{image}.census.json"))
+}
+
+/// Issue 2433 -- take the census of the owned entry `pkg` that image
+/// `<bringup>:<image>` builds: [`census_host_program`] over the package, the
+/// leaf road's host build, keyed by image. A current, complete census returns
+/// at once.
+pub(crate) fn take_owned_census(
+    root: &Path,
+    pkg: &Path,
+    bringup: &str,
+    image: &str,
+    timeout_secs: u64,
+    build_step: bool,
+    host: &HostSteps<'_>,
+) -> Result<()> {
+    let out = owned_census_path(root, bringup, image);
+    let dir = out.parent().expect("the census path has a parent");
+    std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
+    // Two configures of one image's coordinate take it at once; the lock spans
+    // the freshness check and the rebuild, as `take --leaf`'s does.
+    let _census_lock = crate::file_lock::lock_exclusive_path(&out.with_extension("lock"))?;
+    let q = format!("{bringup}:{image}");
+    if let Freshness::Fresh = census_freshness(&out, pkg) {
+        let complete = std::fs::read_to_string(&out)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+            .is_some_and(|c| incomplete_reason(&c).is_none());
+        if complete {
+            write_census_digest(&out)?;
+            crate::build_notes::detail_out(format!(
+                "entity-census take {q}: fresh -> {}",
+                out.display()
+            ));
+            return Ok(());
+        }
+    }
+    println!(
+        "entity-census take {q}: taking the census of its owned entry `{}`",
+        pkg.display()
+    );
+    let pkg_name = pkg
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    census_host_program(
+        &HostProgram {
+            src: pkg,
+            build: root
+                .join("build")
+                .join("nros")
+                .join("census-host")
+                .join(bringup)
+                .join(image),
+            out: out.clone(),
+            named: leaf_executable_name(pkg),
+            what: format!(
+                "`{q}` builds the owned entry `{pkg_name}`, which is sized by its census, a HOST \
+                 build of its sources,"
+            ),
+            explicit: " (an owned entry on a cross board, issue 2433)",
+            run_failure: &|| {
+                format!(
+                    "`{q}`: the census RUN of the owned entry `{pkg_name}`'s host build failed \
+                     (the run's own error is below). A census runs the program on the host and \
+                     records the ROS entities it registers, so its `main` has to reach its first \
+                     blocking call there."
+                )
+            },
+        },
+        timeout_secs,
+        build_step,
+        host,
+    )
+}
+
+/// What a census of a hand-written program needs to know about it: a
+/// standalone leaf's (`take --leaf`) or an OWNED entry's (issue 2433).
+pub(crate) struct HostProgram<'a> {
+    /// The CMake project the host build configures.
+    pub src: &'a Path,
+    /// Where the host build goes.
+    pub build: PathBuf,
+    /// Where the census is written.
+    pub out: PathBuf,
+    /// The executable the project names, when it names one.
+    pub named: Result<String>,
+    /// How a refusal names the program (`<dir>: its entities are counted by
+    /// its census, a HOST build of its sources,`).
+    pub what: String,
+    /// Why it is counted by a census, for the build-failure text.
+    pub explicit: &'a str,
+    /// What a failed census RUN is told, on top of the run's own error.
+    pub run_failure: &'a dyn Fn() -> String,
+}
+
+/// The host build and run every census of a hand-written program shares:
+/// configure `src` for the host, build it, run the program it names with
+/// `$NROS_CENSUS_OUT`. ONE spelling for the leaf road and the owned-entry road
+/// (issue 2433), so the two cannot come to build the census differently.
+pub(crate) fn census_host_program(
+    p: &HostProgram<'_>,
+    timeout_secs: u64,
+    build_step: bool,
+    host: &HostSteps<'_>,
+) -> Result<()> {
+    let src = p.src;
+    let build = &p.build;
+    let root = crate::orchestration::nano_ros_root::resolve(None, src)
+        .ok_or_else(|| eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
+    // RFC-0120 C3 -- the host toolchain, before anything is configured, so a
+    // missing compiler is named rather than surfacing as a CMake error.
+    let missing = (host.missing)(src, &root);
+    if !missing.is_empty() {
+        bail!(
+            "{} and this host cannot build one.\n{}",
+            p.what,
+            crate::builder::preflight::report(&missing)
+        );
+    }
+    let zephyr_stub = write_zephyr_census_stub(build)?;
     let refused = |step: &str, status: std::process::ExitStatus| {
         eyre::eyre!(
             "{}",
             host_build_failure(
-                &leaf,
-                &build,
+                src,
+                build,
                 step,
                 &status.to_string(),
                 build_step,
-                explicit
+                p.explicit
             )
         )
     };
     let mut configure = host_cmake();
     configure
         .arg("-S")
-        .arg(&leaf)
+        .arg(src)
         .arg("-B")
-        .arg(&build)
+        .arg(build)
         .arg("-G")
         .arg("Ninja")
         .arg(format!("-Dnano_ros_DIR={}", root.display()))
@@ -1587,28 +1736,28 @@ pub(crate) fn take_leaf_census_with(
     let mut build_cmd = host_cmake();
     build_cmd
         .arg("--build")
-        .arg(&build)
+        .arg(build)
         .env(LEAF_CENSUS_HOST_ENV, "1");
     let status =
         (host.run)(&mut build_cmd).wrap_err("running cmake --build for the host census build")?;
     if !status.success() {
         return Err(refused("the build", status));
     }
-    let bin = match &named {
+    let bin = match &p.named {
         Ok(exe) => build.join(exe),
         Err(why) => {
-            census_program_binary(&leaf, &build).map_err(|e| eyre::eyre!("{why}\n  and {e}"))?
+            census_program_binary(src, build).map_err(|e| eyre::eyre!("{why}\n  and {e}"))?
         }
     };
     if !bin.is_file() {
         bail!(
             "the host census build of {} left no `{}`",
-            leaf.display(),
+            src.display(),
             bin.display()
         );
     }
-    let exe = match named {
-        Ok(exe) => exe,
+    let exe = match &p.named {
+        Ok(exe) => exe.clone(),
         Err(_) => bin
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -1616,14 +1765,14 @@ pub(crate) fn take_leaf_census_with(
     };
     run_census(RunArgs {
         entry: exe,
-        workspace: Some(leaf.clone()),
-        build_dir: build,
+        workspace: Some(src.to_path_buf()),
+        build_dir: build.clone(),
         binary: Some(bin),
         model: None,
-        out: Some(out),
+        out: Some(p.out.clone()),
         timeout_secs,
     })
-    .wrap_err_with(|| census_run_failure(&leaf, explicit))
+    .wrap_err_with(p.run_failure)
 }
 
 /// Issue 2418 -- what a leaf census whose RUN failed is told, on top of the
