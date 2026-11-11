@@ -172,6 +172,13 @@ nros-platform = { version = "0.6.0", path = "../../../platform/nros-platform", d
 # `platform-*` features instead, so a platform whose vendor `system.c` provides
 # `z_*` natively can drop the alias TU (no double-define).
 zpico-sys = { version = "0.6.0", path = "../zpico-sys", default-features = false }
+# Issue 2452 — the Rust half of zenoh-pico's custom link
+# (`nros_zpico_custom_take`), linked ALWAYS. The C half is compiled when the
+# image's locator is on `custom/…` (the `NROS_LINK_CUSTOM` knob the CLI implies)
+# or `link-custom` is named; a C/C++ image has no manifest to name a feature in,
+# so the knob alone must link. Unreferenced (no custom link), `--gc-sections`
+# drops it.
+zpico-platform-custom = { workspace = true }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }

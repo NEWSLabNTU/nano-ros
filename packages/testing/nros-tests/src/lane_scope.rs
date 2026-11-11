@@ -112,6 +112,12 @@ pub const EXEMPT: &[(&str, &str)] = &[
          cells only through that predicate, so no non-host fixture is reachable",
     ),
     (
+        "linux_example_custom_link_e2e.rs",
+        "the same, for the CustomLink cell: `is_custom_link_cell` requires \
+         `PlatformId::Linux`, and the test and its tripwire read cells only \
+         through that predicate",
+    ),
+    (
         "lane_build_covers_run.rs",
         "a lane-contract GATE: it reads the violation-channel cells' platforms \
          to name their coordinates in the tier-2 build, and boots nothing",

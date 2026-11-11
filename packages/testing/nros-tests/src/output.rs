@@ -125,6 +125,25 @@ pub const CUSTOM_PLATFORM_PUBLISHER_CREATED_PREFIX: &str = "Publisher created:";
 /// the return code.
 pub const CUSTOM_PLATFORM_PUBLISHER_FAILED_PREFIX: &str = "Failed to init publisher:";
 
+/// issue 2452 — `examples/linux/c/custom-transport-loopback` announcing its
+/// link's callback counts, printed once the session has closed. Each count is
+/// on its own line below it, named by [`CUSTOM_LINK_CALLBACKS`].
+pub const CUSTOM_LINK_COUNTS_HEADER: &str = "custom link callback counts:";
+
+/// The four `nros_transport_ops_t` callbacks, as the lines under
+/// [`CUSTOM_LINK_COUNTS_HEADER`] name them (`  open:  1`).
+pub const CUSTOM_LINK_CALLBACKS: [&str; 4] = ["open:", "write:", "read:", "close:"];
+
+/// The count the image printed for `callback` (one of [`CUSTOM_LINK_CALLBACKS`])
+/// under [`CUSTOM_LINK_COUNTS_HEADER`], or `None` when it printed none.
+pub fn custom_link_count(output: &str, callback: &str) -> Option<u64> {
+    let (_, counts) = output.split_once(CUSTOM_LINK_COUNTS_HEADER)?;
+    counts
+        .lines()
+        .find_map(|l| l.trim().strip_prefix(callback))
+        .and_then(|v| v.trim().parse().ok())
+}
+
 /// issue 0441 — the receive-side `MessageInfo` marker emitted by the
 /// `message-info-observer` bin (`seq=<n> gid=<hex> ts=<t>`).
 ///

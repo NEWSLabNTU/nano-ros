@@ -21,6 +21,11 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// Issue 2452 — keep the custom link's Rust half (`nros_zpico_custom_take`)
+// in every image: the C link that calls it may be switched on by the
+// `NROS_LINK_CUSTOM` knob, which reaches no cargo feature.
+extern crate zpico_platform_custom as _;
+
 pub(crate) mod config;
 pub mod keyexpr;
 pub mod zpico;

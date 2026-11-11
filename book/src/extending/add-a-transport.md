@@ -117,8 +117,11 @@ a null field.
 <!-- /tabs -->
 
 zenoh-pico frames its own wire protocol, so the bytes your callbacks carry
-need no framing. A Rust image also turns on the backend's `link-custom`
-option, beside its other dependencies:
+need no framing. The image also needs zenoh-pico's custom link compiled in.
+Stating the locator in the image (step 4) does that for Rust, C and C++
+alike. A Rust image that opens its session on a `custom/…` locator in code,
+without stating it, turns on the backend's `link-custom` option instead,
+beside its other dependencies:
 
 ```toml
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["link-custom"] }
@@ -137,17 +140,26 @@ entry, as the bare-metal MPS2-AN385 board does for its UART.
 
 ### 4. Point the image at the custom link
 
-The locator's scheme is the link. In the bringup's `system.toml`:
+The locator's scheme is the link. In the bringup's `system.toml`, for
+zenoh:
 
 ```toml
 [image.my_image]
 board = "my-board"
-locator = "custom://uart"
+locator = "custom/uart"
 ```
 
-On a byte-stream link like this one, the build leaves the IP transports out
-of the image. What follows the scheme is a label for your own logs and must
-not be empty.
+and for XRCE-DDS, `locator = "custom://uart"`. The two backends spell the
+scheme differently: zenoh reads `custom://uart` as a scheme named `custom:`,
+which it does not know.
+
+On a custom link the build leaves the IP transports out of the image, and
+for zenoh it compiles in the custom link. What follows the scheme is a label
+for your own logs and must not be empty.
+
+The far end of your link has to speak the protocol back: for zenoh, a router
+or a peer that answers the session's handshake. A loop that only returns the
+image's own bytes cannot, and the session refuses right after `open`.
 
 ### 5. Run the image
 
@@ -182,8 +194,8 @@ fn main() {
 The full image is
 [`examples/linux/rust/custom-transport-talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/custom-transport-talker),
 which also registers its backend first and logs each message. A C image that
-loops the bytes through a ring buffer, and exits non-zero unless all four
-callbacks ran, is
+carries the bytes over a TCP connection it opens itself, and exits non-zero
+unless all four callbacks ran, is
 [`examples/linux/c/custom-transport-loopback`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/custom-transport-loopback).
 On a board, the Rust workspace's
 [`baremetal_talker_xrce_serial` image](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/rust/src/pubsub_bringup/system.toml)
@@ -192,8 +204,12 @@ runs XRCE-DDS over the mps2-an385 UART through `locator = "custom://uart"`.
 ## If it doesn't work
 
 - **The session never opens, and `open` never ran.** The transport was
-  registered after the session opened, or the zenoh image lacks `link-custom`
-  and treats `custom` as an unknown scheme.
+  registered after the session opened, or zenoh-pico's custom link is not in
+  the image: the image states no `custom/…` locator (step 4) and, in Rust,
+  names no `link-custom`, or the locator is spelled `custom://…`. zenoh then
+  treats the scheme as unknown.
+- **`open` ran, then the session refused.** Nothing on the far end answered
+  the handshake (step 4).
 - **Registration fails.** `abi_version` is not
   `NROS_TRANSPORT_OPS_ABI_VERSION_V1`, or the struct was built without
   setting it.

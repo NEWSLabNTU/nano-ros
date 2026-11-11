@@ -2521,7 +2521,8 @@ int32_t zpico_open(zpico_session_t* session) {
     const zp_task_read_options_t* read_opts = s->read_task_configured ? &s->read_task_opts : NULL;
 
     if (zp_start_read_task(z_session_loan_mut(&s->session), read_opts) < 0) {
-        z_close(z_session_loan_mut(&s->session), NULL);
+        /* Issue 2452 -- DROP, not just close: see zpico_close. */
+        z_session_drop(z_session_move(&s->session));
         return ZPICO_ERR_TASK;
     }
 #if defined(ZPICO_EXEC_STACK_REPORT)
@@ -2755,7 +2756,7 @@ void zpico_close(zpico_session_t* session) {
         zp_batch_stop(z_session_loan(&s->session));
 #endif
 #if defined(ZPICO_DRIVE_THREAD)
-        // Stop the executor thread (RFC-0110 D2; `z_close` would stop it too).
+        // Stop the executor thread (RFC-0110 D2; the session drop would stop it too).
         zp_stop_read_task(z_session_loan_mut(&s->session));
 
 #if defined(ZPICO_FREERTOS_KERNEL)
@@ -2774,7 +2775,14 @@ void zpico_close(zpico_session_t* session) {
         _z_mutex_drop(&s->spin_mutex);
 #endif
 #endif
-        z_close(z_session_loan_mut(&s->session), NULL);
+        /* Issue 2452 -- DROP the session, not only close it. zenoh-pico's
+         * close marks the session closed and stops its tasks; only the drop
+         * clears its transport, which is what closes the LINK (its socket fd,
+         * or a custom link's `close` callback) and frees the session `z_open`
+         * allocated. Closing alone left every closed session's link open and
+         * its memory held, and an application's `nros_transport_ops_t.close`
+         * never ran. `z_session_drop` closes the session first itself. */
+        z_session_drop(z_session_move(&s->session));
         s->session_open = false;
 #if Z_FEATURE_MULTI_THREAD == 1
         if (s->slot_mutex_initialized) {

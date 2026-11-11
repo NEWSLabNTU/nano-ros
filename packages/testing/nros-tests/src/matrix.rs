@@ -459,6 +459,17 @@ pub enum Workload {
     /// caught it either: every pubsub example uses the LEGACY
     /// `rclc_node_init_default`, which was never affected.
     ExecutorBoundNode,
+    /// issue 2452 — a session whose LINK the application supplies
+    /// (`rclc_set_custom_transport`, a `custom/…` locator) OPENS through it and
+    /// closes it: `open`, `write`, `read` and `close` each fire, and the image
+    /// exits 0 only then (`examples/linux/c/custom-transport-loopback`).
+    ///
+    /// Its own value rather than a [`Config::CustomTransport`] case of
+    /// [`Workload::Pubsub`]: a configured pubsub cell is a talker/listener PAIR
+    /// from a language workspace, and this is one image whose subject is the
+    /// link's lifecycle, not delivery. The example's row was build-only, and
+    /// the session refused before the transport's `open` ever ran.
+    CustomLink,
     /// issue 1795 — the RTOS TYPED CARRIER build road
     /// (`nros_components_register_node(... TYPED DEPLOY <rtos>)`) produces an
     /// image that BOOTS and publishes. Its own workload because its subject is
@@ -631,6 +642,10 @@ impl Workload {
             Workload::Errno => 94,
             // Same reason as Errno: no peer dials this image.
             Workload::ExecutorBoundNode => 99,
+            // issue 2452. The image dials a router the test starts on an
+            // ephemeral port, so no allocated port is read; 41 is free in
+            // every band.
+            Workload::CustomLink => 41,
             // issue 1795. 81..=87 is free in every band (see PortSmoke below);
             // zenoh only, so the domain window is irrelevant.
             Workload::TypedCarrier => 81,
@@ -943,6 +958,8 @@ pub enum Consumer {
     LinuxExamplePubsub,
     LinuxExampleReqresp,
     LinuxExampleExecutorBoundNode,
+    /// `tests/linux_example_custom_link_e2e.rs` — issue 2452.
+    LinuxExampleCustomLink,
     PortTemplates,
     ZephyrCortexM,
     /// `tests/zephyr_renode_twin.rs` -- the Nucleo-F767ZI's Renode smoke cell
@@ -1012,6 +1029,7 @@ impl Consumer {
         Consumer::LinuxExamplePubsub,
         Consumer::LinuxExampleReqresp,
         Consumer::LinuxExampleExecutorBoundNode,
+        Consumer::LinuxExampleCustomLink,
         Consumer::PortTemplates,
         Consumer::ZephyrCortexM,
         Consumer::ZephyrRenodeTwin,
@@ -1056,6 +1074,7 @@ impl Consumer {
             Consumer::LinuxExamplePubsub => "linux_example_pubsub_e2e",
             Consumer::LinuxExampleReqresp => "linux_example_reqresp_e2e",
             Consumer::LinuxExampleExecutorBoundNode => "linux_example_executor_bound_node_e2e",
+            Consumer::LinuxExampleCustomLink => "linux_example_custom_link_e2e",
             Consumer::PortTemplates => "port_templates_e2e",
             Consumer::ZephyrCortexM => "zephyr_cortex_m_qemu",
             Consumer::ZephyrRenodeTwin => "zephyr_renode_twin",
@@ -1551,6 +1570,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         (P::Linux, _, _, W::Pubsub, K::Example) => Some(LinuxExamplePubsub),
         (P::Linux, _, _, W::Service | W::Action, K::Example) => Some(LinuxExampleReqresp),
         (P::Linux, _, _, W::ExecutorBoundNode, K::Example) => Some(LinuxExampleExecutorBoundNode),
+        (P::Linux, _, _, W::CustomLink, K::Example) => Some(LinuxExampleCustomLink),
         (_, _, _, W::Port | W::PortSmoke | W::PortMonitor | W::PortWorkspace, K::Example) => {
             Some(PortTemplates)
         }

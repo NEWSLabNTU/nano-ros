@@ -622,8 +622,10 @@ and a test asks for it by name (`resolve_coord_variant`).
     program, would answer for the census and goal-order cases.
   - Running the moved fixtures found the C custom-transport loopback exiting 1
     before and after the move: its session over `custom://loopback` answers
-    ConnectionFailed ([issue 2452](../issues/2452-c-custom-transport-loopback-session-connection-failed.md)).
-    Its row was, and stays, build-only.
+    ConnectionFailed ([issue 2452](../issues/archived/2452-c-custom-transport-loopback-session-connection-failed.md)).
+    Resolved: no C/C++ image compiled zenoh-pico's custom link, the ring could
+    not answer the handshake, and a closed session never closed its link. The
+    row is a runtime row now (`CustomLink` cell).
 - **RTOS C typed-carrier and errno-isolation (in review).**
   `examples/qemu-armv7a-nuttx/c/typed-carrier`,
   `examples/rv-virt-threadx/c/typed-carrier` and
@@ -773,4 +775,4 @@ never the retired leaf shape.
 | [#2383](../issues/archived/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). Resolved: the derivation now reaches pair images by coordinate and by `linux_pair_image` call. |
 | [#2377](../issues/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road has no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stay leaves (W5). |
 | [#2427](../issues/archived/2427-threadx-riscv64-run-hint-mac-ignores-image-network.md) | The ThreadX riscv64 run plan gave every image peer 0's MAC, so the printed QEMU line for the W6 Cyclone listener image named the talker's MAC. Resolved 2026-11-10: the plan takes the image network's MAC. |
-| [#2452](../issues/2452-c-custom-transport-loopback-session-connection-failed.md) | Found running W6's moved C/C++ fixtures: the C custom-transport loopback exits 1 (session ConnectionFailed) before and after its move; its row is build-only, so no lane saw it. |
+| [#2452](../issues/archived/2452-c-custom-transport-loopback-session-connection-failed.md) | Found running W6's moved C/C++ fixtures: the C custom-transport loopback exits 1 (session ConnectionFailed) before and after its move; its row is build-only, so no lane saw it. **Resolved** — runtime row, `CustomLink` cell. |

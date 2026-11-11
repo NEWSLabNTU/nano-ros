@@ -326,6 +326,7 @@ KNOB_CLASS = {
     # image's CAN / ISO-TP endpoints; a bool, so it has no rung.
     "NROS_LINK_CAN": ("infra", "link toggle, implied from a can/ endpoint"),
     "NROS_LINK_ISOTP": ("infra", "link toggle, implied from an isotp/ endpoint"),
+    "NROS_LINK_CUSTOM": ("infra", "link toggle, implied from a custom/ endpoint (issue 2452)"),
     "NROS_PLATFORMS_DIR": ("infra", "the ladder's own search path"),
     "NROS_PLATFORM_NAME": ("infra", "the ladder's own platform rung input"),
     "NROS_PX4_BRIDGE_GEN": ("infra", "codegen toggle"),

@@ -7,11 +7,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 85 |
+| Commits on top | 86 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 115, +10047/−252 |
+| Files changed | 116, +10049/−254 |
 
-**Pinned commit:** `15f3b01293c4546f945916ceeea00dbb24327985`
+**Pinned commit:** `fb5f5cdc6c86f4781838df07f6d12000d52fceab`
 
 ## Commits on top of upstream
 
@@ -102,9 +102,10 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [f84c6be5a4](https://github.com/jerry73204/zenoh-pico/commit/f84c6be5a4b031e39aa94884cd1e9aea7f2044d4) | fix: a connect budget bounds each attempt's handshake |
 | [6827fe1f2b](https://github.com/jerry73204/zenoh-pico/commit/6827fe1f2bfd8f59a614d472e7cdd043a061ec3c) | fix: a connect budget bounds the TCP connect too |
 | [15f3b01293](https://github.com/jerry73204/zenoh-pico/commit/15f3b01293c4546f945916ceeea00dbb24327985) | fix: a write the peer stops taking ends the session |
+| [fb5f5cdc6c](https://github.com/jerry73204/zenoh-pico/commit/fb5f5cdc6c86f4781838df07f6d12000d52fceab) | fix: the POSIX TCP and UDP links compile only when enabled |
 
 Reproduce:
 
 ```bash
-gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:15f3b01293c4546f945916ceeea00dbb24327985 --jq '.ahead_by'
+gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:fb5f5cdc6c86f4781838df07f6d12000d52fceab --jq '.ahead_by'
 ```
