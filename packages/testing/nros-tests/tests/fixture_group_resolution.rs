@@ -67,34 +67,23 @@ fn export_with(shared_platforms: &str) -> Vec<GroupRow> {
 /// the selector the caller now names.
 // phase-531 W6 moved `examples/linux/rust/talker` to a one-node workspace, so
 // its rows are `[[workspace_fixture]]` rows and this table no longer sees them.
-// The axes are named on the leaves that still carry them: the image axis on
-// `bins/int32-sink` (one row per RMW image) and the env axis on
-// `nros-bench/stress-zenoh`. The feature axis is gone: its last row
-// (`bins/action-server-concurrent`'s `zenoh-reply-slots`) became a workspace
-// image (issue 2406), and phase-535 W6 made the linux Rust listener, whose
-// `link-tls` row it once named, a one-node workspace.
-const SINK_LEAF: &str = "packages/testing/nros-tests/bins/int32-sink";
+// The axes are named on the leaves that still carry them: a plain RMW row on
+// `bins/int32-source` and the env axis on `nros-bench/stress-zenoh`. The
+// feature axis is gone: its last row (`bins/action-server-concurrent`'s
+// `zenoh-reply-slots`) became a workspace image (issue 2406), and phase-535 W6
+// made the linux Rust listener, whose `link-tls` row it once named, a
+// one-node workspace. So is the image axis: its last leaf, `bins/int32-sink`
+// (one row per RMW image), became a workspace in phase-531 W7, where each
+// image is its own `[[workspace_fixture]]` row with its own `target_dir`.
+const SOURCE_LEAF: &str = "packages/testing/nros-tests/bins/int32-source";
 const STRESS_LEAF: &str = "packages/testing/nros-bench/stress-zenoh";
 
 fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
     vec![
         (
-            "sink plain",
-            SINK_LEAF,
+            "source plain",
+            SOURCE_LEAF,
             FixtureVariant::platform_rmw(Rmw::Zenoh),
-        ),
-        // Issue 1305 — the RMW is the leaf's IMAGE now (RFC-0031): two images
-        // of one leaf must land in two group dirs exactly as two feature sets
-        // did.
-        (
-            "sink image linux_xrce",
-            SINK_LEAF,
-            FixtureVariant::image(Rmw::Xrce, "linux_xrce"),
-        ),
-        (
-            "sink image linux_cyclonedds",
-            SINK_LEAF,
-            FixtureVariant::image(Rmw::Cyclonedds, "linux_cyclonedds"),
         ),
         (
             "stress env",

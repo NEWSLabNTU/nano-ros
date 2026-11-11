@@ -2571,12 +2571,15 @@ dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 # a step-constrained parameter on `alpha` alone (issue 1150) and no
 # `allow_undeclared` opt-in anywhere (issue 1151).
 # Consumed by tests/params_per_node_interop.rs.
-[[fixture]]
+[[workspace_fixture]]
 id = "param-two-node-talker"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/param-two-node-talker"
+bringup = "src/param_two_node_talker_bringup"
+image = "linux"
+target_dir = "target-linux"
 
 # issue 1268 / phase-444 W6 — the SAME two-node image on Cyclone.
 #
@@ -2592,47 +2595,58 @@ dir = "packages/testing/nros-tests/bins/param-two-node-talker"
 # identity IS its configuration. These two rows are told apart by the IMAGE
 # (`system.toml` declares `linux` and `linux_cyclonedds`, issue 1305), and
 # selected with `groups::select_rmw_row(dir, Cyclonedds)`.
-[[fixture]]
+[[workspace_fixture]]
 id = "param-two-node-talker-cyclone"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/param-two-node-talker"
+bringup = "src/param_two_node_talker_bringup"
 image = "linux_cyclonedds"
+target_dir = "target-linux-cyclonedds"
 
 # phase-381 acceptance — the graph probe. Enumerates the ROS graph and prints
 # what it can SEE, so `graph_interop.rs` can compare it against `ros2 node
 # list`. The one fixture in the phase whose subject is DISCOVERY: every other
 # check tested our code against our own builders and parser, and all of them
 # passed while the feature did not work (issue 0903).
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-zenoh-graph-probe"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/graph-probe"
+bringup = "src/graph_probe_bringup"
+image = "linux"
+target_dir = "target-linux"
 
 # phase-381 step 2 — the CYCLONE build of the graph probe. W5 gave Cyclone a
 # `ros_discovery_info` READER and only zenoh was ever run live; given that
 # zenoh's path had THREE stacked defects every unit test passed (issue 0903),
 # Cyclone's is assumed broken until a run says otherwise.
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-cyclonedds-graph-probe"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/graph-probe"
+bringup = "src/graph_probe_bringup"
 image = "linux_cyclonedds"
+target_dir = "target-linux-cyclonedds"
 
 # Issue 2110 — the XRCE build of the graph probe, for its `GRAPH_PROBE_GID`
 # mode only: `get_gid_for_publisher` against the GID a stock
 # `ros2 topic info --verbose` prints for the publisher (issue 1292's rig,
 # `xrce_ros2_interop::test_xrce_publisher_gid_is_the_one_a_stock_graph_reports`).
-[[fixture]]
+[[workspace_fixture]]
 id = "graph-probe-xrce"
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/graph-probe"
+bringup = "src/graph_probe_bringup"
 image = "linux_xrce"
+target_dir = "target-linux-xrce"
 
 # phase-467 Q4 — the `/rosout` bridge probe (ledger row
 # `c:logging_rosout_enabled`). Logs through `nros_log` and pumps
@@ -2724,17 +2738,20 @@ dir = "packages/testing/nros-tests/bins/advertised-state-probe"
 # `serves` names those cells, and `entry_e2e`'s
 # `int32_sink_observer_serves_every_cell_that_uses_it` keeps it equal to the
 # set of cells that spawn it.
-[[fixture]]
+[[workspace_fixture]]
 id = "int32-sink-zenoh"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-sink"
+bringup = "src/int32_sink_bringup"
+image = "linux"
 serves = [
     "freertos,mixed,zenoh",
     "threadx-linux,mixed,zenoh",
     "zephyr,mixed,zenoh",
 ]
+target_dir = "target-linux"
 
 # phase-482 W3 — the publishing twin of int32-sink: Int32 on every topic in
 # `NROS_PUB_TOPICS`, every `NROS_PUB_PERIOD_MS`. The peer that feeds
@@ -2759,32 +2776,40 @@ target_dir = "target"
 # pair cannot open a session and the test can only skip. Cyclone is
 # peer-to-peer, so this demonstrates rather than skips. The claim under test is
 # about clocks, not about a transport.
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-cyclonedds-sim-clock-publisher"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/sim-clock-publisher"
+bringup = "src/sim_clock_publisher_bringup"
 image = "linux_cyclonedds"
+target_dir = "target"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-rust-cyclonedds-sim-clock-listener"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/sim-clock-listener"
+bringup = "src/sim_clock_listener_bringup"
 image = "linux_cyclonedds"
+target_dir = "target"
 
 # phase-338 W3 — the XRCE build of the same sink. The zenoh->xrce declarative
 # bridge e2e needs an Int32 listener that speaks XRCE; before this it drove the
 # EXAMPLE (`linux/rust/listener`) with a test-only `NROS_SUB_TYPE=int32` env
 # switch, because this fixture was hardcoded to zenoh. A test fixture must not
 # pin the RMW any more than an example does.
-[[fixture]]
+[[workspace_fixture]]
 id = "int32-sink-xrce"
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/int32-sink"
+bringup = "src/int32_sink_bringup"
 image = "linux_xrce"
+target_dir = "target-linux-xrce"
 
 # issue 0449 — the cyclone build of the same sink. The zenoh->cyclonedds
 # declarative bridge e2e needed an Int32 listener speaking cyclone; before this
@@ -2792,13 +2817,15 @@ image = "linux_xrce"
 # switch, which is why that example carried a runtime message-type switch no ROS
 # demo has. The examples follow the ROS demos (std_msgs/String); test-only
 # payload shapes belong in a test bin.
-[[fixture]]
+[[workspace_fixture]]
 id = "int32-sink-cyclonedds"
 platform = "linux"
 lang = "rust"
 rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/int32-sink"
+bringup = "src/int32_sink_bringup"
 image = "linux_cyclonedds"
+target_dir = "target-linux-cyclonedds"
 
 # Concurrent Fibonacci action server (phase-277 W5 — was the example
 # action-server's `NROS_ACTION_CONCURRENT` escape hatch; the example slimmed
@@ -2842,12 +2869,15 @@ target_dir = "target-xrce"
 # can be shown to REJECT rather than acknowledge-and-drop. Zenoh only: the
 # assertion is about the server's goal table, which is backend-independent, so
 # a second RMW build would add sweep time without adding coverage.
-[[fixture]]
+[[workspace_fixture]]
 id = "action-client-multigoal-zenoh"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/action-client-multigoal"
+bringup = "src/action_client_multigoal_bringup"
+image = "linux"
+target_dir = "target"
 
 # TLS variant: the talker's `[image.linux_tls]`, which turns on the node's
 # `link-tls` feature (RFC-0121 D9).
@@ -3019,13 +3049,15 @@ serves = ["zephyr-cortex-m,c,xrce"]
 # against a live Agent and a stock ROS 2 client
 # (`xrce_ros2_interop::test_xrce_service_reports_the_stock_clients_request_id`).
 # A bin, not the service-server example: `CallbackCtx` exposes no ServiceInfo.
-[[fixture]]
+[[workspace_fixture]]
 id = "service-info-server-xrce"
 platform = "linux"
 lang = "rust"
 rmw = "xrce"
 dir = "packages/testing/nros-tests/bins/service-info-server"
+bringup = "src/service_info_server_bringup"
 image = "linux_xrce"
+target_dir = "target"
 
 # issue 2136 — a service CLIENT's `take_response_with_info`, measured against
 # a stock `rmw_zenoh_cpp` server (`interop_e2e::interop::case_11_zenoh_service_
@@ -3046,21 +3078,25 @@ target_dir = "target"
 # compiled OUT (`linux_no_graph`). `interop_e2e::interop::case_13_zenoh_
 # constrained_link_latched_late_join` late-joins a stock latched publisher with
 # both, and with a VOLATILE subscription as the negative control.
-[[fixture]]
+[[workspace_fixture]]
 id = "constrained-link-probe-zenoh"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/constrained-link-probe"
+bringup = "src/constrained_link_probe_bringup"
 image = "linux"
+target_dir = "target-linux"
 
-[[fixture]]
+[[workspace_fixture]]
 id = "constrained-link-probe-no-graph-zenoh"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/constrained-link-probe"
+bringup = "src/constrained_link_probe_bringup"
 image = "linux_no_graph"
+target_dir = "target-linux-no-graph"
 
 # issue 2148 — the C++ client's response header,
 # `PollClient::take_response(response, request_header)`, measured against a
