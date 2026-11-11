@@ -5216,13 +5216,15 @@ pub fn build_int32_sink() -> TestResult<&'static Path> {
 pub fn build_int32_source() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
     BIN.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
-            "packages/testing/nros-tests/bins/int32-source",
-            &crate::fixtures::groups::FixtureVariant::platform_rmw(Rmw::Zenoh),
-        )?;
-        let profile = cargo_target_profile_dir();
-        let rel = PathBuf::from(format!("{profile}/int32-source"));
-        require_prebuilt_row_binary_fresh(row, &rel)
+        // phase-531 W7 — a one-package workspace whose image builds the
+        // OWNED entry (RFC-0071 D19).
+        let dir = "packages/testing/nros-tests/bins/int32-source";
+        migrated_leaf_binary(
+            dir,
+            Rmw::Zenoh,
+            crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        )
+        .unwrap_or_else(|| Err(not_migrated(dir)))
     })
     .map(|p| p.as_path())
 }
@@ -6510,12 +6512,15 @@ pub fn build_native_declarative_safety_listener() -> TestResult<&'static Path> {
 pub fn build_rosout_talker() -> TestResult<&'static Path> {
     NATIVE_ROSOUT_TALKER_BINARY
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_sole_row(
-                "packages/testing/nros-tests/bins/rosout-talker",
-            )?;
-            let profile = cargo_target_profile_dir();
-            let rel = PathBuf::from(format!("{profile}/rosout-talker"));
-            require_prebuilt_row_binary_fresh(row, &rel)
+            // phase-531 W7 — a one-package workspace whose image builds the
+            // OWNED entry (RFC-0071 D19).
+            let dir = "packages/testing/nros-tests/bins/rosout-talker";
+            migrated_leaf_binary(
+                dir,
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(dir)))
         })
         .map(|p| p.as_path())
 }
@@ -7595,15 +7600,15 @@ pub fn build_zenoh_service_info_client() -> TestResult<&'static Path> {
     static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
     ZENOH_BIN
         .get_or_try_init(|| {
-            let row = crate::fixtures::groups::select_rmw_row(
-                "packages/testing/nros-tests/bins/service-info-client",
+            // phase-531 W7 — a one-package workspace whose image builds the
+            // OWNED entry (RFC-0071 D19).
+            let dir = "packages/testing/nros-tests/bins/service-info-client";
+            migrated_leaf_binary(
+                dir,
                 Rmw::Zenoh,
-            )?;
-            let rel = PathBuf::from(format!(
-                "{}/service-info-client",
-                cargo_target_profile_dir()
-            ));
-            require_prebuilt_row_binary_fresh(row, &rel)
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+            )
+            .unwrap_or_else(|| Err(not_migrated(dir)))
         })
         .map(|p| p.as_path())
 }

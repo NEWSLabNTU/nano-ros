@@ -2436,9 +2436,11 @@ mod board_crate_tests {
         // the linux Rust lifecycle-node, custom-msg and custom-transport pair
         // (W6: owned entries of one-package workspaces, RFC-0071 D19), 60 -> 57
         // for the threadx-linux, mps2-an385-freertos and qemu-armv7a-nuttx Rust
-        // talkers (phase-531 W6: one-node workspaces).
+        // talkers (phase-531 W6: one-node workspaces), 57 -> 54 for the
+        // `nros-tests` `int32-source`, `rosout-talker` and
+        // `service-info-client` bins (W7: owned entries, RFC-0071 D19).
         assert!(
-            on_selection >= 57,
+            on_selection >= 54,
             "only {on_selection} leaves on the selection package"
         );
     }

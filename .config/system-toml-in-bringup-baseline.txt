@@ -86,7 +86,6 @@ packages/testing/nros-tests/bins/graph-probe/system.toml
 packages/testing/nros-tests/bins/image-env-probe-c/system.toml
 packages/testing/nros-tests/bins/in-place-subscriptions/system.toml
 packages/testing/nros-tests/bins/int32-sink/system.toml
-packages/testing/nros-tests/bins/int32-source/system.toml
 packages/testing/nros-tests/bins/log-arena-probe/system.toml
 packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/system.toml
 packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/system.toml
@@ -99,10 +98,8 @@ packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/system.toml
 packages/testing/nros-tests/bins/ros-edition-pose-pub/system.toml
 packages/testing/nros-tests/bins/rosout-talker-c/system.toml
 packages/testing/nros-tests/bins/rosout-talker-cpp/system.toml
-packages/testing/nros-tests/bins/rosout-talker/system.toml
 packages/testing/nros-tests/bins/rtic-run-plan-e2e/system.toml
 packages/testing/nros-tests/bins/service-info-client-cpp/system.toml
-packages/testing/nros-tests/bins/service-info-client/system.toml
 packages/testing/nros-tests/bins/service-info-server/system.toml
 packages/testing/nros-tests/bins/sim-clock-listener/system.toml
 packages/testing/nros-tests/bins/sim-clock-publisher/system.toml

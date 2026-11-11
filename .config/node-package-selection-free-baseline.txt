@@ -47,7 +47,6 @@ packages/testing/nros-tests/bins/constrained-link-probe/Cargo.toml  constrained_
 packages/testing/nros-tests/bins/graph-probe/Cargo.toml  graph_probe_nros_selection
 packages/testing/nros-tests/bins/in-place-subscriptions/Cargo.toml  in_place_subscriptions_nros_selection
 packages/testing/nros-tests/bins/int32-sink/Cargo.toml  int32_sink_nros_selection
-packages/testing/nros-tests/bins/int32-source/Cargo.toml  int32_source_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/Cargo.toml  logging_smoke_freertos_mps2_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/Cargo.toml  logging_smoke_nuttx_qemu_arm_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml  logging_smoke_threadx_linux_nros_selection
@@ -56,9 +55,7 @@ packages/testing/nros-tests/bins/param-two-node-talker/Cargo.toml  param_two_nod
 packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux/Cargo.toml  pool_exhaustion_threadx_linux_nros_selection
 packages/testing/nros-tests/bins/qemu-baremetal-main-e2e/Cargo.toml  qemu_baremetal_main_e2e_nros_selection
 packages/testing/nros-tests/bins/ros-edition-pose-pub/Cargo.toml  ros_edition_pose_pub_nros_selection
-packages/testing/nros-tests/bins/rosout-talker/Cargo.toml  rosout_talker_nros_selection
 packages/testing/nros-tests/bins/rtic-run-plan-e2e/Cargo.toml  qemu_rtic_main_e2e_nros_selection
-packages/testing/nros-tests/bins/service-info-client/Cargo.toml  service_info_client_nros_selection
 packages/testing/nros-tests/bins/service-info-server/Cargo.toml  service_info_server_nros_selection
 packages/testing/nros-tests/bins/sim-clock-listener/Cargo.toml  sim_clock_listener_nros_selection
 packages/testing/nros-tests/bins/sim-clock-publisher/Cargo.toml  sim_clock_publisher_nros_selection

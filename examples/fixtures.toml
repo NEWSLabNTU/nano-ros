@@ -2605,12 +2605,15 @@ image = "linux_xrce"
 # row: the bridge is a publisher of one generated message type and nothing in
 # it is backend-specific, so a second row would buy a second build and no
 # second question.
-[[fixture]]
+[[workspace_fixture]]
 id = "rosout-talker"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/rosout-talker"
+bringup = "src/rosout_talker_bringup"
+image = "linux"
+target_dir = "target"
 
 # issue 1589 — the same probe through the C and C++ surfaces
 # (`nros_rosout_*`, `nros::rosout::Publisher`). Each declares the `rosout`
@@ -2700,12 +2703,15 @@ serves = [
 # phase-482 W3 — the publishing twin of int32-sink: Int32 on every topic in
 # `NROS_PUB_TOPICS`, every `NROS_PUB_PERIOD_MS`. The peer that feeds
 # `topic-state-monitor-port` its two watched topics (tests/port_templates_e2e.rs).
-[[fixture]]
+[[workspace_fixture]]
 id = "int32-source-zenoh"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/int32-source"
+bringup = "src/int32_source_bringup"
+image = "linux"
+target_dir = "target"
 
 # phase-425 W5 — the `/clock` pair, the phase's end-to-end evidence. Every other
 # simulated-time test installs a ROS time by calling the setter, which proves
@@ -2989,12 +2995,15 @@ image = "linux_xrce"
 # a stock `rmw_zenoh_cpp` server (`interop_e2e::interop::case_11_zenoh_service_
 # response_info`). A bin, not the service-client example: the Node API hands a
 # reply to its callback without its ServiceInfo.
-[[fixture]]
+[[workspace_fixture]]
 id = "service-info-client-zenoh"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/service-info-client"
+rmw = "zenoh"
+bringup = "src/service_info_client_bringup"
 image = "linux"
+target_dir = "target"
 
 # issue 2163 — the constrained-link zenoh witness (phase-473 W1/W2), built
 # twice from one leaf: graph discovery ON (`linux`, the positive control) and
