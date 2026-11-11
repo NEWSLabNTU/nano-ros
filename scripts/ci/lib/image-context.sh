@@ -487,6 +487,12 @@ ARG NROS_VERSION=latest
 ARG NROS_STARTER_BOARDS="linux mps2-an385-baremetal mps2-an385-freertos"
 ARG NROS_STARTER_RMW=zenoh
 ARG NROS_STARTER_UID=1000
+# What this image carries, as data a derived image's probe reads back
+# (scripts/probe/verify-starter-recipe.sh) rather than assuming this
+# checkout's defaults: a starter built with other --build-args is checked
+# for what it actually holds.
+LABEL org.nano-ros.starter.boards="${NROS_STARTER_BOARDS}" \
+      org.nano-ros.starter.rmw="${NROS_STARTER_RMW}"
 
 # RFC-0127 D5 guarantee 3 -- fixed paths a derived image may rely on.
 ENV NROS_HOME=/opt/nros \

@@ -438,3 +438,14 @@ bootstrap-zsh:
 extract out="tmp/probe-steps.sh" distro="debian" track="quickstart":
     mkdir -p tmp
     PROBE_TRACK={{track}} PROBE_DISTRO={{distro}} PROBE_EXTRACT_ONLY={{out}} ./scripts/probe/run-bootstrap-probe.sh
+
+# RFC-0127 D5 guarantee 4 (phase-551 W7) — build the customer `FROM` recipe
+# (docker/starter-recipe/) on a starter image, then check with the network
+# removed: every board the starter carries plus the recipe's own is fully
+# present (guarantee 2), NROS_HOME and /work are where D5 fixes them
+# (guarantee 3), and the first project still builds. `starter` names a LOCAL
+# tag until RFC-0127 Q1 names a registry; build one with
+# `scripts/ci/starter-image.sh`. Opt-in, like every probe track.
+[group("main")]
+starter-recipe starter="nano-ros-starter:local":
+    ./scripts/probe/verify-starter-recipe.sh --starter {{starter}}

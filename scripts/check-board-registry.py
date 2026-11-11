@@ -74,7 +74,9 @@ KNOWN_GAPS = (
 # Recipes in just/probe.just that are not tracks.
 PROBE_NON_TRACKS = {"default", "bootstrap", "checkout", "installed", "platform",
                     "platform-asset", "zenoh", "bootstrap-arch", "bootstrap-fedora",
-                    "bootstrap-zsh", "extract"}
+                    "bootstrap-zsh", "extract",
+                    # phase-551 W7: a container recipe's probe, not a book chapter
+                    "starter-recipe"}
 
 
 def load(name: str, rel: str):
