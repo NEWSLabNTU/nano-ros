@@ -429,6 +429,14 @@ fi
 
 mkdir -p "$(dirname "$log")" "$(dirname "$sig_file")" "$ccache_dir" "$ccache_tmpdir"
 
+# Issue 2421 — a build dir configured before the pinned make came first on
+# PATH keeps the make its cache recorded (Zephyr native_sim's
+# `find_program(MAKE)`); under a FIFO pool a make 4.3 stops on
+# `invalid --jobserver-auth`. Asked on the PATH the build runs with.
+# shellcheck source=scripts/build/cmake-cache-guard.sh
+source "$nros_root/scripts/build/cmake-cache-guard.sh"
+PATH="$tool_path" nros_cmake_guard_stale_make "$build_dir"
+
 set +e
 (
     cd "$workspace"

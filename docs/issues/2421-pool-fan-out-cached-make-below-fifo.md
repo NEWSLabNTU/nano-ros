@@ -42,3 +42,48 @@ pool. A fixture driver that owns a build dir would ask the same helper
 make is older than 4.4, the driver would clear that one cache entry before
 it builds. Acceptance: a fixture dir configured with `MAKE:FILEPATH` set to
 a make 4.3 builds under the pool.
+
+## Fix (2026-11-11)
+
+The issue's suggested shape: repair the stale cache rather than downgrade the
+pool.
+
+- **One helper, in the CLI.** `builder::jobserver::repair_cached_makes`
+  reads the same caches `cached_makes` does (the dir's `CMakeCache.txt` and
+  each immediate subdirectory's) and rewrites every `CACHED_MAKE_KEYS` entry
+  whose make is older than `MAKE_FIFO` or no longer answers `--version`, to
+  the make first on `PATH`. It rewrites rather than deletes: `CMakeCache.txt`
+  is an input of ninja's `RERUN_CMAKE` edge (measured), so the next build
+  regenerates with the new path, and a Makefiles generator's `cmake --build`
+  still finds its `CMAKE_MAKE_PROGRAM`. Exposed as
+  `nros dev jobserver repair-makes <dir>…`, which does nothing when the make
+  on `PATH` is itself below 4.4.
+- **Rule 5 of `cmake-cache-guard.sh`**, `nros_cmake_guard_stale_make <dir>`,
+  calls it only when `MAKEFLAGS` carries `--jobserver-auth=fifo:`, so an old
+  make outside a pool is left alone. It runs from `nros_cmake_guard_build_dir`
+  (cmake-incremental, fixture-matrix, fixtures-build's workers, which
+  `export -f` it), and before the build in `west-fixtures.sh`,
+  `workspace-fixtures-build.sh` (whose `nros build` joins the sweep's pool
+  rather than choosing its own style), `compile-check-fixtures.sh`'s
+  persistent Makefiles dirs, and `zephyr-fixture-run-one.sh` (on the build's
+  own `PATH`). A CLI that cannot answer is reported by name, never silently.
+
+Tested:
+
+- Rust: a 4.3 make and a vanished one are rewritten in the dir's cache and a
+  sysbuild domain's, while ninja, a 4.4 make and every other line are left
+  byte for byte; a second pass finds nothing. End to end over real
+  `--version` probes with fake makes on a constructed `PATH`.
+- Shell: `tests/cmake-guard-stale-make-tests.sh` (gate
+  `cmake-guard-stale-make`), against a stub CLI. Outside a FIFO pool the CLI
+  is not asked. Inside one it is asked with the dir, also from a shell that
+  sourced only the guard and from an `export -f` copy in a fresh bash. A
+  failing CLI is reported.
+- The acceptance, locally: a Ninja dir configured with `MAKE:FILEPATH` set
+  to a make answering 4.3 (and refusing `--jobserver-auth`), built under the
+  pinned make's `-j4 --jobserver-style=fifo`. Without the guard the build
+  stopped (`subcommand failed`); with it, the target ran the pinned 4.4.1.
+
+Sweep: `git grep -n 'nros_cmake_guard_retired_names\|cmake -S' -- scripts/build`.
+Every persistent build dir a pool unit configures or builds is reached. The
+census pre-pass and `nros build`'s own pool are covered by issue 2241.

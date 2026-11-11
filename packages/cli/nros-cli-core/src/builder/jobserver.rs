@@ -580,9 +580,196 @@ pub fn cached_makes(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The first `make` on `PATH`, as an absolute path. What a pool's children
+/// run, since issue 2119 put the pinned make first on their `PATH`.
+#[must_use]
+pub fn make_on_path() -> Option<PathBuf> {
+    make_on(&std::env::var_os("PATH")?)
+}
+
+/// [`make_on_path`] over a given `PATH` value.
+#[must_use]
+pub fn make_on(path: &std::ffi::OsStr) -> Option<PathBuf> {
+    std::env::split_paths(path)
+        .map(|d| d.join("make"))
+        .find(|m| m.is_file())
+}
+
+/// One cache entry [`repair_cached_makes`] rewrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepairedMake {
+    /// The `CMakeCache.txt` it was in.
+    pub cache: PathBuf,
+    /// [`CACHED_MAKE_KEYS`] entry name.
+    pub key: String,
+    /// The make it named before.
+    pub was: PathBuf,
+    /// That make's version, `None` when it no longer answers `--version`.
+    pub was_version: Option<(u32, u32)>,
+}
+
+/// Issue 2421 — point every make a CMake cache under `dir` records at
+/// `replacement` when the recorded one cannot join a FIFO jobserver (older
+/// than [`MAKE_FIFO`], or gone).
+///
+/// A fan-out pool hands its units `--jobserver-auth=fifo:`, and a build dir
+/// configured before the pinned make came first on PATH keeps running the make
+/// its cache recorded; a make 4.3 then stops on `invalid --jobserver-auth`.
+/// Re-running `cmake <dir>` does not refresh a found `find_program` entry, so
+/// the entry is REWRITTEN in place rather than deleted: `CMakeCache.txt` is an
+/// input of ninja's `RERUN_CMAKE` edge, so the next build regenerates with the
+/// new path, and a Makefiles generator's `cmake --build` still finds its
+/// `CMAKE_MAKE_PROGRAM`.
+///
+/// `version_of` answers a make's version; tests pass a table. Each cache is
+/// rewritten whole through [`crate::atomic_file::atomic_write`].
+///
+/// # Errors
+///
+/// A cache that cannot be written.
+pub fn repair_cached_makes(
+    dir: &Path,
+    replacement: &Path,
+    version_of: &dyn Fn(&Path) -> Option<(u32, u32)>,
+) -> eyre::Result<Vec<RepairedMake>> {
+    let mut caches = vec![dir.join("CMakeCache.txt")];
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut subs: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path().join("CMakeCache.txt"))
+            .collect();
+        subs.sort();
+        caches.extend(subs);
+    }
+    let mut repaired = Vec::new();
+    for cache in caches {
+        let Ok(text) = std::fs::read_to_string(&cache) else {
+            continue;
+        };
+        let mut changed = false;
+        let mut out = String::with_capacity(text.len());
+        for line in text.split_inclusive('\n') {
+            let body = line.trim_end_matches(['\n', '\r']);
+            let stale = makes_in_cache(body).into_iter().next().and_then(|was| {
+                let v = version_of(&was);
+                (v.is_none_or(|v| v < MAKE_FIFO) && was != replacement).then_some((was, v))
+            });
+            match stale {
+                Some((was, was_version)) => {
+                    let (lhs, _) = body
+                        .split_once('=')
+                        .expect("makes_in_cache matched a KEY=value line");
+                    out.push_str(lhs);
+                    out.push('=');
+                    out.push_str(&replacement.display().to_string());
+                    out.push_str(&line[body.len()..]);
+                    repaired.push(RepairedMake {
+                        cache: cache.clone(),
+                        key: lhs.split_once(':').map_or(lhs, |(k, _)| k).to_string(),
+                        was,
+                        was_version,
+                    });
+                    changed = true;
+                }
+                None => out.push_str(line),
+            }
+        }
+        if changed {
+            crate::atomic_file::atomic_write(&cache, &out)?;
+        }
+    }
+    Ok(repaired)
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    /// Issue 2421 — a make below 4.4 (or gone) is pointed at the replacement,
+    /// in the dir's own cache and a sysbuild domain's; ninja and a 4.4 make
+    /// are left alone, and the rest of the cache is byte-for-byte unchanged.
+    #[test]
+    fn a_cached_make_below_fifo_is_pointed_at_the_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = dir.path().join("CMakeCache.txt");
+        let top_text = "# header\nCMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja\n\
+                        MAKE:FILEPATH=/usr/bin/make\nOTHER:STRING=make\n";
+        std::fs::write(&top, top_text).unwrap();
+        let domain = dir.path().join("app");
+        std::fs::create_dir(&domain).unwrap();
+        std::fs::write(
+            domain.join("CMakeCache.txt"),
+            "MAKE:FILEPATH=/gone/make\nCMAKE_MAKE_PROGRAM:FILEPATH=/opt/make44/make\n",
+        )
+        .unwrap();
+        let versions = |p: &Path| match p.to_str() {
+            Some("/usr/bin/make") => Some((4, 3)),
+            Some("/opt/make44/make") => Some((4, 4)),
+            _ => None,
+        };
+        let new = Path::new("/sdk/make/4.4.1/bin/make");
+        let got = repair_cached_makes(dir.path(), new, &versions).unwrap();
+        let keys: Vec<_> = got
+            .iter()
+            .map(|r| (r.key.as_str(), r.was.to_str().unwrap(), r.was_version))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                ("MAKE", "/usr/bin/make", Some((4, 3))),
+                ("MAKE", "/gone/make", None)
+            ]
+        );
+        assert_eq!(
+            std::fs::read_to_string(&top).unwrap(),
+            "# header\nCMAKE_MAKE_PROGRAM:FILEPATH=/usr/bin/ninja\n\
+             MAKE:FILEPATH=/sdk/make/4.4.1/bin/make\nOTHER:STRING=make\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(domain.join("CMakeCache.txt")).unwrap(),
+            "MAKE:FILEPATH=/sdk/make/4.4.1/bin/make\n\
+             CMAKE_MAKE_PROGRAM:FILEPATH=/opt/make44/make\n"
+        );
+        // A second pass finds nothing left to repair.
+        assert!(
+            repair_cached_makes(dir.path(), new, &versions)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    /// Issue 2421, end to end over real `--version` probes: a cache naming a
+    /// make that answers 4.3 is pointed at the 4.4 make first on `PATH`.
+    #[test]
+    fn a_make_43_cache_is_repaired_to_the_44_make_first_on_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let fake = |dir: &str, banner: &str| {
+            let d = root.path().join(dir);
+            std::fs::create_dir_all(&d).unwrap();
+            let m = d.join("make");
+            std::fs::write(&m, format!("#!/bin/sh\necho '{banner}'\n")).unwrap();
+            std::fs::set_permissions(&m, std::fs::Permissions::from_mode(0o755)).unwrap();
+            m
+        };
+        let old = fake("sys/bin", "GNU Make 4.3");
+        let pinned = fake("sdk/bin", "GNU Make 4.4.1");
+        let path = std::env::join_paths([root.path().join("sdk/bin"), root.path().join("sys/bin")])
+            .unwrap();
+        assert_eq!(make_on(&path).as_deref(), Some(pinned.as_path()));
+        assert_eq!(tool_version(&old), Some((4, 3)));
+        let bld = root.path().join("build");
+        std::fs::create_dir(&bld).unwrap();
+        std::fs::write(
+            bld.join("CMakeCache.txt"),
+            format!("MAKE:FILEPATH={}\n", old.display()),
+        )
+        .unwrap();
+        let got = repair_cached_makes(&bld, &pinned, &|m| tool_version(m)).unwrap();
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert_eq!(got[0].was_version, Some((4, 3)));
+        assert_eq!(cached_makes(&bld), [pinned]);
+    }
 
     #[test]
     fn a_created_fifo_pool_holds_one_token_fewer_than_its_size() {

@@ -45,6 +45,16 @@
 #     never a choice: drops those entries only; see
 #     `nros_cmake_guard_retired_names`.
 #
+#  5. STALE MAKE (issue 2421). A fan-out pool (`jobserver-pool.sh`) hands its
+#     units `--jobserver-auth=fifo:`, and a build dir configured before the
+#     pinned make came first on PATH (issue 2119) keeps running the make its
+#     cache recorded (`CMAKE_MAKE_PROGRAM`, or a `find_program(MAKE)` result
+#     such as Zephyr native_sim's). A make 4.3 stops on `invalid
+#     --jobserver-auth`, the class issue 2241 fixed for `nros build`. Re-running
+#     `cmake <dir>` does not refresh a found entry, so it is REWRITTEN to the
+#     make on PATH by the same helper `nros build` reads caches with
+#     (`nros dev jobserver repair-makes`); see `nros_cmake_guard_stale_make`.
+#
 # Rules 1 and 2 WIPE rather than reconfigure, because neither a pinned compiler nor
 # a cached probe result can be moved by re-running cmake.
 
@@ -113,6 +123,7 @@ nros_cmake_guard_build_dir() {
     local build_dir="$1"; shift
     [ -f "$build_dir/CMakeCache.txt" ] || return 0
     nros_cmake_guard_retired_names "$build_dir"
+    nros_cmake_guard_stale_make "$build_dir"
 
     local want_tc="" cached_tc _a
     for _a in "$@"; do
@@ -241,4 +252,40 @@ nros_cmake_guard_retired_names() {
         { printf "%s", buf; buf = ""; print }
         END { printf "%s", buf }' "$cache" > "$cache.nros-retired.tmp" \
         && mv "$cache.nros-retired.tmp" "$cache"
+}
+
+# Rule 5 (issue 2421) — a cache whose recorded make cannot join the FIFO
+# jobserver this unit was handed.
+#
+# Acts only under a FIFO pool (`MAKEFLAGS` names `--jobserver-auth=fifo:`):
+# outside one, an old make is harmless, and rewriting it would only churn the
+# cache. `$1` is the build dir; its immediate subdirectories' caches (a
+# sysbuild's domains) are covered too. The CLI does the reading, version
+# probing and rewrite, so the shell and `nros build` (issue 2241) share one
+# definition of "too old". Without a CLI that knows the verb, it says so and
+# leaves the dir alone.
+#
+# The CLI comes from `nros_cli_bin` (cargo.sh), sourced here when the caller
+# did not: its path is resolved when this file is sourced and exported, as
+# rule 4's table is, since a make worker's `export -f` copy has no
+# `BASH_SOURCE` naming this file.
+_NROS_CACHE_GUARD_CARGO_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cargo.sh"
+export _NROS_CACHE_GUARD_CARGO_SH
+nros_cmake_guard_stale_make() {
+    local d="$1" cli=""
+    case "${MAKEFLAGS:-}" in *--jobserver-auth=fifo:*) ;; *) return 0 ;; esac
+    [ -d "$d" ] || return 0
+    if ! declare -F nros_cli_bin >/dev/null 2>&1 \
+        && [ -f "${_NROS_CACHE_GUARD_CARGO_SH:-}" ]; then
+        # shellcheck source=scripts/build/cargo.sh
+        . "$_NROS_CACHE_GUARD_CARGO_SH" >/dev/null 2>&1 || true
+    fi
+    if declare -F nros_cli_bin >/dev/null 2>&1; then
+        cli="$(nros_cli_bin 2>/dev/null)" || cli=""
+    fi
+    if [ -z "$cli" ] || ! "$cli" dev jobserver repair-makes "$d" >&2; then
+        echo "  (could not check $d for a cached make older than 4.4; a FIFO pool" >&2
+        echo "   unit it runs may stop on 'invalid --jobserver-auth', issue 2421)" >&2
+    fi
+    return 0
 }

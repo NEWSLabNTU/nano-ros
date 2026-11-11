@@ -53,6 +53,7 @@ dev board
 dev codegen
 dev command
 dev image
+dev jobserver
 dev lock
 dev metadata
 dev migrate-bringup

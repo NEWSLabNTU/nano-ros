@@ -312,6 +312,10 @@ build_workspace() {
         # retired-name residue rule (cmake-cache-guard.sh rule 4) runs here.
         if [ "$lang" != "rust" ] && [ -n "$build_subdir" ]; then
             nros_cmake_guard_retired_names "$build_subdir"
+            # Issue 2421 — and the stale-make rule (rule 5): under the
+            # sweep's FIFO pool, `nros build` joins that pool instead of
+            # choosing its own style, so a make 4.3 its cache recorded stops.
+            nros_cmake_guard_stale_make "$build_subdir"
         fi
         [ -n "$codegen_out" ] && mkdir -p "$(dirname "$codegen_out")"
 

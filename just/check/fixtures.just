@@ -103,6 +103,13 @@ census-prepass-parallel:
 census-leaves-west-rows:
     @./tests/census-leaves-west-rows-tests.sh
 
+# issue 2421 — under a FIFO pool, a fixture build dir is handed to
+# `nros dev jobserver repair-makes` before its build runs a cached make older
+# than 4.4 (cmake-cache-guard.sh rule 5); checked against a stub CLI.
+[private]
+cmake-guard-stale-make:
+    @./tests/cmake-guard-stale-make-tests.sh
+
 # issue 2424 — every `fixtures-manifest.py` subcommand runs clean
 # against the real manifest. Its consumers read it through `< <(...)`, which
 # drops the exit status, so a crashing subcommand reads as an empty listing.
