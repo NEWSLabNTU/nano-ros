@@ -62,7 +62,10 @@ pub fn node_package_name(ws_name: &str) -> String {
 /// The bringup a new workspace's node is deployed by.
 #[must_use]
 pub fn bringup_name(node: &str) -> String {
-    format!("{node}_bringup")
+    // A ROS package name is `[a-z][a-z0-9_]*` (REP 144): a dashed node
+    // package name (`sim-clock-publisher`, which cargo accepts) still gets a
+    // bringup ROS tooling can name.
+    format!("{}_bringup", node.replace('-', "_"))
 }
 
 /// The node package's facts, shared by both modes.
