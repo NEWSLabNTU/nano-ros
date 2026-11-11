@@ -24,6 +24,8 @@
 //!   retries a refused connect until the budget runs out;
 //! - a listener accepts the TCP connect and never sends a byte: the handshake
 //!   read is the wait, and the budget has to bound it.
+//! - a peer drops the SYN (TEST-NET-1, `192.0.2.1`): the TCP connect itself is
+//!   the wait, and the budget has to bound that too (issue 2437).
 //!
 //! ## Prerequisites
 //!
@@ -133,6 +135,37 @@ fn zephyr_zenoh_open_against_no_listener_ends_at_its_budget() {
         took <= BOOT_BEFORE_OPEN + BUDGET + SLACK,
         "gave up {took:?} after the spawn: past {BOOT_BEFORE_OPEN:?} of boot + the {BUDGET:?} \
          budget + {SLACK:?}. Output:\n{out}"
+    );
+}
+
+/// Issue 2437 — a peer that DROPS the SYN: neither a refusal nor an accept
+/// comes back, so the TCP connect itself is the wait. 192.0.2.1 is TEST-NET-1
+/// (RFC 5737), routed nowhere, so the SYN leaves through the default route and
+/// is never answered; no root and no firewall rule is needed. The image's
+/// sockets are the host's (NSOS), so before the fix the open waited out the
+/// host's SYN retries: 136.2 s on a Linux host (`tcp_syn_retries` = 6) under a
+/// 3 s budget, measured, against 5.0 s after.
+///
+/// A host with no route at all answers `ENETUNREACH` at once instead; the open
+/// then retries that until the budget, so this case still holds there, it just
+/// stops exercising the connect's own bound.
+#[test]
+fn zephyr_zenoh_open_against_a_syn_dropping_peer_ends_at_its_budget() {
+    let bin = image();
+    let locator = "tcp/192.0.2.1:7447";
+
+    let (out, spawned, seen) = boot_until_given_up(&bin, locator);
+    assert_gave_up_naming_the_budget(&out, locator);
+    let took = seen - spawned;
+    assert!(
+        took >= BUDGET - EARLY,
+        "gave up {took:?} after the spawn, before its {BUDGET:?} budget was spent. Output:\n{out}"
+    );
+    assert!(
+        took <= BOOT_BEFORE_OPEN + BUDGET + SLACK,
+        "gave up {took:?} after the spawn: the TCP connect to a SYN-dropping peer ran past \
+         {BOOT_BEFORE_OPEN:?} of boot + the {BUDGET:?} budget + {SLACK:?}. Before issue 2437 it \
+         ran the host's own SYN retries (about 130 s). Output:\n{out}"
     );
 }
 
