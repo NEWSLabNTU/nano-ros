@@ -1,0 +1,16 @@
+# Issue 2405 -- an image whose west application is the hand-written
+# `zephyr_entry`, not one `nros build` generates.
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+
+[image.zephyr]
+board = "zephyr"
+rmw = "zenoh"
+entry = "zephyr_entry"

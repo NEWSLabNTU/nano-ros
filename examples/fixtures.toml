@@ -7872,6 +7872,24 @@ west_subdir = "."
 west_board = ""
 output = "build.ninja"
 
+# Issue 2405 -- a HAND-WRITTEN C west application (`[image.zephyr] entry =
+# "zephyr_entry"`), configured from a clean build dir by raw `west build`, the
+# road the module hook's `nros configure` seeds. The row building is NOT the
+# guard: its closure (std_msgs) derives no message sizes, so an unseeded
+# configure only WARNS (NanoRosPromise.cmake). The guard is
+# tests/west_hand_written_entry.rs, which asserts each configured fragment is
+# byte-equal to its seed. Issue 2435 rides on the same row: the entry spells
+# its bringup relative to itself, and a clean build dir has no probe build
+# until the probe re-runs.
+[[compile_check_fixture]]
+id = "west_hand_written_c_entry"
+builder = "west-configure"
+dir = "packages/testing/nros-tests/fixtures/west_hand_written_c_entry"
+west_subdir = "src/zephyr_entry"
+west_board = "native_sim/native/64"
+west_extra = "-DCONF_FILE=prj.conf"
+output = "build.ninja"
+
 [[compile_check_fixture]]
 id = "zephyr_self_pkg_rust"
 builder = "west-configure"

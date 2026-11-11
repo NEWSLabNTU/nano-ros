@@ -181,7 +181,12 @@ function(_nros_entry_require_fresh_census)
     # so its grandparent is the root. A bringup somewhere else is not a
     # workspace this rule can name, and the census is left unchecked rather
     # than checked against the wrong root.
-    get_filename_component(_rfc_parent "${_RFC_BRINGUP}" DIRECTORY)
+    # Issue 2435 -- normalized first: a hand-written entry spells its bringup
+    # relative to itself (`${CMAKE_CURRENT_SOURCE_DIR}/../<bringup>`), and the
+    # parent of an unnormalized path is `<entry>/..`, whose NAME is `..`, not
+    # `src`.
+    get_filename_component(_rfc_bringup_abs "${_RFC_BRINGUP}" ABSOLUTE)
+    get_filename_component(_rfc_parent "${_rfc_bringup_abs}" DIRECTORY)
     get_filename_component(_rfc_parent_name "${_rfc_parent}" NAME)
     if(NOT _rfc_parent_name STREQUAL "src")
         return()
@@ -1570,7 +1575,12 @@ function(_nros_entry_invoke_codegen)
     # of the application.
     set(_nrx_bringup_ws "")
     if(NOT "${_NRX_BRINGUP}" STREQUAL "")
-        get_filename_component(_nrx_bp "${_NRX_BRINGUP}" DIRECTORY)
+        # Issue 2435 -- normalized first, as `_nros_entry_require_fresh_census`
+        # does: `<entry>/../<bringup>` has the parent `<entry>/..`, whose NAME
+        # is `..`, so a hand-written entry composed its inventory without the
+        # workspace (and without the model) and the promise check refused.
+        get_filename_component(_nrx_bp_abs "${_NRX_BRINGUP}" ABSOLUTE)
+        get_filename_component(_nrx_bp "${_nrx_bp_abs}" DIRECTORY)
         get_filename_component(_nrx_bp_name "${_nrx_bp}" NAME)
         if(_nrx_bp_name STREQUAL "src")
             get_filename_component(_nrx_bringup_ws "${_nrx_bp}" DIRECTORY)
