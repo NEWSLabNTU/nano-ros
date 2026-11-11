@@ -2495,6 +2495,19 @@ fn run_fetch(args: &[&str], mut c: std::process::Command) -> Result<()> {
             }
         };
         if !retry {
+            // Issue 2369 -- an outage that outlasted its budget is the
+            // SERVER's failure, not a missing file and not this change: say
+            // so, so a red merge-queue entry reads as a re-run, not a bug.
+            if kind == Some(Transient::ServerOutage) && attempt > 1 {
+                bail!(
+                    "`{line}` failed ({status}): the server kept answering HTTP 429/5xx \
+                     for {attempt} attempts over {}s, the whole wait budget ({}s). That \
+                     is an outage at the host, not a missing file; re-run when it \
+                     recovers.",
+                    waited.as_secs(),
+                    SERVER_OUTAGE_BUDGET.as_secs()
+                );
+            }
             if attempt > 1 {
                 bail!(
                     "`{line}` failed ({status}) after {attempt} attempts over {}s",
@@ -2902,7 +2915,7 @@ mod fetch_retry_tests {
         // 10 + 20 + 20 + 20 + 20 ms of waits fit the 100 ms test budget;
         // the next 20 would not.
         assert_eq!(attempts, 6, "{err}");
-        assert!(err.contains("after 6 attempts"), "{err}");
+        assert!(err.contains("for 6 attempts"), "{err}");
     }
 
     /// Issue 2369's runs: a release URL that 504s for longer than the
@@ -2922,6 +2935,84 @@ mod fetch_retry_tests {
         let (r, attempts) = fetch(&script);
         r.unwrap();
         assert_eq!(attempts, 5);
+    }
+
+    /// A local HTTP server answering `statuses` in turn, one per connection,
+    /// with `body` on a 200. Returns its URL and the number of requests it
+    /// answered.
+    fn serve(
+        statuses: &'static [u16],
+        body: &'static str,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/dist.tar.xz", listener.local_addr().unwrap());
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = hits.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let n = counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let code = statuses[n.min(statuses.len() - 1)];
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                let (reason, payload) = match code {
+                    200 => ("OK", body),
+                    404 => ("Not Found", "not found"),
+                    _ => ("Gateway Timeout", "upstream timed out"),
+                };
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {code} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                    payload.len()
+                );
+            }
+        });
+        (url, hits)
+    }
+
+    /// Issue 2369, end to end: the real `curl` [`download`] runs, against a
+    /// server that 504s past the network's three attempts and then answers.
+    /// The asset is fetched, and the 504 body never lands in the file.
+    #[test]
+    fn a_release_that_504s_then_answers_is_downloaded() {
+        let (url, hits) = serve(&[504, 504, 504, 504, 200], "the dist bytes");
+        let dir = crate::test_support::scratch_path("download_504_then_200");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("dist.tar.xz");
+        download(&url, &dest).unwrap();
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "the dist bytes");
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 5);
+    }
+
+    /// A real 404 is a missing asset: one request, no retry, and the error
+    /// does not call it an outage.
+    #[test]
+    fn a_release_404_is_fetched_once_and_not_called_an_outage() {
+        let (url, hits) = serve(&[404], "");
+        let dir = crate::test_support::scratch_path("download_404");
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = format!(
+            "{:#}",
+            download(&url, &dir.join("dist.tar.xz")).unwrap_err()
+        );
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "{err}");
+        assert!(!err.contains("outage"), "{err}");
+    }
+
+    /// An outage longer than the budget fails, bounded, and says it was the
+    /// server's.
+    #[test]
+    fn a_release_outage_past_the_budget_fails_naming_the_server() {
+        let (url, hits) = serve(&[504], "");
+        let dir = crate::test_support::scratch_path("download_504_forever");
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = format!(
+            "{:#}",
+            download(&url, &dir.join("dist.tar.xz")).unwrap_err()
+        );
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 6, "{err}");
+        assert!(err.contains("an outage at the host"), "{err}");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 ---
 id: 2369
 title: "A GitHub release 504 during `nros setup` fails template-copy-out and ejects merge-queue entries; the fetch retry gives up after ~15 s"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [ci, cli, setup]
@@ -9,7 +9,7 @@ related: [2129, phase-489, phase-466]
 found: 2026-11-09
 ---
 
-**Home:** [phase-489](../roadmap/phase-489-ci-build-speedup.md)
+**Home:** [phase-489](../../roadmap/phase-489-ci-build-speedup.md)
 
 ## What
 
@@ -156,3 +156,37 @@ Bounding the sccache entries is a different change to a different job.
 
 A merge group whose release downloads 504 for a few minutes still passes
 `template-copy-out`, or does not download at all.
+
+## Resolution
+
+Resolved 2026-11-11. Both halves are on `main`: the retry budget (#3362)
+and the store cache (#3438, saved from `main` only since #3504, which also
+added the `warm-sdk-store` job).
+
+**The cache, measured.** The three merge-group gate runs before this change
+(42947516073, 42955630122, 42959672313) restored both entries
+(`sdk-store-copy-out-1d57fba79a1938f3`,
+`sdk-store-copy-out-zephyr-d161e2a5a1945bec`) and fetched none of the
+NEWSLabNTU-hosted dists: `nros setup --tool corrosion: present … (skip)`,
+`clang-format: present … (skip)`. The Zephyr shard still downloads
+`zephyr-sdk` 0.16.8 and `renode` 1.17.0 on every merge group, as the
+follow-up chose (not cached); those are the fetches the retry budget now
+covers.
+
+**The retry, end to end.** The tests above fed `run_fetch` a shell that
+PRINTS curl's message. Three tests now run the real `curl` that `download`
+spawns (`-L --fail --silent --show-error`) against a local HTTP server:
+
+- 504, 504, 504, 504, then 200: the asset is fetched, five requests, the
+  file holds the 200 body (a 504 body never lands in it);
+- a 404: one request, an error, and the error does not call it an outage;
+- 504 for good: six requests, the test budget spent, and an error that says
+  so.
+
+Mutation: with `returned error: 504` dropped from the server-outage list,
+the two 504 tests fail and the 404 test still passes.
+
+**The message.** An outage that outlasts its budget now fails naming the
+host, not a bare exit status: "the server kept answering HTTP 429/5xx for N
+attempts over Ns, the whole wait budget (300s). That is an outage at the
+host, not a missing file; re-run when it recovers."
