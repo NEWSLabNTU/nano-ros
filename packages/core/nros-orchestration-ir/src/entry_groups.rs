@@ -21,17 +21,14 @@
 //! It lives here, not in `nros-cli-core`, because the proc-macro cannot depend
 //! on the CLI (the same reason [`crate::sidecar_slots`] does).
 //!
-//! `codegen entry` and `nros::main!` build their rows with
-//! [`node_callback_groups`]; each road supplies the DECLARED groups from where
-//! its language states them (the cmake keyword, or the Rust sidecar via
-//! [`groups_of_component`]). `codegen-system`'s
-//! `sched_task_resolver::collect_callback_groups` still has its own merge: an
-//! authored `group_tasks` there HIDES every keyword group it does not name,
-//! where the entry keeps such a group on the default sched task. The two agree
-//! whenever a node binds every group it declares or none of them; the case
-//! where they do not is pinned by that function's own test
-//! (`an_authored_binding_still_outranks_the_keyword`) and recorded on issue
-//! 2432, not changed here.
+//! All three roads build their rows with [`node_callback_groups`]; each road
+//! supplies the DECLARED groups from where its language states them (the cmake
+//! keyword, or the Rust sidecar via [`groups_of_component`]).
+//! `codegen-system`'s `sched_task_resolver::collect_callback_groups` had its own
+//! merge until issue 2454: an authored `group_tasks` there HID every declared
+//! group it did not name, where the entry kept such a group on the default
+//! sched task, so a node binding one of its two groups derived a different
+//! schedule on the two C roads. It calls [`node_callback_groups`] now.
 
 use std::collections::BTreeMap;
 

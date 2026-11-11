@@ -47,39 +47,30 @@ pub fn collect_callback_groups(
     let from_metadata = metadata_callback_groups(&cfg.workspace_root);
     let mut map = BTreeMap::new();
     for c in components {
-        // Phase 273 (W2): prefer system.toml [[component]].group_tasks (RFC-0047).
-        if !c.group_tasks.is_empty() {
-            let groups: Vec<CallbackGroupDecl> = c
-                .group_tasks
-                .iter()
-                .map(|(id, sched_task)| CallbackGroupDecl {
-                    id: id.clone(),
-                    r#type: "MutuallyExclusive".to_string(),
-                    sched_task: sched_task.clone(),
-                })
-                .collect();
-            map.insert(c.name.clone(), groups);
-            continue;
-        }
-
-        // The package manifest's `callback_groups` used to be the rung here
-        // (deprecated by phase-273, honoured with a `[WARN]` for one release).
-        // It is refused at parse now (`ComponentMetadata::retired_callback_groups`),
-        // so a manifest can never reach this point carrying one.
+        // Two sources, merged PER GROUP by the row builder every road uses
+        // (`entry_groups::node_callback_groups`, issue 2454):
         //
-        // phase-459 W1 (issue 1426) - the cmake keyword, the second and last
-        // source, and the ONLY one a C/C++ component has. Every group binds
-        // to `DEFAULT_SCHED_TASK`: the keyword states WHICH groups the code has,
-        // never where they run. That is exactly the input
-        // shape `derive_sched_tasks_from_contracts` keys on - a node with groups and
-        // no authored binding is the one route on which the rate-monotonic
-        // derivation runs (RFC-0052), and a bound group would instead have to
-        // name a `[tasks.*]` that this workspace deliberately does not author.
-        if let Some(ids) = from_metadata.get(&c.name) {
-            map.insert(
-                c.name.clone(),
-                nros_orchestration_ir::groups_at_default_sched_task(ids),
-            );
+        // * the groups the code DECLARES - the cmake keyword `CALLBACK_GROUPS`,
+        //   read from the `nros-metadata.json` a configure wrote (phase-459 W1,
+        //   issue 1426). It states WHICH groups exist, never where they run, so
+        //   an unbound one sits on `DEFAULT_SCHED_TASK`: the shape
+        //   `derive_sched_tasks_from_contracts` keys on (RFC-0052);
+        // * the AUTHORED binding - `[[component]].group_tasks` (phase-273,
+        //   RFC-0047), which decides where each group it names runs.
+        //
+        // Before issue 2454 an authored `group_tasks` replaced the declared set
+        // wholesale, so a node binding one of its two groups lost the other,
+        // and `codegen-system` derived a different schedule from `codegen entry`
+        // for the same model. Precedence is per FACT, never per table
+        // (CLAUDE.md, issue 1426): a binding decides its own group only.
+        //
+        // The package manifest's `callback_groups` was once a third rung; it is
+        // refused at parse now (`ComponentMetadata::retired_callback_groups`).
+        let declared = from_metadata.get(&c.name).cloned().unwrap_or_default();
+        let rows =
+            nros_orchestration_ir::entry_groups::node_callback_groups(&declared, &c.group_tasks);
+        if !rows.is_empty() {
+            map.insert(c.name.clone(), rows);
         }
     }
     map
@@ -839,10 +830,13 @@ priority = 10
             );
         }
 
-        /// The new rung is the LAST one: an authored `group_tasks` still
-        /// decides, and the metadata does not add a second entry beside it.
+        /// An authored `group_tasks` decides where the groups it NAMES run, and
+        /// nothing else: a declared group it does not bind stays, on the default
+        /// sched task. Issue 2454 - this test used to pin the opposite (the
+        /// binding hid `telem`), which made `codegen-system` disagree with
+        /// `codegen entry` for the same model.
         #[test]
-        fn an_authored_binding_still_outranks_the_keyword() {
+        fn an_authored_binding_decides_its_own_group_only() {
             let tmp = tempfile::tempdir().expect("tempdir");
             write(
                 &tmp.path().join("build/nros-metadata.json"),
@@ -850,10 +844,19 @@ priority = 10
             );
             let mut c = component("ctrl_pkg", "ctrl_node");
             c.group_tasks.insert("main".to_string(), "high".to_string());
-            let map = collect_callback_groups(&cfg_at(tmp.path()), &[c]);
+            let map = collect_callback_groups(&cfg_at(tmp.path()), &[c.clone()]);
             let decls = map.get("ctrl_node").expect("bound");
-            assert_eq!(decls.len(), 1, "only the authored binding: {decls:?}");
-            assert_eq!(decls[0].sched_task, "high");
+            let got: Vec<(&str, &str)> = decls
+                .iter()
+                .map(|d| (d.id.as_str(), d.sched_task.as_str()))
+                .collect();
+            assert_eq!(got, [("main", "high"), ("telem", DEFAULT_SCHED_TASK)]);
+            // The same row `codegen entry` and `nros::main!` build.
+            let entry = nros_orchestration_ir::entry_groups::node_callback_groups(
+                &["main".to_string(), "telem".to_string()],
+                &c.group_tasks,
+            );
+            assert_eq!(decls, &entry);
         }
 
         /// A component the metadata does not name is untouched - it stays
