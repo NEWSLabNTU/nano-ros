@@ -31,7 +31,7 @@ const BINS_ALLOWLIST: &[(&str, &str)] = &[
     (
         "ros-edition-pose-pub",
         "RFC-0058 ROS-edition axis: built per distro by `just ros_editions \
-         build-fixture` into build/ros-editions/<distro>-<rmw>, which is a \
+         build-fixture` into build/ros-editions/pose-pub-<distro>, which is a \
          PER-RUN global (NROS_ROS_EDITION), not a fixture coordinate. \
          Deliberately gated out of `just ci` (needs docker + a built image).",
     ),

@@ -2440,10 +2440,10 @@ mod board_crate_tests {
         // `nros-tests` `int32-source`, `rosout-talker` and
         // `service-info-client` bins (W7: owned entries, RFC-0071 D19), 54 ->
         // 51 for the `nros-bench` `large-msg-baremetal`, `loan-copy-count` and
-        // `wake-latency-cortex-m3` programs (W7: owned entries with no
-        // component).
+        // `wake-latency-cortex-m3` programs and 51 -> 50 for
+        // `bins/ros-edition-pose-pub` (W7: owned entries with no component).
         assert!(
-            on_selection >= 51,
+            on_selection >= 50,
             "only {on_selection} leaves on the selection package"
         );
     }
