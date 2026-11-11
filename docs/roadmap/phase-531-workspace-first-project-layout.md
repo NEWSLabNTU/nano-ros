@@ -723,16 +723,24 @@ from before W6.
     RMW, the C/C++ ones on the CMake road, which takes the same claim rule
     (RFC-0071 D19, "The CMake road"). Issue 1556's census tests still run
     the same `main()`s.
-- **Batch, threadx-linux Rust talker.** `examples/threadx-linux/rust/talker`
-  is a one-package workspace; its `[[fixture]]` row is a
-  `[[workspace_fixture]]` row with the same coordinate (`coords`: 520 rows
-  before and after, identical `(platform, lang, rmw)` multiset). `main.rs`
-  only called `nros::main!`, so the image boots a generated entry.
-  `rust-rtos-link-check` builds each Rust talker through one helper,
-  `link_check_build`: a leaf as before, a witness workspace with
-  `nros build --board <board> -- <profile> --target-dir <dir>`; L3 reads the
-  generated entry's ELF. The freertos and NuttX talkers take the same helper
-  when their batches land.
+- **Batch, the link-checked Rust talkers.** `examples/{threadx-linux,mps2-an385-freertos,qemu-armv7a-nuttx}/rust/talker`
+  are one-package workspaces; their `[[fixture]]` rows are
+  `[[workspace_fixture]]` rows with the same coordinates (`coords`: identical
+  `(platform, lang, rmw)` multiset before and after), each with its own
+  `target-fixtures` dir. Every `main.rs` only called `nros::main!`, so each
+  image boots a generated entry (`threadx_linux_entry`,
+  `mps2_an385_freertos_entry`, `qemu_armv7a_nuttx_entry`).
+  - `rust-rtos-link-check` builds the three through one helper,
+    `link_check_build`: a leaf as before, a witness workspace with
+    `nros build --board <board> -- <profile> --target-dir <dir>`; L3 reads the
+    generated entries' ELFs.
+  - Test side: `migrated_leaf_binary` resolves a Rust row at the profile the
+    workspace builder used (NuttX's carve-out, else ambient), and a row whose
+    `env` only pins `RUSTUP_TOOLCHAIN` (the NuttX row, for `build-std`) is
+    still the plain build.
+  - Measured on rebuilt fixtures: `entry_build` (nuttx, threadx-linux),
+    `freertos_run_plan_runtime`, the shape/coverage suites pass; the
+    threadx-linux and NuttX (QEMU) images publish to a router.
   - The C/C++ talkers on cross boards wait on
     [issue 2433](../issues/2433-owned-cross-entry-has-no-census.md): a cross
     C/C++ leaf is census-sized (RFC-0120 D4), and an owned entry on the
