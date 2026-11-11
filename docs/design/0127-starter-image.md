@@ -221,9 +221,12 @@ names the recommendation above.
   the link, then let D7's budget follow from it.
 
 Where an implementation needs a concrete answer to an open question before it
-is ruled (Q2, Q3), it uses the recommendation as a PROVISIONAL default,
+is ruled (Q2, Q3, Q8), it uses the recommendation as a PROVISIONAL default,
 marked as such in the code and changeable without touching the structure B
-rules. Nothing is published to a registry and no tag moves until Q1 and Q5
+rules. The `starter` stage in `scripts/ci/lib/image-context.sh` carries
+them as build ARGs (`NROS_STARTER_BOARDS`, `NROS_STARTER_RMW`,
+`NROS_STARTER_PROJECTS`) under one PROVISIONAL comment, so a ruling changes
+an ARG default and nothing else. Nothing is published to a registry and no tag moves until Q1 and Q5
 are ruled.
 
 This RFC is rewritten from shape to decisions as they are ruled.
@@ -234,3 +237,5 @@ This RFC is rewritten from shape to decisions as they are ruled.
   and the starter-image exploration.
 - 2026-11-11 — user ruling: option B. D1's structure, D4 and D5's recipe are
   ruled; Q7 is answered by B; Q4 keeps only its cadence half open.
+- 2026-11-11 — phase-551 W2: the provisional defaults for Q2, Q3 and Q8 named
+  where the code carries them.
