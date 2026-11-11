@@ -202,7 +202,7 @@ fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<
 
 pub fn build_rv64_c_talker() -> TestResult<&'static Path> {
     RV64_C_TALKER_BINARY
-        .get_or_try_init(|| build_cmake_example("c", "talker", "c_talker"))
+        .get_or_try_init(|| build_cmake_example("c", "talker", "riscv64_threadx_c_talker"))
         .map(|p| p.as_path())
 }
 
@@ -226,6 +226,6 @@ pub fn build_rv64_c_typed_carrier() -> TestResult<&'static Path> {
 
 pub fn build_rv64_cpp_talker() -> TestResult<&'static Path> {
     RV64_CPP_TALKER_BINARY
-        .get_or_try_init(|| build_cmake_example("cpp", "talker", "cpp_talker"))
+        .get_or_try_init(|| build_cmake_example("cpp", "talker", "riscv64_threadx_cpp_talker"))
         .map(|p| p.as_path())
 }

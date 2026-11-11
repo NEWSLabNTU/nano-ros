@@ -4066,7 +4066,7 @@ pub fn build_nuttx_riscv_c_talker() -> TestResult<&'static Path> {
     static NUTTX_RISCV_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_C_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("rv-virt-nuttx/c/talker", "c_talker", Rmw::Zenoh)
+            build_example_cmake_rmw("rv-virt-nuttx/c/talker", "nuttx_riscv_c_talker", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
