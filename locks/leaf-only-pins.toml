@@ -18,6 +18,11 @@ range = "3"
 why = "proc-macro dependency of the Cortex-M leaves (cortex-m-macros), e.g. examples/mps2-an385-freertos/rust/talker"
 
 [[keep]]
+name = "paste"
+range = "1"
+why = "the `zephyr` crate's compile-time macro in the Zephyr Rust leaves, e.g. examples/zephyr/rust/action-server (issue 2193: the ESP32 retirement, 1cfa392bb6, pruned it when esp-hal was its last locked-root user)"
+
+[[keep]]
 name = "nom"
 range = "7"
 why = "bindgen's cexpr in the Zephyr Rust leaves, e.g. examples/zephyr/rust/talker"

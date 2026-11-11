@@ -88,3 +88,30 @@ name and its `Error: missing prerequisites` line. The selftest grew from 6 to
 The image that failed this time was a false preflight refusal (PR #3153).
 The acceptance below is unchanged: a tier-2 nightly that reaches `ci
 matrix-nightly`.
+
+## Seen again 2026-11-11: a pin-set drift, after the fixtures built
+
+Both of the day's tier-2 nightlies (42963678320, 42977216883) failed `just build
+tier2-nightly` after every fixture stage built. The stop was the final lock check
+(`check-lock: 64 lock(s), 1 drift(s)`):
+
+```
+examples/zephyr/rust/action-server: `paste` 1.0.15 is in no pinned range
+```
+
+Cause: the pinned zephyr-lang-rust (`404fcef`) depends on `paste = "1.0"`, so every
+Zephyr Rust leaf resolves it. The pin set carried it only because esp-hal, in the
+locked roots, also did. The ESP32 bare-metal retirement (`1cfa392bb6`, 2026-11-03)
+pruned esp-hal, and `paste` went with it, and no `[[keep]]` row said a leaf still
+needed it.
+
+Fix: `nros update --crate paste` from that leaf (with the leaf's Zephyr crates
+patched to the west workspace, as the west build does), which re-adds 1.0.15 with
+the same checksum, plus a `[[keep]]` row in `locks/leaf-only-pins.toml`. Locally
+`nros dev lock check` on the leaf went from 1 drift to 0, and
+`check-cargo-registry-pins` passes.
+
+Sweep: the nightly's check covered 64 leaf locks and reported this one drift
+only, so no other range the retirement pruned is still needed by a leaf in that
+lane. The acceptance is unchanged: a tier-2 nightly that reaches
+`ci matrix-nightly`.
