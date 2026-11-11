@@ -134,3 +134,35 @@ itself runs. Under one key (`5eab8b54fb38`, 23 GB) there is one
 `nros-c-image_*` / `nros-cpp-image_*` directory per C/C++ workspace, about
 1 GB each, all with the same features. The fixes above (host debuginfo, a
 shared host half) are now the next lever for `generate-bindings` too.
+
+### The probe drops its debuginfo (2026-11-11)
+
+Lever 1, applied to the metadata probe only: it now builds at the preset
+`nros-probe` (`nros-relwithdebinfo` with `debug = 0`). The probe is a host
+binary that runs each component's constructor, writes a sidecar and exits, so
+no step reads its DWARF. The fixture images keep `nros-relwithdebinfo`; this
+issue's leaf case is untouched.
+
+Measured with `scripts/regenerate-bindings.sh` (the `nros dev bindings` road)
+on the 48-core box, `build/` empty and no `RUSTC_WRAPPER` in both arms, main
+`55e4af3be1` against the same tree plus this change:
+
+| | before | after |
+|---|---|---|
+| wall | 536 s | 458 s (−15 %) |
+| `build/` | 35 GB | 18 GB |
+| `build/corrosion-cargo/metadata-probe` | 30 GB | 14 GB (−53 %) |
+| its host half (`<profile>/` in each image dir) | 23.7 GB | 10.1 GB (−57 %) |
+| its target half (`x86_64-unknown-linux-gnu/`) | 6.2 GB | 3.6 GB |
+
+Spot check: `zpico-sys`'s `build-script-build` 10.8 MB (was 31.0), and
+`libnros_macros-*.so` 20.3 MB (was 73.9) — the `strip -g` sizes in the table
+above. Both runs probed every component (no `unprobeable` line).
+
+The directory count is unchanged (28 under the main key), so lever 2, a shared
+host half, is still what would bound this by keys rather than workspaces.
+
+`nros_resolve_cargo_profile` also had to learn to re-resolve when
+`NROS_CARGO_PROFILE` changes on an existing build dir: it returned early on any
+cached `NROS_CARGO_PROFILE_DIR`, so every existing probe build dir would have
+kept the old profile's `target/` subdir beside the new name.
