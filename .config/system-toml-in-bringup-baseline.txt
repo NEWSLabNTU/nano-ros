@@ -39,11 +39,7 @@ examples/mps2-an385-baremetal/cpp/service-server/system.toml
 examples/mps2-an385-baremetal/cpp/talker/system.toml
 examples/mps2-an385-baremetal/rust/listener/system.toml
 examples/mps2-an385-baremetal/rust/talker/system.toml
-examples/mps2-an385-freertos/c/talker/system.toml
-examples/mps2-an385-freertos/cpp/talker/system.toml
-examples/qemu-armv7a-nuttx/c/talker/system.toml
 examples/qemu-armv7a-nuttx/c/typed-carrier/system.toml
-examples/qemu-armv7a-nuttx/cpp/talker/system.toml
 examples/rv-virt-nuttx/c/talker/system.toml
 examples/rv-virt-threadx/c/errno-isolation/system.toml
 examples/rv-virt-threadx/c/talker/system.toml
@@ -67,7 +63,6 @@ examples/templates/topic-state-monitor-port/mps2-an385-freertos/system.toml
 examples/templates/topic-state-monitor-port/zephyr/system.toml
 examples/templates/zephyr-byo/app/system.toml
 examples/threadx-linux/c/talker/system.toml
-examples/threadx-linux/cpp/talker/system.toml
 examples/threadx-linux/rust/listener/system.toml
 examples/zephyr/rust/action-server/system.toml
 packages/testing/nros-bench/large-msg-baremetal/system.toml

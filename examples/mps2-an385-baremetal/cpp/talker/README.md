@@ -2,7 +2,7 @@
 
 Publishes `std_msgs/String` `"Hello World: N"` on `/chatter` once a second from
 an ordinary nano-ros **C++** application on a Cortex-M3 with **no RTOS at all** —
-the same program as `examples/mps2-an385-freertos/cpp/talker/`.
+the same program as `examples/linux/cpp/talker/`.
 
 Same shape as [`../../c/talker`](../../c/talker/README.md), whose README explains
 why: the link root is Rust (`src/main.rs` boots the board and calls

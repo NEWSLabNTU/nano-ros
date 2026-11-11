@@ -163,26 +163,24 @@ example's `CMakeLists.txt`, and `find_package(nano_ros)` reads it through
 `-DNROS_PLATFORM`, `-DNROS_BOARD` and `-DNROS_RMW` are retired as a
 user-facing spelling: switching board is editing `[image.*] board`.
 
-**FreeRTOS (ARM Cortex-M3, MPS2-AN385).** The board is
-`examples/mps2-an385-freertos/c/talker/system.toml`'s
+**FreeRTOS (ARM Cortex-M3, MPS2-AN385).** `examples/mps2-an385-freertos/c/talker`
+is a one-package workspace (phase-531 W6): its bringup's `system.toml`
+(`src/freertos_c_talker_bringup/`) states
 `[image.mps2-an385-freertos] board = "mps2-an385-freertos"`, and its `[system]`
-block carries `rmw = "zenoh"`. The one thing still on the command line is the
-toolchain file, because CMake pins the compiler at the first configure:
+block carries `rmw = "zenoh"`. `nros build` writes the generated cmake root,
+toolchain file included, and runs cmake on it:
 
 ```bash
-cmake -S examples/mps2-an385-freertos/c/talker -B build/talker \
-    -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake
-cmake --build build/talker
+cd examples/mps2-an385-freertos/c/talker && nros build mps2-an385-freertos
 ```
 
 **NuttX (ARM Cortex-A7).** Same shape —
-`examples/qemu-armv7a-nuttx/cpp/talker/system.toml` names
-`[image.qemu-armv7a-nuttx] board = "qemu-armv7a-nuttx"`, from which the
+`examples/qemu-armv7a-nuttx/cpp/talker/src/nuttx_cpp_talker_bringup/system.toml`
+names `[image.qemu-armv7a-nuttx] board = "qemu-armv7a-nuttx"`, from which the
 `nuttx` platform is derived:
 
 ```bash
-cmake -S examples/qemu-armv7a-nuttx/cpp/talker -B build/talker
-cmake --build build/talker
+cd examples/qemu-armv7a-nuttx/cpp/talker && nros build qemu-armv7a-nuttx
 ```
 
 Mapping a board to its toolchain file is `nros build`'s job. In a workspace it

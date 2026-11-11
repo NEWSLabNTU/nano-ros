@@ -176,6 +176,17 @@ pub fn build_threadx_cmake_example_rmw(
     binary_name: &str,
     rmw: super::Rmw,
 ) -> TestResult<PathBuf> {
+    // phase-531 W6 — a talker witness migrated to a one-package workspace
+    // resolves through its `[[workspace_fixture]]` rows (the C++ one boots a
+    // generated entry; RFC-0122 D10).
+    if let Some(r) = super::migrated_leaf_binary_named(
+        &format!("examples/threadx-linux/{lang}/{name}"),
+        rmw,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        binary_name,
+    ) {
+        return r;
+    }
     let root = project_root();
     let example_dir = root.join(format!("examples/threadx-linux/{}/{}", lang, name));
     if !example_dir.exists() {
@@ -288,6 +299,14 @@ static THREADX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    if let Some(r) = super::migrated_leaf_binary_named(
+        &format!("examples/threadx-linux/{lang}/{name}"),
+        super::Rmw::Zenoh,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        binary_name,
+    ) {
+        return r;
+    }
     let root = project_root();
     let example_dir = root.join(format!("examples/threadx-linux/{}/{}", lang, name));
 
