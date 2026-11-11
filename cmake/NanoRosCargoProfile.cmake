@@ -27,6 +27,9 @@ include_guard(GLOBAL)
 
 # issue 0657 — `nros_corrosion_env_target`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
+# issue 2400 W2 -- `nros_stack_floor_cargo_env`, called beside the per-import
+# env helpers below and after them (it MERGES into the RUSTFLAGS / CFLAGS they set).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStackFloor.cmake")
 
 # At FILE scope, not inside the function below: an `include()` in a function
 # body loses the included file's normal variables when the frame pops (the

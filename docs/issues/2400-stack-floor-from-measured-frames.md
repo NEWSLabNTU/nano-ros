@@ -250,3 +250,49 @@ Two things this run found:
   refusal (`nros_check_zephyr_rust_cargo_patch`) checked the board-facts
   hunk only. It now checks each hunk whose absence a build would not
   notice, the staticlib-only one included, and names the missing ones.
+
+### W2: the cmake road CHECKs the FreeRTOS carrier (2026-11-11)
+
+These rulings are restated here because W2 relies on them:
+
+- **CHECK by default, auto-raise opt-in** (ruled 2026-11-10). The build
+  fails only when a MEASURED image's floor exceeds its stated stack, naming
+  the knob. An unmeasured image warns (ruling (A)), and that includes a walk
+  that was refused. Nothing lowers a stack: "exact when measured" was ruled
+  out because it shrinks stacks.
+- **Raise-only stays a separate wave, W2b.** It needs the floor before the
+  carrier compiles, which is a pre-link edge. CHECK runs POST_BUILD and adds
+  no edge.
+- **The image key is PROVISIONAL (2026-11-11, manager, pending the user):**
+  `<bringup or entry name>@<board>`, for example
+  `fc_node_bringup@mps2-an385-freertos`. A build knows that name; it never
+  knows the `nros new` template the nucleo rows are keyed by. The
+  alternative is (b), a key the user states per image in `system.toml`. The
+  key is computed in one function, `_nros_stack_floor_image_key`, so either
+  can be swapped in cheaply. The three nucleo rows keep their keys until W4
+  wires Zephyr.
+
+What W2 does, in `cmake/NanoRosStackFloor.cmake`:
+
+| piece | how |
+| --- | --- |
+| Rust frames | `nros_stack_floor_cargo_env(<import>)` at every Corrosion import site merges `-Csave-temps` into the import's `RUSTFLAGS` and `-fstack-usage` into its `CFLAGS`/`CXXFLAGS`. It merges into what riscv64's helper already sets, because a second `RUSTFLAGS=` entry would replace that one. FreeRTOS only; other platforms keep their plain flags and their sccache hits. |
+| C frames | `-fstack-usage` on every non-imported target in the executable's link closure |
+| inputs | the link's own `-Wl,-Map`: the walker's new `--link-map` reads its `LOAD` lines, so the input list is exact under any generator. Toolchain libs outside the build dir are external leaves. |
+| bitcode | `--bitcode-dir '<build>/cargo/*/<triple>/<profile>/deps'`, a glob, because the keyed cargo directories are named at build time. `--sysroot` adds the target's core, alloc and compiler_builtins rlibs. |
+| check | POST_BUILD, `--check-stack OPEN=<app_stack_bytes>` from the root `app_task_entry`. `--stack-knob 'NROS_FREERTOS_APP_STACK_KB={kb}'` puts the remedy in the knob's own unit. |
+| off | `-DNROS_STACK_FLOOR=OFF` skips all of it |
+
+Measured on a `nros new --board mps2-an385-freertos --lang c --template
+talker` image:
+
+- OPEN static 13,828 B, unmeasured floor 15,216 B, against the
+  65,536 B `app_stack_bytes`: holds. The carrier comment's boot-time peak for
+  that role was 6,096 B, so the walk over-states here, as on nucleo
+  (issue 2402).
+- With a test allowance row, a 4,096 B stack fails the build with
+  `NROS_FREERTOS_APP_STACK_KB=7`, and 65,536 passes. Without the row, the
+  same 4,096 B only warns.
+
+A FreeRTOS row is cheap to get: every carrier image prints `app task stack
+peak` at boot.

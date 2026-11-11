@@ -88,6 +88,9 @@ nros_cargo_profile_env(nros_cpp-static)
 nros_riscv64_rustflags_env(nros_cpp-static)
 # phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.
 nros_armv8r_cflags_env(nros_cpp-static)
+# issue 2400 W2 -- keep bitcode + .su for the stack-floor CHECK (after the
+# helpers above: it merges into their RUSTFLAGS / CFLAGS).
+nros_stack_floor_cargo_env(nros_cpp-static)
 
 # phase-392 W5.g follow-up — the entity figures the RMW sizes its queryable
 # table and payload classes from.

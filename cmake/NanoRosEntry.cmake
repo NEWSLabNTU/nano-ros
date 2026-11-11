@@ -1247,6 +1247,10 @@ function(nano_ros_entry)
                     "${_NROS_ENTRY_DIR}/templates/freertos_app_config.c.in"
                     "${_nra_appcfg}" @ONLY)
                 target_sources(${_NRA_NAME} PRIVATE "${_nra_appcfg}")
+                # issue 2400 W2 -- CHECK the stack just baked against the
+                # image's measured floor (never lowers it; warns if unmeasured).
+                nros_stack_floor_freertos_check(${_NRA_NAME}
+                    "${NROS_ENTRY_APP_STACK_BYTES}" "${_NRA_BRINGUP}")
             endif()
         endif()
 

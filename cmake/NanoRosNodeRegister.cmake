@@ -72,6 +72,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosArtifactLayout.cmake")  # issue 1852
 # runtime umbrella a target links, and whether the consumer wants one.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardNet.cmake")  # phase-484 W4b
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosStackFloor.cmake")  # issue 2400 W2
 
 # issue 1523 — `_nros_set_component_lang()`: the ONE place that writes
 # `NROS_COMPONENT_LANG`, and the one that refuses a non-canonical spelling.
@@ -1241,6 +1242,8 @@ function(nano_ros_node_register)
             "${_appcfg_src}" @ONLY)
 
         _nros_node_register_carrier_image(${PROJECT_NAME} "${_pkg_sym}" "${_NRC_PANIC}" "${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES})
+        # issue 2400 W2 -- CHECK the stack just baked against the measured floor.
+        nros_stack_floor_freertos_check(${PROJECT_NAME} "${NROS_ENTRY_APP_STACK_BYTES}" "")
         _nros_node_register_bake_locator(${PROJECT_NAME})
         # Issue 0088 — the carrier executable compiles ${_NRC_SOURCES} (C/C++ TUs
         # that include <rclc/detail/nros_config_generated.h>); order them after the header
