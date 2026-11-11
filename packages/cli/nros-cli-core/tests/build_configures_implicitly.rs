@@ -156,7 +156,12 @@ fn dry_run_records_no_stamp() {
 #[test]
 fn build_dry_run_takes_no_census() {
     setup();
-    let leaf = scratch_copy("examples/qemu-armv7a-nuttx/c/talker", "census");
+    // The cross C/C++ talkers are components on a generated entry now
+    // (phase-531 W6), so the census leaf is the census fixture itself.
+    let leaf = scratch_copy(
+        "packages/testing/nros-tests/bins/ament-census-port",
+        "census",
+    );
     let sys = fs::read_to_string(leaf.join("system.toml")).unwrap();
     assert!(
         sys.contains("entities = \"census\""),
