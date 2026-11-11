@@ -93,6 +93,12 @@ the graded series and kept as a demonstration.
 
 ### W2 — The instructor image and the semester pin
 
+**Superseded (2026-11-11) by [phase-551](phase-551-starter-image.md)** and
+[RFC-0127](../design/0127-starter-image.md): the user widened the instructor
+image to a general starter image (newcomers, educators, customers), of which
+the course seat is one recipe (RFC-0127 D4). The text and open questions below
+are kept as the record they grew from; nothing here is built.
+
 - A container image with the toolchain, the Zephyr workspace with the module
   allowlist, the release `nros` and the lab sources pre-fetched, built by a
   lane and published with the release. Install on a seat is a pull.
@@ -307,7 +313,7 @@ documented as is.
 | Work item | Industrial | Field solutions | Education |
 | --- | --- | --- | --- |
 | W1 | lab 5 is a measured real-time demonstration | labs 1 to 3 are the technician's own first week | seven graded labs, six without hardware |
-| W2 | — | — | 15-minute install measured; semester pin taught |
+| W2 | — | — | superseded by phase-551 (the starter image) |
 | W3 | round-two stop count, industrial | round-two time under 30 minutes on a real board | round-two stop count, education |
 | W4 | offline install passes; every fork has a delta page; `doctor --report` | — | — |
 
