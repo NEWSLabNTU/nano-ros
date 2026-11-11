@@ -376,7 +376,7 @@ unsafe extern "C" {
     ) -> usize;
 }
 unsafe extern "C" {
-    #[doc = " Send `len` bytes. Returns bytes sent, or\n  `NROS_PLATFORM_NET_SOCKET_ERROR` on error."]
+    #[doc = " Send up to `len` bytes, waiting at most about the socket's timeout (the\n  `timeout_ms` it was opened with) for the stack to take them. Returns the\n  bytes taken, which may be fewer than `len` and is `0` when the stack took\n  none in that time, or `NROS_PLATFORM_NET_SOCKET_ERROR` when the connection\n  is broken. It never waits for a peer that has stopped reading (issue 2389):\n  a caller that needs every byte loops, and decides how long a stall it\n  tolerates (zenoh-pico: `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE`). A socket opened\n  with `timeout_ms == 0` states no bound."]
     pub fn nros_platform_tcp_send(
         sock: *const core::ffi::c_void,
         buf: *const u8,

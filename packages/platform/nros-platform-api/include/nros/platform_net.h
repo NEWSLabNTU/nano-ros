@@ -89,8 +89,14 @@ size_t nros_platform_tcp_read(const void *sock, uint8_t *buf, size_t len);
  *  `NROS_PLATFORM_NET_SOCKET_ERROR` on error. */
 size_t nros_platform_tcp_read_exact(const void *sock, uint8_t *buf, size_t len);
 
-/** Send `len` bytes. Returns bytes sent, or
- *  `NROS_PLATFORM_NET_SOCKET_ERROR` on error. */
+/** Send up to `len` bytes, waiting at most about the socket's timeout (the
+ *  `timeout_ms` it was opened with) for the stack to take them. Returns the
+ *  bytes taken, which may be fewer than `len` and is `0` when the stack took
+ *  none in that time, or `NROS_PLATFORM_NET_SOCKET_ERROR` when the connection
+ *  is broken. It never waits for a peer that has stopped reading (issue 2389):
+ *  a caller that needs every byte loops, and decides how long a stall it
+ *  tolerates (zenoh-pico: `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE`). A socket opened
+ *  with `timeout_ms == 0` states no bound. */
 size_t nros_platform_tcp_send(const void *sock, const uint8_t *buf, size_t len);
 
 /** phase-521 W6 (RFC-0113 D4) — install (`notify != NULL`) or remove the

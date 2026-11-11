@@ -237,6 +237,69 @@ fn tcp_open_within_gives_up_on_a_syn_dropping_peer_at_its_bound() {
     }
 }
 
+/// Issue 2389 — `nros_platform_tcp_send` to a peer that keeps the connection
+/// open and stops reading never blocks for ever: each call waits at most about
+/// the socket's timeout and returns what the stack took, `0` once the buffers
+/// are full. It used to be a plain blocking `send()`, which is how a router
+/// that stopped reading wedged a zenoh session for good.
+#[test]
+fn tcp_send_to_a_peer_that_stops_reading_returns_within_its_timeout() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = format!("{}\0", listener.local_addr().expect("addr").port()).into_bytes();
+    unsafe {
+        let mut ep = MaybeUninit::<PosixEndpoint>::zeroed();
+        assert_eq!(
+            nros_platform_tcp_create_endpoint(
+                ep.as_mut_ptr() as *mut c_void,
+                c"127.0.0.1".as_ptr().cast::<u8>(),
+                port.as_ptr(),
+            ),
+            0,
+        );
+        let mut client = MaybeUninit::<PosixSocket>::zeroed();
+        assert_eq!(
+            nros_platform_tcp_open(
+                client.as_mut_ptr() as *mut c_void,
+                ep.as_ptr() as *const c_void,
+                200,
+            ),
+            0,
+        );
+        // Accepted and held open, never read.
+        let (_held, _) = listener.accept().expect("accept");
+
+        let chunk = vec![0x5au8; 64 * 1024];
+        let started = std::time::Instant::now();
+        let mut full_after = None;
+        // Loopback buffers are several MiB at most; 4096 x 64 KiB = 256 MiB
+        // is far past them, so the loop ends on a `0`, never on the count.
+        for _ in 0..4096 {
+            let call = std::time::Instant::now();
+            let n = nros_platform_tcp_send(
+                client.as_ptr() as *const c_void,
+                chunk.as_ptr(),
+                chunk.len(),
+            );
+            let took = call.elapsed();
+            assert_ne!(n, ERR, "a full window is not a broken connection");
+            assert!(
+                took < Duration::from_secs(2),
+                "one send took {took:?} against a 200 ms socket timeout"
+            );
+            if n == 0 {
+                full_after = Some(started.elapsed());
+                break;
+            }
+        }
+        assert!(
+            full_after.is_some(),
+            "256 MiB went into a socket whose peer reads nothing"
+        );
+        nros_platform_tcp_close(client.as_mut_ptr() as *mut c_void);
+        nros_platform_tcp_free_endpoint(ep.as_mut_ptr() as *mut c_void);
+    }
+}
+
 #[test]
 fn udp_loopback_roundtrip() {
     let addr = b"127.0.0.1\0";

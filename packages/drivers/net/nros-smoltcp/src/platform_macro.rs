@@ -308,8 +308,16 @@ macro_rules! __define_smoltcp_platform_impl {
                             return usize::MAX;
                         }
 
+                        // Issue 2389 — one socket timeout with no byte taken
+                        // ends THIS call with what was taken (possibly 0),
+                        // per `nros_platform_tcp_send`'s contract: a full
+                        // window is not a broken connection. The caller
+                        // decides how long a stall it tolerates (zenoh-pico:
+                        // `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE`). This used to
+                        // return `usize::MAX` even after partial progress,
+                        // which reads as a broken link at 100 ms of back-pressure.
                         if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
-                            return usize::MAX;
+                            return total;
                         }
 
                         // issue 2022 — no bytes moved this round; sleep to the

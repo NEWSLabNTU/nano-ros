@@ -287,7 +287,15 @@ size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t l
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_freertos_socket_t *sock = (const nros_freertos_socket_t *) sock_raw;
     int r = lwip_send(sock->fd, buf, len, 0);
-    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+    if (r < 0) {
+        /* SO_SNDTIMEO (`apply_tcp_common_options`) ran out with no byte
+         * taken (issue 2389): "none", not a broken connection. */
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOMEM) {
+            return 0;
+        }
+        return NROS_PLATFORM_NET_SOCKET_ERROR;
+    }
+    return (size_t) r;
 }
 
 /* phase-521 W6 (RFC-0113 D4) — zenoh reads the link on its own thread here (THREAD mode),

@@ -299,6 +299,10 @@ name = "large_msg"
 path = "tests/large_msg.rs"
 
 [[test]]
+name = "zenoh_send_stall"
+path = "tests/zenoh_send_stall.rs"
+
+[[test]]
 name = "trigger_conditions"
 path = "tests/trigger_conditions.rs"
 required-features = ["trigger-test"]

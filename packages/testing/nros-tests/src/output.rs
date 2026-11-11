@@ -434,6 +434,13 @@ pub const SESSION_OPEN_FAILED_MARKER: &str = "RMW session open failed";
 /// [`ZENOH_OPEN_BUDGET_KEY`].
 pub const ZENOH_OPEN_BUDGET_SPENT_PREFIX: &str = "zenoh open: no session with ";
 
+/// Issue 2389 -- what the zpico shim prints when zenoh-pico closed a session
+/// because a write on its link failed: the router took no byte for
+/// `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE`, or the link broke mid-write
+/// (`zpico.c::_zpico_report_link_tx_failures`).
+pub const ZPICO_LINK_TX_CLOSED_PREFIX: &str =
+    "zpico: session closed: a write to the router took no byte";
+
 /// Issue 2389 -- the key the budget is named under in
 /// [`ZENOH_OPEN_BUDGET_SPENT_PREFIX`]'s line, the knob's own name.
 pub const ZENOH_OPEN_BUDGET_KEY: &str = "connect_timeout_ms=";
