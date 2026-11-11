@@ -112,6 +112,11 @@ pub struct CmakeEntry {
 /// macro, in the directory scope every subdirectory inherits.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OwnedIdentity {
+    /// `NROS_DEPLOY` — the image's board, verbatim, as a generated entry's
+    /// `DEPLOY` says it. Without it an owned entry's `nano_ros_add_executable`
+    /// takes the HOST deploy, so on an embedded board the locator and domain
+    /// bake stays inactive (issue 2433, measured on threadx-linux).
+    pub deploy: Option<String>,
     /// `NROS_ENTRY_LOCATOR`, when the image states one.
     pub locator: Option<String>,
     /// `NROS_DOMAIN_ID`, when the image resolves one.
@@ -139,7 +144,10 @@ impl OwnedIdentity {
                 ));
             }
         }
-        Ok((first.locator.is_some() || first.domain_id.is_some()).then(|| first.clone()))
+        Ok(
+            (first.deploy.is_some() || first.locator.is_some() || first.domain_id.is_some())
+                .then(|| first.clone()),
+        )
     }
 }
 
@@ -475,13 +483,19 @@ pub fn render(
              # it reads these from the directory scope, applied by the macro a leaf's\n\
              # system.toml goes through.\n",
         );
-        if let Some(l) = &id.locator {
-            out.push_str(&format!("set(NROS_LEAF_LOCATOR \"{l}\")\n"));
+        if let Some(deploy) = &id.deploy {
+            out.push_str(&format!("set(NROS_DEPLOY \"{deploy}\")\n"));
         }
-        if let Some(d) = id.domain_id {
-            out.push_str(&format!("set(NROS_LEAF_DOMAIN_ID \"{d}\")\n"));
+        if id.locator.is_some() || id.domain_id.is_some() {
+            if let Some(l) = &id.locator {
+                out.push_str(&format!("set(NROS_LEAF_LOCATOR \"{l}\")\n"));
+            }
+            if let Some(d) = id.domain_id {
+                out.push_str(&format!("set(NROS_LEAF_DOMAIN_ID \"{d}\")\n"));
+            }
+            out.push_str("nros_apply_leaf_identity()\n");
         }
-        out.push_str("nros_apply_leaf_identity()\n\n");
+        out.push('\n');
     }
 
     // Relative like every other path here, so the file stays byte-identical
@@ -1200,6 +1214,7 @@ mod tests {
         let d = discovered(vec![pkg(root, "a_pkg", true)]);
         let mut s = spec(root);
         s.owned_identity = Some(OwnedIdentity {
+            deploy: Some("threadx-linux".to_string()),
             locator: Some("tcp/10.0.2.2:8381".to_string()),
             domain_id: Some(3),
         });
@@ -1210,6 +1225,12 @@ mod tests {
             "{body}"
         );
         assert!(body.contains("set(NROS_LEAF_DOMAIN_ID \"3\")"), "{body}");
+        // Issue 2433 — the board reaches the owned entry's own
+        // `nano_ros_add_executable` as its deploy, before the subdirectories.
+        let deploy = body
+            .find("set(NROS_DEPLOY \"threadx-linux\")")
+            .expect(&body);
+        assert!(deploy < body.find("nano_ros_workspace(").unwrap(), "{body}");
         assert!(
             body.find("find_package(nano_ros").unwrap() < apply,
             "{body}"
@@ -1222,6 +1243,7 @@ mod tests {
     #[test]
     fn owned_entries_of_one_configure_agree_on_their_identity_or_refuse() {
         let at = |l: &str| OwnedIdentity {
+            deploy: None,
             locator: Some(l.to_string()),
             domain_id: Some(0),
         };

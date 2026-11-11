@@ -1987,9 +1987,13 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     let net = nros_orchestration_ir::leaf_system::read_image(&bd, &id)
                         .map_err(|e| eyre::eyre!("{e}"))?
                         .map(|s| s.network);
+                    // Issue 2433 — the board, verbatim: what a generated
+                    // entry's DEPLOY says on this road (`cmake_entries` above).
+                    let b = img.board.clone().unwrap_or_default();
                     owned.push((
                         id,
                         crate::builder::cmake_root::OwnedIdentity {
+                            deploy: Some(if b.is_empty() { platform.clone() } else { b }),
                             locator: net.as_ref().and_then(|n| n.locator.clone()),
                             domain_id: net.as_ref().and_then(|n| n.domain_id),
                         },
