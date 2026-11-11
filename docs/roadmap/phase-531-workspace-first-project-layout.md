@@ -745,7 +745,7 @@ from before W6.
     entry. Tried on threadx-linux, that road gives the image no census (a
     cross C/C++ leaf is census-sized, RFC-0120 D4, and an owned entry has no
     model) and, until a CLI fix recorded there, none of its image's deploy,
-    domain or locator: [issue 2433](../issues/2433-owned-cross-entry-has-no-census.md).
+    domain or locator: [issue 2433](../issues/archived/2433-owned-cross-entry-has-no-census.md).
     RFC-0122 D10 keeps a hand-written `main` only in a manual-entry demo, and
     phase-535 W1 lists none of these, so each becomes a component on a
     generated entry in its own batch.
@@ -761,11 +761,17 @@ from before W6.
   coordinates, the zenoh rows' `NROS_ENTRY_LOCATOR` now each image's
   `locator`. The leaf `entities = "census"` keys went with the leaves: a
   generated entry is sized from its model.
-  - `examples/threadx-linux/c/talker` stays a leaf until
-    [issue 2433](../issues/2433-owned-cross-entry-has-no-census.md) lands: its
-    `main` is what `linux_api`'s SIGTERM and exit-status cases measure, so it
-    becomes an owned entry, sized by a census of that entry (maintainer
-    ruling 2026-11-11).
+- **`examples/threadx-linux/c/talker`, an owned entry sized by its census.**
+  The exception to the batch above: `linux_api`'s SIGTERM and exit-status
+  cases exist for its hand-written `main`. Per the maintainer ruling of
+  2026-11-11 in issue 2433, it is an owned entry built by two images
+  (`threadx-linux` zenoh, `threadx-linux-cyclonedds`).
+  - The generated CMake root states each owned entry's deploy, domain and
+    locator.
+  - `entity-census take --image` takes a host census of the entry, per image.
+  - `sizing-descriptor --owned-entry` sizes the image from that census.
+  - Its two `[[fixture]]` rows are `[[workspace_fixture]]` rows with the same
+    coordinates.
 - **Batch, the rv-virt talkers (branch `phase-531-w6-rv-virt-talkers`).**
   - `examples/rv-virt-threadx/{c,cpp}/talker` and `examples/rv-virt-nuttx/c/talker`
     are one-package workspaces whose image boots the talker as a component on a
