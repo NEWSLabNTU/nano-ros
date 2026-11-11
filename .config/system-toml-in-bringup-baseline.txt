@@ -22,11 +22,8 @@ examples/mps2-an385-baremetal/cpp/service-server/system.toml
 examples/mps2-an385-baremetal/cpp/talker/system.toml
 examples/mps2-an385-baremetal/rust/listener/system.toml
 examples/mps2-an385-baremetal/rust/talker/system.toml
-examples/qemu-armv7a-nuttx/c/typed-carrier/system.toml
 examples/rv-virt-nuttx/c/talker/system.toml
-examples/rv-virt-threadx/c/errno-isolation/system.toml
 examples/rv-virt-threadx/c/talker/system.toml
-examples/rv-virt-threadx/c/typed-carrier/system.toml
 examples/rv-virt-threadx/cpp/talker/system.toml
 examples/rv-virt-threadx/rust/action-client/system.toml
 examples/rv-virt-threadx/rust/action-server/system.toml

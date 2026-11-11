@@ -1,0 +1,17 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry
+# `src/riscv64_threadx_c_errno_isolation` (RFC-0071 D19): its `main` is the
+# test (issue 0680: two platform tasks and an errno handoff), not a node, so
+# the image names it and the bringup declares no component table. It creates
+# no ROS entity and never opens a session; `rmw` is here only because an image
+# needs one.
+
+[system]
+name = "riscv64_threadx_c_errno_isolation"
+rmw = "zenoh"
+domain_id = 0
+
+# ThreadX on the QEMU RISC-V virt machine.
+[image.rv-virt-threadx]
+board = "rv-virt-threadx"
+entry = "riscv64_threadx_c_errno_isolation"

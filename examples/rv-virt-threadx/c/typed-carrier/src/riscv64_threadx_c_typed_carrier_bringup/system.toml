@@ -1,0 +1,24 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry
+# `src/riscv64_threadx_c_typed_carrier` (RFC-0071 D19): its CMakeLists
+# registers the C component with
+# `nros_components_register_node(... TYPED DEPLOY threadx)`, so the image comes
+# from `nano_ros_node_register`'s ThreadX carrier arm (issue 1795), not from a
+# generated entry. That carrier road is what this example witnesses, so the
+# image names the package and the bringup declares no component table (a
+# `[[component]]` row would make `nros build` generate an entry, the other
+# road).
+
+[system]
+name = "riscv64_threadx_c_typed_carrier"
+rmw = "zenoh"
+domain_id = 0
+
+# ThreadX on the QEMU RISC-V virt machine.
+[image.rv-virt-threadx]
+board = "rv-virt-threadx"
+entry = "riscv64_threadx_c_typed_carrier"
+# The image's own router port,
+# `alloc::port_of(ThreadxRiscv64, C, TypedCarrier)` (the e2e harness binds
+# zenohd there).
+locator = "tcp/10.0.2.2:9581"

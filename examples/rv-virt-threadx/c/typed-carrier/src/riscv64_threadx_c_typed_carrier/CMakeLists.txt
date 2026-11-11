@@ -8,7 +8,9 @@ project(c_typed_carrier LANGUAGES C CXX)
 # registers a typed component with `DEPLOY threadx`, so the image comes from
 # `nano_ros_node_register`'s ThreadX carrier arm, which synthesises a C++ entry
 # holding the component's node as a STATIC object. That road failed to link
-# twice (issues 1742, 1753) with nothing building it; this leaf is its fixture.
+# twice (issues 1742, 1753) with nothing building it; this package is its
+# fixture. The bringup's image names this package as its OWNED entry (RFC-0071
+# D19), so `nros build` generates no entry beside it.
 find_package(nano_ros REQUIRED)
 
 nano_ros_auto_add_library(c_typed_carrier_lib STATIC src/Talker.c)

@@ -18,16 +18,17 @@ carrier never fired on a lane build: the recipes pass
 
 ## Build
 
+A one-package workspace (RFC-0122 D3): the package is
+`src/nuttx_c_typed_carrier`, and `src/nuttx_c_typed_carrier_bringup` holds the
+`system.toml` that says what to build. The image names the package as its
+OWNED entry (RFC-0071 D19), so its own `CMakeLists.txt` builds the image
+through the typed carrier; `nros build` generates no entry.
+
 ```bash
 cp -r examples/qemu-armv7a-nuttx/c/typed-carrier ~/my-typed-carrier && cd ~/my-typed-carrier
-cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build
-cmake --build build
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
+nros build qemu-armv7a-nuttx
 ```
-
-No `nros configure` here: a C/C++ leaf's message bindings are a CMake-time
-output. `-Dnano_ros_ROOT` is `find_package(nano_ros)`'s hint: it says where
-the checkout is, and nothing else. The board, the RMW and the domain come
-from `system.toml` (below), never from a `-D` flag.
 
 ## Run
 
@@ -36,10 +37,9 @@ QEMU / flashing steps live in the [qemu-armv7a-nuttx README](https://github.com/
 
 ## Config
 
-Board, RMW, domain and locator: `system.toml` beside `CMakeLists.txt`
-(`[image.qemu-armv7a-nuttx]` + `[system]`, RFC-0098 D3/D5). `find_package(nano_ros)`
-reads it while CMake configures, so switching board is editing that one
-line and re-configuring (`cmake -B build`); no build command and no
-manifest names a board.
+Board, RMW, domain and locator:
+`src/nuttx_c_typed_carrier_bringup/system.toml` (`[image.qemu-armv7a-nuttx]` +
+`[system]`, RFC-0098 D3/D5). No build command carries any of them, and the
+package names no board.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

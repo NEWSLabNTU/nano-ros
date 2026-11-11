@@ -1,0 +1,29 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry
+# `src/nuttx_c_typed_carrier` (RFC-0071 D19): its CMakeLists registers the C
+# component with `nros_components_register_node(... TYPED DEPLOY nuttx)`, so
+# the image comes from `nano_ros_node_register`'s NuttX carrier arm (issue
+# 1795), not from a generated entry. That carrier road is what this example
+# witnesses, so the image names the package and the bringup declares no
+# component table (a `[[component]]` row would make `nros build` generate an
+# entry, the other road).
+
+[system]
+name = "nuttx_c_typed_carrier"
+rmw = "zenoh"
+domain_id = 0
+
+# NuttX on the QEMU ARM virt machine.
+[image.qemu-armv7a-nuttx]
+board = "qemu-armv7a-nuttx"
+entry = "nuttx_c_typed_carrier"
+# The image's own router port, `alloc::port_of(NuttxArm, C, TypedCarrier)`
+# (the e2e harness binds zenohd there).
+locator = "tcp/10.0.2.2:8381"
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."qemu-armv7a-nuttx"]
