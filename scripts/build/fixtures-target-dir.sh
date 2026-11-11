@@ -99,7 +99,11 @@
 # its authored `target_dir`. Gate scope and mechanism scope agree — checked,
 # not assumed, because a rule enforced over a narrower set than it covers is
 # issue 0196's shape.
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal linux nuttx freertos threadx-linux threadx-riscv64}"
+#
+# phase-531 W7 — `nuttx` and `threadx-riscv64` LEFT the list: their last Rust
+# `[[fixture]]` rows (the logging smokes) became owned-entry workspace rows,
+# and an entry here with no rust row is one the gate cannot check (A1).
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal linux freertos threadx-linux}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.

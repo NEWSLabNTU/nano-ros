@@ -2463,9 +2463,12 @@ mod board_crate_tests {
         // `wake-latency-cortex-m3` programs and 23 -> 22 for
         // `bins/ros-edition-pose-pub` (W7: owned entries with no component),
         // 22 -> 21 for the mps2-an385 bare-metal Rust talker (phase-531 W6: a
-        // one-package workspace).
+        // one-package workspace), 21 -> 14 for the seven board-only
+        // `nros-tests` bins (the condvar-contract, logging-smoke and
+        // pool-exhaustion images; W7: owned entries whose adapter carries only
+        // the board half, issue 2448).
         assert!(
-            on_selection >= 21,
+            on_selection >= 14,
             "only {on_selection} leaves on the selection package"
         );
     }
@@ -2582,10 +2585,11 @@ mod board_crate_tests {
         // ten mps2-an385 bare-metal C/C++ non-talker leaves (phase-535 W6),
         // 30 -> 26 for the three `nros-bench` programs and
         // `bins/ros-edition-pose-pub` (phase-531 W7), 26 -> 25 for the
-        // mps2-an385 bare-metal Rust talker (phase-531 W6). Each count
+        // mps2-an385 bare-metal Rust talker (phase-531 W6), 25 -> 18 for the
+        // seven board-only `nros-tests` bins (phase-531 W7). Each count
         // measured.
         assert!(
-            checked >= 25,
+            checked >= 18,
             "the walk reached only {checked} cargo leaves"
         );
     }

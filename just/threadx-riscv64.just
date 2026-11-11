@@ -272,10 +272,10 @@ build-fixture-extras:
     # class). phase-484 W2: the config dirs come from the board descriptor.
     # (This comment named `threadx-netx-sys` until phase-400 deleted that crate —
     # nothing here ever depended on it; the fixture is a plain Rust build.)
-    bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-logging-smoke
-    # Issue 1706 — the parameter-store image is a WORKSPACE row now
-    # (`threadx-riscv64-param-store`, phase-531 W7), built with every other
-    # threadx-riscv64 workspace row at the end of this recipe.
+    # The logging smoke and (issue 1706) parameter-store images are WORKSPACE
+    # rows now (`threadx-riscv64-logging-smoke`, `threadx-riscv64-param-store`,
+    # phase-531 W7), built with every other threadx-riscv64 workspace row at
+    # the end of this recipe.
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.
     # Corrosion handles the riscv64gc-unknown-none-elf cross under
     # the bundled toolchain file; the ThreadX + NetX Duo include

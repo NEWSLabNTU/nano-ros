@@ -1,0 +1,23 @@
+# What this test image deploys to (RFC-0098 D3/D5). It keeps its own `main`
+# (no `nros::main!`, no session) and declares no component table; the file
+# names its board. Its program is the image's OWNED entry (RFC-0071 D19),
+# which names its board crate itself; the generated adapter carries the image's
+# RMW and link features (issue 2448), and `build/<image>/nros-cargo.toml` the
+# target / link settings.
+# The arm under test is the zenoh session pool, so the image's RMW is zenoh;
+# `main.rs` uses `nros_rmw_zenoh::Context` directly, the backend crate the
+# adapter links for that image.
+
+[system]
+name = "pool_exhaustion_threadx_linux"
+rmw = "zenoh"
+domain_id = 0
+
+[image.threadx-linux]
+entry = "pool-exhaustion-threadx-linux"
+board = "threadx-linux"
+# `main.rs` declares its own `#[panic_handler]` (RFC-0077).
+panic = "platform"
+
+[board_config."threadx-linux"]
+netstack = "netxduo"
