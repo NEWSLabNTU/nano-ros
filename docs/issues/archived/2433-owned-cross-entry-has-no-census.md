@@ -1,15 +1,19 @@
 ---
 id: 2433
 title: "An owned C/C++ entry on a cross board gets neither its census nor its image's deploy, domain and locator on the workspace road"
-status: open
+status: resolved
 type: limitation
 severity: medium
 area: [cli, cmake, sizing, census]
 related: [1556, 1946, 2406, phase-531]
 found: 2026-11-11
+resolved: 2026-11-11
+resolved_in: "an owned C/C++ entry on a cross board is sized by a census of the entry per image; the generated root states its deploy, domain and locator"
 ---
 
-**Home: [phase-531](../roadmap/phase-531-workspace-first-project-layout.md)
+> **Resolved (2026-11-11).** Maintainer ruling: census the owned entry, per image. See [Resolution](#resolution).
+
+**Home: [phase-531](../../roadmap/phase-531-workspace-first-project-layout.md)
 W6.** Found migrating the C/C++ talker witnesses on cross boards
 (`threadx-linux`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`,
 `rv-virt-threadx`) the way the linux C/C++ talkers went (owned entry, RFC-0071
@@ -70,3 +74,48 @@ How an owned C/C++ entry on a cross board is sized on the workspace road:
 
 The talker witnesses do not wait on it (D10, above); the Rust witnesses are
 unaffected either way.
+
+
+## Resolution
+
+**Maintainer ruling 2026-11-11.** A C/C++ entry that a migrated image owns
+on a cross board is sized by CENSUSING THE ENTRY, once per image. The census
+works the way issue 1556 censuses a native C/C++ application: a host build of
+the entry, sized from what it registers. Two alternatives were not taken:
+declaring the entities in the bringup, and accepting the defaults. The cross
+C/C++ talker witnesses take RFC-0122 D10's road instead and become
+components. `examples/threadx-linux/c/talker` is the exception, because
+`linux_api`'s SIGTERM and exit-status cases exist for its hand-written
+`main`. It is the owned entry this issue's road serves.
+
+Implemented in three parts:
+
+1. **Deploy, domain, locator.** For each cross configure that builds an owned
+   entry, the generated CMake root sets `NROS_DEPLOY`, `NROS_DOMAIN_ID` and
+   `NROS_ENTRY_LOCATOR` as plain variables. These are the values a leaf's
+   `system.toml` and `-D` used to supply. If the owned images on one configure
+   disagree on them, the build refuses.
+2. **The census of the entry.** `nros dev image entity-census take --image
+   <bringup>:<image>` takes the census when the image's program is an owned
+   CMake entry.
+   - It writes `<ws>/build/nros/census/owned/<bringup>/<image>.census.json`.
+   - The host build goes in `build/nros/census-host/<bringup>/<image>`.
+   - The host build and the run are `census_host_program`, which `take --leaf`
+     now shares, so there is one way to build a census.
+   - `--plan` prints an `owned-entry` line, so the fixture pre-pass takes this
+     census as it does any image's.
+3. **Sizing from it.** `sizing-descriptor --from-leaf <bringup> --leaf-image
+   <image> --owned-entry <pkg>` builds the sizing descriptor.
+   - The bringup states the deployment. The census states every entity, and
+     its nodes stand in for components (Ruling R29's shape).
+   - A missing or stale census refuses, naming the take.
+   - The generated root calls `nros_record_owned_entity_facts` before the
+     packages are added. That call takes the census, then writes the
+     descriptor and the entity fragment before any reader runs.
+
+Measured on the migrated `examples/threadx-linux/c/talker`:
+- The census reads 1 node, 1 publisher and 1 timer.
+- `entity_inventory.cmake` is `derived` (`PUBLISHER 1`, `TIMER 1`).
+- The compile lines carry `-DNROS_ENTRY_DOMAIN_ID=107` on the Cyclone image and
+  `tcp/127.0.0.1:9100` on the zenoh image.
+- The zenoh image publishes to a router.
