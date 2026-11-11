@@ -226,8 +226,11 @@ fn image_backends(image_id: Option<&str>, sys: &SystemToml) -> Vec<String> {
 /// `nros new entry` writes) resolves through that table, so the facade finds
 /// the crate at the same place cargo will (issue 2152).
 ///
-/// Returns `Ok(None)` when the package is not an entry, or when no `nros`
-/// dependency can be located to attach features to.
+/// Returns `Ok(None)` when the package is not an entry, or (with a warning) when
+/// it names neither `nros` nor a board crate to attach features to. An entry
+/// that names a board crate and not `nros` gets an adapter carrying only the
+/// board half (issue 2448); one that also depends on the adapter it cannot get
+/// is refused, naming the remedy.
 ///
 /// The adapter over [`write_facade_in`] for a caller that holds no
 /// [`RmwIndex`]: the index is the bringup's workspace's (RFC-0071 D14).
@@ -306,11 +309,44 @@ pub fn write_facade_in(
         .wrap_err_with(|| format!("facade: parse {}", entry_manifest.display()))?;
 
     let deps = runtime_deps(&manifest, entry_dir, sdk_root);
-    if deps.nros.is_none() {
+    use nros_orchestration_ir::entry_names as names;
+    // Issue 2448 — an entry with no `nros` dependency still gets an adapter
+    // when it names a board crate: a board-only program (`run_bare`, a contract
+    // check, a logging smoke) reaches the board and never `nros`, and the
+    // image's board features (RMW, link set, `[board_config]`) reach it only
+    // through the adapter. Such an adapter carries the board half and leaves
+    // the `nros` axes (edition, capabilities) out. With neither crate there is
+    // nothing to attach a feature to; that is never silent.
+    if deps.nros.is_none() && deps.board.is_none() {
+        let wanted = [
+            names::adapter_crate_name(entry_name),
+            names::legacy_adapter_crate_name(entry_name),
+        ];
+        if let Some(adapter) = wanted
+            .iter()
+            .find(|n| dependency_path(&manifest, n).is_some())
+        {
+            return Err(eyre::eyre!(
+                "facade: entry `{entry_name}` depends on its adapter `{adapter}`, but \
+                 names neither `nros` nor an `nros-board-*` crate, so the adapter has no \
+                 dependency to carry the image's features. Add the image's board crate \
+                 (`nros-board-<board> = {{ path = ..., default-features = false }}`) \
+                 or `nros` to `{}`, or drop the `{adapter}` dependency.",
+                entry_manifest.display(),
+            ));
+        }
+        eprintln!(
+            "sync: entry `{entry_name}` names neither `nros` nor an `nros-board-*` \
+             crate, so no adapter is written for it and its image's features reach \
+             it from nowhere. Add the board crate and `{} = {{ path = \
+             \"<ws>/generated/{}/{entry_name}\" }}` to `{}`.",
+            names::adapter_crate_name(entry_name),
+            names::ADAPTER_DIR,
+            entry_manifest.display(),
+        );
         return Ok(None);
     }
 
-    use nros_orchestration_ir::entry_names as names;
     let legacy = names::legacy_adapter_crate_name(entry_name);
     // Only the facade's own previous home counts: the seven fixture entries
     // name the same spelling for the LEAF-shaped package at
@@ -495,7 +531,9 @@ impl AdapterSite<'_> {
             crate_name,
             dir,
         } = *self;
-        let nros_path = deps.nros.clone().expect("checked by the caller");
+        // Issue 2448 — `None` for a board-only entry: its adapter carries the
+        // board half and no `nros` axes.
+        let nros_path = deps.nros.clone();
         // ---- the three declared axes --------------------------------------
         let declared_rmw = image_rmw(image_id, sys).unwrap_or_else(|| sys.system.rmw.clone());
         let edition = sys.image_ros_edition(image_id)?;
@@ -510,7 +548,7 @@ impl AdapterSite<'_> {
             edition,
             &declared_rmw,
             &image_backends(image_id, sys),
-            &nros_path,
+            nros_path.as_deref(),
             deps.board.as_ref().map(|(_, p)| p.as_path()),
         )?;
         if let Some((_, bd)) = &deps.board {
@@ -531,7 +569,7 @@ impl AdapterSite<'_> {
         let mut body = render_manifest(
             crate_name,
             dir,
-            &nros_path,
+            nros_path.as_deref(),
             &nros_features,
             deps.board.as_ref(),
             &board_features,
@@ -801,7 +839,7 @@ pub fn entry_selection_in(
         edition,
         &declared_rmw,
         &backends,
-        &nros_path,
+        Some(&nros_path),
         board_dir,
     )?;
     if let Some(bd) = board_dir {
@@ -934,7 +972,7 @@ pub fn write_leaf_selection_in(
         sys.image_ros_edition(Some(spec.image_id))?,
         &declared_rmw,
         &backends,
-        &nros_path,
+        Some(&nros_path),
         board_dir.as_deref(),
     )?;
     if let Some(bd) = &board_dir {
@@ -1233,7 +1271,7 @@ fn derive(
     edition: rosidl_codegen::RosEdition,
     declared_rmw: &str,
     backends: &[String],
-    nros_path: &Path,
+    nros_path: Option<&Path>,
     board_dir: Option<&Path>,
 ) -> Result<Derived> {
     let rmw = rmws
@@ -1259,6 +1297,8 @@ fn derive(
     // `nros` names the capability rather than a backend (RFC-0071, phase-506
     // W4d — it was `nros/rmw-cyclonedds`).
     let mut nros_features = vec![edition.cargo_feature().to_string()];
+    // Issue 2448 — no `nros` dependency, no `nros` axes. The capability loop
+    // below still runs: its warnings are about the declaration, not the crate.
     for cap in cargo_nano_ros::capability_resolver::CAPABILITIES {
         if !sys.capability_enabled(cap.declared) {
             continue;
@@ -1288,12 +1328,15 @@ fn derive(
             Err(e) => return Err(eyre::eyre!("facade: {entry_name}: {e}")),
         }
     }
-    if needs_types && crate_declares_feature(nros_path, NEEDS_TYPE_DESCRIPTORS) {
+    if needs_types && nros_path.is_some_and(|p| crate_declares_feature(p, NEEDS_TYPE_DESCRIPTORS)) {
         nros_features.push(NEEDS_TYPE_DESCRIPTORS.to_string());
     }
 
     nros_features.sort();
     nros_features.dedup();
+    if nros_path.is_none() {
+        nros_features.clear();
+    }
 
     // Only emit a feature the board crate actually DECLARES.
     //
@@ -1672,7 +1715,7 @@ fn entry_platform_features(manifest: &toml::Value) -> Vec<String> {
 fn render_manifest(
     crate_name: &str,
     facade_dir: &Path,
-    nros_path: &Path,
+    nros_path: Option<&Path>,
     nros_features: &[String],
     board: Option<&(String, PathBuf)>,
     board_features: &[String],
@@ -1718,11 +1761,14 @@ fn render_manifest(
          path = \"src/lib.rs\"\n\n\
          [dependencies]\n"
     ));
-    s.push_str(&format!(
-        "nros = {{ path = {:?}, default-features = false, features = [{}] }}\n",
-        rel_from(facade_dir, nros_path),
-        feat_list(nros_features),
-    ));
+    // Issue 2448 — a board-only entry has no `nros` dependency to unify onto.
+    if let Some(nros_path) = nros_path {
+        s.push_str(&format!(
+            "nros = {{ path = {:?}, default-features = false, features = [{}] }}\n",
+            rel_from(facade_dir, nros_path),
+            feat_list(nros_features),
+        ));
+    }
     if let Some((name, path)) = board {
         // No features to contribute ⇒ omit the dep entirely. A bare path dep
         // would add an edge that changes nothing, and the facade exists only to
@@ -2074,6 +2120,85 @@ mod tests {
         );
         let cargo = std::fs::read_to_string(f.dir.join("Cargo.toml")).unwrap();
         assert!(!cargo.contains("nros-rmw-zenoh"), "{cargo}");
+    }
+
+    /// Issue 2448 — a board-only owned entry (it reaches the board crate and
+    /// never `nros`) gets an adapter carrying the board half: the image's RMW
+    /// on the board crate, and no `nros` line. An entry naming neither crate
+    /// that depends on its adapter is refused naming the remedy; one that does
+    /// not depend on it is skipped with a warning, as before.
+    #[test]
+    fn a_board_only_owned_entry_gets_an_adapter_without_the_nros_axes() {
+        let ws = tempfile::tempdir().unwrap();
+        let root = ws.path();
+        let sdk = cargo_nano_ros::rmw_resolver::test_support::checkout();
+        let bringup = root.join("src/demo_bringup");
+        std::fs::create_dir_all(&bringup).unwrap();
+        let system = "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                      [image.linux]\nboard = \"linux\"\n";
+        std::fs::write(bringup.join("system.toml"), system).unwrap();
+        let sys: SystemToml = toml::from_str(system).unwrap();
+        let entry = root.join("src/linux_entry");
+        std::fs::create_dir_all(&entry).unwrap();
+        let adapter_dep =
+            "linux_entry_nros_derived = { path = \"../../generated/nros-derived/linux_entry\" }\n";
+        let write_manifest = |deps: &str| {
+            std::fs::write(
+                entry.join("Cargo.toml"),
+                format!(
+                    "[package]\nname = \"linux_entry\"\nversion = \"0.1.0\"\n\n\
+                     [dependencies]\n{deps}"
+                ),
+            )
+            .unwrap();
+        };
+        let write = || {
+            write_facade_in(
+                &in_tree(),
+                "linux_entry",
+                &entry,
+                &entry.join("Cargo.toml"),
+                &bringup,
+                &sys,
+                &root.join("generated"),
+                None,
+                None,
+            )
+        };
+
+        // The board crate and the adapter, no `nros`.
+        write_manifest(&format!(
+            "nros-board-linux = {{ path = \"{b}\", default-features = false }}\n{adapter_dep}",
+            b = sdk.join("packages/boards/nros-board-linux").display(),
+        ));
+        let f = write()
+            .unwrap()
+            .expect("a board-only entry still gets its adapter");
+        let cargo = std::fs::read_to_string(f.dir.join("Cargo.toml")).unwrap();
+        toml::from_str::<toml::Value>(&cargo).expect("a manifest");
+        assert!(
+            !cargo.lines().any(|l| l.starts_with("nros = ")),
+            "no `nros` dependency to unify onto:\n{cargo}"
+        );
+        let board = cargo
+            .lines()
+            .find(|l| l.starts_with("nros-board-linux = "))
+            .unwrap_or_else(|| panic!("{cargo}"));
+        assert!(board.contains("\"rmw-zenoh\""), "{board}");
+        assert!(f.nros_features.is_empty(), "{:?}", f.nros_features);
+
+        // Neither crate, but the adapter is depended on: refused, with the remedy.
+        write_manifest(adapter_dep);
+        let e = write().unwrap_err().to_string();
+        assert!(
+            e.contains("names neither `nros` nor an `nros-board-*` crate")
+                && e.contains("Add the image's board crate"),
+            "{e}"
+        );
+
+        // Neither crate and no adapter dependency: nothing to write.
+        write_manifest("");
+        assert!(write().unwrap().is_none());
     }
 
     /// RFC-0071 D19 — one owned entry named by two images: one adapter whose
