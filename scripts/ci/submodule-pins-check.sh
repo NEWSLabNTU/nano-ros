@@ -439,13 +439,37 @@ if ! git rev-parse --verify --quiet "$baseline^{commit}" >/dev/null; then
     exit 0
 fi
 
-# `<mode> <type> <sha>\t<path>` for every gitlink, at one commit.
+# Issue 2442 — the baseline's TREE must be here too, and asking must not
+# fetch it. CI's history is `--filter=tree:0 --unshallow`: the commit resolves
+# above, and `ls-tree -r` of it would then fetch every subtree from the
+# network one at a time. `pin-baseline.sh provide` fetches the tree; this is
+# the same precondition, stated for the tree.
+if ! nros_git_tree_present "$baseline"; then
+    if [ -n "${GITHUB_ACTIONS:-}${CI:-}" ]; then
+        echo "submodule-pins: FAILED — the tree of baseline '$baseline' is not in" >&2
+        echo "  this clone, in CI. \`bash scripts/ci/pin-baseline.sh provide\` fetches" >&2
+        echo "  it; it must run before \`just check fast\`." >&2
+        exit 1
+    fi
+    echo "submodule-pins: NOT CHECKED — the tree of baseline '$baseline' is not in" >&2
+    echo "  this clone (a partial clone; reading it would fetch it object by object)." >&2
+    exit 0
+fi
+
+# `<mode> <type> <sha>\t<path>` for every gitlink, at one commit. Bounded
+# (issue 2442); a read that fails or runs out of time is not an empty pin set.
 pins_at() {
-    git ls-tree -r "$1" 2>/dev/null | awk '$2 == "commit" { print $4 "\t" $3 }'
+    local out
+    out="$(nros_git_history_run "$NROS_GIT_HISTORY_TIMEOUT_S" ls-tree -r "$1" 2>/dev/null)" \
+        || return 1
+    awk '$2 == "commit" { print $4 "\t" $3 }' <<<"$out"
 }
 
-baseline_pins="$(pins_at "$baseline")"
-local_pins="$(pins_at "$local_ref")"
+if ! baseline_pins="$(pins_at "$baseline")" || ! local_pins="$(pins_at "$local_ref")"; then
+    echo "submodule-pins: FAILED — could not read the gitlinks at '$baseline' or" >&2
+    echo "  '$local_ref' within ${NROS_GIT_HISTORY_TIMEOUT_S} s; nothing was compared." >&2
+    exit 1
+fi
 
 # The object store to ask about a submodule's history, or nothing.
 #

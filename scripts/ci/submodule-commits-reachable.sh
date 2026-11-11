@@ -57,6 +57,8 @@ set -uo pipefail
 # here because every git invocation below names its target explicitly.
 # shellcheck source=scripts/lib/git-hook-env.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/git-hook-env.sh"
+# shellcheck source=scripts/lib/git-history.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/git-history.sh"
 nros_clear_inherited_git_env
 
 
@@ -171,7 +173,9 @@ for path in "${paths[@]}"; do
     [ -n "$pin" ] || continue
 
     if [ -n "$changed_against" ]; then
-        base="$(git ls-tree "$changed_against" "$path" 2>/dev/null | awk '{print $3}')"
+        # Bounded (issue 2442). A read that fails leaves `base` empty, so the
+        # pin is CHECKED rather than skipped: fail closed.
+        base="$(nros_git_history_run "$NROS_GIT_HISTORY_TIMEOUT_S" ls-tree "$changed_against" "$path" 2>/dev/null | awk '{print $3}')"
         if [ "$base" = "$pin" ]; then
             skipped_unchanged=$((skipped_unchanged + 1))
             continue

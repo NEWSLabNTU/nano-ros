@@ -144,6 +144,21 @@ process-substitution-status:
 ancestry-truncation:
     @python3 scripts/check/check-ancestry-truncation.py
 
+# Issue 2442 — CI's history is `--filter=tree:0 --unshallow`: not shallow (so
+# the rule above lets it through), but every old tree and blob is on the
+# promisor remote, and any git command that reads one fetches it lazily, one
+# object per round trip. `toolchain-paths-persist`'s history walk ran past the
+# 40-minute nextest cap that way. A git read of OLD trees or blobs (a path
+# walk, `--name-status`/`-p` over history, `ls-tree`/`show`/`diff` of a
+# non-HEAD revision, `cat-file -p`, `blame`) must go through the bounded
+# helper (`scripts/lib/git_history.py` / `git-history.sh`), or be EXEMPT with a
+# reason. Reads Python through `ast`, shell in command position only.
+# Buildless, ~2 s; self-tests 26 cases plus both helpers' full / shallow /
+# partial-clone negative controls on every run.
+[private]
+history-object-reads:
+    @python3 scripts/check/check-history-object-reads.py
+
 # Issue 1816 — `git grep` exits 1 for "matched nothing" and 128 for "could not
 # search" (not a repository; a regex git rejects), and prints nothing on stdout
 # for either. 13 of the 14 Python call sites read 128 as "no match", so outside

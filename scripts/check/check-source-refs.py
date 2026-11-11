@@ -44,6 +44,9 @@ except ImportError:  # Python < 3.11
     import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+from lib.git_history import HistoryUnknown, history_git, tree_present  # noqa: E402
+
 INDEX = ROOT / "nros-sdk-index.toml"
 
 HEADER = re.compile(r"^\[source\.([A-Za-z0-9_-]+)\]\s*$")
@@ -53,6 +56,12 @@ def git(*args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(ROOT), *args], capture_output=True, text=True, check=True
     ).stdout
+
+
+def rev_git(*args: str) -> str:
+    """A read of `--rev`'s tree, bounded (issue 2442). `main` has already
+    asked that the tree is HERE, so nothing is fetched."""
+    return history_git(ROOT, *args).stdout
 
 
 def gitmodules_urls(rev: str | None) -> dict[str, str]:
@@ -79,7 +88,7 @@ def gitmodules_urls(rev: str | None) -> dict[str, str]:
 def gitlink(path: str, rev: str | None) -> str | None:
     """The commit recorded for PATH: STAGED (the next commit's) or in REV."""
     if rev:
-        out = git("ls-tree", rev, "--", path).split()
+        out = rev_git("ls-tree", rev, "--", path).split()
         # `<mode> <type> <sha>\t<path>`
         return out[2] if len(out) >= 3 and out[0] == "160000" else None
     out = git("ls-files", "-s", "--", path).split()
@@ -88,7 +97,7 @@ def gitlink(path: str, rev: str | None) -> str | None:
 
 
 def index_text(rev: str | None) -> str:
-    return git("show", f"{rev}:nros-sdk-index.toml") if rev else INDEX.read_text()
+    return rev_git("show", f"{rev}:nros-sdk-index.toml") if rev else INDEX.read_text()
 
 
 def expected(text: str, rev: str | None) -> tuple[dict[str, tuple[str, str]], list[str]]:
@@ -155,8 +164,17 @@ def main() -> int:
     self_test()
     argv = sys.argv[1:]
     rev = argv[argv.index("--rev") + 1] if "--rev" in argv else None
-    text = index_text(rev)
-    want, problems = expected(text, rev)
+    if rev and not tree_present(ROOT, rev):
+        # A partial clone would fetch it one object at a time (issue 2442).
+        print(f"check-source-refs: NOT VERIFIED: the tree of {rev} is not in this "
+              "clone", file=sys.stderr)
+        return 2
+    try:
+        text = index_text(rev)
+        want, problems = expected(text, rev)
+    except HistoryUnknown as e:
+        print(f"check-source-refs: NOT VERIFIED: {e}", file=sys.stderr)
+        return 2
     if "--write" in argv:
         if rev:
             print("check-source-refs: --write rewrites the worktree; it takes no --rev", file=sys.stderr)

@@ -821,6 +821,13 @@ and verified.
 
 ### Multi-Session / Shell Pitfalls
 
+- **CI's history is TREELESS, not shallow (issue 2442).** Gate lanes get
+  `git fetch --filter=tree:0 --unshallow`: every commit, no old trees or blobs.
+  A gate that reads old trees (`git log -- <path>`, `--name-status`, `ls-tree`,
+  `show` or `diff` of a non-HEAD revision) fetches them one object at a time.
+  Go through `scripts/lib/git_history.py` / `git-history.sh`
+  (`tree_present`, `history_git`); `check-history-object-reads` refuses a raw
+  read.
 - **Parallel agent sessions push to `main` concurrently.** `git fetch` + check
   `origin/main`'s highest issue id (including `archived/`) immediately before
   filing a `docs/issues/` entry. The generated list is `docs/issues/open.md`, a
