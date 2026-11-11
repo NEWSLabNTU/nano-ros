@@ -1,12 +1,13 @@
 ---
 id: 2415
 title: "Zephyr `zephyr_rust_qos` image states `max_queryables = 16`, and the zpico build now refuses it against a derived floor of 18, which turns the live-peer board job red"
-status: open
+status: resolved
 type: bug
 severity: medium
 area: [zephyr, rmw-zenoh, examples, ci]
 related: [0460, 2241, phase-392, phase-481]
 found: 2026-11-10
+resolved_in: "PR #3464: the qos image's `max_queryables = 16` row is gone, so the table is derived (18), and the image gets its own pthread-cond pool (27)"
 ---
 
 ## Measured
@@ -31,43 +32,6 @@ last green run was 2026-11-09 04:12 on `6e35469bde`, so the regression lies in
 `nros-zpico-build` or `zpico-sys/build.rs`. One, `a9061b0f1c` (issue 2365),
 touches the bringup, but only its per-board stack settings, not the queryable
 row.
-
-## What it is
-
-`check_queryable_override` refuses only when `sizing.declared` is true. The
-image's own comment already records a derived 18 (phase-481 W3) and states 16
-on purpose. So the likely change is that the declared sizing now reaches the
-zpico build on this road, where before it fell back to "not declared" and the
-check returned early. Not bisected. Phase-530's configure changes are in the
-range (W6 adds the census step, W7 deletes the fixed point) and are the first
-place to look.
-
-## Why it is not a one-line fix
-
-The image's comment explains why the row stays at 16: raising it to 18 makes
-the configure refuse on Zephyr's static pthread-cond pool
-(`CONFIG_MAX_PTHREAD_COND_COUNT=16`, while 1 subscriber plus 18 queryables
-need 27). Raising that pool means editing the shared `prj-zenoh.conf` that
-three other images merge. There are at least two defensible fixes:
-
-1. Raise `max_queryables` to 18 and give this image its own pthread-cond pool
-   fragment, so the shared conf is left alone.
-2. Show that the floor of 18 over-counts for this image, for example because
-   infrastructure services are counted twice once the declared inventory
-   arrives, and fix the derivation.
-
-## What it is NOT
-
-- Not issue 2241 (live-peer jobserver/make). That issue names the same build
-  dir for a different native_sim link failure.
-- Not the floor being wrong in general: issue 0460's rule (a service server
-  is a queryable) still holds.
-
-## What would close it
-
-The `live-peer regression` board job builds `build-ws-rs-qos-entry-zenoh`
-again, with whichever fix is chosen, and the image's `system.toml` comment
-says why that number is right.
 
 ## Cause (2026-11-10)
 
@@ -100,10 +64,22 @@ Measured: the fixture builds (`CONFIG_MAX_PTHREAD_COND_COUNT=27`,
 `CONFIG_NROS_MAX_QUERYABLES=-1`, i.e. derived), and `entry_e2e`'s
 `zephyr/rust/qos` cell boots it and passes against a live router.
 
-## Sweep
+## Confirmed (2026-11-11)
 
-Only four images in the tree state `max_queryables`, all in this bringup:
-`zephyr_rust_qos`, which is fixed here, and the params, lifecycle and C++
-params images, each at 16. Run 42754129258 built the other three past the same
-check, and the qos image was its only refusal, so no other image on this road
-states a number below its floor.
+Locally, on `main` `684011c5be` (which has #3464):
+
+- `NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-qos-entry-zenoh just zephyr build-fixtures`
+  builds the image (`build/zephyr-workspace-builds/3.7/build-ws-rs-qos-entry-zenoh/zephyr/zephyr.exe`),
+  and its `.config` has `CONFIG_NROS_MAX_QUERYABLES=-1` (derived) and
+  `CONFIG_MAX_PTHREAD_COND_COUNT=27`.
+- With the `int32-sink-zenoh` observer built, `entry_e2e`'s `entry_matrix`
+  runs the `zephyr/rust/qos` cell and it passes. The other 16 cells stop on
+  `[UNMET PRECONDITION]` because their fixtures were not built here, so none
+  of them is a verdict.
+
+The `live-peer regression` board job has NOT confirmed it yet. In both
+dispatches on `main`, the job that builds this fixture ("rows whose board is
+NOT this runner") died on a hosted runner with `No space left on device` in
+the runner's own `_diag` worker log, before it reported: run 42911987237
+(`cb799bc93b`) and run 42946634453 (`ae3172d80b`). That is runner disk, an
+operator matter (see the maintainer's wontfix on 1353), not this image.
