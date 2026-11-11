@@ -61,6 +61,20 @@ void nros_platform_tcp_free_endpoint(void *ep);
 /** Open a TCP client connection to `endpoint`. */
 int8_t nros_platform_tcp_open(void *sock, const void *endpoint, uint32_t timeout_ms);
 
+/** `nros_platform_tcp_open` whose connect gives up after
+ *  `connect_timeout_ms` (issue 2438). `timeout_ms` keeps its meaning in
+ *  `nros_platform_tcp_open`. A negative `connect_timeout_ms` states no bound:
+ *  the call then behaves exactly as `nros_platform_tcp_open`, connect limit
+ *  included. zenoh-pico passes what is left of a client's connect budget
+ *  (`[knobs.zenoh.limits] connect_timeout_ms`), so a peer that drops the SYN
+ *  ends the attempt at the budget instead of at the stack's own SYN-retry
+ *  limit. A port that cannot bound its connect says so in its implementation
+ *  and keeps its own limit. */
+int8_t nros_platform_tcp_open_within(void *sock,
+                                     const void *endpoint,
+                                     uint32_t timeout_ms,
+                                     int32_t connect_timeout_ms);
+
 /** Open a listening TCP socket bound to `endpoint`. */
 int8_t nros_platform_tcp_listen(void *sock, const void *endpoint);
 

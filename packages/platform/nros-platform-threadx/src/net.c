@@ -140,7 +140,80 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
     }
 }
 
+/* Issue 2438 — a blocking `nx_bsd_connect` waits with NX_WAIT_FOREVER, so only
+ * NetX's own SYN retries end it. With NX_BSD_SOCKET_ENABLE_OPTION_NON_BLOCKING
+ * (O_NONBLOCK through `nx_bsd_fcntl`) it waits 0 and returns EINPROGRESS; the
+ * outcome is then a write-select bounded by `timeout_ms` and SO_ERROR. The Linux
+ * host port's nsos-netx shim maps the same calls onto host sockets, so one
+ * spelling covers both; only the select differs, as in
+ * `nros_threadx_tcp_readable`. */
+static int nros_threadx_tcp_writable_within(INT fd, int32_t timeout_ms) {
+#if defined(__linux__)
+    fd_set write_fds;
+    FD_ZERO(&write_fds);
+    FD_SET(fd, &write_fds);
+    struct timeval tv = {(long) (timeout_ms / 1000), (long) ((timeout_ms % 1000) * 1000)};
+    return select(fd + 1, NULL, &write_fds, NULL, &tv) > 0;
+#else
+    nx_bsd_fd_set write_fds;
+    NX_BSD_FD_ZERO(&write_fds);
+    NX_BSD_FD_SET(fd, &write_fds);
+    struct nx_bsd_timeval tv;
+    tv.tv_sec = (LONG) (timeout_ms / 1000);
+    tv.tv_usec = (LONG) ((timeout_ms % 1000) * 1000);
+    return nx_bsd_select(fd + 1, NULL, &write_fds, NULL, &tv) > 0;
+#endif
+}
+
+/* The errno a failed `nx_bsd_*` call leaves. NetX Duo keeps it per ThreadX
+ * thread (`nx_bsd_errno` under NX_BSD_ENABLE_NATIVE_API, else `errno`); the
+ * Linux host port's nsos-netx shim calls the host's socket functions, which set
+ * the host's thread-local `errno`. */
+#if defined(__linux__)
+#include <errno.h>
+#define NROS_THREADX_BSD_ERRNO errno
+#elif defined(NX_BSD_ENABLE_NATIVE_API)
+#define NROS_THREADX_BSD_ERRNO nx_bsd_errno
+#else
+#define NROS_THREADX_BSD_ERRNO errno
+#endif
+
+static int nros_threadx_connect_within(INT fd, struct nx_bsd_sockaddr *addr, INT len,
+                                       int32_t timeout_ms) {
+    INT flags = nx_bsd_fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || nx_bsd_fcntl(fd, F_SETFL, (UINT) flags | O_NONBLOCK) < 0) {
+        return nx_bsd_connect(fd, addr, len);
+    }
+    int rc = nx_bsd_connect(fd, addr, len);
+    int err_in = NROS_THREADX_BSD_ERRNO;
+    if (rc != 0 && (err_in == EINPROGRESS || err_in == EAGAIN || err_in == EALREADY)) {
+        rc = -1;
+        if (nros_threadx_tcp_writable_within(fd, timeout_ms)) {
+            INT err = 0;
+            INT err_len = (INT) sizeof(err);
+            if (nx_bsd_getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &err_len) == 0 && err == 0) {
+                rc = 0;
+            }
+        }
+    }
+    (void) nx_bsd_fcntl(fd, F_SETFL, (UINT) flags);
+    return rc;
+}
+
+static int8_t tcp_open_impl(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                            int32_t connect_timeout_ms);
+
 int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t timeout_ms) {
+    return tcp_open_impl(sock_raw, endpoint, timeout_ms, -1);
+}
+
+int8_t nros_platform_tcp_open_within(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                                     int32_t connect_timeout_ms) {
+    return tcp_open_impl(sock_raw, endpoint, timeout_ms, connect_timeout_ms);
+}
+
+static int8_t tcp_open_impl(void *sock_raw, const void *endpoint, uint32_t timeout_ms,
+                            int32_t connect_timeout_ms) {
     if (sock_raw == NULL || endpoint == NULL) return -1;
     nros_threadx_socket_t *sock = (nros_threadx_socket_t *) sock_raw;
     const nros_threadx_endpoint_t *ep = (const nros_threadx_endpoint_t *) endpoint;
@@ -153,7 +226,10 @@ int8_t nros_platform_tcp_open(void *sock_raw, const void *endpoint, uint32_t tim
     apply_tcp_common_options(fd, timeout_ms);
 
     for (struct nx_bsd_addrinfo *it = ep->iptcp; it != NULL; it = it->ai_next) {
-        if (nx_bsd_connect(fd, it->ai_addr, it->ai_addrlen) == 0) {
+        int rc = (connect_timeout_ms < 0)
+            ? nx_bsd_connect(fd, it->ai_addr, it->ai_addrlen)
+            : nros_threadx_connect_within(fd, it->ai_addr, it->ai_addrlen, connect_timeout_ms);
+        if (rc == 0) {
             return 0;
         }
     }

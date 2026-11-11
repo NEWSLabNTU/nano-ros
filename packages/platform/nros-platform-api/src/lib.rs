@@ -800,6 +800,16 @@ pub trait PlatformTcp {
     fn free_endpoint(ep: *mut c_void);
     /// Open a TCP client connection. `endpoint` is by-value (opaque bytes on stack).
     fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    /// [`Self::open`] whose connect gives up after `connect_timeout_ms`
+    /// (`nros_platform_tcp_open_within`, issue 2438). Negative: no bound, the
+    /// same as [`Self::open`]. Required, not defaulted: a stack that cannot
+    /// bound its connect says so in its own implementation.
+    fn open_within(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        connect_timeout_ms: i32,
+    ) -> i8;
     /// Open a TCP listening socket.
     fn listen(sock: *mut c_void, endpoint: *const c_void) -> i8;
     /// Close a TCP socket.

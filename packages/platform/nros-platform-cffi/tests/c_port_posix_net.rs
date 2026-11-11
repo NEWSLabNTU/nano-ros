@@ -67,6 +67,12 @@ unsafe extern "C" {
     fn nros_platform_tcp_create_endpoint(ep: *mut c_void, addr: *const u8, port: *const u8) -> i8;
     fn nros_platform_tcp_free_endpoint(ep: *mut c_void);
     fn nros_platform_tcp_open(sock: *mut c_void, ep: *const c_void, timeout_ms: u32) -> i8;
+    fn nros_platform_tcp_open_within(
+        sock: *mut c_void,
+        endpoint: *const c_void,
+        timeout_ms: u32,
+        connect_timeout_ms: i32,
+    ) -> i8;
     fn nros_platform_tcp_listen(sock: *mut c_void, ep: *const c_void) -> i8;
     fn nros_platform_tcp_close(sock: *mut c_void);
     fn nros_platform_tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
@@ -161,6 +167,72 @@ fn tcp_loopback_roundtrip() {
         let _ = accepted_thread.join();
 
         nros_platform_tcp_close(server.as_mut_ptr() as *mut c_void);
+        nros_platform_tcp_free_endpoint(ep.as_mut_ptr() as *mut c_void);
+    }
+}
+
+/// Issue 2438 — the bounded open still CONNECTS: the non-blocking connect and
+/// its poll must not turn a listening peer into a failure.
+#[test]
+fn tcp_open_within_connects_to_a_listener() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = format!("{}\0", listener.local_addr().expect("addr").port()).into_bytes();
+    unsafe {
+        let mut ep = MaybeUninit::<PosixEndpoint>::zeroed();
+        assert_eq!(
+            nros_platform_tcp_create_endpoint(
+                ep.as_mut_ptr() as *mut c_void,
+                b"127.0.0.1\0".as_ptr(),
+                port.as_ptr(),
+            ),
+            0,
+        );
+        let mut client = MaybeUninit::<PosixSocket>::zeroed();
+        assert_eq!(
+            nros_platform_tcp_open_within(
+                client.as_mut_ptr() as *mut c_void,
+                ep.as_ptr() as *const c_void,
+                1000,
+                2000,
+            ),
+            0,
+            "a bounded open to a listening peer must connect"
+        );
+        nros_platform_tcp_close(client.as_mut_ptr() as *mut c_void);
+        nros_platform_tcp_free_endpoint(ep.as_mut_ptr() as *mut c_void);
+    }
+}
+
+/// Issue 2438 — a peer that drops the SYN ends the bounded open at its bound,
+/// not at the kernel's SYN retries (about 130 s on Linux). 192.0.2.1 is
+/// TEST-NET-1 (RFC 5737), routed nowhere. A host with no route fails the
+/// connect at once instead, which still meets the upper bound asserted here.
+#[test]
+fn tcp_open_within_gives_up_on_a_syn_dropping_peer_at_its_bound() {
+    unsafe {
+        let mut ep = MaybeUninit::<PosixEndpoint>::zeroed();
+        assert_eq!(
+            nros_platform_tcp_create_endpoint(
+                ep.as_mut_ptr() as *mut c_void,
+                b"192.0.2.1\0".as_ptr(),
+                b"7447\0".as_ptr(),
+            ),
+            0,
+        );
+        let mut client = MaybeUninit::<PosixSocket>::zeroed();
+        let started = std::time::Instant::now();
+        let rc = nros_platform_tcp_open_within(
+            client.as_mut_ptr() as *mut c_void,
+            ep.as_ptr() as *const c_void,
+            1000,
+            300,
+        );
+        let took = started.elapsed();
+        assert_eq!(rc, -1, "nothing answers at 192.0.2.1:7447");
+        assert!(
+            took < Duration::from_secs(3),
+            "the 300 ms bound took {took:?}: the connect waited out the kernel's SYN retries"
+        );
         nros_platform_tcp_free_endpoint(ep.as_mut_ptr() as *mut c_void);
     }
 }

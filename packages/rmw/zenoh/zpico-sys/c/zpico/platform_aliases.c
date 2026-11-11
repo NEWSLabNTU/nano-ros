@@ -620,6 +620,14 @@ void _z_tcp_endpoint_clear(void *ep) {
 int8_t _z_tcp_open(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
     return nros_platform_tcp_open(sock, &rep, tout);
 }
+/* Issue 2438 — what is left of a client's connect budget (zenoh-pico's
+ * `_z_f_link_open_tcp`, the deadline issues 2389/2437 thread through the
+ * open), negative for none. `zenoh_generic_platform.h` declares that this TU
+ * provides it. */
+int8_t _z_tcp_open_within(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout,
+                          int32_t connect_timeout_ms) {
+    return nros_platform_tcp_open_within(sock, &rep, tout, connect_timeout_ms);
+}
 int8_t _z_tcp_listen(void *sock, nros_zp_alias_endpoint_t rep) {
     return nros_platform_tcp_listen(sock, &rep);
 }

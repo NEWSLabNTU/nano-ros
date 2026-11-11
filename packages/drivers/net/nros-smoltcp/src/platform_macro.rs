@@ -110,6 +110,15 @@ macro_rules! __define_smoltcp_platform_impl {
                 fn free_endpoint(_ep: *mut c_void) {}
 
                 fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+                    Self::open_within(sock, endpoint, timeout_ms, -1)
+                }
+
+                fn open_within(
+                    sock: *mut c_void,
+                    endpoint: *const c_void,
+                    timeout_ms: u32,
+                    connect_timeout_ms: i32,
+                ) -> i8 {
                     if sock.is_null() || endpoint.is_null() {
                         return -1;
                     }
@@ -139,7 +148,12 @@ macro_rules! __define_smoltcp_platform_impl {
                         return -1;
                     }
 
-                    let timeout = if timeout_ms > 0 {
+                    // Issue 2438 — a stated connect budget bounds the wait for
+                    // the SYN-ACK; without one, the caller's `timeout_ms`, else
+                    // this stack's own `CONNECT_TIMEOUT_MS`, as before.
+                    let timeout = if connect_timeout_ms >= 0 {
+                        (connect_timeout_ms as u64).max(1)
+                    } else if timeout_ms > 0 {
                         timeout_ms as u64
                     } else {
                         CONNECT_TIMEOUT_MS

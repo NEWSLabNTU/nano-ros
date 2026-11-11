@@ -340,6 +340,15 @@ unsafe extern "C" {
     ) -> i8;
 }
 unsafe extern "C" {
+    #[doc = " `nros_platform_tcp_open` whose connect gives up after\n  `connect_timeout_ms` (issue 2438). `timeout_ms` keeps its meaning in\n  `nros_platform_tcp_open`. A negative `connect_timeout_ms` states no bound:\n  the call then behaves exactly as `nros_platform_tcp_open`, connect limit\n  included. zenoh-pico passes what is left of a client's connect budget\n  (`[knobs.zenoh.limits] connect_timeout_ms`), so a peer that drops the SYN\n  ends the attempt at the budget instead of at the stack's own SYN-retry\n  limit. A port that cannot bound its connect says so in its implementation\n  and keeps its own limit."]
+    pub fn nros_platform_tcp_open_within(
+        sock: *mut core::ffi::c_void,
+        endpoint: *const core::ffi::c_void,
+        timeout_ms: u32,
+        connect_timeout_ms: i32,
+    ) -> i8;
+}
+unsafe extern "C" {
     #[doc = " Open a listening TCP socket bound to `endpoint`."]
     pub fn nros_platform_tcp_listen(
         sock: *mut core::ffi::c_void,
