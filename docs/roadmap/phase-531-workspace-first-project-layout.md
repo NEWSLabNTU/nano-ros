@@ -766,6 +766,44 @@ from before W6.
     `main` is what `linux_api`'s SIGTERM and exit-status cases measure, so it
     becomes an owned entry, sized by a census of that entry (maintainer
     ruling 2026-11-11).
+- **Batch, the rv-virt talkers (branch `phase-531-w6-rv-virt-talkers`).**
+  - `examples/rv-virt-threadx/{c,cpp}/talker` and `examples/rv-virt-nuttx/c/talker`
+    are one-package workspaces whose image boots the talker as a component on a
+    generated entry (RFC-0122 D10), the shape of the cross C/C++ batch
+    (`Talker.c` / `Talker.cpp`, `nros_components_register_node`). The locator
+    each row baked through `NROS_ENTRY_LOCATOR` (9500, 9600, 8700) is the
+    image's own `locator`; the ThreadX Cyclone images keep their domains (128,
+    129) and board network files.
+  - Five `[[fixture]]` rows are `[[workspace_fixture]]` rows, one image per RMW
+    (`threadx-riscv64-{c,cpp}-{zenoh,cyclonedds}-talker`,
+    `nuttx-riscv-c-zenoh-talker`). `coords`: 520 rows before and after, with an
+    identical `(platform, lang, rmw)` multiset; `validate-workspaces` passes.
+    `migrate-bringup --dry-run` on an `origin/main` copy of the C ThreadX leaf
+    gives the same layout as the tree.
+  - Not yet built or run: the batch's fixture rebuild (`just threadx_riscv64
+    build-fixtures`, `just nuttx build-riscv-c`) and their tests were stopped
+    when the build disk fell below its 80 GB floor, so nothing is claimed for
+    the images here.
+  - `just threadx_riscv64` builds no C++ or Cyclone C leaf any more (the
+    workspace rows build at the end of `build-fixture-extras`).
+    `just nuttx build-riscv-c` is now `build-riscv-c-workspaces`: the riscv
+    lane has no C leaf left. Both ratchets lose the three sites; the coverage
+    floor loses `nuttx-riscv c cmake single generated manual` and
+    `threadx-riscv64 cpp cmake single generated manual` (D10: a hand-written
+    `main` that is not a manual-entry demo).
+  - **Blocked: `examples/rv-virt-threadx/rust/talker`.** Its
+    `rv-virt-threadx-cyclonedds` image (the `(threadx-riscv64, rust,
+    cyclonedds)` row, consumed by
+    `test_threadx_riscv64_cyclonedds_two_qemu_rust_pubsub`) has no workspace
+    road. Measured on a migrated copy: `nros build rv-virt-threadx-cyclonedds`
+    refuses with RFC-0071 D7's `backend cyclonedds provides only a cmake
+    target; a Rust-rooted build needs a sys_crate bridge ... board crate
+    nros-board-threadx-qemu-riscv64 does not link it through rmw-cyclonedds`.
+    That is [issue 2313](../issues/2313-zephyr-generated-rust-entry-cannot-run-cyclone.md)'s
+    threadx-riscv64 half, which needs a design decision (a cargo `-sys` road
+    or the cmake road for a cmake-only backend). The zenoh image alone could
+    move, but one directory cannot be a workspace for one RMW and a leaf for
+    the other, so the talker stays a leaf until that decision.
 
 ### W7 — Retirement
 

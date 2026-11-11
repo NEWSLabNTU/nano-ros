@@ -4059,10 +4059,13 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
 
 /// Resolve the prebuilt riscv-nuttx (rv-virt) C talker kernel ELF (cached).
 ///
-/// #199 follow-up — the first riscv-nuttx C-lane RUNTIME fixture: the
-/// standalone `examples/rv-virt-nuttx/c/talker` cmake example, built by
-/// `just nuttx build-riscv-c` with the baked `tcp/10.0.2.2:8700` locator
-/// (see its `examples/fixtures.toml` row). Consumed by `c_riscv_nuttx_e2e`.
+/// #199 follow-up — the first riscv-nuttx C-lane RUNTIME fixture:
+/// `examples/rv-virt-nuttx/c/talker`, a one-package workspace since phase-531
+/// W6 (its `[[workspace_fixture]]` row, built by `just nuttx
+/// build-riscv-c-workspaces`), whose image states the `tcp/10.0.2.2:8700`
+/// locator. `build_example_cmake_rmw` resolves it through that row (its
+/// generated entry; the program name is not consulted). Consumed by
+/// `c_riscv_nuttx_e2e`.
 pub fn build_nuttx_riscv_c_talker() -> TestResult<&'static Path> {
     static NUTTX_RISCV_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_C_TALKER_BINARY

@@ -4430,14 +4430,20 @@ cmake_defs = { NROS_PLATFORM = "nuttx", NROS_BOARD = "qemu-armv7a-nuttx" }
 # separate recipe (reconfigures arm->rv-virt via the 194.5 board-aware marker).
 # ===========================================================================
 
-[[fixture]]
+# phase-531 W6 — the talker witness is a one-package workspace whose image
+# boots the component on a generated entry (RFC-0122 D10). The locator the
+# row used to bake is the image's own `locator`.
+# #199 follow-up — dedicated e2e port (the rust riscv realtime entry uses
+# 8691): the guest dials the host router through the QEMU slirp gateway.
+[[workspace_fixture]]
+id = "nuttx-riscv-c-zenoh-talker"
 platform = "nuttx-riscv"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-nuttx/c/talker"
-# #199 follow-up — dedicated e2e port (the rust riscv realtime entry uses
-# 8691): the guest dials the host router through the QEMU slirp gateway.
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8700" }
+bringup = "src/nuttx_riscv_c_talker_bringup"
+image = "rv-virt-nuttx"
+build_subdir = "build/nuttx-zenoh-rv-virt-nuttx-nuttx_riscv_c_talker_bringup/cmake"
 
 # ===========================================================================
 # threadx-linux — C / C++ (cmake). Zenoh here; Cyclone cells stay gated inline.
@@ -4466,12 +4472,18 @@ build_subdir = "build/threadx-linux-zenoh-threadx_linux_cpp_talker_bringup/cmake
 # Toolchain / SDK / codegen -D defs are platform-recipe-level (NROS_CMAKE_EXTRA_DEFS).
 # ===========================================================================
 
-[[fixture]]
+# phase-531 W6 — the talker witness is a one-package workspace whose image
+# boots the component on a generated entry (RFC-0122 D10). The locator the
+# row used to bake is the image's own `locator`.
+[[workspace_fixture]]
+id = "threadx-riscv64-c-zenoh-talker"
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/c/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
+bringup = "src/riscv64_threadx_c_talker_bringup"
+image = "rv-virt-threadx"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-riscv64_threadx_c_talker_bringup/cmake"
 
 # issue 1795 — the ThreadX TYPED CARRIER road
 # (`nros_components_register_node(... TYPED DEPLOY threadx)`), which every other
@@ -4507,12 +4519,18 @@ bringup = "src/riscv64_threadx_c_errno_isolation_bringup"
 image = "rv-virt-threadx"
 build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-riscv64_threadx_c_errno_isolation_bringup/cmake"
 
-[[fixture]]
+# phase-531 W6 — the talker witness is a one-package workspace whose image
+# boots the component on a generated entry (RFC-0122 D10). The locator the
+# row used to bake is the image's own `locator`.
+[[workspace_fixture]]
+id = "threadx-riscv64-cpp-zenoh-talker"
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/cpp/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
+bringup = "src/riscv64_threadx_cpp_talker_bringup"
+image = "rv-virt-threadx"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-riscv64_threadx_cpp_talker_bringup/cmake"
 
 # ===========================================================================
 # threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).
@@ -4875,19 +4893,25 @@ cmake_defs = { NROS_PLATFORM = "threadx", NROS_BOARD = "threadx-linux" }
 # `riscv_threadx_{talker,listener}_cyclonedds` workspace images (phase-535 W6).
 # ===========================================================================
 
-[[fixture]]
+[[workspace_fixture]]
+id = "threadx-riscv64-c-cyclonedds-talker"
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/c/talker"
-cmake_defs = { NROS_IMAGE = "rv-virt-threadx-cyclonedds" }
+bringup = "src/riscv64_threadx_c_talker_bringup"
+image = "rv-virt-threadx-cyclonedds"
+build_subdir = "build/threadx-riscv64-cyclonedds-rv-virt-threadx-riscv64_threadx_c_talker_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "threadx-riscv64-cpp-cyclonedds-talker"
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/rv-virt-threadx/cpp/talker"
-cmake_defs = { NROS_IMAGE = "rv-virt-threadx-cyclonedds" }
+bringup = "src/riscv64_threadx_cpp_talker_bringup"
+image = "rv-virt-threadx-cyclonedds"
+build_subdir = "build/threadx-riscv64-cyclonedds-rv-virt-threadx-riscv64_threadx_cpp_talker_bringup/cmake"
 
 # ===========================================================================
 # esp32 — Rust (ESP32-C3, riscv32imc-unknown-none-elf).

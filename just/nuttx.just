@@ -383,7 +383,8 @@ build-fixtures-riscv:
     # riscv rows build `std` from the same fork.
     bash scripts/build/nuttx-libc-pin-guard.sh
     # Serial, same stage: they share ONE kernel tree, so they cannot overlap.
-    just nuttx build-riscv-c
+    # (phase-531 W6 — no riscv C leaf is left; `build-riscv-c` is now
+    # `build-riscv-c-workspaces`, so it is not called a second time here.)
     just nuttx build-riscv-c-workspaces
     just nuttx build-riscv-rust
 
@@ -398,50 +399,22 @@ build-fixtures-riscv:
 # under M-F.12 and the host-codegen / per-example FFI baker scripts
 # under M-F.16's commit 1/4.
 #
-# Phase 194.3c — build the riscv (rv-virt) NuttX C example fixtures. Separate
-# recipe (not folded into build-fixtures) because the shared NuttX tree holds one
-# board config at a time: this reconfigures arm->rv-virt via the 194.5
-# board-aware marker, so it must run as its own serial step. CI runs it after the
-# arm fixtures. All toolchains/SDKs come from `nros setup rv-virt-nuttx`.
+# Phase 194.3c — build the riscv (rv-virt) NuttX C example fixtures. phase-531
+# W6: the one C example here, `examples/rv-virt-nuttx/c/talker`, is a
+# one-package workspace whose image boots the component on a generated entry
+# (RFC-0122 D10), so it is a `[[workspace_fixture]]` row and this recipe is
+# the workspace one. Kept as a name because the board README and the platform
+# lane docs tell a user to run it. All toolchains/SDKs come from
+# `nros setup rv-virt-nuttx`.
 [group("full-matrix")]
-build-riscv-c:
-    #!/usr/bin/env bash
-    # shellcheck source=scripts/build/lane-skip.sh
-    source scripts/build/lane-skip.sh
-    set -e
-    source scripts/build/cargo.sh
-    if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
-        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup rv-virt-nuttx)"; exit 0
-    fi
-    if nros_sdk_missing NUTTX_DIR include; then
-        nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
-    fi
-    nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
-    rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
-    # Provision the rv-virt export (reconfigures the shared tree if it was arm).
-    NUTTX_DEFCONFIG="$rv_defconfig" \
-        NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
-        bash scripts/nuttx/build-nuttx.sh
-    export NUTTX_DIR="$nuttx_dir"
-    # issue 0456 — without this the board helpers take their qemu-ARM defaults
-    # and archive `arm_vectortab.o` into a riscv image's boot archive; the link
-    # then reports it as a MISSING library, three steps from the cause.
-    source scripts/nuttx/riscv-env.sh
-    if [ "${NROS_JOBSERVER:-}" = "1" ] || [ "${NROS_INHERIT_JOBSERVER:-}" = "1" ]; then unset CMAKE_BUILD_PARALLEL_LEVEL; else export CMAKE_BUILD_PARALLEL_LEVEL="${NROS_BUILD_JOBS:-8}"; fi
-    echo "→ host nros-codegen (C)"
-    nros_cargo_ensure_codegen_c
-    codegen="$(nros_cargo_codegen_c_bin)"
-    toolchain="$(pwd)/cmake/toolchain/riscv32imac-nuttx-elf.cmake"
-    nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu/nros-nuttx-riscv-ffi"
-    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" nuttx-riscv) -DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
-    NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx-riscv c zenoh
-    unset NROS_CMAKE_EXTRA_DEFS
-    echo "NuttX riscv C examples built!"
+build-riscv-c: build-riscv-c-workspaces
 
-# #199 follow-up — rv-virt (riscv32) C WORKSPACE fixtures (the RT-sched-tasks entry).
-# Mirrors the arm `workspace-fixtures-build.sh nuttx c` invocation with the
-# riscv toolchain; provisions the rv-virt kernel like build-riscv-c (the shared
-# tree holds one board config at a time).
+# #199 follow-up — rv-virt (riscv32) C WORKSPACE fixtures (the RT-sched-tasks
+# entry and, since phase-531 W6, the C talker witness). Mirrors the arm
+# `workspace-fixtures-build.sh nuttx c` invocation with the riscv toolchain;
+# provisions the rv-virt kernel itself (the shared tree holds one board config
+# at a time): this reconfigures arm->rv-virt via the 194.5 board-aware marker,
+# so it must run as its own serial step.
 [group("full-matrix")]
 build-riscv-c-workspaces:
     #!/usr/bin/env bash
@@ -461,7 +434,9 @@ build-riscv-c-workspaces:
         NUTTX_BOARD_MAKEDEFS="boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs" \
         bash scripts/nuttx/build-nuttx.sh
     export NUTTX_DIR="$nuttx_dir"
-    # issue 0456 — see build-riscv-c.
+    # issue 0456 — without this the board helpers take their qemu-ARM defaults
+    # and archive `arm_vectortab.o` into a riscv image's boot archive; the link
+    # then reports it as a MISSING library, three steps from the cause.
     source scripts/nuttx/riscv-env.sh
     CC_riscv32imac_unknown_nuttx_elf=riscv-none-elf-gcc \
         NROS_CARGO_PROFILE="$(nros_cargo_platform_profile nuttx-riscv)" \
@@ -472,8 +447,8 @@ build-riscv-c-workspaces:
 
 # phase-285 W5 — build the rv-virt RUST workspace Entry (realtime-rust/
 # src/riscv_nuttx_entry). Provisions the rv-virt kernel export itself (same
-# reconfigure preamble as build-riscv-c) — deliberately NOT a dependency on
-# build-riscv-c: the rust Entry needs only the kernel/staging export. (The
+# reconfigure preamble as build-riscv-c-workspaces) — deliberately NOT a
+# dependency on it: the rust Entry needs only the kernel/staging export. (The
 # C lane's historical ffi-link red was #199, fixed 2026-07-16; the recipes
 # stay decoupled so each provisions independently.)
 [group("full-matrix")]

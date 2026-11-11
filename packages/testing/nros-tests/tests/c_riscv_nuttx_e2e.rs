@@ -4,18 +4,20 @@
 //! the riscv-nuttx C lane, so it stays until that platform joins the matrix.
 //!
 //! #199 follow-up — the FIRST riscv-nuttx (rv-virt) **C-lane RUNTIME** e2e:
-//! the standalone `examples/rv-virt-nuttx/c/talker` kernel image (the very
-//! binary whose link #199 fixed) boots under the phase-285 W2 harness and its
+//! the `examples/rv-virt-nuttx/c/talker` kernel image (the
+//! binary whose link #199 fixed; a component on a generated entry since
+//! phase-531 W6) boots under the phase-285 W2 harness and its
 //! `/chatter` `std_msgs/String` publishes are observed CROSS-PROCESS by a
 //! native listener through a host zenoh router. Before this test the riscv C
 //! lane was link-checked only (see archived issues 0165/0199).
 //!
 //! The guest dials the router through the QEMU slirp gateway (10.0.2.2 → host)
 //! at the baked allocator port (`alloc::port_of(NuttxRiscv, C, Pubsub)`, the
-//! fixture row's `NROS_ENTRY_LOCATOR`); the observer dials it on loopback.
+//! image's `locator` in its bringup's `system.toml`); the observer dials it on
+//! loopback.
 //! No TAP/bridge/root.
 //!
-//! The fixture is built by `just nuttx build-riscv-c`; this test fails as an
+//! The fixture is built by `just nuttx build-riscv-c-workspaces`; this test fails as an
 //! unmet precondition when the talker ELF / zenohd / qemu-system-riscv32 are
 //! absent.
 //!
@@ -33,7 +35,7 @@ use std::{process::Command, time::Duration};
 
 /// The router port baked into the riscv C talker's locator — the allocator's
 /// (nuttx-riscv, c, pubsub) number, matching the `rv-virt-nuttx/c/talker`
-/// fixture row's `NROS_ENTRY_LOCATOR` bake.
+/// image's `locator`.
 const C_RISCV_NUTTX_TALKER_PORT: u16 = port_of(PlatformId::NuttxRiscv, Lang::C, Workload::Pubsub);
 
 #[test]
