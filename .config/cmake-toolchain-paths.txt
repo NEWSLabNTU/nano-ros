@@ -1,0 +1,22 @@
+# Every path that has ever existed under cmake/toolchain/. Read by
+# scripts/check/check-toolchain-paths-persist.py.
+#
+# A line may only leave this file if its path never reached main. CMake
+# records a build dir's toolchain file in CMakeFiles/<version>/CMakeSystem.cmake
+# at first configure and includes that path on every later configure, so a
+# renamed file keeps its old name as a one-line forward:
+#   include("${CMAKE_CURRENT_LIST_DIR}/<new-name>.cmake")
+# A path that is truly gone carries `retired: <reason>` after it.
+#
+# Measured 2026-11-11 over full history (git log --diff-filter=DR --
+# cmake/toolchain/): one rename, armv7a-nuttx-eabi.cmake ->
+# armv7a-nuttx-eabihf.cmake (PR #3500), forwarded by PR #3513.
+cmake/toolchain/.gitignore
+cmake/toolchain/NanoRosCrossToolchain.cmake
+cmake/toolchain/arm-freertos-armcm3.cmake
+cmake/toolchain/arm-freertos-armcr52.cmake
+cmake/toolchain/armv7a-nuttx-eabi.cmake
+cmake/toolchain/armv7a-nuttx-eabihf.cmake
+cmake/toolchain/riscv32imac-nuttx-elf.cmake
+cmake/toolchain/riscv64-lld-wrapper.sh
+cmake/toolchain/riscv64-threadx.cmake
