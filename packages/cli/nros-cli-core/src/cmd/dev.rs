@@ -74,6 +74,27 @@ pub enum Noun {
     // Issue 2318. Born under `nros dev`: no old spelling. The user verb is
     // `nros configure`, which runs this and then every image's stages.
     Bindings(BindingsArgs),
+    /// The FIFO jobserver a fan-out pool hands its units.
+    // Issue 2421. Born under `nros dev`: no old spelling.
+    #[command(subcommand)]
+    Jobserver(Jobserver),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Jobserver {
+    /// Point every make a configured build dir's CMake cache records at the
+    /// make on PATH, when the recorded one is older than 4.4 (or gone) and so
+    /// cannot join a FIFO jobserver. Prints each entry it rewrote.
+    RepairMakes(RepairMakesArgs),
+}
+
+/// `nros dev jobserver repair-makes`.
+#[derive(Debug, ClapArgs)]
+pub struct RepairMakesArgs {
+    /// Configured build dirs (each `CMakeCache.txt`, and its immediate
+    /// subdirectories', as for a sysbuild). A dir with no cache is skipped.
+    #[arg(required = true)]
+    pub dirs: Vec<std::path::PathBuf>,
 }
 
 /// `nros dev bindings`: the project-wide part of `nros configure` alone.
@@ -238,7 +259,8 @@ pub fn lower(args: Args) -> Cmd {
         noun @ (Noun::Runner(_)
         | Noun::Command(_)
         | Noun::MigrateBringup(_)
-        | Noun::Bindings(_)) => Cmd::Dev(Args { noun }),
+        | Noun::Bindings(_)
+        | Noun::Jobserver(_)) => Cmd::Dev(Args { noun }),
     }
 }
 
@@ -249,6 +271,7 @@ pub const BORN_IN_DEV: &[&str] = &[
     "dev command check",
     "dev migrate-bringup",
     "dev bindings",
+    "dev jobserver repair-makes",
 ];
 
 /// Run a `nros dev` command [`lower`] left as it is.
@@ -266,8 +289,45 @@ pub fn run_unlowered(args: Args) -> eyre::Result<()> {
         }
         Noun::MigrateBringup(a) => cmd::migrate_bringup::run(a),
         Noun::Bindings(a) => cmd::configure::bindings_only(a.sync).map(|_| ()),
+        Noun::Jobserver(Jobserver::RepairMakes(a)) => repair_makes(&a),
         other => unreachable!("`nros dev` lowers {other:?}"),
     }
+}
+
+/// `nros dev jobserver repair-makes` (issue 2421).
+fn repair_makes(a: &RepairMakesArgs) -> eyre::Result<()> {
+    use crate::builder::jobserver as js;
+    let Some(new) = js::make_on_path() else {
+        eprintln!("nros dev jobserver repair-makes: no make on PATH; caches left alone");
+        return Ok(());
+    };
+    match js::tool_version(&new) {
+        Some(v) if v >= js::MAKE_FIFO => {}
+        v => {
+            eprintln!(
+                "nros dev jobserver repair-makes: the make on PATH ({}, {}) is older than \
+                 4.4 itself; caches left alone",
+                new.display(),
+                v.map_or("no version".to_string(), |(a, b)| format!("{a}.{b}"))
+            );
+            return Ok(());
+        }
+    }
+    for dir in &a.dirs {
+        for r in js::repair_cached_makes(dir, &new, &|m| js::tool_version(m))? {
+            let was = r
+                .was_version
+                .map_or("gone".to_string(), |(a, b)| format!("make {a}.{b}"));
+            println!(
+                "repaired {} {}: {} ({was}) -> {} (issue 2421)",
+                r.cache.display(),
+                r.key,
+                r.was.display(),
+                new.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Every old spelling a `dev` verb replaced, as `(old, new)` command paths.

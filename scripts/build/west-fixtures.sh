@@ -441,6 +441,7 @@ while IFS= read -r record; do
     # validate-compile-checks` refuses any other output for that builder. The
     # fix is to the premise, not a second rule: west's status stays unread.
     nros_cmake_guard_retired_names "$bld"
+    nros_cmake_guard_stale_make "$bld"
     if [ -n "$nros_image" ]; then
         # Issue 2436 -- the row's road is `nros build <bringup>:<image>`, so
         # the configure gets exactly what `nros build` hands west: the board,

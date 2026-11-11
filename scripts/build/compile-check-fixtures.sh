@@ -25,6 +25,9 @@ source "$repo_root/scripts/build/cargo.sh"
 # it is what made one host produce two different cargo target-dir topologies.
 # shellcheck source=scripts/build/cmake-prefix.sh
 source "$repo_root/scripts/build/cmake-prefix.sh"
+# Issue 2421 — `nros_cmake_guard_stale_make` for the persistent cmake build
+# dirs below (Unix Makefiles: the cached CMAKE_MAKE_PROGRAM runs the build).
+source "$repo_root/scripts/build/cmake-cache-guard.sh"
 nros_cmake_export_prefix_path
 
 # RFC-0070 R1/R3 (phase-334 W2.b step 2) — the compile-check family's roots come
@@ -673,6 +676,7 @@ build_cmake_fixture() {
     # artifacts (cpp_multi_node_entry.rs) run them against a zenoh router.
     # Passing it explicitly keeps the fixture at the coordinate the tests
     # expect while the committed template serves users the daemonless default.
+    nros_cmake_guard_stale_make "$bld"
     cmake -S "$repo_root/$src" -B "$bld" "-DNROS_CLI_BIN=$NROS_CLI_BIN" "-DNROS_BIN=$NROS_CLI_BIN" \
         "-DNROS_RMW=zenoh"
     # Issue 0466 — how a cmake fixture gets its parallelism.
