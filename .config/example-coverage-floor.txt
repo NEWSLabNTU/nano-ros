@@ -45,7 +45,6 @@ nuttx rust cargo multi authored generated
 nuttx rust cargo multi generated generated
 nuttx rust cargo single generated generated
 nuttx-riscv c cmake multi generated generated
-nuttx-riscv c cmake single generated manual
 nuttx-riscv cpp cmake multi generated generated
 nuttx-riscv rust cargo multi generated generated
 threadx-linux c cmake multi authored generated
@@ -59,7 +58,6 @@ threadx-linux rust cargo single generated manual
 threadx-riscv64 c cmake multi authored generated
 threadx-riscv64 c cmake single generated generated
 threadx-riscv64 c cmake single generated manual
-threadx-riscv64 cpp cmake single generated manual
 threadx-riscv64 rust cargo single generated generated
 threadx-riscv64 rust cargo single generated manual
 threadx-riscv64 rust cmake single generated generated

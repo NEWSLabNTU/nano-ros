@@ -88,8 +88,9 @@
 # Cleared A1/A2/A3 before being added: 7 platforms, 19 groups, 122 rows, 0
 # collisions, 122 artifact roots all invertible.
 #
-# `nuttx-riscv` IS correctly absent, and for the reason wave 2 gave: it has one
-# `[[fixture]]` row and that row is C (`examples/rv-virt-nuttx/c/talker`).
+# `nuttx-riscv` IS correctly absent, and for the reason wave 2 gave: it has no
+# Rust `[[fixture]]` row. (Its one row was C, `examples/rv-virt-nuttx/c/talker`,
+# and since phase-531 W6 that is a `[[workspace_fixture]]` row too.)
 # There is no alternate spelling — `threadx-riscv64` is a different OS.
 #
 # Neither absence is about `[[workspace_fixture]]` rows, which DO exist for

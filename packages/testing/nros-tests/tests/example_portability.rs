@@ -141,6 +141,26 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
                  A component and a main cannot be the same source",
     },
     Divergence {
+        lang: "c",
+        program: "talker",
+        platform: "rv-virt-nuttx",
+        reason: "PERMANENT, no wave removes it (phase-531 W6, RFC-0122 D10). The cross \
+                 talker witness is a COMPONENT on a generated entry, while group A's \
+                 reference copy, examples/linux/c/talker, keeps its hand-written \
+                 main: it is an owned entry that the issue-1556 census tests exist for. \
+                 A component and a main cannot be the same source",
+    },
+    Divergence {
+        lang: "c",
+        program: "talker",
+        platform: "rv-virt-threadx",
+        reason: "PERMANENT, no wave removes it (phase-531 W6, RFC-0122 D10). The cross \
+                 talker witness is a COMPONENT on a generated entry, while group A's \
+                 reference copy, examples/linux/c/talker, keeps its hand-written \
+                 main: it is an owned entry that the issue-1556 census tests exist for. \
+                 A component and a main cannot be the same source",
+    },
+    Divergence {
         lang: "cpp",
         program: "talker",
         platform: "mps2-an385-freertos",
@@ -155,6 +175,17 @@ const KNOWN_DIVERGENCE: &[Divergence] = &[
         lang: "cpp",
         program: "talker",
         platform: "qemu-armv7a-nuttx",
+        reason: "PERMANENT, no wave removes it (phase-531 W6, RFC-0122 D10). The cross \
+                 talker witness is a COMPONENT on a generated entry, while group A's \
+                 reference copy, examples/linux/cpp/talker, keeps its hand-written main \
+                 (an owned entry the issue-1556 census tests exist for). The component \
+                 copies also differ from EACH OTHER by one token: the class lives in its \
+                 package's namespace, which the PLUGIN name repeats",
+    },
+    Divergence {
+        lang: "cpp",
+        program: "talker",
+        platform: "rv-virt-threadx",
         reason: "PERMANENT, no wave removes it (phase-531 W6, RFC-0122 D10). The cross \
                  talker witness is a COMPONENT on a generated entry, while group A's \
                  reference copy, examples/linux/cpp/talker, keeps its hand-written main \

@@ -359,8 +359,11 @@ build-fixture-extras:
     shared_cargo_root="$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" threadx-riscv64)"
     base_defs="-DNROS_SHARED_CARGO_ROOT=$shared_cargo_root -DNROS_PLATFORM=threadx_riscv64 -DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
     export NROS_CMAKE_EXTRA_DEFS="$base_defs"
+    # phase-531 W6 — the C and C++ talker witnesses are one-package workspaces
+    # (components on a generated entry, RFC-0122 D10), built with every other
+    # threadx-riscv64 workspace row at the end of this recipe. The C leaves
+    # left here are typed-carrier and errno-isolation; no C++ leaf is left.
     bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
-    bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh
 
     cyclonedds_prefix="$root/build/cyclonedds-threadx-rv64-install"
     # Phase 203 decision — build the ThreadX-RV64 Cyclone fixtures BY DEFAULT so a
@@ -407,9 +410,9 @@ build-fixture-extras:
             # issue 1946; this lane used to pass `-DNROS_DOMAIN_ID` over a leaf
             # stating 0. A pair (talker+listener) shares its lang's domain;
             # different langs stay SPDP-disjoint.
-            export NROS_CMAKE_EXTRA_DEFS="$base_defs"
-            bash scripts/build/fixtures-build.sh threadx-riscv64 c cyclonedds
-            bash scripts/build/fixtures-build.sh threadx-riscv64 cpp cyclonedds
+            # phase-531 W6 — no C/C++ Cyclone leaf is left: the talker
+            # witnesses' `rv-virt-threadx-cyclonedds` images are workspace rows,
+            # built at the end of this recipe.
             # phase-369 W2 — BOTH RMWs go through this seam now.
             #
             # The zenoh image used to be built by cargo from `src/main.rs`

@@ -5,28 +5,30 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ## Build
 
+A single-node workspace: the node package is `src/riscv64_threadx_cpp_talker` (a component,
+`riscv64_threadx_cpp_talker::Talker`, with no `main()`), and `src/riscv64_threadx_cpp_talker_bringup` holds the
+`system.toml` that says what to build. `nros build` generates the entry that
+boots the node.
+
 ```bash
 cp -r examples/rv-virt-threadx/cpp/talker ~/my-talker && cd ~/my-talker
-cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build
-cmake --build build
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
+nros build rv-virt-threadx
 ```
 
-No `nros configure` here: a C/C++ leaf's message bindings are a CMake-time
-output. `-Dnano_ros_ROOT` is `find_package(nano_ros)`'s hint: it says where
-the checkout is, and nothing else. The board, the RMW and the domain come
-from `system.toml` (below), never from a `-D` flag.
+The bringup also declares `rv-virt-threadx-cyclonedds`, the same node on Cyclone DDS
+(`nros build rv-virt-threadx-cyclonedds`).
 
 ## Run
 
 Cross-built. SDK env comes from `source activate.sh` in the checkout;
 QEMU / flashing steps live in the [rv-virt-threadx README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/rv-virt-threadx/README.md).
+`nros build` prints the image's path.
 
 ## Config
 
-Board, RMW, domain and locator: `system.toml` beside `CMakeLists.txt`
-(`[image.rv-virt-threadx]` + `[system]`, RFC-0098 D3/D5). `find_package(nano_ros)`
-reads it while CMake configures, so switching board is editing that one
-line and re-configuring (`cmake -B build`); no build command and no
-manifest names a board.
+Board, RMW, domain and locator: `src/riscv64_threadx_cpp_talker_bringup/system.toml`
+(`[image.rv-virt-threadx]` + `[system]`, RFC-0098 D3/D5). No build command carries any
+of them, and the node package names no board.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
