@@ -742,14 +742,17 @@ mod tests {
     /// make that answers 4.3 is pointed at the 4.4 make first on `PATH`.
     #[test]
     fn a_make_43_cache_is_repaired_to_the_44_make_first_on_path() {
-        use std::os::unix::fs::PermissionsExt;
         let root = tempfile::tempdir().unwrap();
+        // Through the issue 0476 helper: a stub this thread wrote and chmodded
+        // by hand failed its exec with ETXTBSY 3 runs in 30 (issue 2450).
         let fake = |dir: &str, banner: &str| {
             let d = root.path().join(dir);
             std::fs::create_dir_all(&d).unwrap();
             let m = d.join("make");
-            std::fs::write(&m, format!("#!/bin/sh\necho '{banner}'\n")).unwrap();
-            std::fs::set_permissions(&m, std::fs::Permissions::from_mode(0o755)).unwrap();
+            crate::test_support::write_executable_stub(
+                &m,
+                &format!("#!/bin/sh\necho '{banner}'\n"),
+            );
             m
         };
         let old = fake("sys/bin", "GNU Make 4.3");
