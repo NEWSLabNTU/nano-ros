@@ -1,14 +1,18 @@
 ---
 id: 2344
 title: "Fixture builds stop on issue 2278's bundled-interfaces refusal on a host with no ROS discoverable, so tier 2 reaches no cell"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [ci, testing, cmake, runner]
 related: [2278, 2302, 2356, phase-528, phase-489, phase-466]
 found: 2026-11-07
+resolved: 2026-11-11
+resolved_in: "tier-2 run 42971493635 built every tier-2 fixture and reached the cells"
 ---
-**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** (the runner image is CI build infrastructure).
+
+> **Resolved (2026-11-11).** tier-2 run 42971493635 (schedule, 2026-11-11, `main` `7d60c42daf`, runner `nano-ros-runner-newslab-118-server`) built every tier-2 fixture (all seven stages OK) and went past `check::default` to the cells. The earlier verification (run 42364894798) had stopped at issue 2356, so this is the first run past both.
+**Home: [phase-489](../../roadmap/phase-489-ci-build-speedup.md)** (the runner image is CI build infrastructure).
 
 ## Reopened 2026-11-07: a runner whose image predates the fix
 
