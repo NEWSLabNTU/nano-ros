@@ -781,7 +781,13 @@ submodule-drift:
 submodule-pinned-locks:
     @python3 scripts/check-submodule-pinned-locks.py
 
+# Its subject is a moved pin's ANCESTRY, which only the submodule's own history
+# can answer, so a checkout with no submodules can only report NOT VERIFIED —
+# and `pristine-checkout` (no submodules, a skip is a red) then failed every
+# branch that moves a pin. Declared, so that lane leaves it out of scope; every
+# lane that claims `submodules` still runs it, and so does the `pre-push` hook.
 [private]
+[group('needs:submodules')]
 submodule-pins:
     @bash scripts/ci/submodule-pins-check.sh
 
