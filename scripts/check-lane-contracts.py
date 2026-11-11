@@ -1237,6 +1237,16 @@ SHIPPED_EXEMPT = {
         "is the QEMU board family, built by the nuttx fixture lane, a runtime "
         "tier no merge-gating job runs"
     ),
+    "nros-board-mps2-an385": (
+        "cross-only, per-image shape: a bare-metal MPS2-AN385 image takes it "
+        "through its generated selection package or, for an owned entry, its "
+        "generated adapter (RFC-0071 D19); no host shape exists"
+    ),
+    "nros-board-mps2-an385-freertos": (
+        "cross-only, per-image shape: a FreeRTOS MPS2-AN385 image takes it "
+        "through its generated selection package or, for an owned entry, its "
+        "generated adapter (RFC-0071 D19); no host shape exists"
+    ),
 }
 
 # Where a crate's dependency tables live in a manifest, `target.*` included.

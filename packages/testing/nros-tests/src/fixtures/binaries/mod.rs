@@ -8001,7 +8001,9 @@ pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
                 "qemu-bsp-large-msg-test",
             )
             .unwrap_or_else(|| {
-                Err(not_migrated("packages/testing/nros-bench/large-msg-baremetal"))
+                Err(not_migrated(
+                    "packages/testing/nros-bench/large-msg-baremetal",
+                ))
             })
         })
         .map(|p| p.as_path())

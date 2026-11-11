@@ -462,6 +462,24 @@ DEFAULT_REACHED_BY_SELECTION = {
         "`rmw-<x>` through their generated adapter (RFC-0071 D19); a generated "
         "entry names it itself"
     ),
+    # Same shape, cross-only: the tracked dep-sites are the two owned-entry
+    # QEMU e2e bins (`qemu-baremetal-main-e2e`, `rtic-run-plan-e2e`), which
+    # name their board entry surface and take `rmw-zenoh` / `ethernet`
+    # through the generated adapter; every other image takes it through its
+    # generated selection package.
+    "nros-board-mps2-an385": (
+        "the tracked dep-sites are owned entries, which take the image's "
+        "`rmw-<x>` and link set through their generated adapter (RFC-0071 "
+        "D19); every other image takes it through its generated selection "
+        "package"
+    ),
+    # The two owned-entry FreeRTOS benches (`loan-copy-count`,
+    # `wake-latency-cortex-m3`), the same shape.
+    "nros-board-mps2-an385-freertos": (
+        "the tracked dep-sites are owned entries, which take the image's "
+        "`rmw-<x>` through their generated adapter (RFC-0071 D19); every "
+        "other image takes it through its generated selection package"
+    ),
 }
 
 
