@@ -40,7 +40,7 @@ use nros_tests::{
 };
 use std::{
     net::{TcpListener, TcpStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -102,7 +102,7 @@ fn assert_gave_up_naming_the_budget(out: &str, locator: &str) {
 
 /// Boot the image against `locator` and return the output once the budget
 /// line has printed, with the instant it was seen.
-fn boot_until_given_up(bin: &PathBuf, locator: &str) -> (String, Instant, Instant) {
+fn boot_until_given_up(bin: &Path, locator: &str) -> (String, Instant, Instant) {
     let spawned = Instant::now();
     let zephyr = ZephyrProcess::start_with_locator(bin, ZephyrPlatform::NativeSim, locator)
         .expect("failed to start the native_sim image");
