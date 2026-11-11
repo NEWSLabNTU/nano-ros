@@ -14,7 +14,7 @@
 //!
 //! The fix bounds the write: a stream link's write fails once the socket has
 //! taken no byte for `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE` (5 s, zenoh's own
-//! `wait_before_close`), the link is marked broken (part of a frame may be on
+//! "wait before close" setting), the link is marked broken (part of a frame may be on
 //! the wire), zenoh-pico's read task closes the session, and the zpico shim
 //! prints [`ZPICO_LINK_TX_CLOSED_PREFIX`].
 //!
