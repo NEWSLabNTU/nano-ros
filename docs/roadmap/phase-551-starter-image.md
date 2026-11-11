@@ -49,6 +49,15 @@ the image.
 
 ### W2 — The `starter` target
 
+Status: built and accepted LOCALLY (2026-11-11) against release `0.6.0-nros8`,
+with `scripts/ci/starter-image.sh`: 1.22 GB compressed (budget 2 GB), 4.3 GB
+raw. The image's last step rebuilds the Linux Rust and FreeRTOS C first
+projects with networking removed, so a finished build has shown the offline
+claim. Under `--network none` the FreeRTOS talker publishes in QEMU with a
+router started by hand. On that release `nros run`'s automatic router starts
+nothing for it; on main the run plan carries the link, so this waits only on
+the next release.
+
 Gate: none for the target (B). Its contents use RFC-0127's recommendations as
 PROVISIONAL defaults until Q2, Q3 and Q8 are ruled. `host` plus the release `nros` through `scripts/install.sh`,
 a baked `nros setup` for the Linux host, `mps2-an385-baremetal` and

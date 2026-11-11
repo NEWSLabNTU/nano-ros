@@ -448,3 +448,132 @@ nros_runner_context() {
     nros_image_substitute "$ctx/Dockerfile"
     _nros_runner_entrypoint "$ctx"
 }
+
+# --- the starter image (phase-551 W2, RFC-0127 D1/D2) --------------------------
+#
+# ONE multi-stage Dockerfile with three targets (option B, ruled 2026-11-11):
+#
+#   host            the runner's `host` layers, emitted by the same
+#                   nros_image_host_stage, so the two images share them
+#                   (identical instructions over identical COPY inputs hit
+#                   the same layer cache);
+#   starter         FROM host: the released `nros` through `install.sh` (the
+#                   user's own road), a baked `nros setup`, a minimal Rust,
+#                   the first project's crates pre-fetched;
+#   starter-zephyr  FROM starter: the Zephyr SDK and workspace.
+#
+# Its context is its OWN directory, never the runner's (the runner's context
+# gains no file; `check-runner-context-golden`).
+#
+# PROVISIONAL defaults, each an ARG a build can override, and each the RFC's
+# recommendation for a question the user has not ruled:
+#   Q2 ROS edition   -- Humble on 22.04, which `host` already is (the release
+#                       asset's libpython3.10 floor);
+#   Q3 contents      -- NROS_STARTER_BOARDS: linux, mps2-an385-baremetal,
+#                       mps2-an385-freertos; NROS_STARTER_RMW: zenoh;
+#                       Rust in (minimal profile);
+#   Q8 lab sources   -- the crates of the book's first projects only
+#                       (NROS_STARTER_PROJECTS).
+# Nothing here publishes or tags an image (Q1, Q5).
+
+_nros_image_starter_stages() {
+    cat <<'DOCKEREOF'
+
+# ---------------------------------------------------------------------------
+# starter -- RFC-0127 D2. PROVISIONAL defaults (RFC-0127 Q2/Q3/Q8, open): the
+# ARGs below are the RFC's recommendations, changeable with --build-arg.
+FROM host AS starter
+ARG NROS_VERSION=latest
+ARG NROS_STARTER_BOARDS="linux mps2-an385-baremetal mps2-an385-freertos"
+ARG NROS_STARTER_RMW=zenoh
+ARG NROS_STARTER_UID=1000
+
+# RFC-0127 D5 guarantee 3 -- fixed paths a derived image may rely on.
+ENV NROS_HOME=/opt/nros \
+    RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo
+ENV PATH=/opt/nros/bin:/opt/cargo/bin:$PATH
+RUN useradd -m -u ${NROS_STARTER_UID} -s /bin/bash nros \
+    && mkdir -p /opt/nros /opt/rustup /opt/cargo /work \
+    && chown nros:nros /opt/nros /opt/rustup /opt/cargo /work
+USER nros
+WORKDIR /work
+
+# The released `nros`, through the script a user runs (`install.sh`), so the
+# store this image bakes is the one that release's `nros setup` resolves
+# (RFC-0127 D5 guarantee 2).
+COPY --chown=nros:nros install.sh /opt/nros-install/install.sh
+RUN NROS_INSTALL_VERSION="${NROS_VERSION}" sh /opt/nros-install/install.sh \
+    && nros --version
+
+# Rust stays in rustup's own homes (maintainer ruling, 2026-11-06); the
+# minimal profile, and the first project pulls its own pinned toolchain below.
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+        --default-toolchain stable \
+    && rustup target add thumbv7m-none-eabi
+
+RUN for b in ${NROS_STARTER_BOARDS}; do \
+        nros setup "$b" --rmw "${NROS_STARTER_RMW}" || exit 1; \
+    done
+
+# The projects the book teaches first, each scaffolded and built once, then
+# removed: their crates and pinned toolchain stay in CARGO_HOME / RUSTUP_HOME,
+# so a seat behind a NAT builds them offline (RFC-0127 D2, Q8's
+# recommendation). One `<board>:<lang>` per project: the C road reaches crates
+# the Rust road does not (nros-c's own dependencies), so warming one road
+# leaves the other online-only -- measured on the first local build.
+ARG NROS_STARTER_PROJECTS="linux:rust mps2-an385-freertos:c"
+RUN export NROS_BUILD_ROOT=/tmp/nros-build; for p in ${NROS_STARTER_PROJECTS}; do \
+        b="${p%%:*}"; l="${p#*:}"; \
+        cd /tmp && rm -rf starter_ws \
+        && nros new starter_ws --board "$b" --template talker --lang "$l" \
+            --rmw "${NROS_STARTER_RMW}" \
+        && (cd starter_ws && nros build) || exit 1; \
+    done; root="$(nros locate nano-ros)" \
+    && rm -rf /tmp/starter_ws /tmp/nros-build "${root:?}/build"
+
+# Neither step keeps its build output. The probes' caches (3-4 GB: the
+# metadata, sizes and Corrosion cargo dirs) go to NROS_BUILD_ROOT, and the
+# release tree's own `build/` is removed too, because the sizes probe writes
+# there whatever NROS_BUILD_ROOT says. What makes the offline build work is
+# CARGO_HOME's registry (~100 MB), not those caches; a seat pays the probe
+# compile once, on its first build.
+#
+# The offline claim, proved at build time rather than asserted: the same
+# projects again with the network removed from this step. NROS_OFFLINE is the
+# spelling that reaches every cargo (`nros build --offline` misses the
+# metadata probe, issue 2444).
+RUN --network=none export NROS_BUILD_ROOT=/tmp/nros-build; for p in ${NROS_STARTER_PROJECTS}; do \
+        b="${p%%:*}"; l="${p#*:}"; \
+        cd /tmp && rm -rf starter_ws \
+        && nros new starter_ws --board "$b" --template talker --lang "$l" \
+            --rmw "${NROS_STARTER_RMW}" \
+        && (cd starter_ws && NROS_OFFLINE=1 nros build) || exit 1; \
+    done; root="$(nros locate nano-ros)" \
+    && rm -rf /tmp/starter_ws /tmp/nros-build "${root:?}/build"
+
+# ---------------------------------------------------------------------------
+# starter-zephyr -- RFC-0127 D3. Built only when asked (`--target
+# starter-zephyr`); WHEN it is built is Q4, open.
+FROM starter AS starter-zephyr
+ARG NROS_STARTER_ZEPHYR_BOARD=zephyr
+RUN nros setup "${NROS_STARTER_ZEPHYR_BOARD}" --rmw "${NROS_STARTER_RMW:-zenoh}"
+DOCKEREOF
+}
+
+# The starter's build context in <ctx>: its own directory, holding the host
+# layers' COPY inputs plus `install.sh`.
+nros_starter_context() {
+    local ctx="$1"
+    mkdir -p "$ctx"
+    nros_image_copy_inputs "$ctx"
+    cp "$REPO_ROOT/scripts/install.sh" "$ctx/install.sh"
+    {
+        printf '%s\n' '# Generated by scripts/ci/image-context.sh starter — edit scripts/ci/lib/image-context.sh, not this.' \
+            '# RFC-0127 option B: one generator; targets host, starter, starter-zephyr.' \
+            'FROM ubuntu:22.04 AS host'
+        nros_image_host_stage
+        _nros_image_starter_stages
+    } > "$ctx/Dockerfile"
+    nros_image_substitute "$ctx/Dockerfile"
+}
