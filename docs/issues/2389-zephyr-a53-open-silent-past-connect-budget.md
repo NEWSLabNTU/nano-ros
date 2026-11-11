@@ -136,3 +136,111 @@ and bare-metal smoltcp followed in [issue
 (`nros_platform_tcp_open_within`). So on
 Zephyr the whole open, connect and handshake, now ends within the budget, and
 2389's remaining suspect is after the open, not in it.
+
+## Post-open send stall: reproduced and bounded (2026-11-11)
+
+The suspect above is real, and worse than suspected: a client write to a
+router that keeps the connection open and stops reading blocked FOREVER, on
+every BSD-socket port, and took the whole session with it, silently. It is
+fixed. The issue stays OPEN because the a53 boot itself was not re-run, so it
+is not proven that this is what that boot hit; see "What is left".
+
+### Reproduction
+
+A host TCP proxy between the image and a real `rmw_zenohd` relays both ways
+through the handshake, then stops reading from the image while keeping both
+sockets open. The image publishes `RELIABLE` (congestion control BLOCK) in a
+tight loop with a subscriber on the router, so the write filter passes the
+puts.
+
+- **native_sim** (`nros-bench/stress-zenoh-zephyr`, NSOS, 1 KiB puts): the
+  proxy stopped reading 8 s after the accept; the image printed nothing more
+  for the rest of a 60 s run and was still alive. `gdb` (the image started
+  under it, SIGINT at the end):
+  - the tx-flush thread: `_zpico_tx_flush_task_fn` -> `zp_batch_flush` ->
+    `_z_transport_tx_send_finalized_locked` (TX link mutex held) ->
+    `_z_link_send_wbuf` -> `zsock_sendto` -> `nsos_sendto` ->
+    `nsos_poll_if_blocking` -> `k_poll` with no timeout;
+  - zenoh-pico's executor thread (read, lease and keep-alive futures):
+    `_zp_unicast_read_task_fn` -> `_z_tcp_read` -> `zsock_recvfrom` ->
+    `k_mutex_lock` on the socket's fdtable lock, which the blocked send holds,
+    so not even a receive ran;
+  - `main`: `zpico_publish` -> `z_publisher_put` -> `_z_send_n_msg` ->
+    `_z_session_transport_mutex_lock`, waiting on the flusher.
+- **Linux** (zenoh-pico built standalone from the fork, `tcp_posix.c`, same
+  proxy): the publisher thread sat in `send()` under
+  `_z_transport_tx_send_finalized_locked` for the whole 90 s run. The read task
+  still ran (Linux does not serialise send and receive per fd), but the router
+  hung up at 16 s (its lease) and the client's lease task could not close the
+  session: the close takes the same transport mutex.
+
+So a stalled write is never reported: no lease expiry, no error, no line.
+Zephyr waits `K_FOREVER` in a send when `SO_SNDTIMEO` is unset, and
+zenoh-pico's `tcp_zephyr.c` and `tcp_posix.c` set only `SO_RCVTIMEO`.
+
+### Fix
+
+- zenoh-pico fork (`nano-ros-1.10.1`): the BSD-socket write
+  (`tcp_posix.c`, `tcp_zephyr.c`) goes through one shared helper,
+  `src/link/transport/tcp/tcp_write_within.h`: a non-blocking `send`, and a
+  wait for room bounded by one `Z_CONFIG_SOCKET_TIMEOUT` (100 ms on Zephyr, so
+  the per-fd lock is released between attempts and the read task runs).
+  Progress resets the clock; when the socket takes no byte for
+  `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE` (new, default 5000 ms, the same rule and
+  number as zenoh's `congestion_control.block.wait_before_close`) the write
+  fails. It never returns a partial count. `tcp_lwip.c` (FreeRTOS) already
+  bounded each select at the socket timeout but failed on the FIRST empty one,
+  100 ms into a full window; it now applies the same stall bound.
+- A failed or short write on a stream link may leave the peer's byte stream
+  mid-frame, so the link is marked broken (`_z_link_t::_tx_broken`) and every
+  later write on it is refused; zenoh-pico's unicast read task sees the mark
+  and closes the session through the same path a lease expiry takes
+  (reconnecting where `Z_FEATURE_AUTO_RECONNECT` is built in). The session
+  counts these closes (`zp_session_link_tx_failures`).
+- The zpico shim prints `zpico: session closed: a write to the router took
+  no byte for 5000 ms (the router stopped reading) or the link broke
+  mid-write; reconnecting (close #N)`, once per close, from whichever of the
+  four `z_publisher_put` failure paths, the spin and the tx-flush task sees
+  the count move. (The first run of the Linux test failed with the report on
+  `zpico_publish` only: the Rust talker publishes through
+  `zpico_publish_with_attachment`, so its puts failed for 52 s with no line.)
+- ThreadX and bare-metal smoltcp reach TCP through the platform ABI. Its
+  `nros_platform_tcp_send` contract is now: wait at most about the socket's
+  timeout, return the bytes taken (possibly fewer, `0` for none), error only
+  for a broken connection. The POSIX, Zephyr, FreeRTOS and ThreadX C ports set
+  `SO_SNDTIMEO` from the socket's timeout and report a timed-out send as `0`;
+  smoltcp returns what it took instead of `usize::MAX` after 100 ms without
+  progress. The zenoh alias (`platform_aliases.c`'s `_z_tcp_write`) loops on
+  it with the same `Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE`, read from the generated
+  zenoh config header, never a copy.
+
+### Measured
+
+| case | before | after |
+| --- | --- | --- |
+| native_sim, proxy stops reading | silent for the rest of the run (60 s), still alive | the close line 13.9 s after the proxy stopped (socket buffers filling, then the 5 s bound), then a reconnect attempt |
+| Linux, zenoh-pico standalone | blocked in `send()` 90 s | `put` fails 5.1 s after the last byte moved; `link_tx_failures` 1; reconnected, stalled again, closed again |
+| `tests/zenoh_send_stall.rs` (Linux, Rust `stress-zenoh` talker, real router) | not run on the pre-fix pin (the standalone Linux row above is that shape) | the line 5.18 s after the proxy stopped reading |
+| `nros_platform_tcp_send` (POSIX C port) to a peer that never reads | blocked until the test's 60 s timeout | each call returns within the 200 ms socket timeout, `0` once the buffers are full |
+
+Regression tests: `tests/zenoh_send_stall.rs` (Linux, the `stress-zenoh`
+fixture row behind the same stop-reading proxy against a real router: the line
+must come no sooner than the 5 s bound after the proxy stops and within 60 s; measured 5.18 s),
+and `c_port_posix_net`'s
+`tcp_send_to_a_peer_that_stops_reading_returns_within_its_timeout`.
+
+A side effect seen on native_sim: NSOS's blocking send paid a full poll round
+per call, so the stress bench moved 56 KB in its first 8 s before the fix and
+about 50 MB after, with the same image.
+
+### What is left
+
+Whether this is what the a53 boot hit. It fits the shape: the core-pin marker
+is printed after the session opens and the node declares its entities, so a
+declaration whose send stalled under the e1000's frame loss would leave exactly
+"boot banner, network lines, nothing", and Zephyr's own TCP retransmission
+budget runs past the 90 s cell timeout. But no a53 run has been made with the
+fix, and the hung boot left no backtrace. With every wait in the open and
+after it now bounded and reported, the next hung a53 boot prints either the
+budget line or the close line, or else the cause is elsewhere. Acceptance is
+unchanged.
