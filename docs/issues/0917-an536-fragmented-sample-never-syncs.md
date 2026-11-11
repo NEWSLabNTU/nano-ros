@@ -560,3 +560,22 @@ fix on the path the defect lives on needs the island's tap rig with
 above the FIFO's 6-frame capacity at line rate remain physics, not a drain
 problem. And the "look above lwIP" residual (item 5) is untouched.
 
+
+## 2026-11-11: the in-tree cell is red again on live-peer, intermittently
+
+The live-peer lane runs the fragmented leg
+(`pubsub_freertos_an536_cyclone_ros2_interop_e2e::nros_freertos_an536_cyclone_listener_keeps_receiving_a_fragmented_sample`)
+on fixtures it builds in the same run, so a stale artifact is ruled out:
+
+| run | date | verdict | host publisher sent | listener received |
+| --- | --- | --- | --- | --- |
+| 42754129258 | 2026-11-10 | PASS (80.6 s) | — | — |
+| 42957501616 | 2026-11-11 | FAIL (9.6 s) | 32 | 0 |
+| 42978245897 | 2026-11-11 | FAIL (77.7 s) | 750 | 0 |
+
+Both failures are the binary shape of the Symptom section: the guest reports
+`Network ready` and its stack and heap peaks, and no 10,576-byte sample arrives
+at all. That differs from the 2026-10-30 measurement above (659 of 665 and 692
+of 713 on the same cell after the drain-loop fix), so the cell no longer
+supports "delivered in tree" as a steady result. It was not reproduced solo
+on a workstation.
