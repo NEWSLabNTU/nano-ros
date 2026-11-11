@@ -1,132 +1,173 @@
 /// @file main.c
-/// @brief Phase 115.F — C-side custom-transport loopback demo.
+/// @brief Phase 115.F — C-side custom-transport demo.
 ///
-/// Installs a ring-buffer `nros_transport_ops_t` via
-/// `rclc_set_custom_transport`, opens an nros session over a
-/// `custom://loopback` locator, and exercises the four
-/// callbacks: `open` once at session bring-up, `write` on every
-/// outgoing wire frame, `read` on every incoming poll, `close`
-/// at teardown.
+/// Installs an `nros_transport_ops_t` via `rclc_set_custom_transport`, opens
+/// an nros session over the `custom/loopback` locator, and exercises the four
+/// callbacks: `open` once at session bring-up, `write` on every outgoing wire
+/// frame, `read` on every incoming poll, `close` at teardown.
 ///
-/// Pass / fail criteria:
+/// The callbacks carry zenoh-pico's wire bytes over a TCP connection the
+/// APPLICATION opens to a zenoh router (`NROS_CUSTOM_TCP_TARGET`, `host:port`,
+/// default `127.0.0.1:7447`). The session needs a peer that answers its
+/// handshake: a ring buffer that echoes the image's own frames back hands
+/// zenoh-pico its own `InitSyn` where it waits for an `InitAck`, and the
+/// session refuses (issue 2452). Swap the socket for a UART, a USB CDC
+/// endpoint or a shared-memory ring with something listening on the far end,
+/// and nothing else in this file changes.
+///
+/// Pass / fail criteria (exit 0 only when all hold):
 ///  1. `rclc_set_custom_transport(&ops)` returns `RCL_RET_OK`.
-///  2. `open_count >= 1` after `rclc_support_init` (session
-///     bring-up invoked the transport's open callback).
-///  3. `write_count >= 1` after publishing a frame.
-///  4. `read_count >= 1` after the executor's spin tick.
+///  2. The session opens through the transport (`open` fired, and the
+///     handshake's reply arrived through `read`).
+///  3. `write_count >= 1` after publishing.
+///  4. `read_count >= 1` after the executor's spin.
 ///  5. `close_count >= 1` after `rclc_support_fini` /
 ///     `rclc_set_custom_transport(NULL)`.
 
-#include <pthread.h>
+#include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <rclc/rclc.h>
 
 #include "std_msgs.h"
 
 /* --------------------------------------------------------------
- * Loopback ring buffer + bookkeeping
+ * The transport: zenoh wire bytes over a TCP socket this program owns
  * -------------------------------------------------------------- */
 
-#define LOOPBACK_RING_CAPACITY 4096
+#define DEFAULT_TCP_TARGET "127.0.0.1:7447"
 
 typedef struct {
-    uint8_t buf[LOOPBACK_RING_CAPACITY];
-    size_t head;
-    size_t tail;
-    size_t len;
-    pthread_mutex_t mu;
-    pthread_cond_t data_ready;
+    int fd;
     atomic_int open_count;
     atomic_int close_count;
     atomic_int write_count;
     atomic_int read_count;
-} loopback_state_t;
+} link_state_t;
 
-static loopback_state_t g_loop = {
-    .head = 0,
-    .tail = 0,
-    .len = 0,
-    .mu = PTHREAD_MUTEX_INITIALIZER,
-    .data_ready = PTHREAD_COND_INITIALIZER,
-};
+static link_state_t g_link = {.fd = -1};
 
-static rcl_ret_t loopback_open(void* user_data, const void* params) {
+/* Split `host:port` and connect. Returns the socket, or -1. */
+static int connect_tcp_target(const char* target) {
+    char host[256];
+    const char* colon = strrchr(target, ':');
+    if (colon == NULL || colon == target || (size_t)(colon - target) >= sizeof(host)) {
+        fprintf(stderr, "custom link: `%s` is not host:port\n", target);
+        return -1;
+    }
+    memcpy(host, target, (size_t)(colon - target));
+    host[colon - target] = '\0';
+
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* res = NULL;
+    int gai = getaddrinfo(host, colon + 1, &hints, &res);
+    if (gai != 0) {
+        fprintf(stderr, "custom link: resolve %s: %s\n", target, gai_strerror(gai));
+        return -1;
+    }
+    int fd = -1;
+    for (struct addrinfo* ai = res; ai != NULL; ai = ai->ai_next) {
+        fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+        if (fd < 0) {
+            continue;
+        }
+        if (connect(fd, ai->ai_addr, ai->ai_addrlen) == 0) {
+            break;
+        }
+        close(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+    if (fd < 0) {
+        fprintf(stderr, "custom link: connect %s: %s\n", target, strerror(errno));
+        return -1;
+    }
+    int one = 1;
+    (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    return fd;
+}
+
+static rcl_ret_t link_open(void* user_data, const void* params) {
     (void)user_data;
     (void)params;
-    atomic_fetch_add(&g_loop.open_count, 1);
+    atomic_fetch_add(&g_link.open_count, 1);
+    const char* target = getenv("NROS_CUSTOM_TCP_TARGET");
+    if (target == NULL || target[0] == '\0') {
+        target = DEFAULT_TCP_TARGET;
+    }
+    g_link.fd = connect_tcp_target(target);
+    return g_link.fd < 0 ? RCL_RET_ERROR : RCL_RET_OK;
+}
+
+static void link_close(void* user_data) {
+    (void)user_data;
+    atomic_fetch_add(&g_link.close_count, 1);
+    if (g_link.fd >= 0) {
+        close(g_link.fd);
+        g_link.fd = -1;
+    }
+}
+
+static rcl_ret_t link_write(void* user_data, const uint8_t* buf, size_t len) {
+    (void)user_data;
+    atomic_fetch_add(&g_link.write_count, 1);
+    while (len > 0) {
+        ssize_t n = send(g_link.fd, buf, len, MSG_NOSIGNAL);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return RCL_RET_ERROR;
+        }
+        buf += n;
+        len -= (size_t)n;
+    }
     return RCL_RET_OK;
 }
 
-static void loopback_close(void* user_data) {
+/* Up to `len` bytes, waiting at most `timeout_ms`. 0 = nothing arrived this
+ * tick; negative = the link is gone. */
+static int32_t link_read(void* user_data, uint8_t* buf, size_t len, uint32_t timeout_ms) {
     (void)user_data;
-    atomic_fetch_add(&g_loop.close_count, 1);
-}
-
-static rcl_ret_t loopback_write(void* user_data, const uint8_t* buf, size_t len) {
-    (void)user_data;
-    if (buf == NULL || len == 0) {
-        return RCL_RET_OK;
-    }
-    pthread_mutex_lock(&g_loop.mu);
-    /* Drop bytes that don't fit — keeps the loopback bounded and
-     * mirrors what a real lossy transport would do. */
-    size_t to_write = len;
-    if (to_write > LOOPBACK_RING_CAPACITY - g_loop.len) {
-        to_write = LOOPBACK_RING_CAPACITY - g_loop.len;
-    }
-    for (size_t i = 0; i < to_write; i++) {
-        g_loop.buf[g_loop.tail] = buf[i];
-        g_loop.tail = (g_loop.tail + 1) % LOOPBACK_RING_CAPACITY;
-    }
-    g_loop.len += to_write;
-    atomic_fetch_add(&g_loop.write_count, 1);
-    pthread_cond_broadcast(&g_loop.data_ready);
-    pthread_mutex_unlock(&g_loop.mu);
-    return RCL_RET_OK;
-}
-
-static int32_t loopback_read(void* user_data, uint8_t* buf, size_t len, uint32_t timeout_ms) {
-    (void)user_data;
+    atomic_fetch_add(&g_link.read_count, 1);
     if (buf == NULL || len == 0) {
         return 0;
     }
-    atomic_fetch_add(&g_loop.read_count, 1);
-
-    struct timespec deadline;
-    clock_gettime(CLOCK_REALTIME, &deadline);
-    deadline.tv_sec += (time_t)(timeout_ms / 1000);
-    deadline.tv_nsec += (long)((timeout_ms % 1000) * 1000000L);
-    if (deadline.tv_nsec >= 1000000000L) {
-        deadline.tv_sec += 1;
-        deadline.tv_nsec -= 1000000000L;
+    /* zenoh-pico's receive loop asks with 0 ms and leaves the bound to the
+     * transport; wait at least 1 ms so that loop does not spin a core. */
+    int wait_ms = timeout_ms == 0 ? 1 : (int)timeout_ms;
+    struct pollfd pfd = {.fd = g_link.fd, .events = POLLIN, .revents = 0};
+    int ready = poll(&pfd, 1, wait_ms);
+    if (ready == 0 || (ready < 0 && errno == EINTR)) {
+        return 0;
     }
-
-    pthread_mutex_lock(&g_loop.mu);
-    while (g_loop.len == 0) {
-        int rc = pthread_cond_timedwait(&g_loop.data_ready, &g_loop.mu, &deadline);
-        if (rc != 0) {
-            pthread_mutex_unlock(&g_loop.mu);
-            return 0; /* timeout — caller treats as "no data this tick" */
-        }
+    if (ready < 0) {
+        return -1;
     }
-    size_t to_read = len;
-    if (to_read > g_loop.len) {
-        to_read = g_loop.len;
+    ssize_t n = recv(g_link.fd, buf, len, 0);
+    if (n > 0) {
+        return (int32_t)n;
     }
-    for (size_t i = 0; i < to_read; i++) {
-        buf[i] = g_loop.buf[g_loop.head];
-        g_loop.head = (g_loop.head + 1) % LOOPBACK_RING_CAPACITY;
+    if (n < 0 && (errno == EINTR || errno == EAGAIN)) {
+        return 0;
     }
-    g_loop.len -= to_read;
-    pthread_mutex_unlock(&g_loop.mu);
-    return (int32_t)to_read;
+    return -1; /* peer closed, or a socket error */
 }
 
 /* --------------------------------------------------------------
@@ -168,7 +209,9 @@ static void timer_callback(rcl_timer_t* timer, int64_t last_call_time) {
     // Phase 212.M native/c sweep — replace the never-defined
     // ~~`nros_publisher_publish`~~ symbol with the canonical typed
     // `rcl_publish` (phase-492 W8, as the talker does).
-    (void)rcl_publish(ctx->publisher, &ctx->message, NULL);
+    if (rcl_publish(ctx->publisher, &ctx->message, NULL) == RCL_RET_OK) {
+        printf("Published: %d\n", (int)ctx->message.data);
+    }
 }
 
 /* --------------------------------------------------------------
@@ -192,21 +235,22 @@ int main(int argc, char** argv) {
         .abi_version = NROS_TRANSPORT_OPS_ABI_VERSION_V1,
         ._reserved = 0,
         .user_data = NULL,
-        .open = loopback_open,
-        .close = loopback_close,
-        .write = loopback_write,
-        .read = loopback_read,
+        .open = link_open,
+        .close = link_close,
+        .write = link_write,
+        .read = link_read,
     };
     rcl_ret_t set_rc = rclc_set_custom_transport(&ops);
     if (set_rc != RCL_RET_OK) {
         fprintf(stderr, "rclc_set_custom_transport failed: %d\n", set_rc);
         return 1;
     }
-    fprintf(stdout, "loopback: transport installed\n");
+    fprintf(stdout, "custom link: transport installed\n");
 
-    /* 2. Spin up the nros stack pointed at the `custom://` locator.
-     *    Active RMW backend (zenoh-pico) routes every wire frame
-     *    through our ops above. */
+    /* 2. Spin up the nros stack on the `custom/` locator: zenoh-pico routes
+     *    every wire frame through the ops above. The bringup's `system.toml`
+     *    names the same locator, which is what compiles zenoh-pico's custom
+     *    link into this image (issue 2452). */
     (void)rcl_clock_init(RCL_SYSTEM_TIME, &app.clock, NULL);
     /* phase-426 W4 — the ~~`nros_parameter_server_t`~~ that stood here is GONE. It
      * was initialised and never touched again: no declare, no get, no set. A
@@ -214,7 +258,7 @@ int main(int argc, char** argv) {
      * executor's), so the one thing it demonstrated to a reader copying this
      * file out was the defect this phase removes. `examples/linux/c/
      * parameters` is where a C image's parameters are shown. */
-    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, "custom://loopback", 0), 1);
+    RCLC_CHECK_RET(rclc_support_init_with_locator(&app.support, "custom/loopback", 0), 1);
     RCLC_CHECK_RET(rclc_node_init_default(&app.node, "loopback_demo", "/", &app.support), 1);
 
     RCLC_CHECK_RET(rclc_publisher_init_default(&app.publisher, &app.node,
@@ -236,7 +280,7 @@ int main(int argc, char** argv) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    fprintf(stdout, "loopback: spinning for ~3 seconds (Ctrl-C to stop sooner)\n");
+    fprintf(stdout, "custom link: spinning for ~3 seconds (Ctrl-C to stop sooner)\n");
     struct timespec deadline;
     clock_gettime(CLOCK_MONOTONIC, &deadline);
     deadline.tv_sec += 3;
@@ -262,11 +306,11 @@ int main(int argc, char** argv) {
     (void)rclc_set_custom_transport(NULL);
 
     /* 4. Report bookkeeping. */
-    int oc = atomic_load(&g_loop.open_count);
-    int wc = atomic_load(&g_loop.write_count);
-    int rc = atomic_load(&g_loop.read_count);
-    int cc = atomic_load(&g_loop.close_count);
-    fprintf(stdout, "loopback callback counts:\n");
+    int oc = atomic_load(&g_link.open_count);
+    int wc = atomic_load(&g_link.write_count);
+    int rc = atomic_load(&g_link.read_count);
+    int cc = atomic_load(&g_link.close_count);
+    fprintf(stdout, "custom link callback counts:\n");
     fprintf(stdout, "  open:  %d\n", oc);
     fprintf(stdout, "  write: %d\n", wc);
     fprintf(stdout, "  read:  %d\n", rc);

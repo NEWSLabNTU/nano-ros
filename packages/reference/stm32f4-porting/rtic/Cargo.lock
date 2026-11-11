@@ -551,6 +551,7 @@ dependencies = [
  "nros-sizing-descriptor",
  "nros-zephyr-build",
  "portable-atomic",
+ "zpico-platform-custom",
  "zpico-sys",
 ]
 
@@ -1050,6 +1051,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "zpico-platform-custom"
+version = "0.6.0"
+dependencies = [
+ "nros-rmw",
 ]
 
 [[package]]

@@ -1659,6 +1659,7 @@ dependencies = [
  "nros-zenoh-session-config",
  "nros-zephyr-build",
  "portable-atomic",
+ "zpico-platform-custom",
  "zpico-sys",
 ]
 

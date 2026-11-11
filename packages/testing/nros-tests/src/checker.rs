@@ -76,6 +76,10 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // publish line is the evidence that its eager publisher was CREATED on
         // an executor-bound node and is being driven; nothing receives it.
         Workload::ExecutorBoundNode => output::INT32_TALKER_LOG_PREFIX,
+        // A verdict, not delivery (issue 2452): the image prints its link's
+        // callback counts once the session has closed, and exits 0 only when
+        // every callback fired.
+        Workload::CustomLink => output::CUSTOM_LINK_COUNTS_HEADER,
         // No peer either (issue 1795): the carrier image's own publish line is
         // the evidence that the road linked, booted and drove the component.
         Workload::TypedCarrier => output::TYPED_CARRIER_SENT_PREFIX,

@@ -11,10 +11,14 @@ domain_id = 0
 # The image a bare `nros configure` / `nros build` builds.
 default_images = ["linux"]
 
-# Host build. The locator and domain stay runtime env on native
-# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`).
+# Host build. The domain stays runtime env on native (`ROS_DOMAIN_ID`).
 [image_defaults]
 board = "linux"
 
 [image.linux]
 entry = "native_c_custom_transport_loopback"
+# The session rides the link `main` registers (RFC-0109 D6: the locator's
+# scheme is the link). Stating it here is what compiles zenoh-pico's custom
+# link into the image (`NROS_LINK_CUSTOM`, issue 2452) and leaves its own IP
+# links out; `main` opens the session on the same locator.
+locator = "custom/loopback"

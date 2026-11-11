@@ -3858,9 +3858,15 @@ dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
 
 # Phase 275 W2 (#102 H3) — linux/c variant examples that shipped with zero
 # fixtures. All use the standard `-DNROS_RMW` cmake path (default zenoh), so a
-# zenoh row build-asserts each. UNVERIFIED (host RAM #115): custom-transport-
-# loopback demos a bespoke layer over zenoh RMW — confirm it builds under the
-# standard harness on good hardware; add a runtime assertion for it as follow-up.
+# zenoh row build-asserts each.
+#
+# custom-transport-loopback is a RUNTIME row since issue 2452: the
+# `CustomLink` cell, consumed by `linux_example_custom_link_e2e.rs`. Build-only,
+# it exited 1 on every host — no C/C++ image compiled zenoh-pico's custom link,
+# so its `custom/…` session refused before the transport's `open` ran. Its
+# image's `locator = "custom/loopback"` is what compiles the link in now
+# (`NROS_LINK_CUSTOM`), and that image env is why its build dir carries a
+# `-cfg<hash>` suffix.
 #
 # custom-platform is no longer in that list: issue 1384 gave it a RUNTIME cell
 # (`matrix::CELLS`, `Workload::ExecutorBoundNode`, consumed by
@@ -3893,7 +3899,7 @@ rmw = "zenoh"
 dir = "examples/linux/c/custom-transport-loopback"
 bringup = "src/native_c_custom_transport_loopback_bringup"
 image = "linux"
-build_subdir = "build/posix-zenoh-linux-native_c_custom_transport_loopback_bringup/cmake"
+build_subdir = "build/posix-zenoh-linux-cfg86d9ba717d-native_c_custom_transport_loopback_bringup/cmake"
 
 [[workspace_fixture]]
 id = "linux-c-zenoh-logging"

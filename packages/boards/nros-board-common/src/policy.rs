@@ -53,7 +53,22 @@ pub struct LinkFeatures {
 /// Deliberately not the image's link KIND (`leaf_system::TRANSPORT_KINDS`):
 /// that is what a BOARD registers a driver for, and neither link has a board
 /// half on a hosted target -- the kernel owns the interface.
-pub const LINK_BUILD_KNOBS: &[(&str, &str)] = &[("can", LINK_CAN_KNOB), ("isotp", LINK_ISOTP_KNOB)];
+///
+/// Issue 2452 — `custom/…` is the third row. The zenoh custom link (the
+/// `nros_transport_ops_t` the APPLICATION registers) was reachable only
+/// through `zpico-sys`'s `link-custom` cargo feature, which a Rust image names
+/// in its own manifest and a C/C++ image has no manifest to name: every C/C++
+/// zenoh image compiled `Z_FEATURE_LINK_CUSTOM 0`, so `custom/…` was an
+/// unknown scheme and the session refused before calling the transport's
+/// `open`, while `rclc_set_custom_transport` answered OK. A locator on the
+/// scheme now states the link for every road. It is the scheme zenoh parses
+/// (`custom/<label>`); XRCE's `custom://…` is not a zenoh locator and implies
+/// nothing here.
+pub const LINK_BUILD_KNOBS: &[(&str, &str)] = &[
+    ("can", LINK_CAN_KNOB),
+    ("isotp", LINK_ISOTP_KNOB),
+    ("custom", LINK_CUSTOM_KNOB),
+];
 
 /// The `can` row of [`LINK_BUILD_KNOBS`], named so a build script's
 /// `rerun-if-env-changed` can name it (`check-path-env-fingerprints` reads a
@@ -61,6 +76,8 @@ pub const LINK_BUILD_KNOBS: &[(&str, &str)] = &[("can", LINK_CAN_KNOB), ("isotp"
 pub const LINK_CAN_KNOB: &str = "NROS_LINK_CAN";
 /// The `isotp` row of [`LINK_BUILD_KNOBS`].
 pub const LINK_ISOTP_KNOB: &str = "NROS_LINK_ISOTP";
+/// The `custom` row of [`LINK_BUILD_KNOBS`] (issue 2452).
+pub const LINK_CUSTOM_KNOB: &str = "NROS_LINK_CUSTOM";
 
 /// The [`LINK_BUILD_KNOBS`] that `endpoints` need, each once, in table order.
 #[must_use]
@@ -121,7 +138,10 @@ impl LinkFeatures {
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
             ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
-            custom: env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok(),
+            // Issue 2452 — the feature or the knob, as `can` / `isotp` below.
+            // The Rust half the C link calls (`nros_zpico_custom_take`) is
+            // always linked by `nros-rmw-zenoh`, so the knob alone links.
+            custom: env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok() || knob_on(LINK_CUSTOM_KNOB),
             // Issue 2096 — the cargo feature, OR the knob the CLI implies from
             // an image whose locator or RMW-file endpoints are on the scheme
             // (`nros_orchestration_ir::leaf_system::LINK_BUILD_KNOBS`). The
@@ -429,6 +449,10 @@ mod link_build_knob_tests {
             link_build_knobs(["tcp/10.0.2.2:7447", "serial/UART_0", "udp/224.0.0.224:7446"])
                 .is_empty()
         );
+        // Issue 2452 — zenoh's custom scheme implies its link; XRCE's
+        // `custom://…` spelling is not a zenoh locator and implies nothing.
+        assert_eq!(link_build_knobs(["custom/loopback"]), ["NROS_LINK_CUSTOM"]);
+        assert!(link_build_knobs(["custom://uart"]).is_empty());
         assert!(link_build_knobs([]).is_empty());
     }
 }

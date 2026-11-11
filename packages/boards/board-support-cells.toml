@@ -86,6 +86,16 @@ at = ["Linux", "C", "Zenoh", "ExecutorBoundNode", "Example"]
 status = 'Runtime'
 
 [[cell]]
+comment = '''
+// issue 2452 — `examples/linux/c/custom-transport-loopback`, a session over a
+// link the application registers (`custom/…`). Its row was BUILD-ONLY, and the
+// session refused before the transport's `open` ran: no C/C++ image compiled
+// zenoh-pico's custom link. `linux_example_custom_link_e2e` runs it.
+'''
+at = ["Linux", "C", "Zenoh", "CustomLink", "Example"]
+status = 'Runtime'
+
+[[cell]]
 at = ["Linux", "Rust", "Zenoh", "Service", "Example"]
 status = 'Runtime'
 

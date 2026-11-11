@@ -678,6 +678,7 @@ dependencies = [
  "nros-sizing-descriptor",
  "nros-zephyr-build",
  "portable-atomic",
+ "zpico-platform-custom",
  "zpico-sys",
 ]
 
@@ -1256,6 +1257,13 @@ version = "0.6.0"
 dependencies = [
  "portable-atomic",
  "rlsf",
+]
+
+[[package]]
+name = "zpico-platform-custom"
+version = "0.6.0"
+dependencies = [
+ "nros-rmw",
 ]
 
 [[package]]
