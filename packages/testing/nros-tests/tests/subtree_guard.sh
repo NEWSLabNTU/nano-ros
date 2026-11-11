@@ -146,8 +146,21 @@ wait_until() {
 
 start_launcher() {
     "$work/launcher.sh" > "$work/launcher.log" 2>&1 &
-    wait_until 15 test -s "$(guard_lock)" \
-        || fail "launcher never wrote its lock file ($(guard_lock))"
+    local launcher=$!
+    # Issue 2440 — wait on the launcher's own edge, not on a clock: it either
+    # writes the lock or exits. A fixed 15 s ran out on a loaded host (the
+    # pristine-clone pass, beside another worktree's `check fast`) while the
+    # launcher was still starting. The outer bound only catches a launcher that
+    # hangs without doing either.
+    local deadline=$(( SECONDS + 300 ))
+    until test -s "$(guard_lock)"; do
+        if ! kill -0 "$launcher" 2>/dev/null; then
+            fail "launcher exited without writing its lock file ($(guard_lock)); its log: $(cat "$work/launcher.log")"
+        fi
+        [ "$SECONDS" -lt "$deadline" ] \
+            || fail "launcher (pid $launcher) still running after 300 s and never wrote its lock file ($(guard_lock))"
+        sleep 0.2
+    done
     # The lock is written before the tree is fully up; wait for real depth.
     wait_until 15 bash -c '[ "$(group_size "$(awk "{print \$2}" "$0")")" -ge 3 ]' \
         "$(guard_lock)" || true
