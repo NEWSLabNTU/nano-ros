@@ -12,8 +12,7 @@
 #
 #   passed       removed by the gate as soon as it has its verdict (as before);
 #   failed       KEPT — it is the evidence, and the failure message prints its
-#                path — until a later run of the SAME gate and scope starts, or
-#                CI asks for its output released (`NROS_CI_PRUNE_GATE_OUTPUTS`);
+#                path — until a later run of the SAME gate and scope starts;
 #   interrupted  removed on the way out (EXIT/INT/TERM), or, after a SIGKILL
 #                that no trap sees, by the next run of the gate.
 #
