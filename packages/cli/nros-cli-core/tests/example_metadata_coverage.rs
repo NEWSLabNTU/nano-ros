@@ -179,9 +179,11 @@ fn every_node_declaring_example_is_a_metadata_candidate() {
     // phase-531 W6 made the linux Rust talker a one-node workspace, whose node
     // package declares no node itself (its bringup does), 59 -> 58.
     // phase-535 W6 made the linux Rust listener, service and action examples
-    // one-node workspaces the same way, 58 -> 53.
+    // one-node workspaces the same way, 58 -> 53. phase-531 W6 did the same
+    // to the threadx-linux, mps2-an385-freertos and qemu-armv7a-nuttx Rust
+    // talkers, 53 -> 50.
     assert!(
-        counted >= 53,
+        counted >= 50,
         "only {counted} node-declaring example packages found; the tree has far \
          more, so the classifier stopped recognising a shape"
     );
