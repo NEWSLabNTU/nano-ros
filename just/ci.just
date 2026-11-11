@@ -121,8 +121,10 @@ l1: gate
 #   gates — `just check`. Needs no fixture build.
 #   run   — preconditions + `rust-rtos-link-check` + `test-all`.
 #
-# Where they run (issues 1684/1685): `gates` in host-tests.yml's `gates` job,
-# `run` in run-matrix.yml's `tier1` job on the self-hosted runner, after
+# Where they run (issues 1684/1685, 2141): `gates`' work in gate.yml's
+# scheduled `check-fast` / `check-fast-compile` / `check-build` jobs, which run
+# the same gate set (host-tests' `gates` job duplicated them and was removed in
+# issue 2141), and `run` in run-matrix.yml's `tier1` job on the self-hosted runner, after
 # `just build tier1` — the hosted runner has neither the disk for the tier's
 # fixtures (+37..39 G) nor the Zephyr/ThreadX provisioning its cover selects.
 #

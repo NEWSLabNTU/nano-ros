@@ -7,7 +7,7 @@
 #                   then `just test-ignored` (issue 1507) and
 #                   `just test-doc` (doctests, both workspaces).
 #   - feature-sweep : `just check feature-sweep` — per-feature clippy.
-#   - gates       : `just ci tier1 gates` — tier 1's `just check` half.
+#   - (no gates job: `just check` runs in gate.yml's schedule, issue 2141)
 #   - rt-sched    : `rt_sched_levels_e2e` (phase-162) in a container granted
 #                   `SYS_NICE`, the only lane that claims `rt-sched`.
 #
@@ -262,279 +262,30 @@ jobs:
           source ./activate.sh
           just check feature-sweep
 
-  # ----- tier-1 gates: `just ci tier1 gates` (= `just check`) -----
+  # ----- tier-1 gates: NOT here (issue 2141, 2026-11-11) -----
   #
-  # Issue 1651 — the half of `just ci tier1` that needs NO fixture build, moved
-  # off the integration job's critical path onto its own runner. The same work,
-  # once a night, as before; only WHERE it runs changed.
+  # This file ran `just ci tier1 gates` (= `just check`: cli-fresh, fast,
+  # api-parity, probe-workspace-caps, build) as a two-shard `gates` job from
+  # issue 1651 until issue 2141 removed it. It duplicated `gate.yml`'s
+  # scheduled run, which is the gates' nightly verdict (02:00 UTC daily, and
+  # on workflow_dispatch):
   #
-  # Why: the integration job reached `just ci tier1` ~82 minutes in (fixtures
-  # 14 + 53 min), and the tier ran `just check` first — fast 13 min + build
-  # 49 min at -P4 — so the two runs whose `just check` went green (37115523816,
-  # 37176625915) both hit the job's 150-minute ceiling inside the next step. A
-  # job TIMEOUT concludes `cancelled`, not `failure`, and `test-all` — the
-  # suite this lane is the only runner of — had not executed on any run since
-  # 2026-06-17. Split, each job fits its ceiling with room, and each one's
-  # verdict is its own.
+  #   * build tier — both ran `just check build` under NROS_GATE_SCOPE=build,
+  #     so one derivation gives one 75-test set (gate.yml splits it 1-3/3
+  #     by measured weight, `.config/build-gate-weights.txt`).
+  #   * fast tier  — gate.yml's `check-fast` runs scope `fast`: the same set
+  #     plus `cxx-compat-shim-facilities` (`check-gate-lists --lane fast` vs
+  #     `--lane build`).
+  #   * api-parity, probe-workspace-caps — gate.yml's `check-fast-compile`.
+  #   * the tier-1 coordinates this job exported are read by no fast or build
+  #     gate (only by the `run` part, in run-matrix.yml).
   #
-  # It needs what `gate.yml`'s nightly compile tier needs and nothing more: the
-  # CLI, `just setup linux` (which also builds `nros-launch-resolve`), the
-  # `cxx-syntax` compile-check fixtures and the example message bindings.
-  #
-  # Issue 2141 — the job is TWO shards now. One runner stopped fitting:
-  # `check build` alone ran 69 minutes wall on 2026-10-28 (run 40625461704;
-  # busy 3.8 h at -P4), and on 2026-10-29 and 2026-10-30 the job hit its
-  # 120-minute cap with `check build` still running. Its two slowest gates,
-  # `linux-check` (54 min) and `template-copy-out` (37 min), shared the runner.
-  # Shard 1 runs `just ci tier1 gates` (fast, api-parity, probe-workspace-caps
-  # and half the build lane); shard 2 runs the other half of the build lane.
-  # `scripts/build/gate-shard.py` puts every build gate in exactly one shard,
-  # balanced by `.config/build-gate-weights.txt`, so the two jobs together
-  # still run all of `just check`.
-  gates:
-    name: tier-1 gates (just check) [${{ matrix.shard }}/2]
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    # The work moved here measured 62 minutes inside the integration job
-    # (check-fast 788 s + check-build 2942 s wall, run 37176625915), plus ~8
-    # minutes of provisioning. 120 is a ceiling with ~70 % headroom over that,
-    # the issue-1492 argument: a number this repository owns.
-    timeout-minutes: 120
-    concurrency:
-      group: host-tests-gates-${{ matrix.shard }}-${{ github.ref }}-${{ github.event_name }}
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      packages: read
-    container:
-      image: ghcr.io/newslabntu/nano-ros-ci:humble
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      # Host-tool mounts (issue 1353): `check build` is the
-      # step that has exhausted this disk on gate.yml's nightly.
-      volumes:
-        - /usr/local/lib/android:/__host-reclaim/android
-        - /usr/share/dotnet:/__host-reclaim/dotnet
-        - /usr/local/.ghcup:/__host-reclaim/ghcup
-        - /opt/ghc:/__host-reclaim/ghc
-        - /usr/share/swift:/__host-reclaim/swift
-        - /usr/local/share/powershell:/__host-reclaim/powershell
-    defaults:
-      run:
-        shell: bash
-    # Issue 1500 — line tables, not full debuginfo: `check
-    # test-targets` and `check cli-tests` are the dev-profile builds it sized.
-    env:
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
-    steps:
-      - name: Checkout nano-ros
-        uses: actions/checkout@v4
-
-      # `check-submodule-pins` (in `check fast`) diffs against `origin/main`
-      # and is network-free by contract, so the workflow provides the ref —
-      # gate.yml's step, verbatim. On a `main` run the checkout already has
-      # it; a dispatch on any other branch does not, and failed here
-      # (run 37252649866).
-      - name: Fetch the pin baseline for check-submodule-pins
-        run: bash scripts/ci/pin-baseline.sh provide
-
-      # Restore only — the `unit` job owns the SAVE for this key, and two
-      # jobs saving one key race for nothing.
-      - name: Restore CLI build cache (Phase 218)
-        uses: actions/cache/restore@v4
-        with:
-          path: packages/cli/target
-          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
-          restore-keys: |
-            nros-cli-${{ runner.os }}-
-
-      - name: Build nros CLI from packages/cli/ (Phase 218)
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-
-      - name: Derive the build parallelism
-        run: |
-          cpus="$(nproc)"
-          mem_gb="$(awk '/MemTotal/ {print int($2 / 1024 / 1024)}' /proc/meminfo)"
-          by_mem=$(( mem_gb / 2 ))
-          [ "$by_mem" -lt 1 ] && by_mem=1
-          jobs=$(( cpus < by_mem ? cpus : by_mem ))
-          echo "NROS_CI_BUILD_JOBS=$jobs" >> "$GITHUB_ENV"
-          echo "runner: ${cpus} cpu, ${mem_gb} GiB -> NROS_CI_BUILD_JOBS=${jobs}"
-
-      - name: just setup linux
-        run: |
-          source ./activate.sh
-          just setup linux
-
-      # The two artifacts `check build` asserts and does not produce — see the
-      # same two steps in gate.yml (issue 0898) for the measurement.
-      - name: build compile-check fixtures (check-source-gates asserts them)
-        run: |
-          source ./activate.sh
-          just build-compile-check-fixtures cxx-syntax
-
-      # `just setup linux` already builds it; named here because
-      # `check-lane-contracts` asks for the producer `generate-bindings` is
-      # ordered after, and a no-op rebuild costs seconds.
-      - name: Build nros-launch-resolve (generate-bindings shells out to it)
-        run: |
-          source ./activate.sh
-          just setup-launch-resolve
-
-      # phase-489 W4 — restore what the verb wrote last time, then run the verb.
-      # The cache ONLY pre-populates: `just generate-bindings` below still runs
-      # and its own content-addressed freshness (the standalone `.sig` stamps,
-      # the probe sidecars' `probe_inputs_key`) regenerates anything stale. Key
-      # and cached paths come from ONE script; `check` refuses a cached path git
-      # tracks. Measured: a tree with fresh sidecars runs the verb in ~10 s,
-      # against 18.7-21.7 min from cold (the C/C++ metadata probes, not codegen).
-      - name: Key the message-bindings cache on the verb's real inputs
-        id: bindings-key
-        run: |
-          source ./activate.sh
-          scripts/ci/bindings-cache.sh key >> "$GITHUB_OUTPUT"
-
-      - name: Restore the message bindings + probe sidecars (pre-populate only)
-        id: bindings-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ${{ steps.bindings-key.outputs.paths }}
-          key: ${{ steps.bindings-key.outputs.key }}
-          restore-keys: ${{ steps.bindings-key.outputs.restore-prefix }}
-
-      - name: generate message bindings (linux::check asserts them)
-        id: generate-bindings
-        run: |
-          source ./activate.sh
-          just generate-bindings
-
-      # Saved right after the verb, not at job end, so the entry holds exactly
-      # what the verb produced. Skipped on an EXACT hit (the entry already says
-      # this); a prefix hit saves, because the verb refreshed part of it.
-      # Shard 1 saves; two shards saving one key race for nothing.
-      - name: Save the message bindings + probe sidecars
-        if: ${{ matrix.shard == 1 && steps.generate-bindings.outcome == 'success' && steps.bindings-cache.outputs.cache-hit != 'true' && !cancelled() }}
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ steps.bindings-key.outputs.paths }}
-          key: ${{ steps.bindings-key.outputs.key }}
-
-      - name: Disk report (before tier-1 gates) — issue 1353
-        if: ${{ !cancelled() }}
-        run: scripts/ci/disk-report.sh "before just ci tier1 gates"
-
-      - name: Reclaim disk before the gates — issue 1353
-        if: ${{ !cancelled() }}
-        run: scripts/ci/reclaim-disk.sh "before just ci tier1 gates"
-
-      - name: Upload the disk transcript (before the gates) — issue 1353
-        if: ${{ !cancelled() && env.NROS_DISK_TRANSCRIPT != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: disk-transcript-before-tier1-gates-${{ matrix.shard }}
-          path: ${{ env.NROS_DISK_TRANSCRIPT }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      # Issue 2382: both shards run the `build` lane, which claims
-      # submodules and history; without this step they stopped in its
-      # preflight and no gate ran.
-      - name: Provision what the build lane claims (submodules, history, sources)
-        timeout-minutes: 12
-        run: bash scripts/ci/provision-gate-lane.sh build
-
-      - name: just ci tier1 gates
-        if: ${{ matrix.shard == 1 && !cancelled() }}
-        env:
-          CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-          # Issue 2100 — release each gate's build output once its verdict is
-          # in (scripts/build/gate-prune.sh). The 26 gates run at once, and
-          # their output summed to ~110 G against the ~75 G this hosted runner
-          # has after reclaim. linux-check, cli-tests and template-copy-out
-          # held 67 G of it. A cold lane gives up nothing by not keeping it.
-          NROS_CI_PRUNE_GATE_OUTPUTS: "1"
-          # Issue 2141 — which half of the build lane this job runs, and a
-          # line per gate as it ends, so a job killed at its cap still says
-          # which gates finished.
-          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
-          # Shard 1 also runs the fast tier; its weight is charged to shard 1
-          # before the measured split. Both shards set it, so both compute the
-          # same split (.config/build-gate-weights.txt).
-          NROS_BUILD_GATE_PRELOAD_FIRST: "@tier1-lane"
-          NROS_GATE_PROGRESS: "1"
-          # phase-543 W6 — the hosted image's lane (.config/gate-lanes.toml).
-          NROS_GATE_SCOPE: build
-        run: |
-          source ./activate.sh
-          mkdir -p build/ci-logs
-          set +e
-          just ci tier1 gates > build/ci-logs/ci-tier1-gates.log 2>&1
-          rc=$?
-          set -e
-          echo "::group::tier-1 gates output (tail)"; tail -200 build/ci-logs/ci-tier1-gates.log; echo "::endgroup::"
-          exit $rc
-
-      # Shard 2: the other half of the build lane (issue 2141).
-      - name: just check build (shard 2 of the build lane)
-        if: ${{ matrix.shard == 2 && !cancelled() }}
-        env:
-          CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
-          # Issue 2100 — release each gate's build output once its verdict is
-          # in (scripts/build/gate-prune.sh). The 26 gates run at once, and
-          # their output summed to ~110 G against the ~75 G this hosted runner
-          # has after reclaim. linux-check, cli-tests and template-copy-out
-          # held 67 G of it. A cold lane gives up nothing by not keeping it.
-          NROS_CI_PRUNE_GATE_OUTPUTS: "1"
-          # Issue 2141 — which half of the build lane this job runs, and a
-          # line per gate as it ends, so a job killed at its cap still says
-          # which gates finished.
-          NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
-          # Shard 1 also runs the fast tier; its weight is charged to shard 1
-          # before the measured split. Both shards set it, so both compute the
-          # same split (.config/build-gate-weights.txt).
-          NROS_BUILD_GATE_PRELOAD_FIRST: "@tier1-lane"
-          NROS_GATE_PROGRESS: "1"
-          # phase-543 W6 — the hosted image's lane (.config/gate-lanes.toml).
-          NROS_GATE_SCOPE: build
-        run: |
-          source ./activate.sh
-          mkdir -p build/ci-logs
-          set +e
-          just check build > build/ci-logs/ci-tier1-gates.log 2>&1
-          rc=$?
-          set -e
-          echo "::group::build lane shard 2 output (tail)"; tail -200 build/ci-logs/ci-tier1-gates.log; echo "::endgroup::"
-          exit $rc
-
-      - name: Disk report (after tier-1 gates) — issue 1353
-        if: ${{ always() }}
-        run: scripts/ci/disk-report.sh "after just ci tier1 gates"
-
-      - name: Upload the disk transcript (after the gates) — issue 1353
-        if: ${{ always() && env.NROS_DISK_TRANSCRIPT != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: disk-transcript-after-tier1-gates-${{ matrix.shard }}
-          path: ${{ env.NROS_DISK_TRANSCRIPT }}
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload tier-1 gates log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: host-tier1-gates-ci-logs-${{ matrix.shard }}
-          path: build/ci-logs/
-          if-no-files-found: ignore
-          retention-days: 7
+  # And it could not fit its runner: ~45 min of setup and bindings per shard
+  # before any gate, then about 205 min of build-tier wall on 4 CPUs, so both
+  # shards hit the 120-minute cap every night from 2026-10-29 while gate.yml's
+  # three shards passed (dispatch 42848962439). Do not re-add it: a second run
+  # of the same gates buys no coverage. The LOCAL `just ci` / `just ci tier1`
+  # still run the gates (`check::default`).
 
   # phase-162 — the one lane that claims `rt-sched`. Executor levels on Linux
   # need `CAP_SYS_NICE` for `SCHED_FIFO` and `SCHED_DEADLINE`, and the job

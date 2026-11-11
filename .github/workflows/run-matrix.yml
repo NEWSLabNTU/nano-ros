@@ -269,7 +269,9 @@ jobs:
   # Zephyr workspace nor the ThreadX kernel the tier's own cover selects (81
   # undeclared capability skips). Building what the lane asserts measured +37
   # to +39 G against ~16 G free there. This runner has both the disk and the
-  # SDKs. Tier 1's `just check` half stays in host-tests' `gates` job.
+  # SDKs. Tier 1's `just check` half runs in gate.yml's scheduled jobs
+  # (`check-fast`, `check-fast-compile`, `check-build`); host-tests' copy of
+  # it was a duplicate and went in issue 2141.
   #
   # Same transcript as tier 2 above: `setup <scope>`, `build <scope>` (codegen,
   # then `build-test-fixtures lane=tier1`), then the tier's run half (`just ci

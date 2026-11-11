@@ -2,7 +2,9 @@
 # Issue 2100 — a gate's build output, released as soon as the gate is done
 # with it, on a lane that asks.
 #
-# `host-tests`' tier-1 gates job runs the 26 `check build` gates at once on a
+# `host-tests`' tier-1 gates job (removed in issue 2141 as a duplicate of
+# gate.yml's scheduled `check-build` shards, which split the lane three ways
+# and do not set the flag) ran the 26 `check build` gates at once on a
 # GitHub-hosted runner. Reclaim leaves about 75 G free there, and that is a
 # property of the hosted image, not something we provision. The gates' own
 # output summed to about 110 G, measured cold one gate at a time on
