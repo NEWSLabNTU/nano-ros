@@ -1242,6 +1242,11 @@ SHIPPED_EXEMPT = {
         "through its generated selection package or, for an owned entry, its "
         "generated adapter (RFC-0071 D19); no host shape exists"
     ),
+    "nros-board-mps2-an385-freertos": (
+        "cross-only, per-image shape: a FreeRTOS MPS2-AN385 image takes it "
+        "through its generated selection package or, for an owned entry, its "
+        "generated adapter (RFC-0071 D19); no host shape exists"
+    ),
 }
 
 # Where a crate's dependency tables live in a manifest, `target.*` included.
