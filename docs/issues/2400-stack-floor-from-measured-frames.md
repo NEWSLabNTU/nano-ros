@@ -294,5 +294,15 @@ talker` image:
   `NROS_FREERTOS_APP_STACK_KB=7`, and 65,536 passes. Without the row, the
   same 4,096 B only warns.
 
+- C++ frames come from GCC's `-fcallgraph-info=su` `.ci` files, which name
+  each function by its assembler (mangled) name. A `.su` line names a C++
+  function by its signature, and a lambda or template instance does not match
+  any demangled text. The generated message FFI crates (a cargo command
+  Corrosion does not run) get the same flags, and their bitcode is globbed in.
+- A `nros new ... --lang cpp --template action-server` image: OPEN static
+  15,220 B, unmeasured floor 16,744 B. The carrier's measured C++
+  action-server peak is 19,112 B, so the walk UNDER-states this image by
+  about 3.9 KB, which is why an unmeasured floor is never enforced.
+
 A FreeRTOS row is cheap to get: every carrier image prints `app task stack
 peak` at boot.
