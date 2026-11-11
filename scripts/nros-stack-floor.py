@@ -262,7 +262,7 @@ def bitcode_dirs_expanded(dirs: list[str]) -> list[str]:
     for d in dirs:
         if any(c in d for c in "*?["):
             globs.append(d)
-            out += sorted(p for p in _glob.glob(d, recursive=True) if Path(p).is_dir())
+            out += sorted(p for p in _glob.glob(d, recursive=True) if Path(p).is_dir())  # walk-ok: untracked cargo bitcode dirs under the build dir the caller names
         else:
             out.append(d)
     if globs and not out:
