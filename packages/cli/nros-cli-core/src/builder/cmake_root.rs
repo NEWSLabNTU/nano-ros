@@ -98,6 +98,51 @@ pub struct CmakeEntry {
     pub image_net: Option<String>,
 }
 
+/// RFC-0071 D19 — the deployment identity the OWNED entries of one configure
+/// state: the image's resolved locator and domain (`leaf_system`'s one
+/// resolver, the same one a generated entry's `LOCATOR` / `DOMAIN_ID` come
+/// from).
+///
+/// A generated entry carries these per call. An owned entry is a SUBDIR whose
+/// own `CMakeLists.txt` builds the image, so nothing carried them: the RTOS
+/// typed carrier (`nros_components_register_node(... TYPED DEPLOY <rtos>)`)
+/// baked its platform default (`tcp/10.0.2.2:7447`) instead of the image's
+/// router. The leaf road read them from the leaf's `system.toml` and applied
+/// them with `nros_apply_leaf_identity()`; the root applies them with the SAME
+/// macro, in the directory scope every subdirectory inherits.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OwnedIdentity {
+    /// `NROS_ENTRY_LOCATOR`, when the image states one.
+    pub locator: Option<String>,
+    /// `NROS_DOMAIN_ID`, when the image resolves one.
+    pub domain_id: Option<u32>,
+}
+
+impl OwnedIdentity {
+    /// The ONE identity the owned images of a configure share, from each
+    /// image's `(id, identity)`. A configure is one directory scope, so two
+    /// owned images stating different values cannot both be carried: that is
+    /// refused, naming both, rather than one silently dialling the other's
+    /// router. `None` when no owned image states anything.
+    pub fn agree(images: &[(String, OwnedIdentity)]) -> Result<Option<OwnedIdentity>, String> {
+        let mut it = images.iter();
+        let Some((first_id, first)) = it.next() else {
+            return Ok(None);
+        };
+        for (id, other) in it {
+            if other != first {
+                return Err(format!(
+                    "the owned entries of one configure state different identities: \
+                     image `{first_id}` {first:?}, image `{id}` {other:?}. A configure \
+                     is one directory scope, so its owned entries share one locator and \
+                     domain (RFC-0071 D19); give each its own bringup, or state the same"
+                ));
+            }
+        }
+        Ok((first.locator.is_some() || first.domain_id.is_some()).then(|| first.clone()))
+    }
+}
+
 /// Everything the emitted root needs that is not in [`Discovered`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CmakeRootSpec {
@@ -136,6 +181,10 @@ pub struct CmakeRootSpec {
     /// is a discovered SUBDIR and a second target of that name would collide.
     /// That is what makes D13's migration incremental.
     pub entries: Vec<CmakeEntry>,
+    /// RFC-0071 D19 — the identity this configure's OWNED entries state
+    /// ([`OwnedIdentity::agree`]), applied before the subdirectories are
+    /// added; `None` when it has none or states nothing.
+    pub owned_identity: Option<OwnedIdentity>,
     /// phase-481 W4 — whether [`IMAGE_ENV_FILE`] sits beside the root: the
     /// images on this configure state `[image.<id>] env` (they all resolve the
     /// same rows; the coordinate is keyed on them).
@@ -419,6 +468,22 @@ pub fn render(
     out.push_str("find_package(nano_ros REQUIRED COMPONENTS workspace)\n");
     out.push('\n');
 
+    if let Some(id) = &spec.owned_identity {
+        out.push_str(
+            "# RFC-0071 D19 — the identity this configure's OWNED entries state. An\n\
+             # owned entry is a subdirectory whose own CMakeLists builds the image, so\n\
+             # it reads these from the directory scope, applied by the macro a leaf's\n\
+             # system.toml goes through.\n",
+        );
+        if let Some(l) = &id.locator {
+            out.push_str(&format!("set(NROS_LEAF_LOCATOR \"{l}\")\n"));
+        }
+        if let Some(d) = id.domain_id {
+            out.push_str(&format!("set(NROS_LEAF_DOMAIN_ID \"{d}\")\n"));
+        }
+        out.push_str("nros_apply_leaf_identity()\n\n");
+    }
+
     // Relative like every other path here, so the file stays byte-identical
     // across machines (W3.c).
     let ws_rel = super::paths::relative_or_err(manifest_dir, &spec.workspace)?;
@@ -607,6 +672,7 @@ mod tests {
             workspace: root.to_path_buf(),
             system: "demo_bringup".to_string(),
             plan: true,
+            owned_identity: None,
             platform: "posix".to_string(),
             board: None,
             rmw: "zenoh".to_string(),
@@ -1122,6 +1188,54 @@ mod tests {
         assert!(body.contains("NO_PLAN"), "{body}");
         let planned = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
         assert!(!planned.contains("NO_PLAN"), "{planned}");
+    }
+
+    /// RFC-0071 D19 — an owned entry's image identity reaches its
+    /// subdirectory. Without it the RTOS typed carrier (issue 1795) baked its
+    /// platform default router instead of the image's `locator`.
+    #[test]
+    fn a_root_applies_its_owned_entries_identity_before_its_subdirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "a_pkg", true)]);
+        let mut s = spec(root);
+        s.owned_identity = Some(OwnedIdentity {
+            locator: Some("tcp/10.0.2.2:8381".to_string()),
+            domain_id: Some(3),
+        });
+        let body = render(&d, &root.join("build/posix"), &s).expect("renders");
+        let apply = body.find("nros_apply_leaf_identity()").expect(&body);
+        assert!(
+            body.contains("set(NROS_LEAF_LOCATOR \"tcp/10.0.2.2:8381\")"),
+            "{body}"
+        );
+        assert!(body.contains("set(NROS_LEAF_DOMAIN_ID \"3\")"), "{body}");
+        assert!(
+            body.find("find_package(nano_ros").unwrap() < apply,
+            "{body}"
+        );
+        assert!(apply < body.find("nano_ros_workspace(").unwrap(), "{body}");
+        let none = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
+        assert!(!none.contains("nros_apply_leaf_identity"), "{none}");
+    }
+
+    #[test]
+    fn owned_entries_of_one_configure_agree_on_their_identity_or_refuse() {
+        let at = |l: &str| OwnedIdentity {
+            locator: Some(l.to_string()),
+            domain_id: Some(0),
+        };
+        assert_eq!(OwnedIdentity::agree(&[]), Ok(None));
+        assert_eq!(
+            OwnedIdentity::agree(&[("a".into(), OwnedIdentity::default())]),
+            Ok(None),
+            "an image stating nothing applies nothing"
+        );
+        let same = [("a".into(), at("tcp/x:1")), ("b".into(), at("tcp/x:1"))];
+        assert_eq!(OwnedIdentity::agree(&same), Ok(Some(at("tcp/x:1"))));
+        let e = OwnedIdentity::agree(&[("a".into(), at("tcp/x:1")), ("b".into(), at("tcp/x:2"))])
+            .unwrap_err();
+        assert!(e.contains("`a`") && e.contains("`b`"), "{e}");
     }
 
     #[test]

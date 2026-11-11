@@ -169,6 +169,17 @@ pub fn build_rv64_cmake_example_rmw(
     binary_name: &str,
     rmw: super::Rmw,
 ) -> TestResult<PathBuf> {
+    // phase-535 W6 — a leaf migrated to a one-package workspace (RFC-0122 D3)
+    // answers through its `[[workspace_fixture]]` row; an owned entry's
+    // executable is the one its own CMakeLists names.
+    if let Some(r) = super::migrated_leaf_binary_named(
+        &format!("examples/rv-virt-threadx/{lang}/{name}"),
+        rmw,
+        crate::fixtures::migrated_leaf::LeafVariant::Plain,
+        binary_name,
+    ) {
+        return r;
+    }
     let root = project_root();
     let example_dir = root.join(format!("examples/rv-virt-threadx/{}/{}", lang, name));
 

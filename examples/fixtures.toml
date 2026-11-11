@@ -4058,14 +4058,19 @@ image = "qemu-armv7a-nuttx"
 build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-nuttx_c_talker_bringup/cmake"
 
 # issue 1795 — the NuttX TYPED CARRIER road (`DEPLOY nuttx`); see the
-# rv-virt-threadx typed-carrier row. Locator:
+# rv-virt-threadx typed-carrier row. A one-package workspace whose image builds
+# the package as its OWNED entry (RFC-0071 D19), so the carrier arm, not a
+# generated entry, links it. The image states its locator,
 # `alloc::port_of(NuttxArm, C, TypedCarrier)` = 8381.
-[[fixture]]
+[[workspace_fixture]]
+id = "nuttx-c-zenoh-typed-carrier"
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/qemu-armv7a-nuttx/c/typed-carrier"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8381" }
+bringup = "src/nuttx_c_typed_carrier_bringup"
+image = "qemu-armv7a-nuttx"
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx-nuttx_c_typed_carrier_bringup/cmake"
 
 [[workspace_fixture]]
 id = "nuttx-cpp-zenoh-talker"
@@ -4354,24 +4359,34 @@ cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 # threadx-riscv64 C/C++ row bypasses through `nano_ros_add_executable()`. Its
 # generated entry holds the component's node as a STATIC C++ object, so it is
 # the one image here that needs the never-exits C++ static-object ABI (issue
-# 1753). Locator: `alloc::port_of(ThreadxRiscv64, C, TypedCarrier)` = 9581.
-[[fixture]]
+# 1753). A one-package workspace whose image builds the package as its OWNED
+# entry (RFC-0071 D19), so the carrier arm links it. The image states its
+# locator, `alloc::port_of(ThreadxRiscv64, C, TypedCarrier)` = 9581.
+[[workspace_fixture]]
+id = "threadx-riscv64-c-zenoh-typed-carrier"
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/c/typed-carrier"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9581" }
+bringup = "src/riscv64_threadx_c_typed_carrier_bringup"
+image = "rv-virt-threadx"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-riscv64_threadx_c_typed_carrier_bringup/cmake"
 
 # issue 0680 — the discriminator for per-thread newlib `errno`. No message
 # dependency and no RMW traffic on purpose: it asserts a property of the C
 # library and the scheduler, so it must not gain a reason to fail for RMW
 # reasons. `rmw = "zenoh"` only because a row needs a coordinate; the image
-# never opens a session.
-[[fixture]]
+# never opens a session. A one-package workspace; its `main` is the image's
+# owned entry (RFC-0071 D19).
+[[workspace_fixture]]
+id = "threadx-riscv64-c-zenoh-errno-isolation"
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/rv-virt-threadx/c/errno-isolation"
+bringup = "src/riscv64_threadx_c_errno_isolation_bringup"
+image = "rv-virt-threadx"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-riscv64_threadx_c_errno_isolation_bringup/cmake"
 
 [[fixture]]
 platform = "threadx-riscv64"

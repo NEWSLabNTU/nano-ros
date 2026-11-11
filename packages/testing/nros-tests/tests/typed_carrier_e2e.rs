@@ -15,7 +15,10 @@
 //!
 //! No peer: the image's own publish lines are the evidence that the road
 //! linked, booted and drove the component on the board's executor. Each image
-//! dials `alloc::port_of(<platform>, C, TypedCarrier)`, baked by its fixture row.
+//! dials `alloc::port_of(<platform>, C, TypedCarrier)`, the `locator` its
+//! image states. Each example is a one-package workspace whose image builds the
+//! package as its OWNED entry (RFC-0071 D19, phase-535 W6), so the carrier arm,
+//! not a generated entry, links it.
 
 use nros_tests::{
     alloc::port_of,

@@ -1960,8 +1960,31 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     && !bringup_dir.join("launch").is_dir()
                     && !nros_orchestration_ir::model_location::generated_launch_dir(&bringup_dir)
                         .is_some_and(|d| d.is_dir());
+                // RFC-0071 D19 — the identity the OWNED images of this
+                // configure state (their packages are subdirectories, so no
+                // per-entry call carries it), by the resolver a generated
+                // entry's LOCATOR / DOMAIN_ID come from.
+                let mut owned = Vec::new();
+                for (_, bd, id, img) in coordinate_members(&bringup, &coord) {
+                    if !matches!(owned_entry_dir(&root, &id, &img), Ok(Some(_))) {
+                        continue;
+                    }
+                    let net = nros_orchestration_ir::leaf_system::read_image(&bd, &id)
+                        .map_err(|e| eyre::eyre!("{e}"))?
+                        .map(|s| s.network);
+                    owned.push((
+                        id,
+                        crate::builder::cmake_root::OwnedIdentity {
+                            locator: net.as_ref().and_then(|n| n.locator.clone()),
+                            domain_id: net.as_ref().and_then(|n| n.domain_id),
+                        },
+                    ));
+                }
+                let owned_identity = crate::builder::cmake_root::OwnedIdentity::agree(&owned)
+                    .map_err(|e| eyre::eyre!("{e}"))?;
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
                     entries: cmake_entries,
+                    owned_identity,
                     image_env,
                     workspace: root.clone(),
                     system: bringup.clone(),
@@ -4507,6 +4530,7 @@ fn plan_packages(
             let spec = crate::builder::cmake_root::CmakeRootSpec {
                 entries: Vec::new(),
                 image_env: false,
+                owned_identity: None,
                 workspace: root.to_path_buf(),
                 system: String::new(),
                 plan: true,
@@ -5830,15 +5854,26 @@ fn entries_for_other_boards(
         if tokens.is_empty() {
             continue;
         }
-        // The same three spellings `nano_ros_entry` itself accepts.
-        let mine = tokens
-            .iter()
-            .any(|t| t == board || t == platform || t.is_empty());
-        if !mine {
+        if !deploy_names_target(&tokens, board, platform) {
             out.insert(pkg.dir.clone());
         }
     }
     out
+}
+
+/// Whether a package's `DEPLOY` tokens name the board being built. The
+/// spellings `nano_ros_entry` and the RTOS typed carriers accept: the board,
+/// the platform, and the platform's FAMILY (`threadx` for `threadx-riscv64`,
+/// the token `nros_components_register_node(... DEPLOY threadx)` writes, which
+/// the carrier arm dispatches on through `nros_platform_family`). Without the
+/// family a ThreadX typed-carrier package was left out of its own image's
+/// root as "another board's entry" (issue 1795's road, RFC-0071 D19).
+fn deploy_names_target(tokens: &[String], board: &str, platform: &str) -> bool {
+    let family = crate::orchestration::board_descriptor::PlatformKind::from_kebab(platform)
+        .and_then(|k| k.cmake_deploy());
+    tokens
+        .iter()
+        .any(|t| t.is_empty() || t == board || t == platform || family.is_some_and(|f| t == f))
 }
 
 /// The workspace packages a launch plan names, once each, in plan order --
@@ -10542,6 +10577,39 @@ mod owned_entry_tests {
     //! one.
     use super::*;
     use crate::orchestration::image::ImageBlock;
+
+    /// A package deploying to the platform's FAMILY (`DEPLOY threadx`, the
+    /// RTOS typed carrier's spelling) belongs to a `threadx-riscv64` image;
+    /// one naming another board does not.
+    #[test]
+    fn a_deploy_token_naming_the_platform_family_is_this_targets() {
+        let t = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(deploy_names_target(
+            &t(&["threadx"]),
+            "rv-virt-threadx",
+            "threadx-riscv64"
+        ));
+        assert!(deploy_names_target(
+            &t(&["nuttx"]),
+            "qemu-armv7a-nuttx",
+            "nuttx"
+        ));
+        assert!(deploy_names_target(
+            &t(&["rv-virt-threadx"]),
+            "rv-virt-threadx",
+            "threadx-riscv64"
+        ));
+        assert!(!deploy_names_target(
+            &t(&["nuttx"]),
+            "rv-virt-threadx",
+            "threadx-riscv64"
+        ));
+        assert!(!deploy_names_target(
+            &t(&["mps2-an385-freertos"]),
+            "freertos-posix",
+            "freertos"
+        ));
+    }
 
     #[test]
     fn a_named_entry_resolves_by_directory_or_package_name_and_suppresses_generation() {

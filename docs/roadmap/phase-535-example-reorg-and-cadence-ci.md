@@ -624,6 +624,27 @@ and a test asks for it by name (`resolve_coord_variant`).
     before and after the move: its session over `custom://loopback` answers
     ConnectionFailed ([issue 2452](../issues/2452-c-custom-transport-loopback-session-connection-failed.md)).
     Its row was, and stays, build-only.
+- **RTOS C typed-carrier and errno-isolation (in review).**
+  `examples/qemu-armv7a-nuttx/c/typed-carrier`,
+  `examples/rv-virt-threadx/c/typed-carrier` and
+  `examples/rv-virt-threadx/c/errno-isolation` are one-package workspaces
+  whose package is each image's owned entry. The typed carriers keep
+  `nros_components_register_node(... TYPED DEPLOY <rtos>)` in their own
+  `CMakeLists.txt`: the road they witness (issue 1795) is the carrier arm, so
+  the bringup declares no `[[component]]` row, which would make `nros build`
+  generate an entry instead. Each `[[fixture]]` row is a `[[workspace_fixture]]`
+  row; the locator its `cmake_defs` passed is the image's `locator` now.
+  - An owned entry is a subdirectory of the generated cmake root, so no
+    per-entry call carried its image's locator and domain: the moved NuttX
+    carrier baked its platform default router (7447) instead of 8381. The
+    root now applies the identity its owned images state
+    (`cmake_root::OwnedIdentity`) with the macro a leaf's `system.toml` went
+    through (`nros_apply_leaf_identity`), and refuses owned images of one
+    configure that disagree.
+  - The root left the ThreadX carrier package out as "another board's
+    entry": its `DEPLOY threadx` is the platform FAMILY, which
+    `nano_ros_entry` and the carrier arms accept and the root's board filter
+    did not. The filter now accepts the family too.
 - **Feature demos (keep their own directories, to migrate in place to
   one-package workspaces).** Each one below is a hand-written `main`
   demonstrating an API that a generated entry does not express, and its test

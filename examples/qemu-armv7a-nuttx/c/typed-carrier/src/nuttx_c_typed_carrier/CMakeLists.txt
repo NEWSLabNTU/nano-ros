@@ -9,7 +9,8 @@ project(c_typed_carrier LANGUAGES C CXX)
 # `nano_ros_node_register`'s NuttX carrier arm, which synthesises a C++ entry
 # holding the component's node as a STATIC object. On a lane build
 # (`NROS_PLATFORM=nuttx_armv7a`) that arm never fired until issue 1795; this
-# leaf is its fixture.
+# package is its fixture. The bringup's image names this package as its OWNED
+# entry (RFC-0071 D19), so `nros build` generates no entry beside it.
 find_package(nano_ros REQUIRED)
 
 nano_ros_auto_add_library(c_typed_carrier_lib STATIC src/Talker.c)

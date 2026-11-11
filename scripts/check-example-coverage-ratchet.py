@@ -101,6 +101,28 @@ def _leaf_launch(leaf: Path) -> str:
     return "generated"
 
 
+def _owned_entry(bringup: Path, image: dict, lang: str) -> str:
+    """The `entry` field for a workspace image: `generated` unless the image
+    names an OWNED entry (RFC-0071 D19), and then whatever that package's own
+    sources are, by the leaf rule. An owned package is not necessarily a
+    hand-written `main`: the RTOS typed carrier (issue 1795) registers a
+    component with `DEPLOY <rtos>` and the carrier arm GENERATES its entry, which
+    is what the typed-carrier leaf counted as before it moved (phase-535 W6)."""
+    name = image.get("entry")
+    if not name:
+        return "generated"
+    src = bringup.parent
+    pkg = src / name
+    if not pkg.is_dir():
+        # By package name, as `owned_entry_dir` resolves it.
+        pkg = next((d for d in sorted(src.iterdir()) if d.is_dir() and any(
+            re.search(rf"<name>\s*{re.escape(name)}\s*</name>|^name\s*=\s*\"{re.escape(name)}\"",
+                      (d / f).read_text(errors="replace"), re.M)
+            for f in ("package.xml", "Cargo.toml") if (d / f).is_file())), None) \
+            if src.is_dir() else None
+    return _leaf_entry(pkg, lang) if pkg is not None else "manual"
+
+
 def fixture_tuple(root: Path, row: dict) -> tuple:
     lang = row.get("lang", "")
     if row.get("builder") == "west":
@@ -127,7 +149,7 @@ def workspace_tuple(root: Path, row: dict) -> tuple:
     image = images.get(row.get("image", ""), {}) if isinstance(images, dict) else {}
     shape = "single" if len(images) <= 1 else "multi"
     authored = "launch" in image or "default_launch" in system.get("system", {})
-    entry = "manual" if "entry" in image else "generated"
+    entry = _owned_entry(root / row.get("dir", "") / row.get("bringup", ""), image, lang)
     return (row.get("platform", ""), lang, driver, shape,
             "authored" if authored else "generated", entry)
 
@@ -195,9 +217,24 @@ def self_test() -> int:
         (bring / "system.toml").write_text(
             "[image.p_talker]\nboard = \"b\"\nlaunch = \"talker.launch.xml\"\n"
             "[image.p_listener]\nboard = \"b\"\nlaunch = \"listener.launch.xml\"\n")
+        # Two owned entries (RFC-0071 D19): a hand-written `main`, and a typed
+        # carrier whose entry its carrier arm generates.
+        for pkg, main in (("demo", "int main(void) { return 0; }\n"), ("carrier", None)):
+            (root / f"own/src/{pkg}/src").mkdir(parents=True)
+            if main:
+                (root / f"own/src/{pkg}/src/main.c").write_text(main)
+            else:
+                (root / f"own/src/{pkg}/src/Talker.c").write_text("/* component */\n")
+            b = root / f"own/src/{pkg}_bringup"
+            b.mkdir(parents=True)
+            (b / "system.toml").write_text(f'[image.q]\nboard = "b"\nentry = "{pkg}"\n')
         (root / ".config").mkdir()
         manifest = (
             '[[fixture]]\nplatform = "p"\nlang = "c"\ndir = "examples/a/c/talker"\n\n'
+            '[[workspace_fixture]]\nplatform = "q"\nlang = "c"\ndir = "own"\n'
+            'bringup = "src/demo_bringup"\nimage = "q"\n\n'
+            '[[workspace_fixture]]\nplatform = "r"\nlang = "c"\ndir = "own"\n'
+            'bringup = "src/carrier_bringup"\nimage = "q"\n\n'
             '[[workspace_fixture]]\nplatform = "p"\nlang = "rust"\ndir = "ws"\n'
             'bringup = "src/pubsub_bringup"\nimage = "p_talker"\n'
         )
@@ -206,6 +243,8 @@ def self_test() -> int:
         want = {
             ("p", "c", "cmake", "single", "generated", "manual"),
             ("p", "rust", "cargo", "multi", "authored", "generated"),
+            ("q", "c", "cmake", "single", "generated", "manual"),
+            ("r", "c", "cmake", "single", "generated", "generated"),
         }
         got = tuples(root)
         if got != want:
@@ -226,7 +265,7 @@ def self_test() -> int:
         if ("p", "c", "cmake", "single", "generated", "manual") not in read_floor(root / FLOOR):
             print("self-test: --write-floor removed a floor line")
             return 1
-    print("check-example-coverage-ratchet self-test: OK (4 cases)")
+    print("check-example-coverage-ratchet self-test: OK (5 cases)")
     return 0
 
 

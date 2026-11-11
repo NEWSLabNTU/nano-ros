@@ -5,16 +5,17 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ## Build
 
+A one-package workspace (RFC-0122 D3): the package is
+`src/riscv64_threadx_c_errno_isolation`, and
+`src/riscv64_threadx_c_errno_isolation_bringup` holds the `system.toml` that
+says what to build. Its `main` is the test, and the image names the package as
+its OWNED entry (RFC-0071 D19), so `nros build` generates no entry.
+
 ```bash
 cp -r examples/rv-virt-threadx/c/errno-isolation ~/my-errno-isolation && cd ~/my-errno-isolation
-cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build
-cmake --build build
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
+nros build rv-virt-threadx
 ```
-
-No `nros configure` here: a C/C++ leaf's message bindings are a CMake-time
-output. `-Dnano_ros_ROOT` is `find_package(nano_ros)`'s hint: it says where
-the checkout is, and nothing else. The board, the RMW and the domain come
-from `system.toml` (below), never from a `-D` flag.
 
 ## Run
 
@@ -23,10 +24,9 @@ QEMU / flashing steps live in the [rv-virt-threadx README](https://github.com/NE
 
 ## Config
 
-Board, RMW, domain and locator: `system.toml` beside `CMakeLists.txt`
-(`[image.rv-virt-threadx]` + `[system]`, RFC-0098 D3/D5). `find_package(nano_ros)`
-reads it while CMake configures, so switching board is editing that one
-line and re-configuring (`cmake -B build`); no build command and no
-manifest names a board.
+Board, RMW, domain and locator:
+`src/riscv64_threadx_c_errno_isolation_bringup/system.toml`
+(`[image.rv-virt-threadx]` + `[system]`, RFC-0098 D3/D5). No build command
+carries any of them, and the package names no board.
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).
