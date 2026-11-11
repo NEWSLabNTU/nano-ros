@@ -23,10 +23,10 @@ use nros_tests::{
 
 /// issue 0488 residue 1 — derived from the same `<kind>/<coordinate>` rule
 /// `just ros_editions build-fixture <edition>` builds with, instead of a
-/// hand-spelled leaf `target/`. The fixture is rebuilt per edition (its
-/// `generated/` messages are regenerated against that edition's defs), so the
-/// EDITION is the coordinate; the old path had no room for it and every edition
-/// overwrote the last.
+/// hand-spelled leaf `target/`. The fixture is rebuilt per edition (a copy of
+/// its workspace whose `[system] ros_edition` is that edition, phase-531 W7),
+/// so the EDITION is the coordinate; the old path had no room for it and every
+/// edition overwrote the last.
 fn fixture_bin(edition: &str) -> PathBuf {
     nros_tests::build_dir(
         nros_tests::kind::ROS_EDITIONS,

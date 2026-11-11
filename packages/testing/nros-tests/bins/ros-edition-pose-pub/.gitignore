@@ -1,6 +1,10 @@
-# Build artifacts. `generated/` is regenerated per ROS edition by
-# `just ros_editions build-fixture <distro>` (host humble, or an edition
-# container), so it is never committed.
+# Build artifacts. The per-edition builds run in a copy of this workspace
+# under the ros-editions build root (`just ros_editions build-fixture`), so
+# what lands here is a host build's. `generated/` is never committed.
 /target/
 /generated/
+/build/
 /Cargo.lock
+# The owned entry is its own cargo root (phase-531 W7); its lock is seeded
+# from the pin set on build, never committed.
+/src/*/Cargo.lock
