@@ -4,13 +4,9 @@ project(cpp_parameters LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# phase-426 W4 — this example declares parameters on THE store (the executor's
-# `nros_params` table, the one the six `rcl_interfaces/srv/*` servers read), so
-# it needs the `param_services` capability. Declared through the language-
-# neutral `NROS_FEATURES` surface, which is the C/C++ projection of
-# `system.toml` `[system].features`. Set BEFORE find_package(nano_ros) so the
-# axis reaches the import.
-set(NROS_FEATURES "param_services")
+# The `param_services` capability is the bringup's `[system] features`
+# (`../cpp_parameters_bringup/system.toml`): a workspace image imports the
+# runtime with those axes before this file runs.
 
 find_package(nano_ros REQUIRED)
 

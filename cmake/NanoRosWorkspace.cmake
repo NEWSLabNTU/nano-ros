@@ -211,11 +211,17 @@ endfunction()
 
 # ---------------------------------------------------------------------------
 # Public — `nano_ros_workspace(SYSTEM … BACKEND … PLATFORM … SUBDIRS …
-#                              [ORDER_FROM_DEPENDS])`
+#                              [ORDER_FROM_DEPENDS] [NO_PLAN])`
+#
+# `NO_PLAN` (RFC-0071 D19): every image this root builds is an OWNED entry and
+# the bringup has no launch file, so there is no model to plan. SYSTEM still
+# names the bringup, because its `[system] features` are the capability axes
+# the runtime is imported with; NO_PLAN skips only the configure hook and the
+# metadata step, which plan a model.
 # ---------------------------------------------------------------------------
 function(nano_ros_workspace)
     cmake_parse_arguments(_NRW
-        "ORDER_FROM_DEPENDS"
+        "ORDER_FROM_DEPENDS;NO_PLAN"
         "SYSTEM;BACKEND;PLATFORM;EDITION;NROS_REPO_DIR;NANO_ROS_ROOT;WORKSPACE_ROOT"
         "SUBDIRS;IMAGES"
         ${ARGN})
@@ -286,7 +292,7 @@ function(nano_ros_workspace)
     # W3's union) are each configured and none is located; a root that names
     # none (hand-written) configures every image and locates none.
     # Under `nros build` it finds the stamp current and returns at once.
-    if(_NRW_SYSTEM)
+    if(_NRW_SYSTEM AND NOT _NRW_NO_PLAN)
         nros_configure_hook_image(_nrw_image)
         if(NOT "${_nrw_image}" STREQUAL "")
             set(_nrw_image_arg IMAGE "${_nrw_image}")
@@ -473,7 +479,7 @@ function(nano_ros_workspace)
     # Optional: workspace metadata for `nros plan` consumption. SYSTEM
     # arg threads through; if absent we skip — workspaces without a
     # Bringup pkg are valid (single-Entry self-bringup mode).
-    if(_NRW_SYSTEM)
+    if(_NRW_SYSTEM AND NOT _NRW_NO_PLAN)
         include("${_nros_root}/cmake/nano_ros_workspace_metadata.cmake")
         nano_ros_workspace_metadata(SYSTEM "${_NRW_SYSTEM}"
                                     WORKSPACE_ROOT "${_NRW_WORKSPACE_ROOT}")

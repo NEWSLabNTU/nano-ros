@@ -1,0 +1,24 @@
+# What this example deploys to (RFC-0098 D3/D5) — the bringup of a one-package
+# workspace (RFC-0122 D3). The program is the owned entry
+# `src/native_cpp_safety_listener` (RFC-0071 D19): it keeps its own `main`,
+# which polls `Subscription::take_validated` (E2E CRC), so every image names
+# it and the bringup declares no component table.
+#
+# `features` turns on the E2E safety axis: a workspace image imports the
+# runtime with these axes, before the package's own CMakeLists.txt runs.
+
+[system]
+name = "native_cpp_safety_listener"
+rmw = "zenoh"
+domain_id = 0
+features = ["safety"]
+# The image a bare `nros configure` / `nros build` builds.
+default_images = ["linux"]
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`).
+[image_defaults]
+board = "linux"
+
+[image.linux]
+entry = "native_cpp_safety_listener"

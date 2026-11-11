@@ -2286,23 +2286,33 @@ bringup = "src/native_lifecycle_node_bringup"
 image = "linux"
 target_dir = "target-fixtures"
 
-# phase-535 W4 — two C++ leaves stay too, for tests that need what the
+# phase-535 W4 — two C++ examples stay too, for tests that need what the
 # workspace program does not have: `cpp/service-client` is a hand-written
 # `main` (workspace_metadata's census-from-an-application case, whose first
 # blocking call is `wait_for_service`), and `cpp/action-client` reads
 # `NROS_TEST_GOAL_ORDER` (linux_api's goal-rejection case). Zenoh only; their
-# pair cells run the workspace images.
-[[fixture]]
+# pair cells run the workspace images. phase-535 W6 made each a one-package
+# workspace whose `main` is its image's OWNED entry (RFC-0071 D19); an owned
+# entry answers for its own directory, never the pair image of its role.
+[[workspace_fixture]]
+id = "linux-cpp-zenoh-service-client"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/service-client"
+bringup = "src/cpp_service_client_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-cpp_service_client_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-cpp-zenoh-action-client"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/action-client"
+bringup = "src/cpp_action_client_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-cpp_action_client_bringup/cmake"
 
 # phase-535 W6 — the Rust listener, service and action examples are one-node
 # workspaces (RFC-0122 D3), each its own directory, because the opt-in
@@ -3770,25 +3780,33 @@ image = "linux_cyclonedds"
 build_subdir = "build/posix-cyclonedds-linux-native_c_talker_bringup/cmake"
 
 # Issue 0073 — C E2E-safety listener (polls rclc_polling_subscription_take_validated).
-# Its CMakeLists forces NROS_SAFETY_E2E=ON, so the harness build (zenoh only —
-# the CRC path) needs no extra flag. Consumed by tests/safety_e2e.rs::
+# Its bringup declares `features = ["safety"]` (phase-535 W6: a one-package
+# workspace, owned entry), so the harness build (zenoh only — the CRC path)
+# needs no extra flag. Consumed by tests/safety_e2e.rs::
 # test_c_safety_listener_validates_crc (paired with the safety talker).
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-c-zenoh-safety-listener"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/safety-listener"
+bringup = "src/native_c_safety_listener_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-native_c_safety_listener_bringup/cmake"
 
 # Issue 0073 / phase-259 W3 — C++ E2E-safety listener (polls
-# Subscription::take_validated). CMakeLists declares `set(NROS_FEATURES
-# "safety")` (phase-261 W5 — lowers to NROS_SAFETY_E2E=ON; zenoh only, the CRC
-# path). Consumed by tests/safety_e2e.rs::
+# Subscription::take_validated). Its bringup declares `features = ["safety"]`
+# (lowers to NROS_SAFETY_E2E=ON; zenoh only, the CRC path). Consumed by tests/safety_e2e.rs::
 # test_cpp_safety_listener_validates_crc (paired with the safety talker).
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-cpp-zenoh-safety-listener"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/safety-listener"
+bringup = "src/native_cpp_safety_listener_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-native_cpp_safety_listener_bringup/cmake"
 
 # Issue 0454 / phase-354 W3 — the raw-goal WIRE proof. Not an example (it is a
 # regression probe, so it lives under packages/testing/ per the examples-are-
@@ -3815,11 +3833,15 @@ dir = "packages/testing/nros-tests/bins/action-raw-goal-probe"
 # phases after PR #1064 moved it onto `rclc_executor_node_init` — the row
 # compiled and linked in every lane that built it, and no lane ever ran the
 # binary. A build-only row reads as coverage and is not.
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-c-zenoh-custom-msg"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/custom-msg"
+bringup = "src/native_c_custom_msg_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-native_c_custom_msg_bringup/cmake"
 
 [[fixture]]
 platform = "linux"
@@ -3827,17 +3849,25 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/custom-platform"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-c-zenoh-custom-transport-loopback"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/custom-transport-loopback"
+bringup = "src/native_c_custom_transport_loopback_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-native_c_custom_transport_loopback_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-c-zenoh-logging"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/logging"
+bringup = "src/native_c_logging_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-native_c_logging_bringup/cmake"
 
 # RFC-0071 D19 (issue 2406) — one owned entry, the application with its own
 # `main` that issue 1556's census test runs, built per RMW image.
@@ -3871,36 +3901,42 @@ bringup = "src/cpp_talker_bringup"
 image = "linux_cyclonedds"
 build_subdir = "build/posix-cyclonedds-linux-cpp_talker_bringup/cmake"
 
-[[fixture]]
+[[workspace_fixture]]
 id = "cpp-parameters"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/parameters"
-target = "cpp_parameters"
+bringup = "src/cpp_parameters_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-cpp_parameters_bringup/cmake"
 
 # phase-277 W5 — C sibling of cpp/parameters (the parameter/clock demo block
 # extracted from linux/c/talker when the talker slimmed to chatter-only).
-[[fixture]]
+[[workspace_fixture]]
 id = "c-parameters"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/linux/c/parameters"
-target = "c_parameters"
+bringup = "src/c_parameters_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-c_parameters_bringup/cmake"
 
 # Issue 2304 — the SAME C example on Cyclone. Every C parameter row was zenoh,
 # so the cmake road's missing `rcl_interfaces` descriptors (the parameter
 # services and `/parameter_events`) never had a verdict: the example exited 1
 # right after `rclc_parameter_server_init_with_option` while its zenoh twin
 # passed. Consumed by tests/parameters_roundtrip.rs (the `c-cyclonedds` case).
-[[fixture]]
+[[workspace_fixture]]
 id = "c-parameters-cyclonedds"
 platform = "linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/linux/c/parameters"
-target = "c_parameters"
+bringup = "src/c_parameters_bringup"
+image = "linux_cyclonedds"
+build_subdir = "build/posix-cyclonedds-linux-c_parameters_bringup/cmake"
 
 # Phase 275 W2 (#102 H3) — linux/cpp variant examples that shipped with zero
 # fixtures. Standard `-DNROS_RMW` path (default zenoh); `target=` mirrors the
@@ -3928,12 +3964,15 @@ rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/transform-poc"
 target = "transform_poc"
 
-[[fixture]]
+[[workspace_fixture]]
+id = "linux-cpp-zenoh-logging"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
 dir = "examples/linux/cpp/logging"
-target = "cpp_logging"
+bringup = "src/cpp_logging_bringup"
+image = "linux"
+build_subdir = "build/posix-zenoh-linux-cpp_logging_bringup/cmake"
 
 # ===========================================================================
 # freertos — C / C++ (cmake). Zenoh only (no DDS C/C++ siblings pre-collapse).

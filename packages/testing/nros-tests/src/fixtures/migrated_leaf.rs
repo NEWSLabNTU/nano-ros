@@ -51,6 +51,30 @@ pub struct LeafRow {
     pub env: String,
 }
 
+impl LeafRow {
+    /// Does this row's image build an OWNED entry (RFC-0071 D19), the
+    /// package's own hand-written `main`, rather than the generated
+    /// `<image>_entry`? The one spelling of that test: the binary locator and
+    /// [`owns_its_entry`] both ask it.
+    pub fn builds_owned_entry(&self) -> bool {
+        self.entry != format!("{}_entry", self.image.replace(['-', '.', '/'], "_"))
+    }
+}
+
+/// Does this migrated leaf build `rmw` as its OWN program (an owned entry)?
+/// Such a leaf answers for itself even where its case name is also a pair
+/// role a language workspace builds (`linux/cpp/service-client`): its
+/// hand-written `main` is what its callers ask for, and the workspace pair
+/// image is a different program. A row lookup that fails answers `true`, so
+/// the leaf's own selection reports the error instead of a different binary
+/// answering quietly.
+pub fn owns_its_entry(dir: &str, rmw: &str) -> bool {
+    is_migrated(dir)
+        && rows_at(dir).map_or(true, |rows| {
+            rows.iter().any(|r| r.rmw == rmw && r.builds_owned_entry())
+        })
+}
+
 /// Which row of a migrated leaf a caller means. See the module docs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LeafVariant<'a> {

@@ -105,6 +105,11 @@ pub struct CmakeRootSpec {
     pub workspace: PathBuf,
     /// Bringup package name — `nano_ros_workspace(SYSTEM …)`.
     pub system: String,
+    /// Whether the bringup has a model to plan. `false` for a configure whose
+    /// images all build OWNED entries and whose bringup has no launch file
+    /// (RFC-0071 D19): the root still names SYSTEM, whose `[system] features`
+    /// are the runtime's capability axes, and adds `NO_PLAN`.
+    pub plan: bool,
     /// nano-ros platform token (`posix`, `freertos`, `nuttx`, …).
     pub platform: String,
     /// nano-ros board id, or `None` for a host build that names none.
@@ -432,6 +437,9 @@ pub fn render(
     // Bringup pkg are valid"), which is exactly that case.
     if !spec.system.is_empty() {
         out.push_str(&format!("    SYSTEM   {}\n", spec.system));
+        if !spec.plan {
+            out.push_str("    NO_PLAN\n");
+        }
     }
     // phase-530 W5 (RFC-0120 D5) — the images this root was written for, so a
     // plain `cmake -S` of it (no `nros build` to pass `-DNROS_CONFIGURED_IMAGE`)
@@ -598,6 +606,7 @@ mod tests {
             image_env: false,
             workspace: root.to_path_buf(),
             system: "demo_bringup".to_string(),
+            plan: true,
             platform: "posix".to_string(),
             board: None,
             rmw: "zenoh".to_string(),
@@ -1095,6 +1104,24 @@ mod tests {
         let body = render(&d, &root.join("build/posix"), &s).expect("renders");
         assert!(body.contains("linux_entry"), "{body}");
         assert!(!body.contains("zephyr_entry"), "{body}");
+    }
+
+    /// RFC-0071 D19 — a root with nothing to plan still names its bringup,
+    /// whose `[system] features` are the runtime's capability axes, and says
+    /// NO_PLAN. Dropping SYSTEM instead built a C parameters example without
+    /// `param_services`, which `nano_ros_workspace` refuses at configure.
+    #[test]
+    fn a_root_with_nothing_to_plan_keeps_its_system_and_says_no_plan() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "a_pkg", true)]);
+        let mut s = spec(root);
+        s.plan = false;
+        let body = render(&d, &root.join("build/posix"), &s).expect("renders");
+        assert!(body.contains("SYSTEM   demo_bringup"), "{body}");
+        assert!(body.contains("NO_PLAN"), "{body}");
+        let planned = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
+        assert!(!planned.contains("NO_PLAN"), "{planned}");
     }
 
     #[test]

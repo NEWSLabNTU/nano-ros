@@ -155,11 +155,11 @@ stack-all top="10":
     # No native Rust example: `linux/rust/*` are one-package workspaces since
     # phase-531/phase-535 W6, and stack-analysis.sh builds a cargo package
     # directory.
-    # C examples (native)
+    # C examples (native). `c/custom-msg` and `c/custom-transport-loopback`
+    # left with phase-535 W6: one-package workspaces, and stack-analysis-c.sh
+    # configures a CMake project directory.
     for example in \
         examples/linux/c/talker \
-        examples/linux/c/custom-msg \
-        examples/linux/c/custom-transport-loopback \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis-c.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
