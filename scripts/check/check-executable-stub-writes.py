@@ -28,7 +28,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CHMOD_EXEC = re.compile(r"from_mode\(\s*0o7[0-7][0-7]\s*\)")
-CFG_TEST = re.compile(r"^\s*#\[cfg\(test\)\]")
+CFG_ATTR = re.compile(r"^\s*#\[cfg\((?P<pred>.*)\)\]")
+STRING = re.compile(r'"[^"]*"')
+TEST_WORD = re.compile(r"\btest\b")
+
+
+def is_test_cfg(line: str) -> bool:
+    """A `#[cfg(...)]` that compiles only under `test` (issue 2450).
+
+    `#[cfg(test)]` and `#[cfg(all(test, unix))]` both are. The first version
+    matched the literal `#[cfg(test)]` alone, so a module under
+    `#[cfg(all(test, unix))]` was never read, and its hand-written stub failed
+    3 runs in 30 with ETXTBSY. Not a test cfg: `test` only inside a string
+    (`feature = "test-harness"`), under `not(`, or one arm of a top-level
+    `any(` (that code is also built without `test`)."""
+    m = CFG_ATTR.match(line)
+    if not m:
+        return False
+    pred = STRING.sub('""', m.group("pred")).strip()
+    if not TEST_WORD.search(pred) or re.search(r"not\(\s*test\b", pred):
+        return False
+    return pred == "test" or pred.startswith("all(")
 EXEMPT = {
     "packages/cli/nros-launcher/src/test_support.rs": "the helper itself",
     "packages/testing/nros-tests/src/process.rs":
@@ -40,7 +60,7 @@ def offenders(rel: str, text: str) -> list[int]:
     in_test = "/tests/" in f"/{rel}"
     out = []
     for n, line in enumerate(text.split("\n"), 1):
-        if CFG_TEST.match(line):
+        if is_test_cfg(line):
             in_test = True
         if in_test and CHMOD_EXEC.search(line) and not line.lstrip().startswith("//"):
             out.append(n)
@@ -55,6 +75,13 @@ def self_test() -> None:
     integ = "fn s() { set_permissions(&p, Permissions::from_mode(0o775)).unwrap(); }\n"
     assert offenders("a/tests/y.rs", integ) == [1], "an integration-test chmod was missed"
     assert offenders("a/tests/y.rs", "// from_mode(0o755) in a comment\n") == []
+    # Issue 2450: a compound test cfg is a test cfg; these others are not.
+    allcfg = "#[cfg(all(test, unix))]\nmod t {\n  fn s() { set_permissions(&p, Permissions::from_mode(0o755)); }\n}\n"
+    assert offenders("a/src/x.rs", allcfg) == [3], offenders("a/src/x.rs", allcfg)
+    for cfg in ('#[cfg(not(test))]', '#[cfg(any(test, feature = "x"))]',
+                '#[cfg(all(feature = "test-harness", unix))]'):
+        txt = f"{cfg}\nfn s() {{ set_permissions(&p, Permissions::from_mode(0o755)); }}\n"
+        assert offenders("a/src/x.rs", txt) == [], cfg
 
 
 def main() -> int:
