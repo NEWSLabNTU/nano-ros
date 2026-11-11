@@ -1,7 +1,7 @@
 // See Talker.hpp. The generated entry runs `rclcpp::init`, creates the node
 // and spins; this file holds only the node.
 
-#include "Talker.hpp"
+#include "threadx_linux_cpp_talker/Talker.hpp"
 
 #include <cstdio>
 
