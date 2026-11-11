@@ -16,7 +16,7 @@ use log::{error, info};
 use nros::prelude::*;
 
 fn main() {
-    ros_edition_pose_pub_nros_selection::nros_board_linux::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
     env_logger::init();
 
     let ctx = nros::init().expect("nros::init failed");

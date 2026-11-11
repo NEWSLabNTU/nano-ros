@@ -27,4 +27,3 @@ packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/Cargo.toml  loggin
 packages/testing/nros-tests/bins/logging-smoke-threadx-linux/Cargo.toml  logging_smoke_threadx_linux_nros_selection
 packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/Cargo.toml  logging_smoke_threadx_riscv64_nros_selection
 packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux/Cargo.toml  pool_exhaustion_threadx_linux_nros_selection
-packages/testing/nros-tests/bins/ros-edition-pose-pub/Cargo.toml  ros_edition_pose_pub_nros_selection

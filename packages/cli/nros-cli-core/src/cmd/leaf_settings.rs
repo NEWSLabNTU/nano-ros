@@ -2459,10 +2459,10 @@ mod board_crate_tests {
         // mps2-an385 bare-metal C/C++ non-talker examples (phase-535 W6: cargo
         // owned entries of one-package workspaces), 26 -> 23 for the
         // `nros-bench` `large-msg-baremetal`, `loan-copy-count` and
-        // `wake-latency-cortex-m3` programs (W7: owned entries with no
-        // component).
+        // `wake-latency-cortex-m3` programs and 23 -> 22 for
+        // `bins/ros-edition-pose-pub` (W7: owned entries with no component).
         assert!(
-            on_selection >= 23,
+            on_selection >= 22,
             "only {on_selection} leaves on the selection package"
         );
     }

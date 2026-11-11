@@ -37,9 +37,15 @@ image-check distro="jazzy":
     echo "image-check {{distro}}: PASS"
 
 # Build the nano-ros CycloneDDS PoseStamped publisher fixture against a ROS
-# edition's message definitions (W5 residual). geometry_msgs is regenerated from
-# the edition's defs (in-container when the image exists, else host ROS), then
-# the publisher is built on the host. Consumed by the nano-ros interop lane.
+# edition (W5 residual). Consumed by the nano-ros interop lane.
+#
+# The fixture is a one-package workspace whose package is the OWNED entry of
+# its image (phase-531 W7, RFC-0071 D19), and a workspace generates its
+# messages for ONE edition, refusing an image of another (issue 2409). So, as
+# `build-e2e-fixtures` does for the six examples, each edition builds a COPY of
+# the workspace whose `[system] ros_edition` is this edition, under the
+# edition's build root, through `nros build`. The binary is copied to
+# `debug/ros-edition-pose-pub`, the path the interop lane reads.
 [group("test")]
 build-fixture distro="jazzy":
     #!/usr/bin/env bash
@@ -48,40 +54,27 @@ build-fixture distro="jazzy":
     # shellcheck source=scripts/build/cargo.sh
     source "{{justfile_directory()}}/scripts/build/cargo.sh"
     NROS="$(nros_cli_bin)" || { echo "error: nros CLI not found — run \`just setup-cli\`" >&2; exit 1; }
-    if docker image inspect nano-ros-ros:{{distro}} >/dev/null 2>&1; then
-        echo "regenerating geometry_msgs against {{distro}} defs (container)"
-        docker run --rm \
-            -v "$NROS":/usr/local/bin/nros:ro \
-            -v "$FIX":/fix \
-            nano-ros-ros:{{distro}} \
-            bash -lc 'source /opt/ros/{{distro}}/setup.bash && cd /fix && nros dev codegen rust --force'
-    else
-        echo "image nano-ros-ros:{{distro}} absent — generating against host ROS"
-        ( cd "$FIX" && "$NROS" dev codegen rust --force )
-    fi
-    # issue 0488 residue 1 — into `$NROS_BUILD_ROOT`, not the fixture's own leaf.
-    # Same reasoning as the e2e loop below: `generated/` is rewritten per edition,
-    # so this cannot share a lane group, but it has no business writing
-    # `packages/testing/**/target/` either. Coordinate = the edition.
+    # issue 0488 residue 1 — into `$NROS_BUILD_ROOT`, not the fixture's own
+    # dir: the copy's messages are this edition's, so it cannot share a lane
+    # group. Coordinate = the edition.
     # shellcheck source=scripts/build/build-root.sh
     source "{{justfile_directory()}}/scripts/build/build-root.sh"
     FIX_TARGET_DIR="$(nros_build_dir "$NROS_KIND_ROS_EDITIONS" "pose-pub-{{distro}}")"
-    mkdir -p "$FIX_TARGET_DIR"
-    # shellcheck source=scripts/build/cargo.sh
-    source "{{justfile_directory()}}/scripts/build/cargo.sh"
-    nros_seed_leaf_lock "$FIX"
-    # Issue 1305 — the leaf names no board or RMW; its `system.toml` image does.
-    # `ws leaf-system --write-settings` writes the image's selection package and
-    # settings file WITHOUT re-running codegen (a `nros configure` here would
-    # regenerate `generated/` from the HOST's definitions, undoing the edition's
-    # above). Cargo then builds through that file, from the directory above the
-    # leaf, as `nros build` does (scripts/build/leaf-settings.sh records why).
-    SETTINGS="$(NROS_REPO_DIR="{{justfile_directory()}}" "$NROS" dev image leaf-system --write-settings "$FIX" \
-        | sed -n 's/^NROS_LEAF_SETTINGS=//p')"
-    [ -f "$SETTINGS" ] || { echo "error: no settings file for $FIX" >&2; exit 1; }
-    ( cd "$(dirname "$FIX")" && cargo build --manifest-path "$FIX/Cargo.toml" \
-        --config "$SETTINGS" --target-dir "$FIX_TARGET_DIR" )
-    # profile-literal-ok: unprofiled: the docker edition fixtures build with a plain `cargo build`
+    # profile-literal-ok: unprofiled: `nros build` of a host image with no `profile`, so debug/ IS the derived dir
+    mkdir -p "$FIX_TARGET_DIR/debug"
+    BRINGUP=ros_edition_pose_pub_bringup
+    WS="$FIX_TARGET_DIR/ws"
+    rm -rf "$WS/src"
+    mkdir -p "$WS"
+    cp -r "$FIX/src" "$WS/src"
+    cp "$FIX/.colcon_workspace" "$WS/"
+    sed -i "s/^\[system\]\$/[system]\nros_edition = \"{{distro}}\"/" "$WS/src/$BRINGUP/system.toml"
+    grep -q '^ros_edition = "{{distro}}"$' "$WS/src/$BRINGUP/system.toml" \
+        || { echo "error: could not set ros_edition = {{distro}} in the copy" >&2; exit 1; }
+    "$NROS" build "$BRINGUP:linux" --workspace "$WS" -- --target-dir "$WS/target"
+    # profile-literal-ok: unprofiled: as above
+    cp -f "$WS/target/debug/ros-edition-pose-pub" "$FIX_TARGET_DIR/debug/ros-edition-pose-pub"
+    # profile-literal-ok: unprofiled: as above
     echo "build-fixture {{distro}}: $FIX_TARGET_DIR/debug/ros-edition-pose-pub"
 
 # Build the six native example nodes (talker/listener/service-{server,client}/

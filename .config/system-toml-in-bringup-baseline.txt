@@ -50,7 +50,6 @@ packages/testing/nros-tests/bins/logging-smoke-threadx-linux/system.toml
 packages/testing/nros-tests/bins/logging-smoke-threadx-riscv64/system.toml
 packages/testing/nros-tests/bins/matched-events-probe-c/system.toml
 packages/testing/nros-tests/bins/pool-exhaustion-threadx-linux/system.toml
-packages/testing/nros-tests/bins/ros-edition-pose-pub/system.toml
 packages/testing/nros-tests/bins/rosout-talker-c/system.toml
 packages/testing/nros-tests/bins/rosout-talker-cpp/system.toml
 packages/testing/nros-tests/bins/service-info-client-cpp/system.toml
