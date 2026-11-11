@@ -61,6 +61,10 @@ first project (`nros new` then build) and the Tutorial's FreeRTOS C talker
 build and run under QEMU; the image's compressed size is printed and under
 the D7 budget.
 
+Found on the way: [issue 2444](../issues/2444-build-offline-flag-misses-metadata-probe.md)
+— offline, the first project builds only with `NROS_OFFLINE=1`; `nros build
+--offline` still resolves crates.io in the metadata probe.
+
 ### W3 — The `starter-zephyr` target
 
 Gate: Q4. `starter` plus the Zephyr SDK and the allowlisted workspace.
