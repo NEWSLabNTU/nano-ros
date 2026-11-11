@@ -840,9 +840,12 @@ toolchain-change-reconfigure:
 # and includes that path on every later configure, whatever
 # -DCMAKE_TOOLCHAIN_FILE says. PR #3500's rename stranded every NuttX build
 # dir and stopped tier 2; #3513 left the old name as a forward. The verdict is
-# a committed list (`.config/cmake-toolchain-paths.txt`), exact in any clone;
-# the history cross-check is NOT VERIFIED in a shallow one (issue 1476), exit
-# 78 into the skip ledger. Buildless, ~0.1 s, self-tests first.
+# a committed list (`.config/cmake-toolchain-paths.txt`), exact in any clone.
+# A change deleting a file AND its line is caught against the list at ONE
+# baseline commit, the one `submodule-pins` uses (pin-baseline.sh), never by a
+# history walk (a treeless clone fetched a tree per commit). No baseline
+# locally: NOT VERIFIED, exit 78 into the skip ledger; in CI a failure naming
+# `pin-baseline.sh provide`. Buildless, ~0.1 s, self-tests first.
 [private]
 [group('needs:git-history')]
 toolchain-paths-persist:
