@@ -597,6 +597,10 @@ fn every_example_leaf_has_package_xml() {
 /// D3)? A migrated leaf (`examples/zephyr/rust/talker`) declares its node
 /// there, as a C/C++ bringup does, so the package's own manifest carries no
 /// `[package.metadata.nros.*]` table to classify by.
+///
+/// An image's OWNED entry (RFC-0071 D19, `[image.<id>] entry = "<pkg>"`) is
+/// declared there the same way: phase-535 W6's linux Rust demos keep their
+/// hand-written `main` as the entry package their bringup names.
 fn declared_by_a_bringup(leaf: &Path) -> bool {
     let Some(name) = fs::read_to_string(leaf.join("Cargo.toml"))
         .ok()
@@ -615,10 +619,20 @@ fn declared_by_a_bringup(leaf: &Path) -> bool {
         fs::read_to_string(e.path().join("system.toml"))
             .ok()
             .and_then(|b| toml::from_str::<toml::Value>(&b).ok())
-            .and_then(|v| v.get("component")?.as_array().cloned())
-            .is_some_and(|rows| {
-                rows.iter()
-                    .any(|r| r.get("pkg").and_then(|p| p.as_str()) == Some(name.as_str()))
+            .is_some_and(|v| {
+                let names = |r: &toml::Value, key: &str| {
+                    r.get(key).and_then(|p| p.as_str()) == Some(name.as_str())
+                };
+                let component = v
+                    .get("component")
+                    .and_then(|c| c.as_array())
+                    .is_some_and(|rows| rows.iter().any(|r| names(r, "pkg")));
+                let owned_entry = v
+                    .get("image")
+                    .and_then(|i| i.as_table())
+                    .is_some_and(|images| images.values().any(|r| names(r, "entry")))
+                    || v.get("image_defaults").is_some_and(|d| names(d, "entry"));
+                component || owned_entry
             })
     })
 }
