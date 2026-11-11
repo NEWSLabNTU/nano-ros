@@ -615,7 +615,13 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &
         // `nano_rosConfig.cmake` sits at the checkout root.
         .arg(format!("-Dnano_ros_DIR={}", nano_ros.display()))
         // Always passed, so a cache from an earlier answer never decides it.
-        .arg(format!("-DNROS_RMW={rmw}"));
+        .arg(format!("-DNROS_RMW={rmw}"))
+        // Issue 2318 — the probe's own profile: no debuginfo, since nothing
+        // reads it. Always passed, like NROS_RMW, so a cache keeps no other.
+        .arg(format!(
+            "-DNROS_CARGO_PROFILE={}",
+            nros_cargo_profile::PROBE.name
+        ));
     // phase-489 W4 — the C/C++ half of issue 0522. Every workspace's probe
     // project compiled its OWN copy of the runtime staticlib (`nros-cpp` with
     // `metadata-mode`, plus the nested sizes-probe builds): ~60-120 s and

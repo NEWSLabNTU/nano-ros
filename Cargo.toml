@@ -738,6 +738,17 @@ lto = "off"
 codegen-units = 1
 panic = "abort"
 
+# Issue 2318 — the C/C++ metadata probe's profile: `nros-relwithdebinfo` with
+# no debuginfo. The probe runs on the host and exits; nothing reads its DWARF,
+# which was most of the ~1 GB each C/C++ workspace's probe target dir held.
+[profile.nros-probe]
+inherits = "release"
+opt-level = 2
+debug = 0
+lto = "off"
+codegen-units = 16
+panic = "abort"
+
 # Patches for generated crates that use version = "*"
 [patch.crates-io]
 nros-core = { path = "packages/core/nros-core" }
