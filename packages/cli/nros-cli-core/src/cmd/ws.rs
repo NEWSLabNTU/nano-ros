@@ -5817,7 +5817,7 @@ fn central_patch_root(
     })
 }
 
-fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
+pub(crate) fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
     let nrp = nano_ros_path
         .canonicalize()
         .unwrap_or_else(|_| nano_ros_path.to_path_buf());

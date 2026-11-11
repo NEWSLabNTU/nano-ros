@@ -257,14 +257,16 @@ fn path_tag(p: &Path) -> String {
 ///
 /// 1. `<build root>/metadata-probe` — RFC-0070 R2's `<root>/<kind>` shape, the root
 ///    being `nros_build_paths::build_root` (`$NROS_BUILD_ROOT`, checkout-scoped).
-/// 2. `<nano-ros workspace>/build/metadata-probe` — the same default the shell's
+/// 2. `<nano-ros checkout>/build/metadata-probe` — the same default the shell's
 ///    `nros_build_root` uses (`<repo>/build`), reached through the checkout the
 ///    harness ALREADY points its `nros` path dep at, so this needs no new input.
 ///    Every probe in a checkout shares one dir.
-/// 3. `<probe-root>/metadata-probe/.shared-target` — when (2) cannot be created,
-///    which is the out-of-tree case where the nano-ros workspace is a read-only
-///    installed SDK. Still shares within a workspace, and is writable by
-///    construction because the per-component harness dirs already live there.
+/// 3. `<probe-root>/metadata-probe/.shared-target` — when the nano-ros
+///    workspace is an INSTALLED SDK (no `.git`) and `NROS_BUILD_ROOT` is unset,
+///    or (2) cannot be created. An install is never written into, writable or
+///    not (issue 2445: `nros_build_paths::shared_build_root`). Still shares
+///    within a workspace, and is writable by construction because the
+///    per-component harness dirs already live there.
 ///
 /// (2) rather than "(1) or per-component" on purpose: `NROS_BUILD_ROOT` is a
 /// function-local default in `build-root.sh`, not an exported variable, so a
@@ -305,7 +307,8 @@ fn probe_target_dir(o: &MetadataBuildOptions) -> PathBuf {
 /// within one checkout stays — that is issue 0522's and phase-489 W4's reuse,
 /// and it is correct once the uplift slot is per harness ([`probe_bin_name`]).
 pub(crate) fn shared_probe_dir(nano_ros: &Path, kind: &str) -> Option<PathBuf> {
-    shared_probe_dir_at(&nros_build_paths::build_root(nano_ros), kind)
+    // Issue 2445: never inside an installed SDK root, writable or not.
+    shared_probe_dir_at(&nros_build_paths::shared_build_root(nano_ros)?, kind)
 }
 
 /// [`shared_probe_dir`] under an already-derived build root, so the rule is

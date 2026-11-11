@@ -172,6 +172,36 @@ pub fn build_root(here: &std::path::Path) -> PathBuf {
     build_root_in(here, std::env::var_os("NROS_BUILD_ROOT").as_deref())
 }
 
+/// Issue 2445 — the build root a SHARED build cache under nano-ros root `here`
+/// may use, or `None` when there is none and the caller keeps its cache with
+/// the project.
+///
+/// `NROS_BUILD_ROOT` set: [`build_root`], wherever `here` is. Unset: `here/build`
+/// for a CHECKOUT only. An installed SDK root (`share/nano-ros` of a release,
+/// told apart from a checkout by having no `.git`, the rule
+/// `nano_ros_root::is_checkout` and `stage-sdk-root.sh` state) is never written
+/// into: it is read-only for a system-wide or container install, and shared by
+/// every user of it otherwise. Before this the metadata, Corrosion and sizes
+/// probes all wrote `<install>/build/...` whenever the install happened to be
+/// writable, measured at 4.3 GB after two first-project builds.
+///
+/// A `.git` that is a FILE (a linked worktree) counts: `exists()`, never
+/// `is_dir()` (issue 1336).
+#[must_use]
+pub fn shared_build_root(here: &std::path::Path) -> Option<PathBuf> {
+    shared_build_root_in(here, std::env::var_os("NROS_BUILD_ROOT").as_deref())
+}
+
+/// [`shared_build_root`] with the `NROS_BUILD_ROOT` override passed in.
+#[must_use]
+pub fn shared_build_root_in(
+    here: &std::path::Path,
+    override_root: Option<&std::ffi::OsStr>,
+) -> Option<PathBuf> {
+    let overridden = override_root.is_some_and(|v| !v.is_empty());
+    (overridden || here.join(".git").exists()).then(|| build_root_in(here, override_root))
+}
+
 /// A dependency-free SHA-256 (FIPS 180-4), for [`checkout_scope_name`] only.
 ///
 /// This crate is a build-script helper reached by every leaf's `build.rs`, and
@@ -381,6 +411,34 @@ mod checkout_scope_tests {
                 "shell: {what}"
             );
         }
+    }
+
+    /// Issue 2445: an installed root (no `.git`) gets no shared build root
+    /// unless the operator names one; a checkout, or a linked worktree whose
+    /// `.git` is a file, keeps `<here>/build`.
+    #[test]
+    fn shared_build_root_never_names_an_installed_root() {
+        let s = Scratch::new("2445");
+        let installed = s.checkout("installed");
+        assert_eq!(shared_build_root_in(&installed, None), None);
+        assert_eq!(shared_build_root_in(&installed, Some("".as_ref())), None);
+        let outside = s.0.join("cache");
+        assert_eq!(
+            shared_build_root_in(&installed, Some(outside.as_os_str())),
+            Some(build_root_in(&installed, Some(outside.as_os_str())))
+        );
+        let checkout = s.checkout("checkout");
+        std::fs::create_dir(checkout.join(".git")).unwrap();
+        assert_eq!(
+            shared_build_root_in(&checkout, None),
+            Some(checkout.join("build"))
+        );
+        let worktree = s.checkout("worktree");
+        std::fs::write(worktree.join(".git"), "gitdir: elsewhere\n").unwrap();
+        assert_eq!(
+            shared_build_root_in(&worktree, None),
+            Some(worktree.join("build"))
+        );
     }
 
     /// The environment rung: unset/empty is `<here>/build`, a trailing `/` is

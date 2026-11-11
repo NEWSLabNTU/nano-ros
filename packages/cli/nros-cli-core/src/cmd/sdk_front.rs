@@ -78,6 +78,13 @@ pub fn run(args: Args) -> Result<()> {
         );
     }
 
+    // Issue 2445 — `install.sh` runs the freshly unpacked binary's own
+    // `sdk-front nros`, so that binary's SDK root is the one just installed.
+    if args.tool == "nros" {
+        if let Some(sdk_root) = nros_launcher::checkout::shipped_sdk_root() {
+            sdk_store::finish_installed_sdk_root(&sdk_root);
+        }
+    }
     let root = sdk_store::store_root();
     let linked = sdk_store::front_newest(&root, &args.tool, &front, subdir.as_deref())?;
     if linked.is_empty() {
