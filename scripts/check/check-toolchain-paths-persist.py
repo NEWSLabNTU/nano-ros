@@ -40,6 +40,14 @@ path `git log --diff-filter=DR` shows leaving cmake/toolchain/ must be listed.
 In a shallow clone that half is NOT VERIFIED and reported as such (exit 78,
 the recipe records it in the skip ledger); the list half has already run.
 
+A PARTIAL clone is NOT VERIFIED too, for a different reason: its commits are
+whole but its trees are not, and a path walk needs a tree per commit. The CI
+fast lane's history is `--filter=tree:0 --unshallow`
+(scripts/ci/provision-gate-lane.sh), so `git log -- <dir>` there fetched a
+tree from the network for each of ~12k commits and ran into the 40-minute
+nextest cap. So every git call here is bounded (no prompt, no lazy fetch
+where git supports it, a timeout), and a partial clone never reaches the walk.
+
 ## Scope
 
 cmake/toolchain/ only, because that is the only directory a CMAKE_TOOLCHAIN_FILE
@@ -162,9 +170,30 @@ def selftest() -> None:
     assert parse_list(f"{a} retired: why\n")[0] == {a: "why"}
 
 
+# Every git call is bounded: no credential prompt, no lazy fetch from a
+# promisor remote (git >= 2.44 honours GIT_NO_LAZY_FETCH; older git is kept
+# off the walk by is_partial below), and a timeout.
+GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1"}
+GIT_TIMEOUT_S = 60
+
+
 def git(*args: str) -> str:
     return subprocess.run(["git", "-C", str(REPO), *args], check=True,
-                          capture_output=True, text=True).stdout
+                          capture_output=True, text=True, env=GIT_ENV,
+                          stdin=subprocess.DEVNULL, timeout=GIT_TIMEOUT_S).stdout
+
+
+def is_partial() -> bool:
+    """True for a partial clone: some objects live only on a promisor remote.
+
+    Its commits are whole, but a path walk (`git log -- <dir>`) needs a tree
+    per commit and would fetch each missing one from the network.
+    """
+    r = subprocess.run(["git", "-C", str(REPO), "config", "--get-regexp",
+                        r"^(extensions\.partialclone|remote\..*\.promisor)$"],
+                       capture_output=True, text=True, env=GIT_ENV,
+                       stdin=subprocess.DEVNULL, timeout=GIT_TIMEOUT_S)
+    return r.returncode == 0 and r.stdout.strip() != ""
 
 
 def main() -> int:
@@ -186,23 +215,34 @@ def main() -> int:
                 problems.append(f"  {d}: toolchain_file `{tc}` is outside {DIR}/, "
                                 "which this gate covers (move it, or widen the gate)")
 
-    shallow = is_truncated(REPO)
-    if not shallow:
+    if is_truncated(REPO):
+        unverified = "this clone is shallow"
+    elif is_partial():
+        unverified = ("this clone is partial (trees or blobs live on a promisor "
+                      "remote), and the path walk would fetch them one commit at a time")
+    else:
+        unverified = None
         gone = set()
-        for line in git("log", "--diff-filter=DR", "--name-status", "--format=",
-                        "--", DIR).splitlines():
+        try:
+            out = git("log", "--diff-filter=DR", "--name-status", "--format=",
+                      "--", DIR)
+        except subprocess.TimeoutExpired:
+            unverified = f"the history walk did not finish in {GIT_TIMEOUT_S} s"
+            out = ""
+        for line in out.splitlines():
             parts = line.split("\t")
             if len(parts) >= 2 and parts[1].startswith(DIR + "/"):
                 gone.add(parts[1])
-        problems += check_history(listed, gone)
+        if unverified is None:
+            problems += check_history(listed, gone)
 
     if problems:
         print(f"check-toolchain-paths-persist FAILED: {len(problems)} problem(s)")
         print("\n".join(problems))
         print(WHY)
         return 1
-    if shallow:
-        print(f"history half NOT VERIFIED: this clone is shallow, so a path deleted "
+    if unverified:
+        print(f"history half NOT VERIFIED: {unverified}, so a path deleted "
               f"from {DIR}/ together with its {LIST} line cannot be seen "
               f"({len(listed)} listed path(s) checked)")
         return 78
