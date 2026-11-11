@@ -146,8 +146,14 @@ defaults to `0`, which is one attempt (`nros-rmw-zenoh/build.rs`, issue
 
 **Depends on issue 2389.** 139's `fix-2389-connect-budget` (not yet pushed)
 rewrites this connect path: a bounded handshake per attempt, a non-blocking
-connect, and a send stall. Read the next recurrence against whatever retry
-semantics that change lands. If the default stays one attempt, a handshake
-that meets a router still starting is still final, and the fix is this
-image's budget or the router's readiness edge. If it retries within a
-default budget, this reading no longer applies.
+connect, and a send stall. Its author confirmed (2026-11-11) that it **keeps
+the one-attempt default**: it does not touch `resolve_zenoh_connect_timeout_ms`
+(`nros-platform-config/src/platform_config.rs`), so `CONNECT_TIMEOUT_MS` still
+resolves to `BUILTIN_ZENOH_CONNECT_TIMEOUT_MS = 0` unless the image or the env
+states one. Its zenoh-pico fork commits (handshake `f84c6be5`, TCP connect
+`6827fe1f`, write stall `15f3b012`) act only on a positive budget; with `0`
+they pass no deadline and the open is one attempt, as on main. `-1`
+(forever) is unchanged too. So the reading stands after 2389. What would
+close this is either the image's own `connect_timeout_ms` (a retry window,
+which 2389 then bounds correctly) or a router-readiness edge in the
+harness. The next recurrence's output, now printed, should say which.
