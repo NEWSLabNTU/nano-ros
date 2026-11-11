@@ -34,19 +34,31 @@ The verdict must not depend on how deep the clone is. CI runners check out
 shallow, and a shallow history answers "nothing was deleted" for a rename it
 cannot see (issue 1476: a negative from truncated history is not evidence).
 The list holds the whole history in the tree, so the main half is exact in any
-clone. What the list alone cannot see is a change that deletes the file AND
-its list line. That is the HISTORY half: where the history is whole, every
-path `git log --diff-filter=DR` shows leaving cmake/toolchain/ must be listed.
-In a shallow clone that half is NOT VERIFIED and reported as such (exit 78,
-the recipe records it in the skip ledger); the list half has already run.
+clone.
 
-A PARTIAL clone is NOT VERIFIED too, for a different reason: its commits are
-whole but its trees are not, and a path walk needs a tree per commit. The CI
-fast lane's history is `--filter=tree:0 --unshallow`
-(scripts/ci/provision-gate-lane.sh), so `git log -- <dir>` there fetched a
-tree from the network for each of ~12k commits and ran into the 40-minute
-nextest cap. So every git call here is bounded (no prompt, no lazy fetch
-where git supports it, a timeout), and a partial clone never reaches the walk.
+What the list alone cannot see is a change that deletes the file AND its list
+line. That is the BASELINE half: the list as it stood at ONE baseline commit
+is read (`git show <base>:.config/cmake-toolchain-paths.txt`), and every
+path it names must still be named now (live, or `retired: <reason>`). The
+baseline is the one `check-submodule-pins` compares against, through the same
+channel: `$NROS_SUBMODULE_PIN_BASELINE` (CI exports it from
+`scripts/ci/pin-baseline.sh provide`, which fetches that commit WITH its tree),
+else `pin-baseline.sh resolve` (locally the merge-base with origin/main). So
+the deletion is caught at the change that makes it.
+
+No history walk. An earlier version walked `git log --diff-filter=DR --
+cmake/toolchain/`, which in CI's treeless history (`--filter=tree:0
+--unshallow`, scripts/ci/provision-gate-lane.sh) fetched a tree from the
+network per commit and ran into the 40-minute nextest cap. One baseline is
+two trees and one blob, and it is read bounded (no prompt, stdin closed, a timeout).
+
+No baseline, a baseline commit not in the clone, or a read that fails or
+times out: in CI (GITHUB_ACTIONS) a
+FAILURE naming `pin-baseline.sh provide`, because every CI job that runs a gate
+lane runs provide first (the same precondition `check-submodule-pins` already
+fails hard on in CI), so there it is a provisioning defect, and the harness
+would read a skip as red anyway; locally NOT VERIFIED (exit 78, the recipe
+records it in the skip ledger). Never a pass.
 
 ## Scope
 
@@ -67,8 +79,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from lib.git_history import is_truncated  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 DIR = "cmake/toolchain"
@@ -130,11 +140,6 @@ def check(listed: dict[str, str | None], tracked: set[str],
     return problems
 
 
-def check_history(listed: dict[str, str | None], gone: set[str]) -> list[str]:
-    return [f"  {p}: left {DIR}/ in history and is not in {LIST}"
-            for p in sorted(gone - listed.keys())]
-
-
 def include_targets(rel: str, text: str) -> list[str]:
     """Targets inside cmake/toolchain/ only: a file elsewhere is not one a
     build dir recorded, and its own directory's gates own it."""
@@ -161,19 +166,24 @@ def selftest() -> None:
     # Retired with a reason passes; retired yet present fails.
     assert not check({a: "board gone", n: None}, {n}, {}, on_disk.__contains__)
     assert check({a: "board gone", n: None}, {a, n}, {}, on_disk.__contains__)
-    # The history half catches a path dropped from the list along with its file.
-    assert check_history({n: None}, {a})
-    assert not check_history({a: None, n: None}, {a})
+    # The baseline half: a path the baseline's list named and HEAD's list
+    # dropped (file and line deleted together) fails; turning it into
+    # `retired: x` passes; a baseline with no list compares nothing.
+    assert check_baseline({n: None}, {a: None, n: None})
+    assert not check_baseline({a: "x", n: None}, {a: None, n: None})
+    assert not check_baseline({n: None}, {})
     # Format: a bare word after the path, or an empty reason, is refused.
     assert parse_list(f"{a} because\n")[1]
     assert parse_list(f"{a} retired:\n")[1]
     assert parse_list(f"{a} retired: why\n")[0] == {a: "why"}
 
 
-# Every git call is bounded: no credential prompt, no lazy fetch from a
-# promisor remote (git >= 2.44 honours GIT_NO_LAZY_FETCH; older git is kept
-# off the walk by is_partial below), and a timeout.
-GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_NO_LAZY_FETCH": "1"}
+# Every git call is bounded: no credential prompt, stdin closed, a timeout.
+# The baseline reads may fetch LAZILY in a treeless clone, on purpose: the
+# path `<base>:.config/cmake-toolchain-paths.txt` is two trees (root, .config)
+# and one blob, a handful of round trips. What made the old history walk
+# unbounded was one tree per COMMIT, and there is no walk any more.
+GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 GIT_TIMEOUT_S = 60
 
 
@@ -183,17 +193,51 @@ def git(*args: str) -> str:
                           stdin=subprocess.DEVNULL, timeout=GIT_TIMEOUT_S).stdout
 
 
-def is_partial() -> bool:
-    """True for a partial clone: some objects live only on a promisor remote.
+def resolve_baseline() -> str | None:
+    """The baseline `check-submodule-pins` uses, by the same channel."""
+    env = os.environ.get("NROS_SUBMODULE_PIN_BASELINE", "").strip()
+    if env:
+        return env
+    try:
+        r = subprocess.run(["bash", str(REPO / "scripts/ci/pin-baseline.sh"),
+                            "resolve", "HEAD"], cwd=REPO, capture_output=True,
+                           text=True, env=GIT_ENV, stdin=subprocess.DEVNULL,
+                           timeout=GIT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return None
+    out = r.stdout.strip()
+    return out if r.returncode == 0 and out else None
 
-    Its commits are whole, but a path walk (`git log -- <dir>`) needs a tree
-    per commit and would fetch each missing one from the network.
-    """
-    r = subprocess.run(["git", "-C", str(REPO), "config", "--get-regexp",
-                        r"^(extensions\.partialclone|remote\..*\.promisor)$"],
-                       capture_output=True, text=True, env=GIT_ENV,
-                       stdin=subprocess.DEVNULL, timeout=GIT_TIMEOUT_S)
-    return r.returncode == 0 and r.stdout.strip() != ""
+
+def check_baseline(listed: dict[str, str | None], base_listed: dict[str, str | None]) -> list[str]:
+    """Every path the baseline's list names is still named (live or retired)."""
+    return [f"  {p}: named in {LIST} at the baseline, and dropped from it now "
+            f"(keep the line, or mark it `retired: <reason>`)"
+            for p in sorted(base_listed.keys() - listed.keys())]
+
+
+def baseline_list(base: str) -> tuple[dict[str, str | None] | None, str | None]:
+    """(the list at <base>, None), or (None, why it cannot be read here).
+    A baseline with no list yet gives ({}, None): nothing to compare."""
+    try:
+        git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
+    except subprocess.CalledProcessError:
+        return None, (f"the baseline {base} is not in this clone "
+                      "(CI: `scripts/ci/pin-baseline.sh provide` fetches it)")
+    except subprocess.TimeoutExpired:
+        return None, f"resolving {base} did not finish in {GIT_TIMEOUT_S} s"
+    try:
+        try:
+            git("rev-parse", "--verify", "--quiet", f"{base}:{LIST}")
+        except subprocess.CalledProcessError:
+            return {}, None  # the baseline predates the list: nothing to compare
+        text = git("show", f"{base}:{LIST}")
+    except subprocess.TimeoutExpired:
+        return None, f"reading {LIST} at {base} did not finish in {GIT_TIMEOUT_S} s"
+    except subprocess.CalledProcessError as e:
+        return None, f"reading {LIST} at {base} failed: {e.stderr.strip()}"
+    entries, _ = parse_list(text)
+    return entries, None
 
 
 def main() -> int:
@@ -215,26 +259,13 @@ def main() -> int:
                 problems.append(f"  {d}: toolchain_file `{tc}` is outside {DIR}/, "
                                 "which this gate covers (move it, or widen the gate)")
 
-    if is_truncated(REPO):
-        unverified = "this clone is shallow"
-    elif is_partial():
-        unverified = ("this clone is partial (trees or blobs live on a promisor "
-                      "remote), and the path walk would fetch them one commit at a time")
+    base = resolve_baseline()
+    if base is None:
+        base_entries, unverified = None, "no baseline commit resolves (pin-baseline.sh resolve)"
     else:
-        unverified = None
-        gone = set()
-        try:
-            out = git("log", "--diff-filter=DR", "--name-status", "--format=",
-                      "--", DIR)
-        except subprocess.TimeoutExpired:
-            unverified = f"the history walk did not finish in {GIT_TIMEOUT_S} s"
-            out = ""
-        for line in out.splitlines():
-            parts = line.split("\t")
-            if len(parts) >= 2 and parts[1].startswith(DIR + "/"):
-                gone.add(parts[1])
-        if unverified is None:
-            problems += check_history(listed, gone)
+        base_entries, unverified = baseline_list(base)
+    if base_entries is not None:
+        problems += check_baseline(listed, base_entries)
 
     if problems:
         print(f"check-toolchain-paths-persist FAILED: {len(problems)} problem(s)")
@@ -242,12 +273,20 @@ def main() -> int:
         print(WHY)
         return 1
     if unverified:
-        print(f"history half NOT VERIFIED: {unverified}, so a path deleted "
-              f"from {DIR}/ together with its {LIST} line cannot be seen "
-              f"({len(listed)} listed path(s) checked)")
+        msg = (f"baseline half NOT VERIFIED: {unverified}, so a path deleted "
+               f"from {DIR}/ together with its {LIST} line cannot be seen "
+               f"({len(listed)} listed path(s) checked)")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            # Every CI job that runs a gate lane runs `pin-baseline.sh provide`
+            # first, so a missing baseline there is a provisioning defect.
+            print(f"check-toolchain-paths-persist FAILED: {msg}. In CI the "
+                  "baseline is provided by `bash scripts/ci/pin-baseline.sh "
+                  "provide`, which must run before the gate lane.")
+            return 1
+        print(msg)
         return 78
     print(f"check-toolchain-paths-persist: OK ({len(listed)} path(s), "
-          f"{len(tracked)} tracked, history whole)")
+          f"{len(tracked)} tracked, {len(base_entries)} at baseline {base[:12]})")
     return 0
 
 
