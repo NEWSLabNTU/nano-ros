@@ -1,15 +1,31 @@
 ---
 id: 1981
 title: "live-peer joins two NROS_FIXTURE_ID narrowings with `|`, and the workspace builder looks the alternation up as ONE id"
-status: open
+status: resolved
 type: bug
 area: [ci, testing, build]
 severity: medium
 found: 2026-10-19
 related: [0997, 1758, 1656, 1961, phase-441, phase-466]
+resolved: 2026-11-11
+resolved_in: "8add9c2378 (#1758): narrowing_for emits one line per value of an exact key, and the job builds once per value"
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-23; it was filed under phase-441 W6, archived that day. It keeps the `live-peer` board lane from running the fragmented-sample cell.
+> **Resolved (2026-11-11).** Fixed on 2026-10-23 by `8add9c2378`
+> (`fix(#1758)`), which never named this issue: `narrowing_for` joins a key with
+> `|` only when it is in `NARROWING_REGEX_KEYS`, and an exact key such as
+> `NROS_FIXTURE_ID` gets one line per distinct value, so the job builds once
+> per value (option 2's shape, without the refusal). The self-test covers the
+> case that broke: the two FreeRTOS cells that share `NROS_FIXTURE_ID` must
+> narrow to two lines (`scripts/check-interop-verdicts.py`, "Issue 1758").
+> Confirmed on scheduled live-peer 42754129258 (2026-11-10): job `rows whose
+> board is NOT this runner (ci image)` built
+> `workspace-c-freertos`, `workspace-cpp-mps3-an536-freertos-slirp` and
+> `workspace-cpp-mps3-an536-freertos-slirp-bulk` one pass each, and its cells
+> ran and passed. Left over, not a defect: each pass rebuilds the single-node
+> rows that stage does not narrow on `NROS_FIXTURE_ID` (11 rows, three times).
+
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-23; it was filed under phase-441 W6, archived that day. It keeps the `live-peer` board lane from running the fragmented-sample cell.
 
 ## Measured
 
