@@ -61,6 +61,9 @@
 
 set -uo pipefail
 
+# shellcheck source=scripts/lib/git-history.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/git-history.sh"
+
 _nros_pin_zero() { case "$1" in *[!0]*) return 1 ;; *) return 0 ;; esac; }
 
 # The tested commit's first parent, read from the RAW object: in a depth-1
@@ -123,9 +126,12 @@ nros_pin_baseline_resolve() {
     printf '%s\n' "$sha"
 }
 
-# `$path\t$sha` for every gitlink at <ref>.
+# `$path\t$sha` for every gitlink at <ref>. Bounded (issue 2442): `provide`
+# has put <ref>'s tree here, so nothing is fetched; if it has not, the read
+# fails rather than walking the network, and the gate reports the baseline.
 _nros_pin_gitlinks() {
-    git ls-tree -r "$1" 2>/dev/null | awk '$2 == "commit" { print $4 "\t" $3 }'
+    nros_git_history_run "$NROS_GIT_HISTORY_TIMEOUT_S" ls-tree -r "$1" 2>/dev/null \
+        | awk '$2 == "commit" { print $4 "\t" $3 }'
 }
 
 _nros_pin_require_env_baseline() {
@@ -152,6 +158,23 @@ cmd_provide() {
         # reads the superproject's TREE at the baseline, never its history.
         if ! git fetch --no-tags --quiet --depth=1 origin "$sha"; then
             echo "pin-baseline: could not fetch the baseline ${sha} (${GITHUB_EVENT_NAME:-local})" >&2
+            exit 1
+        fi
+    fi
+    # Issue 2442 — the commit can be here WITHOUT its tree: a treeless history
+    # (`--filter=tree:0 --unshallow`, provision-gate-lane.sh) left over in a
+    # persistent workspace has every commit and only the fetched tips' trees.
+    # Re-fetching a commit already present brings nothing (measured: plain,
+    # noop negotiation and --depth=1 all left the tree missing, and --depth=1
+    # made the repository shallow again). Fetching the ROOT TREE by id with
+    # blobs filtered out brings every subtree in one round trip.
+    if ! nros_git_tree_present "$sha"; then
+        local tree
+        tree="$(git cat-file -p "$sha" 2>/dev/null | awk '/^tree / { print $2; exit }')"
+        if [ -z "$tree" ] \
+            || ! git fetch --no-tags --quiet --no-write-fetch-head --filter=blob:none origin "$tree" \
+            || ! nros_git_tree_present "$sha"; then
+            echo "pin-baseline: the baseline ${sha}'s tree is not here and could not be fetched" >&2
             exit 1
         fi
     fi

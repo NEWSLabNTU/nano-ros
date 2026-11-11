@@ -79,6 +79,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from lib.git_history import HistoryUnknown, history_git  # noqa: E402
+
 
 REPO = Path(__file__).resolve().parents[2]
 DIR = "cmake/toolchain"
@@ -179,10 +182,11 @@ def selftest() -> None:
 
 
 # Every git call is bounded: no credential prompt, stdin closed, a timeout.
-# The baseline reads may fetch LAZILY in a treeless clone, on purpose: the
-# path `<base>:.config/cmake-toolchain-paths.txt` is two trees (root, .config)
-# and one blob, a handful of round trips. What made the old history walk
-# unbounded was one tree per COMMIT, and there is no walk any more.
+# The baseline reads go through scripts/lib/git_history.py (issue 2442) and
+# may fetch LAZILY in a treeless clone, on purpose: the path
+# `<base>:.config/cmake-toolchain-paths.txt` is two trees (root, .config) and
+# one blob, a handful of round trips. What made the old history walk unbounded
+# was one tree per COMMIT, and there is no walk any more.
 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 GIT_TIMEOUT_S = 60
 
@@ -226,16 +230,16 @@ def baseline_list(base: str) -> tuple[dict[str, str | None] | None, str | None]:
                       "(CI: `scripts/ci/pin-baseline.sh provide` fetches it)")
     except subprocess.TimeoutExpired:
         return None, f"resolving {base} did not finish in {GIT_TIMEOUT_S} s"
+    # One path at one commit: two trees and a blob, so a LAZY fetch is allowed
+    # (`fetch=True`) and still bounded (issue 2442's helper).
     try:
-        try:
-            git("rev-parse", "--verify", "--quiet", f"{base}:{LIST}")
-        except subprocess.CalledProcessError:
+        r = history_git(REPO, "rev-parse", "--verify", "--quiet", f"{base}:{LIST}",
+                        check=False, fetch=True)
+        if r.returncode != 0:
             return {}, None  # the baseline predates the list: nothing to compare
-        text = git("show", f"{base}:{LIST}")
-    except subprocess.TimeoutExpired:
-        return None, f"reading {LIST} at {base} did not finish in {GIT_TIMEOUT_S} s"
-    except subprocess.CalledProcessError as e:
-        return None, f"reading {LIST} at {base} failed: {e.stderr.strip()}"
+        text = history_git(REPO, "show", f"{base}:{LIST}", fetch=True).stdout
+    except HistoryUnknown as e:
+        return None, f"reading {LIST} at {base}: {e}"
     entries, _ = parse_list(text)
     return entries, None
 

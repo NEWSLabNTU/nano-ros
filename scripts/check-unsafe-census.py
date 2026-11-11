@@ -60,6 +60,7 @@ REPO = Path(__file__).resolve().parents[1]
 BASELINE = REPO / ".config" / "unsafe-census-baseline.txt"
 sys.path.insert(0, str(REPO / "scripts" / "lib"))
 from ratchet import Move, fell_instructions, judge  # noqa: E402  phase-472 W9
+from git_history import HistoryUnknown, history_git, tree_present  # noqa: E402  issue 2442
 
 KINDS = ("block", "fn", "impl", "extern", "trait")
 
@@ -205,7 +206,10 @@ def changed_crates(crates):
     reported and recorded, not blamed.
 
     Returns None when the comparison point cannot be established (no
-    `origin/main`, a shallow clone with no merge base). Then every crate is
+    `origin/main`, a shallow clone with no merge base, or a merge base whose
+    TREE is not here: CI's treeless history has every commit and only the
+    fetched tips' trees, and `git diff <base>` would fetch the rest one object
+    at a time, issue 2442). Then every crate is
     enforced: failing CLOSED is the safe direction for a ratchet, and the
     alternative — treating "I could not tell" as "nothing changed" — is how a
     ratchet silently stops ratcheting.
@@ -216,16 +220,23 @@ def changed_crates(crates):
     )
     if base.returncode != 0 or not base.stdout.strip():
         return None
-    diff = subprocess.run(
+    base_sha = base.stdout.strip()
+    if not tree_present(REPO, base_sha):
+        print(f"unsafe-census: the merge base {base_sha[:12]}'s tree is not in this "
+              "clone, so every crate is enforced (fail closed, issue 2442)",
+              file=sys.stderr)
+        return None
+    try:
         # `--no-renames` for the reason issue 1584 measured one gate over:
         # with rename detection on, `--name-only` prints a rename's
         # DESTINATION only, so a file moved out of crate A into crate B marks
         # B touched and leaves A unenforced. Listing both paths widens the
         # touched set, which is the fail-CLOSED direction this function's own
         # docstring prefers.
-        ["git", "diff", "--no-renames", "--name-only", base.stdout.strip(), "--"],
-        cwd=REPO, capture_output=True, text=True,
-    )
+        diff = history_git(REPO, "diff", "--no-renames", "--name-only", base_sha, "--",
+                           check=False)
+    except HistoryUnknown:
+        return None
     if diff.returncode != 0:
         return None
     touched = [ln.strip() for ln in diff.stdout.split("\n") if ln.strip()]
