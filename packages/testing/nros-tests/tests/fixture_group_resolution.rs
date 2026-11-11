@@ -29,10 +29,7 @@ use std::{collections::BTreeSet, path::Path, process::Command};
 
 use nros_tests::{
     build_dir,
-    fixtures::{
-        Rmw,
-        groups::{FixtureVariant, GroupRow, attribute, group_dir, parse_rows, select_row_in},
-    },
+    fixtures::groups::{FixtureVariant, GroupRow, attribute, group_dir, parse_rows, select_row_in},
     project_root,
 };
 
@@ -67,24 +64,22 @@ fn export_with(shared_platforms: &str) -> Vec<GroupRow> {
 /// the selector the caller now names.
 // phase-531 W6 moved `examples/linux/rust/talker` to a one-node workspace, so
 // its rows are `[[workspace_fixture]]` rows and this table no longer sees them.
-// The axes are named on the leaves that still carry them: a plain RMW row on
-// `bins/int32-source` and the env axis on `nros-bench/stress-zenoh`. The
-// feature axis is gone: its last row (`bins/action-server-concurrent`'s
+// The feature axis is gone: its last row (`bins/action-server-concurrent`'s
 // `zenoh-reply-slots`) became a workspace image (issue 2406), and phase-535 W6
 // made the linux Rust listener, whose `link-tls` row it once named, a
-// one-node workspace. So is the image axis: its last leaf, `bins/int32-sink`
-// (one row per RMW image), became a workspace in phase-531 W7, where each
-// image is its own `[[workspace_fixture]]` row with its own `target_dir`.
-const SOURCE_LEAF: &str = "packages/testing/nros-tests/bins/int32-source";
+// one-node workspace. So is the image axis: its last leaves, `bins/int32-sink`
+// and `bins/int32-source` (one row per RMW image), became workspaces in
+// phase-531 W7, where each image is its own `[[workspace_fixture]]` row with
+// its own `target_dir`.
+//
+// What remains is the env axis, and it is the axis W1 measured in its
+// sharpest form: ONE leaf, `nros-bench/stress-zenoh`, built twice at one
+// artifact name, once plain and once with a larger subscriber buffer.
 const STRESS_LEAF: &str = "packages/testing/nros-bench/stress-zenoh";
 
 fn talker_variants() -> Vec<(&'static str, &'static str, FixtureVariant)> {
     vec![
-        (
-            "source plain",
-            SOURCE_LEAF,
-            FixtureVariant::platform_rmw(Rmw::Zenoh),
-        ),
+        ("stress plain", STRESS_LEAF, FixtureVariant::plain()),
         (
             "stress env",
             STRESS_LEAF,
