@@ -10,10 +10,15 @@ found: 2026-11-11
 ---
 
 **Home: [phase-531](../roadmap/phase-531-workspace-first-project-layout.md)
-W6.** It blocks the C/C++ talker witnesses on every cross board
+W6.** Found migrating the C/C++ talker witnesses on cross boards
 (`threadx-linux`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`,
-`rv-virt-threadx`) from migrating the way the linux C/C++ talkers did
-(owned entry, RFC-0071 D19).
+`rv-virt-threadx`) the way the linux C/C++ talkers went (owned entry, RFC-0071
+D19). Those witnesses need not take that road: RFC-0122 D10 keeps a
+hand-written `main` only in a manual-entry demo, and phase-535 W1's inventory
+lists none of them, so they become components on a generated entry, which has
+a model and a census. What stays open is the road itself: any owned C/C++
+entry on a cross board (a manual-entry demo that later migrates in place, or
+a user's) meets both gaps below.
 
 ## Measured
 
@@ -63,5 +68,5 @@ How an owned C/C++ entry on a cross board is sized on the workspace road:
 - accept the crate defaults for these witnesses and make the pre-pass skip an
   image with no model (`take --plan` answering "nothing to reconcile").
 
-Until it is decided, the cross C/C++ talker witnesses stay leaves; the Rust
-witnesses (a generated entry, a model) are unaffected.
+The talker witnesses do not wait on it (D10, above); the Rust witnesses are
+unaffected either way.

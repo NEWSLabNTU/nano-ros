@@ -741,11 +741,14 @@ from before W6.
   - Measured on rebuilt fixtures: `entry_build` (nuttx, threadx-linux),
     `freertos_run_plan_runtime`, the shape/coverage suites pass; the
     threadx-linux and NuttX (QEMU) images publish to a router.
-  - The C/C++ talkers on cross boards wait on
-    [issue 2433](../issues/2433-owned-cross-entry-has-no-census.md): a cross
-    C/C++ leaf is census-sized (RFC-0120 D4), and an owned entry on the
-    workspace road has no model for a census to count, nor (until a CLI fix
-    the issue records) its image's deploy, domain and locator.
+  - The C/C++ talkers on cross boards do not keep their `main` as an owned
+    entry. Tried on threadx-linux, that road gives the image no census (a
+    cross C/C++ leaf is census-sized, RFC-0120 D4, and an owned entry has no
+    model) and, until a CLI fix recorded there, none of its image's deploy,
+    domain or locator: [issue 2433](../issues/2433-owned-cross-entry-has-no-census.md).
+    RFC-0122 D10 keeps a hand-written `main` only in a manual-entry demo, and
+    phase-535 W1 lists none of these, so each becomes a component on a
+    generated entry in its own batch.
 
 ### W7 — Retirement
 
