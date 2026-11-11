@@ -417,10 +417,27 @@ fn cpp_probe_options(
     // only that the closure list is missing, which is never fresh.
     if probe_inputs_key(&decl.package_root, nano_ros)
         .is_some_and(|k| sidecar_is_fresh(&opts.output_path, &k))
+        && probe_build_present(probe_root)
     {
         return Ok(None);
     }
     Ok(Some(opts))
+}
+
+/// Issue 2435 -- the probe's OUTPUTS are two: the sidecar beside the package
+/// (`metadata/<component>.json`, in the source tree) and the probe project's
+/// build, whose `nros-codegen/` holds the bound tables the message-bound seeds
+/// read. A sidecar keyed on its inputs survives `rm -rf build`; the tables do
+/// not. Judging freshness by the sidecar alone left a clean build dir with no
+/// tables, so no message-bound seed was written on any C/C++ west road and the
+/// promise check refused. The probe build is one per workspace, so its
+/// absence makes every C/C++ component stale; its CMake cache marks a project
+/// that was configured here, whatever interfaces its members name.
+fn probe_build_present(probe_root: &Path) -> bool {
+    crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(probe_root)
+        .join("build")
+        .join("CMakeCache.txt")
+        .is_file()
 }
 
 /// Issue 2238 -- the probe options of a C/C++ component whatever its
@@ -1415,6 +1432,17 @@ pub(crate) fn stale_sidecar_components(root: &Path, nano_ros: Option<&Path>) -> 
                  CLI, or the crates the probe compiles)",
                 sidecar.display()
             ));
+        } else if decl.config.language != ComponentLanguage::Rust
+            && !probe_build_present(&root.join("build").join("nros-metadata"))
+        {
+            // Issue 2435 -- the same predicate the refresh applies: a C/C++
+            // sidecar is current only beside the probe build that holds its
+            // bound tables.
+            out.push(format!(
+                "metadata sidecar `{}` has no probe build beside it (the bound tables the \
+                 message-bound seeds read are under `build/nros-metadata`)",
+                sidecar.display()
+            ));
         }
     }
     out
@@ -1717,6 +1745,43 @@ mod tests {
         assert!(
             why.contains("cargo metadata harness"),
             "the refusal must say where a Rust component is produced instead: {why}"
+        );
+    }
+
+    /// Issue 2435 -- a fresh sidecar is not a current probe when the probe's
+    /// build is gone: the bound tables the message-bound seeds read live there,
+    /// and `rm -rf build` removes them while the sidecar (in the source tree)
+    /// survives. With the probe's build present, the same sidecar is current.
+    #[test]
+    fn a_fresh_sidecar_without_the_probe_build_is_probed_again() {
+        let root = fake_nano_ros("probe-build-root");
+        let dir = tmp("probe-build-pkg");
+        std::fs::write(dir.join("src/lib.rs"), "// the component\n").unwrap();
+        let decl = probeable_decl(&dir, ComponentLanguage::C);
+        let sidecar = decl.source_metadata_path();
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+        std::fs::write(&sidecar, sidecar_body("demo_pkg::talker", false)).unwrap();
+        let key = probe_inputs_key(&dir, Some(&root)).expect("keyed");
+        stamp_provenance(&sidecar, &key).unwrap();
+        assert!(sidecar_is_fresh(&sidecar, &key));
+
+        let probe_root = dir.join("probe");
+        let opts = cpp_probe_options(&decl, Some(&root), &probe_root).expect("probeable");
+        assert!(
+            opts.is_some(),
+            "no probe build here, so its bound tables are missing: the component must be probed"
+        );
+
+        let cache =
+            crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(&probe_root)
+                .join("build")
+                .join("CMakeCache.txt");
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(&cache, "# configured\n").unwrap();
+        let opts = cpp_probe_options(&decl, Some(&root), &probe_root).expect("probeable");
+        assert!(
+            opts.is_none(),
+            "fresh sidecar and a probe build: nothing to do"
         );
     }
 

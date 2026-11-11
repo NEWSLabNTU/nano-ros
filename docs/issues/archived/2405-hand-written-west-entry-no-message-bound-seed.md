@@ -1,15 +1,15 @@
 ---
 id: 2405
 title: "A hand-written C/C++ west application (`[image.<id>] entry = \"<pkg>\"`) gets no message-bound seed, so the promise check refuses every configure of it"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [cli, zephyr, cmake, build]
-related: [phase-530, 2404, 1252]
+related: [phase-530, 2404, 1252, 2435, 2436]
 found: 2026-11-10
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)**. W4 made the Zephyr module hook run `nros configure` and hold the configure to its seeds (the promise check, `cmake/NanoRosPromise.cmake`); this road was never seeded.
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)**. W4 made the Zephyr module hook run `nros configure` and hold the configure to its seeds (the promise check, `cmake/NanoRosPromise.cmake`); this road was never seeded.
 
 ## What
 
@@ -69,3 +69,21 @@ configure finds that `package.xml` does not name" until the island dropped it.
 
 Acceptance: a hand-written C/C++ west entry in a `src/` workspace configures
 in one pass from a clean build dir.
+
+## Resolution
+
+Resolved 2026-11-11. The seed above landed in #3433. Its acceptance had no
+in-tree road until this change, and building one found issue 2435, which hid
+the seed again from any clean build dir.
+
+Coverage: the `west_hand_written_c_entry` west fixture
+(`packages/testing/nros-tests/fixtures/west_hand_written_c_entry`, a C
+talker plus a hand-written `zephyr_entry`) is configured by raw `west build`
+from a clean build dir, and `tests/west_hand_written_entry.rs` asserts that
+the configure's `nros/message_bound_knobs.cmake` and
+`nros/entity_inventory.cmake` are byte-equal to the seeds `nros configure`
+wrote. The test asserts the files, not the configure's exit, because this
+image derives no message sizes (std_msgs' closure is unbounded), so a missing
+seed only warns here.
+
+Two gaps on the same road are not fixed here; they are issue 2436.

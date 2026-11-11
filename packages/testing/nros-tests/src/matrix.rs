@@ -1405,6 +1405,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("wake_latency", NonCell::FeatureLane),
     ("weak_symbol_audit", NonCell::Static),
+    ("west_hand_written_entry", NonCell::CompileCheck),
     ("workspace_dirwalk_discovery", NonCell::Static),
     ("workspace_lints_check", NonCell::Static),
     (
