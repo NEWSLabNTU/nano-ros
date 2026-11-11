@@ -10,8 +10,10 @@
 #   4. this recipe is built against every release by a probe
 #      (scripts/probe/verify-starter-recipe.sh).
 #
-# Until the starter is published (RFC-0127 Q1), STARTER names a locally
-# built tag: scripts/ci/starter-image.sh --tag nano-ros-starter:local
+# The published starter is ghcr.io/newslabntu/nano-ros-starter:<ver>
+# (RFC-0127 D6); name a version, never `latest`, so the build is reproducible.
+# Until the first release publishes it, STARTER names a locally built tag:
+# scripts/ci/starter-image.sh --tag nano-ros-starter:local
 ARG STARTER=nano-ros-starter:local
 FROM ${STARTER}
 

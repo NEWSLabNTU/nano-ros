@@ -5,7 +5,7 @@
 # Build a starter image LOCALLY (RFC-0127 D2/D3, phase-551 W2) and print its
 # size against the RFC-0127 D7 budget: 2 GB compressed for `starter`, 5 GB for
 # `starter-zephyr`. It never pushes and never tags anything outside this
-# engine. Publishing waits on RFC-0127 Q1 and Q5.
+# engine. Publishing is the release job's (RFC-0127 D6), never this script's.
 #
 # The context is written by `image-context.sh starter` into a temp dir. The
 # image's own last step rebuilds the first projects with networking off, so a
