@@ -153,7 +153,7 @@ def self_test(quiet: bool = False) -> int:
     expect("crate tests excluded",
            in_library_tree("packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/x.cpp"), False)
     expect("examples excluded",
-           in_library_tree("examples/linux/cpp/parameters/src/main.cpp"), False)
+           in_library_tree("examples/linux/cpp/parameters/src/cpp_parameters/src/main.cpp"), False)
     # phase-472 W5 — a PUBLIC header is library code, and the population has it.
     expect("public header matches",
            in_library_tree("packages/api/nros-cpp/include/rclcpp/logging.hpp"), True)

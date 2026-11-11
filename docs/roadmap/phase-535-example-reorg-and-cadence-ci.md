@@ -601,6 +601,29 @@ and a test asks for it by name (`resolve_coord_variant`).
   family, and none registers an in-place subscription. They are not
   duplicates of the mps2-an385 `baremetal_<role>_rtic` images: those run the
   RTIC board, these the host's caller-owned loop.
+- **linux C/C++ owned-entry examples (in review).**
+  `examples/linux/c/{logging,parameters,safety-listener,custom-msg,
+  custom-transport-loopback}` and `examples/linux/cpp/{logging,parameters,
+  safety-listener,action-client,service-client}` are one-package workspaces
+  whose hand-written `main` is each image's owned entry: `src/<pkg>` (the old
+  `CMakeLists.txt`, unchanged but for its axes) plus `src/<pkg>_bringup`. Each
+  `[[fixture]]` row is a `[[workspace_fixture]]` row on the CMake road;
+  `c/parameters` keeps its Cyclone row as the `linux_cyclonedds` image.
+  - A CMake leaf stated its capability axes as `set(NROS_FEATURES ...)` in
+    its own `CMakeLists.txt`, which no workspace image reads (the runtime is
+    imported at the workspace root with the bringup's axes). `migrate-bringup`
+    now moves them to the bringup's `[system] features`, so the parameters
+    examples keep `param_services` and the safety listeners keep `safety`.
+  - The resolvers stay `build_example_cmake_rmw`, the locator the C/C++
+    talker witnesses already use. `cpp/service-client` and `cpp/action-client`
+    are pair-role names, so `moved_linux_pair` now lets a leaf whose image for
+    the RMW builds an owned entry answer for itself
+    (`migrated_leaf::owns_its_entry`); otherwise the pair image, a different
+    program, would answer for the census and goal-order cases.
+  - Running the moved fixtures found the C custom-transport loopback exiting 1
+    before and after the move: its session over `custom://loopback` answers
+    ConnectionFailed ([issue 2452](../issues/2452-c-custom-transport-loopback-session-connection-failed.md)).
+    Its row was, and stays, build-only.
 - **Feature demos (keep their own directories, to migrate in place to
   one-package workspaces).** Each one below is a hand-written `main`
   demonstrating an API that a generated entry does not express, and its test
@@ -729,3 +752,4 @@ never the retired leaf shape.
 | [#2383](../issues/archived/2383-live-peer-host-fixtures-miss-c-workspace-rows.md) | W4 made the linux pairs C workspace images; live-peer's derived host fixture set still builds only Rust rows, so its bridge and interop cells are UNMET (found closing phase-466). Resolved: the derivation now reaches pair images by coordinate and by `linux_pair_image` call. |
 | [#2377](../issues/2377-workspace-road-no-c-image-on-bare-metal.md) | The workspace road has no C/C++ image for a board with a Rust link root, so the bare-metal C/C++ pairs stay leaves (W5). |
 | [#2427](../issues/archived/2427-threadx-riscv64-run-hint-mac-ignores-image-network.md) | The ThreadX riscv64 run plan gave every image peer 0's MAC, so the printed QEMU line for the W6 Cyclone listener image named the talker's MAC. Resolved 2026-11-10: the plan takes the image network's MAC. |
+| [#2452](../issues/2452-c-custom-transport-loopback-session-connection-failed.md) | Found running W6's moved C/C++ fixtures: the C custom-transport loopback exits 1 (session ConnectionFailed) before and after its move; its row is build-only, so no lane saw it. |

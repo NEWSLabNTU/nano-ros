@@ -143,9 +143,18 @@ pub fn route(pkg: &WorkspacePackage) -> Routing {
 /// build" asks this, not [`route`] alone. Asking [`route`] alone made a Rust
 /// image beside a message package take the cmake road, whose root then had
 /// nothing to `add_subdirectory` ("no cmake packages in this workspace").
+///
+/// Except an interface package that DECLARES nano-ros's own cmake build type,
+/// `<build_type>nros_cmake</build_type>`: that `CMakeLists.txt` is not colcon's
+/// but nano-ros's (`find_package(nano_ros)`, `nano_ros_generate_interfaces`),
+/// and the package is a program that carries its own messages
+/// (`examples/linux/c/custom-msg`, an owned entry, RFC-0071 D19). A stock
+/// message package declares `ament_cmake`, which still routes nowhere here.
 #[must_use]
 pub fn cmake_node(pkg: &WorkspacePackage) -> bool {
-    route(pkg).cmake_subdir && !crate::interface_package::dir_is_interface_package(&pkg.dir)
+    route(pkg).cmake_subdir
+        && (!crate::interface_package::dir_is_interface_package(&pkg.dir)
+            || pkg.build_type.as_deref().map(str::trim) == Some("nros_cmake"))
 }
 
 /// [`route`] over the parts, for callers that hold no [`WorkspacePackage`].
@@ -297,6 +306,24 @@ mod tests {
         assert!(cmake_node(&c));
         let rs = pkg(t.path(), "rs_node", true, false, Some("nros_cargo"));
         assert!(!cmake_node(&rs));
+    }
+
+    /// A program that carries its own messages and declares nano-ros's own
+    /// cmake build type (`examples/linux/c/custom-msg`): its CMakeLists is
+    /// nano-ros's, so it is a cmake node. Read as a stock message package, an
+    /// image naming it as its owned entry took the cargo road and refused
+    /// "has no entry package".
+    #[test]
+    fn a_program_with_its_own_messages_declaring_nros_cmake_is_a_cmake_node() {
+        let t = tempfile::tempdir().unwrap();
+        let p = pkg(t.path(), "c_custom_msg", false, true, Some("nros_cmake"));
+        std::fs::write(
+            p.dir.join("package.xml"),
+            "<package format=\"3\"><name>c_custom_msg</name>\
+             <member_of_group>rosidl_interface_packages</member_of_group></package>",
+        )
+        .unwrap();
+        assert!(cmake_node(&p));
     }
 
     /// The headline of W3 and the whole reason it exists: a Zephyr west leaf

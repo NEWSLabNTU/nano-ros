@@ -1851,14 +1851,18 @@ def _self_test_runner_split(
 
     # The host-build derivation: mapped, deduplicated, board cells ignored, and
     # an unmapped language a LOUD error rather than a silently dropped build.
+    # The pairs are ones the shipped manifest still has `[[fixture]]` rows for
+    # (`linux c zenoh`: custom-platform; `linux rust xrce`): the derivation
+    # reads the real manifest, so a pair whose last leaf row moved to a
+    # workspace (`linux c cyclonedds`, phase-535 W6) builds nothing here.
     _hc = [
-        {"id": "a", "platform": HOST_PLATFORM, "lang": "C", "rmw": "Cyclonedds"},
-        {"id": "b", "platform": HOST_PLATFORM, "lang": "C", "rmw": "Cyclonedds"},
+        {"id": "a", "platform": HOST_PLATFORM, "lang": "C", "rmw": "Zenoh"},
+        {"id": "b", "platform": HOST_PLATFORM, "lang": "C", "rmw": "Zenoh"},
         {"id": "c", "platform": HOST_PLATFORM, "lang": "Rust", "rmw": "Xrce"},
         {"id": "d", "platform": "ZephyrQemuCortexM", "lang": "C", "rmw": "Zenoh"},
     ]
     assert host_builds_for(_hc, ["a", "b", "c", "d"]) == [
-        "linux c cyclonedds", "linux rust xrce"
+        "linux c zenoh", "linux rust xrce"
     ], host_builds_for(_hc, ["a", "b", "c", "d"])
     try:
         host_builds_for(

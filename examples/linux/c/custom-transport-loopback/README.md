@@ -15,14 +15,16 @@ hosted target.
 
 ## Build
 
-The example's `CMakeLists.txt` consumes nano-ros via
-`add_subdirectory(<repo-root>)` (Phase 140). No install prefix
-needed.
+A one-package workspace: `src/native_c_custom_transport_loopback` holds the
+program, and `src/native_c_custom_transport_loopback_bringup` holds the
+`system.toml` that says what to build. The program keeps its own `main`
+(registering the transport is the thing a user writes), so every image names
+it as its owned entry and `nros build` builds it rather than generating one.
 
 ```sh
-cmake -S . -B build
-cmake --build build
-./build/c_custom_transport_loopback
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
+nros build native_c_custom_transport_loopback_bringup:linux
+nros run linux
 ```
 
 Expected output:

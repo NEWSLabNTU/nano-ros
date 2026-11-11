@@ -1112,10 +1112,12 @@ fn cargo_build_args() -> Vec<String> {
 /// workspace image, through `fixtures::workspace_image` — the one place that
 /// knows the mapping. The talker leaf is not moved: it is the road witness.
 ///
-/// A leaf that still has a manifest row for `rmw` answers for itself: a few
-/// pair leaves stay until W6 because they carry a configuration (the Rust
-/// service/action leaves' ROS-edition images, the C++ action client's
-/// `NROS_TEST_GOAL_ORDER`, the C++ service client's hand-written `main`).
+/// A leaf that still has a manifest row for `rmw` answers for itself, and so
+/// does a leaf migrated to a one-package workspace whose image for `rmw`
+/// builds its OWN `main` (an owned entry, RFC-0071 D19): the C++ service
+/// client's hand-written `main` (the census case) and the C++ action client's
+/// `NROS_TEST_GOAL_ORDER` (phase-535 W6). Their case names are pair roles, so
+/// without this the pair image, a different program, would answer for them.
 fn moved_linux_pair(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
     let leaf = format!("examples/{name}");
     let rmw_name = match rmw {
@@ -1131,6 +1133,7 @@ fn moved_linux_pair(name: &str, rmw: Rmw) -> Option<TestResult<PathBuf>> {
         crate::fixtures::lane::manifest_rows()
             .iter()
             .any(|r| r.kind == "fixture" && r.dir == leaf && r.coord.2 == rmw_name)
+            || crate::fixtures::migrated_leaf::owns_its_entry(&leaf, rmw_name)
     };
     if leaf_answers {
         return None;
@@ -1277,7 +1280,7 @@ fn resolve_workspace_row_entry(
     // not a generated `<image>_entry`. On the CMake road it is a subdirectory
     // of the generated root (`NanoRosWorkspace.cmake`: `pkg/<name>`), and its
     // executable is the one its own `CMakeLists.txt` names.
-    let generated = *entry == format!("{}_entry", row.image.replace(['-', '.', '/'], "_"));
+    let generated = !row.builds_owned_entry();
     // phase-531 W6 — the profile `workspace-fixtures-build.sh` builds the row
     // at: NuttX's carve-out (the 177.8.c miscompile dodge), the ambient
     // profile everywhere else. NOT `platform_profile`, which also names

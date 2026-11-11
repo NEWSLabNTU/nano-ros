@@ -288,7 +288,7 @@ def scan_multiplexers(rel):
 # human must clear (most are DDS-handle or count comparisons the window
 # attributes to a nearby slot name) — the list shrinks, it never grows.
 BASELINE = {
-    "examples/linux/cpp/parameters/src/main.cpp": 1,
+    "examples/linux/cpp/parameters/src/cpp_parameters/src/main.cpp": 1,
     "examples/zephyr/rust/action-server/node/src/lib.rs": 1,
     "packages/api/nros/src/node_runtime.rs": 1,
     "packages/rmw/cffi/tests/request_sequence.rs": 1,
