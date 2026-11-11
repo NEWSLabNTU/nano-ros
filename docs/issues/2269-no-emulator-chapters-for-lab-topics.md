@@ -30,7 +30,7 @@ Progress (2026-11-11):
   keep a promise", on three weekly probe tracks (`lab-tiers`, `lab-tiers-c`,
   `lab-tiers-cpp`), all on `mps2-an385-freertos`. It authors `[tasks]`
   explicitly, because with none authored the schedule differs by language
-  (issue [2432](2432-derived-sched-tasks-differ-by-language.md)).
+  (issue [2432](archived/2432-derived-sched-tasks-differ-by-language.md)).
 - Lifecycle: blocked on issue
   [2428](2428-workspace-lifecycle-is-one-machine-per-image.md). A workspace
   image has one lifecycle state machine, named `/nros_app`, and no component
