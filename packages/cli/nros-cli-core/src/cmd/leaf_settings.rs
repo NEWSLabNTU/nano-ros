@@ -2573,11 +2573,14 @@ mod board_crate_tests {
             }
         }
         assert!(pinned.is_empty(), "{}", pinned.join("\n"));
-        // phase-535 W6 — the ten mps2-an385 bare-metal C/C++ non-talker leaves
-        // became one-package workspaces (no `system.toml` beside a
-        // `Cargo.toml`): the floor 40 -> 30, the count measured.
+        // A floor, so a walk that silently reaches nothing fails. It falls
+        // as leaves become owned-entry workspaces, whose `system.toml` sits in
+        // a bringup package with no `Cargo.toml` beside it: 40 -> 30 for the
+        // ten mps2-an385 bare-metal C/C++ non-talker leaves (phase-535 W6),
+        // 30 -> 26 for the three `nros-bench` programs and
+        // `bins/ros-edition-pose-pub` (phase-531 W7). Each count measured.
         assert!(
-            checked >= 30,
+            checked >= 26,
             "the walk reached only {checked} cargo leaves"
         );
     }
