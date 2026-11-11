@@ -1950,9 +1950,12 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // RFC-0071 D19 — a configure whose images all build OWNED
                 // entries emits no entry, and a bringup with no launch file
                 // (none authored, none generated) has no model to plan. Such a
-                // root names no SYSTEM, which `nano_ros_workspace` reads as
-                // "no bringup to plan" and skips the metadata step for: the
-                // owned entries' own `main`s are the whole program.
+                // root still names SYSTEM, because the bringup's `[system]
+                // features` are the capability axes the runtime is imported
+                // with (a root naming none built the C parameters example
+                // without `param_services`, which `nano_ros_workspace`
+                // refuses), and adds NO_PLAN, which skips the metadata step:
+                // the owned entries' own `main`s are the whole program.
                 let plans_nothing = cmake_entries.is_empty()
                     && !bringup_dir.join("launch").is_dir()
                     && !nros_orchestration_ir::model_location::generated_launch_dir(&bringup_dir)
@@ -1961,11 +1964,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     entries: cmake_entries,
                     image_env,
                     workspace: root.clone(),
-                    system: if plans_nothing {
-                        String::new()
-                    } else {
-                        bringup.clone()
-                    },
+                    system: bringup.clone(),
+                    plan: !plans_nothing,
                     platform: platform.clone(),
                     // phase-484 W4d — the board's OWN cmake module, not the
                     // alias the image happened to author: `board = "freertos"`
@@ -4509,6 +4509,7 @@ fn plan_packages(
                 image_env: false,
                 workspace: root.to_path_buf(),
                 system: String::new(),
+                plan: true,
                 platform: "posix".to_string(),
                 board: None,
                 rmw: "zenoh".to_string(),

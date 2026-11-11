@@ -260,6 +260,53 @@ fn with_manifest_families(
     system_text: &str,
     (param, lifecycle): (bool, bool),
 ) -> Result<Option<String>> {
+    let wanted: Vec<&str> = [(param, "param_services"), (lifecycle, "lifecycle")]
+        .into_iter()
+        .filter(|&(on, _)| on)
+        .map(|(_, name)| name)
+        .collect();
+    with_features(system_text, &wanted)
+}
+
+/// The capability axes a CMake leaf's own `CMakeLists.txt` declares with
+/// `set(NROS_FEATURES "<a>;<b>")`, in order. A workspace image imports the
+/// runtime ONCE, at the workspace root and before any package subdirectory,
+/// with the bringup's `[system] features` as its axes (`NanoRosWorkspace.cmake`,
+/// issue 0353), so a node package's `set(NROS_FEATURES ...)` reaches nothing:
+/// the axes must move to the bringup with the node, or the image silently
+/// builds without them (`safety`, `param_services`).
+fn cmake_declared_features(cmake_text: &str) -> Vec<String> {
+    let re = regex::Regex::new(r#"(?m)^\s*set\s*\(\s*NROS_FEATURES\s+"([^"]*)"\s*\)"#)
+        .expect("static regex");
+    let mut out: Vec<String> = Vec::new();
+    for cap in re.captures_iter(cmake_text) {
+        for axis in cap[1].split(';').map(str::trim).filter(|a| !a.is_empty()) {
+            if !out.iter().any(|o| o == axis) {
+                out.push(axis.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// `cmake_text` without its `set(NROS_FEATURES ...)` lines (see
+/// [`cmake_declared_features`]); `None` when it has none.
+fn without_cmake_features(cmake_text: &str) -> Option<String> {
+    let re = regex::Regex::new(r#"^\s*set\s*\(\s*NROS_FEATURES\s"#).expect("static regex");
+    if !cmake_text.lines().any(|l| re.is_match(l)) {
+        return None;
+    }
+    let kept: Vec<&str> = cmake_text.lines().filter(|l| !re.is_match(l)).collect();
+    let mut text = kept.join("\n");
+    text.push('\n');
+    Some(text)
+}
+
+/// `system.toml` with each of `wanted` added to `[system] features` where the
+/// file does not already declare it (a `features` entry, or a typed block of
+/// that name such as `[param_services]` / `[lifecycle]`); `None` when nothing
+/// is missing.
+fn with_features(system_text: &str, wanted: &[&str]) -> Result<Option<String>> {
     let mut doc: toml_edit::DocumentMut = system_text.parse().wrap_err("parsing system.toml")?;
     let listed = |name: &str| {
         doc.get("system")
@@ -267,10 +314,10 @@ fn with_manifest_families(
             .and_then(|f| f.as_array())
             .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(name)))
     };
-    let missing: Vec<&str> = [(param, "param_services"), (lifecycle, "lifecycle")]
-        .into_iter()
-        .filter(|&(on, name)| on && !listed(name) && doc.get(name).is_none())
-        .map(|(_, name)| name)
+    let missing: Vec<&str> = wanted
+        .iter()
+        .copied()
+        .filter(|&name| !listed(name) && doc.get(name).is_none())
         .collect();
     if missing.is_empty() {
         return Ok(None);
@@ -820,6 +867,30 @@ pub fn plan_with(dir: &Path, west_board_of: &WestBoardOf<'_>) -> Result<Plan> {
         );
         system_edit = Some(edited);
     }
+    // A CMake leaf states its axes in its own CMakeLists.txt, which a
+    // workspace image never reads for them: move them to the bringup.
+    if has_cmake && !is_west {
+        let axes = cmake_declared_features(&cmake_text);
+        if !axes.is_empty() {
+            let base = system_edit.clone().unwrap_or_else(|| system_text.clone());
+            let wanted: Vec<&str> = axes.iter().map(String::as_str).collect();
+            if let Some(edited) = with_features(&base, &wanted)? {
+                system_edit = Some(edited);
+            }
+            if let Some(text) = without_cmake_features(&cmake_text) {
+                plan.ops.push(Op::Write {
+                    path: node_dir.join("CMakeLists.txt"),
+                    text,
+                });
+            }
+            plan.report.push(format!(
+                "moved `set(NROS_FEATURES \"{}\")` from src/{node}/CMakeLists.txt to the \
+                 bringup's `[system] features`: a workspace image imports the runtime \
+                 with the bringup's axes, before any package's CMakeLists.txt runs",
+                axes.join(";")
+            ));
+        }
+    }
     if let Some(text) = system_edit {
         plan.ops.push(Op::Write {
             path: bringup_dir.join("system.toml"),
@@ -1315,6 +1386,50 @@ nros = { version = "*", features = ["macros", "param-services"] }
             None,
             "the typed block declares the family too"
         );
+    }
+
+    /// A CMake leaf's `set(NROS_FEATURES ...)` is read by no workspace image
+    /// (the runtime is imported at the workspace root with the bringup's
+    /// axes), so the migration moves it into the bringup's `[system]
+    /// features` and drops it from the node's CMakeLists.txt.
+    #[test]
+    fn a_cmake_leaf_s_features_move_to_the_bringup() {
+        let d = scratch("cmake-features");
+        write(
+            &d.join("CMakeLists.txt"),
+            "cmake_minimum_required(VERSION 3.22)\nproject(c_params LANGUAGES C)\n\
+             set(NROS_FEATURES \"param_services;safety\")\nfind_package(nano_ros REQUIRED)\n\
+             nano_ros_add_executable(c_params src/main.c)\n",
+        );
+        write(
+            &d.join("package.xml"),
+            &package_xml("c_params", "nros_cmake"),
+        );
+        write(
+            &d.join("system.toml"),
+            "[system]\nname = \"c_params\"\nrmw = \"zenoh\"\n\n[image.linux]\nboard = \"linux\"\n",
+        );
+        write(&d.join("src/main.c"), "int main(void) { return 0; }\n");
+
+        let p = plan(&d).unwrap();
+        apply(&p).unwrap();
+        let sys = std::fs::read_to_string(d.join("src/c_params_bringup/system.toml")).unwrap();
+        let doc: toml::Value = sys.parse().unwrap();
+        assert_eq!(
+            doc["system"]["features"].as_array().unwrap(),
+            &vec![
+                toml::Value::from("param_services"),
+                toml::Value::from("safety")
+            ],
+            "{sys}"
+        );
+        let cmake = std::fs::read_to_string(d.join("src/c_params/CMakeLists.txt")).unwrap();
+        assert!(!cmake.contains("NROS_FEATURES"), "{cmake}");
+        assert!(
+            cmake.contains("nano_ros_add_executable(c_params"),
+            "{cmake}"
+        );
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// A package name with dashes (`entry-poc`) is a valid cargo package
