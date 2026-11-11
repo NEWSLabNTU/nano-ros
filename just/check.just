@@ -235,8 +235,6 @@ fast-serial:
 # 82 busy minutes on one run, 119 vs 127 the night before), and shard 1, which
 # also runs the fast tier, was cut off at its 120-minute cap. The weights decide
 # balance only: every test lands in exactly one shard whatever they say.
-# `NROS_BUILD_GATE_PRELOAD_FIRST=<unit>` charges shard 1 with a weights row for
-# work it runs outside this list; every shard of one run must set the same.
 [group("main")]
 [metadata("tier", "exempt", "lane verb: the build tier through the gate harness (`scripts/build/gate-lane.sh`)")]
 build:
@@ -253,10 +251,8 @@ build:
             exit 2
         fi
         awk -F'\t' 'NF == 1 && /^build::/' <<<"$listed" > "$work/tests"
-        pre=()
-        [ -z "${NROS_BUILD_GATE_PRELOAD_FIRST:-}" ] || pre=(--preload-first "$NROS_BUILD_GATE_PRELOAD_FIRST")
         if ! mine="$(python3 scripts/build/gate-shard.py "$work/tests" .config/build-gate-weights.txt \
-                "$NROS_BUILD_GATE_SHARD" "${pre[@]}")"; then
+                "$NROS_BUILD_GATE_SHARD")"; then
             echo "check build: could not compute shard $NROS_BUILD_GATE_SHARD (gate-shard.py)" >&2
             exit 2
         fi
