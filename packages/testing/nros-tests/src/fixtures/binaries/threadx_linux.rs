@@ -177,8 +177,9 @@ pub fn build_threadx_cmake_example_rmw(
     rmw: super::Rmw,
 ) -> TestResult<PathBuf> {
     // phase-531 W6 — a talker witness migrated to a one-package workspace
-    // resolves through its `[[workspace_fixture]]` rows (the C++ one boots a
-    // generated entry; RFC-0122 D10).
+    // resolves through its `[[workspace_fixture]]` rows (the C one builds the
+    // package's own `main`, RFC-0071 D19; the C++ one boots a generated entry,
+    // RFC-0122 D10).
     if let Some(r) = super::migrated_leaf_binary_named(
         &format!("examples/threadx-linux/{lang}/{name}"),
         rmw,

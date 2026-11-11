@@ -4450,12 +4450,15 @@ build_subdir = "build/nuttx-zenoh-rv-virt-nuttx-nuttx_riscv_c_talker_bringup/cma
 # Toolchain / SDK / codegen -D defs are platform-recipe-level (NROS_CMAKE_EXTRA_DEFS).
 # ===========================================================================
 
-[[fixture]]
+[[workspace_fixture]]
+id = "threadx-linux-c-zenoh-talker"
 platform = "threadx-linux"
 lang = "c"
 rmw = "zenoh"
 dir = "examples/threadx-linux/c/talker"
-cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9100" }
+bringup = "src/threadx_c_talker_bringup"
+image = "threadx-linux"
+build_subdir = "build/threadx-linux-zenoh-threadx_c_talker_bringup/cmake"
 
 [[workspace_fixture]]
 id = "threadx-linux-cpp-zenoh-talker"
@@ -4536,12 +4539,15 @@ build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx-riscv64_threadx_cpp_
 # threadx-linux — Cyclone C / C++ (gated on `just cyclonedds setup`).
 # ===========================================================================
 
-[[fixture]]
+[[workspace_fixture]]
+id = "threadx-linux-c-cyclonedds-talker"
 platform = "threadx-linux"
 lang = "c"
 rmw = "cyclonedds"
 dir = "examples/threadx-linux/c/talker"
-cmake_defs = { NROS_IMAGE = "threadx-linux-cyclonedds" }
+bringup = "src/threadx_c_talker_bringup"
+image = "threadx-linux-cyclonedds"
+build_subdir = "build/threadx-linux-cyclonedds-threadx_c_talker_bringup/cmake"
 
 [[workspace_fixture]]
 id = "threadx-linux-cpp-cyclonedds-talker"
