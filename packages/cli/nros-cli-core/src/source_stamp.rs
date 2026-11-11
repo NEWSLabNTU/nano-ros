@@ -475,7 +475,7 @@ pub fn source_stamp_components(root: &Path) -> Option<Vec<(&'static str, String)
         &untracked_cli_files(root),
         is_cli_input,
     )?;
-    let h = fold_entries(b"cli_sources", &entries);
+    let h = fold_entries(fnv1a(b"cli_sources", FNV_OFFSET), &entries);
     out.push(("cli_sources", format!("{h:016x}")));
 
     // STAMP INPUT: play_launch_pin
@@ -563,9 +563,11 @@ fn content_entries(
     Some(entries)
 }
 
-/// FNV-1a over `label` then every `(path, entry)` of [`content_entries`].
-fn fold_entries(label: &[u8], entries: &std::collections::BTreeMap<String, String>) -> u64 {
-    let mut h = fnv1a(label, FNV_OFFSET);
+/// Continue `h` (a component's label seed) over every `(path, entry)` of
+/// [`content_entries`]. The seed stays at the call site, spelled
+/// `fnv1a(b"<label>", FNV_OFFSET)`: that is what `check-stale-cli-attribution`
+/// harvests a stamp input from.
+fn fold_entries(mut h: u64, entries: &std::collections::BTreeMap<String, String>) -> u64 {
     for (path, meta) in entries {
         h = fnv1a(path.as_bytes(), h);
         h = fnv1a(meta.as_bytes(), h);
@@ -684,7 +686,10 @@ pub fn planning_stamp(root: &Path) -> Option<String> {
         .filter(|p| keep(p))
         .collect();
     let entries = content_entries(root, &plus, &modified, &untracked, keep)?;
-    Some(format!("{:016x}", fold_entries(b"cli_planning", &entries)))
+    Some(format!(
+        "{:016x}",
+        fold_entries(fnv1a(b"cli_planning", FNV_OFFSET), &entries)
+    ))
 }
 
 /// Blob SHAs for `files` (repo-relative), in order — one `git hash-object`

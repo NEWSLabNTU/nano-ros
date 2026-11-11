@@ -482,7 +482,54 @@ def render(plus, minus):
             + "".join(f"- {m}\n" for m in minus))
 
 
+def self_test():
+    """Negative controls for the walk -- a reach rule that never fires proves
+    nothing, and an under-reach here is a fixture key blind to planning code.
+    Runs on every invocation, not behind a flag."""
+    def walk(files):
+        return set(reach(Crate(files)))
+
+    base = {
+        "lib.rs": "pub mod cmd;\nfn run() { cmd::build::run(); cmd::doctor::run(); }\n",
+        "cmd/mod.rs": "pub mod build; pub mod doctor; pub mod helper; pub mod emit;\n",
+        "cmd/build.rs": "use crate::cmd::helper as h;\npub fn run() { h::go(); }\n",
+        "cmd/helper.rs": "pub struct T; pub fn go() {}\n",
+        "cmd/doctor.rs": "pub fn run() {}\n",
+        "cmd/emit.rs": "impl super::helper::T { fn m(&self) {} }\n",
+    }
+    got = walk(base)
+    problems = []
+    # An alias-bound module is reached; a dispatcher edge into a leaf is not.
+    if "cmd/helper.rs" not in got:
+        problems.append("`use crate::cmd::helper as h; h::go()` did not reach helper.rs")
+    if "cmd/doctor.rs" in got:
+        problems.append("a dispatcher edge into a LEAF_VERBS file was followed")
+    # Impl-only module, reached by type.
+    impl_only = dict(base, **{"cmd/emit.rs": "use super::helper::T;\nimpl T { fn m(&self) {} }\n"})
+    impl_only["cmd/helper.rs"] = "pub struct T; pub fn go() {}\n"
+    if "cmd/emit.rs" not in walk(impl_only):
+        problems.append("an `impl T` in another file was not reached from T's file")
+    # A test-only reference reaches nothing.
+    test_only = dict(base, **{"cmd/build.rs":
+                              "pub fn run() {}\n#[cfg(test)]\nmod tests { fn t() { crate::cmd::helper::go(); } }\n"})
+    if "cmd/helper.rs" in walk(test_only):
+        problems.append("a `#[cfg(test)]` reference reached a module")
+    # A comment or string naming a module reaches nothing.
+    prose = dict(base, **{"cmd/build.rs": 'pub fn run() { let _ = "crate::cmd::helper::go"; } // crate::cmd::helper\n'})
+    if "cmd/helper.rs" in walk(prose):
+        problems.append("a comment or string literal reached a module")
+    # A non-dispatcher reaching a leaf is a planning reach: walk follows it.
+    planning_leaf = dict(base, **{"cmd/build.rs": "pub fn run() { super::doctor::run(); }\n"})
+    if "cmd/doctor.rs" not in walk(planning_leaf):
+        problems.append("a planning edge into a LEAF_VERBS file was dropped")
+    if problems:
+        raise SystemExit("gen-cli-planning-set: self-test FAILED:\n  " + "\n  ".join(problems))
+
+
 def main():
+    # Always, not only behind a flag: a negative control nobody runs decays
+    # into a comment.
+    self_test()
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true",
