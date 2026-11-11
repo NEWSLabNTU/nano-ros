@@ -1975,6 +1975,9 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 // per-entry call carries it), by the resolver a generated
                 // entry's LOCATOR / DOMAIN_ID come from.
                 let mut owned = Vec::new();
+                // Issue 2433 -- the census that sizes an owned entry on a
+                // cross board (the first owned image that has one).
+                let mut owned_census = None;
                 for (_, bd, id, img) in coordinate_members(&bringup, &coord) {
                     if !matches!(owned_entry_dir(&root, &id, &img), Ok(Some(_))) {
                         continue;
@@ -1985,6 +1988,27 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     // Issue 2433 — the board, verbatim: what a generated
                     // entry's DEPLOY says on this road (`cmake_entries` above).
                     let b = img.board.clone().unwrap_or_default();
+                    // Issue 2433 -- on a cross board, the census of the owned
+                    // entry sizes the image (the host image is the producer).
+                    let census = match owned_entry_dir(&root, &id, &img) {
+                        Ok(Some(pkg))
+                            if platform != "posix" && pkg.join("CMakeLists.txt").is_file() =>
+                        {
+                            Some(crate::builder::cmake_root::OwnedCensus {
+                                bringup: bringup.clone(),
+                                image: id.clone(),
+                                package: pkg
+                                    .strip_prefix(&root)
+                                    .unwrap_or(&pkg)
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            })
+                        }
+                        _ => None,
+                    };
+                    if owned_census.is_none() {
+                        owned_census = census;
+                    }
                     owned.push((
                         id,
                         crate::builder::cmake_root::OwnedIdentity {
@@ -1999,6 +2023,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
                     entries: cmake_entries,
                     owned_identity,
+                    owned_census,
                     image_env,
                     workspace: root.clone(),
                     system: bringup.clone(),
@@ -4545,6 +4570,7 @@ fn plan_packages(
                 entries: Vec::new(),
                 image_env: false,
                 owned_identity: None,
+                owned_census: None,
                 workspace: root.to_path_buf(),
                 system: String::new(),
                 plan: true,
@@ -7576,7 +7602,7 @@ fn names_west_build_dir(west_extra: &[String]) -> bool {
 /// A named entry that is no package under `src/` is an error naming the image:
 /// falling back to a generated entry would build a different program than the
 /// one the image names.
-fn owned_entry_dir(
+pub(crate) fn owned_entry_dir(
     root: &Path,
     image_id: &str,
     image: &crate::orchestration::image::ImageBlock,

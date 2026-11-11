@@ -253,3 +253,66 @@ function(nros_record_leaf_entity_facts _dir)
     set_property(DIRECTORY APPEND PROPERTY
         CMAKE_CONFIGURE_DEPENDS "${_dir}/system.toml")
 endfunction()
+
+# nros_record_owned_entity_facts(BRINGUP <dir> IMAGE <id> PACKAGE <dir>
+#                                WORKSPACE <dir>)
+#
+# Issue 2433 (maintainer ruling 2026-11-11) -- an image whose program is an
+# OWNED C/C++ entry (RFC-0071 D19) on a cross board has no launch and no
+# model, so nothing on the workspace road sizes it. It is sized the way a
+# standalone C/C++ leaf is: by the CENSUS of that entry, a host build of its
+# package run once (`nros dev image entity-census take --image`, which keeps
+# a current census and returns at once), read into this configure's sizing
+# descriptor and entity fragment before every reader. The generated cmake root
+# calls this, once, for the owned entry its images build.
+function(nros_record_owned_entity_facts)
+    cmake_parse_arguments(_o "" "BRINGUP;IMAGE;PACKAGE;WORKSPACE" "" ${ARGN})
+    # The host census build is the producer; it is not sized by itself.
+    if(DEFINED ENV{NROS_LEAF_CENSUS_HOST} AND NOT "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+        return()
+    endif()
+    nros_resolve_cli(_nros CONTEXT "nros_record_owned_entity_facts (${_o_IMAGE})")
+    get_filename_component(_bringup_name "${_o_BRINGUP}" NAME)
+    get_filename_component(_pkg_name "${_o_PACKAGE}" NAME)
+    if(NOT NROS_LEAF_CENSUS_TAKE STREQUAL "OFF")
+        execute_process(
+            COMMAND "${_nros}" dev image entity-census take
+                    --image "${_bringup_name}:${_o_IMAGE}" --workspace "${_o_WORKSPACE}"
+            RESULT_VARIABLE _rc
+            ERROR_VARIABLE _err)
+        if(NOT _rc EQUAL 0)
+            message(FATAL_ERROR
+                "nano-ros: `${_bringup_name}:${_o_IMAGE}` builds the owned entry "
+                "`${_pkg_name}`, which is sized by its census, and the census could not "
+                "be taken:\n${_err}")
+        endif()
+    endif()
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosEntityInventory.cmake")
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosPromise.cmake")
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosSizingDescriptor.cmake")
+    nros_entity_inventory_knobs_file(_frag)
+    nros_sizing_descriptor_from_leaf(_desc REQUIRED
+        CLI          "${_nros}"
+        LEAF         "${_o_BRINGUP}"
+        IMAGE        "${_o_IMAGE}"
+        OWNED_ENTRY  "${_o_PACKAGE}"
+        WORKSPACE    "${_o_WORKSPACE}"
+        ENTRY        "${_pkg_name}"
+        BUILD_DIR    "${CMAKE_BINARY_DIR}"
+        ENTITY_CMAKE "${_frag}")
+    if(NOT "${_desc_ENTITY_FRAGMENT}" STREQUAL "")
+        nros_promise_seeded("${_frag}"
+            "the owned entry `${_pkg_name}`'s census (`sizing-descriptor --owned-entry`)")
+        set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_LEAF_SIZED "census")
+        message(STATUS
+            "nano-ros: entity inventory of `${_bringup_name}:${_o_IMAGE}` from the census "
+            "of its owned entry `${_pkg_name}`, before every reader -- ${_frag}")
+    endif()
+    # A configure re-reads the census when it changes: its digest, as the leaf
+    # road depends on it.
+    set(_census "${_o_WORKSPACE}/build/nros/census/owned/${_bringup_name}/${_o_IMAGE}.census.json")
+    string(REGEX REPLACE "\\.json$" ".digest" _digest "${_census}")
+    if(EXISTS "${_digest}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_digest}")
+    endif()
+endfunction()

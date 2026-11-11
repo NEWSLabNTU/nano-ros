@@ -197,6 +197,21 @@ pub struct CmakeRootSpec {
     /// images on this configure state `[image.<id>] env` (they all resolve the
     /// same rows; the coordinate is keyed on them).
     pub image_env: bool,
+    /// Issue 2433 -- on a CROSS board, the image sized by the census of its
+    /// owned entry: nothing else on this road sizes a program with no model.
+    pub owned_census: Option<OwnedCensus>,
+}
+
+/// Issue 2433 -- which image's census sizes the owned entry, and where the
+/// two packages are. Workspace-relative, like every other path in the root.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnedCensus {
+    /// The bringup package's directory name.
+    pub bringup: String,
+    /// The image id the census is taken for.
+    pub image: String,
+    /// The owned package's directory, relative to the workspace root.
+    pub package: String,
 }
 
 /// phase-481 W4 — the image-env cargo config `nros build` writes beside a
@@ -497,6 +512,24 @@ pub fn render(
         }
         out.push('\n');
     }
+    if let Some(c) = &spec.owned_census {
+        let ws_rel = super::paths::relative_or_err(manifest_dir, &spec.workspace)?;
+        out.push_str(&format!(
+            "# Issue 2433 -- on a cross board the owned entry is sized by its own\n\
+             # CENSUS (a host build of the package, run once), as a standalone C/C++\n\
+             # leaf is: before the packages are added, so every reader sees it.\n\
+             include(\"${{NROS_REPO_DIR}}/cmake/NanoRosLeafEntityFacts.cmake\")\n\
+             get_filename_component(_nros_owned_ws \"{ws_rel}\" ABSOLUTE)\n\
+             nros_record_owned_entity_facts(\n\
+             \x20   BRINGUP   \"${{_nros_owned_ws}}/src/{bringup}\"\n\
+             \x20   IMAGE     {image}\n\
+             \x20   PACKAGE   \"${{_nros_owned_ws}}/{package}\"\n\
+             \x20   WORKSPACE \"${{_nros_owned_ws}}\")\n\n",
+            bringup = c.bringup,
+            image = c.image,
+            package = c.package,
+        ));
+    }
 
     // Relative like every other path here, so the file stays byte-identical
     // across machines (W3.c).
@@ -687,6 +720,7 @@ mod tests {
             system: "demo_bringup".to_string(),
             plan: true,
             owned_identity: None,
+            owned_census: None,
             platform: "posix".to_string(),
             board: None,
             rmw: "zenoh".to_string(),
@@ -747,6 +781,32 @@ mod tests {
         assert!(out.contains("set(NROS_PLATFORM baremetal CACHE"), "{out}");
         assert!(out.contains("PLATFORM \"baremetal\""), "{out}");
         assert!(!out.contains("bare_metal"), "{out}");
+    }
+
+    /// Issue 2433 -- on a cross board the census of the owned entry sizes
+    /// the image, recorded after find_package and before the packages; a
+    /// configure with no owned census records nothing.
+    #[test]
+    fn an_owned_entry_on_a_cross_board_is_sized_by_its_census() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "c_talker", true)]);
+        let mut sp = spec(root);
+        sp.owned_census = Some(OwnedCensus {
+            bringup: "tx_bringup".to_string(),
+            image: "threadx-linux".to_string(),
+            package: "src/c_talker".to_string(),
+        });
+        let out = render(&d, &root.join("build/tx"), &sp).unwrap();
+        let census = out.find("nros_record_owned_entity_facts(").expect(&out);
+        assert!(out.contains("IMAGE     threadx-linux\n"), "{out}");
+        assert!(out.contains("/src/tx_bringup\""), "{out}");
+        assert!(out.contains("/src/c_talker\""), "{out}");
+        assert!(out.find("find_package(nano_ros").unwrap() < census, "{out}");
+        assert!(census < out.find("nano_ros_workspace(").unwrap(), "{out}");
+
+        let none = render(&d, &root.join("build/tx"), &spec(root)).unwrap();
+        assert!(!none.contains("nros_record_owned_entity_facts"), "{none}");
     }
 
     /// When every cmake package was left out as another board's entry, the

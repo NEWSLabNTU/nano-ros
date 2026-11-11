@@ -420,7 +420,10 @@ endfunction()
 # `<out_var>_ENTITY_FRAGMENT` to it when one was written (a leaf that declares
 # nothing gets none).
 function(nros_sizing_descriptor_from_leaf _out_var)
-    cmake_parse_arguments(_nsl "REQUIRED" "CLI;LEAF;ENTRY;BUILD_DIR;ENTITY_CMAKE" "" ${ARGN})
+    # IMAGE / OWNED_ENTRY / WORKSPACE (issue 2433): LEAF is then a BRINGUP and
+    # the image builds the owned entry at OWNED_ENTRY, sized by its census.
+    cmake_parse_arguments(_nsl "REQUIRED"
+        "CLI;LEAF;ENTRY;BUILD_DIR;ENTITY_CMAKE;IMAGE;OWNED_ENTRY;WORKSPACE" "" ${ARGN})
     set(${_out_var} "" PARENT_SCOPE)
     set(${_out_var}_ENTITY_FRAGMENT "" PARENT_SCOPE)
 
@@ -451,15 +454,26 @@ function(nros_sizing_descriptor_from_leaf _out_var)
 
     # phase-530 W2 (M1) -- the census default depends on the SELECTED image.
     set(_leaf_image "")
-    if(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
+    if(_nsl_IMAGE)
+        set(_leaf_image --leaf-image "${_nsl_IMAGE}")
+    elseif(DEFINED NROS_IMAGE AND NOT "${NROS_IMAGE}" STREQUAL "")
         set(_leaf_image --leaf-image "${NROS_IMAGE}")
+    endif()
+    set(_owned_args "")
+    set(_road "a standalone cmake leaf")
+    if(_nsl_OWNED_ENTRY)
+        set(_owned_args --owned-entry "${_nsl_OWNED_ENTRY}")
+        if(_nsl_WORKSPACE)
+            list(APPEND _owned_args --workspace "${_nsl_WORKSPACE}")
+        endif()
+        set(_road "a workspace image's owned cmake entry")
     endif()
     execute_process(
         COMMAND "${_nsl_CLI}" dev image sizing-descriptor
-                --from-leaf "${_nsl_LEAF}" ${_leaf_image}
+                --from-leaf "${_nsl_LEAF}" ${_leaf_image} ${_owned_args}
                 --build-dir "${_build_dir}"
                 --entry "${_nsl_ENTRY}"
-                --road "a standalone cmake leaf"
+                --road "${_road}"
                 ${_entity_arg}
                 ${_host_arg} ${_heap_args} ${_bound_args}
         OUTPUT_VARIABLE _out
