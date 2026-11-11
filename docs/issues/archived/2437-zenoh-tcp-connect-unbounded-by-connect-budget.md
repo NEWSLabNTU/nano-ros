@@ -99,7 +99,7 @@ stack and native_sim's NSOS) include it. A budget of `0` (one attempt) or `-1`
 | Zephyr native IP (the a53, mps2) | fixed by the same `tcp_zephyr.c` code; compiled, not run (was already bounded by `CONFIG_NET_SOCKETS_CONNECT_TIMEOUT`, 3000 ms) |
 | NuttX | fixed by the same `tcp_posix.c` code; not run (no NuttX fixture built here) |
 | FreeRTOS lwIP | unchanged: already bounded by its own non-blocking connect |
-| ThreadX NetX BSD, bare-metal smoltcp | NOT fixed: they reach TCP through nano-ros's `nros_platform_tcp_open`, whose ABI has no connect bound. [Issue 2438](../2438-threadx-smoltcp-tcp-connect-ignores-connect-budget.md) |
+| ThreadX NetX BSD, bare-metal smoltcp | NOT fixed: they reach TCP through nano-ros's `nros_platform_tcp_open`, whose ABI has no connect bound. [Issue 2438](2438-threadx-smoltcp-tcp-connect-ignores-connect-budget.md), since resolved |
 
 ### Regression coverage
 
