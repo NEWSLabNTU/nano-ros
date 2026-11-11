@@ -166,7 +166,7 @@ they were dispatched by hand:
 
 So the lane's claims hold, and every job reaches its gates, which is what this
 issue required. The cancelled shard is a time budget, filed as
-[issue 2141](../2141-host-tests-tier1-gates-outgrow-two-hours.md). Its time went
+[issue 2141](2141-host-tests-tier1-gates-outgrow-two-hours.md). Its time went
 to `just generate-bindings` (16:01:48 to 16:45:07, 43 min), the fast tier
 (565 s), and the build tier's slowest gates (`cpp` 756 s,
 `ament-census-sizing` 632 s, `required-features-tests` 624 s, `borrowed-e2e`

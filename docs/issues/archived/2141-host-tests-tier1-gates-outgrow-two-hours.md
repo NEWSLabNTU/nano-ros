@@ -1,7 +1,9 @@
 ---
 id: 2141
 title: "host-tests' `tier-1 gates (just check)` job has grown from 1h26m to past its 120-minute cap in three nights, so the scheduled run was cancelled and gave no verdict"
-status: open
+status: resolved
+resolved: 2026-11-11
+resolved_in: "host-tests' `gates` job removed as a duplicate of gate.yml's scheduled run"
 type: bug
 area: ci
 severity: medium
@@ -9,7 +11,14 @@ found: 2026-10-29
 related: [1651, 1500, 1353, phase-466, phase-489]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `host-tests` tier-1 gates job was cancelled at its two-hour cap, which is a run with no verdict.
+> **Resolved (2026-11-11).** host-tests' `gates` job is gone. It re-ran
+> exactly what `gate.yml`'s scheduled run (02:00 UTC daily, and on
+> workflow_dispatch) already runs and finishes. The job could not fit its
+> runner in two shards, and four would have bought the same verdict a second
+> time. See "Resolution" at the end. The local `just ci` / `just ci tier1`
+> still run the gates.
+
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `host-tests` tier-1 gates job was cancelled at its two-hour cap, which is a run with no verdict.
 
 ## What
 
@@ -229,3 +238,39 @@ into `build/<coord>/cmake`, none of which the cache holds (deliberately: the
 build dirs are ~1.6 GB a workspace). That is the class of issue 2318. The
 cache keeps the cold 43 min down to about 15; the next lever is that
 configure-time build, not the cache.
+
+## Resolution: the job was a duplicate (2026-11-11)
+
+**Sizing.** From the hosted logs of runs 42849000957 and 42930042383: 66 of
+the build tier's 75 tests measured 15,806 s of test time, and the 9 that never
+finished (`test-targets`, `workspace-features`, `template-copy-out`, six
+scaffold variants) bring the estimate to about 19,700 s. Effective
+parallelism on the 4-CPU runner is about 1.6 (shard 2 on 11-10: 5,745 s busy
+in a 60-min wall), so the tier is about 205 min of wall time. Each shard spent
+about 45 min before its first gate (setup about 10, `generate-bindings` about
+30, reclaim and provisioning about 5), leaving about 75 min of a 120-min job.
+Two shards could not fit and three left no headroom.
+
+**The comparison.** Everything the job ran, `gate.yml`'s scheduled run already
+runs, an hour earlier:
+
+| host-tests `gates` ran | gate.yml (schedule + dispatch) runs |
+| --- | --- |
+| `just check build`, `NROS_GATE_SCOPE=build`, slices 1-2/2 | `check-build`: the same command and scope, slices 1-3/3, so the same 75-test set |
+| fast tier, scope `build` | `check-fast`, scope `fast`: the same set plus `cxx-compat-shim-facilities` (`check-gate-lists --lane fast` vs `--lane build`) |
+| `api-parity`, `probe-workspace-caps` | `check-fast-compile` |
+| `cli-fresh` | part of the fast tier |
+
+The tier-1 coordinates the job exported (`NROS_TEST_COORDS`,
+`NROS_FIXTURE_LANE`) are read by no fast or build gate, only by the `run`
+part, which is run-matrix.yml's `tier1` job. On dispatch 42848962439 all
+three `check-build` shards, `check-fast` and `check-fast-compile` passed,
+while host-tests' two shards were cut off at the cap.
+
+**Change.** The `gates` job is removed from host-tests.yml. A comment
+in its place names gate.yml as the gates' nightly verdict and gives the
+comparison, so the job is not re-added. run-matrix.yml, `just/ci.just`,
+`.config/gate-lanes.toml`, `scripts/build/gate-prune.sh` and
+`docs/development/ci-workflow-reorg.md` stop saying host-tests runs the gates.
+One consequence to know: `NROS_CI_PRUNE_GATE_OUTPUTS` was set only by that
+job, so no CI lane sets it now. gate.yml's three shards passed without it.

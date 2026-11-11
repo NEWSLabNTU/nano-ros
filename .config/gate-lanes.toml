@@ -55,9 +55,10 @@ tiers = ["fast"]
 claims = ["cli", "cmake", "cc", "arm-gcc-any", "bindgen", "ros2", "colcon", "sources", "submodules", "git-history", "zephyr-tree"]
 
 [lane.build]
-# The hosted runner's other jobs: `check / build tier` shards (gate.yml) and
-# host-tests' tier-1 gates, which run `just check` and so both tiers. Same
-# image as `fast`, without the sparse Zephyr header clone.
+# The hosted runner's other jobs: `check / build tier` shards (gate.yml), which
+# run the fast tier too through `just check build`'s lane. host-tests' tier-1
+# gates job ran this lane as well until issue 2141 removed it as a duplicate.
+# Same image as `fast`, without the sparse Zephyr header clone.
 tiers = ["fast", "build"]
 # Issue 2413: `arm-gcc` is provisioned by `scripts/ci/provision-gate-lane.sh
 # build` for the FreeRTOS C++ copy-out units, which refuse the distro 10.3.
