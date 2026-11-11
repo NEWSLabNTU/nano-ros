@@ -1134,16 +1134,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             node_instances.push(bare);
         }
 
-        // Callback groups → sched task, from the model's resolved bindings
-        // (`<fqn>/<group>` → sched task; a whole-node `<fqn>` binding assigns
-        // the node's default group), over the SAME `keep` set as the walk above.
-        // issue 2432 — built by the shared `entry_groups::model_node_groups`,
-        // so the parity test measures this map and not a copy of it.
-        node_groups.extend(nros_orchestration_ir::entry_groups::model_node_groups(
-            &model,
-            |f| keep(f),
-        ));
-
         // issue 1676 — the contract's monitor rows, from the SAME derivation
         // the CLI's C/C++ emitters bake (`nros_orchestration_ir::
         // contract_monitors`), sliced to the nodes this entry keeps: the
@@ -1209,6 +1199,29 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // makes the sidecars dependable; absence just falls back to the bound.
         let recorded = crate::source_metadata_sidecars::collect(&manifest_dir);
         tracked.extend(recorded.paths.iter().cloned());
+        // Callback groups → sched task, over the SAME `keep` set as the walk
+        // above: the groups the node's CODE states (the sidecar `nros sync`
+        // wrote, `callbacks[].group` — the Rust spelling of the cmake
+        // `CALLBACK_GROUPS` keyword), each on the sched task the model binds it
+        // to (`<fqn>/<group>`; a whole-node `<fqn>` binding assigns the default
+        // group) or, unbound, on the default sched task.
+        // issue 2432 — this read the bindings ALONE, so a Rust node whose code
+        // names its groups and whose `system.toml` binds none reached the
+        // derivation groupless and the image ran on one task, where its C/C++
+        // twins derived a schedule. Built by the shared
+        // `entry_groups::model_node_groups`, the same row builder as
+        // `codegen entry`, so the parity test measures this map.
+        node_groups.extend(nros_orchestration_ir::entry_groups::model_node_groups(
+            &model,
+            |f| keep(f),
+            |pkg, exec| {
+                recorded
+                    .groups
+                    .get(&(pkg.to_string(), exec.to_string()))
+                    .cloned()
+                    .unwrap_or_default()
+            },
+        ));
         model_callbacks = nros_orchestration_ir::executor_sizing::count_callbacks_with_recorded(
             &model,
             |fqn| keep(fqn),

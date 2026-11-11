@@ -11,15 +11,17 @@
 //!   `resolve_system_sched_tasks`;
 //! * `nros::main!` (Rust): the callback-group map from
 //!   `entry_groups::model_node_groups` - the function the macro itself calls -
-//!   then the same `declined` / derive / `resolve_sched_tasks` steps the macro
-//!   takes.
+//!   over the groups the Rust code states (the source-metadata sidecars
+//!   `nros sync` writes), then the same `declined` / derive /
+//!   `resolve_sched_tasks` steps the macro takes.
 //!
 //! The core was shared and its INPUT was not: issue 2432 measured C and C++
 //! deriving two sched tasks from one workspace while Rust derived none, silently.
 //! This file compares the three resolved tables (`sched task -> (priority,
 //! members)`) for the fixture `examples/workspaces/derived-sched-tasks-cpp`:
 //! four components, two at 30 Hz and two at 10 Hz, one callback group `main`
-//! each, and a `system.toml` that authors no `[tasks.*]`.
+//! each (the cmake keyword for the C/C++ roads, a sidecar for the Rust one),
+//! and a `system.toml` that authors no `[tasks.*]` and binds no group.
 //!
 //! Nothing here compiles anything. The cmake metadata and the model are
 //! written / resolved the way `common::derived_sched_tasks` does for its
@@ -27,7 +29,7 @@
 
 mod common;
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use common::derived_sched_tasks::{FAST, Fixture, SLOW, resolve_model, resolve_model_path};
 use nros_cli_core::{
@@ -41,8 +43,9 @@ use nros_cli_core::{
 };
 use nros_orchestration_ir::{
     ResolvedSchedTaskTable,
-    entry_groups::{Declined, declined, model_node_groups},
+    entry_groups::{Declined, declined, groups_of_component, model_node_groups},
 };
+use ros_launch_manifest_model::SystemModel;
 
 /// The board these bakes are for (the fixture's `[image.zephyr]`).
 const TARGET_RTOS: &str = "zephyr";
@@ -96,11 +99,52 @@ fn codegen_system(fixture: &Fixture) -> Table {
     table(&resolve_system_sched_tasks(&system, &groups, TARGET_RTOS).expect("resolve"))
 }
 
+/// What `nros sync`'s metadata probe writes for a Rust node whose code puts
+/// its one timer in callback group `group` (`node.callback_group(..)`):
+/// `<ws>/src/<pkg>/metadata/<exec>.json`, trimmed to the fields the macro
+/// reads. Returns each sidecar's path.
+fn write_rust_sidecars(fixture: &Fixture, model: &SystemModel, group: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for inst in model.structure.nodes.values() {
+        let (Some(pkg), Some(exec)) = (inst.pkg.as_deref(), inst.exec.as_deref()) else {
+            panic!("a fixture node without pkg/exec: {inst:?}");
+        };
+        let dir = fixture.bake_workspace().join(pkg).join("metadata");
+        std::fs::create_dir_all(&dir).expect("create the sidecar dir");
+        let path = dir.join(format!("{exec}.json"));
+        let doc = serde_json::json!({
+            "package": pkg,
+            "executable": exec,
+            "nodes": [{"subscribers": [], "timers": [{}], "services": [], "actions": []}],
+            "callbacks": [{"id": "on_tick", "kind": "timer", "group": group}],
+        });
+        std::fs::write(&path, doc.to_string()).expect("write the sidecar");
+        out.push(path);
+    }
+    out
+}
+
 /// The `nros::main!` road: its group map, and either its decline or its table.
+///
+/// The declared groups come from the sidecars through
+/// `entry_groups::groups_of_component`, the parser the macro's
+/// `source_metadata_sidecars::collect` calls.
 fn rust_entry(fixture: &Fixture) -> Result<Table, Declined> {
     let model = resolve_model(&fixture.bringup(), true);
+    let mut declared: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    for path in write_rust_sidecars(fixture, &model, "main") {
+        let raw = std::fs::read_to_string(&path).expect("read the sidecar");
+        let value: serde_json::Value = serde_json::from_str(&raw).expect("sidecar JSON");
+        let (key, ids) = groups_of_component(&value).expect("the sidecar names its node");
+        declared.insert(key, ids);
+    }
     let keep = |fqn: &str| nros_orchestration_ir::overlay::placed_here(&model, fqn);
-    let groups = model_node_groups(&model, keep);
+    let groups = model_node_groups(&model, keep, |pkg, exec| {
+        declared
+            .get(&(pkg.to_string(), exec.to_string()))
+            .cloned()
+            .unwrap_or_default()
+    });
     if let Some(why) = declined(&model, TARGET_RTOS, &groups) {
         return Err(why);
     }
@@ -181,17 +225,14 @@ fn every_road_derives_the_same_schedule_from_one_model() {
         "codegen-system and codegen entry derived different tables from one model"
     );
 
-    // KNOWN DIVERGENCE - issue 2432. The Rust road builds its group map from
-    // the model's bindings only, and this workspace (like the issue's) binds
-    // no group: the groups live in the code, which only the cmake keyword
-    // carries to the C/C++ roads. So the macro declines and the image runs on
-    // one task. Asserted EXPLICITLY so this goes red when either side moves:
-    // when the roads agree, replace it with `assert_eq!(rust, Ok(c))`.
+    // issue 2432 - the Rust road built its map from the model's bindings
+    // alone, so with groups stated only in code it declined and the image ran
+    // on one task. It now reads the groups the code states (the sidecar) and
+    // must derive THIS table.
     let rust = rust_entry(&fixture);
     assert_eq!(
         rust,
-        Err(Declined::NoCallbackGroups),
-        "issue 2432's divergence changed - if nros::main! now derives, assert it \
-         derives THIS table: {c:#?}"
+        Ok(c),
+        "nros::main! derived a different schedule from the one model"
     );
 }
