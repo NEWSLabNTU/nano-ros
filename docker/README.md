@@ -54,3 +54,9 @@ ThreadX Linux E2E tests work on the host with `sudo just setup-network`
 - zenohd 1.7.2 (project-pinned version)
 - kconfig-frontends (for NuttX kernel build)
 - Networking tools (iproute2, tcpdump, etc.)
+
+## starter-recipe
+
+`starter-recipe/` is not a test image: it is the documented customer recipe
+that builds `FROM` the nano-ros starter image (RFC-0127 D5, phase-551 W7).
+Its probe is `just probe starter-recipe`.

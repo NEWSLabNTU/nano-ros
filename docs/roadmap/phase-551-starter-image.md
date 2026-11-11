@@ -119,6 +119,19 @@ Acceptance: each recipe is a probe-tagged book block that a probe runs.
 
 ### W7 — The customer `FROM` recipe
 
+Status: the recipe is `docker/starter-recipe/Dockerfile`, which adds a board
+and a ROS 2 package (`nav_msgs`, which the starter does not ship; the probe
+refuses a package the starter already has, since installing it proves
+nothing). The recipe lives outside `ci/docker/`, because it is a customer
+image, not a CI image under the shared apt closure. Its probe is `just probe starter-recipe`
+(`scripts/probe/verify-starter-recipe.sh`), run locally FROM a locally built
+starter. Guarantee 2 is checked with a REAL offline `nros setup` per board, not
+with `--dry-run`: a dry run on releases up to `0.6.0-nros8` calls present
+sources absent ([issue 2447](../issues/archived/2447-setup-dry-run-reports-present-sources-as-planned.md)).
+The boards come from the image's own labels. The four guarantees are written
+in the recipe's header. Their book page waits on Q1, because a page naming an
+image nobody can pull is not one a customer can follow.
+
 Gate: none beyond W2 (the recipe is ruled by B). Until Q1 names a registry the
 recipe and its probe build `FROM` a locally built tag. A documented `FROM <starter>:<ver>` recipe adding a
 board and a package, and the four guarantees of RFC-0127 D5 written where a
