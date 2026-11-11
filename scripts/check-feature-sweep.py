@@ -382,7 +382,6 @@ STANDALONE = {
     "packages/testing/nros-bench/large-msg-xrce": HOST,
     "packages/testing/nros-bench/port-metric": HOST,
     "packages/testing/nros-bench/wcet-cycles-qemu": LEAF,
-    "packages/testing/nros-bench/large-msg-baremetal": LEAF,
     "packages/testing/nros-tests/bins/cdr-roundtrip-qemu": LEAF,
     "packages/testing/nros-tests/bins/lan9118-qemu": LEAF,
     # own [workspace] (+ tracked lock)

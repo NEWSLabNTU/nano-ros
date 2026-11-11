@@ -6,6 +6,7 @@ rmw = "zenoh"
 domain_id = 0
 
 [image.mps2-an385-freertos]
+entry = "loan_copy_count"
 board = "freertos"
 # The router both images dial: 7850, in the FreeRTOS window and assigned to no
 # baked cell. `src/lib.rs` `LOCATOR` states the same for the images' own

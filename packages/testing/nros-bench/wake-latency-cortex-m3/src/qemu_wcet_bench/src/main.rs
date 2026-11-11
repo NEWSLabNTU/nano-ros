@@ -1,7 +1,7 @@
 //! Phase 141.D — wake-latency P99 microbench, SUBSCRIBER (measured) image.
 //!
 //! Issue #0317 — the bench is now TWO images. This one subscribes to
-//! [`wake_latency_cortex_m3::TOPIC`] and, on each **transport-arrival** wake
+//! [`qemu_wcet_bench::TOPIC`] and, on each **transport-arrival** wake
 //! from the separate publisher image (routed through the host `zenohd`), the
 //! probe's `on_wake` / `on_dispatch` hooks capture the executor
 //! wake→dispatch delta. After `TARGET_SAMPLES` it drains the ring into a
@@ -18,13 +18,15 @@
 #![no_main]
 
 use nros::prelude::*;
+// The board's panic provider, linked by the crate root.
+use panic_semihosting as _;
 use nros_node::executor::wake_probe;
 use nros_platform_mps2_an385::timing::{CycleCounter, clock_cycles, cycles_to_ns};
 use std_msgs::msg::Int32;
-use wake_latency_cortex_m3::{
+use qemu_wcet_bench::{
     FANOUT_IDLE_SUBS, SCENARIO_NAME, SYSTEM_CORE_CLOCK_HZ, TARGET_SAMPLES, TOPIC, subscriber_config,
 };
-use wake_latency_cortex_m3_nros_selection::nros_board_mps2_an385_freertos::{Mps2An385, println};
+use nros_board_mps2_an385_freertos::{Mps2An385, println};
 
 /// DWT-backed cycle reader exposed via `extern "C"` so the probe's
 /// `set_cycle_reader` install accepts it; widened to `u64` for uniform storage.

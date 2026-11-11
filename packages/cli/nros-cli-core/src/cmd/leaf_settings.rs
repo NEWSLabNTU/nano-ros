@@ -2457,9 +2457,12 @@ mod board_crate_tests {
         // 38 -> 36 for the mps2-an385 `qemu-baremetal-main-e2e` and
         // `rtic-run-plan-e2e` bins (W7: owned entries), 36 -> 26 for the ten
         // mps2-an385 bare-metal C/C++ non-talker examples (phase-535 W6: cargo
-        // owned entries of one-package workspaces).
+        // owned entries of one-package workspaces), 26 -> 23 for the
+        // `nros-bench` `large-msg-baremetal`, `loan-copy-count` and
+        // `wake-latency-cortex-m3` programs (W7: owned entries with no
+        // component).
         assert!(
-            on_selection >= 26,
+            on_selection >= 23,
             "only {on_selection} leaves on the selection package"
         );
     }

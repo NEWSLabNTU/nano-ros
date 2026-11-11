@@ -16,7 +16,7 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use loan_copy_count_nros_selection::nros_board_mps2_an385_freertos::{BaseConfig, Config};
+use nros_board_mps2_an385_freertos::{BaseConfig, Config};
 
 /// zenoh router on the host, reached through slirp's gateway. 7850 is in the
 /// FreeRTOS window (7800+) and assigned to no baked cell (`alloc`'s bake

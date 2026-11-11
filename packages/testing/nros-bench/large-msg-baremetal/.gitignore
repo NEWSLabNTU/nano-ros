@@ -2,3 +2,6 @@
 /generated/
 /build/
 /Cargo.lock
+# The owned entry is its own cargo root (phase-531 W7); its lock is seeded
+# from the pin set on build, never committed.
+/src/*/Cargo.lock

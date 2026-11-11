@@ -1,0 +1,20 @@
+# What this bench image deploys to (RFC-0098 D3/D5). Its programs are the two
+# bins of the OWNED entry `qemu_wcet_bench` (RFC-0071 D19), each with its own
+# `main` (no `nros::main!`, no component table). The entry names its board
+# crate and links the board's panic provider itself; the generated adapter
+# carries the image's RMW and edition, and `build/<image>/nros-cargo.toml` the
+# target and link settings.
+
+[system]
+name = "wake_latency_cortex_m3"
+rmw = "zenoh"
+domain_id = 0
+
+# FreeRTOS on QEMU MPS2-AN385. The network identity comes from the crate's own
+# configs (`src/lib.rs`), not from here.
+[image.mps2-an385-freertos]
+entry = "qemu_wcet_bench"
+board = "freertos"
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

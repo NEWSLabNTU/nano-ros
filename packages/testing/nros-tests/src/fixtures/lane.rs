@@ -1004,16 +1004,22 @@ fn coord_of_artifact(binary_path: &Path) -> Option<Coord> {
 mod tests {
     use super::*;
 
-    /// Issue 2112 -- the lending cell's own path, against the shipped
-    /// manifest: a binary in the FreeRTOS group dir attributes to the
-    /// `loan-copy-count` row, so a lane without `freertos,rust,zenoh` skips it
+    /// Issue 2112 -- a shared-group binary's path, against the shipped
+    /// manifest: a binary in the FreeRTOS group dir attributes to the row
+    /// that builds it, so a lane without `freertos,rust,zenoh` skips it
     /// instead of reporting it MISSING. Before the fix this returned `None`.
+    /// (It was the lending cell's `loan-copy-sub`, until phase-531 W7 moved
+    /// that bench into its own workspace and out of the group.)
     #[test]
     fn a_shared_group_binary_attributes_to_the_row_that_builds_it() {
         let dir = crate::fixtures::groups::group_dir("freertos")
-            .join("thumbv7m-none-eabi/nros-minsizerel/loan-copy-sub");
-        let row = attribute_group_binary(&dir).expect("loan-copy-sub has one producing row");
-        assert_eq!(row.dir, "packages/testing/nros-bench/loan-copy-count");
+            .join("thumbv7m-none-eabi/nros-minsizerel/logging-smoke-freertos-mps2");
+        let row = attribute_group_binary(&dir)
+            .expect("logging-smoke-freertos-mps2 has one producing row");
+        assert_eq!(
+            row.dir,
+            "packages/testing/nros-tests/bins/logging-smoke-freertos-mps2"
+        );
 
         let c = |p: &str, l: &str, r: &str| (p.to_string(), l.to_string(), r.to_string());
         let tier2: BTreeSet<Coord> = [c("freertos", "cpp", "cyclonedds")].into_iter().collect();

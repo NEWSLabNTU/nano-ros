@@ -7,9 +7,10 @@
 #![no_main]
 
 use nros::prelude::*;
-// The board crate, through the generated selection package (issue 1305), which
-// also links the board's panic provider.
-use qemu_bsp_large_msg_test_nros_selection::nros_board_mps2_an385::{
+// The board's panic provider, linked by the crate root.
+use panic_semihosting as _;
+// The board crate, named directly by this owned entry (RFC-0071 D19).
+use nros_board_mps2_an385::{
     self, Config, println, run_bare,
 };
 

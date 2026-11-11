@@ -32,9 +32,6 @@ examples/templates/zephyr-byo/app/system.toml
 examples/threadx-linux/c/talker/system.toml
 examples/threadx-linux/rust/listener/system.toml
 examples/zephyr/rust/action-server/system.toml
-packages/testing/nros-bench/large-msg-baremetal/system.toml
-packages/testing/nros-bench/loan-copy-count/system.toml
-packages/testing/nros-bench/wake-latency-cortex-m3/system.toml
 packages/testing/nros-tests/bins/action-raw-goal-probe/system.toml
 packages/testing/nros-tests/bins/ament-census-port/system.toml
 packages/testing/nros-tests/bins/component-node-poc/system.toml
