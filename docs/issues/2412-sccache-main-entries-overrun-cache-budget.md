@@ -26,7 +26,7 @@ The repository's Actions cache held 10.67 GB of its 10 GB budget on 2026-11-10
 
 Over the limit, GitHub evicts the least recently used entries. So the budget's
 contents were decided by eviction rather than by any lane's needs, and a new
-entry, such as [issue 2369](2369-sdk-release-504-ejects-merge-queue.md)'s
+entry, such as [issue 2369](archived/2369-sdk-release-504-ejects-merge-queue.md)'s
 SDK-store cache, could be evicted before anything read it.
 
 ## Why
