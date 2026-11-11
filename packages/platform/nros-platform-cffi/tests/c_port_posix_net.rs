@@ -182,7 +182,7 @@ fn tcp_open_within_connects_to_a_listener() {
         assert_eq!(
             nros_platform_tcp_create_endpoint(
                 ep.as_mut_ptr() as *mut c_void,
-                b"127.0.0.1\0".as_ptr(),
+                c"127.0.0.1".as_ptr().cast::<u8>(),
                 port.as_ptr(),
             ),
             0,
@@ -214,8 +214,8 @@ fn tcp_open_within_gives_up_on_a_syn_dropping_peer_at_its_bound() {
         assert_eq!(
             nros_platform_tcp_create_endpoint(
                 ep.as_mut_ptr() as *mut c_void,
-                b"192.0.2.1\0".as_ptr(),
-                b"7447\0".as_ptr(),
+                c"192.0.2.1".as_ptr().cast::<u8>(),
+                c"7447".as_ptr().cast::<u8>(),
             ),
             0,
         );
