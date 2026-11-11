@@ -64,6 +64,9 @@ the D7 budget.
 Found on the way: [issue 2444](../issues/2444-build-offline-flag-misses-metadata-probe.md)
 — offline, the first project builds only with `NROS_OFFLINE=1`; `nros build
 --offline` still resolves crates.io in the metadata probe.
+[Issue 2445](../issues/2445-installed-release-tree-written-by-builds.md)
+— builds write ~4.3 GB of probe caches into the installed release tree, and a
+read-only install fails the C road; the starter removes them by hand for now.
 
 ### W3 — The `starter-zephyr` target
 
