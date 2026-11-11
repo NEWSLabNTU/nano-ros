@@ -1,7 +1,9 @@
 ---
 id: 2432
 title: "The same workspace and contract get a derived rate-monotonic schedule in C and C++ and none in Rust, silently, so the Rust image's 100 Hz loop misses its periods"
-status: open
+status: resolved
+resolved: 2026-11-12
+resolved_in: "branch fix-2432-rust-derived-sched"
 type: bug
 severity: medium
 area: [scheduling, codegen, cli, macros]
@@ -167,9 +169,31 @@ them. The other case is pinned on purpose by
 `an_authored_binding_still_outranks_the_keyword`, so it needs its own ruling.
 
 **Gate.** `nros-cli-core/tests/derived_sched_tasks_parity.rs` feeds one model
-to all three roads and compares the resolved tables. The first commit on branch
-`fix-2432-rust-derived-sched` pins today's divergence. The second commit
-implements "derive everywhere": `nros::main!` reads the sidecar's groups through
-`entry_groups::groups_of_component`, and the gate asserts that the Rust table
-equals the C one. The two commits are separate, so the direction can still be
-ruled the other way by dropping the second.
+to all three roads and asserts that the three resolved tables are EQUAL. It
+fails when the Rust road ignores the groups its code states
+(`left: Err(NoCallbackGroups)`).
+
+## Ruling (2026-11-12)
+
+The maintainer ruled: "the schedule should not depend on language choice".
+That is option A, derive by default. An image whose contract states rates and
+that authors no `[tasks]` gets the derived rate-monotonic schedule in C, C++
+and Rust alike. An authored `[tasks]` placement overrides the derived one,
+per fact (`placement_is_unauthored`, issue 1426). This is RFC-0079 §3 as
+written: "ORDER is derived from the contract, not stated".
+
+## Resolution
+
+- `nros::main!` now reads the groups the Rust code states from the
+  source-metadata sidecar (`entry_groups::groups_of_component`). It builds each
+  node's row with `entry_groups::node_callback_groups`, the builder
+  `codegen entry` uses for the cmake keyword.
+- Every road prints the derived table or one line saying why it declined
+  (`entry_groups::{derived_lines, Declined}`).
+- On the issue's shape the Rust build prints
+  `derived-control_node priority 3` and `derived-telemetry_node priority 2`
+  (the C numbers above). The mps2-an385-freertos image boots with
+  `nros: multi-level run — 2 level(s) over one executor`.
+- The parity gate above holds the three roads to one table.
+- Left open: the `codegen-system` vs `codegen entry` merge difference noted
+  above, for a node that binds some but not all of its declared groups.
