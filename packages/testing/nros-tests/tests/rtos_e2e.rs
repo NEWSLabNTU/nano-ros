@@ -1600,9 +1600,10 @@ fn test_rtos_service_e2e(
     // A client whose session dies at its first declare (zenoh-pico -100/-103)
     // says nothing about whether the SERVER still had a session, and that is
     // the next question the verdict has to answer.
-    let server_post = server
-        .wait_for_output(Duration::from_secs(2))
-        .unwrap_or_default();
+    // `collect_until` on a pattern no image prints: it returns everything the
+    // server wrote in the next 2 s (or a `<no output collected …>` note),
+    // never an empty string standing in for an error (issue 0670).
+    let server_post = server.collect_until("\u{0}", Duration::from_secs(2));
 
     // issue 0877 — capture the launch lines while the processes are alive.
     let server_cmd = server.command_line();
