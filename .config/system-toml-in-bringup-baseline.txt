@@ -56,7 +56,6 @@ packages/testing/nros-tests/bins/condvar-contract-freertos-mps2/system.toml
 packages/testing/nros-tests/bins/condvar-contract-threadx-linux/system.toml
 packages/testing/nros-tests/bins/contract-monitor-cpp/system.toml
 packages/testing/nros-tests/bins/image-env-probe-c/system.toml
-packages/testing/nros-tests/bins/in-place-subscriptions/system.toml
 packages/testing/nros-tests/bins/log-arena-probe/system.toml
 packages/testing/nros-tests/bins/logging-smoke-freertos-mps2/system.toml
 packages/testing/nros-tests/bins/logging-smoke-nuttx-qemu-arm/system.toml
