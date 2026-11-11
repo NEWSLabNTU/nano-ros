@@ -60,6 +60,9 @@ pub mod ftti_budget;
 /// RFC-0071 D13 — the entry package's name and an owned entry's adapter
 /// crate name, shared by the CLI and `nros::main!`.
 pub mod entry_names;
+// issue 2432 - the derived schedule's callback-group INPUT and the line each
+// road prints about it, in one spelling for C/C++, codegen-system and nros::main!.
+pub mod entry_groups;
 pub mod leaf_capabilities;
 pub mod leaf_system;
 /// phase-509 P5 (RFC-0108 D3/D4) -- preemption levels derived from the ranks,

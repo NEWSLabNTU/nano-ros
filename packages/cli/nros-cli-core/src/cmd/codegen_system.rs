@@ -692,11 +692,15 @@ pub fn run(args: Args) -> Result<()> {
         // still wins, per fact, and says so — the precedence is stated once, on
         // `placement_is_unauthored`, and all three sites that used to spell it
         // themselves now ask it.
-        if nros_orchestration_ir::derive::placement_is_unauthored(
-            &model,
-            &target_rtos,
-            &callback_groups,
-        ) {
+        //
+        // issue 2432 - and a bake that declines says why, in the line every
+        // road prints (`entry_groups::declined` asks `placement_is_unauthored`).
+        let declined =
+            nros_orchestration_ir::entry_groups::declined(&model, &target_rtos, &callback_groups);
+        if let Some(why) = &declined {
+            eprintln!("codegen-system: {why}");
+        }
+        if declined.is_none() {
             // phase-495 W2 (rlm design issue #52) - a node path the model
             // carries no `trigger` for is Unclassified in the shared
             // derivation: it is never guessed to be a timer, so it ranks

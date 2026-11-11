@@ -748,6 +748,12 @@ fn derive_entry_sched_tasks(
     priority_plan: Option<&nros_orchestration_ir::priority_plan::PriorityPlan>,
 ) -> Result<Option<EntryDerivation>> {
     if callback_groups.is_empty() {
+        if plan.bringup == "system-model" {
+            eprintln!(
+                "codegen entry: {}",
+                nros_orchestration_ir::entry_groups::Declined::NoCallbackGroups
+            );
+        }
         return Ok(None);
     }
     // `plan_from_model` records the model path as the plan's `launch_file` and
@@ -769,8 +775,11 @@ fn derive_entry_sched_tasks(
     // question about the TABLE. The rule is about a FACT, and it is stated once:
     // `placement_is_unauthored` (rules 1-4). Authored placements still win and
     // are never overwritten below.
-    if !nros_orchestration_ir::derive::placement_is_unauthored(&model, target_rtos, callback_groups)
+    // issue 2432 -- and a road that declines says why, in the shared spelling.
+    if let Some(why) =
+        nros_orchestration_ir::entry_groups::declined(&model, target_rtos, callback_groups)
     {
+        eprintln!("codegen entry: {why}");
         return Ok(None);
     }
 
@@ -789,6 +798,9 @@ fn derive_entry_sched_tasks(
             callback_groups,
         ),
     };
+    for line in nros_orchestration_ir::entry_groups::derived_lines(&derived, target_rtos) {
+        eprintln!("codegen entry: {line}");
+    }
     // Fail-loud, exactly as the bake does (`derive_execution_from_contracts`):
     // a weakened guarantee and a node left on the default sched task are both things
     // the person running this build has to be able to see.
@@ -953,6 +965,14 @@ pub fn resolve_plan_sched_recorded(
         .iter()
         .any(|n| !n.callback_groups.is_empty() || !n.group_tasks.is_empty());
     if plan.sched_tasks.is_empty() && plan.node_overrides.is_empty() && !has_groups {
+        // issue 2432 -- a model-backed entry that reaches no derivation says so,
+        // in the line every road prints.
+        if plan.bringup == "system-model" {
+            eprintln!(
+                "codegen entry: {}",
+                nros_orchestration_ir::entry_groups::Declined::NoCallbackGroups
+            );
+        }
         // phase-509 P8 -- a single-executor image is one level.
         check_blocking_calls(plan, None, target_rtos)?;
         return Ok(None);
@@ -970,30 +990,14 @@ pub fn resolve_plan_sched_recorded(
     let mut callback_groups_map: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
     for n in &plan.nodes {
         let node_name = n.name.as_deref().unwrap_or(n.exec.as_str()).to_string();
-        let decls: Vec<CallbackGroupDecl> = if !n.callback_groups.is_empty() {
-            // cmake-declared groups (via enrich_plan): look up the sched task from group_tasks.
-            nros_orchestration_ir::groups_at_default_sched_task(&n.callback_groups)
-                .into_iter()
-                .map(|mut d| {
-                    if let Some(sched_task) = n.group_tasks.get(&d.id) {
-                        d.sched_task = sched_task.clone();
-                    }
-                    d
-                })
-                .collect()
-        } else if !n.group_tasks.is_empty() {
-            // No cmake callback_groups yet; synthesize from system.toml group_tasks.
-            n.group_tasks
-                .iter()
-                .map(|(id, sched_task)| CallbackGroupDecl {
-                    id: id.clone(),
-                    r#type: "MutuallyExclusive".to_string(),
-                    sched_task: sched_task.clone(),
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        // issue 2432 -- the ONE row builder every road asks: declared groups
+        // (the cmake keyword) on their bound sched task or the default, else
+        // the bound groups.
+        let decls: Vec<CallbackGroupDecl> =
+            nros_orchestration_ir::entry_groups::node_callback_groups(
+                &n.callback_groups,
+                &n.group_tasks,
+            );
         if !decls.is_empty() {
             callback_groups_map.insert(node_name, decls);
         }

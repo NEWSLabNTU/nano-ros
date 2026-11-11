@@ -1130,32 +1130,19 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 ..Default::default()
             });
 
-            // Callback groups → sched task, straight from the model's resolved
-            // bindings (`<fqn>/<group>` → sched task). A whole-node binding
-            // (`<fqn>` → sched task) assigns the node's default group.
-            let prefix = format!("{fqn}/");
-            let mut decls: Vec<CallbackGroupDecl> = Vec::new();
-            for (key, sched_task) in &model.execution.bindings {
-                if let Some(group) = key.strip_prefix(&prefix) {
-                    decls.push(CallbackGroupDecl {
-                        id: group.to_string(),
-                        r#type: "MutuallyExclusive".to_string(),
-                        sched_task: sched_task.clone(),
-                    });
-                } else if key == fqn {
-                    decls.push(CallbackGroupDecl {
-                        id: nros_orchestration_ir::DEFAULT_SCHED_TASK.to_string(),
-                        r#type: "MutuallyExclusive".to_string(),
-                        sched_task: sched_task.clone(),
-                    });
-                }
-            }
-            if !decls.is_empty() {
-                node_groups.insert(bare.clone(), decls);
-            }
             node_namespaces.insert(bare.clone(), namespace.clone());
             node_instances.push(bare);
         }
+
+        // Callback groups → sched task, from the model's resolved bindings
+        // (`<fqn>/<group>` → sched task; a whole-node `<fqn>` binding assigns
+        // the node's default group), over the SAME `keep` set as the walk above.
+        // issue 2432 — built by the shared `entry_groups::model_node_groups`,
+        // so the parity test measures this map and not a copy of it.
+        node_groups.extend(nros_orchestration_ir::entry_groups::model_node_groups(
+            &model,
+            |f| keep(f),
+        ));
 
         // issue 1676 — the contract's monitor rows, from the SAME derivation
         // the CLI's C/C++ emitters bake (`nros_orchestration_ir::
@@ -1268,7 +1255,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         authored_sched_task_names = model.execution.tasks.keys().cloned().collect();
         let mut overrides: Vec<nros_orchestration_ir::NodeOverride> = Vec::new();
 
-        if nros_orchestration_ir::derive::placement_is_unauthored(&model, &rtos, &node_groups) {
+        // issue 2432 — say which it did. A declined derivation prints ONE line
+        // naming why; a derived one prints its table below.
+        let declined = nros_orchestration_ir::entry_groups::declined(&model, &rtos, &node_groups);
+        if let Some(why) = &declined {
+            eprintln!("nros::main!: {why}");
+        }
+        if declined.is_none() {
             // phase-296 W5.13 follow-up — an UNAUTHORED placement is DERIVED
             // from the contract layer via the SAME shared core the CLI's
             // codegen-system uses (`nros-orchestration-ir::derive`), so a
@@ -1327,6 +1320,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                      (RFC-0079).",
                     s.node, s.sched_task, s.authored, s.allocated
                 );
+            }
+            for line in nros_orchestration_ir::entry_groups::derived_lines(&derived, &rtos) {
+                eprintln!("nros::main!: {line}");
             }
             sched_tasks.extend(derived.sched_tasks);
             for (sched_task, spec) in derived.placements {

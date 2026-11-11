@@ -93,3 +93,78 @@ Rule the design, then make the three roads agree. Add a cell that builds one
 contract in all three languages and compares the sched-task tables. The
 two-tier lab authors `[tasks]` explicitly, so its lesson does not depend on
 this.
+
+## Findings (2026-11-12)
+
+**Root cause: the roads fed the shared derivation different callback-group
+maps.** The model, the contract and the derivation core were the same on
+every road. What differed was the third argument of
+`derive_sched_tasks_from_contracts`, the per-node callback-group map.
+
+- `codegen entry` (C/C++) builds it from the cmake `CALLBACK_GROUPS` keyword
+  (`nros-metadata.json`, via `metadata::enrich_plan`), plus the model's
+  bindings. An unbound declared group lands on `DEFAULT_SCHED_TASK`, which is
+  `placement_is_unauthored` rule 4, so the derivation runs.
+- `nros::main!` (Rust) built it from the model's resolved bindings ONLY
+  (`<fqn>/<group>` keys, i.e. `[[component]] group_tasks`). A Rust node states
+  its groups in code (`node.callback_group("ctrl")`), and no part of the
+  macro's input read that. With no `group_tasks` the map was empty,
+  `placement_is_unauthored` asked `any` over nothing and answered `false`,
+  and the derivation never ran. Nothing was printed.
+
+The groups the Rust code states DO reach disk. `nros configure`'s metadata probe
+writes them into each package's source-metadata sidecar
+(`src/<pkg>/metadata/<exec>.json`, `callbacks[].group`). The macro already reads
+that sidecar for executor sizing (`source_metadata_sidecars::collect`), but only
+for the slot counts.
+
+Reproduced on the issue's shape (`nros new ... --lang rust`,
+`mps2-an385-freertos`, contract 100 Hz / 10 Hz, `params: {}`, no `[tasks]`,
+`node.callback_group("ctrl" | "telem")`). `nros build freertos` printed, with
+the new decline line:
+
+```text
+nros::main!: derived schedule: declined - no node declares a callback group, so every callback runs on the default sched task
+```
+
+The sidecars it had just written held `"group": "ctrl"` and `"group": "telem"`.
+The leaf-vs-launch contract candidate is ruled out: every road reads the same
+`build/nros/models/<bringup>/system_model.yaml`.
+
+**RFC-0079 reading.** §3 says "ORDER is derived from the contract, not stated".
+CLAUDE.md's issue 1426 entry says an unauthored placement is derived, and all
+three roads ask the one predicate. Neither RFC-0079 nor RFC-0052 exempts a
+leaf contract or a language. On the rules as written, "derive everywhere" is
+the stated design and the Rust road is the defect.
+
+**The two options, priced.**
+
+- *Derive everywhere.* The macro takes declared group ids from the sidecars
+  through the same row builder the C entry uses
+  (`entry_groups::node_callback_groups`). Cost: one more sidecar field read
+  (no new producer, since the probe already records the group). A Rust image
+  whose contract states rates and whose code names groups now runs
+  multi-level. That is a behaviour change for existing Rust images in that
+  shape, so it needs a changelog line. A Rust node whose code names no group
+  is unchanged (groupless note, default sched task), exactly as in C.
+- *Derive nowhere* on an unauthored image. `codegen entry` and
+  `codegen-system` stop deriving unless `[tasks]` or `group_tasks` say so.
+  Cost: this reverses phase-459 W1/W2 and issue 1426, and it turns RFC-0079
+  §3 into "order is derived only when asked". The cmake `CALLBACK_GROUPS` +
+  contract road, the shape `derived-sched-tasks-cpp` and the Safety Island use,
+  would go back to one task. Gates and tests built on that
+  (`derived_sched_tasks_{bake,entry,precedence}`) would have to be inverted.
+
+**Said either way.** Each road now prints one line: the derived table
+(`derived schedule: sched task ... priority ...`), or why it declined
+(`entry_groups::Declined`: no callback group, or every placement authored).
+
+**A sibling divergence, not changed here.** `codegen-system`'s
+`collect_callback_groups` lets a non-empty `group_tasks` hide every keyword
+group it does not bind. `codegen entry` keeps such a group on the default sched
+task. The two agree when a node binds all of its declared groups or none of
+them. The other case is pinned on purpose by
+`an_authored_binding_still_outranks_the_keyword`, so it needs its own ruling.
+
+**Gate.** `nros-cli-core/tests/derived_sched_tasks_parity.rs` feeds one model
+to all three roads and compares the resolved tables.

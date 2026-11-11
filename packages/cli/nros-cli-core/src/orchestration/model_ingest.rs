@@ -304,6 +304,10 @@ pub fn derive_execution_in_plan(
     // person watching this bake; the plan is for everyone who reads the system
     // afterwards, and a verdict that exists only in scrollback cannot be
     // audited.
+    // issue 2432 - the derived table, in the line every road prints.
+    for line in nros_orchestration_ir::entry_groups::derived_lines(&derived, target_rtos) {
+        eprintln!("codegen-system: {line}");
+    }
     let mut warnings = Vec::new();
     for d in &derived.degradations {
         eprintln!(
