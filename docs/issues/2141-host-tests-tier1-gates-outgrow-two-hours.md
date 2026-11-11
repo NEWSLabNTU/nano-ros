@@ -6,7 +6,7 @@ type: bug
 area: ci
 severity: medium
 found: 2026-10-29
-related: [1651, 1500, 1353, phase-466, phase-489]
+related: [phase-543, 1651, 1500, 1353, phase-466, phase-489]
 ---
 
 **Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-11-04: the scheduled `host-tests` tier-1 gates job was cancelled at its two-hour cap, which is a run with no verdict.
@@ -229,3 +229,53 @@ into `build/<coord>/cmake`, none of which the cache holds (deliberately: the
 build dirs are ~1.6 GB a workspace). That is the class of issue 2318. The
 cache keeps the cold 43 min down to about 15; the next lever is that
 configure-time build, not the cache.
+
+## Fourth sighting: the split stopped being measured (2026-11-11)
+
+Scheduled run 42951072111 (main `dc2751c289`): shard 2/2 passed in 91 min and
+shard 1/2 was cancelled at its 120-minute cap with no failing gate. Dispatched
+run 42969907540 (main `6cdaa2d52c`) passed both, shard 1 in 99 min (21 min of
+headroom) and shard 2 in 75 min.
+
+Read from both shards' `host-tier1-gates-ci-logs-*`, the halves were not
+halves. Summed nextest PASS time of the build tests in each shard:
+
+| run | shard 1 | shard 2 |
+| --- | --- | --- |
+| 42969907540 | 134 busy min (42 tests) | 82 busy min (41 tests) |
+| 42951072111 | 119+ busy min (cut off) | 127 busy min (44 tests) |
+
+Which gates landed where also differed between the two runs:
+`test-targets` (18 min) was in shard 1 on one and shard 2 on the other.
+
+**Cause:** phase-543 W6 replaced this issue's measured split with nextest's
+`--partition slice:<k>/<n>` and deleted `.config/build-gate-weights.txt`.
+A slice deals tests by name order, so each shard gets an arbitrary half that
+moves whenever a gate is added or a unit is split (issue 2380 split
+`linux-check` into one test per leaf). And shard 1 also runs the fast tier
+and two lane gates, which no split accounted for.
+
+**Fix (this change):** `just check build` computes its shard with
+`scripts/build/gate-shard.py` again, over the in-scope build tests of the one
+derivation the harness lists from (`check-gate-lists.py --list tests`), and
+runs them by name. `.config/build-gate-weights.txt` is back, now one row per
+nextest test (`<gate>#<case>` included), measured as each test's mean PASS
+time over the two runs above. `gate-shard.py` gained `--preload-first`, and
+`host-tests` charges shard 1 with `@tier1-lane`: 13.9 min of wall on run
+42969907540, about 30.6 busy min at that shard's 2.2x parallelism. Reading a
+weights file no longer strips at `#` mid-line, because test names hold one.
+Coverage is unchanged: every in-scope build test lands in exactly one shard
+whatever the weights say. `gate.yml`'s nightly three-shard `check build`
+reads the same weights and sets no preload.
+
+Simulated over the 88 measured tests, the split puts 101 busy min plus the
+31 min preload in shard 1 and 132 busy min in shard 2, against 134/82 and
+119/127 before. At the measured parallelism that is roughly 100-105 min for
+each job on a host like the dispatched run's. That is headroom, but not much,
+and a slow night (the scheduled run's host ran every fast gate 1.1-1.5x
+slower) may still reach the cap. If it does, the next lever is a third shard
+or the per-shard `generate-bindings` cost (15-25 min, paid twice), not a
+bigger split.
+
+Close as before: a scheduled `host-tests` run completes both shards inside
+their caps, with each shard's wall time and headroom recorded here.

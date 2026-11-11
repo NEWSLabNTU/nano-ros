@@ -177,7 +177,7 @@ Consequences:
 just check <gate>                     one recipe, directly, as today
 cargo nextest list -p nros-gates      every gate and unit
 serial bisect:  --test-threads 1 --fail-fast
-CI shards:      --partition slice:<k>/<n>   (replaces gate-shard.py + weights)
+CI shards:      gate-shard.py + weights, run by name (issue 2141; W6 used --partition slice)
 ```
 
 The harness clears `NEXTEST_*` before running `just`, because build gates run
@@ -438,6 +438,13 @@ through `just --dump`. Deleted: the `build-serial:` list and its
 onto its recipe), `scripts/build/run-gates-parallel.sh` and
 `.config/build-gate-weights.txt`. Same split as before: 525 fast, 28 build,
 33 exempt.
+
+**Amended 2026-11-11 (issue 2141):** the `--partition slice:k/n` shard was
+not the split it replaced. A slice deals tests by name order, so host-tests'
+two shards measured 134 and 82 busy minutes on one run, and shard 1 (which also
+runs the fast tier) hit its 120-minute cap. `just check build` shards with
+`gate-shard.py` over `.config/build-gate-weights.txt` again, one row per
+nextest test, and runs its shard by name.
 
 - `scripts/build/gate-shard.py` STAYS: `template-copy-out` shards its own units
   with it (`.config/template-copy-out-weights.txt`).

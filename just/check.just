@@ -224,19 +224,51 @@ fast-serial:
 # `borrowed-e2e` stayed because it compiles `nros-c` and reads the generated
 # config header, and the pristine run is what proved it.
 #
-# phase-543 W6 — through the nextest harness, like `fast`. A CI shard
-# (`NROS_BUILD_GATE_SHARD=<k>/<n>`) is nextest's `--partition slice:<k>/<n>`.
+# phase-543 W6 — through the nextest harness, like `fast`.
+#
+# A CI shard (`NROS_BUILD_GATE_SHARD=<k>/<n>`) is a MEASURED split (issue
+# 2141): `scripts/build/gate-shard.py` fills the shards heaviest first from
+# `.config/build-gate-weights.txt`, over the in-scope build tests of the one
+# derivation the harness lists from, and the shard runs its own names. W6 used
+# nextest's `--partition slice:<k>/<n>` here, which deals tests by NAME ORDER:
+# each shard got an arbitrary half that moved whenever a gate was added (134 vs
+# 82 busy minutes on one run, 119 vs 127 the night before), and shard 1, which
+# also runs the fast tier, was cut off at its 120-minute cap. The weights decide
+# balance only: every test lands in exactly one shard whatever they say.
+# `NROS_BUILD_GATE_PRELOAD_FIRST=<unit>` charges shard 1 with a weights row for
+# work it runs outside this list; every shard of one run must set the same.
 [group("main")]
 [metadata("tier", "exempt", "lane verb: the build tier through the gate harness (`scripts/build/gate-lane.sh`)")]
 build:
     #!/usr/bin/env bash
     set -euo pipefail
-    part=()
-    if [ -n "${NROS_BUILD_GATE_SHARD:-}" ]; then
-        part=(--partition "slice:$NROS_BUILD_GATE_SHARD")
-    fi
     scope="$(bash scripts/build/gate-scope.sh)"
-    exec bash scripts/build/gate-lane.sh "$scope" -E 'test(/^build::/)' "${part[@]}"
+    filter='test(/^build::/)'
+    if [ -n "${NROS_BUILD_GATE_SHARD:-}" ]; then
+        work="$(mktemp -d "${TMPDIR:-/tmp}/nros-build-shard.XXXXXX")"
+        trap 'rm -rf "$work"' EXIT
+        # In scope = a name with no reason after it (`--list tests`).
+        if ! listed="$(NROS_GATE_LANE="$scope" python3 scripts/check/check-gate-lists.py --list tests --lane "$scope")"; then
+            echo "check build: could not list the build tests for shard $NROS_BUILD_GATE_SHARD" >&2
+            exit 2
+        fi
+        awk -F'\t' 'NF == 1 && /^build::/' <<<"$listed" > "$work/tests"
+        pre=()
+        [ -z "${NROS_BUILD_GATE_PRELOAD_FIRST:-}" ] || pre=(--preload-first "$NROS_BUILD_GATE_PRELOAD_FIRST")
+        if ! mine="$(python3 scripts/build/gate-shard.py "$work/tests" .config/build-gate-weights.txt \
+                "$NROS_BUILD_GATE_SHARD" "${pre[@]}")"; then
+            echo "check build: could not compute shard $NROS_BUILD_GATE_SHARD (gate-shard.py)" >&2
+            exit 2
+        fi
+        if [ -z "$mine" ]; then
+            echo "check build: shard $NROS_BUILD_GATE_SHARD owns no build test of $(wc -l < "$work/tests")"
+            exit 0
+        fi
+        echo "check build: shard $NROS_BUILD_GATE_SHARD runs $(wc -l <<<"$mine") of $(wc -l < "$work/tests") build tests"
+        filter="$(sed 's/.*/test(=&)/' <<<"$mine" | paste -sd'|' -)"
+        filter="${filter//|/ | }"
+    fi
+    bash scripts/build/gate-lane.sh "$scope" -E "$filter"
 
 # Fast tier — BUILDLESS, SOURCE-FREE gates only (fmt/clang-format AST checks,
 # ABI/board mirrors, manifest + convention scripts). No cargo build/clippy/test

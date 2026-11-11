@@ -1,0 +1,107 @@
+# Measured wall time (ms) of each `build`-tier gate test in `host-tests`'
+# `tier-1 gates` jobs (4-vCPU hosted runner): the mean of each test's nextest
+# PASS time over scheduled run 42951072111 and dispatched run 42969907540
+# (2026-11-11, main), both shards' `host-tier1-gates-ci-logs-*` artifacts.
+#
+# Read by scripts/build/gate-shard.py through `just check build` to BALANCE
+# host-tests' two build-lane shards (issue 2141). It never decides coverage:
+# every in-scope build test lands in exactly one shard whatever this file
+# says, a test missing here gets the median weight, and a stale row is
+# ignored. Refresh it from a run's shard logs when the shards drift apart:
+#   grep -oE 'PASS \[ *[0-9.]+s\] \( *[0-9]+/[0-9]+\) nros-gates::gates build::\S+' <log>
+#
+# `@tier1-lane` is not a test. Shard 1 runs `just ci tier1 gates`, which is
+# the fast tier and two lane gates before its half of the build tier, and its
+# job starts those 3 min later than shard 2's (run 42969907540: 13.9 min of
+# wall in all). At that shard's measured 2.2x build-tier parallelism (134
+# busy min in 61 wall min) that is ~1 836 000 ms of build-test time, charged
+# to shard 1 before the fill (`--preload-first`).
+@tier1-lane                                                              1836000
+build::check::test-targets                                               1150460
+build::check::workspace-all                                              981188
+build::check::cli-tests                                                  791029
+build::check::required-features-tests                                    675284
+build::check::cpp                                                        666930
+build::check::workspace-features                                         572621
+build::check::ament-census-sizing                                        557949
+build::check::borrowed-e2e                                               521473
+build::check::census-hooks-complete                                      356878
+build::check::node-std-tests                                             330725
+build::check::c                                                          303806
+build::check::source-gates                                               303058
+build::check::scaffold-builds#c_project_action_client                    284932
+build::check::scaffold-builds#c_project_client                           271560
+build::check::scaffold-builds#c_project_server                           254237
+build::check::template-copy-out#multi-package-workspace                  242533
+build::check::scaffold-builds#c_project_action_server                    242451
+build::check::staticlib-symbols                                          229693
+build::check::scaffold-builds#cpp_project_action_server                  226780
+build::check::scaffold-builds#@self-test                                 208130
+build::check::scaffold-builds#cpp_project_listener                       202477
+build::check::scaffold-builds#c_project_listener                         199060
+build::check::scaffold-builds#cpp_project_action_client                  189915
+build::check::excluded-crate-tests                                       188914
+build::check::scaffold-builds#c_project_talker                           185940
+build::check::scaffold-builds#c_component_talker                         183476
+build::check::scaffold-builds#cpp_component_talker                       168403
+build::check::scaffold-builds#cpp_project_client                         156488
+build::check::scaffold-builds#cpp_project_talker                         151605
+build::check::scaffold-builds#cpp_project_server                         148939
+build::check::template-copy-out#ament-workspace-port/mps2-an385-freertos 148393
+build::check::template-copy-out#pure-c-workspace                         144313
+build::check::template-copy-out#rclcpp-compat-smoke/mps2-an385-freertos  143783
+build::check::template-copy-out#cpp-port-minimal-publisher/mps2-an385-freertos 139641
+build::check::template-copy-out#multi-node-workspace-cpp                 139079
+build::check::template-copy-out#c-and-cpp-mixed-workspace                135677
+build::check::cpp-ffi-tests                                              128595
+build::check::template-copy-out#topic-state-monitor-port/mps2-an385-freertos 113807
+build::check::template-copy-out#local-msg-package                        111856
+build::check::rmw-xrce                                                   97602
+build::check::board-transport-variants                                   94019
+build::check::template-copy-out#@self-test                               74145
+build::check::linux-check#mps2-an385-baremetal-c-action-client           64677
+build::check::linux-check#mps2-an385-baremetal-c-action-server           64616
+build::check::template-copy-out#scaffold:runner-package                  59816
+build::check::template-copy-out#scaffold:mps2-an385-baremetal            54135
+build::check::scaffold-builds#rust_project_action_server                 51087
+build::check::scaffold-builds#rust_project_action_client                 50170
+build::check::rmw-cyclonedds                                             50094
+build::check::template-copy-out#multi-node-workspace                     49191
+build::check::scaffold-builds#rust_project_listener                      46568
+build::check::scaffold-builds#rust_project_talker                        46554
+build::check::template-copy-out#scaffold:linux                           46455
+build::check::linux-check#mps2-an385-baremetal-c-service-server          46360
+build::check::linux-check#mps2-an385-baremetal-c-service-client          46334
+build::check::scaffold-builds#rust_project_client                        45126
+build::check::scaffold-builds#rust_project_server                        44102
+build::check::linux-check#mps2-an385-baremetal-c-listener                42785
+build::check::scaffold-builds#rust_component_talker                      41582
+build::check::linux-check#mps2-an385-baremetal-c-talker                  41181
+build::check::linux-check#mps2-an385-baremetal-cpp-action-client         40379
+build::check::linux-check#mps2-an385-baremetal-cpp-listener              39932
+build::check::linux-check#mps2-an385-baremetal-cpp-service-server        39573
+build::check::linux-check#mps2-an385-baremetal-cpp-action-server         39239
+build::check::linux-check#mps2-an385-baremetal-cpp-service-client        37802
+build::check::linux-check#mps2-an385-baremetal-cpp-talker                37741
+build::check::linux-check#linux-rust-action-client-rtic                  36203
+build::check::linux-check#linux-rust-custom-msg                          35430
+build::check::linux-check#linux-rust-custom-transport-talker             35357
+build::check::linux-check#mps2-an385-baremetal-rust-listener             34941
+build::check::linux-check#linux-rust-listener-rtic                       31675
+build::check::linux-check#mps2-an385-baremetal-rust-talker               30351
+build::check::linux-check#linux-rust-service-client-callback             29162
+build::check::linux-check#linux-rust-action-server-rtic                  28994
+build::check::linux-check#linux-rust-talker-rtic                         28077
+build::check::linux-check#linux-rust-service-client-rtic                 27747
+build::check::nros-log-riscv32                                           27652
+build::check::linux-check#linux-rust-service-server-rtic                 27538
+build::check::linux-check#linux-rust-custom-transport-listener           25966
+build::check::linux-check#linux-rust-lifecycle-node                      24851
+build::check::linux-check#linux-rust-logging                             7448
+build::check::dist-runtime-deps                                          4043
+build::check::launch-resolve-builds                                      2936
+build::check::sched-dim-arms#threadx                                     2500
+build::check::embedded-feature-unification                               1997
+build::check::rmw-uorb                                                   1563
+build::check::sched-dim-arms#freertos                                    1282
+build::check::mem-report                                                 1257

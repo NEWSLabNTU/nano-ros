@@ -289,7 +289,8 @@ jobs:
   # Shard 1 runs `just ci tier1 gates` (fast, api-parity, probe-workspace-caps
   # and half the build lane); shard 2 runs the other half of the build lane.
   # `scripts/build/gate-shard.py` puts every build gate in exactly one shard,
-  # so the two jobs together still run all of `just check`.
+  # balanced by `.config/build-gate-weights.txt`, so the two jobs together
+  # still run all of `just check`.
   gates:
     name: tier-1 gates (just check) [${{ matrix.shard }}/2]
     runs-on: ubuntu-22.04
@@ -464,6 +465,10 @@ jobs:
           # line per gate as it ends, so a job killed at its cap still says
           # which gates finished.
           NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
+          # Shard 1 also runs the fast tier; its weight is charged to shard 1
+          # before the measured split. Both shards set it, so both compute the
+          # same split (.config/build-gate-weights.txt).
+          NROS_BUILD_GATE_PRELOAD_FIRST: "@tier1-lane"
           NROS_GATE_PROGRESS: "1"
           # phase-543 W6 — the hosted image's lane (.config/gate-lanes.toml).
           NROS_GATE_SCOPE: build
@@ -492,6 +497,10 @@ jobs:
           # line per gate as it ends, so a job killed at its cap still says
           # which gates finished.
           NROS_BUILD_GATE_SHARD: ${{ matrix.shard }}/2
+          # Shard 1 also runs the fast tier; its weight is charged to shard 1
+          # before the measured split. Both shards set it, so both compute the
+          # same split (.config/build-gate-weights.txt).
+          NROS_BUILD_GATE_PRELOAD_FIRST: "@tier1-lane"
           NROS_GATE_PROGRESS: "1"
           # phase-543 W6 — the hosted image's lane (.config/gate-lanes.toml).
           NROS_GATE_SCOPE: build
