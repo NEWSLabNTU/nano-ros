@@ -525,6 +525,25 @@ fn a_rows_rmw_is_the_backend_its_artifact_linked() {
 /// [`par_map`] the worst case is now one budget plus the rest of the pool.
 const RUN_BUDGET: std::time::Duration = std::time::Duration::from_secs(20);
 
+/// How many of an entry's last output lines a no-session verdict carries
+/// (issue 2420): enough for the session-open attempt and its error, few
+/// enough that 59 rows failing at once stay readable.
+const NO_SESSION_TAIL_LINES: usize = 12;
+
+/// The last `n` non-empty lines of an entry's output, indented under its
+/// verdict, or a line saying it printed nothing.
+fn output_tail(text: &str, n: usize) -> String {
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return "      (the entry printed nothing)".to_string();
+    }
+    lines[lines.len().saturating_sub(n)..]
+        .iter()
+        .map(|l| format!("      | {l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// The budget for an image that cannot be told to stop (`baked_row_locator`):
 /// it is judged on its setup line and then killed, so its budget is how long
 /// it may take to get there. The threadx-linux Rust entry prints it within a
@@ -969,7 +988,16 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         } else {
             "did not reach node registration".to_string()
         };
-        no_session.push(format!("  {} ({}) — {why}", row.id, row.coord.2));
+        // Issue 2420 — the entry's own words travel with the verdict. "Refused"
+        // is read off one marker; WHY (a locator that did not answer yet, a
+        // budget that ran out, a protocol error) is only in the entry's
+        // output, and a verdict without it cannot be diagnosed from CI.
+        no_session.push(format!(
+            "  {} ({}) — {why}\n{}",
+            row.id,
+            row.coord.2,
+            output_tail(&text, NO_SESSION_TAIL_LINES)
+        ));
     }
 
     if located == 0 {
@@ -995,4 +1023,15 @@ fn a_rows_entry_registers_its_nodes_at_runtime() {
         no_session.join("\n"),
     );
     eprintln!("rmw-coordinate-truth: {ran} of {located} entries registered");
+}
+
+/// Issue 2420 — a no-session verdict carries the entry's last lines, and says
+/// so when there are none, so a CI refusal can be read from the panic alone.
+#[test]
+fn a_no_session_verdict_carries_the_entrys_last_lines() {
+    let text = (1..=20).map(|i| format!("line {i}\n")).collect::<String>() + "\n\n";
+    let tail = output_tail(&text, 3);
+    assert_eq!(tail, "      | line 18\n      | line 19\n      | line 20");
+    assert_eq!(output_tail("", 3), "      (the entry printed nothing)");
+    assert_eq!(output_tail("only\n", 12), "      | only");
 }

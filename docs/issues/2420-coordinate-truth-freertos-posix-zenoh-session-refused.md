@@ -101,3 +101,38 @@ control covers the delegation cases.
 
 Still open: part (2) above, the freertos-posix row's refusal on 11130. It is
 read only on a recurrence, when #3456's lane log carries its output.
+
+## Recurrence: tier-2 run 42928442297 (2026-11-11), at low load
+
+The same row failed the same way in tier-2 run 42928442297 on `5e01d7ffed`,
+in `test-all` (junit-real, artifact `post-submit-junit`). It was the run's
+one real failure out of 3,519 tests:
+
+```
+rmw-coordinate-truth: ran 137 entries in 9.6s on a pool of 8 (59 cross-target row(s) left to their QEMU cells); slowest: ... 1.1s ...
+  workspace-c-freertos-posix-zenoh (zenoh) — the backend refused the session although its peer was started for it
+```
+
+This rules two readings out. There was **no port-9100 wait** this time, and
+the pool was not loaded: the slowest of 137 entries took 1.1 s, against the
+row's 10 s `BAKED_RUN_BUDGET`. So neither the shared-port wait nor a budget
+spent under load explains it. "Refused" means the entry printed the
+session-open-failed marker and exited, within its budget.
+
+The entry's own output was still not in the panic, because only an entry
+that opened a session and then failed to register had its lines printed.
+**Change (this PR):** every no-session verdict (refused, hung, did not reach
+registration) now carries the entry's last 12 non-empty output lines,
+indented under the verdict (`output_tail`, test
+`a_no_session_verdict_carries_the_entrys_last_lines`). The next recurrence
+will say why from the panic alone.
+
+A reading to test then: the router is started and waited for until its TCP
+port **accepts** (`wait_for_router_ready`), not until it completes a zenoh
+handshake. The FreeRTOS-POSIX image dials once, because its connect budget
+defaults to one attempt (issue 2207's knob,
+`[image.<id>.knobs.zenoh.limits] connect_timeout_ms`). If that holds, a
+handshake attempted while the router is still starting fails once and is
+final. That is a start race to fix (CLAUDE.md: no retries), either with a
+readiness edge the router reports or with this image's stated connect
+budget. Not measured yet.
