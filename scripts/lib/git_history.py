@@ -336,11 +336,16 @@ def _object_reads_self_test() -> int:
                 ("bounded read of HEAD's tree",
                  "d/" in history_git(partial, "ls-tree", "-r", "--name-only", "HEAD").stdout),
             ]
+            # A command that cannot finish inside the deadline, so the answer
+            # never depends on how fast this host runs git: a 1 ms deadline on
+            # a real `git log` lost the race in CI whenever git won it. The
+            # message is checked too -- a git that FAILED fast also raises
+            # HistoryUnknown, and that is not a timeout.
             try:
-                history_git(partial, "log", "--name-only", "--format=", timeout=0.001)
+                history_git(src, "-c", "alias.hang=!sleep 5", "hang", timeout=1)
                 checks.append(("a timeout is HistoryUnknown", False))
-            except HistoryUnknown:
-                checks.append(("a timeout is HistoryUnknown", True))
+            except HistoryUnknown as e:
+                checks.append(("a timeout is HistoryUnknown", "did not finish" in str(e)))
             for name, ok in checks:
                 if not ok:
                     print(f"git_history self-test: {name}: FAILED", file=sys.stderr)

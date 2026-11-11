@@ -144,7 +144,10 @@ nros_git_history_self_test() (
     t "partial: old tree absent" eval '! nros_git_tree_present HEAD~2 -C "$tmp/partial"'
     t "partial: probe fetched nothing" eval '! nros_git_tree_present HEAD~2 -C "$tmp/partial"'
     t "bounded read of HEAD" eval 'nros_git_history_run 30 -C "$tmp/partial" ls-tree -r --name-only HEAD | grep -q "^d/"'
-    t "a timeout is rc 124" eval 'nros_git_history_run 0.001 -C "$tmp/src" log --name-only >/dev/null 2>&1; [ $? -eq 124 ]'
+    # A command that cannot finish inside the deadline, so the answer never
+    # depends on how fast this host runs git: a 1 ms deadline on a real
+    # `git log` lost the race in CI whenever git won it.
+    t "a timeout is rc 124" eval 'nros_git_history_run 1 -C "$tmp/src" -c "alias.hang=!sleep 5" hang >/dev/null 2>&1; [ $? -eq 124 ]'
     [ "$bad" -eq 0 ] || exit 1
     echo "git-history.sh self-test: OK (full, shallow, partial)"
 )
