@@ -272,5 +272,11 @@ in its place names gate.yml as the gates' nightly verdict and gives the
 comparison, so the job is not re-added. run-matrix.yml, `just/ci.just`,
 `.config/gate-lanes.toml`, `scripts/build/gate-prune.sh` and
 `docs/development/ci-workflow-reorg.md` stop saying host-tests runs the gates.
-One consequence to know: `NROS_CI_PRUNE_GATE_OUTPUTS` was set only by that
-job, so no CI lane sets it now. gate.yml's three shards passed without it.
+`NROS_CI_PRUNE_GATE_OUTPUTS` (issue 2100) was set only by that job, so it
+is deleted with it, along with its handling: `scripts/build/gate-prune.sh` and
+its four call sites in `lint-example-leaf.sh`, `check-template-copy-out.sh`,
+`cli-tests` and a `gate-scratch.sh` comment. A knob no lane sets would rot.
+gate.yml's three `check-build` shards never set it, and on dispatch
+42848962439 they ended with 35-41 GB free after reclaim (56-58 GB free
+before the lane), because three shards split the lane's output. If a
+disk-tight lane needs it again, issue 2100 has the design.

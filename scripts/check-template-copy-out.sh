@@ -146,8 +146,6 @@ cd "$repo_root" || exit 2
 . "$repo_root/scripts/lib/deadline.sh"
 # shellcheck source=scripts/build/check-skip.sh
 . "$repo_root/scripts/build/check-skip.sh"
-# shellcheck source=scripts/build/gate-prune.sh
-. "$repo_root/scripts/build/gate-prune.sh"
 # shellcheck source=scripts/build/gate-scratch.sh
 . "$repo_root/scripts/build/gate-scratch.sh"
 # shellcheck source=scripts/build/gate-units.sh
@@ -729,10 +727,7 @@ run_one() {
     fi
     if [ "$brc" -ne 0 ]; then
         report_build_failure "$label" "$log"
-        # The log is reported above. On a lane that releases its output the
-        # copy's build root goes too: it is the bulk of `$work`.
         nros_gate_scratch_failed "$work"
-        nros_gate_prune_enabled && rm -rf "$work"
         return 1
     fi
     arts="$(built_artifacts "$pdir")"
@@ -895,7 +890,6 @@ run_scaffold() {
     if [ "$rc" -ne 0 ]; then
         report_build_failure "$label" "$log"
         nros_gate_scratch_failed "$work"
-        nros_gate_prune_enabled && rm -rf "$work"
         return 1
     fi
     local arts n
