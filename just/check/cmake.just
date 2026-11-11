@@ -834,3 +834,27 @@ cmake-user-output-refs:
 [group('needs:cc')]
 toolchain-change-reconfigure:
     @bash scripts/check/check-toolchain-change-reconfigure.sh
+
+# A path under cmake/toolchain/ never disappears: CMake records a build dir's
+# toolchain file in CMakeFiles/<version>/CMakeSystem.cmake at first configure
+# and includes that path on every later configure, whatever
+# -DCMAKE_TOOLCHAIN_FILE says. PR #3500's rename stranded every NuttX build
+# dir and stopped tier 2; #3513 left the old name as a forward. The verdict is
+# a committed list (`.config/cmake-toolchain-paths.txt`), exact in any clone;
+# the history cross-check is NOT VERIFIED in a shallow one (issue 1476), exit
+# 78 into the skip ledger. Buildless, ~0.1 s, self-tests first.
+[private]
+[group('needs:git-history')]
+toolchain-paths-persist:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(python3 scripts/check/check-toolchain-paths-persist.py)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip toolchain-paths-persist "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"

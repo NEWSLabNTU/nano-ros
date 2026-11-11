@@ -748,6 +748,11 @@ and verified.
   shape (`find_package(nano_ros REQUIRED)` + `nano_ros_add_executable` /
   `nano_ros_add_node`, deploy tuple in package.xml) is the only leaf shape;
   `example_shape.rs`'s FORBIDDEN list gates regressions.
+- **A file under `cmake/toolchain/` is never renamed away or deleted** -- a build
+  dir includes the toolchain path recorded in `CMakeFiles/<ver>/CMakeSystem.cmake`
+  on every reconfigure, whatever `-DCMAKE_TOOLCHAIN_FILE` says (PR #3500 stranded
+  every NuttX build dir). Keep the old name as a one-line forward and list it in
+  `.config/cmake-toolchain-paths.txt`; gate `check-toolchain-paths-persist`.
 
 ### Rust Consumption (RFC-0048 W9)
 
