@@ -643,8 +643,39 @@ size_t _z_tcp_read(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
 size_t _z_tcp_read_exact(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
     return nros_platform_tcp_read_exact(&sock, buf, len);
 }
+/* Issue 2389 — zenoh-pico's TCP write is all-or-nothing on a stream, and the
+ * port's send is bounded by one socket timeout and may take part of the buffer
+ * or none of it (`nros_platform_tcp_send`). So keep sending while bytes move,
+ * and fail once the port has taken nothing for Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE:
+ * a router that stops reading then ends in a closed session (zenoh-pico's read
+ * task sees the broken link) instead of a write that never returns — the rule
+ * `tcp_write_within.h` applies on the BSD-socket ports, with the same number. */
+#include <zenoh_generic_config.h>
+#ifndef Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE
+#error "zenoh_generic_config.h must define Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE (issue 2389)"
+#endif
 size_t _z_tcp_write(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len) {
-    return nros_platform_tcp_send(&sock, buf, len);
+    size_t sent = 0;
+    uint64_t last_progress_ms = nros_platform_clock_ns() / 1000000u;
+    while (sent < len) {
+        size_t n = nros_platform_tcp_send(&sock, &buf[sent], len - sent);
+        if ((n == NROS_PLATFORM_NET_SOCKET_ERROR) || (n > len - sent)) {
+            return SIZE_MAX;
+        }
+        uint64_t now_ms = nros_platform_clock_ns() / 1000000u;
+        if (n > 0) {
+            sent += n;
+            last_progress_ms = now_ms;
+            continue;
+        }
+        if (now_ms - last_progress_ms >= (uint64_t)Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE) {
+            return SIZE_MAX;
+        }
+        /* The port already waited its socket timeout; a port whose timeout
+         * is zero returns at once, so yield rather than spin. */
+        nros_platform_sleep_ms(1);
+    }
+    return sent;
 }
 
 /* UDP unicast. `iface` (bind to a named interface) has no counterpart in the

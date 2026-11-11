@@ -73,6 +73,23 @@ static void set_rcv_timeout(int fd, uint32_t timeout_ms) {
     (void) zsock_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 }
 
+/* Issue 2389 — the send half of the socket's timeout: a send waits at most
+ * this long for room, then returns what the stack took (or 0). NSOS (native_sim)
+ * implements it on the host socket; Zephyr's in-kernel stack honours it only
+ * under CONFIG_NET_CONTEXT_SNDTIMEO and otherwise blocks until room, as before.
+ * zenoh-pico on Zephyr does not reach this port (its link is `tcp_zephyr.c`,
+ * bounded by `tcp_write_within.h`). */
+static void set_snd_timeout(int fd, uint32_t timeout_ms) {
+    if (timeout_ms == 0) {
+        return;
+    }
+    struct zsock_timeval tv = {
+        .tv_sec  = (long) (timeout_ms / 1000u),
+        .tv_usec = (long) ((timeout_ms % 1000u) * 1000u),
+    };
+    (void) zsock_setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
 static void set_udp_recv_timeout(int fd, uint32_t timeout_ms) {
     if (timeout_ms == 0) {
         int flags = zsock_fcntl(fd, F_GETFL, 0);
@@ -90,6 +107,7 @@ static void set_int_opt(int fd, int level, int optname, int value) {
 
 static void apply_tcp_common_options(int fd, uint32_t recv_timeout_ms) {
     set_rcv_timeout(fd, recv_timeout_ms);
+    set_snd_timeout(fd, recv_timeout_ms);
     set_int_opt(fd, SOL_SOCKET, SO_KEEPALIVE, 1);
     set_int_opt(fd, IPPROTO_TCP, TCP_NODELAY, 1);
     /* Zephyr socket SO_LINGER may not be universally supported; best-effort. */
@@ -246,7 +264,14 @@ size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t l
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_zephyr_socket_t *sock = (const nros_zephyr_socket_t *) sock_raw;
     ssize_t r = zsock_send(sock->fd, buf, len, 0);
-    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+    if (r < 0) {
+        /* The send timeout ran out with no byte taken (issue 2389). */
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            return 0;
+        }
+        return NROS_PLATFORM_NET_SOCKET_ERROR;
+    }
+    return (size_t) r;
 }
 
 /* phase-521 W6 (RFC-0113 D4) — zenoh reads the link on its own thread here (THREAD mode),

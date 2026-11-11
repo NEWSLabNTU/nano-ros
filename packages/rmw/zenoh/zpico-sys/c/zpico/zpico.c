@@ -808,6 +808,9 @@ struct zpico_session {
     void* rx_notify_ctx;
     const void* rx_notify_sock;
 #endif
+    // Issue 2389 -- the last `zp_session_link_tx_failures` count this session
+    // reported, so each close it causes is said once.
+    uint32_t link_tx_failures_seen;
 };
 
 static struct zpico_session g_sessions[ZPICO_MAX_SESSIONS];
@@ -937,6 +940,33 @@ static inline void _zpico_notify_spin(struct zpico_session* s) {
 //
 // The ZPICO_TX_BATCH_THREAD / ZPICO_TX_BATCH_FLUSH_MS selectors are defined
 // above, ahead of `struct zpico_session`, which gates its flush members on them.
+// Issue 2389 -- say on the console when zenoh-pico closed the session because
+// a write on its link failed. A router (or a proxy in front of one) that stops
+// reading while keeping the socket open used to wedge the session for good,
+// with nothing printed: the write blocked forever holding the TX mutex. The
+// write now gives up after Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE without a byte
+// taken, and zenoh-pico's read task closes the session; this is the line that
+// says so. Called from the publish failure path, the spin and the flush task,
+// so whichever runs first reports it, once per close.
+static void _zpico_report_link_tx_failures(struct zpico_session* s) {
+    uint32_t n = zp_session_link_tx_failures(z_session_loan(&s->session));
+    if (n != s->link_tx_failures_seen) {
+        s->link_tx_failures_seen = n;
+        printk("zpico: session closed: a write to the router took no byte for %d ms "
+               "(the router stopped reading) or the link broke mid-write"
+#if Z_FEATURE_AUTO_RECONNECT == 1
+               "; reconnecting"
+#endif
+               " (close #%u)\n",
+               (int)Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE, (unsigned)n);
+#if defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(ZENOH_NUTTX)
+        // `printk` is `printf` on a hosted build: block-buffered into a pipe,
+        // where a harness (or a log collector) would not see it until exit.
+        fflush(stdout);
+#endif
+    }
+}
+
 #if ZPICO_TX_BATCH_THREAD == 1
 /* phase-282 W4 (#145) — the flush task runs off the OWNING session (passed as
  * the task `arg`) and flushes that session's transport. */
@@ -944,6 +974,7 @@ static void* _zpico_tx_flush_task_fn(void* arg) {
     struct zpico_session* s = (struct zpico_session*)arg;
     while (s->tx_flush_run) {
         zp_batch_flush(z_session_loan(&s->session));
+        _zpico_report_link_tx_failures(s);
         z_sleep_ms(ZPICO_TX_BATCH_FLUSH_MS);
     }
     return NULL;
@@ -2533,6 +2564,7 @@ int32_t zpico_open(zpico_session_t* session) {
         s->declare_mutex_initialized = true;
     }
 #endif
+    s->link_tx_failures_seen = zp_session_link_tx_failures(z_session_loan(&s->session));
     s->session_open = true;
     return ZPICO_OK;
 }
@@ -2627,6 +2659,7 @@ int32_t zpico_publish_streamed(zpico_session_t* session, int32_t handle, size_t 
 
     if (z_publisher_put(z_publisher_loan(&s->publishers[handle].publisher), z_bytes_move(&payload),
                         &opts) < 0) {
+        _zpico_report_link_tx_failures(s);
         return ZPICO_ERR_PUBLISH;
     }
 
@@ -2964,6 +2997,7 @@ int32_t zpico_publish(zpico_session_t* session, int32_t handle, const uint8_t* d
                                   z_bytes_move(&payload), NULL);
     if (put_ret < 0) {
         printk("zpico: z_publisher_put failed: %d\n", put_ret);
+        _zpico_report_link_tx_failures(s);
         return ZPICO_ERR_PUBLISH;
     }
 
@@ -3492,6 +3526,7 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
+    _zpico_report_link_tx_failures(s);
 
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1 && ZPICO_TX_BATCH_THREAD == 0
     /* phase-279 (#145) — rate-limited batch flush (platforms WITHOUT the
@@ -3875,6 +3910,7 @@ int32_t zpico_publish_with_attachment(zpico_session_t* session, int32_t handle, 
 
     if (z_publisher_put(z_publisher_loan(&s->publishers[handle].publisher), z_bytes_move(&payload),
                         &options) < 0) {
+        _zpico_report_link_tx_failures(s);
         return ZPICO_ERR_PUBLISH;
     }
 
@@ -3915,6 +3951,7 @@ int32_t zpico_publish_with_attachment_aliased(zpico_session_t* session, int32_t 
 
     if (z_publisher_put(z_publisher_loan(&s->publishers[handle].publisher), z_bytes_move(&payload),
                         &options) < 0) {
+        _zpico_report_link_tx_failures(s);
         return ZPICO_ERR_PUBLISH;
     }
 

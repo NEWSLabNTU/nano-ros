@@ -104,12 +104,28 @@ static void set_recv_timeout_ms(int fd, uint32_t timeout_ms) {
     (void) setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 }
 
+/* Issue 2389 — the send half of the socket's timeout: a send waits at most
+ * this long for the stack to take bytes, then returns what it took (or 0), so
+ * a peer that stops reading cannot hold the caller forever. `0` keeps the
+ * stack's default (block until room). */
+static void set_send_timeout_ms(int fd, uint32_t timeout_ms) {
+    if (timeout_ms == 0) {
+        return;
+    }
+    struct timeval tv = {
+        .tv_sec  = (time_t)      (timeout_ms / 1000u),
+        .tv_usec = (suseconds_t) ((timeout_ms % 1000u) * 1000u),
+    };
+    (void) setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
 static void set_int_option(int fd, int level, int optname, int value) {
     (void) setsockopt(fd, level, optname, &value, sizeof(int));
 }
 
 static void apply_tcp_common_options(int fd, uint32_t recv_timeout_ms) {
     set_recv_timeout_ms(fd, recv_timeout_ms);
+    set_send_timeout_ms(fd, recv_timeout_ms);
     set_int_option(fd, SOL_SOCKET, SO_KEEPALIVE, 1);
     set_int_option(fd, IPPROTO_TCP, TCP_NODELAY, 1);
     struct linger ling = {
@@ -298,7 +314,16 @@ size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t l
     int flags = 0;
 #endif
     ssize_t r = send(sock->fd, buf, len, flags);
-    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+    if (r < 0) {
+        /* The send timeout ran out with no byte taken (issue 2389): not an
+         * error of the connection, so say "none" and let the caller decide
+         * how long a stall it tolerates. */
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            return 0;
+        }
+        return NROS_PLATFORM_NET_SOCKET_ERROR;
+    }
+    return (size_t) r;
 }
 
 /* phase-521 W6 (RFC-0113 D4) — zenoh reads the link on its own thread here (THREAD mode),

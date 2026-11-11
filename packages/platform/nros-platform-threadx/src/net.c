@@ -94,12 +94,29 @@ static void set_rcv_timeout(INT fd, uint32_t timeout_ms) {
     (void) nx_bsd_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 }
 
+/* Issue 2389 — the send half of the socket's timeout: `nx_bsd_send` waits at
+ * most this long for room, then returns what it took (or fails with EAGAIN),
+ * so a peer that stops reading cannot hold the caller — on ThreadX that is the
+ * sched task driving the executor — for ever. NetX Duo's BSD layer implements
+ * SO_SNDTIMEO; the Linux host port's nsos-netx shim passes it to the host
+ * socket. `0` keeps the stack's default. */
+static void set_snd_timeout(INT fd, uint32_t timeout_ms) {
+    if (timeout_ms == 0) {
+        return;
+    }
+    struct nx_bsd_timeval tv;
+    tv.tv_sec  = (LONG) (timeout_ms / 1000u);
+    tv.tv_usec = (LONG) ((timeout_ms % 1000u) * 1000u);
+    (void) nx_bsd_setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
 static void set_int_opt(INT fd, INT level, INT optname, INT value) {
     (void) nx_bsd_setsockopt(fd, level, optname, &value, sizeof(INT));
 }
 
 static void apply_tcp_common_options(INT fd, uint32_t recv_timeout_ms) {
     set_rcv_timeout(fd, recv_timeout_ms);
+    set_snd_timeout(fd, recv_timeout_ms);
     set_int_opt(fd, SOL_SOCKET, SO_KEEPALIVE, 1);
     set_int_opt(fd, IPPROTO_TCP, TCP_NODELAY, 1);
     struct nx_bsd_linger ling;
@@ -336,7 +353,20 @@ size_t nros_platform_tcp_send(const void *sock_raw, const uint8_t *buf, size_t l
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     const nros_threadx_socket_t *sock = (const nros_threadx_socket_t *) sock_raw;
     INT r = nx_bsd_send(sock->fd, (const CHAR *) buf, (INT) len, 0);
-    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+    if (r < 0) {
+        /* The send timeout ran out with no byte taken (issue 2389): "none",
+         * not a broken connection. */
+        int err = NROS_THREADX_BSD_ERRNO;
+        if (err == EAGAIN
+#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
+            || err == EWOULDBLOCK
+#endif
+            || err == EINTR) {
+            return 0;
+        }
+        return NROS_PLATFORM_NET_SOCKET_ERROR;
+    }
+    return (size_t) r;
 }
 
 /* phase-521 W6 (RFC-0113 D4) — NetX Duo's BSD receive notification on a

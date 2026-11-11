@@ -421,6 +421,13 @@ pub fn config_header(
     // one (issue 0910).
     writeln!(header, "#define Z_TRANSPORT_ACCEPT_TIMEOUT 1000").unwrap();
     writeln!(header, "#define Z_TRANSPORT_CONNECT_TIMEOUT 10000").unwrap();
+    // Issue 2389 — how long a stream link's write may take no byte before it
+    // fails and the session closes the link (the fork's `config.h.in`; zenoh's
+    // own `congestion_control.block.wait_before_close` is the same rule at the
+    // same 5 s). Without a bound a router that stops reading wedged the session
+    // for good, silently: the write held the TX mutex for ever. Each wait for
+    // room inside it is one `Z_CONFIG_SOCKET_TIMEOUT`.
+    writeln!(header, "#define Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE 5000").unwrap();
     writeln!(header).unwrap();
     // RFC-0110 D6 — zenoh-pico 1.10's async executor. The read, keep-alive and
     // lease tasks are executor futures now, so the 1.8 lease task's sleep chunk

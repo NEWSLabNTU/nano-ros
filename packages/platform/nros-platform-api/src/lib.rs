@@ -818,7 +818,12 @@ pub trait PlatformTcp {
     fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
     /// Read exactly `len` bytes. Returns `len` on success, `usize::MAX` on error.
     fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
-    /// Send `len` bytes. Returns bytes sent, or `usize::MAX` on error.
+    /// Send up to `len` bytes, waiting at most about the socket's timeout
+    /// (the `timeout_ms` it was opened with) for the stack to take them.
+    /// Returns the bytes taken — possibly fewer than `len`, and `0` when none
+    /// were taken in that time — or `usize::MAX` when the connection is
+    /// broken. Never waits for a peer that stopped reading (issue 2389); the
+    /// caller loops and owns the stall bound (`nros_platform_tcp_send`).
     fn send(sock: *const c_void, buf: *const u8, len: usize) -> usize;
 
     /// phase-521 W6 (RFC-0113 D4) — install (`Some`) or remove (`None`) the

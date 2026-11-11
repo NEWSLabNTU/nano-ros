@@ -2305,6 +2305,10 @@ pub fn run() {
             .include(&nros_platform_cffi_include)
             .include(manifest_dir.join("c/zpico"))
             .include(&zenoh_pico_include)
+            // Issue 2389 — the network section's `_z_tcp_write` reads the
+            // write-stall bound (`Z_TRANSPORT_TX_WAIT_BEFORE_CLOSE`) from the
+            // same generated header zenoh-pico compiles with, never a copy.
+            .include(out_dir.join("zenoh-config"))
             // Phase 129.D — `NROS_PLATFORM_ALIASES` unlocks the
             // alias TU's clock-variant + network wrappers, which
             // depend on the generic `z_clock_t = uint64_t` typedef
