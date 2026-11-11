@@ -136,3 +136,18 @@ handshake attempted while the router is still starting fails once and is
 final. That is a start race to fix (CLAUDE.md: no retries), either with a
 readiness edge the router reports or with this image's stated connect
 budget. Not measured yet.
+
+Two facts behind that reading, checked on main: `CONNECT_TIMEOUT_MS`
+defaults to `0`, which is one attempt (`nros-rmw-zenoh/build.rs`, issue
+2207). And `[image.freertos_posix_zenoh]` in
+`examples/workspaces/c/src/demo_bringup/system.toml` states no
+`connect_timeout_ms`, so it gets that one attempt. Only
+`realtime-c`'s `smp_bringup` states one (issue 2384).
+
+**Depends on issue 2389.** 139's `fix-2389-connect-budget` (not yet pushed)
+rewrites this connect path: a bounded handshake per attempt, a non-blocking
+connect, and a send stall. Read the next recurrence against whatever retry
+semantics that change lands. If the default stays one attempt, a handshake
+that meets a router still starting is still final, and the fix is this
+image's budget or the router's readiness edge. If it retries within a
+default budget, this reading no longer applies.
