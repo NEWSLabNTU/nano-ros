@@ -43,7 +43,7 @@ fn say(line: &str) {
 
 fn main() {
     env_logger::init();
-    rosout_talker_nros_selection::nros_board_linux::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
     nros_log::init(nros_platform_cffi::log::default_sinks());
 
     let records = env_usize("ROSOUT_PROBE_RECORDS", 60);

@@ -1,8 +1,8 @@
 # What this test image deploys to (RFC-0098 D3/D5) — see Cargo.toml for what
 # the program is for. It keeps its own `main` (no `nros::main!`) and opens its
 # own executor, so it declares no component table; the file names its board
-# and RMW, which reach the build through the generated selection package
-# (issue 1305).
+# and RMW, which reach the build through the adapter `nros build`
+# generates for this owned entry (RFC-0071 D19).
 
 [system]
 name = "service_info_client"
@@ -19,3 +19,4 @@ board = "linux"
 # 2136 — zenoh is the backend that reports all three fields of a reply's
 # info, measured against a stock `rmw_zenoh_cpp` server).
 [image.linux]
+entry = "service-info-client"

@@ -39,7 +39,7 @@ fn ts(t: Option<nros::Time>) -> std::string::String {
 fn main() {
     // Register the RMW backend the build linked (idempotent; must run before
     // the executor opens).
-    service_info_client_nros_selection::nros_board_linux::register_linked_rmw();
+    nros_board_linux::register_linked_rmw();
 
     env_logger::init();
 

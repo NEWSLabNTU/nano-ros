@@ -1,14 +1,15 @@
 # What this test image deploys to (RFC-0098 D3/D5) — see Cargo.toml for what
 # the program is for. It keeps its own `main` (no `nros::main!`) and opens its
 # own executor, so it declares no component table; the file names its board
-# and RMW, which reach the build through the generated selection package
-# (issue 1305).
+# and RMW, which reach the build through the adapter `nros build`
+# generates for this owned entry (RFC-0071 D19).
 
-# Zenoh only: its one consumer (port_templates_e2e) runs every cell on zenoh.
-# A second backend is an `[image.*]` and a fixture row, not a rewrite.
+# Zenoh only, deliberately. The bridge is RMW-agnostic — it is a publisher of
+# one generated message type — so a second RMW image would buy a second build
+# and no second question. Add one the day the answer could differ.
 
 [system]
-name = "int32_source"
+name = "rosout_talker"
 rmw = "zenoh"
 domain_id = 0
 # The image a bare `nros configure` / `nros build` / `cargo build` builds.
@@ -19,3 +20,4 @@ default_images = ["linux"]
 board = "linux"
 
 [image.linux]
+entry = "rosout-talker"
