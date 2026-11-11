@@ -1,7 +1,7 @@
 ---
 id: 2234
 title: "`nros configure` reports up to date while every probe sidecar is stale against a rebuilt CLI"
-status: open
+status: resolved
 type: bug
 area: [cli, configure, sizing]
 found: 2026-11-03
@@ -43,3 +43,23 @@ the resolve refuses every sidecar.
 
 Compare the whole key in `stale_sidecar_components` (keeping Ruling R5's
 `UNKEYED` exemption), so one rule decides freshness for both readers.
+
+## Resolution
+
+Fixed on 2026-11-04 by 17d689378b ("configure stamp: one search path, whole
+probe key, recorded env", phase-530 W1), and left open here by mistake; found
+and archived 2026-11-11.
+
+The fix is the direction above: `stale_sidecar_components` compares the WHOLE
+probe key (`metadata_refresh::probe_inputs_key`: source digest, the CLI's
+`NROS_CLI_SOURCE_STAMP`, the probe-closure digest) through `sidecar_is_fresh`,
+the rule the resolve applies, with Ruling R5's `UNKEYED` exemption kept. One
+rule now decides freshness for both readers.
+
+Tests (`nros-cli-core/src/configure_stamp.rs`), passing on `main`
+2026-11-11:
+
+- `stale_after_a_cli_rebuild_moves_the_sidecar_key`: a sidecar keyed by
+  another CLI (same sources, same closure) makes the stamp stale;
+- `stale_when_a_probed_crate_moved`: an edit to a crate the probe compiles
+  makes it stale, with nothing in the project moved.
