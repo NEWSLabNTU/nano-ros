@@ -7,11 +7,11 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | | |
 | --- | --- |
 | Upstream base | `1.10.1` (merge base [e1ab223a28aa](https://github.com/eclipse-zenoh/zenoh-pico/commit/e1ab223a28aaebb5dec1e70d98eab152332f777a)) |
-| Commits on top | 82 |
+| Commits on top | 85 |
 | Upstream commits the pin lacks | 0 |
-| Files changed | 107, +9649/−214 |
+| Files changed | 115, +10047/−252 |
 
-**Pinned commit:** `cf228437371f005b66d84aa8ae95f12141e262f0`
+**Pinned commit:** `15f3b01293c4546f945916ceeea00dbb24327985`
 
 ## Commits on top of upstream
 
@@ -99,9 +99,12 @@ nano-ros builds `packages/rmw/zenoh/zpico-sys/zenoh-pico` from the fork [jerry73
 | [50e059eaa7](https://github.com/jerry73204/zenoh-pico/commit/50e059eaa790ea398dc05156f40e9be42dbba62f) | fix: read the connect timeout without the unstable API |
 | [c78dbffd91](https://github.com/jerry73204/zenoh-pico/commit/c78dbffd91ed5c271bbe127bad9e21ef1e376b11) | feat: zp_next_wake_ms in a multi-thread build |
 | [cf22843737](https://github.com/jerry73204/zenoh-pico/commit/cf228437371f005b66d84aa8ae95f12141e262f0) | feat: FreeRTOS system layer under a custom platform header |
+| [f84c6be5a4](https://github.com/jerry73204/zenoh-pico/commit/f84c6be5a4b031e39aa94884cd1e9aea7f2044d4) | fix: a connect budget bounds each attempt's handshake |
+| [6827fe1f2b](https://github.com/jerry73204/zenoh-pico/commit/6827fe1f2bfd8f59a614d472e7cdd043a061ec3c) | fix: a connect budget bounds the TCP connect too |
+| [15f3b01293](https://github.com/jerry73204/zenoh-pico/commit/15f3b01293c4546f945916ceeea00dbb24327985) | fix: a write the peer stops taking ends the session |
 
 Reproduce:
 
 ```bash
-gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:cf228437371f005b66d84aa8ae95f12141e262f0 --jq '.ahead_by'
+gh api repos/eclipse-zenoh/zenoh-pico/compare/1.10.1...jerry73204:zenoh-pico:15f3b01293c4546f945916ceeea00dbb24327985 --jq '.ahead_by'
 ```
