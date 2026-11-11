@@ -484,7 +484,7 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
   need their growth bounded first. Why one run is that large: issue
   [2318](../issues/2318-cmake-leaf-recompiles-host-tooling.md) (every CMake
   leaf recompiles the same host tooling; ~80% of `corrosion-cargo` is host-side).
-- [Issue 2356](../issues/2356-gate-units-overfill-runner-tmpfs.md): W2's
+- [Issue 2356](../issues/archived/2356-gate-units-overfill-runner-tmpfs.md): W2's
   one-test-per-unit left phase-489's disk bound with one unit to bound, so a
   tier-2 run started 44 `scaffold-builds`/`template-copy-out` units at once and
   filled the runner's 48 GiB /tmp. They now share the `scratch-tree` resource,
@@ -513,7 +513,7 @@ onto its recipe), `scripts/build/run-gates-parallel.sh` and
 | [#2306](../issues/archived/2306-interrupted-submodule-checkout-reads-provisioned.md) | An interrupted submodule checkout reads as provisioned and the lane fails three gates later: a gate precondition that should refuse up front. |
 | [#2308](../issues/archived/2308-sparse-zephyr-tree-reads-as-west-workspace.md) | A sparse Zephyr source tree reads as a provisioned west workspace: the same gate-precondition class as issue 2306. |
 | [#2352](../issues/2352-entity-wake-race-hangs-beside-build-gates.md) | entity_wake's race test hangs beside the build gates: found by W3's gate-order check. |
-| [#2356](../issues/2356-gate-units-overfill-runner-tmpfs.md) | scaffold-builds and template-copy-out units all start at once and overfill the runner's /tmp. This is the nextest resource-group bound this phase owns (#3301 bounds it; it closes on a tier-2 run). |
+| [#2356](../issues/archived/2356-gate-units-overfill-runner-tmpfs.md) | scaffold-builds and template-copy-out units all start at once and overfill the runner's /tmp. This is the nextest resource-group bound this phase owns (#3301 bounds it; it closes on a tier-2 run). |
 | [#2373](../issues/archived/2373-nros-node-yielding-park-test-flakes-under-load.md) | nros-node's `a_yielding_park_with_a_pending_wake_keeps_the_pass` failed in `node-std-tests` at a host load of about 100 and passes solo: the same load-sensitive class as #2274, which the resource groups (or a private test clock) bound. Resolved 2026-11-10 with a private, frozen clock for it and two sibling park tests. |
 | [#2380](../issues/2380-linux-check-gate-near-its-timeout.md) | The build gate `linux-check` uses 62 to 87 % of the harness's 2400 s timeout and timed out at a load of about 90: a gate budget this phase's harness owns. |
 | [#2382](../issues/archived/2382-build-lane-claims-unprovided-on-hosted-jobs.md) | The `build` lane claims submodules and full history that its hosted jobs (`gate` build shards, host-tests tier 1) never provide, so since W5/W6 those jobs run no gate (found closing phase-466). |
