@@ -1254,9 +1254,11 @@ pub fn migrated_leaf_binary(
     Some(row.and_then(|row| resolve_workspace_row_entry(&row, None)))
 }
 
-/// [`migrated_leaf_binary`] naming the executable, for a CMake leaf whose
-/// image builds an OWNED entry (RFC-0071 D19): its executable is whatever the
-/// package's own `CMakeLists.txt` names, under the package's binary dir.
+/// [`migrated_leaf_binary`] naming the executable, for a leaf whose image
+/// builds an OWNED entry (RFC-0071 D19): on the CMake road its executable is
+/// whatever the package's own `CMakeLists.txt` names, under the package's
+/// binary dir; on the cargo road it is one of the package's own `[[bin]]`s,
+/// which need not be named after the package (a two-image bench builds two).
 pub fn migrated_leaf_binary_named(
     leaf: &str,
     rmw: Rmw,
@@ -1294,9 +1296,10 @@ fn resolve_workspace_row_entry(
     // is a cargo package lands where cargo puts it.
     let binary = match row.lang.as_str() {
         _ if row.builds_with_cargo() => {
+            let name = binary_name.unwrap_or(entry);
             match crate::fixtures::baked_locator::row_str(&row.id, "target") {
-                Some(triple) => dir.join(format!("{triple}/{profile}/{entry}")),
-                None => dir.join(format!("{profile}/{entry}")),
+                Some(triple) => dir.join(format!("{triple}/{profile}/{name}")),
+                None => dir.join(format!("{profile}/{name}")),
             }
         }
         _ if row.image.is_empty() => dir.join(format!("src/{entry}/{entry}")),
@@ -7991,8 +7994,18 @@ pub fn xrce_stress_test_large_buf_binary() -> PathBuf {
 /// Build qemu-bsp-large-msg-test (cached).
 pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
     QEMU_LARGE_MSG_TEST_BINARY
-        // Phase 226.D — built into build/cargo-fixtures/baremetal.
-        .get_or_try_init(|| require_qemu_baremetal_fixture("qemu-bsp-large-msg-test"))
+        // phase-531 W7 — an owned-entry workspace row; its bin keeps its name.
+        .get_or_try_init(|| {
+            migrated_leaf_binary_named(
+                "packages/testing/nros-bench/large-msg-baremetal",
+                Rmw::Zenoh,
+                crate::fixtures::migrated_leaf::LeafVariant::Plain,
+                "qemu-bsp-large-msg-test",
+            )
+            .unwrap_or_else(|| {
+                Err(not_migrated("packages/testing/nros-bench/large-msg-baremetal"))
+            })
+        })
         .map(|p| p.as_path())
 }
 

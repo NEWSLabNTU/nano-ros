@@ -1,9 +1,9 @@
-# What this bench image deploys to (RFC-0098 D3/D5). It keeps its own `main`
-# (`#[entry]`, no `nros::main!`) and declares no component table; the file names
-# its board, which reaches the build through the generated selection package
-# (issue 1305) — the board crate, its RMW backend, the Cortex-M runtime and the
-# board's panic provider, plus the target and link settings
-# `build/<image>/nros-cargo.toml` carries.
+# What this bench image deploys to (RFC-0098 D3/D5). Its program is the OWNED
+# entry `qemu_bsp_large_msg_test` (RFC-0071 D19): a hand-written `#[entry]`
+# main, no `nros::main!` and no component table. The entry names its board
+# crate and links the board's panic provider itself; the generated adapter
+# carries the image's RMW and edition, and `build/<image>/nros-cargo.toml` the
+# target and link settings.
 
 [system]
 name = "large_msg_baremetal"
@@ -11,6 +11,7 @@ rmw = "zenoh"
 domain_id = 0
 
 [image.mps2-an385-baremetal]
+entry = "qemu_bsp_large_msg_test"
 board = "mps2-an385-baremetal"
 # issue 1290 -- this bench DECLARES its entities, so `arena_size_for(2)` in
 # `src/main.rs` takes the declared branch and `EXEC_SIZING.assert_covers_model`
