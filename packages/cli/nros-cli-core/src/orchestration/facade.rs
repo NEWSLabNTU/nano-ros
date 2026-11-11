@@ -318,14 +318,28 @@ pub fn write_facade_in(
     // the `nros` axes (edition, capabilities) out. With neither crate there is
     // nothing to attach a feature to; that is never silent.
     if deps.nros.is_none() && deps.board.is_none() {
+        // Issue 2453 — a standalone C/C++ leaf (`examples/mps2-an385-baremetal/c/*`)
+        // names `nros-c`/`nros-cpp`, not `nros`, and reaches its board through
+        // `<entry>_nros_selection = { path = "build/nros/selection" }`: the
+        // LEAF road's selection package (RFC-0098 D6, issue 1305), which that
+        // road generates with the board, backend and runtime crates in it. It
+        // shares the adapter's legacy NAME and is not this crate, so the
+        // image's features already reach the entry and there is nothing for
+        // the facade to write. Only a dependency at the adapter's own home is
+        // a request for the adapter.
+        let legacy = names::legacy_adapter_crate_name(entry_name);
+        if let Some(path) = dependency_path(&manifest, &legacy)
+            && !is_adapter_home(&path, entry_name)
+        {
+            return Ok(None);
+        }
         let wanted = [
             names::adapter_crate_name(entry_name),
             names::legacy_adapter_crate_name(entry_name),
         ];
-        if let Some(adapter) = wanted
-            .iter()
-            .find(|n| dependency_path(&manifest, n).is_some())
-        {
+        if let Some(adapter) = wanted.iter().find(|n| {
+            dependency_path(&manifest, n).is_some_and(|p| is_adapter_home(&p, entry_name))
+        }) {
             return Err(eyre::eyre!(
                 "facade: entry `{entry_name}` depends on its adapter `{adapter}`, but \
                  names neither `nros` nor an `nros-board-*` crate, so the adapter has no \
@@ -1547,6 +1561,18 @@ fn board_feature_passthrough(board_crate: &str, board_dir: &Path, dep_keys: &[&s
 
 /// The `path` of the dependency `name` (hyphens folded) in any dependency
 /// table of `manifest`, target-scoped ones included.
+/// Whether a dependency `path` points at the facade's adapter for `entry`:
+/// `<ws>/generated/<ADAPTER_DIR>/<entry>`, or its previous home under
+/// `LEGACY_ADAPTER_DIR`. Anything else spelt with the adapter's legacy name is
+/// the leaf road's selection package (issue 2453).
+fn is_adapter_home(path: &str, entry: &str) -> bool {
+    use nros_orchestration_ir::entry_names as names;
+    let path = path.trim_end_matches('/');
+    [names::ADAPTER_DIR, names::LEGACY_ADAPTER_DIR]
+        .iter()
+        .any(|dir| path.ends_with(&format!("{dir}/{entry}")))
+}
+
 fn dependency_path(manifest: &toml::Value, name: &str) -> Option<String> {
     let scopes = std::iter::once(manifest).chain(
         manifest
@@ -2199,6 +2225,22 @@ mod tests {
         // Neither crate and no adapter dependency: nothing to write.
         write_manifest("");
         assert!(write().unwrap().is_none());
+
+        // Issue 2453 — a standalone C/C++ leaf: `nros-c`, and the LEAF road's
+        // selection package under the adapter's legacy name. That package
+        // carries the board, so this is neither a refusal nor an adapter.
+        write_manifest(
+            "nros-c = { version = \"*\", default-features = false }\n\
+             linux_entry_nros_selection = { path = \"build/nros/selection\" }\n",
+        );
+        assert!(write().unwrap().is_none());
+
+        // The same legacy name at the adapter's previous home IS the adapter.
+        write_manifest(
+            "linux_entry_nros_selection = { path = \"../../generated/nros-selection/linux_entry\" }\n",
+        );
+        let e = write().unwrap_err().to_string();
+        assert!(e.contains("depends on its adapter"), "{e}");
     }
 
     /// RFC-0071 D19 — one owned entry named by two images: one adapter whose
