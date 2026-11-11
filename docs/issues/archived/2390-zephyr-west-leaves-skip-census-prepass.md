@@ -1,15 +1,19 @@
 ---
 id: 2390
 title: "The fixture census pre-pass lists no Zephyr `west` leaf and then turns configure's own take off, so a Zephyr C/C++ leaf counted by its census refuses at configure"
-status: open
+status: resolved
 type: bug
 severity: high
 area: [build, zephyr, ci, census]
 related: [phase-530, 2378, 2386, 1556]
 found: 2026-11-10
+resolved: 2026-11-11
+resolved_in: "tier-2 run 42971493635: the census pre-pass took the Zephyr west leaves and the Zephyr cells ran"
 ---
 
-**Home: [phase-530](../roadmap/phase-530-nros-configure-single-pass.md)**. W2 made the census the default entity source for a C/C++ cross leaf that states no `entities` (RFC-0120 D4), and this is the fixture road that takes it.
+> **Resolved (2026-11-11).** tier-2 run 42971493635 (schedule, 2026-11-11, `main` `7d60c42daf`, runner `nano-ros-runner-newslab-118-server`): the census pre-pass listed 8 leaf candidates, among them the four Zephyr west template leaves (`examples/templates/{cpp-port-minimal-publisher,rclcpp-compat-smoke,topic-state-monitor-port,ament-workspace-port}/zephyr`), and printed no failed leaf. The Zephyr fixture stage then built past configure and Zephyr cells ran and passed (`boot_smoke` cases among them). The runner's `build/census-prepass/` directory is not uploaded, so the per-leaf log files themselves were not inspected; the job log's pre-pass listing is the evidence used.
+
+**Home: [phase-530](../../roadmap/phase-530-nros-configure-single-pass.md)**. W2 made the census the default entity source for a C/C++ cross leaf that states no `entities` (RFC-0120 D4), and this is the fixture road that takes it.
 
 ## What
 
