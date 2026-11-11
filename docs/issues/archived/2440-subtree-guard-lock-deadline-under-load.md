@@ -11,11 +11,10 @@ resolved: 2026-11-11
 resolved_in: "start_launcher waits on the launcher's own edge: lock written, or launcher exited"
 ---
 
-> **Resolved (2026-11-11).** `start_launcher` in
-> `packages/testing/nros-tests/tests/subtree_guard.sh` now waits until the
-> launcher writes its lock or exits. If it exits without one, the test fails
-> with the launcher's log. A 300 s outer bound catches only a launcher that
-> hangs without doing either.
+> **Resolved (2026-11-11).** The start waits in
+> `packages/testing/nros-tests/tests/subtree_guard.sh` now wait on the
+> started process's own edge: ready, or exited (a failure, with its log).
+> A 300 s outer bound catches only a hang.
 
 ## Measured
 
@@ -42,12 +41,22 @@ fixed at its readiness edge, never by a larger number or a retry
 
 ## Fix
 
-The launcher has exactly two outcomes that matter: it writes the lock, or it
-exits. The wait now polls for both (every 0.2 s). It fails at once, with
-`launcher.log`, when the launcher exits without the lock. It fails after 300 s
-only when the launcher is still running and has written nothing, a hang
-that no load explains. The later `wait_until 15` for the tree's depth is
-unchanged: it ends in `|| true` and asserts nothing.
+One helper, `wait_for_start <pid> <what> <log> <predicate…>`, waits for a
+process the test started to reach its readiness edge. It returns when the
+predicate holds. It fails at once, with the process's log, when the process
+exits without it. It fails after 300 s only when the process is still running
+and never got there, a hang that no load explains. It polls every 0.2 s. It
+replaces all three start waits in the file:
 
-Sweep: `grep -n "wait_until [0-9]" packages/testing/nros-tests/tests/subtree_guard.sh`.
-The only other one is that non-asserting depth wait.
+- `start_launcher`: the lock file (the reported failure);
+- `start_launcher`: the payload tree's depth >= 3. That wait ended in
+  `|| true`, but path 1 asserts the depth right after it, so it was a 15 s
+  assertion too;
+- the `sibling-a` pool's guard lock (`pool_lock_held`, 15 s).
+
+Left as they were, on purpose: the four `wait_until` calls after a signal
+(the SIGTERM drain, 20 s; the lock removal, 10 s; the SIGKILLed launcher's
+death, 10 s; the orphan reap, 30 s). They wait for processes to DIE after a
+kill, which is not a start, and a longer death there is itself a finding.
+
+Sweep: `grep -n "wait_until\|wait_for_start" packages/testing/nros-tests/tests/subtree_guard.sh`.

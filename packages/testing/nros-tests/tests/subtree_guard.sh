@@ -144,26 +144,35 @@ wait_until() {
     return 1
 }
 
+# Issue 2440 — wait for a process we STARTED to reach its readiness edge,
+# never against a clock: the predicate holds, or the process exits without it
+# (a failure, reported at once with `$log`). A fixed 15 s ran out on a loaded
+# host while the process was still starting. The 300 s bound only catches a
+# process that hangs without doing either.
+# Usage: wait_for_start <pid> <what> <log> <predicate...>
+wait_for_start() {
+    local pid="$1" what="$2" log="$3"; shift 3
+    local deadline=$(( SECONDS + 300 ))
+    until "$@"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            "$@" && return 0
+            fail "$what exited before it was ready; its log: $(cat "$log")"
+        fi
+        [ "$SECONDS" -lt "$deadline" ] \
+            || fail "$what (pid $pid) still running after 300 s and never became ready; its log: $(cat "$log")"
+        sleep 0.2
+    done
+}
+
 start_launcher() {
     "$work/launcher.sh" > "$work/launcher.log" 2>&1 &
     local launcher=$!
-    # Issue 2440 — wait on the launcher's own edge, not on a clock: it either
-    # writes the lock or exits. A fixed 15 s ran out on a loaded host (the
-    # pristine-clone pass, beside another worktree's `check fast`) while the
-    # launcher was still starting. The outer bound only catches a launcher that
-    # hangs without doing either.
-    local deadline=$(( SECONDS + 300 ))
-    until test -s "$(guard_lock)"; do
-        if ! kill -0 "$launcher" 2>/dev/null; then
-            fail "launcher exited without writing its lock file ($(guard_lock)); its log: $(cat "$work/launcher.log")"
-        fi
-        [ "$SECONDS" -lt "$deadline" ] \
-            || fail "launcher (pid $launcher) still running after 300 s and never wrote its lock file ($(guard_lock))"
-        sleep 0.2
-    done
-    # The lock is written before the tree is fully up; wait for real depth.
-    wait_until 15 bash -c '[ "$(group_size "$(awk "{print \$2}" "$0")")" -ge 3 ]' \
-        "$(guard_lock)" || true
+    wait_for_start "$launcher" "launcher (lock file $(guard_lock))" "$work/launcher.log" \
+        test -s "$(guard_lock)"
+    # The lock is written before the tree is fully up; wait for real depth,
+    # which the callers then assert, on the same edge.
+    wait_for_start "$launcher" "launcher (payload tree depth >= 3)" "$work/launcher.log" \
+        bash -c '[ "$(group_size "$(awk "{print \$2}" "$0")")" -ge 3 ]' "$(guard_lock)"
 }
 
 # --- path 1: trap -----------------------------------------------------------
@@ -326,8 +335,8 @@ pool_lock_held() { compgen -G "$(pool_lock_dir)/jobserver-pool*.pgid" >/dev/null
 mkdir -p "$work/pool"
 run_pool sibling-a 8 > "$work/pool-a.log" 2>&1 &
 pool_a=$!
-wait_until 15 pool_lock_held \
-    || fail "pool 'sibling-a' never took a guard lock under $(pool_lock_dir); log: $(cat "$work/pool-a.log")"
+wait_for_start "$pool_a" "pool 'sibling-a' (guard lock under $(pool_lock_dir))" \
+    "$work/pool-a.log" pool_lock_held
 
 run_pool sibling-b 0 > "$work/pool-b.log" 2>&1 \
     || fail "a pool with a DIFFERENT label was refused while 'sibling-a' ran — the issue 1886 collision (two gates in one lane fan-out, disjoint artifacts). Log: $(cat "$work/pool-b.log")"
