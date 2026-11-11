@@ -1693,7 +1693,17 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     Some(nros_root),
                     Some(&manifest_dir),
                 );
-                let had_lock = manifest_dir.join("Cargo.lock").is_file();
+                // A lock that does not name the entry's own package has never
+                // been resolved by cargo: it is a seed from the pin set that no
+                // `update --workspace` pruned yet. Planning seeds it (planning
+                // writes, issue 1716), so a `--dry-run` plan -- the fixture
+                // builder's cache warm-up runs one before every row -- left a
+                // raw seed behind, and the real build then took it for the
+                // user's lock and skipped the prune. Where the pre-build realign
+                // cannot resolve the root on its own (a NuttX entry, whose
+                // `libc` patch exists only inside the build), `--frozen` then
+                // refused to add the entry's path packages.
+                let had_lock = lock_names_package(&manifest_dir);
                 crate::orchestration::registry_pins::seed(&manifest_dir, Some(nros_root))?;
                 if lock_is_ours || !had_lock {
                     let mut u = vec![
@@ -9047,6 +9057,31 @@ fn run_entry_root_check(er: &crate::builder::materialize::EntryRoot) -> Result<(
 }
 
 /// `[package] name` of the manifest in `manifest_dir`.
+/// Whether `manifest_dir`'s `Cargo.lock` is one the build should leave alone:
+/// it exists and is not an unpruned pin seed. Cargo writes every workspace
+/// member into the lock it resolves, so a lock that lists packages but not
+/// its own root is a seed from the pin set no resolve has touched (issue
+/// 2451). A lock listing no package at all, or one cargo cannot parse, is
+/// left alone as the user's.
+fn lock_names_package(manifest_dir: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(manifest_dir.join("Cargo.lock")) else {
+        return false;
+    };
+    let Some(name) = cargo_package_name(manifest_dir) else {
+        return true;
+    };
+    let Ok(doc) = text.parse::<toml::Table>() else {
+        return true;
+    };
+    let Some(pkgs) = doc.get("package").and_then(|p| p.as_array()) else {
+        return true;
+    };
+    pkgs.is_empty()
+        || pkgs
+            .iter()
+            .any(|p| p.get("name").and_then(|n| n.as_str()) == Some(name.as_str()))
+}
+
 fn cargo_package_name(manifest_dir: &Path) -> Option<String> {
     let text = std::fs::read_to_string(manifest_dir.join("Cargo.toml")).ok()?;
     let doc = text.parse::<toml::Table>().ok()?;
@@ -9080,6 +9115,40 @@ fn with_rust_channel(h: Handoff, channel: Option<&str>) -> Handoff {
         None => h,
     }
 }
+#[cfg(test)]
+mod lock_names_package_tests {
+    use super::lock_names_package;
+
+    /// A seed from the pin set names only registry crates; the lock cargo
+    /// resolves names the root too. Only the second is a resolved lock the
+    /// build may leave alone.
+    #[test]
+    fn a_pin_seed_is_not_a_resolved_lock() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(
+            d.path().join("Cargo.toml"),
+            "[package]\nname = \"entry\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        assert!(!lock_names_package(d.path()), "no lock");
+        let seed = "version = 4\n\n[[package]]\nname = \"libc\"\nversion = \"0.2.186\"\n\
+                    source = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
+        std::fs::write(d.path().join("Cargo.lock"), seed).unwrap();
+        assert!(!lock_names_package(d.path()), "a raw seed");
+        std::fs::write(
+            d.path().join("Cargo.lock"),
+            format!("{seed}\n[[package]]\nname = \"entry\"\nversion = \"0.1.0\"\n"),
+        )
+        .unwrap();
+        assert!(lock_names_package(d.path()), "a resolved lock");
+        std::fs::write(d.path().join("Cargo.lock"), "version = 4\n").unwrap();
+        assert!(
+            lock_names_package(d.path()),
+            "a package-less lock is the user's"
+        );
+    }
+}
+
 #[cfg(test)]
 mod effective_images_tests {
     use super::effective_images;
