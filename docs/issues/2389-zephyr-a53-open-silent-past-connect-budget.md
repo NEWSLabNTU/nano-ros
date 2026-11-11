@@ -131,7 +131,8 @@ The TCP CONNECT step was bounded by the stack rather than the budget on
 several platforms (a SYN-dropping peer). [Issue
 2437](archived/2437-zenoh-tcp-connect-unbounded-by-connect-budget.md) fixed
 that on the BSD-socket ports, Zephyr's included (zenoh-pico `6827fe1f`); ThreadX
-and bare-metal smoltcp remain as [issue
-2438](2438-threadx-smoltcp-tcp-connect-ignores-connect-budget.md). So on
+and bare-metal smoltcp followed in [issue
+2438](archived/2438-threadx-smoltcp-tcp-connect-ignores-connect-budget.md)
+(`nros_platform_tcp_open_within`). So on
 Zephyr the whole open, connect and handshake, now ends within the budget, and
 2389's remaining suspect is after the open, not in it.
