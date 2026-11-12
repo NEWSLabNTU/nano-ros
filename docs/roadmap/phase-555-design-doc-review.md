@@ -137,8 +137,8 @@ The evidence is judged against the newer RFCs (starting from its rows in
 `pairs.md`), the code as it is, and the user's rulings. Mechanical fixes are
 made directly in the review PR. Anything that would change a design goes
 into ONE decision brief per area: each item states the question, the
-options, the measured facts and a recommendation, the way issue 2236's brief
-did.
+options, the measured facts and a recommendation, the way the NuttX decision
+brief of RFC-0126 did.
 
 - **Acceptance:** every live RFC has a verdict and an updated
   `last-reviewed`; each area's brief is ruled.
