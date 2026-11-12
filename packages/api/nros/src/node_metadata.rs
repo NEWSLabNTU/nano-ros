@@ -82,11 +82,14 @@ impl BufferedRow {
     }
 }
 
-/// Maximum nodes recorded by the built-in metadata recorder.
+/// Maximum nodes recorded by the built-in metadata recorder WITHOUT `alloc`.
+/// With `alloc` the recorder grows; see [`MetadataRecorder`].
 pub const DEFAULT_MAX_METADATA_NODES: usize = 8;
-/// Maximum entities recorded by the built-in metadata recorder.
+/// Maximum entities recorded by the built-in metadata recorder WITHOUT `alloc`.
+/// With `alloc` the recorder grows; see [`MetadataRecorder`].
 pub const DEFAULT_MAX_METADATA_ENTITIES: usize = 32;
-/// Maximum callback/effect records kept by the built-in metadata recorder.
+/// Maximum callback/effect records kept by the built-in metadata recorder
+/// WITHOUT `alloc`. With `alloc` the recorder grows; see [`MetadataRecorder`].
 pub const DEFAULT_MAX_METADATA_CALLBACKS: usize = 32;
 /// Maximum bytes in recorded source names and stable IDs.
 pub const METADATA_STRING_CAPACITY: usize = 128;
@@ -675,16 +678,84 @@ pub(crate) fn copy_str(value: &str) -> Result<MetadataString, NodeMetadataError>
     Ok(out)
 }
 
+/// The rows of a [`MetadataRecorder`] (issue 2166).
+///
+/// With `alloc` they GROW: every producer of source metadata is a host
+/// process (the C/C++ metadata probe, the Rust metadata binary), and a real
+/// component declares far more than a fixed default holds. Autoware's
+/// trajectory follower declares 149 parameters, and each one is an entity
+/// row, so a 32-row recorder made the probe panic and `nros configure`
+/// report `no producer`. Without `alloc` they are a `heapless::Vec<T, N>`, and
+/// `N` is the recorder's const parameter, as before.
+#[derive(Debug)]
+pub(crate) struct Rows<T, const N: usize> {
+    #[cfg(feature = "alloc")]
+    inner: alloc::vec::Vec<T>,
+    #[cfg(not(feature = "alloc"))]
+    inner: Vec<T, N>,
+}
+
+impl<T, const N: usize> Rows<T, N> {
+    pub(crate) const fn new() -> Self {
+        Self {
+            #[cfg(feature = "alloc")]
+            inner: alloc::vec::Vec::new(),
+            #[cfg(not(feature = "alloc"))]
+            inner: Vec::new(),
+        }
+    }
+
+    /// Append a row. `Err` only without `alloc`, when the fixed capacity `N`
+    /// is spent.
+    pub(crate) fn push(&mut self, value: T) -> Result<(), T> {
+        #[cfg(feature = "alloc")]
+        {
+            self.inner.push(value);
+            Ok(())
+        }
+        #[cfg(not(feature = "alloc"))]
+        {
+            self.inner.push(value)
+        }
+    }
+}
+
+impl<T, const N: usize> core::ops::Deref for Rows<T, N> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        &self.inner
+    }
+}
+
+impl<'a, T, const N: usize> IntoIterator for &'a Rows<T, N> {
+    type Item = &'a T;
+    type IntoIter = core::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<T, const N: usize> core::ops::DerefMut for Rows<T, N> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        &mut self.inner
+    }
+}
+
 /// In-memory metadata sink used by host discovery. It never opens transport.
+///
+/// With `alloc` (every host producer) it records any number of nodes,
+/// entities and callback effects, and the const parameters are unused. Without
+/// `alloc` they are fixed capacities, and a full recorder refuses with
+/// [`NodeMetadataError::Capacity`].
 #[derive(Debug)]
 pub struct MetadataRecorder<
     const MAX_NODES: usize = DEFAULT_MAX_METADATA_NODES,
     const MAX_ENTITIES: usize = DEFAULT_MAX_METADATA_ENTITIES,
     const MAX_CALLBACKS: usize = DEFAULT_MAX_METADATA_CALLBACKS,
 > {
-    nodes: Vec<NodeMetadata, MAX_NODES>,
-    entities: Vec<EntityMetadata, MAX_ENTITIES>,
-    callback_effects: Vec<CallbackEffectMetadata, MAX_CALLBACKS>,
+    nodes: Rows<NodeMetadata, MAX_NODES>,
+    entities: Rows<EntityMetadata, MAX_ENTITIES>,
+    callback_effects: Rows<CallbackEffectMetadata, MAX_CALLBACKS>,
 }
 
 impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usize> Default
@@ -701,9 +772,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     /// Create an empty metadata recorder.
     pub const fn new() -> Self {
         Self {
-            nodes: Vec::new(),
-            entities: Vec::new(),
-            callback_effects: Vec::new(),
+            nodes: Rows::new(),
+            entities: Rows::new(),
+            callback_effects: Rows::new(),
         }
     }
 
@@ -955,7 +1026,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     }
 
     fn callback_slot_for_id(&self, id: &str) -> Option<CallbackSlot> {
-        let mut seen = Vec::<&str, MAX_CALLBACKS>::new();
+        // Issue 2166: a `Rows`, so past MAX_CALLBACKS distinct callbacks the
+        // slot numbering does not silently stop counting (`let _ = push`).
+        let mut seen = Rows::<&str, MAX_CALLBACKS>::new();
         for entity in &self.entities {
             for callback_id in entity_callback_ids(entity) {
                 let Some(callback_id) = callback_id else {
@@ -975,7 +1048,9 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
     }
 
     fn callback_slot_count(&self) -> usize {
-        let mut seen = Vec::<&str, MAX_CALLBACKS>::new();
+        // Issue 2166: a `Rows`, so past MAX_CALLBACKS distinct callbacks the
+        // slot numbering does not silently stop counting (`let _ = push`).
+        let mut seen = Rows::<&str, MAX_CALLBACKS>::new();
         for entity in &self.entities {
             for callback_id in entity_callback_ids(entity) {
                 let Some(callback_id) = callback_id else {
