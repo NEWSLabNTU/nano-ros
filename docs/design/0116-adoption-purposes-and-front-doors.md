@@ -4,7 +4,7 @@ title: "Adoption purposes and front doors: three purposes as acceptance columns,
 status: Draft
 area: docs-ux-diagnostics
 since: 2026-10
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-525, phase-523]
 amends: []
 supersedes: []
@@ -176,6 +176,12 @@ are.
 > time (a CMake `FATAL_ERROR`, a build-script panic) may name an id is open:
 > phase-517 W5 exempts it, this section's "every refusal" does not (issue
 > 2305's open question).
+>
+> **Ruled 2026-11-12 (user ruling A, relayed by the manager session):** a
+> user-reachable refusal carries no id, build-stopping ones included; ids go
+> to source comments, `-v`, and a diagnostic code's `## Design background`.
+> The diagnostic-code RFC drafted from that ruling (PR #3629, phase-552)
+> records it as this section's amendment.
 
 > **Sequenced by [RFC-0117](0117-cli-command-tiers.md) (2026-11):** the
 > command tree is restructured first (phase-526), and the help text's ids move
