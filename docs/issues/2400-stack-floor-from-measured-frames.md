@@ -423,6 +423,22 @@ Its first run confirmed both Rust rows exact. It found the C talker's peak
 13,064 B. The verdict table and the item status are in
 [phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W6.
 
+### W2b: an opted-in image is raised to its floor (2026-11-13)
+
+`[image.<id>] stack_floor = "raise"` turns a measured image's CHECK failure
+into a second build at the floor, on both FreeRTOS roads. A pre-link edge
+cannot exist, because heap_4 sizes the heap at configure.
+
+- **Never stored, never lowers.** The raise is derived again by every build
+  and never lowers a stack.
+- **Unmeasured images.** An unmeasured image still only warns.
+- **Pinning.** The build prints the value it used. On the cargo road it also
+  prints the `[image.<id>.knobs.freertos] app_stack_kb` line that pins it. On
+  the cmake road there is no such line yet (issue 2496).
+
+The detail is in
+[phase-557](../roadmap/phase-557-stack-floor-measured-frames.md) W2b.
+
 ### W5: the cargo leaf CHECKs the board's stated stack (2026-11-13)
 
 Same rulings: CHECK by default, a MEASURED image fails, an unmeasured one

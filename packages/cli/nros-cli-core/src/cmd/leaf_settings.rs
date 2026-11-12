@@ -1659,6 +1659,7 @@ mod tests {
             ros_args: Vec::new(),
             params_files: Vec::new(),
             stack_floor_image: None,
+            stack_floor_raise: false,
         }
     }
 

@@ -204,6 +204,38 @@ function(_nros_freertos_entry_app_stack out_var)
         endif()
         set(_kb "${NROS_FREERTOS_APP_STACK_KB}")
     endif()
+    # Issue 2400 W2b — an image with `[image.<id>] stack_floor = "raise"` is
+    # rebuilt by `nros build` once with its measured floor, handed over in the
+    # ENVIRONMENT (`NROS_STACK_FLOOR_RAISE=NAME=VALUE[;...]`) and never in the
+    # cache: the raise is derived again by every build from that build's own
+    # walk, so `system.toml` stays the whole statement. It only raises.
+    _nros_stack_floor_raise_value(NROS_FREERTOS_APP_STACK_KB _raised)
+    if(NOT _raised STREQUAL "" AND _raised GREATER _kb)
+        math(EXPR _delta "${_raised} - ${_kb}")
+        message(STATUS "nano-ros: app stack raised from ${_kb} to ${_raised} KiB, the "
+            "image's measured stack floor (`stack_floor = \"raise\"`)")
+        # heap_4 hands out the task stack, so the heap grows by what the stack
+        # did; an explicit NROS_FREERTOS_HEAP_KB is a size someone chose and
+        # is left alone (FreeRTOSConfig.h).
+        get_property(_done GLOBAL PROPERTY _NROS_FREERTOS_HEAP_RAISE_KB)
+        if(NOT _done AND COMMAND nros_freertos_config_define AND TARGET freertos_config)
+            nros_freertos_config_define("NROS_FREERTOS_HEAP_RAISE_KB=${_delta}")
+            set_property(GLOBAL PROPERTY _NROS_FREERTOS_HEAP_RAISE_KB "${_delta}")
+        endif()
+        set(_kb "${_raised}")
+    endif()
     math(EXPR _bytes "${_kb} * 1024")
     set(${out_var} "${_bytes}" PARENT_SCOPE)
+endfunction()
+
+# _nros_stack_floor_raise_value(<knob> <out>) -- the value `nros build` handed
+# this configure for <knob> in `NROS_STACK_FLOOR_RAISE` (issue 2400 W2b), or "".
+function(_nros_stack_floor_raise_value _knob _out)
+    set(${_out} "" PARENT_SCOPE)
+    set(_raises "$ENV{NROS_STACK_FLOOR_RAISE}")
+    foreach(_kv IN LISTS _raises)
+        if(_kv MATCHES "^${_knob}=([0-9]+)$")
+            set(${_out} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+        endif()
+    endforeach()
 endfunction()

@@ -1,13 +1,22 @@
 ---
 id: 2461
 title: "The FreeRTOS stack-floor CHECK ignores [image.<id>] stack_floor_image, so a renamed FreeRTOS project would miss its template's measured row"
-status: open
+status: resolved
 type: limitation
 severity: low
 area: [memory, freertos, build]
 found: 2026-11-12
+resolved: 2026-11-13
+resolved_in: "nros build passes -DNROS_IMAGE_STACK_FLOOR_IMAGE on every CMake configure and nros_stack_floor_check keys by it (phase-557 W2b)"
 related: [issue-2400, phase-557]
 ---
+
+> **Resolved (2026-11-13), phase-557 W2b.** `nros build` passes the image's
+> `stack_floor_image` stamp (or an empty value) to every CMake configure as
+> `-DNROS_IMAGE_STACK_FLOOR_IMAGE`. `nros_stack_floor_check` keys the FreeRTOS
+> check by it, as the Zephyr carrier does. An empty value falls back to
+> `<bringup or entry>@<board>`. Passing it on every configure keeps a stale
+> stamp from outliving a `system.toml` edit in the cache.
 
 ## What
 

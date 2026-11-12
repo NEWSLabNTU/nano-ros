@@ -135,12 +135,19 @@
 #ifndef NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB
 #define NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB     0
 #endif
+/* Issue 2400 W2b -- an image that opted in to a stack raise (`stack_floor =
+ * "raise"`) and was rebuilt at its measured floor: heap_4 hands out the task
+ * stack, so the DEFAULT heap grows by what the stack did. An explicit
+ * NROS_FREERTOS_HEAP_KB is a size someone chose and is not adjusted. */
+#ifndef NROS_FREERTOS_HEAP_RAISE_KB
+#define NROS_FREERTOS_HEAP_RAISE_KB                   0
+#endif
 #define NROS_FREERTOS_DDS_HEAP_KB 640
 #ifndef NROS_FREERTOS_HEAP_KB
 #if defined(NROS_FREERTOS_HEAP_DEFAULT_DDS) && NROS_FREERTOS_HEAP_DEFAULT_DDS
-#define NROS_FREERTOS_HEAP_KB                   (NROS_FREERTOS_DDS_HEAP_KB)
+#define NROS_FREERTOS_HEAP_KB                   ((NROS_FREERTOS_DDS_HEAP_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
 #else
-#define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB))
+#define NROS_FREERTOS_HEAP_KB                   (3072 - (NROS_FREERTOS_SCHED_TASK_STACKS_IN_BSS_KB) + (NROS_FREERTOS_HEAP_RAISE_KB))
 #endif
 #endif
 #define configTOTAL_HEAP_SIZE                   ((size_t)((NROS_FREERTOS_HEAP_KB) * 1024))

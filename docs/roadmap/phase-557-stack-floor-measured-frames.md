@@ -1,6 +1,6 @@
 # Phase 557 — Stack floors from measured frames, delivered per build
 
-**Status (2026-11-13). OPEN: W1, W2, W4, W5 and W6 are done; W2b, W3 and
+**Status (2026-11-13). OPEN: W1, W2, W2b, W4, W5 and W6 are done; W3 and
 W5b are open.** This phase tracks the implementation of
 [issue 2400](../issues/2400-stack-floor-from-measured-frames.md): one producer
 per target computes the floor of a thread's stack from the frames that thread
@@ -28,8 +28,9 @@ Related: [issue 2402](../issues/2402-rmw-vtable-slot-binding-stack-walk.md)
 slot), [issue 2414](../issues/2414-stack-floor-bitcode-store-under-sccache.md)
 (the deferred bitcode store),
 [issue 2460](../issues/2460-stack-floor-mps2-zephyr-walk-refused.md),
-[issue 2461](../issues/2461-stack-floor-freertos-stated-key.md), and the
-resolved [2466](../issues/archived/2466-stack-floor-ci-image-missing-c-frames.md)
+[issue 2496](../issues/2496-freertos-cmake-app-stack-no-system-toml.md), and the
+resolved [2461](../issues/archived/2461-stack-floor-freertos-stated-key.md),
+[2466](../issues/archived/2466-stack-floor-ci-image-missing-c-frames.md)
 and [2473](../issues/archived/2473-stack-floor-table-needs-toml-parser.md).
 
 ---
@@ -61,13 +62,54 @@ its own unit; without the row it only warns.
 
 ### W2b — Raise the stack automatically, opt-in
 
-- **Status:** OPEN
+- **Status:** DONE (2026-11-13, #PRNUM)
 
-A pre-link edge that gives the carrier the floor before it compiles, so an
-image can opt into "raise to the floor" instead of CHECK. It never lowers.
+**No pre-link edge is possible.** heap_4 hands out the task stack, and
+`configTOTAL_HEAP_SIZE` is fixed at configure, before anything is linked
+that could be walked. So the raise is a SECOND build. An image opts in with
+`[image.<id>] stack_floor = "raise"` (`"check"`, the default, is the only
+other word; a typo is refused). Its walk (`nros-stack-floor.py --raise`)
+records a measured shortfall in the report instead of failing. `nros build`
+reads that report and builds the image once more at the floor:
 
-Acceptance: an opted-in measured image whose stated stack is below its floor
-builds with the floor, and an image that did not opt in still fails.
+- **cmake road** — re-runs the configure and the build with
+  `NROS_STACK_FLOOR_RAISE=NAME=VALUE` in the environment.
+  `_nros_freertos_entry_app_stack` takes the larger of the stated value and
+  the raise. The heap grows by the same amount
+  (`NROS_FREERTOS_HEAP_RAISE_KB`).
+- **cargo road** — rebuilds with the knob itself
+  (`NROS_FREERTOS_APP_STACK_KB`) in the environment, then re-walks the
+  image. The generated `[env]` rows are never `force`d, so the raise beats a
+  stated value. The board's build script sizes the heap from the stack.
+
+The raise is derived again by every build and stored nowhere: a cached
+value is state that `system.toml` does not show. The build prints the value
+it used and how to pin it:
+
+- **cargo road** — prints the `[image.<id>.knobs.freertos] app_stack_kb`
+  line to pin it.
+- **cmake road** — has no `system.toml` spelling for this knob yet, so it
+  says so and names the configure flag
+  ([issue 2496](../issues/2496-freertos-cmake-app-stack-no-system-toml.md)).
+
+If a raise still persists after the rebuild, that is a bug in the raise,
+and the build fails.
+
+The cmake road's check now keys by the `nros new` stamp
+(`-DNROS_IMAGE_STACK_FLOOR_IMAGE`, passed on every configure by `nros
+build`), which resolves
+[issue 2461](../issues/archived/2461-stack-floor-freertos-stated-key.md).
+
+Acceptance, measured (2026-11-13). Each image was given a temporary
+allowance row:
+
+- **C talker on mps2-an385-freertos (cmake), configured at 8 KiB.**
+  - Opted in, it builds with 15 KiB (`.app_stack_bytes = 15360u`, heap +7 KiB).
+  - Without the opt-in it fails with "Raise it: NROS_FREERTOS_APP_STACK_KB=15".
+- **Rust talker (cargo), `app_stack_kb = 16`.**
+  - Opted in, it builds with 26 KiB, and the re-walk reads "OPEN stack 26624 B holds the floor 26096 B".
+  - Pinned with the printed line, it builds once with no raise.
+  - Without the opt-in it fails with "Raise it: NROS_FREERTOS_APP_STACK_KB=26".
 
 ### W3 — PX4
 
