@@ -1992,7 +1992,8 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                     // entry sizes the image (the host image is the producer).
                     let census = match owned_entry_dir(&root, &id, &img) {
                         Ok(Some(pkg))
-                            if platform != "posix" && pkg.join("CMakeLists.txt").is_file() =>
+                            if platform != "posix"
+                                && crate::cmd::entity_census::owned_entry_is_census_sized(&pkg) =>
                         {
                             Some(crate::builder::cmake_root::OwnedCensus {
                                 bringup: bringup.clone(),

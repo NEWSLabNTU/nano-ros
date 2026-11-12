@@ -615,7 +615,7 @@ fn take_census(args: TakeArgs) -> Result<()> {
     // build of its package run once, the way a standalone leaf's is
     // (maintainer ruling 2026-11-11).
     if let Some(pkg) = crate::cmd::build::owned_entry_dir(&root, &image_id, &image)?
-        .filter(|d| d.join("CMakeLists.txt").is_file())
+        .filter(|d| owned_entry_is_census_sized(d))
     {
         if args.plan {
             // Not a `producer` line: no host IMAGE is built, the package is.
@@ -1286,6 +1286,15 @@ fn refuse_if_moved_when(on: bool, before: &Option<String>, digest: &Path) -> Res
 /// still recorded rather than stopped at a pool one short (issue 1419's
 /// "census sized by the contract it checks", one road over).
 pub(crate) const LEAF_CENSUS_HOST_ENV: &str = "NROS_LEAF_CENSUS_HOST";
+
+/// Issue 2433 -- whether an OWNED C/C++ entry is sized by its census: its
+/// package builds a program with `nano_ros_add_executable`, which a host build
+/// can run once. A typed carrier (`nros_components_register_node(... TYPED
+/// DEPLOY <rtos>)`) and a package with no CMakeLists build no such program, so
+/// they keep the road they had (the `owned_entry_without_model` arm below).
+pub(crate) fn owned_entry_is_census_sized(pkg: &Path) -> bool {
+    pkg.join("CMakeLists.txt").is_file() && leaf_executable_name(pkg).is_ok()
+}
 
 /// The executable a standalone leaf's `CMakeLists.txt` adds: the first
 /// `nano_ros_add_executable(<name> ...)`. A leaf builds ONE image (RFC-0098
