@@ -64,6 +64,10 @@ pub(crate) struct OutputFlags {
     /// sidecars are keyed against (`metadata_refresh::probe_inputs_key`),
     /// resolved per project the way sync's metadata refresh resolves it.
     pub(crate) nano_ros_path: Option<PathBuf>,
+    /// Issue 2467 — the caller's `--zephyr-workspace`, for the preflight a
+    /// currency check re-runs ([`real_preflight`]). Not in `pairs`: where a
+    /// toolchain is does not change what configure writes.
+    pub(crate) zephyr_workspace: Option<PathBuf>,
 }
 
 impl OutputFlags {
@@ -95,6 +99,7 @@ impl OutputFlags {
             model_dir: sync.model_dir.clone(),
             nano_ros_path: sync.nano_ros_path.clone(),
             interface_search_path: sync.interface_search_path.clone(),
+            zephyr_workspace: sync.zephyr_workspace.clone(),
         }
     }
 
@@ -688,15 +693,20 @@ pub(crate) fn is_current(
         flags,
         current_launch_resolver().as_deref(),
         &real_ament_moved,
-        &real_preflight,
+        &|p: &Path, i: &str| real_preflight(p, i, flags.zephyr_workspace.as_deref()),
     )
 }
 
 /// Ruling R19 — would `image`'s toolchain preflight refuse it NOW? Stages 1–3
 /// as a query (`build::preflight_query`): no census, nothing generated,
 /// nothing written. `Ok(Some(reason))` still refuses; `Ok(None)` passes.
-fn real_preflight(project: &Path, image: &str) -> Result<Option<String>> {
-    let args = crate::cmd::configure::build_args(project, image, &None, false, false);
+fn real_preflight(
+    project: &Path,
+    image: &str,
+    zephyr_workspace: Option<&Path>,
+) -> Result<Option<String>> {
+    let mut args = crate::cmd::configure::build_args(project, image, &None, false, false);
+    args.zephyr_workspace = zephyr_workspace.map(Path::to_path_buf);
     match crate::cmd::build::preflight_query(&args) {
         Ok(()) => Ok(None),
         Err(e) => match e.downcast_ref::<crate::builder::preflight::PreflightRefusal>() {
@@ -766,7 +776,7 @@ pub(crate) fn is_current_with(
         &OutputFlags::defaults(),
         resolver,
         &real_ament_moved,
-        &real_preflight,
+        &|p: &Path, i: &str| real_preflight(p, i, None),
     )
 }
 
@@ -2096,6 +2106,14 @@ mod tests {
         ] {
             assert_eq!(base, d(&flags(stays)), "{stays:?} writes nothing");
         }
+        // Issue 2467 — the caller's Zephyr workspace rides on the flags so
+        // the preflight a currency check re-runs sees it, but it says where a
+        // toolchain is, not what configure writes: never a digest input.
+        let mut sync = A::try_parse_from(["configure"]).unwrap().sync;
+        sync.zephyr_workspace = Some(PathBuf::from("/zws"));
+        let with_zws = OutputFlags::of(&sync);
+        assert_eq!(with_zws.zephyr_workspace.as_deref(), Some(Path::new("/zws")));
+        assert_eq!(base, d(&with_zws), "--zephyr-workspace writes nothing");
     }
 
     /// phase-530 W1 (I2) — a refused model under `NROS_MODEL_DIR` (where C1

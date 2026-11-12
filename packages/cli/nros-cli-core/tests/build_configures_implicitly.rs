@@ -112,7 +112,7 @@ fn build_on_a_fresh_copy_needs_no_sync() {
     setup();
     let leaf = scratch_copy(common::RUST_LEAF, "fresh");
     assert!(!leaf.join("build/nros/models").exists(), "a fresh copy");
-    nros_cli_core::cmd::configure::ensure_current(&leaf, &[], false, false, "build")
+    nros_cli_core::cmd::configure::ensure_current(&leaf, &[], false, false, "build", None)
         .unwrap_or_else(|e| panic!("build's implicit configure on a fresh copy: {e:?}"));
     assert!(
         leaf.join("build/nros/models").is_dir() && leaf.join("generated/std_msgs").is_dir(),

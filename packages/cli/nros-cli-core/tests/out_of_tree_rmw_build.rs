@@ -137,7 +137,7 @@ fn nros_build_links_and_registers_a_workspace_rmw_provider() {
     let ws = scratch_copy();
     let wss = ws.to_str().unwrap();
 
-    nros_cli_core::cmd::configure::ensure_current(&ws, &[], false, false, "build")
+    nros_cli_core::cmd::configure::ensure_current(&ws, &[], false, false, "build", None)
         .unwrap_or_else(|e| panic!("the implicit configure of an `acme` image: {e:?}"));
     nros(&[
         "build",
@@ -249,7 +249,7 @@ fn nros_build_generates_a_west_application_over_a_workspace_rmw_provider() {
     let ws = scratch_copy();
     let wss = ws.to_str().unwrap();
 
-    nros_cli_core::cmd::configure::ensure_current(&ws, &[], false, false, "build")
+    nros_cli_core::cmd::configure::ensure_current(&ws, &[], false, false, "build", None)
         .unwrap_or_else(|e| panic!("the implicit configure of an `acme` image: {e:?}"));
     nros(&[
         "build",

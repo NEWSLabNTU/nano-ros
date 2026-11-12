@@ -530,6 +530,8 @@ fn take_census_verb(args: TakeArgs) -> Result<()> {
             args.offline,
             // Issue 2279: a refusal names the command the reader typed.
             "ws entity-census take",
+            // The census verb names no Zephyr workspace; the ladder decides.
+            None,
         )?;
     }
     take_census(args)
