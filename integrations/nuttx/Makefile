@@ -295,15 +295,37 @@ define NROS_CARGO_CLEAN
 endef
 
 ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
-# NuttX-blessed Rust path — cargo runs in `context::`, and `clean::` mirrors
-# it. phase-550 W4 deleted the branch that called upstream's
-# `RUST_CARGO_BUILD` with an empty `--target`: it could not build, and an
-# arch with no triple is now refused by `RustTriple.mk` instead.
-context::
+# The steps that make the archive: the object dirs, the image crate, then
+# configure (with a project) and cargo. phase-550 W4 deleted the branch that
+# called upstream's `RUST_CARGO_BUILD` with an empty `--target`: it could not
+# build, and an arch with no triple is now refused by `RustTriple.mk` instead.
+define NROS_ARCHIVE_STEPS
 	$(if $(word 2,$(NROS_PROJECT_LIST)),$(error nano-ros: more than one app names a project in NROS_PROJECTS: $(NROS_PROJECT_LIST). One NuttX build takes one project; keep a single `NROS_PROJECTS +=` line across the apps' Make.defs files))
 	$(Q) mkdir -p $(NROS_APPS_BUILD) $(dir $(addprefix $(NROS_APPS_BUILD),$(CSRCS))) $(NROS_IMAGE_ROOT)
 	$(NROS_IMAGE_CRATE)
 	$(call NROS_CARGO_BUILD,,,$(NROS_IMAGE_FLAVOR),$(NROS_IMAGE_HEADER_PACKAGES))
+endef
+
+# Issue 2495 — WHEN they run. NuttX enters an app's `context` only while the
+# apps tree's `.context` stamp is missing, and that stamp depends on
+# `include/nuttx/config.h` and `.dirlinks` alone (tools/Unix.mk). So steps
+# run from `context::` alone happened on a first build and never again: an
+# edited Rust source or project setting reached the archive only after a
+# clean, and the stale image reported success.
+#
+# `depend::` is the hook NuttX runs on EVERY build: `libapps` depends on
+# `pass1dep`, which runs `make -C $(APPDIR) depend`, and that finishes before
+# any app compiles. So the steps run there each time, and cargo is its own
+# freshness oracle (configure is a digest check when nothing moved). Nothing
+# lists input files, and `.context` is left to NuttX.
+#
+# `context::` keeps the first run, because another app's dependency scan in
+# the same `depend` pass may read the headers cargo places.
+context::
+	$(NROS_ARCHIVE_STEPS)
+
+depend::
+	$(NROS_ARCHIVE_STEPS)
 
 clean::
 	$(NROS_CARGO_CLEAN)
