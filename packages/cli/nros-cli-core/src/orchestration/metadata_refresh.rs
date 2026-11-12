@@ -1280,7 +1280,10 @@ fn clear_unprobeable(sidecar: &Path) {
 pub fn probe_inputs_key(package_root: &Path, nano_ros: Option<&Path>) -> Option<String> {
     let pkg = source_digest(package_root).ok()?;
     let closure = probe_closure_digest(nano_ros?)?;
-    Some(format!("{pkg}:{}:{closure}", env!("NROS_CLI_PLANNING_STAMP")))
+    Some(format!(
+        "{pkg}:{}:{closure}",
+        env!("NROS_CLI_PLANNING_STAMP")
+    ))
 }
 
 /// The generated list of crates a probe compiles, relative to a nano-ros root.
