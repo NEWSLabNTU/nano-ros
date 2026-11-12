@@ -88,3 +88,25 @@ and a host integration test registers none. So CI printed only
 A stronger router readiness probe (a completed zenoh handshake before the
 fixture returns) would cover every test that starts a router. It is held until
 evidence shows the router answering late.
+
+## Item 1 done: the next sighting prints its reason and timings (2026-11-12)
+
+- `nros_tests::log_sink::install_stderr_log_sink()` is an idempotent
+  `nros_log` sink that writes each record to stderr, which nextest keeps for a
+  failing test. `ZenohRouter`'s readiness wait (`wait_for_router_ready`, which
+  every router constructor goes through) installs it, so every test that
+  starts a router prints the open's own `[nros_log ERROR] nros_rmw_zenoh:
+  zenoh open: …` line.
+- The same wait prints `zenohd: accepting on <locator> N ms after spawn`.
+- `cffi_smoke` opens through `open_client`, which prints `open <node> on
+  <locator>: ok after N ms`, or puts the duration in its panic.
+
+The sink was checked by a real failure: under plain `cargo test`, where the
+binary's tests share one process, the second open now prints `zenoh session
+pool exhausted — this build allows NROS_ZENOH_MAX_SESSIONS=1`. That line was
+dropped before. Under nextest (one process per test, as CI runs it),
+`cffi_smoke` and `zenoh_integration` pass 29/29.
+
+Item 2 stands: either a second sighting names the phase, or the test stays
+green through two weeks of merge-queue traffic (to 2026-11-26) and this
+closes as not reproduced, with issue 2338.
