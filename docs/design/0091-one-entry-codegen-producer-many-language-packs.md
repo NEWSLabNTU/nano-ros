@@ -4,8 +4,9 @@ title: "One codegen producer, many language packs — target-agnostic output, pi
 status: Stable
 area: build-toolchain-codegen
 since: 2026-09
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-432, phase-494]
+amends: [0068]
 supersedes: []
 superseded-by: null
 ---

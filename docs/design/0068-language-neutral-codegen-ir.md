@@ -4,7 +4,7 @@ title: "Language-neutral codegen IR — parse → resolve → lower → render"
 status: Stable
 area: build-toolchain-codegen
 since: 2026-08
-last-reviewed: 2026-09-27
+last-reviewed: 2026-11
 implements-tracked-by: [phase-335]
 supersedes: []
 superseded-by: null
@@ -15,9 +15,10 @@ superseded-by: null
 > **Relationship to other RFCs.** Refines the codegen pipeline first sketched in
 > [RFC-0023](0023-codegen-workspace-discovery.md) (discovery + call shape). Carries the
 > env-invariant crate identity of [RFC-0067](0067-env-invariant-msg-dep-identity.md) unchanged.
-> The RIHS engine ([RFC-0056]) and the C-ABI layout SSoT ([RFC-0054]) become **stages** here
+> The RIHS engine ([RFC-0056](0056-ros-edition-axis.md)) and the C-ABI layout SSoT ([RFC-0054](0054-c-header-abi-ssot.md)) become **stages** here
 > rather than helpers reached during emission. Tracked by **phase-335**. Issue: **#402**.
-> **Amended by [RFC-0091](0091-one-entry-codegen-producer-many-language-packs.md)** —
+> **Amended by [RFC-0090](0090-codegen-version-is-the-compatibility-token.md)** (every emitter
+> stamps the codegen version it emitted) **and [RFC-0091](0091-one-entry-codegen-producer-many-language-packs.md)** —
 > see **Amendments** at the end. The original text is kept; passages an amendment
 > supersedes are marked *[Amendment N]*.
 

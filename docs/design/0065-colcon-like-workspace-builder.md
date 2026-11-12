@@ -4,8 +4,9 @@ title: "A colcon-like builder: `nros build`, and the entry stops being hand-writ
 status: Draft
 area: build-toolchain-codegen
 since: 2026-08
-last-reviewed: 2026-10
+last-reviewed: 2026-11
 implements-tracked-by: [phase-383]
+amends: [0024, 0026, 0048, 0070]
 supersedes: []
 superseded-by: null
 ---
@@ -18,6 +19,14 @@ superseded-by: null
 `nros build` rejection — see *Reconciliation* below), RFC-0048 (ament/CMake
 integration + presets), RFC-0026 (examples are standalone copy-out projects),
 [RFC-0070](0070-build-cache-layout.md) R1 (`install/` → `dist/`).
+**Amended by:** [RFC-0085](0085-zephyr-workspace-and-west-handoff.md) (D5's
+framework-entry escape, the west driver),
+[RFC-0090](0090-codegen-version-is-the-compatibility-token.md) (`nros build`
+refuses before emitting), [RFC-0094](0094-resolve-before-configure.md) (D1
+gains stage 3.5, resolve), [RFC-0098](0098-generated-leaf-build-config.md) (D3:
+no cargo workspace root), [RFC-0104](0104-dependency-pinning-and-project-lock.md)
+(D1: stage 5 waits instead of `exec`), and RFC-0130 (D3, for boards whose
+startup is Rust: CMake owns the link when a C/C++ package is in the image).
 **Relates to:** [RFC-0063](0063-system-model-is-a-build-artifact.md) — that RFC
 says the resolved model belongs in `build/`; this one decides who *owns*
 `build/`.
@@ -261,6 +270,11 @@ because those are Kconfig overlays — user intent, not derivable. A copy-out
 example (RFC-0026) keeps its root because it must build with plain cargo/cmake
 and no `nros` at all, and its output stays in the native `target/` / `build/`
 beside the source per RFC-0070 R1's amendment. Neither needs a special case.
+
+> **Note (2026-11 review).** Both exceptions have since moved. West
+> applications are generated per image at `build/<coord>/<image>_entry/`
+> (RFC-0085 D4, measured 2026-10-24), and RFC-0121 D6 retires the plain
+> `cargo build --manifest-path <leaf>` flow as a supported user flow.
 
 **Amendment, 2026-09-28: `idf.py` is not a road, and choosing can FAIL.**
 
@@ -845,7 +859,7 @@ air-gapped environments (which need a loud failure, not a DNS timeout).
 | path | status |
 | --- | --- |
 | `nros setup` in stage 3 | what D2 governs |
-| `cargo` | mitigated — `scripts/bin/cargo` injects `--locked` project-wide; `--frozen` is `--locked --offline` |
+| `cargo` | mitigated — `scripts/bin/cargo` injects `--locked` project-wide; `--frozen` is `--locked --offline` (2026-11: the shim is retired, RFC-0104 D9; a leaf lock is checked against the pin set after resolution) |
 | cmake `FetchContent` for Corrosion | **live hole** — see below |
 | `west update` | not `west build`, but a stale workspace triggers it |
 | git submodules | provisioning-time |

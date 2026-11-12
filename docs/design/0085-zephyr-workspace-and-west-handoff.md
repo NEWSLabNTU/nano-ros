@@ -6,6 +6,7 @@ area: build-toolchain-codegen
 since: 2026-08
 last-reviewed: 2026-11
 implements-tracked-by: [phase-452]
+amends: [0065]
 ---
 
 # RFC-0085 — Where the nano-ros workspace lives, and who calls whom on Zephyr
@@ -184,7 +185,7 @@ answered one from a forgotten one. Only the third is still open.
   `${CMAKE_CURRENT_SOURCE_DIR}` and `nros` walks UP to the package carrying
   `system.toml`. No user action, and it is now checked — against a freestanding
   app (`examples/workspaces/rust/src/zephyr_entry`, which is outside
-  `zephyr-workspace/`) and against a workspace scaffolded in `$TMPDIR` by
+  `zephyr-workspace/`; since deleted, the application is generated per image, D4) and against a workspace scaffolded in `$TMPDIR` by
   `scripts/dev/two-tree-check.sh`.
 
   Not the nearest `Cargo.toml`: an entry package HAS one, so that walk finds

@@ -4,8 +4,9 @@ title: "One dependency SSoT, system-aware"
 status: Stable
 area: build-toolchain-codegen
 since: 2026-08
-last-reviewed: 2026-08
+last-reviewed: 2026-11
 implements-tracked-by: [phase-327, phase-398, phase-404, phase-447]
+amends: [0014]
 supersedes: []
 ---
 
