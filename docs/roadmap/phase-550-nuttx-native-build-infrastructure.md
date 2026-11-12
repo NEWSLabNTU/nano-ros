@@ -15,8 +15,8 @@ Homes:
 
 - [issue 2426](../issues/2426-nuttx-make-road-board-facts-drift.md), the make
   road's verified defects (items 1 to 7): W1 to W5, W8, W12;
-- [issue 2495](../issues/2495-nuttx-make-road-rust-edit-not-rebuilt.md), the
-  make road rebuilding nano-ros only on a first build: W6b;
+- [issue 2495](../issues/archived/2495-nuttx-make-road-rust-edit-not-rebuilt.md), the
+  make road rebuilding nano-ros only on a first build: W6b (fixed);
 - [issue 2236](../issues/2236-nuttx-make-app-as-project.md), the design
   questions: W0, W6, W7, and the gates below.
 
@@ -300,6 +300,16 @@ describe what the road then does.
     (2236 section 5) needs an edge from `system.toml` that the stamp does
     not give. The same holds today for an edited nano-ros Rust source on
     this road. W6b has to answer this, not assume `context::` reruns.
+  - **W6b, part 1 (issue 2495): DONE (2026-11-13).** The archive steps run
+    from `depend::` on every build as well as from `context::`. NuttX's
+    `pass1dep` runs every app's `depend` before any compile, and cargo is the
+    freshness oracle.
+    - A touched Rust source rebuilt the archive on the next plain `make`.
+    - A no-op `make` costs about 0.5 s more (1.9 s against 1.42 s).
+    - The lane now asserts that an incremental edit rebuilds the archive,
+      and that check goes red without the hook.
+    - Part 2, the knob producer moved into the CLI (manager ruling
+      2026-11-13, option A), is next.
 
 ### W7 -- The image crate is generated in `context::`
 
