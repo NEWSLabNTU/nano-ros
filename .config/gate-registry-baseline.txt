@@ -327,6 +327,7 @@ workspace-all
 workspace-build-output
 workspace-features
 workspace-fmt
+workspace-generated-ignored
 workspace-order
 workspace-root-build-files
 xrce-agent-door

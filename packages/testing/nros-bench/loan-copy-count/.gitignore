@@ -9,3 +9,6 @@
 # The owned entry is its own cargo root (phase-531 W7); its lock is seeded
 # from the pin set on build, never committed.
 /src/*/Cargo.lock
+# The workspace's packages sit under `src/`, and codegen writes each one's
+# message crates beside its `package.xml` (issue 2470).
+/src/*/generated/

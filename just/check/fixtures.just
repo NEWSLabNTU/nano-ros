@@ -89,6 +89,15 @@ example-fmt:
 example-leaf-build-dirs:
     @python3 scripts/check-example-leaf-build-dirs.py
 
+# issue 2470 — codegen writes a package's message crates into `generated/`
+# beside its `package.xml`, which in a workspace is `<ws>/src/<pkg>/`. The
+# three `nros-bench` workspaces ignored only the leaf-level `/generated/`, so
+# `check-message-crate-identity` failed after any codegen. Static: it asks
+# `git check-ignore` about every tracked workspace package.
+[private]
+workspace-generated-ignored:
+    @python3 scripts/check-workspace-generated-ignored.py
+
 # phase-530 W2 (Ruling R30) — the side-by-side leaf census pre-pass names
 # every failed leaf with its log's tail, and refuses a failed width or a bash
 # without `wait -n -p`, against a fake checkout (no census is built).
