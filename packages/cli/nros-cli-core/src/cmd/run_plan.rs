@@ -78,6 +78,11 @@ pub struct ImageTables {
     /// BOARD rung. Filled by the caller that has the board's descriptor file;
     /// the constructors leave it empty.
     pub board_locator: Option<String>,
+    /// Where [`Self::board_locator`] was read when the board's rule answered
+    /// nothing and the build's merged Kconfig did: the symbol and the file
+    /// (`CONFIG_NROS_ZENOH_LOCATOR in <build>/zephyr/.config`), which `--why`
+    /// names beside the rung (issue 2368). `None`: the board's own rule.
+    pub board_locator_from: Option<String>,
     /// The image's resolved network as the build receives it (the
     /// `NROS_IMAGE_NET` text), which carries `[image.<id>.run] nic` and the
     /// MAC the firmware was built with. `None`: the image states no network.
@@ -130,6 +135,7 @@ impl ImageTables {
             console: b.console.clone(),
             locator: b.locator.clone(),
             board_locator: None,
+            board_locator_from: None,
             net: net.map(crate::orchestration::image_net::ImageNet::text),
             run_method: b.run.method.clone(),
             run_command: b.run.command.as_ref().map(|c| c.as_str().to_string()),
@@ -148,6 +154,7 @@ impl ImageTables {
             console: l.network.console.clone(),
             locator: l.network.locator.clone(),
             board_locator: None,
+            board_locator_from: None,
             net: net.map(crate::orchestration::image_net::ImageNet::text),
             run_method: l.network.run.method.clone(),
             run_command: l
@@ -183,8 +190,32 @@ pub fn board_default_locator(
     image_net: Option<&str>,
     west_build: Option<&Path>,
 ) -> Result<Option<String>, String> {
-    let by_rule = board_net_locator(descriptor, board, nano_ros_root, image_net)?;
-    Ok(by_rule.or_else(|| west_build.and_then(west_build_locator)))
+    Ok(
+        board_default_locator_from(descriptor, board, nano_ros_root, image_net, west_build)?
+            .map(|(l, _)| l),
+    )
+}
+
+/// [`board_default_locator`], with where the answer was read when the
+/// build's `.config` gave it ([`west_build_locator_from`]'s text; `None` for
+/// the board's own rule), for `--why` (issue 2368).
+///
+/// # Errors
+///
+/// As [`board_default_locator`].
+pub fn board_default_locator_from(
+    descriptor: &BoardDescriptor,
+    board: &str,
+    nano_ros_root: Option<&Path>,
+    image_net: Option<&str>,
+    west_build: Option<&Path>,
+) -> Result<Option<(String, Option<String>)>, String> {
+    if let Some(l) = board_net_locator(descriptor, board, nano_ros_root, image_net)? {
+        return Ok(Some((l, None)));
+    }
+    Ok(west_build
+        .and_then(west_build_locator_from)
+        .map(|(l, from)| (l, Some(from))))
 }
 
 /// [`board_default_locator`]'s descriptor half.
@@ -218,7 +249,16 @@ fn board_net_locator(
 /// locator.
 #[must_use]
 pub fn west_build_locator(build_dir: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(build_dir.join("zephyr").join(".config")).ok()?;
+    west_build_locator_from(build_dir).map(|(l, _)| l)
+}
+
+/// [`west_build_locator`], with the symbol(s) and file it was read from
+/// (`CONFIG_NROS_ZENOH_LOCATOR in <build_dir>/zephyr/.config`), so `--why`
+/// names what a reader would change (issue 2368).
+#[must_use]
+pub fn west_build_locator_from(build_dir: &Path) -> Option<(String, String)> {
+    let file = build_dir.join("zephyr").join(".config");
+    let text = std::fs::read_to_string(&file).ok()?;
     let value = |key: &str| {
         text.lines().find_map(|l| {
             let v = l.strip_prefix(key)?.strip_prefix('=')?;
@@ -231,11 +271,20 @@ pub fn west_build_locator(build_dir: &Path) -> Option<String> {
         })
     };
     if let Some(l) = value("CONFIG_NROS_ZENOH_LOCATOR") {
-        return Some(l);
+        return Some((
+            l,
+            format!("CONFIG_NROS_ZENOH_LOCATOR in {}", file.display()),
+        ));
     }
     let addr = value("CONFIG_NROS_XRCE_AGENT_ADDR")?;
     let port = value("CONFIG_NROS_XRCE_AGENT_PORT")?;
-    Some(format!("udp/{addr}:{port}"))
+    Some((
+        format!("udp/{addr}:{port}"),
+        format!(
+            "CONFIG_NROS_XRCE_AGENT_ADDR + CONFIG_NROS_XRCE_AGENT_PORT in {}",
+            file.display()
+        ),
+    ))
 }
 
 /// The Zephyr tree a west build was configured against: its CMake cache's
@@ -872,7 +921,10 @@ fn finish(
                 rmw: None,
                 host_peer: None,
             });
-            prov.set("link", rung);
+            match (rung, &i.tables.board_locator_from) {
+                (BOARD, Some(from)) => prov.set("link", &format!("{BOARD} ({from})")),
+                _ => prov.set("link", rung),
+            }
         }
     }
 
@@ -1023,14 +1075,15 @@ pub fn run(args: Args) -> eyre::Result<()> {
             Some(BuildOutput::West { build_dir }) => build_dir.as_deref(),
             _ => None,
         };
-        tables.board_locator = match board_default_locator(
+        (tables.board_locator, tables.board_locator_from) = match board_default_locator_from(
             descriptor,
             &one.board,
             root.as_deref(),
             tables.net.as_deref(),
             west_build,
         ) {
-            Ok(l) => l,
+            Ok(Some((l, from))) => (Some(l), from),
+            Ok(None) => (None, None),
             Err(e) => unresolved(&e),
         };
     }
@@ -2203,6 +2256,79 @@ mod tests {
             host_side(&p, &RouterMode::Auto),
             HostSide::ZenohListen("tcp/127.0.0.1:9100".into())
         );
+    }
+
+    /// Issue 2368 -- a link read from the build's `.config` is on the board
+    /// rung, and `--why` names the file and the symbol a reader would change.
+    /// The board's own rule keeps the bare rung word.
+    #[test]
+    fn why_names_the_config_file_a_baked_locator_came_from() {
+        let root = repo_root();
+        let cat = BoardCatalog::load(&root).unwrap();
+        let inv = Invocation::default();
+        let z = board(&cat, "zephyr");
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("b_west");
+        std::fs::create_dir_all(dir.join("zephyr")).unwrap();
+        let out = BuildOutput::West {
+            build_dir: Some(dir.clone()),
+        };
+        let file = dir.join("zephyr/.config");
+        let link_why = || {
+            let (l, from) = board_default_locator_from(&z, "zephyr", Some(&root), None, Some(&dir))
+                .unwrap()
+                .unwrap();
+            let tables = ImageTables {
+                board_locator: Some(l),
+                board_locator_from: from,
+                ..ImageTables::default()
+            };
+            let p = go(Verb::Run, &z, &out, &tables, &inv).unwrap();
+            let text = render_plan_text(&p, true, false);
+            assert!(text.contains(&p.provenance["link"]), "{text}");
+            p.provenance["link"].clone()
+        };
+
+        std::fs::write(&file, "CONFIG_NROS_ZENOH_LOCATOR=\"tcp/127.0.0.1:9100\"\n").unwrap();
+        assert_eq!(
+            link_why(),
+            format!("board (CONFIG_NROS_ZENOH_LOCATOR in {})", file.display())
+        );
+
+        std::fs::write(
+            &file,
+            "CONFIG_NROS_XRCE_AGENT_ADDR=\"127.0.0.1\"\nCONFIG_NROS_XRCE_AGENT_PORT=2018\n",
+        )
+        .unwrap();
+        assert_eq!(
+            link_why(),
+            format!(
+                "board (CONFIG_NROS_XRCE_AGENT_ADDR + CONFIG_NROS_XRCE_AGENT_PORT in {})",
+                file.display()
+            )
+        );
+
+        // The board's own rule names no file.
+        let fr = board(&cat, "mps2-an385-freertos");
+        let (l, from) =
+            board_default_locator_from(&fr, "mps2-an385-freertos", Some(&root), None, None)
+                .unwrap()
+                .unwrap();
+        assert_eq!(from, None);
+        let tables = ImageTables {
+            board_locator: Some(l),
+            board_locator_from: from,
+            ..ImageTables::default()
+        };
+        let p = go(
+            Verb::Run,
+            &fr,
+            &cargo_out(Some("thumbv7m-none-eabi")),
+            &tables,
+            &inv,
+        )
+        .unwrap();
+        assert_eq!(p.provenance["link"], BOARD);
     }
 
     /// The `--dry-run --why` snapshots: mps2-an385 bare metal, linux, and
