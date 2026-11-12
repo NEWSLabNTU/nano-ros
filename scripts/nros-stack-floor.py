@@ -840,6 +840,31 @@ def check_stacks(results: dict, stacks: dict[str, int], knob: str) -> tuple[int,
     return rc, lines
 
 
+def parse_check_stacks(args: argparse.Namespace) -> dict[str, int]:
+    stacks: dict[str, int] = {}
+    for spec in args.check_stack or []:
+        role, _, n = spec.partition("=")
+        if not n.isdigit():
+            raise SystemExit(f"--check-stack `{spec}`: write ROLE=<bytes>")
+        stacks[role.upper()] = int(n)
+    return stacks
+
+
+def refused(args: argparse.Namespace, doc, refusals: list[str]) -> int:
+    """Every walk refusal (the --indirect fold's and a role's) ends here, so
+    ruling (A) holds for both: under --check-stack an UNMEASURED image is never
+    refused, the walk included; a measured one fails."""
+    print("nros-stack-floor: REFUSED\n" + "\n".join(refusals), file=sys.stderr)
+    stacks = parse_check_stacks(args)
+    measured_roles = [r for r in stacks
+                      if doc is not None and find_allowance(doc, args.image, args.target, r)]
+    if stacks and not measured_roles:
+        print("nros-stack-floor: WARNING: the walk was refused for an UNMEASURED image; "
+              "not enforced (issue 2400)", file=sys.stderr)
+        return 0
+    return 1
+
+
 def run(args: argparse.Namespace) -> int:
     doc = None
     if args.table:
@@ -898,8 +923,7 @@ def run(args: argparse.Namespace) -> int:
                                  scope=tuple(args.fold_scope or []),
                                  one_level=(mode == "fold1"))
         except WalkRefused as e:
-            print(f"nros-stack-floor: REFUSED\n{e}", file=sys.stderr)
-            return 1
+            return refused(args, doc, [str(e)])
     elif mode == "allowance":
         charge = allowance
     else:
@@ -947,22 +971,9 @@ def run(args: argparse.Namespace) -> int:
                 "indirect_mode": mode, "indirect_charge": charge,
                 "path": best.chain,
             }
-    stacks: dict[str, int] = {}
-    for spec in args.check_stack or []:
-        role, _, n = spec.partition("=")
-        if not n.isdigit():
-            raise SystemExit(f"--check-stack `{spec}`: write ROLE=<bytes>")
-        stacks[role.upper()] = int(n)
+    stacks = parse_check_stacks(args)
     if refusals:
-        print("nros-stack-floor: REFUSED\n" + "\n".join(refusals), file=sys.stderr)
-        measured_roles = [r for r in stacks
-                          if doc is not None and find_allowance(doc, args.image, args.target, r)]
-        if stacks and not measured_roles:
-            # ruling (A): an unmeasured image is never refused, the walk included
-            print("nros-stack-floor: WARNING: the walk was refused for an UNMEASURED image; "
-                  "not enforced (issue 2400)", file=sys.stderr)
-            return 0
-        return 1
+        return refused(args, doc, refusals)
     if stacks:
         rc, lines = check_stacks(results, stacks, args.stack_knob or "the stack size")
         for line in lines:
@@ -1254,6 +1265,50 @@ def self_test() -> int:
             check("missing tool: measured image still fails", gate("m@b") == "exit")
         finally:
             g_["run"], sys.argv = saved_run, saved_argv
+
+        # The --indirect fold's own refusal degrades the same way. It once
+        # returned 1 before the unmeasured guard ran, which failed four
+        # FreeRTOS C++ mps2-an385 images that have no allowance row (root
+        # `service_server_is_available_trampoline`, frameless zpico_graph_*).
+        stubbed = ("fold_charge", "llvm_tool", "expand_inputs")
+        saved_fold, saved_argv = {k: g_[k] for k in stubbed}, sys.argv
+        folded = []
+        try:
+            # no toolchain and no objects: the run reaches the fold with an
+            # empty graph, which is all this case is about
+            g_["llvm_tool"] = lambda name, _bin=None: name
+            g_["expand_inputs"] = lambda inputs, *a: []
+            def fold_refuses(*a, **k):
+                folded.append(1)
+                raise WalkRefused("root `service_server_is_available_trampoline`:\n  - "
+                                  "functions reached with no frame in any input: "
+                                  "zpico_graph_entry_at")
+            g_["fold_charge"] = fold_refuses
+
+            def fold_gate(image, check_stack=True):
+                sys.argv = ["x", "--table", str(table), "--rmw", "zenoh", "--target", "t",
+                            "--image", image, "--role", "OPEN=r", "--indirect", "fold",
+                            "app.o"]
+                if check_stack:
+                    sys.argv += ["--check-stack", "OPEN=4096"]
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    try:
+                        rc = main()
+                    except SystemExit as e:
+                        rc = "exit" if e.code not in (None, 0) else 0
+                return rc, err.getvalue()
+            rc, err = fold_gate("u@b")
+            check("refused fold: the fold ran", folded != [])
+            check("refused fold: unmeasured image under CHECK warns, rc 0",
+                  rc == 0 and "UNMEASURED" in err and "REFUSED" in err)
+            rc, err = fold_gate("m@b")
+            check("refused fold: measured image under CHECK fails", rc not in (0, None))
+            rc, err = fold_gate("u@b", check_stack=False)
+            check("refused fold: no CHECK still fails", rc not in (0, None))
+        finally:
+            g_.update(saved_fold)
+            sys.argv = saved_argv
 
     for f in fails:
         print(f"FAIL: {f}", file=sys.stderr)
