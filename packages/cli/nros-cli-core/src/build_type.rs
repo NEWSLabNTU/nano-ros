@@ -121,10 +121,12 @@ pub fn retirement_notice(file: &Path, raw: &str) -> Option<String> {
     if !bt.retired {
         return None;
     }
+    // Retired by RFC-0087 D2; phase-420 W3 removes the spelling. The ids stay
+    // here, out of the warning a user's build prints (issue 2443).
     Some(format!(
-        "{}: <build_type>{}</build_type> is retired (RFC-0087 D2) — write \
+        "{}: <build_type>{}</build_type> is retired — write \
          <build_type>{}</build_type>. It is read as `{}` meanwhile, so nothing \
-         breaks today; phase-420 W3 removes the spelling.",
+         breaks today; a later release stops reading the old spelling.",
         file.display(),
         bt.raw,
         bt.canonical,
