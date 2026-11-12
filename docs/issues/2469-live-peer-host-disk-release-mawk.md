@@ -6,7 +6,7 @@ type: bug
 area: [ci, testing, fixtures]
 severity: medium
 found: 2026-11-12
-related: [2130, 2318, 1846, phase-531, phase-535]
+related: [2130, 2318, 1846]
 ---
 
 **Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, the
@@ -67,8 +67,9 @@ executables, the debuginfo-heavy host half of issue 2318.
   That executable is never run again, and the fixture probe reads only the
   script's `output` and `out/` (`find_build_script_outputs`), which stay.
   The talker row then keeps about 0.5 G instead of 1.2 G.
-- `--self-test`, gate `release-fixture-intermediates`: two roots, the first
-  with a 3 GiB SPARSE library. Both are released, the total is an integer,
+- A self-test on every run, on the normal path (`check-gate-selftests`'s
+  rule), and the gate `release-fixture-intermediates` runs it: two roots, the
+  first with a 3 GiB SPARSE library. Both are released, the total is an integer,
   binaries, build-script `output` and `out/` are kept, and build-script
   executables go. The old script fails the same case under mawk.
 - `live-peer.yml` also releases inside the workspace loop whenever free space

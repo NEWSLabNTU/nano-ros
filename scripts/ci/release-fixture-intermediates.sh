@@ -41,9 +41,14 @@
 #
 # Usage:
 #   scripts/ci/release-fixture-intermediates.sh [--dry-run] <dir>...
-#   scripts/ci/release-fixture-intermediates.sh --self-test
 #
-# The byte counts are INTEGERS from `du` itself, never through `awk` (issue
+# Every run first checks itself (issue 2469): a self-test over a synthetic
+# tree, on the normal path, so the negative control cannot decay unrun. With
+# no <dir> that is all it does, which is how the gate
+# `release-fixture-intermediates` calls it. A failure is a gate failure; on a
+# CI lane with roots it is a warning, and the release still runs, per the rule
+# above.
+## The byte counts are INTEGERS from `du` itself, never through `awk` (issue
 # 2469). `awk 'END {print $1+0}'` printed a root's total as `1.74022e+10` under
 # mawk, the CI image's awk, once it passed 2^31 bytes. Bash arithmetic refused
 # that, which aborted the loop after the FIRST root: live-peer's host job
@@ -56,83 +61,98 @@ set -uo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 
+# One release over the roots given; prints a line per root and a total.
+release_roots() {
+    local dry=0 total=0 d real list bytes
+    if [ "${1:-}" = "--dry-run" ]; then
+        dry=1
+        shift
+    fi
+    for d in "$@"; do
+        [ -d "$d" ] || continue
+        real="$(cd "$d" 2>/dev/null && pwd -P)" || continue
+        case "$real/" in
+            "$repo"/?*/) ;;
+            *)
+                echo "release-fixture-intermediates: refusing $d — not inside $repo" >&2
+                continue
+                ;;
+        esac
+        # -print0 so a path with a space is one path; `du --files0-from` prices
+        # what goes before it goes.
+        list="$(mktemp)"
+        find "$real" \
+            \( -type f -path '*/deps/*' \( -name '*.rlib' -o -name '*.rmeta' \) -print0 \) -o \
+            \( -type f -path '*/incremental/*' -print0 \) -o \
+            \( -type f -path '*/CMakeFiles/*' -name '*.o' -print0 \) -o \
+            \( -type f -regextype posix-extended \
+                -regex '.*/build/[^/]+-[0-9a-f]{16}/build[-_]script[-_]build[^/]*' -print0 \) \
+            2>/dev/null >"$list"
+        bytes=0
+        if [ -s "$list" ]; then
+            # An INTEGER from `du` itself (issue 2469): never through awk, which
+            # under mawk prints a total past 2^31 as `1.74022e+10`.
+            bytes="$(du -cb --files0-from="$list" 2>/dev/null | tail -n 1 | cut -f1)"
+            case "$bytes" in '' | *[!0-9]*) bytes=0 ;; esac
+            [ "$dry" = 1 ] || xargs -0 rm -f -- <"$list"
+        fi
+        rm -f "$list"
+        total=$((total + bytes))
+        printf '  %s %6d MiB  %s\n' "$([ "$dry" = 1 ] && echo would-release || echo released)" \
+            $((bytes / 1048576)) "${real#"$repo"/}"
+    done
+    printf '  %s %d MiB of compile intermediates in total\n' \
+        "$([ "$dry" = 1 ] && echo would-release || echo released)" $((total / 1048576))
+}
+
 # Issue 2469 — two roots, the first holding a 3 GiB SPARSE crate library (du -b
 # counts the apparent size, so it costs no disk) and the second a small one.
 # Both must be released and reported, and the total must be an integer: the
 # old `awk` count failed exactly here under mawk and never reached root two.
-if [ "${1:-}" = "--self-test" ]; then
-    mkdir -p "$repo/tmp"
-    t="$(mktemp -d "$repo/tmp/release-selftest.XXXXXX")" || exit 1
-    trap 'rm -rf "$t"' EXIT
-    mkdir -p "$t/a/x86_64/deps" "$t/b/proj/CMakeFiles/obj.dir" "$t/b/proj/bin" \
-        "$t/b/proj/target/release/build/zpico-sys-0123456789abcdef/out"
-    truncate -s 3G "$t/a/x86_64/deps/libbig-0123456789abcdef.rlib"
-    printf 'obj' > "$t/b/proj/CMakeFiles/obj.dir/main.c.o"
-    printf 'bin' > "$t/b/proj/bin/app"
-    printf 'bs' > "$t/b/proj/target/release/build/zpico-sys-0123456789abcdef/build-script-build"
-    printf 'bs' > "$t/b/proj/target/release/build/zpico-sys-0123456789abcdef/build_script_build-0123456789abcdef"
-    printf 'cargo:rustc-link-lib=x' > "$t/b/proj/target/release/build/zpico-sys-0123456789abcdef/output"
-    printf 'h' > "$t/b/proj/target/release/build/zpico-sys-0123456789abcdef/out/gen.h"
-    out="$(bash "$0" "$t/a" "$t/b" 2>&1)"
-    fails=0
-    check() { if eval "$1"; then echo "  ok   $2"; else echo "  FAIL $2" >&2; fails=$((fails + 1)); fi; }
-    check '[ ! -e "$t/a/x86_64/deps/libbig-0123456789abcdef.rlib" ]' "the first root's 3 GiB library is released"
-    check '[ ! -e "$t/b/proj/CMakeFiles/obj.dir/main.c.o" ]' "the SECOND root is reached and its object released"
-    check '[ -e "$t/b/proj/bin/app" ]' "a binary is kept"
+self_test() {
+    local t out fails=0 bsd
+    mkdir -p "$repo/tmp" || return 1
+    t="$(mktemp -d "$repo/tmp/release-selftest.XXXXXX")" || return 1
     bsd="$t/b/proj/target/release/build/zpico-sys-0123456789abcdef"
-    check '[ ! -e "$bsd/build-script-build" ] && [ ! -e "$bsd/build_script_build-0123456789abcdef" ]' \
+    mkdir -p "$t/a/x86_64/deps" "$t/b/proj/CMakeFiles/obj.dir" "$t/b/proj/bin" "$bsd/out"
+    truncate -s 3G "$t/a/x86_64/deps/libbig-0123456789abcdef.rlib"
+    printf 'obj' >"$t/b/proj/CMakeFiles/obj.dir/main.c.o"
+    printf 'bin' >"$t/b/proj/bin/app"
+    printf 'bs' >"$bsd/build-script-build"
+    printf 'bs' >"$bsd/build_script_build-0123456789abcdef"
+    printf 'cargo:rustc-link-lib=x' >"$bsd/output"
+    printf 'h' >"$bsd/out/gen.h"
+    out="$(release_roots "$t/a" "$t/b" 2>&1)"
+    ck() {
+        if eval "$1"; then :; else
+            echo "  FAIL $2" >&2
+            fails=$((fails + 1))
+        fi
+    }
+    ck '[ ! -e "$t/a/x86_64/deps/libbig-0123456789abcdef.rlib" ]' "the first root's 3 GiB library is released"
+    ck '[ ! -e "$t/b/proj/CMakeFiles/obj.dir/main.c.o" ]' "the SECOND root is reached and its object released"
+    ck '[ -e "$t/b/proj/bin/app" ]' "a binary is kept"
+    ck '[ ! -e "$bsd/build-script-build" ] && [ ! -e "$bsd/build_script_build-0123456789abcdef" ]' \
         "a build script's executables are released"
-    check '[ -e "$bsd/output" ] && [ -e "$bsd/out/gen.h" ]' "a build script's output and out/ are kept"
-    check 'grep -qE "released +3072 MiB" <<<"$out"' "the 3 GiB root reports 3072 MiB"
-    check 'grep -qE "released 3072 MiB of compile intermediates in total" <<<"$out"' "the total is an integer"
-    check '! grep -q "syntax error" <<<"$out"' "no arithmetic error"
+    ck '[ -e "$bsd/output" ] && [ -e "$bsd/out/gen.h" ]' "a build script's output and out/ are kept"
+    ck 'grep -qE "released +3072 MiB" <<<"$out"' "the 3 GiB root reports 3072 MiB"
+    ck 'grep -qE "released 3072 MiB of compile intermediates in total" <<<"$out"' "the total is an integer"
+    ck '! grep -q "syntax error" <<<"$out"' "no arithmetic error"
+    rm -rf -- "${t:?}"
     if [ "$fails" -ne 0 ]; then
         printf '%s\n' "$out" | sed 's/^/    | /' >&2
-        echo "release-fixture-intermediates --self-test: $fails case(s) FAILED" >&2
+        echo "release-fixture-intermediates: self-test: $fails case(s) FAILED" >&2
+        return 1
+    fi
+    echo "release-fixture-intermediates: self-test OK"
+}
+
+if ! self_test; then
+    # The gate (no roots) fails; a CI lane with roots warns and still releases.
+    if [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" = "--dry-run" ]; }; then
         exit 1
     fi
-    echo "release-fixture-intermediates --self-test: OK"
-    exit 0
+    echo "::warning::release-fixture-intermediates: its self-test failed; releasing anyway"
 fi
-
-dry=0
-if [ "${1:-}" = "--dry-run" ]; then
-    dry=1
-    shift
-fi
-
-total=0
-for d in "$@"; do
-    [ -d "$d" ] || continue
-    real="$(cd "$d" 2>/dev/null && pwd -P)" || continue
-    case "$real/" in
-        "$repo"/?*/) ;;
-        *)
-            echo "release-fixture-intermediates: refusing $d — not inside $repo" >&2
-            continue
-            ;;
-    esac
-    # -print0 so a path with a space is one path; `du --files0-from` prices
-    # what goes before it goes.
-    list="$(mktemp)"
-    find "$real" \
-        \( -type f -path '*/deps/*' \( -name '*.rlib' -o -name '*.rmeta' \) -print0 \) -o \
-        \( -type f -path '*/incremental/*' -print0 \) -o \
-        \( -type f -path '*/CMakeFiles/*' -name '*.o' -print0 \) -o \
-        \( -type f -regextype posix-extended \
-            -regex '.*/build/[^/]+-[0-9a-f]{16}/build[-_]script[-_]build[^/]*' -print0 \) \
-        2>/dev/null >"$list"
-    bytes=0
-    if [ -s "$list" ]; then
-        bytes="$(du -cb --files0-from="$list" 2>/dev/null | tail -n 1 | cut -f1)"
-        case "$bytes" in '' | *[!0-9]*) bytes=0 ;; esac
-        [ "$dry" = 1 ] || xargs -0 rm -f -- <"$list"
-    fi
-    rm -f "$list"
-    total=$((total + bytes))
-    printf '  %s %6d MiB  %s\n' "$([ "$dry" = 1 ] && echo would-release || echo released)" \
-        $((bytes / 1048576)) "${real#"$repo"/}"
-done
-printf '  %s %d MiB of compile intermediates in total\n' \
-    "$([ "$dry" = 1 ] && echo would-release || echo released)" $((total / 1048576))
+release_roots "$@"
 exit 0
