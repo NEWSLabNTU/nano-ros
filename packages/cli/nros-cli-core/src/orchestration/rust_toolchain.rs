@@ -222,15 +222,51 @@ fn cargo_offline_for(
 /// dependency the cache already held. One place, beside [`expose_cargo_bin`],
 /// before clap and before any thread.
 pub fn expose_offline_to_cargo() {
-    let Some(value) = cargo_offline_for(
-        std::env::var_os("NROS_OFFLINE").as_deref(),
-        std::env::var_os("CARGO_NET_OFFLINE").as_deref(),
-    ) else {
-        return;
+    expose_offline(false);
+}
+
+/// The one writer of both variables: `NROS_OFFLINE=1` when a command's flag
+/// asks for it and the user set nothing, then cargo's spelling of it.
+fn expose_offline(flag: bool) {
+    let set_nros = flag && std::env::var_os("NROS_OFFLINE").is_none();
+    let nros_offline = if set_nros {
+        Some(std::ffi::OsString::from("1"))
+    } else {
+        std::env::var_os("NROS_OFFLINE")
     };
-    // SAFETY: called from `main` before clap and before any thread or child
-    // exists, so nothing reads the environment concurrently.
-    unsafe { std::env::set_var("CARGO_NET_OFFLINE", value) };
+    let cargo = cargo_offline_for(
+        nros_offline.as_deref(),
+        std::env::var_os("CARGO_NET_OFFLINE").as_deref(),
+    );
+    if !set_nros && cargo.is_none() {
+        return;
+    }
+    // SAFETY: called from `main` before clap, or from `run` before dispatch,
+    // in both cases before any thread exists, so nothing reads the
+    // environment concurrently.
+    unsafe {
+        if set_nros {
+            std::env::set_var("NROS_OFFLINE", "1");
+        }
+        if let Some(value) = cargo {
+            std::env::set_var("CARGO_NET_OFFLINE", value);
+        }
+    }
+}
+
+/// issue 2444 — a command's `--offline` flag means what `$NROS_OFFLINE` means,
+/// for the whole process: it sets the variable, then [`expose_offline_to_cargo`]
+/// maps it to cargo exactly as `main` does. Before this the flag was threaded
+/// by hand into the cargo commands `nros build` assembles, and the metadata
+/// probe's cargo (one it does not assemble) resolved online. One input, so no
+/// stage can be reached by one spelling and not the other.
+///
+/// Called by `nros_cli_core::run` before dispatch, when the main thread is
+/// still the only thread.
+pub fn expose_offline_flag(flag: bool) {
+    if flag {
+        expose_offline(true);
+    }
 }
 
 /// The one line a failed cargo step adds when its output says name
