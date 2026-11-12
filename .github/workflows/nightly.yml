@@ -1250,7 +1250,10 @@ jobs:
   zenoh-probe:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 7 * * *' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # Measured 59 min cold on a 139-class host (2026-11-12), the most of any
+    # probe track: it runs the checkout road AND the installed one. 120 leaves
+    # the headroom a hosted runner needs.
+    timeout-minutes: 120
     concurrency:
       group: nightly-zenoh-probe-${{ github.ref }}-${{ github.event_name }}
     permissions:
