@@ -1008,6 +1008,15 @@ filter = "binary(=params_per_node_interop)"
 test-group = "ros2-interop"
 slow-timeout = { period = "90s", terminate-after = 2 }
 
+# phase-556 — the ROS 2 CLI parity cells. Each case starts two routers, one
+# nano-ros image and one stock node, waits for both in the graph, and asks a
+# handful of `ros2` queries of each (~10 s apiece on a quiet host). Named ahead
+# of the `binary(params)` row for the same reason the per-node row is.
+[[profile.default.overrides]]
+filter = "binary(=ros2_cli_parity_interop)"
+test-group = "ros2-interop"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
 # phase-491 W6 — the C parameter-server cell: one image, seven `ros2 param`
 # calls plus the discovery wait (measured 75 s on a loaded host).
 [[profile.default.overrides]]

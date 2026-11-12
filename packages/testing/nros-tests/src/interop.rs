@@ -577,6 +577,25 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-params-per-node-rust-zenoh",
        c(Linux, Rust, Zenoh, Params, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), BiDir, "params_per_node_interop"),
+    // tests/ros2_cli_parity_interop.rs — phase-556, the ROS 2 interface
+    // compatibility audit: the same `ros2` CLI question asked of a nano-ros
+    // node and of a stock node declaring the same interface, each alone on its
+    // own router, and the answers compared (`nros_tests::ros2_compat`). One
+    // cell per workload the audit asks about; same coordinates as the cells
+    // above and below, different tests — the coordinate says what is built,
+    // not what is asked of it.
+    ic("native-ros2-cli-parity-params-rust-zenoh",
+       c(Linux, Rust, Zenoh, Params, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
+    ic("native-ros2-cli-parity-service-rust-zenoh",
+       c(Linux, Rust, Zenoh, Service, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
+    ic("native-ros2-cli-parity-action-rust-zenoh",
+       c(Linux, Rust, Zenoh, Action, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
+    ic("native-ros2-cli-parity-pubsub-rust-zenoh",
+       c(Linux, Rust, Zenoh, Pubsub, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), RosToNano, "ros2_cli_parity_interop"),
     // tests/c_param_server_interop.rs — phase-491 W6 (RFC-0105 §Interop
     // proof): a C node built only on rclc's parameter-server API, driven by
     // stock `ros2 param` — the callback's veto, the remotely enforced range,
@@ -849,6 +868,36 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("params_per_node_interop", "ros2_param_set_refuses_undeclared_and_off_step",    "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_on_cyclonedds",  "native-params-per-node-rust-cyclone"),
     co("params_per_node_interop", "xrce_set_parameters_naming_25_declared_lands",      "native-params-25-rust-xrce"),
+
+    // ── ros2_cli_parity_interop — phase-556, one cell per workload ───────
+    // Each case builds its own pair; the pair's nano-ros fixture is the cell.
+    co("ros2_cli_parity_interop", "declared_parameters_answer_ros2_param_as_stock_does",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "first_node_serves_the_six_parameter_services_as_stock_does",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop",
+       "each_node_of_a_two_node_image_compared_with_stock_on_parameter_services",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "use_sim_time_compared_with_stock",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop",
+       "get_parameters_reply_for_an_undeclared_name_compared_with_stock",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop",
+       "describe_parameters_reply_for_an_undeclared_name_compared_with_stock",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "delete_refusal_reason_compared_with_stock",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "off_step_refusal_reason_compared_with_stock",
+       "native-ros2-cli-parity-params-rust-zenoh"),
+    co("ros2_cli_parity_interop", "service_list_with_types_answers_as_stock_does",
+       "native-ros2-cli-parity-service-rust-zenoh"),
+    co("ros2_cli_parity_interop", "action_list_and_info_answer_as_stock_does",
+       "native-ros2-cli-parity-action-rust-zenoh"),
+    co("ros2_cli_parity_interop", "hidden_action_services_and_topics_answer_as_stock_does",
+       "native-ros2-cli-parity-action-rust-zenoh"),
+    co("ros2_cli_parity_interop", "default_qos_of_a_published_topic_reads_as_stock_does",
+       "native-ros2-cli-parity-pubsub-rust-zenoh"),
 
     // ── rosout_interop — issue 1589 gave it two more cells ──────────────
     // One case per language; each resolves its own probe (the Rust cargo

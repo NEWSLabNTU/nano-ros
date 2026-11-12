@@ -72,6 +72,8 @@ pub mod qemu;
 // phase-524 W4c -- the Renode twin launcher, `qemu`'s sibling.
 pub mod renode;
 pub mod ros2;
+// phase-556 W1 -- ask a nano-ros node and a stock node the same `ros2` question.
+pub mod ros2_compat;
 pub mod ros_env;
 pub mod run;
 pub mod sdk_tree;
