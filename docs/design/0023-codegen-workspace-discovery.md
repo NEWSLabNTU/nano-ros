@@ -4,7 +4,7 @@ title: "Codegen — workspace / AMENT discovery — design + revision plan"
 status: Stable
 area: build-toolchain-codegen
 since: 2026-05
-last-reviewed: 2026-05
+last-reviewed: 2026-11
 implements-tracked-by: [phase-265, phase-287, phase-293, phase-294, phase-335]
 supersedes: []
 superseded-by: null
@@ -283,7 +283,8 @@ workspace dir.
 
 ### Stage E — UX + docs + migration
 
-1. Book page: `getting-started/your-own-msg-package.md` — "write a normal ROS
+1. Book page: `getting-started/your-own-msg-package.md` (landed as
+   `book/src/tutorial/your-own-message.md`) — "write a normal ROS
    msg pkg, drop it into `src/`, build."
 2. Migrate in-tree per-pkg `nros_generate_interfaces(<pkg>)` call sites to
    the `rosidl_generate_interfaces` shape (those that author msgs) or
