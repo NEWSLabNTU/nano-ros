@@ -44,15 +44,16 @@ mode = "allowance:0"
 mode = "fold1"
 scope = ["zenoh", "zpico"]
 
-# Allowances are per IMAGE SHAPE (ruled (A), 2026-11-10): `image` names what
-# was measured, by the key a build computes (PROVISIONAL, issue 2400:
-# `<bringup or entry name>@<board>`, cmake/NanoRosStackFloor.cmake's
-# `_nros_stack_floor_image_key`). The three rows below were measured on
-# `nros new nt|nc|na` projects, so they match images whose bringup is named
-# `nt_node_bringup` etc.; the same template under another name is UNMEASURED
-# (each row's `[allowance.measured] image` says which template it was). The static walk's
-# indirect charge is wrong in both directions (3-8 KB low on the Rust images
-# below, 12.6 KB HIGH on the C talker), so one image's measurement says
+# Allowances are per IMAGE SHAPE (ruled (A), 2026-11-10). `image` is the key a
+# build computes (cmake/NanoRosStackFloor.cmake `_nros_stack_floor_image_key`,
+# key (c) ruled 2026-11-12): the image's `[image.<id>] stack_floor_image`,
+# which `nros new` writes as `<template>/<lang>/<rmw>@<board>` so a renamed
+# project keeps its row, else `<bringup>@<board>`. `--validate-table` refuses a
+# template key whose template or board is gone. `[allowance.shape]` is the
+# derived entity counts the measured image was built with; a build whose counts
+# differ is warned that it is not the image that was measured. The static
+# walk's indirect charge is wrong in both directions (3-8 KB low on the Rust
+# images below, 12.6 KB HIGH on the C talker), so one image's measurement says
 # nothing about another's, and an allowance may be negative. An image with no
 # row is unmeasured: reported, never enforced.
 #
@@ -69,7 +70,7 @@ scope = ["zenoh", "zpico"]
 # uses this table's policy.
 
 [[allowance]]
-image = "na_node_bringup@nucleo-f767zi-zephyr"
+image = "action-server/rust/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
@@ -84,8 +85,16 @@ method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rou
 image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template action-server"
 issue = "2407"
 
+[allowance.shape]
+NROS_EXECUTOR_MAX_NODES = 1
+NROS_MAX_PUBLISHERS = 2
+NROS_MAX_SUBSCRIBERS = 0
+NROS_MAX_QUERYABLES = 4
+NROS_EXECUTOR_MAX_CBS = 1
+NROS_EXECUTOR_ACTION_CLIENTS = 1
+
 [[allowance]]
-image = "nt_node_bringup@nucleo-f767zi-zephyr"
+image = "talker/rust/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
@@ -100,8 +109,16 @@ method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 6 rou
 image = "nros new --board nucleo-f767zi-zephyr --lang rust --rmw zenoh --template talker"
 issue = "2400"
 
+[allowance.shape]
+NROS_EXECUTOR_MAX_NODES = 1
+NROS_MAX_PUBLISHERS = 1
+NROS_MAX_SUBSCRIBERS = 0
+NROS_MAX_QUERYABLES = 0
+NROS_EXECUTOR_MAX_CBS = 1
+NROS_EXECUTOR_ACTION_CLIENTS = 0
+
 [[allowance]]
-image = "nc_node_bringup@nucleo-f767zi-zephyr"
+image = "talker/c/zenoh@nucleo-f767zi-zephyr"
 rmw = "zenoh"
 target = "thumbv7em-none-eabi"
 role = "OPEN"
@@ -115,6 +132,14 @@ static = 16112
 method = "Renode nucleo-f767zi twin, thread analyzer main-thread peak over 7 rounds, nros-relwithdebinfo (no LTO); static from main"
 image = "nros new --board nucleo-f767zi-zephyr --lang c --rmw zenoh --template talker"
 issue = "2400"
+
+[allowance.shape]
+NROS_EXECUTOR_MAX_NODES = 1
+NROS_MAX_PUBLISHERS = 1
+NROS_MAX_SUBSCRIBERS = 0
+NROS_MAX_QUERYABLES = 0
+NROS_EXECUTOR_MAX_CBS = 1
+NROS_EXECUTOR_ACTION_CLIENTS = 0
 
 [[policy]]
 kind = "cut"

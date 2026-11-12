@@ -491,6 +491,10 @@ pub struct ResolvedBuild {
     /// `nros image-facts` hands the module the image's answer.
     pub capabilities: Vec<String>,
 
+    /// Issue 2400 — `[image.<id>] stack_floor_image`, the key the image's
+    /// stack allowance is filed under. Handed to cmake by `nros image-facts`.
+    pub stack_floor_image: Option<String>,
+
     /// A configure that must run BEFORE the handoff, for drivers that need one.
     ///
     /// cmake is the only such driver: `cmake --build` on an unconfigured tree
@@ -1083,6 +1087,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 profile: image.profile.clone(),
                 record: Default::default(),
                 capabilities: owned_caps(&bringup_dir),
+                stack_floor_image: image.stack_floor_image.clone(),
                 output: None,
                 descriptor: None,
                 run_tables: Default::default(),
@@ -2692,6 +2697,7 @@ fn plan_for(args: &Args, planning: Planning, stale: StaleModel) -> Result<Vec<Re
                 build_dirs: record_dirs,
             },
             capabilities: owned_caps(&bringup_dir),
+            stack_floor_image: image.stack_floor_image.clone(),
             output,
             descriptor: Some(descriptor.clone()),
             run_tables: crate::cmd::run_plan::ImageTables::from_block(&image, image_net.as_ref()),
@@ -2977,6 +2983,7 @@ fn plan_leaf_image(
             profile: None,
             cmake_build_dir: None,
             capabilities: owned_caps(root),
+            stack_floor_image: img.decl.stack_floor_image.clone(),
             kernel: None,
             configure: None,
             entry_root: None,
@@ -3080,6 +3087,7 @@ fn plan_leaf_image(
                 .unwrap_or_default(),
         },
         capabilities: owned_caps(root),
+        stack_floor_image: img.decl.stack_floor_image.clone(),
         output: Some(output),
         descriptor: Some(descriptor.clone()),
         run_tables: crate::cmd::run_plan::ImageTables::from_leaf(&img.decl, image_net.as_ref()),
@@ -3244,6 +3252,7 @@ fn plan_single_package_cmake(
         profile: None,
         cmake_build_dir: Some(build_dir),
         capabilities: owned_caps(root),
+        stack_floor_image: decl.stack_floor_image.clone(),
         kernel: None,
         entry_root: None,
         configure: Some(Handoff::new("cmake", a).in_dir(root)),
@@ -4614,6 +4623,7 @@ fn plan_packages(
             profile: None,
             cmake_build_dir: None,
             capabilities: Vec::new(),
+            stack_floor_image: None,
             kernel: None,
             entry_root: None,
             configure,
@@ -4905,6 +4915,7 @@ fn plan_host_tools(args: &Args, images: &[ResolvedBuild]) -> Result<Vec<Resolved
             profile: Some(crate::builder::host_tool::PROFILE.to_string()),
             cmake_build_dir: None,
             capabilities: Vec::new(),
+            stack_floor_image: None,
             kernel: None,
             entry_root: None,
             configure: b.configure,
@@ -9953,6 +9964,7 @@ mod multi_image_drive_tests {
             profile: None,
             cmake_build_dir: None,
             capabilities: Vec::new(),
+            stack_floor_image: None,
             kernel: None,
             configure: None,
             entry_root: None,

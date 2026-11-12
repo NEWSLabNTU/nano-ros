@@ -1658,6 +1658,7 @@ mod tests {
             os_config: Vec::new(),
             ros_args: Vec::new(),
             params_files: Vec::new(),
+            stack_floor_image: None,
         }
     }
 

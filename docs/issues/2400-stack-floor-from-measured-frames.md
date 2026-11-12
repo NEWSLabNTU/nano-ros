@@ -263,7 +263,7 @@ These rulings are restated here because W2 relies on them:
 - **Raise-only stays a separate wave, W2b.** It needs the floor before the
   carrier compiles, which is a pre-link edge. CHECK runs POST_BUILD and adds
   no edge.
-- **The image key is PROVISIONAL (2026-11-11, manager, pending the user):**
+- **The image key was PROVISIONAL (2026-11-11; superseded by key (c), ruled 2026-11-12, see W4):**
   `<bringup or entry name>@<board>`, for example
   `fc_node_bringup@mps2-an385-freertos`. A build knows that name; it never
   knows the `nros new` template the nucleo rows are keyed by. The
@@ -310,8 +310,23 @@ peak` at boot.
 ### W4: Zephyr CHECKs the main stack (2026-11-12)
 
 Same rulings as W2: CHECK by default, a MEASURED image fails, an unmeasured
-one warns, and nothing lowers a stack. The image key is still the
-provisional `<bringup or entry name>@<board>`, pending the user.
+one warns, and nothing lowers a stack. Two more, from the user (2026-11-12),
+quoted:
+
+> "go (c) and fail"
+
+1. **The image key is (c).** `nros new` writes the template's key into the
+   generated `system.toml`, `[image.<id>] stack_floor_image =
+   "talker/rust/zenoh@nucleo-f767zi-zephyr"`, so the nucleo rows keep their
+   template keys and a renamed project still matches. A row whose template or
+   board no longer exists fails `--validate-table` loudly, and an image whose
+   entity counts differ from the shape its row was measured on gets a loud
+   warning. The key is decided in one function.
+2. **A MEASURED image whose walk cannot run FAILS the build** (the behaviour
+   #3556 shipped stays). An unmeasured one warns.
+
+The configure-time 32 KiB floor for Rust images (issue 2359) stays, as
+planned below.
 
 | piece | how |
 | --- | --- |
@@ -321,13 +336,21 @@ provisional `<bringup or entry name>@<board>`, pending the user.
 | check | a `zephyr_final` post-build command (`extra_post_build_commands`), `--check-stack OPEN=<CONFIG_MAIN_STACK_SIZE>` from `rust_main` (a Rust entry) or `main` (C/C++), remedy `CONFIG_MAIN_STACK_SIZE=<floor>`. Zephyr runs those commands through the shell without VERBATIM, which would expand the bitcode globs, so the walk runs from a generated `nros/stack-floor/check.cmake`. |
 | not checked | native_sim (`CONFIG_ARCH_POSIX`: a Zephyr thread runs on a host pthread's stack), a board with no nano-ros board facts, `NROS_STACK_FLOOR=OFF` |
 
-The three nucleo rows are renamed to the key a build computes:
-`nt_node_bringup`, `nc_node_bringup` and `na_node_bringup` `@nucleo-f767zi-zephyr`,
-the `nros new` projects they were measured on. Under key (a) a row matches
-only an image whose bringup has that name; the same template under any other
-project name is unmeasured and warns. Key (b), or a template key that `nros
-new` writes into the generated `system.toml`, would let a renamed project
-keep its row. That is the open question for the user.
+How key (c) is carried:
+
+| piece | how |
+| --- | --- |
+| spelling | `stack_floor_template_key` in `nros-cli-core` (`cmd/new_workspace.rs`): `<template>/<lang>/<rmw>@<board>`, from `Role::name` and `Language::as_str`. The only writer. |
+| stamp | `nros new <ws> --board … --template …` writes it under the image's `[image.<id>]` |
+| schema | `ImageBlock.stack_floor_image` (typed, `deny_unknown_fields`) and `LeafSystem.stack_floor_image` (the untyped reader both roads share); per image, never inherited from `[image_defaults]` |
+| delivery | `nros dev image facts --cmake` emits `NROS_IMAGE_STACK_FLOOR_IMAGE`; the Zephyr check reads the facts file this configure already wrote for the image-agreement check |
+| decision | `_nros_stack_floor_image_key`: the stated key, else `<bringup or entry>@<board>`. A hand-written application, or an image whose `system.toml` predates the stamp, keys by its bringup |
+| row check | `--validate-table` (on the fast line): a `<template>/<lang>/<rmw>@<board>` row must name a template `Role::name` still has and a board with a `packages/boards/nros-board-<board>/nros-board.toml` |
+| shape | each row has `[allowance.shape]`, the derived entity counts it was measured on (nodes, publishers, subscribers, queryables, callbacks, action clients). The Zephyr build passes its own from `NROS_BOARD_FACTS_ENV` as `--shape`; a difference prints `WARNING: image … is NOT the shape its OPEN allowance was measured on` naming each count. The allowance still applies. |
+
+The FreeRTOS carrier (W2) does not read the stated key yet: no FreeRTOS image
+has a row, and its configure does not run the image-facts query. It keys by
+bringup until a FreeRTOS row exists.
 
 The configure-time `NROS_RUST_MAIN_STACK_FLOOR` (32 KiB, issue 2359) STAYS.
 An unmeasured image is never refused here, so removing it would put every
@@ -352,3 +375,12 @@ same image builds ("OPEN stack 33288 B holds the floor 33288 B (measured)").
 A fresh `nros new nu ... --template talker` is the `nt` image under another
 name: it builds with the UNMEASURED warning, floor 24,440 B (walk + margin,
 no allowance) against 32,768 B.
+
+Key (c), measured on fresh `nros new --board nucleo-f767zi-zephyr` projects
+named unlike the measured ones (`xt`, `xa`, `xl`):
+
+| project | stamped key | outcome |
+| --- | --- | --- |
+| `xt` Rust talker | `talker/rust/zenoh@…` | measured, holds (31,784 B against 32,768 B) |
+| `xa` Rust action server | `action-server/rust/zenoh@…` | measured, **fails**: `Raise it: CONFIG_MAIN_STACK_SIZE=33288` |
+| `xl` Rust listener, key edited to the talker's | `talker/rust/zenoh@…` | builds with `WARNING: … is NOT the shape its OPEN allowance was measured on (NROS_MAX_PUBLISHERS measured 1, this image 0; NROS_MAX_SUBSCRIBERS measured 0, this image 1)` |

@@ -275,6 +275,12 @@ fn as_cmake(
     // empty value is the answer "this image declares none", which the Zephyr
     // module must be able to tell from "no image answered".
     put("FEATURES", &plan.capabilities.join(";"));
+    // Issue 2400 — the key the image's stack allowance is filed under, when
+    // its `[image.*]` states one (`nros new` does). Absent: the build's own
+    // `<bringup>@<board>`.
+    if let Some(v) = &plan.stack_floor_image {
+        put("STACK_FLOOR_IMAGE", v);
+    }
     out
 }
 
@@ -319,6 +325,7 @@ mod tests {
             profile: None,
             cmake_build_dir: None,
             capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
+            stack_floor_image: None,
             kernel: None,
             entry_root: None,
             configure: None,
@@ -333,6 +340,21 @@ mod tests {
     /// Issue 1261 — the Zephyr module defaults `NROS_FEATURES` from this
     /// line, so it is a cmake LIST, and it is present even when empty: "this
     /// image declares none" must read differently from "no image answered".
+    #[test]
+    fn the_cmake_facts_carry_a_stated_stack_floor_key_only() {
+        let root = std::path::Path::new("/w");
+        let mut plan = plan_with(&[]);
+        assert!(!as_cmake(&plan, root, None).contains("STACK_FLOOR_IMAGE"));
+        plan.stack_floor_image = Some("talker/rust/zenoh@nucleo-f767zi-zephyr".into());
+        let facts = as_cmake(&plan, root, None);
+        assert!(
+            facts.contains(
+                "set(NROS_IMAGE_STACK_FLOOR_IMAGE \"talker/rust/zenoh@nucleo-f767zi-zephyr\")\n"
+            ),
+            "{facts}"
+        );
+    }
+
     #[test]
     fn the_cmake_facts_carry_the_declared_capability_axes() {
         let root = std::path::Path::new("/ws");

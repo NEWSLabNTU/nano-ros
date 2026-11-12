@@ -764,6 +764,7 @@ mod tests {
             profile: None,
             cmake_build_dir: None,
             capabilities: Vec::new(),
+            stack_floor_image: None,
             kernel: None,
             entry_root: None,
             configure: None,
